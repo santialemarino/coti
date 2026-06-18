@@ -1,0 +1,7 @@
+{
+  "scripts": {
+    "setup": "pnpm install && (cd apps/api && go mod download)",
+    "run": "pnpm dev"
+  },
+  "runScriptMode": "nonconcurrent"
+}

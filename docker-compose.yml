@@ -1,0 +1,63 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: coti-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-coti}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-coti}
+      POSTGRES_DB: ${POSTGRES_DB:-coti}
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  api:
+    container_name: coti-api
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: ./docker/api.Dockerfile
+    ports:
+      - '8000:8000'
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+
+  backoffice:
+    container_name: coti-backoffice
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: ./docker/backoffice.Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - '3000:3000'
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+
+  webapp:
+    container_name: coti-webapp
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: ./docker/webapp.Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - '3001:3001'
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+
+volumes:
+  postgres_data:
+
+networks:
+  default:
+    name: coti-network

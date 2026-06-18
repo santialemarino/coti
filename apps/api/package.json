@@ -1,0 +1,16 @@
+{
+  "name": "api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "go run ./cmd/api",
+    "build": "go build -o bin/api ./cmd/api",
+    "lint": "go vet ./...",
+    "lint:fix": "command -v go >/dev/null 2>&1 && (gofmt -w . && go vet ./...) || (echo 'api: skipping lint:fix (go not installed)' && exit 0)",
+    "format": "gofmt -w .",
+    "format:check": "test -z \"$(gofmt -l .)\"",
+    "check": "go build -o /dev/null ./... && go vet ./...",
+    "check-types": "go build -o /dev/null ./...",
+    "test": "go test ./..."
+  }
+}

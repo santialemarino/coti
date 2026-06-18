@@ -1,0 +1,8 @@
+/* App global styles: Tailwind + shared UI design system. */
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@import '@repo/ui/styles';
+@import '@repo/ui/theme';
+
+@custom-variant dark (&:is(.dark *));

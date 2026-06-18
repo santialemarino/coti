@@ -1,0 +1,16 @@
+**/node_modules
+**/.next
+**/.git
+**/.github
+**/.vscode
+**/.idea
+**/.turbo
+**/.DS_Store
+**/*.log
+.env
+.env.*
+!.env.example
+coverage
+.nyc_output
+*.tsbuildinfo
+**/bin

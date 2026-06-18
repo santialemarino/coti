@@ -1,0 +1,33 @@
+name: CI API
+
+run-name: 'CI API by @${{ github.actor }}'
+
+on:
+  workflow_call:
+  pull_request:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'apps/api/**'
+  workflow_dispatch:
+
+jobs:
+  ci-api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Download dependencies
+        run: go mod download
+      - name: Format check
+        run: test -z "$(gofmt -l .)"
+      - name: Vet
+        run: go vet ./...
+      - name: Build
+        run: go build -o /dev/null ./...

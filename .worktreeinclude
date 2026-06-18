@@ -1,0 +1,4 @@
+.env
+apps/api/.env
+apps/backoffice/.env
+apps/webapp/.env
