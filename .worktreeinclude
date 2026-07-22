@@ -2,3 +2,4 @@
 apps/api/.env
 apps/backoffice/.env
 apps/webapp/.env
+.claude/settings.json
