@@ -1,0 +1,29 @@
+{
+  "common": {
+    "appName": "Coti",
+    "actions": {
+      "send": "Enviar",
+      "back": "Volver",
+      "add": "Agregar"
+    },
+    "states": {
+      "loading": "Cargando…",
+      "error": "Ocurrió un error. Intentá de nuevo."
+    }
+  },
+  "rfq": {
+    "title": "Solicitá tu presupuesto",
+    "intro": "Contanos qué materiales necesitás y te preparamos una cotización.",
+    "itemsLabel": "Materiales",
+    "submit": "Enviar solicitud",
+    "submitting": "Enviando…",
+    "itemCount": "{count, plural, =0 {Sin ítems} one {# ítem} other {# ítems}}",
+    "success": "Recibimos tu solicitud. Te contactaremos con la cotización."
+  },
+  "quote": {
+    "title": "Tu cotización",
+    "total": "Total: {amount}",
+    "validUntil": "Válida hasta el {date}",
+    "empty": "Esta cotización todavía no tiene ítems."
+  }
+}

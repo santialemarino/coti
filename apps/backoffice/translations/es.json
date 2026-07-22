@@ -1,0 +1,41 @@
+{
+  "common": {
+    "appName": "Coti",
+    "actions": {
+      "save": "Guardar",
+      "cancel": "Cancelar",
+      "delete": "Eliminar",
+      "confirm": "Confirmar",
+      "edit": "Editar",
+      "search": "Buscar"
+    },
+    "states": {
+      "loading": "Cargando…",
+      "empty": "No hay datos para mostrar",
+      "error": "Ocurrió un error. Intentá de nuevo."
+    }
+  },
+  "auth": {
+    "login": {
+      "title": "Iniciar sesión",
+      "email": { "label": "Correo electrónico", "placeholder": "tu@correo.com" },
+      "password": { "label": "Contraseña", "placeholder": "Ingresá tu contraseña" },
+      "submit": "Ingresar",
+      "submitting": "Ingresando…",
+      "error": "Correo o contraseña inválidos"
+    }
+  },
+  "quotes": {
+    "title": "Cotizaciones",
+    "empty": "Todavía no hay cotizaciones.",
+    "itemCount": "{count, plural, =0 {Sin ítems} one {# ítem} other {# ítems}}",
+    "total": "Total: {amount}",
+    "createdAt": "Creada el {date}"
+  },
+  "catalog": {
+    "title": "Catálogo",
+    "product": "Producto",
+    "stock": "Stock",
+    "price": "Precio"
+  }
+}
