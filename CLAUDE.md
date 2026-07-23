@@ -20,11 +20,13 @@ to load and covers checks, docs, the skill mirror, and commit rules.
 ## Where the knowledge lives (source hierarchy)
 
 **`docs/internal/` is the local source of truth for what the code needs.** Before
-implementing something, read the relevant doc there. It is **gitignored** (local
-only, kept in sync with Notion) — this is deliberate: it lets the Claude web
-Project and this local checkout work from the same source of truth without
-committing internal planning to the repo. Project docs that _are_ committed live
-in `docs/public/` and `docs/technical/` (for later).
+implementing something, read the relevant doc there. It is **gitignored** — kept
+in sync with Notion and shared with the team out of band (direct handoff /
+Notion), not via git. This is deliberate: the Claude web Project and every
+teammate's local checkout (and their agents) work from the same source of truth
+without internal planning entering git history. **If your checkout doesn't have
+`docs/internal/`, get it from the team or Notion.** Project docs that _are_
+committed live in `docs/public/` and `docs/technical/` (for later).
 
 Flow is one-directional: **decision (conversation / Notion) → `docs/internal/` → code.**
 

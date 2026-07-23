@@ -20,10 +20,12 @@ The two trees are kept byte-for-byte identical.
 ## Where the knowledge lives (source hierarchy)
 
 `docs/internal/` is the local source of truth for what the code needs; read the
-relevant doc before implementing. It is **gitignored** (local only, kept in sync
-with Notion) so the Claude web Project and this checkout share one source of
-truth without committing internal planning. Committed project docs go in
-`docs/public/` and `docs/technical/`.
+relevant doc before implementing. It is **gitignored** — synced with Notion and
+shared with the team out of band (not via git), so the Claude web Project and
+every teammate's checkout (and their agents) share one source of truth without
+internal planning entering git history. **If your checkout lacks `docs/internal/`,
+get it from the team or Notion.** Committed project docs go in `docs/public/` and
+`docs/technical/`.
 
 One-directional flow: **decision (conversation / Notion) → `docs/internal/` → code.**
 
