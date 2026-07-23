@@ -22,9 +22,8 @@ export function createFormatters(locale: string, timeZone?: string) {
     locale,
     value: (value: number, options?: Omit<FormatValueOptions, 'locale'>) =>
       formatValue(value, { ...options, locale }),
-    // Integer minor units (centavos) → localized currency. Defaults to ARS.
-    currency: (minorAmount: number, currency?: string) =>
-      formatCurrency(minorAmount, locale, currency),
+    // Decimal money string (matching the DB's NUMERIC(14,2)) → localized currency. Defaults to ARS.
+    currency: (amount: string, currency?: string) => formatCurrency(amount, locale, currency),
     signedValue: (value: number) => formatSignedValue(value, locale),
     ratePct: (ratio: number) => formatRatePct(ratio, locale),
     date: (iso: string) => formatDate(iso, locale),

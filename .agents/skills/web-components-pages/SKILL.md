@@ -25,7 +25,7 @@ description: How to create a component or a page in Coti's Next.js apps (backoff
    `/quotes/{quoteId}`). Use `ROUTES.*` everywhere — no hardcoded paths.
 3. **Add `page.tsx`:** Default-export a server component.
    - **backoffice `(protected)`:** the layout already enforces a session; call
-     `getSession()` in the page only if you need the user/sucursal. **backoffice
+     `getSession()` in the page only if you need the user/branch. **backoffice
      `(auth)`:** redirect to `ROUTES.home` when already logged in.
    - **webapp:** the page is public. A customer-scoped route (e.g.
      `quotes/[token]`) resolves the **token** server-side and 404s an invalid one —
@@ -239,9 +239,9 @@ field names, zod keys. Exceptions:
 - **String values that are API enum values** stay as-is (e.g. a quote status
   `'pending_review'`, `'sent'`) — they must match the backend enum.
 - **URL param name strings** passed to `URLSearchParams` / `searchParams.get(...)`
-  stay snake_case (they're API contract strings, e.g. `qs.append('sucursal_id', …)`).
+  stay snake_case (they're API contract strings, e.g. `qs.append('branch_id', …)`).
 - **Request body keys** sent to the API stay snake_case (the Go API reads them via
-  its `json` tags), e.g. `{ sucursal_id: values.sucursalId }`.
+  its `json` tags), e.g. `{ branch_id: values.branchId }`.
 
 ### Mapping at the API boundary
 
@@ -268,9 +268,9 @@ import 'server-only';
 interface QuoteRaw {
   id: string;
   rfq_id: string;
-  sucursal_id: string;
+  branch_id: string;
   status: string;
-  total_amount: number;
+  total: string; // NUMERIC(14,2) decimal string, never float
   created_at: string;
 }
 
@@ -279,9 +279,9 @@ interface QuoteRaw {
 export interface Quote {
   id: string;
   rfqId: string;
-  sucursalId: string;
+  branchId: string;
   status: string;
-  totalAmount: number;
+  total: string; // NUMERIC(14,2) decimal string, never float
   createdAt: string;
 }
 
@@ -291,17 +291,17 @@ function mapQuote(raw: QuoteRaw): Quote {
   return {
     id: raw.id,
     rfqId: raw.rfq_id,
-    sucursalId: raw.sucursal_id,
+    branchId: raw.branch_id,
     status: raw.status,
-    totalAmount: raw.total_amount,
+    total: raw.total,
     createdAt: raw.created_at,
   };
 }
 
 // --- API functions ---
 
-export async function getQuotes(sucursalId: string): Promise<Quote[]> {
-  const res = await authenticatedFetch(`/v1/quotes?sucursal_id=${sucursalId}`, { method: 'GET' });
+export async function getQuotes(branchId: string): Promise<Quote[]> {
+  const res = await authenticatedFetch(`/v1/quotes?branch_id=${branchId}`, { method: 'GET' });
   if (!res.ok) throw new Error('Failed to fetch quotes');
   const raw: QuoteRaw[] = await res.json();
   return raw.map(mapQuote);
@@ -315,9 +315,9 @@ export async function getQuotes(sucursalId: string): Promise<Quote[]> {
 
 ```ts
 // app/(protected)/quotes/[quoteId]/actions.ts
-const { sucursalId, totalAmount, ...rest } = values;
+const { branchId, total, ...rest } = values;
 await authenticatedFetch('/v1/quotes', {
-  body: { ...rest, sucursal_id: sucursalId, total_amount: totalAmount },
+  body: { ...rest, branch_id: branchId, total },
 });
 ```
 
@@ -344,15 +344,16 @@ currency/date string inline. Use the locale-bound formatters from `lib/i18n/`:
 `const fmt = useFormatters()` (client) / `const fmt = await getFormatters()`
 (server). They close over the locale + timezone so you never thread them.
 
-- **Money:** `fmt.currency(centavos, 'ARS')` — amounts cross the API as **integer
-  minor units (centavos)** to match the Go side's `int64`; `fmt.currency` is the one
-  place they become a display string (`$ 1.234,56`). `'ARS'` is the default.
+- **Money:** `fmt.currency(quote.total, 'ARS')` — the API sends money as
+  **NUMERIC(14,2) decimal strings, never float**, and `quote.total` is one such
+  decimal string; `fmt.currency` is the one place it becomes a display string
+  (`$ 1.234,56`). `'ARS'` is the default.
 - **Numbers:** `fmt.value(n)` (thousand separators; `{ compact: true }` → "1,5 M"),
   `fmt.signedValue(n)`, `fmt.ratePct(ratio)` (0.21 → "21%").
 - **Dates:** `fmt.date(iso)` (date-only, "2 ene 2025"), `fmt.timestamp(iso)`
   (date + time in the Argentina zone). **Lists:** `fmt.list(items)` ("cemento, arena y cal").
 - Interpolate a formatted value into copy by formatting first, then passing it as an
-  ICU arg: `t('total', { amount: fmt.currency(totalCentavos) })`.
+  ICU arg: `t('total', { amount: fmt.currency(quote.total) })`.
 
 To add a formatter, extend `format.ts` (a pure fn) and expose it in
 `create-formatters.ts` — keep both apps' `lib/i18n/` in sync. Adding a second locale

@@ -47,7 +47,7 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
   quote (cotización) review, catalog (productos), sucursal-scoped surfaces,
   account/settings. Its `layout.tsx` calls `getSession()` and redirects to
   `LOGIN_ROUTE` when there is no valid session. It also hosts the app shell
-  (header + sucursal switcher).
+  (header + branch switcher).
 - **`app/layout.tsx`** — Root layout: async server component that resolves the
   locale + messages via next-intl, wraps `children` in `NextIntlClientProvider`,
   and sets `<html lang={locale}>` (always `es` today); imports `globals.css`.
@@ -75,7 +75,7 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
   `app/(protected)/quotes/[quoteId]/_components/quote-review-table.tsx`. Only that
   page (and its children) import these.
 - **Shared across all protected pages (backoffice only):** In
-  `app/(protected)/_components/`, e.g. `app-header.tsx`, `sucursal-switcher.tsx`.
+  `app/(protected)/_components/`, e.g. `app-header.tsx`, `branch-switcher.tsx`.
   For components used by more than one protected route but not outside it.
 - **Used on multiple pages within one app:** The app's `components/` folder.
 - **Reusable across BOTH apps (design system):** `packages/ui/src/components`,
@@ -154,8 +154,8 @@ app/
 │       ├── actions.ts               # 'use server' — sign in
 │       └── form-schema.ts
 ├── (protected)/                     # getSession() + redirect to LOGIN_ROUTE
-│   ├── layout.tsx                   # session check + app shell + sucursal switcher
-│   ├── _components/                 # shared across protected pages (app-header, sucursal-switcher)
+│   ├── layout.tsx                   # session check + app shell + branch switcher
+│   ├── _components/                 # shared across protected pages (app-header, branch-switcher)
 │   ├── rfqs/                        # RFQ inbox (solicitudes)
 │   │   ├── page.tsx
 │   │   ├── _components/

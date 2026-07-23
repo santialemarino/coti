@@ -2,10 +2,10 @@
 
 Coti is a B2B SaaS for AI-assisted quoting at mid-sized building-materials
 suppliers ("corralones") in Argentina. It ingests informal RFQs (WhatsApp,
-email, public web link), runs an AI pipeline that extracts line items and
-matches them against the supplier's catalog + pricing, and returns a
-review-ready quote. Human review is always in the flow — a copilot, not an
-autopilot.
+email, audio, photo, PDF, Excel, public web link), runs an AI pipeline that
+extracts line items and matches them against the supplier's catalog + pricing,
+and returns a review-ready quote. Human review is always in the flow — a
+copilot, not an autopilot. (UTN FRBA final project, K5053 Grupo 5, 2026.)
 
 Monorepo: `apps/backoffice` (Next.js, authenticated), `apps/webapp` (Next.js,
 public), `apps/api` (Go + Gin, layered), `packages/ui` (shared shadcn design
@@ -14,8 +14,24 @@ system).
 ## Start here
 
 Read the `agent-workflow` skill first when doing substantive local work. Codex
-skills live under `.agents/skills/`; Claude skills remain under
-`.claude/skills/`. The two trees are kept byte-for-byte identical.
+skills live under `.agents/skills/`; Claude skills remain under `.claude/skills/`.
+The two trees are kept byte-for-byte identical.
+
+## Where the knowledge lives (source hierarchy)
+
+`docs/internal/` is the local source of truth for what the code needs; read the
+relevant doc before implementing. It is **gitignored** (local only, kept in sync
+with Notion) so the Claude web Project and this checkout share one source of
+truth without committing internal planning. Committed project docs go in
+`docs/public/` and `docs/technical/`.
+
+One-directional flow: **decision (conversation / Notion) → `docs/internal/` → code.**
+
+- Product/architecture decisions: live source is Notion; `docs/internal/product/decisiones-cerradas.md` is a local mirror — **Notion wins** on divergence.
+- Work state (tickets): lives in Notion, not replicated here.
+- Executable data model: `docs/internal/data/schema.sql` today; goose migrations later.
+
+Map: `product/`, `domain/`, `architecture/`, `data/`, `conventions/`. Start at `docs/internal/README.md`.
 
 ## Key commands
 
@@ -44,76 +60,66 @@ pnpm test:api
 gofmt -w .
 ```
 
-## Canonical docs
+## Product invariants (the code MUST enforce these)
 
-- Repo overview and quickstart: `README.md`.
-- Design source of truth: `docs/internal/architecture.md` (gitignored).
-  Schemas, endpoint shapes, the AI pipeline, conventions, and the Go package
-  layout live there.
-- Decisions log: `docs/internal/decisions.md` (gitignored).
-- Public docs: `docs/public/` (product/solution).
-- Technical docs: `docs/technical/` (env vars, Docker, auth flow, data model,
-  AI/RFQ pipeline).
-- Internal docs (`docs/internal/`) are gitignored and must not be committed.
+Hard rules, not style. If a task asks you to violate one, stop and flag it.
+
+- AI never writes to prod: AI proposes → backend validates → seller approves.
+- AI never calculates money — the deterministic discount engine does.
+- AI never initiates client contact; it only drafts for the seller.
+- Every AI proposal is validated against the state×intention matrix before it materializes (`docs/internal/domain/estados.md`).
+- AI output uses a forced schema (structured outputs / tool use), never prompt-requested JSON.
+- `quote.current_status` is backend-exclusive, recomputed on each transition; never edited by a human or the AI.
+- Unmatched items are flagged (`quote_item.match_status = NO_MATCH`), never discarded.
+- Multi-branch isolation is validated on every input.
+- 1-to-1 rfq→quote: never create a second quote for the same RFQ.
 
 ## Tickets
 
 Work is tracked in **Notion**. A PR links its Notion ticket page URL as the Card
 Link and pulls acceptance criteria from it. See `pr-format`.
 
-## Hard rules
-
-- Never `git add .` or `git add -A`; stage files individually by name.
-- Never stage `.claude/plans/`, `.claude/settings.json`, or
-  `.claude/settings.local.json`.
-- Never stage `docs/internal/`.
-- Never stage temporary markdown files unless the user explicitly names them.
-- PRs target `dev` (GitFlow), never `main`, except `hotfix/*`. Every PR carries
-  a label and needs at least one approval.
-- The Husky pre-commit hook runs `lint-staged` only (Prettier + ESLint on
-  staged files); it does not run type/build checks. Run `pnpm check` and
-  `pnpm test:api` yourself before pushing.
-
 ## Architecture rules
 
 - Use API skills for backend work: `api-layering` and `api-methods-entities`.
-- Use web skills for frontend work: `web-structure` and `web-components-pages`
-  (both cover `apps/backoffice` and `apps/webapp`).
-- Layered Go API (ports & adapters):
-  `internal/{ai,config,delivery/http,domain,repository,services}`. Services
-  depend only on ports (interfaces), never on concrete adapter packages.
-  Adapter wiring lives only in `cmd/api/main.go`.
-- Persistence is raw `database/sql` + `pgx` (no ORM); SQL is always
-  parameterized, never string-built.
+- Use web skills for frontend work: `web-structure` and `web-components-pages` (both cover `apps/backoffice` and `apps/webapp`).
+- Layered Go API (ports & adapters): `internal/{ai,config,delivery/http,domain,repository,services}`. Services depend only on ports; adapter wiring only in `cmd/api/main.go`.
+- English identifiers; native PostgreSQL enums with English UPPERCASE values (labels are frontend i18n).
+- Persistence is raw `database/sql` + `pgx` (no ORM); SQL always parameterized. UUID v4 PKs.
+- Money & quantities are `NUMERIC(14,2)` — decimal strings end to end, never float or int64 centavos.
 - Services own transaction boundaries; repositories never commit.
-- Every query is scoped by `cuenta_id` (and `sucursal_id` where relevant) —
-  cross-account exposure is a P0 bug.
-- Semantic catalog search uses `producto.embedding` (pgvector); embedding
-  generation lives behind the `internal/ai` provider.
-- Avoid N+1 queries. Add batch repository methods when data is needed in loops.
+- Every query is scoped by `account_id` (and `branch_id` for branch-scoped tables) — cross-account exposure is a P0 bug.
+- Avoid N+1 queries; add batch repository methods when data is needed in loops.
+- Semantic catalog search uses `product.embedding` (pgvector); embedding generation lives behind the `internal/ai` provider.
 - API comments above function/type definitions end with periods.
-- Web code uses the `@repo/ui` typography token scale; avoid raw typography
-  classes when tokens exist.
-- Configurable thresholds are env-var-backed with defaults in
-  `apps/api/internal/config` (backend) or app `lib/config.ts` (frontend). No
-  hardcoded thresholds in business logic.
-- Per-phase migrations: a schema change ships a goose migration in
-  `apps/api/migrations/` AND updates the canonical `apps/api/database/` schema
-  in the same PR.
+- Web code uses the `@repo/ui` design tokens; avoid raw typography classes when tokens exist.
+- Configurable thresholds are env-var-backed with defaults in `apps/api/internal/config` or app `lib/config.ts`. No hardcoded thresholds in business logic.
+- Per-phase migrations: a schema change ships a goose migration in `apps/api/migrations/` AND updates the canonical `apps/api/database/` schema in the same PR.
+
+## Conventions & hard rules
+
+- Docs Spanish, code English. UI copy is Argentine Spanish via next-intl (`es-AR`, single locale). Commits/PRs in English. "MVP" is banned — it's "Release 1 — Piloto Comercial".
+- GitFlow: `main` ← `dev` (default) ← ephemeral `feat/`, `fix/`, `enhancement/`, `refactor/`, `hotfix/` (kebab-case). Commits `type: imperative description`.
+- Never `git add .`/`-A`; stage files individually by name.
+- Never stage `.claude/plans/`, `.claude/settings*.json`, `docs/internal/`, or stray temporary markdown.
+- PRs target `dev` (never `main`, except `hotfix/*`); each carries a label and needs one approval.
+- The Husky pre-commit hook runs `lint-staged` only (no type/build checks). Run `pnpm check` and `pnpm test:api` before pushing.
 
 ## Review guidelines
 
 - Flag P0/P1 issues only unless the PR asks for a broader review.
-- Treat cross-account data leakage, auth/session regressions, data-loss bugs,
-  broken DB schema updates, unparameterized SQL, and transaction mistakes as
-  high priority.
-- Check backend layer boundaries, repository/service method order, raw-SQL
-  parameterization, and that repositories never commit.
-- Check frontend routing, typography tokens, component ordering, the
-  snake_case↔camelCase API boundary, and shared UI reuse across both apps.
-- If schema changes were made, verify migrations represent a clean rebuild from
-  zero and the canonical schema matches.
-- If behavior, setup, or public API changed, verify the relevant docs were
-  updated.
-- Treat missing tests as high priority when calculations, persistence, auth,
-  API contracts, or shared UI behavior changed.
+- Treat cross-account data leakage, auth/session regressions, data-loss bugs, broken schema updates, unparameterized SQL, transaction mistakes, and any violation of the product invariants as high priority.
+- Check backend layer boundaries, repository/service method order, raw-SQL parameterization, `account_id`/`branch_id` scoping, and that repositories never commit.
+- Check frontend routing, design tokens, component ordering, the snake_case↔camelCase API boundary, and shared UI reuse across both apps.
+- If schema changed, verify migrations are a clean rebuild from zero and the canonical schema matches.
+- If behavior, setup, or public API changed, verify the relevant docs were updated.
+- Treat missing tests as high priority when calculations, persistence, auth, API contracts, or shared UI behavior changed.
+
+## Working a task
+
+1. Read the `docs/internal/` doc(s) the task references.
+2. Respect the product invariants.
+3. Branch with the right prefix; commits in format; PR to `dev`; tests included.
+4. If a task contradicts a closed decision or an invariant, stop and flag it before coding.
+
+The team and all project docs are in Argentine Spanish; match that when writing docs or talking to the team.

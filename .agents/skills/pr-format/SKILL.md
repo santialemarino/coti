@@ -21,7 +21,7 @@ Types match the branch/commit types:
 | refactor    | `refactor/`    |
 | hotfix      | `hotfix/`      |
 
-Examples: `feat/semantic-catalog-search`, `fix/cotizacion-total-rounding`, `enhancement/vendor-dashboard-filters`.
+Examples: `feat/semantic-catalog-search`, `fix/quote-total-rounding`, `enhancement/vendor-dashboard-filters`.
 
 ## Base branch (GitFlow)
 
@@ -38,7 +38,7 @@ Title Case, imperative, concise. No ticket prefix. Often starts with an imperati
 Examples:
 
 - `Implement Semantic Catalog Search with pgvector Embeddings`
-- `Fix Cross-Tenant Leak in Cotizacion Repository Queries`
+- `Fix Cross-Tenant Leak in Quote Repository Queries`
 - `Add Vendor Dashboard Filters to Backoffice`
 
 ## PR body
@@ -101,7 +101,7 @@ Coti tracks tickets in **Notion**. Paste the **Notion ticket page URL** here. Us
 ### Summary
 
 - Lead with a one-paragraph overview of what and why.
-- Group changes under **bold headers** that name the affected area with file paths in backticks. Format: `**Description — (path/to/file.go):**` or `**Backend — new endpoint under '/cotizaciones' (internal/delivery/http/..., internal/services/...):**`.
+- Group changes under **bold headers** that name the affected area with file paths in backticks. Format: `**Description — (path/to/file.go):**` or `**Backend — new endpoint under '/quotes' (internal/delivery/http/..., internal/services/...):**`.
 - Be detailed — close to implementation-plan level. Mention handler/service/repository names, component names, file paths, patterns.
 - End with cross-cutting sub-sections when applicable:
   - **`Translations:`** — when user-facing strings / i18n keys were added or changed.
@@ -125,14 +125,14 @@ This PR adds a goose migration. After merging and pulling:
 pnpm db:migrate
 ```
 
-Migration (`apps/api/migrations/00XX_add_producto_embedding.sql`):
+Migration (`apps/api/migrations/00XX_add_product_embedding.sql`):
 
 ```sql
 -- +goose Up
-ALTER TABLE producto ADD COLUMN embedding VECTOR(1536);
+ALTER TABLE product ADD COLUMN embedding VECTOR(1536);
 
 -- +goose Down
-ALTER TABLE producto DROP COLUMN embedding;
+ALTER TABLE product DROP COLUMN embedding;
 ```
 ````
 
@@ -207,13 +207,13 @@ https://www.notion.so/coti/Semantic-catalog-search-abc123
 
 ## Summary
 
-Adds semantic search over the product catalog so vendors can find `producto` rows by meaning, not just exact text. Products carry an OpenAI embedding; a new endpoint runs a vector similarity query scoped to the tenant.
+Adds semantic search over the product catalog so vendors can find `product` rows by meaning, not just exact text. Products carry an OpenAI embedding; a new endpoint runs a vector similarity query scoped to the tenant.
 
-**Backend — new endpoint and service (`internal/delivery/http/producto_handler.go`, `internal/services/producto_service.go`, `internal/repository/producto_repository.go`):**
-- `GET /cotizaciones/catalogo/buscar?q=...` embeds the query, runs a `producto.embedding <=> $1` similarity search filtered by `cuenta_id` / `sucursal_id`, and returns the top matches.
+**Backend — new endpoint and service (`internal/delivery/http/product_handler.go`, `internal/services/product_service.go`, `internal/repository/product_repository.go`):**
+- `GET /quotes/catalog/search?q=...` embeds the query, runs a `product.embedding <=> $1` similarity search filtered by `account_id` / `branch_id`, and returns the top matches.
 - Repository uses parameterized SQL only; the service owns the transaction and passes the tenant scope from the authenticated context.
 
-**Backoffice — search UI (`apps/backoffice/app/catalogo/...`):**
+**Backoffice — search UI (`apps/backoffice/app/catalog/...`):**
 - New search box wired to the endpoint, mapping the API's snake_case response to camelCase at the data boundary.
 
 **Env vars:**
@@ -227,21 +227,21 @@ After merging and pulling:
 pnpm db:migrate
 ```
 
-Migration (`apps/api/migrations/00XX_add_producto_embedding.sql`):
+Migration (`apps/api/migrations/00XX_add_product_embedding.sql`):
 
 ```sql
 -- +goose Up
-ALTER TABLE producto ADD COLUMN embedding VECTOR(1536);
-CREATE INDEX idx_producto_embedding ON producto USING ivfflat (embedding vector_cosine_ops);
+ALTER TABLE product ADD COLUMN embedding VECTOR(1536);
+CREATE INDEX idx_product_embedding ON product USING ivfflat (embedding vector_cosine_ops);
 
 -- +goose Down
-DROP INDEX idx_producto_embedding;
-ALTER TABLE producto DROP COLUMN embedding;
+DROP INDEX idx_product_embedding;
+ALTER TABLE product DROP COLUMN embedding;
 ```
 
 ## Acceptance Criteria
 
 - Vendor can search the catalog by natural-language description and get relevant products.
-- Results are scoped to the vendor's own cuenta/sucursal — no cross-tenant rows.
+- Results are scoped to the vendor's own account/branch — no cross-tenant rows.
 - Empty query returns a validation error, not a full scan.
 ````

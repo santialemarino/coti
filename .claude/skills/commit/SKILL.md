@@ -34,10 +34,10 @@ A scope in parens is allowed when a commit is clearly isolated to one area. Use
 either an **app/package** or a **domain area** — never both.
 
 - Apps / packages: `api`, `backoffice`, `webapp`, `ui`
-- Domain areas: `producto`, `rfq`, `cotizacion` (and similar quoting-domain nouns)
+- Domain areas: `product`, `rfq`, `quote` (and similar quoting-domain nouns)
 
 ```
-feat(cotizacion): add pgvector product matching to draft flow
+feat(quote): add pgvector product matching to draft flow
 fix(api): return 409 when rfq reference already exists
 enh(backoffice): show margin breakdown in quote line editor
 ```
@@ -67,10 +67,10 @@ open a PR into `dev`.
 ## Examples
 
 ```
-feat: implement rfq-to-cotizacion draft generation
-fix: prevent duplicate producto rows on catalog re-import
+feat: implement rfq-to-quote draft generation
+fix: prevent duplicate product rows on catalog re-import
 enh: improve pgvector similarity ranking for product matching
-refactor: extract cotizacion pricing into services layer
+refactor: extract quote pricing into services layer
 docs: document goose migration workflow in api readme
 chore: add pgvector extension to docker-compose postgres
 test: add unit tests for margin calculation helper

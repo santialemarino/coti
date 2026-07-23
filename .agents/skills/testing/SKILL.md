@@ -25,7 +25,7 @@ description: Where tests live, how to run them, and what to test in the Coti rep
 ```bash
 # From apps/api
 go test ./...                                   # all (non-integration) tests
-go test -run TestCotizacionService_Create ./internal/services   # one test
+go test -run TestQuoteService_Create ./internal/services   # one test
 go test -race ./...                             # detect data races
 go test -cover ./...                            # coverage summary
 go test -tags=integration ./...                 # include integration tests (needs a test DB)
@@ -85,15 +85,15 @@ The API is layered — `internal/{ai,config,delivery/http,domain,repository,serv
 apps/api/
 └── internal/
     ├── domain/
-    │   └── cotizacion_test.go              # unit (pure domain / value-object)
+    │   └── quote_test.go                   # unit (pure domain / value-object)
     ├── services/
-    │   ├── cotizacion_service.go
-    │   └── cotizacion_service_test.go      # unit (fakes for repo + ai provider)
+    │   ├── quote_service.go
+    │   └── quote_service_test.go           # unit (fakes for repo + ai provider)
     ├── repository/
-    │   ├── producto_repo.go
-    │   └── producto_repo_test.go           # integration (//go:build integration)
+    │   ├── product_repo.go
+    │   └── product_repo_test.go            # integration (//go:build integration)
     └── integration/
-        └── cotizacion_flow_test.go         # cross-package end-to-end
+        └── quote_flow_test.go              # cross-package end-to-end
 ```
 
 ## Style
@@ -104,23 +104,25 @@ apps/api/
   func TestLineTotal(t *testing.T) {
       t.Parallel()
       cases := []struct {
-          name           string
-          qty            int
-          unitPrice      int64 // cents
-          markupBps      int64 // basis points
-          want           int64 // cents, computed by hand
+          name      string
+          qty       string // decimal string, NUMERIC(14,2)
+          unitPrice string // decimal string, NUMERIC(14,2)
+          markupBps int64  // basis points
+          want      string // decimal string, computed by hand
       }{
-          {"no markup", 3, 1000, 0, 3000},
-          {"10pct markup", 2, 1000, 1000, 2200},
-          {"zero qty", 0, 1000, 1000, 0},
+          {"no markup", "3", "1000.00", 0, "3000.00"},
+          {"10pct markup", "2", "1000.00", 1000, "2200.00"},
+          {"zero qty", "0", "1000.00", 1000, "0.00"},
       }
       for _, tc := range cases {
           tc := tc
           t.Run(tc.name, func(t *testing.T) {
               t.Parallel()
-              got := LineTotal(tc.qty, tc.unitPrice, tc.markupBps)
-              if got != tc.want {
-                  t.Fatalf("LineTotal(%d, %d, %d) = %d, want %d",
+              qty := decimal.RequireFromString(tc.qty)
+              unitPrice := decimal.RequireFromString(tc.unitPrice)
+              got := LineTotal(qty, unitPrice, tc.markupBps)
+              if !got.Equal(decimal.RequireFromString(tc.want)) {
+                  t.Fatalf("LineTotal(%s, %s, %d) = %s, want %s",
                       tc.qty, tc.unitPrice, tc.markupBps, got, tc.want)
               }
           })
@@ -135,13 +137,13 @@ apps/api/
   `github.com/stretchr/testify/require` / `assert` are welcome when they cut real
   noise — keep one consistent style per package.
 - **Naming:** `TestSubject_Scenario_Expectation` for unit tests
-  (`TestCotizacionService_Create_DuplicateRfqReturnsConflict`). Use `t.Run`
+  (`TestQuoteService_Create_DuplicateRfqReturnsConflict`). Use `t.Run`
   subtests for case labels.
 
 ## Fixtures & assertions
 
 - Place test factories next to the package they support
-  (`func makeCotizacion(...) Cotizacion`).
+  (`func makeQuote(...) Quote`).
 - For integration tests, define a `setupTestDB(t *testing.T) *pgxpool.Pool`
   helper that spins up (or connects to) the pgvector test DB, runs goose
   migrations, and registers `t.Cleanup(...)` to drop the schema or roll back a
