@@ -29,6 +29,12 @@ jobs:
         run: test -z "$(gofmt -l .)"
       - name: Vet
         run: go vet ./...
+      # Pinned to v1 to match the schema of apps/api/.golangci.yml.
+      - name: Lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.64.8
+          working-directory: apps/api
       - name: Build
         run: go build -o /dev/null ./...
       - name: Test

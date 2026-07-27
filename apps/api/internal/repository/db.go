@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -77,13 +76,9 @@ func (db *DB) InTenantTx(ctx context.Context, tenant domain.Tenant, fn func(Quer
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)
 	}
-	defer func() {
-		// No-op once committed; ErrTxClosed is the expected result on the happy path.
-		if rbErr := tx.Rollback(ctx); rbErr != nil && !errors.Is(rbErr, pgx.ErrTxClosed) {
-			// Nothing actionable left — the transaction is already failing.
-			_ = rbErr
-		}
-	}()
+	// A no-op once committed. A rollback that itself fails leaves nothing actionable:
+	// the transaction is already lost and the connection gets destroyed.
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	if _, err := tx.Exec(ctx,
 		`SELECT set_config($1, $2, true)`,
