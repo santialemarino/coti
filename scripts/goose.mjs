@@ -1,9 +1,6 @@
 /**
- * Wraps the goose CLI for migrations. Loads DATABASE_URL from apps/api/.env and
- * invokes goose pinned at GOOSE_VERSION via `go run`.
- *
- * Usage: node scripts/goose.mjs <command> [args]
- *   up | down | status | create <name> sql
+ * Wraps the goose CLI, pinned at GOOSE_VERSION via `go run`, with DATABASE_URL from apps/api/.env.
+ * Usage: node scripts/goose.mjs <up | down | status | create <name> sql>
  */
 import { spawnSync } from 'child_process';
 import fs from 'fs';
@@ -28,7 +25,10 @@ function loadDatabaseUrl() {
     console.error(`DATABASE_URL not found in ${ENV_FILE}.`);
     process.exit(1);
   }
-  return line.slice('DATABASE_URL='.length).trim().replace(/^["']|["']$/g, '');
+  return line
+    .slice('DATABASE_URL='.length)
+    .trim()
+    .replace(/^["']|["']$/g, '');
 }
 
 const args = process.argv.slice(2);

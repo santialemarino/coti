@@ -229,5 +229,3 @@ packages/ui                         # Workspace — shared React + shadcn design
   design tokens, and copy conventions.
 - **`agent-workflow`** — branch/ticket flow before you start.
 - **`commit`** / **`pr-format`** — commit message and PR conventions.
-  </content>
-  </invoke>

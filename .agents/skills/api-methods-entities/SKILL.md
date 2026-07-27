@@ -29,7 +29,7 @@ Three schema facts you carry into every type here (details below): **PKs are UUI
 
 ### Explicit column lists, hand-scanned rows
 
-Always name columns in `SELECT` (never `SELECT *`) and scan in the same order into the domain struct. The column list, the scan order, and the struct fields must agree with the canonical schema under `apps/api/database/`.
+Always name columns in `SELECT` (never `SELECT *`) and scan in the same order into the domain struct. The column list, the scan order, and the struct fields must agree with the reference schema under `apps/api/database/`.
 
 ```go
 // GetByID loads one product for a branch. Returns domain.ErrNotFound if absent.
@@ -302,7 +302,7 @@ Use **Go doc comments** (`//` block) **directly above** the definition. For an e
 - **DTOs:** one line naming role + route — `// CreateProductRequest is the body for POST /v1/products.`, `// UpdateProductRequest is the body for PATCH /v1/products/:id. Partial update; only provided fields are written.`, `// ProductResponse is returned by list, get, create, and update.`
 - **Domain structs / enums:** one line — `// Product is a catalog item owned by a branch...`, `// QuoteStatus is the lifecycle state a quote carries once it exists.`
 
-No redundant comments (`// id is the id`), and no narration inside function bodies unless the implementation genuinely needs explaining. Exceptions to the end-with-a-period rule: inline comments on the same line as code, and short noun-phrase section labels (e.g. `// --- RFQ ---`).
+**Only the essential ones.** Exported symbols carry a doc comment (Go convention) — keep it to one line that says what the caller needs. Everything else has to earn its place: the bar is _would a competent reader get this wrong without it?_ Comment a non-obvious **why**, a constraint that looks arbitrary, or a footgun. No redundant comments (`// id is the id`), no narration inside function bodies, no comment that just restates the signature. Prefer one tight line over three; when in doubt, leave it out. Exceptions to the end-with-a-period rule: inline comments on the same line as code, and short noun-phrase section labels (e.g. `// --- RFQ ---`).
 
 ## Verifying
 

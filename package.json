@@ -42,10 +42,21 @@
     "prepare": "husky"
   },
   "lint-staged": {
-    "apps/backoffice/**/*.{ts,tsx,js,jsx}": ["pnpm --filter backoffice run lint:fix", "prettier --write"],
-    "apps/webapp/**/*.{ts,tsx,js,jsx}": ["pnpm --filter webapp run lint:fix", "prettier --write"],
-    "packages/ui/**/*.{ts,tsx,js,jsx}": ["pnpm --filter @repo/ui run lint:fix", "prettier --write"],
-    "**/*.{json,md,css,scss,html,yml,yaml,mjs}": ["prettier --write"]
+    "apps/backoffice/**/*.{ts,tsx,js,jsx}": [
+      "pnpm --filter backoffice run lint:fix",
+      "prettier --write"
+    ],
+    "apps/webapp/**/*.{ts,tsx,js,jsx}": [
+      "pnpm --filter webapp run lint:fix",
+      "prettier --write"
+    ],
+    "packages/ui/**/*.{ts,tsx,js,jsx}": [
+      "pnpm --filter @repo/ui run lint:fix",
+      "prettier --write"
+    ],
+    "**/*.{json,md,css,scss,html,yml,yaml,mjs}": [
+      "prettier --write"
+    ]
   },
   "devDependencies": {
     "@ianvs/prettier-plugin-sort-imports": "^4.7.1",

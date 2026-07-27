@@ -10,19 +10,15 @@ import {
 } from '@/lib/i18n/format';
 
 /*
- * The locale-bound formatter set. Every method closes over the resolved locale (and timezone, for
- * timestamps) so call sites never thread them — which removes the silent-default footgun where a
- * forgotten `locale` argument renders the wrong locale with no error. Pure — no React, no
- * next-intl — so both the client hook (`useFormatters`) and the server helper (`getFormatters`)
- * reuse it.
+ * The locale-bound formatter set. Methods close over the locale and timezone so call sites never
+ * thread them and cannot silently format in the wrong locale. Pure, so the client hook and the
+ * server helper both reuse it.
  */
 export function createFormatters(locale: string, timeZone?: string) {
   return {
-    // The resolved locale, for the rare call site that needs it directly (e.g. localeCompare).
     locale,
     value: (value: number, options?: Omit<FormatValueOptions, 'locale'>) =>
       formatValue(value, { ...options, locale }),
-    // Decimal money string (matching the DB's NUMERIC(14,2)) → localized currency. Defaults to ARS.
     currency: (amount: string, currency?: string) => formatCurrency(amount, locale, currency),
     signedValue: (value: number) => formatSignedValue(value, locale),
     ratePct: (ratio: number) => formatRatePct(ratio, locale),

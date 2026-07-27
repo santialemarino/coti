@@ -62,7 +62,7 @@ After implementation and before committing, audit every changed or created file 
 - **DTOs.** Request/response structs live in the delivery layer, carry `json:"snake_case"` tags and `binding:"..."` validation, and bind via `c.ShouldBindJSON`. Domain ↔ DTO mapping happens at the handler boundary, never in services or repositories.
 - **pgvector.** Semantic catalog search uses the `product.embedding VECTOR(1536)` column via vector operators; any embedding written must match that dimension.
 - **Comments.** A `//` doc comment sits above every exported func/type, is a full sentence that starts with the symbol name and ends with a period. No narration on trivial code.
-- **A schema change ships a goose migration in the same PR.** Any table/column/index/enum/type change adds a goose migration under `apps/api/migrations/` (create with `pnpm db:create-migration`) AND updates the canonical schema under `apps/api/database/` in the same PR. The canonical schema must always rebuild the DB from zero — keep the CREATE statements current, never add migration-style comments to it.
+- **A schema change ships a goose migration in the same PR.** Any table/column/index/enum/type change adds a goose migration under `apps/api/migrations/` (create with `pnpm db:create-migration`) AND updates the consolidated reference schema under `apps/api/database/` in the same PR. **Migrations are the only executable path** — `pnpm db:init` builds a fresh DB by running them, so the chain must always rebuild from zero. The reference schema is what humans and agents read to know the current shape: keep its CREATE statements matching the migrated result, never apply it directly, and never add migration-style comments to it.
 
 ### Web (web-structure + web-components-pages) — Next.js (backoffice + webapp), React 19, `@repo/ui`
 
@@ -86,7 +86,7 @@ After implementation and before committing, audit every changed or created file 
 Docs describe **how things work now**, not "what we changed" (no changelog-style prose in READMEs or the canonical schema).
 
 - **On every change:** if it affects setup, structure, a flow, or how to run/check something, update the relevant README (root, `apps/api`, a web app) so it still says how things work. One source of truth; no drift.
-- **DB schema:** keep the canonical schema under `apps/api/database/` current AND add the matching goose migration under `apps/api/migrations/` — see the API audit checklist above.
+- **DB schema:** add the goose migration under `apps/api/migrations/` (the only executable path) AND keep the reference schema under `apps/api/database/` matching it — see the API audit checklist above.
 
 ### Documentation tiers (`docs/`)
 

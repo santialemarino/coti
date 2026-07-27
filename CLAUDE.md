@@ -58,7 +58,7 @@ shared convention, update both and re-verify with `diff` (see agent-workflow).
 pnpm dev          # start backoffice (3000) + webapp (3001) + api (8000)
 pnpm dev:docker   # start full stack in Docker (postgres + api + both webs)
 pnpm build        # build everything (UI must build before first web dev)
-pnpm db:init      # start Postgres (+pgvector) and apply canonical schema
+pnpm db:init      # start Postgres (+pgvector) and migrate the schema to head
 pnpm db:migrate   # apply pending goose migrations
 pnpm lint         # ESLint (web) + go vet (api)
 pnpm lint:fix     # ESLint auto-fix; API runs gofmt + go vet
@@ -124,9 +124,12 @@ Not style — hard rules. If a task asks you to violate one, stop and flag it.
   intervals, sizes, TTLs — e.g. quote expiry, default 7 days) are env-var-backed with
   defaults in `apps/api/internal/config` (backend) or app `lib/config.ts` (frontend).
   No hardcoded thresholds in business logic; cryptographic constants are exempt.
-- **Per-phase migrations.** A schema change ships a goose migration in
-  `apps/api/migrations/` AND updates the canonical `apps/api/database/` schema in the
-  same PR; the canonical schema stays a clean rebuild-from-zero.
+- **Migrations are the only executable path.** A schema change ships a goose migration
+  in `apps/api/migrations/` AND updates the consolidated reference schema under
+  `apps/api/database/` in the same PR. Only migrations ever touch a database —
+  `pnpm db:init` builds a fresh DB by running them, so local dev exercises the same
+  chain as production. The reference schema is what humans and agents read to know the
+  current shape; it is never applied.
 
 ## Conventions
 

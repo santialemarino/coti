@@ -11,14 +11,14 @@ autopilot.
 
 ## Stack
 
-| Layer            | Technology                                             |
-| ---------------- | ------------------------------------------------------ |
-| Frontend         | Next.js (React 19) — backoffice + customer webapp      |
-| Backend API      | Go + Gin — REST/JSON, layered architecture             |
-| Database         | PostgreSQL + `pgvector` (semantic catalog search)      |
-| Monorepo         | Turborepo + pnpm workspaces                            |
-| Containerization | Docker / docker-compose                                |
-| CI/CD            | GitHub Actions                                         |
+| Layer            | Technology                                        |
+| ---------------- | ------------------------------------------------- |
+| Frontend         | Next.js (React 19) — backoffice + customer webapp |
+| Backend API      | Go + Gin — REST/JSON, layered architecture        |
+| Database         | PostgreSQL + `pgvector` (semantic catalog search) |
+| Monorepo         | Turborepo + pnpm workspaces                       |
+| Containerization | Docker / docker-compose                           |
+| CI/CD            | GitHub Actions                                    |
 
 ## Layout
 
@@ -61,30 +61,30 @@ cp apps/api/.env.example apps/api/.env
 cp apps/backoffice/.env.example apps/backoffice/.env
 cp apps/webapp/.env.example apps/webapp/.env
 
-# 4. Start Postgres (with pgvector) and apply schema/migrations
+# 4. Start Postgres (with pgvector) and migrate the schema to head
 pnpm db:init
 
 # 5. Run everything in dev
 pnpm dev
 ```
 
-| App        | URL                     |
-| ---------- | ----------------------- |
-| backoffice | http://localhost:3000   |
-| webapp     | http://localhost:3001   |
-| api        | http://localhost:8000   |
+| App        | URL                   |
+| ---------- | --------------------- |
+| backoffice | http://localhost:3000 |
+| webapp     | http://localhost:3001 |
+| api        | http://localhost:8000 |
 
 ## Common scripts
 
-| Command                  | What it does                                  |
-| ------------------------ | --------------------------------------------- |
-| `pnpm dev`               | Run all apps in parallel (Turbo)              |
-| `pnpm build`             | Build all apps and packages                   |
-| `pnpm lint`              | Lint all workspaces                           |
-| `pnpm check`             | Type-check the API and web apps               |
-| `pnpm dev:docker`        | Bring up the full stack via docker-compose    |
-| `pnpm db:migrate`        | Apply Go (goose) migrations                   |
-| `pnpm db:create-migration <name>` | Scaffold a new migration             |
+| Command                           | What it does                               |
+| --------------------------------- | ------------------------------------------ |
+| `pnpm dev`                        | Run all apps in parallel (Turbo)           |
+| `pnpm build`                      | Build all apps and packages                |
+| `pnpm lint`                       | Lint all workspaces                        |
+| `pnpm check`                      | Type-check the API and web apps            |
+| `pnpm dev:docker`                 | Bring up the full stack via docker-compose |
+| `pnpm db:migrate`                 | Apply Go (goose) migrations                |
+| `pnpm db:create-migration <name>` | Scaffold a new migration                   |
 
 ## Branching & commits
 

@@ -305,7 +305,7 @@ The visible lifecycle is **split across two entities** — `rfq.status` (`RECEIV
 
 - **New feature (e.g. `quote`):** one file per layer — `internal/delivery/http/handler/quote_handler.go`, `internal/services/quote_service.go`, `internal/repository/quote_repo.go`, `internal/delivery/http/dto/quote_dto.go`, and `internal/domain/quote.go` for the types, enums, and errors.
 - **New endpoint in an existing feature:** add the route + handler in the existing handler file, and the service/repository methods in the existing files. Split into a new file only when a file gets large or the sub-domain is clearly separate (e.g. `rfq` and `quote` are separate features, not one).
-- **Schema change:** update the canonical schema under `apps/api/database/` _and_ add a goose migration under `apps/api/migrations/` (run with `pnpm db:migrate`). The struct, the SQL column list, and the migration must agree — including the native enum type when you touch one.
+- **Schema change:** add a goose migration under `apps/api/migrations/` (run with `pnpm db:migrate`) — the only executable path — _and_ update the reference schema under `apps/api/database/` to match. The struct, the SQL column list, and the migration must agree — including the native enum type when you touch one.
 
 ## Utils vs helpers
 
@@ -341,6 +341,6 @@ apps/api/
 │   │       └── dto/                    # request/response DTOs (snake_case json + binding tags)
 │   ├── ai/                             # adapters for RFQExtractor / Embedder / ChangeRequestHandler ports
 │   └── utils/                          # generic, entity-agnostic helpers
-├── database/                           # canonical schema (source of truth; native enums, pgvector, UUID PKs)
-└── migrations/                         # goose SQL migrations (pnpm db:migrate)
+├── database/                           # reference schema, read not applied (native enums, pgvector, UUID PKs)
+└── migrations/                         # goose SQL migrations — the executable source (pnpm db:migrate)
 ```

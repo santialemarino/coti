@@ -1,14 +1,12 @@
 /**
- * Ensures Postgres (docker-compose) is up and applies the canonical schema.
+ * Starts Postgres (docker-compose) and brings the schema to head with goose. Migrations are the
+ * only thing that writes to a database; apps/api/database/ is a read reference, never applied.
  * Run from repo root: pnpm db:init
  */
 import { execSync } from 'child_process';
-import fs from 'fs';
-import path from 'path';
 
 const ROOT = process.cwd();
 const CONTAINER = 'coti-postgres';
-const SCHEMA_PATH = path.join(ROOT, 'apps/api/database/01_create_tables.sql');
 
 function run(cmd, opts = {}) {
   return execSync(cmd, { stdio: 'inherit', cwd: ROOT, ...opts });
@@ -48,19 +46,8 @@ async function main() {
   await waitForPostgres();
   console.log(' Postgres is ready.');
 
-  if (!fs.existsSync(SCHEMA_PATH) || fs.statSync(SCHEMA_PATH).size === 0) {
-    console.log('\nNo canonical schema yet at apps/api/database/01_create_tables.sql.');
-    console.log('Database container is up; use pnpm db:migrate once migrations exist.');
-    return;
-  }
-
-  console.log('Applying canonical schema (01_create_tables.sql)...');
-  const sql = fs.readFileSync(SCHEMA_PATH, 'utf8');
-  execSync(`docker exec -i ${CONTAINER} psql -U coti -d coti`, {
-    input: sql,
-    stdio: ['pipe', 'inherit', 'inherit'],
-    cwd: ROOT,
-  });
+  console.log('Applying migrations (goose up)...');
+  run('node scripts/goose.mjs up');
 
   console.log('\nDatabase initialized.');
 }

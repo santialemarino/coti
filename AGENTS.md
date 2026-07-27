@@ -96,7 +96,7 @@ Link and pulls acceptance criteria from it. See `pr-format`.
 - API comments above function/type definitions end with periods.
 - Web code uses the `@repo/ui` design tokens; avoid raw typography classes when tokens exist.
 - Configurable thresholds are env-var-backed with defaults in `apps/api/internal/config` or app `lib/config.ts`. No hardcoded thresholds in business logic.
-- Per-phase migrations: a schema change ships a goose migration in `apps/api/migrations/` AND updates the canonical `apps/api/database/` schema in the same PR.
+- Migrations are the only executable path: a schema change ships a goose migration in `apps/api/migrations/` AND updates the consolidated reference schema under `apps/api/database/` in the same PR. `pnpm db:init` builds a fresh DB by running the migrations; the reference schema is read, never applied.
 
 ## Conventions & hard rules
 
@@ -113,7 +113,7 @@ Link and pulls acceptance criteria from it. See `pr-format`.
 - Treat cross-account data leakage, auth/session regressions, data-loss bugs, broken schema updates, unparameterized SQL, transaction mistakes, and any violation of the product invariants as high priority.
 - Check backend layer boundaries, repository/service method order, raw-SQL parameterization, `account_id`/`branch_id` scoping, and that repositories never commit.
 - Check frontend routing, design tokens, component ordering, the snake_case↔camelCase API boundary, and shared UI reuse across both apps.
-- If schema changed, verify migrations are a clean rebuild from zero and the canonical schema matches.
+- If schema changed, verify the migration chain still rebuilds the DB from zero and the reference schema matches it.
 - If behavior, setup, or public API changed, verify the relevant docs were updated.
 - Treat missing tests as high priority when calculations, persistence, auth, API contracts, or shared UI behavior changed.
 

@@ -394,7 +394,13 @@ When a field has a default value:
    * a single cohesive thought.
    */
   ```
-- Comment the non-obvious; don't comment the obvious.
+- **Only the essential ones.** The bar is: _would a competent reader get this wrong
+  without the comment?_ Comment a non-obvious **why**, a constraint that looks
+  arbitrary, or a footgun. Never restate the signature, never narrate the steps, never
+  label a section the code already names. Prefer one tight line over three. A comment
+  that repeats the symbol name is noise and rots on the next edit — delete it rather
+  than update it. When in doubt, leave it out; a reviewer asking "why?" is cheaper than
+  a file nobody reads.
 - **End full-sentence comments with a period.** Exceptions: inline comments on the
   same line as code, single-line `/* ... */` labels, and title-style `//` section
   headers (`// --- Mappers ---`).
@@ -405,4 +411,3 @@ When a field has a default value:
   promotion rule (read it first).
 - **`agent-workflow`** — branch/ticket flow.
 - **`commit`** / **`pr-format`** — commit and PR conventions.
-  </content>
