@@ -33,9 +33,31 @@ Do not put business logic in handlers or SQL strings in services. Do not let HTT
 
 ## Transaction rules
 
-### The service owns the transaction; repositories never commit
+### Every request-scoped query runs in a tenant-scoped transaction
 
-Repositories accept a `Querier` — the read/write surface shared by `*pgxpool.Pool` and `pgx.Tx` — and run their SQL on it. They **never** call `Begin`, `Commit`, or `Rollback`. The service decides the boundary: one transaction per use case, so a multi-step write is atomic by default.
+Row level security reads the account from `app.current_account_id`, a **transaction-local** GUC. A query on the bare pool therefore runs outside that scope, matches no policy, and **silently reads zero rows** — so "reads can skip the transaction" does not hold here. `repository.DB.InTenantTx` is the only path for request-scoped access: it begins the transaction, sets the GUC, runs your function, and commits or rolls back.
+
+```go
+// Service — one tenant-scoped transaction per use case.
+func (s *QuoteService) Archive(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) error {
+    return s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+        quote, err := s.quoteRepo.GetByID(ctx, q, tenant.AccountID, quoteID)
+        if err != nil {
+            return err
+        }
+        if err := s.quoteRepo.Archive(ctx, q, tenant.AccountID, quote.ID); err != nil {
+            return err
+        }
+        return s.statusRepo.Append(ctx, q, tenant.AccountID, quote.ID, /* ... */)
+    })
+}
+```
+
+Repositories accept the `Querier` — the read/write surface shared by `*pgxpool.Pool` and `pgx.Tx` — and run their SQL on it. They **never** call `Begin`, `Commit`, or `Rollback`.
+
+### Cross-account access is explicit and rare
+
+Three operations legitimately span accounts, and they use `db.CrossAccount()` (the owner pool, which bypasses RLS): the follow-up cron, login by email (the account is unknown until the user is found), and resolving a `quote_send.public_token` for the public webapp. The token flow resolves the account there and then continues through `InTenantTx` — it does not keep querying on the owner pool. **Any other use is a cross-tenant leak.**
 
 ```go
 // internal/repository/querier.go
@@ -49,15 +71,15 @@ type Querier interface {
 }
 ```
 
-### Multi-step writes: Begin / defer Rollback / Commit
+### Bootstrapping an account is the one write that starts outside a tenant
 
-Open the transaction in the service, `defer tx.Rollback(ctx)` immediately (a no-op once committed — ignore its `ErrTxClosed`), pass `tx` to every repository call, and `Commit` last. Reads that don't need to be in the transaction can use the pool directly.
+Creating an account cannot be tenant-scoped — the account does not exist yet, so there is no scope to set. It runs on `db.AdminTx`, the owner pool, and is the only write allowed to. Everything afterwards is tenant-scoped.
 
 ```go
 // Service — owns the transaction. Registering an account seeds its head-office
 // branch, its admin user, and the user↔branch link as one atomic unit.
 func (s *AccountService) RegisterAccount(ctx context.Context, in domain.NewAccount) (*domain.Account, error) {
-    tx, err := s.pool.Begin(ctx)
+    tx, err := s.db.AdminTx(ctx)
     if err != nil {
         return nil, err
     }
@@ -103,9 +125,11 @@ if err != nil {
 }
 matched := s.matchCatalog(catalog, embs)                       // in-memory.
 
-// Then: Begin → create quote → create quote_version (v1 draft) → insert
-// quote_items → recompute quote_version.total → set quote.current_version_id →
-// append quote_status_change → recompute quote.current_status → Commit.
+// Then one InTenantTx: create quote (current_status = DRAFT) → create
+// quote_version v1 (is_immutable = false) → insert quote_items → recompute
+// quote_version.total → set quote.current_version_id → append rfq_status_change.
+// The quote is born here, at RECEIVED → GENERATED, because extracted items have
+// nowhere else to live: there is no rfq_item table.
 ```
 
 ## Performance rules
