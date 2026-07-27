@@ -4,8 +4,7 @@
 -- Un corralón con dos sucursales: alcanza para ejercitar el catálogo de cuenta
 -- con disponibilidad y precio por sucursal.
 
--- Los password_hash son placeholders hasta que el módulo de auth defina el
--- algoritmo; hay que regenerarlos ahí. No sirven para loguearse todavía.
+-- Contraseña de los dos usuarios: coti1234 (bcrypt, cost 10). Solo para desarrollo.
 
 INSERT INTO account (id, name, legal_name, tax_id, brand_color) VALUES
   ('a0000000-0000-4000-8000-000000000001', 'Corralón San Martín',
@@ -21,9 +20,11 @@ ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO app_user (id, account_id, name, email, password_hash, role) VALUES
   ('c0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001',
-   'Admin Dev', 'admin@corralonsanmartin.test', 'PLACEHOLDER', 'ADMIN'),
+   'Admin Dev', 'admin@corralonsanmartin.test',
+   '$2a$10$S3vHxTMC/Pp5KLw4YAlyeOBduPSvE1Dh0D8ho0VNzjBXWrTjb.fJ2', 'ADMIN'),
   ('c0000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001',
-   'Vendedor Dev', 'vendedor@corralonsanmartin.test', 'PLACEHOLDER', 'SELLER')
+   'Vendedor Dev', 'vendedor@corralonsanmartin.test',
+   '$2a$10$S3vHxTMC/Pp5KLw4YAlyeOBduPSvE1Dh0D8ho0VNzjBXWrTjb.fJ2', 'SELLER')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO user_branch (account_id, user_id, branch_id) VALUES
