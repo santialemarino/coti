@@ -129,6 +129,12 @@ Not style — hard rules. If a task asks you to violate one, stop and flag it.
   intervals, sizes, TTLs — e.g. quote expiry, default 7 days) are env-var-backed with
   defaults in `apps/api/internal/config` (backend) or app `lib/config.ts` (frontend).
   No hardcoded thresholds in business logic; cryptographic constants are exempt.
+- **A duration env var carries its unit in the key name** — `_SECONDS`, `_MINUTES`,
+  `_HOURS`, or `_DAYS` — so the env file holds a plain integer
+  (`AUTH_ACCESS_TTL_MINUTES=15`). `internal/config` derives the multiplier from the
+  suffix and treats a duration key without one as a configuration error.
+- **Config validation reports every problem at once**, not the first, so a bad deploy
+  is diagnosed in one pass instead of one restart per typo.
 - **Migrations are the only executable path.** A schema change ships a goose migration
   in `apps/api/migrations/` AND updates the consolidated reference schema under
   `apps/api/database/` in the same PR. Only migrations ever touch a database —
