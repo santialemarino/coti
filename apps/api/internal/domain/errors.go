@@ -30,6 +30,11 @@ var (
 	// and discounts are editable only while their version has is_immutable = false.
 	ErrImmutable = errors.New("target is immutable")
 
+	// ErrLocked is returned when an account is inside a failed-attempt lockout window.
+	// Unlike a bad password, this is safe to surface: the client needs to tell "wrong
+	// credentials" from "stop retrying for a while".
+	ErrLocked = errors.New("account locked")
+
 	// ErrNoTenantContext is returned when a request-scoped operation runs without a
 	// resolved account. It is a programming error, not a client error: every query
 	// on the restricted pool must carry tenant context or row level security silently
