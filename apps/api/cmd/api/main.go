@@ -18,6 +18,7 @@ import (
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
+	"github.com/santialemarino/coti/apps/api/internal/services"
 )
 
 func main() {
@@ -48,9 +49,19 @@ func run() error {
 	defer db.Close()
 	log.Info("database pools ready")
 
-	router := deliveryhttp.NewRouter(cfg, log, deliveryhttp.Handlers{
-		Health: handler.NewHealthHandler(db),
-	})
+	userRepo := repository.NewUserRepository()
+	refreshTokenRepo := repository.NewRefreshTokenRepository()
+
+	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
+	authService := services.NewAuthService(db, userRepo, refreshTokenRepo, tokenService, cfg.Auth, nil)
+
+	router := deliveryhttp.NewRouter(cfg, log,
+		deliveryhttp.Handlers{
+			Health: handler.NewHealthHandler(db),
+			Auth:   handler.NewAuthHandler(authService),
+		},
+		deliveryhttp.Auth{Verifier: tokenService, Sessions: authService},
+	)
 
 	server := &http.Server{
 		Addr:         ":" + cfg.Server.Port,
