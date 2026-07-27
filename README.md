@@ -86,6 +86,17 @@ pnpm dev
 | `pnpm db:migrate`                 | Apply Go (goose) migrations                |
 | `pnpm db:create-migration <name>` | Scaffold a new migration                   |
 
+## Database
+
+Two connection roles. `DATABASE_URL` is the restricted, `NOBYPASSRLS` role the API
+uses for request-scoped queries; `DATABASE_ADMIN_URL` is the owner, used by goose
+migrations, the follow-up cron, and the pre-auth lookups that legitimately span
+accounts. Every tenant-scoped table carries `account_id` and enforces it with a row
+level security policy reading a per-transaction GUC, so a query missing its
+predicate returns zero rows rather than another tenant's data.
+
+See [docs/technical/base-de-datos.md](docs/technical/base-de-datos.md).
+
 ## Branching & commits
 
 GitFlow (simplified): `main` (production) ← `dev` (integration) ← ephemeral
