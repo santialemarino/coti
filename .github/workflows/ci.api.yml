@@ -29,11 +29,14 @@ jobs:
         run: test -z "$(gofmt -l .)"
       - name: Vet
         run: go vet ./...
-      # Pinned to v1 to match the schema of apps/api/.golangci.yml.
+      # Pinned to v1 to match the schema of apps/api/.golangci.yml. Built from source
+      # with the toolchain above: the prebuilt v1 binaries are compiled with Go 1.24
+      # and refuse a module targeting 1.25.
       - name: Lint
         uses: golangci/golangci-lint-action@v6
         with:
           version: v1.64.8
+          install-mode: goinstall
           working-directory: apps/api
       - name: Build
         run: go build -o /dev/null ./...
