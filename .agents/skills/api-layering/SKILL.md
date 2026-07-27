@@ -323,6 +323,24 @@ Rules:
 - Services read `account_id` / `branch_id` from the request context populated by the tenant middleware — **never** from the request body.
 - Do not expose a repository method that loads tenant-scoped data without a tenant argument. If a genuinely cross-tenant query is ever needed (internal tooling), name it with an explicit `CrossAccount` suffix so the missing filter is intentional and reviewable.
 
+## The authentication boundary
+
+Three pieces, in this order, and the order matters:
+
+1. **`middleware.Authenticate(verifier, sessions)`** runs for every `/v1` route. It verifies the bearer token, checks the session epoch against the stored one, and calls `SetTenant`. A request with **no** header passes through unauthenticated rather than being rejected, so a public route can still see who the caller is when they happen to be logged in.
+2. **`middleware.RequireTenant()`** guards the authenticated group and returns 401 when no tenant was resolved.
+3. **`middleware.RequireAdmin()`** goes after `RequireTenant` on admin-only routes.
+
+The token's signature covers `account_id`, which is what lets the middleware build a tenant scope **before** reading anything from the database — otherwise you need an account to run a query and a query to learn the account. The session-epoch check costs one indexed primary-key read per authenticated request; that is the price of immediate logout, and it is deliberate.
+
+**The active branch is not a token claim.** A seller switches branch without re-authenticating, so it arrives in the `X-Branch-Id` header and is resolved per request. An unparsable value is ignored rather than fatal: the caller is simply operating account-wide, which admins legitimately do.
+
+## Translating domain errors to HTTP
+
+`handler.Respond(c, err)` is the **single** mapping point from a domain error to a status code. Services return `domain.ErrNotFound` / `ErrConflict` / `ErrUnauthenticated` / `ErrLocked` / `ErrForbidden` / `ErrImmutable` / `ErrInvalidInput`; the handler calls `Respond` and never picks a code itself. Anything unmapped becomes a 500 with a generic body and the real error attached to the request log — an unmapped error is a bug, and its text may not be safe to show a client.
+
+`domain.ErrNotFound` covers "does not exist" **and** "belongs to another account". Under row level security those are indistinguishable, and they must stay that way: a distinct response would confirm another tenant's data exists.
+
 ## `quote.current_status` — backend-exclusive derived cache
 
 The visible lifecycle is **split across two entities** — `rfq.status` (`RECEIVED`, `GENERATED`) and `quote.current_status` (`QUOTED`, `SENT`, `CHANGE_REQUESTED`, `ACCEPTED`, `REJECTED`) — not one status field. `quote.current_status` is a **derived cache written exclusively by the backend**: recompute it and append a `quote_status_change` row **in the same transaction** on every transition. A human or the AI **never** sets it directly. `rfq → quote` is 1-to-1 (enforced by `UNIQUE(rfq_id)`); never create a second quote for an RFQ. `archived_at` and `needs_followup` are orthogonal flags, not states.

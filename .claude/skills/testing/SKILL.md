@@ -17,9 +17,11 @@ description: Where tests live, how to run them, and what to test in the Coti rep
   assume any web test infrastructure exists until it is scaffolded.
 - **CI:** `.github/workflows/ci.api.yml` runs `gofmt` check, `go vet`,
   `golangci-lint`, `go build`, and `go test ./...` on API PRs; the web workflows run
-  lint + `check-types` + build. The **integration suite is not in CI** — it needs a
-  pgvector service container and a goose step, so for now it is a local gate. Run it
-  before pushing anything that touches SQL or tenant scoping.
+  lint + `check-types` + build. A **second API job** stands up PostgreSQL + pgvector,
+  applies the migration chain, and runs the integration suite — it guards tenant
+  isolation, so it gates merges rather than being a local-only courtesy. Run it locally
+  too before pushing anything that touches SQL or tenant scoping; it is faster than
+  waiting for CI to tell you.
 
 ## Running tests
 
