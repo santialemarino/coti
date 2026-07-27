@@ -49,6 +49,9 @@ async function main() {
   console.log('Applying migrations (goose up)...');
   run('node scripts/goose.mjs up');
 
+  console.log('Seeding dev data...');
+  run('node scripts/db-seed.mjs');
+
   console.log('\nDatabase initialized.');
 }
 
