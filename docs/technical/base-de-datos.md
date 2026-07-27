@@ -15,6 +15,18 @@ Un cambio de schema ships una migración goose **y** actualiza la referencia en 
 mismo PR. La referencia es lo que se lee para escribir la lista de columnas de un
 `SELECT`, el orden del scan y los campos del struct de dominio.
 
+Mientras la referencia sea el `Up` de la cadena, esto tiene que salir vacío:
+
+```bash
+diff -B \
+  <(sed -n '/CREATE EXTENSION/,$p' apps/api/migrations/00001_init_schema.sql \
+    | sed '/-- +goose Down/,$d' | grep -v '^-- +goose') \
+  <(sed -n '/CREATE EXTENSION/,$p' apps/api/database/01_create_tables.sql)
+```
+
+Con más de una migración la comparación deja de ser textual: se regenera la
+referencia contra una base migrada.
+
 ## Levantar una base
 
 ```bash
