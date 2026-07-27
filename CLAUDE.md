@@ -35,9 +35,8 @@ Flow is one-directional: **decision (conversation / Notion) → `docs/internal/`
   is a local mirror. If they diverge, **Notion wins**.
 - **Work state (tickets)** — lives in Notion, not replicated here. A ticket points
   _to_ `docs/internal/`, not the other way around.
-- **Executable data model** — today `docs/internal/data/schema.sql`; once real goose
-  migrations exist, those become the source and `schema.sql` is the consolidated
-  reference.
+- **Executable data model** — the goose migrations in `apps/api/migrations/`.
+  `docs/internal/data/schema.sql` is the design reference the migrations are built from.
 
 `docs/internal/` map: `product/` (what it is, scope, nomenclature, closed
 decisions), `domain/` (business rules: states, discount engine, AI pipeline,
@@ -114,9 +113,15 @@ Not style — hard rules. If a task asks you to violate one, stop and flag it.
   (never float, never int64 centavos).
 - **Service-owned transactions.** Services open/commit (`pool.Begin()` →
   `tx.Commit()`/`tx.Rollback()`); repositories take a querier/tx and **never** commit.
-- **Multi-tenancy is a hard rule.** Every query is scoped by `account_id` (and
-  `branch_id` for branch-scoped tables: `product`, `product_price`, `channel`, `rfq`,
-  `quote`, `combo`). Cross-account exposure is a P0 bug.
+- **Multi-tenancy is a hard rule, enforced twice.** Every tenant-scoped table carries
+  `account_id` — child tables included — and every query filters by it (plus `branch_id` on
+  branch-scoped tables: `channel`, `rfq`, `quote`, `combo`, `branch_product`, `product_price`).
+  Postgres RLS is the second net: the API connects as a `NOBYPASSRLS` role, so a query missing
+  its `account_id` predicate returns zero rows instead of another tenant's data. Cross-account
+  exposure is a P0 bug.
+- **The catalog is account-scoped.** `product`, `product_synonym`, and `product_alternative`
+  belong to the account; per-branch availability and stock live in `branch_product`, price in
+  `product_price`. One product row, one embedding, per account.
 - **Semantic catalog search via pgvector.** Matching uses `product.embedding`
   (`VECTOR(1536)`) with distance operators; `product_synonym` improves it; embedding
   generation lives behind the `internal/ai` provider. See `api-layering`.

@@ -31,7 +31,7 @@ One-directional flow: **decision (conversation / Notion) → `docs/internal/` �
 
 - Product/architecture decisions: live source is Notion; `docs/internal/product/decisiones-cerradas.md` is a local mirror — **Notion wins** on divergence.
 - Work state (tickets): lives in Notion, not replicated here.
-- Executable data model: `docs/internal/data/schema.sql` today; goose migrations later.
+- Executable data model: the goose migrations in `apps/api/migrations/`. `docs/internal/data/schema.sql` is the design reference they are built from.
 
 Map: `product/`, `domain/`, `architecture/`, `data/`, `conventions/`. Start at `docs/internal/README.md`.
 
@@ -92,7 +92,8 @@ Link and pulls acceptance criteria from it. See `pr-format`.
 - Services own transaction boundaries; repositories never commit.
 - Every query is scoped by `account_id` (and `branch_id` for branch-scoped tables) — cross-account exposure is a P0 bug.
 - Avoid N+1 queries; add batch repository methods when data is needed in loops.
-- Semantic catalog search uses `product.embedding` (pgvector); embedding generation lives behind the `internal/ai` provider.
+- Semantic catalog search uses `product.embedding` (pgvector); embedding generation lives behind the `internal/ai` provider. The catalog is account-scoped; per-branch availability and stock live in `branch_product`.
+- Multi-tenancy is enforced twice: `account_id` on every tenant-scoped table plus Postgres RLS under a `NOBYPASSRLS` role.
 - API comments above function/type definitions end with periods.
 - Web code uses the `@repo/ui` design tokens; avoid raw typography classes when tokens exist.
 - Configurable thresholds are env-var-backed with defaults in `apps/api/internal/config` or app `lib/config.ts`. No hardcoded thresholds in business logic.

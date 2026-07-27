@@ -32,15 +32,15 @@ Three schema facts you carry into every type here (details below): **PKs are UUI
 Always name columns in `SELECT` (never `SELECT *`) and scan in the same order into the domain struct. The column list, the scan order, and the struct fields must agree with the reference schema under `apps/api/database/`.
 
 ```go
-// GetByID loads one product for a branch. Returns domain.ErrNotFound if absent.
-func (r *ProductRepository) GetByID(ctx context.Context, q Querier, branchID, id uuid.UUID) (*domain.Product, error) {
+// GetByID loads one product for an account. Returns domain.ErrNotFound if absent.
+func (r *ProductRepository) GetByID(ctx context.Context, q Querier, accountID, id uuid.UUID) (*domain.Product, error) {
     var p domain.Product
     err := q.QueryRow(ctx,
-        `SELECT id, branch_id, code, canonical_name, unit, category, is_active, created_at, updated_at
+        `SELECT id, account_id, code, canonical_name, unit, category, is_active, created_at, updated_at
          FROM product
-         WHERE branch_id = $1 AND id = $2`,
-        branchID, id,
-    ).Scan(&p.ID, &p.BranchID, &p.Code, &p.CanonicalName, &p.Unit, &p.Category, &p.IsActive, &p.CreatedAt, &p.UpdatedAt)
+         WHERE account_id = $1 AND id = $2`,
+        accountID, id,
+    ).Scan(&p.ID, &p.AccountID, &p.Code, &p.CanonicalName, &p.Unit, &p.Category, &p.IsActive, &p.CreatedAt, &p.UpdatedAt)
     if errors.Is(err, pgx.ErrNoRows) {
         return nil, domain.ErrNotFound
     }
@@ -57,18 +57,18 @@ Every method that fetches by a single ID gets a batch sibling taking a slice, so
 
 ```go
 // Single.
-func (r *ProductRepository) GetByID(ctx context.Context, q Querier, branchID, id uuid.UUID) (*domain.Product, error)
+func (r *ProductRepository) GetByID(ctx context.Context, q Querier, accountID, id uuid.UUID) (*domain.Product, error)
 
 // Batch — add this whenever the single version could be called in a loop.
-func (r *ProductRepository) GetByIDs(ctx context.Context, q Querier, branchID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]domain.Product, error)
+func (r *ProductRepository) GetByIDs(ctx context.Context, q Querier, accountID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]domain.Product, error)
 ```
 
 ```go
 rows, err := q.Query(ctx,
-    `SELECT id, branch_id, code, canonical_name, unit, category, is_active, created_at, updated_at
+    `SELECT id, account_id, code, canonical_name, unit, category, is_active, created_at, updated_at
      FROM product
-     WHERE branch_id = $1 AND id = ANY($2)`,
-    branchID, ids)
+     WHERE account_id = $1 AND id = ANY($2)`,
+    accountID, ids)
 ```
 
 ### ON CONFLICT for idempotent writes; batch for bulk writes
@@ -86,7 +86,7 @@ Repositories run on the `Querier` handed in (pool or tx) and never commit. Multi
 Load all related data **before** iterating, then work in memory only. `quote_item.product_id` is nullable (NO_MATCH lines carry no product), so skip the nil IDs when building the batch key set.
 
 ```go
-products, err := s.productRepo.GetByIDs(ctx, s.pool, branchID, ids) // map[uuid.UUID]domain.Product
+products, err := s.productRepo.GetByIDs(ctx, s.pool, accountID, ids) // map[uuid.UUID]domain.Product
 if err != nil {
     return nil, err
 }
@@ -112,7 +112,7 @@ Independent AI/embedding calls run via `golang.org/x/sync/errgroup`, then result
 - One doc comment per struct naming its role and the route it serves. Give a field a comment only when the name doesn't already say it.
 
 ```go
-// CreateProductRequest is the body for POST /v1/products. The branch comes from
+// CreateProductRequest is the body for POST /v1/products. The account comes from
 // the tenant context, never the body.
 type CreateProductRequest struct {
     Code          *string `json:"code" binding:"omitempty,max=255"`
@@ -148,21 +148,20 @@ Domain structs in `internal/domain/` are plain Go — **no `gorm` tags, no `Tabl
 
 - **IDs:** `uuid.UUID` (`github.com/google/uuid`) or `pgtype.UUID` — never `int64`. Tenant keys are explicit fields where the table carries them: `AccountID` on account-scoped structs, `BranchID` on branch-scoped ones. Child tables that inherit tenancy through a parent FK carry only the parent ID (e.g. `quote_item.VersionID`).
 - **Money and quantities:** a decimal type for every `NUMERIC(14,2)` column — `decimal.Decimal` (`github.com/shopspring/decimal`, register the pgx codec in `main`) or `pgtype.Numeric`. **Never `float64`, never `int64` centavos.** Nullable numerics use `decimal.NullDecimal` or `*decimal.Decimal`.
-- **Timestamps:** `time.Time` for `TIMESTAMPTZ`. **`created_at` exists on every table**; **`updated_at` only on in-place-mutable tables** (`account`, `branch`, `app_user`, `product`, `combo`, `client`, `channel`, `rfq`, `quote`, `promotion`), maintained by a `set_updated_at()` trigger. **Append-only / immutable tables have no `updated_at`** — `quote_version`, `quote_item`, `rfq_status_change`, `quote_status_change`, `handler_decision`, `product_price`, and the bridge tables — so do not put an `UpdatedAt` field on their structs. Use `*time.Time` for genuinely nullable timestamps (`archived_at`, `expires_at`, `valid_to`).
+- **Timestamps:** `time.Time` for `TIMESTAMPTZ`. **`created_at` exists on every table**; **`updated_at` only on in-place-mutable tables** (`account`, `branch`, `app_user`, `product`, `combo`, `client`, `channel`, `rfq`, `quote`, `promotion`), maintained by a `set_updated_at()` trigger. **Append-only / immutable tables have no `updated_at`** — `quote_version`, `quote_item`, `rfq_status_change`, `quote_status_change`, `handler_decision`, `product_price`, `quote_message`, and the bridge tables — so do not put an `UpdatedAt` field on their structs. `quote_item` rows on a **non-frozen** version are still editable in place (the seller edits the draft); the service rejects any mutation whose parent version has `is_immutable = TRUE`. Use `*time.Time` for genuinely nullable timestamps (`archived_at`, `expires_at`, `valid_to`).
 - **Nullable columns:** `*T` or a `pgtype` (e.g. `pgtype.Text`) — chosen per column, documented when not obvious. `quote_item.product_id` is nullable by design (NO_MATCH).
 - **Embeddings:** `pgvector.Vector` for the `VECTOR(1536)` `product.embedding` column; the repository binds it directly.
 - **Enums:** the schema defines **native PostgreSQL enum types**. Model each as a typed `string` plus a `const (...)` block whose values **exactly match the DB enum values** (UPPERCASE English). pgx scans and writes them as the native enum. Validate incoming values in the service (or a DTO `oneof` tag).
 
 ```go
-// Product is a catalog item owned by a branch, matched against RFQ lines.
+// Product is a catalog item owned by an account, matched against RFQ lines.
 type Product struct {
     ID            uuid.UUID
-    BranchID      uuid.UUID
+    AccountID     uuid.UUID           // catalog is account-scoped; availability/stock live in branch_product.
     Code          *string             // nullable.
     CanonicalName string
     Unit          *string             // nullable; free text (m2, kg, bolsa, ...).
     Category      *string             // nullable.
-    Stock         decimal.NullDecimal // NUMERIC(14,2), nullable.
     Embedding     pgvector.Vector     // VECTOR(1536); semantic catalog search.
     IsActive      bool
     CreatedAt     time.Time

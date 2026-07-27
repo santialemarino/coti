@@ -117,7 +117,7 @@ Need data for N items? Fetch it in **one batch query** before the loop, then loo
 ```go
 // BAD — N+1: one query per quote item.
 for _, it := range items {
-    p, _ := s.productRepo.GetByID(ctx, s.pool, branchID, it.ProductID)
+    p, _ := s.productRepo.GetByID(ctx, s.pool, accountID, it.ProductID)
 }
 
 // GOOD — batch load, then loop in memory. quote_item.product_id is nullable
@@ -128,7 +128,7 @@ for _, it := range items {
         ids = append(ids, *it.ProductID)
     }
 }
-products, err := s.productRepo.GetByIDs(ctx, s.pool, branchID, ids) // map[uuid.UUID]domain.Product
+products, err := s.productRepo.GetByIDs(ctx, s.pool, accountID, ids) // map[uuid.UUID]domain.Product
 for _, it := range items {
     if it.ProductID == nil {
         continue
@@ -183,11 +183,11 @@ For many rows, use a **multi-row `INSERT`** or `pgx.Batch` — never a per-row l
 
 ```go
 // Bulk insert quote_items for one version — one round-trip, not one per line.
-// (quote_item is append-only: no updated_at, no in-place edits.)
+// (quote_item has no updated_at; rows on a FROZEN version are immutable.)
 _, err := q.Exec(ctx,
     `INSERT INTO quote_item
         (version_id, product_id, requested_description, quantity, unit,
-         unit_price_snapshot, subtotal, confidence_score, match_status)
+         unit_price_snapshot, min_price_snapshot, subtotal, confidence_score, match_status)
      SELECT $1, u.product_id, u.requested_description, u.quantity, u.unit,
             u.unit_price_snapshot, u.subtotal, u.confidence_score, u.match_status
      FROM unnest($2::uuid[], $3::text[], $4::numeric[]) AS u(product_id, requested_description, quantity)`,
@@ -205,20 +205,21 @@ Catalog matching is the core of the RFQ pipeline. `product.embedding` is `VECTOR
 - Query with pgvector's distance operators: **`<=>` cosine**, **`<->` L2**. Order by the distance and `LIMIT` the top-K. Coti uses `<=>` (cosine) as the default — bake the K and any cutoff in `internal/config`, not inline.
 - Pass the query vector as a `pgvector.Vector` bind param (`pgvector.NewVector([]float32{...})`), never string-interpolate it.
 - Combine semantic hits with `product_synonym` matches in the **repository**; the service decides confidence, not the SQL.
-- **Every search is branch-scoped** — `product` hangs off `branch`, so filter `WHERE branch_id = $n` alongside the vector order.
+- **Every search is account-scoped, and filtered to what the branch carries** — `product` hangs off `account`, so filter `WHERE p.account_id = $n` and join `branch_product` for the active branch alongside the vector order. Because an ANN scan filters _after_ ordering, over-fetch (`LIMIT k * over_fetch_factor`, both in `internal/config`) and trim in the service, or the branch filter can leave you short of K.
 - **Unmatched lines are flagged, never discarded.** A line with no acceptable match becomes a `quote_item` with `product_id` NULL and `match_status = NO_MATCH`; ambiguous ones get `AMBIGUOUS`. Every item carries a `confidence_score`. The search returns candidates; the service assigns `match_status`.
 
 ```go
 // SearchByEmbedding returns the closest catalog matches to an RFQ line embedding,
-// scoped to the branch, ordered by cosine distance.
-func (r *ProductRepository) SearchByEmbedding(ctx context.Context, q Querier, branchID uuid.UUID, emb pgvector.Vector, limit int) ([]domain.ProductMatch, error) {
+// scoped to the account and filtered to what the branch carries, by cosine distance.
+func (r *ProductRepository) SearchByEmbedding(ctx context.Context, q Querier, accountID, branchID uuid.UUID, emb pgvector.Vector, limit int) ([]domain.ProductMatch, error) {
     rows, err := q.Query(ctx,
-        `SELECT id, canonical_name, embedding <=> $1 AS distance
-         FROM product
-         WHERE branch_id = $2 AND is_active = TRUE
-         ORDER BY embedding <=> $1
-         LIMIT $3`,
-        emb, branchID, limit)
+        `SELECT p.id, p.canonical_name, p.embedding <=> $1 AS distance
+         FROM product p
+         JOIN branch_product bp ON bp.product_id = p.id AND bp.branch_id = $3
+         WHERE p.account_id = $2 AND p.is_active = TRUE AND bp.is_active = TRUE
+         ORDER BY p.embedding <=> $1
+         LIMIT $4`,
+        emb, accountID, branchID, limit)
     if err != nil {
         return nil, err
     }
@@ -287,13 +288,14 @@ Discounts are **backend-computed and deterministic — never the LLM.** Keep the
 
 Coti is multi-tenant: one `account` = one corralón (its brand), with one or more `branch` branches. **Cross-account data exposure is a P0.** Every read and write to a tenant-scoped table is filtered by its tenancy column:
 
-- **Account-scoped tables carry `account_id`:** `branch`, `app_user`, `client`, `tag`, `promotion`.
-- **Branch-scoped tables carry `branch_id`:** `product`, `channel`, `rfq`, `quote`, `combo` (and `promotion` optionally, `branch_id` NULL = whole account). A `branch` always resolves to an `account`, so branch scoping implies account isolation once the branch is validated against the caller's account.
-- **Tables one level down inherit tenancy through their parent FK** — `product_price` → `product`, `product_synonym` → `product`, `combo_item` → `combo`, `quote_version`/`quote_item` → `quote`. Scope them by joining to the parent or by resolving the parent first; there is no `account_id`/`branch_id` column on them.
+- **Every tenant-scoped table carries `account_id`** — including child tables (`product_price`, `quote_version`, `quote_item`, `quote_discount`, …). It is denormalized on purpose: it makes every policy and every `WHERE` a flat predicate instead of a join up the parent chain.
+- **Branch-scoped tables also carry `branch_id`:** `channel`, `rfq`, `quote`, `combo`, `branch_product`, `product_price`. The catalog itself (`product`, `product_synonym`, `product_alternative`) is **account-scoped** — one product row per account, with per-branch availability, stock, and price in `branch_product` / `product_price`.
+- **Postgres RLS is the second net.** Every tenant-scoped table has `ENABLE ROW LEVEL SECURITY` and a policy comparing `account_id` to `app_current_account_id()`, which reads a per-transaction GUC. The API connects as a restricted `NOBYPASSRLS` role, so a query that forgets its `account_id` predicate returns **zero rows instead of another tenant's data**. Branch scoping stays in the application (an admin legitimately reads across branches); only the account boundary is enforced in the database.
+- **The GUC must be re-applied on every transaction.** `pgxpool` reuses connections, so `SET LOCAL app.current_account_id = ...` runs at the start of each transaction from the pool's `AfterConnect`/`BeforeAcquire` wiring. A missing GUC fails closed (no rows) — never assume it carried over.
 
 Rules:
 
-- Repository methods take `accountID uuid.UUID` and/or `branchID uuid.UUID` as relevant and add it to **every** query — including the pgvector search and every `WHERE` on a child table's parent.
+- Repository methods take `accountID uuid.UUID` and/or `branchID uuid.UUID` as relevant and add it to **every** query — including the pgvector search. RLS is a backstop, not a substitute: keep the explicit predicate so queries stay index-friendly and readable.
 - Services read `account_id` / `branch_id` from the request context populated by the tenant middleware — **never** from the request body.
 - Do not expose a repository method that loads tenant-scoped data without a tenant argument. If a genuinely cross-tenant query is ever needed (internal tooling), name it with an explicit `CrossAccount` suffix so the missing filter is intentional and reviewable.
 
