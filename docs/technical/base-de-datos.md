@@ -71,9 +71,18 @@ BEGIN;
 COMMIT;
 ```
 
-**El `SET LOCAL` va en cada transacción**: el pool reutiliza conexiones, así que
-no se hereda. Sin GUC, `current_setting(..., true)` devuelve NULL y la política no
-matchea ninguna fila: una query sin contexto lee cero filas en vez de fallar.
+Eso es para psql. **Desde Go la GUC la setea `repository.DB.InTenantTx`** con
+`SELECT set_config('app.current_account_id', $1, true)`, y es el único camino para una
+query de request. No se usa `SET LOCAL` en código: esa forma no acepta bind
+parameters, así que obligaría a interpolar un valor del request dentro del SQL.
+
+**Va en cada transacción**: el pool reutiliza conexiones, así que no se hereda. Y
+**toda query de request tiene que ir dentro de una transacción**, lecturas incluidas:
+la GUC es transaction-scoped, así que una query sobre el pool pelado corre fuera del
+scope, no matchea ninguna política y lee cero filas en silencio.
+
+Los tres casos que legítimamente cruzan cuentas usan `db.CrossAccount()` (o
+`db.AdminTx()` para escrituras multi-paso), que van por el pool del owner.
 
 Se enforcea la **cuenta**, no la sucursal: un admin lee legítimamente todas las
 sucursales de su cuenta, así que el scoping por `branch_id` queda en la

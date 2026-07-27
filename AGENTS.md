@@ -97,6 +97,7 @@ Link and pulls acceptance criteria from it. See `pr-format`.
 - API comments above function/type definitions end with periods.
 - Web code uses the `@repo/ui` design tokens; avoid raw typography classes when tokens exist.
 - Configurable thresholds are env-var-backed with defaults in `apps/api/internal/config` or app `lib/config.ts`. No hardcoded thresholds in business logic.
+- Duration env vars carry their unit in the key (`_SECONDS`/`_MINUTES`/`_HOURS`/`_DAYS`) so the value is a plain integer; a duration key without a suffix is a config error. Config validation reports every problem at once.
 - Migrations are the only executable path: a schema change ships a goose migration in `apps/api/migrations/` AND updates the consolidated reference schema under `apps/api/database/` in the same PR. `pnpm db:init` builds a fresh DB by running the migrations; the reference schema is read, never applied.
 
 ## Conventions & hard rules

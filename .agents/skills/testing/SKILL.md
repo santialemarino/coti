@@ -15,10 +15,11 @@ description: Where tests live, how to run them, and what to test in the Coti rep
   and `pnpm test:web` currently just echoes a placeholder. See
   [Web testing](#web-testing-not-yet-set-up) for the intended convention — do not
   assume any web test infrastructure exists until it is scaffolded.
-- **CI:** `.github/workflows/ci.api.yml` runs `gofmt` check, `go vet`, and
-  `go build` on API PRs; the web workflows run lint + `check-types` + build. **No
-  test job is wired into CI yet** — tests run locally. Add the `go test` step to
-  CI once the first suites land.
+- **CI:** `.github/workflows/ci.api.yml` runs `gofmt` check, `go vet`,
+  `golangci-lint`, `go build`, and `go test ./...` on API PRs; the web workflows run
+  lint + `check-types` + build. The **integration suite is not in CI** — it needs a
+  pgvector service container and a goose step, so for now it is a local gate. Run it
+  before pushing anything that touches SQL or tenant scoping.
 
 ## Running tests
 
@@ -28,7 +29,11 @@ go test ./...                                   # all (non-integration) tests
 go test -run TestQuoteService_Create ./internal/services   # one test
 go test -race ./...                             # detect data races
 go test -cover ./...                            # coverage summary
-go test -tags=integration ./...                 # include integration tests (needs a test DB)
+# Integration tests. Both roles are required: the restricted one is what the app
+# uses, the owner one seeds fixtures past row level security.
+TEST_DATABASE_URL=postgres://coti_app:coti_app@localhost:5432/coti?sslmode=disable \
+TEST_DATABASE_ADMIN_URL=postgres://coti:coti@localhost:5432/coti?sslmode=disable \
+  go test -tags=integration ./...
 
 # From repo root
 pnpm test:api                                   # go test ./... in apps/api
@@ -36,8 +41,8 @@ pnpm test                                       # test:api + test:web
 ```
 
 Before pushing, run `pnpm check` (api: `go build` + `go vet`; web: `check-types`)
-and the relevant test suite — CI does not yet gate on tests, so the local run is
-the gate. `golangci-lint` also lints `_test.go` files (config enables `tests`),
+and the relevant test suite. CI gates on the unit suite; the integration suite is
+yours to run locally. `golangci-lint` also lints `_test.go` files (config enables `tests`),
 so keep test code vet-clean.
 
 ## What to test (API)
