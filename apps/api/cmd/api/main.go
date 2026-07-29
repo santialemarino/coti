@@ -50,17 +50,18 @@ func run() error {
 	log.Info("database pools ready")
 
 	userRepo := repository.NewUserRepository()
+	branchRepo := repository.NewBranchRepository()
 	refreshTokenRepo := repository.NewRefreshTokenRepository()
 
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
-	authService := services.NewAuthService(db, userRepo, refreshTokenRepo, tokenService, cfg.Auth, nil)
+	authService := services.NewAuthService(db, userRepo, branchRepo, refreshTokenRepo, tokenService, cfg.Auth, nil)
 
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
 			Health: handler.NewHealthHandler(db),
 			Auth:   handler.NewAuthHandler(authService),
 		},
-		deliveryhttp.Auth{Verifier: tokenService, Sessions: authService},
+		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
 	)
 
 	server := &http.Server{

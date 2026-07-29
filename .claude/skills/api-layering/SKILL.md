@@ -327,13 +327,15 @@ Rules:
 
 Three pieces, in this order, and the order matters:
 
-1. **`middleware.Authenticate(verifier, sessions)`** runs for every `/v1` route. It verifies the bearer token, checks the session epoch against the stored one, and calls `SetTenant`. A request with **no** header passes through unauthenticated rather than being rejected, so a public route can still see who the caller is when they happen to be logged in.
+1. **`middleware.Authenticate(verifier, resolver)`** runs for every `/v1` route. It verifies the token's signature and hands the claims to `AuthService.ResolveTenant`, which checks everything the signature cannot — the user exists and is active, the session epoch is current, and the requested branch is one this caller may use — then calls `SetTenant`. A request with **no** Authorization header passes through unauthenticated rather than being rejected, so a public route can still see who the caller is when they happen to be logged in.
 2. **`middleware.RequireTenant()`** guards the authenticated group and returns 401 when no tenant was resolved.
 3. **`middleware.RequireAdmin()`** goes after `RequireTenant` on admin-only routes.
 
 The token's signature covers `account_id`, which is what lets the middleware build a tenant scope **before** reading anything from the database — otherwise you need an account to run a query and a query to learn the account. The session-epoch check costs one indexed primary-key read per authenticated request; that is the price of immediate logout, and it is deliberate.
 
-**The active branch is not a token claim.** A seller switches branch without re-authenticating, so it arrives in the `X-Branch-Id` header and is resolved per request. An unparsable value is ignored rather than fatal: the caller is simply operating account-wide, which admins legitimately do.
+**The active branch is not a token claim.** A seller switches branch without re-authenticating, so it arrives in the `X-Branch-Id` header and is resolved per request — and **validated** against `branch.account_id` plus `user_branch` (admins skip the assignment check). This validation is load-bearing: RLS guards the account boundary, not the branch one, so a branch id taken from a request and trusted would let a caller read another branch of their own account. An absent header means account-wide; a present-but-inaccessible branch is a **403**, never a silent downgrade to account-wide, because the caller must not end up reading everything while believing they are scoped to one branch. A malformed value is a 400.
+
+**By the time a service sees `Tenant.BranchID`, it is already validated.** Filter by it; do not re-check it.
 
 ## Translating domain errors to HTTP
 

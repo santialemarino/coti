@@ -22,7 +22,7 @@ type Handlers struct {
 // Auth carries what the authentication middleware needs to resolve a tenant.
 type Auth struct {
 	Verifier middleware.AccessVerifier
-	Sessions middleware.SessionChecker
+	Resolver middleware.TenantResolver
 }
 
 // NewRouter builds the engine with the global middleware and mounts every route.
@@ -41,7 +41,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth) *gin
 	// Authenticate runs for every /v1 route and resolves a tenant when a valid token is
 	// present. It does not reject anonymous requests — RequireTenant does — so a public
 	// route can still see who the caller is when they happen to be logged in.
-	v1 := r.Group("/v1", middleware.Authenticate(auth.Verifier, auth.Sessions))
+	v1 := r.Group("/v1", middleware.Authenticate(auth.Verifier, auth.Resolver))
 
 	// Works without a session. Each route resolves its own scope before touching
 	// tenant-scoped data.
