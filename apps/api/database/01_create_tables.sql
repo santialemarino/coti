@@ -727,6 +727,9 @@ CREATE INDEX idx_refresh_token_user ON refresh_token(user_id);
 CREATE INDEX idx_refresh_token_family ON refresh_token(family_id);
 
 CREATE INDEX idx_product_account ON product(account_id);
+-- El código identifica de forma unívoca dentro de la cuenta (la carga de precios por
+-- código necesita un único destino). Parcial porque code es nullable.
+CREATE UNIQUE INDEX uq_product_account_code ON product (account_id, code) WHERE code IS NOT NULL;
 CREATE INDEX idx_branch_product_branch ON branch_product(branch_id) WHERE is_active = TRUE;
 CREATE INDEX idx_product_synonym_product ON product_synonym(product_id);
 CREATE INDEX idx_product_price_product ON product_price(product_id, branch_id);

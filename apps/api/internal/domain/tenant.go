@@ -1,6 +1,10 @@
 package domain
 
-import "github.com/google/uuid"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // UserRole is the role of an app_user within an account.
 type UserRole string
@@ -32,4 +36,17 @@ func (t Tenant) IsAdmin() bool {
 // HasBranch reports whether a branch is selected for this request.
 func (t Tenant) HasBranch() bool {
 	return t.BranchID != uuid.Nil
+}
+
+// Branch is an operating location under an account. Quotes, RFQs, channels, and per-branch
+// pricing hang off it.
+type Branch struct {
+	ID                uuid.UUID
+	AccountID         uuid.UUID
+	Name              string
+	Address           *string
+	DefaultExpiryDays int
+	IsActive          bool
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }

@@ -23,9 +23,23 @@ forjado con `alg: none` no puede degradar el chequeo.
 Claims: `sub` (usuario), `account_id`, `role`, `session_epoch`, `iat`, `exp`.
 
 **La sucursal activa no es un claim.** El vendedor cambia de sucursal sin volver a
-loguearse, así que viaja en el header `X-Branch-Id` y se resuelve por request. Un valor
-que no parsea se ignora: el que llama está operando a nivel cuenta, que es lo que hace
-un admin.
+loguearse, así que viaja en el header `X-Branch-Id` y se resuelve por request.
+
+**Y se valida.** Es la única cosa que separa a alguien de los datos de otra sucursal de
+su propia cuenta: el aislamiento por sucursal es de capa de aplicación por decisión —
+las políticas de la base cuidan el límite de cuenta, no el de sucursal — así que un id
+de sucursal tomado del request y creído se propaga hasta el fondo.
+
+| Header                                                   | Resultado                                   |
+| -------------------------------------------------------- | ------------------------------------------- |
+| Ausente                                                  | opera a nivel cuenta (lo que hace un admin) |
+| Sucursal de la cuenta, con el usuario asignado (o admin) | queda en el contexto                        |
+| Sucursal existente pero sin asignación                   | **403**                                     |
+| Sucursal de otra cuenta, o inexistente                   | **403**                                     |
+| No es un UUID                                            | **400**                                     |
+
+Una sucursal inaccesible es 403 y **no** se descarta en silencio: si se descartara, el
+que llama terminaría leyendo toda la cuenta creyendo que está acotado a una sucursal.
 
 ## Refresh token
 
@@ -62,7 +76,8 @@ cerrar la sesión igual. Un token que pertenece a **otro** usuario se ignora en 
 revocarse, así que logout no sirve para cerrarle la sesión a un tercero.
 
 Precio del logout inmediato: el middleware hace **una lectura por PK indexada en cada
-request autenticado** para comparar el epoch guardado. Es deliberado.
+request autenticado** para comparar el epoch guardado (dos si el request pide sucursal,
+en la misma transacción). Es deliberado.
 
 ## Login
 
@@ -82,9 +97,12 @@ request autenticado** para comparar el epoch guardado. Es deliberado.
 
 ## El orden del middleware
 
-1. `Authenticate` corre en todo `/v1`: verifica el token, chequea el epoch y setea el
-   tenant. Un request **sin** header pasa sin autenticar en vez de ser rechazado, así una
-   ruta pública puede ver quién llama cuando además está logueado.
+1. `Authenticate` corre en todo `/v1`: verifica la firma del token y delega el resto en
+   `AuthService.ResolveTenant`, que confirma lo que la firma no puede (el usuario existe,
+   está activo, el epoch es el vigente, la sucursal pedida es una que puede usar) en una
+   sola transacción. Un request **sin** header de autorización pasa sin autenticar en vez
+   de ser rechazado, así una ruta pública puede ver quién llama cuando además está
+   logueado.
 2. `RequireTenant` guarda el grupo autenticado y devuelve 401 si no hay tenant.
 3. `RequireAdmin` va después de `RequireTenant` en las rutas de admin.
 
