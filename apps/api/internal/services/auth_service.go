@@ -45,6 +45,11 @@ type refreshTokenRepository interface {
 	RevokeFamily(ctx context.Context, q repository.Querier, accountID, familyID uuid.UUID) error
 }
 
+// branchRepository is the branch-access surface the tenant resolution needs.
+type branchRepository interface {
+	IsAccessibleBy(ctx context.Context, q repository.Querier, accountID, userID, branchID uuid.UUID, isAdmin bool) (bool, error)
+}
+
 // tenantScoper is the database surface: a tenant-scoped transaction, plus the owner
 // pool for the lookups that cannot know the account yet.
 type tenantScoper interface {
@@ -56,6 +61,7 @@ type tenantScoper interface {
 type AuthService struct {
 	db        tenantScoper
 	users     userRepository
+	branches  branchRepository
 	tokens    refreshTokenRepository
 	access    *TokenService
 	cfg       config.AuthConfig
@@ -66,14 +72,15 @@ type AuthService struct {
 // NewAuthService builds an AuthService. now and newSecret are injectable so expiry and
 // rotation are testable deterministically.
 func NewAuthService(
-	db tenantScoper, users userRepository, tokens refreshTokenRepository,
-	access *TokenService, cfg config.AuthConfig, now func() time.Time,
+	db tenantScoper, users userRepository, branches branchRepository,
+	tokens refreshTokenRepository, access *TokenService, cfg config.AuthConfig,
+	now func() time.Time,
 ) *AuthService {
 	if now == nil {
 		now = time.Now
 	}
 	return &AuthService{
-		db: db, users: users, tokens: tokens, access: access, cfg: cfg,
+		db: db, users: users, branches: branches, tokens: tokens, access: access, cfg: cfg,
 		now: now, newSecret: newRefreshSecret,
 	}
 }
@@ -217,38 +224,67 @@ func (s *AuthService) Logout(ctx context.Context, tenant domain.Tenant, rawToken
 	})
 }
 
-// VerifySession confirms an access token is still good beyond its signature: that the
-// user exists, is active, is not locked out, and that the token's session epoch matches
-// the stored one.
+// ResolveTenant turns verified token claims into the request's tenant scope.
 //
-// The epoch comparison is what makes logout immediate — bumping the stored value
-// invalidates every outstanding token without a blacklist. It costs one indexed
-// primary-key read per authenticated request, which is the price of that property.
-func (s *AuthService) VerifySession(ctx context.Context, accountID, userID uuid.UUID, epoch int) error {
-	tenant := domain.Tenant{AccountID: accountID}
+// It confirms what the signature cannot: that the user still exists, is active, is not
+// locked out, and that the token's session epoch matches the stored one — the comparison
+// that makes logout immediate without a blacklist.
+//
+// It also validates requestedBranch. That check is load-bearing: row level security
+// guards the account boundary, not the branch one, so a branch id taken from a request
+// and trusted would let a caller read another branch of their own account. An
+// inaccessible branch returns domain.ErrForbidden rather than being silently dropped —
+// dropping it would leave the caller believing they are scoped to one branch while
+// actually operating account-wide.
+//
+// Both checks share one transaction, so an authenticated request costs two indexed reads.
+func (s *AuthService) ResolveTenant(
+	ctx context.Context, claims domain.AccessClaims, requestedBranch uuid.UUID,
+) (domain.Tenant, error) {
+	scope := domain.Tenant{AccountID: claims.AccountID}
 
 	var user *domain.AppUser
-	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		u, err := s.users.GetByID(ctx, q, accountID, userID)
+	branchOK := true
+
+	if err := s.db.InTenantTx(ctx, scope, func(q repository.Querier) error {
+		u, err := s.users.GetByID(ctx, q, claims.AccountID, claims.UserID)
 		if err != nil {
 			return err
 		}
 		user = u
+
+		if requestedBranch != uuid.Nil {
+			ok, brErr := s.branches.IsAccessibleBy(ctx, q, claims.AccountID, claims.UserID,
+				requestedBranch, u.Role == domain.UserRoleAdmin)
+			if brErr != nil {
+				return brErr
+			}
+			branchOK = ok
+		}
 		return nil
 	}); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return domain.ErrUnauthenticated
+			return domain.Tenant{}, domain.ErrUnauthenticated
 		}
-		return err
+		return domain.Tenant{}, err
 	}
 
-	if !user.IsActive || user.SessionEpoch != epoch {
-		return domain.ErrUnauthenticated
+	if !user.IsActive || user.SessionEpoch != claims.SessionEpoch {
+		return domain.Tenant{}, domain.ErrUnauthenticated
 	}
 	if user.IsLocked(s.now()) {
-		return domain.ErrLocked
+		return domain.Tenant{}, domain.ErrLocked
 	}
-	return nil
+	if !branchOK {
+		return domain.Tenant{}, domain.ErrForbidden
+	}
+
+	return domain.Tenant{
+		AccountID: user.AccountID,
+		UserID:    user.ID,
+		Role:      user.Role,
+		BranchID:  requestedBranch,
+	}, nil
 }
 
 // issuePair mints a refresh token in the given family and signs an access token,

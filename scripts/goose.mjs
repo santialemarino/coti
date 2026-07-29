@@ -41,11 +41,18 @@ if (args.length === 0) {
 }
 
 const dbUrl = loadOwnerUrl();
+
+// -s keeps new migrations sequentially numbered (00003, 00004…). Without it goose
+// timestamps them, which still orders correctly but reads inconsistently next to the
+// ones already in the directory.
+const flags = args[0] === 'create' ? ['-s'] : [];
+
 const gooseArgs = [
   'run',
   `github.com/pressly/goose/v3/cmd/goose@${GOOSE_VERSION}`,
   '-dir',
   MIGRATIONS_DIR,
+  ...flags,
   'postgres',
   dbUrl,
   ...args,

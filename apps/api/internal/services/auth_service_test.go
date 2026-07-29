@@ -130,11 +130,24 @@ func (f *fakeTokens) RevokeFamily(_ context.Context, _ repository.Querier, _ uui
 	return nil
 }
 
+// fakeBranches answers the branch-access check. accessible is what IsAccessibleBy
+// returns, and calls records whether it was consulted at all.
+type fakeBranches struct {
+	accessible bool
+	calls      int
+}
+
+func (f *fakeBranches) IsAccessibleBy(_ context.Context, _ repository.Querier, _, _, _ uuid.UUID, _ bool) (bool, error) {
+	f.calls++
+	return f.accessible, nil
+}
+
 type harness struct {
-	svc    *AuthService
-	db     *fakeDB
-	users  *fakeUsers
-	tokens *fakeTokens
+	svc      *AuthService
+	db       *fakeDB
+	users    *fakeUsers
+	branches *fakeBranches
+	tokens   *fakeTokens
 }
 
 func newHarness(t *testing.T, user *domain.AppUser) *harness {
@@ -142,11 +155,13 @@ func newHarness(t *testing.T, user *domain.AppUser) *harness {
 	cfg := testAuthConfig()
 	db := &fakeDB{}
 	users := &fakeUsers{user: user}
+	branches := &fakeBranches{accessible: true}
 	tokens := &fakeTokens{}
 	now := func() time.Time { return fixedNow }
 
-	svc := NewAuthService(db, users, tokens, NewTokenService(cfg.JWTSecret, cfg.AccessTTL, now), cfg, now)
-	return &harness{svc: svc, db: db, users: users, tokens: tokens}
+	svc := NewAuthService(db, users, branches, tokens,
+		NewTokenService(cfg.JWTSecret, cfg.AccessTTL, now), cfg, now)
+	return &harness{svc: svc, db: db, users: users, branches: branches, tokens: tokens}
 }
 
 func activeUser(t *testing.T) *domain.AppUser {
@@ -470,7 +485,14 @@ func TestLogout_IgnoresAForeignRefreshToken(t *testing.T) {
 	}
 }
 
-func TestVerifySession(t *testing.T) {
+func claimsFor(epoch int) domain.AccessClaims {
+	return domain.AccessClaims{
+		UserID: testUserID, AccountID: testAccountID,
+		Role: domain.UserRoleSeller, SessionEpoch: epoch,
+	}
+}
+
+func TestResolveTenant(t *testing.T) {
 	cases := []struct {
 		name    string
 		mutate  func(*domain.AppUser)
@@ -492,19 +514,75 @@ func TestVerifySession(t *testing.T) {
 			tc.mutate(user)
 			h := newHarness(t, user)
 
-			err := h.svc.VerifySession(context.Background(), testAccountID, testUserID, tc.epoch)
+			_, err := h.svc.ResolveTenant(context.Background(), claimsFor(tc.epoch), uuid.Nil)
 			if !errors.Is(err, tc.wantErr) {
-				t.Errorf("VerifySession() = %v, want %v", err, tc.wantErr)
+				t.Errorf("ResolveTenant() = %v, want %v", err, tc.wantErr)
 			}
 		})
 	}
 }
 
-func TestVerifySession_UnknownUser(t *testing.T) {
+func TestResolveTenant_UnknownUser(t *testing.T) {
 	h := newHarness(t, nil)
 
-	err := h.svc.VerifySession(context.Background(), testAccountID, testUserID, 1)
+	_, err := h.svc.ResolveTenant(context.Background(), claimsFor(1), uuid.Nil)
 	if !errors.Is(err, domain.ErrUnauthenticated) {
-		t.Errorf("VerifySession() = %v, want %v", err, domain.ErrUnauthenticated)
+		t.Errorf("ResolveTenant() = %v, want %v", err, domain.ErrUnauthenticated)
+	}
+}
+
+// No branch requested means account-wide, and the access check must not even run.
+func TestResolveTenant_NoBranchRequestedSkipsTheCheck(t *testing.T) {
+	h := newHarness(t, activeUser(t))
+
+	tenant, err := h.svc.ResolveTenant(context.Background(), claimsFor(3), uuid.Nil)
+	if err != nil {
+		t.Fatalf("ResolveTenant() = %v, want no error", err)
+	}
+	if tenant.HasBranch() {
+		t.Error("tenant carries a branch that was never requested")
+	}
+	if h.branches.calls != 0 {
+		t.Errorf("branch check ran %d times with no branch requested, want 0", h.branches.calls)
+	}
+}
+
+func TestResolveTenant_AccessibleBranchIsCarried(t *testing.T) {
+	h := newHarness(t, activeUser(t))
+	branchID := uuid.New()
+
+	tenant, err := h.svc.ResolveTenant(context.Background(), claimsFor(3), branchID)
+	if err != nil {
+		t.Fatalf("ResolveTenant() = %v, want no error", err)
+	}
+	if tenant.BranchID != branchID {
+		t.Errorf("BranchID = %v, want %v", tenant.BranchID, branchID)
+	}
+	if h.branches.calls != 1 {
+		t.Errorf("branch check ran %d times, want 1", h.branches.calls)
+	}
+}
+
+// The whole point of this validation: a branch the caller may not use is refused, not
+// quietly dropped. Dropping it would leave them reading the whole account while believing
+// they were scoped to one branch.
+func TestResolveTenant_InaccessibleBranchIsForbidden(t *testing.T) {
+	h := newHarness(t, activeUser(t))
+	h.branches.accessible = false
+
+	_, err := h.svc.ResolveTenant(context.Background(), claimsFor(3), uuid.New())
+	if !errors.Is(err, domain.ErrForbidden) {
+		t.Errorf("ResolveTenant() = %v, want %v", err, domain.ErrForbidden)
+	}
+}
+
+// The session checks come first: a stale token must not get a branch verdict at all.
+func TestResolveTenant_StaleSessionBeatsTheBranchCheck(t *testing.T) {
+	h := newHarness(t, activeUser(t))
+	h.branches.accessible = false
+
+	_, err := h.svc.ResolveTenant(context.Background(), claimsFor(2), uuid.New())
+	if !errors.Is(err, domain.ErrUnauthenticated) {
+		t.Errorf("ResolveTenant() = %v, want %v", err, domain.ErrUnauthenticated)
 	}
 }

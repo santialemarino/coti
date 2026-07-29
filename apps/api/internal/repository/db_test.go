@@ -200,3 +200,95 @@ func TestCrossAccount_SeesEveryAccount(t *testing.T) {
 		t.Errorf("branches visible to the owner pool = %d, want at least 2", got)
 	}
 }
+
+func TestBranchRepository_IsAccessibleBy(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountA := seedAccount(t, db, "Corralon A")
+	accountB := seedAccount(t, db, "Corralon B")
+
+	branchA := branchOf(t, db, accountA)
+	branchB := branchOf(t, db, accountB)
+	seller := seedUser(t, db, accountA, "SELLER")
+
+	repo := NewBranchRepository()
+
+	cases := []struct {
+		name     string
+		branchID uuid.UUID
+		isAdmin  bool
+		link     bool
+		want     bool
+	}{
+		{"seller assigned to the branch", branchA, false, true, true},
+		{"seller not assigned to it", branchA, false, false, false},
+		{"admin needs no assignment", branchA, true, false, true},
+		// The one that matters: another account's branch is invisible even to an admin.
+		{"branch of another account", branchB, true, false, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.link {
+				linkUserBranch(t, db, accountA, seller, tc.branchID)
+			} else {
+				unlinkUserBranch(t, db, seller)
+			}
+
+			var got bool
+			if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountA}, func(q Querier) error {
+				var err error
+				got, err = repo.IsAccessibleBy(ctx, q, accountA, seller, tc.branchID, tc.isAdmin)
+				return err
+			}); err != nil {
+				t.Fatalf("InTenantTx() = %v, want no error", err)
+			}
+			if got != tc.want {
+				t.Errorf("IsAccessibleBy() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func branchOf(t *testing.T, db *DB, accountID uuid.UUID) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	if err := db.CrossAccount().QueryRow(context.Background(),
+		`SELECT id FROM branch WHERE account_id = $1 LIMIT 1`, accountID).Scan(&id); err != nil {
+		t.Fatalf("read branch: %v", err)
+	}
+	return id
+}
+
+func seedUser(t *testing.T, db *DB, accountID uuid.UUID, role string) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	if _, err := db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO app_user (id, account_id, name, email, password_hash, role)
+		 VALUES ($1, $2, 'Test', $3, 'x', $4)`,
+		id, accountID, id.String()+"@test.local", role); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.CrossAccount().Exec(context.Background(), `DELETE FROM user_branch WHERE user_id = $1`, id)
+		_, _ = db.CrossAccount().Exec(context.Background(), `DELETE FROM app_user WHERE id = $1`, id)
+	})
+	return id
+}
+
+func linkUserBranch(t *testing.T, db *DB, accountID, userID, branchID uuid.UUID) {
+	t.Helper()
+	if _, err := db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO user_branch (account_id, user_id, branch_id) VALUES ($1, $2, $3)
+		 ON CONFLICT (user_id, branch_id) DO NOTHING`, accountID, userID, branchID); err != nil {
+		t.Fatalf("link user_branch: %v", err)
+	}
+}
+
+func unlinkUserBranch(t *testing.T, db *DB, userID uuid.UUID) {
+	t.Helper()
+	if _, err := db.CrossAccount().Exec(context.Background(),
+		`DELETE FROM user_branch WHERE user_id = $1`, userID); err != nil {
+		t.Fatalf("unlink user_branch: %v", err)
+	}
+}
