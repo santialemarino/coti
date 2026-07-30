@@ -334,7 +334,11 @@ CREATE TABLE rfq (
   work_type   VARCHAR(255),
   received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Para quién es el pedido cuando no hay ficha de cliente: en la carga manual el vendedor
+  -- anota un nombre suelto y `client_id` queda NULL. Describe este pedido, no una persona
+  -- con la que después se vaya a matchear.
+  client_label VARCHAR(255)
 );
 
 -- El input original se persiste antes de procesarlo: una cotización siempre

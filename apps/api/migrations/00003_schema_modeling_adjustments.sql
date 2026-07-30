@@ -87,6 +87,13 @@ WHERE NOT EXISTS (
   SELECT 1 FROM channel c WHERE c.branch_id = b.id AND c.type = 'MANUAL_ENTRY'
 );
 
+-- En la carga manual el cliente es opcional, y cuando no hay ficha el vendedor igual anota
+-- para quién es el pedido. Esa etiqueta describe este pedido y no una persona con la que
+-- después se vaya a matchear, así que vive en el pedido: crear una fila de client con solo
+-- el nombre haría que "cliente opcional" fuera falso y llenaría el listado de clientes de
+-- ventas de mostrador de una sola vez.
+ALTER TABLE rfq ADD COLUMN client_label VARCHAR(255);
+
 -- =============================================================================
 -- Origen del cliente sale de channel_type
 -- =============================================================================
@@ -197,6 +204,8 @@ DROP INDEX uq_channel_branch_type_no_identifier;
 ALTER TABLE channel DROP CONSTRAINT uq_channel_branch_type_identifier;
 ALTER TABLE channel DROP COLUMN identifier;
 ALTER TABLE channel ADD CONSTRAINT uq_channel_branch_type UNIQUE (branch_id, type);
+
+ALTER TABLE rfq DROP COLUMN client_label;
 
 ALTER TABLE promotion DROP COLUMN name;
 
