@@ -270,6 +270,13 @@ INSERT INTO rfq (id, account_id, branch_id, client_id, client_label, channel_id,
    'GENERATED', 'Impermeabilización', now() - interval '90 minutes')
 ON CONFLICT (id) DO NOTHING;
 
+-- Rellena la etiqueta si quedó vacía, igual que el UPDATE de current_version_id más abajo:
+-- el ON CONFLICT DO NOTHING no vuelve a escribir sobre una fila que ya existe, así que
+-- después de un down y un up —que se lleva la columna y la devuelve vacía— la etiqueta se
+-- perdía. Solo llena lo que está en NULL, así que nunca pisa una edición local.
+UPDATE rfq SET client_label = 'Sr. Almada (mostrador)'
+WHERE id = '10000000-0000-4000-8000-000000000006' AND client_label IS NULL;
+
 INSERT INTO rfq_status_change (id, account_id, rfq_id, previous_status, new_status, user_id, changed_at) VALUES
   ('50000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'RECEIVED', 'GENERATED', NULL, now() - interval '3 hours'),
   ('50000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000002', 'RECEIVED', 'GENERATED', NULL, now() - interval '2 days'),
