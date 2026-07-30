@@ -300,7 +300,7 @@ INSERT INTO quote (id, account_id, branch_id, client_id, rfq_id, seller_id, curr
   ('20000000-0000-4000-8000-000000000005', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000002',
    NULL, '10000000-0000-4000-8000-000000000005', 'c0000000-0000-4000-8000-000000000001', 'DRAFT', NULL, now() - interval '40 minutes'),
   ('20000000-0000-4000-8000-000000000006', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001',
-   NULL, '10000000-0000-4000-8000-000000000006', 'c0000000-0000-4000-8000-000000000002', 'QUOTED', now() + interval '6 days', now() - interval '90 minutes')
+   NULL, '10000000-0000-4000-8000-000000000006', 'c0000000-0000-4000-8000-000000000002', 'ACCEPTED', now() + interval '6 days', now() - interval '90 minutes')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO quote_version (id, account_id, quote_id, author_id, version_number, total, is_immutable, comment, created_at) VALUES
@@ -310,7 +310,7 @@ INSERT INTO quote_version (id, account_id, quote_id, author_id, version_number, 
   ('30000000-0000-4000-8000-000000000004', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000004', 'c0000000-0000-4000-8000-000000000002', 1, 369000.00, TRUE, NULL, now() - interval '8 days'),
   ('30000000-0000-4000-8000-000000000005', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000004', 'c0000000-0000-4000-8000-000000000002', 2, 539600.00, FALSE, 'El cliente sumó 10 bolsas de cemento y pidió hidrófugo', now() - interval '1 day'),
   ('30000000-0000-4000-8000-000000000006', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000005', 'c0000000-0000-4000-8000-000000000001', 1, 504400.00, FALSE, NULL, now() - interval '40 minutes'),
-  ('30000000-0000-4000-8000-000000000007', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000006', 'c0000000-0000-4000-8000-000000000002', 1, 178800.00, FALSE, NULL, now() - interval '90 minutes')
+  ('30000000-0000-4000-8000-000000000007', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000006', 'c0000000-0000-4000-8000-000000000002', 1, 178800.00, TRUE, NULL, now() - interval '90 minutes')
 ON CONFLICT (id) DO NOTHING;
 
 UPDATE quote SET current_version_id = v.version_id
@@ -371,10 +371,21 @@ INSERT INTO quote_status_change (id, account_id, quote_id, previous_status, new_
   ('50000000-0000-4000-8000-00000000001b', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000005', NULL, 'DRAFT', 'c0000000-0000-4000-8000-000000000001', now() - interval '40 minutes'),
 
   ('50000000-0000-4000-8000-00000000001c', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000006', NULL, 'DRAFT', 'c0000000-0000-4000-8000-000000000002', now() - interval '90 minutes'),
-  ('50000000-0000-4000-8000-00000000001d', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000006', 'DRAFT', 'QUOTED', 'c0000000-0000-4000-8000-000000000002', now() - interval '85 minutes')
+  ('50000000-0000-4000-8000-00000000001d', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000006', 'DRAFT', 'QUOTED', 'c0000000-0000-4000-8000-000000000002', now() - interval '85 minutes'),
+  ('50000000-0000-4000-8000-00000000001e', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000006', 'QUOTED', 'SENT', 'c0000000-0000-4000-8000-000000000002', now() - interval '80 minutes'),
+  ('50000000-0000-4000-8000-00000000001f', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000006', 'SENT', 'ACCEPTED', 'c0000000-0000-4000-8000-000000000002', now() - interval '70 minutes')
 ON CONFLICT (id) DO NOTHING;
 
 -- El envío cuelga de la versión, no de la cotización: el link se emite por envío y por canal.
+--
+-- La entrega en mano también deja fila de envío, sobre el canal de carga manual de la
+-- sucursal y con formato PDF: es la única forma de que `sent_at` conteste cuándo se le dio
+-- la cotización al cliente, y de que la acción del cliente tenga a qué colgarse. No
+-- contradice la regla de que la carga manual no es canal de salida: esa regla prohíbe
+-- tomar el canal de entrada como el de retorno por default, y dice que nadie recibe un
+-- *mensaje* por carga manual. Una entrega en mano no es un mensaje y el vendedor la elige.
+-- El pedido telefónico es el caso donde la regla sí manda: entra como carga manual y la
+-- cotización sale por WhatsApp o mail, así que el canal de retorno se elige explícito.
 INSERT INTO quote_send (id, account_id, version_id, channel_id, public_token, format, sent_at, expires_at, tracking_status)
 SELECT v.id, v.account_id, v.version_id, v.channel_id, v.public_token, v.format, v.sent_at, v.expires_at, v.tracking_status
 FROM (VALUES
@@ -383,6 +394,22 @@ FROM (VALUES
    'seed-token-sent-0000000000000001', 'WEBAPP_LINK'::send_format, now() - interval '5 days' + interval '1 hour', now() + interval '2 days', 'VIEWED'::send_tracking_status),
   ('60000000-0000-4000-8000-000000000002'::uuid, 'a0000000-0000-4000-8000-000000000001'::uuid, '30000000-0000-4000-8000-000000000004'::uuid,
    (SELECT id FROM channel WHERE branch_id = 'b0000000-0000-4000-8000-000000000001' AND type = 'WHATSAPP' AND identifier IS NULL),
-   'seed-token-change-000000000002', 'MESSAGE'::send_format, now() - interval '7 days', now() - interval '1 day', 'DELIVERED'::send_tracking_status)
+   'seed-token-change-000000000002', 'MESSAGE'::send_format, now() - interval '7 days', now() - interval '1 day', 'DELIVERED'::send_tracking_status),
+  ('60000000-0000-4000-8000-000000000003'::uuid, 'a0000000-0000-4000-8000-000000000001'::uuid, '30000000-0000-4000-8000-000000000007'::uuid,
+   (SELECT id FROM channel WHERE branch_id = 'b0000000-0000-4000-8000-000000000001' AND type = 'MANUAL_ENTRY' AND identifier IS NULL),
+   NULL, 'PDF'::send_format, now() - interval '80 minutes', now() + interval '6 days', 'DELIVERED'::send_tracking_status)
 ) AS v(id, account_id, version_id, channel_id, public_token, format, sent_at, expires_at, tracking_status)
+ON CONFLICT (id) DO NOTHING;
+
+-- Las acciones del cliente que explican los dos estados que no son del vendedor: el pedido
+-- de cambio sobre la cotización enviada por WhatsApp, y la aceptación en el mostrador. La
+-- aceptación de mostrador la toma el vendedor en el momento pero la acción es del cliente,
+-- así que queda como client_action con el envío del que salió.
+INSERT INTO client_action (id, account_id, version_id, quote_send_id, type, comment, created_at) VALUES
+  ('ca000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001',
+   '30000000-0000-4000-8000-000000000004', '60000000-0000-4000-8000-000000000002',
+   'REQUEST_CHANGE', 'Sumar 10 bolsas de cemento y agregar hidrófugo', now() - interval '1 day'),
+  ('ca000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001',
+   '30000000-0000-4000-8000-000000000007', '60000000-0000-4000-8000-000000000003',
+   'ACCEPT', 'Aceptada en el mostrador, se la lleva impresa', now() - interval '70 minutes')
 ON CONFLICT (id) DO NOTHING;
