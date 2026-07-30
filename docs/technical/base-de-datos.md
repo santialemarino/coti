@@ -123,11 +123,11 @@ Lo que se puede expresar en el schema, se expresa en el schema:
 | `uq_product_account_code`                | el código de producto es único dentro de la cuenta  |
 | `uq_channel_branch_type_no_identifier`   | un solo canal sin identificador por sucursal y tipo |
 
-Dos de esos son parciales por la misma razón: **una restricción de unicidad no compara
-NULLs**, así que la columna nullable se escapa. `uq_quote_rfq` no alcanzaba mientras
-`rfq_id` podía ser NULL, y `uq_channel_branch_type_identifier` no alcanza para los
-canales sin identificador. La forma de cerrarlo es o el NOT NULL o el índice parcial
-sobre el caso NULL.
+**Una restricción de unicidad no compara NULLs**, así que sobre una columna nullable deja
+escapar todas las filas vacías. Por eso el 1-a-1 necesita el NOT NULL además del índice:
+`uq_channel_branch_type_identifier` sola no limita los canales sin identificador, y ahí
+entra el índice parcial. Al blindar una invariante sobre una columna nullable, la única
+salida es el NOT NULL o un índice parcial sobre el caso NULL.
 
 ## Catálogo
 
