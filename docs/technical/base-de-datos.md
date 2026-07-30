@@ -47,6 +47,21 @@ pnpm db:create-migration <nombre>
 `POSTGRES_PORT` (default 5432) cambia el puerto que publica el contenedor cuando
 otro Postgres local ya lo tiene tomado. Tiene que quedar en sync con las URLs.
 
+**El seed es idempotente, no convergente.** Inserta con `ON CONFLICT ... DO NOTHING`, así
+que crea lo que falta pero **nunca reescribe una fila que ya existe**. Si cambia un valor del
+seed —un estado, un total, un nombre— la base que ya lo tenía se queda con el viejo, y
+`pnpm db:seed` no lo corrige. Para tomar cambios de valores va `pnpm db:reset`, que reconstruye
+por la cadena entera. Es deliberado: un seed que sobreescribe te borra los datos con los que
+estabas probando.
+
+Dos casos donde `db:reset` es la única salida:
+
+- **Cambió un valor del seed** (lo de arriba).
+- **Se editó una migración ya aplicada.** El `down` describe el `up` nuevo, así que contra una
+  base que corrió el viejo intenta revertir cosas que nunca creó y falla. Pasa mientras un PR
+  de migración está en revisión: quien ya la corrió tiene que resetear al bajar cambios. La
+  salida **no** es llenar el `down` de `IF EXISTS` para tolerar estados a medias.
+
 ## Dos roles de conexión
 
 | Variable             | Rol                                     | Para qué                                                                        |
