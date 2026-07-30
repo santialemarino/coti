@@ -11,6 +11,11 @@ services:
       - '${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-coti} -d ${POSTGRES_DB:-coti}']
+      interval: 2s
+      timeout: 3s
+      retries: 20
 
   api:
     container_name: coti-api
@@ -21,11 +26,17 @@ services:
     ports:
       - '8000:8000'
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     env_file:
       - .env
+    # Las URLs del .env apuntan al host, y dentro de la red de compose el host de la base es
+    # el servicio `postgres`: ahí localhost es el contenedor del API. Por eso se sobreescriben
+    # las dos, y el puerto que Postgres publica al host deja de importar para el stack
+    # dockerizado.
     environment:
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=postgres://coti_app:coti_app@postgres:5432/${POSTGRES_DB:-coti}?sslmode=disable
+      - DATABASE_ADMIN_URL=postgres://${POSTGRES_USER:-coti}:${POSTGRES_PASSWORD:-coti}@postgres:5432/${POSTGRES_DB:-coti}?sslmode=disable
 
   backoffice:
     container_name: coti-backoffice
