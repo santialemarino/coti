@@ -15,9 +15,10 @@ import (
 // Handlers carries every handler the router mounts, so adding a feature is one field
 // here instead of a new router parameter.
 type Handlers struct {
-	Health  *handler.HealthHandler
-	Auth    *handler.AuthHandler
-	Product *handler.ProductHandler
+	Health        *handler.HealthHandler
+	Auth          *handler.AuthHandler
+	Product       *handler.ProductHandler
+	BranchCatalog *handler.BranchCatalogHandler
 }
 
 // Auth carries what the authentication middleware needs to resolve a tenant.
@@ -55,8 +56,8 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth) *gin
 	authed := v1.Group("", middleware.RequireTenant())
 	authed.POST("/auth/logout", h.Auth.Logout)
 
-	// The catalog is account-scoped, so these routes need no active branch. What varies
-	// per branch — availability, stock, price — has its own routes.
+	// The catalog itself is account-scoped, so those routes need no active branch. The
+	// per-branch ones below take it from the X-Branch-Id header the middleware validated.
 	products := authed.Group("/products")
 	products.GET("", h.Product.List)
 	products.POST("", h.Product.Create)
@@ -69,6 +70,10 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth) *gin
 	products.GET("/:productId/alternatives", h.Product.ListAlternatives)
 	products.POST("/:productId/alternatives", h.Product.AddAlternative)
 	products.DELETE("/:productId/alternatives/:alternativeId", h.Product.RemoveAlternative)
+	products.GET("/:productId/availability", h.BranchCatalog.ListAvailability)
+	products.PUT("/:productId/availability", h.BranchCatalog.SetAvailability)
+	products.GET("/:productId/prices", h.BranchCatalog.ListPrices)
+	products.POST("/:productId/prices", h.BranchCatalog.SetPrice)
 
 	return r
 }

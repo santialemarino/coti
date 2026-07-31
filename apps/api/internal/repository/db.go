@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -126,6 +127,14 @@ func openPool(ctx context.Context, cfg config.DatabaseConfig, url string) (*pgxp
 	poolCfg.MaxConnLifetime = cfg.MaxConnLifetime
 	poolCfg.MaxConnIdleTime = cfg.MaxConnIdleTime
 	poolCfg.ConnConfig.ConnectTimeout = cfg.ConnectTimeout
+
+	// Money and quantities are NUMERIC(14,2) and travel as decimals end to end. The codec
+	// has to be registered per connection, which is why it goes here and not in main: the
+	// pool opens connections on its own schedule, including replacements for dead ones.
+	poolCfg.AfterConnect = func(_ context.Context, conn *pgx.Conn) error {
+		pgxdecimal.Register(conn.TypeMap())
+		return nil
+	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
