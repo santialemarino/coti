@@ -30,7 +30,6 @@ type closedPeriod struct {
 
 type fakePrices struct {
 	open    *domain.ProductPrice
-	openErr error
 	closed  []closedPeriod
 	created []domain.NewProductPrice
 	branch  []uuid.UUID
@@ -48,9 +47,6 @@ func (f *fakePrices) ListByProduct(
 func (f *fakePrices) GetOpenPeriod(
 	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID,
 ) (*domain.ProductPrice, error) {
-	if f.openErr != nil {
-		return nil, f.openErr
-	}
 	if f.open == nil {
 		return nil, domain.ErrNotFound
 	}
@@ -158,6 +154,9 @@ func TestBranchCatalogService_SetPrice_ClosesThePreviousPeriodAtTheNewStart(t *t
 	}
 	if got := h.prices.closed[0].at; !got.Equal(newStart) {
 		t.Errorf("previous period closed at %v, want %v — the periods must meet exactly", got, newStart)
+	}
+	if got := h.prices.closed[0].productID; got != testProductID {
+		t.Errorf("closed the period of product %v, want %v", got, testProductID)
 	}
 	if len(h.prices.created) != 1 {
 		t.Fatalf("periods opened = %d, want 1", len(h.prices.created))
