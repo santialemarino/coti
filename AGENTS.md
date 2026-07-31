@@ -31,7 +31,7 @@ One-directional flow: **decision (conversation / Notion) → `docs/internal/` �
 
 - Product/architecture decisions: live source is Notion; `docs/internal/product/decisiones-cerradas.md` is a local mirror — **Notion wins** on divergence.
 - Work state (tickets): lives in Notion, not replicated here.
-- Executable data model: the goose migrations in `apps/api/migrations/`. `docs/internal/data/schema.sql` is the design reference they are built from.
+- Executable data model: the goose migrations in `apps/api/migrations/`, with `apps/api/database/01_create_tables.sql` as the consolidated reference for the current shape. `docs/internal/data/schema.sql` no longer holds DDL — it keeps the ES↔EN mapping and the pending DER changes.
 
 Map: `product/`, `domain/`, `architecture/`, `data/`, `conventions/`. Start at `docs/internal/README.md`.
 

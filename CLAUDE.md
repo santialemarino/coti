@@ -35,14 +35,16 @@ Flow is one-directional: **decision (conversation / Notion) → `docs/internal/`
   is a local mirror. If they diverge, **Notion wins**.
 - **Work state (tickets)** — lives in Notion, not replicated here. A ticket points
   _to_ `docs/internal/`, not the other way around.
-- **Executable data model** — the goose migrations in `apps/api/migrations/`.
-  `docs/internal/data/schema.sql` is the design reference the migrations are built from.
+- **Executable data model** — the goose migrations in `apps/api/migrations/`, with
+  `apps/api/database/01_create_tables.sql` as the consolidated reference you read to know
+  the current shape. `docs/internal/data/schema.sql` no longer holds DDL: it keeps the
+  ES↔EN mapping and the pending DER changes, because the academic diagram is in Spanish.
 
 `docs/internal/` map: `product/` (what it is, scope, nomenclature, closed
 decisions), `domain/` (business rules: states, discount engine, AI pipeline,
 follow-up, ingest), `architecture/` (stack, layers, technical decisions),
-`data/` (`schema.sql`, physical-model notes, DER), `conventions/` (git, code,
-glossary). Start at `docs/internal/README.md` if unsure.
+`data/` (ES↔EN mapping and pending DER changes, physical-model notes, DER),
+`conventions/` (git, code, glossary). Start at `docs/internal/README.md` if unsure.
 
 ## Codex compatibility
 

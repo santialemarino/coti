@@ -49,7 +49,13 @@ CREATE TYPE promotion_action_type AS ENUM ('PERCENTAGE', 'FIXED_AMOUNT', 'SPECIA
 CREATE TYPE discount_scope AS ENUM ('ITEM', 'ITEM_SET', 'TOTAL');
 CREATE TYPE discount_origin AS ENUM ('AUTOMATIC', 'AI_ADAPTATION', 'MANUAL_SELLER');
 
-CREATE TYPE channel_type AS ENUM ('WHATSAPP', 'EMAIL', 'WEBAPP', 'COUNTER', 'PHONE');
+-- channel_type es el mecanismo por el que entró el pedido, no dónde estaba el cliente:
+-- MANUAL_ENTRY cubre mostrador, teléfono y cualquier canal que no integramos, porque en
+-- todos el pedido lo tipea el vendedor. client_origin contesta otra pregunta —de dónde
+-- salió el cliente— y por eso es su propio tipo: el teléfono trae clientes sin ser un
+-- canal que integremos.
+CREATE TYPE channel_type AS ENUM ('WHATSAPP', 'EMAIL', 'WEBAPP', 'MANUAL_ENTRY');
+CREATE TYPE client_origin AS ENUM ('WHATSAPP', 'EMAIL', 'WEBAPP', 'PHONE', 'WALK_IN');
 CREATE TYPE attachment_type AS ENUM ('IMAGE', 'PDF', 'SPREADSHEET', 'AUDIO', 'TEXT');
 CREATE TYPE attachment_processing_status AS ENUM ('PENDING', 'PROCESSING', 'DONE', 'FAILED');
 
@@ -224,10 +230,12 @@ CREATE TABLE product_alternative (
 );
 
 -- Producto compuesto que se vende como unidad. Distinto del tipo de promo ITEM_SET.
+-- Es de la cuenta, igual que el producto: la disponibilidad por sucursal vive en
+-- branch_combo. No lleva precio propio —sale de sus items, ya valorizados por
+-- sucursal— ni stock, que sale de sus componentes.
 CREATE TABLE combo (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id  UUID NOT NULL,
-  branch_id   UUID NOT NULL,
   name        VARCHAR(255) NOT NULL,
   description VARCHAR(512),
   is_active   BOOLEAN NOT NULL DEFAULT TRUE,
@@ -244,6 +252,19 @@ CREATE TABLE combo_item (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Disponibilidad comercial del combo por sucursal, espejo de branch_product. Sin
+-- precio y sin stock: los dos se derivan de los items.
+CREATE TABLE branch_combo (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id UUID NOT NULL,
+  branch_id  UUID NOT NULL,
+  combo_id   UUID NOT NULL,
+  is_active  BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_branch_combo UNIQUE (branch_id, combo_id)
+);
+
 -- =============================================================================
 -- CLIENTES
 -- =============================================================================
@@ -256,7 +277,7 @@ CREATE TABLE client (
   name           VARCHAR(255),
   phone          VARCHAR(64),
   email          VARCHAR(255),
-  origin_channel channel_type,
+  origin_channel client_origin,
   notes          VARCHAR(512),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -283,6 +304,10 @@ CREATE TABLE client_tag (
 -- CANALES / INGESTA
 -- =============================================================================
 
+-- identifier es qué instancia del canal es: el número de WhatsApp, la casilla de mail.
+-- Queda NULL en los canales que no admiten más de uno por sucursal (webapp, carga
+-- manual), y para esos la unicidad la sostiene el índice parcial —la restricción
+-- compuesta no compara NULLs.
 CREATE TABLE channel (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id UUID NOT NULL,
@@ -292,7 +317,8 @@ CREATE TABLE channel (
   is_active  BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT uq_channel_branch_type UNIQUE (branch_id, type)
+  identifier VARCHAR(255),
+  CONSTRAINT uq_channel_branch_type_identifier UNIQUE (branch_id, type, identifier)
 );
 
 -- Lo que pidió el cliente. Entidad separada de quote: el stepper de la UI es una
@@ -308,7 +334,11 @@ CREATE TABLE rfq (
   work_type   VARCHAR(255),
   received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Para quién es el pedido cuando no hay ficha de cliente: en la carga manual el vendedor
+  -- anota un nombre suelto y `client_id` queda NULL. Describe este pedido, no una persona
+  -- con la que después se vaya a matchear.
+  client_label VARCHAR(255)
 );
 
 -- El input original se persiste antes de procesarlo: una cotización siempre
@@ -321,7 +351,8 @@ CREATE TABLE rfq_attachment (
   file_url          VARCHAR(512),
   extracted_text    TEXT,
   processing_status attachment_processing_status NOT NULL DEFAULT 'PENDING',
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  processed_at      TIMESTAMPTZ
 );
 
 CREATE TABLE rfq_status_change (
@@ -350,7 +381,7 @@ CREATE TABLE quote (
   account_id          UUID NOT NULL,
   branch_id           UUID NOT NULL,
   client_id           UUID,
-  rfq_id              UUID,
+  rfq_id              UUID NOT NULL,
   seller_id           UUID,
   current_version_id  UUID,
   current_status      quote_status NOT NULL,
@@ -517,7 +548,8 @@ CREATE TABLE promotion (
   priority       INTEGER NOT NULL DEFAULT 0,
   description    VARCHAR(512),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  name           VARCHAR(128) NOT NULL
 );
 
 CREATE TABLE promotion_condition_item (
@@ -600,7 +632,8 @@ CREATE TABLE notification (
   event      VARCHAR(128) NOT NULL,
   medium     VARCHAR(64) NOT NULL,
   status     notification_status NOT NULL DEFAULT 'PENDING',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  sent_at    TIMESTAMPTZ
 );
 
 -- =============================================================================
@@ -630,10 +663,12 @@ ALTER TABLE product_alternative ADD CONSTRAINT fk_product_alt_account FOREIGN KE
 ALTER TABLE product_alternative ADD CONSTRAINT fk_product_alt_base FOREIGN KEY (base_product_id) REFERENCES product(id);
 ALTER TABLE product_alternative ADD CONSTRAINT fk_product_alt_alt FOREIGN KEY (alternative_product_id) REFERENCES product(id);
 ALTER TABLE combo ADD CONSTRAINT fk_combo_account FOREIGN KEY (account_id) REFERENCES account(id);
-ALTER TABLE combo ADD CONSTRAINT fk_combo_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
 ALTER TABLE combo_item ADD CONSTRAINT fk_combo_item_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE combo_item ADD CONSTRAINT fk_combo_item_combo FOREIGN KEY (combo_id) REFERENCES combo(id);
 ALTER TABLE combo_item ADD CONSTRAINT fk_combo_item_product FOREIGN KEY (product_id) REFERENCES product(id);
+ALTER TABLE branch_combo ADD CONSTRAINT fk_branch_combo_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE branch_combo ADD CONSTRAINT fk_branch_combo_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
+ALTER TABLE branch_combo ADD CONSTRAINT fk_branch_combo_combo FOREIGN KEY (combo_id) REFERENCES combo(id);
 
 ALTER TABLE client ADD CONSTRAINT fk_client_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE tag ADD CONSTRAINT fk_tag_account FOREIGN KEY (account_id) REFERENCES account(id);
@@ -733,7 +768,7 @@ CREATE UNIQUE INDEX uq_product_account_code ON product (account_id, code) WHERE 
 CREATE INDEX idx_branch_product_branch ON branch_product(branch_id) WHERE is_active = TRUE;
 CREATE INDEX idx_product_synonym_product ON product_synonym(product_id);
 CREATE INDEX idx_product_price_product ON product_price(product_id, branch_id);
-CREATE INDEX idx_combo_branch ON combo(branch_id);
+CREATE INDEX idx_branch_combo_branch ON branch_combo(branch_id) WHERE is_active = TRUE;
 
 CREATE INDEX idx_client_account ON client(account_id);
 CREATE INDEX idx_rfq_branch_status ON rfq(branch_id, status);
@@ -751,6 +786,11 @@ CREATE INDEX idx_message_batch_due ON message_batch(closes_at) WHERE status = 'O
 CREATE INDEX idx_message_batch_queue ON message_batch(quote_id, closed_at) WHERE status = 'CLOSED';
 
 -- Invariantes de negocio expresadas en la base, no en la buena voluntad del código.
+-- uq_channel_branch_type_identifier no compara NULLs, así que sin este índice una
+-- sucursal podría tener N canales sin identificador del mismo tipo — N canales de carga
+-- manual, por ejemplo, y el rfq apuntando a cualquiera.
+CREATE UNIQUE INDEX uq_channel_branch_type_no_identifier
+  ON channel (branch_id, type) WHERE identifier IS NULL;
 CREATE UNIQUE INDEX uq_quote_version_draft ON quote_version(quote_id) WHERE is_immutable = FALSE;
 CREATE UNIQUE INDEX uq_message_batch_open ON message_batch(quote_id) WHERE status = 'OPEN';
 CREATE UNIQUE INDEX uq_message_batch_processing ON message_batch(quote_id) WHERE status = 'PROCESSING';
@@ -765,6 +805,7 @@ CREATE TRIGGER trg_app_user_updated       BEFORE UPDATE ON app_user       FOR EA
 CREATE TRIGGER trg_product_updated        BEFORE UPDATE ON product        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_branch_product_updated BEFORE UPDATE ON branch_product FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_combo_updated          BEFORE UPDATE ON combo          FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_branch_combo_updated   BEFORE UPDATE ON branch_combo   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_client_updated         BEFORE UPDATE ON client         FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_channel_updated        BEFORE UPDATE ON channel        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_rfq_updated            BEFORE UPDATE ON rfq            FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -818,7 +859,7 @@ BEGIN
   FOREACH t IN ARRAY ARRAY[
     'branch', 'app_user', 'user_branch', 'refresh_token',
     'product', 'branch_product', 'product_synonym', 'product_price', 'product_alternative',
-    'combo', 'combo_item',
+    'combo', 'combo_item', 'branch_combo',
     'client', 'tag', 'client_tag',
     'channel', 'rfq', 'rfq_attachment', 'rfq_status_change',
     'quote', 'quote_version', 'quote_item', 'quote_item_alternative', 'quote_status_change',
