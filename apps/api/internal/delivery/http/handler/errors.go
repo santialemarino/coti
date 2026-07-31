@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
@@ -17,27 +18,30 @@ import (
 func Respond(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
-		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "not found"})
 	case errors.Is(err, domain.ErrConflict):
-		c.JSON(http.StatusConflict, gin.H{"error": "conflict"})
+		c.JSON(http.StatusConflict, dto.ErrorResponse{Error: "conflict"})
 	case errors.Is(err, domain.ErrInvalidInput):
-		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		c.JSON(http.StatusUnprocessableEntity, dto.ErrorResponse{Error: err.Error()})
 	case errors.Is(err, domain.ErrUnauthenticated):
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Error: "invalid credentials"})
 	case errors.Is(err, domain.ErrLocked):
-		c.JSON(http.StatusTooManyRequests, gin.H{"error": "account temporarily locked"})
+		c.JSON(http.StatusTooManyRequests, dto.ErrorResponse{Error: "account temporarily locked"})
 	case errors.Is(err, domain.ErrForbidden):
-		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		c.JSON(http.StatusForbidden, dto.ErrorResponse{Error: "forbidden"})
 	case errors.Is(err, domain.ErrImmutable):
-		c.JSON(http.StatusConflict, gin.H{"error": "target is immutable"})
+		c.JSON(http.StatusConflict, dto.ErrorResponse{Error: "target is immutable"})
 	default:
 		// Attached so the request log carries the detail the client does not get.
 		_ = c.Error(err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "internal error"})
 	}
 }
 
 // RespondBindError reports a request body that failed binding or validation.
 func RespondBindError(c *gin.Context, err error) {
-	c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body", "detail": err.Error()})
+	c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+		Error:  "invalid request body",
+		Detail: err.Error(),
+	})
 }

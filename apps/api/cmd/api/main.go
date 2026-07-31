@@ -52,14 +52,20 @@ func run() error {
 	userRepo := repository.NewUserRepository()
 	branchRepo := repository.NewBranchRepository()
 	refreshTokenRepo := repository.NewRefreshTokenRepository()
+	productRepo := repository.NewProductRepository()
+	productSynonymRepo := repository.NewProductSynonymRepository()
+	productAlternativeRepo := repository.NewProductAlternativeRepository()
 
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
 	authService := services.NewAuthService(db, userRepo, branchRepo, refreshTokenRepo, tokenService, cfg.Auth, nil)
+	productService := services.NewProductService(db, productRepo, productSynonymRepo,
+		productAlternativeRepo, cfg.Catalog)
 
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
-			Health: handler.NewHealthHandler(db),
-			Auth:   handler.NewAuthHandler(authService),
+			Health:  handler.NewHealthHandler(db),
+			Auth:    handler.NewAuthHandler(authService),
+			Product: handler.NewProductHandler(productService),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
 	)

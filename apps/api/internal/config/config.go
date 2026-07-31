@@ -31,6 +31,7 @@ type Config struct {
 	Server      ServerConfig
 	Database    DatabaseConfig
 	Auth        AuthConfig
+	Catalog     CatalogConfig
 }
 
 // ServerConfig holds the HTTP listener settings.
@@ -67,6 +68,13 @@ type AuthConfig struct {
 	RefreshReuseGrace  time.Duration
 	MaxFailedAttempts  int
 	LockoutDuration    time.Duration
+}
+
+// CatalogConfig holds the catalog listing limits. The cap is what stops a client from
+// asking for the whole catalog in one response.
+type CatalogConfig struct {
+	DefaultPageSize int
+	MaxPageSize     int
 }
 
 // Load resolves the configuration from the environment, applying defaults for
@@ -108,6 +116,10 @@ func Load() (*Config, error) {
 			MaxFailedAttempts:  getInt("AUTH_MAX_FAILED_ATTEMPTS", 5, &problems),
 			LockoutDuration:    getDuration("AUTH_LOCKOUT_MINUTES", 15*time.Minute, &problems),
 		},
+		Catalog: CatalogConfig{
+			DefaultPageSize: getInt("CATALOG_DEFAULT_PAGE_SIZE", 50, &problems),
+			MaxPageSize:     getInt("CATALOG_MAX_PAGE_SIZE", 200, &problems),
+		},
 	}
 
 	if cfg.Database.URL == "" {
@@ -123,6 +135,15 @@ func Load() (*Config, error) {
 	if len(cfg.Auth.JWTSecret) < minJWTSecretLength {
 		problems = append(problems, fmt.Sprintf("AUTH_JWT_SECRET must be at least %d characters, got %d",
 			minJWTSecretLength, len(cfg.Auth.JWTSecret)))
+	}
+
+	if cfg.Catalog.DefaultPageSize < 1 {
+		problems = append(problems, fmt.Sprintf("CATALOG_DEFAULT_PAGE_SIZE must be at least 1, got %d",
+			cfg.Catalog.DefaultPageSize))
+	}
+	if cfg.Catalog.DefaultPageSize > cfg.Catalog.MaxPageSize {
+		problems = append(problems, fmt.Sprintf("CATALOG_DEFAULT_PAGE_SIZE (%d) exceeds CATALOG_MAX_PAGE_SIZE (%d)",
+			cfg.Catalog.DefaultPageSize, cfg.Catalog.MaxPageSize))
 	}
 
 	// A production deploy pointing the request pool at the owner role would silently
