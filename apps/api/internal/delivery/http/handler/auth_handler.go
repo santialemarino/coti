@@ -32,9 +32,7 @@ func NewAuthHandler(auth AuthService) *AuthHandler {
 // while an account is locked out.
 //
 //	@Summary		Log in
-//	@Description	Exchanges credentials for an access token and a refresh token. A bad
-//	@Description	email, a bad password, and a disabled user all answer 401 alike, on
-//	@Description	purpose. The refresh token is shown exactly once — only its hash is kept.
+//	@Description	A bad email, a bad password and a disabled user all answer 401 alike. The refresh token is shown exactly once.
 //	@Tags			auth
 //	@Accept			json
 //	@Produce		json
@@ -67,9 +65,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // unknown, expired, revoked, or reused past the grace window.
 //
 //	@Summary		Rotate a refresh token
-//	@Description	Consumes the presented refresh token and mints its successor in the same
-//	@Description	family. Replaying a consumed token inside the grace window is treated as
-//	@Description	a benign race; past it, the whole family is revoked as theft.
+//	@Description	Replaying a consumed token inside the grace window is a benign race; past it, the whole family is revoked as theft.
 //	@Tags			auth
 //	@Accept			json
 //	@Produce		json
@@ -98,10 +94,7 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 // refresh family. Returns 204.
 //
 //	@Summary		Log out
-//	@Description	Advances the session epoch, which invalidates every outstanding access
-//	@Description	token for the user, and revokes the presented refresh family. The body is
-//	@Description	optional: a client that lost its refresh token must still be able to end
-//	@Description	the session.
+//	@Description	Advances the session epoch and revokes the presented refresh family. The body is optional.
 //	@Tags			auth
 //	@Accept			json
 //	@Produce		json

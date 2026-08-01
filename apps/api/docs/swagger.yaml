@@ -297,18 +297,15 @@ definitions:
     type: object
 info:
   contact: {}
-  description: |-
-    Every /v1 route outside /public needs an access token. The active
-    branch is not a token claim: it travels in the X-Branch-Id header
-    and is validated per request.
+  description: Every /v1 route outside /public needs an access token. The active branch
+    travels in the X-Branch-Id header, not in the token, and is validated per request.
   title: Coti API
   version: "1.0"
 paths:
   /health:
     get:
-      description: |-
-        Reports that the process is up. Checks no dependency, so a failing
-        database does not get the container restarted.
+      description: Checks no dependency, so a failing database does not restart the
+        container.
       produces:
       - application/json
       responses:
@@ -321,9 +318,8 @@ paths:
       - health
   /ready:
     get:
-      description: |-
-        Reports whether the process can serve traffic, which means both database
-        pools answer.
+      description: 'Reports whether the process can serve traffic: both database pools
+        answer.'
       produces:
       - application/json
       responses:
@@ -342,11 +338,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: |-
-        Advances the session epoch, which invalidates every outstanding access
-        token for the user, and revokes the presented refresh family. The body is
-        optional: a client that lost its refresh token must still be able to end
-        the session.
+      description: Advances the session epoch and revokes the presented refresh family.
+        The body is optional.
       parameters:
       - description: Refresh token to revoke
         in: body
@@ -369,9 +362,8 @@ paths:
       - auth
   /v1/products:
     get:
-      description: |-
-        Returns one page of the account's catalog, ordered by name. Soft-deleted
-        items are hidden unless include_inactive is set.
+      description: Ordered by name. Soft-deleted items are hidden unless include_inactive
+        is set.
       parameters:
       - description: Case-insensitive match on canonical name or code
         in: query
@@ -417,9 +409,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: |-
-        Creates an account-level catalog item. Availability, stock, and price are
-        set per branch by their own endpoints.
+      description: Availability, stock and price are set per branch by their own endpoints.
       parameters:
       - description: Product to create
         in: body
@@ -457,9 +447,8 @@ paths:
       - catalog
   /v1/products/{productId}:
     delete:
-      description: |-
-        Soft delete: the row survives because quote and price history point at
-        it. Repeating the call is harmless.
+      description: 'Soft delete: the row survives because quote and price history
+        point at it. Repeating is harmless.'
       parameters:
       - description: Product id
         in: path
@@ -522,9 +511,8 @@ paths:
     put:
       consumes:
       - application/json
-      description: |-
-        Replaces the editable attributes: an omitted nullable field clears the
-        column. is_active is the exception — omitted leaves it untouched.
+      description: Replaces the editable attributes, so an omitted nullable field
+        clears the column. is_active is the exception.
       parameters:
       - description: Product id
         in: path
@@ -571,10 +559,8 @@ paths:
       - catalog
   /v1/products/{productId}/alternatives:
     get:
-      description: |-
-        direction picks which end of the relation to read: OUTGOING is what can
-        be offered instead of this product, INCOMING is what this product stands
-        in for. Defaults to OUTGOING.
+      description: 'direction picks the end to read: OUTGOING what can replace this
+        product, INCOMING what it replaces. Defaults to OUTGOING.'
       parameters:
       - description: Product id
         in: path
@@ -615,9 +601,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: |-
-        The product in the path is the base. type says what the alternative is
-        relative to it: EQUIVALENT, PREMIUM, or ECONOMY.
+      description: The product in the path is the base; type is EQUIVALENT, PREMIUM
+        or ECONOMY.
       parameters:
       - description: Base product id
         in: path
@@ -700,9 +685,8 @@ paths:
       - catalog
   /v1/products/{productId}/availability:
     get:
-      description: |-
-        Returns the active branch's row when the request carries X-Branch-Id, and
-        every branch of the account when it does not.
+      description: Returns the active branch's row when X-Branch-Id is present, every
+        branch of the account otherwise.
       parameters:
       - description: Product id
         in: path
@@ -740,9 +724,8 @@ paths:
     put:
       consumes:
       - application/json
-      description: |-
-        Creates the branch's row or updates it. Deactivating is how a branch stops
-        offering an item the account still catalogs.
+      description: Creates the branch's row or updates it. Deactivating stops the
+        branch offering an item the account still catalogs.
       parameters:
       - description: Product id
         in: path
@@ -790,9 +773,8 @@ paths:
       - catalog
   /v1/products/{productId}/prices:
     get:
-      description: |-
-        Every validity period, newest first, open and closed. Scoped to the active
-        branch when the request carries X-Branch-Id, account-wide otherwise.
+      description: Every validity period, open and closed. Scoped to X-Branch-Id when
+        present, account-wide otherwise.
       parameters:
       - description: Product id
         in: path
@@ -830,11 +812,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: |-
-        Opens a new validity period and closes the previous one at the same
-        instant. Nothing is overwritten, so the history of what was quoted when
-        survives. min_price is the floor the discount engine may not cross, so it
-        cannot exceed price.
+      description: Opens a new validity period and closes the previous one at the
+        same instant. min_price cannot exceed price.
       parameters:
       - description: Product id
         in: path
@@ -917,9 +896,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: |-
-        source records where the term came from: MANUAL for one a person loaded,
-        LEARNED for one the matching pipeline proposed. Defaults to MANUAL.
+      description: source is MANUAL for a term a person loaded or LEARNED for one
+        the pipeline proposed. Defaults to MANUAL.
       parameters:
       - description: Product id
         in: path
@@ -1003,10 +981,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: |-
-        Exchanges credentials for an access token and a refresh token. A bad
-        email, a bad password, and a disabled user all answer 401 alike, on
-        purpose. The refresh token is shown exactly once — only its hash is kept.
+      description: A bad email, a bad password and a disabled user all answer 401
+        alike. The refresh token is shown exactly once.
       parameters:
       - description: Credentials
         in: body
@@ -1040,10 +1016,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: |-
-        Consumes the presented refresh token and mints its successor in the same
-        family. Replaying a consumed token inside the grace window is treated as
-        a benign race; past it, the whole family is revoked as theft.
+      description: Replaying a consumed token inside the grace window is a benign
+        race; past it, the whole family is revoked as theft.
       parameters:
       - description: Refresh token
         in: body

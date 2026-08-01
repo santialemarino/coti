@@ -34,8 +34,7 @@ func NewBranchCatalogHandler(catalog BranchCatalogService) *BranchCatalogHandler
 // ListAvailability returns where the product is sold and with how much stock.
 //
 //	@Summary		List per-branch availability
-//	@Description	Returns the active branch's row when the request carries X-Branch-Id, and
-//	@Description	every branch of the account when it does not.
+//	@Description	Returns the active branch's row when X-Branch-Id is present, every branch of the account otherwise.
 //	@Tags			catalog
 //	@Produce		json
 //	@Security		BearerAuth
@@ -72,8 +71,7 @@ func (h *BranchCatalogHandler) ListAvailability(c *gin.Context) {
 // SetAvailability records whether the active branch sells the product, and with how much stock.
 //
 //	@Summary		Set per-branch availability
-//	@Description	Creates the branch's row or updates it. Deactivating is how a branch stops
-//	@Description	offering an item the account still catalogs.
+//	@Description	Creates the branch's row or updates it. Deactivating stops the branch offering an item the account still catalogs.
 //	@Tags			catalog
 //	@Accept			json
 //	@Produce		json
@@ -125,8 +123,7 @@ func (h *BranchCatalogHandler) SetAvailability(c *gin.Context) {
 // ListPrices returns the product's price history.
 //
 //	@Summary		List per-branch price history
-//	@Description	Every validity period, newest first, open and closed. Scoped to the active
-//	@Description	branch when the request carries X-Branch-Id, account-wide otherwise.
+//	@Description	Every validity period, open and closed. Scoped to X-Branch-Id when present, account-wide otherwise.
 //	@Tags			catalog
 //	@Produce		json
 //	@Security		BearerAuth
@@ -163,10 +160,7 @@ func (h *BranchCatalogHandler) ListPrices(c *gin.Context) {
 // SetPrice prices the product at the active branch.
 //
 //	@Summary		Set a per-branch price
-//	@Description	Opens a new validity period and closes the previous one at the same
-//	@Description	instant. Nothing is overwritten, so the history of what was quoted when
-//	@Description	survives. min_price is the floor the discount engine may not cross, so it
-//	@Description	cannot exceed price.
+//	@Description	Opens a new validity period and closes the previous one at the same instant. min_price cannot exceed price.
 //	@Tags			catalog
 //	@Accept			json
 //	@Produce		json
