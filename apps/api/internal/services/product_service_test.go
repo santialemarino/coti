@@ -33,6 +33,7 @@ type fakeProducts struct {
 	created []domain.NewProduct
 	updated []domain.ProductUpdate
 	deleted []uuid.UUID
+	locked  []uuid.UUID
 }
 
 func newFakeProducts(ids ...uuid.UUID) *fakeProducts {
@@ -58,6 +59,13 @@ func (f *fakeProducts) GetByID(
 		return nil, domain.ErrNotFound
 	}
 	return &p, nil
+}
+
+func (f *fakeProducts) GetByIDForUpdate(
+	ctx context.Context, q repository.Querier, accountID, id uuid.UUID,
+) (*domain.Product, error) {
+	f.locked = append(f.locked, id)
+	return f.GetByID(ctx, q, accountID, id)
 }
 
 func (f *fakeProducts) Create(

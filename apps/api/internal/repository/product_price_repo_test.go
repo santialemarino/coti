@@ -122,6 +122,78 @@ func TestProductPriceRepository_UpdateOpensAPeriodAndClosesThePrevious(t *testin
 	}
 }
 
+// Two repricings racing on the same product must still leave exactly one open period. The
+// lock GetByIDForUpdate takes is what holds the second back; without it both read the same
+// open period, the loser's close reaches nothing, and each opens one.
+func TestProductPriceRepository_ConcurrentRepricingLeavesOneOpenPeriod(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountA := seedAccount(t, db, "Corralon A")
+	branchA := branchOf(t, db, accountA)
+	productA := seedProduct(t, db, accountA, "Cemento Portland 50kg")
+	priceCleanup(t, db, productA)
+
+	products := NewProductRepository()
+	prices := NewProductPriceRepository()
+	tenant := domain.Tenant{AccountID: accountA}
+	firstStart := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	repricedAt := firstStart.Add(24 * time.Hour)
+
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		_, err := prices.Create(ctx, q, accountA, branchA, productA, nil, domain.NewProductPrice{
+			Price: decimal.RequireFromString("8500.00"), Currency: domain.DefaultCurrency,
+			ValidFrom: firstStart,
+		})
+		return err
+	}); err != nil {
+		t.Fatalf("Create() = %v, want no error", err)
+	}
+
+	// What BranchCatalogService.SetPrice runs, with a pause wide enough that both
+	// transactions would read the same open period if nothing held one of them back.
+	reprice := func(price string) error {
+		return db.InTenantTx(ctx, tenant, func(q Querier) error {
+			if _, err := products.GetByIDForUpdate(ctx, q, accountA, productA); err != nil {
+				return err
+			}
+			time.Sleep(200 * time.Millisecond)
+			if _, err := prices.GetOpenPeriod(ctx, q, accountA, branchA, productA); err != nil {
+				return err
+			}
+			if _, err := prices.CloseOpenPeriod(ctx, q, accountA, branchA, productA, repricedAt); err != nil {
+				return err
+			}
+			_, err := prices.Create(ctx, q, accountA, branchA, productA, nil, domain.NewProductPrice{
+				Price: decimal.RequireFromString(price), Currency: domain.DefaultCurrency,
+				ValidFrom: repricedAt,
+			})
+			return err
+		})
+	}
+
+	errs := make(chan error, 2)
+	go func() { errs <- reprice("9100.00") }()
+	go func() { errs <- reprice("9200.00") }()
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatalf("reprice = %v, want no error", err)
+		}
+	}
+
+	var open int
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		return q.QueryRow(ctx,
+			`SELECT count(*) FROM product_price
+			 WHERE product_id = $1 AND branch_id = $2 AND valid_to IS NULL`,
+			productA, branchA).Scan(&open)
+	}); err != nil {
+		t.Fatalf("count open periods = %v, want no error", err)
+	}
+	if open != 1 {
+		t.Errorf("open periods after two concurrent repricings = %d, want exactly 1", open)
+	}
+}
+
 func TestProductPriceRepository_GetOpenPeriod(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()
