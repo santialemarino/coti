@@ -22,10 +22,8 @@ func NewBranchProductRepository() *BranchProductRepository {
 	return &BranchProductRepository{}
 }
 
-// ListByProduct returns the product's availability rows, one per branch that has one.
-//
-// A nil branchID reads every branch of the account, which is what an admin comparing
-// branches asks for; a set one narrows to the request's active branch.
+// ListByProduct returns the product's availability rows. A nil branchID reads every branch
+// of the account; a set one narrows to it.
 func (r *BranchProductRepository) ListByProduct(
 	ctx context.Context, q Querier, accountID, productID uuid.UUID, branchID *uuid.UUID,
 ) ([]domain.BranchProduct, error) {
@@ -53,12 +51,8 @@ func (r *BranchProductRepository) ListByProduct(
 	return availability, rows.Err()
 }
 
-// Save sets whether a branch carries the product and with how much stock, inserting the
-// row or updating the existing one.
-//
-// The conflict target is uq_branch_product, the schema's own unique constraint over
-// (branch_id, product_id): one availability row per branch and product, so the caller
-// never has to know whether this is the first time.
+// Save sets whether a branch carries the product and with how much stock, upserting on
+// uq_branch_product so the caller never has to know whether the row exists.
 func (r *BranchProductRepository) Save(
 	ctx context.Context, q Querier, accountID, branchID, productID uuid.UUID,
 	in domain.BranchAvailability,

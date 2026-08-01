@@ -8,9 +8,8 @@ import (
 
 // AppUser is a seller or admin belonging to one account.
 //
-// SessionEpoch backs immediate logout: it is embedded in every access token, and
-// bumping it invalidates every outstanding token for the user without a blacklist.
-// LockedUntil closes out FailedAttempts — the counter alone cannot express a lockout.
+// SessionEpoch backs immediate logout: it rides in every access token, so bumping it
+// invalidates every outstanding one without a blacklist.
 type AppUser struct {
 	ID             uuid.UUID
 	AccountID      uuid.UUID

@@ -27,10 +27,8 @@ func NewProductRepository() *ProductRepository {
 	return &ProductRepository{}
 }
 
-// List returns one page of the account's catalog plus the total the filter matches.
-//
-// The total comes from a window function rather than a second COUNT query: one round
-// trip, and the count cannot disagree with the page it describes.
+// List returns one page of the account's catalog plus the total the filter matches. The
+// total is a window function, so it cannot disagree with the page it describes.
 func (r *ProductRepository) List(
 	ctx context.Context, q Querier, accountID uuid.UUID, f domain.ProductFilter,
 ) (domain.ProductPage, error) {
@@ -100,11 +98,8 @@ func (r *ProductRepository) Create(
 	return p, err
 }
 
-// Update replaces the product's editable attributes and returns the stored row.
-//
-// A nil IsActive keeps the current flag, so an edit cannot silently revive a
-// soft-deleted item. Returns domain.ErrNotFound if the product is not in the account,
-// domain.ErrConflict on a duplicate code.
+// Update replaces the product's editable attributes and returns the stored row. A nil
+// IsActive keeps the current flag, so an edit cannot silently revive a soft-deleted item.
 func (r *ProductRepository) Update(
 	ctx context.Context, q Querier, accountID, id uuid.UUID, in domain.ProductUpdate,
 ) (*domain.Product, error) {
@@ -122,8 +117,8 @@ func (r *ProductRepository) Update(
 	return p, err
 }
 
-// Delete deactivates the product. It is a soft delete because quote items and price
-// history keep pointing at the row, so removing it would rewrite closed history.
+// Delete deactivates the product. Soft, because quote items and price history point at the
+// row and removing it would rewrite closed history.
 func (r *ProductRepository) Delete(ctx context.Context, q Querier, accountID, id uuid.UUID) error {
 	tag, err := q.Exec(ctx,
 		`UPDATE product SET is_active = FALSE WHERE account_id = $1 AND id = $2`,

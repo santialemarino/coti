@@ -3,9 +3,7 @@
 //
 //	@title						Coti API
 //	@version					1.0
-//	@description				Every /v1 route outside /public needs an access token. The active
-//	@description				branch is not a token claim: it travels in the X-Branch-Id header
-//	@description				and is validated per request.
+//	@description				Every /v1 route outside /public needs an access token. The active branch travels in the X-Branch-Id header, not in the token, and is validated per request.
 //	@BasePath					/
 //	@securityDefinitions.apikey	BearerAuth
 //	@in							header

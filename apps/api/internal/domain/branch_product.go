@@ -8,10 +8,7 @@ import (
 )
 
 // BranchProduct is a product's commercial availability at one branch: whether the branch
-// sells it, and with how much stock.
-//
-// It is the per-branch face of an account-scoped catalog — the product row itself says
-// nothing about who carries it. Price lives in ProductPrice, not here.
+// sells it, and with how much stock. Price lives in ProductPrice, not here.
 type BranchProduct struct {
 	ID        uuid.UUID
 	AccountID uuid.UUID

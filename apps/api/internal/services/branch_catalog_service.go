@@ -13,9 +13,8 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
 
-// moneyMax is the largest value NUMERIC(14,2) holds — 12 integer digits and two decimals.
-// Like domain.MoneyScale it is a schema fact: a value past it is rejected here rather than
-// blowing up in the database as a 500.
+// moneyMax is the largest value NUMERIC(14,2) holds. Rejecting past it here keeps an extra
+// typed digit from becoming a 500.
 var moneyMax = decimal.RequireFromString("999999999999.99")
 
 // productLookup is the product read the per-branch use cases need: the in-account check that
@@ -86,8 +85,6 @@ func (s *BranchCatalogService) ListAvailability(
 
 // SetAvailability records whether the active branch sells the product and with how much
 // stock, creating the row or updating it.
-//
-// Deactivating is how a branch stops offering an item the account still catalogs.
 func (s *BranchCatalogService) SetAvailability(
 	ctx context.Context, tenant domain.Tenant, productID uuid.UUID, in domain.BranchAvailability,
 ) (*domain.BranchProduct, error) {
@@ -137,13 +134,10 @@ func (s *BranchCatalogService) ListPrices(
 
 // SetPrice prices the product at the active branch by opening a new validity period.
 //
-// It never overwrites: the open period is closed at the instant the new one starts, and a
-// new row is inserted, in one transaction serialized on the product row. That is what keeps
-// the history of what was quoted when — a quote frozen last month has to stay explainable.
-//
-// min_price is the floor the deterministic discount engine may not cross, so it cannot
-// exceed the price it floors. Returns domain.ErrInvalidInput when the amounts do not hold
-// up or when valid_from would start the new period before the one it replaces.
+// It never overwrites: the open period is closed at the instant the new one starts and a
+// new row is inserted, in one transaction serialized on the product row, so a quote frozen
+// last month stays explainable. Returns domain.ErrInvalidInput when the amounts do not hold
+// up or when valid_from would precede the period it replaces.
 func (s *BranchCatalogService) SetPrice(
 	ctx context.Context, tenant domain.Tenant, productID uuid.UUID, in domain.NewProductPrice,
 ) (*domain.ProductPrice, error) {
@@ -215,9 +209,8 @@ func branchFilter(tenant domain.Tenant) *uuid.UUID {
 	return &branchID
 }
 
-// requireBranch rejects a per-branch write that arrived without an active branch. Writing
-// availability or a price to a guessed branch is never right, so the request has to name
-// one through the X-Branch-Id header.
+// requireBranch rejects a per-branch write that arrived without an active branch: a
+// guessed branch would price the wrong one.
 func requireBranch(tenant domain.Tenant, what string) error {
 	if !tenant.HasBranch() {
 		return fmt.Errorf("%w: setting %s needs an active branch, sent as the X-Branch-Id header",
@@ -226,11 +219,8 @@ func requireBranch(tenant domain.Tenant, what string) error {
 	return nil
 }
 
-// validateAmount rejects what NUMERIC(14,2) cannot hold exactly, plus negatives.
-//
-// Without the scale check the database would round a third decimal away silently, which on
-// money is a defect and not a rounding preference; without the range check an extra typed
-// digit becomes a 500 instead of a message the seller can act on.
+// validateAmount rejects what NUMERIC(14,2) cannot hold exactly, plus negatives. The scale
+// check matters because the database would round a third decimal away silently.
 func validateAmount(amount decimal.Decimal, field string) error {
 	if amount.IsNegative() {
 		return fmt.Errorf("%w: %s cannot be negative", domain.ErrInvalidInput, field)

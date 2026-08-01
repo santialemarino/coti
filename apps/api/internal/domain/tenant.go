@@ -14,13 +14,10 @@ const (
 	UserRoleSeller UserRole = "SELLER"
 )
 
-// Tenant is the authenticated caller's scope, resolved once per request from the
-// access token and the active branch selection.
+// Tenant is the authenticated caller's scope, resolved once per request.
 //
-// AccountID is the hard boundary: it feeds the per-transaction GUC that row level
-// security enforces. BranchID is the soft one — an admin legitimately reads across
-// the branches of their own account, so branch filtering stays in the services and
-// is empty when the caller is operating account-wide.
+// AccountID is the hard boundary — it feeds the per-transaction GUC row level security
+// reads. BranchID is the soft one, filtered in the services, and empty account-wide.
 type Tenant struct {
 	AccountID uuid.UUID
 	UserID    uuid.UUID
@@ -38,8 +35,7 @@ func (t Tenant) HasBranch() bool {
 	return t.BranchID != uuid.Nil
 }
 
-// Branch is an operating location under an account. Quotes, RFQs, channels, and per-branch
-// pricing hang off it.
+// Branch is an operating location under an account.
 type Branch struct {
 	ID                uuid.UUID
 	AccountID         uuid.UUID

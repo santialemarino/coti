@@ -180,12 +180,11 @@ func (s *ProductService) ListSynonyms(
 	return synonyms, nil
 }
 
-// AddSynonym attaches a colloquial term to a product.
+// AddSynonym attaches a colloquial term to a product. Returns domain.ErrConflict when the
+// product already carries it.
 //
-// The product is loaded inside the tenant scope first, and that read is load-bearing:
-// foreign keys are checked with row level security bypassed, so an id from another
-// account would link fine and leave the term hanging off a product this account cannot
-// see. Returns domain.ErrConflict when the product already carries the term.
+// Reading the product inside the tenant scope first is load-bearing: foreign keys are
+// checked with row level security bypassed, so another account's id would link fine.
 func (s *ProductService) AddSynonym(
 	ctx context.Context, tenant domain.Tenant, productID uuid.UUID, term string,
 	source domain.SynonymSource,
@@ -222,8 +221,7 @@ func (s *ProductService) RemoveSynonym(
 }
 
 // ListAlternatives returns the product's alternative links from the requested end of the
-// relation: OUTGOING is what can be offered instead of it, INCOMING is what it stands in
-// for. One method for both readings, because both callers want the same join.
+// relation: OUTGOING is what can be offered instead of it, INCOMING what it stands in for.
 func (s *ProductService) ListAlternatives(
 	ctx context.Context, tenant domain.Tenant, productID uuid.UUID,
 	direction domain.AlternativeDirection,
@@ -247,12 +245,10 @@ func (s *ProductService) ListAlternatives(
 	return views, nil
 }
 
-// AddAlternative links a base product to an alternative, typed as equivalent, premium, or
-// economy.
+// AddAlternative links a base product to an alternative. A product cannot be its own.
 //
-// Both products are read inside the tenant scope before the link is written: a foreign
-// key alone would accept another account's product, since constraint checks bypass row
-// level security. A product cannot be its own alternative.
+// Both ends are read inside the tenant scope first: a foreign key alone would accept
+// another account's product, since constraint checks bypass row level security.
 func (s *ProductService) AddAlternative(
 	ctx context.Context, tenant domain.Tenant, baseProductID, alternativeProductID uuid.UUID,
 	alternativeType domain.ProductAlternativeType,
@@ -309,11 +305,9 @@ func requiredText(raw, field string) (string, error) {
 	return trimmed, nil
 }
 
-// optionalText trims a nullable field and collapses an empty result to NULL.
-//
-// The collapse matters for product.code: its unique index is partial on NOT NULL, so two
-// products carrying an empty-string code would collide, while two carrying NULL are
-// exactly what an unnumbered catalog looks like.
+// optionalText trims a nullable field and collapses an empty result to NULL. The collapse
+// matters for product.code: its unique index is partial on NOT NULL, so two empty strings
+// would collide where two NULLs do not.
 func optionalText(raw *string) *string {
 	if raw == nil {
 		return nil

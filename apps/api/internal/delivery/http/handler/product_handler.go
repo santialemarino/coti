@@ -39,8 +39,7 @@ func NewProductHandler(products ProductService) *ProductHandler {
 // List returns one page of the account's catalog.
 //
 //	@Summary		List products
-//	@Description	Returns one page of the account's catalog, ordered by name. Soft-deleted
-//	@Description	items are hidden unless include_inactive is set.
+//	@Description	Ordered by name. Soft-deleted items are hidden unless include_inactive is set.
 //	@Tags			catalog
 //	@Produce		json
 //	@Security		BearerAuth
@@ -122,8 +121,7 @@ func (h *ProductHandler) Get(c *gin.Context) {
 // Create adds a catalog item to the account.
 //
 //	@Summary		Create a product
-//	@Description	Creates an account-level catalog item. Availability, stock, and price are
-//	@Description	set per branch by their own endpoints.
+//	@Description	Availability, stock and price are set per branch by their own endpoints.
 //	@Tags			catalog
 //	@Accept			json
 //	@Produce		json
@@ -164,8 +162,7 @@ func (h *ProductHandler) Create(c *gin.Context) {
 // Update replaces a catalog item's editable attributes.
 //
 //	@Summary		Update a product
-//	@Description	Replaces the editable attributes: an omitted nullable field clears the
-//	@Description	column. is_active is the exception — omitted leaves it untouched.
+//	@Description	Replaces the editable attributes, so an omitted nullable field clears the column. is_active is the exception.
 //	@Tags			catalog
 //	@Accept			json
 //	@Produce		json
@@ -213,8 +210,7 @@ func (h *ProductHandler) Update(c *gin.Context) {
 // Delete deactivates a catalog item.
 //
 //	@Summary		Deactivate a product
-//	@Description	Soft delete: the row survives because quote and price history point at
-//	@Description	it. Repeating the call is harmless.
+//	@Description	Soft delete: the row survives because quote and price history point at it. Repeating is harmless.
 //	@Tags			catalog
 //	@Produce		json
 //	@Security		BearerAuth
@@ -280,8 +276,7 @@ func (h *ProductHandler) ListSynonyms(c *gin.Context) {
 // AddSynonym attaches a colloquial term to a product.
 //
 //	@Summary		Add a product synonym
-//	@Description	source records where the term came from: MANUAL for one a person loaded,
-//	@Description	LEARNED for one the matching pipeline proposed. Defaults to MANUAL.
+//	@Description	source is MANUAL for a term a person loaded or LEARNED for one the pipeline proposed. Defaults to MANUAL.
 //	@Tags			catalog
 //	@Accept			json
 //	@Produce		json
@@ -357,9 +352,7 @@ func (h *ProductHandler) RemoveSynonym(c *gin.Context) {
 // ListAlternatives returns the products linked to this one as alternatives.
 //
 //	@Summary		List product alternatives
-//	@Description	direction picks which end of the relation to read: OUTGOING is what can
-//	@Description	be offered instead of this product, INCOMING is what this product stands
-//	@Description	in for. Defaults to OUTGOING.
+//	@Description	direction picks the end to read: OUTGOING what can replace this product, INCOMING what it replaces. Defaults to OUTGOING.
 //	@Tags			catalog
 //	@Produce		json
 //	@Security		BearerAuth
@@ -414,8 +407,7 @@ func (h *ProductHandler) ListAlternatives(c *gin.Context) {
 // AddAlternative links a product to another that can stand in for it.
 //
 //	@Summary		Add a product alternative
-//	@Description	The product in the path is the base. type says what the alternative is
-//	@Description	relative to it: EQUIVALENT, PREMIUM, or ECONOMY.
+//	@Description	The product in the path is the base; type is EQUIVALENT, PREMIUM or ECONOMY.
 //	@Tags			catalog
 //	@Accept			json
 //	@Produce		json

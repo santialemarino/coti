@@ -17,7 +17,7 @@ const docTemplate = `{
     "paths": {
         "/health": {
             "get": {
-                "description": "Reports that the process is up. Checks no dependency, so a failing\ndatabase does not get the container restarted.",
+                "description": "Checks no dependency, so a failing database does not restart the container.",
                 "produces": [
                     "application/json"
                 ],
@@ -37,7 +37,7 @@ const docTemplate = `{
         },
         "/ready": {
             "get": {
-                "description": "Reports whether the process can serve traffic, which means both database\npools answer.",
+                "description": "Reports whether the process can serve traffic: both database pools answer.",
                 "produces": [
                     "application/json"
                 ],
@@ -68,7 +68,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Advances the session epoch, which invalidates every outstanding access\ntoken for the user, and revokes the presented refresh family. The body is\noptional: a client that lost its refresh token must still be able to end\nthe session.",
+                "description": "Advances the session epoch and revokes the presented refresh family. The body is optional.",
                 "consumes": [
                     "application/json"
                 ],
@@ -109,7 +109,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Returns one page of the account's catalog, ordered by name. Soft-deleted\nitems are hidden unless include_inactive is set.",
+                "description": "Ordered by name. Soft-deleted items are hidden unless include_inactive is set.",
                 "produces": [
                     "application/json"
                 ],
@@ -176,7 +176,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Creates an account-level catalog item. Availability, stock, and price are\nset per branch by their own endpoints.",
+                "description": "Availability, stock and price are set per branch by their own endpoints.",
                 "consumes": [
                     "application/json"
                 ],
@@ -288,7 +288,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Replaces the editable attributes: an omitted nullable field clears the\ncolumn. is_active is the exception — omitted leaves it untouched.",
+                "description": "Replaces the editable attributes, so an omitted nullable field clears the column. is_active is the exception.",
                 "consumes": [
                     "application/json"
                 ],
@@ -362,7 +362,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Soft delete: the row survives because quote and price history point at\nit. Repeating the call is harmless.",
+                "description": "Soft delete: the row survives because quote and price history point at it. Repeating is harmless.",
                 "produces": [
                     "application/json"
                 ],
@@ -411,7 +411,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "direction picks which end of the relation to read: OUTGOING is what can\nbe offered instead of this product, INCOMING is what this product stands\nin for. Defaults to OUTGOING.",
+                "description": "direction picks the end to read: OUTGOING what can replace this product, INCOMING what it replaces. Defaults to OUTGOING.",
                 "produces": [
                     "application/json"
                 ],
@@ -471,7 +471,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "The product in the path is the base. type says what the alternative is\nrelative to it: EQUIVALENT, PREMIUM, or ECONOMY.",
+                "description": "The product in the path is the base; type is EQUIVALENT, PREMIUM or ECONOMY.",
                 "consumes": [
                     "application/json"
                 ],
@@ -603,7 +603,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Returns the active branch's row when the request carries X-Branch-Id, and\nevery branch of the account when it does not.",
+                "description": "Returns the active branch's row when X-Branch-Id is present, every branch of the account otherwise.",
                 "produces": [
                     "application/json"
                 ],
@@ -659,7 +659,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Creates the branch's row or updates it. Deactivating is how a branch stops\noffering an item the account still catalogs.",
+                "description": "Creates the branch's row or updates it. Deactivating stops the branch offering an item the account still catalogs.",
                 "consumes": [
                     "application/json"
                 ],
@@ -736,7 +736,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Every validity period, newest first, open and closed. Scoped to the active\nbranch when the request carries X-Branch-Id, account-wide otherwise.",
+                "description": "Every validity period, open and closed. Scoped to X-Branch-Id when present, account-wide otherwise.",
                 "produces": [
                     "application/json"
                 ],
@@ -792,7 +792,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Opens a new validity period and closes the previous one at the same\ninstant. Nothing is overwritten, so the history of what was quoted when\nsurvives. min_price is the floor the discount engine may not cross, so it\ncannot exceed price.",
+                "description": "Opens a new validity period and closes the previous one at the same instant. min_price cannot exceed price.",
                 "consumes": [
                     "application/json"
                 ],
@@ -919,7 +919,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "source records where the term came from: MANUAL for one a person loaded,\nLEARNED for one the matching pipeline proposed. Defaults to MANUAL.",
+                "description": "source is MANUAL for a term a person loaded or LEARNED for one the pipeline proposed. Defaults to MANUAL.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1045,7 +1045,7 @@ const docTemplate = `{
         },
         "/v1/public/auth/login": {
             "post": {
-                "description": "Exchanges credentials for an access token and a refresh token. A bad\nemail, a bad password, and a disabled user all answer 401 alike, on\npurpose. The refresh token is shown exactly once — only its hash is kept.",
+                "description": "A bad email, a bad password and a disabled user all answer 401 alike. The refresh token is shown exactly once.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1097,7 +1097,7 @@ const docTemplate = `{
         },
         "/v1/public/auth/refresh": {
             "post": {
-                "description": "Consumes the presented refresh token and mints its successor in the same\nfamily. Replaying a consumed token inside the grace window is treated as\na benign race; past it, the whole family is revoked as theft.",
+                "description": "Replaying a consumed token inside the grace window is a benign race; past it, the whole family is revoked as theft.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1607,7 +1607,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "/",
 	Schemes:          []string{},
 	Title:            "Coti API",
-	Description:      "Every /v1 route outside /public needs an access token. The active\nbranch is not a token claim: it travels in the X-Branch-Id header\nand is validated per request.",
+	Description:      "Every /v1 route outside /public needs an access token. The active branch travels in the X-Branch-Id header, not in the token, and is validated per request.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

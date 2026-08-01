@@ -16,14 +16,11 @@ func NewBranchRepository() *BranchRepository {
 	return &BranchRepository{}
 }
 
-// IsAccessibleBy reports whether the branch exists in the account, is active, and the
-// user may operate on it.
+// IsAccessibleBy reports whether the branch exists in the account, is active, and the user
+// may operate on it. A seller needs a user_branch row; an admin skips that check.
 //
-// A seller needs a `user_branch` row; an admin operates across the whole account, so the
-// assignment check is skipped for them. This is the only thing standing between a caller
-// and another branch's data: branch scoping is enforced in the application by design —
-// row level security guards the account boundary, not the branch one — so an unvalidated
-// branch id from a request would be trusted all the way down.
+// It is the only thing standing between a caller and another branch's data: row level
+// security guards the account boundary, not the branch one.
 func (r *BranchRepository) IsAccessibleBy(
 	ctx context.Context, q Querier, accountID, userID, branchID uuid.UUID, isAdmin bool,
 ) (bool, error) {

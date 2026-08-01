@@ -35,8 +35,7 @@ func NewHealthHandler(db Pinger) *HealthHandler {
 // database should not get the container restarted.
 //
 //	@Summary		Liveness probe
-//	@Description	Reports that the process is up. Checks no dependency, so a failing
-//	@Description	database does not get the container restarted.
+//	@Description	Checks no dependency, so a failing database does not restart the container.
 //	@Tags			health
 //	@Produce		json
 //	@Success		200	{object}	dto.HealthResponse
@@ -49,8 +48,7 @@ func (h *HealthHandler) Live(c *gin.Context) {
 // Returns 503 when they do not.
 //
 //	@Summary		Readiness probe
-//	@Description	Reports whether the process can serve traffic, which means both database
-//	@Description	pools answer.
+//	@Description	Reports whether the process can serve traffic: both database pools answer.
 //	@Tags			health
 //	@Produce		json
 //	@Success		200	{object}	dto.HealthResponse

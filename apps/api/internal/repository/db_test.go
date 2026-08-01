@@ -15,16 +15,8 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
-// These tests prove the row level security wiring end to end from Go: that a
-// tenant-scoped transaction sees only its own account, and that a query with no
-// tenant context sees nothing. Asserting it in psql is not enough — the risk lives in
-// how the pool and the GUC interact.
-//
-// Run with:
-//
-//	TEST_DATABASE_URL=postgres://coti_app:coti_app@localhost:5432/coti?sslmode=disable \
-//	TEST_DATABASE_ADMIN_URL=postgres://coti:coti@localhost:5432/coti?sslmode=disable \
-//	go test -tags=integration ./internal/repository/...
+// These tests prove the row level security wiring end to end from Go. Asserting it in psql
+// is not enough: the risk lives in how the pool and the GUC interact.
 
 func testDB(t *testing.T) *DB {
 	t.Helper()

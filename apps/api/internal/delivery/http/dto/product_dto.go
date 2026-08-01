@@ -25,11 +25,9 @@ type CreateProductRequest struct {
 	Category      *string `json:"category" binding:"omitempty,max=255"`
 }
 
-// UpdateProductRequest is the body for PUT /v1/products/:productId.
-//
-// It replaces the editable attributes: an omitted nullable field clears the column, so
-// the caller sends the item as it should end up. is_active is the exception — omitted
-// leaves the flag alone, which keeps DELETE the only way to deactivate an item.
+// UpdateProductRequest is the body for PUT /v1/products/:productId. It replaces the
+// editable attributes, so an omitted nullable field clears the column. is_active is the
+// exception — omitted leaves the flag alone.
 type UpdateProductRequest struct {
 	Code          *string `json:"code" binding:"omitempty,max=255"`
 	CanonicalName string  `json:"canonical_name" binding:"required,min=1,max=255"`
@@ -96,7 +94,7 @@ type SynonymListResponse struct {
 }
 
 // AlternativeResponse is returned by the alternative list and add endpoints. product is
-// the item on the far end of the link, so a list renders without a follow-up request.
+// the item on the far end of the link.
 type AlternativeResponse struct {
 	ID                   uuid.UUID        `json:"id"`
 	BaseProductID        uuid.UUID        `json:"base_product_id"`

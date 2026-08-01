@@ -46,20 +46,17 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth) *gin
 	r.GET("/health", h.Health.Live)
 	r.GET("/ready", h.Health.Ready)
 
-	// The spec describes an internal API, so it is not published in production. Serving it
-	// there would hand an unauthenticated reader the whole surface for no benefit — the
-	// consumers are this repo's own web apps and whoever is writing them.
+	// The spec describes an internal API: publishing it would hand an unauthenticated
+	// reader the whole surface for no benefit.
 	if !cfg.IsProduction() {
 		r.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
 	}
 
-	// Authenticate runs for every /v1 route and resolves a tenant when a valid token is
-	// present. It does not reject anonymous requests — RequireTenant does — so a public
-	// route can still see who the caller is when they happen to be logged in.
+	// Authenticate resolves a tenant when a valid token is present but does not reject
+	// anonymous requests — RequireTenant does.
 	v1 := r.Group("/v1", middleware.Authenticate(auth.Verifier, auth.Resolver))
 
-	// Works without a session. Each route resolves its own scope before touching
-	// tenant-scoped data.
+	// Works without a session; each route resolves its own scope.
 	public := v1.Group("/public")
 	public.POST("/auth/login", h.Auth.Login)
 	public.POST("/auth/refresh", h.Auth.Refresh)

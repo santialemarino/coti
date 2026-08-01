@@ -15,12 +15,6 @@ import (
 // These tests prove the catalog's account boundary against a real database: the explicit
 // account_id predicate and the row level security policy together, through the restricted
 // role the API actually connects as.
-//
-// Run with:
-//
-//	TEST_DATABASE_URL=postgres://coti_app:coti_app@localhost:5433/coti?sslmode=disable \
-//	TEST_DATABASE_ADMIN_URL=postgres://coti:coti@localhost:5433/coti?sslmode=disable \
-//	go test -tags=integration ./internal/repository/...
 
 // seedProduct inserts a product through the owner pool and removes it when the test ends.
 func seedProduct(t *testing.T, db *DB, accountID uuid.UUID, name string) uuid.UUID {
