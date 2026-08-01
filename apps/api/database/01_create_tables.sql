@@ -789,6 +789,11 @@ CREATE INDEX idx_message_batch_queue ON message_batch(quote_id, closed_at) WHERE
 CREATE UNIQUE INDEX uq_channel_branch_type_no_identifier
   ON channel (branch_id, type) WHERE identifier IS NULL;
 CREATE UNIQUE INDEX uq_quote_version_draft ON quote_version(quote_id) WHERE is_immutable = FALSE;
+-- One open price period per branch and product. The service also takes a FOR UPDATE on the
+-- parent product row, which is what lets two concurrent repricings both succeed; this index
+-- is the backstop that makes a missing lock loud instead of silently duplicating a period.
+CREATE UNIQUE INDEX uq_product_price_open_period
+  ON product_price (branch_id, product_id) WHERE valid_to IS NULL;
 CREATE UNIQUE INDEX uq_message_batch_open ON message_batch(quote_id) WHERE status = 'OPEN';
 CREATE UNIQUE INDEX uq_message_batch_processing ON message_batch(quote_id) WHERE status = 'PROCESSING';
 
