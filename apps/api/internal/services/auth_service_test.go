@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -34,6 +35,7 @@ func testAuthConfig() config.AuthConfig {
 		RefreshReuseGrace:  30 * time.Second,
 		MaxFailedAttempts:  5,
 		LockoutDuration:    15 * time.Minute,
+		PasswordMinLength:  8,
 	}
 }
 
@@ -135,11 +137,21 @@ func (f *fakeTokens) RevokeFamily(_ context.Context, _ repository.Querier, _ uui
 type fakeBranches struct {
 	accessible bool
 	calls      int
+	assigned   []uuid.UUID
+	listCalls  int
 }
 
 func (f *fakeBranches) IsAccessibleBy(_ context.Context, _ repository.Querier, _, _, _ uuid.UUID, _ bool) (bool, error) {
 	f.calls++
 	return f.accessible, nil
+}
+
+func (f *fakeBranches) ListIDsForUser(_ context.Context, _ repository.Querier, _, _ uuid.UUID, _ bool) ([]uuid.UUID, error) {
+	f.listCalls++
+	if f.assigned == nil {
+		return []uuid.UUID{}, nil
+	}
+	return f.assigned, nil
 }
 
 type harness struct {
@@ -531,7 +543,8 @@ func TestResolveTenant_UnknownUser(t *testing.T) {
 	}
 }
 
-// No branch requested means account-wide, and the access check must not even run.
+// No branch requested carries no branch, and the per-branch access check must not run —
+// there is nothing to check.
 func TestResolveTenant_NoBranchRequestedSkipsTheCheck(t *testing.T) {
 	h := newHarness(t, activeUser(t))
 
@@ -544,6 +557,62 @@ func TestResolveTenant_NoBranchRequestedSkipsTheCheck(t *testing.T) {
 	}
 	if h.branches.calls != 0 {
 		t.Errorf("branch check ran %d times with no branch requested, want 0", h.branches.calls)
+	}
+}
+
+// Omitting X-Branch-Id must not widen a seller's reach: their scope becomes the branches
+// they are assigned, so the account-wide read stays an admin capability.
+func TestResolveTenant_SellerWithoutBranchIsConfinedToAssignments(t *testing.T) {
+	h := newHarness(t, activeUser(t))
+	assigned := []uuid.UUID{uuid.New(), uuid.New()}
+	h.branches.assigned = assigned
+
+	tenant, err := h.svc.ResolveTenant(context.Background(), claimsFor(3), uuid.Nil)
+	if err != nil {
+		t.Fatalf("ResolveTenant() = %v, want no error", err)
+	}
+	if h.branches.listCalls != 1 {
+		t.Errorf("assignment lookup ran %d times, want 1", h.branches.listCalls)
+	}
+	if !reflect.DeepEqual(tenant.BranchFilter(), assigned) {
+		t.Errorf("BranchFilter() = %v, want %v", tenant.BranchFilter(), assigned)
+	}
+}
+
+// A seller assigned nowhere reads nothing. The empty set must survive into the tenant: a nil
+// one would read the whole account.
+func TestResolveTenant_SellerWithNoAssignmentsReadsNothing(t *testing.T) {
+	h := newHarness(t, activeUser(t))
+	h.branches.assigned = []uuid.UUID{}
+
+	tenant, err := h.svc.ResolveTenant(context.Background(), claimsFor(3), uuid.Nil)
+	if err != nil {
+		t.Fatalf("ResolveTenant() = %v, want no error", err)
+	}
+	filter := tenant.BranchFilter()
+	if filter == nil {
+		t.Fatal("BranchFilter() = nil, want an empty set — nil reads every branch")
+	}
+	if len(filter) != 0 {
+		t.Errorf("BranchFilter() = %v, want an empty set", filter)
+	}
+}
+
+// An admin reaches the whole account, so no assignment lookup is worth its round trip.
+func TestResolveTenant_AdminWithoutBranchStaysAccountWide(t *testing.T) {
+	admin := activeUser(t)
+	admin.Role = domain.UserRoleAdmin
+	h := newHarness(t, admin)
+
+	tenant, err := h.svc.ResolveTenant(context.Background(), claimsFor(3), uuid.Nil)
+	if err != nil {
+		t.Fatalf("ResolveTenant() = %v, want no error", err)
+	}
+	if h.branches.listCalls != 0 {
+		t.Errorf("assignment lookup ran %d times for an admin, want 0", h.branches.listCalls)
+	}
+	if tenant.BranchFilter() != nil {
+		t.Errorf("BranchFilter() = %v, want nil (every branch)", tenant.BranchFilter())
 	}
 }
 

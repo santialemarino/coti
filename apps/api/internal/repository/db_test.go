@@ -268,6 +268,22 @@ func seedUser(t *testing.T, db *DB, accountID uuid.UUID, role string) uuid.UUID 
 	return id
 }
 
+// seedExtraBranch adds a second branch to an account, for the tests that need more than the
+// one seedAccount creates.
+func seedExtraBranch(t *testing.T, db *DB, accountID uuid.UUID, name string) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	if _, err := db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO branch (id, account_id, name) VALUES ($1, $2, $3)`, id, accountID, name); err != nil {
+		t.Fatalf("seed extra branch: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.CrossAccount().Exec(context.Background(), `DELETE FROM user_branch WHERE branch_id = $1`, id)
+		_, _ = db.CrossAccount().Exec(context.Background(), `DELETE FROM branch WHERE id = $1`, id)
+	})
+	return id
+}
+
 func linkUserBranch(t *testing.T, db *DB, accountID, userID, branchID uuid.UUID) {
 	t.Helper()
 	if _, err := db.CrossAccount().Exec(context.Background(),

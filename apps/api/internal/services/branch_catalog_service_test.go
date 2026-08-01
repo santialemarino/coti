@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -29,15 +30,13 @@ type fakePrices struct {
 	open    *domain.ProductPrice
 	closed  []closedPeriod
 	created []domain.NewProductPrice
-	branch  []uuid.UUID
+	filters [][]uuid.UUID
 }
 
 func (f *fakePrices) ListByProduct(
-	_ context.Context, _ repository.Querier, _, _ uuid.UUID, branchID *uuid.UUID,
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID, branchIDs []uuid.UUID,
 ) ([]domain.ProductPrice, error) {
-	if branchID != nil {
-		f.branch = append(f.branch, *branchID)
-	}
+	f.filters = append(f.filters, branchIDs)
 	return nil, nil
 }
 
@@ -70,16 +69,14 @@ func (f *fakePrices) CloseOpenPeriod(
 }
 
 type fakeAvailability struct {
-	saved  []domain.BranchAvailability
-	branch []uuid.UUID
+	saved   []domain.BranchAvailability
+	filters [][]uuid.UUID
 }
 
 func (f *fakeAvailability) ListByProduct(
-	_ context.Context, _ repository.Querier, _, _ uuid.UUID, branchID *uuid.UUID,
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID, branchIDs []uuid.UUID,
 ) ([]domain.BranchProduct, error) {
-	if branchID != nil {
-		f.branch = append(f.branch, *branchID)
-	}
+	f.filters = append(f.filters, branchIDs)
 	return nil, nil
 }
 
@@ -385,30 +382,70 @@ func TestBranchCatalogService_SetAvailability_DistinguishesUntrackedStockFromZer
 	}
 }
 
-// Reads narrow to the active branch when the request selected one, and stay account-wide
-// when it did not — which is how an admin compares branches.
+// Reads narrow to the active branch when the request selected one. With none selected an
+// admin stays account-wide, while a seller is confined to their assignments — omitting
+// X-Branch-Id must not widen a seller's reach.
 func TestBranchCatalogService_ReadsFollowTheActiveBranch(t *testing.T) {
-	accountWide := domain.Tenant{AccountID: testAccountID, UserID: testUserID, Role: domain.UserRoleAdmin}
+	assigned := []uuid.UUID{uuid.New(), uuid.New()}
 
-	h := newPricingHarness(nil, testProductID)
-	if _, err := h.service.ListPrices(context.Background(), branchTenant(), testProductID); err != nil {
-		t.Fatalf("ListPrices() = %v, want no error", err)
-	}
-	if _, err := h.service.ListAvailability(context.Background(), branchTenant(), testProductID); err != nil {
-		t.Fatalf("ListAvailability() = %v, want no error", err)
-	}
-	if len(h.prices.branch) != 1 || h.prices.branch[0] != testBranchID {
-		t.Errorf("price read filtered by %v, want [%v]", h.prices.branch, testBranchID)
-	}
-	if len(h.availability.branch) != 1 || h.availability.branch[0] != testBranchID {
-		t.Errorf("availability read filtered by %v, want [%v]", h.availability.branch, testBranchID)
+	cases := []struct {
+		name   string
+		tenant domain.Tenant
+		want   []uuid.UUID
+	}{
+		{
+			name:   "active branch narrows to it",
+			tenant: branchTenant(),
+			want:   []uuid.UUID{testBranchID},
+		},
+		{
+			name:   "admin without a branch reads the account",
+			tenant: domain.Tenant{AccountID: testAccountID, UserID: testUserID, Role: domain.UserRoleAdmin},
+			want:   nil,
+		},
+		{
+			name: "seller without a branch is confined to their assignments",
+			tenant: domain.Tenant{AccountID: testAccountID, UserID: testUserID,
+				Role: domain.UserRoleSeller, AllowedBranchIDs: assigned},
+			want: assigned,
+		},
+		{
+			name: "seller with no assignments reads nothing",
+			tenant: domain.Tenant{AccountID: testAccountID, UserID: testUserID,
+				Role: domain.UserRoleSeller, AllowedBranchIDs: []uuid.UUID{}},
+			want: []uuid.UUID{},
+		},
 	}
 
-	wide := newPricingHarness(nil, testProductID)
-	if _, err := wide.service.ListPrices(context.Background(), accountWide, testProductID); err != nil {
-		t.Fatalf("ListPrices() = %v, want no error", err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newPricingHarness(nil, testProductID)
+			if _, err := h.service.ListPrices(context.Background(), tc.tenant, testProductID); err != nil {
+				t.Fatalf("ListPrices() = %v, want no error", err)
+			}
+			if _, err := h.service.ListAvailability(context.Background(), tc.tenant, testProductID); err != nil {
+				t.Fatalf("ListAvailability() = %v, want no error", err)
+			}
+			if len(h.prices.filters) != 1 || !reflect.DeepEqual(h.prices.filters[0], tc.want) {
+				t.Errorf("price read filtered by %v, want %v", h.prices.filters, tc.want)
+			}
+			if len(h.availability.filters) != 1 || !reflect.DeepEqual(h.availability.filters[0], tc.want) {
+				t.Errorf("availability read filtered by %v, want %v", h.availability.filters, tc.want)
+			}
+		})
 	}
-	if len(wide.prices.branch) != 0 {
-		t.Errorf("price read filtered by %v, want no branch filter", wide.prices.branch)
+}
+
+// A seller whose assignments were never loaded must read nothing rather than the whole
+// account: the scope has to fail closed, because the wiring mistake is invisible otherwise.
+func TestTenant_BranchFilterFailsClosedForSellers(t *testing.T) {
+	seller := domain.Tenant{AccountID: testAccountID, UserID: testUserID, Role: domain.UserRoleSeller}
+
+	got := seller.BranchFilter()
+	if got == nil {
+		t.Fatal("BranchFilter() = nil for a seller with no assignments loaded, want an empty set")
+	}
+	if len(got) != 0 {
+		t.Errorf("BranchFilter() = %v, want an empty set", got)
 	}
 }

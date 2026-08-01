@@ -47,6 +47,7 @@ type refreshTokenRepository interface {
 // branchRepository is the branch-access surface the tenant resolution needs.
 type branchRepository interface {
 	IsAccessibleBy(ctx context.Context, q repository.Querier, accountID, userID, branchID uuid.UUID, isAdmin bool) (bool, error)
+	ListIDsForUser(ctx context.Context, q repository.Querier, accountID, userID uuid.UUID, isAdmin bool) ([]uuid.UUID, error)
 }
 
 // tenantScoper is the database surface: a tenant-scoped transaction, plus the owner
@@ -222,13 +223,15 @@ func (s *AuthService) Logout(ctx context.Context, tenant domain.Tenant, rawToken
 // Validating requestedBranch is load-bearing — row level security guards the account
 // boundary, not the branch one, so a trusted branch id would let a caller read another
 // branch of their own account. Inaccessible returns domain.ErrForbidden, never a silent
-// downgrade to account-wide.
+// downgrade to account-wide. A seller who selects no branch is confined to the ones they are
+// assigned, so omitting the header cannot widen their reach either.
 func (s *AuthService) ResolveTenant(
 	ctx context.Context, claims domain.AccessClaims, requestedBranch uuid.UUID,
 ) (domain.Tenant, error) {
 	scope := domain.Tenant{AccountID: claims.AccountID}
 
 	var user *domain.AppUser
+	var allowedBranches []uuid.UUID
 	branchOK := true
 
 	if err := s.db.InTenantTx(ctx, scope, func(q repository.Querier) error {
@@ -237,14 +240,25 @@ func (s *AuthService) ResolveTenant(
 			return err
 		}
 		user = u
+		isAdmin := u.Role == domain.UserRoleAdmin
 
 		if requestedBranch != uuid.Nil {
 			ok, brErr := s.branches.IsAccessibleBy(ctx, q, claims.AccountID, claims.UserID,
-				requestedBranch, u.Role == domain.UserRoleAdmin)
+				requestedBranch, isAdmin)
 			if brErr != nil {
 				return brErr
 			}
 			branchOK = ok
+			return nil
+		}
+
+		// An admin reaches the whole account, so there is no set to load.
+		if !isAdmin {
+			ids, listErr := s.branches.ListIDsForUser(ctx, q, claims.AccountID, claims.UserID, false)
+			if listErr != nil {
+				return listErr
+			}
+			allowedBranches = ids
 		}
 		return nil
 	}); err != nil {
@@ -265,10 +279,11 @@ func (s *AuthService) ResolveTenant(
 	}
 
 	return domain.Tenant{
-		AccountID: user.AccountID,
-		UserID:    user.ID,
-		Role:      user.Role,
-		BranchID:  requestedBranch,
+		AccountID:        user.AccountID,
+		UserID:           user.ID,
+		Role:             user.Role,
+		BranchID:         requestedBranch,
+		AllowedBranchIDs: allowedBranches,
 	}, nil
 }
 
