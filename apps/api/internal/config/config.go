@@ -65,6 +65,7 @@ type AuthConfig struct {
 	RefreshReuseGrace  time.Duration
 	MaxFailedAttempts  int
 	LockoutDuration    time.Duration
+	PasswordMinLength  int
 }
 
 // CatalogConfig holds the catalog listing limits. The cap is what stops a client from
@@ -111,6 +112,7 @@ func Load() (*Config, error) {
 			RefreshReuseGrace:  getDuration("AUTH_REFRESH_REUSE_GRACE_SECONDS", 30*time.Second, &problems),
 			MaxFailedAttempts:  getInt("AUTH_MAX_FAILED_ATTEMPTS", 5, &problems),
 			LockoutDuration:    getDuration("AUTH_LOCKOUT_MINUTES", 15*time.Minute, &problems),
+			PasswordMinLength:  getInt("AUTH_PASSWORD_MIN_LENGTH", 8, &problems),
 		},
 		Catalog: CatalogConfig{
 			DefaultPageSize: getInt("CATALOG_DEFAULT_PAGE_SIZE", 50, &problems),
@@ -131,6 +133,11 @@ func Load() (*Config, error) {
 	if len(cfg.Auth.JWTSecret) < minJWTSecretLength {
 		problems = append(problems, fmt.Sprintf("AUTH_JWT_SECRET must be at least %d characters, got %d",
 			minJWTSecretLength, len(cfg.Auth.JWTSecret)))
+	}
+
+	if cfg.Auth.PasswordMinLength < 8 {
+		problems = append(problems, fmt.Sprintf("AUTH_PASSWORD_MIN_LENGTH must be at least 8, got %d",
+			cfg.Auth.PasswordMinLength))
 	}
 
 	if cfg.Catalog.DefaultPageSize < 1 {

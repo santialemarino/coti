@@ -23,6 +23,8 @@ import (
 type Handlers struct {
 	Health        *handler.HealthHandler
 	Auth          *handler.AuthHandler
+	User          *handler.UserHandler
+	Branch        *handler.BranchHandler
 	Product       *handler.ProductHandler
 	BranchCatalog *handler.BranchCatalogHandler
 }
@@ -65,6 +67,19 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth) *gin
 	// reads nothing under row level security.
 	authed := v1.Group("", middleware.RequireTenant())
 	authed.POST("/auth/logout", h.Auth.Logout)
+
+	// The branch switcher needs this before it can send X-Branch-Id, so it is not admin-only:
+	// the repository already narrows a seller to their assignments.
+	authed.GET("/branches", h.Branch.List)
+
+	// User administration is the one admin-only group. RequireAdmin runs after RequireTenant,
+	// which is what put the role on the context.
+	users := authed.Group("/users", middleware.RequireAdmin())
+	users.GET("", h.User.List)
+	users.POST("", h.User.Create)
+	users.GET("/:userId", h.User.Get)
+	users.PUT("/:userId", h.User.Update)
+	users.DELETE("/:userId", h.User.Delete)
 
 	// The catalog itself is account-scoped, so those routes need no active branch. The
 	// per-branch ones below take it from the X-Branch-Id header the middleware validated.

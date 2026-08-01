@@ -61,6 +61,7 @@ func run() error {
 	userRepo := repository.NewUserRepository()
 	branchRepo := repository.NewBranchRepository()
 	refreshTokenRepo := repository.NewRefreshTokenRepository()
+	userBranchRepo := repository.NewUserBranchRepository()
 	productRepo := repository.NewProductRepository()
 	productSynonymRepo := repository.NewProductSynonymRepository()
 	productAlternativeRepo := repository.NewProductAlternativeRepository()
@@ -69,6 +70,8 @@ func run() error {
 
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
 	authService := services.NewAuthService(db, userRepo, branchRepo, refreshTokenRepo, tokenService, cfg.Auth, nil)
+	userService := services.NewUserService(db, userRepo, userBranchRepo, branchRepo, cfg.Auth)
+	branchService := services.NewBranchService(db, branchRepo)
 	productService := services.NewProductService(db, productRepo, productSynonymRepo,
 		productAlternativeRepo, cfg.Catalog)
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo, branchProductRepo,
@@ -78,6 +81,8 @@ func run() error {
 		deliveryhttp.Handlers{
 			Health:        handler.NewHealthHandler(db),
 			Auth:          handler.NewAuthHandler(authService),
+			User:          handler.NewUserHandler(userService),
+			Branch:        handler.NewBranchHandler(branchService),
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 		},
