@@ -1,0 +1,1084 @@
+basePath: /
+definitions:
+  dto.AddAlternativeRequest:
+    properties:
+      alternative_product_id:
+        type: string
+      type:
+        enum:
+        - EQUIVALENT
+        - PREMIUM
+        - ECONOMY
+        type: string
+    required:
+    - alternative_product_id
+    - type
+    type: object
+  dto.AddSynonymRequest:
+    properties:
+      source:
+        enum:
+        - MANUAL
+        - LEARNED
+        type: string
+      term:
+        maxLength: 255
+        minLength: 1
+        type: string
+    required:
+    - term
+    type: object
+  dto.AlternativeListResponse:
+    properties:
+      direction:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/dto.AlternativeResponse'
+        type: array
+    type: object
+  dto.AlternativeResponse:
+    properties:
+      alternative_product_id:
+        type: string
+      base_product_id:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      product:
+        $ref: '#/definitions/dto.ProductResponse'
+      type:
+        type: string
+    type: object
+  dto.AvailabilityListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.AvailabilityResponse'
+        type: array
+    type: object
+  dto.AvailabilityResponse:
+    properties:
+      branch_id:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      product_id:
+        type: string
+      stock:
+        description: decimal string; null when the branch does not track it.
+        type: string
+      updated_at:
+        type: string
+    type: object
+  dto.CreateProductRequest:
+    properties:
+      canonical_name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      category:
+        maxLength: 255
+        type: string
+      code:
+        maxLength: 255
+        type: string
+      description:
+        maxLength: 512
+        type: string
+      unit:
+        maxLength: 64
+        type: string
+    required:
+    - canonical_name
+    type: object
+  dto.ErrorResponse:
+    properties:
+      detail:
+        description: set when a body failed binding or validation.
+        type: string
+      error:
+        type: string
+    type: object
+  dto.HealthResponse:
+    properties:
+      detail:
+        type: string
+      status:
+        type: string
+    type: object
+  dto.LoginRequest:
+    properties:
+      email:
+        maxLength: 255
+        type: string
+      password:
+        maxLength: 128
+        minLength: 8
+        type: string
+      remember_me:
+        type: boolean
+    required:
+    - email
+    - password
+    type: object
+  dto.LogoutRequest:
+    properties:
+      refresh_token:
+        type: string
+    type: object
+  dto.PriceListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.PriceResponse'
+        type: array
+    type: object
+  dto.PriceResponse:
+    properties:
+      branch_id:
+        type: string
+      conditions:
+        type: string
+      created_at:
+        type: string
+      currency:
+        type: string
+      id:
+        type: string
+      min_price:
+        description: discount-engine floor; decimal string.
+        type: string
+      price:
+        description: decimal string, never a float.
+        type: string
+      product_id:
+        type: string
+      set_by:
+        type: string
+      valid_from:
+        type: string
+      valid_to:
+        type: string
+    type: object
+  dto.ProductListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ProductResponse'
+        type: array
+      limit:
+        type: integer
+      offset:
+        type: integer
+      total:
+        type: integer
+    type: object
+  dto.ProductResponse:
+    properties:
+      canonical_name:
+        type: string
+      category:
+        type: string
+      code:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      unit:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  dto.RefreshRequest:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  dto.SetAvailabilityRequest:
+    properties:
+      is_active:
+        type: boolean
+      stock:
+        type: string
+    type: object
+  dto.SetPriceRequest:
+    properties:
+      conditions:
+        maxLength: 255
+        type: string
+      currency:
+        description: e.g. "ARS"; defaults to ARS.
+        type: string
+      min_price:
+        type: string
+      price:
+        type: string
+      valid_from:
+        type: string
+    required:
+    - price
+    type: object
+  dto.SynonymListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.SynonymResponse'
+        type: array
+    type: object
+  dto.SynonymResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      product_id:
+        type: string
+      source:
+        type: string
+      term:
+        type: string
+    type: object
+  dto.TokenResponse:
+    properties:
+      access_expires_at:
+        type: string
+      access_token:
+        type: string
+      refresh_token:
+        type: string
+      user:
+        $ref: '#/definitions/dto.UserBrief'
+    type: object
+  dto.UpdateProductRequest:
+    properties:
+      canonical_name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      category:
+        maxLength: 255
+        type: string
+      code:
+        maxLength: 255
+        type: string
+      description:
+        maxLength: 512
+        type: string
+      is_active:
+        type: boolean
+      unit:
+        maxLength: 64
+        type: string
+    required:
+    - canonical_name
+    type: object
+  dto.UserBrief:
+    properties:
+      account_id:
+        type: string
+      id:
+        type: string
+      role:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: |-
+    Backend de Coti — cotización asistida por IA para corralones.
+
+    Toda ruta bajo /v1 que no cuelgue de /public necesita un access token.
+    La sucursal activa no es un claim del token: viaja en el header
+    X-Branch-Id y se valida por request contra la cuenta y el usuario.
+  title: Coti API
+  version: "1.0"
+paths:
+  /health:
+    get:
+      description: |-
+        Reports that the process is up. Checks no dependency, so a failing
+        database does not get the container restarted.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.HealthResponse'
+      summary: Liveness probe
+      tags:
+      - health
+  /ready:
+    get:
+      description: |-
+        Reports whether the process can serve traffic, which means both database
+        pools answer.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.HealthResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/dto.HealthResponse'
+      summary: Readiness probe
+      tags:
+      - health
+  /v1/auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Advances the session epoch, which invalidates every outstanding access
+        token for the user, and revokes the presented refresh family. The body is
+        optional: a client that lost its refresh token must still be able to end
+        the session.
+      parameters:
+      - description: Refresh token to revoke
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/dto.LogoutRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Logged out
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Log out
+      tags:
+      - auth
+  /v1/products:
+    get:
+      description: |-
+        Returns one page of the account's catalog, ordered by name. Soft-deleted
+        items are hidden unless include_inactive is set.
+      parameters:
+      - description: Case-insensitive match on canonical name or code
+        in: query
+        name: search
+        type: string
+      - description: Exact category match
+        in: query
+        name: category
+        type: string
+      - description: Include deactivated items
+        in: query
+        name: include_inactive
+        type: boolean
+      - description: Page size; defaults to CATALOG_DEFAULT_PAGE_SIZE and is capped
+          at CATALOG_MAX_PAGE_SIZE
+        in: query
+        name: limit
+        type: integer
+      - description: Rows to skip
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProductListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List products
+      tags:
+      - catalog
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Creates an account-level catalog item. Availability, stock, and price are
+        set per branch by their own endpoints.
+      parameters:
+      - description: Product to create
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateProductRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ProductResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: The account already has a product with that code
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a product
+      tags:
+      - catalog
+  /v1/products/{productId}:
+    delete:
+      description: |-
+        Soft delete: the row survives because quote and price history point at
+        it. Repeating the call is harmless.
+      parameters:
+      - description: Product id
+        in: path
+        name: productId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Deactivated
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Deactivate a product
+      tags:
+      - catalog
+    get:
+      parameters:
+      - description: Product id
+        in: path
+        name: productId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProductResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a product
+      tags:
+      - catalog
+    put:
+      consumes:
+      - application/json
+      description: |-
+        Replaces the editable attributes: an omitted nullable field clears the
+        column. is_active is the exception — omitted leaves it untouched.
+      parameters:
+      - description: Product id
+        in: path
+        name: productId
+        required: true
+        type: string
+      - description: Product as it should end up
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateProductRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProductResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: The account already has a product with that code
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a product
+      tags:
+      - catalog
+  /v1/products/{productId}/alternatives:
+    get:
+      description: |-
+        direction picks which end of the relation to read: OUTGOING is what can
+        be offered instead of this product, INCOMING is what this product stands
+        in for. Defaults to OUTGOING.
+      parameters:
+      - description: Product id
+        in: path
+        name: productId
+        required: true
+        type: string
+      - description: OUTGOING or INCOMING
+        enum:
+        - OUTGOING
+        - INCOMING
+        in: query
+        name: direction
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AlternativeListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List product alternatives
+      tags:
+      - catalog
+    post:
+      consumes:
+      - application/json
+      description: |-
+        The product in the path is the base. type says what the alternative is
+        relative to it: EQUIVALENT, PREMIUM, or ECONOMY.
+      parameters:
+      - description: Base product id
+        in: path
+        name: productId
+        required: true
+        type: string
+      - description: Alternative to link
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AddAlternativeRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.AlternativeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Either product is unknown to the account
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: The pair is already linked
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: A product cannot be its own alternative
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Add a product alternative
+      tags:
+      - catalog
+  /v1/products/{productId}/alternatives/{alternativeId}:
+    delete:
+      description: The link is addressable from either of the two products it joins.
+      parameters:
+      - description: Either product in the link
+        in: path
+        name: productId
+        required: true
+        type: string
+      - description: Alternative link id
+        in: path
+        name: alternativeId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Removed
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove a product alternative
+      tags:
+      - catalog
+  /v1/products/{productId}/availability:
+    get:
+      description: |-
+        Returns the active branch's row when the request carries X-Branch-Id, and
+        every branch of the account when it does not.
+      parameters:
+      - description: Product id
+        in: path
+        name: productId
+        required: true
+        type: string
+      - description: Active branch; omit to read every branch
+        in: header
+        name: X-Branch-Id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AvailabilityListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List per-branch availability
+      tags:
+      - catalog
+    put:
+      consumes:
+      - application/json
+      description: |-
+        Creates the branch's row or updates it. Deactivating is how a branch stops
+        offering an item the account still catalogs.
+      parameters:
+      - description: Product id
+        in: path
+        name: productId
+        required: true
+        type: string
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Availability to record
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SetAvailabilityRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AvailabilityResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch, or a stock NUMERIC(14,2) cannot hold
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Set per-branch availability
+      tags:
+      - catalog
+  /v1/products/{productId}/prices:
+    get:
+      description: |-
+        Every validity period, newest first, open and closed. Scoped to the active
+        branch when the request carries X-Branch-Id, account-wide otherwise.
+      parameters:
+      - description: Product id
+        in: path
+        name: productId
+        required: true
+        type: string
+      - description: Active branch; omit to read every branch
+        in: header
+        name: X-Branch-Id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.PriceListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List per-branch price history
+      tags:
+      - catalog
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Opens a new validity period and closes the previous one at the same
+        instant. Nothing is overwritten, so the history of what was quoted when
+        survives. min_price is the floor the discount engine may not cross, so it
+        cannot exceed price.
+      parameters:
+      - description: Product id
+        in: path
+        name: productId
+        required: true
+        type: string
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Price to put in force
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SetPriceRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.PriceResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch, min_price above price, or valid_from before
+            the current period
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Set a per-branch price
+      tags:
+      - catalog
+  /v1/products/{productId}/synonyms:
+    get:
+      description: Trade vocabulary that improves lexical catalog matching.
+      parameters:
+      - description: Product id
+        in: path
+        name: productId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SynonymListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List product synonyms
+      tags:
+      - catalog
+    post:
+      consumes:
+      - application/json
+      description: |-
+        source records where the term came from: MANUAL for one a person loaded,
+        LEARNED for one the matching pipeline proposed. Defaults to MANUAL.
+      parameters:
+      - description: Product id
+        in: path
+        name: productId
+        required: true
+        type: string
+      - description: Term to attach
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AddSynonymRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.SynonymResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: The product already carries that term
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Add a product synonym
+      tags:
+      - catalog
+  /v1/products/{productId}/synonyms/{synonymId}:
+    delete:
+      parameters:
+      - description: Product id
+        in: path
+        name: productId
+        required: true
+        type: string
+      - description: Synonym id
+        in: path
+        name: synonymId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Removed
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove a product synonym
+      tags:
+      - catalog
+  /v1/public/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Exchanges credentials for an access token and a refresh token. A bad
+        email, a bad password, and a disabled user all answer 401 alike, on
+        purpose. The refresh token is shown exactly once — only its hash is kept.
+      parameters:
+      - description: Credentials
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TokenResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: Inside a failed-attempt lockout window
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Log in
+      tags:
+      - auth
+  /v1/public/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Consumes the presented refresh token and mints its successor in the same
+        family. Replaying a consumed token inside the grace window is treated as
+        a benign race; past it, the whole family is revoked as theft.
+      parameters:
+      - description: Refresh token
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.RefreshRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TokenResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Rotate a refresh token
+      tags:
+      - auth
+securityDefinitions:
+  BearerAuth:
+    description: Access token con el prefijo "Bearer ".
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

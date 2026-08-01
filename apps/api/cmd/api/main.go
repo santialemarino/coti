@@ -1,5 +1,18 @@
 // Command api is the Coti backend: the composition root reads configuration, opens
 // the connection pools, injects dependencies into the layers, and serves HTTP.
+//
+//	@title						Coti API
+//	@version					1.0
+//	@description				Backend de Coti — cotización asistida por IA para corralones.
+//	@description
+//	@description				Toda ruta bajo /v1 que no cuelgue de /public necesita un access token.
+//	@description				La sucursal activa no es un claim del token: viaja en el header
+//	@description				X-Branch-Id y se valida por request contra la cuenta y el usuario.
+//	@BasePath					/
+//	@securityDefinitions.apikey	BearerAuth
+//	@in							header
+//	@name						Authorization
+//	@description				Access token con el prefijo "Bearer ".
 package main
 
 import (

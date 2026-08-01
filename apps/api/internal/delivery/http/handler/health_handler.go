@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
 )
 
 // readinessTimeout bounds the dependency check so a hung database cannot hold the
@@ -31,19 +33,39 @@ func NewHealthHandler(db Pinger) *HealthHandler {
 
 // Live reports that the process is up. It checks no dependency on purpose: a failing
 // database should not get the container restarted.
+//
+//	@Summary		Liveness probe
+//	@Description	Reports that the process is up. Checks no dependency, so a failing
+//	@Description	database does not get the container restarted.
+//	@Tags			health
+//	@Produce		json
+//	@Success		200	{object}	dto.HealthResponse
+//	@Router			/health [get]
 func (h *HealthHandler) Live(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	c.JSON(http.StatusOK, dto.HealthResponse{Status: "ok"})
 }
 
 // Ready reports whether the process can serve traffic, which means both pools answer.
 // Returns 503 when they do not.
+//
+//	@Summary		Readiness probe
+//	@Description	Reports whether the process can serve traffic, which means both database
+//	@Description	pools answer.
+//	@Tags			health
+//	@Produce		json
+//	@Success		200	{object}	dto.HealthResponse
+//	@Failure		503	{object}	dto.HealthResponse
+//	@Router			/ready [get]
 func (h *HealthHandler) Ready(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), readinessTimeout)
 	defer cancel()
 
 	if err := h.db.Ping(ctx); err != nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable", "detail": "database"})
+		c.JSON(http.StatusServiceUnavailable, dto.HealthResponse{
+			Status: "unavailable",
+			Detail: "database",
+		})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "ready"})
+	c.JSON(http.StatusOK, dto.HealthResponse{Status: "ready"})
 }

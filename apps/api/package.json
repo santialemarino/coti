@@ -11,6 +11,8 @@
     "format:check": "test -z \"$(gofmt -l .)\"",
     "check": "go build -o /dev/null ./... && go vet ./...",
     "check-types": "go build -o /dev/null ./...",
-    "test": "go test ./..."
+    "test": "go test ./...",
+    "docs": "go tool swag init --generalInfo main.go --dir cmd/api,internal/delivery/http --output docs --parseInternal",
+    "docs:check": "pnpm run docs && git diff --exit-code -- docs"
   }
 }

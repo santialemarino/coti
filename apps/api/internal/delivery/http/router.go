@@ -6,10 +6,16 @@ import (
 	"log/slog"
 
 	"github.com/gin-gonic/gin"
+	swaggerfiles "github.com/swaggo/files"
+	ginswagger "github.com/swaggo/gin-swagger"
 
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/middleware"
+
+	// The generated spec registers itself on import. It is regenerated from the handler
+	// annotations by `pnpm docs:api`, and CI fails if the committed copy is stale.
+	_ "github.com/santialemarino/coti/apps/api/docs"
 )
 
 // Handlers carries every handler the router mounts, so adding a feature is one field
@@ -39,6 +45,13 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth) *gin
 	// Probes stay outside /v1 and outside auth: an orchestrator has no credentials.
 	r.GET("/health", h.Health.Live)
 	r.GET("/ready", h.Health.Ready)
+
+	// The spec describes an internal API, so it is not published in production. Serving it
+	// there would hand an unauthenticated reader the whole surface for no benefit — the
+	// consumers are this repo's own web apps and whoever is writing them.
+	if !cfg.IsProduction() {
+		r.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
+	}
 
 	// Authenticate runs for every /v1 route and resolves a tenant when a valid token is
 	// present. It does not reject anonymous requests — RequireTenant does — so a public
