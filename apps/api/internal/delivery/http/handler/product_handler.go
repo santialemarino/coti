@@ -52,7 +52,7 @@ func NewProductHandler(products ProductService) *ProductHandler {
 //	@Success		200					{object}	dto.ProductListResponse
 //	@Failure		400					{object}	dto.ErrorResponse
 //	@Failure		401					{object}	dto.ErrorResponse
-//	@Router			/products [get]
+//	@Router			/v1/products [get]
 func (h *ProductHandler) List(c *gin.Context) {
 	tenant, ok := tenantOf(c)
 	if !ok {
@@ -100,7 +100,7 @@ func (h *ProductHandler) List(c *gin.Context) {
 //	@Failure	400			{object}	dto.ErrorResponse
 //	@Failure	401			{object}	dto.ErrorResponse
 //	@Failure	404			{object}	dto.ErrorResponse
-//	@Router		/products/{productId} [get]
+//	@Router		/v1/products/{productId} [get]
 func (h *ProductHandler) Get(c *gin.Context) {
 	tenant, ok := tenantOf(c)
 	if !ok {
@@ -134,7 +134,7 @@ func (h *ProductHandler) Get(c *gin.Context) {
 //	@Failure		401		{object}	dto.ErrorResponse
 //	@Failure		409		{object}	dto.ErrorResponse	"The account already has a product with that code"
 //	@Failure		422		{object}	dto.ErrorResponse
-//	@Router			/products [post]
+//	@Router			/v1/products [post]
 func (h *ProductHandler) Create(c *gin.Context) {
 	tenant, ok := tenantOf(c)
 	if !ok {
@@ -178,7 +178,7 @@ func (h *ProductHandler) Create(c *gin.Context) {
 //	@Failure		404			{object}	dto.ErrorResponse
 //	@Failure		409			{object}	dto.ErrorResponse	"The account already has a product with that code"
 //	@Failure		422			{object}	dto.ErrorResponse
-//	@Router			/products/{productId} [put]
+//	@Router			/v1/products/{productId} [put]
 func (h *ProductHandler) Update(c *gin.Context) {
 	tenant, ok := tenantOf(c)
 	if !ok {
@@ -223,7 +223,7 @@ func (h *ProductHandler) Update(c *gin.Context) {
 //	@Failure		400			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
 //	@Failure		404			{object}	dto.ErrorResponse
-//	@Router			/products/{productId} [delete]
+//	@Router			/v1/products/{productId} [delete]
 func (h *ProductHandler) Delete(c *gin.Context) {
 	tenant, ok := tenantOf(c)
 	if !ok {
@@ -253,7 +253,7 @@ func (h *ProductHandler) Delete(c *gin.Context) {
 //	@Failure		400			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
 //	@Failure		404			{object}	dto.ErrorResponse
-//	@Router			/products/{productId}/synonyms [get]
+//	@Router			/v1/products/{productId}/synonyms [get]
 func (h *ProductHandler) ListSynonyms(c *gin.Context) {
 	tenant, ok := tenantOf(c)
 	if !ok {
@@ -294,7 +294,7 @@ func (h *ProductHandler) ListSynonyms(c *gin.Context) {
 //	@Failure		404			{object}	dto.ErrorResponse
 //	@Failure		409			{object}	dto.ErrorResponse	"The product already carries that term"
 //	@Failure		422			{object}	dto.ErrorResponse
-//	@Router			/products/{productId}/synonyms [post]
+//	@Router			/v1/products/{productId}/synonyms [post]
 func (h *ProductHandler) AddSynonym(c *gin.Context) {
 	tenant, ok := tenantOf(c)
 	if !ok {
@@ -332,7 +332,7 @@ func (h *ProductHandler) AddSynonym(c *gin.Context) {
 //	@Failure	400			{object}	dto.ErrorResponse
 //	@Failure	401			{object}	dto.ErrorResponse
 //	@Failure	404			{object}	dto.ErrorResponse
-//	@Router		/products/{productId}/synonyms/{synonymId} [delete]
+//	@Router		/v1/products/{productId}/synonyms/{synonymId} [delete]
 func (h *ProductHandler) RemoveSynonym(c *gin.Context) {
 	tenant, ok := tenantOf(c)
 	if !ok {
@@ -369,7 +369,7 @@ func (h *ProductHandler) RemoveSynonym(c *gin.Context) {
 //	@Failure		400			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
 //	@Failure		404			{object}	dto.ErrorResponse
-//	@Router			/products/{productId}/alternatives [get]
+//	@Router			/v1/products/{productId}/alternatives [get]
 func (h *ProductHandler) ListAlternatives(c *gin.Context) {
 	tenant, ok := tenantOf(c)
 	if !ok {
@@ -428,7 +428,7 @@ func (h *ProductHandler) ListAlternatives(c *gin.Context) {
 //	@Failure		404			{object}	dto.ErrorResponse	"Either product is unknown to the account"
 //	@Failure		409			{object}	dto.ErrorResponse	"The pair is already linked"
 //	@Failure		422			{object}	dto.ErrorResponse	"A product cannot be its own alternative"
-//	@Router			/products/{productId}/alternatives [post]
+//	@Router			/v1/products/{productId}/alternatives [post]
 func (h *ProductHandler) AddAlternative(c *gin.Context) {
 	tenant, ok := tenantOf(c)
 	if !ok {
@@ -473,7 +473,7 @@ func (h *ProductHandler) AddAlternative(c *gin.Context) {
 //	@Failure		400				{object}	dto.ErrorResponse
 //	@Failure		401				{object}	dto.ErrorResponse
 //	@Failure		404				{object}	dto.ErrorResponse
-//	@Router			/products/{productId}/alternatives/{alternativeId} [delete]
+//	@Router			/v1/products/{productId}/alternatives/{alternativeId} [delete]
 func (h *ProductHandler) RemoveAlternative(c *gin.Context) {
 	tenant, ok := tenantOf(c)
 	if !ok {

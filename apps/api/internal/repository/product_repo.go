@@ -71,6 +71,19 @@ func (r *ProductRepository) GetByID(
 		accountID, id))
 }
 
+// GetByIDForUpdate loads one product within the account and holds a row lock on it until the
+// transaction ends, so writes that must not interleave for the same product serialize on it.
+func (r *ProductRepository) GetByIDForUpdate(
+	ctx context.Context, q Querier, accountID, id uuid.UUID,
+) (*domain.Product, error) {
+	return scanProduct(q.QueryRow(ctx,
+		`SELECT `+productColumns+`
+		 FROM product
+		 WHERE account_id = $1 AND id = $2
+		 FOR UPDATE`,
+		accountID, id))
+}
+
 // Create inserts a catalog item. Returns domain.ErrConflict when the account already has
 // a product carrying the same code.
 func (r *ProductRepository) Create(

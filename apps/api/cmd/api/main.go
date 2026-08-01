@@ -1,5 +1,16 @@
 // Command api is the Coti backend: the composition root reads configuration, opens
 // the connection pools, injects dependencies into the layers, and serves HTTP.
+//
+//	@title						Coti API
+//	@version					1.0
+//	@description				Every /v1 route outside /public needs an access token. The active
+//	@description				branch is not a token claim: it travels in the X-Branch-Id header
+//	@description				and is validated per request.
+//	@BasePath					/
+//	@securityDefinitions.apikey	BearerAuth
+//	@in							header
+//	@name						Authorization
+//	@description				Access token, prefixed with "Bearer ".
 package main
 
 import (

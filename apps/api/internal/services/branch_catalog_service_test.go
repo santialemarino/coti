@@ -174,6 +174,29 @@ func TestBranchCatalogService_SetPrice_ClosesThePreviousPeriodAtTheNewStart(t *t
 	}
 }
 
+// The product row is locked, not merely read: two repricings racing on the same product
+// would otherwise each read the same open period and leave two of them open.
+func TestBranchCatalogService_SetPrice_LocksTheProduct(t *testing.T) {
+	h := newPricingHarness(nil, testProductID)
+
+	if _, err := h.service.SetPrice(context.Background(), branchTenant(), testProductID,
+		domain.NewProductPrice{Price: decimal.RequireFromString("8500.00")}); err != nil {
+		t.Fatalf("SetPrice() = %v, want no error", err)
+	}
+	if len(h.products.locked) != 1 || h.products.locked[0] != testProductID {
+		t.Errorf("locking reads = %v, want [%v]", h.products.locked, testProductID)
+	}
+
+	// A read has no reason to hold the row, and holding it would serialize listings.
+	reads := newPricingHarness(nil, testProductID)
+	if _, err := reads.service.ListPrices(context.Background(), branchTenant(), testProductID); err != nil {
+		t.Fatalf("ListPrices() = %v, want no error", err)
+	}
+	if len(reads.products.locked) != 0 {
+		t.Errorf("locking reads during a listing = %v, want none", reads.products.locked)
+	}
+}
+
 func TestBranchCatalogService_SetPrice_FirstPriceClosesNothing(t *testing.T) {
 	h := newPricingHarness(nil, testProductID)
 
