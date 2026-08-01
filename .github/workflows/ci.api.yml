@@ -42,12 +42,19 @@ jobs:
       - name: Build
         run: go build -o /dev/null ./...
       # The committed spec is generated from the handler annotations, so it can go stale
-      # the moment a handler changes. Regenerating and diffing is what keeps the
-      # annotations verified instead of decorative.
+      # the moment a handler changes. Regenerating and comparing is what keeps the
+      # annotations verified instead of decorative. git status, not git diff: a file swag
+      # newly emits is untracked, and a diff cannot see it.
       - name: OpenAPI spec is up to date
         run: |
           go tool swag init --generalInfo main.go --dir cmd/api,internal/delivery/http --output docs --parseInternal
-          git diff --exit-code -- docs
+          if [ -n "$(git status --porcelain -- docs)" ]; then
+            echo 'The committed OpenAPI spec does not match the handler annotations.'
+            echo 'Run `pnpm docs:api` and commit apps/api/docs/.'
+            git status --porcelain -- docs
+            git diff -- docs
+            exit 1
+          fi
       - name: Test
         run: go test ./...
 
