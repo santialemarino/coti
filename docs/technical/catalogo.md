@@ -3,11 +3,14 @@
 El catálogo es **de la cuenta**: `product`, `product_synonym` y `product_alternative`
 cuelgan de `account_id`. Un producto es una fila por cuenta, con un solo embedding y un
 solo juego de sinónimos y alternativas. Lo que varía por sucursal —disponibilidad, stock
-y precio— vive en `branch_product` y `product_price`, y tiene sus propias rutas.
+y precio— vive en `branch_product` y `product_price`.
 
-Por eso ninguna ruta de esta página necesita `X-Branch-Id`: son todas de nivel cuenta.
+Ese corte parte las rutas en dos: las de nivel cuenta no miran `X-Branch-Id`, y las de
+sucursal lo necesitan para escribir.
 
 ## Endpoints
+
+De nivel cuenta:
 
 | Método   | Ruta                                                    | Qué hace                                       |
 | -------- | ------------------------------------------------------- | ---------------------------------------------- |
@@ -23,8 +26,16 @@ Por eso ninguna ruta de esta página necesita `X-Branch-Id`: son todas de nivel 
 | `POST`   | `/v1/products/{productId}/alternatives`                 | Definir alternativa                            |
 | `DELETE` | `/v1/products/{productId}/alternatives/{alternativeId}` | Quitar alternativa                             |
 
-Todas piden sesión (`RequireTenant`). Los montos y las cantidades no aparecen acá: el
-producto no lleva precio.
+Por sucursal:
+
+| Método | Ruta                                    | Qué hace                       |
+| ------ | --------------------------------------- | ------------------------------ |
+| `GET`  | `/v1/products/{productId}/availability` | Dónde se vende y con qué stock |
+| `PUT`  | `/v1/products/{productId}/availability` | Definir disponibilidad y stock |
+| `GET`  | `/v1/products/{productId}/prices`       | Historial de vigencias         |
+| `POST` | `/v1/products/{productId}/prices`       | Poner un precio en vigencia    |
+
+Todas piden sesión (`RequireTenant`).
 
 ## Código único por cuenta, y por qué el vacío es NULL
 
@@ -93,6 +104,58 @@ un sinónimo con `account_id` propio colgado de un producto invisible. La polít
 la columna `account_id` de la fila que se inserta, que es la nuestra. El `SELECT` previo es
 lo único que cierra ese agujero, y hay tests que lo fijan (uno de ellos afirma que la FK
 efectivamente lo permite, para que se caiga si algún día eso cambia).
+
+## Disponibilidad por sucursal
+
+`branch_product` dice si la sucursal vende el producto y con cuánto stock. `PUT` hace
+upsert contra `uq_branch_product`, la unicidad `(branch_id, product_id)` del schema, así que
+quien llama no tiene que saber si es la primera vez.
+
+`stock` es un string decimal, y **ausente no es cero**: NULL significa que la sucursal no
+lleva stock de ese ítem, cero significa que no le queda. `is_active` sin especificar es
+`true`, porque el sentido de la llamada normalmente es que sí lo vende; ponerlo en `false` es
+cómo una sucursal deja de ofrecer algo que la cuenta sigue catalogando.
+
+## Precios por sucursal, versionados por vigencia
+
+**Un precio nunca se sobrescribe.** Poner un precio abre una vigencia nueva y cierra la
+anterior en el mismo instante: `valid_to` de la vieja queda igual al `valid_from` de la
+nueva, y las dos escrituras van en **una transacción**, así que una caída en el medio no
+puede dejar el producto con dos vigencias abiertas ni con ninguna.
+
+Es lo que mantiene explicable una cotización congelada el mes pasado: el precio que aplicaba
+en ese momento sigue en la tabla.
+
+- `valid_from` sin especificar es ahora.
+- `valid_from` **anterior** al inicio de la vigencia abierta se rechaza (**422**): cerraría
+  un período antes de empezarlo, y reescribiría qué precio aplicaba en un momento ya
+  cotizado.
+- El primer precio de un producto en una sucursal no cierra nada.
+- `currency` sin especificar es `ARS`.
+- `min_price` es el **piso del motor de descuentos**, así que no puede superar al precio que
+  pisa (**422**).
+- `GET` devuelve el historial completo, vigencias cerradas incluidas, de la más nueva a la
+  más vieja.
+
+Ambas escrituras necesitan sucursal activa: sin `X-Branch-Id` no hay destino correcto, y
+adivinar uno le pondría precio a la sucursal equivocada (**422**, no un default silencioso).
+Las lecturas sí funcionan sin el header, y ahí devuelven todas las sucursales de la cuenta —
+que es cómo un admin las compara.
+
+## La plata viaja como string decimal
+
+`price`, `min_price` y `stock` son `NUMERIC(14,2)` en la base, `decimal.Decimal` en Go y
+**strings decimales** en el JSON. Nunca floats: un número JSON perdería precisión en el ida y
+vuelta. El codec de pgx se registra por conexión en `AfterConnect`, porque el pool abre
+conexiones cuando quiere, incluidos los reemplazos de las que se mueren.
+
+El service rechaza lo que la columna no puede guardar exacto:
+
+- más de dos decimales — Postgres redondearía el tercero sin avisar, y en plata eso es un
+  defecto, no una preferencia de redondeo;
+- más de 12 dígitos enteros — un dígito de más tipeado tiene que ser un mensaje accionable y
+  no un 500;
+- negativos.
 
 ## Paginación
 
