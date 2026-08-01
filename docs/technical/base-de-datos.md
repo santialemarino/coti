@@ -47,6 +47,12 @@ pnpm db:create-migration <nombre>
 `POSTGRES_PORT` (default 5432) cambia el puerto que publica el contenedor cuando
 otro Postgres local ya lo tiene tomado. Tiene que quedar en sync con las URLs.
 
+**Un `ON CONFLICT DO NOTHING` no es idempotente por sí solo:** necesita una restricción
+única con la cual chocar. Sobre una tabla cuyo único índice único es la PK —un uuid
+aleatorio— no filtra nada y cada corrida vuelve a insertar todo. Es lo que le pasaba a
+`product_synonym` hasta `uq_product_synonym_term`. Al sembrar una tabla, el destino del
+`ON CONFLICT` va explícito, y si no existe la clave natural que lo sostenga, falta un índice.
+
 **El seed es idempotente, no convergente.** Inserta con `ON CONFLICT ... DO NOTHING`, así
 que crea lo que falta pero **nunca reescribe una fila que ya existe**. Si cambia un valor del
 seed —un estado, un total, un nombre— la base que ya lo tenía se queda con el viejo, y
@@ -136,6 +142,7 @@ Lo que se puede expresar en el schema, se expresa en el schema:
 | `uq_message_batch_processing`            | un solo batch procesando (cola FIFO)                |
 | `uq_quote_send_public_token`             | el token del magic link es único                    |
 | `uq_product_account_code`                | el código de producto es único dentro de la cuenta  |
+| `uq_product_synonym_term`                | un término por producto, sin distinguir mayúsculas  |
 | `uq_channel_branch_type_no_identifier`   | un solo canal sin identificador por sucursal y tipo |
 
 **Una restricción de unicidad no compara NULLs**, así que sobre una columna nullable deja

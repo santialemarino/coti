@@ -61,18 +61,25 @@ historia. Repetir la llamada no falla. La lista esconde lo inactivo salvo que ve
 
 ## Sinónimos
 
-Términos de oficio que mejoran el matching léxico (mitigación de R06). `source` dice de
-dónde salió el término: `MANUAL` el que cargó una persona, `LEARNED` el que propuso el
-pipeline de matching. Si no viene, es `MANUAL`.
+Términos de oficio que mejoran el matching léxico (mitigación de R06).
 
-La columna es `VARCHAR(64)` en el schema, no un enum nativo: el conjunto cerrado que la API
-acepta vive en `domain.SynonymSource`. Las filas del seed traen `seed`, que se lee sin
-problema y no lo escribe ningún endpoint.
+`source` dice de dónde salió el término y es el enum nativo `product_synonym_source`:
 
-Un término repetido en el mismo producto devuelve **409**, comparando sin distinguir
-mayúsculas: "Portland" y "portland" son el mismo término para un matcher. El chequeo va como
-`NOT EXISTS` dentro del `INSERT` porque el schema no tiene un índice único sobre
-`(product_id, term)` que sirva de `ON CONFLICT`.
+| Valor      | Quién lo escribe                                   |
+| ---------- | -------------------------------------------------- |
+| `MANUAL`   | Una persona, desde el backoffice. Es el default.   |
+| `LEARNED`  | El pipeline de matching, proponiendo desde pedidos |
+| `IMPORTED` | La carga masiva de catálogo (US-01), y el seed     |
+
+**El endpoint solo acepta `MANUAL` y `LEARNED`.** `IMPORTED` lo escribe la carga masiva, que
+tiene su propio camino y ninguna razón para ser alcanzable desde un body. El conjunto del
+dominio y el que acepta la ruta no tienen por qué coincidir.
+
+Un término repetido en el mismo producto devuelve **409**. Lo enforcea
+`uq_product_synonym_term`, único sobre `(account_id, product_id, lower(term))`: sin distinguir
+mayúsculas, porque "Portland" y "portland" son el mismo término para un matcher. El alta lo
+usa como destino del `ON CONFLICT`, así que dos requests simultáneos con el mismo término no
+pueden pasar los dos.
 
 ## Alternativas
 
