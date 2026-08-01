@@ -107,9 +107,8 @@ func (s *UserService) GetUser(ctx context.Context, tenant domain.Tenant, id uuid
 	return out, nil
 }
 
-// CreateUser adds a user to the caller's account and assigns their branches in the same
-// transaction, so a user never exists with a half-written assignment set. Returns
-// domain.ErrConflict when the email is taken inside the account.
+// CreateUser adds a user to the caller's account, assigning their branches in the same
+// transaction. Returns domain.ErrConflict when the email is taken inside the account.
 func (s *UserService) CreateUser(
 	ctx context.Context, tenant domain.Tenant, in domain.NewUser,
 ) (*domain.UserWithBranches, error) {
@@ -150,11 +149,8 @@ func (s *UserService) CreateUser(
 	return out, nil
 }
 
-// UpdateUser replaces the user's profile, role and branch assignments.
-//
-// An admin may not demote or deactivate themselves: either would drop the last admin out of
-// their own account with no recovery path. Deactivating anyone else bumps their session epoch,
-// so their outstanding access tokens stop working now rather than when they expire.
+// UpdateUser replaces the user's profile, role and branch assignments. An admin may not demote
+// or deactivate themselves: either drops the last admin out of the account with no way back.
 func (s *UserService) UpdateUser(
 	ctx context.Context, tenant domain.Tenant, id uuid.UUID, in domain.UserUpdate,
 ) (*domain.UserWithBranches, error) {
@@ -203,9 +199,8 @@ func (s *UserService) UpdateUser(
 	return out, nil
 }
 
-// DeactivateUser disables a user and bumps their session epoch in the same transaction, so
-// every access token they hold stops working immediately. An admin cannot deactivate
-// themselves.
+// DeactivateUser disables a user and bumps their session epoch in one transaction, so the
+// tokens they already hold stop working at once. An admin cannot deactivate themselves.
 func (s *UserService) DeactivateUser(ctx context.Context, tenant domain.Tenant, id uuid.UUID) error {
 	if id == tenant.UserID {
 		return fmt.Errorf("%w: an admin cannot deactivate themselves", domain.ErrInvalidInput)
@@ -220,9 +215,8 @@ func (s *UserService) DeactivateUser(ctx context.Context, tenant domain.Tenant, 
 	})
 }
 
-// assertBranchesInAccount rejects a branch id from another account. A foreign key does not
-// confine a child row to its account — referential integrity bypasses row level security — so
-// the ids are read inside the tenant transaction before they are written.
+// assertBranchesInAccount rejects a branch id from another account, read inside the tenant
+// transaction: a foreign key does not confine a child row, because it bypasses row level security.
 func (s *UserService) assertBranchesInAccount(
 	ctx context.Context, q repository.Querier, accountID uuid.UUID, branchIDs []uuid.UUID,
 ) error {
