@@ -18,10 +18,11 @@ import (
 // blowing up in the database as a 500.
 var moneyMax = decimal.RequireFromString("999999999999.99")
 
-// productLookup is the single product read the per-branch use cases need: the in-account
-// check that a foreign key does not perform.
+// productLookup is the product read the per-branch use cases need: the in-account check that
+// a foreign key does not perform, plus the locking variant a price write serializes on.
 type productLookup interface {
 	GetByID(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) (*domain.Product, error)
+	GetByIDForUpdate(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) (*domain.Product, error)
 }
 
 // branchProductRepository is the availability persistence surface.
@@ -137,8 +138,8 @@ func (s *BranchCatalogService) ListPrices(
 // SetPrice prices the product at the active branch by opening a new validity period.
 //
 // It never overwrites: the open period is closed at the instant the new one starts, and a
-// new row is inserted, both in the same transaction. That is what keeps the history of
-// what was quoted when — a quote frozen last month has to stay explainable.
+// new row is inserted, in one transaction serialized on the product row. That is what keeps
+// the history of what was quoted when — a quote frozen last month has to stay explainable.
 //
 // min_price is the floor the deterministic discount engine may not cross, so it cannot
 // exceed the price it floors. Returns domain.ErrInvalidInput when the amounts do not hold
@@ -169,7 +170,9 @@ func (s *BranchCatalogService) SetPrice(
 
 	var price *domain.ProductPrice
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		if _, getErr := s.products.GetByID(ctx, q, tenant.AccountID, productID); getErr != nil {
+		// Locking, not just checking: two repricings racing here would each read the same
+		// open period, each fail to close the other's, and leave the product with two.
+		if _, getErr := s.products.GetByIDForUpdate(ctx, q, tenant.AccountID, productID); getErr != nil {
 			return getErr
 		}
 
