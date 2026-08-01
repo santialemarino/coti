@@ -12,10 +12,8 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
 
-// The catalog's decisions live in the service — input normalization, the page-size clamp,
-// and the checks that stop a link from crossing accounts — so they are tested against
-// in-memory fakes. The SQL and the row level security policy are covered by the
-// integration tests in internal/repository.
+// The catalog's decisions live in the service, so they are tested against in-memory fakes.
+// The SQL and the policy are covered by the integration tests in internal/repository.
 
 var (
 	testProductID     = uuid.MustParse("33333333-3333-4333-8333-333333333333")

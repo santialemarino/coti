@@ -15,9 +15,8 @@ const productAlternativeColumns = `id, account_id, base_product_id, alternative_
 // productAlternativePair is the constraint behind "one link per ordered pair".
 const productAlternativePair = "uq_product_alternative"
 
-// The two directions are separate statements rather than one query with a conditional
-// anchor: each keeps a plain equality predicate, which stays index-friendly and reads
-// like what it is. The service still has a single method, so the caller never chooses.
+// One statement per direction, so each keeps a plain equality predicate and stays
+// index-friendly.
 const (
 	alternativesOutgoing = `SELECT pa.id, pa.account_id, pa.base_product_id,
 		pa.alternative_product_id, pa.type, pa.created_at,
@@ -101,11 +100,8 @@ func (r *ProductAlternativeRepository) Create(
 	return &a, nil
 }
 
-// Delete removes one link, from either end.
-//
-// The product id has to match one of the two ends so the route that carries it stays
-// meaningful: a link between two other products is not deletable through a third one.
-// Returns domain.ErrNotFound when nothing matches.
+// Delete removes one link, from either end. The product id has to match one of the two, so
+// a link between two other products is not deletable through a third one.
 func (r *ProductAlternativeRepository) Delete(
 	ctx context.Context, q Querier, accountID, productID, id uuid.UUID,
 ) error {

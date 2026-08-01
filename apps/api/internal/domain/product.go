@@ -6,11 +6,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// SynonymSource is where a product synonym came from. It mirrors the native enum
-// product_synonym_source, so the values match the database exactly.
+// SynonymSource mirrors the native enum product_synonym_source.
 //
 // The endpoint accepts only MANUAL and LEARNED: IMPORTED is written by the bulk catalog
-// import, which has its own path and no reason to be reachable from a request body.
+// import, which has its own path.
 type SynonymSource string
 
 const (
@@ -31,12 +30,8 @@ const (
 	ProductAlternativeEconomy    ProductAlternativeType = "ECONOMY"
 )
 
-// AlternativeDirection is which end of product_alternative a read anchors on.
-//
-// It exists so one service method serves both readings of the relation: the
-// recommendation engine asks what may be offered instead of a product, and the
-// upsell path asks which products this one stands in for. Same table, same query,
-// opposite anchor.
+// AlternativeDirection is which end of product_alternative a read anchors on, so one
+// method serves both readings of the relation.
 type AlternativeDirection string
 
 const (
@@ -46,15 +41,11 @@ const (
 	AlternativeDirectionIncoming AlternativeDirection = "INCOMING"
 )
 
-// Product is a catalog item owned by an account.
+// Product is a catalog item owned by an account. What varies per branch lives in
+// branch_product and product_price.
 //
-// The catalog is account-scoped: one row, one embedding, and one set of synonyms and
-// alternatives per account. What varies per branch lives in branch_product
-// (availability and stock) and product_price (price and min_price).
-//
-// The embedding column is deliberately absent: it is 1536 floats that no catalog
-// screen renders, and it is written by the vectorization pipeline, not by these
-// endpoints.
+// The embedding column is deliberately absent: it is written by the vectorization
+// pipeline, not by these endpoints.
 type Product struct {
 	ID            uuid.UUID
 	AccountID     uuid.UUID
@@ -77,11 +68,8 @@ type NewProduct struct {
 	Category      *string
 }
 
-// ProductUpdate replaces a product's editable attributes.
-//
-// A nil nullable field clears the column, so the caller sends the item as it should
-// end up. IsActive is the exception: nil leaves the flag untouched, which keeps
-// deactivation an explicit soft delete instead of a side effect of an edit form.
+// ProductUpdate replaces a product's editable attributes: a nil nullable field clears
+// the column. IsActive is the exception — nil leaves the flag untouched.
 type ProductUpdate struct {
 	Code          *string
 	CanonicalName string
@@ -91,8 +79,8 @@ type ProductUpdate struct {
 	IsActive      *bool
 }
 
-// ProductFilter narrows a catalog listing. Limit and Offset are resolved against the
-// configured page size in the service before they reach the repository.
+// ProductFilter narrows a catalog listing. The service resolves Limit and Offset against
+// the configured page size before they reach the repository.
 type ProductFilter struct {
 	Search          string
 	Category        string
@@ -101,8 +89,7 @@ type ProductFilter struct {
 	Offset          int
 }
 
-// ProductPage is one page of a catalog listing plus the total the filter matches, so a
-// caller can render pagination without a second request.
+// ProductPage is one page of a catalog listing plus the total the filter matches.
 type ProductPage struct {
 	Items  []Product
 	Total  int
@@ -110,8 +97,7 @@ type ProductPage struct {
 	Offset int
 }
 
-// ProductSynonym is a colloquial term that improves lexical catalog matching — the
-// trade vocabulary a better model does not resolve on its own.
+// ProductSynonym is a colloquial term that improves lexical catalog matching.
 type ProductSynonym struct {
 	ID        uuid.UUID
 	AccountID uuid.UUID
@@ -131,8 +117,7 @@ type ProductAlternative struct {
 	CreatedAt            time.Time
 }
 
-// ProductAlternativeView is a link plus the product on the far end of it, so listing
-// alternatives is one query instead of one per row.
+// ProductAlternativeView is a link plus the product on the far end of it.
 type ProductAlternativeView struct {
 	Link    ProductAlternative
 	Product Product

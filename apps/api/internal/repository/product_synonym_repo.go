@@ -48,13 +48,11 @@ func (r *ProductSynonymRepository) List(
 	return synonyms, rows.Err()
 }
 
-// Create adds a synonym to a product. Returns domain.ErrConflict when the product
-// already carries the term.
+// Create adds a synonym to a product. Returns domain.ErrConflict when the product already
+// carries the term.
 //
-// The conflict target is uq_product_synonym_term, which indexes lower(term): "Portland"
-// and "portland" are the same term to a matcher. Leaning on the index rather than a
-// SELECT-then-INSERT is what makes the check atomic — two concurrent requests adding the
-// same term cannot both pass.
+// The conflict target is uq_product_synonym_term, which indexes lower(term) — leaning on
+// the index is what keeps two concurrent requests from both passing.
 func (r *ProductSynonymRepository) Create(
 	ctx context.Context, q Querier, accountID, productID uuid.UUID, term string,
 	source domain.SynonymSource,

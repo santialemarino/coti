@@ -23,11 +23,8 @@ func NewProductPriceRepository() *ProductPriceRepository {
 	return &ProductPriceRepository{}
 }
 
-// ListByProduct returns the product's price history, newest period first.
-//
-// A nil branchID reads every branch of the account; a set one narrows to the request's
-// active branch. Nothing is filtered out: the closed periods are the history the ticket
-// asks to keep.
+// ListByProduct returns the product's price history, grouped by branch and newest period
+// first. A nil branchID reads every branch of the account; a set one narrows to it.
 func (r *ProductPriceRepository) ListByProduct(
 	ctx context.Context, q Querier, accountID, productID uuid.UUID, branchID *uuid.UUID,
 ) ([]domain.ProductPrice, error) {
@@ -90,9 +87,6 @@ func (r *ProductPriceRepository) Create(
 
 // CloseOpenPeriod stamps valid_to on the open period, so the price stops applying at the
 // moment the next one starts. Returns the number of periods it closed.
-//
-// There is normally at most one, and the count is what tells the service whether it just
-// replaced a price or set the first one.
 func (r *ProductPriceRepository) CloseOpenPeriod(
 	ctx context.Context, q Querier, accountID, branchID, productID uuid.UUID, at time.Time,
 ) (int64, error) {

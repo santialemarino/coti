@@ -13,11 +13,8 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
 
-// The price-validity rule is the only real logic in the catalog ticket, so it is tested
-// here against fakes: that setting a price closes the open period at the instant the new
-// one starts, and that nothing is ever overwritten. The SQL side — one open period left in
-// the table, the history intact — is asserted against a real database in
-// internal/repository.
+// The price-validity rule is tested here against fakes; the SQL side — one open period
+// left, the history intact — is asserted against a real database in internal/repository.
 
 var testBranchID = uuid.MustParse("55555555-5555-4555-8555-555555555555")
 

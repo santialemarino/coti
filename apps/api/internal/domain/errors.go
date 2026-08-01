@@ -4,40 +4,32 @@ package domain
 
 import "errors"
 
-// Domain errors the handler layer maps to HTTP status codes. Services return these
-// instead of HTTP concerns so the layers stay independent.
+// Domain errors, mapped to HTTP status codes by the handler layer.
 var (
-	// ErrNotFound is returned when a requested row does not exist, or exists in
-	// another account — under row level security the two are indistinguishable, and
-	// they must stay that way so the API never confirms another tenant's data.
+	// ErrNotFound covers "does not exist" and "belongs to another account" alike: under
+	// row level security they are indistinguishable, and must stay that way.
 	ErrNotFound = errors.New("not found")
 
 	// ErrConflict is returned when a write violates a uniqueness or state invariant.
 	ErrConflict = errors.New("conflict")
 
-	// ErrInvalidInput is returned when a value passes DTO binding but fails a
-	// business rule.
+	// ErrInvalidInput is returned when a value passes DTO binding but fails a business rule.
 	ErrInvalidInput = errors.New("invalid input")
 
 	// ErrUnauthenticated is returned when a request carries no usable credential.
 	ErrUnauthenticated = errors.New("unauthenticated")
 
-	// ErrForbidden is returned when an authenticated caller lacks the role or scope
-	// for the operation.
+	// ErrForbidden is returned when an authenticated caller lacks the role or scope.
 	ErrForbidden = errors.New("forbidden")
 
-	// ErrImmutable is returned when a write targets a frozen quote version. Items
-	// and discounts are editable only while their version has is_immutable = false.
+	// ErrImmutable is returned when a write targets a frozen quote version.
 	ErrImmutable = errors.New("target is immutable")
 
-	// ErrLocked is returned when an account is inside a failed-attempt lockout window.
-	// Unlike a bad password, this is safe to surface: the client needs to tell "wrong
-	// credentials" from "stop retrying for a while".
+	// ErrLocked is returned inside a failed-attempt lockout window. Safe to surface: the
+	// client needs to tell "wrong credentials" from "stop retrying".
 	ErrLocked = errors.New("account locked")
 
-	// ErrNoTenantContext is returned when a request-scoped operation runs without a
-	// resolved account. It is a programming error, not a client error: every query
-	// on the restricted pool must carry tenant context or row level security silently
-	// returns nothing.
+	// ErrNoTenantContext is a programming error, not a client one: a request-scoped query
+	// without tenant context silently returns nothing under row level security.
 	ErrNoTenantContext = errors.New("no tenant context")
 )

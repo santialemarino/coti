@@ -10,11 +10,9 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
-// Respond translates a domain error into an HTTP response.
-//
-// This is the single mapping point, so services stay free of HTTP concerns and no
-// handler invents its own status codes. Anything unrecognised becomes a 500 with a
-// generic body: an unmapped error is a bug, and its text may not be safe to show.
+// Respond translates a domain error into an HTTP response, and is the single mapping
+// point. Anything unrecognised becomes a 500 with a generic body: an unmapped error is a
+// bug, and its text may not be safe to show.
 func Respond(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):

@@ -7,20 +7,15 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// DefaultCurrency is the currency a price takes when the caller does not name one. The
-// pilot quotes in Argentine pesos.
+// DefaultCurrency is the currency a price takes when the caller does not name one.
 const DefaultCurrency = "ARS"
 
-// MoneyScale is how many decimals the NUMERIC(14,2) money and quantity columns keep. It is
-// a schema fact, not a preference: it fixes both what the API accepts and the scale amounts
-// are rendered at, so "8500" and "8500.00" never describe the same row differently.
+// MoneyScale is how many decimals the NUMERIC(14,2) money and quantity columns keep. It
+// fixes both what the API accepts and the scale amounts are rendered at.
 const MoneyScale = 2
 
-// ProductPrice is one validity period of a product's price at one branch.
-//
-// The table is append-only, which is why it has no updated_at: setting a price closes the
-// open period and opens a new row, so the history of what was quoted when survives. A
-// price is never overwritten.
+// ProductPrice is one validity period of a product's price at one branch. The table is
+// append-only: a price is never overwritten, so it carries no updated_at.
 type ProductPrice struct {
 	ID         uuid.UUID
 	AccountID  uuid.UUID

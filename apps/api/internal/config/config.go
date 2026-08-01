@@ -42,12 +42,9 @@ type ServerConfig struct {
 	ShutdownTimeout time.Duration
 }
 
-// DatabaseConfig holds both connection strings and the pool sizing shared by them.
-//
-// URL is the restricted, RLS-subject role used for every request-scoped query.
-// AdminURL is the owner role, and only three things may use it: migrations, the
-// follow-up cron, and the pre-auth lookups that cannot know the account yet
-// (login by email, resolving a public quote token).
+// DatabaseConfig holds both connection strings and the pool sizing shared by them. URL is
+// the restricted, RLS-subject role; AdminURL is the owner role, for migrations, the
+// follow-up cron, and the pre-auth lookups that cannot know the account yet.
 type DatabaseConfig struct {
 	URL             string
 	AdminURL        string
@@ -77,9 +74,8 @@ type CatalogConfig struct {
 	MaxPageSize     int
 }
 
-// Load resolves the configuration from the environment, applying defaults for
-// everything optional. Returns every validation problem at once rather than the
-// first, so a misconfigured deploy is diagnosed in one pass.
+// Load resolves the configuration from the environment, applying defaults for everything
+// optional. It reports every validation problem at once, not the first.
 func Load() (*Config, error) {
 	var problems []string
 

@@ -31,14 +31,9 @@ func (r *UserRepository) GetByID(ctx context.Context, q Querier, accountID, id u
 		accountID, id))
 }
 
-// GetByEmailCrossAccount looks a user up by email across every account.
-//
-// It must run on the owner pool: at login the account is not known yet, so a
-// tenant-scoped query would match no policy and read zero rows, failing every login.
-// The email is unique per account, so a shared address across accounts would be
-// ambiguous here — the pilot has one account per corralón, and resolving that
-// ambiguity needs a product decision (an account selector at login), not a silent
-// pick.
+// GetByEmailCrossAccount looks a user up by email across every account. It must run on the
+// owner pool: at login the account is not known yet, so a tenant-scoped query would read
+// zero rows. The email is unique per account, so a shared address would be ambiguous here.
 func (r *UserRepository) GetByEmailCrossAccount(ctx context.Context, q Querier, email string) (*domain.AppUser, error) {
 	return scanUser(q.QueryRow(ctx,
 		`SELECT `+userColumns+` FROM app_user WHERE lower(email) = lower($1) LIMIT 1`,

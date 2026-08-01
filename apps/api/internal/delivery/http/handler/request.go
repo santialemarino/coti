@@ -12,10 +12,7 @@ import (
 )
 
 // tenantOf returns the tenant resolved for the request, answering 401 when there is none.
-//
-// The second result is false once the response has been written. Every authenticated
-// route sits behind RequireTenant, so a miss here is a wiring bug rather than a client
-// error — but it must never fall through to an unscoped query.
+// The second result is false once the response has been written.
 func tenantOf(c *gin.Context) (domain.Tenant, bool) {
 	tenant, ok := middleware.TenantFrom(c)
 	if !ok {

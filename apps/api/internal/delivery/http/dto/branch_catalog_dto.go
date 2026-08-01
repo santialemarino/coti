@@ -6,21 +6,17 @@ import (
 	"github.com/google/uuid"
 )
 
-// SetAvailabilityRequest is the body for PUT /v1/products/:productId/availability.
-//
-// stock is a decimal string; omitting it means the branch does not track stock for the
-// item, which is not the same as zero. is_active defaults to true, since the point of the
-// call is normally that the branch does sell it.
+// SetAvailabilityRequest is the body for PUT /v1/products/:productId/availability. An
+// omitted stock means the branch does not track it, which is not the same as zero;
+// is_active defaults to true.
 type SetAvailabilityRequest struct {
 	Stock    *string `json:"stock" binding:"omitempty,numeric"`
 	IsActive *bool   `json:"is_active"`
 }
 
-// SetPriceRequest is the body for POST /v1/products/:productId/prices.
-//
-// Money is a decimal STRING parsed server-side, never a float: a JSON number would lose
-// NUMERIC(14,2) precision on the round trip. valid_from defaults to now, and the previous
-// period is closed at exactly that instant.
+// SetPriceRequest is the body for POST /v1/products/:productId/prices. Money is a decimal
+// STRING, never a float: a JSON number would lose NUMERIC(14,2) precision on the round
+// trip. valid_from defaults to now.
 type SetPriceRequest struct {
 	Price      string     `json:"price" binding:"required,numeric"`
 	Currency   string     `json:"currency" binding:"omitempty,len=3"` // e.g. "ARS"; defaults to ARS.
@@ -60,7 +56,8 @@ type PriceResponse struct {
 	CreatedAt  time.Time  `json:"created_at"`
 }
 
-// PriceListResponse is returned by GET /v1/products/:productId/prices, newest period first.
+// PriceListResponse is returned by GET /v1/products/:productId/prices, grouped by branch
+// and newest period first.
 type PriceListResponse struct {
 	Items []PriceResponse `json:"items"`
 }
