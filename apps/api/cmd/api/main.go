@@ -3,16 +3,14 @@
 //
 //	@title						Coti API
 //	@version					1.0
-//	@description				Backend de Coti — cotización asistida por IA para corralones.
-//	@description
-//	@description				Toda ruta bajo /v1 que no cuelgue de /public necesita un access token.
-//	@description				La sucursal activa no es un claim del token: viaja en el header
-//	@description				X-Branch-Id y se valida por request contra la cuenta y el usuario.
+//	@description				Every /v1 route outside /public needs an access token. The active
+//	@description				branch is not a token claim: it travels in the X-Branch-Id header
+//	@description				and is validated per request.
 //	@BasePath					/
 //	@securityDefinitions.apikey	BearerAuth
 //	@in							header
 //	@name						Authorization
-//	@description				Access token con el prefijo "Bearer ".
+//	@description				Access token, prefixed with "Bearer ".
 package main
 
 import (

@@ -1592,7 +1592,7 @@ const docTemplate = `{
     },
     "securityDefinitions": {
         "BearerAuth": {
-            "description": "Access token con el prefijo \"Bearer \".",
+            "description": "Access token, prefixed with \"Bearer \".",
             "type": "apiKey",
             "name": "Authorization",
             "in": "header"
@@ -1607,7 +1607,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "/",
 	Schemes:          []string{},
 	Title:            "Coti API",
-	Description:      "Backend de Coti — cotización asistida por IA para corralones.\n\nToda ruta bajo /v1 que no cuelgue de /public necesita un access token.\nLa sucursal activa no es un claim del token: viaja en el header\nX-Branch-Id y se valida por request contra la cuenta y el usuario.",
+	Description:      "Every /v1 route outside /public needs an access token. The active\nbranch is not a token claim: it travels in the X-Branch-Id header\nand is validated per request.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",
