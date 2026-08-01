@@ -105,9 +105,9 @@ Not style — hard rules. If a task asks you to violate one, stop and flag it.
   — the AI provider, repositories — never on concrete adapter packages. Adapter
   wiring lives only in `cmd/api/main.go`. See `api-layering`.
 - **English identifiers, native PG enums.** Tables/columns/types/functions/endpoints
-  are English (`account`, `branch`, `app_user`, `product`, `quote`, `rfq`, …); docs
-  are Spanish and cite identifiers in English. Enums are native PostgreSQL types with
-  **English UPPERCASE** values (labels are frontend i18n only).
+  are English (`account`, `branch`, `app_user`, `product`, `quote`, `rfq`, …). Enums
+  are native PostgreSQL types with **English UPPERCASE** values (labels are frontend
+  i18n only).
 - **Raw SQL, no ORM.** Persistence uses `database/sql` + `pgx`/`pgxpool`. SQL is always
   parameterized (`$1`), never string-built. Rows scanned explicitly into domain structs.
 - **UUID v4 PKs** (`gen_random_uuid()`), no autoincrement.
@@ -146,8 +146,18 @@ Not style — hard rules. If a task asks you to violate one, stop and flag it.
 
 ## Conventions
 
-- **Docs Spanish, code English.** UI copy is Argentine Spanish via next-intl
-  (`es-AR`, single locale). Commits and PRs are in English.
+- **The whole codebase is English** — code, comments, SQL, `docs/technical/`,
+  `docs/public/`, READMEs, scripts, CI, commits and PRs. Two exceptions, and they are
+  different in kind: **UI copy is Argentine Spanish** via next-intl (`es-AR`, single
+  locale) because it _is_ the product, and **`docs/internal/` is Spanish** because it
+  is the academic material that syncs with Notion. Never mix two languages inside one
+  file or one generated document.
+- **Comments earn their place.** One line, two if genuinely needed; comment a
+  non-obvious _why_, a constraint that looks arbitrary, or a footgun. Go doc comments
+  on exported symbols stay (the language requires them) but stay to one line. Never
+  narrate rejected alternatives, tell a bug's story, restate the signature, or
+  describe how something used to be — a versioned file reads as if it had always been
+  this way. When in doubt, leave it out.
 - **Git:** GitFlow (simplified) — `main` (prod) ← `dev` (integration, default) ←
   ephemeral `feat/`, `fix/`, `enhancement/`, `refactor/`, `hotfix/` (kebab-case).
   Commits `type: imperative description`. See `commit` / `pr-format`.
@@ -176,5 +186,6 @@ Not style — hard rules. If a task asks you to violate one, stop and flag it.
 ## Tone
 
 Direct and technical, no filler. If an approach is wrong or something doesn't add up,
-say so and propose the fix — don't patch over a broken design. The team and all
-project docs are in Argentine Spanish; match that when writing docs or talking to the team.
+say so and propose the fix — don't patch over a broken design. The team speaks
+Argentine Spanish, so match that when talking to them; everything written into the
+repo is English (see Conventions).

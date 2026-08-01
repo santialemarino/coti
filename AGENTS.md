@@ -102,7 +102,9 @@ Link and pulls acceptance criteria from it. See `pr-format`.
 
 ## Conventions & hard rules
 
-- Docs Spanish, code English. UI copy is Argentine Spanish via next-intl (`es-AR`, single locale). Commits/PRs in English. "MVP" is banned — it's "Release 1 — Piloto Comercial".
+- The whole codebase is English — code, comments, SQL, `docs/technical/`, `docs/public/`, READMEs, scripts, CI, commits and PRs. Two exceptions, different in kind: UI copy is Argentine Spanish via next-intl (`es-AR`, single locale) because it _is_ the product, and `docs/internal/` is Spanish because it is the academic material that syncs with Notion. Never mix two languages inside one file or one generated document.
+- Comments earn their place: one line, two if genuinely needed, for a non-obvious _why_, an arbitrary-looking constraint, or a footgun. Go doc comments on exported symbols stay but stay to one line. Never narrate rejected alternatives, tell a bug's story, restate the signature, or describe how something used to be. When in doubt, leave it out.
+- "MVP" is banned — it's "Release 1 — Piloto Comercial".
 - GitFlow: `main` ← `dev` (default) ← ephemeral `feat/`, `fix/`, `enhancement/`, `refactor/`, `hotfix/` (kebab-case). Commits `type: imperative description`.
 - Never `git add .`/`-A`; stage files individually by name.
 - Never stage `.claude/plans/`, `.claude/settings*.json`, `docs/internal/`, or stray temporary markdown.
@@ -126,4 +128,4 @@ Link and pulls acceptance criteria from it. See `pr-format`.
 3. Branch with the right prefix; commits in format; PR to `dev`; tests included.
 4. If a task contradicts a closed decision or an invariant, stop and flag it before coding.
 
-The team and all project docs are in Argentine Spanish; match that when writing docs or talking to the team.
+The team speaks Argentine Spanish, so match that when talking to them; everything written into the repo is English (see Conventions & hard rules).
