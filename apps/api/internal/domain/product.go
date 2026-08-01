@@ -6,8 +6,11 @@ import (
 	"github.com/google/uuid"
 )
 
-// SynonymSource is where a product synonym came from. The column is free text in the
-// schema, so the closed set the API accepts is defined here.
+// SynonymSource is where a product synonym came from. It mirrors the native enum
+// product_synonym_source, so the values match the database exactly.
+//
+// The endpoint accepts only MANUAL and LEARNED: IMPORTED is written by the bulk catalog
+// import, which has its own path and no reason to be reachable from a request body.
 type SynonymSource string
 
 const (
@@ -15,6 +18,8 @@ const (
 	SynonymSourceManual SynonymSource = "MANUAL"
 	// SynonymSourceLearned is a term the matching pipeline proposed from real RFQ text.
 	SynonymSourceLearned SynonymSource = "LEARNED"
+	// SynonymSourceImported is a term that arrived with a bulk catalog load.
+	SynonymSourceImported SynonymSource = "IMPORTED"
 )
 
 // ProductAlternativeType is what the alternative is relative to its base product.
