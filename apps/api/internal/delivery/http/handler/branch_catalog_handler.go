@@ -45,7 +45,7 @@ func NewBranchCatalogHandler(catalog BranchCatalogService) *BranchCatalogHandler
 //	@Failure		400			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
 //	@Failure		404			{object}	dto.ErrorResponse
-//	@Router			/products/{productId}/availability [get]
+//	@Router			/v1/products/{productId}/availability [get]
 func (h *BranchCatalogHandler) ListAvailability(c *gin.Context) {
 	tenant, ok := tenantOf(c)
 	if !ok {
@@ -86,7 +86,7 @@ func (h *BranchCatalogHandler) ListAvailability(c *gin.Context) {
 //	@Failure		401			{object}	dto.ErrorResponse
 //	@Failure		404			{object}	dto.ErrorResponse
 //	@Failure		422			{object}	dto.ErrorResponse	"No active branch, or a stock NUMERIC(14,2) cannot hold"
-//	@Router			/products/{productId}/availability [put]
+//	@Router			/v1/products/{productId}/availability [put]
 func (h *BranchCatalogHandler) SetAvailability(c *gin.Context) {
 	tenant, ok := tenantOf(c)
 	if !ok {
@@ -136,7 +136,7 @@ func (h *BranchCatalogHandler) SetAvailability(c *gin.Context) {
 //	@Failure		400			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
 //	@Failure		404			{object}	dto.ErrorResponse
-//	@Router			/products/{productId}/prices [get]
+//	@Router			/v1/products/{productId}/prices [get]
 func (h *BranchCatalogHandler) ListPrices(c *gin.Context) {
 	tenant, ok := tenantOf(c)
 	if !ok {
@@ -179,7 +179,7 @@ func (h *BranchCatalogHandler) ListPrices(c *gin.Context) {
 //	@Failure		401			{object}	dto.ErrorResponse
 //	@Failure		404			{object}	dto.ErrorResponse
 //	@Failure		422			{object}	dto.ErrorResponse	"No active branch, min_price above price, or valid_from before the current period"
-//	@Router			/products/{productId}/prices [post]
+//	@Router			/v1/products/{productId}/prices [post]
 func (h *BranchCatalogHandler) SetPrice(c *gin.Context) {
 	tenant, ok := tenantOf(c)
 	if !ok {

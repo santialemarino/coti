@@ -85,6 +85,16 @@ pnpm dev
 | `pnpm dev:docker`                 | Bring up the full stack via docker-compose |
 | `pnpm db:migrate`                 | Apply Go (goose) migrations                |
 | `pnpm db:create-migration <name>` | Scaffold a new migration                   |
+| `pnpm docs:api`                   | Regenerate the OpenAPI spec from handlers  |
+
+## API specification
+
+Generated from the handler annotations with swaggo/swag and committed under
+`apps/api/docs/`; CI regenerates and fails on a diff, so the annotations stay
+verified rather than decorative. With the API running, the UI is at
+http://localhost:8000/swagger/index.html — it is not served in production.
+
+See [docs/technical/especificacion-api.md](docs/technical/especificacion-api.md).
 
 ## Database
 

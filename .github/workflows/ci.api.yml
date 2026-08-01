@@ -40,6 +40,13 @@ jobs:
           working-directory: apps/api
       - name: Build
         run: go build -o /dev/null ./...
+      # The committed spec is generated from the handler annotations, so it can go stale
+      # the moment a handler changes. Regenerating and diffing is what keeps the
+      # annotations verified instead of decorative.
+      - name: OpenAPI spec is up to date
+        run: |
+          go tool swag init --generalInfo main.go --dir cmd/api,internal/delivery/http --output docs --parseInternal
+          git diff --exit-code -- docs
       - name: Test
         run: go test ./...
 

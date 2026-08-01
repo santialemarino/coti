@@ -173,11 +173,5 @@ no puede contradecir a la página que describe.
 
 ## Especificación de la API
 
-Los handlers llevan las anotaciones swaggo (`@Summary`, `@Param`, `@Success`, `@Router`), y
-los errores tienen una forma única, `dto.ErrorResponse`, para que el spec describa un solo
-cuerpo de error.
-
-**Falta el toolchain que genera y sirve el spec** (el CLI de `swag`, el paquete generado y la
-ruta que lo publica), más las anotaciones de los handlers de autenticación, que son
-anteriores a esta convención. Es su propio ticket: mete un paso de codegen y artefactos
-generados al repo, y ninguna de las dos cosas se decide de costado.
+Los quince handlers están anotados y aparecen en el spec generado. Cómo se genera, se sirve y
+se verifica: [especificacion-api.md](especificacion-api.md).
