@@ -225,6 +225,27 @@ func TestProductRepository_CreateAllowsTheSameCodeInAnotherAccount(t *testing.T)
 	}
 }
 
+// The source column is a native enum, so the database is what refuses a value outside the
+// closed set — not just the DTO's oneof tag. That matters because the learning pipeline and
+// the bulk import will write this column without going through a request body.
+func TestProductSynonymRepository_SourceRejectsAValueOutsideTheEnum(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountA := seedAccount(t, db, "Corralon A")
+	productA := seedProduct(t, db, accountA, "Cemento Portland 50kg")
+
+	err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountA}, func(q Querier) error {
+		_, execErr := q.Exec(ctx,
+			`INSERT INTO product_synonym (account_id, product_id, term, source)
+			 VALUES ($1, $2, 'portland', 'whatever')`,
+			accountA, productA)
+		return execErr
+	})
+	if err == nil {
+		t.Fatal("INSERT with a free-text source = nil error, want the enum type to reject it")
+	}
+}
+
 func TestProductSynonymRepository_CreateRejectsARepeatedTerm(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()

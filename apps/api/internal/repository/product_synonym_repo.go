@@ -51,9 +51,10 @@ func (r *ProductSynonymRepository) List(
 // Create adds a synonym to a product. Returns domain.ErrConflict when the product
 // already carries the term.
 //
-// The guard is a NOT EXISTS on the insert rather than ON CONFLICT because the schema has
-// no unique index over (product_id, term) to name as a conflict target — and it is
-// case-insensitive, since "Portland" and "portland" are the same term to a matcher.
+// The conflict target is uq_product_synonym_term, which indexes lower(term): "Portland"
+// and "portland" are the same term to a matcher. Leaning on the index rather than a
+// SELECT-then-INSERT is what makes the check atomic — two concurrent requests adding the
+// same term cannot both pass.
 func (r *ProductSynonymRepository) Create(
 	ctx context.Context, q Querier, accountID, productID uuid.UUID, term string,
 	source domain.SynonymSource,
@@ -61,11 +62,8 @@ func (r *ProductSynonymRepository) Create(
 	var s domain.ProductSynonym
 	err := q.QueryRow(ctx,
 		`INSERT INTO product_synonym (account_id, product_id, term, source)
-		 SELECT $1, $2, $3::text, $4
-		 WHERE NOT EXISTS (
-		   SELECT 1 FROM product_synonym
-		   WHERE account_id = $1 AND product_id = $2 AND lower(term) = lower($3::text)
-		 )
+		 VALUES ($1, $2, $3, $4)
+		 ON CONFLICT (account_id, product_id, lower(term)) DO NOTHING
 		 RETURNING `+productSynonymColumns,
 		accountID, productID, term, source,
 	).Scan(&s.ID, &s.AccountID, &s.ProductID, &s.Term, &s.Source, &s.CreatedAt)

@@ -37,6 +37,11 @@ CREATE TYPE user_role AS ENUM ('ADMIN', 'SELLER');
 CREATE TYPE item_match_status AS ENUM ('MATCHED', 'AMBIGUOUS', 'NO_MATCH');
 
 CREATE TYPE product_alternative_type AS ENUM ('EQUIVALENT', 'PREMIUM', 'ECONOMY');
+
+-- De dónde salió un sinónimo: lo cargó una persona, lo propuso el matching, o entró por
+-- carga masiva (ahí caen también las filas del seed).
+CREATE TYPE product_synonym_source AS ENUM ('MANUAL', 'LEARNED', 'IMPORTED');
+
 CREATE TYPE quote_item_alternative_type AS ENUM ('PRODUCT', 'COMBO');
 CREATE TYPE quote_item_alternative_origin AS ENUM ('AI', 'SELLER');
 
@@ -199,7 +204,7 @@ CREATE TABLE product_synonym (
   account_id UUID NOT NULL,
   product_id UUID NOT NULL,
   term       VARCHAR(255) NOT NULL,
-  source     VARCHAR(64) NOT NULL,
+  source     product_synonym_source NOT NULL DEFAULT 'MANUAL',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -767,6 +772,10 @@ CREATE INDEX idx_product_account ON product(account_id);
 CREATE UNIQUE INDEX uq_product_account_code ON product (account_id, code) WHERE code IS NOT NULL;
 CREATE INDEX idx_branch_product_branch ON branch_product(branch_id) WHERE is_active = TRUE;
 CREATE INDEX idx_product_synonym_product ON product_synonym(product_id);
+-- Un término por producto, sin distinguir mayúsculas: "Portland" y "portland" son el
+-- mismo término para un matcher. Es también el destino del ON CONFLICT del alta.
+CREATE UNIQUE INDEX uq_product_synonym_term
+  ON product_synonym (account_id, product_id, lower(term));
 CREATE INDEX idx_product_price_product ON product_price(product_id, branch_id);
 CREATE INDEX idx_branch_combo_branch ON branch_combo(branch_id) WHERE is_active = TRUE;
 
