@@ -5,11 +5,17 @@ frontend is what stores the access token in an httpOnly cookie.
 
 ## Endpoints
 
-| Method | Route                     | Auth                                     |
-| ------ | ------------------------- | ---------------------------------------- |
-| `POST` | `/v1/public/auth/login`   | no                                       |
-| `POST` | `/v1/public/auth/refresh` | no (the refresh token is the credential) |
-| `POST` | `/v1/auth/logout`         | yes                                      |
+| Method   | Route                     | Auth                                     |
+| -------- | ------------------------- | ---------------------------------------- |
+| `POST`   | `/v1/public/auth/login`   | no                                       |
+| `POST`   | `/v1/public/auth/refresh` | no (the refresh token is the credential) |
+| `POST`   | `/v1/auth/logout`         | yes                                      |
+| `GET`    | `/v1/branches`            | yes                                      |
+| `GET`    | `/v1/users`               | yes, admin                               |
+| `POST`   | `/v1/users`               | yes, admin                               |
+| `GET`    | `/v1/users/:userId`       | yes, admin                               |
+| `PUT`    | `/v1/users/:userId`       | yes, admin                               |
+| `DELETE` | `/v1/users/:userId`       | yes, admin                               |
 
 `login` and `refresh` return the same body: `access_token`, `access_expires_at`,
 `refresh_token`, and a `user` with `id`, `account_id` and `role`. **The refresh token is
@@ -32,7 +38,8 @@ trusted propagates all the way down.
 
 | Header                                            | Result                                     |
 | ------------------------------------------------- | ------------------------------------------ |
-| Absent                                            | operates account-wide (what an admin does) |
+| Absent, admin                                     | operates account-wide                      |
+| Absent, seller                                    | confined to the branches they are assigned |
 | A branch of the account, user assigned (or admin) | lands in the context                       |
 | An existing branch with no assignment             | **403**                                    |
 | A branch of another account, or nonexistent       | **403**                                    |
@@ -40,6 +47,18 @@ trusted propagates all the way down.
 
 An inaccessible branch is a 403 and is **not** silently dropped: dropping it would leave the
 caller reading the whole account while believing they are scoped to one branch.
+
+**Omitting the header does not widen a seller's reach.** With no branch selected, a seller's
+per-branch reads narrow to the union of their `user_branch` rows, which `ResolveTenant` loads
+into `Tenant.AllowedBranchIDs`; only an admin reads the whole account. `Tenant.BranchFilter()`
+is the single place that decides this, and it **fails closed** — a seller with no assignments,
+or whose assignments were never loaded, reads nothing rather than everything.
+
+## Branch list
+
+`GET /v1/branches` is what the branch switcher reads before it can send `X-Branch-Id`. An admin
+gets every active branch of the account; a seller gets the ones they are assigned. It sits
+behind `RequireTenant`, not `RequireAdmin` — a seller needs it to switch branch.
 
 ## Refresh token
 
@@ -103,10 +122,38 @@ the same transaction). That is deliberate.
 2. `RequireTenant` guards the authenticated group and returns 401 when there is no tenant.
 3. `RequireAdmin` goes after `RequireTenant` on admin routes.
 
+## User administration
+
+`/v1/users` is the one admin-only group, guarded by `RequireAdmin` after `RequireTenant`. A
+seller reaching any of it gets **403**.
+
+- **The account comes from the session**, never the body — there is no account field on the
+  wire, so an admin cannot create a user anywhere but their own account.
+- **An admin sets the initial password.** There is no invitation flow, so this is the only way
+  a user gets credentials. It must clear `AUTH_PASSWORD_MIN_LENGTH`.
+- **An admin may create either role.** `ADMIN` and `SELLER` are both accepted.
+- **A duplicate email inside the account is a 409**, raised by `uq_app_user_email` rather than
+  a read-then-write. Emails are stored lowercased and trimmed, which is what makes that
+  constraint case-insensitive in practice. Uniqueness is **per account**: two corralones may
+  share a contact address.
+- **`PUT` replaces** name, email, role and branch assignments. `is_active` omitted leaves the
+  flag alone, so an edit form cannot silently revive a deactivated user.
+- **`DELETE` deactivates**, keeping the row so the user's quotes keep an author.
+- **Deactivating bumps `session_epoch`** in the same transaction, so the access tokens the user
+  already holds stop working immediately instead of lasting until they expire.
+- **An admin cannot deactivate themselves or change their own role.** Either would drop the
+  last admin out of their own account, and there is no recovery path. Editing their own name
+  and email stays allowed.
+- **Branch assignments are written in the same transaction as the user**, and every branch id
+  is checked to belong to the account first: a foreign key does not confine a child row to its
+  account, because referential integrity bypasses row level security.
+- **`password_hash` is never on the wire**, in any response.
+
 ## Passwords
 
 bcrypt at the default cost. It is a cryptographic constant, so it is **not** configurable per
-environment, unlike the operational thresholds.
+environment, unlike the operational thresholds. `AUTH_PASSWORD_MIN_LENGTH` is the operational
+one, and it floors at 8.
 
 The two development seed users have the password `coti1234`. Development only.
 
@@ -115,10 +162,13 @@ The two development seed users have the password `coti1234`. Development only.
 All in `apps/api/.env.example`, with defaults in `internal/config`: `AUTH_JWT_SECRET`
 (required, at least 32 characters), `AUTH_ACCESS_TTL_MINUTES`, `AUTH_REFRESH_TTL_HOURS`,
 `AUTH_REFRESH_REMEMBER_DAYS`, `AUTH_REFRESH_REUSE_GRACE_SECONDS`,
-`AUTH_MAX_FAILED_ATTEMPTS`, `AUTH_LOCKOUT_MINUTES`.
+`AUTH_MAX_FAILED_ATTEMPTS`, `AUTH_LOCKOUT_MINUTES`, `AUTH_PASSWORD_MIN_LENGTH`.
 
 ## Not built yet
 
-Password recovery, user invitations and email verification are not implemented. Neither is
-account signup — the seed is the only path to a user, and account bootstrap goes through
-`db.AdminTx()` because the account does not exist when it is created.
+Password recovery, user invitations and email verification are not implemented, and neither is
+an admin-initiated password reset — a user who forgets their password has no path back today.
+
+Account signup is not implemented either: an account's first admin has no route, so the seed is
+the only path to one. Account bootstrap goes through `db.AdminTx()`, because the account does
+not exist when it is created and there is no scope to set.

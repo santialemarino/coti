@@ -76,7 +76,7 @@ func TestProductPriceRepository_UpdateOpensAPeriodAndClosesThePrevious(t *testin
 	var history []domain.ProductPrice
 	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
 		var listErr error
-		history, listErr = repo.ListByProduct(ctx, q, accountA, productA, &branchA)
+		history, listErr = repo.ListByProduct(ctx, q, accountA, productA, []uuid.UUID{branchA})
 		return listErr
 	}); err != nil {
 		t.Fatalf("ListByProduct() = %v, want no error", err)
@@ -275,11 +275,11 @@ func TestProductPriceRepository_IsInvisibleToAnotherAccount(t *testing.T) {
 		var err error
 		// Account A's own id is passed on purpose: even with the predicate spoofed, the
 		// policy is what denies the read.
-		foreignPrices, err = prices.ListByProduct(ctx, q, accountA, productA, &branchA)
+		foreignPrices, err = prices.ListByProduct(ctx, q, accountA, productA, []uuid.UUID{branchA})
 		if err != nil {
 			return err
 		}
-		foreignAvailability, err = availability.ListByProduct(ctx, q, accountA, productA, &branchA)
+		foreignAvailability, err = availability.ListByProduct(ctx, q, accountA, productA, []uuid.UUID{branchA})
 		return err
 	}); err != nil {
 		t.Fatalf("InTenantTx() = %v, want no error", err)
@@ -400,12 +400,12 @@ func TestBranchProductRepository_ListByProductSpansBranchesWhenUnfiltered(t *tes
 	}
 
 	cases := []struct {
-		name     string
-		branchID *uuid.UUID
-		want     int
+		name      string
+		branchIDs []uuid.UUID
+		want      int
 	}{
 		{"account-wide", nil, 2},
-		{"one branch", &branchA, 1},
+		{"one branch", []uuid.UUID{branchA}, 1},
 	}
 
 	for _, tc := range cases {
@@ -413,7 +413,7 @@ func TestBranchProductRepository_ListByProductSpansBranchesWhenUnfiltered(t *tes
 			var rows []domain.BranchProduct
 			if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
 				var listErr error
-				rows, listErr = repo.ListByProduct(ctx, q, accountA, productA, tc.branchID)
+				rows, listErr = repo.ListByProduct(ctx, q, accountA, productA, tc.branchIDs)
 				return listErr
 			}); err != nil {
 				t.Fatalf("ListByProduct() = %v, want no error", err)

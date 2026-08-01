@@ -77,6 +77,30 @@ definitions:
       updated_at:
         type: string
     type: object
+  dto.BranchListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.BranchResponse'
+        type: array
+    type: object
+  dto.BranchResponse:
+    properties:
+      address:
+        type: string
+      created_at:
+        type: string
+      default_expiry_days:
+        type: integer
+      id:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+      updated_at:
+        type: string
+    type: object
   dto.CreateProductRequest:
     properties:
       canonical_name:
@@ -97,6 +121,34 @@ definitions:
         type: string
     required:
     - canonical_name
+    type: object
+  dto.CreateUserRequest:
+    properties:
+      branch_ids:
+        items:
+          type: string
+        type: array
+      email:
+        maxLength: 255
+        type: string
+      name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      password:
+        maxLength: 72
+        type: string
+      role:
+        enum:
+        - ADMIN
+        - SELLER
+        type: string
+    required:
+    - branch_ids
+    - email
+    - name
+    - password
+    - role
     type: object
   dto.ErrorResponse:
     properties:
@@ -286,6 +338,32 @@ definitions:
     required:
     - canonical_name
     type: object
+  dto.UpdateUserRequest:
+    properties:
+      branch_ids:
+        items:
+          type: string
+        type: array
+      email:
+        maxLength: 255
+        type: string
+      is_active:
+        type: boolean
+      name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      role:
+        enum:
+        - ADMIN
+        - SELLER
+        type: string
+    required:
+    - branch_ids
+    - email
+    - name
+    - role
+    type: object
   dto.UserBrief:
     properties:
       account_id:
@@ -293,6 +371,36 @@ definitions:
       id:
         type: string
       role:
+        type: string
+    type: object
+  dto.UserListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.UserResponse'
+        type: array
+    type: object
+  dto.UserResponse:
+    properties:
+      branch_ids:
+        items:
+          type: string
+        type: array
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      last_login_at:
+        type: string
+      name:
+        type: string
+      role:
+        type: string
+      updated_at:
         type: string
     type: object
 info:
@@ -360,6 +468,26 @@ paths:
       summary: Log out
       tags:
       - auth
+  /v1/branches:
+    get:
+      description: Every active branch of the account for an admin; the assigned ones
+        for a seller.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.BranchListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List branches
+      tags:
+      - branches
   /v1/products:
     get:
       description: Ordered by name. Soft-deleted items are hidden unless include_inactive
@@ -1047,6 +1175,202 @@ paths:
       summary: Rotate a refresh token
       tags:
       - auth
+  /v1/users:
+    get:
+      description: Admin only. Ordered by name, deactivated users included so they
+        can be re-enabled.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.UserListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List users
+      tags:
+      - users
+    post:
+      consumes:
+      - application/json
+      description: Admin only. The account comes from the session; a duplicate email
+        inside it is a 409.
+      parameters:
+      - description: User to create
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.UserResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a user
+      tags:
+      - users
+  /v1/users/{userId}:
+    delete:
+      description: Admin only. Keeps the row so their quotes keep an author, and revokes
+        their tokens at once.
+      parameters:
+      - description: User id
+        in: path
+        name: userId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Deactivated
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Deactivate a user
+      tags:
+      - users
+    get:
+      parameters:
+      - description: User id
+        in: path
+        name: userId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.UserResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a user
+      tags:
+      - users
+    put:
+      consumes:
+      - application/json
+      description: Admin only. Replaces the profile; is_active omitted leaves the
+        flag alone.
+      parameters:
+      - description: User id
+        in: path
+        name: userId
+        required: true
+        type: string
+      - description: Replacement values
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.UserResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a user
+      tags:
+      - users
 securityDefinitions:
   BearerAuth:
     description: Access token, prefixed with "Bearer ".

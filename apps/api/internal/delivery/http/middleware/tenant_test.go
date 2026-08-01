@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -38,10 +39,11 @@ func TestRequireTenant_RejectsRequestWithoutTenant(t *testing.T) {
 
 func TestRequireTenant_PassesTenantThrough(t *testing.T) {
 	want := domain.Tenant{
-		AccountID: uuid.New(),
-		UserID:    uuid.New(),
-		Role:      domain.UserRoleSeller,
-		BranchID:  uuid.New(),
+		AccountID:        uuid.New(),
+		UserID:           uuid.New(),
+		Role:             domain.UserRoleSeller,
+		BranchID:         uuid.New(),
+		AllowedBranchIDs: []uuid.UUID{uuid.New(), uuid.New()},
 	}
 
 	var got domain.Tenant
@@ -62,7 +64,7 @@ func TestRequireTenant_PassesTenantThrough(t *testing.T) {
 	if !found {
 		t.Fatal("TenantFrom() found = false, want true")
 	}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("TenantFrom() = %+v, want %+v", got, want)
 	}
 }

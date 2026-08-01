@@ -74,3 +74,53 @@ func (r *BranchRepository) ListForUser(
 	}
 	return branches, rows.Err()
 }
+
+// ListIDsForUser returns the ids of the branches a user may operate on. It backs the
+// per-request branch scope, which needs no other column.
+func (r *BranchRepository) ListIDsForUser(
+	ctx context.Context, q Querier, accountID, userID uuid.UUID, isAdmin bool,
+) ([]uuid.UUID, error) {
+	rows, err := q.Query(ctx,
+		`SELECT b.id
+		 FROM branch b
+		 LEFT JOIN user_branch ub ON ub.branch_id = b.id AND ub.user_id = $2
+		 WHERE b.account_id = $1
+		   AND b.is_active = TRUE
+		   AND ($3 OR ub.id IS NOT NULL)
+		 ORDER BY b.id`,
+		accountID, userID, isAdmin)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Non-nil even when empty: an empty scope means "no branches", not "every branch".
+	ids := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// ExistAllInAccount reports whether every given id is an active branch of the account. One
+// query, and it counts distinct ids on both sides so a repeated id cannot pass for a missing
+// one.
+func (r *BranchRepository) ExistAllInAccount(
+	ctx context.Context, q Querier, accountID uuid.UUID, ids []uuid.UUID,
+) (bool, error) {
+	var allPresent bool
+	err := q.QueryRow(ctx,
+		`SELECT (SELECT count(DISTINCT id) FROM branch
+		         WHERE account_id = $1 AND is_active = TRUE AND id = ANY($2::uuid[]))
+		      = (SELECT count(DISTINCT x) FROM unnest($2::uuid[]) AS x)`,
+		accountID, ids,
+	).Scan(&allPresent)
+	if err != nil {
+		return false, err
+	}
+	return allPresent, nil
+}

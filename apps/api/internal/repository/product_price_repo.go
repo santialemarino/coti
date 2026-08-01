@@ -24,17 +24,18 @@ func NewProductPriceRepository() *ProductPriceRepository {
 }
 
 // ListByProduct returns the product's price history, grouped by branch and newest period
-// first. A nil branchID reads every branch of the account; a set one narrows to it.
+// first. A nil branchIDs reads every branch of the account; a set one narrows to it, and an
+// empty one reads nothing.
 func (r *ProductPriceRepository) ListByProduct(
-	ctx context.Context, q Querier, accountID, productID uuid.UUID, branchID *uuid.UUID,
+	ctx context.Context, q Querier, accountID, productID uuid.UUID, branchIDs []uuid.UUID,
 ) ([]domain.ProductPrice, error) {
 	rows, err := q.Query(ctx,
 		`SELECT `+productPriceColumns+`
 		 FROM product_price
 		 WHERE account_id = $1 AND product_id = $2
-		   AND ($3::uuid IS NULL OR branch_id = $3::uuid)
+		   AND ($3::uuid[] IS NULL OR branch_id = ANY($3::uuid[]))
 		 ORDER BY branch_id, valid_from DESC, created_at DESC`,
-		accountID, productID, branchID)
+		accountID, productID, branchIDs)
 	if err != nil {
 		return nil, err
 	}

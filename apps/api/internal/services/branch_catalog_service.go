@@ -26,13 +26,13 @@ type productLookup interface {
 
 // branchProductRepository is the availability persistence surface.
 type branchProductRepository interface {
-	ListByProduct(ctx context.Context, q repository.Querier, accountID, productID uuid.UUID, branchID *uuid.UUID) ([]domain.BranchProduct, error)
+	ListByProduct(ctx context.Context, q repository.Querier, accountID, productID uuid.UUID, branchIDs []uuid.UUID) ([]domain.BranchProduct, error)
 	Save(ctx context.Context, q repository.Querier, accountID, branchID, productID uuid.UUID, in domain.BranchAvailability) (*domain.BranchProduct, error)
 }
 
 // productPriceRepository is the price persistence surface.
 type productPriceRepository interface {
-	ListByProduct(ctx context.Context, q repository.Querier, accountID, productID uuid.UUID, branchID *uuid.UUID) ([]domain.ProductPrice, error)
+	ListByProduct(ctx context.Context, q repository.Querier, accountID, productID uuid.UUID, branchIDs []uuid.UUID) ([]domain.ProductPrice, error)
 	GetOpenPeriod(ctx context.Context, q repository.Querier, accountID, branchID, productID uuid.UUID) (*domain.ProductPrice, error)
 	Create(ctx context.Context, q repository.Querier, accountID, branchID, productID uuid.UUID, userID *uuid.UUID, in domain.NewProductPrice) (*domain.ProductPrice, error)
 	CloseOpenPeriod(ctx context.Context, q repository.Querier, accountID, branchID, productID uuid.UUID, at time.Time) (int64, error)
@@ -63,7 +63,7 @@ func NewBranchCatalogService(
 }
 
 // ListAvailability returns where the product is sold: the active branch when the request
-// selected one, every branch of the account otherwise.
+// selected one, otherwise every branch the caller reaches.
 func (s *BranchCatalogService) ListAvailability(
 	ctx context.Context, tenant domain.Tenant, productID uuid.UUID,
 ) ([]domain.BranchProduct, error) {
@@ -74,7 +74,7 @@ func (s *BranchCatalogService) ListAvailability(
 		}
 		var listErr error
 		availability, listErr = s.availability.ListByProduct(ctx, q, tenant.AccountID, productID,
-			branchFilter(tenant))
+			tenant.BranchFilter())
 		return listErr
 	})
 	if err != nil {
@@ -112,7 +112,7 @@ func (s *BranchCatalogService) SetAvailability(
 }
 
 // ListPrices returns the product's price history — open and closed periods, newest first —
-// for the active branch, or for every branch of the account when none is selected.
+// for the active branch, or for every branch the caller reaches when none is selected.
 func (s *BranchCatalogService) ListPrices(
 	ctx context.Context, tenant domain.Tenant, productID uuid.UUID,
 ) ([]domain.ProductPrice, error) {
@@ -123,7 +123,7 @@ func (s *BranchCatalogService) ListPrices(
 		}
 		var listErr error
 		prices, listErr = s.prices.ListByProduct(ctx, q, tenant.AccountID, productID,
-			branchFilter(tenant))
+			tenant.BranchFilter())
 		return listErr
 	})
 	if err != nil {
@@ -197,16 +197,6 @@ func (s *BranchCatalogService) SetPrice(
 		return nil, err
 	}
 	return price, nil
-}
-
-// branchFilter narrows a per-branch read to the request's active branch, or returns nil for
-// the account-wide read an admin comparing branches performs.
-func branchFilter(tenant domain.Tenant) *uuid.UUID {
-	if !tenant.HasBranch() {
-		return nil
-	}
-	branchID := tenant.BranchID
-	return &branchID
 }
 
 // requireBranch rejects a per-branch write that arrived without an active branch: a
