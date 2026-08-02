@@ -133,6 +133,208 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/product-prices/export": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns an XLSX pre-filled with the prices in force for the active branch, ready to edit and re-import.",
+                "produces": [
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Export the branch price list",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/product-prices/import/confirm": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Revalidates the reviewed rows and, in one transaction, closes the current price periods and inserts the replacements.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Confirm a price import",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Reviewed rows",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ConfirmProductPriceImportRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ConfirmProductPriceImportResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/product-prices/import/preview": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Parses the uploaded spreadsheet and reports every row with its proposed value and errors. Writes nothing.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Preview a price import",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "Spreadsheet to preview (.xlsx or .csv)",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ProductPriceImportPreviewResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/products": {
             "get": {
                 "security": [
@@ -1632,6 +1834,29 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ConfirmProductPriceImportRequest": {
+            "type": "object",
+            "required": [
+                "rows"
+            ],
+            "properties": {
+                "rows": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/dto.ProductPriceImportInput"
+                    }
+                }
+            }
+        },
+        "dto.ConfirmProductPriceImportResponse": {
+            "type": "object",
+            "properties": {
+                "imported_rows": {
+                    "type": "integer"
+                }
+            }
+        },
         "dto.CreateProductRequest": {
             "type": "object",
             "required": [
@@ -1818,6 +2043,93 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.ProductPriceImportInput": {
+            "type": "object",
+            "required": [
+                "code",
+                "price"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "conditions": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "min_price": {
+                    "type": "string"
+                },
+                "price": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.ProductPriceImportPreviewResponse": {
+            "type": "object",
+            "properties": {
+                "can_confirm": {
+                    "type": "boolean"
+                },
+                "invalid_rows": {
+                    "type": "integer"
+                },
+                "previewed_at": {
+                    "type": "string"
+                },
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ProductPriceImportRowResponse"
+                    }
+                },
+                "valid_rows": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.ProductPriceImportRowResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "conditions": {
+                    "type": "string"
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "current_min_price": {
+                    "type": "string"
+                },
+                "current_price": {
+                    "type": "string"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "min_price": {
+                    "type": "string"
+                },
+                "price": {
+                    "type": "string"
+                },
+                "product_name": {
+                    "type": "string"
+                },
+                "row_number": {
                     "type": "integer"
                 }
             }

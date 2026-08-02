@@ -101,6 +101,21 @@ definitions:
       updated_at:
         type: string
     type: object
+  dto.ConfirmProductPriceImportRequest:
+    properties:
+      rows:
+        items:
+          $ref: '#/definitions/dto.ProductPriceImportInput'
+        minItems: 1
+        type: array
+    required:
+    - rows
+    type: object
+  dto.ConfirmProductPriceImportResponse:
+    properties:
+      imported_rows:
+        type: integer
+    type: object
   dto.CreateProductRequest:
     properties:
       canonical_name:
@@ -230,6 +245,64 @@ definitions:
       offset:
         type: integer
       total:
+        type: integer
+    type: object
+  dto.ProductPriceImportInput:
+    properties:
+      code:
+        maxLength: 255
+        type: string
+      conditions:
+        maxLength: 255
+        type: string
+      currency:
+        type: string
+      min_price:
+        type: string
+      price:
+        type: string
+    required:
+    - code
+    - price
+    type: object
+  dto.ProductPriceImportPreviewResponse:
+    properties:
+      can_confirm:
+        type: boolean
+      invalid_rows:
+        type: integer
+      previewed_at:
+        type: string
+      rows:
+        items:
+          $ref: '#/definitions/dto.ProductPriceImportRowResponse'
+        type: array
+      valid_rows:
+        type: integer
+    type: object
+  dto.ProductPriceImportRowResponse:
+    properties:
+      code:
+        type: string
+      conditions:
+        type: string
+      currency:
+        type: string
+      current_min_price:
+        type: string
+      current_price:
+        type: string
+      errors:
+        items:
+          type: string
+        type: array
+      min_price:
+        type: string
+      price:
+        type: string
+      product_name:
+        type: string
+      row_number:
         type: integer
     type: object
   dto.ProductResponse:
@@ -488,6 +561,139 @@ paths:
       summary: List branches
       tags:
       - branches
+  /v1/product-prices/export:
+    get:
+      description: Returns an XLSX pre-filled with the prices in force for the active
+        branch, ready to edit and re-import.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Export the branch price list
+      tags:
+      - catalog
+  /v1/product-prices/import/confirm:
+    post:
+      consumes:
+      - application/json
+      description: Revalidates the reviewed rows and, in one transaction, closes the
+        current price periods and inserts the replacements.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Reviewed rows
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ConfirmProductPriceImportRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ConfirmProductPriceImportResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Confirm a price import
+      tags:
+      - catalog
+  /v1/product-prices/import/preview:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Parses the uploaded spreadsheet and reports every row with its
+        proposed value and errors. Writes nothing.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Spreadsheet to preview (.xlsx or .csv)
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProductPriceImportPreviewResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Preview a price import
+      tags:
+      - catalog
   /v1/products:
     get:
       description: Ordered by name. Soft-deleted items are hidden unless include_inactive

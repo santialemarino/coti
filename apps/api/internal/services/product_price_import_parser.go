@@ -13,6 +13,10 @@ import (
 	"strings"
 )
 
+// maxXLSXEntryBytes bounds what one zip entry may expand to. The upload limit only caps the
+// compressed size, so without this a few megabytes of XLSX can decompress into gigabytes.
+const maxXLSXEntryBytes = 64 << 20
+
 type priceImportRawRow struct {
 	rowNumber  int
 	code       string
@@ -221,7 +225,14 @@ func readZIPFile(file *zip.File) ([]byte, error) {
 		return nil, err
 	}
 	defer reader.Close()
-	return io.ReadAll(reader)
+	content, err := io.ReadAll(io.LimitReader(reader, maxXLSXEntryBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(content) > maxXLSXEntryBytes {
+		return nil, fmt.Errorf("xlsx entry %q is too large", file.Name)
+	}
+	return content, nil
 }
 
 func xlsxColumnIndex(reference string) int {

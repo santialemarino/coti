@@ -9,7 +9,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
-	"github.com/santialemarino/coti/apps/api/internal/delivery/http/middleware"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
@@ -32,10 +31,21 @@ func NewProductPriceHandler(imports ProductPriceImportService, maxBytes int64) *
 }
 
 // Export writes the branch's current prices as an editable XLSX template.
+//
+//	@Summary		Export the branch price list
+//	@Description	Returns an XLSX pre-filled with the prices in force for the active branch, ready to edit and re-import.
+//	@Tags			catalog
+//	@Produce		application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header	string	true	"Active branch"
+//	@Success		200			{file}		binary
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		403			{object}	dto.ErrorResponse
+//	@Failure		422			{object}	dto.ErrorResponse
+//	@Router			/v1/product-prices/export [get]
 func (h *ProductPriceHandler) Export(c *gin.Context) {
-	tenant, ok := middleware.TenantFrom(c)
+	tenant, ok := tenantOf(c)
 	if !ok {
-		Respond(c, domain.ErrUnauthenticated)
 		return
 	}
 	file, err := h.imports.Export(c.Request.Context(), tenant)
@@ -48,10 +58,25 @@ func (h *ProductPriceHandler) Export(c *gin.Context) {
 }
 
 // PreviewImport validates an uploaded spreadsheet without changing any prices.
+//
+//	@Summary		Preview a price import
+//	@Description	Parses the uploaded spreadsheet and reports every row with its proposed value and errors. Writes nothing.
+//	@Tags			catalog
+//	@Accept			multipart/form-data
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header		string	true	"Active branch"
+//	@Param			file		formData	file	true	"Spreadsheet to preview (.xlsx or .csv)"
+//	@Success		200			{object}	dto.ProductPriceImportPreviewResponse
+//	@Failure		400			{object}	dto.ErrorResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		403			{object}	dto.ErrorResponse
+//	@Failure		413			{object}	dto.ErrorResponse
+//	@Failure		422			{object}	dto.ErrorResponse
+//	@Router			/v1/product-prices/import/preview [post]
 func (h *ProductPriceHandler) PreviewImport(c *gin.Context) {
-	tenant, ok := middleware.TenantFrom(c)
+	tenant, ok := tenantOf(c)
 	if !ok {
-		Respond(c, domain.ErrUnauthenticated)
 		return
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, h.maxBytes)
@@ -59,7 +84,7 @@ func (h *ProductPriceHandler) PreviewImport(c *gin.Context) {
 	if err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
-			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "file too large"})
+			c.JSON(http.StatusRequestEntityTooLarge, dto.ErrorResponse{Error: "file too large"})
 			return
 		}
 		RespondBindError(c, err)
@@ -81,10 +106,25 @@ func (h *ProductPriceHandler) PreviewImport(c *gin.Context) {
 }
 
 // ConfirmImport creates price versions only after the reviewed preview is confirmed.
+//
+//	@Summary		Confirm a price import
+//	@Description	Revalidates the reviewed rows and, in one transaction, closes the current price periods and inserts the replacements.
+//	@Tags			catalog
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header		string									true	"Active branch"
+//	@Param			request		body		dto.ConfirmProductPriceImportRequest	true	"Reviewed rows"
+//	@Success		201			{object}	dto.ConfirmProductPriceImportResponse
+//	@Failure		400			{object}	dto.ErrorResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		403			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse
+//	@Failure		422			{object}	dto.ErrorResponse
+//	@Router			/v1/product-prices/import/confirm [post]
 func (h *ProductPriceHandler) ConfirmImport(c *gin.Context) {
-	tenant, ok := middleware.TenantFrom(c)
+	tenant, ok := tenantOf(c)
 	if !ok {
-		Respond(c, domain.ErrUnauthenticated)
 		return
 	}
 	var body dto.ConfirmProductPriceImportRequest
