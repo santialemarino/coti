@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -34,6 +35,34 @@ type env struct {
 	router *gin.Engine
 	db     *repository.DB
 	tokens *services.TokenService
+	mail   *captureMailer
+}
+
+// captureMailer stands in for the transport so a test can read the link that was mailed.
+type captureMailer struct {
+	mu   sync.Mutex
+	sent []domain.EmailMessage
+	err  error
+}
+
+func (m *captureMailer) Send(_ context.Context, msg domain.EmailMessage) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.err != nil {
+		return m.err
+	}
+	m.sent = append(m.sent, msg)
+	return nil
+}
+
+// last returns the most recent message, or false when nothing was sent.
+func (m *captureMailer) last() (domain.EmailMessage, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.sent) == 0 {
+		return domain.EmailMessage{}, false
+	}
+	return m.sent[len(m.sent)-1], true
 }
 
 func newEnv(t *testing.T) *env {
@@ -51,12 +80,15 @@ func newEnv(t *testing.T) *env {
 		Auth: config.AuthConfig{
 			JWTSecret:         testJWTSecret,
 			AccessTTL:         15 * time.Minute,
+			RefreshTTL:        12 * time.Hour,
 			MaxFailedAttempts: 5,
 			LockoutDuration:   15 * time.Minute,
 			PasswordMinLength: 8,
+			PasswordResetTTL:  time.Hour,
 		},
 		Catalog: config.CatalogConfig{DefaultPageSize: 50, MaxPageSize: 200},
 		Branch:  config.BranchConfig{DefaultExpiryDays: 7},
+		Web:     config.WebConfig{BackofficeURL: "https://backoffice.test"},
 	}
 
 	db, err := repository.NewDB(context.Background(), config.DatabaseConfig{
@@ -73,10 +105,17 @@ func newEnv(t *testing.T) *env {
 	userBranchRepo := repository.NewUserBranchRepository()
 	channelRepo := repository.NewChannelRepository()
 	accountRepo := repository.NewAccountRepository()
+	refreshTokenRepo := repository.NewRefreshTokenRepository()
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
 	authService := services.NewAuthService(db, userRepo, branchRepo,
-		repository.NewRefreshTokenRepository(), tokenService, cfg.Auth, nil)
+		refreshTokenRepo, tokenService, cfg.Auth, nil)
 	userService := services.NewUserService(db, userRepo, userBranchRepo, branchRepo, cfg.Auth)
+	mailer := &captureMailer{}
+	mailService := services.NewMailService(db, mailer, repository.NewNotificationRepository(),
+		accountRepo, nil)
+	passwordService := services.NewPasswordService(db, userRepo, repository.NewAuthTokenRepository(),
+		refreshTokenRepo, mailService, authService, slog.New(slog.NewTextHandler(io.Discard, nil)),
+		cfg.Auth, cfg.Web, nil)
 	productRepo := repository.NewProductRepository()
 	productService := services.NewProductService(db, productRepo,
 		repository.NewProductSynonymRepository(), repository.NewProductAlternativeRepository(), cfg.Catalog)
@@ -87,6 +126,7 @@ func newEnv(t *testing.T) *env {
 		deliveryhttp.Handlers{
 			Health:        handler.NewHealthHandler(db),
 			Auth:          handler.NewAuthHandler(authService),
+			Password:      handler.NewPasswordHandler(passwordService),
 			User:          handler.NewUserHandler(userService),
 			Branch:        handler.NewBranchHandler(services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)),
 			Product:       handler.NewProductHandler(productService),
@@ -96,7 +136,7 @@ func newEnv(t *testing.T) *env {
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService})
 
-	return &env{router: router, db: db, tokens: tokenService}
+	return &env{router: router, db: db, tokens: tokenService, mail: mailer}
 }
 
 // seedAccount creates an account with one branch through the owner pool, and removes both at
@@ -118,11 +158,18 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 
 	t.Cleanup(func() {
 		c := context.Background()
-		_, _ = e.db.CrossAccount().Exec(c, `DELETE FROM user_branch WHERE account_id = $1`, accountID)
-		_, _ = e.db.CrossAccount().Exec(c, `DELETE FROM app_user WHERE account_id = $1`, accountID)
-		_, _ = e.db.CrossAccount().Exec(c, `DELETE FROM channel WHERE account_id = $1`, accountID)
-		_, _ = e.db.CrossAccount().Exec(c, `DELETE FROM branch WHERE account_id = $1`, accountID)
-		_, _ = e.db.CrossAccount().Exec(c, `DELETE FROM account WHERE id = $1`, accountID)
+		for _, stmt := range []string{
+			`DELETE FROM user_branch WHERE account_id = $1`,
+			`DELETE FROM auth_token WHERE account_id = $1`,
+			`DELETE FROM notification WHERE account_id = $1`,
+			`DELETE FROM refresh_token WHERE account_id = $1`,
+			`DELETE FROM app_user WHERE account_id = $1`,
+			`DELETE FROM channel WHERE account_id = $1`,
+			`DELETE FROM branch WHERE account_id = $1`,
+			`DELETE FROM account WHERE id = $1`,
+		} {
+			_, _ = e.db.CrossAccount().Exec(c, stmt, accountID)
+		}
 	})
 	return accountID, branchID
 }

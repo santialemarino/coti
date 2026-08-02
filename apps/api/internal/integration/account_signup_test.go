@@ -37,6 +37,8 @@ func (e *env) dropAccountByAdminEmail(t *testing.T, email string) {
 		}
 		for _, stmt := range []string{
 			`DELETE FROM refresh_token WHERE account_id = $1`,
+			`DELETE FROM auth_token WHERE account_id = $1`,
+			`DELETE FROM notification WHERE account_id = $1`,
 			`DELETE FROM user_branch WHERE account_id = $1`,
 			`DELETE FROM app_user WHERE account_id = $1`,
 			`DELETE FROM channel WHERE account_id = $1`,

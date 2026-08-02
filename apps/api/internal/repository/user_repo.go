@@ -13,7 +13,8 @@ import (
 
 // userColumns keeps the SELECT list, the scan order, and the struct in one place.
 const userColumns = `id, account_id, name, email, password_hash, role, is_active,
-	session_epoch, last_login_at, failed_attempts, locked_until, created_at, updated_at`
+	session_epoch, last_login_at, failed_attempts, locked_until, created_at, updated_at,
+	email_verified_at`
 
 // An email identifies exactly one user. Two constraints back that: the per-account one, and
 // the global functional index login depends on to resolve an address to a single row. Either
@@ -120,6 +121,42 @@ func (r *UserRepository) Update(
 	return user, err
 }
 
+// UpdatePassword replaces the stored hash. Returns domain.ErrNotFound if the user is not in
+// the account.
+func (r *UserRepository) UpdatePassword(
+	ctx context.Context, q Querier, accountID, id uuid.UUID, passwordHash string,
+) error {
+	tag, err := q.Exec(ctx,
+		`UPDATE app_user SET password_hash = $3 WHERE account_id = $1 AND id = $2`,
+		accountID, id, passwordHash)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+// UpdatePasswordIfCurrent replaces the hash only if it still matches the one the caller
+// verified, so a change that raced a recovery cannot undo it. Returns domain.ErrConflict when
+// the stored hash moved.
+func (r *UserRepository) UpdatePasswordIfCurrent(
+	ctx context.Context, q Querier, accountID, id uuid.UUID, currentHash, passwordHash string,
+) error {
+	tag, err := q.Exec(ctx,
+		`UPDATE app_user SET password_hash = $4
+		 WHERE account_id = $1 AND id = $2 AND password_hash = $3`,
+		accountID, id, currentHash, passwordHash)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrConflict
+	}
+	return nil
+}
+
 // Deactivate disables the user without deleting them, so their quotes keep an author.
 func (r *UserRepository) Deactivate(ctx context.Context, q Querier, accountID, id uuid.UUID) error {
 	tag, err := q.Exec(ctx,
@@ -185,7 +222,7 @@ func scanUser(row pgx.Row) (*domain.AppUser, error) {
 	var u domain.AppUser
 	err := row.Scan(&u.ID, &u.AccountID, &u.Name, &u.Email, &u.PasswordHash, &u.Role,
 		&u.IsActive, &u.SessionEpoch, &u.LastLoginAt, &u.FailedAttempts, &u.LockedUntil,
-		&u.CreatedAt, &u.UpdatedAt)
+		&u.CreatedAt, &u.UpdatedAt, &u.EmailVerifiedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

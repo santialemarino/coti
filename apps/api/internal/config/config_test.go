@@ -19,7 +19,11 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"DB_MAX_CONN_LIFETIME_MINUTES", "DB_MAX_CONN_IDLE_MINUTES", "DB_CONNECT_TIMEOUT_SECONDS",
 		"AUTH_JWT_SECRET", "AUTH_ACCESS_TTL_MINUTES", "AUTH_REFRESH_TTL_HOURS",
 		"AUTH_REFRESH_REMEMBER_DAYS", "AUTH_REFRESH_REUSE_GRACE_SECONDS",
-		"AUTH_MAX_FAILED_ATTEMPTS", "AUTH_LOCKOUT_MINUTES",
+		"AUTH_MAX_FAILED_ATTEMPTS", "AUTH_LOCKOUT_MINUTES", "AUTH_PASSWORD_MIN_LENGTH",
+		"AUTH_PASSWORD_RESET_TTL_MINUTES",
+		"MAIL_PROVIDER", "MAIL_FROM_ADDRESS", "MAIL_FROM_NAME",
+		"MAIL_SMTP_HOST", "MAIL_SMTP_PORT", "MAIL_SMTP_USERNAME", "MAIL_SMTP_PASSWORD",
+		"WEB_BACKOFFICE_URL",
 		"PRICE_IMPORT_MAX_BYTES",
 	}
 	for _, k := range known {
@@ -63,6 +67,17 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.PriceImport.MaxBytes != defaultPriceImportMaxBytes {
 		t.Errorf("PriceImport.MaxBytes = %d, want %d", cfg.PriceImport.MaxBytes, defaultPriceImportMaxBytes)
+	}
+	if cfg.Mail.Provider != MailProviderConsole {
+		t.Errorf("Mail.Provider = %q, want %q", cfg.Mail.Provider, MailProviderConsole)
+	}
+	// A transport that reaches nobody still needs an address to sign messages with, so the
+	// console default must not leave one missing.
+	if cfg.Mail.FromAddress == "" {
+		t.Error("Mail.FromAddress is empty under the console provider, want a default")
+	}
+	if cfg.Auth.PasswordResetTTL != time.Hour {
+		t.Errorf("Auth.PasswordResetTTL = %v, want 1h", cfg.Auth.PasswordResetTTL)
 	}
 	if cfg.IsProduction() {
 		t.Error("IsProduction() = true, want false")
@@ -145,6 +160,38 @@ func TestLoad_Invalid(t *testing.T) {
 				e["DATABASE_URL"] = e["DATABASE_ADMIN_URL"]
 			},
 			wantSub: "DATABASE_URL must differ from DATABASE_ADMIN_URL in production",
+		},
+		{
+			name:    "unknown mail provider",
+			mutate:  func(e map[string]string) { e["MAIL_PROVIDER"] = "carrier-pigeon" },
+			wantSub: `MAIL_PROVIDER must be "console" or "smtp"`,
+		},
+		{
+			// A real transport with no sender and no credentials has to fail at startup, not
+			// on the first message nobody receives.
+			name:    "real provider without credentials",
+			mutate:  func(e map[string]string) { e["MAIL_PROVIDER"] = "smtp" },
+			wantSub: "MAIL_SMTP_PASSWORD is required when MAIL_PROVIDER is smtp",
+		},
+		{
+			name: "real provider without a sender",
+			mutate: func(e map[string]string) {
+				e["MAIL_PROVIDER"] = "smtp"
+				e["MAIL_SMTP_HOST"] = "smtp.example"
+				e["MAIL_SMTP_USERNAME"] = "coti"
+				e["MAIL_SMTP_PASSWORD"] = "secret"
+			},
+			wantSub: "MAIL_FROM_ADDRESS is required when MAIL_PROVIDER is smtp",
+		},
+		{
+			name:    "backoffice url with no scheme",
+			mutate:  func(e map[string]string) { e["WEB_BACKOFFICE_URL"] = "backoffice.example" },
+			wantSub: "WEB_BACKOFFICE_URL must be an absolute URL",
+		},
+		{
+			name:    "password reset ttl of zero",
+			mutate:  func(e map[string]string) { e["AUTH_PASSWORD_RESET_TTL_MINUTES"] = "0" },
+			wantSub: "AUTH_PASSWORD_RESET_TTL_MINUTES must be greater than zero",
 		},
 	}
 

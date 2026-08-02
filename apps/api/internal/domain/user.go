@@ -24,6 +24,8 @@ type AppUser struct {
 	LockedUntil    *time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	// Null until the user proves control of the address.
+	EmailVerifiedAt *time.Time
 }
 
 // IsLocked reports whether the account is inside a lockout window at the given time.

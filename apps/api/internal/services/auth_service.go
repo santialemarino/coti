@@ -18,9 +18,9 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
 
-// refreshTokenBytes is the entropy behind a refresh token, high enough that a fast hash
-// is enough to store it.
-const refreshTokenBytes = 32
+// tokenSecretBytes is the entropy behind every opaque token the API mints — refresh tokens
+// and the single-use links alike — high enough that a fast hash is enough to store it.
+const tokenSecretBytes = 32
 
 // dummyHash is compared against when the email is unknown, so response latency does not
 // leak which addresses are registered.
@@ -81,7 +81,7 @@ func NewAuthService(
 	}
 	return &AuthService{
 		db: db, users: users, branches: branches, tokens: tokens, access: access, cfg: cfg,
-		now: now, newSecret: newRefreshSecret,
+		now: now, newSecret: newTokenSecret,
 	}
 }
 
@@ -354,10 +354,11 @@ func hashToken(raw string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func newRefreshSecret() (string, error) {
-	buf := make([]byte, refreshTokenBytes)
+// newTokenSecret returns a URL-safe random string to hand out as an opaque token.
+func newTokenSecret() (string, error) {
+	buf := make([]byte, tokenSecretBytes)
 	if _, err := rand.Read(buf); err != nil {
-		return "", fmt.Errorf("generate refresh token: %w", err)
+		return "", fmt.Errorf("generate token secret: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }

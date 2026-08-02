@@ -262,8 +262,12 @@ func seedUser(t *testing.T, db *DB, accountID uuid.UUID, role string) uuid.UUID 
 		t.Fatalf("seed user: %v", err)
 	}
 	t.Cleanup(func() {
-		_, _ = db.CrossAccount().Exec(context.Background(), `DELETE FROM user_branch WHERE user_id = $1`, id)
-		_, _ = db.CrossAccount().Exec(context.Background(), `DELETE FROM app_user WHERE id = $1`, id)
+		ctx := context.Background()
+		_, _ = db.CrossAccount().Exec(ctx, `DELETE FROM user_branch WHERE user_id = $1`, id)
+		_, _ = db.CrossAccount().Exec(ctx, `DELETE FROM auth_token WHERE user_id = $1`, id)
+		_, _ = db.CrossAccount().Exec(ctx, `DELETE FROM notification WHERE user_id = $1`, id)
+		_, _ = db.CrossAccount().Exec(ctx, `DELETE FROM refresh_token WHERE user_id = $1`, id)
+		_, _ = db.CrossAccount().Exec(ctx, `DELETE FROM app_user WHERE id = $1`, id)
 	})
 	return id
 }

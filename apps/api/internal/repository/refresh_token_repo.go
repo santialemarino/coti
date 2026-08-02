@@ -74,6 +74,15 @@ func (r *RefreshTokenRepository) RevokeFamily(ctx context.Context, q Querier, ac
 	return err
 }
 
+// RevokeAllForUser revokes every live token the user holds, across families.
+func (r *RefreshTokenRepository) RevokeAllForUser(ctx context.Context, q Querier, accountID, userID uuid.UUID) error {
+	_, err := q.Exec(ctx,
+		`UPDATE refresh_token SET revoked_at = now()
+		 WHERE account_id = $1 AND user_id = $2 AND revoked_at IS NULL`,
+		accountID, userID)
+	return err
+}
+
 // DeleteExpired removes tokens that expired before the cutoff, keeping the table
 // bounded. Runs across accounts on the owner pool, like the other maintenance sweeps.
 func (r *RefreshTokenRepository) DeleteExpiredCrossAccount(ctx context.Context, q Querier) (int64, error) {

@@ -23,6 +23,7 @@ import (
 type Handlers struct {
 	Health        *handler.HealthHandler
 	Auth          *handler.AuthHandler
+	Password      *handler.PasswordHandler
 	User          *handler.UserHandler
 	Branch        *handler.BranchHandler
 	Product       *handler.ProductHandler
@@ -65,6 +66,10 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth) *gin
 	public.POST("/auth/login", h.Auth.Login)
 	public.POST("/auth/refresh", h.Auth.Refresh)
 
+	// Recovery is public by necessity: someone who cannot log in is the only caller.
+	public.POST("/auth/forgot-password", h.Password.Forgot)
+	public.POST("/auth/reset-password", h.Password.Reset)
+
 	// Registration is the one write with no account yet, so it cannot sit behind a tenant.
 	public.POST("/accounts", h.Account.Register)
 
@@ -72,6 +77,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth) *gin
 	// reads nothing under row level security.
 	authed := v1.Group("", middleware.RequireTenant())
 	authed.POST("/auth/logout", h.Auth.Logout)
+	authed.POST("/auth/change-password", h.Password.Change)
 
 	// The frontend reads its own identity here instead of decoding the access token.
 	authed.GET("/me", h.User.Me)
@@ -102,6 +108,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth) *gin
 	users.GET("/:userId", h.User.Get)
 	users.PUT("/:userId", h.User.Update)
 	users.DELETE("/:userId", h.User.Delete)
+	users.POST("/:userId/password-reset", h.Password.AdminReset)
 
 	// The catalog itself is account-scoped, so those routes need no active branch. The
 	// per-branch ones below take it from the X-Branch-Id header the middleware validated.

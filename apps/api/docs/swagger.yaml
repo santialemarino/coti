@@ -122,6 +122,19 @@ definitions:
       updated_at:
         type: string
     type: object
+  dto.ChangePasswordRequest:
+    properties:
+      current_password:
+        maxLength: 128
+        type: string
+      new_password:
+        maxLength: 128
+        minLength: 8
+        type: string
+    required:
+    - current_password
+    - new_password
+    type: object
   dto.ConfirmProductPriceImportRequest:
     properties:
       rows:
@@ -209,6 +222,14 @@ definitions:
         type: string
       error:
         type: string
+    type: object
+  dto.ForgotPasswordRequest:
+    properties:
+      email:
+        maxLength: 255
+        type: string
+    required:
+    - email
     type: object
   dto.HealthResponse:
     properties:
@@ -386,6 +407,18 @@ definitions:
         type: string
     required:
     - refresh_token
+    type: object
+  dto.ResetPasswordRequest:
+    properties:
+      new_password:
+        maxLength: 128
+        minLength: 8
+        type: string
+      token:
+        type: string
+    required:
+    - new_password
+    - token
     type: object
   dto.SetAvailabilityRequest:
     properties:
@@ -721,6 +754,43 @@ paths:
       summary: Update the current account
       tags:
       - accounts
+  /v1/auth/change-password:
+    post:
+      consumes:
+      - application/json
+      description: Requires the current password. Ends every other session and returns
+        a fresh token pair, so the caller stays logged in and nobody else does.
+      parameters:
+      - description: Current and new password
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ChangePasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TokenResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: New password below the configured minimum length
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Change your own password
+      tags:
+      - auth
   /v1/auth/logout:
     post:
       consumes:
@@ -1705,6 +1775,32 @@ paths:
       summary: Register a corralón
       tags:
       - accounts
+  /v1/public/auth/forgot-password:
+    post:
+      consumes:
+      - application/json
+      description: Always answers 202, registered address or not, so the response
+        reveals nothing about which addresses exist. Requesting a new link retires
+        the previous one.
+      parameters:
+      - description: Address to send the link to
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ForgotPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Request a password recovery link
+      tags:
+      - auth
   /v1/public/auth/login:
     post:
       consumes:
@@ -1773,6 +1869,39 @@ paths:
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
       summary: Rotate a refresh token
+      tags:
+      - auth
+  /v1/public/auth/reset-password:
+    post:
+      consumes:
+      - application/json
+      description: The link works once and expires. Unknown, expired and already-used
+        tokens all answer 401 alike. Every session the user had is ended.
+      parameters:
+      - description: Recovery token and new password
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ResetPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Password changed
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: New password below the configured minimum length
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Reset a password with a recovery link
       tags:
       - auth
   /v1/users:
@@ -1969,6 +2098,47 @@ paths:
       security:
       - BearerAuth: []
       summary: Update a user
+      tags:
+      - users
+  /v1/users/{userId}/password-reset:
+    post:
+      description: Admin only, and only within the caller's own account. Sends the
+        user the same single-use link they would request themselves, so the administrator
+        never sees a password.
+      parameters:
+      - description: User id
+        in: path
+        name: userId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Recovery link sent
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: The user is deactivated
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Trigger a password reset for a user
       tags:
       - users
 securityDefinitions:

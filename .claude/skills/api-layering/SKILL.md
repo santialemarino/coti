@@ -25,6 +25,7 @@ Request flow: **handler → service → repository → DB**.
 - **internal/repository/** — Data access: explicit SQL through a `Querier` (a `*pgxpool.Pool` or a `pgx.Tx`) handed in by the service. Scans rows into domain structs. **Never** calls `Commit`/`Rollback`.
 - **internal/domain/** — Domain types, value objects, enums, domain errors, and the **port interfaces** the services consume (e.g. the AI `Embedder` / `RFQExtractor` / `ChangeRequestHandler`). Imports no other `internal/` package.
 - **internal/ai/** — Adapters implementing the domain AI ports (RFQ extraction, embedding generation, catalog re-ranking, change-request handling). All provider-specific logic (SDK calls, prompt assembly, structured-output schemas, response parsing) lives here, behind the port. Per-provider subpackages when there is more than one (e.g. `internal/ai/openai/`).
+- **internal/mail/** — Adapters implementing the domain `Mailer` port. Same shape as `internal/ai`: transport-specific logic lives here and nothing above the port knows which provider is bound. The `console` adapter logs the message instead of sending it, and is the default.
 - **internal/config/** — Env loading (`godotenv` is loaded in `main`) + defaults; the one place for every configurable threshold (match cutoffs, top-K, timeouts, default expiry days).
 - **internal/utils/** — Generic, entity-agnostic helpers reused across features.
 - **cmd/api/main.go** — Composition root: read config, open the `pgxpool.Pool`, construct AI adapters, inject repos + adapters into services, build the router, start the server. **The only place a port is bound to an adapter.** No business logic.
@@ -386,6 +387,7 @@ apps/api/
 │   │       ├── middleware/             # JWT auth, tenant (account/branch) resolution, logging, rate limit
 │   │       └── dto/                    # request/response DTOs (snake_case json + binding tags)
 │   ├── ai/                             # adapters for RFQExtractor / Embedder / ChangeRequestHandler ports
+│   ├── mail/                           # adapters for the Mailer port (console by default)
 │   └── utils/                          # generic, entity-agnostic helpers
 ├── database/                           # reference schema, read not applied (native enums, pgvector, UUID PKs)
 └── migrations/                         # goose SQL migrations — the executable source (pnpm db:migrate)
