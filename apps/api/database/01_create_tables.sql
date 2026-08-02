@@ -751,6 +751,10 @@ ALTER TABLE notification ADD CONSTRAINT fk_notification_quote FOREIGN KEY (quote
 
 CREATE INDEX idx_branch_account ON branch(account_id);
 CREATE INDEX idx_app_user_account ON app_user(account_id);
+-- Login resolves a user by email alone, so an address identifies exactly one of them across
+-- every account. Functional, so case-insensitivity does not depend on the service lowercasing
+-- on write the way uq_app_user_email does.
+CREATE UNIQUE INDEX uq_app_user_email_global ON app_user (lower(email));
 CREATE INDEX idx_refresh_token_user ON refresh_token(user_id);
 CREATE INDEX idx_refresh_token_family ON refresh_token(family_id);
 

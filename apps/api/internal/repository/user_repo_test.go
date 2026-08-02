@@ -93,8 +93,9 @@ func TestUserRepository_AnotherAccountsUserIsInvisible(t *testing.T) {
 	}
 }
 
-// Email is unique per account, not globally: two corralones may share a contact address.
-func TestUserRepository_EmailUniquenessIsPerAccount(t *testing.T) {
+// An address identifies exactly one user across every account, because login resolves by
+// email alone and could not otherwise pick a row deterministically.
+func TestUserRepository_EmailUniquenessIsGlobal(t *testing.T) {
 	db := testDB(t)
 	repo := NewUserRepository()
 
@@ -119,8 +120,14 @@ func TestUserRepository_EmailUniquenessIsPerAccount(t *testing.T) {
 		t.Errorf("duplicate email in the same account = %v, want %v", err, domain.ErrConflict)
 	}
 
-	if _, err := createUser(t, db, accountB, repo, newUser(shared, "SELLER")); err != nil {
-		t.Errorf("same email in another account = %v, want no error", err)
+	if _, err := createUser(t, db, accountB, repo, newUser(shared, "SELLER")); !errors.Is(err, domain.ErrConflict) {
+		t.Errorf("same email in another account = %v, want %v", err, domain.ErrConflict)
+	}
+
+	// Case is not a way around it: the index is on lower(email), so it holds even if a writer
+	// forgets to normalize.
+	if _, err := createUser(t, db, accountB, repo, newUser("COMPRAS@Corralon.TEST", "SELLER")); !errors.Is(err, domain.ErrConflict) {
+		t.Errorf("same email in a different case = %v, want %v", err, domain.ErrConflict)
 	}
 }
 

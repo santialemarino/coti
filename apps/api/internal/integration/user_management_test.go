@@ -338,8 +338,8 @@ func TestUsers_AnotherAccountsUserIsNotFound(t *testing.T) {
 	}
 }
 
-// Email is unique inside an account, not globally.
-func TestUsers_DuplicateEmailIsAConflictPerAccount(t *testing.T) {
+// An address identifies exactly one user everywhere, because login resolves by email alone.
+func TestUsers_DuplicateEmailIsAConflictAcrossAccounts(t *testing.T) {
 	e := newEnv(t)
 	accountA, branchA := e.seedAccount(t, "Corralón A")
 	accountB, branchB := e.seedAccount(t, "Corralón B")
@@ -362,9 +362,9 @@ func TestUsers_DuplicateEmailIsAConflictPerAccount(t *testing.T) {
 
 	other := e.do(t, request{method: http.MethodPost, path: "/v1/users", token: e.tokenFor(t, adminB),
 		body: createUserBody(shared, domain.UserRoleSeller, []uuid.UUID{branchB})})
-	if other.Code != http.StatusCreated {
+	if other.Code != http.StatusConflict {
 		t.Errorf("same email in another account: status = %d, want %d; body = %s",
-			other.Code, http.StatusCreated, other.Body)
+			other.Code, http.StatusConflict, other.Body)
 	}
 }
 

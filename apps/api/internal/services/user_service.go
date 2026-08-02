@@ -108,7 +108,7 @@ func (s *UserService) GetUser(ctx context.Context, tenant domain.Tenant, id uuid
 }
 
 // CreateUser adds a user to the caller's account, assigning their branches in the same
-// transaction. Returns domain.ErrConflict when the email is taken inside the account.
+// transaction. Returns domain.ErrConflict when the address is already in use.
 func (s *UserService) CreateUser(
 	ctx context.Context, tenant domain.Tenant, in domain.NewUser,
 ) (*domain.UserWithBranches, error) {
