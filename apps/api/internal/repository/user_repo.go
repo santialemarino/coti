@@ -66,6 +66,18 @@ func (r *UserRepository) GetByEmailCrossAccount(ctx context.Context, q Querier, 
 		email))
 }
 
+// ExistsByEmailCrossAccount reports whether any account already holds the address. Login
+// resolves a user by email alone, so two accounts sharing one would make it ambiguous.
+func (r *UserRepository) ExistsByEmailCrossAccount(
+	ctx context.Context, q Querier, email string,
+) (bool, error) {
+	var exists bool
+	err := q.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM app_user WHERE lower(email) = lower($1))`, email,
+	).Scan(&exists)
+	return exists, err
+}
+
 // Create inserts a user with an already-hashed password. Returns domain.ErrConflict when
 // the account already holds that email.
 func (r *UserRepository) Create(

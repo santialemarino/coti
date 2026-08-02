@@ -130,6 +130,12 @@ func (s *AuthService) Login(ctx context.Context, in domain.Credentials) (*domain
 	return pair, nil
 }
 
+// IssueForUser mints a fresh token family for a user, so a registration can hand back a
+// session instead of bouncing the caller through login.
+func (s *AuthService) IssueForUser(ctx context.Context, user domain.AppUser) (*domain.TokenPair, error) {
+	return s.issuePair(ctx, user, uuid.New(), false, nil)
+}
+
 // Refresh consumes the presented token and mints its successor in the same family.
 // Replaying a consumed token inside the grace window is a benign race; past it, the whole
 // family is revoked as theft.
