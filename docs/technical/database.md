@@ -1,6 +1,6 @@
 # Database
 
-PostgreSQL 16 + pgvector. The model is 36 tables with UUID v4 primary keys, native enums, and
+PostgreSQL 16 + pgvector. The model is 37 tables with UUID v4 primary keys, native enums, and
 money in `NUMERIC(14,2)`.
 
 ## What is the source and what is the reference
@@ -131,16 +131,19 @@ Three known traps:
 
 Whatever can be expressed in the schema is expressed in the schema:
 
-| Index                                    | Invariant                                       |
-| ---------------------------------------- | ----------------------------------------------- |
-| `uq_quote_rfq` + `quote.rfq_id NOT NULL` | 1-to-1 rfq→quote                                |
-| `uq_quote_version_draft`                 | one in-progress draft per quote                 |
-| `uq_message_batch_open`                  | one open message window per quote               |
-| `uq_message_batch_processing`            | one processing batch (FIFO queue)               |
-| `uq_quote_send_public_token`             | the magic-link token is unique                  |
-| `uq_product_account_code`                | a product code is unique within the account     |
-| `uq_product_synonym_term`                | one term per product, case-insensitively        |
-| `uq_channel_branch_type_no_identifier`   | one identifier-less channel per branch and type |
+| Index                                    | Invariant                                          |
+| ---------------------------------------- | -------------------------------------------------- |
+| `uq_quote_rfq` + `quote.rfq_id NOT NULL` | 1-to-1 rfq→quote                                   |
+| `uq_quote_version_draft`                 | one in-progress draft per quote                    |
+| `uq_message_batch_open`                  | one open message window per quote                  |
+| `uq_message_batch_processing`            | one processing batch (FIFO queue)                  |
+| `uq_quote_send_public_token`             | the magic-link token is unique                     |
+| `uq_product_account_code`                | a product code is unique within the account        |
+| `uq_product_synonym_term`                | one term per product, case-insensitively           |
+| `uq_channel_branch_type_no_identifier`   | one identifier-less channel per branch and type    |
+| `uq_product_price_open_period`           | one open price period per branch and product       |
+| `uq_app_user_email_global`               | an address identifies one user, case-insensitively |
+| `uq_auth_token_hash`                     | a recovery or verification link is unique          |
 
 **A unique constraint does not compare NULLs**, so on a nullable column it lets every empty
 row escape. That is why the 1-to-1 needs the NOT NULL as well as the index:
@@ -148,11 +151,16 @@ row escape. That is why the 1-to-1 needs the NOT NULL as well as the index:
 is where the partial index comes in. Pinning an invariant on a nullable column leaves only two
 ways out — a NOT NULL, or a partial index over the NULL case.
 
-**One invariant the schema does not hold: exactly one open `product_price` period.** Nothing
-stops two rows with `valid_to IS NULL` for the same branch and product. What guarantees it is
-the application — `SetPrice` takes a `SELECT ... FOR UPDATE` on the parent product row, so two
-concurrent repricings serialize instead of each opening a period. A partial unique index over
-`(branch_id, product_id) WHERE valid_to IS NULL` would move that guarantee into the schema.
+**An index and a lock do different jobs, and one open price period needs both.**
+`uq_product_price_open_period` turns a second open row into an error, but an error is not what
+a legitimate concurrent reprice deserves: without a lock the loser's
+`UPDATE ... WHERE valid_to IS NULL` matches nothing and its insert then hits the index. What
+makes both writes _succeed correctly_ is `SetPrice` taking a `SELECT ... FOR UPDATE` on the
+parent product row first. The index is the backstop for a path that forgets the lock.
+
+Single use on `auth_token` is the same shape from the other direction: it is not an index at
+all but a predicate, `UPDATE ... WHERE consumed_at IS NULL`, which is what serializes two
+simultaneous redemptions of one link.
 
 ## Catalog
 

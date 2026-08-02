@@ -49,7 +49,7 @@ so keep test code vet-clean.
 
 ## What to test (API)
 
-The API is layered — `internal/{ai,config,delivery/http,domain,repository,services}`
+The API is layered — `internal/{ai,config,delivery/http,domain,mail,repository,services}`
 (see the `api-layering` skill). Test each layer for what it owns.
 
 **Unit test** (no DB, no HTTP, no live providers):

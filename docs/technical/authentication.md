@@ -5,17 +5,21 @@ frontend is what stores the access token in an httpOnly cookie.
 
 ## Endpoints
 
-| Method   | Route                     | Auth                                     |
-| -------- | ------------------------- | ---------------------------------------- |
-| `POST`   | `/v1/public/auth/login`   | no                                       |
-| `POST`   | `/v1/public/auth/refresh` | no (the refresh token is the credential) |
-| `POST`   | `/v1/auth/logout`         | yes                                      |
-| `GET`    | `/v1/branches`            | yes                                      |
-| `GET`    | `/v1/users`               | yes, admin                               |
-| `POST`   | `/v1/users`               | yes, admin                               |
-| `GET`    | `/v1/users/:userId`       | yes, admin                               |
-| `PUT`    | `/v1/users/:userId`       | yes, admin                               |
-| `DELETE` | `/v1/users/:userId`       | yes, admin                               |
+| Method   | Route                              | Auth                                     |
+| -------- | ---------------------------------- | ---------------------------------------- |
+| `POST`   | `/v1/public/auth/login`            | no                                       |
+| `POST`   | `/v1/public/auth/refresh`          | no (the refresh token is the credential) |
+| `POST`   | `/v1/public/auth/forgot-password`  | no                                       |
+| `POST`   | `/v1/public/auth/reset-password`   | no (the link is the credential)          |
+| `POST`   | `/v1/auth/logout`                  | yes                                      |
+| `POST`   | `/v1/auth/change-password`         | yes                                      |
+| `GET`    | `/v1/branches`                     | yes                                      |
+| `GET`    | `/v1/users`                        | yes, admin                               |
+| `POST`   | `/v1/users`                        | yes, admin                               |
+| `GET`    | `/v1/users/:userId`                | yes, admin                               |
+| `PUT`    | `/v1/users/:userId`                | yes, admin                               |
+| `DELETE` | `/v1/users/:userId`                | yes, admin                               |
+| `POST`   | `/v1/users/:userId/password-reset` | yes, admin                               |
 
 `login` and `refresh` return the same body: `access_token`, `access_expires_at`,
 `refresh_token`, and a `user` with `id`, `account_id` and `role`. **The refresh token is
@@ -154,22 +158,75 @@ seller reaching any of it gets **403**.
 
 bcrypt at the default cost. It is a cryptographic constant, so it is **not** configurable per
 environment, unlike the operational thresholds. `AUTH_PASSWORD_MIN_LENGTH` is the operational
-one, and it floors at 8.
+one, it floors at 8, and all three change paths apply it.
 
 The two development seed users have the password `coti1234`. Development only.
+
+## Password lifecycle
+
+Three ways a password changes after the user exists.
+
+| Path            | Route                                          | Credential presented |
+| --------------- | ---------------------------------------------- | -------------------- |
+| Change your own | `POST /v1/auth/change-password`                | the current password |
+| Recover         | `POST /v1/public/auth/{forgot,reset}-password` | the mailed link      |
+| Admin-triggered | `POST /v1/users/:userId/password-reset`        | the admin's session  |
+
+**Changing a password ends every other session, and that takes two writes, not one.** Bumping
+`session_epoch` kills the access tokens; on its own it leaves the refresh tokens alive, and one
+of those would mint a fresh access token carrying the _new_ epoch — the session the change was
+meant to end simply continues. So the credential write is always the same three statements in
+one transaction: the new hash, the epoch bump, and revoking every live refresh token for the
+user.
+
+`change-password` therefore **returns a new token pair**: the caller's own session is among the
+ones it just ended, so without a fresh pair a user would be logging themselves out.
+
+**`forgot-password` always answers 202** — registered address or not, active user or not, mail
+delivered or not. Anything else turns the response into a way to find out which addresses exist.
+
+The **response** carries nothing; the **clock** still does. A registered address costs two
+transactions and a transport call, an unregistered one costs a single read, and no dummy work
+evens that out the way login's dummy bcrypt compare does. Bounding it is the rate-limit ticket's
+job, not this route's.
+
+**The link is a single-use, expiring grant**, stored in `auth_token`:
+
+- 32 bytes of entropy, kept only as a hex SHA-256. The mailed value never touches the table.
+- `expires_at` is `AUTH_PASSWORD_RESET_TTL_MINUTES` after it was minted.
+- Requesting a new link retires the outstanding ones for that user and type.
+- Redemption is `UPDATE ... WHERE consumed_at IS NULL` **first**, inside the transaction. That
+  predicate is what makes it single-use under concurrency: two simultaneous redemptions of the
+  same link, and the loser's update matches no row.
+- Unknown, expired, already-redeemed and wrong-type tokens all answer **401** alike.
+- The lookup runs on the owner pool. The bearer presents a link and nothing else, so the
+  account is what the token reveals, not something the caller already knows.
+
+**Admin-triggered reset sends the user the same link they would request themselves**, so the
+administrator never learns or sets a password. It is confined to their own account by reading
+the target _inside_ the account scope — a user of another account is simply absent, which is a 404. A deactivated user is a 422: there is no point mailing them a way back in.
+
+The epoch bump lands where the password actually changes. For the recovery and admin paths that
+is when the link is redeemed, not when it is sent — triggering a reset is not a request to log
+someone out.
+
+The link points at a **backoffice** route (`WEB_BACKOFFICE_URL` + `/reset-password?token=…`),
+not an API one: the user clicks it in a mail client and has to land on a screen.
 
 ## Configuration
 
 All in `apps/api/.env.example`, with defaults in `internal/config`: `AUTH_JWT_SECRET`
 (required, at least 32 characters), `AUTH_ACCESS_TTL_MINUTES`, `AUTH_REFRESH_TTL_HOURS`,
 `AUTH_REFRESH_REMEMBER_DAYS`, `AUTH_REFRESH_REUSE_GRACE_SECONDS`,
-`AUTH_MAX_FAILED_ATTEMPTS`, `AUTH_LOCKOUT_MINUTES`, `AUTH_PASSWORD_MIN_LENGTH`.
+`AUTH_MAX_FAILED_ATTEMPTS`, `AUTH_LOCKOUT_MINUTES`, `AUTH_PASSWORD_MIN_LENGTH`,
+`AUTH_PASSWORD_RESET_TTL_MINUTES`, `WEB_BACKOFFICE_URL`.
 
 ## Not built yet
 
-Password recovery, user invitations and email verification are not implemented, and neither is
-an admin-initiated password reset — a user who forgets their password has no path back today.
+User invitations and email verification are not implemented. `auth_token_type` already carries
+`EMAIL_VERIFICATION` and `app_user.email_verified_at` already exists, because a Postgres enum
+value cannot be used in the transaction that adds it and goose wraps each migration in one —
+adding the value later would force a second migration. Nothing writes either yet.
 
-Account signup is not implemented either: an account's first admin has no route, so the seed is
-the only path to one. Account bootstrap goes through `db.AdminTx()`, because the account does
-not exist when it is created and there is no scope to set.
+There is also no rate limit on the credential routes, so `forgot-password` and `login` are open
+to being hammered.

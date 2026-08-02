@@ -85,7 +85,7 @@ Link and pulls acceptance criteria from it. See `pr-format`.
 
 - Use API skills for backend work: `api-layering` and `api-methods-entities`.
 - Use web skills for frontend work: `web-structure` and `web-components-pages` (both cover `apps/backoffice` and `apps/webapp`).
-- Layered Go API (ports & adapters): `internal/{ai,config,delivery/http,domain,repository,services}`. Services depend only on ports; adapter wiring only in `cmd/api/main.go`.
+- Layered Go API (ports & adapters): `internal/{ai,config,delivery/http,domain,mail,repository,services}`. Services depend only on ports; adapter wiring only in `cmd/api/main.go`.
 - English identifiers; native PostgreSQL enums with English UPPERCASE values (labels are frontend i18n).
 - Persistence is raw `database/sql` + `pgx` (no ORM); SQL always parameterized. UUID v4 PKs.
 - Money & quantities are `NUMERIC(14,2)` — decimal strings end to end, never float or int64 centavos.
