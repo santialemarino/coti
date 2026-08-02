@@ -15,9 +15,18 @@ import (
 const userColumns = `id, account_id, name, email, password_hash, role, is_active,
 	session_epoch, last_login_at, failed_attempts, locked_until, created_at, updated_at`
 
-// userEmailIndex is the constraint that makes an email unique inside one account. Two
-// corralones may share a contact address, so uniqueness is per account, not global.
-const userEmailIndex = "uq_app_user_email"
+// An email identifies exactly one user. Two constraints back that: the per-account one, and
+// the global functional index login depends on to resolve an address to a single row. Either
+// firing means the address is taken, so both map to the same conflict.
+const (
+	userEmailIndex       = "uq_app_user_email"
+	userEmailGlobalIndex = "uq_app_user_email_global"
+)
+
+// isEmailTaken reports whether the write failed because the address is already in use.
+func isEmailTaken(err error) bool {
+	return isUniqueViolation(err, userEmailIndex) || isUniqueViolation(err, userEmailGlobalIndex)
+}
 
 // UserRepository owns persistence for app_user.
 type UserRepository struct{}
@@ -59,7 +68,7 @@ func (r *UserRepository) GetByID(ctx context.Context, q Querier, accountID, id u
 
 // GetByEmailCrossAccount looks a user up by email across every account. It must run on the
 // owner pool: at login the account is not known yet, so a tenant-scoped query would read
-// zero rows. The email is unique per account, so a shared address would be ambiguous here.
+// zero rows. uq_app_user_email_global is what makes the answer a single row.
 func (r *UserRepository) GetByEmailCrossAccount(ctx context.Context, q Querier, email string) (*domain.AppUser, error) {
 	return scanUser(q.QueryRow(ctx,
 		`SELECT `+userColumns+` FROM app_user WHERE lower(email) = lower($1) LIMIT 1`,
@@ -78,8 +87,8 @@ func (r *UserRepository) ExistsByEmailCrossAccount(
 	return exists, err
 }
 
-// Create inserts a user with an already-hashed password. Returns domain.ErrConflict when
-// the account already holds that email.
+// Create inserts a user with an already-hashed password. Returns domain.ErrConflict when the
+// address is already in use.
 func (r *UserRepository) Create(
 	ctx context.Context, q Querier, accountID uuid.UUID, in domain.NewUser, passwordHash string,
 ) (*domain.AppUser, error) {
@@ -88,14 +97,14 @@ func (r *UserRepository) Create(
 		 VALUES ($1, $2, $3, $4, $5)
 		 RETURNING `+userColumns,
 		accountID, in.Name, in.Email, passwordHash, in.Role))
-	if isUniqueViolation(err, userEmailIndex) {
+	if isEmailTaken(err) {
 		return nil, domain.ErrConflict
 	}
 	return user, err
 }
 
 // Update replaces the user's editable fields. A nil IsActive leaves the flag alone. Returns
-// domain.ErrConflict when the new email is already taken inside the account.
+// domain.ErrConflict when the new address is already in use.
 func (r *UserRepository) Update(
 	ctx context.Context, q Querier, accountID, id uuid.UUID, in domain.UserUpdate,
 ) (*domain.AppUser, error) {
@@ -105,7 +114,7 @@ func (r *UserRepository) Update(
 		 WHERE account_id = $1 AND id = $2
 		 RETURNING `+userColumns,
 		accountID, id, in.Name, in.Email, in.Role, in.IsActive))
-	if isUniqueViolation(err, userEmailIndex) {
+	if isEmailTaken(err) {
 		return nil, domain.ErrConflict
 	}
 	return user, err
