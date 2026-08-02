@@ -1,62 +1,55 @@
-# Importación de precios
+# Price import
 
-El backoffice permite actualizar precios por archivo desde
-`/settings/prices`. La operación siempre está acotada a una sucursal y requiere
-un usuario con rol `ADMIN`.
+The backoffice updates branch prices from a spreadsheet at `/settings/prices`. The operation
+is always scoped to one branch and needs an `ADMIN` user.
 
-## Flujo
+## Flow
 
-1. El administrador selecciona la sucursal y puede descargar sus precios
-   vigentes con **Exportar precios**. `GET /v1/product-prices/export` genera un
-   `.xlsx` con una hoja `Precios` precargada y una hoja `Instrucciones`.
-2. El administrador edita el archivo exportado —o prepara un `.xlsx` o `.csv`
-   compatible— y lo carga en la misma pantalla.
-3. `POST /v1/product-prices/import/preview` lee el archivo y devuelve todas las
-   filas con el producto encontrado, el precio vigente, el valor propuesto y los
-   errores de validación. Esta operación no escribe en la base.
-4. La pantalla permite confirmar únicamente cuando todas las filas son válidas.
-5. `POST /v1/product-prices/import/confirm` vuelve a validar el contenido y, en
-   una única transacción, cierra la vigencia del precio actual e inserta las
-   nuevas filas de `product_price`.
+1. The administrator picks the branch and downloads its prices in force with **Exportar
+   precios**. `GET /v1/product-prices/export` returns an `.xlsx` with a pre-filled `Precios`
+   sheet and an `Instrucciones` sheet.
+2. The administrator edits that file — or prepares a compatible `.xlsx` or `.csv` — and
+   uploads it on the same screen.
+3. `POST /v1/product-prices/import/preview` parses the file and returns every row with the
+   product it matched, the price in force, the proposed value and any validation errors. It
+   writes nothing.
+4. The screen only allows confirming when every row is valid.
+5. `POST /v1/product-prices/import/confirm` revalidates the content and, in one transaction,
+   closes the current price periods and inserts the new `product_price` rows.
 
-No se modifican cotizaciones existentes. Cada `quote_item` conserva los
-snapshots de precio y precio mínimo tomados al armar su versión; re-preciar una
-cotización es una acción distinta.
+Existing quotes are untouched. Every `quote_item` keeps the price and minimum-price snapshots
+taken when its version was built; repricing a quote is a separate, explicit action.
 
-## Formato del archivo
+## File format
 
-La primera hoja de un `.xlsx`, o el contenido de un `.csv`, debe tener estas
-columnas:
+The first sheet of an `.xlsx`, or the body of a `.csv`, needs these columns:
 
-| Columna         | Obligatoria | Descripción                                     |
-| --------------- | ----------- | ----------------------------------------------- |
-| `codigo`        | sí          | Código único del producto dentro de la cuenta.  |
-| `precio`        | sí          | Precio de venta mayor a cero, con 2 decimales.  |
-| `precio_minimo` | no          | Piso del motor de descuentos; no supera precio. |
-| `moneda`        | no          | Código ISO de 3 letras; por defecto `ARS`.      |
-| `condiciones`   | no          | Condición textual, hasta 255 caracteres.        |
+| Column          | Required | Description                                              |
+| --------------- | -------- | -------------------------------------------------------- |
+| `codigo`        | yes      | Product code, unique within the account.                 |
+| `precio`        | yes      | Sale price above zero, two decimals.                     |
+| `precio_minimo` | no       | The discount engine's floor; never above the sale price. |
+| `moneda`        | no       | Three-letter ISO code; defaults to `ARS`.                |
+| `condiciones`   | no       | Free-text condition, up to 255 characters.               |
 
-El archivo exportado agrega la columna informativa `producto`. La importación
-la ignora y vincula cada fila exclusivamente por `codigo`. La exportación
-incluye solo productos activos que ya tienen un precio vigente en la sucursal;
-para no actualizar un producto basta con eliminar su fila antes de importar.
+The exported file adds an informational `producto` column. The import ignores it and matches
+each row by `codigo` alone. The export carries only active products that already have a price
+in force for the branch, so dropping a row before importing is how you leave a product alone.
 
-También se aceptan los encabezados equivalentes en inglés: `code`, `price`,
-`min_price`, `currency` y `conditions`. Los CSV pueden usar coma o punto y coma
-como separador.
+The equivalent English headers are accepted too: `code`, `price`, `min_price`, `currency` and
+`conditions`. CSV files may use a comma or a semicolon as the separator.
 
-El archivo completo se rechaza para confirmación si contiene códigos repetidos,
-productos inexistentes o inactivos, importes inválidos, un precio mínimo mayor
-al de venta, una moneda inválida o condiciones demasiado largas.
+The whole file is refused for confirmation when it carries duplicate codes, unknown or
+inactive products, invalid amounts, a minimum above the sale price, an invalid currency, or
+conditions that are too long.
 
-## Configuración
+## Configuration
 
-`PRICE_IMPORT_MAX_BYTES` define el tamaño máximo del archivo en bytes. El valor
-por defecto es `5242880` (5 MiB).
+`PRICE_IMPORT_MAX_BYTES` caps the upload in bytes, defaulting to `5242880` (5 MiB). That caps
+the compressed size only, so each XLSX entry is additionally bounded when it is decompressed.
 
-## Endpoints auxiliares
+## Supporting endpoints
 
-`GET /v1/branches` devuelve las sucursales activas accesibles para el usuario y
-alimenta el selector del backoffice. La sucursal elegida viaja en
-`X-Branch-Id`, donde el middleware vuelve a validar acceso antes de ejecutar la
-importación.
+`GET /v1/branches` returns the active branches the user can reach and feeds the backoffice
+selector. The chosen branch travels in `X-Branch-Id`, where the middleware revalidates access
+before the import runs.
