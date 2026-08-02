@@ -13,16 +13,147 @@
       "loading": "Cargando…",
       "empty": "No hay datos para mostrar",
       "error": "Ocurrió un error. Intentá de nuevo."
+    },
+    "nav": {
+      "signOut": "Cerrar sesión",
+      "changePassword": "Cambiar contraseña"
+    },
+    "roles": {
+      "ADMIN": "Administrador",
+      "SELLER": "Vendedor"
+    },
+    "retry": "Reintentar"
+  },
+  "errors": {
+    "badRequest": "Los datos enviados no son válidos. Revisá el formulario.",
+    "unauthenticated": "Tu sesión expiró. Volvé a iniciar sesión.",
+    "forbidden": "No tenés permiso para hacer esto.",
+    "notFound": "No encontramos lo que buscabas.",
+    "conflict": "Ese dato ya está en uso.",
+    "unprocessable": "No pudimos procesar los datos enviados.",
+    "rateLimited": "Demasiados intentos. Esperá unos minutos.",
+    "unreachable": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
+    "unexpected": "Ocurrió un error inesperado. Intentá de nuevo."
+  },
+  "meta": {
+    "home": {
+      "title": "Inicio",
+      "description": "Workspace del corralón."
+    },
+    "login": {
+      "title": "Iniciar sesión",
+      "description": "Acceso al backoffice del corralón."
+    },
+    "forgotPassword": {
+      "title": "Recuperar contraseña",
+      "description": "Pedí un enlace para volver a entrar."
+    },
+    "resetPassword": {
+      "title": "Restablecer contraseña",
+      "description": "Elegí una contraseña nueva con el enlace que recibiste."
+    },
+    "changePassword": {
+      "title": "Cambiar contraseña",
+      "description": "Cambiá tu contraseña presentando la actual."
+    },
+    "priceSettings": {
+      "title": "Precios y condiciones",
+      "description": "Actualización revisada de precios por sucursal."
     }
   },
   "auth": {
     "login": {
       "title": "Iniciar sesión",
-      "email": { "label": "Correo electrónico", "placeholder": "tu@correo.com" },
-      "password": { "label": "Contraseña", "placeholder": "Ingresá tu contraseña" },
+      "email": {
+        "label": "Correo electrónico",
+        "placeholder": "tu@correo.com"
+      },
+      "password": {
+        "label": "Contraseña",
+        "placeholder": "Ingresá tu contraseña"
+      },
       "submit": "Ingresar",
       "submitting": "Ingresando…",
-      "error": "Correo o contraseña inválidos"
+      "forgotPassword": "¿Olvidaste tu contraseña?",
+      "errors": {
+        "invalidCredentials": "Correo o contraseña inválidos.",
+        "locked": "Demasiados intentos fallidos. Esperá unos minutos antes de volver a probar.",
+        "unreachable": "No pudimos comunicarnos con el servidor. Revisá tu conexión e intentá de nuevo.",
+        "unexpected": "No pudimos iniciar sesión. Intentá de nuevo."
+      }
+    },
+    "forgotPassword": {
+      "title": "Recuperar contraseña",
+      "description": "Te mandamos un enlace para que elijas una contraseña nueva.",
+      "email": {
+        "label": "Correo electrónico",
+        "placeholder": "tu@correo.com"
+      },
+      "submit": "Enviar enlace",
+      "submitting": "Enviando…",
+      "sent": "Si la dirección está registrada, va a recibir un enlace en unos minutos. Revisá también el correo no deseado.",
+      "backToLogin": "Volver a iniciar sesión",
+      "errors": {
+        "invalidEmail": "Ingresá una dirección de correo válida.",
+        "unexpected": "No pudimos procesar el pedido. Intentá de nuevo."
+      }
+    },
+    "resetPassword": {
+      "title": "Restablecer contraseña",
+      "newPassword": {
+        "label": "Contraseña nueva",
+        "placeholder": "Ingresá la contraseña nueva"
+      },
+      "confirmPassword": {
+        "label": "Repetir contraseña",
+        "placeholder": "Repetí la contraseña nueva"
+      },
+      "minLength": "Mínimo {count} caracteres.",
+      "submit": "Cambiar contraseña",
+      "submitting": "Cambiando…",
+      "done": "Listo. Ya podés entrar con tu contraseña nueva.",
+      "goToLogin": "Iniciar sesión",
+      "requestAnother": "Pedir un enlace nuevo",
+      "errors": {
+        "mismatch": "Las contraseñas no coinciden.",
+        "tooShort": "La contraseña es demasiado corta.",
+        "invalidLink": "El enlace no es válido, ya se usó o venció. Pedí uno nuevo.",
+        "unexpected": "No pudimos cambiar la contraseña. Intentá de nuevo."
+      }
+    },
+    "changePassword": {
+      "title": "Cambiar contraseña",
+      "description": "Para cambiarla necesitás ingresar la contraseña actual. Al cambiarla se cierran las demás sesiones abiertas.",
+      "currentPassword": {
+        "label": "Contraseña actual",
+        "placeholder": "Ingresá tu contraseña actual"
+      },
+      "newPassword": {
+        "label": "Contraseña nueva",
+        "placeholder": "Ingresá la contraseña nueva"
+      },
+      "confirmPassword": {
+        "label": "Repetir contraseña",
+        "placeholder": "Repetí la contraseña nueva"
+      },
+      "minLength": "Mínimo {count} caracteres.",
+      "submit": "Cambiar contraseña",
+      "submitting": "Cambiando…",
+      "done": "Contraseña cambiada. Las demás sesiones se cerraron.",
+      "errors": {
+        "mismatch": "Las contraseñas no coinciden.",
+        "tooShort": "La contraseña es demasiado corta.",
+        "wrongCurrentPassword": "La contraseña actual no es correcta.",
+        "unexpected": "No pudimos cambiar la contraseña. Intentá de nuevo.",
+        "sessionExpired": "Tu sesión expiró. Volvé a iniciar sesión."
+      }
+    }
+  },
+  "home": {
+    "title": "Coti",
+    "signedInAs": "Sesión iniciada como {role}.",
+    "links": {
+      "prices": "Precios y condiciones"
     }
   },
   "quotes": {

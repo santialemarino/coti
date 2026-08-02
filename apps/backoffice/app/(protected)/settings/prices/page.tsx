@@ -4,10 +4,7 @@ import { PriceImport } from '@/app/(protected)/settings/prices/_components/price
 import { getBranches } from '@/lib/api/branches';
 import { generatePageMetadata } from '@/lib/utils/page';
 
-export const metadata = generatePageMetadata(
-  'Precios y condiciones',
-  'Actualización revisada de precios por sucursal.',
-);
+export const generateMetadata = () => generatePageMetadata('priceSettings');
 
 export default async function PriceSettingsPage() {
   const t = await getTranslations('priceImport');
