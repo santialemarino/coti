@@ -27,6 +27,7 @@ type Handlers struct {
 	Branch        *handler.BranchHandler
 	Product       *handler.ProductHandler
 	BranchCatalog *handler.BranchCatalogHandler
+	Account       *handler.AccountHandler
 	Prices        *handler.ProductPriceHandler
 }
 
@@ -64,14 +65,29 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth) *gin
 	public.POST("/auth/login", h.Auth.Login)
 	public.POST("/auth/refresh", h.Auth.Refresh)
 
+	// Registration is the one write with no account yet, so it cannot sit behind a tenant.
+	public.POST("/accounts", h.Account.Register)
+
 	// Everything else needs a resolved tenant: a request-scoped query without an account
 	// reads nothing under row level security.
 	authed := v1.Group("", middleware.RequireTenant())
 	authed.POST("/auth/logout", h.Auth.Logout)
 
-	// The branch switcher needs this before it can send X-Branch-Id, so it is not admin-only:
-	// the repository already narrows a seller to their assignments.
-	authed.GET("/branches", h.Branch.List)
+	// The frontend reads its own identity here instead of decoding the access token.
+	authed.GET("/me", h.User.Me)
+
+	account := authed.Group("/account")
+	account.GET("", h.Account.Get)
+	account.PUT("", middleware.RequireAdmin(), h.Account.Update)
+
+	// The branch switcher needs the list before it can send X-Branch-Id, so reading is not
+	// admin-only: the repository already narrows a seller to their assignments. Writing is.
+	branches := authed.Group("/branches")
+	branches.GET("", h.Branch.List)
+	branchAdmin := branches.Group("", middleware.RequireAdmin())
+	branchAdmin.POST("", h.Branch.Create)
+	branchAdmin.PUT("/:branchId", h.Branch.Update)
+	branchAdmin.DELETE("/:branchId", h.Branch.Delete)
 
 	admin := authed.Group("", middleware.RequireAdmin())
 	admin.GET("/product-prices/export", h.Prices.Export)

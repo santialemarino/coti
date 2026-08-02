@@ -21,3 +21,20 @@ type BranchResponse struct {
 type BranchListResponse struct {
 	Items []BranchResponse `json:"items"`
 }
+
+// CreateBranchRequest is the body for POST /v1/branches. Omitting the expiry takes the
+// configured default.
+type CreateBranchRequest struct {
+	Name              string  `json:"name" binding:"required,min=1,max=255"`
+	Address           *string `json:"address" binding:"omitempty,max=255"`
+	DefaultExpiryDays int     `json:"default_expiry_days" binding:"omitempty,min=1,max=365"`
+}
+
+// UpdateBranchRequest is the body for PUT /v1/branches/:branchId. is_active omitted leaves the
+// flag alone.
+type UpdateBranchRequest struct {
+	Name              string  `json:"name" binding:"required,min=1,max=255"`
+	Address           *string `json:"address" binding:"omitempty,max=255"`
+	DefaultExpiryDays int     `json:"default_expiry_days" binding:"required,min=1,max=365"`
+	IsActive          *bool   `json:"is_active"`
+}

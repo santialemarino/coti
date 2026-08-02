@@ -226,3 +226,38 @@ func toUserResponse(u domain.UserWithBranches) dto.UserResponse {
 		UpdatedAt:   u.UpdatedAt,
 	}
 }
+
+// Me returns the authenticated caller's own identity.
+//
+//	@Summary		Get the current user
+//	@Description	Returns the caller's identity and branch reach, so the frontend never has to read the access token itself.
+//	@Tags			users
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Success		200	{object}	dto.MeResponse
+//	@Failure		401	{object}	dto.ErrorResponse
+//	@Failure		404	{object}	dto.ErrorResponse
+//	@Router			/v1/me [get]
+func (h *UserHandler) Me(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	user, err := h.users.GetUser(c.Request.Context(), tenant, tenant.UserID)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	branchIDs := user.BranchIDs
+	if branchIDs == nil {
+		branchIDs = []uuid.UUID{}
+	}
+	c.JSON(http.StatusOK, dto.MeResponse{
+		ID:        user.ID,
+		Name:      user.Name,
+		Email:     user.Email,
+		Role:      string(user.Role),
+		AccountID: user.AccountID,
+		BranchIDs: branchIDs,
+	})
+}
