@@ -1,7 +1,9 @@
 # Authentication
 
 A short access token plus a single-use rotating refresh token. The API is bearer-based: the
-frontend is what stores the access token in an httpOnly cookie.
+frontend is what stores the access token in an httpOnly cookie. How the backoffice holds that
+session, gates its routes and renews the token is in
+[backoffice-session.md](backoffice-session.md).
 
 ## Endpoints
 
@@ -215,11 +217,16 @@ not an API one: the user clicks it in a mail client and has to land on a screen.
 
 ## Configuration
 
-All in `apps/api/.env.example`, with defaults in `internal/config`: `AUTH_JWT_SECRET`
+In `apps/api/.env.example`, with defaults in `internal/config`: `AUTH_JWT_SECRET`
 (required, at least 32 characters), `AUTH_ACCESS_TTL_MINUTES`, `AUTH_REFRESH_TTL_HOURS`,
 `AUTH_REFRESH_REMEMBER_DAYS`, `AUTH_REFRESH_REUSE_GRACE_SECONDS`,
 `AUTH_MAX_FAILED_ATTEMPTS`, `AUTH_LOCKOUT_MINUTES`, `AUTH_PASSWORD_MIN_LENGTH`,
 `AUTH_PASSWORD_RESET_TTL_MINUTES`, `WEB_BACKOFFICE_URL`.
+
+**`AUTH_JWT_SECRET` stays in the API.** It is a symmetric HMAC key, so a second service holding
+it could mint a token for any account — the frontends forward the token and never verify it.
+The backoffice's own settings are in
+[backoffice-session.md](backoffice-session.md#configuration).
 
 ## Not built yet
 

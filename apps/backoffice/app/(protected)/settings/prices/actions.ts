@@ -1,6 +1,6 @@
 'use server';
 
-import { authenticatedFetch } from '@/lib/auth';
+import { apiFetch, apiRequest, errorCodeOf, type ApiErrorCode } from '@/lib/api/client';
 
 interface ProductPriceImportRowRaw {
   row_number: number;
@@ -85,40 +85,41 @@ export async function previewPriceImport(formData: FormData): Promise<PriceImpor
 
   const payload = new FormData();
   payload.set('file', file);
-  const response = await authenticatedFetch(
-    '/v1/product-prices/import/preview',
-    { method: 'POST', body: payload },
-    branchId,
-  );
-  if (response.status === 401 || response.status === 403)
-    return { ok: false, error: 'unauthorized' };
-  if (!response.ok)
-    return {
-      ok: false,
-      error: response.status === 413 || response.status === 422 ? 'invalidFile' : 'unexpected',
-    };
-
-  const raw: ProductPriceImportPreviewRaw = await response.json();
-  return {
-    ok: true,
-    preview: {
+  try {
+    const raw = await apiRequest<ProductPriceImportPreviewRaw>({
+      path: '/v1/product-prices/import/preview',
+      method: 'POST',
+      formData: payload,
       branchId,
-      rows: raw.rows.map(mapProductPriceImportRow),
-      validRows: raw.valid_rows,
-      invalidRows: raw.invalid_rows,
-      canConfirm: raw.can_confirm,
-      previewedAt: raw.previewed_at,
-    },
-  };
+    });
+    return {
+      ok: true,
+      preview: {
+        branchId,
+        rows: raw.rows.map(mapProductPriceImportRow),
+        validRows: raw.valid_rows,
+        invalidRows: raw.invalid_rows,
+        canConfirm: raw.can_confirm,
+        previewedAt: raw.previewed_at,
+      },
+    };
+  } catch (error) {
+    return { ok: false, error: importFailure(errorCodeOf(error)) };
+  }
+}
+
+// The upload's own rejections read as a file problem; the rest fall through.
+function importFailure(code: ApiErrorCode): 'invalidFile' | 'unauthorized' | 'unexpected' {
+  if (code === 'unauthenticated' || code === 'forbidden') return 'unauthorized';
+  if (code === 'unprocessable' || code === 'badRequest') return 'invalidFile';
+  return 'unexpected';
 }
 
 export async function exportPrices(branchId: string): Promise<ExportPricesResult> {
   if (!branchId) return { ok: false, error: 'unexpected' };
-  const response = await authenticatedFetch(
-    '/v1/product-prices/export',
-    { method: 'GET' },
-    branchId,
-  );
+  // The raw response, because the filename travels in a header and the body is a
+  // spreadsheet rather than JSON.
+  const response = await apiFetch({ path: '/v1/product-prices/export', branchId });
   if (response.status === 401 || response.status === 403)
     return { ok: false, error: 'unauthorized' };
   if (!response.ok)
@@ -133,12 +134,12 @@ export async function exportPrices(branchId: string): Promise<ExportPricesResult
 export async function confirmPriceImport(
   preview: ProductPriceImportPreview,
 ): Promise<ConfirmPriceImportResult> {
-  const response = await authenticatedFetch(
-    '/v1/product-prices/import/confirm',
-    {
+  try {
+    const raw = await apiRequest<ConfirmProductPriceImportRaw>({
+      path: '/v1/product-prices/import/confirm',
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      branchId: preview.branchId,
+      body: {
         rows: preview.rows.map((row) => ({
           code: row.code,
           price: row.price,
@@ -146,13 +147,13 @@ export async function confirmPriceImport(
           currency: row.currency,
           conditions: row.conditions,
         })),
-      }),
-    },
-    preview.branchId,
-  );
-  if (response.status === 401 || response.status === 403)
-    return { ok: false, error: 'unauthorized' };
-  if (!response.ok) return { ok: false, error: 'unexpected' };
-  const raw: ConfirmProductPriceImportRaw = await response.json();
-  return { ok: true, importedRows: raw.imported_rows };
+      },
+    });
+    return { ok: true, importedRows: raw.imported_rows };
+  } catch (error) {
+    const code = errorCodeOf(error);
+    if (code === 'unauthenticated' || code === 'forbidden')
+      return { ok: false, error: 'unauthorized' };
+    return { ok: false, error: 'unexpected' };
+  }
 }

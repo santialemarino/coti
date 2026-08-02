@@ -1,7 +1,7 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
   "ui": "tui",
-  "globalEnv": ["NEXT_PUBLIC_API_URL"],
+  "globalEnv": ["NODE_ENV", "NEXT_PUBLIC_API_URL", "AUTH_REFRESH_SKEW_SECONDS"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
