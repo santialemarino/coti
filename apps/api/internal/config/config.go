@@ -34,6 +34,7 @@ type Config struct {
 	Auth        AuthConfig
 	PriceImport PriceImportConfig
 	Catalog     CatalogConfig
+	Branch      BranchConfig
 }
 
 // ServerConfig holds the HTTP listener settings.
@@ -73,6 +74,11 @@ type AuthConfig struct {
 // PriceImportConfig holds operational limits for spreadsheet imports.
 type PriceImportConfig struct {
 	MaxBytes int64
+}
+
+// BranchConfig holds the defaults a newly opened branch starts with.
+type BranchConfig struct {
+	DefaultExpiryDays int
 }
 
 // CatalogConfig holds the catalog listing limits. The cap is what stops a client from
@@ -125,6 +131,9 @@ func Load() (*Config, error) {
 			DefaultPageSize: getInt("CATALOG_DEFAULT_PAGE_SIZE", 50, &problems),
 			MaxPageSize:     getInt("CATALOG_MAX_PAGE_SIZE", 200, &problems),
 		},
+		Branch: BranchConfig{
+			DefaultExpiryDays: getInt("BRANCH_DEFAULT_EXPIRY_DAYS", 7, &problems),
+		},
 		PriceImport: PriceImportConfig{
 			MaxBytes: int64(getInt("PRICE_IMPORT_MAX_BYTES", defaultPriceImportMaxBytes, &problems)),
 		},
@@ -143,6 +152,9 @@ func Load() (*Config, error) {
 	if len(cfg.Auth.JWTSecret) < minJWTSecretLength {
 		problems = append(problems, fmt.Sprintf("AUTH_JWT_SECRET must be at least %d characters, got %d",
 			minJWTSecretLength, len(cfg.Auth.JWTSecret)))
+	}
+	if cfg.Branch.DefaultExpiryDays <= 0 {
+		problems = append(problems, "BRANCH_DEFAULT_EXPIRY_DAYS must be greater than zero")
 	}
 	if cfg.PriceImport.MaxBytes <= 0 {
 		problems = append(problems, "PRICE_IMPORT_MAX_BYTES must be greater than zero")

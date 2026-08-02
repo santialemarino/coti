@@ -1,5 +1,26 @@
 basePath: /
 definitions:
+  dto.AccountResponse:
+    properties:
+      brand_color:
+        type: string
+      brand_logo_url:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      legal_name:
+        type: string
+      name:
+        type: string
+      tax_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
   dto.AddAlternativeRequest:
     properties:
       alternative_product_id:
@@ -116,6 +137,22 @@ definitions:
       imported_rows:
         type: integer
     type: object
+  dto.CreateBranchRequest:
+    properties:
+      address:
+        maxLength: 255
+        type: string
+      default_expiry_days:
+        maximum: 365
+        minimum: 1
+        type: integer
+      name:
+        maxLength: 255
+        minLength: 1
+        type: string
+    required:
+    - name
+    type: object
   dto.CreateProductRequest:
     properties:
       canonical_name:
@@ -198,6 +235,23 @@ definitions:
   dto.LogoutRequest:
     properties:
       refresh_token:
+        type: string
+    type: object
+  dto.MeResponse:
+    properties:
+      account_id:
+        type: string
+      branch_ids:
+        items:
+          type: string
+        type: array
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      role:
         type: string
     type: object
   dto.PriceListResponse:
@@ -357,6 +411,51 @@ definitions:
     required:
     - price
     type: object
+  dto.SignupRequest:
+    properties:
+      account_name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      admin_email:
+        maxLength: 255
+        type: string
+      admin_name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      admin_password:
+        maxLength: 72
+        type: string
+      branch_address:
+        maxLength: 255
+        type: string
+      branch_name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      legal_name:
+        maxLength: 255
+        type: string
+      tax_id:
+        maxLength: 255
+        type: string
+    required:
+    - account_name
+    - admin_email
+    - admin_name
+    - admin_password
+    - branch_name
+    type: object
+  dto.SignupResponse:
+    properties:
+      account:
+        $ref: '#/definitions/dto.AccountResponse'
+      branch:
+        $ref: '#/definitions/dto.BranchResponse'
+      tokens:
+        $ref: '#/definitions/dto.TokenResponse'
+    type: object
   dto.SynonymListResponse:
     properties:
       items:
@@ -387,6 +486,46 @@ definitions:
         type: string
       user:
         $ref: '#/definitions/dto.UserBrief'
+    type: object
+  dto.UpdateAccountRequest:
+    properties:
+      brand_color:
+        maxLength: 32
+        type: string
+      brand_logo_url:
+        maxLength: 512
+        type: string
+      legal_name:
+        maxLength: 255
+        type: string
+      name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      tax_id:
+        maxLength: 255
+        type: string
+    required:
+    - name
+    type: object
+  dto.UpdateBranchRequest:
+    properties:
+      address:
+        maxLength: 255
+        type: string
+      default_expiry_days:
+        maximum: 365
+        minimum: 1
+        type: integer
+      is_active:
+        type: boolean
+      name:
+        maxLength: 255
+        minLength: 1
+        type: string
+    required:
+    - default_expiry_days
+    - name
     type: object
   dto.UpdateProductRequest:
     properties:
@@ -515,6 +654,73 @@ paths:
       summary: Readiness probe
       tags:
       - health
+  /v1/account:
+    get:
+      description: Returns the corralón the caller belongs to, brand included.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AccountResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get the current account
+      tags:
+      - accounts
+    put:
+      consumes:
+      - application/json
+      description: Replaces the corralón's record, including the brand the client
+        webapp renders a quote with.
+      parameters:
+      - description: Account
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateAccountRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AccountResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update the current account
+      tags:
+      - accounts
   /v1/auth/logout:
     post:
       consumes:
@@ -561,6 +767,159 @@ paths:
       summary: List branches
       tags:
       - branches
+    post:
+      consumes:
+      - application/json
+      description: Opens a branch together with its manual-entry channel, which a
+        counter or phone order needs.
+      parameters:
+      - description: Branch
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateBranchRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.BranchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a branch
+      tags:
+      - branches
+  /v1/branches/{branchId}:
+    delete:
+      description: Deactivates the branch so its quotes and prices stay explainable.
+        Refuses to close the account's last active branch.
+      parameters:
+      - description: Branch id
+        in: path
+        name: branchId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Close a branch
+      tags:
+      - branches
+    put:
+      consumes:
+      - application/json
+      description: Replaces name, address and default quote expiry. is_active omitted
+        leaves the flag alone.
+      parameters:
+      - description: Branch id
+        in: path
+        name: branchId
+        required: true
+        type: string
+      - description: Branch
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateBranchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.BranchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a branch
+      tags:
+      - branches
+  /v1/me:
+    get:
+      description: Returns the caller's identity and branch reach, so the frontend
+        never has to read the access token itself.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.MeResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get the current user
+      tags:
+      - users
   /v1/product-prices/export:
     get:
       description: Returns an XLSX pre-filled with the prices in force for the active
@@ -1311,6 +1670,41 @@ paths:
       summary: Remove a product synonym
       tags:
       - catalog
+  /v1/public/accounts:
+    post:
+      consumes:
+      - application/json
+      description: Creates the account, its first branch with that branch's manual-entry
+        channel, and the administrator, then returns a session.
+      parameters:
+      - description: Registration
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SignupRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.SignupResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Register a corralón
+      tags:
+      - accounts
   /v1/public/auth/login:
     post:
       consumes:

@@ -67,3 +67,21 @@ type Branch struct {
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }
+
+// NewBranch is a branch to open under the caller's account. DefaultExpiryDays is how long a
+// quote sent from here stays valid, and it lives on the branch because tolerance to inflation
+// differs between locations.
+type NewBranch struct {
+	Name              string
+	Address           *string
+	DefaultExpiryDays int
+}
+
+// BranchUpdate replaces a branch's editable fields. IsActive is nil to leave it alone, so an
+// edit form cannot silently revive a closed branch.
+type BranchUpdate struct {
+	Name              string
+	Address           *string
+	DefaultExpiryDays int
+	IsActive          *bool
+}

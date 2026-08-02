@@ -67,11 +67,15 @@ func run() error {
 	productAlternativeRepo := repository.NewProductAlternativeRepository()
 	branchProductRepo := repository.NewBranchProductRepository()
 	productPriceRepo := repository.NewProductPriceRepository()
+	accountRepo := repository.NewAccountRepository()
+	channelRepo := repository.NewChannelRepository()
 
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
 	authService := services.NewAuthService(db, userRepo, branchRepo, refreshTokenRepo, tokenService, cfg.Auth, nil)
 	userService := services.NewUserService(db, userRepo, userBranchRepo, branchRepo, cfg.Auth)
-	branchService := services.NewBranchService(db, branchRepo)
+	branchService := services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)
+	accountService := services.NewAccountService(db, accountRepo, branchRepo, channelRepo,
+		userRepo, authService, cfg.Auth, cfg.Branch)
 	productService := services.NewProductService(db, productRepo, productSynonymRepo,
 		productAlternativeRepo, cfg.Catalog)
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo, branchProductRepo,
@@ -87,6 +91,7 @@ func run() error {
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
+			Account:       handler.NewAccountHandler(accountService),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
 	)
