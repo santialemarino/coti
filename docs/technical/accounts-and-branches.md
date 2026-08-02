@@ -19,10 +19,10 @@ Everything it creates lands in one transaction:
 
 The response carries a token pair, so the caller has a session without a second round trip.
 
-**The administrator's address must be free across every account.** `uq_app_user_email` is
-`UNIQUE (account_id, email)` — per account — but login resolves a user by email alone, so two
-accounts sharing an address would make the resulting session ambiguous. Registration therefore
-refuses an address already in use anywhere and answers `409`.
+**The administrator's address must be free across every account**, because login resolves a
+user by email alone and an address therefore has to identify exactly one row.
+`uq_app_user_email_global` on `lower(email)` enforces that; registration also checks it inside
+its own transaction so the caller gets a precise `409` instead of a bare constraint violation.
 
 ## The manual-entry channel is not optional
 

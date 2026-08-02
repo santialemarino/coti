@@ -132,10 +132,11 @@ seller reaching any of it gets **403**.
 - **An admin sets the initial password.** There is no invitation flow, so this is the only way
   a user gets credentials. It must clear `AUTH_PASSWORD_MIN_LENGTH`.
 - **An admin may create either role.** `ADMIN` and `SELLER` are both accepted.
-- **A duplicate email inside the account is a 409**, raised by `uq_app_user_email` rather than
-  a read-then-write. Emails are stored lowercased and trimmed, which is what makes that
-  constraint case-insensitive in practice. Uniqueness is **per account**: two corralones may
-  share a contact address.
+- **A duplicate email is a 409**, raised by a constraint rather than a read-then-write. Two
+  back it: `uq_app_user_email` per account, and `uq_app_user_email_global` on `lower(email)`
+  across every account. The global one is what login depends on — it resolves a user by email
+  alone, so an address has to identify exactly one row. Being functional, it also holds when a
+  writer forgets to lowercase, which the per-account constraint does not.
 - **`PUT` replaces** name, email, role and branch assignments. `is_active` omitted leaves the
   flag alone, so an edit form cannot silently revive a deactivated user.
 - **`DELETE` deactivates**, keeping the row so the user's quotes keep an author.
