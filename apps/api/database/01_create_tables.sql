@@ -66,6 +66,9 @@ CREATE TYPE send_tracking_status AS ENUM ('PENDING', 'SENT', 'DELIVERED', 'VIEWE
 CREATE TYPE handler_seller_decision AS ENUM ('APPROVED_AS_IS', 'EDITED', 'REJECTED', 'MANUAL_OVERRIDE');
 CREATE TYPE notification_status AS ENUM ('PENDING', 'SENT', 'FAILED');
 
+-- What a single-use link entitles its bearer to do without a session.
+CREATE TYPE auth_token_type AS ENUM ('PASSWORD_RESET', 'EMAIL_VERIFICATION');
+
 -- Conversational engine. The seller and the system are context, not a trigger.
 CREATE TYPE message_author_type AS ENUM ('CLIENT', 'SELLER', 'SYSTEM');
 CREATE TYPE message_batch_status AS ENUM ('OPEN', 'CLOSED', 'PROCESSING', 'PROCESSED', 'FAILED');
@@ -118,19 +121,20 @@ CREATE TABLE branch (
 -- Bumping session_epoch invalidates every outstanding access token, which is immediate
 -- logout without a blacklist. locked_until closes out the failed-attempt counter.
 CREATE TABLE app_user (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  account_id      UUID NOT NULL,
-  name            VARCHAR(255) NOT NULL,
-  email           VARCHAR(255) NOT NULL,
-  password_hash   VARCHAR(255) NOT NULL,
-  role            user_role NOT NULL,
-  is_active       BOOLEAN NOT NULL DEFAULT TRUE,
-  session_epoch   INTEGER NOT NULL DEFAULT 1,
-  last_login_at   TIMESTAMPTZ,
-  failed_attempts INTEGER NOT NULL DEFAULT 0,
-  locked_until    TIMESTAMPTZ,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id        UUID NOT NULL,
+  name              VARCHAR(255) NOT NULL,
+  email             VARCHAR(255) NOT NULL,
+  password_hash     VARCHAR(255) NOT NULL,
+  role              user_role NOT NULL,
+  is_active         BOOLEAN NOT NULL DEFAULT TRUE,
+  session_epoch     INTEGER NOT NULL DEFAULT 1,
+  last_login_at     TIMESTAMPTZ,
+  failed_attempts   INTEGER NOT NULL DEFAULT 0,
+  locked_until      TIMESTAMPTZ,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  email_verified_at TIMESTAMPTZ,
   CONSTRAINT uq_app_user_email UNIQUE (account_id, email)
 );
 
@@ -157,6 +161,21 @@ CREATE TABLE refresh_token (
   revoked_at  TIMESTAMPTZ,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT uq_refresh_token_hash UNIQUE (token_hash)
+);
+
+-- Single-use tokens a user presents instead of a session: the password-recovery link and the
+-- address-verification link. consumed_at is what makes them single use, and the row survives
+-- its use so a replay is a rejection rather than a miss.
+CREATE TABLE auth_token (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id  UUID NOT NULL,
+  user_id     UUID NOT NULL,
+  type        auth_token_type NOT NULL,
+  token_hash  CHAR(64) NOT NULL,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_auth_token_hash UNIQUE (token_hash)
 );
 
 -- =============================================================================
@@ -641,6 +660,8 @@ ALTER TABLE user_branch ADD CONSTRAINT fk_user_branch_user FOREIGN KEY (user_id)
 ALTER TABLE user_branch ADD CONSTRAINT fk_user_branch_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
 ALTER TABLE refresh_token ADD CONSTRAINT fk_refresh_token_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE refresh_token ADD CONSTRAINT fk_refresh_token_user FOREIGN KEY (user_id) REFERENCES app_user(id);
+ALTER TABLE auth_token ADD CONSTRAINT fk_auth_token_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE auth_token ADD CONSTRAINT fk_auth_token_user FOREIGN KEY (user_id) REFERENCES app_user(id);
 
 ALTER TABLE product ADD CONSTRAINT fk_product_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE branch_product ADD CONSTRAINT fk_branch_product_account FOREIGN KEY (account_id) REFERENCES account(id);
@@ -757,6 +778,8 @@ CREATE INDEX idx_app_user_account ON app_user(account_id);
 CREATE UNIQUE INDEX uq_app_user_email_global ON app_user (lower(email));
 CREATE INDEX idx_refresh_token_user ON refresh_token(user_id);
 CREATE INDEX idx_refresh_token_family ON refresh_token(family_id);
+-- Asking for a new link invalidates the outstanding ones, which is the only hot read.
+CREATE INDEX idx_auth_token_user_type ON auth_token(user_id, type) WHERE consumed_at IS NULL;
 
 CREATE INDEX idx_product_account ON product(account_id);
 -- A code identifies one row per account, so "update the price by code" has a single target.
@@ -861,7 +884,7 @@ DO $$
 DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY[
-    'branch', 'app_user', 'user_branch', 'refresh_token',
+    'branch', 'app_user', 'user_branch', 'refresh_token', 'auth_token',
     'product', 'branch_product', 'product_synonym', 'product_price', 'product_alternative',
     'combo', 'combo_item', 'branch_combo',
     'client', 'tag', 'client_tag',
