@@ -6,6 +6,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -25,6 +26,14 @@ const (
 	EnvironmentProduction  Environment = "production"
 )
 
+// MailProvider selects the transport behind the domain.Mailer port.
+type MailProvider string
+
+const (
+	MailProviderConsole MailProvider = "console"
+	MailProviderSMTP    MailProvider = "smtp"
+)
+
 // Config is the fully resolved runtime configuration.
 type Config struct {
 	Environment Environment
@@ -32,6 +41,8 @@ type Config struct {
 	Server      ServerConfig
 	Database    DatabaseConfig
 	Auth        AuthConfig
+	Mail        MailConfig
+	Web         WebConfig
 	PriceImport PriceImportConfig
 	Catalog     CatalogConfig
 	Branch      BranchConfig
@@ -69,6 +80,25 @@ type AuthConfig struct {
 	MaxFailedAttempts  int
 	LockoutDuration    time.Duration
 	PasswordMinLength  int
+	PasswordResetTTL   time.Duration
+}
+
+// MailConfig holds the outbound-mail transport settings. The SMTP fields are the contract an
+// SMTP adapter will read; until one exists, selecting that provider is a startup error.
+type MailConfig struct {
+	Provider     MailProvider
+	FromAddress  string
+	FromName     string
+	SMTPHost     string
+	SMTPPort     int
+	SMTPUsername string
+	SMTPPassword string
+}
+
+// WebConfig holds the frontend base URLs an emailed link points at. The API never serves
+// those routes, so it cannot derive them from its own address.
+type WebConfig struct {
+	BackofficeURL string
 }
 
 // PriceImportConfig holds operational limits for spreadsheet imports.
@@ -126,6 +156,19 @@ func Load() (*Config, error) {
 			MaxFailedAttempts:  getInt("AUTH_MAX_FAILED_ATTEMPTS", 5, &problems),
 			LockoutDuration:    getDuration("AUTH_LOCKOUT_MINUTES", 15*time.Minute, &problems),
 			PasswordMinLength:  getInt("AUTH_PASSWORD_MIN_LENGTH", 8, &problems),
+			PasswordResetTTL:   getDuration("AUTH_PASSWORD_RESET_TTL_MINUTES", 60*time.Minute, &problems),
+		},
+		Mail: MailConfig{
+			Provider:     MailProvider(getString("MAIL_PROVIDER", string(MailProviderConsole))),
+			FromAddress:  getString("MAIL_FROM_ADDRESS", ""),
+			FromName:     getString("MAIL_FROM_NAME", "Coti"),
+			SMTPHost:     getString("MAIL_SMTP_HOST", ""),
+			SMTPPort:     getInt("MAIL_SMTP_PORT", 587, &problems),
+			SMTPUsername: getString("MAIL_SMTP_USERNAME", ""),
+			SMTPPassword: getString("MAIL_SMTP_PASSWORD", ""),
+		},
+		Web: WebConfig{
+			BackofficeURL: getString("WEB_BACKOFFICE_URL", "http://localhost:3000"),
 		},
 		Catalog: CatalogConfig{
 			DefaultPageSize: getInt("CATALOG_DEFAULT_PAGE_SIZE", 50, &problems),
@@ -163,6 +206,51 @@ func Load() (*Config, error) {
 	if cfg.Auth.PasswordMinLength < 8 {
 		problems = append(problems, fmt.Sprintf("AUTH_PASSWORD_MIN_LENGTH must be at least 8, got %d",
 			cfg.Auth.PasswordMinLength))
+	}
+	if cfg.Auth.PasswordResetTTL <= 0 {
+		problems = append(problems, "AUTH_PASSWORD_RESET_TTL_MINUTES must be greater than zero")
+	}
+
+	// The console transport reaches nothing, so it needs no sender of its own; a real one
+	// cannot start without the address and credentials it authenticates with.
+	switch cfg.Mail.Provider {
+	case MailProviderConsole:
+		if cfg.Mail.FromAddress == "" {
+			cfg.Mail.FromAddress = "no-reply@coti.local"
+		}
+	case MailProviderSMTP:
+		// Reported here rather than at the composition root so an operator sees it alongside
+		// whatever else is missing, instead of one restart per problem.
+		problems = append(problems, "MAIL_PROVIDER is "+string(MailProviderSMTP)+
+			", which has no adapter wired yet: the only working transport is "+
+			string(MailProviderConsole))
+		required := []struct{ key, value string }{
+			{"MAIL_FROM_ADDRESS", cfg.Mail.FromAddress},
+			{"MAIL_SMTP_HOST", cfg.Mail.SMTPHost},
+			{"MAIL_SMTP_USERNAME", cfg.Mail.SMTPUsername},
+			{"MAIL_SMTP_PASSWORD", cfg.Mail.SMTPPassword},
+		}
+		for _, r := range required {
+			if r.value == "" {
+				problems = append(problems, r.key+" is required when MAIL_PROVIDER is "+
+					string(MailProviderSMTP))
+			}
+		}
+		if cfg.Mail.SMTPPort <= 0 {
+			problems = append(problems, fmt.Sprintf("MAIL_SMTP_PORT must be greater than zero, got %d",
+				cfg.Mail.SMTPPort))
+		}
+	default:
+		problems = append(problems, fmt.Sprintf("MAIL_PROVIDER must be %q or %q, got %q",
+			MailProviderConsole, MailProviderSMTP, cfg.Mail.Provider))
+	}
+
+	// A base URL missing its scheme or host yields recovery links that go nowhere, and the
+	// only symptom is a user reporting that the mail does not work.
+	if u, err := url.Parse(cfg.Web.BackofficeURL); err != nil || u.Scheme == "" || u.Host == "" {
+		problems = append(problems, fmt.Sprintf(
+			"WEB_BACKOFFICE_URL must be an absolute URL with a scheme and host, got %q",
+			cfg.Web.BackofficeURL))
 	}
 
 	if cfg.Catalog.DefaultPageSize < 1 {

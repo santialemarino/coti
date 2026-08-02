@@ -14,6 +14,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -26,6 +27,8 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
+	"github.com/santialemarino/coti/apps/api/internal/domain"
+	"github.com/santialemarino/coti/apps/api/internal/mail"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 	"github.com/santialemarino/coti/apps/api/internal/services"
 )
@@ -69,9 +72,19 @@ func run() error {
 	productPriceRepo := repository.NewProductPriceRepository()
 	accountRepo := repository.NewAccountRepository()
 	channelRepo := repository.NewChannelRepository()
+	authTokenRepo := repository.NewAuthTokenRepository()
+	notificationRepo := repository.NewNotificationRepository()
+
+	mailer, err := newMailer(cfg, log)
+	if err != nil {
+		return err
+	}
 
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
 	authService := services.NewAuthService(db, userRepo, branchRepo, refreshTokenRepo, tokenService, cfg.Auth, nil)
+	mailService := services.NewMailService(db, mailer, notificationRepo, accountRepo, nil)
+	passwordService := services.NewPasswordService(db, userRepo, authTokenRepo, refreshTokenRepo,
+		mailService, authService, log, cfg.Auth, cfg.Web, nil)
 	userService := services.NewUserService(db, userRepo, userBranchRepo, branchRepo, cfg.Auth)
 	branchService := services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)
 	accountService := services.NewAccountService(db, accountRepo, branchRepo, channelRepo,
@@ -86,6 +99,7 @@ func run() error {
 		deliveryhttp.Handlers{
 			Health:        handler.NewHealthHandler(db),
 			Auth:          handler.NewAuthHandler(authService),
+			Password:      handler.NewPasswordHandler(passwordService),
 			User:          handler.NewUserHandler(userService),
 			Branch:        handler.NewBranchHandler(branchService),
 			Product:       handler.NewProductHandler(productService),
@@ -122,6 +136,19 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
 	return server.Shutdown(shutdownCtx)
+}
+
+// newMailer binds the domain.Mailer port to the transport configuration selected, and is the
+// only place a provider is chosen. config.Load rejects a provider with no adapter.
+func newMailer(cfg *config.Config, log *slog.Logger) (domain.Mailer, error) {
+	switch cfg.Mail.Provider {
+	case config.MailProviderConsole:
+		log.Warn("outbound mail goes to the log, not to a recipient",
+			slog.String("provider", string(cfg.Mail.Provider)))
+		return mail.NewConsoleMailer(log, cfg.Mail.FromAddress), nil
+	default:
+		return nil, fmt.Errorf("no mail adapter for provider %q", cfg.Mail.Provider)
+	}
 }
 
 // newLogger returns a JSON logger in production and a text one in development, where
