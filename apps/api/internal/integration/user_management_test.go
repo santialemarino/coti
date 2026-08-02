@@ -56,6 +56,7 @@ func newEnv(t *testing.T) *env {
 			PasswordMinLength: 8,
 		},
 		Catalog: config.CatalogConfig{DefaultPageSize: 50, MaxPageSize: 200},
+		Branch:  config.BranchConfig{DefaultExpiryDays: 7},
 	}
 
 	db, err := repository.NewDB(context.Background(), config.DatabaseConfig{
@@ -70,6 +71,8 @@ func newEnv(t *testing.T) *env {
 	userRepo := repository.NewUserRepository()
 	branchRepo := repository.NewBranchRepository()
 	userBranchRepo := repository.NewUserBranchRepository()
+	channelRepo := repository.NewChannelRepository()
+	accountRepo := repository.NewAccountRepository()
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
 	authService := services.NewAuthService(db, userRepo, branchRepo,
 		repository.NewRefreshTokenRepository(), tokenService, cfg.Auth, nil)
@@ -85,9 +88,11 @@ func newEnv(t *testing.T) *env {
 			Health:        handler.NewHealthHandler(db),
 			Auth:          handler.NewAuthHandler(authService),
 			User:          handler.NewUserHandler(userService),
-			Branch:        handler.NewBranchHandler(services.NewBranchService(db, branchRepo)),
+			Branch:        handler.NewBranchHandler(services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)),
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
+			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
+				branchRepo, channelRepo, userRepo, authService, cfg.Auth, cfg.Branch)),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService})
 
@@ -115,6 +120,7 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 		c := context.Background()
 		_, _ = e.db.CrossAccount().Exec(c, `DELETE FROM user_branch WHERE account_id = $1`, accountID)
 		_, _ = e.db.CrossAccount().Exec(c, `DELETE FROM app_user WHERE account_id = $1`, accountID)
+		_, _ = e.db.CrossAccount().Exec(c, `DELETE FROM channel WHERE account_id = $1`, accountID)
 		_, _ = e.db.CrossAccount().Exec(c, `DELETE FROM branch WHERE account_id = $1`, accountID)
 		_, _ = e.db.CrossAccount().Exec(c, `DELETE FROM account WHERE id = $1`, accountID)
 	})
