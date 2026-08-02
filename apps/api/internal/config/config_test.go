@@ -20,6 +20,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"AUTH_JWT_SECRET", "AUTH_ACCESS_TTL_MINUTES", "AUTH_REFRESH_TTL_HOURS",
 		"AUTH_REFRESH_REMEMBER_DAYS", "AUTH_REFRESH_REUSE_GRACE_SECONDS",
 		"AUTH_MAX_FAILED_ATTEMPTS", "AUTH_LOCKOUT_MINUTES",
+		"PRICE_IMPORT_MAX_BYTES",
 	}
 	for _, k := range known {
 		t.Setenv(k, "")
@@ -59,6 +60,9 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.Auth.RefreshRememberTTL != 30*24*time.Hour {
 		t.Errorf("Auth.RefreshRememberTTL = %v, want 720h", cfg.Auth.RefreshRememberTTL)
+	}
+	if cfg.PriceImport.MaxBytes != defaultPriceImportMaxBytes {
+		t.Errorf("PriceImport.MaxBytes = %d, want %d", cfg.PriceImport.MaxBytes, defaultPriceImportMaxBytes)
 	}
 	if cfg.IsProduction() {
 		t.Error("IsProduction() = true, want false")
