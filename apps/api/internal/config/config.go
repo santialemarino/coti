@@ -15,6 +15,7 @@ import (
 // minJWTSecretLength is the floor for AUTH_JWT_SECRET. HMAC-SHA256 keys shorter
 // than the digest add no security.
 const minJWTSecretLength = 32
+const defaultPriceImportMaxBytes = 5 * 1024 * 1024
 
 // Environment is the deployment environment the process runs in.
 type Environment string
@@ -31,6 +32,7 @@ type Config struct {
 	Server      ServerConfig
 	Database    DatabaseConfig
 	Auth        AuthConfig
+	PriceImport PriceImportConfig
 	Catalog     CatalogConfig
 }
 
@@ -66,6 +68,11 @@ type AuthConfig struct {
 	MaxFailedAttempts  int
 	LockoutDuration    time.Duration
 	PasswordMinLength  int
+}
+
+// PriceImportConfig holds operational limits for spreadsheet imports.
+type PriceImportConfig struct {
+	MaxBytes int64
 }
 
 // CatalogConfig holds the catalog listing limits. The cap is what stops a client from
@@ -118,6 +125,9 @@ func Load() (*Config, error) {
 			DefaultPageSize: getInt("CATALOG_DEFAULT_PAGE_SIZE", 50, &problems),
 			MaxPageSize:     getInt("CATALOG_MAX_PAGE_SIZE", 200, &problems),
 		},
+		PriceImport: PriceImportConfig{
+			MaxBytes: int64(getInt("PRICE_IMPORT_MAX_BYTES", defaultPriceImportMaxBytes, &problems)),
+		},
 	}
 
 	if cfg.Database.URL == "" {
@@ -133,6 +143,9 @@ func Load() (*Config, error) {
 	if len(cfg.Auth.JWTSecret) < minJWTSecretLength {
 		problems = append(problems, fmt.Sprintf("AUTH_JWT_SECRET must be at least %d characters, got %d",
 			minJWTSecretLength, len(cfg.Auth.JWTSecret)))
+	}
+	if cfg.PriceImport.MaxBytes <= 0 {
+		problems = append(problems, "PRICE_IMPORT_MAX_BYTES must be greater than zero")
 	}
 
 	if cfg.Auth.PasswordMinLength < 8 {

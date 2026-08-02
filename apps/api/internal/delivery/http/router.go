@@ -27,6 +27,7 @@ type Handlers struct {
 	Branch        *handler.BranchHandler
 	Product       *handler.ProductHandler
 	BranchCatalog *handler.BranchCatalogHandler
+	Prices        *handler.ProductPriceHandler
 }
 
 // Auth carries what the authentication middleware needs to resolve a tenant.
@@ -71,6 +72,11 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth) *gin
 	// The branch switcher needs this before it can send X-Branch-Id, so it is not admin-only:
 	// the repository already narrows a seller to their assignments.
 	authed.GET("/branches", h.Branch.List)
+
+	admin := authed.Group("", middleware.RequireAdmin())
+	admin.GET("/product-prices/export", h.Prices.Export)
+	admin.POST("/product-prices/import/preview", h.Prices.PreviewImport)
+	admin.POST("/product-prices/import/confirm", h.Prices.ConfirmImport)
 
 	// User administration is the one admin-only group. RequireAdmin runs after RequireTenant,
 	// which is what put the role on the context.

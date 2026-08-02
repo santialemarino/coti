@@ -76,6 +76,7 @@ func run() error {
 		productAlternativeRepo, cfg.Catalog)
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo, branchProductRepo,
 		productPriceRepo, nil)
+	productPriceImportService := services.NewProductPriceImportService(db, productPriceRepo, nil)
 
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
@@ -85,6 +86,7 @@ func run() error {
 			Branch:        handler.NewBranchHandler(branchService),
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
+			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
 	)
