@@ -23,11 +23,8 @@ type LogoutRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-// TokenResponse is returned by login and refresh.
-//
-// The refresh token is returned in the body and shown exactly once — the caller stores
-// it. The API is bearer-based; the web app is what puts the access token in an httpOnly
-// cookie.
+// TokenResponse is returned by login and refresh. The refresh token appears here exactly
+// once — only its hash is kept.
 type TokenResponse struct {
 	AccessToken     string    `json:"access_token"`
 	AccessExpiresAt time.Time `json:"access_expires_at"`
@@ -35,8 +32,7 @@ type TokenResponse struct {
 	User            UserBrief `json:"user"`
 }
 
-// UserBrief is the caller identity embedded in a token response, so the client does not
-// need a second request to render the shell.
+// UserBrief is the caller identity embedded in a token response.
 type UserBrief struct {
 	ID        string `json:"id"`
 	AccountID string `json:"account_id"`

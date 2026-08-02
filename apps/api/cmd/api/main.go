@@ -1,5 +1,14 @@
 // Command api is the Coti backend: the composition root reads configuration, opens
 // the connection pools, injects dependencies into the layers, and serves HTTP.
+//
+//	@title						Coti API
+//	@version					1.0
+//	@description				Every /v1 route outside /public needs an access token. The active branch travels in the X-Branch-Id header, not in the token, and is validated per request.
+//	@BasePath					/
+//	@securityDefinitions.apikey	BearerAuth
+//	@in							header
+//	@name						Authorization
+//	@description				Access token, prefixed with "Bearer ".
 package main
 
 import (
@@ -52,19 +61,32 @@ func run() error {
 	userRepo := repository.NewUserRepository()
 	branchRepo := repository.NewBranchRepository()
 	refreshTokenRepo := repository.NewRefreshTokenRepository()
+	userBranchRepo := repository.NewUserBranchRepository()
+	productRepo := repository.NewProductRepository()
+	productSynonymRepo := repository.NewProductSynonymRepository()
+	productAlternativeRepo := repository.NewProductAlternativeRepository()
+	branchProductRepo := repository.NewBranchProductRepository()
 	productPriceRepo := repository.NewProductPriceRepository()
 
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
 	authService := services.NewAuthService(db, userRepo, branchRepo, refreshTokenRepo, tokenService, cfg.Auth, nil)
-	productPriceImportService := services.NewProductPriceImportService(db, productPriceRepo, nil)
+	userService := services.NewUserService(db, userRepo, userBranchRepo, branchRepo, cfg.Auth)
 	branchService := services.NewBranchService(db, branchRepo)
+	productService := services.NewProductService(db, productRepo, productSynonymRepo,
+		productAlternativeRepo, cfg.Catalog)
+	branchCatalogService := services.NewBranchCatalogService(db, productRepo, branchProductRepo,
+		productPriceRepo, nil)
+	productPriceImportService := services.NewProductPriceImportService(db, productPriceRepo, nil)
 
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
-			Health: handler.NewHealthHandler(db),
-			Auth:   handler.NewAuthHandler(authService),
-			Branch: handler.NewBranchHandler(branchService),
-			Prices: handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
+			Health:        handler.NewHealthHandler(db),
+			Auth:          handler.NewAuthHandler(authService),
+			User:          handler.NewUserHandler(userService),
+			Branch:        handler.NewBranchHandler(branchService),
+			Product:       handler.NewProductHandler(productService),
+			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
+			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
 	)

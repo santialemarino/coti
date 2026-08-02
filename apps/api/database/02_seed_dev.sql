@@ -1,10 +1,10 @@
--- Coti — datos de desarrollo. Idempotente: se puede correr varias veces.
+-- Coti — development data. Idempotent: safe to run more than once.
 --
--- Corre como owner, así que RLS no aplica. NO usar en producción.
--- Un corralón con dos sucursales: alcanza para ejercitar el catálogo de cuenta
--- con disponibilidad y precio por sucursal.
+-- Runs as the owner, so RLS does not apply. NOT for production. One corralon with two
+-- branches, enough to exercise the account catalog with per-branch availability and price.
+-- The data itself stays in Spanish: it is what the pilot's screens actually show.
 
--- Contraseña de los dos usuarios: coti1234 (bcrypt, cost 10). Solo para desarrollo.
+-- Password for both users: coti1234 (bcrypt, cost 10). Development only.
 
 INSERT INTO account (id, name, legal_name, tax_id, brand_color) VALUES
   ('a0000000-0000-4000-8000-000000000001', 'Corralón San Martín',
@@ -33,14 +33,13 @@ INSERT INTO user_branch (account_id, user_id, branch_id) VALUES
   ('a0000000-0000-4000-8000-000000000001', 'c0000000-0000-4000-8000-000000000002', 'b0000000-0000-4000-8000-000000000001')
 ON CONFLICT (user_id, branch_id) DO NOTHING;
 
--- Un canal por tipo en la sucursal principal; carga manual también en Morón, que es lo
--- que toda sucursal necesita para originar un pedido de mostrador.
+-- One channel per type at the main branch, plus manual entry at the second one, which every
+-- branch needs to originate a counter order.
 --
--- identifier queda NULL en todos: el seed no puede inventar un número de WhatsApp ni una
--- casilla reales, y si lo hiciera divergiría de las bases que ya venían migradas, donde
--- esas filas existen sin identificador y la restricción compuesta no las compara. Por
--- eso el ON CONFLICT apunta al índice parcial, que es el que sostiene la unicidad
--- mientras el identificador no esté.
+-- identifier stays NULL on all of them: the seed cannot invent a real WhatsApp number or
+-- mailbox, and inventing one would diverge from already-migrated databases where those rows
+-- exist without an identifier. The ON CONFLICT therefore targets the partial index, which is
+-- what holds uniqueness up while the identifier is absent.
 INSERT INTO channel (account_id, branch_id, type) VALUES
   ('a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001', 'WHATSAPP'),
   ('a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001', 'EMAIL'),
@@ -49,7 +48,7 @@ INSERT INTO channel (account_id, branch_id, type) VALUES
   ('a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000002', 'MANUAL_ENTRY')
 ON CONFLICT (branch_id, type) WHERE identifier IS NULL DO NOTHING;
 
--- Catálogo de cuenta. embedding queda NULL: lo puebla el pipeline de IA.
+-- Account catalog. embedding stays NULL: the AI pipeline populates it.
 INSERT INTO product (id, account_id, code, canonical_name, description, unit, category) VALUES
   ('d0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', 'CEM-LN-50', 'Cemento Loma Negra 50 kg', 'Cemento portland normal CPN40', 'bolsa', 'Cementos'),
   ('d0000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001', 'CEM-AVE-50', 'Cemento Avellaneda 50 kg', 'Cemento portland compuesto CPC40', 'bolsa', 'Cementos'),
@@ -73,26 +72,26 @@ INSERT INTO product (id, account_id, code, canonical_name, description, unit, ca
   ('d0000000-0000-4000-8000-000000000020', 'a0000000-0000-4000-8000-000000000001', 'HID-20', 'Hidrófugo 20 kg', 'Aditivo hidrófugo para mezclas', 'balde', 'Impermeabilizantes')
 ON CONFLICT (id) DO NOTHING;
 
--- Sinónimos coloquiales: lo que realmente escribe un cliente por WhatsApp.
+-- Colloquial synonyms: what a client actually types on WhatsApp.
 INSERT INTO product_synonym (account_id, product_id, term, source) VALUES
-  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', 'portland', 'seed'),
-  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', 'loma negra', 'seed'),
-  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', 'bolsa de cemento', 'seed'),
-  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000006', 'hueco del 12', 'seed'),
-  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000008', 'hierro del 8', 'seed'),
-  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000009', 'hierro del 10', 'seed'),
-  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000013', 'durlock', 'seed'),
-  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000011', 'chapa acanalada', 'seed')
-ON CONFLICT DO NOTHING;
+  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', 'portland', 'IMPORTED'),
+  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', 'loma negra', 'IMPORTED'),
+  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', 'bolsa de cemento', 'IMPORTED'),
+  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000006', 'hueco del 12', 'IMPORTED'),
+  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000008', 'hierro del 8', 'IMPORTED'),
+  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000009', 'hierro del 10', 'IMPORTED'),
+  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000013', 'durlock', 'IMPORTED'),
+  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000011', 'chapa acanalada', 'IMPORTED')
+ON CONFLICT (account_id, product_id, lower(term)) DO NOTHING;
 
--- Alternativas para el motor de recomendaciones.
+-- Alternatives for the recommendation engine.
 INSERT INTO product_alternative (account_id, base_product_id, alternative_product_id, type) VALUES
   ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000002', 'ECONOMY'),
   ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000002', 'd0000000-0000-4000-8000-000000000001', 'PREMIUM'),
   ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000006', 'd0000000-0000-4000-8000-000000000007', 'EQUIVALENT')
 ON CONFLICT (base_product_id, alternative_product_id) DO NOTHING;
 
--- Disponibilidad por sucursal: Villa Bosch tiene todo, Morón un subconjunto.
+-- Per-branch availability: Villa Bosch carries everything, Moron a subset.
 INSERT INTO branch_product (account_id, branch_id, product_id, stock)
 SELECT 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001', id, 250
 FROM product WHERE account_id = 'a0000000-0000-4000-8000-000000000001'
@@ -105,7 +104,7 @@ WHERE account_id = 'a0000000-0000-4000-8000-000000000001'
   AND category IN ('Cementos', 'Cales', 'Áridos', 'Mampostería', 'Hierros')
 ON CONFLICT (branch_id, product_id) DO NOTHING;
 
--- Precio vigente por sucursal. Morón un 4% arriba.
+-- The price in force per branch. Moron runs 4% higher.
 INSERT INTO product_price (account_id, branch_id, product_id, price, min_price, valid_from)
 SELECT bp.account_id, bp.branch_id, bp.product_id,
        v.price,
@@ -148,7 +147,7 @@ WHERE pp.branch_id = 'b0000000-0000-4000-8000-000000000001'
     SELECT 1 FROM product_price x
     WHERE x.product_id = pp.product_id AND x.branch_id = 'b0000000-0000-4000-8000-000000000002');
 
--- Promos: una por cantidad escalonada, una sobre el total.
+-- Promotions: one quantity-tiered, one on the total.
 INSERT INTO promotion (id, account_id, branch_id, name, condition_type, action_type, action_value, priority, description) VALUES
   ('e0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', NULL,
    'Cemento por cantidad', 'QUANTITY_TIERED', 'PERCENTAGE', 0, 10,
@@ -181,9 +180,9 @@ INSERT INTO tag (account_id, name, color) VALUES
   ('a0000000-0000-4000-8000-000000000001', 'Obra grande', '#2563EB')
 ON CONFLICT DO NOTHING;
 
--- Combos de catálogo: de la cuenta, con disponibilidad por sucursal. El de contrapiso está
--- inactivo en Morón para que la disponibilidad no sea siempre TRUE, y el de revoque no tiene
--- fila en Morón — la ausencia de fila y el activo en FALSE son dos casos distintos.
+-- Catalog combos: account-scoped, with per-branch availability. One is inactive at Moron so
+-- availability is not always TRUE, and the other has no row there at all — an absent row and
+-- is_active = FALSE are different cases.
 INSERT INTO combo (id, account_id, name, description) VALUES
   ('70000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001',
    'Combo contrapiso 20 m2', 'Cemento, arena, piedra y malla para 20 m2 de contrapiso'),
@@ -201,10 +200,9 @@ INSERT INTO combo_item (id, account_id, combo_id, product_id, quantity) VALUES
   ('80000000-0000-4000-8000-000000000007', 'a0000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000002', 'd0000000-0000-4000-8000-000000000004', 1.5)
 ON CONFLICT (id) DO NOTHING;
 
--- Conflicto por la clave natural y no por el id: la migración que crea branch_combo puebla
--- la disponibilidad desde combo con ids nuevos, así que después de un down y un up los ids
--- del seed ya no existen y un ON CONFLICT (id) dejaría pasar la fila hasta chocar contra
--- uq_branch_combo.
+-- The conflict target is the natural key, not the id: the migration that creates
+-- branch_combo populates it from combo with fresh ids, so after a down and an up the seed's
+-- ids no longer exist and ON CONFLICT (id) would let the row through into uq_branch_combo.
 INSERT INTO branch_combo (id, account_id, branch_id, combo_id, is_active) VALUES
   ('90000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000001', TRUE),
   ('90000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000002', '70000000-0000-4000-8000-000000000001', FALSE),
@@ -212,28 +210,26 @@ INSERT INTO branch_combo (id, account_id, branch_id, combo_id, is_active) VALUES
 ON CONFLICT (branch_id, combo_id) DO NOTHING;
 
 -- =============================================================================
--- PEDIDOS Y COTIZACIONES
+-- RFQS AND QUOTES
 -- =============================================================================
 --
--- Cinco cotizaciones en estados distintos, para que la bandeja del vendedor tenga algo que
--- mostrar sin que exista todavía el pipeline de IA. No las escribe un service: son SQL como
--- el resto del seed, así que las invariantes que el service haría cumplir van escritas a
--- mano acá. Las que importan:
+-- Quotes across several states, so the seller inbox has something to show before the AI
+-- pipeline exists. No service writes them — they are SQL like the rest of the seed — so the
+-- invariants a service would enforce are written out by hand here:
 --
---   * `quote_version.total` = Σ subtotales − Σ descuentos. Sin descuentos sembrados, es la
---     suma de los subtotales, y los ítems sin match no suman (su subtotal es NULL).
---   * Una sola versión sin congelar por cotización (`uq_quote_version_draft`). Enviada ⇒ la
---     versión que salió queda congelada; el pedido de cambio abre una v2 sin congelar.
---   * `current_status` se setea explícito y cada transición deja su fila en
---     `quote_status_change`, con `previous_status` NULL en la primera.
---   * Los precios son los de la sucursal: Villa Bosch al valor de `product_price`, Morón un
---     4% arriba, y `min_price_snapshot` al 88% del precio, igual que el seed de precios.
+--   * `quote_version.total` = Sum of subtotals - Sum of discounts. With no discounts seeded
+--     it is the sum of subtotals, and unmatched items do not add (their subtotal is NULL).
+--   * One non-frozen version per quote (`uq_quote_version_draft`). Sent implies the version
+--     that went out is frozen; a change request opens a non-frozen v2.
+--   * `current_status` is set explicitly and every transition leaves its row in
+--     `quote_status_change`, with `previous_status` NULL on the first.
+--   * Prices follow the branch, and `min_price_snapshot` is 88% of the price, matching the
+--     price seed above.
 --
--- `channel_id` se resuelve por subconsulta y no por UUID fijo: los canales se insertan sin id
--- explícito, así que en una base que ya venía sembrada tienen otros ids que en una nueva.
+-- `channel_id` is resolved by subquery rather than a fixed UUID: channels are inserted with
+-- no explicit id, so an already-seeded database has different ones than a fresh database.
 --
--- Deliberadamente sin sembrar: descuentos aplicados, mensajes y acciones del cliente. La
--- cotización en CHANGE_REQUESTED, entonces, no tiene la acción que pidió el cambio.
+-- Deliberately not seeded: applied discounts, messages, and most client actions.
 
 INSERT INTO rfq (id, account_id, branch_id, client_id, client_label, channel_id, raw_text, status, work_type, received_at) VALUES
   ('10000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001',
@@ -261,8 +257,8 @@ INSERT INTO rfq (id, account_id, branch_id, client_id, client_label, channel_id,
    (SELECT id FROM channel WHERE branch_id = 'b0000000-0000-4000-8000-000000000002' AND type = 'MANUAL_ENTRY' AND identifier IS NULL),
    'Mostrador: 10 bolsas de cemento y 500 ladrillos huecos del 12. Cliente sin datos, retira mañana.',
    'GENERATED', NULL, now() - interval '40 minutes'),
-  -- Mostrador con etiqueta: no hay ficha de cliente pero el vendedor anotó para quién es.
-  -- Con la de Morón, el seed muestra los dos casos legales de carga manual sin cliente.
+  -- Counter sale with a label: no client record, but the seller noted who it is for. With
+  -- the Moron one, the seed shows both legal cases of manual entry without a client.
   ('10000000-0000-4000-8000-000000000006', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001',
    NULL, 'Sr. Almada (mostrador)',
    (SELECT id FROM channel WHERE branch_id = 'b0000000-0000-4000-8000-000000000001' AND type = 'MANUAL_ENTRY' AND identifier IS NULL),
@@ -270,10 +266,9 @@ INSERT INTO rfq (id, account_id, branch_id, client_id, client_label, channel_id,
    'GENERATED', 'Impermeabilización', now() - interval '90 minutes')
 ON CONFLICT (id) DO NOTHING;
 
--- Rellena la etiqueta si quedó vacía, igual que el UPDATE de current_version_id más abajo:
--- el ON CONFLICT DO NOTHING no vuelve a escribir sobre una fila que ya existe, así que
--- después de un down y un up —que se lleva la columna y la devuelve vacía— la etiqueta se
--- perdía. Solo llena lo que está en NULL, así que nunca pisa una edición local.
+-- Fills the label when it is blank. ON CONFLICT DO NOTHING never rewrites an existing row,
+-- so a down and an up — which drops the column and returns it empty — would otherwise lose
+-- it. Only NULLs are filled, so a local edit is never overwritten.
 UPDATE rfq SET client_label = 'Sr. Almada (mostrador)'
 WHERE id = '10000000-0000-4000-8000-000000000006' AND client_label IS NULL;
 
@@ -286,8 +281,8 @@ INSERT INTO rfq_status_change (id, account_id, rfq_id, previous_status, new_stat
   ('50000000-0000-4000-8000-000000000006', 'a0000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000006', 'RECEIVED', 'GENERATED', 'c0000000-0000-4000-8000-000000000002', now() - interval '90 minutes')
 ON CONFLICT (id) DO NOTHING;
 
--- current_version_id arranca NULL y se completa más abajo: quote y quote_version se
--- referencian mutuamente, así que no hay orden de inserción que satisfaga las dos claves.
+-- current_version_id starts NULL and is filled in below: quote and quote_version reference
+-- each other, so no insertion order satisfies both keys at once.
 INSERT INTO quote (id, account_id, branch_id, client_id, rfq_id, seller_id, current_status, expires_at, created_at) VALUES
   ('20000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001',
    'f0000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', NULL, 'DRAFT', NULL, now() - interval '3 hours'),
@@ -324,8 +319,8 @@ FROM (VALUES
 ) AS v(quote_id, version_id)
 WHERE quote.id = v.quote_id AND quote.current_version_id IS NULL;
 
--- El ítem sin match va con product_id, precio y subtotal en NULL y match_status NO_MATCH:
--- se flaggea, nunca se descarta.
+-- The unmatched item carries a NULL product_id, price and subtotal with match_status
+-- NO_MATCH: flagged, never discarded.
 INSERT INTO quote_item (id, account_id, version_id, product_id, requested_description, quantity, unit, unit_price_snapshot, min_price_snapshot, subtotal, confidence_score, match_status) VALUES
   ('40000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', '50 bolsas de portland', 50, 'bolsa', 9500.00, 8360.00, 475000.00, 0.9600, 'MATCHED'),
   ('40000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000006', '1000 huecos del 12', 1000, 'unidad', 780.00, 686.40, 780000.00, 0.9400, 'MATCHED'),
@@ -376,16 +371,15 @@ INSERT INTO quote_status_change (id, account_id, quote_id, previous_status, new_
   ('50000000-0000-4000-8000-00000000001f', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000006', 'SENT', 'ACCEPTED', 'c0000000-0000-4000-8000-000000000002', now() - interval '70 minutes')
 ON CONFLICT (id) DO NOTHING;
 
--- El envío cuelga de la versión, no de la cotización: el link se emite por envío y por canal.
+-- A send hangs off the version, not the quote: the link is issued per send and per channel.
 --
--- La entrega en mano también deja fila de envío, sobre el canal de carga manual de la
--- sucursal y con formato PDF: es la única forma de que `sent_at` conteste cuándo se le dio
--- la cotización al cliente, y de que la acción del cliente tenga a qué colgarse. No
--- contradice la regla de que la carga manual no es canal de salida: esa regla prohíbe
--- tomar el canal de entrada como el de retorno por default, y dice que nadie recibe un
--- *mensaje* por carga manual. Una entrega en mano no es un mensaje y el vendedor la elige.
--- El pedido telefónico es el caso donde la regla sí manda: entra como carga manual y la
--- cotización sale por WhatsApp o mail, así que el canal de retorno se elige explícito.
+-- An in-person handover also gets a send row, on the branch's manual-entry channel and with
+-- format PDF. It is the only way `sent_at` can answer when the client got the quote, and the
+-- only thing the client's action can hang off. This does not contradict "manual entry is not
+-- an outbound channel": that rule forbids defaulting the return channel to the entry channel
+-- and says nobody receives a *message* by manual entry. A handover is neither. The phone
+-- order is where the rule does bite — it arrives as manual entry and goes out by WhatsApp or
+-- email, so the return channel is chosen explicitly.
 INSERT INTO quote_send (id, account_id, version_id, channel_id, public_token, format, sent_at, expires_at, tracking_status)
 SELECT v.id, v.account_id, v.version_id, v.channel_id, v.public_token, v.format, v.sent_at, v.expires_at, v.tracking_status
 FROM (VALUES
@@ -401,10 +395,10 @@ FROM (VALUES
 ) AS v(id, account_id, version_id, channel_id, public_token, format, sent_at, expires_at, tracking_status)
 ON CONFLICT (id) DO NOTHING;
 
--- Las acciones del cliente que explican los dos estados que no son del vendedor: el pedido
--- de cambio sobre la cotización enviada por WhatsApp, y la aceptación en el mostrador. La
--- aceptación de mostrador la toma el vendedor en el momento pero la acción es del cliente,
--- así que queda como client_action con el envío del que salió.
+-- The client actions behind the two states the seller does not drive: the change request on
+-- the quote sent by WhatsApp, and the acceptance at the counter. The seller records the
+-- counter acceptance, but the action is the client's, so it is a client_action tied to the
+-- send it came from.
 INSERT INTO client_action (id, account_id, version_id, quote_send_id, type, comment, created_at) VALUES
   ('ca000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001',
    '30000000-0000-4000-8000-000000000004', '60000000-0000-4000-8000-000000000002',

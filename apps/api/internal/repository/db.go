@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -12,16 +13,12 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
-// tenantGUC is the session variable the row level security policies read. Set with
-// set_config's is_local = true so it is scoped to the transaction and cannot leak to
-// the next request that borrows the same pooled connection.
+// tenantGUC is the session variable the row level security policies read. It is set with
+// is_local = true so it cannot leak to whoever borrows the connection next.
 const tenantGUC = "app.current_account_id"
 
-// DB owns both connection pools.
-//
-// app is the restricted, RLS-subject role and carries every request-scoped query.
-// admin is the owner role, which bypasses RLS; only the follow-up cron and the
-// pre-auth lookups that cannot know the account yet may touch it.
+// DB owns both connection pools: app is the restricted, RLS-subject role that carries
+// every request-scoped query; admin is the owner role, which bypasses RLS.
 type DB struct {
 	app   *pgxpool.Pool
 	admin *pgxpool.Pool
@@ -58,15 +55,11 @@ func (db *DB) Ping(ctx context.Context) error {
 	return nil
 }
 
-// InTenantTx runs fn inside a transaction scoped to the tenant's account.
+// InTenantTx runs fn inside a transaction scoped to the tenant's account, and is the only
+// way request-scoped queries reach the database.
 //
-// This is the only way request-scoped queries reach the database. The account is
-// pushed into a transaction-local GUC before fn runs, so every statement inside is
-// filtered by the row level security policies. Committing on success and rolling
-// back on error or panic is handled here.
-//
-// It has to be a transaction: the GUC is transaction-scoped, so a bare pool query
-// would run outside it, match no policy, and silently read zero rows.
+// It has to be a transaction: the GUC is transaction-scoped, so a bare pool query would
+// run outside it, match no policy, and silently read zero rows.
 func (db *DB) InTenantTx(ctx context.Context, tenant domain.Tenant, fn func(Querier) error) error {
 	if tenant.AccountID == uuid.Nil {
 		return domain.ErrNoTenantContext
@@ -76,8 +69,7 @@ func (db *DB) InTenantTx(ctx context.Context, tenant domain.Tenant, fn func(Quer
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)
 	}
-	// A no-op once committed. A rollback that itself fails leaves nothing actionable:
-	// the transaction is already lost and the connection gets destroyed.
+	// A no-op once committed, and a failing rollback leaves nothing actionable.
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	if _, err := tx.Exec(ctx,
@@ -96,16 +88,10 @@ func (db *DB) InTenantTx(ctx context.Context, tenant domain.Tenant, fn func(Quer
 	return nil
 }
 
-// CrossAccount returns a Querier on the owner pool, which bypasses row level
-// security.
+// CrossAccount returns a Querier on the owner pool, which bypasses row level security.
 //
-// Only three callers are legitimate: the follow-up cron, which sweeps every account;
-// login by email, which cannot know the account before it finds the user; and
-// resolving a quote_send.public_token for the public webapp, which has no session.
-// The token flow resolves the account here and then continues through InTenantTx —
-// it does not keep using this pool.
-//
-// Every other use is a cross-tenant data leak.
+// Three callers are legitimate: the follow-up cron, login by email, and resolving a
+// quote_send.public_token. Every other use is a cross-tenant data leak.
 func (db *DB) CrossAccount() Querier {
 	return db.admin
 }
@@ -126,6 +112,13 @@ func openPool(ctx context.Context, cfg config.DatabaseConfig, url string) (*pgxp
 	poolCfg.MaxConnLifetime = cfg.MaxConnLifetime
 	poolCfg.MaxConnIdleTime = cfg.MaxConnIdleTime
 	poolCfg.ConnConfig.ConnectTimeout = cfg.ConnectTimeout
+
+	// The decimal codec has to be registered per connection, not once in main: the pool
+	// opens connections on its own schedule, replacements for dead ones included.
+	poolCfg.AfterConnect = func(_ context.Context, conn *pgx.Conn) error {
+		pgxdecimal.Register(conn.TypeMap())
+		return nil
+	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {

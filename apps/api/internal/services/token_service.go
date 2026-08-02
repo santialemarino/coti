@@ -16,11 +16,8 @@ import (
 // downgrade verification.
 var signingMethod = jwt.SigningMethodHS256
 
-// accessClaims is what an access token carries.
-//
-// The active branch is deliberately absent: a seller switches branch without
-// re-authenticating, so it is resolved per request. SessionEpoch is what makes logout
-// immediate — a token whose epoch trails the user's stored one is rejected.
+// accessClaims is what an access token carries. The active branch is deliberately absent:
+// a seller switches branch without re-authenticating, so it is resolved per request.
 type accessClaims struct {
 	jwt.RegisteredClaims
 	AccountID    uuid.UUID       `json:"account_id"`
@@ -68,12 +65,8 @@ func (s *TokenService) IssueAccessToken(user domain.AppUser) (string, time.Time,
 	return signed, expiresAt, nil
 }
 
-// ParseAccessToken verifies the signature and expiry and returns the claims.
-//
-// The claims are trustworthy because the signature covers them, which is what lets the
-// middleware build a tenant scope from the token before it has read anything from the
-// database. It does NOT check session_epoch — that needs the stored value, so the
-// caller compares it.
+// ParseAccessToken verifies the signature and expiry and returns the claims. It does NOT
+// check session_epoch — that needs the stored value, so the caller compares it.
 func (s *TokenService) ParseAccessToken(raw string) (domain.AccessClaims, error) {
 	var claims accessClaims
 	_, err := jwt.ParseWithClaims(raw, &claims, func(*jwt.Token) (any, error) {

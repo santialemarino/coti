@@ -47,6 +47,12 @@ const dbUrl = loadOwnerUrl();
 // ones already in the directory.
 const flags = args[0] === 'create' ? ['-s'] : [];
 
+// Every migration here is plain SQL. goose defaults `create` to a Go migration, which
+// compiles into the binary instead of living in the chain the way the rest do, so the
+// type is appended unless the caller named one.
+const isCreate = args[0] === 'create';
+const type = isCreate && !['sql', 'go'].includes(args.at(-1)) ? ['sql'] : [];
+
 const gooseArgs = [
   'run',
   `github.com/pressly/goose/v3/cmd/goose@${GOOSE_VERSION}`,
@@ -56,6 +62,7 @@ const gooseArgs = [
   'postgres',
   dbUrl,
   ...args,
+  ...type,
 ];
 
 const result = spawnSync('go', gooseArgs, { stdio: 'inherit', cwd: ROOT });

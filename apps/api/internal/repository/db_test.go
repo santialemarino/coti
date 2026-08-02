@@ -15,16 +15,8 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
-// These tests prove the row level security wiring end to end from Go: that a
-// tenant-scoped transaction sees only its own account, and that a query with no
-// tenant context sees nothing. Asserting it in psql is not enough — the risk lives in
-// how the pool and the GUC interact.
-//
-// Run with:
-//
-//	TEST_DATABASE_URL=postgres://coti_app:coti_app@localhost:5432/coti?sslmode=disable \
-//	TEST_DATABASE_ADMIN_URL=postgres://coti:coti@localhost:5432/coti?sslmode=disable \
-//	go test -tags=integration ./internal/repository/...
+// These tests prove the row level security wiring end to end from Go. Asserting it in psql
+// is not enough: the risk lives in how the pool and the GUC interact.
 
 func testDB(t *testing.T) *DB {
 	t.Helper()
@@ -272,6 +264,22 @@ func seedUser(t *testing.T, db *DB, accountID uuid.UUID, role string) uuid.UUID 
 	t.Cleanup(func() {
 		_, _ = db.CrossAccount().Exec(context.Background(), `DELETE FROM user_branch WHERE user_id = $1`, id)
 		_, _ = db.CrossAccount().Exec(context.Background(), `DELETE FROM app_user WHERE id = $1`, id)
+	})
+	return id
+}
+
+// seedExtraBranch adds a second branch to an account, for the tests that need more than the
+// one seedAccount creates.
+func seedExtraBranch(t *testing.T, db *DB, accountID uuid.UUID, name string) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	if _, err := db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO branch (id, account_id, name) VALUES ($1, $2, $3)`, id, accountID, name); err != nil {
+		t.Fatalf("seed extra branch: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.CrossAccount().Exec(context.Background(), `DELETE FROM user_branch WHERE branch_id = $1`, id)
+		_, _ = db.CrossAccount().Exec(context.Background(), `DELETE FROM branch WHERE id = $1`, id)
 	})
 	return id
 }

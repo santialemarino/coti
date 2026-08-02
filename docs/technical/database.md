@@ -1,0 +1,214 @@
+# Database
+
+PostgreSQL 16 + pgvector. The model is 36 tables with UUID v4 primary keys, native enums, and
+money in `NUMERIC(14,2)`.
+
+## What is the source and what is the reference
+
+| File                                     | Role                                                                 |
+| ---------------------------------------- | -------------------------------------------------------------------- |
+| `apps/api/migrations/*.sql`              | **The executable source.** The only thing that writes to a database. |
+| `apps/api/database/01_create_tables.sql` | Consolidated reference. Read, never applied.                         |
+| `apps/api/database/02_seed_dev.sql`      | Development data. Idempotent.                                        |
+
+A schema change ships a goose migration **and** updates the reference in the same PR. The
+reference is what you read to write a `SELECT` column list, a scan order, or a domain
+struct's fields.
+
+Past the first migration the comparison stops being textual — the reference describes the
+result, not the sequence that reaches it — so compare the schema each one produces. Two empty
+databases, one migrated and one with the reference applied, and a `pg_dump` of each: the
+difference has to be empty apart from the session tokens `pg_dump` generates at random.
+
+```bash
+docker exec migrated  pg_dump -U coti -d coti --schema-only --no-owner --no-privileges \
+  --exclude-table=goose_db_version > /tmp/from-migrations.sql
+docker exec reference pg_dump -U coti -d coti --schema-only --no-owner --no-privileges \
+  > /tmp/from-reference.sql
+diff /tmp/from-reference.sql /tmp/from-migrations.sql
+```
+
+This also catches column order, which is easy to lose sight of: `ALTER TABLE ADD COLUMN`
+appends, so a new column is last in the real table even though it would read better next to
+its siblings. The reference follows the physical schema, not taste.
+
+## Bringing a database up
+
+```bash
+pnpm db:init      # postgres + goose up + seed
+pnpm db:migrate   # apply pending migrations
+pnpm db:seed      # the seed only (idempotent)
+pnpm db:reset     # drop the volume and rebuild
+pnpm db:create-migration <name>
+```
+
+`POSTGRES_PORT` (default 5432) changes the port the container publishes when another local
+Postgres already holds it. It has to stay in sync with the URLs.
+
+**`ON CONFLICT DO NOTHING` is not idempotent on its own:** it needs a unique constraint to
+collide with. On a table whose only unique index is the primary key — a random UUID — it
+filters nothing and every run re-inserts everything. That is what happened to
+`product_synonym` until `uq_product_synonym_term`. Seeding a table means naming the
+`ON CONFLICT` target explicitly, and if no natural key backs it, an index is missing.
+
+**The seed is idempotent, not convergent.** It inserts with `ON CONFLICT ... DO NOTHING`, so
+it creates what is missing but **never rewrites an existing row**. If a seed value changes — a
+status, a total, a name — a database that already had the row keeps the old one, and
+`pnpm db:seed` does not correct it. Picking up changed values means `pnpm db:reset`, which
+rebuilds through the whole chain. That is deliberate: a seed that overwrites destroys whatever
+you were testing against.
+
+Two cases where `db:reset` is the only way out:
+
+- **A seed value changed** (above).
+- **An already-applied migration was edited.** The `down` describes the new `up`, so against a
+  database that ran the old one it tries to revert things it never created, and fails. This
+  happens while a migration PR is in review: whoever already ran it has to reset when pulling.
+  The way out is **not** to fill the `down` with `IF EXISTS` to tolerate half-states.
+
+## Two connection roles
+
+| Variable             | Role                                   | What for                                                                          |
+| -------------------- | -------------------------------------- | --------------------------------------------------------------------------------- |
+| `DATABASE_URL`       | `coti_app` — restricted, `NOBYPASSRLS` | Every request-scoped query.                                                       |
+| `DATABASE_ADMIN_URL` | owner                                  | Migrations, the follow-up cron, and the lookups that legitimately cross accounts. |
+
+**Never use the owner role for a request-scoped query.** It bypasses RLS.
+
+The three legitimate owner cases:
+
+1. **Migrations** — they create tables and grant permissions.
+2. **The follow-up cron** — it sweeps quotes across every account.
+3. **Pre-auth lookups** — login by email (the account is not known yet) and resolving
+   `quote_send.public_token` for the sessionless webapp. The correct pattern for the token:
+   the owner resolves token → `account_id`, and the rest of the request continues on the
+   restricted role with the GUC set.
+
+## Account isolation (RLS)
+
+Every tenant-scoped table carries `account_id` — child tables included — and a policy
+comparing it against `app_current_account_id()`, which reads the `app.current_account_id` GUC.
+
+```sql
+BEGIN;
+  SET LOCAL app.current_account_id = '<account uuid>';
+  -- the request's queries
+COMMIT;
+```
+
+That is for psql. **From Go the GUC is set by `repository.DB.InTenantTx`** with
+`SELECT set_config('app.current_account_id', $1, true)`, and that is the only path for a
+request-scoped query. `SET LOCAL` is not used in code: that form accepts no bind parameters,
+so it would force interpolating a request-derived value into the SQL.
+
+**It goes in every transaction**: the pool reuses connections, so it is not inherited. And
+**every request-scoped query has to run inside a transaction**, reads included: the GUC is
+transaction-scoped, so a query on the bare pool runs outside the scope, matches no policy, and
+silently reads zero rows.
+
+The three cases that legitimately cross accounts use `db.CrossAccount()` (or `db.AdminTx()`
+for multi-step writes), which go through the owner pool.
+
+The **account** is enforced, not the branch: an admin legitimately reads every branch of their
+own account, so `branch_id` scoping stays in the application. RLS is the second net, not a
+replacement for the `WHERE`: the explicit predicates still go in every query so the plan uses
+the indexes.
+
+Three known traps:
+
+- **Works in psql, empty in the app.** psql as owner bypasses RLS; the app does not. To
+  reproduce what the app sees, connect as `coti_app` and set the GUC.
+- **A migration that adds a table and forgets the RLS policy does not fail: it returns every
+  account's rows.** A new table is born with RLS disabled, so the app role reads all of it
+  with no error, no permission denied and nothing to give it away — silent cross-account
+  exposure. Every new table with `account_id` ships its `ENABLE ROW LEVEL SECURITY` and its
+  policy in the same migration.
+- **The GRANT, by contrast, is already covered:** `ALTER DEFAULT PRIVILEGES` reaches the
+  tables the owner creates, and migrations run as that role. It is written explicitly anyway,
+  so nothing depends on the migrating role always being the same.
+
+## Invariants in the database
+
+Whatever can be expressed in the schema is expressed in the schema:
+
+| Index                                    | Invariant                                       |
+| ---------------------------------------- | ----------------------------------------------- |
+| `uq_quote_rfq` + `quote.rfq_id NOT NULL` | 1-to-1 rfq→quote                                |
+| `uq_quote_version_draft`                 | one in-progress draft per quote                 |
+| `uq_message_batch_open`                  | one open message window per quote               |
+| `uq_message_batch_processing`            | one processing batch (FIFO queue)               |
+| `uq_quote_send_public_token`             | the magic-link token is unique                  |
+| `uq_product_account_code`                | a product code is unique within the account     |
+| `uq_product_synonym_term`                | one term per product, case-insensitively        |
+| `uq_channel_branch_type_no_identifier`   | one identifier-less channel per branch and type |
+
+**A unique constraint does not compare NULLs**, so on a nullable column it lets every empty
+row escape. That is why the 1-to-1 needs the NOT NULL as well as the index:
+`uq_channel_branch_type_identifier` alone does not bound the identifier-less channels, which
+is where the partial index comes in. Pinning an invariant on a nullable column leaves only two
+ways out — a NOT NULL, or a partial index over the NULL case.
+
+**One invariant the schema does not hold: exactly one open `product_price` period.** Nothing
+stops two rows with `valid_to IS NULL` for the same branch and product. What guarantees it is
+the application — `SetPrice` takes a `SELECT ... FOR UPDATE` on the parent product row, so two
+concurrent repricings serialize instead of each opening a period. A partial unique index over
+`(branch_id, product_id) WHERE valid_to IS NULL` would move that guarantee into the schema.
+
+## Catalog
+
+The catalog belongs to the **account**: `product`, `product_synonym`, `product_alternative`
+and `combo` all hang off `account_id`. One product is one row per account, with one embedding
+and one set of synonyms.
+
+What varies per branch:
+
+- `branch_product` — whether the branch carries it, and with what stock.
+- `product_price` — price and `min_price` per branch, versioned by validity.
+- `branch_combo` — whether the branch offers the combo. No price and no stock: both derive
+  from the items, which are already priced per branch.
+
+Semantic search filters by `account_id` and joins `branch_product` to exclude what the branch
+does not sell. Because the ANN index filters **after** ordering, you have to over-fetch
+(`LIMIT k * factor`) and trim in the service, or the branch filter can leave fewer than K
+results.
+
+## Vector index
+
+`idx_product_embedding` (ivfflat, `vector_cosine_ops`) is **commented out** in the migration:
+built on an empty table it is suboptimal. It is created after the catalog loads and the
+embeddings are generated.
+
+## Enums
+
+Native PostgreSQL types, values in **UPPERCASE English**. The Spanish labels live in the
+frontend i18n and are never stored in the database. Adding a value takes
+`ALTER TYPE ... ADD VALUE`, which is acceptable because the domain's enums are closed by
+design.
+
+Three things that bite when migrating an enum:
+
+- **A newly added value cannot be used in the transaction that added it**
+  (`unsafe use of new value`). goose wraps each file in a transaction, so a migration that
+  adds the value **and** writes rows with it has to be split in two.
+- **Renaming does work** (`ALTER TYPE ... RENAME VALUE`): it is metadata only, existing rows
+  keep pointing at the same entry, and the value is usable immediately. When the old value
+  already meant the new thing, renaming beats adding.
+- **Removing a value does not exist.** You have to recreate the type and cast every column
+  that uses it, so it pays to know which ones those are before starting.
+
+The lifecycle is split across two entities: `rfq.status` (`RECEIVED`, `GENERATED`) and
+`quote.current_status` (`DRAFT` onward). The quote is born at the RECEIVED → GENERATED
+transition with `current_status = DRAFT` (materials matched, prices not accepted), because
+extracted items can only live under a quote version.
+
+## `created_at` / `updated_at`
+
+`created_at` on every table. `updated_at` plus the `set_updated_at()` trigger only on the ones
+that mutate in place: `account`, `branch`, `app_user`, `product`, `branch_product`, `combo`,
+`branch_combo`, `client`, `channel`, `rfq`, `quote`, `promotion`. Append-only tables carry
+none, and that communicates in the schema itself which table is a log and which is live state.
+
+Process tables instead carry **one timestamp per transition that matters** rather than a
+generic `updated_at`: `notification.sent_at`, `rfq_attachment.processed_at`,
+`quote.followup_flagged_at`, `quote.archived_at`. An `updated_at` says something changed;
+these say what changed and when, which is what gets queried later.

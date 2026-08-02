@@ -76,6 +76,20 @@ After implementation and before committing, audit every changed or created file 
 
 ### Both
 
+- **Everything written into the repo is English.** Code, comments, SQL, `docs/technical/`,
+  `docs/public/`, READMEs, scripts, CI, commits and PR bodies. Two exceptions, and they are
+  different in kind: **UI copy is Argentine Spanish** (next-intl, `es-AR`) because it _is_
+  the product, and **`docs/internal/` is Spanish** because it is the academic material that
+  syncs with Notion. **Never mix two languages inside one file or one generated document** —
+  a spec whose routes are English and whose root description is Spanish is a defect.
+- **Comments earn their place.** The bar is _would a competent reader get this wrong without
+  it?_ One line, two if genuinely needed; if it needs a paragraph it is a `docs/technical/`
+  section and the comment points at it. Comment a non-obvious **why**, a constraint that
+  looks arbitrary, or a footgun. **Never** narrate rejected alternatives ("uses X rather than
+  Y because…"), tell a bug's story ("nobody noticed because…"), restate the signature, or
+  describe how something used to be — a versioned file reads as if it had always been this
+  way, because that is what git is for. Go doc comments on exported symbols stay, at one
+  line, starting with the symbol name. When in doubt, leave it out.
 - **Remove the `.gitkeep`** when you add the first real file to a scaffolded directory that only held one, so the folder's real content is the only content.
 - **Scope awareness:** know which app you're in (`apps/api` vs `apps/backoffice` vs `apps/webapp`) and don't touch unrelated code. Use the right tooling (`go`/`pnpm db:*` in the API, `pnpm --filter <app>` for a web app).
 - **No dead imports** left over from deleted files.

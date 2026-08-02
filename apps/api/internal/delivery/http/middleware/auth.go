@@ -22,29 +22,17 @@ type AccessVerifier interface {
 }
 
 // TenantResolver turns verified claims plus a requested branch into the request's tenant
-// scope, rejecting a stale session or an inaccessible branch. Implemented by the auth
-// service.
+// scope, rejecting a stale session or an inaccessible branch.
 type TenantResolver interface {
 	ResolveTenant(ctx context.Context, claims domain.AccessClaims, requestedBranch uuid.UUID) (domain.Tenant, error)
 }
 
-// Authenticate resolves the tenant from the Authorization header.
+// Authenticate resolves the tenant from the Authorization header. A request without one
+// passes through unauthenticated; RequireTenant is what rejects it.
 //
-// The token's signature covers account_id, so the claims are trustworthy enough to build
-// a tenant scope from before anything is read from the database — which is what breaks
-// the chicken-and-egg of needing an account to run a query and a query to learn the
-// account. Everything the signature cannot vouch for (the user still exists and is
-// active, the session epoch is current, the requested branch is one this caller may use)
-// is checked by the resolver.
-//
-// An **absent** branch header means account-wide, which admins legitimately do. A
-// **present but inaccessible** branch is a 403, not a silent downgrade to account-wide:
-// the caller must not end up believing they are scoped to one branch while reading all of
-// them. A malformed one is a 400, because it is a client bug either way.
-//
-// A request with no Authorization header passes through unauthenticated; RequireTenant is
-// what rejects it. That split keeps optional-auth routes possible without a second
-// middleware.
+// An absent branch header means account-wide. A present but inaccessible branch is a 403,
+// never a silent downgrade: the caller must not read every branch while believing they are
+// scoped to one. A malformed one is a 400.
 func Authenticate(verifier AccessVerifier, resolver TenantResolver) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		raw := bearerToken(c)

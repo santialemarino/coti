@@ -85,6 +85,16 @@ pnpm dev
 | `pnpm dev:docker`                 | Bring up the full stack via docker-compose |
 | `pnpm db:migrate`                 | Apply Go (goose) migrations                |
 | `pnpm db:create-migration <name>` | Scaffold a new migration                   |
+| `pnpm docs:api`                   | Regenerate the OpenAPI spec from handlers  |
+
+## API specification
+
+Generated from the handler annotations with swaggo/swag and committed under
+`apps/api/docs/`; CI regenerates and fails on a diff, so the annotations stay
+verified rather than decorative. With the API running, the UI is at
+http://localhost:8000/swagger/index.html — it is not served in production.
+
+See [docs/technical/api-specification.md](docs/technical/api-specification.md).
 
 ## Database
 
@@ -95,7 +105,7 @@ accounts. Every tenant-scoped table carries `account_id` and enforces it with a 
 level security policy reading a per-transaction GUC, so a query missing its
 predicate returns zero rows rather than another tenant's data.
 
-See [docs/technical/base-de-datos.md](docs/technical/base-de-datos.md).
+See [docs/technical/database.md](docs/technical/database.md).
 
 ## Branching & commits
 

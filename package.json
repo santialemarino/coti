@@ -21,6 +21,8 @@
     "check:web": "turbo run check-types --filter=backoffice --filter=webapp",
     "check-types": "turbo run check-types",
     "test": "pnpm test:api && pnpm test:web",
+    "docs:api": "pnpm --filter api run docs",
+    "docs:api:check": "pnpm --filter api run docs:check",
     "test:api": "pnpm --filter api run test",
     "test:web": "turbo run test --filter=backoffice --filter=webapp",
     "clean": "pnpm --recursive exec rm -rf node_modules .next dist",

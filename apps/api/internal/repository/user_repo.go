@@ -15,12 +15,38 @@ import (
 const userColumns = `id, account_id, name, email, password_hash, role, is_active,
 	session_epoch, last_login_at, failed_attempts, locked_until, created_at, updated_at`
 
+// userEmailIndex is the constraint that makes an email unique inside one account. Two
+// corralones may share a contact address, so uniqueness is per account, not global.
+const userEmailIndex = "uq_app_user_email"
+
 // UserRepository owns persistence for app_user.
 type UserRepository struct{}
 
 // NewUserRepository builds a UserRepository.
 func NewUserRepository() *UserRepository {
 	return &UserRepository{}
+}
+
+// List returns every user in the account, deactivated ones included, ordered by name. An
+// admin needs to see a disabled user to re-enable them.
+func (r *UserRepository) List(ctx context.Context, q Querier, accountID uuid.UUID) ([]domain.AppUser, error) {
+	rows, err := q.Query(ctx,
+		`SELECT `+userColumns+` FROM app_user WHERE account_id = $1 ORDER BY name`,
+		accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []domain.AppUser
+	for rows.Next() {
+		u, scanErr := scanUser(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		users = append(users, *u)
+	}
+	return users, rows.Err()
 }
 
 // GetByID loads one user within the caller's account. Returns domain.ErrNotFound if
@@ -31,18 +57,60 @@ func (r *UserRepository) GetByID(ctx context.Context, q Querier, accountID, id u
 		accountID, id))
 }
 
-// GetByEmailCrossAccount looks a user up by email across every account.
-//
-// It must run on the owner pool: at login the account is not known yet, so a
-// tenant-scoped query would match no policy and read zero rows, failing every login.
-// The email is unique per account, so a shared address across accounts would be
-// ambiguous here — the pilot has one account per corralón, and resolving that
-// ambiguity needs a product decision (an account selector at login), not a silent
-// pick.
+// GetByEmailCrossAccount looks a user up by email across every account. It must run on the
+// owner pool: at login the account is not known yet, so a tenant-scoped query would read
+// zero rows. The email is unique per account, so a shared address would be ambiguous here.
 func (r *UserRepository) GetByEmailCrossAccount(ctx context.Context, q Querier, email string) (*domain.AppUser, error) {
 	return scanUser(q.QueryRow(ctx,
 		`SELECT `+userColumns+` FROM app_user WHERE lower(email) = lower($1) LIMIT 1`,
 		email))
+}
+
+// Create inserts a user with an already-hashed password. Returns domain.ErrConflict when
+// the account already holds that email.
+func (r *UserRepository) Create(
+	ctx context.Context, q Querier, accountID uuid.UUID, in domain.NewUser, passwordHash string,
+) (*domain.AppUser, error) {
+	user, err := scanUser(q.QueryRow(ctx,
+		`INSERT INTO app_user (account_id, name, email, password_hash, role)
+		 VALUES ($1, $2, $3, $4, $5)
+		 RETURNING `+userColumns,
+		accountID, in.Name, in.Email, passwordHash, in.Role))
+	if isUniqueViolation(err, userEmailIndex) {
+		return nil, domain.ErrConflict
+	}
+	return user, err
+}
+
+// Update replaces the user's editable fields. A nil IsActive leaves the flag alone. Returns
+// domain.ErrConflict when the new email is already taken inside the account.
+func (r *UserRepository) Update(
+	ctx context.Context, q Querier, accountID, id uuid.UUID, in domain.UserUpdate,
+) (*domain.AppUser, error) {
+	user, err := scanUser(q.QueryRow(ctx,
+		`UPDATE app_user
+		 SET name = $3, email = $4, role = $5, is_active = COALESCE($6, is_active)
+		 WHERE account_id = $1 AND id = $2
+		 RETURNING `+userColumns,
+		accountID, id, in.Name, in.Email, in.Role, in.IsActive))
+	if isUniqueViolation(err, userEmailIndex) {
+		return nil, domain.ErrConflict
+	}
+	return user, err
+}
+
+// Deactivate disables the user without deleting them, so their quotes keep an author.
+func (r *UserRepository) Deactivate(ctx context.Context, q Querier, accountID, id uuid.UUID) error {
+	tag, err := q.Exec(ctx,
+		`UPDATE app_user SET is_active = FALSE WHERE account_id = $1 AND id = $2`,
+		accountID, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 // RegisterFailedAttempt increments the failure counter and applies a lockout once it

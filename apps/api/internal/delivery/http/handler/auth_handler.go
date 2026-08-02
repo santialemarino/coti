@@ -30,6 +30,18 @@ func NewAuthHandler(auth AuthService) *AuthHandler {
 
 // Login exchanges credentials for a token pair. Returns 401 on bad credentials and 429
 // while an account is locked out.
+//
+//	@Summary		Log in
+//	@Description	A bad email, a bad password and a disabled user all answer 401 alike. The refresh token is shown exactly once.
+//	@Tags			auth
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		dto.LoginRequest	true	"Credentials"
+//	@Success		200		{object}	dto.TokenResponse
+//	@Failure		400		{object}	dto.ErrorResponse
+//	@Failure		401		{object}	dto.ErrorResponse
+//	@Failure		429		{object}	dto.ErrorResponse	"Inside a failed-attempt lockout window"
+//	@Router			/v1/public/auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	var body dto.LoginRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
@@ -51,6 +63,18 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 // Refresh rotates a refresh token and returns a new pair. Returns 401 when the token is
 // unknown, expired, revoked, or reused past the grace window.
+//
+//	@Summary		Rotate a refresh token
+//	@Description	Replaying a consumed token inside the grace window is a benign race; past it, the whole family is revoked as theft.
+//	@Tags			auth
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		dto.RefreshRequest	true	"Refresh token"
+//	@Success		200		{object}	dto.TokenResponse
+//	@Failure		400		{object}	dto.ErrorResponse
+//	@Failure		401		{object}	dto.ErrorResponse
+//	@Failure		429		{object}	dto.ErrorResponse
+//	@Router			/v1/public/auth/refresh [post]
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	var body dto.RefreshRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
@@ -68,6 +92,17 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 
 // Logout invalidates the caller's outstanding access tokens and revokes the presented
 // refresh family. Returns 204.
+//
+//	@Summary		Log out
+//	@Description	Advances the session epoch and revokes the presented refresh family. The body is optional.
+//	@Tags			auth
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			body	body	dto.LogoutRequest	false	"Refresh token to revoke"
+//	@Success		204		"Logged out"
+//	@Failure		401		{object}	dto.ErrorResponse
+//	@Router			/v1/auth/logout [post]
 func (h *AuthHandler) Logout(c *gin.Context) {
 	tenant, ok := middleware.TenantFrom(c)
 	if !ok {

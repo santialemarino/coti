@@ -301,7 +301,20 @@ Use **Go doc comments** (`//` block) **directly above** the definition. For an e
 - **DTOs:** one line naming role + route — `// CreateProductRequest is the body for POST /v1/products.`, `// UpdateProductRequest is the body for PATCH /v1/products/:id. Partial update; only provided fields are written.`, `// ProductResponse is returned by list, get, create, and update.`
 - **Domain structs / enums:** one line — `// Product is a catalog item owned by a branch...`, `// QuoteStatus is the lifecycle state a quote carries once it exists.`
 
-**Only the essential ones.** Exported symbols carry a doc comment (Go convention) — keep it to one line that says what the caller needs. Everything else has to earn its place: the bar is _would a competent reader get this wrong without it?_ Comment a non-obvious **why**, a constraint that looks arbitrary, or a footgun. No redundant comments (`// id is the id`), no narration inside function bodies, no comment that just restates the signature. Prefer one tight line over three; when in doubt, leave it out. Exceptions to the end-with-a-period rule: inline comments on the same line as code, and short noun-phrase section labels (e.g. `// --- RFQ ---`).
+**Only the essential ones.** Exported symbols carry a doc comment (Go convention) — keep it to **one line** that says what the caller needs. Everything else has to earn its place: the bar is _would a competent reader get this wrong without it?_ Comment a non-obvious **why**, a constraint that looks arbitrary, or a footgun.
+
+Concrete limits, because "be brief" is too loose to bind:
+
+- **One comment, one line.** Two if genuinely needed. A paragraph is not a comment — it is a `docs/technical/` section, and the comment points at it.
+- **Never narrate rejected alternatives** ("uses `NOT EXISTS` rather than `ON CONFLICT` because…"). That belongs in the PR or a closed decision. Code says what it does, not what it does not do.
+- **Never tell the bug's story** ("nobody noticed because the seed runs once").
+- **Never restate the signature and never narrate the steps.**
+- **Never describe how something used to be.** A versioned file reads as if it had always been this way.
+- **When in doubt, leave it out.** A reviewer asking "why?" is cheaper than a file nobody reads.
+
+The same bar applies to **SQL** — migrations, the reference schema, the seed — and to swaggo `@Description` blocks, where one line is the limit and changing one means regenerating `apps/api/docs/` in the same commit.
+
+Exceptions to the end-with-a-period rule: inline comments on the same line as code, and short noun-phrase section labels (e.g. `// --- RFQ ---`).
 
 ## Verifying
 

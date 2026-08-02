@@ -33,6 +33,7 @@ type Config struct {
 	Database    DatabaseConfig
 	Auth        AuthConfig
 	PriceImport PriceImportConfig
+	Catalog     CatalogConfig
 }
 
 // ServerConfig holds the HTTP listener settings.
@@ -43,12 +44,9 @@ type ServerConfig struct {
 	ShutdownTimeout time.Duration
 }
 
-// DatabaseConfig holds both connection strings and the pool sizing shared by them.
-//
-// URL is the restricted, RLS-subject role used for every request-scoped query.
-// AdminURL is the owner role, and only three things may use it: migrations, the
-// follow-up cron, and the pre-auth lookups that cannot know the account yet
-// (login by email, resolving a public quote token).
+// DatabaseConfig holds both connection strings and the pool sizing shared by them. URL is
+// the restricted, RLS-subject role; AdminURL is the owner role, for migrations, the
+// follow-up cron, and the pre-auth lookups that cannot know the account yet.
 type DatabaseConfig struct {
 	URL             string
 	AdminURL        string
@@ -69,6 +67,7 @@ type AuthConfig struct {
 	RefreshReuseGrace  time.Duration
 	MaxFailedAttempts  int
 	LockoutDuration    time.Duration
+	PasswordMinLength  int
 }
 
 // PriceImportConfig holds operational limits for spreadsheet imports.
@@ -76,9 +75,15 @@ type PriceImportConfig struct {
 	MaxBytes int64
 }
 
-// Load resolves the configuration from the environment, applying defaults for
-// everything optional. Returns every validation problem at once rather than the
-// first, so a misconfigured deploy is diagnosed in one pass.
+// CatalogConfig holds the catalog listing limits. The cap is what stops a client from
+// asking for the whole catalog in one response.
+type CatalogConfig struct {
+	DefaultPageSize int
+	MaxPageSize     int
+}
+
+// Load resolves the configuration from the environment, applying defaults for everything
+// optional. It reports every validation problem at once, not the first.
 func Load() (*Config, error) {
 	var problems []string
 
@@ -114,6 +119,11 @@ func Load() (*Config, error) {
 			RefreshReuseGrace:  getDuration("AUTH_REFRESH_REUSE_GRACE_SECONDS", 30*time.Second, &problems),
 			MaxFailedAttempts:  getInt("AUTH_MAX_FAILED_ATTEMPTS", 5, &problems),
 			LockoutDuration:    getDuration("AUTH_LOCKOUT_MINUTES", 15*time.Minute, &problems),
+			PasswordMinLength:  getInt("AUTH_PASSWORD_MIN_LENGTH", 8, &problems),
+		},
+		Catalog: CatalogConfig{
+			DefaultPageSize: getInt("CATALOG_DEFAULT_PAGE_SIZE", 50, &problems),
+			MaxPageSize:     getInt("CATALOG_MAX_PAGE_SIZE", 200, &problems),
 		},
 		PriceImport: PriceImportConfig{
 			MaxBytes: int64(getInt("PRICE_IMPORT_MAX_BYTES", defaultPriceImportMaxBytes, &problems)),
@@ -136,6 +146,20 @@ func Load() (*Config, error) {
 	}
 	if cfg.PriceImport.MaxBytes <= 0 {
 		problems = append(problems, "PRICE_IMPORT_MAX_BYTES must be greater than zero")
+	}
+
+	if cfg.Auth.PasswordMinLength < 8 {
+		problems = append(problems, fmt.Sprintf("AUTH_PASSWORD_MIN_LENGTH must be at least 8, got %d",
+			cfg.Auth.PasswordMinLength))
+	}
+
+	if cfg.Catalog.DefaultPageSize < 1 {
+		problems = append(problems, fmt.Sprintf("CATALOG_DEFAULT_PAGE_SIZE must be at least 1, got %d",
+			cfg.Catalog.DefaultPageSize))
+	}
+	if cfg.Catalog.DefaultPageSize > cfg.Catalog.MaxPageSize {
+		problems = append(problems, fmt.Sprintf("CATALOG_DEFAULT_PAGE_SIZE (%d) exceeds CATALOG_MAX_PAGE_SIZE (%d)",
+			cfg.Catalog.DefaultPageSize, cfg.Catalog.MaxPageSize))
 	}
 
 	// A production deploy pointing the request pool at the owner role would silently

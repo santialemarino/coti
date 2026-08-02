@@ -21,11 +21,8 @@ func NewRefreshTokenRepository() *RefreshTokenRepository {
 	return &RefreshTokenRepository{}
 }
 
-// GetByHashCrossAccount finds a token by its hash across every account.
-//
-// Like login by email, a refresh presents no account context — the caller learns the
-// account *from* the token — so this runs on the owner pool. The hash is globally
-// unique, so there is no ambiguity to resolve.
+// GetByHashCrossAccount finds a token by its hash across every account. It runs on the
+// owner pool because the caller learns the account from the token, not before it.
 func (r *RefreshTokenRepository) GetByHashCrossAccount(ctx context.Context, q Querier, hash string) (*domain.RefreshToken, error) {
 	var t domain.RefreshToken
 	err := q.QueryRow(ctx,

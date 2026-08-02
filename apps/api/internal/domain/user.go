@@ -8,9 +8,8 @@ import (
 
 // AppUser is a seller or admin belonging to one account.
 //
-// SessionEpoch backs immediate logout: it is embedded in every access token, and
-// bumping it invalidates every outstanding token for the user without a blacklist.
-// LockedUntil closes out FailedAttempts — the counter alone cannot express a lockout.
+// SessionEpoch backs immediate logout: it rides in every access token, so bumping it
+// invalidates every outstanding one without a blacklist.
 type AppUser struct {
 	ID             uuid.UUID
 	AccountID      uuid.UUID
@@ -30,4 +29,36 @@ type AppUser struct {
 // IsLocked reports whether the account is inside a lockout window at the given time.
 func (u AppUser) IsLocked(now time.Time) bool {
 	return u.LockedUntil != nil && u.LockedUntil.After(now)
+}
+
+// UserWithBranches is a user plus the branches they may operate on, which is the shape the
+// admin screens read and write.
+type UserWithBranches struct {
+	AppUser
+	BranchIDs []uuid.UUID
+}
+
+// NewUser is an admin-created user. The account comes from the tenant scope, never the
+// request, and Password is the plaintext the service hashes.
+type NewUser struct {
+	Name      string
+	Email     string
+	Password  string
+	Role      UserRole
+	BranchIDs []uuid.UUID
+}
+
+// UserUpdate replaces a user's editable fields. IsActive is nil to leave it alone, so an
+// edit form cannot silently revive a deactivated user.
+type UserUpdate struct {
+	Name      string
+	Email     string
+	Role      UserRole
+	BranchIDs []uuid.UUID
+	IsActive  *bool
+}
+
+// IsValid reports whether the role is one the schema's user_role enum holds.
+func (r UserRole) IsValid() bool {
+	return r == UserRoleAdmin || r == UserRoleSeller
 }

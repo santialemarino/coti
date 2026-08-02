@@ -18,13 +18,12 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
 
-// refreshTokenBytes is the entropy behind a refresh token. 32 bytes is far beyond
-// guessable, which is why a fast hash is enough to store it.
+// refreshTokenBytes is the entropy behind a refresh token, high enough that a fast hash
+// is enough to store it.
 const refreshTokenBytes = 32
 
-// dummyHash is compared against when the email is unknown, so a failed login costs the
-// same time whether or not the address exists. Without it, response latency leaks which
-// emails are registered.
+// dummyHash is compared against when the email is unknown, so response latency does not
+// leak which addresses are registered.
 const dummyHash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
 
 // userRepository is the persistence surface the auth flow needs. Defined here, in the
@@ -48,6 +47,7 @@ type refreshTokenRepository interface {
 // branchRepository is the branch-access surface the tenant resolution needs.
 type branchRepository interface {
 	IsAccessibleBy(ctx context.Context, q repository.Querier, accountID, userID, branchID uuid.UUID, isAdmin bool) (bool, error)
+	ListIDsForUser(ctx context.Context, q repository.Querier, accountID, userID uuid.UUID, isAdmin bool) ([]uuid.UUID, error)
 }
 
 // tenantScoper is the database surface: a tenant-scoped transaction, plus the owner
@@ -85,12 +85,8 @@ func NewAuthService(
 	}
 }
 
-// Login verifies credentials and issues a token pair.
-//
-// Returns domain.ErrUnauthenticated for a bad email, a bad password, or an inactive
-// user — all three look identical from outside on purpose. A lockout returns
-// domain.ErrLocked, which is safe to surface: the client needs to distinguish "wrong
-// password" from "stop trying for a while".
+// Login verifies credentials and issues a token pair. A bad email, a bad password and an
+// inactive user all return domain.ErrUnauthenticated, indistinguishably on purpose.
 func (s *AuthService) Login(ctx context.Context, in domain.Credentials) (*domain.TokenPair, error) {
 	now := s.now()
 
@@ -134,13 +130,9 @@ func (s *AuthService) Login(ctx context.Context, in domain.Credentials) (*domain
 	return pair, nil
 }
 
-// Refresh rotates a refresh token and issues a new pair.
-//
-// The presented token is consumed and a successor is minted in the same family.
-// Re-presenting an already-consumed token inside the grace window is a benign race
-// (two tabs refreshing at once) and yields a fresh rotation; past the window it is
-// treated as theft and the entire family is revoked, logging the attacker and the
-// victim out together.
+// Refresh consumes the presented token and mints its successor in the same family.
+// Replaying a consumed token inside the grace window is a benign race; past it, the whole
+// family is revoked as theft.
 func (s *AuthService) Refresh(ctx context.Context, rawToken string) (*domain.TokenPair, error) {
 	now := s.now()
 
@@ -224,26 +216,22 @@ func (s *AuthService) Logout(ctx context.Context, tenant domain.Tenant, rawToken
 	})
 }
 
-// ResolveTenant turns verified token claims into the request's tenant scope.
+// ResolveTenant turns verified token claims into the request's tenant scope, confirming
+// what the signature cannot: the user exists, is active, is not locked out, and carries
+// the token's session epoch.
 //
-// It confirms what the signature cannot: that the user still exists, is active, is not
-// locked out, and that the token's session epoch matches the stored one — the comparison
-// that makes logout immediate without a blacklist.
-//
-// It also validates requestedBranch. That check is load-bearing: row level security
-// guards the account boundary, not the branch one, so a branch id taken from a request
-// and trusted would let a caller read another branch of their own account. An
-// inaccessible branch returns domain.ErrForbidden rather than being silently dropped —
-// dropping it would leave the caller believing they are scoped to one branch while
-// actually operating account-wide.
-//
-// Both checks share one transaction, so an authenticated request costs two indexed reads.
+// Validating requestedBranch is load-bearing — row level security guards the account
+// boundary, not the branch one, so a trusted branch id would let a caller read another
+// branch of their own account. Inaccessible returns domain.ErrForbidden, never a silent
+// downgrade to account-wide. A seller who selects no branch is confined to the ones they are
+// assigned, so omitting the header cannot widen their reach either.
 func (s *AuthService) ResolveTenant(
 	ctx context.Context, claims domain.AccessClaims, requestedBranch uuid.UUID,
 ) (domain.Tenant, error) {
 	scope := domain.Tenant{AccountID: claims.AccountID}
 
 	var user *domain.AppUser
+	var allowedBranches []uuid.UUID
 	branchOK := true
 
 	if err := s.db.InTenantTx(ctx, scope, func(q repository.Querier) error {
@@ -252,14 +240,25 @@ func (s *AuthService) ResolveTenant(
 			return err
 		}
 		user = u
+		isAdmin := u.Role == domain.UserRoleAdmin
 
 		if requestedBranch != uuid.Nil {
 			ok, brErr := s.branches.IsAccessibleBy(ctx, q, claims.AccountID, claims.UserID,
-				requestedBranch, u.Role == domain.UserRoleAdmin)
+				requestedBranch, isAdmin)
 			if brErr != nil {
 				return brErr
 			}
 			branchOK = ok
+			return nil
+		}
+
+		// An admin reaches the whole account, so there is no set to load.
+		if !isAdmin {
+			ids, listErr := s.branches.ListIDsForUser(ctx, q, claims.AccountID, claims.UserID, false)
+			if listErr != nil {
+				return listErr
+			}
+			allowedBranches = ids
 		}
 		return nil
 	}); err != nil {
@@ -280,10 +279,11 @@ func (s *AuthService) ResolveTenant(
 	}
 
 	return domain.Tenant{
-		AccountID: user.AccountID,
-		UserID:    user.ID,
-		Role:      user.Role,
-		BranchID:  requestedBranch,
+		AccountID:        user.AccountID,
+		UserID:           user.ID,
+		Role:             user.Role,
+		BranchID:         requestedBranch,
+		AllowedBranchIDs: allowedBranches,
 	}, nil
 }
 
