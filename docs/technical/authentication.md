@@ -128,7 +128,8 @@ read the user **and their account** in one join (`GetAuthSubjectByID` /
 
 Reading it on every request is what makes it reach **tokens already issued**: a live access
 token stops resolving the moment the corralón is deactivated, instead of lasting out its 15
-minutes. It is also what makes reactivation instant, with no epoch bump and no other step.
+minutes. It is also what makes reactivating a single write, with nothing else to undo — the
+users sign in again and are back.
 
 **The answer is the same as bad credentials.** A deactivated user, a deactivated account and
 a wrong password are one 401 with one body. Someone without a session has no business
