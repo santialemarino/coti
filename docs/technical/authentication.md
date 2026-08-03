@@ -7,21 +7,23 @@ session, gates its routes and renews the token is in
 
 ## Endpoints
 
-| Method   | Route                              | Auth                                     |
-| -------- | ---------------------------------- | ---------------------------------------- |
-| `POST`   | `/v1/public/auth/login`            | no                                       |
-| `POST`   | `/v1/public/auth/refresh`          | no (the refresh token is the credential) |
-| `POST`   | `/v1/public/auth/forgot-password`  | no                                       |
-| `POST`   | `/v1/public/auth/reset-password`   | no (the link is the credential)          |
-| `POST`   | `/v1/auth/logout`                  | yes                                      |
-| `POST`   | `/v1/auth/change-password`         | yes                                      |
-| `GET`    | `/v1/branches`                     | yes                                      |
-| `GET`    | `/v1/users`                        | yes, admin                               |
-| `POST`   | `/v1/users`                        | yes, admin                               |
-| `GET`    | `/v1/users/:userId`                | yes, admin                               |
-| `PUT`    | `/v1/users/:userId`                | yes, admin                               |
-| `DELETE` | `/v1/users/:userId`                | yes, admin                               |
-| `POST`   | `/v1/users/:userId/password-reset` | yes, admin                               |
+| Method   | Route                                 | Auth                                     |
+| -------- | ------------------------------------- | ---------------------------------------- |
+| `POST`   | `/v1/public/auth/login`               | no                                       |
+| `POST`   | `/v1/public/auth/refresh`             | no (the refresh token is the credential) |
+| `POST`   | `/v1/public/auth/forgot-password`     | no                                       |
+| `POST`   | `/v1/public/auth/reset-password`      | no (the link is the credential)          |
+| `POST`   | `/v1/public/auth/verify-email`        | no (the link is the credential)          |
+| `POST`   | `/v1/public/auth/resend-verification` | no                                       |
+| `POST`   | `/v1/auth/logout`                     | yes                                      |
+| `POST`   | `/v1/auth/change-password`            | yes                                      |
+| `GET`    | `/v1/branches`                        | yes                                      |
+| `GET`    | `/v1/users`                           | yes, admin                               |
+| `POST`   | `/v1/users`                           | yes, admin                               |
+| `GET`    | `/v1/users/:userId`                   | yes, admin                               |
+| `PUT`    | `/v1/users/:userId`                   | yes, admin                               |
+| `DELETE` | `/v1/users/:userId`                   | yes, admin                               |
+| `POST`   | `/v1/users/:userId/password-reset`    | yes, admin                               |
 
 `login` and `refresh` return the same body: `access_token`, `access_expires_at`,
 `refresh_token`, and a `user` with `id`, `account_id` and `role`. **The refresh token is
@@ -116,6 +118,89 @@ the same transaction). That is deliberate.
 5. A locked account returns **429**, not 401 — that one is exposed on purpose: the client
    needs to tell "wrong password" from "stop trying for a while". While locked, the correct
    password also returns 429.
+
+## A deactivated account cuts every way in
+
+`account.is_active` is load-bearing, not decorative. Login, refresh and `ResolveTenant` all
+read the user **and their account** in one join (`GetAuthSubjectByID` /
+`GetAuthSubjectByEmailCrossAccount` → `domain.AuthSubject`), and every one of them asks
+`IsUsable()` — both the user and the account are active — rather than `AppUser.IsActive`.
+
+Reading it on every request is what makes it reach **tokens already issued**: a live access
+token stops resolving the moment the corralón is deactivated, instead of lasting out its 15
+minutes. It is also what makes reactivation instant, with no epoch bump and no other step.
+
+**The answer is the same as bad credentials.** A deactivated user, a deactivated account and
+a wrong password are one 401 with one body. Someone without a session has no business
+learning which of the three it was.
+
+**Nothing writes the flag yet.** `user_role` is only `ADMIN` and `SELLER`, so there is no
+actor a "deactivate this corralón" endpoint would belong to. That is a product decision, and
+this side of it is ready for whichever way it lands.
+
+## Email verification
+
+Registration mails a single-use confirmation link and records the send; confirming it stamps
+`app_user.email_verified_at`. It rides the same machinery as password recovery —
+`auth_token`, one shared issuer, the same hash-only storage and single-use redemption — and
+differs only in the token type, the lifetime (`AUTH_EMAIL_VERIFICATION_TTL_HOURS`, 48) and
+the route the link lands on.
+
+- **Requiring it to log in is a flag that starts off** (`AUTH_REQUIRE_VERIFIED_EMAIL`).
+  `config.Load` **refuses to turn it on while `MAIL_PROVIDER` is `console`**: a transport that
+  only writes to a log cannot deliver the link anyone would need, so enforcing it would lock
+  every user out of the environment.
+- **When it is on, the caller is told why** — a 403 naming the reason, unlike every other
+  rejection here. That is safe because it is only reachable _after_ the password matched:
+  the check sits below the credential comparison, so it can never answer for someone who
+  does not already hold the password.
+- **Confirming an already-verified address succeeds.** A user clicking the link twice has no
+  way to tell the two clicks apart, so the second is not an error and does not move the
+  timestamp.
+- **`resend-verification` answers 202 for every address** — unregistered, already confirmed,
+  deactivated — for the same reason `forgot-password` does.
+
+**This does not close the address-squatting hole**, and the ticket says so. Reserving someone
+else's address is only prevented by _requiring_ verification, which needs a transport that
+delivers, or by expiring unverified registrations, which needs the scheduled-job runtime. What
+is in place is the flow, so closing it later is a configuration change rather than a feature.
+
+## Rate limits
+
+A global allowance over all of `/v1`, plus tighter ones on the surfaces a stranger can use to
+flood the database or someone's mailbox. It sits **ahead of `Authenticate`**, so a flood is
+refused before it costs a query.
+
+| Scope         | Setting                      | Routes                                            |
+| ------------- | ---------------------------- | ------------------------------------------------- |
+| `global`      | `RATE_LIMIT_GLOBAL_MAX`      | all of `/v1`                                      |
+| `credentials` | `RATE_LIMIT_CREDENTIALS_MAX` | login, reset-password, verify-email               |
+| `signup`      | `RATE_LIMIT_SIGNUP_MAX`      | public account registration                       |
+| `mail`        | `RATE_LIMIT_MAIL_MAX`        | forgot-password, resend-verification, admin reset |
+
+Refresh is deliberately left on the global allowance alone: the backoffice renews on a
+schedule the user does not control, and a tighter limit there would log people out.
+
+**The key is the authenticated user when the request carries a readable bearer, and the
+client address when it does not.** Reading the token here only buys a stable thing to count
+by — the signature is checked and nothing else, because session validation is
+`ResolveTenant`'s job and this runs before it on purpose.
+
+**The client address is counted back from the end proxies append to.** That is the only end a
+client cannot forge: anything it writes into `X-Forwarded-For` itself ends up to the _left_ of
+what the first trusted proxy wrote, so with `RATE_LIMIT_TRUSTED_PROXY_HOPS` intermediaries the
+real caller is at `len(hops) - hops`. A chain shorter than configured means the request did not
+arrive the way it was meant to, and the header is discarded for the peer address.
+
+**`RATE_LIMIT_TRUSTED_PROXY_HOPS` defaults to 0**, which means the forwarding header is not
+trusted at all — right while nothing sits in front of the API, and wrong the moment something
+does. Setting it is part of putting a proxy in front, not an afterthought.
+
+Counters are fixed windows held in memory, which is why the response can name an exact time to
+retry rather than an estimate. That is enough for one instance; `middleware.Limiter` is the
+seam a shared store takes over at. The 429 body names **no limit** — only
+`retry_after_seconds`, mirrored in `Retry-After` — because which bucket was hit would tell a
+caller probing the API how its allowances are laid out.
 
 ## Middleware order
 
@@ -221,7 +306,8 @@ In `apps/api/.env.example`, with defaults in `internal/config`: `AUTH_JWT_SECRET
 (required, at least 32 characters), `AUTH_ACCESS_TTL_MINUTES`, `AUTH_REFRESH_TTL_HOURS`,
 `AUTH_REFRESH_REMEMBER_DAYS`, `AUTH_REFRESH_REUSE_GRACE_SECONDS`,
 `AUTH_MAX_FAILED_ATTEMPTS`, `AUTH_LOCKOUT_MINUTES`, `AUTH_PASSWORD_MIN_LENGTH`,
-`AUTH_PASSWORD_RESET_TTL_MINUTES`, `WEB_BACKOFFICE_URL`.
+`AUTH_PASSWORD_RESET_TTL_MINUTES`, `AUTH_EMAIL_VERIFICATION_TTL_HOURS`,
+`AUTH_REQUIRE_VERIFIED_EMAIL`, `WEB_BACKOFFICE_URL`, and the `RATE_LIMIT_*` group above.
 
 **`AUTH_JWT_SECRET` stays in the API.** It is a symmetric HMAC key, so a second service holding
 it could mint a token for any account — the frontends forward the token and never verify it.
@@ -230,10 +316,7 @@ The backoffice's own settings are in
 
 ## Not built yet
 
-User invitations and email verification are not implemented. `auth_token_type` already carries
-`EMAIL_VERIFICATION` and `app_user.email_verified_at` already exists, because a Postgres enum
-value cannot be used in the transaction that adds it and goose wraps each migration in one —
-adding the value later would force a second migration. Nothing writes either yet.
+User invitations are not implemented: an admin sets a user's initial password, which is what
+lets US-05 close without them.
 
-There is also no rate limit on the credential routes, so `forgot-password` and `login` are open
-to being hammered.
+No endpoint writes `account.is_active`, by design — see above.

@@ -100,7 +100,7 @@ Not style — hard rules. If a task asks you to violate one, stop and flag it.
 ## Architecture rules
 
 - **Layered Go API (ports & adapters).** Backend code lives under
-  `internal/{ai,config,delivery/http,domain,mail,repository,services}`. Request flow is
+  `internal/{ai,config,delivery/http,domain,mail,ratelimit,repository,services}`. Request flow is
   `handler → service → repository → DB`. Services depend only on interfaces (ports)
   — the AI provider, repositories — never on concrete adapter packages. Adapter
   wiring lives only in `cmd/api/main.go`. See `api-layering`.

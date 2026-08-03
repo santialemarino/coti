@@ -41,7 +41,12 @@ gets a 204 when the provider is down, and the notification row says what happene
 
 One layout, in `internal/services/mail_templates.go`: a branded header, a heading, some
 paragraphs and at most one call to action. A new kind of message is a caller filling in
-`OutboundMail`, not a new template.
+`OutboundMail`, not a new template — which is what let address verification ship without
+touching this file.
+
+Both single-use links share one issuer, `internal/services/auth_link.go`: retire the
+outstanding ones, mint one, mail it, and resolve a presented one. Password recovery and
+address verification differ only in the token type, the lifetime, the route and the copy.
 
 The brand comes from the account — `name`, `brand_logo_url`, `brand_color`, the same pair the
 client webapp renders a quote with. **The colour is pattern-checked before it reaches the
@@ -59,8 +64,8 @@ copy goes there rather than inline at the call site.
 `event`, a `medium`, a `status` and `sent_at`. It is append-only and account-scoped like every
 other tenant table.
 
-Today the only event is `PASSWORD_RESET` over `EMAIL`. The quote magic link and the follow-up
-messages land here as they are built.
+Today the events are `PASSWORD_RESET` and `EMAIL_VERIFICATION`, both over `EMAIL`. The quote
+magic link and the follow-up messages land here as they are built.
 
 ## Nothing sends on its own
 
