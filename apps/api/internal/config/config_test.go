@@ -20,7 +20,11 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"AUTH_JWT_SECRET", "AUTH_ACCESS_TTL_MINUTES", "AUTH_REFRESH_TTL_HOURS",
 		"AUTH_REFRESH_REMEMBER_DAYS", "AUTH_REFRESH_REUSE_GRACE_SECONDS",
 		"AUTH_MAX_FAILED_ATTEMPTS", "AUTH_LOCKOUT_MINUTES", "AUTH_PASSWORD_MIN_LENGTH",
-		"AUTH_PASSWORD_RESET_TTL_MINUTES",
+		"AUTH_PASSWORD_RESET_TTL_MINUTES", "AUTH_EMAIL_VERIFICATION_TTL_HOURS",
+		"AUTH_REQUIRE_VERIFIED_EMAIL",
+		"RATE_LIMIT_ENABLED", "RATE_LIMIT_WINDOW_SECONDS", "RATE_LIMIT_GLOBAL_MAX",
+		"RATE_LIMIT_CREDENTIALS_MAX", "RATE_LIMIT_SIGNUP_MAX", "RATE_LIMIT_MAIL_MAX",
+		"RATE_LIMIT_TRUSTED_PROXY_HOPS",
 		"MAIL_PROVIDER", "MAIL_FROM_ADDRESS", "MAIL_FROM_NAME",
 		"MAIL_SMTP_HOST", "MAIL_SMTP_PORT", "MAIL_SMTP_USERNAME", "MAIL_SMTP_PASSWORD",
 		"WEB_BACKOFFICE_URL",
@@ -78,6 +82,17 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.Auth.PasswordResetTTL != time.Hour {
 		t.Errorf("Auth.PasswordResetTTL = %v, want 1h", cfg.Auth.PasswordResetTTL)
+	}
+	// The requirement has to arrive off, or a fresh environment locks everyone out.
+	if cfg.Auth.RequireVerifiedEmail {
+		t.Error("Auth.RequireVerifiedEmail = true, want false by default")
+	}
+	if !cfg.RateLimit.Enabled {
+		t.Error("RateLimit.Enabled = false, want true by default")
+	}
+	if cfg.RateLimit.TrustedProxyHops != 0 {
+		t.Errorf("RateLimit.TrustedProxyHops = %d, want 0: nothing is in front by default",
+			cfg.RateLimit.TrustedProxyHops)
 	}
 	if cfg.IsProduction() {
 		t.Error("IsProduction() = true, want false")
@@ -187,6 +202,30 @@ func TestLoad_Invalid(t *testing.T) {
 			name:    "backoffice url with no scheme",
 			mutate:  func(e map[string]string) { e["WEB_BACKOFFICE_URL"] = "backoffice.example" },
 			wantSub: "WEB_BACKOFFICE_URL must be an absolute URL",
+		},
+		{
+			// Demanding a confirmed address while the only transport writes to a log would
+			// lock every user out of an environment nobody can receive mail in.
+			name:    "verification required with the console transport",
+			mutate:  func(e map[string]string) { e["AUTH_REQUIRE_VERIFIED_EMAIL"] = "true" },
+			wantSub: "AUTH_REQUIRE_VERIFIED_EMAIL needs a mail provider that delivers",
+		},
+		{
+			// A per-route allowance above the global one can never bite, so it reads as
+			// protection that is not there.
+			name:    "route allowance above the global one",
+			mutate:  func(e map[string]string) { e["RATE_LIMIT_CREDENTIALS_MAX"] = "9999" },
+			wantSub: "RATE_LIMIT_CREDENTIALS_MAX (9999) exceeds RATE_LIMIT_GLOBAL_MAX",
+		},
+		{
+			name:    "negative proxy hops",
+			mutate:  func(e map[string]string) { e["RATE_LIMIT_TRUSTED_PROXY_HOPS"] = "-1" },
+			wantSub: "RATE_LIMIT_TRUSTED_PROXY_HOPS cannot be negative",
+		},
+		{
+			name:    "non-boolean flag",
+			mutate:  func(e map[string]string) { e["AUTH_REQUIRE_VERIFIED_EMAIL"] = "yes-please" },
+			wantSub: `AUTH_REQUIRE_VERIFIED_EMAIL must be true or false, got "yes-please"`,
 		},
 		{
 			name:    "password reset ttl of zero",

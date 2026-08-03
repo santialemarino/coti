@@ -24,6 +24,7 @@ type Handlers struct {
 	Health        *handler.HealthHandler
 	Auth          *handler.AuthHandler
 	Password      *handler.PasswordHandler
+	Verification  *handler.VerificationHandler
 	User          *handler.UserHandler
 	Branch        *handler.BranchHandler
 	Product       *handler.ProductHandler
@@ -38,8 +39,14 @@ type Auth struct {
 	Resolver middleware.TenantResolver
 }
 
+// RateLimit carries the counter and the identity reader the limiter counts by.
+type RateLimit struct {
+	Limiter  middleware.Limiter
+	Identify func(token string) (string, bool)
+}
+
 // NewRouter builds the engine with the global middleware and mounts every route.
-func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth) *gin.Engine {
+func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl RateLimit) *gin.Engine {
 	if cfg.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -57,21 +64,47 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth) *gin
 		r.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
 	}
 
-	// Authenticate resolves a tenant when a valid token is present but does not reject
-	// anonymous requests — RequireTenant does.
-	v1 := r.Group("/v1", middleware.Authenticate(auth.Verifier, auth.Resolver))
+	limit := func(scope string, max int) gin.HandlerFunc {
+		return middleware.RateLimit(rl.Limiter, middleware.RateLimitOptions{
+			Scope:            scope,
+			Limit:            max,
+			Window:           cfg.RateLimit.Window,
+			Enabled:          cfg.RateLimit.Enabled,
+			TrustedProxyHops: cfg.RateLimit.TrustedProxyHops,
+			TrustedProxies:   cfg.RateLimit.TrustedProxies,
+			Identify:         rl.Identify,
+		})
+	}
+
+	// The global allowance sits ahead of Authenticate, so a flood is refused before it costs
+	// a query. Authenticate resolves a tenant when a token is present without rejecting an
+	// anonymous request — RequireTenant does that.
+	v1 := r.Group("/v1",
+		limit("global", cfg.RateLimit.Global),
+		middleware.Authenticate(auth.Verifier, auth.Resolver))
 
 	// Works without a session; each route resolves its own scope.
 	public := v1.Group("/public")
-	public.POST("/auth/login", h.Auth.Login)
+	// Each of these gets the same allowance in its own bucket rather than sharing one: a
+	// caller who mistypes their password ten times should still be able to confirm an
+	// address, and the routes are only alike in accepting a credential.
+	mail := limit("mail", cfg.RateLimit.Mail)
+
+	public.POST("/auth/login", limit("login", cfg.RateLimit.Credentials), h.Auth.Login)
+	// Refresh is left on the global allowance alone: the backoffice renews on a schedule the
+	// user does not control, and a tighter limit would log people out.
 	public.POST("/auth/refresh", h.Auth.Refresh)
 
 	// Recovery is public by necessity: someone who cannot log in is the only caller.
-	public.POST("/auth/forgot-password", h.Password.Forgot)
-	public.POST("/auth/reset-password", h.Password.Reset)
+	public.POST("/auth/forgot-password", mail, h.Password.Forgot)
+	public.POST("/auth/reset-password", limit("reset", cfg.RateLimit.Credentials), h.Password.Reset)
 
-	// Registration is the one write with no account yet, so it cannot sit behind a tenant.
-	public.POST("/accounts", h.Account.Register)
+	public.POST("/auth/verify-email", limit("verify", cfg.RateLimit.Credentials), h.Verification.Confirm)
+	public.POST("/auth/resend-verification", mail, h.Verification.Resend)
+
+	// Registration is the one write with no account yet, so it cannot sit behind a tenant,
+	// which is exactly why it carries the tightest allowance: it creates rows for anyone.
+	public.POST("/accounts", limit("signup", cfg.RateLimit.Signup), h.Account.Register)
 
 	// Everything else needs a resolved tenant: a request-scoped query without an account
 	// reads nothing under row level security.
@@ -108,7 +141,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth) *gin
 	users.GET("/:userId", h.User.Get)
 	users.PUT("/:userId", h.User.Update)
 	users.DELETE("/:userId", h.User.Delete)
-	users.POST("/:userId/password-reset", h.Password.AdminReset)
+	users.POST("/:userId/password-reset", mail, h.Password.AdminReset)
 
 	// The catalog itself is account-scoped, so those routes need no active branch. The
 	// per-branch ones below take it from the X-Branch-Id header the middleware validated.

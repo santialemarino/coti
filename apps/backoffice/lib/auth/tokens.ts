@@ -10,7 +10,12 @@
  * is the API's answer on every request.
  */
 
-import { API_URL, REFRESH_SKEW_SECONDS, REMEMBERED_SESSION_MAX_AGE_SECONDS } from '@/lib/config';
+import {
+  API_URL,
+  REFRESH_SKEW_SECONDS,
+  REMEMBERED_SESSION_MAX_AGE_SECONDS,
+  TRUSTED_PROXY_HOPS,
+} from '@/lib/config';
 
 export const ACCESS_COOKIE = 'coti_access_token';
 export const REFRESH_COOKIE = 'coti_refresh_token';
@@ -48,6 +53,30 @@ export interface AuthAttempt {
   tokens?: TokenPair;
 }
 
+/*
+ * forwardedClientAddress works out the browser's address so the API can count a rate limit
+ * against it. Without it every user's unauthenticated request carries this server's address
+ * and they share one allowance.
+ *
+ * The hop is counted from the end whatever sits in front of this app appends to, for the same
+ * reason the API does it: anything the browser wrote itself lands to the left. Undefined when
+ * nothing is in front, which is the local case.
+ */
+export function forwardedClientAddress(headers: Headers): string | undefined {
+  if (TRUSTED_PROXY_HOPS <= 0) return undefined;
+
+  const forwarded = headers.get('x-forwarded-for');
+  if (!forwarded) return undefined;
+
+  const hops = forwarded
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const index = hops.length - TRUSTED_PROXY_HOPS;
+  if (index < 0 || index >= hops.length) return undefined;
+  return hops[index];
+}
+
 // The exp claim is read without verifying it, which is safe because the worst a
 // forged one buys is an unnecessary refresh.
 export function needsRenewal(token: string | undefined): boolean {
@@ -61,12 +90,20 @@ export async function requestLogin(
   email: string,
   password: string,
   rememberMe: boolean,
+  callerAddress?: string,
 ): Promise<AuthAttempt> {
-  return postForTokens('/v1/public/auth/login', { email, password, remember_me: rememberMe });
+  return postForTokens(
+    '/v1/public/auth/login',
+    { email, password, remember_me: rememberMe },
+    callerAddress,
+  );
 }
 
-export async function requestRefresh(refreshToken: string): Promise<AuthAttempt> {
-  return postForTokens('/v1/public/auth/refresh', { refresh_token: refreshToken });
+export async function requestRefresh(
+  refreshToken: string,
+  callerAddress?: string,
+): Promise<AuthAttempt> {
+  return postForTokens('/v1/public/auth/refresh', { refresh_token: refreshToken }, callerAddress);
 }
 
 // Reports failure rather than throwing: the cookies come off either way.
@@ -91,12 +128,18 @@ export async function requestLogout(tokens: Partial<TokenPair>): Promise<boolean
 async function postForTokens(
   path: string,
   body: Record<string, string | boolean>,
+  callerAddress?: string,
 ): Promise<AuthAttempt> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  // Login and refresh are the routes with no bearer to count by, so the browser's address is
+  // the only thing that keeps one user's allowance off another's.
+  if (callerAddress) headers['X-Forwarded-For'] = callerAddress;
+
   let response: Response;
   try {
     response = await fetch(`${API_URL}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
       cache: 'no-store',
     });

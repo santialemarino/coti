@@ -32,7 +32,7 @@ func NewAuthHandler(auth AuthService) *AuthHandler {
 // while an account is locked out.
 //
 //	@Summary		Log in
-//	@Description	A bad email, a bad password and a disabled user all answer 401 alike. The refresh token is shown exactly once.
+//	@Description	A bad email, a bad password, a disabled user and a deactivated account all answer 401 alike. The refresh token is shown exactly once.
 //	@Tags			auth
 //	@Accept			json
 //	@Produce		json
@@ -40,7 +40,9 @@ func NewAuthHandler(auth AuthService) *AuthHandler {
 //	@Success		200		{object}	dto.TokenResponse
 //	@Failure		400		{object}	dto.ErrorResponse
 //	@Failure		401		{object}	dto.ErrorResponse
+//	@Failure		403		{object}	dto.ErrorResponse	"A confirmed address is required and this one is not"
 //	@Failure		429		{object}	dto.ErrorResponse	"Inside a failed-attempt lockout window"
+//	@Failure		429		{object}	dto.RateLimitResponse	"Rate limit spent; retry_after_seconds says when"
 //	@Router			/v1/public/auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	var body dto.LoginRequest

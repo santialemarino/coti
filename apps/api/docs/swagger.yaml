@@ -135,6 +135,13 @@ definitions:
     - current_password
     - new_password
     type: object
+  dto.ConfirmEmailRequest:
+    properties:
+      token:
+        type: string
+    required:
+    - token
+    type: object
   dto.ConfirmProductPriceImportRequest:
     properties:
       rows:
@@ -401,12 +408,27 @@ definitions:
       updated_at:
         type: string
     type: object
+  dto.RateLimitResponse:
+    properties:
+      error:
+        type: string
+      retry_after_seconds:
+        type: integer
+    type: object
   dto.RefreshRequest:
     properties:
       refresh_token:
         type: string
     required:
     - refresh_token
+    type: object
+  dto.ResendVerificationRequest:
+    properties:
+      email:
+        maxLength: 255
+        type: string
+    required:
+    - email
     type: object
   dto.ResetPasswordRequest:
     properties:
@@ -1805,8 +1827,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: A bad email, a bad password and a disabled user all answer 401
-        alike. The refresh token is shown exactly once.
+      description: A bad email, a bad password, a disabled user and a deactivated
+        account all answer 401 alike. The refresh token is shown exactly once.
       parameters:
       - description: Credentials
         in: body
@@ -1829,10 +1851,14 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
-        "429":
-          description: Inside a failed-attempt lockout window
+        "403":
+          description: A confirmed address is required and this one is not
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: Rate limit spent; retry_after_seconds says when
+          schema:
+            $ref: '#/definitions/dto.RateLimitResponse'
       summary: Log in
       tags:
       - auth
@@ -1871,6 +1897,32 @@ paths:
       summary: Rotate a refresh token
       tags:
       - auth
+  /v1/public/auth/resend-verification:
+    post:
+      consumes:
+      - application/json
+      description: Always answers 202, so the response reveals nothing about which
+        addresses exist or which are already confirmed. Requesting a new link retires
+        the previous one.
+      parameters:
+      - description: Address to send the link to
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ResendVerificationRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Request a new confirmation link
+      tags:
+      - auth
   /v1/public/auth/reset-password:
     post:
       consumes:
@@ -1902,6 +1954,36 @@ paths:
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
       summary: Reset a password with a recovery link
+      tags:
+      - auth
+  /v1/public/auth/verify-email:
+    post:
+      consumes:
+      - application/json
+      description: The link works once and expires. Unknown, expired and already-used
+        tokens all answer 401 alike. Confirming an address that is already verified
+        succeeds.
+      parameters:
+      - description: Verification token
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ConfirmEmailRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Address confirmed
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Confirm an email address
       tags:
       - auth
   /v1/users:

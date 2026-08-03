@@ -85,6 +85,33 @@ middleware bounce the caller back to a page that rejects them, forever. The rout
 clears the cookies and then sends them to login. `/session-ended` is public and, unlike the
 other public routes, is exempt from the signed-in bounce for the same reason.
 
+## The browser's address is forwarded
+
+Every call the backoffice makes is server-side, so the API would otherwise see one address for
+every user and rate-limit them as one caller. The client's address travels in
+`X-Forwarded-For` on both the API client and the session module's own fetches, and the API
+counts one hop back to this server.
+
+`WEB_TRUSTED_PROXY_HOPS` is how this app finds that address in its _own_ incoming request —
+counted from the end whatever sits in front appends to, for the same reason the API does it.
+Zero locally, where nothing is in front, and the API then falls back to its peer.
+
+## The verification screen
+
+`/verify-email?token=…` is the second route the API mails into, alongside `/reset-password`.
+**Confirming is a button, not something that happens on load.** The link is single use, and a
+mail client's scanner, a corporate link checker or a router prefetch all issue a GET — any of
+which would burn the token before the person reading the mail ever clicked, and leave them
+looking at "this link is not valid". A link that really is expired, used or unknown falls
+through to a resend form, so the dead end is recoverable without going back to a mail client.
+
+It is public but **not** signed-out-only: registration hands the caller a session, so the most
+common way to reach it is already logged in.
+
+Login maps the API's 403 to its own message, which is the one rejection here that says why. It
+is only reachable once the password matched, so it tells the caller nothing they could not
+already establish — and they cannot get past it without being told.
+
 ## `?next=` is resolved, not string-matched
 
 The post-login destination is resolved against a throwaway origin and rejected unless the origin

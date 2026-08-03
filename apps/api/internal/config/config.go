@@ -6,6 +6,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strconv"
@@ -43,9 +44,25 @@ type Config struct {
 	Auth        AuthConfig
 	Mail        MailConfig
 	Web         WebConfig
-	PriceImport PriceImportConfig
 	Catalog     CatalogConfig
+	RateLimit   RateLimitConfig
 	Branch      BranchConfig
+	PriceImport PriceImportConfig
+}
+
+// RateLimitConfig holds the request allowances, all of them settings rather than literals.
+type RateLimitConfig struct {
+	Enabled bool
+	Window  time.Duration
+	// Global is the allowance for all of /v1. The rest are tighter, per surface.
+	Global      int
+	Credentials int
+	Signup      int
+	Mail        int
+	// TrustedProxyHops is how many intermediaries sit in front of the API.
+	TrustedProxyHops int
+	// TrustedProxies are the peers whose forwarding header is believed at all.
+	TrustedProxies []*net.IPNet
 }
 
 // ServerConfig holds the HTTP listener settings.
@@ -72,15 +89,17 @@ type DatabaseConfig struct {
 // AuthConfig holds the token settings. The access token is short-lived; the
 // refresh token is single-use and rotates within a family.
 type AuthConfig struct {
-	JWTSecret          string
-	AccessTTL          time.Duration
-	RefreshTTL         time.Duration
-	RefreshRememberTTL time.Duration
-	RefreshReuseGrace  time.Duration
-	MaxFailedAttempts  int
-	LockoutDuration    time.Duration
-	PasswordMinLength  int
-	PasswordResetTTL   time.Duration
+	JWTSecret            string
+	AccessTTL            time.Duration
+	RefreshTTL           time.Duration
+	RefreshRememberTTL   time.Duration
+	RefreshReuseGrace    time.Duration
+	MaxFailedAttempts    int
+	LockoutDuration      time.Duration
+	PasswordMinLength    int
+	PasswordResetTTL     time.Duration
+	RequireVerifiedEmail bool
+	VerificationTTL      time.Duration
 }
 
 // MailConfig holds the outbound-mail transport settings. The SMTP fields are the contract an
@@ -148,15 +167,17 @@ func Load() (*Config, error) {
 			ConnectTimeout:  getDuration("DB_CONNECT_TIMEOUT_SECONDS", 10*time.Second, &problems),
 		},
 		Auth: AuthConfig{
-			JWTSecret:          os.Getenv("AUTH_JWT_SECRET"),
-			AccessTTL:          getDuration("AUTH_ACCESS_TTL_MINUTES", 15*time.Minute, &problems),
-			RefreshTTL:         getDuration("AUTH_REFRESH_TTL_HOURS", 12*time.Hour, &problems),
-			RefreshRememberTTL: getDuration("AUTH_REFRESH_REMEMBER_DAYS", 30*24*time.Hour, &problems),
-			RefreshReuseGrace:  getDuration("AUTH_REFRESH_REUSE_GRACE_SECONDS", 30*time.Second, &problems),
-			MaxFailedAttempts:  getInt("AUTH_MAX_FAILED_ATTEMPTS", 5, &problems),
-			LockoutDuration:    getDuration("AUTH_LOCKOUT_MINUTES", 15*time.Minute, &problems),
-			PasswordMinLength:  getInt("AUTH_PASSWORD_MIN_LENGTH", 8, &problems),
-			PasswordResetTTL:   getDuration("AUTH_PASSWORD_RESET_TTL_MINUTES", 60*time.Minute, &problems),
+			JWTSecret:            os.Getenv("AUTH_JWT_SECRET"),
+			AccessTTL:            getDuration("AUTH_ACCESS_TTL_MINUTES", 15*time.Minute, &problems),
+			RefreshTTL:           getDuration("AUTH_REFRESH_TTL_HOURS", 12*time.Hour, &problems),
+			RefreshRememberTTL:   getDuration("AUTH_REFRESH_REMEMBER_DAYS", 30*24*time.Hour, &problems),
+			RefreshReuseGrace:    getDuration("AUTH_REFRESH_REUSE_GRACE_SECONDS", 30*time.Second, &problems),
+			MaxFailedAttempts:    getInt("AUTH_MAX_FAILED_ATTEMPTS", 5, &problems),
+			LockoutDuration:      getDuration("AUTH_LOCKOUT_MINUTES", 15*time.Minute, &problems),
+			PasswordMinLength:    getInt("AUTH_PASSWORD_MIN_LENGTH", 8, &problems),
+			PasswordResetTTL:     getDuration("AUTH_PASSWORD_RESET_TTL_MINUTES", 60*time.Minute, &problems),
+			RequireVerifiedEmail: getBool("AUTH_REQUIRE_VERIFIED_EMAIL", false, &problems),
+			VerificationTTL:      getDuration("AUTH_EMAIL_VERIFICATION_TTL_HOURS", 48*time.Hour, &problems),
 		},
 		Mail: MailConfig{
 			Provider:     MailProvider(getString("MAIL_PROVIDER", string(MailProviderConsole))),
@@ -173,6 +194,16 @@ func Load() (*Config, error) {
 		Catalog: CatalogConfig{
 			DefaultPageSize: getInt("CATALOG_DEFAULT_PAGE_SIZE", 50, &problems),
 			MaxPageSize:     getInt("CATALOG_MAX_PAGE_SIZE", 200, &problems),
+		},
+		RateLimit: RateLimitConfig{
+			Enabled:          getBool("RATE_LIMIT_ENABLED", true, &problems),
+			Window:           getDuration("RATE_LIMIT_WINDOW_SECONDS", time.Minute, &problems),
+			Global:           getInt("RATE_LIMIT_GLOBAL_MAX", 300, &problems),
+			Credentials:      getInt("RATE_LIMIT_CREDENTIALS_MAX", 10, &problems),
+			Signup:           getInt("RATE_LIMIT_SIGNUP_MAX", 5, &problems),
+			Mail:             getInt("RATE_LIMIT_MAIL_MAX", 5, &problems),
+			TrustedProxyHops: getInt("RATE_LIMIT_TRUSTED_PROXY_HOPS", 0, &problems),
+			TrustedProxies:   getCIDRs("RATE_LIMIT_TRUSTED_PROXY_CIDRS", &problems),
 		},
 		Branch: BranchConfig{
 			DefaultExpiryDays: getInt("BRANCH_DEFAULT_EXPIRY_DAYS", 7, &problems),
@@ -209,6 +240,15 @@ func Load() (*Config, error) {
 	}
 	if cfg.Auth.PasswordResetTTL <= 0 {
 		problems = append(problems, "AUTH_PASSWORD_RESET_TTL_MINUTES must be greater than zero")
+	}
+	if cfg.Auth.VerificationTTL <= 0 {
+		problems = append(problems, "AUTH_EMAIL_VERIFICATION_TTL_HOURS must be greater than zero")
+	}
+	// Demanding a confirmed address while the only transport writes to a log would lock
+	// every user out of an environment nobody can receive mail in.
+	if cfg.Auth.RequireVerifiedEmail && cfg.Mail.Provider == MailProviderConsole {
+		problems = append(problems, "AUTH_REQUIRE_VERIFIED_EMAIL needs a mail provider that "+
+			"delivers: the console transport only writes to the log")
 	}
 
 	// The console transport reaches nothing, so it needs no sender of its own; a real one
@@ -262,6 +302,49 @@ func Load() (*Config, error) {
 			cfg.Catalog.DefaultPageSize, cfg.Catalog.MaxPageSize))
 	}
 
+	if cfg.RateLimit.Enabled {
+		if cfg.RateLimit.Window <= 0 {
+			problems = append(problems, "RATE_LIMIT_WINDOW_SECONDS must be greater than zero")
+		}
+		tighter := []struct {
+			key   string
+			value int
+		}{
+			{"RATE_LIMIT_CREDENTIALS_MAX", cfg.RateLimit.Credentials},
+			{"RATE_LIMIT_SIGNUP_MAX", cfg.RateLimit.Signup},
+			{"RATE_LIMIT_MAIL_MAX", cfg.RateLimit.Mail},
+		}
+		if cfg.RateLimit.Global < 1 {
+			problems = append(problems, "RATE_LIMIT_GLOBAL_MAX must be at least 1")
+		}
+		for _, t := range tighter {
+			if t.value < 1 {
+				problems = append(problems, t.key+" must be at least 1")
+				continue
+			}
+			// A per-route allowance above the global one can never bite, so it reads as
+			// protection that is not there.
+			if t.value > cfg.RateLimit.Global {
+				problems = append(problems, fmt.Sprintf("%s (%d) exceeds RATE_LIMIT_GLOBAL_MAX (%d), "+
+					"so it can never be reached", t.key, t.value, cfg.RateLimit.Global))
+			}
+		}
+		if cfg.RateLimit.TrustedProxyHops < 0 {
+			problems = append(problems, "RATE_LIMIT_TRUSTED_PROXY_HOPS cannot be negative")
+		}
+		// Counting hops in a header any caller could have written lets them pick their own
+		// bucket, so the two settings only mean something together.
+		if cfg.RateLimit.TrustedProxyHops > 0 && len(cfg.RateLimit.TrustedProxies) == 0 {
+			problems = append(problems, "RATE_LIMIT_TRUSTED_PROXY_HOPS is set without "+
+				"RATE_LIMIT_TRUSTED_PROXY_CIDRS: a forwarding header is only believed from a "+
+				"declared proxy")
+		}
+		if len(cfg.RateLimit.TrustedProxies) > 0 && cfg.RateLimit.TrustedProxyHops == 0 {
+			problems = append(problems, "RATE_LIMIT_TRUSTED_PROXY_CIDRS is set with "+
+				"RATE_LIMIT_TRUSTED_PROXY_HOPS at 0, so the header is never read")
+		}
+	}
+
 	// A production deploy pointing the request pool at the owner role would silently
 	// bypass every row level security policy.
 	if cfg.Environment == EnvironmentProduction && cfg.Database.URL == cfg.Database.AdminURL {
@@ -285,6 +368,52 @@ func getString(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// getCIDRs reads a comma-separated list of networks. Single addresses are accepted and
+// widened to a /32 or /128, because "the proxy is at 10.0.0.4" is how an operator thinks.
+func getCIDRs(key string, problems *[]string) []*net.IPNet {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return nil
+	}
+	var networks []*net.IPNet
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if !strings.Contains(entry, "/") {
+			if address := net.ParseIP(entry); address != nil {
+				bits := 32
+				if address.To4() == nil {
+					bits = 128
+				}
+				entry = fmt.Sprintf("%s/%d", entry, bits)
+			}
+		}
+		_, network, err := net.ParseCIDR(entry)
+		if err != nil {
+			*problems = append(*problems, fmt.Sprintf("%s has an entry that is not an address "+
+				"or a network: %q", key, entry))
+			continue
+		}
+		networks = append(networks, network)
+	}
+	return networks
+}
+
+func getBool(key string, fallback bool, problems *[]string) bool {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	v, err := strconv.ParseBool(raw)
+	if err != nil {
+		*problems = append(*problems, fmt.Sprintf("%s must be true or false, got %q", key, raw))
+		return fallback
+	}
+	return v
 }
 
 func getInt(key string, fallback int, problems *[]string) int {

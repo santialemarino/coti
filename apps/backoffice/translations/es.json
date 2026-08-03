@@ -59,6 +59,10 @@
     "priceSettings": {
       "title": "Precios y condiciones",
       "description": "Actualización revisada de precios por sucursal."
+    },
+    "verifyEmail": {
+      "title": "Confirmar tu correo",
+      "description": "Confirmá la dirección con la que te registraste."
     }
   },
   "auth": {
@@ -82,7 +86,8 @@
         "invalidCredentials": "Correo o contraseña inválidos.",
         "locked": "Demasiados intentos fallidos. Esperá unos minutos antes de volver a probar.",
         "unreachable": "No pudimos comunicarnos con el servidor. Revisá tu conexión e intentá de nuevo.",
-        "unexpected": "No pudimos iniciar sesión. Intentá de nuevo."
+        "unexpected": "No pudimos iniciar sesión. Intentá de nuevo.",
+        "emailNotVerified": "Tenés que confirmar tu dirección de correo antes de entrar. Buscá el mensaje que te mandamos al registrarte."
       }
     },
     "forgotPassword": {
@@ -156,6 +161,28 @@
         "unexpected": "No pudimos cambiar la contraseña. Intentá de nuevo.",
         "sessionExpired": "Tu sesión expiró. Volvé a iniciar sesión."
       }
+    },
+    "verifyEmail": {
+      "title": "Confirmar tu correo",
+      "prompt": "Tocá el botón para confirmar la dirección con la que te registraste.",
+      "confirm": "Confirmar mi correo",
+      "confirming": "Confirmando…",
+      "done": "Listo, tu dirección quedó confirmada.",
+      "continue": "Ir al inicio",
+      "resendHint": "Podés pedir un enlace nuevo con la dirección que usaste al registrarte.",
+      "email": {
+        "label": "Correo electrónico",
+        "placeholder": "tu@correo.com",
+        "invalid": "Ingresá una dirección de correo válida."
+      },
+      "resend": "Enviar un enlace nuevo",
+      "resending": "Enviando…",
+      "resent": "Si la dirección está registrada y falta confirmarla, va a recibir un enlace en unos minutos.",
+      "errors": {
+        "invalidLink": "El enlace no es válido, ya se usó o venció.",
+        "unexpected": "No pudimos confirmar tu dirección. Intentá de nuevo."
+      },
+      "backToLogin": "Volver a iniciar sesión"
     }
   },
   "home": {

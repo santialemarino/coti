@@ -23,7 +23,10 @@ const NotificationMediumEmail NotificationMedium = "EMAIL"
 // NotificationEvent is what the message was about, and is what a delivery report groups by.
 type NotificationEvent string
 
-const NotificationEventPasswordReset NotificationEvent = "PASSWORD_RESET"
+const (
+	NotificationEventPasswordReset     NotificationEvent = "PASSWORD_RESET"
+	NotificationEventEmailVerification NotificationEvent = "EMAIL_VERIFICATION"
+)
 
 // Notification is the delivery record of one outbound message. Append-only: SentAt is the
 // timestamp of the attempt that succeeded, and stays null on a failure.

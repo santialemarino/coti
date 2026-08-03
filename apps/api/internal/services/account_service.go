@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/google/uuid"
@@ -37,6 +38,12 @@ type tokenIssuer interface {
 	IssueForUser(ctx context.Context, user domain.AppUser) (*domain.TokenPair, error)
 }
 
+// emailVerifier mails the new administrator a confirmation link. Narrow on purpose:
+// registration triggers verification, it does not own it.
+type emailVerifier interface {
+	Send(ctx context.Context, user domain.AppUser) error
+}
+
 type adminTxScoper interface {
 	tenantScoper
 	AdminTx(ctx context.Context) (pgx.Tx, error)
@@ -50,6 +57,8 @@ type AccountService struct {
 	channels          channelRepository
 	users             signupUserRepository
 	tokens            tokenIssuer
+	verifier          emailVerifier
+	log               *slog.Logger
 	passwordMinL      int
 	defaultExpiryDays int
 }
@@ -58,11 +67,14 @@ type AccountService struct {
 func NewAccountService(
 	db adminTxScoper, accounts accountRepository, branches signupBranchRepository,
 	channels channelRepository, users signupUserRepository, tokens tokenIssuer,
-	cfg config.AuthConfig, branchCfg config.BranchConfig,
+	verifier emailVerifier, log *slog.Logger, cfg config.AuthConfig, branchCfg config.BranchConfig,
 ) *AccountService {
+	if log == nil {
+		log = slog.Default()
+	}
 	return &AccountService{db: db, accounts: accounts, branches: branches, channels: channels,
-		users: users, tokens: tokens, passwordMinL: cfg.PasswordMinLength,
-		defaultExpiryDays: branchCfg.DefaultExpiryDays}
+		users: users, tokens: tokens, verifier: verifier, log: log,
+		passwordMinL: cfg.PasswordMinLength, defaultExpiryDays: branchCfg.DefaultExpiryDays}
 }
 
 // Get returns the caller's own account.
@@ -143,6 +155,13 @@ func (s *AccountService) Register(
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, nil, err
+	}
+
+	// After the commit, and not fatal: a transport that is down must not undo an account
+	// that already exists. The unsent link is recoverable from the resend route.
+	if err := s.verifier.Send(ctx, *admin); err != nil {
+		s.log.ErrorContext(ctx, "verification mail not issued",
+			slog.String("user_id", admin.ID.String()), slog.Any("error", err))
 	}
 
 	pair, err := s.tokens.IssueForUser(ctx, *admin)

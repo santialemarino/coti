@@ -1761,7 +1761,7 @@ const docTemplate = `{
         },
         "/v1/public/auth/login": {
             "post": {
-                "description": "A bad email, a bad password and a disabled user all answer 401 alike. The refresh token is shown exactly once.",
+                "description": "A bad email, a bad password, a disabled user and a deactivated account all answer 401 alike. The refresh token is shown exactly once.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1802,10 +1802,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
                     },
-                    "429": {
-                        "description": "Inside a failed-attempt lockout window",
+                    "403": {
+                        "description": "A confirmed address is required and this one is not",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit spent; retry_after_seconds says when",
+                        "schema": {
+                            "$ref": "#/definitions/dto.RateLimitResponse"
                         }
                     }
                 }
@@ -1863,6 +1869,43 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/public/auth/resend-verification": {
+            "post": {
+                "description": "Always answers 202, so the response reveals nothing about which addresses exist or which are already confirmed. Requesting a new link retires the previous one.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Request a new confirmation link",
+                "parameters": [
+                    {
+                        "description": "Address to send the link to",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ResendVerificationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/public/auth/reset-password": {
             "post": {
                 "description": "The link works once and expires. Unknown, expired and already-used tokens all answer 401 alike. Every session the user had is ended.",
@@ -1905,6 +1948,49 @@ const docTemplate = `{
                     },
                     "422": {
                         "description": "New password below the configured minimum length",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/public/auth/verify-email": {
+            "post": {
+                "description": "The link works once and expires. Unknown, expired and already-used tokens all answer 401 alike. Confirming an address that is already verified succeeds.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Confirm an email address",
+                "parameters": [
+                    {
+                        "description": "Verification token",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ConfirmEmailRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Address confirmed"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -2477,6 +2563,17 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ConfirmEmailRequest": {
+            "type": "object",
+            "required": [
+                "token"
+            ],
+            "properties": {
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.ConfirmProductPriceImportRequest": {
             "type": "object",
             "required": [
@@ -2869,6 +2966,17 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.RateLimitResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "retry_after_seconds": {
+                    "type": "integer"
+                }
+            }
+        },
         "dto.RefreshRequest": {
             "type": "object",
             "required": [
@@ -2877,6 +2985,18 @@ const docTemplate = `{
             "properties": {
                 "refresh_token": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.ResendVerificationRequest": {
+            "type": "object",
+            "required": [
+                "email"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "maxLength": 255
                 }
             }
         },

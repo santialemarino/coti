@@ -18,6 +18,13 @@ export const REFRESH_SKEW_SECONDS = readInt(
 export const REMEMBERED_SESSION_MAX_AGE_SECONDS =
   readInt(process.env.AUTH_REMEMBERED_SESSION_DAYS, DEFAULT_REMEMBERED_SESSION_DAYS) * 24 * 60 * 60;
 
+/*
+ * How many intermediaries sit in front of *this* app, used to work out the browser's address
+ * so the API can rate-limit per user rather than per Next server. Zero locally, where nothing
+ * is in front.
+ */
+export const TRUSTED_PROXY_HOPS = readInt(process.env.WEB_TRUSTED_PROXY_HOPS, 0);
+
 function readInt(raw: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(raw ?? '', 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;

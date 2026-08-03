@@ -29,8 +29,8 @@ const dummyHash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
 // userRepository is the persistence surface the auth flow needs. Defined here, in the
 // consumer, so a test can fake it without a database.
 type userRepository interface {
-	GetByID(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) (*domain.AppUser, error)
-	GetByEmailCrossAccount(ctx context.Context, q repository.Querier, email string) (*domain.AppUser, error)
+	GetAuthSubjectByID(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) (*domain.AuthSubject, error)
+	GetAuthSubjectByEmailCrossAccount(ctx context.Context, q repository.Querier, email string) (*domain.AuthSubject, error)
 	RegisterFailedAttempt(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, maxAttempts int, lockFor time.Duration) (int, error)
 	RegisterSuccessfulLogin(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) error
 	BumpSessionEpoch(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) (int, error)
@@ -85,12 +85,13 @@ func NewAuthService(
 	}
 }
 
-// Login verifies credentials and issues a token pair. A bad email, a bad password and an
-// inactive user all return domain.ErrUnauthenticated, indistinguishably on purpose.
+// Login verifies credentials and issues a token pair. A bad email, a bad password, a
+// deactivated user and a deactivated account all return domain.ErrUnauthenticated,
+// indistinguishably on purpose.
 func (s *AuthService) Login(ctx context.Context, in domain.Credentials) (*domain.TokenPair, error) {
 	now := s.now()
 
-	user, err := s.users.GetByEmailCrossAccount(ctx, s.db.CrossAccount(), in.Email)
+	user, err := s.users.GetAuthSubjectByEmailCrossAccount(ctx, s.db.CrossAccount(), in.Email)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			// Spend the same time as a real comparison before failing.
@@ -116,12 +117,18 @@ func (s *AuthService) Login(ctx context.Context, in domain.Credentials) (*domain
 		return nil, domain.ErrUnauthenticated
 	}
 
-	// Checked after the password so an attacker cannot enumerate disabled accounts.
-	if !user.IsActive {
+	// Checked after the password so an attacker cannot enumerate disabled users or
+	// deactivated corralones.
+	if !user.IsUsable() {
 		return nil, domain.ErrUnauthenticated
 	}
+	// Reachable only once the password matched, so saying why leaks nothing the caller
+	// does not already know — and they cannot act on it without being told.
+	if s.cfg.RequireVerifiedEmail && user.EmailVerifiedAt == nil {
+		return nil, domain.ErrEmailNotVerified
+	}
 
-	pair, err := s.issuePair(ctx, *user, uuid.New(), in.RememberMe, func(q repository.Querier) error {
+	pair, err := s.issuePair(ctx, user.AppUser, uuid.New(), in.RememberMe, func(q repository.Querier) error {
 		return s.users.RegisterSuccessfulLogin(ctx, q, user.AccountID, user.ID)
 	})
 	if err != nil {
@@ -167,9 +174,9 @@ func (s *AuthService) Refresh(ctx context.Context, rawToken string) (*domain.Tok
 		// Inside the grace window: treat it as a race and hand out a fresh rotation.
 	}
 
-	var user *domain.AppUser
+	var user *domain.AuthSubject
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		u, getErr := s.users.GetByID(ctx, q, stored.AccountID, stored.UserID)
+		u, getErr := s.users.GetAuthSubjectByID(ctx, q, stored.AccountID, stored.UserID)
 		if getErr != nil {
 			return getErr
 		}
@@ -181,7 +188,7 @@ func (s *AuthService) Refresh(ctx context.Context, rawToken string) (*domain.Tok
 		}
 		return nil, err
 	}
-	if !user.IsActive {
+	if !user.IsUsable() {
 		return nil, domain.ErrUnauthenticated
 	}
 	if user.IsLocked(now) {
@@ -190,7 +197,7 @@ func (s *AuthService) Refresh(ctx context.Context, rawToken string) (*domain.Tok
 
 	// Consuming and minting the successor in one transaction keeps the family
 	// consistent: a crash between them cannot strand a session with no live token.
-	return s.issuePair(ctx, *user, stored.FamilyID, s.isRememberMe(*stored), func(q repository.Querier) error {
+	return s.issuePair(ctx, user.AppUser, stored.FamilyID, s.isRememberMe(*stored), func(q repository.Querier) error {
 		if stored.ConsumedAt == nil {
 			return s.tokens.Consume(ctx, q, stored.AccountID, stored.ID)
 		}
@@ -223,8 +230,11 @@ func (s *AuthService) Logout(ctx context.Context, tenant domain.Tenant, rawToken
 }
 
 // ResolveTenant turns verified token claims into the request's tenant scope, confirming
-// what the signature cannot: the user exists, is active, is not locked out, and carries
-// the token's session epoch.
+// what the signature cannot: the user exists, both they and their account are active, they
+// are not locked out, and they carry the token's session epoch.
+//
+// Reading the account here is what makes deactivating a corralón reach the tokens it has
+// already issued, rather than only the logins it has yet to grant.
 //
 // Validating requestedBranch is load-bearing — row level security guards the account
 // boundary, not the branch one, so a trusted branch id would let a caller read another
@@ -236,12 +246,12 @@ func (s *AuthService) ResolveTenant(
 ) (domain.Tenant, error) {
 	scope := domain.Tenant{AccountID: claims.AccountID}
 
-	var user *domain.AppUser
+	var user *domain.AuthSubject
 	var allowedBranches []uuid.UUID
 	branchOK := true
 
 	if err := s.db.InTenantTx(ctx, scope, func(q repository.Querier) error {
-		u, err := s.users.GetByID(ctx, q, claims.AccountID, claims.UserID)
+		u, err := s.users.GetAuthSubjectByID(ctx, q, claims.AccountID, claims.UserID)
 		if err != nil {
 			return err
 		}
@@ -274,7 +284,7 @@ func (s *AuthService) ResolveTenant(
 		return domain.Tenant{}, err
 	}
 
-	if !user.IsActive || user.SessionEpoch != claims.SessionEpoch {
+	if !user.IsUsable() || user.SessionEpoch != claims.SessionEpoch {
 		return domain.Tenant{}, domain.ErrUnauthenticated
 	}
 	if user.IsLocked(s.now()) {

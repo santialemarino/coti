@@ -9,6 +9,7 @@ import {
 } from '@/config/routes';
 import {
   ACCESS_COOKIE,
+  forwardedClientAddress,
   needsRenewal,
   REFRESH_COOKIE,
   REMEMBER_COOKIE,
@@ -51,7 +52,7 @@ export async function middleware(request: NextRequest) {
   // An expired access token is not an expired session, and renewing it is what
   // keeps the user from being thrown out mid-task.
   if (refreshToken) {
-    const renewed = await requestRefresh(refreshToken);
+    const renewed = await requestRefresh(refreshToken, forwardedClientAddress(request.headers));
     if (renewed.ok && renewed.tokens) {
       // Onto the request too, so the render this triggers sees the new token rather
       // than waiting for the next round trip.

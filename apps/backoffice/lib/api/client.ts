@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { clientAddress } from '@/lib/auth/client-address';
 import { getAccessToken } from '@/lib/auth/session';
 import { API_URL } from '@/lib/config';
 
@@ -80,6 +81,10 @@ export async function apiFetch(request: ApiRequest): Promise<Response> {
   }
   if (branchId) headers.set('X-Branch-Id', branchId);
   if (body !== undefined) headers.set('Content-Type', 'application/json');
+  // Without this the API counts every user's unauthenticated requests against this server's
+  // address, so one allowance covers the whole product.
+  const caller = await clientAddress();
+  if (caller) headers.set('X-Forwarded-For', caller);
 
   try {
     return await fetch(`${API_URL}${path}${buildQuery(query)}`, {

@@ -12,6 +12,10 @@ const (
 	passwordResetHeading = "Restablecé tu contraseña"
 	passwordResetAction  = "Elegir una contraseña nueva"
 	passwordResetIgnore  = "Si no pediste este cambio, ignorá este correo: tu contraseña actual sigue funcionando."
+
+	emailVerificationSubject = "Confirmá tu dirección de correo"
+	emailVerificationHeading = "Confirmá tu dirección de correo"
+	emailVerificationAction  = "Confirmar mi correo"
 )
 
 // passwordResetIntro greets the user by name and states what the link is for.
@@ -26,7 +30,27 @@ func passwordResetValidity(minutes int) string {
 		if hours == 1 {
 			return "El enlace vence en 1 hora y se puede usar una sola vez."
 		}
+		if hours == 1 {
+			return "El enlace vence en 1 hora y se puede usar una sola vez."
+		}
 		return fmt.Sprintf("El enlace vence en %d horas y se puede usar una sola vez.", hours)
 	}
 	return fmt.Sprintf("El enlace vence en %d minutos y se puede usar una sola vez.", minutes)
+}
+
+// emailVerificationIntro greets the user and says what confirming is for.
+func emailVerificationIntro(name string) string {
+	return fmt.Sprintf("Hola %s, gracias por registrar tu corralón en Coti. Confirmá tu dirección para que podamos usarla con seguridad.", name)
+}
+
+// emailVerificationValidity states how long the link lasts, in whole hours or days.
+func emailVerificationValidity(hours int) string {
+	if hours%24 == 0 && hours >= 24 {
+		days := hours / 24
+		if days == 1 {
+			return "El enlace vence en 1 día y se puede usar una sola vez."
+		}
+		return fmt.Sprintf("El enlace vence en %d días y se puede usar una sola vez.", days)
+	}
+	return fmt.Sprintf("El enlace vence en %d horas y se puede usar una sola vez.", hours)
 }
