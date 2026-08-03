@@ -122,7 +122,7 @@ func (s *PasswordService) ChangeOwn(
 // Forgot mails a single-use recovery link, answering the same whether or not the address is
 // registered so the response cannot be used to enumerate users.
 func (s *PasswordService) Forgot(ctx context.Context, email string) error {
-	user, err := s.users.GetAuthSubjectByEmailCrossAccount(ctx, s.db.CrossAccount(), normalizeEmail(email))
+	user, err := s.users.GetAuthSubjectByEmailCrossAccount(ctx, s.db.CrossAccount(), domain.NormalizeEmail(email))
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil

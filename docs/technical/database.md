@@ -66,20 +66,44 @@ Two cases where `db:reset` is the only way out:
   happens while a migration PR is in review: whoever already ran it has to reset when pulling.
   The way out is **not** to fill the `down` with `IF EXISTS` to tolerate half-states.
 
+## Deactivating and reactivating an account
+
+`account.is_active` decides whether a corralón's users can get in at all — login, refresh and
+tenant resolution read it on every request. It is written by a script pair rather than an
+endpoint, because `user_role` holds only `ADMIN` and `SELLER` and neither of them is an actor
+who should be able to close a corralón.
+
+```bash
+pnpm db:account:deactivate --account <uuid>
+pnpm db:account:activate   --account <uuid>
+```
+
+Both run on `DATABASE_ADMIN_URL` — they are not request-scoped, so they have no tenant to
+narrow to. Both take the id as a query parameter, report the account they touched and the state
+it was in, and refuse an unknown id without writing anything.
+
+`deactivate` is two writes in one transaction: the flag, and `session_epoch + 1` for every user
+of the account, so the access tokens they already hold are dead rather than valid until they
+expire. `activate` is the flag alone — the account is read again on every request, so nothing
+else has to be undone. The behavioural side is in
+[authentication.md](authentication.md#a-deactivated-account-cuts-every-way-in).
+
 ## Two connection roles
 
-| Variable             | Role                                   | What for                                                                          |
-| -------------------- | -------------------------------------- | --------------------------------------------------------------------------------- |
-| `DATABASE_URL`       | `coti_app` — restricted, `NOBYPASSRLS` | Every request-scoped query.                                                       |
-| `DATABASE_ADMIN_URL` | owner                                  | Migrations, the follow-up cron, and the lookups that legitimately cross accounts. |
+| Variable             | Role                                   | What for                                                                                                   |
+| -------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`       | `coti_app` — restricted, `NOBYPASSRLS` | Every request-scoped query.                                                                                |
+| `DATABASE_ADMIN_URL` | owner                                  | Migrations, the operational scripts, the follow-up cron, and the lookups that legitimately cross accounts. |
 
 **Never use the owner role for a request-scoped query.** It bypasses RLS.
 
-The three legitimate owner cases:
+The four legitimate owner cases:
 
 1. **Migrations** — they create tables and grant permissions.
-2. **The follow-up cron** — it sweeps quotes across every account.
-3. **Pre-auth lookups** — login by email (the account is not known yet) and resolving
+2. **Operational scripts** — `pnpm db:seed` and the account activation pair above. They are
+   run by hand, from outside any request, so there is no tenant to scope them to.
+3. **The follow-up cron** — it sweeps quotes across every account.
+4. **Pre-auth lookups** — login by email (the account is not known yet) and resolving
    `quote_send.public_token` for the sessionless webapp. The correct pattern for the token:
    the owner resolves token → `account_id`, and the rest of the request continues on the
    restricted role with the GUC set.

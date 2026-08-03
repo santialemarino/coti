@@ -56,6 +56,13 @@ func (m *captureMailer) Send(_ context.Context, msg domain.EmailMessage) error {
 	return nil
 }
 
+// count returns how many messages the transport has been handed.
+func (m *captureMailer) count() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.sent)
+}
+
 // last returns the most recent message, or false when nothing was sent.
 func (m *captureMailer) last() (domain.EmailMessage, bool) {
 	m.mu.Lock()
@@ -137,12 +144,19 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo,
 		repository.NewBranchProductRepository(), repository.NewProductPriceRepository(), nil)
 
+	limiter := ratelimit.NewMemory(nil)
+	mailTargetLimiter := handler.NewMailTargetLimiter(limiter, handler.MailTargetLimitOptions{
+		Limit:   cfg.RateLimit.MailPerAddress,
+		Window:  cfg.RateLimit.Window,
+		Enabled: cfg.RateLimit.Enabled,
+	})
+
 	router := deliveryhttp.NewRouter(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)),
 		deliveryhttp.Handlers{
 			Health:        handler.NewHealthHandler(db),
 			Auth:          handler.NewAuthHandler(authService),
-			Password:      handler.NewPasswordHandler(passwordService),
-			Verification:  handler.NewVerificationHandler(verificationService),
+			Password:      handler.NewPasswordHandler(passwordService, mailTargetLimiter),
+			Verification:  handler.NewVerificationHandler(verificationService, mailTargetLimiter),
 			User:          handler.NewUserHandler(userService),
 			Branch:        handler.NewBranchHandler(services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)),
 			Product:       handler.NewProductHandler(productService),
@@ -152,7 +166,7 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 				cfg.Auth, cfg.Branch)),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
-		deliveryhttp.RateLimit{Limiter: ratelimit.NewMemory(nil)})
+		deliveryhttp.RateLimit{Limiter: limiter})
 
 	return &env{router: router, db: db, tokens: tokenService, mail: mailer}
 }

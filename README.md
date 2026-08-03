@@ -100,10 +100,14 @@ See [docs/technical/api-specification.md](docs/technical/api-specification.md).
 
 Two connection roles. `DATABASE_URL` is the restricted, `NOBYPASSRLS` role the API
 uses for request-scoped queries; `DATABASE_ADMIN_URL` is the owner, used by goose
-migrations, the follow-up cron, and the pre-auth lookups that legitimately span
-accounts. Every tenant-scoped table carries `account_id` and enforces it with a row
-level security policy reading a per-transaction GUC, so a query missing its
-predicate returns zero rows rather than another tenant's data.
+migrations, the operational scripts, the follow-up cron, and the pre-auth lookups
+that legitimately span accounts. Every tenant-scoped table carries `account_id` and
+enforces it with a row level security policy reading a per-transaction GUC, so a
+query missing its predicate returns zero rows rather than another tenant's data.
+
+Closing or reopening a corralón is an operational script rather than an endpoint:
+`pnpm db:account:deactivate --account <uuid>` cuts every session in the account, and
+`pnpm db:account:activate --account <uuid>` restores it.
 
 See [docs/technical/database.md](docs/technical/database.md).
 
