@@ -2,6 +2,7 @@
 
 import { loginSchema, type LoginValues } from '@/app/(auth)/login/form-schema';
 import { safeNextPath } from '@/config/routes';
+import { clientAddress } from '@/lib/auth/client-address';
 import { startSession } from '@/lib/auth/session';
 import { requestLogin } from '@/lib/auth/tokens';
 
@@ -11,7 +12,12 @@ import { requestLogin } from '@/lib/auth/tokens';
  * disabled user alike — the API answers all three with the same 401, and the
  * interface must not undo that, so it lands on the form rather than on a field.
  */
-export type LoginErrorKey = 'invalidCredentials' | 'locked' | 'unreachable' | 'unexpected';
+export type LoginErrorKey =
+  | 'invalidCredentials'
+  | 'locked'
+  | 'emailNotVerified'
+  | 'unreachable'
+  | 'unexpected';
 
 export interface LoginResult {
   redirectTo?: string;
@@ -27,6 +33,7 @@ export async function login(values: LoginValues, next?: string): Promise<LoginRe
     parsed.data.email,
     parsed.data.password,
     parsed.data.rememberMe,
+    await clientAddress(),
   );
   if (!attempt.ok || !attempt.tokens) return { error: loginErrorFor(attempt.status) };
 
@@ -39,6 +46,9 @@ function loginErrorFor(status: number): LoginErrorKey {
   // "wrong password" from "stop trying for a while".
   if (status === 429) return 'locked';
   if (status === 401) return 'invalidCredentials';
+  // Only reachable once the password matched, so the caller is told plainly: they cannot
+  // get past it without knowing what to do.
+  if (status === 403) return 'emailNotVerified';
   if (status === 0) return 'unreachable';
   return 'unexpected';
 }

@@ -4,6 +4,7 @@ export const ROUTES = {
   login: '/login',
   forgotPassword: '/forgot-password',
   resetPassword: '/reset-password',
+  verifyEmail: '/verify-email',
   sessionEnded: '/session-ended',
   changePassword: '/settings/password',
   priceSettings: '/settings/prices',
@@ -14,6 +15,7 @@ export const PUBLIC_ROUTES: readonly string[] = [
   ROUTES.login,
   ROUTES.forgotPassword,
   ROUTES.resetPassword,
+  ROUTES.verifyEmail,
   ROUTES.sessionEnded,
 ];
 
@@ -27,6 +29,9 @@ export const SIGNED_OUT_ONLY_ROUTES: readonly string[] = [
   ROUTES.forgotPassword,
   ROUTES.resetPassword,
 ];
+
+// verify-email is public but not signed-out-only: signup hands the caller a session, so the
+// most common way to reach it is already logged in.
 
 export const LOGIN_ROUTE = ROUTES.login;
 
