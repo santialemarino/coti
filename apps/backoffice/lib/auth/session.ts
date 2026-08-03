@@ -6,8 +6,9 @@ import { apiRequest, errorCodeOf } from '@/lib/api/client';
 import {
   ACCESS_COOKIE,
   REFRESH_COOKIE,
+  REMEMBER_COOKIE,
   requestLogout,
-  SESSION_COOKIE_OPTIONS,
+  sessionCookieOptions,
   type TokenPair,
 } from '@/lib/auth/tokens';
 
@@ -60,10 +61,18 @@ export async function getAccessToken(): Promise<string | undefined> {
 
 // Next allows a cookie write only from a server action or a route handler, which is
 // why the renewal path lives in middleware instead.
-export async function startSession(tokens: TokenPair): Promise<void> {
+export async function startSession(tokens: TokenPair, rememberMe = false): Promise<void> {
   const jar = await cookies();
-  jar.set(ACCESS_COOKIE, tokens.accessToken, SESSION_COOKIE_OPTIONS);
-  jar.set(REFRESH_COOKIE, tokens.refreshToken, SESSION_COOKIE_OPTIONS);
+  const options = sessionCookieOptions(rememberMe);
+  jar.set(ACCESS_COOKIE, tokens.accessToken, options);
+  jar.set(REFRESH_COOKIE, tokens.refreshToken, options);
+  if (rememberMe) jar.set(REMEMBER_COOKIE, '1', options);
+}
+
+// isRemembered reports what a renewal has to preserve, so a remembered session does
+// not quietly decay into one that dies with the browser.
+export async function isRemembered(): Promise<boolean> {
+  return (await cookies()).get(REMEMBER_COOKIE)?.value === '1';
 }
 
 // clearSession drops the cookies without telling the API, for a session the API has
@@ -72,6 +81,7 @@ export async function clearSession(): Promise<void> {
   const jar = await cookies();
   jar.delete(ACCESS_COOKIE);
   jar.delete(REFRESH_COOKIE);
+  jar.delete(REMEMBER_COOKIE);
 }
 
 // endSession revokes on the API and then clears. The cookies go regardless of the

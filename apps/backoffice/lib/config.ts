@@ -2,6 +2,7 @@
 
 const DEFAULT_API_URL = 'http://localhost:8000';
 const DEFAULT_REFRESH_SKEW_SECONDS = 60;
+const DEFAULT_REMEMBERED_SESSION_DAYS = 30;
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? DEFAULT_API_URL;
 
@@ -11,6 +12,11 @@ export const REFRESH_SKEW_SECONDS = readInt(
   process.env.AUTH_REFRESH_SKEW_SECONDS,
   DEFAULT_REFRESH_SKEW_SECONDS,
 );
+
+// How long a remembered session's cookies survive. Mirrors the API's
+// AUTH_REFRESH_REMEMBER_DAYS; the API is still what decides if the token is live.
+export const REMEMBERED_SESSION_MAX_AGE_SECONDS =
+  readInt(process.env.AUTH_REMEMBERED_SESSION_DAYS, DEFAULT_REMEMBERED_SESSION_DAYS) * 24 * 60 * 60;
 
 function readInt(raw: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(raw ?? '', 10);

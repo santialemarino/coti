@@ -11,8 +11,9 @@ import {
   ACCESS_COOKIE,
   needsRenewal,
   REFRESH_COOKIE,
+  REMEMBER_COOKIE,
   requestRefresh,
-  SESSION_COOKIE_OPTIONS,
+  sessionCookieOptions,
 } from '@/lib/auth/tokens';
 
 /*
@@ -29,6 +30,7 @@ export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
   const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value;
+  const remembered = request.cookies.get(REMEMBER_COOKIE)?.value === '1';
 
   if (PUBLIC_ROUTES.includes(pathname)) {
     if (SIGNED_OUT_ONLY_ROUTES.includes(pathname) && accessToken && !needsRenewal(accessToken)) {
@@ -38,6 +40,13 @@ export async function middleware(request: NextRequest) {
   }
 
   if (!needsRenewal(accessToken)) return NextResponse.next();
+
+  /*
+   * A prefetch renders nothing the user is looking at, so it does not get to spend a
+   * refresh token. Letting it would put several renewals inside the same skew window,
+   * and the API reads a replayed refresh token past its grace window as theft.
+   */
+  if (request.headers.get('next-router-prefetch') === '1') return NextResponse.next();
 
   // An expired access token is not an expired session, and renewing it is what
   // keeps the user from being thrown out mid-task.
@@ -49,8 +58,9 @@ export async function middleware(request: NextRequest) {
       request.cookies.set(ACCESS_COOKIE, renewed.tokens.accessToken);
       request.cookies.set(REFRESH_COOKIE, renewed.tokens.refreshToken);
       const response = NextResponse.next({ request });
-      response.cookies.set(ACCESS_COOKIE, renewed.tokens.accessToken, SESSION_COOKIE_OPTIONS);
-      response.cookies.set(REFRESH_COOKIE, renewed.tokens.refreshToken, SESSION_COOKIE_OPTIONS);
+      const options = sessionCookieOptions(remembered);
+      response.cookies.set(ACCESS_COOKIE, renewed.tokens.accessToken, options);
+      response.cookies.set(REFRESH_COOKIE, renewed.tokens.refreshToken, options);
       return response;
     }
     if (renewed.status === 0) return NextResponse.next();
@@ -68,6 +78,7 @@ function redirectToLogin(request: NextRequest, from: string) {
   // login screen straight back to a page that rejects it.
   response.cookies.delete(ACCESS_COOKIE);
   response.cookies.delete(REFRESH_COOKIE);
+  response.cookies.delete(REMEMBER_COOKIE);
   return response;
 }
 

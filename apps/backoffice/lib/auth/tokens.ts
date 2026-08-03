@@ -10,19 +10,32 @@
  * is the API's answer on every request.
  */
 
-import { API_URL, REFRESH_SKEW_SECONDS } from '@/lib/config';
+import { API_URL, REFRESH_SKEW_SECONDS, REMEMBERED_SESSION_MAX_AGE_SECONDS } from '@/lib/config';
 
 export const ACCESS_COOKIE = 'coti_access_token';
 export const REFRESH_COOKIE = 'coti_refresh_token';
+// Marks the session as remembered, so a renewal in middleware keeps it that way.
+export const REMEMBER_COOKIE = 'coti_remember';
 
-// httpOnly keeps the token out of reach of client code. No maxAge: the pair lasts
-// as long as the browser session until the API's remember-me path has a UI.
-export const SESSION_COOKIE_OPTIONS = {
+// httpOnly keeps the token out of reach of client code. lax still sends it on a
+// top-level navigation, which is what following a link from a mail client is.
+const BASE_COOKIE_OPTIONS = {
   httpOnly: true,
   sameSite: 'lax',
   secure: process.env.NODE_ENV === 'production',
   path: '/',
 } as const;
+
+/*
+ * A remembered session persists; a plain one dies with the browser. The ceiling
+ * matches the API's own remember-me window — the API is still what decides whether a
+ * refresh token is live, so an over-long cookie buys nothing but a wasted round trip.
+ */
+export function sessionCookieOptions(rememberMe: boolean) {
+  return rememberMe
+    ? { ...BASE_COOKIE_OPTIONS, maxAge: REMEMBERED_SESSION_MAX_AGE_SECONDS }
+    : BASE_COOKIE_OPTIONS;
+}
 
 export interface TokenPair {
   accessToken: string;
@@ -44,8 +57,12 @@ export function needsRenewal(token: string | undefined): boolean {
   return expiresAt - Date.now() / 1000 <= REFRESH_SKEW_SECONDS;
 }
 
-export async function requestLogin(email: string, password: string): Promise<AuthAttempt> {
-  return postForTokens('/v1/public/auth/login', { email, password });
+export async function requestLogin(
+  email: string,
+  password: string,
+  rememberMe: boolean,
+): Promise<AuthAttempt> {
+  return postForTokens('/v1/public/auth/login', { email, password, remember_me: rememberMe });
 }
 
 export async function requestRefresh(refreshToken: string): Promise<AuthAttempt> {
@@ -71,7 +88,10 @@ export async function requestLogout(tokens: Partial<TokenPair>): Promise<boolean
   }
 }
 
-async function postForTokens(path: string, body: Record<string, string>): Promise<AuthAttempt> {
+async function postForTokens(
+  path: string,
+  body: Record<string, string | boolean>,
+): Promise<AuthAttempt> {
   let response: Response;
   try {
     response = await fetch(`${API_URL}${path}`, {
