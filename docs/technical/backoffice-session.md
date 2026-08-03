@@ -25,8 +25,16 @@ value buys is an unnecessary refresh. Nothing is authorized on it.
 ## Where the session lives
 
 Two httpOnly cookies, `coti_access_token` and `coti_refresh_token`. httpOnly is the point —
-client code cannot read either, so no script on the page can lift the token. They are session
-cookies today; the API's `remember_me` path has no UI yet, so there is nothing to persist for.
+client code cannot read either, so no script on the page can lift the token.
+
+**"Mantener la sesión abierta" decides how long they last.** Unchecked, both are session cookies
+that die with the browser and the API issues its short refresh TTL. Checked, `remember_me` goes
+to the API — which is what unlocks its 30-day refresh window — a third cookie `coti_remember`
+records the choice, and all three get a `maxAge` of `AUTH_REMEMBERED_SESSION_DAYS`. The flag has
+to be recorded because middleware renews on the edge with no other way to know, and because
+`change-password` re-issues the pair: without it a remembered session would quietly decay into
+one that dies with the browser. The API remains what decides whether a refresh token is live, so
+an over-long cookie costs nothing but a wasted round trip.
 
 - **`lib/auth/tokens.ts`** — edge-safe primitives: the cookie names and options, the expiry
   read, and the three calls to `/v1/public/auth/{login,refresh}` and `/v1/auth/logout`. It
@@ -57,9 +65,13 @@ The renewed pair is written onto the request as well as the response, so the ren
 request triggers already sees it.
 
 `AUTH_REFRESH_SKEW_SECONDS` (60) is how early a token counts as expiring, so a request cannot
-start with one that dies mid-flight. Several requests arriving inside that window each try to
-refresh; the API's `AUTH_REFRESH_REUSE_GRACE_SECONDS` window is what keeps those from reading
-as token theft.
+start with one that dies mid-flight.
+
+**A prefetch does not get to spend a refresh token.** `Link` prefetches would otherwise land
+several renewals inside the same skew window, and the API reads a replayed refresh token past
+its grace window as theft. Middleware lets a request carrying `next-router-prefetch` through
+unrenewed: it renders nothing anyone is looking at. What survives that is genuine concurrency,
+which the API's `AUTH_REFRESH_REUSE_GRACE_SECONDS` window absorbs.
 
 ## Two gates, because one cannot see everything
 
@@ -102,14 +114,28 @@ response leaves the user with a retry rather than a broken page.
 
 ## Forms
 
-Server actions plus `useActionState`, with zod validating in the action. There is no
-react-hook-form yet: the field-level UX it buys — inline per-field errors, dirty tracking — is
-design-system work, and these screens are placeholders. Errors surface form-level today.
+**react-hook-form + zod, submitting to a server action.** The primitives are shared in
+`@repo/ui` — `Form`, `FormField`, `FormItem`, `FormLabel`, `FormControl`, `FormDescription`,
+`FormMessage`, `FormRootMessage` — because the webapp's public RFQ form needs the same field UX.
 
-React resets a form once its action resolves, so an action that fails hands the submitted email
-back for the field to re-seed itself. Passwords deliberately are not handed back.
+- **A schema is a factory taking the translator**, so a zod message is a catalog key the form
+  resolves rather than Spanish baked into `form-schema.ts`. It defaults to identity, which is
+  what lets the **server action re-validate with the same schema** and ignore the wording. The
+  client's validation is a courtesy; the action never trusts it.
+- **`noValidate` on every form**, which is only honest now that zod validates client-side: the
+  browser's bubbles are suppressed and something real replaces them.
+- **`FormControl` stamps `aria-invalid` and `aria-describedby`** onto the input it wraps, so the
+  invalid styling and the screen-reader wiring are automatic instead of per call site.
+- **The message row animates between `0fr` and `1fr`** and reserves no space when empty, so
+  revealing an error never snaps the layout.
+- **A required marker is `<FormLabel required>`**, never a hand-written asterisk.
+- **A server-side rejection lands inline on its field** via `form.setError`, so it reads like a
+  validation error — a wrong current password marks `currentPassword`. A rejection that belongs
+  to no field goes to `root` and renders in `FormRootMessage`: login answers "invalid
+  credentials" without saying which half was wrong, and the form must not invent a guess.
 
 ## Configuration
 
-`apps/backoffice/.env.example`: `NEXT_PUBLIC_API_URL` and `AUTH_REFRESH_SKEW_SECONDS`.
-`AUTH_JWT_SECRET` is **not** among them, by the reasoning at the top of this file.
+`apps/backoffice/.env.example`: `NEXT_PUBLIC_API_URL`, `AUTH_REFRESH_SKEW_SECONDS` and
+`AUTH_REMEMBERED_SESSION_DAYS`. `AUTH_JWT_SECRET` is **not** among them, by the reasoning at the
+top of this file.
