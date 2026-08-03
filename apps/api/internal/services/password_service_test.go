@@ -27,15 +27,16 @@ const (
 )
 
 type fakePasswordUsers struct {
-	user          *domain.AppUser
-	getByEmailErr error
-	writtenHash   string
-	epochBumped   int
+	user            *domain.AppUser
+	accountIsActive bool
+	getByEmailErr   error
+	writtenHash     string
+	epochBumped     int
 	// hashMovedTo replaces the stored hash after the read, standing in for a concurrent write.
 	hashMovedTo string
 }
 
-func (f *fakePasswordUsers) GetByID(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (*domain.AppUser, error) {
+func (f *fakePasswordUsers) GetAuthSubjectByID(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (*domain.AuthSubject, error) {
 	if f.user == nil {
 		return nil, domain.ErrNotFound
 	}
@@ -43,15 +44,15 @@ func (f *fakePasswordUsers) GetByID(context.Context, repository.Querier, uuid.UU
 	if f.hashMovedTo != "" {
 		f.user.PasswordHash = f.hashMovedTo
 	}
-	return &copied, nil
+	return &domain.AuthSubject{AppUser: copied, AccountIsActive: f.accountIsActive}, nil
 }
 
-func (f *fakePasswordUsers) GetByEmailCrossAccount(context.Context, repository.Querier, string) (*domain.AppUser, error) {
+func (f *fakePasswordUsers) GetAuthSubjectByEmailCrossAccount(context.Context, repository.Querier, string) (*domain.AuthSubject, error) {
 	if f.getByEmailErr != nil {
 		return nil, f.getByEmailErr
 	}
 	copied := *f.user
-	return &copied, nil
+	return &domain.AuthSubject{AppUser: copied, AccountIsActive: f.accountIsActive}, nil
 }
 
 func (f *fakePasswordUsers) UpdatePassword(_ context.Context, _ repository.Querier, _, _ uuid.UUID, hash string) error {
@@ -156,7 +157,7 @@ func newPasswordFixture(t *testing.T, user *domain.AppUser) *passwordFixture {
 	t.Helper()
 	f := &passwordFixture{
 		db:       &fakeDB{},
-		users:    &fakePasswordUsers{user: user},
+		users:    &fakePasswordUsers{user: user, accountIsActive: true},
 		tokens:   &fakeAuthTokens{},
 		sessions: &fakeSessionRevoker{},
 		mail:     &fakeMail{},
@@ -168,7 +169,7 @@ func newPasswordFixture(t *testing.T, user *domain.AppUser) *passwordFixture {
 		slog.New(slog.NewTextHandler(io.Discard, nil)), cfg,
 		config.WebConfig{BackofficeURL: "https://backoffice.example"},
 		func() time.Time { return fixedNow })
-	f.svc.newSecret = func() (string, error) { return testRawResetToken, nil }
+	f.svc.links.newSecret = func() (string, error) { return testRawResetToken, nil }
 	return f
 }
 

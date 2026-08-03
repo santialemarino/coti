@@ -61,26 +61,30 @@ func (f *fakeDB) CrossAccount() repository.Querier { return nil }
 
 type fakeUsers struct {
 	user            *domain.AppUser
+	accountIsActive bool
 	getByEmailErr   error
 	failedAttempts  int
 	successRecorded bool
 	epochBumped     bool
 }
 
-func (f *fakeUsers) GetByID(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (*domain.AppUser, error) {
+func (f *fakeUsers) subject() *domain.AuthSubject {
+	copied := *f.user
+	return &domain.AuthSubject{AppUser: copied, AccountIsActive: f.accountIsActive}
+}
+
+func (f *fakeUsers) GetAuthSubjectByID(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (*domain.AuthSubject, error) {
 	if f.user == nil {
 		return nil, domain.ErrNotFound
 	}
-	copied := *f.user
-	return &copied, nil
+	return f.subject(), nil
 }
 
-func (f *fakeUsers) GetByEmailCrossAccount(context.Context, repository.Querier, string) (*domain.AppUser, error) {
+func (f *fakeUsers) GetAuthSubjectByEmailCrossAccount(context.Context, repository.Querier, string) (*domain.AuthSubject, error) {
 	if f.getByEmailErr != nil {
 		return nil, f.getByEmailErr
 	}
-	copied := *f.user
-	return &copied, nil
+	return f.subject(), nil
 }
 
 func (f *fakeUsers) RegisterFailedAttempt(context.Context, repository.Querier, uuid.UUID, uuid.UUID, int, time.Duration) (int, error) {
@@ -166,7 +170,7 @@ func newHarness(t *testing.T, user *domain.AppUser) *harness {
 	t.Helper()
 	cfg := testAuthConfig()
 	db := &fakeDB{}
-	users := &fakeUsers{user: user}
+	users := &fakeUsers{user: user, accountIsActive: true}
 	branches := &fakeBranches{accessible: true}
 	tokens := &fakeTokens{}
 	now := func() time.Time { return fixedNow }
@@ -653,5 +657,117 @@ func TestResolveTenant_StaleSessionBeatsTheBranchCheck(t *testing.T) {
 	_, err := h.svc.ResolveTenant(context.Background(), claimsFor(2), uuid.New())
 	if !errors.Is(err, domain.ErrUnauthenticated) {
 		t.Errorf("ResolveTenant() = %v, want %v", err, domain.ErrUnauthenticated)
+	}
+}
+
+// account.is_active was decorative before this: the three points that admit a caller all
+// read the user row, which cannot say whether the corralón behind it is still open.
+
+func TestLogin_DeactivatedAccountIsRefusedLikeBadCredentials(t *testing.T) {
+	h := newHarness(t, activeUser(t))
+	h.users.accountIsActive = false
+
+	_, err := h.svc.Login(context.Background(), domain.Credentials{
+		Email: "vendedor@corralon.test", Password: testPassword,
+	})
+	if !errors.Is(err, domain.ErrUnauthenticated) {
+		t.Fatalf("Login() with a deactivated account = %v, want %v: the answer must not "+
+			"differ from a wrong password", err, domain.ErrUnauthenticated)
+	}
+}
+
+// The AC that matters most: a token already in someone's hands has to stop working, not
+// merely stop being issued.
+func TestResolveTenant_DeactivatedAccountInvalidatesALiveToken(t *testing.T) {
+	user := activeUser(t)
+	h := newHarness(t, user)
+	claims := domain.AccessClaims{
+		UserID: user.ID, AccountID: user.AccountID, Role: user.Role, SessionEpoch: user.SessionEpoch,
+	}
+
+	if _, err := h.svc.ResolveTenant(context.Background(), claims, uuid.Nil); err != nil {
+		t.Fatalf("ResolveTenant() with a live account = %v, want no error", err)
+	}
+
+	h.users.accountIsActive = false
+	_, err := h.svc.ResolveTenant(context.Background(), claims, uuid.Nil)
+	if !errors.Is(err, domain.ErrUnauthenticated) {
+		t.Fatalf("ResolveTenant() after the account was deactivated = %v, want %v: the token "+
+			"the user already holds has to stop resolving", err, domain.ErrUnauthenticated)
+	}
+
+	// Reactivating gives the access back with no other step, which is the last AC.
+	h.users.accountIsActive = true
+	if _, err := h.svc.ResolveTenant(context.Background(), claims, uuid.Nil); err != nil {
+		t.Fatalf("ResolveTenant() after reactivation = %v, want no error", err)
+	}
+}
+
+func TestRefresh_DeactivatedAccountIsRefused(t *testing.T) {
+	user := activeUser(t)
+	h := newHarness(t, user)
+	h.tokens.stored = &domain.RefreshToken{
+		ID: uuid.New(), AccountID: user.AccountID, UserID: user.ID, FamilyID: uuid.New(),
+		TokenHash: hashToken("raw"), ExpiresAt: fixedNow.Add(time.Hour), CreatedAt: fixedNow,
+	}
+	h.users.accountIsActive = false
+
+	_, err := h.svc.Refresh(context.Background(), "raw")
+	if !errors.Is(err, domain.ErrUnauthenticated) {
+		t.Fatalf("Refresh() with a deactivated account = %v, want %v", err, domain.ErrUnauthenticated)
+	}
+}
+
+// Enforcement starts off, so an unverified user has to operate normally until it is on.
+func TestLogin_UnverifiedEmailOnlyBlocksWhenRequired(t *testing.T) {
+	t.Run("requirement off", func(t *testing.T) {
+		h := newHarness(t, activeUser(t))
+		if _, err := h.svc.Login(context.Background(), domain.Credentials{
+			Email: "vendedor@corralon.test", Password: testPassword,
+		}); err != nil {
+			t.Fatalf("Login() unverified with the requirement off = %v, want no error", err)
+		}
+	})
+
+	t.Run("requirement on", func(t *testing.T) {
+		h := newHarness(t, activeUser(t))
+		h.svc.cfg.RequireVerifiedEmail = true
+
+		_, err := h.svc.Login(context.Background(), domain.Credentials{
+			Email: "vendedor@corralon.test", Password: testPassword,
+		})
+		if !errors.Is(err, domain.ErrEmailNotVerified) {
+			t.Fatalf("Login() unverified with the requirement on = %v, want %v",
+				err, domain.ErrEmailNotVerified)
+		}
+	})
+
+	t.Run("requirement on, address verified", func(t *testing.T) {
+		user := activeUser(t)
+		verifiedAt := fixedNow.Add(-time.Hour)
+		user.EmailVerifiedAt = &verifiedAt
+		h := newHarness(t, user)
+		h.svc.cfg.RequireVerifiedEmail = true
+
+		if _, err := h.svc.Login(context.Background(), domain.Credentials{
+			Email: "vendedor@corralon.test", Password: testPassword,
+		}); err != nil {
+			t.Fatalf("Login() verified with the requirement on = %v, want no error", err)
+		}
+	})
+}
+
+// A wrong password must still answer the same with the requirement on, or the distinct
+// message becomes an oracle for which addresses are registered.
+func TestLogin_UnverifiedEmailNeverLeaksBeforeThePasswordMatches(t *testing.T) {
+	h := newHarness(t, activeUser(t))
+	h.svc.cfg.RequireVerifiedEmail = true
+
+	_, err := h.svc.Login(context.Background(), domain.Credentials{
+		Email: "vendedor@corralon.test", Password: "not-the-password",
+	})
+	if !errors.Is(err, domain.ErrUnauthenticated) {
+		t.Fatalf("Login() with a wrong password = %v, want %v: the verification state must "+
+			"not be reachable without the password", err, domain.ErrUnauthenticated)
 	}
 }

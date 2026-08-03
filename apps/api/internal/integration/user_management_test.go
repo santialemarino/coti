@@ -25,6 +25,7 @@ import (
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
+	"github.com/santialemarino/coti/apps/api/internal/ratelimit"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 	"github.com/santialemarino/coti/apps/api/internal/services"
 )
@@ -65,7 +66,10 @@ func (m *captureMailer) last() (domain.EmailMessage, bool) {
 	return m.sent[len(m.sent)-1], true
 }
 
-func newEnv(t *testing.T) *env {
+// newEnv builds the real router over a real database. The variadic mutators let a test that
+// needs a different configuration — an allowance that bites, a requirement switched on — build
+// one without a second constructor.
+func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
@@ -85,10 +89,18 @@ func newEnv(t *testing.T) *env {
 			LockoutDuration:   15 * time.Minute,
 			PasswordMinLength: 8,
 			PasswordResetTTL:  time.Hour,
+			VerificationTTL:   48 * time.Hour,
 		},
 		Catalog: config.CatalogConfig{DefaultPageSize: 50, MaxPageSize: 200},
 		Branch:  config.BranchConfig{DefaultExpiryDays: 7},
 		Web:     config.WebConfig{BackofficeURL: "https://backoffice.test"},
+		// Off for the suite at large, so an unrelated test cannot trip an allowance. The two
+		// that exercise it build their own env.
+		RateLimit: config.RateLimitConfig{Enabled: false},
+	}
+
+	for _, apply := range mutate {
+		apply(cfg)
 	}
 
 	db, err := repository.NewDB(context.Background(), config.DatabaseConfig{
@@ -113,9 +125,12 @@ func newEnv(t *testing.T) *env {
 	mailer := &captureMailer{}
 	mailService := services.NewMailService(db, mailer, repository.NewNotificationRepository(),
 		accountRepo, nil)
-	passwordService := services.NewPasswordService(db, userRepo, repository.NewAuthTokenRepository(),
-		refreshTokenRepo, mailService, authService, slog.New(slog.NewTextHandler(io.Discard, nil)),
-		cfg.Auth, cfg.Web, nil)
+	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+	authTokenRepo := repository.NewAuthTokenRepository()
+	passwordService := services.NewPasswordService(db, userRepo, authTokenRepo,
+		refreshTokenRepo, mailService, authService, quiet, cfg.Auth, cfg.Web, nil)
+	verificationService := services.NewVerificationService(db, userRepo, authTokenRepo,
+		mailService, quiet, cfg.Auth, cfg.Web, nil)
 	productRepo := repository.NewProductRepository()
 	productService := services.NewProductService(db, productRepo,
 		repository.NewProductSynonymRepository(), repository.NewProductAlternativeRepository(), cfg.Catalog)
@@ -127,14 +142,17 @@ func newEnv(t *testing.T) *env {
 			Health:        handler.NewHealthHandler(db),
 			Auth:          handler.NewAuthHandler(authService),
 			Password:      handler.NewPasswordHandler(passwordService),
+			Verification:  handler.NewVerificationHandler(verificationService),
 			User:          handler.NewUserHandler(userService),
 			Branch:        handler.NewBranchHandler(services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)),
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
-				branchRepo, channelRepo, userRepo, authService, cfg.Auth, cfg.Branch)),
+				branchRepo, channelRepo, userRepo, authService, verificationService, quiet,
+				cfg.Auth, cfg.Branch)),
 		},
-		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService})
+		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
+		deliveryhttp.RateLimit{Limiter: ratelimit.NewMemory(nil)})
 
 	return &env{router: router, db: db, tokens: tokenService, mail: mailer}
 }
