@@ -11,6 +11,9 @@ description: Where tests live, how to run them, and what to test in the Coti rep
   `apps/api/internal/...` — Go convention. Each `<file>.go` may have a sibling
   `<file>_test.go`. Integration tests are gated behind a `//go:build integration`
   tag; cross-package end-to-end tests live under `apps/api/internal/integration/`.
+- **Script tests (`scripts/`):** Node's built-in runner (`node:test` + `node:assert`),
+  co-located as `<name>.test.mjs`. No dependency to install. See
+  [Operational scripts](#operational-scripts).
 - **Web tests (backoffice / webapp):** **NOT YET SET UP.** No runner is installed
   and `pnpm test:web` currently just echoes a placeholder. See
   [Web testing](#web-testing-not-yet-set-up) for the intended convention — do not
@@ -39,7 +42,8 @@ TEST_DATABASE_ADMIN_URL=postgres://coti:coti@localhost:5432/coti?sslmode=disable
 
 # From repo root
 pnpm test:api                                   # go test ./... in apps/api
-pnpm test                                       # test:api + test:web
+pnpm test:scripts                               # node --test over scripts/
+pnpm test                                       # test:scripts + test:api + test:web
 ```
 
 Before pushing, run `pnpm check` (api: `go build` + `go vet`; web: `check-types`)
@@ -162,6 +166,37 @@ apps/api/
   provider interface — never a live model call.
 - **Time-sensitive logic** (quote expiry, `válida hasta`, timestamps): inject a
   clock (`func() time.Time`) so tests don't depend on `time.Now()`.
+
+## Operational scripts
+
+`scripts/` runs against the database as the **owner role**, so it is the surface with the
+most privilege and it gets tests like any other. Conventions:
+
+- **Split the logic out of the executable.** The command file reads argv, prints, and picks
+  an exit code; everything else lives in `scripts/lib/<name>.mjs`, which imports cleanly with
+  no side effects. A module that calls `process.exit` or prints cannot be tested, so it
+  raises instead and the command decides what that means.
+- **Node's own runner**, `node --test` over `<name>.test.mjs` files co-located with the code.
+  No runner dependency — do not add Vitest or Jest here; Vitest is reserved for the web apps.
+- **Pure tests always run**; database-backed tests **skip themselves** when
+  `TEST_DATABASE_ADMIN_URL` is absent, the way the Go integration suite skips without its two
+  URLs. Use `describe('...', { skip: URL ? false : 'reason' }, ...)` so the skip prints its
+  reason instead of vanishing.
+- **Exercise the real command as a subprocess** (`spawnSync(process.execPath, [script, ...])`)
+  and assert on **what changed in the database and the exit code**, not only on stdout.
+  Testing the extracted function alone leaves the argv wiring and the exit codes uncovered,
+  which is where a command-line typo lands first.
+- **Create and remove your own fixture rows.** A script test runs against whatever database it
+  is pointed at, so leaving rows behind dirties a dev database.
+
+```bash
+pnpm test:scripts    # from repo root; DB-backed tests skip without TEST_DATABASE_ADMIN_URL
+TEST_DATABASE_ADMIN_URL=postgres://coti:coti@localhost:5433/coti?sslmode=disable pnpm test:scripts
+```
+
+`.github/workflows/ci.scripts.yml` watches `scripts/**`, `package.json` and `pnpm-lock.yaml`.
+It exists because every other workflow is path-filtered to an app directory: without it a
+change touching only these paths reaches `dev` with no check having run at all.
 
 ## Web testing (NOT YET SET UP)
 
