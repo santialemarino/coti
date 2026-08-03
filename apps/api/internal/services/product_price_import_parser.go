@@ -69,18 +69,34 @@ type xlsxRelationships struct {
 }
 
 func parsePriceImport(filename string, src io.Reader) ([]priceImportRawRow, error) {
+	records, err := readImportRecords(filename, src)
+	if err != nil {
+		return nil, err
+	}
+	return mapPriceImportRows(records)
+}
+
+func readImportRecords(filename string, src io.Reader) ([][]string, error) {
 	ext := strings.ToLower(filepath.Ext(filename))
 	switch ext {
 	case ".csv":
-		return parsePriceImportCSV(src)
+		return readImportCSVRecords(src)
 	case ".xlsx":
-		return parsePriceImportXLSX(src)
+		return readImportXLSXRecords(src)
 	default:
 		return nil, fmt.Errorf("unsupported file type %q", ext)
 	}
 }
 
 func parsePriceImportCSV(src io.Reader) ([]priceImportRawRow, error) {
+	records, err := readImportCSVRecords(src)
+	if err != nil {
+		return nil, err
+	}
+	return mapPriceImportRows(records)
+}
+
+func readImportCSVRecords(src io.Reader) ([][]string, error) {
 	content, err := io.ReadAll(src)
 	if err != nil {
 		return nil, err
@@ -96,10 +112,18 @@ func parsePriceImportCSV(src io.Reader) ([]priceImportRawRow, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read csv: %w", err)
 	}
-	return mapPriceImportRows(records)
+	return records, nil
 }
 
 func parsePriceImportXLSX(src io.Reader) ([]priceImportRawRow, error) {
+	records, err := readImportXLSXRecords(src)
+	if err != nil {
+		return nil, err
+	}
+	return mapPriceImportRows(records)
+}
+
+func readImportXLSXRecords(src io.Reader) ([][]string, error) {
 	content, err := io.ReadAll(src)
 	if err != nil {
 		return nil, err
@@ -157,7 +181,7 @@ func parsePriceImportXLSX(src io.Reader) ([]priceImportRawRow, error) {
 		}
 		rows = append(rows, values)
 	}
-	return mapPriceImportRows(rows)
+	return rows, nil
 }
 
 func firstXLSXWorksheet(files map[string]*zip.File) (*zip.File, error) {

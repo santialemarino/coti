@@ -122,6 +122,69 @@ definitions:
       updated_at:
         type: string
     type: object
+  dto.CatalogImportInput:
+    properties:
+      category:
+        type: string
+      code:
+        type: string
+      conditions:
+        type: string
+      currency:
+        type: string
+      description:
+        type: string
+      min_price:
+        type: string
+      name:
+        type: string
+      price:
+        type: string
+      unit:
+        type: string
+    type: object
+  dto.CatalogImportPreviewResponse:
+    properties:
+      can_confirm:
+        type: boolean
+      invalid_rows:
+        type: integer
+      previewed_at:
+        type: string
+      rows:
+        items:
+          $ref: '#/definitions/dto.CatalogImportRowResponse'
+        type: array
+      valid_rows:
+        type: integer
+    type: object
+  dto.CatalogImportRowResponse:
+    properties:
+      category:
+        type: string
+      code:
+        type: string
+      conditions:
+        type: string
+      currency:
+        type: string
+      description:
+        type: string
+      errors:
+        items:
+          type: string
+        type: array
+      min_price:
+        type: string
+      name:
+        type: string
+      price:
+        type: string
+      row_number:
+        type: integer
+      unit:
+        type: string
+    type: object
   dto.ChangePasswordRequest:
     properties:
       current_password:
@@ -134,6 +197,23 @@ definitions:
     required:
     - current_password
     - new_password
+    type: object
+  dto.ConfirmCatalogImportRequest:
+    properties:
+      rows:
+        items:
+          $ref: '#/definitions/dto.CatalogImportInput'
+        minItems: 1
+        type: array
+    required:
+    - rows
+    type: object
+  dto.ConfirmCatalogImportResponse:
+    properties:
+      imported_rows:
+        type: integer
+      skipped_rows:
+        type: integer
     type: object
   dto.ConfirmEmailRequest:
     properties:
@@ -1760,6 +1840,139 @@ paths:
       security:
       - BearerAuth: []
       summary: Remove a product synonym
+      tags:
+      - catalog
+  /v1/products/export:
+    get:
+      description: Returns a Spanish XLSX with the catalog columns and a second sheet
+        of instructions.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Download the initial catalog template
+      tags:
+      - catalog
+  /v1/products/import/confirm:
+    post:
+      consumes:
+      - application/json
+      description: Revalidates all rows, skips invalid ones, and creates valid products,
+        availability, and prices atomically.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Reviewed rows
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ConfirmCatalogImportRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ConfirmCatalogImportResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Confirm an initial catalog import
+      tags:
+      - catalog
+  /v1/products/import/preview:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Parses the spreadsheet and reports every valid and invalid row
+        without writing data.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Catalog spreadsheet to preview (.xlsx or .csv)
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CatalogImportPreviewResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Preview an initial catalog import
       tags:
       - catalog
   /v1/public/accounts:

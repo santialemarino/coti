@@ -167,14 +167,33 @@ The service rejects what the column cannot store exactly:
 the page, and comes from a `count(*) OVER ()` in the same query: one round trip, and the
 total cannot contradict the page it describes.
 
+## Initial catalog import
+
+Administrators can load an initial catalog through a reviewed, branch-scoped spreadsheet
+flow:
+
+1. `GET /v1/products/export` downloads a Spanish XLSX with a `Catálogo` sheet and
+   a second `Instrucciones` sheet.
+2. `POST /v1/products/import/preview` accepts `.xlsx` or `.csv`, validates every row, and
+   writes nothing. The required columns are `codigo`, `descripcion`, `unidad`, and `precio`.
+3. `POST /v1/products/import/confirm` revalidates the reviewed rows and atomically creates
+   each valid account-level product, its active availability at the selected branch, and
+   its first branch price. Invalid or already-existing codes are reported and skipped.
+
+`nombre`, `categoria`, `precio_minimo`, `moneda`, and `condiciones` are optional. When
+`nombre` is empty, `descripcion` becomes the canonical product name. Prices remain decimal
+strings throughout the HTTP contract. Every route requires an administrator and an active
+`X-Branch-Id`; the account always comes from the authenticated tenant.
+
 ## Configuration
 
 | Variable                    | Default | What for                                      |
 | --------------------------- | ------- | --------------------------------------------- |
 | `CATALOG_DEFAULT_PAGE_SIZE` | 50      | Page size when `limit` is omitted             |
 | `CATALOG_MAX_PAGE_SIZE`     | 200     | Cap on `limit`, so nobody asks for everything |
+| `CATALOG_IMPORT_MAX_BYTES`  | 5242880 | Maximum catalog spreadsheet upload size       |
 
 ## API specification
 
-All fifteen handlers are annotated and appear in the generated spec. How it is generated,
+All catalog handlers are annotated and appear in the generated spec. How it is generated,
 served and verified: [api-specification.md](api-specification.md).

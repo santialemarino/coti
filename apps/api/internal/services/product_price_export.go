@@ -34,7 +34,7 @@ func buildProductPriceXLSX(export domain.ProductPriceExport) ([]byte, error) {
 	}{
 		{"[Content_Types].xml", xlsxContentTypes},
 		{"_rels/.rels", xlsxRootRelationships},
-		{"xl/workbook.xml", xlsxWorkbookContent},
+		{"xl/workbook.xml", buildXLSXWorkbook("Precios")},
 		{"xl/_rels/workbook.xml.rels", xlsxWorkbookRelationships},
 		{"xl/styles.xml", xlsxStyles},
 		{"xl/worksheets/sheet1.xml", buildPriceExportSheet(export)},
@@ -159,10 +159,12 @@ const xlsxRootRelationships = `<?xml version="1.0" encoding="UTF-8" standalone="
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
 </Relationships>`
 
-const xlsxWorkbookContent = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+func buildXLSXWorkbook(firstSheetName string) string {
+	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <sheets><sheet name="Precios" sheetId="1" r:id="rId1"/><sheet name="Instrucciones" sheetId="2" r:id="rId2"/></sheets>
+  <sheets><sheet name="` + firstSheetName + `" sheetId="1" r:id="rId1"/><sheet name="Instrucciones" sheetId="2" r:id="rId2"/></sheets>
 </workbook>`
+}
 
 const xlsxWorkbookRelationships = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
