@@ -73,30 +73,36 @@ func (s *MailService) Send(ctx context.Context, out OutboundMail) error {
 		return err
 	}
 
-	msg, err := renderEmail(*account, out)
-	if err != nil {
-		return err
-	}
-
-	// Outside the transaction: the transport is off-process and can take as long as it likes.
-	sendErr := s.mailer.Send(ctx, msg)
-
 	record := domain.Notification{
 		AccountID: out.AccountID,
 		UserID:    out.UserID,
 		Event:     out.Event,
 		Medium:    domain.NotificationMediumEmail,
-		Status:    domain.NotificationStatusSent,
+		Status:    domain.NotificationStatusFailed,
 	}
-	if sendErr != nil {
-		record.Status = domain.NotificationStatusFailed
-	} else {
+
+	msg, err := renderEmail(*account, out)
+	if err != nil {
+		// A message that cannot be rendered never reaches the transport, but the attempt
+		// still happened and has to show up in the log the operator reads.
+		return errors.Join(err, s.record(ctx, tenant, record))
+	}
+
+	// Outside the transaction: the transport is off-process and can take as long as it likes.
+	sendErr := s.mailer.Send(ctx, msg)
+	if sendErr == nil {
 		sentAt := s.now()
+		record.Status = domain.NotificationStatusSent
 		record.SentAt = &sentAt
 	}
 	// Joined: a failed record must not make a failed send look fine, nor the reverse.
-	recordErr := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		return s.notifications.Create(ctx, q, record)
+	return errors.Join(sendErr, s.record(ctx, tenant, record))
+}
+
+func (s *MailService) record(
+	ctx context.Context, tenant domain.Tenant, n domain.Notification,
+) error {
+	return s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		return s.notifications.Create(ctx, q, n)
 	})
-	return errors.Join(sendErr, recordErr)
 }

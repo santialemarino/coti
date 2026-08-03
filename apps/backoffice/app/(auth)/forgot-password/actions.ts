@@ -1,13 +1,15 @@
 'use server';
 
-import { forgotPasswordSchema } from '@/app/(auth)/forgot-password/form-schema';
+import {
+  forgotPasswordSchema,
+  type ForgotPasswordValues,
+} from '@/app/(auth)/forgot-password/form-schema';
 import { apiRequest, errorCodeOf } from '@/lib/api/client';
 
-export interface ForgotPasswordState {
+export interface ForgotPasswordResult {
   sent?: boolean;
-  error?: 'invalidEmail' | 'unexpected';
-  // React resets a form once its action resolves; the field re-seeds itself from here.
-  email?: string;
+  error?: 'unexpected';
+  fieldError?: { field: 'email'; key: 'invalid' };
 }
 
 /*
@@ -16,12 +18,10 @@ export interface ForgotPasswordState {
  * the enumeration the 202 was designed to withhold.
  */
 export async function requestPasswordRecovery(
-  _previous: ForgotPasswordState,
-  formData: FormData,
-): Promise<ForgotPasswordState> {
-  const email = String(formData.get('email') ?? '');
-  const parsed = forgotPasswordSchema.safeParse({ email });
-  if (!parsed.success) return { error: 'invalidEmail', email };
+  values: ForgotPasswordValues,
+): Promise<ForgotPasswordResult> {
+  const parsed = forgotPasswordSchema().safeParse(values);
+  if (!parsed.success) return { fieldError: { field: 'email', key: 'invalid' } };
 
   try {
     await apiRequest({
@@ -32,6 +32,9 @@ export async function requestPasswordRecovery(
     });
     return { sent: true };
   } catch (error) {
-    return { error: errorCodeOf(error) === 'badRequest' ? 'invalidEmail' : 'unexpected', email };
+    if (errorCodeOf(error) === 'badRequest') {
+      return { fieldError: { field: 'email', key: 'invalid' } };
+    }
+    return { error: 'unexpected' };
   }
 }

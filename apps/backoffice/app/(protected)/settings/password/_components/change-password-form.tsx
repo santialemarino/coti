@@ -1,76 +1,138 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useMemo, useState } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
+import { useForm } from 'react-hook-form';
 
-import { Button, FieldError, Input, Label } from '@repo/ui/components';
 import {
-  changePassword,
-  type ChangePasswordState,
-} from '@/app/(protected)/settings/password/actions';
+  Button,
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+  FormRootMessage,
+  Input,
+} from '@repo/ui/components';
+import { changePassword } from '@/app/(protected)/settings/password/actions';
+import {
+  changePasswordSchema,
+  type ChangePasswordValues,
+} from '@/app/(protected)/settings/password/form-schema';
 import { PASSWORD_MIN_LENGTH } from '@/lib/constants/auth';
 
-const INITIAL_STATE: ChangePasswordState = {};
+const EMPTY_VALUES: ChangePasswordValues = {
+  currentPassword: '',
+  newPassword: '',
+  confirmPassword: '',
+};
 
 export function ChangePasswordForm() {
   const t = useTranslations('auth.changePassword');
-  const [state, formAction, pending] = useActionState(changePassword, INITIAL_STATE);
+  const schema = useMemo(() => changePasswordSchema(t), [t]);
+  const [done, setDone] = useState(false);
+  const form = useForm<ChangePasswordValues>({
+    resolver: zodResolver(schema),
+    defaultValues: EMPTY_VALUES,
+  });
+
+  async function onSubmit(values: ChangePasswordValues) {
+    setDone(false);
+    const result = await changePassword(values);
+    if (result.done) {
+      setDone(true);
+      // Nothing is left to resubmit, and a password should not sit in the DOM.
+      form.reset(EMPTY_VALUES);
+      return;
+    }
+    if (result.fieldError) {
+      const message =
+        result.fieldError.key === 'wrong'
+          ? t('errors.wrongCurrentPassword')
+          : t('newPassword.tooShort');
+      form.setError(result.fieldError.field, { message });
+      return;
+    }
+    form.setError('root', { message: t(`errors.${result.error ?? 'unexpected'}`) });
+  }
 
   return (
-    <form action={formAction} noValidate className="flex flex-col max-w-sm gap-y-4">
-      <div className="flex flex-col gap-y-2">
-        <Label htmlFor="currentPassword" required>
-          {t('currentPassword.label')}
-        </Label>
-        <Input
-          id="currentPassword"
+    <Form {...form}>
+      <form
+        onSubmit={form.handleSubmit(onSubmit)}
+        noValidate
+        className="flex flex-col max-w-sm gap-y-4"
+      >
+        <FormField
+          control={form.control}
           name="currentPassword"
-          type="password"
-          autoComplete="current-password"
-          placeholder={t('currentPassword.placeholder')}
-          required
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel required>{t('currentPassword.label')}</FormLabel>
+              <FormControl>
+                <Input
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder={t('currentPassword.placeholder')}
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-      </div>
 
-      <div className="flex flex-col gap-y-2">
-        <Label htmlFor="newPassword" required>
-          {t('newPassword.label')}
-        </Label>
-        <Input
-          id="newPassword"
+        <FormField
+          control={form.control}
           name="newPassword"
-          type="password"
-          autoComplete="new-password"
-          minLength={PASSWORD_MIN_LENGTH}
-          placeholder={t('newPassword.placeholder')}
-          required
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel required>{t('newPassword.label')}</FormLabel>
+              <FormControl>
+                <Input
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={PASSWORD_MIN_LENGTH}
+                  placeholder={t('newPassword.placeholder')}
+                  {...field}
+                />
+              </FormControl>
+              <FormDescription>{t('minLength', { count: PASSWORD_MIN_LENGTH })}</FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-        <p className="text-sm text-muted-foreground">
-          {t('minLength', { count: PASSWORD_MIN_LENGTH })}
-        </p>
-      </div>
 
-      <div className="flex flex-col gap-y-2">
-        <Label htmlFor="confirmPassword" required>
-          {t('confirmPassword.label')}
-        </Label>
-        <Input
-          id="confirmPassword"
+        <FormField
+          control={form.control}
           name="confirmPassword"
-          type="password"
-          autoComplete="new-password"
-          minLength={PASSWORD_MIN_LENGTH}
-          placeholder={t('confirmPassword.placeholder')}
-          required
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel required>{t('confirmPassword.label')}</FormLabel>
+              <FormControl>
+                <Input
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={PASSWORD_MIN_LENGTH}
+                  placeholder={t('confirmPassword.placeholder')}
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-      </div>
 
-      <FieldError>{state.error ? t(`errors.${state.error}`) : null}</FieldError>
-      {state.done ? <p className="text-sm text-muted-foreground">{t('done')}</p> : null}
+        <FormRootMessage />
+        {done ? <p className="text-sm text-muted-foreground">{t('done')}</p> : null}
 
-      <Button type="submit" disabled={pending}>
-        {pending ? t('submitting') : t('submit')}
-      </Button>
-    </form>
+        <Button type="submit" disabled={form.formState.isSubmitting}>
+          {form.formState.isSubmitting ? t('submitting') : t('submit')}
+        </Button>
+      </form>
+    </Form>
   );
 }

@@ -66,12 +66,15 @@
       "title": "Iniciar sesión",
       "email": {
         "label": "Correo electrónico",
-        "placeholder": "tu@correo.com"
+        "placeholder": "tu@correo.com",
+        "invalid": "Ingresá una dirección de correo válida."
       },
       "password": {
         "label": "Contraseña",
-        "placeholder": "Ingresá tu contraseña"
+        "placeholder": "Ingresá tu contraseña",
+        "tooShort": "La contraseña es demasiado corta."
       },
+      "rememberMe": "Mantener la sesión abierta",
       "submit": "Ingresar",
       "submitting": "Ingresando…",
       "forgotPassword": "¿Olvidaste tu contraseña?",
@@ -87,7 +90,8 @@
       "description": "Te mandamos un enlace para que elijas una contraseña nueva.",
       "email": {
         "label": "Correo electrónico",
-        "placeholder": "tu@correo.com"
+        "placeholder": "tu@correo.com",
+        "invalid": "Ingresá una dirección de correo válida."
       },
       "submit": "Enviar enlace",
       "submitting": "Enviando…",
@@ -102,11 +106,13 @@
       "title": "Restablecer contraseña",
       "newPassword": {
         "label": "Contraseña nueva",
-        "placeholder": "Ingresá la contraseña nueva"
+        "placeholder": "Ingresá la contraseña nueva",
+        "tooShort": "Mínimo 8 caracteres."
       },
       "confirmPassword": {
         "label": "Repetir contraseña",
-        "placeholder": "Repetí la contraseña nueva"
+        "placeholder": "Repetí la contraseña nueva",
+        "mismatch": "Las contraseñas no coinciden."
       },
       "minLength": "Mínimo {count} caracteres.",
       "submit": "Cambiar contraseña",
@@ -126,15 +132,18 @@
       "description": "Para cambiarla necesitás ingresar la contraseña actual. Al cambiarla se cierran las demás sesiones abiertas.",
       "currentPassword": {
         "label": "Contraseña actual",
-        "placeholder": "Ingresá tu contraseña actual"
+        "placeholder": "Ingresá tu contraseña actual",
+        "required": "Ingresá tu contraseña actual."
       },
       "newPassword": {
         "label": "Contraseña nueva",
-        "placeholder": "Ingresá la contraseña nueva"
+        "placeholder": "Ingresá la contraseña nueva",
+        "tooShort": "Mínimo 8 caracteres."
       },
       "confirmPassword": {
         "label": "Repetir contraseña",
-        "placeholder": "Repetí la contraseña nueva"
+        "placeholder": "Repetí la contraseña nueva",
+        "mismatch": "Las contraseñas no coinciden."
       },
       "minLength": "Mínimo {count} caracteres.",
       "submit": "Cambiar contraseña",

@@ -1,28 +1,20 @@
 'use server';
 
-import { resetPasswordSchema } from '@/app/(auth)/reset-password/form-schema';
+import {
+  resetPasswordSchema,
+  type ResetPasswordValues,
+} from '@/app/(auth)/reset-password/form-schema';
 import { apiRequest, errorCodeOf } from '@/lib/api/client';
 
-export type ResetPasswordErrorKey = 'mismatch' | 'tooShort' | 'invalidLink' | 'unexpected';
-
-export interface ResetPasswordState {
+export interface ResetPasswordResult {
   done?: boolean;
-  error?: ResetPasswordErrorKey;
+  error?: 'invalidLink' | 'unexpected';
+  fieldError?: { field: 'newPassword'; key: 'tooShort' };
 }
 
-export async function resetPassword(
-  _previous: ResetPasswordState,
-  formData: FormData,
-): Promise<ResetPasswordState> {
-  const values = {
-    token: String(formData.get('token') ?? ''),
-    newPassword: String(formData.get('newPassword') ?? ''),
-    confirmPassword: String(formData.get('confirmPassword') ?? ''),
-  };
-  const parsed = resetPasswordSchema.safeParse(values);
-  if (!parsed.success) {
-    return { error: values.newPassword === values.confirmPassword ? 'tooShort' : 'mismatch' };
-  }
+export async function resetPassword(values: ResetPasswordValues): Promise<ResetPasswordResult> {
+  const parsed = resetPasswordSchema().safeParse(values);
+  if (!parsed.success) return { fieldError: { field: 'newPassword', key: 'tooShort' } };
 
   try {
     await apiRequest({
@@ -37,7 +29,7 @@ export async function resetPassword(
     // The API answers 401 for a link that is unknown, expired or already used, and
     // the screen keeps them together for the same reason it does.
     if (code === 'unauthenticated') return { error: 'invalidLink' };
-    if (code === 'unprocessable') return { error: 'tooShort' };
+    if (code === 'unprocessable') return { fieldError: { field: 'newPassword', key: 'tooShort' } };
     return { error: 'unexpected' };
   }
 }
