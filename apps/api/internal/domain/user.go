@@ -33,6 +33,19 @@ func (u AppUser) IsLocked(now time.Time) bool {
 	return u.LockedUntil != nil && u.LockedUntil.After(now)
 }
 
+// AuthSubject is a user together with the state of the account that owns them, which is what
+// an authentication decision needs: the user row alone cannot say the corralón is closed.
+type AuthSubject struct {
+	AppUser
+	AccountIsActive bool
+}
+
+// IsUsable reports whether both the user and their account are active. Every point that
+// admits a caller asks this rather than AppUser.IsActive.
+func (s AuthSubject) IsUsable() bool {
+	return s.IsActive && s.AccountIsActive
+}
+
 // UserWithBranches is a user plus the branches they may operate on, which is the shape the
 // admin screens read and write.
 type UserWithBranches struct {

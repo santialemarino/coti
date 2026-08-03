@@ -16,6 +16,12 @@ const userColumns = `id, account_id, name, email, password_hash, role, is_active
 	session_epoch, last_login_at, failed_attempts, locked_until, created_at, updated_at,
 	email_verified_at`
 
+// authSubjectColumns is the same list qualified for the join, plus the one column the
+// user row cannot carry: whether the account that owns them is still live.
+const authSubjectColumns = `u.id, u.account_id, u.name, u.email, u.password_hash, u.role,
+	u.is_active, u.session_epoch, u.last_login_at, u.failed_attempts, u.locked_until,
+	u.created_at, u.updated_at, u.email_verified_at, a.is_active`
+
 // An email identifies exactly one user. Two constraints back that: the per-account one, and
 // the global functional index login depends on to resolve an address to a single row. Either
 // firing means the address is taken, so both map to the same conflict.
@@ -67,12 +73,28 @@ func (r *UserRepository) GetByID(ctx context.Context, q Querier, accountID, id u
 		accountID, id))
 }
 
-// GetByEmailCrossAccount looks a user up by email across every account. It must run on the
-// owner pool: at login the account is not known yet, so a tenant-scoped query would read
+// GetAuthSubjectByID loads a user and their account's state together, which is what the
+// per-request session check needs.
+func (r *UserRepository) GetAuthSubjectByID(
+	ctx context.Context, q Querier, accountID, id uuid.UUID,
+) (*domain.AuthSubject, error) {
+	return scanAuthSubject(q.QueryRow(ctx,
+		`SELECT `+authSubjectColumns+`
+		 FROM app_user u JOIN account a ON a.id = u.account_id
+		 WHERE u.account_id = $1 AND u.id = $2`,
+		accountID, id))
+}
+
+// GetAuthSubjectByEmailCrossAccount resolves a login across every account. It must run on
+// the owner pool: at login the account is not known yet, so a tenant-scoped query would read
 // zero rows. uq_app_user_email_global is what makes the answer a single row.
-func (r *UserRepository) GetByEmailCrossAccount(ctx context.Context, q Querier, email string) (*domain.AppUser, error) {
-	return scanUser(q.QueryRow(ctx,
-		`SELECT `+userColumns+` FROM app_user WHERE lower(email) = lower($1) LIMIT 1`,
+func (r *UserRepository) GetAuthSubjectByEmailCrossAccount(
+	ctx context.Context, q Querier, email string,
+) (*domain.AuthSubject, error) {
+	return scanAuthSubject(q.QueryRow(ctx,
+		`SELECT `+authSubjectColumns+`
+		 FROM app_user u JOIN account a ON a.id = u.account_id
+		 WHERE lower(u.email) = lower($1) LIMIT 1`,
 		email))
 }
 
@@ -216,6 +238,30 @@ func (r *UserRepository) BumpSessionEpoch(ctx context.Context, q Querier, accoun
 		return 0, domain.ErrNotFound
 	}
 	return epoch, err
+}
+
+// MarkEmailVerified stamps the confirmation. Matching no row means the address was verified
+// between the caller's read and this write, which is the outcome it wanted either way.
+func (r *UserRepository) MarkEmailVerified(ctx context.Context, q Querier, accountID, id uuid.UUID) error {
+	_, err := q.Exec(ctx,
+		`UPDATE app_user SET email_verified_at = now()
+		 WHERE account_id = $1 AND id = $2 AND email_verified_at IS NULL`,
+		accountID, id)
+	return err
+}
+
+func scanAuthSubject(row pgx.Row) (*domain.AuthSubject, error) {
+	var s domain.AuthSubject
+	err := row.Scan(&s.ID, &s.AccountID, &s.Name, &s.Email, &s.PasswordHash, &s.Role,
+		&s.IsActive, &s.SessionEpoch, &s.LastLoginAt, &s.FailedAttempts, &s.LockedUntil,
+		&s.CreatedAt, &s.UpdatedAt, &s.EmailVerifiedAt, &s.AccountIsActive)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
 }
 
 func scanUser(row pgx.Row) (*domain.AppUser, error) {
