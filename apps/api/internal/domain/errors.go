@@ -29,6 +29,14 @@ var (
 	// client needs to tell "wrong credentials" from "stop retrying".
 	ErrLocked = errors.New("account locked")
 
+	// ErrEmailNotVerified is returned when a caller's credentials are right but the address
+	// is unconfirmed. Safe to surface, and it has to be: it is only reachable once the
+	// password already matched, and the caller cannot act on it without being told.
+	ErrEmailNotVerified = errors.New("email not verified")
+
+	// ErrRateLimited is returned when a caller has spent its request allowance.
+	ErrRateLimited = errors.New("too many requests")
+
 	// ErrNoTenantContext is a programming error, not a client one: a request-scoped query
 	// without tenant context silently returns nothing under row level security.
 	ErrNoTenantContext = errors.New("no tenant context")
