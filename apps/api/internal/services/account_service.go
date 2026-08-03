@@ -99,7 +99,7 @@ func (s *AccountService) Get(ctx context.Context, tenant domain.Tenant) (*domain
 func (s *AccountService) Register(
 	ctx context.Context, in domain.Signup,
 ) (*domain.SignupResult, *domain.TokenPair, error) {
-	email := strings.ToLower(strings.TrimSpace(in.AdminEmail))
+	email := domain.NormalizeEmail(in.AdminEmail)
 	if email == "" {
 		return nil, nil, fmt.Errorf("%w: email is required", domain.ErrInvalidInput)
 	}

@@ -241,6 +241,65 @@ func TestRateLimit_RefusesPastTheRouteAllowanceEndToEnd(t *testing.T) {
 	}
 }
 
+// The per-address cap is only observable end to end: the answer has to stay identical while
+// the transport stops being handed anything.
+func TestMailTargetLimit_StopsSendingWithoutChangingTheAnswer(t *testing.T) {
+	e := newEnv(t, func(cfg *config.Config) {
+		// The caller allowances are deliberately out of reach, so the per-address one is the
+		// only thing that can refuse.
+		cfg.RateLimit = config.RateLimitConfig{
+			Enabled: true, Window: time.Minute, Global: 1000,
+			Credentials: 1000, Signup: 1000, Mail: 1000, MailPerAddress: 2,
+		}
+	})
+	accountID, _ := e.seedAccount(t, "Corralón Buzón")
+	user := e.seedUserWithPassword(t, accountID, domain.UserRoleAdmin, seedPassword)
+	other := e.seedUserWithPassword(t, accountID, domain.UserRoleSeller, seedPassword)
+
+	inside := e.do(t, request{method: http.MethodPost, path: "/v1/public/auth/forgot-password",
+		body: map[string]any{"email": user.Email}})
+	if inside.Code != http.StatusAccepted {
+		t.Fatalf("the first request = %d, want 202 (body %s)", inside.Code, inside.Body.String())
+	}
+	e.do(t, request{method: http.MethodPost, path: "/v1/public/auth/forgot-password",
+		body: map[string]any{"email": user.Email}})
+	sent := e.mail.count()
+	if sent != 2 {
+		t.Fatalf("the transport was handed %d messages inside the cap, want 2", sent)
+	}
+
+	past := e.do(t, request{method: http.MethodPost, path: "/v1/public/auth/forgot-password",
+		body: map[string]any{"email": user.Email}})
+	if past.Code != inside.Code || past.Body.String() != inside.Body.String() {
+		t.Fatalf("past the cap answered %d/%q against %d/%q; the pair says the address exists and "+
+			"that someone keeps asking about it", past.Code, past.Body.String(),
+			inside.Code, inside.Body.String())
+	}
+	if e.mail.count() != sent {
+		t.Fatal("the request past the per-address cap still sent a message")
+	}
+
+	// The other route shares the mailbox's bucket, and the address is normalised before it is
+	// counted, so a different spelling is not a fresh allowance.
+	resent := e.do(t, request{method: http.MethodPost, path: "/v1/public/auth/resend-verification",
+		body: map[string]any{"email": strings.ToUpper(user.Email)}})
+	if resent.Code != http.StatusAccepted {
+		t.Fatalf("resend past the cap = %d, want 202", resent.Code)
+	}
+	if e.mail.count() != sent {
+		t.Fatal("a second route refilled the same mailbox past its cap")
+	}
+
+	// A different mailbox has its own bucket, so one flooded address does not silence the route.
+	if untouched := e.do(t, request{method: http.MethodPost, path: "/v1/public/auth/forgot-password",
+		body: map[string]any{"email": other.Email}}); untouched.Code != http.StatusAccepted {
+		t.Fatalf("another address = %d, want 202", untouched.Code)
+	}
+	if e.mail.count() != sent+1 {
+		t.Fatal("another address got no message while the first one was capped")
+	}
+}
+
 // With the requirement on, an unverified user is refused and told why — the one rejection
 // here that is not opaque, because it is only reachable once the password matched.
 func TestLogin_RequiringAVerifiedAddressAnswers403(t *testing.T) {

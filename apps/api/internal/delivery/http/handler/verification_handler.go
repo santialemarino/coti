@@ -18,11 +18,12 @@ type VerificationService interface {
 // VerificationHandler serves address confirmation.
 type VerificationHandler struct {
 	verification VerificationService
+	mailTarget   *MailTargetLimiter
 }
 
 // NewVerificationHandler builds a VerificationHandler.
-func NewVerificationHandler(verification VerificationService) *VerificationHandler {
-	return &VerificationHandler{verification: verification}
+func NewVerificationHandler(verification VerificationService, mailTarget *MailTargetLimiter) *VerificationHandler {
+	return &VerificationHandler{verification: verification, mailTarget: mailTarget}
 }
 
 // Confirm redeems a verification link. Returns 204.
@@ -66,6 +67,13 @@ func (h *VerificationHandler) Resend(c *gin.Context) {
 	var body dto.ResendVerificationRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
 		RespondBindError(c, err)
+		return
+	}
+
+	// Past the per-address cap the answer stays 202 and nothing is sent, for the same reason
+	// every other outcome here answers 202: a distinct code would reveal the address.
+	if !h.mailTarget.Allow(c.Request.Context(), body.Email) {
+		c.Status(http.StatusAccepted)
 		return
 	}
 

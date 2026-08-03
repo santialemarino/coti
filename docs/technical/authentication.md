@@ -134,9 +134,22 @@ minutes. It is also what makes reactivation instant, with no epoch bump and no o
 a wrong password are one 401 with one body. Someone without a session has no business
 learning which of the three it was.
 
-**Nothing writes the flag yet.** `user_role` is only `ADMIN` and `SELLER`, so there is no
-actor a "deactivate this corralón" endpoint would belong to. That is a product decision, and
-this side of it is ready for whichever way it lands.
+**The flag is written by a script pair, not an endpoint.** `user_role` is only `ADMIN` and
+`SELLER`, so there is no actor inside the product a "deactivate this corralón" route would
+belong to. Both commands run on the owner role (`DATABASE_ADMIN_URL`) because they are not
+request-scoped:
+
+```bash
+pnpm db:account:deactivate --account <uuid>
+pnpm db:account:activate   --account <uuid>
+```
+
+Deactivating also bumps `session_epoch` for every user of the account, in the same
+transaction. The account check already refuses the request, so this is belt and braces on the
+tokens themselves — anything that reads a claim without re-reading the account sees a stale
+epoch. Activating has no counterpart to undo: the account is read again on every request, so
+access returns with nothing else to do. See
+[database.md](database.md#deactivating-and-reactivating-an-account).
 
 ## Email verification
 
@@ -180,6 +193,40 @@ refused before it costs a query.
 
 Refresh is deliberately left on the global allowance alone: the backoffice renews on a
 schedule the user does not control, and a tighter limit there would log people out.
+
+### A second counter, keyed on the mailbox
+
+Every allowance above is keyed on the **caller**, which bounds what the API serves and not
+what a mailbox receives: a sender coming from many addresses stays inside its own allowance on
+each of them while one victim's inbox fills up. So `forgot-password` and `resend-verification`
+carry a second counter keyed on the **target address**, and both have to pass before anything
+is sent.
+
+| Setting                           | Key                    | Reach                             |
+| --------------------------------- | ---------------------- | --------------------------------- |
+| `RATE_LIMIT_MAIL_MAX`             | caller                 | one caller across the mail routes |
+| `RATE_LIMIT_MAIL_PER_ADDRESS_MAX` | target address, hashed | one mailbox across every caller   |
+
+- **Going over it still answers 202**, and simply does not send. A 429 here would be a perfect
+  enumeration oracle — it would confirm both that the address is registered and that someone
+  has been asking about it, which is precisely what the uniform answer exists to withhold.
+- **The key is the hex SHA-256 of the normalised address**, so a dump of the counter store
+  holds no mailbox in the clear. Normalising first is what makes case and padding one bucket
+  instead of a fresh allowance per spelling.
+- **The two routes share one bucket per address**, because what is being protected is the
+  inbox and the inbox does not care which route filled it.
+- It is **not** compared against `RATE_LIMIT_GLOBAL_MAX` the way the per-route allowances are.
+  Those are unreachable above the global limit, since one caller has to spend both; this one is
+  counted across callers, so it bites whatever the global limit is.
+- The counter lives in the delivery layer, where the bound request already carries the address:
+  the guard runs in the handler rather than in middleware, which would have to parse the body
+  to find out who the message is for.
+
+**The cost, stated plainly:** any per-target cap can be spent by someone other than the
+target, so an attacker who knows an address can keep recovery mail from reaching it while they
+keep spending. That is the same trade login lockout makes, and it is bounded from the other
+side — filling one mailbox's window costs caller allowances too, so it cannot be done from one
+address.
 
 **The key is the authenticated user when the request carries a readable bearer, and the
 client address when it does not.** Reading the token here only buys a stable thing to count
@@ -307,7 +354,8 @@ In `apps/api/.env.example`, with defaults in `internal/config`: `AUTH_JWT_SECRET
 `AUTH_REFRESH_REMEMBER_DAYS`, `AUTH_REFRESH_REUSE_GRACE_SECONDS`,
 `AUTH_MAX_FAILED_ATTEMPTS`, `AUTH_LOCKOUT_MINUTES`, `AUTH_PASSWORD_MIN_LENGTH`,
 `AUTH_PASSWORD_RESET_TTL_MINUTES`, `AUTH_EMAIL_VERIFICATION_TTL_HOURS`,
-`AUTH_REQUIRE_VERIFIED_EMAIL`, `WEB_BACKOFFICE_URL`, and the `RATE_LIMIT_*` group above.
+`AUTH_REQUIRE_VERIFIED_EMAIL`, `WEB_BACKOFFICE_URL`, and the `RATE_LIMIT_*` group above
+(including `RATE_LIMIT_MAIL_PER_ADDRESS_MAX`, default 3).
 
 **`AUTH_JWT_SECRET` stays in the API.** It is a symmetric HMAC key, so a second service holding
 it could mint a token for any account — the frontends forward the token and never verify it.
@@ -320,3 +368,7 @@ User invitations are not implemented: an admin sets a user's initial password, w
 lets US-05 close without them.
 
 No endpoint writes `account.is_active`, by design — see above.
+
+Counters are per process. With one instance that is the whole picture; behind two, each holds
+its own allowances and the effective limit is the configured one times the number of
+instances. `middleware.Limiter` is the seam a shared store takes over at.

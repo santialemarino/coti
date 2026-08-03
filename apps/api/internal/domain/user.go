@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -76,4 +77,10 @@ type UserUpdate struct {
 // IsValid reports whether the role is one the schema's user_role enum holds.
 func (r UserRole) IsValid() bool {
 	return r == UserRoleAdmin || r == UserRoleSeller
+}
+
+// NormalizeEmail lowercases and trims an address. Every path that stores, looks up or counts
+// one spells it this way, because uq_app_user_email_global compares lower(email).
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
 }

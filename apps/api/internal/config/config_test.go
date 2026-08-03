@@ -24,7 +24,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"AUTH_REQUIRE_VERIFIED_EMAIL",
 		"RATE_LIMIT_ENABLED", "RATE_LIMIT_WINDOW_SECONDS", "RATE_LIMIT_GLOBAL_MAX",
 		"RATE_LIMIT_CREDENTIALS_MAX", "RATE_LIMIT_SIGNUP_MAX", "RATE_LIMIT_MAIL_MAX",
-		"RATE_LIMIT_TRUSTED_PROXY_HOPS",
+		"RATE_LIMIT_MAIL_PER_ADDRESS_MAX", "RATE_LIMIT_TRUSTED_PROXY_HOPS",
 		"MAIL_PROVIDER", "MAIL_FROM_ADDRESS", "MAIL_FROM_NAME",
 		"MAIL_SMTP_HOST", "MAIL_SMTP_PORT", "MAIL_SMTP_USERNAME", "MAIL_SMTP_PASSWORD",
 		"WEB_BACKOFFICE_URL",
@@ -218,6 +218,13 @@ func TestLoad_Invalid(t *testing.T) {
 			wantSub: "RATE_LIMIT_CREDENTIALS_MAX (9999) exceeds RATE_LIMIT_GLOBAL_MAX",
 		},
 		{
+			// It is counted across callers, so unlike the per-route allowances it is not
+			// compared against the global one — only refused when it cannot bite at all.
+			name:    "per-address mail allowance of zero",
+			mutate:  func(e map[string]string) { e["RATE_LIMIT_MAIL_PER_ADDRESS_MAX"] = "0" },
+			wantSub: "RATE_LIMIT_MAIL_PER_ADDRESS_MAX must be at least 1",
+		},
+		{
 			name:    "negative proxy hops",
 			mutate:  func(e map[string]string) { e["RATE_LIMIT_TRUSTED_PROXY_HOPS"] = "-1" },
 			wantSub: "RATE_LIMIT_TRUSTED_PROXY_HOPS cannot be negative",
@@ -248,6 +255,23 @@ func TestLoad_Invalid(t *testing.T) {
 				t.Errorf("Load() error = %q, want it to contain %q", err.Error(), tc.wantSub)
 			}
 		})
+	}
+}
+
+// The per-address allowance is counted across callers, so unlike a per-route one it is not
+// unreachable above the global limit and must not be rejected for exceeding it.
+func TestLoad_PerAddressMailAllowanceMayExceedTheGlobalOne(t *testing.T) {
+	env := minimalEnv()
+	env["RATE_LIMIT_GLOBAL_MAX"] = "10"
+	env["RATE_LIMIT_MAIL_PER_ADDRESS_MAX"] = "50"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.RateLimit.MailPerAddress != 50 {
+		t.Errorf("RateLimit.MailPerAddress = %d, want 50", cfg.RateLimit.MailPerAddress)
 	}
 }
 

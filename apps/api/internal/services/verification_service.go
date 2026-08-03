@@ -78,7 +78,7 @@ func (s *VerificationService) Send(ctx context.Context, user domain.AppUser) err
 // not the address is registered, for the reason Forgot does: the caller has no session, so
 // telling them would be an enumeration oracle.
 func (s *VerificationService) Resend(ctx context.Context, email string) error {
-	user, err := s.users.GetAuthSubjectByEmailCrossAccount(ctx, s.db.CrossAccount(), normalizeEmail(email))
+	user, err := s.users.GetAuthSubjectByEmailCrossAccount(ctx, s.db.CrossAccount(), domain.NormalizeEmail(email))
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil

@@ -76,6 +76,11 @@ func run() error {
 	authTokenRepo := repository.NewAuthTokenRepository()
 	notificationRepo := repository.NewNotificationRepository()
 	limiter := ratelimit.NewMemory(nil)
+	mailTargetLimiter := handler.NewMailTargetLimiter(limiter, handler.MailTargetLimitOptions{
+		Limit:   cfg.RateLimit.MailPerAddress,
+		Window:  cfg.RateLimit.Window,
+		Enabled: cfg.RateLimit.Enabled,
+	})
 
 	mailer, err := newMailer(cfg, log)
 	if err != nil {
@@ -103,8 +108,8 @@ func run() error {
 		deliveryhttp.Handlers{
 			Health:        handler.NewHealthHandler(db),
 			Auth:          handler.NewAuthHandler(authService),
-			Password:      handler.NewPasswordHandler(passwordService),
-			Verification:  handler.NewVerificationHandler(verificationService),
+			Password:      handler.NewPasswordHandler(passwordService, mailTargetLimiter),
+			Verification:  handler.NewVerificationHandler(verificationService, mailTargetLimiter),
 			User:          handler.NewUserHandler(userService),
 			Branch:        handler.NewBranchHandler(branchService),
 			Product:       handler.NewProductHandler(productService),

@@ -21,12 +21,13 @@ type PasswordService interface {
 
 // PasswordHandler serves the three ways a password changes after the user exists.
 type PasswordHandler struct {
-	passwords PasswordService
+	passwords  PasswordService
+	mailTarget *MailTargetLimiter
 }
 
 // NewPasswordHandler builds a PasswordHandler.
-func NewPasswordHandler(passwords PasswordService) *PasswordHandler {
-	return &PasswordHandler{passwords: passwords}
+func NewPasswordHandler(passwords PasswordService, mailTarget *MailTargetLimiter) *PasswordHandler {
+	return &PasswordHandler{passwords: passwords, mailTarget: mailTarget}
 }
 
 // Change replaces the caller's own password. Returns 401 when the current one is wrong.
@@ -78,6 +79,13 @@ func (h *PasswordHandler) Forgot(c *gin.Context) {
 	var body dto.ForgotPasswordRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
 		RespondBindError(c, err)
+		return
+	}
+
+	// Past the per-address cap the answer stays 202 and nothing is sent: a 429 would confirm
+	// both that the address exists and that someone keeps asking about it.
+	if !h.mailTarget.Allow(c.Request.Context(), body.Email) {
+		c.Status(http.StatusAccepted)
 		return
 	}
 

@@ -112,7 +112,7 @@ func (s *UserService) GetUser(ctx context.Context, tenant domain.Tenant, id uuid
 func (s *UserService) CreateUser(
 	ctx context.Context, tenant domain.Tenant, in domain.NewUser,
 ) (*domain.UserWithBranches, error) {
-	in.Email = normalizeEmail(in.Email)
+	in.Email = domain.NormalizeEmail(in.Email)
 	if err := s.validateProfile(in.Name, in.Email, in.Role); err != nil {
 		return nil, err
 	}
@@ -154,7 +154,7 @@ func (s *UserService) CreateUser(
 func (s *UserService) UpdateUser(
 	ctx context.Context, tenant domain.Tenant, id uuid.UUID, in domain.UserUpdate,
 ) (*domain.UserWithBranches, error) {
-	in.Email = normalizeEmail(in.Email)
+	in.Email = domain.NormalizeEmail(in.Email)
 	if err := s.validateProfile(in.Name, in.Email, in.Role); err != nil {
 		return nil, err
 	}
@@ -256,12 +256,6 @@ func withBranches(u domain.AppUser, branchIDs []uuid.UUID) domain.UserWithBranch
 		branchIDs = []uuid.UUID{}
 	}
 	return domain.UserWithBranches{AppUser: u, BranchIDs: branchIDs}
-}
-
-// normalizeEmail lowercases and trims, because uq_app_user_email compares the stored value
-// and login looks up case-insensitively.
-func normalizeEmail(email string) string {
-	return strings.ToLower(strings.TrimSpace(email))
 }
 
 // dedupeUUIDs returns the distinct ids, order preserved, never nil.

@@ -59,6 +59,9 @@ type RateLimitConfig struct {
 	Credentials int
 	Signup      int
 	Mail        int
+	// MailPerAddress is counted by target address instead of by caller, so it bounds what one
+	// mailbox receives however many callers ask for it.
+	MailPerAddress int
 	// TrustedProxyHops is how many intermediaries sit in front of the API.
 	TrustedProxyHops int
 	// TrustedProxies are the peers whose forwarding header is believed at all.
@@ -202,6 +205,7 @@ func Load() (*Config, error) {
 			Credentials:      getInt("RATE_LIMIT_CREDENTIALS_MAX", 10, &problems),
 			Signup:           getInt("RATE_LIMIT_SIGNUP_MAX", 5, &problems),
 			Mail:             getInt("RATE_LIMIT_MAIL_MAX", 5, &problems),
+			MailPerAddress:   getInt("RATE_LIMIT_MAIL_PER_ADDRESS_MAX", 3, &problems),
 			TrustedProxyHops: getInt("RATE_LIMIT_TRUSTED_PROXY_HOPS", 0, &problems),
 			TrustedProxies:   getCIDRs("RATE_LIMIT_TRUSTED_PROXY_CIDRS", &problems),
 		},
@@ -328,6 +332,11 @@ func Load() (*Config, error) {
 				problems = append(problems, fmt.Sprintf("%s (%d) exceeds RATE_LIMIT_GLOBAL_MAX (%d), "+
 					"so it can never be reached", t.key, t.value, cfg.RateLimit.Global))
 			}
+		}
+		// Left out of the comparison above on purpose: this one is counted across callers, so
+		// the per-caller global says nothing about whether it can be reached.
+		if cfg.RateLimit.MailPerAddress < 1 {
+			problems = append(problems, "RATE_LIMIT_MAIL_PER_ADDRESS_MAX must be at least 1")
 		}
 		if cfg.RateLimit.TrustedProxyHops < 0 {
 			problems = append(problems, "RATE_LIMIT_TRUSTED_PROXY_HOPS cannot be negative")
