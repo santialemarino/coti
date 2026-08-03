@@ -29,6 +29,7 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/mail"
+	"github.com/santialemarino/coti/apps/api/internal/ratelimit"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 	"github.com/santialemarino/coti/apps/api/internal/services"
 )
@@ -74,6 +75,7 @@ func run() error {
 	channelRepo := repository.NewChannelRepository()
 	authTokenRepo := repository.NewAuthTokenRepository()
 	notificationRepo := repository.NewNotificationRepository()
+	limiter := ratelimit.NewMemory(nil)
 
 	mailer, err := newMailer(cfg, log)
 	if err != nil {
@@ -85,10 +87,12 @@ func run() error {
 	mailService := services.NewMailService(db, mailer, notificationRepo, accountRepo, nil)
 	passwordService := services.NewPasswordService(db, userRepo, authTokenRepo, refreshTokenRepo,
 		mailService, authService, log, cfg.Auth, cfg.Web, nil)
+	verificationService := services.NewVerificationService(db, userRepo, authTokenRepo,
+		mailService, log, cfg.Auth, cfg.Web, nil)
 	userService := services.NewUserService(db, userRepo, userBranchRepo, branchRepo, cfg.Auth)
 	branchService := services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)
 	accountService := services.NewAccountService(db, accountRepo, branchRepo, channelRepo,
-		userRepo, authService, cfg.Auth, cfg.Branch)
+		userRepo, authService, verificationService, log, cfg.Auth, cfg.Branch)
 	productService := services.NewProductService(db, productRepo, productSynonymRepo,
 		productAlternativeRepo, cfg.Catalog)
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo, branchProductRepo,
@@ -100,6 +104,7 @@ func run() error {
 			Health:        handler.NewHealthHandler(db),
 			Auth:          handler.NewAuthHandler(authService),
 			Password:      handler.NewPasswordHandler(passwordService),
+			Verification:  handler.NewVerificationHandler(verificationService),
 			User:          handler.NewUserHandler(userService),
 			Branch:        handler.NewBranchHandler(branchService),
 			Product:       handler.NewProductHandler(productService),
@@ -108,6 +113,7 @@ func run() error {
 			Account:       handler.NewAccountHandler(accountService),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
+		deliveryhttp.RateLimit{Limiter: limiter, Identify: identifyForRateLimit(tokenService)},
 	)
 
 	server := &http.Server{
@@ -136,6 +142,18 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
 	return server.Shutdown(shutdownCtx)
+}
+
+// identifyForRateLimit reads a caller id out of a bearer so two users cannot spend each
+// other's allowance. Signature only: the session check is ResolveTenant's job.
+func identifyForRateLimit(tokens *services.TokenService) func(string) (string, bool) {
+	return func(raw string) (string, bool) {
+		claims, err := tokens.ParseAccessToken(raw)
+		if err != nil {
+			return "", false
+		}
+		return claims.UserID.String(), true
+	}
 }
 
 // newMailer binds the domain.Mailer port to the transport configuration selected, and is the

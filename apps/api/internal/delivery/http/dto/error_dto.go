@@ -7,6 +7,13 @@ type ErrorResponse struct {
 	Detail string `json:"detail,omitempty"` // set when a body failed binding or validation.
 }
 
+// RateLimitResponse is returned when a caller has spent its allowance. It names no limit —
+// only how long until retrying works.
+type RateLimitResponse struct {
+	Error             string `json:"error"`
+	RetryAfterSeconds int    `json:"retry_after_seconds"`
+}
+
 // HealthResponse is returned by the liveness and readiness probes. detail names the
 // dependency that failed, and is only present when one did.
 type HealthResponse struct {
