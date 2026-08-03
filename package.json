@@ -41,6 +41,8 @@
     "db:migrate:status": "node scripts/goose.mjs status",
     "db:create-migration": "node scripts/goose.mjs create",
     "db:seed": "node scripts/db-seed.mjs",
+    "db:account:deactivate": "node scripts/db-account.mjs deactivate",
+    "db:account:activate": "node scripts/db-account.mjs activate",
     "db:reset": "docker compose down -v && pnpm db:init",
     "prepare": "husky"
   },
@@ -65,6 +67,7 @@
     "@ianvs/prettier-plugin-sort-imports": "^4.7.1",
     "husky": "^9.1.7",
     "lint-staged": "^16.3.2",
+    "pg": "^8.22.0",
     "prettier": "^3.7.4",
     "turbo": "^2.8.13",
     "typescript": "5.9.2"
