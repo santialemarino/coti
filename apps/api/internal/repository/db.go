@@ -90,8 +90,9 @@ func (db *DB) InTenantTx(ctx context.Context, tenant domain.Tenant, fn func(Quer
 
 // CrossAccount returns a Querier on the owner pool, which bypasses row level security.
 //
-// Three callers are legitimate: the follow-up cron, login by email, and resolving a
-// quote_send.public_token. Every other use is a cross-tenant data leak.
+// Four callers are legitimate: the follow-up cron, login by email, resolving a
+// quote_send.public_token, and resolving a public channel webhook. Every other use is a
+// cross-tenant data leak.
 func (db *DB) CrossAccount() Querier {
 	return db.admin
 }

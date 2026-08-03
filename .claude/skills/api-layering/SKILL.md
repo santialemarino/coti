@@ -59,7 +59,7 @@ Repositories accept the `Querier` — the read/write surface shared by `*pgxpool
 
 ### Cross-account access is explicit and rare
 
-Three operations legitimately span accounts, and they use `db.CrossAccount()` (the owner pool, which bypasses RLS): the follow-up cron, login by email (the account is unknown until the user is found), and resolving a `quote_send.public_token` for the public webapp. The token flow resolves the account there and then continues through `InTenantTx` — it does not keep querying on the owner pool. **Any other use is a cross-tenant leak.**
+Four operations legitimately span accounts, and they use `db.CrossAccount()` (the owner pool, which bypasses RLS): the follow-up cron, login by email (the account is unknown until the user is found), resolving a `quote_send.public_token` for the public webapp, and resolving a public channel webhook by external channel identifier before the tenant is known. Token and webhook flows resolve the account there and then continue through `InTenantTx` — they do not keep querying on the owner pool. **Any other use is a cross-tenant leak.**
 
 ```go
 // internal/repository/querier.go

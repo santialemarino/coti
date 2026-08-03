@@ -6,7 +6,9 @@
     "NEXT_PUBLIC_API_URL",
     "AUTH_REFRESH_SKEW_SECONDS",
     "AUTH_REMEMBERED_SESSION_DAYS",
-    "WEB_TRUSTED_PROXY_HOPS"
+    "WEB_TRUSTED_PROXY_HOPS",
+    "GOCACHE",
+    "LOCALAPPDATA"
   ],
   "tasks": {
     "build": {

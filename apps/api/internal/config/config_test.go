@@ -29,6 +29,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"MAIL_SMTP_HOST", "MAIL_SMTP_PORT", "MAIL_SMTP_USERNAME", "MAIL_SMTP_PASSWORD",
 		"WEB_BACKOFFICE_URL",
 		"PRICE_IMPORT_MAX_BYTES",
+		"WHATSAPP_WEBHOOK_VERIFY_TOKEN", "WHATSAPP_APP_SECRET",
 	}
 	for _, k := range known {
 		t.Setenv(k, "")
@@ -71,6 +72,9 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.PriceImport.MaxBytes != defaultPriceImportMaxBytes {
 		t.Errorf("PriceImport.MaxBytes = %d, want %d", cfg.PriceImport.MaxBytes, defaultPriceImportMaxBytes)
+	}
+	if cfg.WhatsApp.WebhookVerifyToken != "" {
+		t.Errorf("WhatsApp.WebhookVerifyToken = %q, want empty", cfg.WhatsApp.WebhookVerifyToken)
 	}
 	if cfg.Mail.Provider != MailProviderConsole {
 		t.Errorf("Mail.Provider = %q, want %q", cfg.Mail.Provider, MailProviderConsole)
@@ -231,6 +235,19 @@ func TestLoad_Invalid(t *testing.T) {
 			name:    "password reset ttl of zero",
 			mutate:  func(e map[string]string) { e["AUTH_PASSWORD_RESET_TTL_MINUTES"] = "0" },
 			wantSub: "AUTH_PASSWORD_RESET_TTL_MINUTES must be greater than zero",
+		},
+		{
+			name:    "whatsapp app secret without verify token",
+			mutate:  func(e map[string]string) { e["WHATSAPP_APP_SECRET"] = "meta-secret" },
+			wantSub: "WHATSAPP_WEBHOOK_VERIFY_TOKEN is required when WHATSAPP_APP_SECRET is set",
+		},
+		{
+			name: "production whatsapp webhook without app secret",
+			mutate: func(e map[string]string) {
+				e["ENV"] = "production"
+				e["WHATSAPP_WEBHOOK_VERIFY_TOKEN"] = "verify-me"
+			},
+			wantSub: "WHATSAPP_APP_SECRET is required when the WhatsApp webhook is enabled in production",
 		},
 	}
 
