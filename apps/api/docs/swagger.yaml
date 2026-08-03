@@ -670,6 +670,17 @@ definitions:
       updated_at:
         type: string
     type: object
+  dto.WhatsAppWebhookResponse:
+    properties:
+      created_rfqs:
+        type: integer
+      duplicates:
+        type: integer
+      ignored:
+        type: integer
+      received:
+        type: integer
+    type: object
 info:
   contact: {}
   description: Every /v1 route outside /public needs an access token. The active branch
@@ -1986,6 +1997,72 @@ paths:
       summary: Confirm an email address
       tags:
       - auth
+  /v1/public/webhooks/whatsapp:
+    get:
+      description: Answers Meta's subscription challenge when the verify token matches.
+      parameters:
+      - description: Subscription mode
+        in: query
+        name: hub.mode
+        required: true
+        type: string
+      - description: Webhook verify token
+        in: query
+        name: hub.verify_token
+        required: true
+        type: string
+      - description: Challenge to echo
+        in: query
+        name: hub.challenge
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Verify WhatsApp webhook
+      tags:
+      - whatsapp
+    post:
+      consumes:
+      - application/json
+      description: Accepts signed WhatsApp Cloud API deliveries and persists text
+        messages as RFQs.
+      parameters:
+      - description: Meta HMAC-SHA256 signature
+        in: header
+        name: X-Hub-Signature-256
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.WhatsAppWebhookResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Receive WhatsApp webhook
+      tags:
+      - whatsapp
   /v1/users:
     get:
       description: Admin only. Ordered by name, deactivated users included so they

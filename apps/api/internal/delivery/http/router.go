@@ -31,6 +31,7 @@ type Handlers struct {
 	BranchCatalog *handler.BranchCatalogHandler
 	Account       *handler.AccountHandler
 	Prices        *handler.ProductPriceHandler
+	WhatsApp      *handler.WhatsAppWebhookHandler
 }
 
 // Auth carries what the authentication middleware needs to resolve a tenant.
@@ -105,6 +106,8 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	// Registration is the one write with no account yet, so it cannot sit behind a tenant,
 	// which is exactly why it carries the tightest allowance: it creates rows for anyone.
 	public.POST("/accounts", limit("signup", cfg.RateLimit.Signup), h.Account.Register)
+	public.GET("/webhooks/whatsapp", h.WhatsApp.Verify)
+	public.POST("/webhooks/whatsapp", h.WhatsApp.Receive)
 
 	// Everything else needs a resolved tenant: a request-scoped query without an account
 	// reads nothing under row level security.

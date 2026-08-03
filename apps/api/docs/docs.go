@@ -1998,6 +1998,103 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/public/webhooks/whatsapp": {
+            "get": {
+                "description": "Answers Meta's subscription challenge when the verify token matches.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "whatsapp"
+                ],
+                "summary": "Verify WhatsApp webhook",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Subscription mode",
+                        "name": "hub.mode",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Webhook verify token",
+                        "name": "hub.verify_token",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Challenge to echo",
+                        "name": "hub.challenge",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Accepts signed WhatsApp Cloud API deliveries and persists text messages as RFQs.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "whatsapp"
+                ],
+                "summary": "Receive WhatsApp webhook",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Meta HMAC-SHA256 signature",
+                        "name": "X-Hub-Signature-256",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.WhatsAppWebhookResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/users": {
             "get": {
                 "security": [
@@ -3342,6 +3439,23 @@ const docTemplate = `{
                 },
                 "updated_at": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.WhatsAppWebhookResponse": {
+            "type": "object",
+            "properties": {
+                "created_rfqs": {
+                    "type": "integer"
+                },
+                "duplicates": {
+                    "type": "integer"
+                },
+                "ignored": {
+                    "type": "integer"
+                },
+                "received": {
+                    "type": "integer"
                 }
             }
         }

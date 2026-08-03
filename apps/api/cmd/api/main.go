@@ -73,6 +73,7 @@ func run() error {
 	productPriceRepo := repository.NewProductPriceRepository()
 	accountRepo := repository.NewAccountRepository()
 	channelRepo := repository.NewChannelRepository()
+	rfqRepo := repository.NewRFQRepository()
 	authTokenRepo := repository.NewAuthTokenRepository()
 	notificationRepo := repository.NewNotificationRepository()
 	limiter := ratelimit.NewMemory(nil)
@@ -103,6 +104,7 @@ func run() error {
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo, branchProductRepo,
 		productPriceRepo, nil)
 	productPriceImportService := services.NewProductPriceImportService(db, productPriceRepo, nil)
+	whatsAppService := services.NewWhatsAppService(db, channelRepo, rfqRepo, nil)
 
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
@@ -116,6 +118,7 @@ func run() error {
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
 			Account:       handler.NewAccountHandler(accountService),
+			WhatsApp:      handler.NewWhatsAppWebhookHandler(cfg.WhatsApp, whatsAppService),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
 		deliveryhttp.RateLimit{Limiter: limiter, Identify: identifyForRateLimit(tokenService)},

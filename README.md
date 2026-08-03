@@ -96,6 +96,14 @@ http://localhost:8000/swagger/index.html — it is not served in production.
 
 See [docs/technical/api-specification.md](docs/technical/api-specification.md).
 
+## WhatsApp Cloud API
+
+Inbound WhatsApp Business messages enter the backend through
+`/v1/public/webhooks/whatsapp`. Configure the Meta verify token, app secret, and a
+`WHATSAPP` channel row whose `identifier` is Meta's `phone_number_id`.
+
+See [docs/technical/whatsapp-cloud-api.md](docs/technical/whatsapp-cloud-api.md).
+
 ## Database
 
 Two connection roles. `DATABASE_URL` is the restricted, `NOBYPASSRLS` role the API

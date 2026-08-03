@@ -48,6 +48,7 @@ type Config struct {
 	RateLimit   RateLimitConfig
 	Branch      BranchConfig
 	PriceImport PriceImportConfig
+	WhatsApp    WhatsAppConfig
 }
 
 // RateLimitConfig holds the request allowances, all of them settings rather than literals.
@@ -126,6 +127,12 @@ type WebConfig struct {
 // PriceImportConfig holds operational limits for spreadsheet imports.
 type PriceImportConfig struct {
 	MaxBytes int64
+}
+
+// WhatsAppConfig holds the inbound webhook credentials for the Cloud API integration.
+type WhatsAppConfig struct {
+	WebhookVerifyToken string
+	AppSecret          string
 }
 
 // BranchConfig holds the defaults a newly opened branch starts with.
@@ -215,6 +222,10 @@ func Load() (*Config, error) {
 		PriceImport: PriceImportConfig{
 			MaxBytes: int64(getInt("PRICE_IMPORT_MAX_BYTES", defaultPriceImportMaxBytes, &problems)),
 		},
+		WhatsApp: WhatsAppConfig{
+			WebhookVerifyToken: getString("WHATSAPP_WEBHOOK_VERIFY_TOKEN", ""),
+			AppSecret:          getString("WHATSAPP_APP_SECRET", ""),
+		},
 	}
 
 	if cfg.Database.URL == "" {
@@ -236,6 +247,12 @@ func Load() (*Config, error) {
 	}
 	if cfg.PriceImport.MaxBytes <= 0 {
 		problems = append(problems, "PRICE_IMPORT_MAX_BYTES must be greater than zero")
+	}
+	if cfg.WhatsApp.AppSecret != "" && cfg.WhatsApp.WebhookVerifyToken == "" {
+		problems = append(problems, "WHATSAPP_WEBHOOK_VERIFY_TOKEN is required when WHATSAPP_APP_SECRET is set")
+	}
+	if cfg.IsProduction() && cfg.WhatsApp.WebhookVerifyToken != "" && cfg.WhatsApp.AppSecret == "" {
+		problems = append(problems, "WHATSAPP_APP_SECRET is required when the WhatsApp webhook is enabled in production")
 	}
 
 	if cfg.Auth.PasswordMinLength < 8 {

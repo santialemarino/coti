@@ -108,6 +108,9 @@ The four legitimate owner cases:
    `quote_send.public_token` for the sessionless webapp. The correct pattern for the token:
    the owner resolves token → `account_id`, and the rest of the request continues on the
    restricted role with the GUC set.
+4. **Public channel webhooks** — resolving a channel by external identifier, such as
+   WhatsApp's `phone_number_id`, before the tenant is known. The rest of the request
+   continues on the restricted role with the GUC set.
 
 ## Account isolation (RLS)
 
@@ -131,7 +134,7 @@ so it would force interpolating a request-derived value into the SQL.
 transaction-scoped, so a query on the bare pool runs outside the scope, matches no policy, and
 silently reads zero rows.
 
-The three cases that legitimately cross accounts use `db.CrossAccount()` (or `db.AdminTx()`
+The four cases that legitimately cross accounts use `db.CrossAccount()` (or `db.AdminTx()`
 for multi-step writes), which go through the owner pool.
 
 The **account** is enforced, not the branch: an admin legitimately reads every branch of their
@@ -169,6 +172,7 @@ Whatever can be expressed in the schema is expressed in the schema:
 | `uq_product_price_open_period`           | one open price period per branch and product       |
 | `uq_app_user_email_global`               | an address identifies one user, case-insensitively |
 | `uq_auth_token_hash`                     | a recovery or verification link is unique          |
+| `uq_inbound_channel_message_external`    | one RFQ source per external channel message        |
 
 **A unique constraint does not compare NULLs**, so on a nullable column it lets every empty
 row escape. That is why the 1-to-1 needs the NOT NULL as well as the index:

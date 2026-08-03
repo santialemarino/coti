@@ -21,6 +21,7 @@ coverage
 *.exe
 *.test
 *.out
+.cache/
 
 # Environment and secrets
 .env
@@ -49,3 +50,4 @@ docs/internal/
 
 # Local artifacts
 screenshots/
+.local/

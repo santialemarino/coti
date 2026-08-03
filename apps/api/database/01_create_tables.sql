@@ -371,6 +371,22 @@ CREATE TABLE rfq_attachment (
   processed_at      TIMESTAMPTZ
 );
 
+-- Raw inbound messages are kept before the RFQ pipeline runs, so webhook retries can be
+-- identified without creating duplicate requests.
+CREATE TABLE inbound_channel_message (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id          UUID NOT NULL,
+  branch_id           UUID NOT NULL,
+  channel_id          UUID NOT NULL,
+  rfq_id              UUID,
+  external_message_id VARCHAR(255) NOT NULL,
+  external_sender_id  VARCHAR(255) NOT NULL,
+  body                TEXT NOT NULL,
+  raw_payload         JSONB NOT NULL,
+  received_at         TIMESTAMPTZ NOT NULL,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE rfq_status_change (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id      UUID NOT NULL,
@@ -698,6 +714,10 @@ ALTER TABLE rfq ADD CONSTRAINT fk_rfq_client FOREIGN KEY (client_id) REFERENCES 
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_channel FOREIGN KEY (channel_id) REFERENCES channel(id);
 ALTER TABLE rfq_attachment ADD CONSTRAINT fk_rfq_attachment_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE rfq_attachment ADD CONSTRAINT fk_rfq_attachment_rfq FOREIGN KEY (rfq_id) REFERENCES rfq(id);
+ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
+ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_channel FOREIGN KEY (channel_id) REFERENCES channel(id);
+ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_rfq FOREIGN KEY (rfq_id) REFERENCES rfq(id);
 ALTER TABLE rfq_status_change ADD CONSTRAINT fk_rfq_status_change_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE rfq_status_change ADD CONSTRAINT fk_rfq_status_change_rfq FOREIGN KEY (rfq_id) REFERENCES rfq(id);
 ALTER TABLE rfq_status_change ADD CONSTRAINT fk_rfq_status_change_user FOREIGN KEY (user_id) REFERENCES app_user(id);
@@ -797,6 +817,7 @@ CREATE INDEX idx_branch_combo_branch ON branch_combo(branch_id) WHERE is_active 
 CREATE INDEX idx_client_account ON client(account_id);
 CREATE INDEX idx_rfq_branch_status ON rfq(branch_id, status);
 CREATE INDEX idx_rfq_attachment_pending ON rfq_attachment(processing_status) WHERE processing_status IN ('PENDING', 'PROCESSING');
+CREATE INDEX idx_inbound_channel_message_rfq ON inbound_channel_message(rfq_id) WHERE rfq_id IS NOT NULL;
 
 CREATE INDEX idx_quote_branch_status ON quote(branch_id, current_status);
 CREATE INDEX idx_quote_expires ON quote(expires_at) WHERE expires_at IS NOT NULL AND archived_at IS NULL;
@@ -821,6 +842,8 @@ CREATE UNIQUE INDEX uq_quote_version_draft ON quote_version(quote_id) WHERE is_i
 -- is the backstop that makes a missing lock loud instead of silently duplicating a period.
 CREATE UNIQUE INDEX uq_product_price_open_period
   ON product_price (branch_id, product_id) WHERE valid_to IS NULL;
+CREATE UNIQUE INDEX uq_inbound_channel_message_external
+  ON inbound_channel_message (channel_id, external_message_id);
 CREATE UNIQUE INDEX uq_message_batch_open ON message_batch(quote_id) WHERE status = 'OPEN';
 CREATE UNIQUE INDEX uq_message_batch_processing ON message_batch(quote_id) WHERE status = 'PROCESSING';
 
@@ -888,7 +911,7 @@ BEGIN
     'product', 'branch_product', 'product_synonym', 'product_price', 'product_alternative',
     'combo', 'combo_item', 'branch_combo',
     'client', 'tag', 'client_tag',
-    'channel', 'rfq', 'rfq_attachment', 'rfq_status_change',
+    'channel', 'rfq', 'rfq_attachment', 'inbound_channel_message', 'rfq_status_change',
     'quote', 'quote_version', 'quote_item', 'quote_item_alternative', 'quote_status_change',
     'quote_send', 'client_action',
     'message_batch', 'quote_message',
