@@ -144,11 +144,11 @@ pnpm db:account:deactivate --account <uuid>
 pnpm db:account:activate   --account <uuid>
 ```
 
-Deactivating also bumps `session_epoch` for every user of the account, in the same
-transaction. The account check already refuses the request, so this is belt and braces on the
-tokens themselves — anything that reads a claim without re-reading the account sees a stale
-epoch. Activating has no counterpart to undo: the account is read again on every request, so
-access returns with nothing else to do. See
+Deactivating also bumps `session_epoch` for every user of the account, in the same transaction.
+That is **not** what stops the outstanding tokens — the flag above already does, on every
+request. It buys one specific thing: **reopening the corralón does not resurrect the sessions
+that were live when it closed.** A token minted before the closure carries the old epoch, so it
+stays refused and the user logs in again. Activating therefore has no counterpart to undo. See
 [database.md](database.md#deactivating-and-reactivating-an-account).
 
 ## Email verification
@@ -369,6 +369,6 @@ lets US-05 close without them.
 
 No endpoint writes `account.is_active`, by design — see above.
 
-Counters are per process. With one instance that is the whole picture; behind two, each holds
-its own allowances and the effective limit is the configured one times the number of
-instances. `middleware.Limiter` is the seam a shared store takes over at.
+Rate-limit counters are held per process, so behind more than one instance the effective
+allowance is the configured one times the number of instances. The seam is named in
+[Rate limits](#rate-limits) above.

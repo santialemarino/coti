@@ -83,9 +83,10 @@ narrow to. Both take the id as a query parameter, report the account they touche
 it was in, and refuse an unknown id without writing anything.
 
 `deactivate` is two writes in one transaction: the flag, and `session_epoch + 1` for every user
-of the account, so the access tokens they already hold are dead rather than valid until they
-expire. `activate` is the flag alone — the account is read again on every request, so nothing
-else has to be undone. The behavioural side is in
+of the account. **The flag is what cuts access** — it is read on every request — so the bump is
+not what makes outstanding tokens stop working. What the bump buys is that a token minted before
+the closure stays dead once the account is reopened, instead of working again for the rest of its
+lifetime. `activate` is therefore the flag alone. The behavioural side is in
 [authentication.md](authentication.md#a-deactivated-account-cuts-every-way-in).
 
 ## Two connection roles
