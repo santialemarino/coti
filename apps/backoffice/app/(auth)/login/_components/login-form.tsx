@@ -1,67 +1,120 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
+import { useForm } from 'react-hook-form';
 
-import { Button, FieldError, Input, Label } from '@repo/ui/components';
-import { login, type LoginState } from '@/app/(auth)/login/actions';
+import {
+  Button,
+  Checkbox,
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+  FormRootMessage,
+  Input,
+} from '@repo/ui/components';
+import { login } from '@/app/(auth)/login/actions';
+import { loginSchema, type LoginValues } from '@/app/(auth)/login/form-schema';
 import { ROUTES } from '@/config/routes';
 import { PASSWORD_MIN_LENGTH } from '@/lib/constants/auth';
-
-const INITIAL_STATE: LoginState = {};
 
 interface LoginFormProps {
   next?: string;
 }
 
 export function LoginForm({ next }: LoginFormProps) {
+  const router = useRouter();
   const t = useTranslations('auth.login');
-  const [state, formAction, pending] = useActionState(login, INITIAL_STATE);
+  const schema = useMemo(() => loginSchema(t), [t]);
+  const form = useForm<LoginValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { email: '', password: '', rememberMe: false },
+  });
+
+  async function onSubmit(values: LoginValues) {
+    const result = await login(values, next);
+    if (result.redirectTo) {
+      router.replace(result.redirectTo);
+      // The session cookie only exists as of this response, so the cached tree still
+      // reflects an anonymous caller.
+      router.refresh();
+      return;
+    }
+    // Which credential was wrong is deliberately not knowable, so it is a form error.
+    form.setError('root', { message: t(`errors.${result.error ?? 'unexpected'}`) });
+  }
 
   return (
-    <form action={formAction} noValidate className="flex flex-col gap-y-4">
-      <input type="hidden" name="next" value={next ?? ''} />
-
-      <div className="flex flex-col gap-y-2">
-        <Label htmlFor="email" required>
-          {t('email.label')}
-        </Label>
-        <Input
-          id="email"
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="flex flex-col gap-y-4">
+        <FormField
+          control={form.control}
           name="email"
-          type="email"
-          autoComplete="email"
-          defaultValue={state.email}
-          placeholder={t('email.placeholder')}
-          required
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel required>{t('email.label')}</FormLabel>
+              <FormControl>
+                <Input
+                  type="email"
+                  autoComplete="email"
+                  placeholder={t('email.placeholder')}
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-      </div>
 
-      <div className="flex flex-col gap-y-2">
-        <Label htmlFor="password" required>
-          {t('password.label')}
-        </Label>
-        <Input
-          id="password"
+        <FormField
+          control={form.control}
           name="password"
-          type="password"
-          autoComplete="current-password"
-          minLength={PASSWORD_MIN_LENGTH}
-          placeholder={t('password.placeholder')}
-          required
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel required>{t('password.label')}</FormLabel>
+              <FormControl>
+                <Input
+                  type="password"
+                  autoComplete="current-password"
+                  minLength={PASSWORD_MIN_LENGTH}
+                  placeholder={t('password.placeholder')}
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-      </div>
 
-      <FieldError>{state.error ? t(`errors.${state.error}`) : null}</FieldError>
+        <FormField
+          control={form.control}
+          name="rememberMe"
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-center gap-x-2">
+              <FormControl>
+                <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+              </FormControl>
+              <FormLabel>{t('rememberMe')}</FormLabel>
+            </FormItem>
+          )}
+        />
 
-      <Button type="submit" disabled={pending}>
-        {pending ? t('submitting') : t('submit')}
-      </Button>
+        <FormRootMessage />
 
-      <Link href={ROUTES.forgotPassword} className="text-sm text-muted-foreground underline">
-        {t('forgotPassword')}
-      </Link>
-    </form>
+        <Button type="submit" disabled={form.formState.isSubmitting}>
+          {form.formState.isSubmitting ? t('submitting') : t('submit')}
+        </Button>
+
+        <Link href={ROUTES.forgotPassword} className="text-sm text-muted-foreground underline">
+          {t('forgotPassword')}
+        </Link>
+      </form>
+    </Form>
   );
 }

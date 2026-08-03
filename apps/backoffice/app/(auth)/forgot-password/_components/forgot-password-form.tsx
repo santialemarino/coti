@@ -1,23 +1,52 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
+import { useForm } from 'react-hook-form';
 
-import { Button, FieldError, Input, Label } from '@repo/ui/components';
 import {
-  requestPasswordRecovery,
-  type ForgotPasswordState,
-} from '@/app/(auth)/forgot-password/actions';
+  Button,
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+  FormRootMessage,
+  Input,
+} from '@repo/ui/components';
+import { requestPasswordRecovery } from '@/app/(auth)/forgot-password/actions';
+import {
+  forgotPasswordSchema,
+  type ForgotPasswordValues,
+} from '@/app/(auth)/forgot-password/form-schema';
 import { ROUTES } from '@/config/routes';
-
-const INITIAL_STATE: ForgotPasswordState = {};
 
 export function ForgotPasswordForm() {
   const t = useTranslations('auth.forgotPassword');
-  const [state, formAction, pending] = useActionState(requestPasswordRecovery, INITIAL_STATE);
+  const schema = useMemo(() => forgotPasswordSchema(t), [t]);
+  const [sent, setSent] = useState(false);
+  const form = useForm<ForgotPasswordValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { email: '' },
+  });
 
-  if (state.sent) {
+  async function onSubmit(values: ForgotPasswordValues) {
+    const result = await requestPasswordRecovery(values);
+    if (result.sent) {
+      setSent(true);
+      return;
+    }
+    if (result.fieldError) {
+      form.setError(result.fieldError.field, { message: t(`email.${result.fieldError.key}`) });
+      return;
+    }
+    form.setError('root', { message: t('errors.unexpected') });
+  }
+
+  if (sent) {
     return (
       <div className="flex flex-col gap-y-4">
         <p className="text-sm text-muted-foreground">{t('sent')}</p>
@@ -29,31 +58,37 @@ export function ForgotPasswordForm() {
   }
 
   return (
-    <form action={formAction} noValidate className="flex flex-col gap-y-4">
-      <div className="flex flex-col gap-y-2">
-        <Label htmlFor="email" required>
-          {t('email.label')}
-        </Label>
-        <Input
-          id="email"
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="flex flex-col gap-y-4">
+        <FormField
+          control={form.control}
           name="email"
-          type="email"
-          autoComplete="email"
-          defaultValue={state.email}
-          placeholder={t('email.placeholder')}
-          required
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel required>{t('email.label')}</FormLabel>
+              <FormControl>
+                <Input
+                  type="email"
+                  autoComplete="email"
+                  placeholder={t('email.placeholder')}
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-      </div>
 
-      <FieldError>{state.error ? t(`errors.${state.error}`) : null}</FieldError>
+        <FormRootMessage />
 
-      <Button type="submit" disabled={pending}>
-        {pending ? t('submitting') : t('submit')}
-      </Button>
+        <Button type="submit" disabled={form.formState.isSubmitting}>
+          {form.formState.isSubmitting ? t('submitting') : t('submit')}
+        </Button>
 
-      <Link href={ROUTES.login} className="text-sm text-muted-foreground underline">
-        {t('backToLogin')}
-      </Link>
-    </form>
+        <Link href={ROUTES.login} className="text-sm text-muted-foreground underline">
+          {t('backToLogin')}
+        </Link>
+      </form>
+    </Form>
   );
 }

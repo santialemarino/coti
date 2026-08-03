@@ -1,36 +1,37 @@
 'use server';
 
-import { redirect } from 'next/navigation';
-
-import { loginSchema } from '@/app/(auth)/login/form-schema';
+import { loginSchema, type LoginValues } from '@/app/(auth)/login/form-schema';
 import { safeNextPath } from '@/config/routes';
 import { startSession } from '@/lib/auth/session';
 import { requestLogin } from '@/lib/auth/tokens';
 
-// The message key the screen renders. `invalidCredentials` deliberately covers a
-// wrong password, an unknown address and a disabled user alike — the API answers
-// all three with the same 401, and the interface must not undo that.
+/*
+ * The message key the form renders, and which field it belongs on.
+ * `invalidCredentials` deliberately covers a wrong password, an unknown address and a
+ * disabled user alike — the API answers all three with the same 401, and the
+ * interface must not undo that, so it lands on the form rather than on a field.
+ */
 export type LoginErrorKey = 'invalidCredentials' | 'locked' | 'unreachable' | 'unexpected';
 
-export interface LoginState {
+export interface LoginResult {
+  redirectTo?: string;
   error?: LoginErrorKey;
-  // React resets a form once its action resolves, so the address is handed back for
-  // the field to re-seed itself. The password deliberately is not.
-  email?: string;
 }
 
-export async function login(_previous: LoginState, formData: FormData): Promise<LoginState> {
-  const email = String(formData.get('email') ?? '');
-  const parsed = loginSchema.safeParse({ email, password: formData.get('password') });
-  if (!parsed.success) return { error: 'invalidCredentials', email };
+export async function login(values: LoginValues, next?: string): Promise<LoginResult> {
+  // Re-validated server-side: the client's schema is a courtesy, not a guarantee.
+  const parsed = loginSchema().safeParse(values);
+  if (!parsed.success) return { error: 'invalidCredentials' };
 
-  const attempt = await requestLogin(parsed.data.email, parsed.data.password);
-  if (!attempt.ok || !attempt.tokens) {
-    return { error: loginErrorFor(attempt.status), email };
-  }
+  const attempt = await requestLogin(
+    parsed.data.email,
+    parsed.data.password,
+    parsed.data.rememberMe,
+  );
+  if (!attempt.ok || !attempt.tokens) return { error: loginErrorFor(attempt.status) };
 
-  await startSession(attempt.tokens);
-  redirect(safeNextPath(String(formData.get('next') ?? '')));
+  await startSession(attempt.tokens, parsed.data.rememberMe);
+  return { redirectTo: safeNextPath(next) };
 }
 
 function loginErrorFor(status: number): LoginErrorKey {
