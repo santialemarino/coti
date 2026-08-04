@@ -89,8 +89,27 @@ jobs:
         env:
           DATABASE_ADMIN_URL: postgres://coti:coti@localhost:5432/coti?sslmode=disable
         run: node scripts/goose.mjs up
+      # Coverage is measured here rather than in the unit job because this run is a superset: a
+      # build tag only adds files, so this compiles in both suites. The unit job alone would
+      # report the repository package at zero, all of whose tests are tagged.
       - name: Integration tests
         env:
           TEST_DATABASE_URL: postgres://coti_app:coti_app@localhost:5432/coti?sslmode=disable
           TEST_DATABASE_ADMIN_URL: postgres://coti:coti@localhost:5432/coti?sslmode=disable
-        run: go test -tags=integration -count=1 ./...
+        run: go test -tags=integration -count=1 -coverpkg=./internal/... -coverprofile=coverage.out ./...
+      # Reported, never enforced: a threshold set before the suites are real gets met by writing
+      # tests that assert nothing. It lands in the job summary so the number is readable without
+      # opening the log. cmd/api and the generated docs stay out of the denominator.
+      - name: Coverage
+        run: |
+          {
+            echo '### API coverage — `internal/`'
+            echo
+            echo '```'
+            go tool cover -func=coverage.out | awk '$1 == "total:" {print "total  " $3}'
+            go tool cover -func=coverage.out | grep -v '^total:' \
+              | sed 's|github.com/santialemarino/coti/apps/api/||' \
+              | awk -F'[:\t]' '{n=$1; sub(/\/[^\/]*$/,"",n); g=$NF; gsub(/%/,"",g); s[n]+=g; c[n]++}
+                               END {for (k in s) printf "%-38s %5.1f%%\n", k, s[k]/c[k]}' | sort
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
