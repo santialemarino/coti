@@ -4,7 +4,7 @@
   "description": "Coti — AI-assisted quoting platform for building materials suppliers",
   "private": true,
   "scripts": {
-    "dev": "turbo run dev --parallel",
+    "dev": "turbo run dev",
     "dev:docker": "docker compose up -d",
     "build": "turbo run build",
     "start": "turbo run start --parallel",
