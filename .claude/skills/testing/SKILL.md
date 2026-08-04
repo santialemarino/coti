@@ -252,8 +252,10 @@ decides — rounding, sign, the date-only anchoring, the zone the day is compute
 
 ### Coverage
 
-Reported, never enforced — `pnpm --filter <pkg> run test:coverage`. No threshold anywhere,
-deliberately: one set before the suites are real is met by writing tests that assert nothing.
+Reported, never enforced — `pnpm --filter <pkg> run test:coverage` locally, and each web workflow
+publishes its own number into the **job summary**, the way `ci.api.yml` does, so it needs no log
+dive. No threshold anywhere, deliberately: one set before the suites are real is met by writing
+tests that assert nothing.
 
 `ci.backoffice.yml` and `ci.webapp.yml` each run their own app's suite, and **`ci.ui.yml`**
 covers the design system — which until it existed was only ever _built_ in CI, never linted,

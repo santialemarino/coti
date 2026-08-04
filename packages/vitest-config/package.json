@@ -4,7 +4,10 @@
   "type": "module",
   "private": true,
   "exports": {
-    ".": "./config.js"
+    ".": {
+      "types": "./config.d.ts",
+      "default": "./config.js"
+    }
   },
   "devDependencies": {
     "@testing-library/react": "^16.3.2",

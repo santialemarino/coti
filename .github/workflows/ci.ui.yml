@@ -38,6 +38,17 @@ jobs:
       - name: Type check
         run: pnpm --filter @repo/ui run check-types
       - name: Test
-        run: pnpm --filter @repo/ui run test
+        run: pnpm --filter @repo/ui run test:coverage
+      # Reported, never enforced: a threshold set before the suites are real gets met by writing
+      # tests that assert nothing. It lands in the job summary so the number needs no log dive.
+      - name: Coverage
+        run: |
+          {
+            echo '### Design system coverage'
+            echo
+            echo '```'
+            node -e "const t=require('./packages/ui/coverage/coverage-summary.json').total;for(const k of ['statements','branches','functions','lines'])console.log(k.padEnd(12),t[k].pct.toFixed(1)+'%')"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Build
         run: pnpm build:ui

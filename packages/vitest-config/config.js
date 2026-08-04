@@ -1,8 +1,8 @@
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 
-function stub(name) {
-  return fileURLToPath(new URL(`./stubs/${name}.js`, import.meta.url));
+function localPath(name) {
+  return fileURLToPath(new URL(name, import.meta.url));
 }
 
 export const vitestConfig = {
@@ -16,14 +16,14 @@ export const vitestConfig = {
        * Next resolves the `server-only` marker in its own bundler and ships no package for it,
        * so every module carrying that import is unresolvable under a plain runner without this.
        */
-      'server-only': stub('server-only'),
+      'server-only': localPath('./stubs/server-only.js'),
     },
   },
   test: {
     environment: 'jsdom',
     include: ['**/*.test.{ts,tsx}'],
     exclude: ['**/node_modules/**', '**/dist/**', '**/.next/**'],
-    setupFiles: [stub('setup')],
+    setupFiles: [localPath('./setup.js')],
     // Reported, never enforced — a threshold set before the suites are real is met by writing
     // tests that assert nothing. Same rule the API follows.
     coverage: {
