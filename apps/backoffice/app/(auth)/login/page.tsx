@@ -1,7 +1,10 @@
+import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
+import { InlineLink } from '@repo/ui/components';
+import { AuthCard } from '@/app/(auth)/_components/auth-card';
 import { LoginForm } from '@/app/(auth)/login/_components/login-form';
-import { NEXT_PARAM, safeNextPath } from '@/config/routes';
+import { NEXT_PARAM, ROUTES, safeNextPath } from '@/config/routes';
 import { generatePageMetadata } from '@/lib/utils/page';
 
 export const generateMetadata = () => generatePageMetadata('login');
@@ -16,9 +19,15 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const next = safeNextPath(typeof params[NEXT_PARAM] === 'string' ? params[NEXT_PARAM] : null);
 
   return (
-    <>
-      <h1 className="text-3xl font-bold">{t('title')}</h1>
+    <AuthCard
+      title={t('title')}
+      footer={
+        <InlineLink asChild tone="muted">
+          <Link href={ROUTES.forgotPassword}>{t('forgotPassword')}</Link>
+        </InlineLink>
+      }
+    >
       <LoginForm next={next} />
-    </>
+    </AuthCard>
   );
 }
