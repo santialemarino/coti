@@ -45,7 +45,7 @@ export function formatRatePct(ratio: number, locale?: string): string {
   }).format(ratio);
 }
 
-// "2 ene 2025". Date-only input (YYYY-MM-DD) is anchored at local midnight so it never
+// "2 de ene de 2025". Date-only input (YYYY-MM-DD) is anchored at local midnight so it never
 // timezone-shifts to the previous day.
 export function formatDate(iso: string, locale?: string): string {
   const date = iso.length === 10 ? new Date(iso + 'T00:00:00') : new Date(iso);
@@ -56,7 +56,8 @@ export function formatDate(iso: string, locale?: string): string {
   }).format(date);
 }
 
-// "2 ene 2025, 14:30", rendered in `timeZone` so the calendar day is right for the viewer.
+// "2 de ene de 2025, 11:30 p. m.", rendered in `timeZone` so the calendar day is right for
+// the viewer.
 export function formatTimestamp(iso: string, locale?: string, timeZone?: string): string {
   return dateTimeFormat(getLocaleTag(locale), {
     day: 'numeric',
