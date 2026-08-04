@@ -62,13 +62,13 @@ composes components. Put UI and interactivity in components.
 `@repo/ui` is a real design system now — check it before writing markup. The
 catalogue:
 
-| Group    | Components                                                                                                                                         |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Controls | `Button` `Badge` `Input` `SearchInput` `Textarea` `Label` `Checkbox` `RadioGroup` `Switch` `ToggleGroup` `Combobox` `Pagination` `RowActionButton` |
-| Surfaces | `Card` `Separator` `Table` `Skeleton` `Spinner` `Progress` `Avatar` `Hint` `Callout`                                                               |
-| Overlays | `Dialog` `Sheet` `Popover` `DropdownMenu` `Tooltip` `Collapsible` `Command` `ConfirmDialog`                                                        |
-| Patterns | `StatusScreen` `Stepper` `EmptyState` `TableEmptyRow` `SortableTableHead` `InlineLink` `DropdownChevron`                                           |
-| Forms    | `Form` `FormField` `FormItem` `FormLabel` `FormControl` `FormDescription` `FormMessage` `FormRootMessage`                                          |
+| Group    | Components                                                                                                                                                         |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Controls | `Button` `PendingButton` `Badge` `Input` `SearchInput` `Textarea` `Label` `Checkbox` `RadioGroup` `Switch` `ToggleGroup` `Combobox` `Pagination` `RowActionButton` |
+| Surfaces | `Card` `Separator` `Table` `Skeleton` `Spinner` `Progress` `Avatar` `Hint` `Callout`                                                                               |
+| Overlays | `Dialog` `Sheet` `Popover` `DropdownMenu` `Tooltip` `Collapsible` `Command` `ConfirmDialog`                                                                        |
+| Patterns | `StatusScreen` `Stepper` `EmptyState` `TableEmptyRow` `SortableTableHead` `InlineLink` `DropdownChevron`                                                           |
+| Forms    | `Form` `FormField` `FormItem` `FormLabel` `FormControl` `FormDescription` `FormMessage` `FormRootMessage`                                                          |
 
 - **Reuse-first, in search order.** Look in this order: (1) the page's
   `_components/`, (2) the app's `components/`, (3) `@repo/ui`. Restyle through the
@@ -77,7 +77,8 @@ catalogue:
 - **Use the props before reaching for `className`.** `Button` has `variant`/`size`,
   `Badge` has `tone`/`size`/`dot`, `Card` has `interactive`, `Label` and `FormItem`
   have `required`, `Input` has `startIcon`/`endIcon`/`prefix`/`suffix`, `Dialog` has
-  `closeOnClickOutside`. Passing raw classes where a prop exists is how two call
+  `closeOnClickOutside`, `PendingButton` has `pending`/`pendingLabel`. Passing raw
+  classes where a prop exists is how two call
   sites end up looking different.
 - **One dropdown: `Combobox`.** Radix `Select` is deliberately absent from the
   design system because it has no exit animation. Never add it back.

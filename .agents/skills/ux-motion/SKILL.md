@@ -57,6 +57,12 @@ The bump comes in three intensities: `animate-focus-bump` (→1.5, icon-only but
 `animate-focus-bump-soft` (→1.15, inline icons), `animate-focus-bump-subtle` (→1.05, text links,
 where more movement reads as a glitch).
 
+**A one-shot bump is for a control you focus and leave; a control you sit on and press repeatedly gets
+a held scale instead** — `transition-[scale]` plus `group-hover/x:scale-110
+group-focus-visible/x:scale-110`. A keyframe that returns to rest stops signalling the moment it ends,
+so the password reveal and the search clear hold 1.1 while the dialog close and the sort header, which
+you focus once and move on from, keep the 1.5 one-shot.
+
 Keyboard focus must be **as visible as hover**. Tab through what you built.
 
 ### hover, active, disabled
@@ -64,7 +70,10 @@ Keyboard focus must be **as visible as hover**. Tab through what you built.
 - **Pair every hover with a matching focus-visible.** Never signal interactivity with colour alone —
   add the underline, the shape change, or the elevation step too.
 - **`active` where a press reads:** `active:bg-primary-active` plus `active:scale-[0.98]` on buttons,
-  `active:scale-[0.97]` on segmented items.
+  `active:scale-[0.97]` on segmented items. **`:active` covers pointer and Space, never Enter** —
+  browsers fire a button's click on Enter without ever matching `:active`, so an Enter press is
+  acknowledged by the focus ring and by whatever the action does, not by the press state. That is
+  native behaviour, not a missing style; don't go looking for the bug.
 - **`disabled:pointer-events-none disabled:opacity-50`**, and `aria-disabled:` the same where the
   element must stay focusable. Cursor comes free — `button:not([disabled])` gets `cursor-pointer`
   from the base layer.
@@ -76,6 +85,29 @@ Keyboard focus must be **as visible as hover**. Tab through what you built.
 
 `transition-[color,background-color,border-color,box-shadow] duration-200 ease-out-soft` — not
 `transition-all`, which also animates layout and makes a resize look like it is wobbling.
+
+**An enumerated list must name the property the utility actually sets, and for the transform family
+that is never `transform`.** Tailwind v4 compiles `scale-*`, `translate-*` and `rotate-*` to the
+individual CSS properties `scale`, `translate` and `rotate`:
+
+```css
+.scale-50    { …; scale: var(--tw-scale-x) var(--tw-scale-y) }
+.rotate-180  { rotate: 180deg }
+.-translate-y-1 { translate: 0 calc(var(--spacing) * -1) }
+```
+
+So `transition-[opacity,transform]` next to `scale-0`/`scale-100` compiles fine, generates a valid
+rule, and animates **nothing** — the crossfade snaps and no tooling warns you. Write
+`transition-[opacity,scale]`, `transition-[color,translate]`, `transition-[color,rotate]`.
+
+This is the single easiest mistake to make in this skill and the hardest to see, because the end state
+is correct and only the interpolation is missing. Two ways to stay safe:
+
+- **`transition-transform` is fine** — v4 expands it to `transform, translate, scale, rotate`, which
+  is why `Switch`'s thumb travels correctly. Reach for it when you are animating the whole family.
+- **When you touch any `transition-[…]`, re-read every utility on that element** and confirm each
+  animated property is named. Verify in the browser by sampling `getComputedStyle` mid-flight, not by
+  reading the class list — a snapped animation and a working one look identical at rest.
 
 ## Motion tokens — never hardcode a duration
 
@@ -116,9 +148,15 @@ panel enters from the trigger and then dissolves in place.
 - **Crossfade between mutually exclusive stages** (a form and its result, a loading state and its
   content) with `AnimatePresence mode="wait"`, so the incoming stage waits for the outgoing one.
   `AuthStage` is the reference.
+- **A content-driven size change is not a CSS animation.** `width: auto` cannot be transitioned, so no
+  `transition-*` will ever smooth a box that resizes because its text changed — it needs motion's
+  `layout`. `PendingButton` is the reference.
+- **`mode="wait"` and `layout` do not compose.** Under `wait` the incoming child mounts in a later
+  commit that the `layout` parent never re-renders for, so it measures nothing and the resize snaps.
+  Use `mode="popLayout"`, which pulls the outgoing child out of flow in the same commit the state
+  changes, and give the parent `relative` so the popped child is positioned against it.
 - **A disclosure chevron rotates on open**, driven off the open state, and its transition must name
-  **`rotate`** — in Tailwind v4 `rotate-180` sets the `rotate` property, so a `transform`-only
-  transition leaves it snapping. Use the shared `DropdownChevron` rather than a new one.
+  **`rotate`** (see the transform-family rule above). Use the shared `DropdownChevron`, not a new one.
 
 ## No layout shift
 
@@ -150,18 +188,20 @@ priority.
 
 Honour `prefers-reduced-motion: reduce`. The split:
 
-- **Decorative motion collapses to nothing** — the status halo, the icon pop, content rises, the
-  Collapsible height reveal. The gate for the shared utilities is already in
-  `packages/ui/src/styles/index.css`; a new decorative keyframe must be added to it.
-- **Functional feedback stays** — the focus bump, small hover transitions. Removing these removes the
-  affordance.
-- **A one-shot animation that ends invisible must also be invisible at rest.** With `animation: none`
-  the element renders at its base style, so `animate-status-halo` carries `opacity-0`: without it the
-  halo would sit there as a permanent stray ring. Equally, anything relying on `both` fill-mode to
-  start hidden must be visible at rest, or reduced-motion users get blank copy.
-- **JS-driven motion** uses `useReducedMotion()` from `motion/react` and swaps the whole props object
-  for a static one, rather than conditionally rendering a plain element — motion inlines `opacity: 0`
-  during SSR, and a plain element would keep it and stay invisible.
+- **Decorative motion collapses to nothing** — the `StatusScreen` icon's entrance, the Collapsible
+  height reveal. The gate lives in `packages/ui/src/styles/index.css`; add a new decorative keyframe
+  to it. Where the animation is a shared utility like `animate-in`, gate it by `data-slot` instead of
+  by class, or you kill every overlay entrance with it.
+- **Functional feedback stays** — the focus bump, the held focus scale, small hover transitions.
+  Removing these removes the affordance.
+- **Anything that animates from invisible must be visible at rest.** With `animation: none` the
+  element renders at its base style, so a one-shot that ends invisible needs that end state as its
+  base, and anything relying on `both` fill-mode to start hidden must not — or reduced-motion users
+  get blank copy.
+- **JS-driven motion** uses `useReducedMotion()` from `motion/react` and keeps the same tree, zeroing
+  the timings (`duration: reduced ? 0 : MOTION.default`) and dropping `layout`. Do not swap in a plain
+  element: motion inlines its own styles during SSR and a swapped element strands them, which is how a
+  label ends up permanently invisible.
 
 ## Verify what you built
 
