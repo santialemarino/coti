@@ -143,7 +143,9 @@ one-offs (a third-party library's CSS, a selector for DOM the app doesn't render
 below that import.
 
 Class scanning is monorepo-wide from inside the package (`@source` covers `packages/ui`
-and `apps/**`), so a class used only in an app is still generated.
+and `apps/**`), so a class used only in an app is still generated. Tailwind's automatic
+detection is off, so those globs are the whole input — a class name only _mentioned_ in
+prose never reaches the bundle.
 
 **`@repo/ui` ships its CSS prebuilt** (`exports["./styles"]` → `dist/index.css`;
 components are consumed from `src`, so their logic is live but their styles are not).

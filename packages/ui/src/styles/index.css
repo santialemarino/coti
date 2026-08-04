@@ -3,12 +3,17 @@
  * (`@repo/ui/styles`) — importing `tailwindcss` again in an app emits preflight and the utility
  * layer a second time, so don't.
  */
-@import 'tailwindcss';
+@import 'tailwindcss' source(none);
 @import 'tw-animate-css';
 
 @import './theme.css';
 
-/* Scanned for class names: this package plus both apps, since the build runs from in here. */
+/*
+ * Scanned for class names: this package plus both apps, since the build runs from in here.
+ * `source(none)` turns off Tailwind's automatic detection so these globs are the whole input —
+ * otherwise it also scans prose, and a class name merely *mentioned* in a README or a skill would
+ * be generated. Only the two directories that render UI produce CSS.
+ */
 @source "../../**/*.{ts,tsx}";
 @source "../../../../apps/**/*.{ts,tsx}";
 

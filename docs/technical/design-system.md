@@ -24,9 +24,12 @@ layer, so a second import emits both twice.
 
 Two consequences worth knowing:
 
-- **Class scanning is monorepo-wide from inside the package.** `index.css` declares
-  `@source "../../**/*.{ts,tsx}"` and `@source "../../../../apps/**/*.{ts,tsx}"`, so a
-  class used only in an app is still generated.
+- **Class scanning is monorepo-wide from inside the package, and explicit.** `index.css`
+  declares `@source "../../**/*.{ts,tsx}"` and `@source "../../../../apps/**/*.{ts,tsx}"`,
+  so a class used only in an app is still generated. Tailwind's automatic detection is
+  turned off (`@import 'tailwindcss' source(none)`) so those two globs are the whole
+  input — otherwise it also scans prose, and a class name merely _mentioned_ in a README
+  or a skill would end up in the bundle.
 - **`@repo/ui` ships its CSS prebuilt.** Components are consumed from `src` (their
   logic is live), but styles come from `dist`. After changing a `packages/ui`
   component's classNames, rebuild (`pnpm --filter @repo/ui build`, or rely on its
