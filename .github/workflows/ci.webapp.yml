@@ -14,6 +14,7 @@ on:
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'turbo.json'
+      - '.github/workflows/ci.webapp.yml'
   workflow_dispatch:
 
 jobs:
@@ -34,6 +35,19 @@ jobs:
         run: pnpm --filter webapp run lint
       - name: Type check
         run: pnpm --filter webapp run check-types
+      - name: Test
+        run: pnpm --filter webapp run test:coverage
+      # Reported, never enforced: a threshold set before the suites are real gets met by writing
+      # tests that assert nothing. It lands in the job summary so the number needs no log dive.
+      - name: Coverage
+        run: |
+          {
+            echo '### Webapp coverage'
+            echo
+            echo '```'
+            node -e "const t=require('./apps/webapp/coverage/coverage-summary.json').total;for(const k of ['statements','branches','functions','lines'])console.log(k.padEnd(12),t[k].pct.toFixed(1)+'%')"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Build UI package
         run: pnpm build:ui
       - name: Build webapp

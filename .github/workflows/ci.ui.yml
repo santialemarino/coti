@@ -1,6 +1,6 @@
-name: CI Backoffice
+name: CI UI
 
-run-name: 'CI Backoffice by @${{ github.actor }}'
+run-name: 'CI UI by @${{ github.actor }}'
 
 on:
   workflow_call:
@@ -9,16 +9,18 @@ on:
       - main
       - dev
     paths:
-      - 'apps/backoffice/**'
-      - 'packages/**'
+      - 'packages/ui/**'
+      - 'packages/vitest-config/**'
+      - 'packages/eslint-config/**'
+      - 'packages/typescript-config/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'turbo.json'
-      - '.github/workflows/ci.backoffice.yml'
+      - '.github/workflows/ci.ui.yml'
   workflow_dispatch:
 
 jobs:
-  ci-backoffice:
+  ci-ui:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,23 +34,21 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Lint
-        run: pnpm --filter backoffice run lint
+        run: pnpm --filter @repo/ui run lint
       - name: Type check
-        run: pnpm --filter backoffice run check-types
+        run: pnpm --filter @repo/ui run check-types
       - name: Test
-        run: pnpm --filter backoffice run test:coverage
+        run: pnpm --filter @repo/ui run test:coverage
       # Reported, never enforced: a threshold set before the suites are real gets met by writing
       # tests that assert nothing. It lands in the job summary so the number needs no log dive.
       - name: Coverage
         run: |
           {
-            echo '### Backoffice coverage'
+            echo '### Design system coverage'
             echo
             echo '```'
-            node -e "const t=require('./apps/backoffice/coverage/coverage-summary.json').total;for(const k of ['statements','branches','functions','lines'])console.log(k.padEnd(12),t[k].pct.toFixed(1)+'%')"
+            node -e "const t=require('./packages/ui/coverage/coverage-summary.json').total;for(const k of ['statements','branches','functions','lines'])console.log(k.padEnd(12),t[k].pct.toFixed(1)+'%')"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Build UI package
+      - name: Build
         run: pnpm build:ui
-      - name: Build backoffice
-        run: pnpm build:backoffice

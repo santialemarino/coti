@@ -14,13 +14,13 @@ description: Where tests live, how to run them, and what to test in the Coti rep
 - **Script tests (`scripts/`):** Node's built-in runner (`node:test` + `node:assert`),
   co-located as `<name>.test.mjs`. No dependency to install. See
   [Operational scripts](#operational-scripts).
-- **Web tests (backoffice / webapp):** **NOT YET SET UP.** No runner is installed
-  and `pnpm test:web` currently just echoes a placeholder. See
-  [Web testing](#web-testing-not-yet-set-up) for the intended convention — do not
-  assume any web test infrastructure exists until it is scaffolded.
+- **Web tests (backoffice / webapp / `@repo/ui`):** **Vitest + jsdom**, co-located as
+  `<file>.test.ts` / `<file>.test.tsx` beside the code under test. All three packages
+  share one config from `@repo/vitest-config`. See [Web testing](#web-testing).
 - **CI:** `.github/workflows/ci.api.yml` runs `gofmt` check, `go vet`,
   `golangci-lint`, `go build`, and `go test ./...` on API PRs; the web workflows run
-  lint + `check-types` + build; `ci.scripts.yml` covers `scripts/` and the root manifest.
+  lint + `check-types` + test + build, and `ci.ui.yml` does the same for the design
+  system; `ci.scripts.yml` covers `scripts/` and the root manifest.
   Two workflows carry a **second job** that stands up PostgreSQL + pgvector and applies the
   migration chain: the API's runs the integration suite, which guards tenant isolation, and
   the scripts' runs the commands for real. Both gate merges rather than being a local-only
@@ -28,7 +28,8 @@ description: Where tests live, how to run them, and what to test in the Coti rep
   it is faster than waiting for CI to tell you.
 - **Every workflow is path-filtered**, so a directory nothing watches gets no checks at all —
   a PR touching only it goes green having run nothing. Adding a top-level directory means
-  adding or widening a workflow in the same change.
+  adding or widening a workflow in the same change. Each workflow also lists **itself** in its
+  `paths`, so editing one is covered by the run it configures.
 
 ## Running tests
 
@@ -47,7 +48,14 @@ TEST_DATABASE_ADMIN_URL=postgres://coti:coti@localhost:5432/coti?sslmode=disable
 # From repo root
 pnpm test:api                                   # go test ./... in apps/api
 pnpm test:scripts                               # node --test over scripts/
+pnpm test:web                                   # vitest in backoffice + webapp + @repo/ui
 pnpm test                                       # test:scripts + test:api + test:web
+
+# One web package, or one file
+pnpm --filter backoffice run test
+pnpm --filter @repo/ui run test:watch
+pnpm --filter backoffice run test lib/api/client.test.ts
+pnpm --filter backoffice run test:coverage
 ```
 
 Before pushing, run `pnpm check` (api: `go build` + `go vet`; web: `check-types`)
@@ -202,17 +210,56 @@ TEST_DATABASE_ADMIN_URL=postgres://coti:coti@localhost:5433/coti?sslmode=disable
 It exists because every other workflow is path-filtered to an app directory: without it a
 change touching only these paths reaches `dev` with no check having run at all.
 
-## Web testing (NOT YET SET UP)
+## Web testing
 
-No web test runner exists in the repo yet. When it is added, the intended
-convention is:
+**Vitest + jsdom** in all three frontend packages — `apps/backoffice`, `apps/webapp` and
+`packages/ui`. Tests are **co-located** beside the code under test as `<file>.test.ts`
+(`.test.tsx` when it renders), the same shape the API and `scripts/` already use.
 
-- **Vitest** for unit tests of pure functions / hooks / utilities in `backoffice`
-  and `webapp`.
-- **jsdom** (via Vitest) for component tests.
+**One shared config: `@repo/vitest-config`.** Each package's `vitest.config.ts` is three
+lines re-exporting it, the way `eslint.config.js` consumes `@repo/eslint-config`. Put a
+setting that should hold everywhere in the shared package, not in one app. It carries two
+things worth knowing:
 
-Until that scaffolding lands, `pnpm test:web` is a no-op placeholder — do not
-write web tests assuming a runner is present, and don't claim web coverage exists.
+- **`server-only` is aliased to a stub.** Next resolves that marker in its own bundler and
+  ships no package for it, so any module importing it — the API client, the session, every
+  `lib/api/*` — is unresolvable under a plain runner without the alias.
+- **Path aliases come from each package's own `tsconfig.json`** (`resolve.tsconfigPaths`),
+  so `@/lib/...` resolves in a test exactly as it does in the app, with no second copy of
+  the alias map to drift.
+
+### What to test
+
+- **`lib/api/*` mapping.** The API speaks snake_case and the component tree speaks
+  camelCase; that boundary is the highest-value target in either app, because an unmapped
+  field surfaces as `undefined` deep in a screen rather than as an error. Assert the whole
+  mapped object, so a field added to the raw type but not the mapper fails here.
+- **`lib/auth/*` and `config/routes.ts`.** Session and reachability logic: token expiry,
+  the proxy-hop count, `safeNextPath`. This is where a security bug is cheapest to catch.
+- **Schema factories** (`form-schema.ts`) — including that a message resolves through the
+  translator rather than being baked in.
+- **`@repo/ui` components** — the contract a caller depends on: `type="button"` by default,
+  `aria-busy` and self-disabling on `PendingButton`, `asChild` passthrough. Not the styling.
+- **Don't test** framework behaviour, or a component's exact class list.
+
+### Assert behaviour, not ICU glyphs
+
+The formatters are locale-bound, and `Intl` output changes with the Node build: the compact
+separator is a **non-breaking** space, and `es-AR` renders a 12-hour clock. A test pinned to
+`'1,5 M'` or `'14:30'` goes red on an ICU upgrade with nothing broken. Assert what the module
+decides — rounding, sign, the date-only anchoring, the zone the day is computed in — and use
+`\s` rather than a literal space.
+
+### Coverage
+
+Reported, never enforced — `pnpm --filter <pkg> run test:coverage` locally, and each web workflow
+publishes its own number into the **job summary**, the way `ci.api.yml` does, so it needs no log
+dive. No threshold anywhere, deliberately: one set before the suites are real is met by writing
+tests that assert nothing.
+
+`ci.backoffice.yml` and `ci.webapp.yml` each run their own app's suite, and **`ci.ui.yml`**
+covers the design system — which until it existed was only ever _built_ in CI, never linted,
+type-checked or tested.
 
 ## Related skills
 
