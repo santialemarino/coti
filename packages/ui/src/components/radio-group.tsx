@@ -43,7 +43,7 @@ function RadioGroupItem({
         data-slot="radio-group-indicator"
         className={cn(
           'grid place-items-center size-2 bg-primary rounded-full',
-          'transition-[opacity,transform] duration-200 ease-out-soft',
+          'transition-[opacity,scale] duration-200 ease-out-soft',
           'data-[state=unchecked]:scale-0 data-[state=unchecked]:opacity-0',
           'data-[state=checked]:scale-100 data-[state=checked]:opacity-100',
         )}

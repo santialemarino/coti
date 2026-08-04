@@ -61,7 +61,7 @@ function ToggleGroupItem({
       data-slot="toggle-group-item"
       className={cn(
         'relative inline-flex shrink-0 items-center justify-center gap-x-1.5 whitespace-nowrap border border-transparent outline-none',
-        'transition-[color,background-color,border-color,box-shadow,transform] duration-200 ease-out-soft',
+        'transition-[color,background-color,border-color,box-shadow,scale] duration-200 ease-out-soft',
         'focus-visible:z-10 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45',
         'active:scale-[0.97]',
         'disabled:pointer-events-none disabled:opacity-50',

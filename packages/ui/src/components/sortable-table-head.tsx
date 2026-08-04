@@ -15,7 +15,7 @@ export type SortOrder = 'asc' | 'desc';
  */
 function SortIcon({ active, order }: { active: boolean; order: SortOrder }) {
   const iconClass =
-    'col-start-1 row-start-1 size-3.5 transition-[opacity,transform] duration-200 ease-out-soft';
+    'col-start-1 row-start-1 size-3.5 transition-[opacity,scale] duration-200 ease-out-soft';
 
   return (
     <span aria-hidden="true" className="grid shrink-0 group-focus-visible/sort:animate-focus-bump">
@@ -23,21 +23,21 @@ function SortIcon({ active, order }: { active: boolean; order: SortOrder }) {
         className={cn(
           iconClass,
           'text-foreground-subtle',
-          active ? 'scale-50 opacity-0' : 'scale-100 opacity-100',
+          active ? 'scale-0 opacity-0' : 'scale-100 opacity-100',
         )}
       />
       <ArrowUpIcon
         className={cn(
           iconClass,
           'text-primary',
-          active && order === 'asc' ? 'scale-100 opacity-100' : 'scale-50 opacity-0',
+          active && order === 'asc' ? 'scale-100 opacity-100' : 'scale-0 opacity-0',
         )}
       />
       <ArrowDownIcon
         className={cn(
           iconClass,
           'text-primary',
-          active && order === 'desc' ? 'scale-100 opacity-100' : 'scale-50 opacity-0',
+          active && order === 'desc' ? 'scale-100 opacity-100' : 'scale-0 opacity-0',
         )}
       />
     </span>

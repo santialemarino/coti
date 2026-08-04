@@ -82,6 +82,7 @@ function Combobox({
   /* The highlighted option. Controlled so type-ahead can move it without a search query. */
   const [highlighted, setHighlighted] = React.useState<string>('');
   const typeahead = React.useRef({ buffer: '', timer: 0 });
+  const listRef = React.useRef<HTMLDivElement>(null);
 
   const selected = options.find((option) => option.value === value) ?? null;
 
@@ -150,6 +151,19 @@ function Combobox({
       </PopoverTrigger>
       <PopoverContent
         align="start"
+        /*
+         * Without a search box there is no focusable descendant, so Radix parks focus on the popover
+         * itself and cmdk — which only sees keys that originate inside its own root — never receives
+         * an arrow key. Focusing the list instead puts the caret inside `Command`.
+         */
+        onOpenAutoFocus={
+          searchable
+            ? undefined
+            : (event) => {
+                event.preventDefault();
+                listRef.current?.focus();
+              }
+        }
         className={cn('w-(--radix-popover-trigger-width) p-0', contentClassName)}
       >
         <Command
@@ -161,7 +175,7 @@ function Combobox({
           onKeyDown={handleTypeahead}
         >
           {searchable ? <CommandInput placeholder={searchPlaceholder} /> : null}
-          <CommandList>
+          <CommandList ref={listRef}>
             {searchable ? <CommandEmpty>{emptyLabel}</CommandEmpty> : null}
             {groups.map(([group, groupOptions]) => (
               <CommandGroup key={group || 'ungrouped'} heading={group || undefined}>
@@ -181,7 +195,7 @@ function Combobox({
                     <CheckIcon
                       aria-hidden="true"
                       className={cn(
-                        'ml-auto size-4 shrink-0 transition-[opacity,transform] duration-150 ease-out-soft',
+                        'ml-auto size-4 shrink-0 transition-[opacity,scale] duration-150 ease-out-soft',
                         option.value === value ? 'scale-100 opacity-100' : 'scale-50 opacity-0',
                       )}
                     />

@@ -38,14 +38,19 @@ const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
               onClick={onClear}
               className={cn(
                 'group/clear flex p-0.5 rounded-md outline-none',
-                'transition-[color,opacity,transform] duration-150 ease-out-soft',
+                'transition-[color,opacity,scale] duration-150 ease-out-soft',
                 'text-foreground-subtle hover:text-foreground focus-visible:text-foreground',
                 hasValue ? 'scale-100 opacity-100' : 'pointer-events-none scale-75 opacity-0',
               )}
             >
+              {/* A held 1.1, not a one-shot bump — the button's own scale already drives its
+                  appearance, and a keyframe returning to rest would fight it. */}
               <XIcon
                 aria-hidden="true"
-                className="size-3.5 group-focus-visible/clear:animate-focus-bump"
+                className={cn(
+                  'size-3.5 transition-[scale] duration-150 ease-out-soft',
+                  'group-hover/clear:scale-110 group-focus-visible/clear:scale-110',
+                )}
               />
             </button>
           ) : undefined

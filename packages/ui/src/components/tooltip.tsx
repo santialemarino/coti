@@ -5,8 +5,9 @@ import * as TooltipPrimitive from '@radix-ui/react-tooltip';
 
 import { cn } from '../lib/utils';
 
+/* No delay: these label icon-only controls, and a label you have to wait for reads as lag. */
 function TooltipProvider({
-  delayDuration = 200,
+  delayDuration = 0,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
   return (
@@ -33,7 +34,7 @@ function TooltipTrigger({ ...props }: React.ComponentProps<typeof TooltipPrimiti
 
 function TooltipContent({
   className,
-  sideOffset = 6,
+  sideOffset = 0,
   children,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Content>) {
@@ -44,8 +45,9 @@ function TooltipContent({
         sideOffset={sideOffset}
         className={cn(
           'z-50 w-fit max-w-64 origin-(--radix-tooltip-content-transform-origin) px-2.5 py-1.5 bg-foreground rounded-lg shadow-e3 text-paragraph-xs text-background text-balance',
-          'data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95',
-          'data-[state=instant-open]:animate-in data-[state=instant-open]:fade-in-0 data-[state=instant-open]:zoom-in-95',
+          /* Unconditional entrance rather than one gated per open-state: with no delay Radix reports
+             `instant-open`, and a state-gated enter silently stops animating. */
+          'animate-in fade-in-0 zoom-in-95',
           'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
           'duration-150 ease-out-soft',
           className,

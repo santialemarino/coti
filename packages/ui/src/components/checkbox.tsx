@@ -12,10 +12,23 @@ import { cn } from '../lib/utils';
  * the one direction users see most. Both glyphs share a grid cell so switching to indeterminate
  * never reflows.
  */
-function Checkbox({ className, ...props }: React.ComponentProps<typeof CheckboxPrimitive.Root>) {
+function Checkbox({
+  className,
+  onKeyDown,
+  ...props
+}: React.ComponentProps<typeof CheckboxPrimitive.Root>) {
   return (
     <CheckboxPrimitive.Root
       data-slot="checkbox"
+      onKeyDown={(event) => {
+        onKeyDown?.(event);
+        if (event.key !== 'Enter' || event.defaultPrevented) return;
+        /* WAI-ARIA says Space only, so Radix suppresses Enter to protect the surrounding form.
+           Coti wants Enter to toggle: re-issue the activation the suppressed default would have
+           produced, which keeps controlled and uncontrolled checkboxes behaving the same. */
+        event.preventDefault();
+        event.currentTarget.click();
+      }}
       className={cn(
         'group/checkbox peer grid shrink-0 size-4 place-items-center bg-input border border-border-strong rounded-sm shadow-e1 outline-none',
         'transition-[background-color,border-color,box-shadow] duration-200 ease-out-soft',
@@ -34,7 +47,7 @@ function Checkbox({ className, ...props }: React.ComponentProps<typeof CheckboxP
         data-slot="checkbox-indicator"
         className={cn(
           'grid place-items-center text-current',
-          'transition-[opacity,transform] duration-200 ease-out-soft',
+          'transition-[opacity,scale] duration-200 ease-out-soft',
           'data-[state=unchecked]:scale-50 data-[state=unchecked]:opacity-0',
           'data-[state=checked]:scale-100 data-[state=checked]:opacity-100',
           'data-[state=indeterminate]:scale-100 data-[state=indeterminate]:opacity-100',

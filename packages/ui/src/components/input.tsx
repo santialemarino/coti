@@ -88,6 +88,9 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
                way to cover it, and the absurd transition delay stops it flashing back. */
             '[&:-webkit-autofill]:[-webkit-box-shadow:0_0_0_1000px_var(--input)_inset]',
             '[&:-webkit-autofill]:[transition:background-color_9999s_ease-in-out_0s]',
+            /* The native spinner arrows are two 8px hit targets with no styling hook; a quantity is
+               typed, and where stepping is wanted the surface supplies real buttons. */
+            type === 'number' && 'no-spin-buttons',
             startIcon && !prefix && 'pl-10',
             prefix && 'pl-2',
             (isPassword || endIcon) && 'pr-10',
@@ -120,18 +123,25 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
                 : 'text-foreground-subtle hover:text-foreground focus-visible:text-foreground',
             )}
           >
-            <span className="grid group-focus-visible/reveal:animate-focus-bump">
+            {/* A held 1.1 rather than a one-shot bump: the toggle is pressed repeatedly, and a
+                keyframe that returns to rest gives no signal that focus is still on it. */}
+            <span
+              className={cn(
+                'grid transition-[scale] duration-200 ease-out-soft',
+                'group-hover/reveal:scale-110 group-focus-visible/reveal:scale-110',
+              )}
+            >
               <Eye
                 aria-hidden="true"
                 className={cn(
-                  'col-start-1 row-start-1 size-4 transition-[opacity,transform] duration-200 ease-out-soft',
+                  'col-start-1 row-start-1 size-4 transition-[opacity,scale] duration-200 ease-out-soft',
                   revealed ? 'scale-0 opacity-0' : 'scale-100 opacity-100',
                 )}
               />
               <EyeOff
                 aria-hidden="true"
                 className={cn(
-                  'col-start-1 row-start-1 size-4 transition-[opacity,transform] duration-200 ease-out-soft',
+                  'col-start-1 row-start-1 size-4 transition-[opacity,scale] duration-200 ease-out-soft',
                   revealed ? 'scale-100 opacity-100' : 'scale-0 opacity-0',
                 )}
               />

@@ -41,13 +41,20 @@ function CommandInput({
 /*
  * `onWheel` is stopped here on purpose: when this list is portaled out of an open Dialog, that
  * dialog's scroll lock swallows wheel and trackpad events over the list and it becomes unscrollable.
+ *
+ * cmdk gives the list `tabIndex="-1"`, so it can hold focus when there is no search box to hold it.
+ * That makes it match `:focus-visible` and paint the browser's outline, which the highlighted item
+ * already replaces — the list is a container, not the control.
  */
 function CommandList({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.List>) {
   return (
     <CommandPrimitive.List
       data-slot="command-list"
       onWheel={(e) => e.stopPropagation()}
-      className={cn('max-h-64 overflow-x-hidden overflow-y-auto p-1 thin-scrollbar', className)}
+      className={cn(
+        'max-h-64 overflow-x-hidden overflow-y-auto p-1 outline-none thin-scrollbar',
+        className,
+      )}
       {...props}
     />
   );
