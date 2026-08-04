@@ -14,10 +14,10 @@
  * otherwise it also scans prose, and a class name merely *mentioned* in a README or a skill would
  * be generated. Only the directories that render UI produce CSS.
  *
- * These are directories, not globs, on purpose. In a glob, `(` and `)` are extglob syntax, so
- * `apps/**` silently fails to match Next's route-group folders — `app/(auth)/`, `app/(protected)/` —
- * which is where nearly every page lives. Registering the directory lets Tailwind walk it itself and
- * the parentheses stop mattering.
+ * These are directories, not globs, on purpose: Tailwind walks a registered directory itself, which
+ * takes any question of glob syntax out of play. It matters here because nearly every page lives
+ * inside a Next route group — `app/(auth)/`, `app/(protected)/` — and parentheses are meaningful to a
+ * glob matcher.
  */
 @source "../..";
 @source "../../../../apps";

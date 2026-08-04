@@ -122,7 +122,7 @@ export function PriceImport({ branches }: PriceImportProps) {
             type="file"
             required
             accept=".xlsx,.csv"
-            className="h-10 px-3 py-2 bg-background border border-input rounded-md file:mr-3 file:border-0 file:bg-transparent file:font-medium"
+            className="h-10 px-3 py-2 bg-background border border-input rounded-md file:mr-3 file:border-0 file:bg-transparent file:text-paragraph-sm-medium"
           />
         </div>
         <div className="flex gap-x-2">
