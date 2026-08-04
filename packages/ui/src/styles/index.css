@@ -27,7 +27,7 @@
   /*
    * Brand ramp, measured from the logo. The mark is one azure hue family at three lightnesses:
    * chroma holds near 0.130 while hue rotates from 228 at the light end to 260 at the ink, so the
-   * ramp reproduces that drift instead of pinning one hue. Three steps are exact logo pixels.
+   * ramp reproduces that drift instead of pinning one hue. Four steps are exact logo pixels.
    */
   --brand-50: oklch(0.973 0.014 230); /* #EDF8FE */
   --brand-100: oklch(0.941 0.032 230); /* #D7F0FD */
@@ -105,9 +105,10 @@
   --ring: var(--brand-500);
 
   /*
-   * Motion durations, for raw CSS and keyframes. Tailwind class equivalents are duration-150 /
+   * The duration scale, exposed for raw CSS. Tailwind class equivalents are duration-150 /
    * duration-200 / duration-300 / duration-500; the matching values for JS-driven motion come from
-   * MOTION in @repo/ui/lib, which is the single source both sides read.
+   * MOTION in @repo/ui/lib, which is the single source all three read. The keyframe animations below
+   * deliberately do not draw from this scale — a keyframe's duration is part of its character.
    */
   --duration-fast: 150ms;
   --duration-default: 200ms;
@@ -171,17 +172,6 @@
   }
   50% {
     transform: scale(1.05);
-  }
-}
-
-/* Press-in feedback for toggles and segmented items. */
-@keyframes pulse-scale {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(0.95);
   }
 }
 

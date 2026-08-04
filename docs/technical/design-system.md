@@ -43,7 +43,7 @@ Two consequences worth knowing:
 
 The mark is one azure hue family at three lightnesses: chroma holds near **0.130**
 while hue rotates from **228°** at the light end to **260°** at the ink. The ramp
-reproduces that drift rather than pinning a single hue, and three steps are exact
+reproduces that drift rather than pinning a single hue, and four steps are exact
 logo pixels:
 
 | Token       | oklch                      | Hex       | Source                       |
@@ -180,6 +180,8 @@ Durations and easings are tokens, and the JS and CSS sides read the same numbers
 `MOTION` / `EASE` in `@repo/ui/lib` for `motion/react` transitions, `--duration-*` and
 `--ease-*` in CSS, `duration-150/200/300/500` and `ease-out-soft` / `ease-in-out-soft`
 as utilities. Never hardcode a duration; add a token if a new one is genuinely needed.
+The keyframe animations below deliberately sit outside this scale — a keyframe's duration
+is part of its character, not a reusable step.
 
 | Token     | Seconds | Utility        | For                                      |
 | --------- | ------- | -------------- | ---------------------------------------- |
@@ -198,7 +200,6 @@ Declared as `--animate-*` theme tokens, which is what makes `focus-visible:` and
 | `animate-focus-bump`        | 1 → 1.5 → 1       | icon-only triggers                |
 | `animate-focus-bump-soft`   | 1 → 1.15 → 1      | inline icons                      |
 | `animate-focus-bump-subtle` | 1 → 1.05 → 1      | text links                        |
-| `animate-pulse-scale`       | 1 → 0.95 → 1      | toggles and segmented items       |
 | `animate-status-pop`        | 0.4 → 1.06 → 1    | a status screen's icon            |
 | `animate-status-halo`       | 0.6 → 1.9, fading | the one-shot ring behind it       |
 | `animate-rise-in`           | +6px, fading in   | copy entering under a status icon |

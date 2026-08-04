@@ -16,6 +16,10 @@ export const metadata: Metadata = {
 /*
  * The browser chrome takes the app's own surface rather than the brand blue: iOS tints from the page
  * background and ignores a custom theme-color, so a tinted bar would only ever appear on Android.
+ *
+ * Next serialises this into a meta tag at build time, so it cannot read a CSS variable — this is the
+ * one place a colour is a literal. It is `--body-background` and must be changed with it; manifest.ts
+ * carries the same value.
  */
 export const viewport: Viewport = {
   themeColor: '#F2F7FB',

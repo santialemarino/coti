@@ -101,7 +101,6 @@
   --animate-focus-bump: focus-bump 300ms var(--ease-in-out-soft);
   --animate-focus-bump-soft: focus-bump-soft 300ms var(--ease-in-out-soft);
   --animate-focus-bump-subtle: focus-bump-subtle 300ms var(--ease-in-out-soft);
-  --animate-pulse-scale: pulse-scale 300ms var(--ease-in-out-soft);
   --animate-status-pop: status-pop 420ms var(--ease-out-soft) both;
   --animate-status-halo: status-halo 900ms var(--ease-out-soft) both;
   --animate-rise-in: rise-in 320ms var(--ease-out-soft) both;
