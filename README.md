@@ -11,14 +11,15 @@ autopilot.
 
 ## Stack
 
-| Layer            | Technology                                        |
-| ---------------- | ------------------------------------------------- |
-| Frontend         | Next.js (React 19) — backoffice + customer webapp |
-| Backend API      | Go + Gin — REST/JSON, layered architecture        |
-| Database         | PostgreSQL + `pgvector` (semantic catalog search) |
-| Monorepo         | Turborepo + pnpm workspaces                       |
-| Containerization | Docker / docker-compose                           |
-| CI/CD            | GitHub Actions                                    |
+| Layer            | Technology                                             |
+| ---------------- | ------------------------------------------------------ |
+| Frontend         | Next.js (React 19) — backoffice + customer webapp      |
+| Styling          | Tailwind v4 (CSS-first) + the `@repo/ui` design system |
+| Backend API      | Go + Gin — REST/JSON, layered architecture             |
+| Database         | PostgreSQL + `pgvector` (semantic catalog search)      |
+| Monorepo         | Turborepo + pnpm workspaces                            |
+| Containerization | Docker / docker-compose                                |
+| CI/CD            | GitHub Actions                                         |
 
 ## Layout
 
@@ -28,7 +29,8 @@ apps/
   webapp       Next.js — customer-facing public web app (no auth)
   api          Go + Gin — REST API, business logic, persistence, AI orchestration
 packages/
-  ui                 Shared React + shadcn design system (@repo/ui)
+  ui                 Shared design system (@repo/ui) — tokens, type scale, motion,
+                     primitives; also the single Tailwind entry for the monorepo
   eslint-config      Shared ESLint flat configs (@repo/eslint-config)
   typescript-config  Shared tsconfig bases (@repo/typescript-config)
 docker/        Dockerfiles for each deployable
