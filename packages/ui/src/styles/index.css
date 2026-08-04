@@ -1,7 +1,332 @@
+/*
+ * The single Tailwind entry for the whole monorepo. Both apps import only the built artifact
+ * (`@repo/ui/styles`) — importing `tailwindcss` again in an app emits preflight and the utility
+ * layer a second time, so don't.
+ */
 @import 'tailwindcss';
 @import 'tw-animate-css';
+
 @import './theme.css';
 
-@custom-variant dark (&:is(.dark *));
+/* Scanned for class names: this package plus both apps, since the build runs from in here. */
+@source "../../**/*.{ts,tsx}";
+@source "../../../../apps/**/*.{ts,tsx}";
 
-@source '../components';
+/*
+ * Coti is light-only by design. There is deliberately no `.dark` token block and no `dark:` variant:
+ * a registered-but-unsatisfiable variant invites `dark:` classes that can never match. Adding dark
+ * mode later means a token block plus a provider, not a rewrite.
+ */
+
+:root {
+  /*
+   * Brand ramp, measured from the logo. The mark is one azure hue family at three lightnesses:
+   * chroma holds near 0.130 while hue rotates from 228 at the light end to 260 at the ink, so the
+   * ramp reproduces that drift instead of pinning one hue. Three steps are exact logo pixels.
+   */
+  --brand-50: oklch(0.973 0.014 230); /* #EDF8FE */
+  --brand-100: oklch(0.941 0.032 230); /* #D7F0FD */
+  --brand-200: oklch(0.892 0.062 230); /* #B2E4FD */
+  --brand-300: oklch(0.822 0.099 230); /* #7DD1F9 */
+  --brand-400: oklch(0.746 0.132 228.2); /* #35BCEE — isotype gradient, light stop */
+  --brand-500: oklch(0.655 0.13 239); /* #309AD7 — the dot over the i */
+  --brand-600: oklch(0.527 0.129 254.2); /* #2F6CB3 — isotype gradient, dark stop */
+  --brand-700: oklch(0.455 0.116 255.8); /* #255796 */
+  --brand-800: oklch(0.388 0.094 257.3); /* #214476 */
+  --brand-900: oklch(0.328 0.07 258.6); /* #1D3558 */
+  --brand-950: oklch(0.272 0.043 259.8); /* #1A273C — the wordmark ink */
+
+  /* Neutrals carry a trace of the brand hue so greys read as related, not as dirty. */
+  --neutral-0: oklch(1 0 0); /* #FFFFFF */
+  --neutral-50: oklch(0.985 0.003 258); /* #F9FAFC */
+  --neutral-100: oklch(0.969 0.006 258); /* #F2F5F9 */
+  --neutral-200: oklch(0.93 0.011 258); /* #E3E8EF */
+  --neutral-300: oklch(0.878 0.016 258); /* #D0D7E2 */
+  --neutral-400: oklch(0.712 0.024 258); /* #99A3B1 */
+  --neutral-500: oklch(0.556 0.03 258); /* #697485 */
+  --neutral-600: oklch(0.448 0.031 258); /* #4A5666 */
+  --neutral-700: oklch(0.374 0.029 258); /* #374150 */
+  --neutral-800: oklch(0.281 0.027 258); /* #212A37 */
+  --neutral-900: oklch(0.21 0.026 258); /* #111924 */
+
+  /* Status families. Each `-foreground` clears 4.5:1 on white; `-base` is for fills and icons. */
+  --success-subtle: oklch(0.96 0.03 151); /* #E4F8E8 */
+  --success-border: oklch(0.88 0.075 151); /* #B4E6BF */
+  --success-base: oklch(0.64 0.15 151); /* #32A55A */
+  --success-foreground: oklch(0.545 0.13 151); /* #248546 — 4.67:1 */
+
+  --warning-subtle: oklch(0.965 0.028 75); /* #FFF1DF */
+  --warning-border: oklch(0.895 0.088 75); /* #FFD59B */
+  --warning-base: oklch(0.76 0.155 75); /* #EAA01A */
+  --warning-foreground: oklch(0.56 0.118 75); /* #9C6900 — 4.75:1 */
+
+  --danger-subtle: oklch(0.962 0.019 27); /* #FFEEEC */
+  --danger-border: oklch(0.885 0.055 27); /* #FCCCC6 */
+  --danger-base: oklch(0.585 0.215 27); /* #DF2A2A — white on it 4.67:1 */
+  --danger-foreground: oklch(0.545 0.2 27); /* #CB2526 — 5.49:1 */
+
+  /* Semantic tokens — what components actually consume. */
+  --radius: 0.625rem;
+
+  --background: var(--neutral-0);
+  --body-background: oklch(0.974 0.007 240);
+  --foreground: var(--brand-950); /* 14.99:1 on white */
+  --foreground-muted: var(--neutral-500); /* 4.73:1 on white */
+  --foreground-subtle: var(--neutral-400);
+  --card: var(--neutral-0);
+  --card-foreground: var(--brand-950);
+  --popover: var(--neutral-0);
+  --popover-foreground: var(--brand-950);
+  --sunken: var(--neutral-100);
+  --backdrop: oklch(0.272 0.043 259.8 / 0.55);
+
+  --primary: var(--brand-600); /* white on it 5.37:1 */
+  --primary-foreground: var(--neutral-0);
+  --primary-hover: var(--brand-700);
+  --primary-active: var(--brand-800);
+  --secondary: var(--neutral-100);
+  --secondary-foreground: var(--brand-950);
+  --secondary-hover: var(--neutral-200);
+  --muted: var(--neutral-100);
+  --muted-foreground: var(--neutral-500);
+  --accent: var(--brand-50);
+  --accent-foreground: var(--brand-700);
+  --accent-strong: var(--brand-100);
+
+  --border: var(--neutral-200);
+  --border-strong: var(--neutral-300);
+  --input: var(--neutral-50);
+  --input-readonly: var(--neutral-100);
+  --ring: var(--brand-500);
+
+  /*
+   * Motion durations, for raw CSS and keyframes. Tailwind class equivalents are duration-150 /
+   * duration-200 / duration-300 / duration-500; the matching values for JS-driven motion come from
+   * MOTION in @repo/ui/lib, which is the single source both sides read.
+   */
+  --duration-fast: 150ms;
+  --duration-default: 200ms;
+  --duration-slow: 300ms;
+  --duration-slower: 500ms;
+}
+
+@layer base {
+  /* An enabled control looks clickable. */
+  button:not([disabled]),
+  [role='button']:not([disabled]) {
+    cursor: pointer;
+  }
+
+  /* Selection picks up the brand tint rather than the browser's default blue. */
+  ::selection {
+    background-color: var(--accent-strong);
+    color: var(--brand-900);
+  }
+
+  /* Land an in-page anchor clear of a sticky header, without a global scroll-behavior. */
+  :target {
+    scroll-margin-top: 5rem;
+  }
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * Motion
+ *
+ * Everything below is a reusable affordance. Radix open/close, fades, zooms and slides come from
+ * tw-animate-css (imported above) — don't re-declare those. The utilities are declared as
+ * `--animate-*` theme tokens in theme.css, which is what makes `focus-visible:` and
+ * `group-focus-visible/<name>:` variants of them generate.
+ * ------------------------------------------------------------------------------------------- */
+
+/* Focus feedback for icon-only and inline triggers, at three intensities. */
+@keyframes focus-bump {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.5);
+  }
+}
+
+@keyframes focus-bump-soft {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+}
+
+@keyframes focus-bump-subtle {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+/* Press-in feedback for toggles and segmented items. */
+@keyframes pulse-scale {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.95);
+  }
+}
+
+/* The status-screen icon: overshoots past 1 so the landing reads as a settle, not a stop. */
+@keyframes status-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* One-shot ring expanding out of the status circle. Decorative — gated under reduced motion. */
+@keyframes status-halo {
+  0% {
+    opacity: 0.5;
+    transform: scale(0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+
+/* Content entrance: a short rise plus fade, for copy following a status icon. */
+@keyframes rise-in {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * Reduced motion. Decorative motion collapses to nothing; the focus-bump family deliberately does
+ * NOT, because it is functional feedback. Every element carrying a bump also shifts colour on
+ * focus-visible (see the ux-motion skill), so the affordance survives for a user who cannot
+ * perceive the bump.
+ *
+ * Intentionally unlayered: a normal declaration outside any cascade layer beats every
+ * `@layer utilities` rule regardless of specificity or source order, which is what lets it override
+ * tw-animate-css's own ungated animate-collapsible-* utilities. Matching on an attribute substring
+ * makes it variant-proof — it catches the utility under `data-[state=open]:`, `group-*`, or bare.
+ */
+@media (prefers-reduced-motion: reduce) {
+  [class*='animate-collapsible-down'],
+  [class*='animate-collapsible-up'],
+  [class*='animate-status-halo'],
+  [class*='animate-status-pop'],
+  [class*='animate-rise-in'] {
+    animation: none;
+  }
+}
+
+@layer utilities {
+  /* Strip the spinners from a number input that renders its own controls. */
+  .no-spin-buttons {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+  .no-spin-buttons::-webkit-outer-spin-button,
+  .no-spin-buttons::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Thin scrollbar for scrollable dropdown and command lists. */
+  .thin-scrollbar {
+    scrollbar-width: thin;
+  }
+  .thin-scrollbar::-webkit-scrollbar {
+    width: 0.25rem;
+  }
+  .thin-scrollbar::-webkit-scrollbar-thumb {
+    border-radius: var(--radius-lg);
+    background-color: var(--border-strong);
+  }
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * Heading scale
+ *
+ * Headings are utilities rather than `--text-*` theme tokens because the display family is part of
+ * a heading's identity and Tailwind's text scale cannot carry a font-family. One class therefore
+ * sets family, size, weight, line-height and tracking together, so there is no way to apply a
+ * heading size and forget the face. Keep this list in sync with the cn() font-size group in
+ * src/lib/utils.ts.
+ * ------------------------------------------------------------------------------------------- */
+
+@utility text-heading-1 {
+  font-family: var(--font-display);
+  font-size: 2.5rem; /* 40px */
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+@utility text-heading-2 {
+  font-family: var(--font-display);
+  font-size: 2rem; /* 32px */
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+@utility text-heading-3 {
+  font-family: var(--font-display);
+  font-size: 1.5rem; /* 24px */
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+
+@utility text-heading-4 {
+  font-family: var(--font-display);
+  font-size: 1.25rem; /* 20px */
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+@utility text-heading-5 {
+  font-family: var(--font-display);
+  font-size: 1.125rem; /* 18px */
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+@utility text-heading-6 {
+  font-family: var(--font-display);
+  font-size: 1rem; /* 16px */
+  font-weight: 600;
+  line-height: 1.35;
+}
