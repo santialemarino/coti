@@ -14,6 +14,7 @@ import {
   Input,
   Label,
   Pagination,
+  PendingButton,
   Progress,
   RadioGroup,
   RadioGroupItem,
@@ -26,6 +27,7 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from '@repo/ui/components';
+import { cn } from '@repo/ui/lib';
 import { Item, Row, Section } from '@/app/(protected)/design/_components/section';
 
 const VARIANTS = ['default', 'secondary', 'outline', 'ghost', 'destructive', 'link'] as const;
@@ -50,28 +52,55 @@ export function Controls() {
   const [filter, setFilter] = useState('todos');
   const [page, setPage] = useState(4);
   const [progress, setProgress] = useState(45);
+  /* Every specimen increments this, so a click or an Enter has something observable to change. */
+  const [activations, setActivations] = useState(0);
+  const [pending, setPending] = useState(false);
+
+  function activate() {
+    setActivations((n) => n + 1);
+  }
+
+  function runPending() {
+    setPending(true);
+    setTimeout(() => setPending(false), 1500);
+  }
 
   return (
     <>
-      <Section title="Button" hint="6 variantes × 8 tamaños. Probá hover, foco de teclado y click.">
+      <Section
+        title="Button"
+        hint="6 variantes × 8 tamaños. Probá hover, foco de teclado, click y Enter — todos suman al contador."
+      >
+        <Row>
+          <Item label="activaciones">
+            <Badge tone="brand">{activations}</Badge>
+          </Item>
+          <Item label="reiniciar">
+            <Button variant="outline" size="sm" onClick={() => setActivations(0)}>
+              Volver a cero
+            </Button>
+          </Item>
+        </Row>
         {VARIANTS.map((variant) => (
           <Row key={variant}>
             <Item label={variant}>
-              <Button variant={variant}>Cotizar</Button>
+              <Button variant={variant} onClick={activate}>
+                Cotizar
+              </Button>
             </Item>
             <Item label="disabled">
-              <Button variant={variant} disabled>
+              <Button variant={variant} disabled onClick={activate}>
                 Cotizar
               </Button>
             </Item>
             <Item label="con icono">
-              <Button variant={variant}>
+              <Button variant={variant} onClick={activate}>
                 <SendIcon />
                 Enviar
               </Button>
             </Item>
             <Item label="cargando">
-              <Button variant={variant} disabled>
+              <Button variant={variant} disabled onClick={activate}>
                 <Spinner size="sm" />
                 Enviando…
               </Button>
@@ -82,16 +111,52 @@ export function Controls() {
         <Row>
           {SIZES.map((size) => (
             <Item key={size} label={size}>
-              <Button size={size}>Cotizar</Button>
+              <Button size={size} onClick={activate}>
+                Cotizar
+              </Button>
             </Item>
           ))}
           {ICON_SIZES.map((size) => (
             <Item key={size} label={size}>
-              <Button size={size} aria-label="Agregar">
+              <Button size={size} aria-label="Agregar" onClick={activate}>
                 <PlusIcon />
               </Button>
             </Item>
           ))}
+        </Row>
+      </Section>
+
+      <Section
+        title="PendingButton"
+        hint="El ancho del botón no se puede transicionar en CSS, así que el resize es una animación de layout y las dos etiquetas hacen crossfade. Tocalo y mirá los dos sentidos."
+      >
+        <Row>
+          <Item label="default">
+            <PendingButton pending={pending} pendingLabel="Eliminando…" onClick={runPending}>
+              Eliminar
+            </PendingButton>
+          </Item>
+          <Item label="destructive">
+            <PendingButton
+              variant="destructive"
+              pending={pending}
+              pendingLabel="Eliminando la cuenta…"
+              onClick={runPending}
+            >
+              Eliminar
+            </PendingButton>
+          </Item>
+          <Item label="outline · lg">
+            <PendingButton
+              variant="outline"
+              size="lg"
+              pending={pending}
+              pendingLabel="Guardando los cambios…"
+              onClick={runPending}
+            >
+              Guardar
+            </PendingButton>
+          </Item>
         </Row>
       </Section>
 
@@ -355,6 +420,13 @@ export function Controls() {
               <Progress value={progress} tone="warning" size="lg" label="Progreso" />
               <Progress value={progress} tone="danger" label="Progreso" />
               <Progress value={progress} tone="neutral" label="Progreso" />
+              {/*
+                A page-local control, not a design-system primitive — nothing in the product needs a
+                slider, so this drives the Progress specimens and stops there. It is styled by hand
+                for the same reason every other control is: no native outline, and the hover
+                treatment repeated under `active:` so it holds while the thumb is being dragged
+                (`:hover` drops the moment the pointer leaves a 6px-tall track, `:active` does not).
+              */}
               <input
                 type="range"
                 min={0}
@@ -362,6 +434,19 @@ export function Controls() {
                 value={progress}
                 aria-label="Mover el progreso"
                 onChange={(e) => setProgress(Number(e.target.value))}
+                className={cn(
+                  'w-full h-4 appearance-none bg-transparent outline-none',
+                  '[&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:bg-border [&::-webkit-slider-runnable-track]:rounded-full',
+                  '[&::-webkit-slider-runnable-track]:transition-[background-color] [&::-webkit-slider-runnable-track]:duration-200 [&::-webkit-slider-runnable-track]:ease-out-soft',
+                  '[&:hover::-webkit-slider-runnable-track]:bg-border-strong [&:active::-webkit-slider-runnable-track]:bg-border-strong',
+                  /* -5px lifts the 16px thumb onto the centre of the 6px track. */
+                  '[&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:-mt-[0.3125rem] [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-e1',
+                  '[&::-webkit-slider-thumb]:transition-[background-color,box-shadow,scale] [&::-webkit-slider-thumb]:duration-150 [&::-webkit-slider-thumb]:ease-out-soft',
+                  '[&:hover::-webkit-slider-thumb]:scale-110 [&:active::-webkit-slider-thumb]:scale-110 [&:active::-webkit-slider-thumb]:bg-primary-active',
+                  '[&:focus-visible::-webkit-slider-thumb]:ring-3 [&:focus-visible::-webkit-slider-thumb]:ring-ring/45',
+                  '[&::-moz-range-track]:h-1.5 [&::-moz-range-track]:bg-border [&::-moz-range-track]:rounded-full',
+                  '[&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-primary [&::-moz-range-thumb]:rounded-full',
+                )}
               />
             </div>
           </Item>

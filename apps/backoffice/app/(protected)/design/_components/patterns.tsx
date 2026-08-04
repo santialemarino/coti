@@ -36,6 +36,7 @@ import {
   FormRootMessage,
   InlineLink,
   Input,
+  PendingButton,
   RowActionButton,
   SortableTableHead,
   StatusScreen,
@@ -80,7 +81,9 @@ export function Patterns() {
   const [stepIndex, setStepIndex] = useState(2);
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
   const [sortBy, setSortBy] = useState<string | null>('product');
-  const [empty, setEmpty] = useState(false);
+  /* Real rows rather than a visibility flag, so the row actions have something to act on. */
+  const [rows, setRows] = useState<readonly (typeof ROWS)[number][]>(ROWS);
+  const [editing, setEditing] = useState<string | null>(null);
   /* Bumping the key remounts the status screens, which replays their one-shot entrance. */
   const [replay, setReplay] = useState(0);
 
@@ -100,7 +103,7 @@ export function Patterns() {
     <>
       <Section
         title="StatusScreen"
-        hint="La entrada está escalonada: icono, título, texto, acciones. Tocá Reproducir para verla otra vez."
+        hint="Sólo el icono anima; el resto entra con la pantalla que lo contiene. Tocá Reproducir para verlo otra vez."
       >
         <Button variant="outline" size="sm" onClick={() => setReplay((n) => n + 1)}>
           <RotateCcwIcon />
@@ -251,8 +254,12 @@ export function Patterns() {
                   Con orden, badges de confianza y acciones por fila.
                 </CardDescription>
               </div>
-              <Button variant="outline" size="sm" onClick={() => setEmpty((v) => !v)}>
-                {empty ? 'Mostrar filas' : 'Vaciar la tabla'}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setRows((current) => (current.length ? [] : ROWS))}
+              >
+                {rows.length ? 'Vaciar la tabla' : 'Mostrar filas'}
               </Button>
             </div>
           </CardHeader>
@@ -276,7 +283,7 @@ export function Patterns() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {empty ? (
+                {rows.length === 0 ? (
                   <TableEmptyRow
                     colSpan={4}
                     icon={PackageIcon}
@@ -284,9 +291,14 @@ export function Patterns() {
                     description="Cuando llegue una solicitud, los ítems extraídos aparecen acá."
                   />
                 ) : (
-                  ROWS.map((row) => (
+                  rows.map((row) => (
                     <TableRow key={row.product}>
-                      <TableCell>{row.product}</TableCell>
+                      <TableCell>
+                        <span className="flex items-center gap-x-2">
+                          {row.product}
+                          {editing === row.product ? <Badge size="sm">Editando</Badge> : null}
+                        </span>
+                      </TableCell>
                       <TableCell>
                         <Badge tone={row.tone} dot>
                           {row.confidence}%
@@ -295,8 +307,23 @@ export function Patterns() {
                       <TableCell>{row.qty}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-x-1">
-                          <RowActionButton icon={PencilIcon} label="Editar" />
-                          <RowActionButton icon={Trash2Icon} label="Eliminar" tone="danger" />
+                          <RowActionButton
+                            icon={PencilIcon}
+                            label="Editar"
+                            onClick={() =>
+                              setEditing((current) =>
+                                current === row.product ? null : row.product,
+                              )
+                            }
+                          />
+                          <RowActionButton
+                            icon={Trash2Icon}
+                            label="Eliminar"
+                            tone="danger"
+                            onClick={() =>
+                              setRows((current) => current.filter((r) => r.product !== row.product))
+                            }
+                          />
                         </div>
                       </TableCell>
                     </TableRow>
@@ -360,9 +387,14 @@ export function Patterns() {
                   )}
                 />
                 <FormRootMessage />
-                <Button type="submit" size="lg" disabled={form.formState.isSubmitting}>
-                  {form.formState.isSubmitting ? 'Enviando…' : 'Enviar'}
-                </Button>
+                <PendingButton
+                  type="submit"
+                  size="lg"
+                  pending={form.formState.isSubmitting}
+                  pendingLabel="Enviando…"
+                >
+                  Enviar
+                </PendingButton>
               </form>
             </Form>
           </CardContent>
