@@ -176,6 +176,55 @@
 }
 
 /*
+ * The status circle arriving into place. The overshoot lives in the easing (`--ease-out-back`), not in
+ * an extra keyframe stop: `--ease-out-soft` covers most of its progress in the first third of the
+ * duration, so a `60% { scale: 1.06 }` stop lands almost immediately and then crawls back for the rest
+ * — a snap followed by a drift. One curve doing both keeps it a single settle.
+ */
+@keyframes status-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.75);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * A ring expanding out of the status circle and dissolving. Decorative — gated under reduced motion.
+ * The opacity peaks mid-flight rather than starting at its maximum, so the ring materialises instead
+ * of being painted at full strength on the first frame, and it ends at 0 — which is why the element
+ * carries `opacity-0` at rest.
+ */
+@keyframes status-halo {
+  0% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  40% {
+    opacity: 0.3;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.55);
+  }
+}
+
+/* Content entrance: a short rise plus fade, for copy following a status icon. */
+@keyframes rise-in {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
  * Reduced motion. Decorative motion collapses to nothing; the focus-bump family deliberately does
  * NOT, because it is functional feedback. Every element carrying a bump also shifts colour on
  * focus-visible (see the ux-motion skill), so the affordance survives for a user who cannot
@@ -183,15 +232,15 @@
  *
  * Intentionally unlayered: a normal declaration outside any cascade layer beats every
  * `@layer utilities` rule regardless of specificity or source order, which is what lets it override
- * tw-animate-css's own ungated animate-collapsible-* and animate-in utilities. Matching on an
- * attribute substring makes it variant-proof — it catches the utility under `data-[state=open]:`,
- * `group-*`, or bare. A `data-slot` is named where the decorative animation is a shared
- * `animate-in`, which cannot be matched by class without also killing every overlay entrance.
+ * tw-animate-css's own ungated animate-collapsible-* utilities. Matching on an attribute substring
+ * makes it variant-proof — it catches the utility under `data-[state=open]:`, `group-*`, or bare.
  */
 @media (prefers-reduced-motion: reduce) {
   [class*='animate-collapsible-down'],
   [class*='animate-collapsible-up'],
-  [data-slot='status-screen-icon'] {
+  [class*='animate-status-halo'],
+  [class*='animate-status-pop'],
+  [class*='animate-rise-in'] {
     animation: none;
   }
 }

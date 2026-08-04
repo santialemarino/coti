@@ -4,10 +4,10 @@ import type { LucideIcon } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 const TONES = {
-  info: { circle: 'bg-accent', icon: 'text-primary' },
-  success: { circle: 'bg-success-subtle', icon: 'text-success-foreground' },
-  warning: { circle: 'bg-warning-subtle', icon: 'text-warning-foreground' },
-  danger: { circle: 'bg-danger-subtle', icon: 'text-danger-foreground' },
+  info: { circle: 'bg-accent', icon: 'text-primary', halo: 'bg-brand-300' },
+  success: { circle: 'bg-success-subtle', icon: 'text-success-foreground', halo: 'bg-success' },
+  warning: { circle: 'bg-warning-subtle', icon: 'text-warning-foreground', halo: 'bg-warning' },
+  danger: { circle: 'bg-danger-subtle', icon: 'text-danger-foreground', halo: 'bg-danger' },
 } as const;
 
 interface StatusScreenProps {
@@ -24,12 +24,14 @@ interface StatusScreenProps {
  * The shared outcome screen: a check-your-email notice, a completed reset, an expired link, a
  * submitted RFQ. One visual language for every terminal state in both apps.
  *
- * Only the icon animates. The circle, the copy and the actions arrive with the surface that owns the
- * screen — a page transition or an AuthStage crossfade — so the screen contributes one accent to
- * that entrance rather than a second sequence competing with it.
+ * The entrance is one sequence, not four animations: the circle settles in with its halo expanding
+ * behind it, then the title, the copy and the actions rise in behind it. Every delay is short enough
+ * that the whole thing lands inside ~700ms — a longer tail reads as the screen still loading. Delays
+ * are inline arbitrary properties because they are positions in one sequence, not reusable tokens.
  *
- * A server component with no client JS: the entrance is CSS, and it collapses under
- * `prefers-reduced-motion` via the data-slot gate in styles/index.css.
+ * A server component with no client JS: the whole sequence is CSS and it collapses to a plain static
+ * layout under `prefers-reduced-motion` (the gate lives in styles/index.css). The halo's base opacity
+ * is 0 for exactly that reason — with the animation removed it must leave no stray ring.
  */
 function StatusScreen({
   icon: Icon,
@@ -46,22 +48,40 @@ function StatusScreen({
       data-slot="status-screen"
       className={cn('flex flex-col items-center px-6 gap-y-5 text-center', className)}
     >
-      <span className={cn('grid size-14 place-items-center rounded-full', styles.circle)}>
-        <Icon
+      <div className="relative grid place-items-center">
+        <span
           aria-hidden="true"
-          data-slot="status-screen-icon"
-          className={cn('size-7 animate-in zoom-in-50 duration-300 ease-out-soft', styles.icon)}
+          className={cn(
+            'absolute size-14 rounded-full opacity-0 animate-status-halo [animation-delay:80ms]',
+            styles.halo,
+          )}
         />
-      </span>
+        <span
+          className={cn(
+            'relative grid size-14 place-items-center rounded-full animate-status-pop',
+            styles.circle,
+          )}
+        >
+          <Icon aria-hidden="true" className={cn('size-7', styles.icon)} />
+        </span>
+      </div>
 
       <div className="flex flex-col gap-y-2">
-        <p className="text-heading-5 text-foreground">{title}</p>
+        <p className="text-heading-5 text-foreground animate-rise-in [animation-delay:140ms]">
+          {title}
+        </p>
         {description ? (
-          <p className="text-paragraph-sm text-foreground-muted">{description}</p>
+          <p className="text-paragraph-sm text-foreground-muted animate-rise-in [animation-delay:200ms]">
+            {description}
+          </p>
         ) : null}
       </div>
 
-      {children ? <div className="flex flex-col items-center gap-y-3">{children}</div> : null}
+      {children ? (
+        <div className="flex flex-col items-center gap-y-3 animate-rise-in [animation-delay:260ms]">
+          {children}
+        </div>
+      ) : null}
     </div>
   );
 }

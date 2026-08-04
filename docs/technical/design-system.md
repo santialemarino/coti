@@ -195,11 +195,24 @@ is part of its character, not a reusable step.
 Declared as `--animate-*` theme tokens, which is what makes `focus-visible:` and
 `group-focus-visible/<name>:` variants of them generate.
 
-| Utility                     | Motion       | For                |
-| --------------------------- | ------------ | ------------------ |
-| `animate-focus-bump`        | 1 → 1.5 → 1  | icon-only triggers |
-| `animate-focus-bump-soft`   | 1 → 1.15 → 1 | inline icons       |
-| `animate-focus-bump-subtle` | 1 → 1.05 → 1 | text links         |
+| Utility                     | Motion             | For                               |
+| --------------------------- | ------------------ | --------------------------------- |
+| `animate-focus-bump`        | 1 → 1.5 → 1        | icon-only triggers                |
+| `animate-focus-bump-soft`   | 1 → 1.15 → 1       | inline icons                      |
+| `animate-focus-bump-subtle` | 1 → 1.05 → 1       | text links                        |
+| `animate-status-pop`        | 0.75 → 1, settling | a status screen's circle          |
+| `animate-status-halo`       | 0.7 → 1.55, fading | the ring expanding behind it      |
+| `animate-rise-in`           | +4px, fading in    | copy entering under a status icon |
+
+The status entrance is one sequence: the circle settles with its halo behind it
+(delay 80ms), then the title (140ms), the copy (200ms) and the actions (260ms) rise in.
+Everything lands inside ~700ms; a longer tail reads as the screen still loading.
+
+**Put an overshoot in the easing, not in an extra keyframe stop.** `--ease-out-back`
+exists for that. `--ease-out-soft` covers most of its progress in the first third of its
+duration, so a `60% { scale: 1.06 }` stop is reached almost immediately and then crawls
+back for the rest — a snap followed by a drift. One curve doing both keeps the peak
+mid-flight, where a settle reads as a settle.
 
 A one-shot bump suits a control you focus and leave. A control you sit on and press
 repeatedly holds a scale instead — `transition-[scale]` with
@@ -215,7 +228,7 @@ re-declare those.
 
 ### Reduced motion
 
-Decorative motion (the `StatusScreen` icon's entrance, the Collapsible height reveal)
+Decorative motion (`status-pop`, `status-halo`, `rise-in`, the Collapsible height reveal)
 collapses to nothing under `prefers-reduced-motion: reduce`; JS-driven motion zeroes its
 timings via `useReducedMotion()`. The focus-bump family and the held focus scale
 deliberately do **not**, because they are functional feedback — and every element

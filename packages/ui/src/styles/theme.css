@@ -93,14 +93,22 @@
     0 16px 40px -10px oklch(0.272 0.043 259.8 / 0.18),
     0 6px 16px -8px oklch(0.272 0.043 259.8 / 0.1);
 
-  /* Easing — one accelerating-out curve for entrances, one symmetric curve for state changes. */
+  /*
+   * Easing — one accelerating-out curve for entrances, one symmetric curve for state changes, and one
+   * that overshoots its target and settles back, for something arriving into place.
+   */
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-out-back: cubic-bezier(0.34, 1.6, 0.64, 1);
 
   /* Animations. Keyframes live in index.css; see the motion section there. */
   --animate-focus-bump: focus-bump 300ms var(--ease-in-out-soft);
   --animate-focus-bump-soft: focus-bump-soft 300ms var(--ease-in-out-soft);
   --animate-focus-bump-subtle: focus-bump-subtle 300ms var(--ease-in-out-soft);
+  /* Timed so the whole status entrance lands together, with no ring still fading after the copy. */
+  --animate-status-pop: status-pop 460ms var(--ease-out-back) both;
+  --animate-status-halo: status-halo 640ms var(--ease-out-soft) both;
+  --animate-rise-in: rise-in 380ms var(--ease-out-soft) both;
 
   /* Widths */
   --max-width-auth-card: 25rem; /* 400px */
