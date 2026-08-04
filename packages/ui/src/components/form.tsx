@@ -138,15 +138,19 @@ function FormDescription({ className, ...props }: React.ComponentProps<'p'>) {
 }
 
 /*
- * The reveal is a `grid-template-rows` transition from 0fr to 1fr, which animates height without
- * needing JS or a measured pixel value.
+ * The reveal is a `grid-template-rows` transition from 0fr to 1fr, which animates height without JS
+ * and without a measured pixel value.
  *
- * The two spacing classes are load-bearing. The wrapper's `-mt-2` cancels FormItem's `gap-y-2`, and
- * the inner `pt-2` puts that gap back as padding *inside* the animated box. So a collapsed message
- * occupies exactly nothing — without the pair, every field would carry a permanent 8px of empty
- * space below it waiting for an error that usually never comes.
+ * Three things are load-bearing, and the third is easy to get wrong. The wrapper's negative margin
+ * cancels the parent column's gap; the padding puts that gap back *inside* the animated box; and the
+ * padding must sit on a **descendant** of the grid item, not on the item itself. `overflow: hidden`
+ * only suppresses a grid item's automatic minimum size for its *content* — its own padding still
+ * floors the row, so padding on the item leaves the collapsed message occupying exactly that padding
+ * instead of nothing, and every field keeps a permanent band of empty space waiting for an error that
+ * usually never comes.
  */
-const REVEAL = 'grid grid-rows-[0fr] transition-[grid-template-rows] duration-200 ease-out-soft';
+const REVEAL =
+  'grid grid-rows-[0fr] transition-[grid-template-rows] duration-200 ease-out-soft [&>*]:overflow-hidden';
 
 function FormMessage({ className, children, ...props }: React.ComponentProps<'p'>) {
   const { error, formMessageId } = useFormField();
@@ -158,14 +162,16 @@ function FormMessage({ className, children, ...props }: React.ComponentProps<'p'
       aria-hidden={!body}
       className={cn(REVEAL, '-mt-2', body && 'grid-rows-[1fr]')}
     >
-      <p
-        id={formMessageId}
-        role="alert"
-        className={cn('overflow-hidden pt-2 text-paragraph-xs text-danger-foreground', className)}
-        {...props}
-      >
-        {body}
-      </p>
+      <div>
+        <p
+          id={formMessageId}
+          role="alert"
+          className={cn('pt-2 text-paragraph-xs text-danger-foreground', className)}
+          {...props}
+        >
+          {body}
+        </p>
+      </div>
     </div>
   );
 }
@@ -187,16 +193,15 @@ function FormRootMessage({ className, children, ...props }: React.ComponentProps
       aria-hidden={!body}
       className={cn(REVEAL, '-mt-4', body && 'grid-rows-[1fr]')}
     >
-      <p
-        role="alert"
-        className={cn(
-          'overflow-hidden pt-4 text-center text-paragraph-sm text-danger-foreground',
-          className,
-        )}
-        {...props}
-      >
-        {body}
-      </p>
+      <div>
+        <p
+          role="alert"
+          className={cn('pt-4 text-center text-paragraph-sm text-danger-foreground', className)}
+          {...props}
+        >
+          {body}
+        </p>
+      </div>
     </div>
   );
 }

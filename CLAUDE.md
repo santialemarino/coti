@@ -127,6 +127,15 @@ Not style — hard rules. If a task asks you to violate one, stop and flag it.
 - **Semantic catalog search via pgvector.** Matching uses `product.embedding`
   (`VECTOR(1536)`) with distance operators; `product_synonym` improves it; embedding
   generation lives behind the `internal/ai` provider. See `api-layering`.
+- **One design system, consumed by both web apps.** `packages/ui` (`@repo/ui`) owns the tokens, the
+  type scale, the motion vocabulary and every shared component; its `src/styles/index.css` is the
+  single Tailwind entry for the monorepo and each app's `globals.css` imports only that. Colour
+  reaches a component through a **semantic token** — never a hex, an oklch literal, or a raw Tailwind
+  palette ramp — and type through the scale (`text-heading-*`, `text-paragraph-*`), never a raw
+  `text-*`/`font-*` pair. The UI is **light-only**: there is no `.dark` block, so a `dark:` class can
+  never match. `@repo/ui` ships its CSS prebuilt, so **rebuild it after changing a component's
+  classNames** or the change silently does nothing. See `docs/technical/design-system.md` and the
+  **ux-motion** skill.
 - **Configurable thresholds.** Numeric values with operational meaning (limits,
   intervals, sizes, TTLs — e.g. quote expiry, default 7 days) are env-var-backed with
   defaults in `apps/api/internal/config` (backend) or app `lib/config.ts` (frontend).

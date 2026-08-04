@@ -95,7 +95,11 @@ Link and pulls acceptance criteria from it. See `pr-format`.
 - Semantic catalog search uses `product.embedding` (pgvector); embedding generation lives behind the `internal/ai` provider. The catalog is account-scoped; per-branch availability and stock live in `branch_product`.
 - Multi-tenancy is enforced twice: `account_id` on every tenant-scoped table plus Postgres RLS under a `NOBYPASSRLS` role.
 - API comments above function/type definitions end with periods.
-- Web code uses the `@repo/ui` design tokens; avoid raw typography classes when tokens exist.
+- One design system: `packages/ui` (`@repo/ui`) owns the tokens, type scale, motion vocabulary and shared components. Its `src/styles/index.css` is the single Tailwind entry for the monorepo; each app's `globals.css` imports only that.
+- Colour reaches a component through a semantic token — never a hex, an oklch literal, or a raw Tailwind palette ramp. Type goes through the scale (`text-heading-*`, `text-paragraph-*`), never a raw `text-*`/`font-*` pair.
+- The UI is light-only: there is no `.dark` block, so a `dark:` class can never match.
+- `@repo/ui` ships its CSS prebuilt — rebuild it after changing a component's classNames or the change silently does nothing.
+- Interaction states, motion, elevation and reduced motion are the `ux-motion` skill; the token reference is `docs/technical/design-system.md`.
 - Configurable thresholds are env-var-backed with defaults in `apps/api/internal/config` or app `lib/config.ts`. No hardcoded thresholds in business logic.
 - Duration env vars carry their unit in the key (`_SECONDS`/`_MINUTES`/`_HOURS`/`_DAYS`) so the value is a plain integer; a duration key without a suffix is a config error. Config validation reports every problem at once.
 - Migrations are the only executable path: a schema change ships a goose migration in `apps/api/migrations/` AND updates the consolidated reference schema under `apps/api/database/` in the same PR. `pnpm db:init` builds a fresh DB by running the migrations; the reference schema is read, never applied.
