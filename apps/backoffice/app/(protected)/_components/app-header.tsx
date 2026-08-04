@@ -48,7 +48,9 @@ export async function AppHeader({ session }: AppHeaderProps) {
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="gap-x-2 pl-1.5">
+          {/* Two stacked lines beside a 28px avatar need more room than any fixed size gives, so
+              the trigger sizes to its content with its own padding. */}
+          <Button variant="ghost" size="sm" className="gap-x-2 h-auto py-1.5 pl-2 pr-3">
             <Avatar size="sm">
               <AvatarFallback>{initials(session.name)}</AvatarFallback>
             </Avatar>
