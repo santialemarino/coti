@@ -17,8 +17,11 @@ frontend). Decide which app you are in **first** — the rules below differ per 
   reviews/responds to a quote via a tokenized link.
 
 Both apps share the same toolchain: Next.js 16 (App Router, React 19), Tailwind
-v4 (CSS-first — no `tailwind.config`), shadcn (see `components.json`), TS 5.9,
-and the shared design system `@repo/ui`. The API is Go + Gin (snake_case JSON) —
+v4 (CSS-first — no `tailwind.config`), TS 5.9, and the shared design system
+`@repo/ui`. Its primitives wrap Radix and are **hand-authored on Coti's semantic
+tokens** — there is no shadcn CLI in this repo, and generating one would emit
+shadcn's own token vocabulary and dark-mode variants, neither of which Coti has.
+The API is Go + Gin (snake_case JSON) —
 see "API boundary" in `web-components-pages`. Product language is Argentine
 Spanish; `<html lang="es">`. **i18n runs on next-intl**, pinned to a single
 locale (`es-AR`) with no locale routing — UI copy lives in `translations/es.json`
@@ -123,12 +126,11 @@ two apps.
   `packages/ui/src/components`, export from `src/components/index.ts`, import via
   `@repo/ui/components`. Examples that belong in `@repo/ui`: the form primitives
   (both a login form and a public RFQ form need them), brand/logo, buttons and
-  other shadcn primitives, empty/loading states.
-- **shadcn primitives** shared across both apps live in `@repo/ui` (that is where
-  `Button` already is), not duplicated per app. Add a shared primitive there and
-  consume it from both apps. Per-app `components.json` sets `ui` → `@/components/ui`
-  for the shadcn CLI's default target, but a primitive both apps use should be
-  moved into `@repo/ui` rather than generated twice.
+  the other primitives, empty/loading states.
+- **Primitives shared across both apps live in `@repo/ui`**, not duplicated per app.
+  Add a shared primitive there and consume it from both apps. A new one is written by
+  hand on the semantic tokens, wrapping Radix where a behaviour needs it — match the
+  neighbouring components rather than generating anything.
 - Do not speculatively promote. Build in the app; promote the moment a second app
   needs it, then delete the app-local copy.
 
