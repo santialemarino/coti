@@ -18,6 +18,7 @@ export * from './inline-link';
 export * from './input';
 export * from './label';
 export * from './pagination';
+export * from './pending-button';
 export * from './popover';
 export * from './progress';
 export * from './radio-group';
