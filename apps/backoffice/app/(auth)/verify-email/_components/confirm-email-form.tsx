@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { CircleCheckIcon, CircleXIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { Button, Card, Hint, InlineLink, StatusScreen } from '@repo/ui/components';
+import { Card, Hint, InlineLink, PendingButton, StatusScreen } from '@repo/ui/components';
 import { AuthCard } from '@/app/(auth)/_components/auth-card';
 import { AuthStage } from '@/app/(auth)/_components/auth-stage';
 import { ResendVerificationForm } from '@/app/(auth)/verify-email/_components/resend-verification-form';
@@ -69,9 +69,9 @@ export function ConfirmEmailForm({ token }: ConfirmEmailFormProps) {
         >
           <form action={formAction} className="flex flex-col">
             <input type="hidden" name="token" value={token} />
-            <Button type="submit" size="lg" disabled={pending}>
-              {pending ? t('confirming') : t('confirm')}
-            </Button>
+            <PendingButton type="submit" size="lg" pending={pending} pendingLabel={t('confirming')}>
+              {t('confirm')}
+            </PendingButton>
           </form>
         </AuthCard>
       )}

@@ -7,7 +7,6 @@ import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 
 import {
-  Button,
   Checkbox,
   Form,
   FormControl,
@@ -17,6 +16,7 @@ import {
   FormMessage,
   FormRootMessage,
   Input,
+  PendingButton,
 } from '@repo/ui/components';
 import { login } from '@/app/(auth)/login/actions';
 import { loginSchema, type LoginValues } from '@/app/(auth)/login/form-schema';
@@ -109,9 +109,14 @@ export function LoginForm({ next }: LoginFormProps) {
 
         <FormRootMessage />
 
-        <Button type="submit" size="lg" disabled={form.formState.isSubmitting}>
-          {form.formState.isSubmitting ? t('submitting') : t('submit')}
-        </Button>
+        <PendingButton
+          type="submit"
+          size="lg"
+          pending={form.formState.isSubmitting}
+          pendingLabel={t('submitting')}
+        >
+          {t('submit')}
+        </PendingButton>
       </form>
     </Form>
   );
