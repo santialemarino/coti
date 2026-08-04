@@ -14,6 +14,7 @@ on:
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'turbo.json'
+      - '.github/workflows/ci.webapp.yml'
   workflow_dispatch:
 
 jobs:
@@ -34,6 +35,8 @@ jobs:
         run: pnpm --filter webapp run lint
       - name: Type check
         run: pnpm --filter webapp run check-types
+      - name: Test
+        run: pnpm --filter webapp run test
       - name: Build UI package
         run: pnpm build:ui
       - name: Build webapp
