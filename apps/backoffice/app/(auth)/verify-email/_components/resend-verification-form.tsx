@@ -6,7 +6,6 @@ import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 
 import {
-  Button,
   Callout,
   Form,
   FormControl,
@@ -16,6 +15,7 @@ import {
   FormMessage,
   FormRootMessage,
   Input,
+  PendingButton,
 } from '@repo/ui/components';
 import { resendVerification } from '@/app/(auth)/verify-email/actions';
 import {
@@ -73,9 +73,14 @@ export function ResendVerificationForm() {
 
         <FormRootMessage />
 
-        <Button type="submit" variant="outline" disabled={form.formState.isSubmitting}>
-          {form.formState.isSubmitting ? t('resending') : t('resend')}
-        </Button>
+        <PendingButton
+          type="submit"
+          variant="outline"
+          pending={form.formState.isSubmitting}
+          pendingLabel={t('resending')}
+        >
+          {t('resend')}
+        </PendingButton>
       </form>
     </Form>
   );

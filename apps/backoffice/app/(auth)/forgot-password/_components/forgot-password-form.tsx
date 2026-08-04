@@ -8,7 +8,6 @@ import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 
 import {
-  Button,
   Card,
   Form,
   FormControl,
@@ -19,6 +18,7 @@ import {
   FormRootMessage,
   InlineLink,
   Input,
+  PendingButton,
   StatusScreen,
 } from '@repo/ui/components';
 import { AuthCard } from '@/app/(auth)/_components/auth-card';
@@ -103,9 +103,14 @@ export function ForgotPasswordForm() {
 
               <FormRootMessage />
 
-              <Button type="submit" size="lg" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? t('submitting') : t('submit')}
-              </Button>
+              <PendingButton
+                type="submit"
+                size="lg"
+                pending={form.formState.isSubmitting}
+                pendingLabel={t('submitting')}
+              >
+                {t('submit')}
+              </PendingButton>
             </form>
           </Form>
         </AuthCard>

@@ -37,6 +37,7 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
 - `@/config/*` → `config/*`
 - `@/hooks/*` → `hooks/*` (app-level client hooks — note: top-level `hooks/`, not `lib/hooks/`)
 - `@/lib/*` → `lib/*`
+- `@/translations/*` → `translations/*` (the message catalog)
 - `@/types/*` → `types/*` (shared TS types)
 - `@/public/*` → `public/*`
 - `@repo/ui/components`, `@repo/ui/hooks`, `@repo/ui/lib`, `@repo/ui/styles` — the shared package.
