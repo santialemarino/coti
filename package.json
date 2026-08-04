@@ -25,7 +25,7 @@
     "docs:api": "pnpm --filter api run docs",
     "docs:api:check": "pnpm --filter api run docs:check",
     "test:api": "pnpm --filter api run test",
-    "test:web": "turbo run test --filter=backoffice --filter=webapp",
+    "test:web": "turbo run test --filter=backoffice --filter=webapp --filter=@repo/ui",
     "clean": "pnpm --recursive exec rm -rf node_modules .next dist",
     "install:all": "pnpm install",
     "dev:backoffice": "pnpm --filter backoffice run dev",
