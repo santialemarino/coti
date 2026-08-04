@@ -14,8 +14,8 @@ export default async function HomePage() {
 
   return (
     <main className="flex flex-col px-6 py-10 gap-y-6">
-      <h1 className="text-3xl font-bold">{t('title')}</h1>
-      <p className="text-muted-foreground">
+      <h1 className="text-heading-2">{t('title')}</h1>
+      <p className="text-paragraph text-foreground-muted">
         {t('signedInAs', { role: session ? common(`roles.${session.role}`) : '' })}
       </p>
       <Link href={ROUTES.priceSettings} className="underline">
