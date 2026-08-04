@@ -196,33 +196,49 @@ Example: `flex flex-col min-h-screen items-center justify-center px-6 gap-y-8 bg
 
 ## Typography, rounding, and design tokens
 
-The theme lives in `packages/ui/src/styles/theme.css` and defines **color tokens
-(oklch) and a radius only** — there is **no custom typography token scale yet**.
-Be accurate about that; don't reference type tokens that don't exist.
+The token layer is `packages/ui/src/styles/index.css` (the tokens themselves) and
+`theme.css` (the `@theme inline` block mapping them onto Tailwind namespaces). Full
+reference, including how the ramp was derived and every contrast figure:
+[docs/technical/design-system.md](../../../docs/technical/design-system.md).
 
-- **Colors — always tokens, never raw values.** Use the semantic tokens:
-  `bg-background`/`text-foreground`, `bg-card`/`text-card-foreground`,
-  `bg-primary`/`text-primary-foreground`, `bg-secondary`, `bg-muted`/`text-muted-foreground`,
-  `bg-accent`, `bg-destructive`, `border`, `border-input`, `ring`/`focus-visible:ring-ring`.
-  Never inline a hex/oklch value, and **never reach for a raw Tailwind palette
-  color** (`slate-*`, `gray-*`, `zinc-*`) even though the shadcn base color is
-  slate — the tokens abstract it and carry dark mode (`.dark` class,
-  `@custom-variant dark`).
-- **Rounding — never fully square unless intentional.** `--radius` is 0.625rem
-  with the scale `rounded-sm`/`rounded-md`/`rounded-lg` (from `@theme` in
-  `theme.css`). Buttons/inputs use `rounded-md` (see `Button`); cards and grouped
-  surfaces/callouts round too — audit every box you add.
-- **Type — no scale yet, so keep it consistent and centralized.** Today, use
-  Tailwind's standard text utilities (the home pages' `text-3xl font-bold` is the
-  current baseline). Do not scatter one-off sizes ad hoc. When the product needs a
-  real type scale, **define semantic text tokens in `packages/ui/src/styles/theme.css`**
-  (via `@theme`) and consume them as tokens across both apps, rather than sprinkling
-  raw `text-sm`/`font-*` everywhere. Note: `cn()` (`@repo/ui/lib`) is a vanilla
-  `twMerge(clsx())` with no custom class-group config — if you add overlapping
-  custom text tokens, name them so they don't collide (or extend `cn()` with a
-  tailwind-merge config); don't rely on the merger to dedupe unknown tokens.
-- **Variants via CVA.** Extend a component's CVA variants (as `Button` does) —
-  don't fork the component to add a look.
+- **Colours — always semantic tokens, never raw values.** `bg-background`/`text-foreground`,
+  `bg-card`, `bg-popover`, `bg-sunken`, `text-foreground-muted`/`text-foreground-subtle`,
+  `bg-primary`/`text-primary-foreground` (+ `primary-hover`/`primary-active`),
+  `bg-secondary`(+`-hover`), `bg-muted`/`text-muted-foreground`,
+  `bg-accent`/`bg-accent-strong`/`text-accent-foreground`, `border`/`border-strong`,
+  `bg-input`/`bg-input-readonly`, `ring`, `bg-backdrop`. Never inline a hex or oklch
+  value, and **never reach for a raw Tailwind palette colour** (`slate-*`, `blue-*`,
+  `sky-*`) — no Tailwind ramp matches Coti's azure, and the tokens are the only place
+  the mapping lives.
+- **`brand-50`…`brand-950` exist, but reach for a semantic token first.** Use a ramp step
+  only for a deliberately brand-coloured surface (a gradient, a brand tile). `primary`
+  is `brand-600`; the ink `foreground` is `brand-950`.
+- **Status tones come in four steps** — `success`/`warning`/`danger`, each with `-subtle`
+  (tinted surface), `-border`, the base (`bg-success`, fills and icons) and `-foreground`
+  (text). `destructive-*` aliases `danger-*`. Use `-foreground` for copy: `-base` is
+  tuned for fills and does not carry text contrast. **Mapping a domain enum to a tone is
+  the app's job** — `@repo/ui` ships tones, the app that owns the enum picks one.
+- **Light-only.** There is no `.dark` block and no `dark:` variant. Never write a `dark:`
+  class; it cannot match.
+- **Type — use the scale, never a raw size/weight pair.** Headings are
+  `text-heading-1`…`-6` (40/32/24/20/18/16px) and carry the display face themselves.
+  Paragraphs are `text-paragraph{,-medium,-semibold}` and the same for `-sm` (14px),
+  `-xs` (12px), `-mini` (11px). Replace `text-sm font-medium` with
+  `text-paragraph-sm-medium`, and **never add a `font-*` weight next to a scale token** —
+  the token already encodes it. Adding a scale token means also registering it in `cn()`'s
+  tailwind-merge `font-size` group (`packages/ui/src/lib/utils.ts`), or two scale classes
+  on one element will both survive and the loser will win on source order.
+- **Elevation is a token.** `shadow-e1` (control hairline) → `shadow-e2` (resting card) →
+  `shadow-e3` (dropdown, popover, hover-lifted card) → `shadow-e4` (dialog, sheet).
+  Don't hand-roll a `shadow-[...]`.
+- **Rounding — never fully square unless intentional.** `--radius` is 10px. Controls
+  (buttons, inputs, selects) use `rounded-lg`; cards use `rounded-1.5xl` (14px); badges
+  and pills `rounded-full`. Grouped surfaces and callouts round too — audit every box.
+- **Motion durations and easings are tokens.** `duration-150/200/300/500` and
+  `ease-out-soft`/`ease-in-out-soft` in classes; `MOTION`/`EASE` from `@repo/ui/lib` for
+  `motion/react`. Never hardcode a duration.
+- **Variants via CVA.** Extend a component's CVA variants — don't fork the component to
+  add a look.
 
 ## API boundary and naming conventions
 

@@ -1,8 +1,8 @@
-/* App global styles: Tailwind + shared UI design system. */
-@import 'tailwindcss';
-@import 'tw-animate-css';
-
+/*
+ * The design system is the whole stylesheet: @repo/ui/styles is the built Tailwind bundle (tokens,
+ * preflight, utilities, the motion layer). Do not import `tailwindcss` or `@repo/ui/theme` here —
+ * both are already inside that bundle, and re-importing either emits preflight and the utility layer
+ * a second time. App-only one-offs (a third-party library's CSS, a selector for DOM this app does
+ * not render itself) belong below this line.
+ */
 @import '@repo/ui/styles';
-@import '@repo/ui/theme';
-
-@custom-variant dark (&:is(.dark *));

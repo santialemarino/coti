@@ -6,8 +6,7 @@
     "./components": "./src/components/index.ts",
     "./hooks": "./src/hooks/index.ts",
     "./lib": "./src/lib/index.ts",
-    "./styles": "./dist/index.css",
-    "./theme": "./src/styles/theme.css"
+    "./styles": "./dist/index.css"
   },
   "scripts": {
     "dev": "tailwindcss -i ./src/styles/index.css -o ./dist/index.css --watch",
