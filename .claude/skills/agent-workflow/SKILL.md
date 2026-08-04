@@ -28,13 +28,16 @@ Read and apply the skill(s) that match what you're touching:
 | **api-methods-entities** | Touching `apps/api` — method order, Go doc comments, domain structs, DTOs, and raw-SQL query conventions.                                                                |
 | **web-structure**        | Touching `apps/backoffice` or `apps/webapp` — where pages, components, and config live; directory layout; `packages/ui` usage.                                           |
 | **web-components-pages** | Adding a page or component to either web app — colocation, declaration order, style, comments.                                                                           |
+| **ux-motion**            | Creating or restyling any UI in either web app or `packages/ui` — interaction states, motion, elevation, reduced motion. Load with the web skills, not instead of them.  |
 | **commit**               | Creating a commit — message format (`type: imperative description`), types, staging rules.                                                                               |
 | **pr-format**            | Opening a pull request — title, body, branch name, base branch, labels.                                                                                                  |
 | **testing**              | Writing or running tests — where they live, how to run them, what to cover.                                                                                              |
 
 Use the **api-\*** skills for the backend, the **web-\*** skills for either frontend, and **both** when a change spans API and web. Know which web app you're in: **backoffice** is the authenticated vendor/admin app (port 3000); **webapp** is the public, no-auth customer app (port 3001) — they are separate surfaces with different auth assumptions.
 
-**Deferred skills — do NOT route to these yet:** `ux-motion` and `e2e-testing` are intentionally not set up. There is no substantial UI to motion-design or drive end-to-end today. Add them when the UI matures; until then, verify web changes by the means the web skills describe, not by reaching for a skill that doesn't exist.
+Whenever the change is visual, **load `ux-motion` alongside the web skills** — it owns interaction states, the motion vocabulary, elevation and the reduced-motion contract, which the web skills reference but do not restate.
+
+**Deferred skill — do NOT route to it yet:** `e2e-testing` is intentionally not set up; there are no committed Playwright specs. Verify UI work in a real browser with the **playwright-cli** skill instead, as `ux-motion` describes.
 
 ## 2. Lints and checks before commit
 
@@ -67,7 +70,12 @@ After implementation and before committing, audit every changed or created file 
 ### Web (web-structure + web-components-pages) — Next.js (backoffice + webapp), React 19, `@repo/ui`
 
 - **Tailwind class order:** display/flex → sizing → alignment → padding → gap → bg/border → rounded → state → typography.
-- **Typography tokens:** no raw `text-*` / `font-*` utilities — use the type-scale tokens defined by the web skills.
+- **Typography tokens:** no raw `text-*` / `font-*` utilities — use the type-scale tokens (`text-heading-*`, `text-paragraph-*`). A scale token already encodes its weight, so never pair it with a `font-*`.
+- **Colour tokens:** semantic tokens only — no hex, no oklch literal, and no raw Tailwind palette colour (`slate-*`, `blue-*`, `sky-*`). No `dark:` classes; Coti is light-only and the variant cannot match.
+- **Interaction states (ux-motion):** every interactive element has hover, active, focus-visible and disabled. Surfaces get the ring; icon-only and inline triggers get a colour shift **plus** the bump — the colour shift is what survives reduced motion. No native outline left anywhere.
+- **Open and close both animate.** An overlay with an entrance and no exit is a defect.
+- **Elevation and motion are tokens:** `shadow-e1`–`e4`, `duration-150/200/300/500`, `ease-out-soft` / `ease-in-out-soft`. No hand-rolled `shadow-[...]`, no inline duration.
+- **`@repo/ui` rebuilt** if a shared component's classNames changed, or the new classes never reach the app.
 - **File + in-component declaration order** follows the web skills (roughly: consts → metadata → props → state → derived → effects → handlers → return).
 - **API boundary mapping:** the API speaks `snake_case` JSON; the web speaks `camelCase`. Map at the data/fetch boundary — never let `snake_case` leak into components.
 - **Strings / translations** handled per the web skill's string convention (Coti ships Spanish-first for the Argentine market).
@@ -131,7 +139,7 @@ Skills live in two mirrored trees: Claude Code reads `.claude/skills/`, Codex re
 Rules when editing a mirrored skill:
 
 - **Edit BOTH mirrors in the same pass**, then verify with `diff .claude/skills/<name>/SKILL.md .agents/skills/<name>/SKILL.md` (expect no output).
-- **Never `cp` one mirror over the other.** Even though byte-equality is the goal, targeted edits + a `diff` check are safer — a blind copy silently clobbers per-agent fixes that snuck in mid-edit.
+- **Never `cp` one mirror over the other when both already exist.** Even though byte-equality is the goal, targeted edits + a `diff` check are safer — a blind copy silently clobbers per-agent fixes that snuck in mid-edit. Creating the _first_ mirror of a brand-new skill is the exception: there is nothing on the other side to clobber, so write one and copy it, then `diff`.
 - **Use agent-agnostic language** for anything that varies per agent. "Manage per your project status memory" reads correctly for both Claude and Codex; "update Claude memory files" would force drift.
 - **No cross-references that resolve on only one side** — no `[[memory-link]]` syntax, no by-name references to gitignored files only one agent has. When you need a per-agent convention, inline the rule's content in both mirrors instead.
 - When in doubt whether content should mirror, **mirror it**.

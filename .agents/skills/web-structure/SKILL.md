@@ -242,7 +242,8 @@ packages/ui                         # Workspace — shared React + shadcn design
 ## Related skills
 
 - **`web-components-pages`** — how to actually create a page or component, the
-  form stack, the API boundary mapping, icons, order/style, Tailwind class order,
-  design tokens, and copy conventions.
+  `@repo/ui` catalogue, the form stack, the API boundary mapping, icons, order/style,
+  Tailwind class order, design tokens, and copy conventions.
+- **`ux-motion`** — interaction states, motion, elevation, reduced motion.
 - **`agent-workflow`** — branch/ticket flow before you start.
 - **`commit`** / **`pr-format`** — commit message and PR conventions.
