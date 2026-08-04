@@ -28,7 +28,9 @@ export const vitestConfig = {
     // tests that assert nothing. Same rule the API follows.
     coverage: {
       reporter: ['text-summary', 'json-summary'],
-      include: ['app/**', 'components/**', 'config/**', 'lib/**', 'src/**'],
+      // Extension-bound, or v8 tries to parse the stylesheets under app/ and logs a failure
+      // for each before excluding them anyway.
+      include: ['{app,components,config,lib,src}/**/*.{ts,tsx}'],
     },
   },
 };
