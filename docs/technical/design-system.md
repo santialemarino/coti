@@ -195,25 +195,32 @@ is part of its character, not a reusable step.
 Declared as `--animate-*` theme tokens, which is what makes `focus-visible:` and
 `group-focus-visible/<name>:` variants of them generate.
 
-| Utility                     | Motion            | For                               |
-| --------------------------- | ----------------- | --------------------------------- |
-| `animate-focus-bump`        | 1 → 1.5 → 1       | icon-only triggers                |
-| `animate-focus-bump-soft`   | 1 → 1.15 → 1      | inline icons                      |
-| `animate-focus-bump-subtle` | 1 → 1.05 → 1      | text links                        |
-| `animate-status-pop`        | 0.4 → 1.06 → 1    | a status screen's icon            |
-| `animate-status-halo`       | 0.6 → 1.9, fading | the one-shot ring behind it       |
-| `animate-rise-in`           | +6px, fading in   | copy entering under a status icon |
+| Utility                     | Motion       | For                |
+| --------------------------- | ------------ | ------------------ |
+| `animate-focus-bump`        | 1 → 1.5 → 1  | icon-only triggers |
+| `animate-focus-bump-soft`   | 1 → 1.15 → 1 | inline icons       |
+| `animate-focus-bump-subtle` | 1 → 1.05 → 1 | text links         |
+
+A one-shot bump suits a control you focus and leave. A control you sit on and press
+repeatedly holds a scale instead — `transition-[scale]` with
+`group-hover/x:scale-110 group-focus-visible/x:scale-110`, as the password reveal and
+the search clear do.
+
+An enumerated transition list must name the property the utility sets, and for the
+transform family that is `scale` / `translate` / `rotate`, never `transform` — see the
+`ux-motion` skill.
 
 Radix open/close, fades, zooms and slides come from `tw-animate-css` — don't
 re-declare those.
 
 ### Reduced motion
 
-Decorative motion (`status-halo`, `status-pop`, `rise-in`, the Collapsible height
-reveal) collapses to nothing under `prefers-reduced-motion: reduce`. The focus-bump
-family deliberately does **not**, because it is functional feedback — and every element
-carrying a bump also shifts colour on `focus-visible`, so the affordance survives for a
-user who can't perceive the bump. See the `ux-motion` skill for the interaction-state
+Decorative motion (the `StatusScreen` icon's entrance, the Collapsible height reveal)
+collapses to nothing under `prefers-reduced-motion: reduce`; JS-driven motion zeroes its
+timings via `useReducedMotion()`. The focus-bump family and the held focus scale
+deliberately do **not**, because they are functional feedback — and every element
+carrying one also shifts colour on `focus-visible`, so the affordance survives for a
+user who can't perceive the movement. See the `ux-motion` skill for the interaction-state
 rules that go with these tokens.
 
 The gate is intentionally unlayered: a normal declaration outside any cascade layer

@@ -175,46 +175,6 @@
   }
 }
 
-/* The status-screen icon: overshoots past 1 so the landing reads as a settle, not a stop. */
-@keyframes status-pop {
-  0% {
-    opacity: 0;
-    transform: scale(0.4);
-  }
-  60% {
-    opacity: 1;
-    transform: scale(1.06);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-/* One-shot ring expanding out of the status circle. Decorative — gated under reduced motion. */
-@keyframes status-halo {
-  0% {
-    opacity: 0.5;
-    transform: scale(0.6);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.9);
-  }
-}
-
-/* Content entrance: a short rise plus fade, for copy following a status icon. */
-@keyframes rise-in {
-  0% {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  100% {
-    opacity: 1;
-    transform: none;
-  }
-}
-
 /*
  * Reduced motion. Decorative motion collapses to nothing; the focus-bump family deliberately does
  * NOT, because it is functional feedback. Every element carrying a bump also shifts colour on
@@ -223,15 +183,15 @@
  *
  * Intentionally unlayered: a normal declaration outside any cascade layer beats every
  * `@layer utilities` rule regardless of specificity or source order, which is what lets it override
- * tw-animate-css's own ungated animate-collapsible-* utilities. Matching on an attribute substring
- * makes it variant-proof — it catches the utility under `data-[state=open]:`, `group-*`, or bare.
+ * tw-animate-css's own ungated animate-collapsible-* and animate-in utilities. Matching on an
+ * attribute substring makes it variant-proof — it catches the utility under `data-[state=open]:`,
+ * `group-*`, or bare. A `data-slot` is named where the decorative animation is a shared
+ * `animate-in`, which cannot be matched by class without also killing every overlay entrance.
  */
 @media (prefers-reduced-motion: reduce) {
   [class*='animate-collapsible-down'],
   [class*='animate-collapsible-up'],
-  [class*='animate-status-halo'],
-  [class*='animate-status-pop'],
-  [class*='animate-rise-in'] {
+  [data-slot='status-screen-icon'] {
     animation: none;
   }
 }
