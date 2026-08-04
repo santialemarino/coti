@@ -123,7 +123,15 @@ is correct and only the interpolation is missing. Two ways to stay safe:
 | page-level entrances                     | 500ms    |
 
 Easing is `ease-out-soft` for entrances and most state changes, `ease-in-out-soft` for something that
-travels out and back. If you need a duration that isn't here, add a token — don't inline a number.
+travels out and back, and `ease-out-back` for something arriving into place, which overshoots its
+target and settles. If you need a duration or a curve that isn't here, add a token — don't inline one.
+
+**An overshoot belongs in the easing, never in an extra keyframe stop.** `ease-out-soft` covers most
+of its progress in the first third of its duration, so a `60% { scale: 1.06 }` stop is reached in the
+first ~50ms of a 420ms animation and then crawls back for the remaining 370ms — which reads as a snap
+followed by a drift, not a settle. Two keyframes plus `ease-out-back` keeps the peak mid-flight where
+the eye expects it. Note the overshoot scales with the travel distance: `0.75 → 1` under
+`--ease-out-back` peaks around 1.027, while `0.8 → 1` peaks at 1.010 and is invisible. Measure it.
 
 ## Open and close are both animations
 
@@ -188,10 +196,9 @@ priority.
 
 Honour `prefers-reduced-motion: reduce`. The split:
 
-- **Decorative motion collapses to nothing** — the `StatusScreen` icon's entrance, the Collapsible
-  height reveal. The gate lives in `packages/ui/src/styles/index.css`; add a new decorative keyframe
-  to it. Where the animation is a shared utility like `animate-in`, gate it by `data-slot` instead of
-  by class, or you kill every overlay entrance with it.
+- **Decorative motion collapses to nothing** — the status halo, the circle's settle, content rises,
+  the Collapsible height reveal. The gate for the shared utilities lives in
+  `packages/ui/src/styles/index.css`; a new decorative keyframe must be added to it.
 - **Functional feedback stays** — the focus bump, the held focus scale, small hover transitions.
   Removing these removes the affordance.
 - **Anything that animates from invisible must be visible at rest.** With `animation: none` the
