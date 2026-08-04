@@ -36,7 +36,7 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
 - `@/lib/*` → `lib/*`
 - `@/types/*` → `types/*` (shared TS types)
 - `@/public/*` → `public/*`
-- `@repo/ui/components`, `@repo/ui/hooks`, `@repo/ui/lib`, `@repo/ui/styles`, `@repo/ui/theme` — the shared package.
+- `@repo/ui/components`, `@repo/ui/hooks`, `@repo/ui/lib`, `@repo/ui/styles` — the shared package.
 
 ## App Router layout — backoffice (authenticated)
 
@@ -132,12 +132,25 @@ two apps.
 - Do not speculatively promote. Build in the app; promote the moment a second app
   needs it, then delete the app-local copy.
 
-**`@repo/ui` ships its CSS prebuilt** (`exports["./styles"]` → `dist/index.css`,
-built by the Tailwind CLI over `@source '../components'`; components are consumed
-from `src`, so their logic is live but their styles are not). After editing a
-`packages/ui` component's classNames, rebuild it (`pnpm --filter @repo/ui build`,
-or rely on its `dev` watcher) and restart the app — otherwise the new classes
-never reach the app and the change silently does nothing.
+### The stylesheet pipeline
+
+`packages/ui/src/styles/index.css` is the **single Tailwind entry for the monorepo**:
+it imports Tailwind, declares the tokens, and is compiled by the Tailwind CLI to
+`packages/ui/dist/index.css`. Each app's `globals.css` imports **only**
+`@repo/ui/styles` — never `tailwindcss` again, because the built bundle already
+carries preflight and the utility layer, so a second import emits both twice. App-only
+one-offs (a third-party library's CSS, a selector for DOM the app doesn't render) go
+below that import.
+
+Class scanning is monorepo-wide from inside the package (`@source` covers `packages/ui`
+and `apps/**`), so a class used only in an app is still generated.
+
+**`@repo/ui` ships its CSS prebuilt** (`exports["./styles"]` → `dist/index.css`;
+components are consumed from `src`, so their logic is live but their styles are not).
+After editing a `packages/ui` component's classNames, rebuild it
+(`pnpm --filter @repo/ui build`, or rely on its `dev` watcher) — otherwise the new
+classes never reach the app and the change silently does nothing. `pnpm dev` builds
+`@repo/ui` before starting the apps, so a cold start can't race it.
 
 ## Directory layout — apps/backoffice/
 
