@@ -130,8 +130,12 @@ The stack is **react-hook-form + zod** with the shared `Form` primitives from
 - **Pass the accessible names the design system can't own:** `passwordToggleLabel`
   on a password `Input`, `clearLabel` on a `SearchInput`. They live under
   `common.form.*`.
-- **Pending state is the submit button**, disabled with a swapped label:
-  `disabled={form.formState.isSubmitting}` and `{isSubmitting ? t('submitting') : t('submit')}`.
+- **Pending state is the submit button, and it is `PendingButton`** — not a hand-rolled ternary:
+  `<PendingButton type="submit" pending={form.formState.isSubmitting} pendingLabel={t('submitting')}>`.
+  It disables itself, sets `aria-busy`, shows the spinner, and animates the width change the two
+  labels cause — which plain CSS cannot do at all, because `width: auto` is not transitionable.
+- **`Button` defaults to `type="button"`.** A submit opts in with `type="submit"`, so a button added
+  to a form can never submit it by accident. `asChild` passes `type` through untouched.
 
 ## Feedback: toast, callout, or field message
 
