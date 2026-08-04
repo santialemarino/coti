@@ -1,10 +1,14 @@
-import { Button } from '@repo/ui/components';
+import { getTranslations } from 'next-intl/server';
 
-export default function Home() {
+import { Brand } from '@/components/brand';
+
+export default async function HomePage() {
+  const t = await getTranslations('common');
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6">
-      <h1 className="text-3xl font-bold">Coti</h1>
-      <Button>View quote</Button>
+    <main className="flex flex-col min-h-screen items-center justify-center px-6 gap-y-6">
+      <Brand variant="lockup" size="xl" label={t('appName')} />
+      <p className="text-paragraph text-foreground-muted">{t('states.loading')}</p>
     </main>
   );
 }

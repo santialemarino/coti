@@ -22,7 +22,16 @@
       "ADMIN": "Administrador",
       "SELLER": "Vendedor"
     },
-    "retry": "Reintentar"
+    "retry": "Reintentar",
+    "form": {
+      "togglePassword": "Mostrar u ocultar la contraseña",
+      "clearSearch": "Limpiar la búsqueda"
+    },
+    "pagination": {
+      "label": "Paginación",
+      "previous": "Anterior",
+      "next": "Siguiente"
+    }
   },
   "errors": {
     "badRequest": "Los datos enviados no son válidos. Revisá el formulario.",

@@ -142,10 +142,12 @@ carries preflight and the utility layer, so a second import emits both twice. Ap
 one-offs (a third-party library's CSS, a selector for DOM the app doesn't render) go
 below that import.
 
-Class scanning is monorepo-wide from inside the package (`@source` covers `packages/ui`
-and `apps/**`), so a class used only in an app is still generated. Tailwind's automatic
-detection is off, so those globs are the whole input — a class name only _mentioned_ in
-prose never reaches the bundle.
+Class scanning is monorepo-wide from inside the package: `@source` registers the
+`packages/ui` and `apps` **directories**, not globs, so Tailwind walks them itself and a
+class used only in an app is still generated. Tailwind's automatic detection is off, so
+those two entries are the whole input — a class name only _mentioned_ in prose never
+reaches the bundle. Keep them as directories; a glob has to reckon with the parentheses in
+Next's route-group folders.
 
 **`@repo/ui` ships its CSS prebuilt** (`exports["./styles"]` → `dist/index.css`;
 components are consumed from `src`, so their logic is live but their styles are not).

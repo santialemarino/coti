@@ -2,9 +2,12 @@
 
 import { useActionState } from 'react';
 import Link from 'next/link';
+import { CircleCheckIcon, CircleXIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { Button } from '@repo/ui/components';
+import { Button, Card, Hint, InlineLink, StatusScreen } from '@repo/ui/components';
+import { AuthCard } from '@/app/(auth)/_components/auth-card';
+import { AuthStage } from '@/app/(auth)/_components/auth-stage';
 import { ResendVerificationForm } from '@/app/(auth)/verify-email/_components/resend-verification-form';
 import { confirmEmail, type ConfirmEmailResult } from '@/app/(auth)/verify-email/actions';
 import { ROUTES } from '@/config/routes';
@@ -24,34 +27,54 @@ export function ConfirmEmailForm({ token }: ConfirmEmailFormProps) {
   const t = useTranslations('auth.verifyEmail');
   const [state, formAction, pending] = useActionState(confirmEmail, INITIAL_STATE);
 
-  if (state.done) {
-    return (
-      <div className="flex flex-col gap-y-4">
-        <p className="text-sm text-muted-foreground">{t('done')}</p>
-        <Button asChild>
-          <Link href={ROUTES.home}>{t('continue')}</Link>
-        </Button>
-      </div>
-    );
-  }
-
-  if (state.error) {
-    return (
-      <div className="flex flex-col gap-y-4">
-        <p className="text-sm text-destructive">{t(`errors.${state.error}`)}</p>
-        <p className="text-sm text-muted-foreground">{t('resendHint')}</p>
-        <ResendVerificationForm />
-      </div>
-    );
-  }
+  const stage = state.done ? 'done' : state.error ? 'error' : 'prompt';
 
   return (
-    <form action={formAction} className="flex flex-col gap-y-4">
-      <input type="hidden" name="token" value={token} />
-      <p className="text-sm text-muted-foreground">{t('prompt')}</p>
-      <Button type="submit" disabled={pending}>
-        {pending ? t('confirming') : t('confirm')}
-      </Button>
-    </form>
+    <AuthStage stageKey={stage}>
+      {state.done ? (
+        <Card>
+          <StatusScreen
+            icon={CircleCheckIcon}
+            tone="success"
+            title={t('title')}
+            description={t('done')}
+          >
+            <InlineLink asChild>
+              <Link href={ROUTES.home}>{t('continue')}</Link>
+            </InlineLink>
+          </StatusScreen>
+        </Card>
+      ) : state.error ? (
+        <Card className="gap-y-6">
+          <StatusScreen
+            icon={CircleXIcon}
+            tone="danger"
+            title={t('title')}
+            description={t(`errors.${state.error}`)}
+          />
+          <div className="flex flex-col px-6 gap-y-4">
+            <Hint>{t('resendHint')}</Hint>
+            <ResendVerificationForm />
+          </div>
+        </Card>
+      ) : (
+        <AuthCard
+          title={t('title')}
+          description={t('prompt')}
+          footer={
+            <InlineLink asChild tone="muted">
+              <Link href={ROUTES.login}>{t('backToLogin')}</Link>
+            </InlineLink>
+          }
+        >
+          <form action={formAction} className="flex flex-col">
+            <input type="hidden" name="token" value={token} />
+            <Button type="submit" size="lg" disabled={pending}>
+              {pending ? t('confirming') : t('confirm')}
+            </Button>
+          </form>
+        </AuthCard>
+      )}
+    </AuthStage>
   );
 }

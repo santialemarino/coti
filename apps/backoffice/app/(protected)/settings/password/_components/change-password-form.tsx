@@ -127,7 +127,7 @@ export function ChangePasswordForm() {
         />
 
         <FormRootMessage />
-        {done ? <p className="text-sm text-muted-foreground">{t('done')}</p> : null}
+        {done ? <p className="text-paragraph-sm text-foreground-muted">{t('done')}</p> : null}
 
         <Button type="submit" disabled={form.formState.isSubmitting}>
           {form.formState.isSubmitting ? t('submitting') : t('submit')}

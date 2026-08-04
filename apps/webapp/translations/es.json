@@ -9,6 +9,10 @@
     "states": {
       "loading": "Cargando…",
       "error": "Ocurrió un error. Intentá de nuevo."
+    },
+    "form": {
+      "togglePassword": "Mostrar u ocultar la contraseña",
+      "clearSearch": "Limpiar la búsqueda"
     }
   },
   "rfq": {

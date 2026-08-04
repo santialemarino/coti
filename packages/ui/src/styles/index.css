@@ -10,12 +10,17 @@
 
 /*
  * Scanned for class names: this package plus both apps, since the build runs from in here.
- * `source(none)` turns off Tailwind's automatic detection so these globs are the whole input —
+ * `source(none)` turns off Tailwind's automatic detection so these two entries are the whole input —
  * otherwise it also scans prose, and a class name merely *mentioned* in a README or a skill would
- * be generated. Only the two directories that render UI produce CSS.
+ * be generated. Only the directories that render UI produce CSS.
+ *
+ * These are directories, not globs, on purpose: Tailwind walks a registered directory itself, which
+ * takes any question of glob syntax out of play. It matters here because nearly every page lives
+ * inside a Next route group — `app/(auth)/`, `app/(protected)/` — and parentheses are meaningful to a
+ * glob matcher.
  */
-@source "../../**/*.{ts,tsx}";
-@source "../../../../apps/**/*.{ts,tsx}";
+@source "../..";
+@source "../../../../apps";
 
 /*
  * Coti is light-only by design. There is deliberately no `.dark` token block and no `dark:` variant:

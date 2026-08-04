@@ -92,7 +92,7 @@ export function PriceImport({ branches }: PriceImportProps) {
         className="grid p-5 gap-4 bg-card border rounded-lg md:grid-cols-[1fr_1fr_auto] md:items-end"
       >
         <div className="flex flex-col gap-y-1">
-          <label htmlFor="branchId" className="text-sm font-medium">
+          <label htmlFor="branchId" className="text-paragraph-sm-medium">
             {t('form.branch.label')}
           </label>
           <select
@@ -113,7 +113,7 @@ export function PriceImport({ branches }: PriceImportProps) {
           </select>
         </div>
         <div className="flex flex-col gap-y-1">
-          <label htmlFor="file" className="text-sm font-medium">
+          <label htmlFor="file" className="text-paragraph-sm-medium">
             {t('form.file.label')}
           </label>
           <input
@@ -122,7 +122,7 @@ export function PriceImport({ branches }: PriceImportProps) {
             type="file"
             required
             accept=".xlsx,.csv"
-            className="h-10 px-3 py-2 bg-background border border-input rounded-md file:mr-3 file:border-0 file:bg-transparent file:font-medium"
+            className="h-10 px-3 py-2 bg-background border border-input rounded-md file:mr-3 file:border-0 file:bg-transparent file:text-paragraph-sm-medium"
           />
         </div>
         <div className="flex gap-x-2">
@@ -135,14 +135,14 @@ export function PriceImport({ branches }: PriceImportProps) {
         </div>
       </form>
 
-      <p className="text-sm text-muted-foreground">{t('formatHint')}</p>
+      <p className="text-paragraph-sm text-foreground-muted">{t('formatHint')}</p>
       {error ? (
-        <p className="p-3 bg-destructive/10 border border-destructive/30 rounded-md text-sm text-destructive">
+        <p className="p-3 bg-destructive/10 border border-destructive/30 rounded-md text-paragraph-sm text-danger-foreground">
           {error}
         </p>
       ) : null}
       {successCount !== null ? (
-        <p className="p-3 bg-primary/10 border border-primary/30 rounded-md text-sm">
+        <p className="p-3 bg-primary/10 border border-primary/30 rounded-md text-paragraph-sm">
           {t('success', { count: successCount })}
         </p>
       ) : null}
@@ -150,7 +150,7 @@ export function PriceImport({ branches }: PriceImportProps) {
       {preview ? (
         <section className="flex flex-col gap-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm">
+            <p className="text-paragraph-sm">
               {t('summary', { valid: preview.validRows, invalid: preview.invalidRows })}
             </p>
             <Button type="button" onClick={onConfirm} disabled={pending || !preview.canConfirm}>
@@ -158,7 +158,7 @@ export function PriceImport({ branches }: PriceImportProps) {
             </Button>
           </div>
           <div className="overflow-x-auto border rounded-lg">
-            <table className="w-full border-collapse text-sm">
+            <table className="w-full border-collapse text-paragraph-sm">
               <thead className="bg-muted">
                 <tr>
                   <th className="px-3 py-2 text-left">{t('table.row')}</th>
@@ -175,7 +175,7 @@ export function PriceImport({ branches }: PriceImportProps) {
                 {preview.rows.map((row) => (
                   <tr key={`${row.rowNumber}-${row.code}`} className="border-t">
                     <td className="px-3 py-2">{row.rowNumber}</td>
-                    <td className="px-3 py-2 font-medium">{row.code || '—'}</td>
+                    <td className="px-3 py-2 text-paragraph-sm-medium">{row.code || '—'}</td>
                     <td className="px-3 py-2">{row.productName || '—'}</td>
                     <td className="px-3 py-2">
                       {row.currentPrice ? fmt.currency(row.currentPrice, row.currency) : '—'}
@@ -204,7 +204,7 @@ export function PriceImport({ branches }: PriceImportProps) {
             </table>
           </div>
           {!preview.canConfirm ? (
-            <p className="text-sm text-destructive">{t('fixErrors')}</p>
+            <p className="text-paragraph-sm text-danger-foreground">{t('fixErrors')}</p>
           ) : null}
         </section>
       ) : null}
