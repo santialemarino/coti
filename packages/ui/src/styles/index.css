@@ -175,31 +175,40 @@
   }
 }
 
-/* The status-screen icon: overshoots past 1 so the landing reads as a settle, not a stop. */
+/*
+ * The status circle arriving into place. The overshoot lives in the easing (`--ease-out-back`), not in
+ * an extra keyframe stop: `--ease-out-soft` covers most of its progress in the first third of the
+ * duration, so a `60% { scale: 1.06 }` stop lands almost immediately and then crawls back for the rest
+ * — a snap followed by a drift. One curve doing both keeps it a single settle.
+ */
 @keyframes status-pop {
   0% {
     opacity: 0;
-    transform: scale(0.4);
-  }
-  60% {
-    opacity: 1;
-    transform: scale(1.06);
+    transform: scale(0.75);
   }
   100% {
     opacity: 1;
-    transform: scale(1);
+    transform: none;
   }
 }
 
-/* One-shot ring expanding out of the status circle. Decorative — gated under reduced motion. */
+/*
+ * A ring expanding out of the status circle and dissolving. Decorative — gated under reduced motion.
+ * The opacity peaks mid-flight rather than starting at its maximum, so the ring materialises instead
+ * of being painted at full strength on the first frame, and it ends at 0 — which is why the element
+ * carries `opacity-0` at rest.
+ */
 @keyframes status-halo {
   0% {
-    opacity: 0.5;
-    transform: scale(0.6);
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  40% {
+    opacity: 0.3;
   }
   100% {
     opacity: 0;
-    transform: scale(1.9);
+    transform: scale(1.55);
   }
 }
 
@@ -207,7 +216,7 @@
 @keyframes rise-in {
   0% {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(4px);
   }
   100% {
     opacity: 1;
