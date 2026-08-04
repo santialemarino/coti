@@ -13,6 +13,9 @@ function Switch({ className, ...props }: React.ComponentProps<typeof SwitchPrimi
         'peer inline-flex shrink-0 h-5 w-9 items-center bg-border-strong border border-transparent rounded-full shadow-e1 outline-none',
         'transition-[background-color,box-shadow] duration-200 ease-out-soft',
         'data-[state=checked]:bg-primary',
+        /* The same hover cue Checkbox and RadioGroupItem carry — a switch is the most obviously
+           clickable of the three and was the only one with no hover state. */
+        'hover:border-ring',
         'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45',
         'disabled:cursor-not-allowed disabled:opacity-50',
         className,

@@ -75,6 +75,7 @@ function SheetContent({
               'group/sheet-close absolute top-4 right-4 flex p-1 rounded-md outline-none',
               'transition-colors duration-200 ease-out-soft',
               'text-foreground-subtle hover:text-foreground focus-visible:text-foreground',
+              'disabled:pointer-events-none',
             )}
           >
             <XIcon

@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from './dialog';
+import { PendingButton } from './pending-button';
 
 interface ConfirmDialogProps<TEntity> {
   open: boolean;
@@ -57,13 +58,14 @@ function ConfirmDialog<TEntity>({
           <Button variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>
             {labels.cancel}
           </Button>
-          <Button
+          <PendingButton
             variant={tone === 'danger' ? 'destructive' : 'default'}
-            disabled={pending}
+            pending={pending}
+            pendingLabel={labels.pending}
             onClick={onConfirm}
           >
-            {pending ? labels.pending : labels.confirm}
-          </Button>
+            {labels.confirm}
+          </PendingButton>
         </DialogFooter>
       </DialogContent>
     </Dialog>

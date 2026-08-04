@@ -68,13 +68,17 @@ function FormItem({
 function useFormField() {
   const fieldContext = React.useContext(FormFieldContext);
   const itemContext = React.useContext(FormItemContext);
+
+  /* Both contexts default to an empty object, so the useful test is whether they were populated —
+     and it has to come before the reads below, which would otherwise subscribe to a nameless field
+     and mint `undefined-form-item` ids. */
+  if (!fieldContext.name || !itemContext.id) {
+    throw new Error('useFormField has to be used inside a <FormField> and a <FormItem>');
+  }
+
   const { getFieldState } = useFormContext();
   const formState = useFormState({ name: fieldContext.name });
   const fieldState = getFieldState(fieldContext.name, formState);
-
-  if (!fieldContext) {
-    throw new Error('useFormField has to be used inside a <FormField>');
-  }
 
   const { id, required } = itemContext;
   return {

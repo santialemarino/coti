@@ -135,8 +135,9 @@ function Combobox({
           aria-describedby={ariaDescribedBy}
           disabled={disabled}
           className={cn(
-            /* The trigger reads as a field, so it overrides Button's medium weight to input weight. */
-            'w-full justify-between font-normal',
+            /* The trigger reads as a field, so it swaps Button's medium size token for the input one
+               at the same size — a bare `font-normal` would leave both weights in the class list. */
+            'w-full justify-between text-paragraph-sm',
             !selected && 'text-foreground-subtle',
             ariaInvalid && 'border-danger focus-visible:border-danger focus-visible:ring-danger/30',
             className,
