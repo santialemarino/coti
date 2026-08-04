@@ -173,7 +173,8 @@ Registered in `cn()`'s `shadow` group alongside the type scale.
 ## Radius
 
 `--radius` is 10px and is the control baseline. Controls (buttons, inputs, selects) use
-`rounded-lg`; cards use `rounded-1.5xl` (14px); badges and pills use `rounded-full`.
+`rounded-lg`, dropping to `rounded-md` at the `xs` sizes where 10px would swallow a 24px
+box; cards use `rounded-1.5xl` (14px); badges and pills use `rounded-full`.
 Nothing is fully square unless that is a deliberate decision — audit every box you add.
 
 ## Motion
@@ -191,6 +192,26 @@ is part of its character, not a reusable step.
 | `default` | 0.2     | `duration-200` | most state changes, open/close, reveals  |
 | `slow`    | 0.3     | `duration-300` | height reveals, crossfades between steps |
 | `slower`  | 0.5     | `duration-500` | page-level entrances                     |
+
+### `@repo/ui` depends on `motion`, for two components only
+
+Almost every animation here is CSS, which is what keeps the presentational components
+server components. Two are not, because **a content-driven size change cannot be
+animated in CSS at all** — `width: auto` is not a transitionable value, so no
+`transition-*` will ever smooth a box that resizes because its text changed. That needs a
+measured before/after, which is motion's layout animation:
+
+- **`Pagination`** — the window slides as the page changes, so numbers enter and leave and
+  everything left over travels to its new position.
+- **`PendingButton`** — a submit whose label swaps mid-action (`Eliminar` → `Eliminando…`),
+  resizing smoothly both ways and crossfading the two labels.
+
+Both are clients; nothing else in the package is one because of motion. Reach for
+`PendingButton` rather than a hand-rolled `{pending ? … : …}` ternary — that is the case it
+exists for. Two constraints worth knowing before adding a third: `mode="wait"` and `layout`
+do **not** compose (the incoming child mounts in a commit the parent never re-renders for,
+so nothing is measured — use `mode="popLayout"`), and `useReducedMotion()` should zero the
+timings rather than swap in a plain element, which would strand motion's SSR-inlined styles.
 
 ### Animation utilities
 
