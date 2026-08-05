@@ -163,7 +163,6 @@ export function PriceImport({ branch }: PriceImportProps) {
                   <th className="px-3 py-2 text-left">{t('table.currentPrice')}</th>
                   <th className="px-3 py-2 text-left">{t('table.newPrice')}</th>
                   <th className="px-3 py-2 text-left">{t('table.minPrice')}</th>
-                  <th className="px-3 py-2 text-left">{t('table.conditions')}</th>
                   <th className="px-3 py-2 text-left">{t('table.result')}</th>
                 </tr>
               </thead>
@@ -182,7 +181,6 @@ export function PriceImport({ branch }: PriceImportProps) {
                     <td className="px-3 py-2">
                       {row.minPrice ? fmt.currency(row.minPrice, row.currency) : '—'}
                     </td>
-                    <td className="px-3 py-2">{row.conditions ?? '—'}</td>
                     <td className="px-3 py-2">
                       {row.errors.length === 0 ? (
                         <span>{t('valid')}</span>

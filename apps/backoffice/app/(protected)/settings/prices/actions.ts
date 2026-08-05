@@ -11,7 +11,6 @@ interface ProductPriceImportRowRaw {
   price: string;
   min_price: string | null;
   currency: string;
-  conditions: string | null;
   errors: string[];
 }
 
@@ -36,7 +35,6 @@ export interface ProductPriceImportRow {
   price: string;
   minPrice: string | null;
   currency: string;
-  conditions: string | null;
   errors: string[];
 }
 
@@ -71,7 +69,6 @@ function mapProductPriceImportRow(raw: ProductPriceImportRowRaw): ProductPriceIm
     price: raw.price,
     minPrice: raw.min_price,
     currency: raw.currency,
-    conditions: raw.conditions,
     errors: raw.errors,
   };
 }
@@ -151,8 +148,6 @@ export async function confirmPriceImport(
           code: row.code,
           price: row.price,
           min_price: row.minPrice,
-          currency: row.currency,
-          conditions: row.conditions,
         })),
       },
     });

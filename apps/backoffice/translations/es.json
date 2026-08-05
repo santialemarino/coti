@@ -89,7 +89,7 @@
       "description": "Alta de usuarios, roles y sucursales asignadas."
     },
     "priceSettings": {
-      "title": "Precios y condiciones",
+      "title": "Precios",
       "description": "Actualización revisada de precios por sucursal."
     },
     "verifyEmail": {
@@ -297,7 +297,7 @@
     "title": "Coti",
     "signedInAs": "Sesión iniciada como {role}.",
     "links": {
-      "prices": "Precios y condiciones"
+      "prices": "Precios"
     }
   },
   "quotes": {
@@ -320,7 +320,7 @@
       "account": "Cuenta",
       "branches": "Sucursales",
       "users": "Usuarios",
-      "prices": "Precios y condiciones"
+      "prices": "Precios"
     }
   },
   "branches": {
@@ -545,7 +545,7 @@
     }
   },
   "priceImport": {
-    "title": "Precios y condiciones",
+    "title": "Precios",
     "description": "Actualizá los precios vigentes de una sucursal. Primero revisás el archivo y después confirmás los cambios.",
     "targetBranch": "Los cambios se aplican en la sucursal {name}. Cambiala desde el selector del encabezado.",
     "noBranch": {
@@ -561,7 +561,7 @@
       "export": "Exportar precios",
       "exporting": "Exportando…"
     },
-    "formatHint": "Usá un archivo .xlsx o .csv con las columnas codigo y precio. También podés incluir precio_minimo, moneda y condiciones.",
+    "formatHint": "Usá un archivo .xlsx o .csv con las columnas codigo y precio. También podés incluir precio_minimo.",
     "summary": "Filas válidas: {valid}. Filas con errores: {invalid}.",
     "confirm": "Confirmar actualización",
     "confirming": "Actualizando…",
@@ -580,9 +580,7 @@
       "unknown_product": "El producto no existe, está inactivo o no está disponible en la sucursal.",
       "invalid_price": "El precio debe ser numérico y mayor a cero, con hasta 2 decimales.",
       "invalid_min_price": "El precio mínimo debe ser numérico y mayor a cero, con hasta 2 decimales.",
-      "min_price_above_price": "El precio mínimo no puede superar el precio de venta.",
-      "invalid_currency": "La moneda debe tener un código de 3 letras.",
-      "conditions_too_long": "Las condiciones no pueden superar 255 caracteres."
+      "min_price_above_price": "El precio mínimo no puede superar el precio de venta."
     },
     "table": {
       "row": "Fila",
@@ -591,7 +589,6 @@
       "currentPrice": "Precio vigente",
       "newPrice": "Precio nuevo",
       "minPrice": "Precio mínimo",
-      "conditions": "Condiciones",
       "result": "Validación"
     }
   }

@@ -3202,9 +3202,6 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 255
                 },
-                "currency": {
-                    "type": "string"
-                },
                 "min_price": {
                     "type": "string"
                 },

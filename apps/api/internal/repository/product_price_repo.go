@@ -28,8 +28,7 @@ func (r *ProductPriceRepository) ListCurrentForExport(
 	ctx context.Context, q Querier, accountID, branchID uuid.UUID,
 ) (*domain.ProductPriceExport, error) {
 	rows, err := q.Query(ctx,
-		`SELECT b.name, p.code, p.canonical_name, pp.price::text, pp.min_price::text,
-		        pp.currency
+		`SELECT b.name, p.code, p.canonical_name, pp.price::text, pp.min_price::text
 		 FROM branch b
 		 JOIN branch_product bp
 		   ON bp.account_id = b.account_id
@@ -41,7 +40,7 @@ func (r *ProductPriceRepository) ListCurrentForExport(
 		  AND p.is_active = TRUE
 		  AND p.code IS NOT NULL
 		 JOIN LATERAL (
-		   SELECT price, min_price, currency
+		   SELECT price, min_price
 		   FROM product_price
 		   WHERE account_id = $1
 		     AND branch_id = $2
@@ -65,7 +64,7 @@ func (r *ProductPriceRepository) ListCurrentForExport(
 	for rows.Next() {
 		var row domain.ProductPriceExportRow
 		if err := rows.Scan(&export.BranchName, &row.Code, &row.ProductName, &row.Price,
-			&row.MinPrice, &row.Currency); err != nil {
+			&row.MinPrice); err != nil {
 			return nil, err
 		}
 		export.Rows = append(export.Rows, row)

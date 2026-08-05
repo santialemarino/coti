@@ -410,8 +410,6 @@ definitions:
       code:
         maxLength: 255
         type: string
-      currency:
-        type: string
       min_price:
         type: string
       price:

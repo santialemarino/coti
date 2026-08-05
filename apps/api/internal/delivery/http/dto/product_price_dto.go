@@ -12,7 +12,6 @@ type ProductPriceImportInput struct {
 	Code     string  `json:"code" binding:"required,max=255"`
 	Price    string  `json:"price" binding:"required"`
 	MinPrice *string `json:"min_price"`
-	Currency string  `json:"currency" binding:"omitempty,len=3"`
 }
 
 // ProductPriceImportRowResponse is one validated row in the import preview.
