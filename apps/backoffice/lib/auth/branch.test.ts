@@ -34,12 +34,12 @@ beforeEach(() => {
 
 describe('the active branch cookie', () => {
   it('reads back the branch it wrote', async () => {
-    const cookieJar = jar();
+    const store = jar();
     reachable(VILLA_BOSCH, MORON);
 
     await expect(setActiveBranch(MORON)).resolves.toBe(true);
     await expect(getActiveBranchId()).resolves.toBe(MORON);
-    expect(cookieJar.set).toHaveBeenCalledWith(BRANCH_COOKIE, MORON, expect.anything());
+    expect(store.set).toHaveBeenCalledWith(BRANCH_COOKIE, MORON, expect.anything());
   });
 
   it('reports no selection when nothing was chosen', async () => {
@@ -48,10 +48,10 @@ describe('the active branch cookie', () => {
   });
 
   /*
-   * Next implements a delete as a set to `''`, so the entry survives the request blank and a
-   * caller falling back with `??` takes that as a real choice — the switcher went blank after
-   * switching to account-wide. Pinned directly as well as through the delete below, because
-   * this is the reader's contract and not a property of how the value got there.
+   * Next implements a delete as a set to `''`, so the entry survives the request blank. A caller
+   * falling back with `??` takes that as a real choice and looks up a branch nobody selected,
+   * leaving the switcher on its placeholder. Pinned directly as well as through the delete
+   * below, because this is the reader's contract and not a property of how the value got there.
    */
   it('reads a blank cookie as no selection, not as a branch named nothing', async () => {
     jar({ [BRANCH_COOKIE]: '' });
@@ -63,11 +63,11 @@ describe('the active branch cookie', () => {
    * checked against the caller's reach, so a value that never passed here can never be in it.
    */
   it('refuses a branch the caller does not reach, and writes nothing', async () => {
-    const cookieJar = jar();
+    const store = jar();
     reachable(VILLA_BOSCH);
 
     await expect(setActiveBranch(MORON)).resolves.toBe(false);
-    expect(cookieJar.set).not.toHaveBeenCalled();
+    expect(store.set).not.toHaveBeenCalled();
     await expect(getActiveBranchId()).resolves.toBeUndefined();
   });
 
@@ -80,10 +80,9 @@ describe('the active branch cookie', () => {
   });
 
   /*
-   * The other half of the same story, and the assertion in the middle is what keeps the test
-   * honest: the store must still hold the entry, blank, the way Next leaves it. Without that
-   * line a jar that simply drops the key passes, which is precisely the forgiving double that
-   * let the bug through the first time.
+   * The assertion in the middle is what keeps this honest: the store must still hold the entry,
+   * blank, the way Next leaves it. Without that line a jar that simply drops the key passes, and
+   * a double kinder than production is what hides the case above.
    */
   it('clears the selection, leaving the blank entry Next leaves', async () => {
     const store = jar({ [BRANCH_COOKIE]: MORON });
