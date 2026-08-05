@@ -251,13 +251,18 @@ re-declare those.
 
 ### Reduced motion
 
-Decorative motion (`status-pop`, `status-halo`, `rise-in`, the Collapsible height reveal)
-collapses to nothing under `prefers-reduced-motion: reduce`; JS-driven motion zeroes its
-timings via `useReducedMotion()`. The focus-bump family and the held focus scale
-deliberately do **not**, because they are functional feedback — and every element
-carrying one also shifts colour on `focus-visible`, so the affordance survives for a
-user who can't perceive the movement. See the `ux-motion` skill for the interaction-state
-rules that go with these tokens.
+Decorative motion collapses to nothing under `prefers-reduced-motion: reduce`:
+`status-pop`, `status-halo`, `rise-in`, the Collapsible height reveal, and every overlay's
+entrance and exit (`animate-in` / `animate-out`, so a dialog, sheet, popover, menu, tooltip
+or combobox appears and disappears at once). Radix reads the computed animation name to
+decide whether to hold a closing element, so `none` unmounts it immediately instead of
+stranding it. JS-driven motion zeroes its timings via `useReducedMotion()`.
+
+The focus-bump family, the held focus scale, the spinner and the skeleton deliberately do
+**not** collapse, because they are functional feedback — a frozen spinner reads as stuck,
+and every element carrying a bump also shifts colour on `focus-visible`, so the affordance
+survives for a user who can't perceive the movement. See the `ux-motion` skill for the
+interaction-state rules that go with these tokens.
 
 The gate is intentionally unlayered: a normal declaration outside any cascade layer
 beats every `@layer utilities` rule regardless of specificity or source order, which is
