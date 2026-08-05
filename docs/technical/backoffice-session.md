@@ -137,6 +137,32 @@ counts one hop back to this server.
 counted from the end whatever sits in front appends to, for the same reason the API does it.
 Zero locally, where nothing is in front, and the API then falls back to its peer.
 
+## The signup wizard
+
+`/signup` is three steps — the corralón, its first branch, the administrator — on **one**
+`react-hook-form`, because registration is a single request. Either the account, that branch, the
+branch's manual-entry channel and the administrator all exist or none do, so a caller who
+abandons the wizard has created nothing.
+
+- **Each step gates on its own fields** (`form.trigger([...stepFields])`), never the whole form.
+  Validating everything marks fields the caller has not reached and leaves messages on steps
+  nobody is looking at.
+- **The primary button submits on every step**, so Enter does what pressing it does; the handler
+  decides whether that means "continue" or "create the account".
+- **A rejection the API attaches to a field moves the wizard to that field's step.** Nothing ties
+  the wizard's position to the form's state, so a `setError` on a field that is off screen reads
+  as a button that did nothing — and stepping back while the request is open is enough to be
+  somewhere else when the answer lands. `steps.ts` owns the field-to-step map, and a test pins
+  every field of the schema to exactly one step.
+- **A second submit cannot open a second account.** A disabled button stops a second click but not
+  a second submit, so the handler refuses to re-enter while one is in flight.
+- **A blank optional field is left out of the body rather than sent empty.** The API's optional
+  fields are pointers with `omitempty`, which only skips a nil one — a pointer to `""` passes
+  validation and reaches the column.
+
+On 201 the answer carries a token pair, so the action opens a session and sends the caller to
+`/verify-email`: signed in, with an address the API has not confirmed yet.
+
 ## The verification screen
 
 `/verify-email?token=…` is the second route the API mails into, alongside `/reset-password`.
@@ -147,7 +173,9 @@ looking at "this link is not valid". A link that really is expired, used or unkn
 through to a resend form, so the dead end is recoverable without going back to a mail client.
 
 It is public but **not** signed-out-only: registration hands the caller a session, so the most
-common way to reach it is already logged in.
+common way to reach it is already logged in. **That session is also what tells the two no-token
+states apart** — signed in means they just registered and the mail is on its way, signed out means
+the link they followed is broken. Both offer the resend form.
 
 Login maps the API's 403 to its own message, which is the one rejection here that says why. It
 is only reachable once the password matched, so it tells the caller nothing they could not

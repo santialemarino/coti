@@ -1,6 +1,6 @@
 'use client';
 
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 
 import { MOTION } from '@repo/ui/lib';
 
@@ -19,6 +19,8 @@ interface AuthStageProps {
  * flow, and the one place a hard cut is most obvious.
  */
 export function AuthStage({ stageKey, children }: AuthStageProps) {
+  const reduced = useReducedMotion();
+
   return (
     <AnimatePresence mode="wait" initial={false}>
       <motion.div
@@ -26,7 +28,11 @@ export function AuthStage({ stageKey, children }: AuthStageProps) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: MOTION.default }}
+        /*
+         * Zeroed rather than dropped: motion inlines its own styles, so swapping the element out
+         * under reduced motion would strand a stage at opacity 0.
+         */
+        transition={{ duration: reduced ? 0 : MOTION.default }}
       >
         {children}
       </motion.div>

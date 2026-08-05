@@ -22,9 +22,14 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
     <AuthCard
       title={t('title')}
       footer={
-        <InlineLink asChild tone="muted">
-          <Link href={ROUTES.forgotPassword}>{t('forgotPassword')}</Link>
-        </InlineLink>
+        <div className="flex flex-col items-center gap-y-2">
+          <InlineLink asChild tone="muted">
+            <Link href={ROUTES.forgotPassword}>{t('forgotPassword')}</Link>
+          </InlineLink>
+          <InlineLink asChild>
+            <Link href={ROUTES.signup}>{t('noAccount')}</Link>
+          </InlineLink>
+        </div>
       }
     >
       <LoginForm next={next} />
