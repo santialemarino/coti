@@ -177,11 +177,12 @@ On 201 the answer carries a token pair, so the action opens a session and sends 
 `/settings/branches` is admin-gated by `requireAdmin()` and lists the account's branches, opens
 one, edits one and closes one. Two things about it are decided by the API rather than by taste:
 
-- **It lists active branches only, so it cannot reopen a closed one.** `GET /v1/branches` filters
-  `is_active = TRUE` — the same predicate that keeps a closed branch out of the switcher and out of
-  `IsAccessibleBy` — so a closed branch cannot be listed, and therefore cannot be selected to
-  reopen. `PUT /v1/branches/:id` accepts `is_active`, so the capability exists on the API; what is
-  missing is a way to see a closed branch at all.
+- **It reads a different list from the switcher, and that separation is the point.** `getBranches()`
+  returns the branches the caller may operate in and backs both the switcher and `setActiveBranch`'s
+  validation; `getAccountBranches()` asks for `include_inactive` and is what this screen renders, so
+  a closed branch shows with a `Cerrada` badge and a _Reabrir_ action. They are two functions rather
+  than one with a flag because a closed branch reaching the first would let the session pin itself to
+  a branch the API refuses on every request.
 - **Closing the active branch drops the selection with it.** The API refuses a branch that is not
   active, so a `coti_branch` cookie naming the branch just closed would answer 403 on every
   branch-scoped read afterwards, and the caller would be locked out of the app until they noticed
