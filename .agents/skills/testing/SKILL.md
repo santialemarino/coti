@@ -173,10 +173,22 @@ apps/api/
 
 - Place test factories next to the package they support
   (`func makeQuote(...) Quote`).
-- For integration tests, define a `setupTestDB(t *testing.T) *pgxpool.Pool`
-  helper that spins up (or connects to) the pgvector test DB, runs goose
-  migrations, and registers `t.Cleanup(...)` to drop the schema or roll back a
-  transaction. Return a live pool — never a mock.
+- For integration tests, connect through the package's `testDB(t) *DB` helper: it reads both role
+  URLs, skips the test when they are absent, and registers `t.Cleanup(db.Close)`. Return a live
+  pool — never a mock.
+- **Teardown ordering is a rule, not a detail.** `t.Cleanup` runs **after** the test body's `defer`s,
+  so a pool a `defer` closed is already gone by the time the deletes run — register the close with
+  `t.Cleanup` too. And a teardown that deletes real rows **never discards its error**, because a
+  failed delete leaves rows behind and the suite still passes: route every one through a helper that
+  fails the test when the delete cannot happen (`mustCleanup` is the one in `internal/repository`).
+- **One row, one owner.** Let the seed that created a row remove it. A second per-test teardown for
+  the same row is what puts a delete ahead of a foreign key still pointing at it, and an inline delete
+  at the end of a test body is skipped by any `t.Fatal` above it — so it belongs in `t.Cleanup` or
+  nowhere.
+- **The suite leaves the database as it found it, and CI checks that.** The integration job seeds
+  nothing, so every table must be empty once the suite finishes; a step counts all of them and fails
+  naming whatever is left. Locally, compare **every** table before and after rather than a hand-picked
+  few; a subset says nothing about the tables it does not name.
 - **Compute expected values by hand.** Assert against manually derived numbers;
   never call the function under test (or its formula) a second time to produce
   the "expected" value — that only proves the code equals itself.
