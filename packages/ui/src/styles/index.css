@@ -235,12 +235,23 @@
  * focus-visible (see the ux-motion skill), so the affordance survives for a user who cannot
  * perceive the bump.
  *
+ * `animate-in` / `animate-out` are tw-animate-css's overlay entrance and exit, so every dialog,
+ * sheet, popover, menu, tooltip and combobox appears and disappears at once here. What the fade
+ * conveys — that a panel arrived — is conveyed by the panel being there, and Radix reads the
+ * computed animation name to decide whether to hold a closing element, so `none` unmounts it
+ * immediately rather than stranding it.
+ *
+ * A spinner and a skeleton are excluded on purpose: both say "still working", and a frozen one
+ * says "stuck".
+ *
  * Intentionally unlayered: a normal declaration outside any cascade layer beats every
  * `@layer utilities` rule regardless of specificity or source order, which is what lets it override
  * tw-animate-css's own ungated animate-collapsible-* utilities. Matching on an attribute substring
  * makes it variant-proof — it catches the utility under `data-[state=open]:`, `group-*`, or bare.
  */
 @media (prefers-reduced-motion: reduce) {
+  [class*='animate-in'],
+  [class*='animate-out'],
   [class*='animate-collapsible-down'],
   [class*='animate-collapsible-up'],
   [class*='animate-status-halo'],
