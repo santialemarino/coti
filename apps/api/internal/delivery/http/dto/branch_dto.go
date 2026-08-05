@@ -22,6 +22,12 @@ type BranchListResponse struct {
 	Items []BranchResponse `json:"items"`
 }
 
+// ListBranchesQuery is the query for GET /v1/branches. Including the closed ones is for
+// administering them, never for operating in one, so it is refused to a seller.
+type ListBranchesQuery struct {
+	IncludeInactive bool `form:"include_inactive"`
+}
+
 // CreateBranchRequest is the body for POST /v1/branches. Omitting the expiry takes the
 // configured default.
 type CreateBranchRequest struct {

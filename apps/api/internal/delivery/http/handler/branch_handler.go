@@ -14,6 +14,7 @@ import (
 // BranchService is the branch surface the handler needs.
 type BranchService interface {
 	ListBranches(ctx context.Context, tenant domain.Tenant) ([]domain.Branch, error)
+	ListAllBranches(ctx context.Context, tenant domain.Tenant) ([]domain.Branch, error)
 	CreateBranch(ctx context.Context, tenant domain.Tenant, in domain.NewBranch) (*domain.Branch, error)
 	UpdateBranch(ctx context.Context, tenant domain.Tenant, branchID uuid.UUID, in domain.BranchUpdate) (*domain.Branch, error)
 	DeactivateBranch(ctx context.Context, tenant domain.Tenant, branchID uuid.UUID) error
@@ -29,23 +30,42 @@ func NewBranchHandler(branches BranchService) *BranchHandler {
 	return &BranchHandler{branches: branches}
 }
 
-// List returns the branches the caller may operate on.
+// listFor picks the read the query asked for. The service refuses the account-wide one to a
+// seller, so the role check lives in one place rather than being repeated here.
+func (h *BranchHandler) listFor(
+	c *gin.Context, tenant domain.Tenant, includeInactive bool,
+) ([]domain.Branch, error) {
+	if includeInactive {
+		return h.branches.ListAllBranches(c.Request.Context(), tenant)
+	}
+	return h.branches.ListBranches(c.Request.Context(), tenant)
+}
+
+// List returns the branches the caller may operate on, or every branch for an administrator.
 //
 //	@Summary		List branches
-//	@Description	Every active branch of the account for an admin; the assigned ones for a seller.
+//	@Description	Every active branch of the account for an admin; the assigned ones for a seller. With include_inactive an administrator also gets the closed ones, which is for administering them rather than operating in one.
 //	@Tags			branches
 //	@Produce		json
 //	@Security		BearerAuth
-//	@Success		200	{object}	dto.BranchListResponse
-//	@Failure		401	{object}	dto.ErrorResponse
+//	@Param			include_inactive	query		bool	false	"Include closed branches (administrators only)"
+//	@Success		200					{object}	dto.BranchListResponse
+//	@Failure		400					{object}	dto.ErrorResponse
+//	@Failure		401					{object}	dto.ErrorResponse
+//	@Failure		403					{object}	dto.ErrorResponse
 //	@Router			/v1/branches [get]
 func (h *BranchHandler) List(c *gin.Context) {
 	tenant, ok := tenantOf(c)
 	if !ok {
 		return
 	}
+	var query dto.ListBranchesQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		RespondBindError(c, err)
+		return
+	}
 
-	branches, err := h.branches.ListBranches(c.Request.Context(), tenant)
+	branches, err := h.listFor(c, tenant, query.IncludeInactive)
 	if err != nil {
 		Respond(c, err)
 		return
