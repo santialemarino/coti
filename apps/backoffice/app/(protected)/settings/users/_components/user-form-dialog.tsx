@@ -202,9 +202,10 @@ export function UserFormDialog({
               />
             ) : null}
 
-            {shown.isSelf ? <Callout>{t('yourUser')}</Callout> : null}
-
-            {shown.isSelf ? null : (
+            {/* The explanation stands where the control would have been. */}
+            {shown.isSelf ? (
+              <Callout>{t('yourUser')}</Callout>
+            ) : (
               <FormField
                 control={form.control}
                 name="role"
