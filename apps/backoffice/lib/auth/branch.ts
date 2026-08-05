@@ -16,9 +16,7 @@ import { BRANCH_COOKIE, sessionCookieOptions } from '@/lib/auth/tokens';
  * assignments on every request and answers 403, which is the check that matters.
  */
 export async function getActiveBranchId(): Promise<string | undefined> {
-  // Blank is no selection, not a selection of nothing. A delete leaves an empty-valued marker
-  // in the jar for the rest of the request, and a caller falling back with `??` would take it
-  // as a real value and find no branch by that name.
+  // Blank is no selection: a delete leaves the entry empty for the rest of the request.
   return (await cookies()).get(BRANCH_COOKIE)?.value || undefined;
 }
 

@@ -73,8 +73,9 @@ export async function requireAdmin(): Promise<SessionUser> {
   return session;
 }
 
+// Blank is no token: a delete leaves the entry empty for the rest of the request.
 export async function getAccessToken(): Promise<string | undefined> {
-  return (await cookies()).get(ACCESS_COOKIE)?.value;
+  return (await cookies()).get(ACCESS_COOKIE)?.value || undefined;
 }
 
 // Next allows a cookie write only from a server action or a route handler, which is
