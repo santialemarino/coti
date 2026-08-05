@@ -20,7 +20,10 @@ export default async function SettingsLayout({ children }: { children: React.Rea
   const items: SettingsNavItem[] = [
     { href: ROUTES.changePassword, label: t('nav.password') },
     ...(session?.role === ADMIN_ROLE
-      ? [{ href: ROUTES.priceSettings, label: t('nav.prices') }]
+      ? [
+          { href: ROUTES.branchSettings, label: t('nav.branches') },
+          { href: ROUTES.priceSettings, label: t('nav.prices') },
+        ]
       : []),
   ];
 
