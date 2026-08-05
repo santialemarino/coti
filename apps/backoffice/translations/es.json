@@ -60,6 +60,10 @@
       "title": "Iniciar sesión",
       "description": "Acceso al backoffice del corralón."
     },
+    "signup": {
+      "title": "Crear tu cuenta",
+      "description": "Registrá tu corralón, su primera sucursal y tu usuario."
+    },
     "forgotPassword": {
       "title": "Recuperar contraseña",
       "description": "Pedí un enlace para volver a entrar."
@@ -98,12 +102,87 @@
       "submit": "Ingresar",
       "submitting": "Ingresando…",
       "forgotPassword": "¿Olvidaste tu contraseña?",
+      "noAccount": "¿Todavía no tenés cuenta? Registrá tu corralón",
       "errors": {
         "invalidCredentials": "Correo o contraseña inválidos.",
         "locked": "Demasiados intentos fallidos. Esperá unos minutos antes de volver a probar.",
         "unreachable": "No pudimos comunicarnos con el servidor. Revisá tu conexión e intentá de nuevo.",
         "unexpected": "No pudimos iniciar sesión. Intentá de nuevo.",
         "emailNotVerified": "Tenés que confirmar tu dirección de correo antes de entrar. Buscá el mensaje que te mandamos al registrarte."
+      }
+    },
+    "signup": {
+      "title": "Crear tu cuenta",
+      "steps": {
+        "account": {
+          "label": "Corralón",
+          "description": "Solo el nombre es obligatorio; el resto lo podés completar más adelante."
+        },
+        "branch": {
+          "label": "Sucursal",
+          "description": "Cargá la primera sucursal. Las demás las agregás cuando entres."
+        },
+        "admin": {
+          "label": "Tu usuario",
+          "description": "Con estos datos vas a entrar al backoffice como administrador."
+        }
+      },
+      "accountName": {
+        "label": "Nombre del corralón",
+        "placeholder": "Ingresá el nombre del corralón",
+        "required": "Ingresá el nombre del corralón."
+      },
+      "legalName": {
+        "label": "Razón social",
+        "placeholder": "Ingresá la razón social"
+      },
+      "taxId": {
+        "label": "CUIT",
+        "placeholder": "Ingresá el CUIT"
+      },
+      "branchName": {
+        "label": "Nombre de la sucursal",
+        "placeholder": "Ingresá el nombre de la sucursal",
+        "required": "Ingresá el nombre de la sucursal."
+      },
+      "branchAddress": {
+        "label": "Dirección",
+        "placeholder": "Ingresá la dirección de la sucursal"
+      },
+      "adminName": {
+        "label": "Tu nombre",
+        "placeholder": "Ingresá tu nombre y apellido",
+        "required": "Ingresá tu nombre."
+      },
+      "adminEmail": {
+        "label": "Correo electrónico",
+        "placeholder": "tu@correo.com",
+        "invalid": "Ingresá una dirección de correo válida."
+      },
+      "adminPassword": {
+        "label": "Contraseña",
+        "placeholder": "Elegí una contraseña",
+        "tooShort": "Mínimo 8 caracteres.",
+        "tooLong": "Máximo 72 caracteres."
+      },
+      "confirmPassword": {
+        "label": "Repetir contraseña",
+        "placeholder": "Repetí la contraseña",
+        "mismatch": "Las contraseñas no coinciden."
+      },
+      "minLength": "Mínimo {count} caracteres.",
+      "tooLong": "Máximo 255 caracteres.",
+      "back": "Atrás",
+      "next": "Continuar",
+      "submit": "Crear cuenta",
+      "submitting": "Creando la cuenta…",
+      "haveAccount": "¿Ya tenés una cuenta? Iniciá sesión",
+      "errors": {
+        "emailTaken": "Ya hay una cuenta registrada con esa dirección.",
+        "tooShort": "La contraseña es demasiado corta.",
+        "rateLimited": "Hubo demasiados registros desde acá. Esperá unos minutos antes de volver a probar.",
+        "unreachable": "No pudimos comunicarnos con el servidor. Revisá tu conexión e intentá de nuevo.",
+        "unexpected": "No pudimos crear la cuenta. Intentá de nuevo."
       }
     },
     "forgotPassword": {
@@ -184,6 +263,7 @@
       "confirm": "Confirmar mi correo",
       "confirming": "Confirmando…",
       "done": "Listo, tu dirección quedó confirmada.",
+      "sent": "Te mandamos un correo para confirmar tu dirección. Abrí el enlace que te llegó y ya está.",
       "continue": "Ir al inicio",
       "resendHint": "Podés pedir un enlace nuevo con la dirección que usaste al registrarte.",
       "email": {

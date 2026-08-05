@@ -1,6 +1,25 @@
 import { describe, expect, it } from 'vitest';
 
-import { ROUTES, safeNextPath } from '@/config/routes';
+import { PUBLIC_ROUTES, ROUTES, safeNextPath, SIGNED_OUT_ONLY_ROUTES } from '@/config/routes';
+
+describe('reachability', () => {
+  // Someone with no account is the only caller registration has, so the gate cannot ask for a
+  // session — and someone who already has one has no business filling the wizard in again.
+  it('lets signup through without a session and bounces a caller who has one', () => {
+    expect(PUBLIC_ROUTES).toContain(ROUTES.signup);
+    expect(SIGNED_OUT_ONLY_ROUTES).toContain(ROUTES.signup);
+  });
+
+  /*
+   * verify-email is the deliberate exception: signup opens a session and sends the caller
+   * there, so bouncing a signed-in one would make the screen unreachable exactly when it is
+   * needed. Pinned because it looks like an omission.
+   */
+  it('leaves verify-email public but reachable with a session', () => {
+    expect(PUBLIC_ROUTES).toContain(ROUTES.verifyEmail);
+    expect(SIGNED_OUT_ONLY_ROUTES).not.toContain(ROUTES.verifyEmail);
+  });
+});
 
 describe('safeNextPath', () => {
   it('keeps a same-origin path with its query', () => {
