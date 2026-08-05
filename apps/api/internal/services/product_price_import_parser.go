@@ -87,14 +87,6 @@ func readImportRecords(filename string, src io.Reader) ([][]string, error) {
 	}
 }
 
-func parsePriceImportCSV(src io.Reader) ([]priceImportRawRow, error) {
-	records, err := readImportCSVRecords(src)
-	if err != nil {
-		return nil, err
-	}
-	return mapPriceImportRows(records)
-}
-
 func readImportCSVRecords(src io.Reader) ([][]string, error) {
 	content, err := io.ReadAll(src)
 	if err != nil {
