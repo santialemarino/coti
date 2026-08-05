@@ -148,6 +148,9 @@ panel enters from the trigger and then dissolves in place.
 
 - **Reuse the primitives** — `Dialog`, `Popover`, `DropdownMenu`, `Sheet`, `Tooltip`, `Collapsible`,
   `Combobox`. Don't hand-roll an overlay.
+- **Under reduced motion both directions collapse**, which is also why the exit needs no special
+  handling there: Radix decides whether to hold a closing element by reading its computed animation
+  name, so `animation: none` unmounts it at once instead of stranding it.
 - **Radix `Select` is deliberately not in the design system.** It has no exit presence, so it snaps
   shut. `Combobox` is the one dropdown; reach for it every time.
 - **A dialog must keep its content mounted through the exit.** Toggle only `open` and pass the row or
@@ -208,9 +211,12 @@ priority.
 Honour `prefers-reduced-motion: reduce`. The split:
 
 - **Decorative motion collapses to nothing** — the status halo, the circle's settle, content rises,
-  the Collapsible height reveal. The gate for the shared utilities lives in
-  `packages/ui/src/styles/index.css`; a new decorative keyframe must be added to it.
-- **Functional feedback stays** — the focus bump, the held focus scale, small hover transitions.
+  the Collapsible height reveal, and **every overlay's entrance and exit** (`animate-in` /
+  `animate-out`, so a dialog, sheet, popover, menu, tooltip or combobox appears and disappears at
+  once). The gate for the shared utilities lives in `packages/ui/src/styles/index.css`; a new
+  decorative keyframe must be added to it.
+- **Functional feedback stays** — the focus bump, the held focus scale, small hover transitions, and
+  the spinner and skeleton, which say "still working" where a frozen one would say "stuck".
   Removing these removes the affordance.
 - **Anything that animates from invisible must be visible at rest.** With `animation: none` the
   element renders at its base style, so a one-shot that ends invisible needs that end state as its
