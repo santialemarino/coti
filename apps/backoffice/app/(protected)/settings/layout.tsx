@@ -22,6 +22,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
     ...(session?.role === ADMIN_ROLE
       ? [
           { href: ROUTES.branchSettings, label: t('nav.branches') },
+          { href: ROUTES.userSettings, label: t('nav.users') },
           { href: ROUTES.priceSettings, label: t('nav.prices') },
         ]
       : []),
