@@ -422,6 +422,7 @@
       "placeholder": "https://tucorralon.com/logo.png",
       "hint": "Tiene que ser una imagen accesible desde internet.",
       "open": "Verla",
+      "tooLong": "Máximo 512 caracteres.",
       "invalid": "Ingresá una dirección web completa, con https:// adelante."
     },
     "brandColor": {

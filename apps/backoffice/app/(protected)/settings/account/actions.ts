@@ -18,8 +18,11 @@ export async function updateAccount(values: AccountValues): Promise<AccountResul
   const parsed = accountSchema().safeParse(values);
   if (!parsed.success) return { error: 'invalid' };
 
+  // Built before the try, so a mapping bug here surfaces as itself instead of as the same
+  // 'unexpected' the API path answers with.
+  const body = bodyOf(parsed.data);
   try {
-    await apiRequest({ path: '/v1/account', method: 'PUT', body: bodyOf(parsed.data) });
+    await apiRequest({ path: '/v1/account', method: 'PUT', body });
   } catch (error) {
     const code = errorCodeOf(error);
     if (code === 'notFound') return { error: 'notFound' };

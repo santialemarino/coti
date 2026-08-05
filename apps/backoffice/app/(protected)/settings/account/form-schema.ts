@@ -21,7 +21,7 @@ export function accountSchema(t: MessageFor = rawKey) {
     brandLogoUrl: z
       .string()
       .trim()
-      .max(URL_FIELD_MAX_LENGTH, t('tooLong'))
+      .max(URL_FIELD_MAX_LENGTH, t('brandLogoUrl.tooLong'))
       .refine((raw) => raw === '' || URL.canParse(raw), t('brandLogoUrl.invalid')),
     brandColor: z
       .string()

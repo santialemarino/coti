@@ -91,7 +91,9 @@ describe('accountSchema and the brand', () => {
   it('refuses a logo past the length the API stores', () => {
     const tooLong = `https://tucorralon.com/${'a'.repeat(URL_FIELD_MAX_LENGTH)}.png`;
 
-    expect(messagesFor({ brandLogoUrl: tooLong }).brandLogoUrl).toBe('tooLong');
+    // Its own message, because the cap is 512 rather than the 255 every other field shares — and a
+    // schema message cannot interpolate, so each number is baked into its own key.
+    expect(messagesFor({ brandLogoUrl: tooLong }).brandLogoUrl).toBe('brandLogoUrl.tooLong');
   });
 
   // Empty is how the brand is cleared, so neither format check may reject it.
