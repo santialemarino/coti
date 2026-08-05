@@ -171,6 +171,17 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 	return &env{router: router, db: db, tokens: tokenService, mail: mailer}
 }
 
+// mustCleanup runs a teardown delete on the owner pool and fails the test when it cannot. A
+// discarded error leaves rows behind while the suite still passes, and a cleanup belongs in
+// t.Cleanup rather than a defer: cleanups run after the body's defers, so a pool one of them closed
+// is already gone.
+func (e *env) mustCleanup(t *testing.T, query string, args ...any) {
+	t.Helper()
+	if _, err := e.db.CrossAccount().Exec(context.Background(), query, args...); err != nil {
+		t.Errorf("cleanup %q: %v", query, err)
+	}
+}
+
 // seedAccount creates an account with one branch through the owner pool, and removes both at
 // the end of the test.
 func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.UUID) {
@@ -189,7 +200,6 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 	}
 
 	t.Cleanup(func() {
-		c := context.Background()
 		for _, stmt := range []string{
 			`DELETE FROM user_branch WHERE account_id = $1`,
 			`DELETE FROM auth_token WHERE account_id = $1`,
@@ -200,7 +210,7 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 			`DELETE FROM branch WHERE account_id = $1`,
 			`DELETE FROM account WHERE id = $1`,
 		} {
-			_, _ = e.db.CrossAccount().Exec(c, stmt, accountID)
+			e.mustCleanup(t, stmt, accountID)
 		}
 	})
 	return accountID, branchID
@@ -612,9 +622,8 @@ func TestPrices_SellerCannotReadAnUnassignedBranchByOmittingTheHeader(t *testing
 		}
 	}
 	t.Cleanup(func() {
-		c := context.Background()
-		_, _ = e.db.CrossAccount().Exec(c, `DELETE FROM product_price WHERE product_id = $1`, productID)
-		_, _ = e.db.CrossAccount().Exec(c, `DELETE FROM product WHERE id = $1`, productID)
+		e.mustCleanup(t, `DELETE FROM product_price WHERE product_id = $1`, productID)
+		e.mustCleanup(t, `DELETE FROM product WHERE id = $1`, productID)
 	})
 
 	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)

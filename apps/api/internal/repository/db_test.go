@@ -43,9 +43,9 @@ func testDB(t *testing.T) *DB {
 	return db
 }
 
-// mustCleanup runs a teardown delete and fails the test when it cannot. Discarding the error is
-// how a whole account once survived a green run, and a cleanup belongs in t.Cleanup rather than a
-// defer: cleanups run after the body's defers, so a pool one of them closed is already gone.
+// mustCleanup runs a teardown delete and fails the test when it cannot. A discarded error leaves
+// rows behind while the suite still passes, and a cleanup belongs in t.Cleanup rather than a defer:
+// cleanups run after the body's defers, so a pool one of them closed is already gone.
 func mustCleanup(t *testing.T, q Querier, query string, args ...any) {
 	t.Helper()
 	if _, err := q.Exec(context.Background(), query, args...); err != nil {
