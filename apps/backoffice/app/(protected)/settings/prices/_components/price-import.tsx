@@ -1,9 +1,9 @@
 'use client';
 
-import { useRef, useState, useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 
-import { Button } from '@repo/ui/components';
+import { Callout, PendingButton } from '@repo/ui/components';
 import {
   confirmPriceImport,
   exportPrices,
@@ -13,24 +13,34 @@ import {
 import type { Branch } from '@/lib/api/branches';
 import { useFormatters } from '@/lib/i18n/formatters';
 
-type PriceImportProps = {
-  branches: Branch[];
-};
+interface PriceImportProps {
+  branch: Branch;
+}
 
-export function PriceImport({ branches }: PriceImportProps) {
+export function PriceImport({ branch }: PriceImportProps) {
   const fmt = useFormatters();
   const t = useTranslations('priceImport');
   const [preview, setPreview] = useState<ProductPriceImportPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successCount, setSuccessCount] = useState<number | null>(null);
-  const formRef = useRef<HTMLFormElement>(null);
-  const [pending, startTransition] = useTransition();
+  /*
+   * One transition per action, not one shared between them. A shared one only says that
+   * something is running, so exporting made the preview button announce it was processing —
+   * and a flag naming the action cannot fix it, because the form action already runs inside a
+   * transition and a state update made there does not commit until that transition ends.
+   */
+  const [previewing, startPreview] = useTransition();
+  const [confirming, startConfirm] = useTransition();
+  const [exporting, startExport] = useTransition();
+  // The three are mutually exclusive and each invalidates the others' result, so one running
+  // locks all three.
+  const busy = previewing || confirming || exporting;
 
   function onPreview(formData: FormData) {
     setError(null);
     setSuccessCount(null);
-    startTransition(async () => {
-      const result = await previewPriceImport(formData);
+    startPreview(async () => {
+      const result = await previewPriceImport(branch.id, formData);
       if (!result.ok) {
         setPreview(null);
         setError(t(`errors.${result.error}`));
@@ -43,7 +53,7 @@ export function PriceImport({ branches }: PriceImportProps) {
   function onConfirm() {
     if (!preview) return;
     setError(null);
-    startTransition(async () => {
+    startConfirm(async () => {
       const result = await confirmPriceImport(preview);
       if (!result.ok) {
         setError(t(`errors.${result.error}`));
@@ -55,15 +65,9 @@ export function PriceImport({ branches }: PriceImportProps) {
   }
 
   function onExport() {
-    if (!formRef.current) return;
-    const branchId = String(new FormData(formRef.current).get('branchId') ?? '');
-    if (!branchId) {
-      setError(t('errors.selectBranch'));
-      return;
-    }
     setError(null);
-    startTransition(async () => {
-      const result = await exportPrices(branchId);
+    startExport(async () => {
+      const result = await exportPrices(branch.id);
       if (!result.ok) {
         setError(t(`errors.${result.error}`));
         return;
@@ -85,33 +89,13 @@ export function PriceImport({ branches }: PriceImportProps) {
 
   return (
     <div className="flex flex-col gap-y-6">
+      <Callout tone="info">{t('targetBranch', { name: branch.name })}</Callout>
+
       <form
-        ref={formRef}
         action={onPreview}
         noValidate
-        className="grid p-5 gap-4 bg-card border rounded-lg md:grid-cols-[1fr_1fr_auto] md:items-end"
+        className="grid p-5 gap-4 bg-card border rounded-lg md:grid-cols-[1fr_auto] md:items-end"
       >
-        <div className="flex flex-col gap-y-1">
-          <label htmlFor="branchId" className="text-paragraph-sm-medium">
-            {t('form.branch.label')}
-          </label>
-          <select
-            id="branchId"
-            name="branchId"
-            required
-            defaultValue=""
-            className="h-10 px-3 bg-background border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <option value="" disabled>
-              {t('form.branch.placeholder')}
-            </option>
-            {branches.map((branch) => (
-              <option key={branch.id} value={branch.id}>
-                {branch.name}
-              </option>
-            ))}
-          </select>
-        </div>
         <div className="flex flex-col gap-y-1">
           <label htmlFor="file" className="text-paragraph-sm-medium">
             {t('form.file.label')}
@@ -122,29 +106,35 @@ export function PriceImport({ branches }: PriceImportProps) {
             type="file"
             required
             accept=".xlsx,.csv"
-            className="h-10 px-3 py-2 bg-background border border-input rounded-md file:mr-3 file:border-0 file:bg-transparent file:text-paragraph-sm-medium"
+            className="h-10 px-3 py-2 bg-background border border-input rounded-lg outline-none transition-[border-color,box-shadow] duration-200 ease-out-soft focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45 file:mr-3 file:border-0 file:bg-transparent file:text-paragraph-sm-medium"
           />
         </div>
         <div className="flex gap-x-2">
-          <Button type="button" variant="outline" onClick={onExport} disabled={pending}>
+          <PendingButton
+            type="button"
+            variant="outline"
+            onClick={onExport}
+            disabled={busy}
+            pending={exporting}
+            pendingLabel={t('form.exporting')}
+          >
             {t('form.export')}
-          </Button>
-          <Button type="submit" disabled={pending}>
-            {pending ? t('form.previewing') : t('form.preview')}
-          </Button>
+          </PendingButton>
+          <PendingButton
+            type="submit"
+            disabled={busy}
+            pending={previewing}
+            pendingLabel={t('form.previewing')}
+          >
+            {t('form.preview')}
+          </PendingButton>
         </div>
       </form>
 
       <p className="text-paragraph-sm text-foreground-muted">{t('formatHint')}</p>
-      {error ? (
-        <p className="p-3 bg-destructive/10 border border-destructive/30 rounded-md text-paragraph-sm text-danger-foreground">
-          {error}
-        </p>
-      ) : null}
+      {error ? <Callout tone="danger">{error}</Callout> : null}
       {successCount !== null ? (
-        <p className="p-3 bg-primary/10 border border-primary/30 rounded-md text-paragraph-sm">
-          {t('success', { count: successCount })}
-        </p>
+        <Callout tone="success">{t('success', { count: successCount })}</Callout>
       ) : null}
 
       {preview ? (
@@ -153,9 +143,15 @@ export function PriceImport({ branches }: PriceImportProps) {
             <p className="text-paragraph-sm">
               {t('summary', { valid: preview.validRows, invalid: preview.invalidRows })}
             </p>
-            <Button type="button" onClick={onConfirm} disabled={pending || !preview.canConfirm}>
-              {pending ? t('confirming') : t('confirm')}
-            </Button>
+            <PendingButton
+              type="button"
+              onClick={onConfirm}
+              disabled={busy || !preview.canConfirm}
+              pending={confirming}
+              pendingLabel={t('confirming')}
+            >
+              {t('confirm')}
+            </PendingButton>
           </div>
           <div className="overflow-x-auto border rounded-lg">
             <table className="w-full border-collapse text-paragraph-sm">
@@ -191,7 +187,7 @@ export function PriceImport({ branches }: PriceImportProps) {
                       {row.errors.length === 0 ? (
                         <span>{t('valid')}</span>
                       ) : (
-                        <ul className="flex flex-col gap-y-1 text-destructive">
+                        <ul className="flex flex-col gap-y-1 text-danger-foreground">
                           {row.errors.map((message) => (
                             <li key={message}>{t(`rowErrors.${message}`)}</li>
                           ))}

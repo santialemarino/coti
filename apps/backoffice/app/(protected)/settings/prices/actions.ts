@@ -76,8 +76,15 @@ function mapProductPriceImportRow(raw: ProductPriceImportRowRaw): ProductPriceIm
   };
 }
 
-export async function previewPriceImport(formData: FormData): Promise<PriceImportActionResult> {
-  const branchId = String(formData.get('branchId') ?? '');
+/*
+ * The branch travels with every call rather than being read from the active one, so a preview
+ * confirmed after a branch switch still writes where it was prepared. The API refuses one the
+ * caller does not reach.
+ */
+export async function previewPriceImport(
+  branchId: string,
+  formData: FormData,
+): Promise<PriceImportActionResult> {
   const file = formData.get('file');
   if (!branchId || !(file instanceof File) || file.size === 0) {
     return { ok: false, error: 'invalidFile' };
