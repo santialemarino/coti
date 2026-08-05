@@ -159,6 +159,15 @@ abandons the wizard has created nothing.
 - **A blank optional field is left out of the body rather than sent empty.** The API's optional
   fields are pointers with `omitempty`, which only skips a nil one — a pointer to `""` passes
   validation and reaches the column.
+- **The step swap is atomic, and the entrance is a keyed CSS animation.** A step's stepper entry,
+  its description and its button all live outside the box holding its fields, so an exit animation
+  that outlives the state change puts one step's inputs under the next step's button — and a click
+  there submits a step nobody has filled in. The `key` on the fields wrapper is what makes the
+  remount, and therefore the replayed entrance, coincide with the state change.
+- **Focus moves into the step that was just revealed**, onto whichever field carries an error and
+  otherwise the first. Unmounting the outgoing step drops focus to the body, so without this
+  tabbing restarts from the top of the page on every step and a screen reader is told nothing. It
+  deliberately does not fire on the first render, which would skip the heading.
 
 On 201 the answer carries a token pair, so the action opens a session and sends the caller to
 `/verify-email`: signed in, with an address the API has not confirmed yet.
