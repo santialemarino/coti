@@ -156,6 +156,17 @@ panel enters from the trigger and then dissolves in place.
 - **Crossfade between mutually exclusive stages** (a form and its result, a loading state and its
   content) with `AnimatePresence mode="wait"`, so the incoming stage waits for the outgoing one.
   `AuthStage` is the reference.
+- **A held exit only works when nothing outside the stage changes with it.** `mode="wait"` keeps
+  the outgoing children mounted, so anything that swaps in the same state change but renders
+  _outside_ the animated box — a step label, a description, the submit button — is already showing
+  the next stage while the box still shows the previous one. That frame is incoherent, and a click
+  in it acts on the stage the caller cannot see. When siblings change too, make the swap atomic
+  (`key` the box and animate the entrance only) and reserve the crossfade for a stage that owns
+  everything it changes.
+- **A swap that unmounts the focused element drops focus to the body.** Tabbing then restarts from
+  the top of the page and a screen reader is told nothing happened, so move focus into the incoming
+  stage — onto whatever the caller has to act on. Not on a first render, which would skip the
+  heading.
 - **A content-driven size change is not a CSS animation.** `width: auto` cannot be transitioned, so no
   `transition-*` will ever smooth a box that resizes because its text changed — it needs motion's
   `layout`. `PendingButton` is the reference.

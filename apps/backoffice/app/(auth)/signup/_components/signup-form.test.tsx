@@ -97,6 +97,16 @@ describe('SignupForm steps', () => {
   });
 
   /*
+   * A CUIT is written with hyphens — the dev seed's own is `30-71234567-9` — and an `inputMode` of
+   * `numeric` gives iOS a keypad with no hyphen key, so the value cannot be typed on a phone.
+   */
+  it('leaves the tax id a plain text field', () => {
+    const view = renderSignup();
+
+    expect(fieldOf(view, 'taxId')?.getAttribute('inputmode')).toBeNull();
+  });
+
+  /*
    * The gate is `trigger` over this step's fields. Without it the caller reaches the last step
    * with a blank corralón name and the failure only surfaces at the end, three steps from the
    * field that caused it.
@@ -121,6 +131,39 @@ describe('SignupForm steps', () => {
     fireEvent.click(backButton(view));
     await waitForStep(view, 'accountName');
     expect(fieldOf(view, 'accountName')?.value).toBe(ACCOUNT.accountName);
+  });
+
+  /*
+   * The step's fields, its button and its stepper have to change in the same commit. Holding the
+   * outgoing fields through an exit animation left the screen showing one step's fields under the
+   * next step's button, and a second activation in that window submitted the whole form from a
+   * step nobody had filled in — three errors waiting on arrival.
+   */
+  it('never shows a step whose fields disagree with the button', async () => {
+    const view = renderSignup();
+
+    fill(view, ACCOUNT);
+    fireEvent.submit(view.form);
+    await waitForStep(view, 'branchName');
+    fill(view, BRANCH);
+    fireEvent.submit(view.form);
+
+    // The moment the button becomes the one that creates the account, the fields it submits have
+    // to be the ones on screen. Held through an exit animation they were not.
+    await waitFor(() => expect(submitButton(view).textContent).toContain(copy.submit));
+    expect(fieldOf(view, 'adminEmail')).not.toBeNull();
+    expect(fieldOf(view, 'branchName')).toBeNull();
+  });
+
+  // Unmounting the step the caller was on drops focus to the body, so tabbing would restart from
+  // the top of the page on every step.
+  it('moves focus into the step it just revealed', async () => {
+    const view = renderSignup();
+
+    fill(view, ACCOUNT);
+    fireEvent.submit(view.form);
+
+    await waitFor(() => expect(document.activeElement).toBe(fieldOf(view, 'branchName')));
   });
 
   // One request creates the account, its branch and its administrator, so the submit carries
@@ -231,6 +274,8 @@ describe('SignupForm rejections', () => {
     await waitForStep(view, 'adminEmail');
     expect(view.getByText(copy.errors.emailTaken)).toBeTruthy();
     expect(fieldOf(view, 'adminEmail')?.getAttribute('aria-invalid')).toBe('true');
+    // On the refused field, not merely on the step: it is the one the caller has to change.
+    await waitFor(() => expect(document.activeElement).toBe(fieldOf(view, 'adminEmail')));
   });
 
   it('reports a failure that belongs to no field on the form itself', async () => {
