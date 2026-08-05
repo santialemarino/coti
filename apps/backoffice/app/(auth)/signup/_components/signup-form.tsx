@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -16,7 +16,6 @@ import {
   Stepper,
 } from '@repo/ui/components';
 import { AuthCard } from '@/app/(auth)/_components/auth-card';
-import { AuthStage } from '@/app/(auth)/_components/auth-stage';
 import { AccountStep } from '@/app/(auth)/signup/_components/account-step';
 import { AdminStep } from '@/app/(auth)/signup/_components/admin-step';
 import { BranchStep } from '@/app/(auth)/signup/_components/branch-step';
@@ -66,11 +65,31 @@ export function SignupForm() {
   const previous = step.previous;
   const Fields = STEP_FIELDS[stepKey];
   const submitting = form.formState.isSubmitting;
+  const navigated = useRef(false);
+
+  /*
+   * Unmounting the step the caller was on drops focus to the body, so without this tabbing would
+   * restart from the top of the page on every step and a screen reader would be told nothing.
+   * Whichever field carries an error is the one to act on, so a rejection lands on it directly.
+   * Never on the first render: taking focus before anyone has interacted skips past the heading
+   * that says what the screen is.
+   */
+  useEffect(() => {
+    if (!navigated.current) return;
+    const fields = STEPS[stepKey].fields;
+    const target = fields.find((name) => form.getFieldState(name).error) ?? fields[0];
+    if (target) form.setFocus(target);
+  }, [stepKey, form]);
+
+  function goToStep(next: StepKey) {
+    navigated.current = true;
+    setStepKey(next);
+  }
 
   async function advance(next: StepKey) {
     // This step's fields only. Validating the whole form here would mark fields the caller has
     // not reached, leaving messages on steps nobody is looking at.
-    if (await form.trigger(step.fields)) setStepKey(next);
+    if (await form.trigger(step.fields)) goToStep(next);
   }
 
   async function create(values: SignupValues) {
@@ -90,7 +109,7 @@ export function SignupForm() {
        * this lands.
        */
       const owner = stepOwning(result.fieldError.field);
-      if (owner) setStepKey(owner);
+      if (owner) goToStep(owner);
       form.setError(result.fieldError.field, { message: t(`errors.${result.fieldError.key}`) });
       return;
     }
@@ -126,11 +145,15 @@ export function SignupForm() {
 
         <Form {...form}>
           <form onSubmit={onSubmit} noValidate className="flex flex-col gap-y-5">
-            <AuthStage stageKey={stepKey}>
-              <div className="flex flex-col gap-y-5">
-                <Fields />
-              </div>
-            </AuthStage>
+            {/*
+              Keyed so the fields remount and replay the entrance, and so the swap stays atomic:
+              the stepper, the description and the button all sit outside this box, and fields that
+              outlive a step change put one step's inputs under the next step's button — where a
+              click submits a step nobody has filled in.
+            */}
+            <div key={stepKey} className="flex flex-col gap-y-5 animate-rise-in">
+              <Fields />
+            </div>
 
             <FormRootMessage />
 

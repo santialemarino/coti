@@ -67,7 +67,6 @@ export function AccountStep() {
             <FormLabel>{t('taxId.label')}</FormLabel>
             <FormControl>
               <Input
-                inputMode="numeric"
                 maxLength={TEXT_FIELD_MAX_LENGTH}
                 placeholder={t('taxId.placeholder')}
                 {...field}
