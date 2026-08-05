@@ -10,10 +10,11 @@ vi.mock('@/app/(protected)/settings/branches/actions', () => ({
   createBranch: vi.fn(),
   updateBranch: vi.fn(),
   closeBranch: vi.fn(),
+  reopenBranch: vi.fn(),
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-const { closeBranch, createBranch, updateBranch } =
+const { closeBranch, createBranch, reopenBranch, updateBranch } =
   await import('@/app/(protected)/settings/branches/actions');
 const { toast } = await import('sonner');
 
@@ -32,6 +33,13 @@ const MORON: Branch = {
   address: null,
   defaultExpiryDays: 30,
   isActive: true,
+};
+const CLOSED: Branch = {
+  id: 'b3',
+  name: 'Villa Bosch',
+  address: 'Av. Márquez 1520',
+  defaultExpiryDays: 5,
+  isActive: false,
 };
 
 // The real catalog, so a renamed or missing key fails here rather than rendering its own name.
@@ -65,6 +73,10 @@ function rowActions(view: RenderResult, name: string) {
     edit: within(row).getByRole('button', { name: copy.edit.action }),
     close: within(row).getByRole('button', { name: copy.close.action }),
   };
+}
+
+function rowOf(view: RenderResult, name: string) {
+  return view.getByRole('row', { name: new RegExp(name) });
 }
 
 // Clicking a submit button does not reach a React form in jsdom, which implements no requestSubmit.
@@ -249,5 +261,60 @@ describe('BranchTable closing a branch', () => {
 
     release();
     await waitFor(() => expect(closeBranch).toHaveBeenCalledOnce());
+  });
+});
+
+describe('BranchTable closed branches', () => {
+  it('marks each branch with its state', () => {
+    const view = renderTable([MORON, CLOSED]);
+
+    expect(within(rowOf(view, MORON.name)).getByText(copy.status.active)).toBeTruthy();
+    expect(within(rowOf(view, CLOSED.name)).getByText(copy.status.closed)).toBeTruthy();
+  });
+
+  /*
+   * Closing and reopening are the same axis, so a row offers exactly one of them. Offering both
+   * would let an admin close a branch that is already closed and read the result as a change.
+   */
+  it('offers reopening on a closed row and closing on an active one, never both', () => {
+    const view = renderTable([MORON, CLOSED]);
+
+    const active = within(rowOf(view, MORON.name));
+    expect(active.getByRole('button', { name: copy.close.action })).toBeTruthy();
+    expect(active.queryByRole('button', { name: copy.reopen.action })).toBeNull();
+
+    const closed = within(rowOf(view, CLOSED.name));
+    expect(closed.getByRole('button', { name: copy.reopen.action })).toBeTruthy();
+    expect(closed.queryByRole('button', { name: copy.close.action })).toBeNull();
+  });
+
+  // Reopening is not destructive, so it acts directly rather than asking for a confirmation.
+  it('reopens without a confirmation and says so', async () => {
+    vi.mocked(reopenBranch).mockResolvedValue({ ok: true });
+    const view = renderTable([MORON, CLOSED]);
+
+    fireEvent.click(
+      within(rowOf(view, CLOSED.name)).getByRole('button', {
+        name: copy.reopen.action,
+      }),
+    );
+
+    await waitFor(() => expect(reopenBranch).toHaveBeenCalledOnce());
+    expect(reopenBranch).toHaveBeenCalledWith(CLOSED);
+    expect(view.baseElement.querySelector('[role="dialog"]')).toBeNull();
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.reopened));
+  });
+
+  it('puts a refused reopen on the list', async () => {
+    vi.mocked(reopenBranch).mockResolvedValue({ error: 'notFound' });
+    const view = renderTable([MORON, CLOSED]);
+
+    fireEvent.click(
+      within(rowOf(view, CLOSED.name)).getByRole('button', {
+        name: copy.reopen.action,
+      }),
+    );
+
+    await waitFor(() => expect(view.getByText(copy.errors.notFound)).toBeTruthy());
   });
 });

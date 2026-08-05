@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 
 import { BranchTable } from '@/app/(protected)/settings/branches/_components/branch-table';
-import { getBranches } from '@/lib/api/branches';
+import { getAccountBranches } from '@/lib/api/branches';
 import { requireAdmin } from '@/lib/auth/session';
 import { generatePageMetadata } from '@/lib/utils/page';
 
@@ -10,9 +10,9 @@ export const generateMetadata = () => generatePageMetadata('branchSettings');
 export default async function BranchSettingsPage() {
   await requireAdmin();
   const t = await getTranslations('branches');
-  // Every active branch of the account, because the reader is admin-aware. A closed one is not
-  // listed at all, which is why this screen closes branches but cannot reopen one.
-  const branches = await getBranches();
+  // Closed branches included, which is what lets one be reopened. The switcher reads the other
+  // list, so it can never offer a branch the API would refuse.
+  const branches = await getAccountBranches();
 
   return (
     <main className="flex flex-col gap-y-8">

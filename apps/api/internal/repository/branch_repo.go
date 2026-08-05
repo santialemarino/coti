@@ -63,18 +63,26 @@ func (r *BranchRepository) ListForUser(
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	return scanBranches(rows)
+}
 
-	var branches []domain.Branch
-	for rows.Next() {
-		var b domain.Branch
-		if err := rows.Scan(&b.ID, &b.AccountID, &b.Name, &b.Address, &b.DefaultExpiryDays,
-			&b.IsActive, &b.CreatedAt, &b.UpdatedAt); err != nil {
-			return nil, err
-		}
-		branches = append(branches, b)
+// ListAllForAccount returns every branch of the account, closed ones included, for
+// administration. It takes no user id on purpose: a caller's reach is always the active branches
+// they are assigned, so a read that ignores both cannot be mistaken for one.
+func (r *BranchRepository) ListAllForAccount(
+	ctx context.Context, q Querier, accountID uuid.UUID,
+) ([]domain.Branch, error) {
+	rows, err := q.Query(ctx,
+		`SELECT id, account_id, name, address, default_expiry_days, is_active,
+		        created_at, updated_at
+		 FROM branch
+		 WHERE account_id = $1
+		 ORDER BY is_active DESC, name`,
+		accountID)
+	if err != nil {
+		return nil, err
 	}
-	return branches, rows.Err()
+	return scanBranches(rows)
 }
 
 // ListIDsForUser returns the ids of the branches a user may operate on. It backs the
@@ -208,6 +216,23 @@ func (r *BranchRepository) ExistAllInAccount(
 		return false, err
 	}
 	return allPresent, nil
+}
+
+// scanBranches drains a branch query into domain rows. Both branch lists select the same columns
+// in the same order, so the loop belongs in one place.
+func scanBranches(rows pgx.Rows) ([]domain.Branch, error) {
+	defer rows.Close()
+
+	var branches []domain.Branch
+	for rows.Next() {
+		var b domain.Branch
+		if err := rows.Scan(&b.ID, &b.AccountID, &b.Name, &b.Address, &b.DefaultExpiryDays,
+			&b.IsActive, &b.CreatedAt, &b.UpdatedAt); err != nil {
+			return nil, err
+		}
+		branches = append(branches, b)
+	}
+	return branches, rows.Err()
 }
 
 func scanBranch(row pgx.Row) (*domain.Branch, error) {

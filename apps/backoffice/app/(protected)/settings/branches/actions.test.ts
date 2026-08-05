@@ -4,6 +4,7 @@ import { cookieJar } from '@repo/vitest-config/cookies';
 import {
   closeBranch,
   createBranch,
+  reopenBranch,
   updateBranch,
 } from '@/app/(protected)/settings/branches/actions';
 import { type BranchValues } from '@/app/(protected)/settings/branches/form-schema';
@@ -168,5 +169,53 @@ describe('closeBranch', () => {
 
     expect(store.delete).not.toHaveBeenCalled();
     expect(revalidatePath).not.toHaveBeenCalled();
+  });
+});
+
+describe('reopenBranch', () => {
+  const CLOSED = {
+    id: BRANCH_ID,
+    name: 'Morón',
+    address: 'Rivadavia 18400',
+    defaultExpiryDays: 5,
+  };
+
+  /*
+   * `PUT` replaces the record, so reopening has to carry the branch's current name and expiry
+   * alongside the flag — sending the flag alone would fail the API's own validation.
+   */
+  it('replaces the record with the flag turned back on', async () => {
+    jar();
+    vi.mocked(apiRequest).mockResolvedValue(undefined);
+
+    await expect(reopenBranch(CLOSED)).resolves.toEqual({ ok: true });
+    expect(requestSent()).toMatchObject({ path: `/v1/branches/${BRANCH_ID}`, method: 'PUT' });
+    expect(requestSent()?.body).toEqual({
+      name: 'Morón',
+      address: 'Rivadavia 18400',
+      default_expiry_days: 5,
+      is_active: true,
+    });
+  });
+
+  it('omits an absent address rather than sending null', async () => {
+    jar();
+    vi.mocked(apiRequest).mockResolvedValue(undefined);
+
+    await reopenBranch({ ...CLOSED, address: null });
+
+    expect(JSON.parse(JSON.stringify(requestSent()?.body))).not.toHaveProperty('address');
+  });
+
+  // Reopening never touches the selection: the branch was not the active one, because a closed
+  // branch cannot be selected in the first place.
+  it('leaves the selection alone', async () => {
+    const store = jar({ [BRANCH_COOKIE]: BRANCH_ID });
+    vi.mocked(apiRequest).mockResolvedValue(undefined);
+
+    await reopenBranch(CLOSED);
+
+    expect(store.delete).not.toHaveBeenCalled();
+    expect(revalidatePath).toHaveBeenCalledWith('/', 'layout');
   });
 });

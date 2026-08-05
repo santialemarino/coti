@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getBranches } from '@/lib/api/branches';
+import { getAccountBranches, getBranches } from '@/lib/api/branches';
 
 vi.mock('@/lib/api/client', () => ({ apiRequest: vi.fn() }));
 
@@ -81,5 +81,40 @@ describe('getBranches', () => {
 
     await expect(getBranches()).resolves.toEqual([]);
     expect(apiRequest).toHaveBeenCalledWith({ path: '/v1/branches', branchScoped: false });
+  });
+});
+
+describe('the two branch reads are deliberately separate', () => {
+  /*
+   * `getBranches` decides what the switcher offers and what `setActiveBranch` will accept. A closed
+   * branch reaching either would pin the session to one the API refuses on every request, so this
+   * read must never ask for the inactive ones — which is why the account-wide read is its own
+   * function rather than a flag on this one.
+   */
+  it('never asks the API for closed branches on the read the switcher uses', async () => {
+    vi.mocked(apiRequest).mockResolvedValue({ items: [] });
+
+    await getBranches();
+
+    const request = vi.mocked(apiRequest).mock.calls[0]?.[0] as { query?: Record<string, string> };
+    expect(request.query).toBeUndefined();
+  });
+
+  it('asks for them on the read administration uses', async () => {
+    vi.mocked(apiRequest).mockResolvedValue({ items: [] });
+
+    await getAccountBranches();
+
+    expect(vi.mocked(apiRequest).mock.calls[0]?.[0]).toMatchObject({
+      path: '/v1/branches',
+      query: { include_inactive: 'true' },
+      branchScoped: false,
+    });
+  });
+
+  it('maps a closed branch as closed', async () => {
+    vi.mocked(apiRequest).mockResolvedValue({ items: [rawBranch({ is_active: false })] });
+
+    await expect(getAccountBranches()).resolves.toMatchObject([{ isActive: false }]);
   });
 });

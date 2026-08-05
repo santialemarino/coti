@@ -57,3 +57,18 @@ export const getBranches = cache(async (): Promise<Branch[]> => {
   const { items } = await apiRequest<BranchListRaw>({ path: '/v1/branches', branchScoped: false });
   return items.map(mapBranch);
 });
+
+/*
+ * Every branch of the account, closed ones included, for administering them. Deliberately a second
+ * function rather than a flag on the one above: that one decides what the switcher offers and what
+ * `setActiveBranch` will accept, and a closed branch reaching either would pin the session to a
+ * branch the API refuses on every request. The API answers 403 to a seller.
+ */
+export const getAccountBranches = cache(async (): Promise<Branch[]> => {
+  const { items } = await apiRequest<BranchListRaw>({
+    path: '/v1/branches',
+    query: { include_inactive: 'true' },
+    branchScoped: false,
+  });
+  return items.map(mapBranch);
+});
