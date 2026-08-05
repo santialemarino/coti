@@ -11,9 +11,11 @@ vi.mock('@/app/(protected)/settings/branches/actions', () => ({
   updateBranch: vi.fn(),
   closeBranch: vi.fn(),
 }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const { closeBranch, createBranch, updateBranch } =
   await import('@/app/(protected)/settings/branches/actions');
+const { toast } = await import('sonner');
 
 const copy = messages.branches;
 
@@ -177,6 +179,7 @@ describe('BranchTable dialogs', () => {
 
     await waitFor(() => expect(createBranch).toHaveBeenCalledOnce());
     expect(updateBranch).not.toHaveBeenCalled();
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.created));
   });
 });
 
@@ -217,7 +220,9 @@ describe('BranchTable closing a branch', () => {
     fireEvent.click(within(dialog(view)).getByRole('button', { name: copy.close.confirm }));
 
     await waitFor(() => expect(closeBranch).toHaveBeenCalledWith(MORON.id));
-    await waitFor(() => expect(view.getByText(copy.closed)).toBeTruthy());
+    // A confirmation of something just done is transient, so it is a toast rather than a standing
+    // Callout on the list — which is what the refusal above is.
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.closed));
   });
 
   /*

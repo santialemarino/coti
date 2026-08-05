@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { BuildingIcon, PencilIcon, PlusIcon, XCircleIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { toast } from 'sonner';
 
 import {
   Button,
@@ -39,7 +40,6 @@ export function BranchTable({ branches }: BranchTableProps) {
   const [form, setForm] = useState<{ mode: 'create' | 'edit'; branch: Branch | null } | null>(null);
   const [closing, setClosing] = useState<Branch | null>(null);
   const [error, setError] = useState<BranchErrorKey | null>(null);
-  const [notice, setNotice] = useState<'created' | 'updated' | 'closed' | null>(null);
   /*
    * One transition per action, never one shared: a shared transition only reports that something
    * is running, so closing a branch would light the dialog that saves one.
@@ -52,7 +52,6 @@ export function BranchTable({ branches }: BranchTableProps) {
     const target = form;
     if (!target) return;
     setError(null);
-    setNotice(null);
     startSave(async () => {
       const result =
         target.mode === 'edit' && target.branch
@@ -62,7 +61,9 @@ export function BranchTable({ branches }: BranchTableProps) {
         setError(result.error ?? 'unexpected');
         return;
       }
-      setNotice(target.mode === 'edit' ? 'updated' : 'created');
+      // A confirmation of something just done is transient, so it is a toast; the standing
+      // message about what is on screen is the Callout above.
+      toast.success(t(target.mode === 'edit' ? 'updated' : 'created'));
       setForm(null);
     });
   }
@@ -71,7 +72,6 @@ export function BranchTable({ branches }: BranchTableProps) {
     const target = closing;
     if (!target) return;
     setError(null);
-    setNotice(null);
     startRemove(async () => {
       const result = await closeBranch(target.id);
       if (!result.ok) {
@@ -81,7 +81,7 @@ export function BranchTable({ branches }: BranchTableProps) {
         setError(result.error ?? 'unexpected');
         return;
       }
-      setNotice('closed');
+      toast.success(t('closed'));
       setClosing(null);
     });
   }
@@ -89,7 +89,6 @@ export function BranchTable({ branches }: BranchTableProps) {
   return (
     <div className="flex flex-col gap-y-6">
       {error ? <Callout tone="danger">{t(`errors.${error}`)}</Callout> : null}
-      {notice ? <Callout tone="success">{t(notice)}</Callout> : null}
 
       <div className="flex justify-end">
         <Button disabled={busy} onClick={() => setForm({ mode: 'create', branch: null })}>
