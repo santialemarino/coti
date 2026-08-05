@@ -65,9 +65,19 @@ branch, not the account, because tolerance to inflation differs between location
 
 ## Account record
 
-`GET /v1/account` returns the caller's own account; `PUT /v1/account` replaces it and is
-admin-only. The brand pair (`brand_logo_url`, `brand_color`) is what the client webapp renders
-a quote with.
+`GET /v1/account` returns the caller's own account and is readable by any member, because
+anything naming the corralón needs it; `PUT /v1/account` replaces it and is admin-only. The route
+carries no account id — it writes whatever the session resolved.
+
+**Replaces, so an omitted optional field is cleared.** That is how a corralón removes a logo it no
+longer wants on its quotes. A name that is blank once trimmed is refused with 422.
+
+The brand pair (`brand_logo_url`, `brand_color`) is what the client webapp renders a quote with, and
+both carry a format because a malformed one breaks a screen the corralón cannot see: the logo must be
+an absolute URL, and the colour hexadecimal with three, four, six or eight digits behind a hash
+(`#C2410C`). Either one malformed is a 400. `settings/account` in the backoffice mirrors both shapes
+exactly rather than narrowing them — a form stricter than the column cannot show an account its own
+stored value back.
 
 ## Identity
 
