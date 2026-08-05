@@ -167,14 +167,36 @@ The service rejects what the column cannot store exactly:
 the page, and comes from a `count(*) OVER ()` in the same query: one round trip, and the
 total cannot contradict the page it describes.
 
+## Initial catalog import
+
+Administrators can load an initial catalog through a reviewed spreadsheet flow that creates
+account-level products and branch-scoped availability and prices:
+
+1. `GET /v1/products/export` downloads a Spanish XLSX with `Catálogo` and `Instrucciones`
+   sheets, plus a hidden `Listas` sheet populated from the database-backed product taxonomy.
+   Family and subgroup cells use dropdowns sourced from that hidden sheet.
+2. `POST /v1/products/import/preview` accepts `.xlsx` or `.csv`, validates every row, and
+   writes nothing. The required columns are `codigo`, `nombre`, `unidad`, `familia`, and
+   `precio`.
+3. `POST /v1/products/import/confirm` revalidates the reviewed rows and atomically creates
+   each valid account-level product, its active availability at the selected branch, and
+   its first branch price. Invalid or already-existing codes are reported and skipped.
+
+`descripcion`, `subgrupo`, and `precio_minimo` are optional. The service validates that a
+provided subgroup belongs to the selected family. Initial prices use ARS and remain decimal
+strings throughout the HTTP contract; currency and price conditions are not spreadsheet
+columns. Every route requires an administrator and an active `X-Branch-Id`; the account
+always comes from the authenticated tenant.
+
 ## Configuration
 
 | Variable                    | Default | What for                                      |
 | --------------------------- | ------- | --------------------------------------------- |
 | `CATALOG_DEFAULT_PAGE_SIZE` | 50      | Page size when `limit` is omitted             |
 | `CATALOG_MAX_PAGE_SIZE`     | 200     | Cap on `limit`, so nobody asks for everything |
+| `CATALOG_IMPORT_MAX_BYTES`  | 5242880 | Maximum catalog spreadsheet upload size       |
 
 ## API specification
 
-All fifteen handlers are annotated and appear in the generated spec. How it is generated,
+All catalog handlers are annotated and appear in the generated spec. How it is generated,
 served and verified: [api-specification.md](api-specification.md).

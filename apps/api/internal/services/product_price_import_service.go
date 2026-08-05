@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math/big"
-	"regexp"
 	"strings"
 	"time"
 
@@ -16,9 +14,6 @@ import (
 )
 
 const defaultImportCurrency = "ARS"
-
-var decimalPattern = regexp.MustCompile(`^\d{1,12}(?:\.\d{1,2})?$`)
-var currencyPattern = regexp.MustCompile(`^[A-Z]{3}$`)
 
 type productPriceImportRepository interface {
 	ListCurrentForExport(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (*domain.ProductPriceExport, error)
@@ -104,9 +99,6 @@ func (s *ProductPriceImportService) Confirm(
 		if input.MinPrice != nil {
 			rawRows[i].minPrice = *input.MinPrice
 		}
-		if input.Conditions != nil {
-			rawRows[i].conditions = *input.Conditions
-		}
 	}
 
 	preview, err := s.prepare(ctx, tenant, rawRows)
@@ -119,11 +111,10 @@ func (s *ProductPriceImportService) Confirm(
 	updates := make([]domain.ProductPriceUpdate, len(preview.Rows))
 	for i, row := range preview.Rows {
 		updates[i] = domain.ProductPriceUpdate{
-			ProductID:  row.ProductID,
-			Price:      row.Price,
-			MinPrice:   row.MinPrice,
-			Currency:   row.Currency,
-			Conditions: row.Conditions,
+			ProductID: row.ProductID,
+			Price:     row.Price,
+			MinPrice:  row.MinPrice,
+			Currency:  row.Currency,
 		}
 	}
 	effectiveAt := s.now().UTC()
@@ -222,33 +213,5 @@ func preparePriceImportRow(
 		row.Errors = append(row.Errors, "invalid_currency")
 	}
 
-	conditions := strings.TrimSpace(raw.conditions)
-	if len(conditions) > 255 {
-		row.Errors = append(row.Errors, "conditions_too_long")
-	} else if conditions != "" {
-		row.Conditions = &conditions
-	}
 	return row
-}
-
-func normalizeMoney(raw string) (string, *big.Rat, error) {
-	value := strings.NewReplacer("$", "", "\u00a0", "", " ", "").Replace(strings.TrimSpace(raw))
-	if strings.Contains(value, ",") && strings.Contains(value, ".") {
-		if strings.LastIndex(value, ",") > strings.LastIndex(value, ".") {
-			value = strings.ReplaceAll(value, ".", "")
-			value = strings.ReplaceAll(value, ",", ".")
-		} else {
-			value = strings.ReplaceAll(value, ",", "")
-		}
-	} else {
-		value = strings.ReplaceAll(value, ",", ".")
-	}
-	if !decimalPattern.MatchString(value) {
-		return "", nil, fmt.Errorf("invalid money")
-	}
-	rational, ok := new(big.Rat).SetString(value)
-	if !ok {
-		return "", nil, fmt.Errorf("invalid money")
-	}
-	return value, rational, nil
 }

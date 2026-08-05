@@ -28,6 +28,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"MAIL_PROVIDER", "MAIL_FROM_ADDRESS", "MAIL_FROM_NAME",
 		"MAIL_SMTP_HOST", "MAIL_SMTP_PORT", "MAIL_SMTP_USERNAME", "MAIL_SMTP_PASSWORD",
 		"WEB_BACKOFFICE_URL",
+		"CATALOG_IMPORT_MAX_BYTES",
 		"PRICE_IMPORT_MAX_BYTES",
 	}
 	for _, k := range known {
@@ -71,6 +72,9 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.PriceImport.MaxBytes != defaultPriceImportMaxBytes {
 		t.Errorf("PriceImport.MaxBytes = %d, want %d", cfg.PriceImport.MaxBytes, defaultPriceImportMaxBytes)
+	}
+	if cfg.CatalogImport.MaxBytes != defaultCatalogImportMaxBytes {
+		t.Errorf("CatalogImport.MaxBytes = %d, want %d", cfg.CatalogImport.MaxBytes, defaultCatalogImportMaxBytes)
 	}
 	if cfg.Mail.Provider != MailProviderConsole {
 		t.Errorf("Mail.Provider = %q, want %q", cfg.Mail.Provider, MailProviderConsole)
@@ -238,6 +242,11 @@ func TestLoad_Invalid(t *testing.T) {
 			name:    "password reset ttl of zero",
 			mutate:  func(e map[string]string) { e["AUTH_PASSWORD_RESET_TTL_MINUTES"] = "0" },
 			wantSub: "AUTH_PASSWORD_RESET_TTL_MINUTES must be greater than zero",
+		},
+		{
+			name:    "catalog import size of zero",
+			mutate:  func(e map[string]string) { e["CATALOG_IMPORT_MAX_BYTES"] = "0" },
+			wantSub: "CATALOG_IMPORT_MAX_BYTES must be greater than zero",
 		},
 	}
 

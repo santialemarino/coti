@@ -53,7 +53,8 @@ type Product struct {
 	CanonicalName string
 	Description   *string
 	Unit          *string // nullable; free text (bolsa, m2, kg, ...).
-	Category      *string
+	FamilyID      *uuid.UUID
+	SubgroupID    *uuid.UUID
 	IsActive      bool
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
@@ -65,7 +66,8 @@ type NewProduct struct {
 	CanonicalName string
 	Description   *string
 	Unit          *string
-	Category      *string
+	FamilyID      uuid.UUID
+	SubgroupID    *uuid.UUID
 }
 
 // ProductUpdate replaces a product's editable attributes: a nil nullable field clears
@@ -75,7 +77,8 @@ type ProductUpdate struct {
 	CanonicalName string
 	Description   *string
 	Unit          *string
-	Category      *string
+	FamilyID      uuid.UUID
+	SubgroupID    *uuid.UUID
 	IsActive      *bool
 }
 
@@ -83,7 +86,8 @@ type ProductUpdate struct {
 // the configured page size before they reach the repository.
 type ProductFilter struct {
 	Search          string
-	Category        string
+	FamilyID        *uuid.UUID
+	SubgroupID      *uuid.UUID
 	IncludeInactive bool
 	Limit           int
 	Offset          int

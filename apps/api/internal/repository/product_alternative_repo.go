@@ -20,7 +20,7 @@ const productAlternativePair = "uq_product_alternative"
 const (
 	alternativesOutgoing = `SELECT pa.id, pa.account_id, pa.base_product_id,
 		pa.alternative_product_id, pa.type, pa.created_at,
-		p.id, p.account_id, p.code, p.canonical_name, p.description, p.unit, p.category,
+		p.id, p.account_id, p.code, p.canonical_name, p.description, p.unit, p.family_id, p.subgroup_id,
 		p.is_active, p.created_at, p.updated_at
 	 FROM product_alternative pa
 	 JOIN product p ON p.id = pa.alternative_product_id AND p.account_id = pa.account_id
@@ -29,7 +29,7 @@ const (
 
 	alternativesIncoming = `SELECT pa.id, pa.account_id, pa.base_product_id,
 		pa.alternative_product_id, pa.type, pa.created_at,
-		p.id, p.account_id, p.code, p.canonical_name, p.description, p.unit, p.category,
+		p.id, p.account_id, p.code, p.canonical_name, p.description, p.unit, p.family_id, p.subgroup_id,
 		p.is_active, p.created_at, p.updated_at
 	 FROM product_alternative pa
 	 JOIN product p ON p.id = pa.base_product_id AND p.account_id = pa.account_id
@@ -68,7 +68,7 @@ func (r *ProductAlternativeRepository) List(
 		if err := rows.Scan(&v.Link.ID, &v.Link.AccountID, &v.Link.BaseProductID,
 			&v.Link.AlternativeProductID, &v.Link.Type, &v.Link.CreatedAt,
 			&v.Product.ID, &v.Product.AccountID, &v.Product.Code, &v.Product.CanonicalName,
-			&v.Product.Description, &v.Product.Unit, &v.Product.Category, &v.Product.IsActive,
+			&v.Product.Description, &v.Product.Unit, &v.Product.FamilyID, &v.Product.SubgroupID, &v.Product.IsActive,
 			&v.Product.CreatedAt, &v.Product.UpdatedAt); err != nil {
 			return nil, err
 		}

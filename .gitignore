@@ -33,6 +33,7 @@ coverage
 # Tooling
 .turbo
 .vercel
+.idea/
 
 # OS
 .DS_Store

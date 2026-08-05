@@ -44,7 +44,8 @@ func NewProductHandler(products ProductService) *ProductHandler {
 //	@Produce		json
 //	@Security		BearerAuth
 //	@Param			search				query		string	false	"Case-insensitive match on canonical name or code"
-//	@Param			category			query		string	false	"Exact category match"
+//	@Param			family_id			query		string	false	"Exact family id"
+//	@Param			subgroup_id		query		string	false	"Exact subgroup id"
 //	@Param			include_inactive	query		boolean	false	"Include deactivated items"
 //	@Param			limit				query		integer	false	"Page size; defaults to CATALOG_DEFAULT_PAGE_SIZE and is capped at CATALOG_MAX_PAGE_SIZE"
 //	@Param			offset				query		integer	false	"Rows to skip"
@@ -66,7 +67,8 @@ func (h *ProductHandler) List(c *gin.Context) {
 
 	page, err := h.products.ListProducts(c.Request.Context(), tenant, domain.ProductFilter{
 		Search:          query.Search,
-		Category:        query.Category,
+		FamilyID:        query.FamilyID,
+		SubgroupID:      query.SubgroupID,
 		IncludeInactive: query.IncludeInactive,
 		Limit:           query.Limit,
 		Offset:          query.Offset,
@@ -150,7 +152,8 @@ func (h *ProductHandler) Create(c *gin.Context) {
 		CanonicalName: body.CanonicalName,
 		Description:   body.Description,
 		Unit:          body.Unit,
-		Category:      body.Category,
+		FamilyID:      body.FamilyID,
+		SubgroupID:    body.SubgroupID,
 	})
 	if err != nil {
 		Respond(c, err)
@@ -197,7 +200,8 @@ func (h *ProductHandler) Update(c *gin.Context) {
 		CanonicalName: body.CanonicalName,
 		Description:   body.Description,
 		Unit:          body.Unit,
-		Category:      body.Category,
+		FamilyID:      body.FamilyID,
+		SubgroupID:    body.SubgroupID,
 		IsActive:      body.IsActive,
 	})
 	if err != nil {
@@ -494,7 +498,8 @@ func toProductResponse(p domain.Product) dto.ProductResponse {
 		CanonicalName: p.CanonicalName,
 		Description:   p.Description,
 		Unit:          p.Unit,
-		Category:      p.Category,
+		FamilyID:      p.FamilyID,
+		SubgroupID:    p.SubgroupID,
 		IsActive:      p.IsActive,
 		CreatedAt:     p.CreatedAt,
 		UpdatedAt:     p.UpdatedAt,

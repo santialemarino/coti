@@ -11,7 +11,7 @@ import (
 )
 
 var priceExportHeaders = []string{
-	"codigo", "producto", "precio", "precio_minimo", "moneda", "condiciones",
+	"codigo", "producto", "precio", "precio_minimo", "moneda",
 }
 
 var priceExportInstructions = []string{
@@ -34,7 +34,7 @@ func buildProductPriceXLSX(export domain.ProductPriceExport) ([]byte, error) {
 	}{
 		{"[Content_Types].xml", xlsxContentTypes},
 		{"_rels/.rels", xlsxRootRelationships},
-		{"xl/workbook.xml", xlsxWorkbookContent},
+		{"xl/workbook.xml", buildXLSXWorkbook("Precios")},
 		{"xl/_rels/workbook.xml.rels", xlsxWorkbookRelationships},
 		{"xl/styles.xml", xlsxStyles},
 		{"xl/worksheets/sheet1.xml", buildPriceExportSheet(export)},
@@ -60,7 +60,7 @@ func buildPriceExportSheet(export domain.ProductPriceExport) string {
 	sheet.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`)
 	sheet.WriteString(`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`)
 	sheet.WriteString(`<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`)
-	sheet.WriteString(`<cols><col min="1" max="1" width="20" customWidth="1"/><col min="2" max="2" width="38" customWidth="1"/><col min="3" max="5" width="18" customWidth="1"/><col min="6" max="6" width="42" customWidth="1"/></cols><sheetData>`)
+	sheet.WriteString(`<cols><col min="1" max="1" width="20" customWidth="1"/><col min="2" max="2" width="38" customWidth="1"/><col min="3" max="5" width="18" customWidth="1"/></cols><sheetData>`)
 	writeXLSXRow(&sheet, 1, priceExportHeaders, true)
 	for index, row := range export.Rows {
 		writeXLSXRow(&sheet, index+2, []string{
@@ -69,11 +69,10 @@ func buildPriceExportSheet(export domain.ProductPriceExport) string {
 			row.Price,
 			optionalString(row.MinPrice),
 			row.Currency,
-			optionalString(row.Conditions),
 		}, false)
 	}
 	sheet.WriteString(`</sheetData>`)
-	sheet.WriteString(fmt.Sprintf(`<autoFilter ref="A1:F%d"/>`, len(export.Rows)+1))
+	sheet.WriteString(fmt.Sprintf(`<autoFilter ref="A1:E%d"/>`, len(export.Rows)+1))
 	sheet.WriteString(`</worksheet>`)
 	return sheet.String()
 }
@@ -159,10 +158,12 @@ const xlsxRootRelationships = `<?xml version="1.0" encoding="UTF-8" standalone="
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
 </Relationships>`
 
-const xlsxWorkbookContent = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+func buildXLSXWorkbook(firstSheetName string) string {
+	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <sheets><sheet name="Precios" sheetId="1" r:id="rId1"/><sheet name="Instrucciones" sheetId="2" r:id="rId2"/></sheets>
+  <sheets><sheet name="` + firstSheetName + `" sheetId="1" r:id="rId1"/><sheet name="Instrucciones" sheetId="2" r:id="rId2"/></sheets>
 </workbook>`
+}
 
 const xlsxWorkbookRelationships = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">

@@ -31,6 +31,7 @@ type Handlers struct {
 	BranchCatalog *handler.BranchCatalogHandler
 	Account       *handler.AccountHandler
 	Prices        *handler.ProductPriceHandler
+	CatalogImport *handler.CatalogImportHandler
 }
 
 // Auth carries what the authentication middleware needs to resolve a tenant.
@@ -132,6 +133,9 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	admin.GET("/product-prices/export", h.Prices.Export)
 	admin.POST("/product-prices/import/preview", h.Prices.PreviewImport)
 	admin.POST("/product-prices/import/confirm", h.Prices.ConfirmImport)
+	admin.GET("/products/export", h.CatalogImport.Export)
+	admin.POST("/products/import/preview", h.CatalogImport.Preview)
+	admin.POST("/products/import/confirm", h.CatalogImport.Confirm)
 
 	// User administration is the one admin-only group. RequireAdmin runs after RequireTenant,
 	// which is what put the role on the context.

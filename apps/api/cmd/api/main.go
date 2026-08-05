@@ -71,6 +71,7 @@ func run() error {
 	productAlternativeRepo := repository.NewProductAlternativeRepository()
 	branchProductRepo := repository.NewBranchProductRepository()
 	productPriceRepo := repository.NewProductPriceRepository()
+	catalogImportRepo := repository.NewCatalogImportRepository()
 	accountRepo := repository.NewAccountRepository()
 	channelRepo := repository.NewChannelRepository()
 	authTokenRepo := repository.NewAuthTokenRepository()
@@ -103,6 +104,7 @@ func run() error {
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo, branchProductRepo,
 		productPriceRepo, nil)
 	productPriceImportService := services.NewProductPriceImportService(db, productPriceRepo, nil)
+	catalogImportService := services.NewCatalogImportService(db, catalogImportRepo, nil)
 
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
@@ -115,6 +117,7 @@ func run() error {
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
+			CatalogImport: handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
 			Account:       handler.NewAccountHandler(accountService),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
