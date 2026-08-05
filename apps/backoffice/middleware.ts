@@ -9,6 +9,7 @@ import {
 } from '@/config/routes';
 import {
   ACCESS_COOKIE,
+  BRANCH_COOKIE,
   forwardedClientAddress,
   needsRenewal,
   REFRESH_COOKIE,
@@ -80,6 +81,7 @@ function redirectToLogin(request: NextRequest, from: string) {
   response.cookies.delete(ACCESS_COOKIE);
   response.cookies.delete(REFRESH_COOKIE);
   response.cookies.delete(REMEMBER_COOKIE);
+  response.cookies.delete(BRANCH_COOKIE);
   return response;
 }
 

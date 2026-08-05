@@ -1,16 +1,21 @@
 import 'server-only';
 
+import { cache } from 'react';
 import { cookies } from 'next/headers';
+import { notFound, redirect } from 'next/navigation';
 
+import { ROUTES } from '@/config/routes';
 import { apiRequest, errorCodeOf } from '@/lib/api/client';
 import {
   ACCESS_COOKIE,
+  BRANCH_COOKIE,
   REFRESH_COOKIE,
   REMEMBER_COOKIE,
   requestLogout,
   sessionCookieOptions,
   type TokenPair,
 } from '@/lib/auth/tokens';
+import { ADMIN_ROLE } from '@/lib/constants/auth';
 
 // --- Raw types (API JSON shape, snake_case) ---
 
@@ -36,11 +41,15 @@ export interface SessionUser {
  * getSession asks the API who the caller is, so the answer accounts for what a
  * cookie cannot: a bumped session epoch, a deactivated user, a revoked token. A
  * null here means the session is over, not merely that the cookie is missing.
+ *
+ * Not branch-scoped: identity does not depend on a branch, and a stale cookie answering
+ * 403 here would end the session rather than fail the one screen that used it. Memoised per
+ * request because the shell, the section and the page each ask.
  */
-export async function getSession(): Promise<SessionUser | null> {
+export const getSession = cache(async (): Promise<SessionUser | null> => {
   if (!(await getAccessToken())) return null;
   try {
-    const me = await apiRequest<MeRaw>({ path: '/v1/me' });
+    const me = await apiRequest<MeRaw>({ path: '/v1/me', branchScoped: false });
     return {
       userId: me.id,
       accountId: me.account_id,
@@ -53,6 +62,15 @@ export async function getSession(): Promise<SessionUser | null> {
     if (code === 'unauthenticated' || code === 'forbidden') return null;
     throw error;
   }
+});
+
+// An admin-only page answers 404 rather than 403, so it does not advertise to a seller that
+// it is there at all.
+export async function requireAdmin(): Promise<SessionUser> {
+  const session = await getSession();
+  if (!session) redirect(ROUTES.sessionEnded);
+  if (session.role !== ADMIN_ROLE) notFound();
+  return session;
 }
 
 export async function getAccessToken(): Promise<string | undefined> {
@@ -76,12 +94,13 @@ export async function isRemembered(): Promise<boolean> {
 }
 
 // clearSession drops the cookies without telling the API, for a session the API has
-// already ended.
+// already ended. The branch goes with them: it is this user's choice, not the browser's.
 export async function clearSession(): Promise<void> {
   const jar = await cookies();
   jar.delete(ACCESS_COOKIE);
   jar.delete(REFRESH_COOKIE);
   jar.delete(REMEMBER_COOKIE);
+  jar.delete(BRANCH_COOKIE);
 }
 
 // endSession revokes on the API and then clears. The cookies go regardless of the

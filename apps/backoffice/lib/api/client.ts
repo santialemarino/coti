@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { getActiveBranchId } from '@/lib/auth/branch';
 import { clientAddress } from '@/lib/auth/client-address';
 import { getAccessToken } from '@/lib/auth/session';
 import { API_URL } from '@/lib/config';
@@ -45,10 +46,17 @@ export interface ApiRequest {
   body?: unknown;
   formData?: FormData;
   query?: Record<string, string | undefined>;
-  // The active branch. What that scope reaches is the backend's decision.
+  // Pins the request to one branch instead of the caller's active one, for a write that must
+  // land where it was prepared even if the branch changed under it.
   branchId?: string;
   // Off for the public routes, which have no session to attach.
   authenticated?: boolean;
+  /*
+   * Off for the two reads that have to survive a branch the API would refuse: identity, where
+   * a 403 would read as a dead session and sign the caller out, and the branch list, which is
+   * the only way back from a branch they can no longer reach.
+   */
+  branchScoped?: boolean;
 }
 
 export async function apiRequest<T>(request: ApiRequest): Promise<T> {
@@ -69,7 +77,16 @@ export async function apiRequest<T>(request: ApiRequest): Promise<T> {
 // The escape hatch for a caller needing the raw response: a download reading
 // Content-Disposition, or a body that is not JSON.
 export async function apiFetch(request: ApiRequest): Promise<Response> {
-  const { path, method = 'GET', body, formData, query, branchId, authenticated = true } = request;
+  const {
+    path,
+    method = 'GET',
+    body,
+    formData,
+    query,
+    branchId,
+    authenticated = true,
+    branchScoped = true,
+  } = request;
 
   const headers = new Headers();
   if (authenticated) {
@@ -79,7 +96,10 @@ export async function apiFetch(request: ApiRequest): Promise<Response> {
     if (!token) throw new ApiError('unauthenticated', 401);
     headers.set('Authorization', `Bearer ${token}`);
   }
-  if (branchId) headers.set('X-Branch-Id', branchId);
+  if (branchScoped) {
+    const branch = branchId ?? (await getActiveBranchId());
+    if (branch) headers.set('X-Branch-Id', branch);
+  }
   if (body !== undefined) headers.set('Content-Type', 'application/json');
   // Without this the API counts every user's unauthenticated requests against this server's
   // address, so one allowance covers the whole product.
