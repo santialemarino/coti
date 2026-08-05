@@ -105,6 +105,27 @@ jobs:
           TEST_DATABASE_URL: postgres://coti_app:coti_app@localhost:5432/coti?sslmode=disable
           TEST_DATABASE_ADMIN_URL: postgres://coti:coti@localhost:5432/coti?sslmode=disable
         run: go test -tags=integration -count=1 -coverpkg=./internal/... -coverprofile=coverage.out ./...
+      # A cleanup that fails reports nothing on its own, which is how a stray account once
+      # survived a passing run and stayed in a developer's database. This job applies migrations
+      # and seeds nothing, so every table has to be empty again once the suite is done.
+      - name: Assert the suite left no rows behind
+        env:
+          PGPASSWORD: coti
+        run: |
+          leftovers=$(psql -h localhost -U coti -d coti -tAc "
+            SELECT string_agg(c.relname || '=' || rows, ', ' ORDER BY c.relname)
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            CROSS JOIN LATERAL (
+              SELECT (xpath('/row/c/text()', query_to_xml(
+                format('SELECT count(*) AS c FROM public.%I', c.relname), false, true, '')))[1]::text::bigint
+            ) AS counted(rows)
+            WHERE c.relkind = 'r' AND n.nspname = 'public'
+              AND c.relname <> 'goose_db_version' AND rows > 0")
+          if [ -n "$leftovers" ]; then
+            echo "The integration suite left rows behind: $leftovers"
+            exit 1
+          fi
       # Reported, never enforced: a threshold set before the suites are real gets met by writing
       # tests that assert nothing. It lands in the job summary so the number is readable without
       # opening the log. cmd/api and the generated docs stay out of the denominator.

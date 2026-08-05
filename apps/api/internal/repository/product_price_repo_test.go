@@ -5,69 +5,34 @@ package repository
 import (
 	"context"
 	"errors"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
 func TestProductPriceRepository_ApplyImport_VersionsPricesAtomically(t *testing.T) {
-	appURL := os.Getenv("TEST_DATABASE_URL")
-	adminURL := os.Getenv("TEST_DATABASE_ADMIN_URL")
-	if appURL == "" || adminURL == "" {
-		t.Skip("integration database URLs are not configured")
-	}
+	db := testDB(t)
 	ctx := context.Background()
-	appPool, err := pgxpool.New(ctx, appURL)
-	if err != nil {
-		t.Fatal(err)
+	accountID := seedAccount(t, db, "Price import")
+	branchID := branchOf(t, db, accountID)
+	userID := seedUser(t, db, accountID, "ADMIN")
+	productID := seedProduct(t, db, accountID, "Test product")
+	priceCleanup(t, db, productID)
+	// The export keys a spreadsheet on the code, so it skips a product that has none.
+	if _, err := db.CrossAccount().Exec(ctx,
+		`UPDATE product SET code = 'TEST-PRICE' WHERE id = $1`, productID); err != nil {
+		t.Fatalf("set product code: %v", err)
 	}
-	defer appPool.Close()
-	adminPool, err := pgxpool.New(ctx, adminURL)
-	if err != nil {
-		t.Fatal(err)
+	if _, err := db.CrossAccount().Exec(ctx,
+		`INSERT INTO branch_product (account_id, branch_id, product_id) VALUES ($1, $2, $3)`,
+		accountID, branchID, productID); err != nil {
+		t.Fatalf("seed branch product: %v", err)
 	}
-	defer adminPool.Close()
 
-	accountID, branchID, userID, productID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
-	setupStatements := []struct {
-		query string
-		args  []any
-	}{
-		{`INSERT INTO account (id, name) VALUES ($1, 'Price import test')`, []any{accountID}},
-		{`INSERT INTO branch (id, account_id, name) VALUES ($1, $2, 'Test branch')`, []any{branchID, accountID}},
-		{`INSERT INTO app_user (id, account_id, name, email, password_hash, role)
-		  VALUES ($1, $2, 'Test admin', $3, 'unused', 'ADMIN')`, []any{userID, accountID, userID.String() + "@test.invalid"}},
-		{`INSERT INTO product (id, account_id, code, canonical_name)
-		  VALUES ($1, $2, 'TEST-PRICE', 'Test product')`, []any{productID, accountID}},
-		{`INSERT INTO branch_product (account_id, branch_id, product_id)
-		  VALUES ($1, $2, $3)`, []any{accountID, branchID, productID}},
-	}
-	for _, statement := range setupStatements {
-		if _, err := adminPool.Exec(ctx, statement.query, statement.args...); err != nil {
-			t.Fatal(err)
-		}
-	}
-	t.Cleanup(func() {
-		cleanupQueries := []string{
-			`DELETE FROM product_price WHERE account_id = $1`,
-			`DELETE FROM branch_product WHERE account_id = $1`,
-			`DELETE FROM product WHERE account_id = $1`,
-			`DELETE FROM app_user WHERE account_id = $1`,
-			`DELETE FROM branch WHERE account_id = $1`,
-			`DELETE FROM account WHERE id = $1`,
-		}
-		for _, query := range cleanupQueries {
-			_, _ = adminPool.Exec(context.Background(), query, accountID)
-		}
-	})
-
-	db := &DB{app: appPool, admin: adminPool}
 	repo := NewProductPriceRepository()
 	tenant := domain.Tenant{AccountID: accountID, BranchID: branchID, UserID: userID, Role: domain.UserRoleAdmin}
 	firstAt := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
@@ -86,7 +51,7 @@ func TestProductPriceRepository_ApplyImport_VersionsPricesAtomically(t *testing.
 		t.Fatalf("second ApplyImport() = %v", err)
 	}
 
-	rows, err := adminPool.Query(ctx,
+	rows, err := db.CrossAccount().Query(ctx,
 		`SELECT price::text, valid_from, valid_to
 		 FROM product_price
 		 WHERE account_id = $1 AND branch_id = $2 AND product_id = $3
@@ -129,8 +94,13 @@ func TestProductPriceRepository_ApplyImport_VersionsPricesAtomically(t *testing.
 	}); err != nil {
 		t.Fatalf("ListCurrentForExport() = %v", err)
 	}
-	if exported.BranchName != "Test branch" || len(exported.Rows) != 1 {
-		t.Fatalf("exported = %#v, want one row for Test branch", exported)
+	var branchName string
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT name FROM branch WHERE id = $1`, branchID).Scan(&branchName); err != nil {
+		t.Fatalf("read branch name: %v", err)
+	}
+	if exported.BranchName != branchName || len(exported.Rows) != 1 {
+		t.Fatalf("exported = %#v, want one row for %s", exported, branchName)
 	}
 	if exported.Rows[0].Code != "TEST-PRICE" || exported.Rows[0].Price != "120.00" {
 		t.Errorf("exported row = %#v, want the current price only", exported.Rows[0])
@@ -144,9 +114,8 @@ func TestProductPriceRepository_ApplyImport_VersionsPricesAtomically(t *testing.
 func priceCleanup(t *testing.T, db *DB, productID uuid.UUID) {
 	t.Helper()
 	t.Cleanup(func() {
-		ctx := context.Background()
-		_, _ = db.CrossAccount().Exec(ctx, `DELETE FROM product_price WHERE product_id = $1`, productID)
-		_, _ = db.CrossAccount().Exec(ctx, `DELETE FROM branch_product WHERE product_id = $1`, productID)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM product_price WHERE product_id = $1`, productID)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM branch_product WHERE product_id = $1`, productID)
 	})
 }
 
@@ -497,15 +466,15 @@ func TestBranchProductRepository_ListByProductSpansBranchesWhenUnfiltered(t *tes
 	productA := seedProduct(t, db, accountA, "Cemento Portland 50kg")
 	priceCleanup(t, db, productA)
 
+	// No teardown of its own: the account's removes every branch it has, and runs after the
+	// rows that reference them. A second owner for the same row is what puts a delete ahead of
+	// the foreign key that still points at it.
 	secondBranch := uuid.New()
 	if _, err := db.CrossAccount().Exec(ctx,
 		`INSERT INTO branch (id, account_id, name) VALUES ($1, $2, 'Corralon A Moron')`,
 		secondBranch, accountA); err != nil {
 		t.Fatalf("seed second branch: %v", err)
 	}
-	t.Cleanup(func() {
-		_, _ = db.CrossAccount().Exec(context.Background(), `DELETE FROM branch WHERE id = $1`, secondBranch)
-	})
 
 	repo := NewBranchProductRepository()
 	tenant := domain.Tenant{AccountID: accountA}
