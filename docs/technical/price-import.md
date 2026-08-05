@@ -29,19 +29,19 @@ The first sheet of an `.xlsx`, or the body of a `.csv`, needs these columns:
 | `codigo`        | yes      | Product code, unique within the account.                 |
 | `precio`        | yes      | Sale price above zero, two decimals.                     |
 | `precio_minimo` | no       | The discount engine's floor; never above the sale price. |
-| `moneda`        | no       | Three-letter ISO code; defaults to `ARS`.                |
-| `condiciones`   | no       | Free-text condition, up to 255 characters.               |
 
 The exported file adds an informational `producto` column. The import ignores it and matches
 each row by `codigo` alone. The export carries only active products that already have a price
 in force for the branch, so dropping a row before importing is how you leave a product alone.
 
-The equivalent English headers are accepted too: `code`, `price`, `min_price`, `currency` and
-`conditions`. CSV files may use a comma or a semicolon as the separator.
+Currency is not a spreadsheet field. A replacement price preserves the product's current
+currency; the first price for a product defaults to `ARS`.
 
-The whole file is refused for confirmation when it carries duplicate codes, unknown or
-inactive products, invalid amounts, a minimum above the sale price, an invalid currency, or
-conditions that are too long.
+The equivalent English headers are accepted too: `code`, `price` and `min_price`. CSV files may
+use a comma or a semicolon as the separator.
+
+The whole file is refused for confirmation when it carries duplicate codes, unknown or inactive
+products, invalid amounts, or a minimum above the sale price.
 
 ## Configuration
 

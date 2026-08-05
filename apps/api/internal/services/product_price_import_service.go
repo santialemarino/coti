@@ -13,8 +13,6 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
 
-const defaultImportCurrency = "ARS"
-
 type productPriceImportRepository interface {
 	ListCurrentForExport(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (*domain.ProductPriceExport, error)
 	GetByCodes(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, codes []string) (map[string]domain.ProductPriceLookup, error)
@@ -94,7 +92,6 @@ func (s *ProductPriceImportService) Confirm(
 			rowNumber: i + 2,
 			code:      input.Code,
 			price:     input.Price,
-			currency:  input.Currency,
 		}
 		if input.MinPrice != nil {
 			rawRows[i].minPrice = *input.MinPrice
@@ -168,7 +165,11 @@ func (s *ProductPriceImportService) prepare(
 func preparePriceImportRow(
 	raw priceImportRawRow, products map[string]domain.ProductPriceLookup, seen map[string]int,
 ) domain.ProductPriceImportRow {
-	row := domain.ProductPriceImportRow{RowNumber: raw.rowNumber, Code: strings.TrimSpace(raw.code)}
+	row := domain.ProductPriceImportRow{
+		RowNumber: raw.rowNumber,
+		Code:      strings.TrimSpace(raw.code),
+		Currency:  domain.DefaultCurrency,
+	}
 	if row.Code == "" {
 		row.Errors = append(row.Errors, "missing_code")
 	} else {
@@ -183,6 +184,9 @@ func preparePriceImportRow(
 			row.ProductName = product.ProductName
 			row.CurrentPrice = product.CurrentPrice
 			row.CurrentMinPrice = product.CurrentMinPrice
+			if product.CurrentCurrency != nil {
+				row.Currency = *product.CurrentCurrency
+			}
 		}
 	}
 
@@ -203,14 +207,6 @@ func preparePriceImportRow(
 				row.Errors = append(row.Errors, "min_price_above_price")
 			}
 		}
-	}
-
-	row.Currency = strings.ToUpper(strings.TrimSpace(raw.currency))
-	if row.Currency == "" {
-		row.Currency = defaultImportCurrency
-	}
-	if !currencyPattern.MatchString(row.Currency) {
-		row.Errors = append(row.Errors, "invalid_currency")
 	}
 
 	return row

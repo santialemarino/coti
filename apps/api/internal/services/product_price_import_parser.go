@@ -22,7 +22,6 @@ type priceImportRawRow struct {
 	code      string
 	price     string
 	minPrice  string
-	currency  string
 }
 
 type xlsxCell struct {
@@ -278,7 +277,6 @@ func mapPriceImportRows(records [][]string) ([]priceImportRawRow, error) {
 		return nil, fmt.Errorf("spreadsheet needs codigo and precio columns")
 	}
 	minPriceIndex, _ := firstHeader(headers, "precio_minimo", "min_price", "minimum_price")
-	currencyIndex, _ := firstHeader(headers, "moneda", "currency")
 
 	rows := make([]priceImportRawRow, 0, len(records)-1)
 	for index, record := range records[1:] {
@@ -290,7 +288,6 @@ func mapPriceImportRows(records [][]string) ([]priceImportRawRow, error) {
 			code:      valueAt(record, codeIndex),
 			price:     valueAt(record, priceIndex),
 			minPrice:  valueAt(record, minPriceIndex),
-			currency:  valueAt(record, currencyIndex),
 		})
 	}
 	if len(rows) == 0 {

@@ -11,7 +11,7 @@ import (
 )
 
 var priceExportHeaders = []string{
-	"codigo", "producto", "precio", "precio_minimo", "moneda",
+	"codigo", "producto", "precio", "precio_minimo",
 }
 
 var priceExportInstructions = []string{
@@ -19,7 +19,6 @@ var priceExportInstructions = []string{
 	"Las columnas codigo y precio son obligatorias.",
 	"El precio y el precio mínimo deben ser mayores a cero y admitir hasta 2 decimales.",
 	"El precio mínimo no puede superar el precio de venta.",
-	"La moneda usa un código de 3 letras; si queda vacía, se toma ARS.",
 	"La columna producto es informativa. La importación identifica cada producto por codigo.",
 	"Eliminá del archivo las filas que no quieras actualizar.",
 	"La actualización crea una nueva vigencia y no modifica cotizaciones anteriores.",
@@ -60,7 +59,7 @@ func buildPriceExportSheet(export domain.ProductPriceExport) string {
 	sheet.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`)
 	sheet.WriteString(`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`)
 	sheet.WriteString(`<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`)
-	sheet.WriteString(`<cols><col min="1" max="1" width="20" customWidth="1"/><col min="2" max="2" width="38" customWidth="1"/><col min="3" max="5" width="18" customWidth="1"/></cols><sheetData>`)
+	sheet.WriteString(`<cols><col min="1" max="1" width="20" customWidth="1"/><col min="2" max="2" width="38" customWidth="1"/><col min="3" max="4" width="18" customWidth="1"/></cols><sheetData>`)
 	writeXLSXRow(&sheet, 1, priceExportHeaders, true)
 	for index, row := range export.Rows {
 		writeXLSXRow(&sheet, index+2, []string{
@@ -68,11 +67,10 @@ func buildPriceExportSheet(export domain.ProductPriceExport) string {
 			row.ProductName,
 			row.Price,
 			optionalString(row.MinPrice),
-			row.Currency,
 		}, false)
 	}
 	sheet.WriteString(`</sheetData>`)
-	sheet.WriteString(fmt.Sprintf(`<autoFilter ref="A1:E%d"/>`, len(export.Rows)+1))
+	sheet.WriteString(fmt.Sprintf(`<autoFilter ref="A1:D%d"/>`, len(export.Rows)+1))
 	sheet.WriteString(`</worksheet>`)
 	return sheet.String()
 }

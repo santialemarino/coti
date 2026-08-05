@@ -61,7 +61,7 @@ func TestProductPriceImportService_Preview_ReportsEveryInvalidRow(t *testing.T) 
 		return time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
 	})
 	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(), BranchID: uuid.New()}
-	csvFile := "codigo;precio;precio_minimo;moneda\nCEM-001;10000;11000;ARS\nDESCONOCIDO;abc;;ARS"
+	csvFile := "codigo;precio;precio_minimo\nCEM-001;10000;11000\nDESCONOCIDO;abc;"
 
 	preview, err := service.Preview(context.Background(), tenant, "precios.csv", strings.NewReader(csvFile))
 	if err != nil {
@@ -81,15 +81,19 @@ func TestProductPriceImportService_Preview_ReportsEveryInvalidRow(t *testing.T) 
 func TestProductPriceImportService_Confirm_AppliesReviewedRows(t *testing.T) {
 	t.Parallel()
 	productID := uuid.New()
+	currency := "USD"
 	repo := &priceImportTestRepository{products: map[string]domain.ProductPriceLookup{
-		"CEM-001": {ProductID: productID, Code: "CEM-001", ProductName: "Cemento"},
+		"CEM-001": {
+			ProductID: productID, Code: "CEM-001", ProductName: "Cemento",
+			CurrentCurrency: &currency,
+		},
 	}}
 	service := NewProductPriceImportService(priceImportTestDB{}, repo, nil)
 	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(), BranchID: uuid.New()}
 	minPrice := "9.500,00"
 
 	count, err := service.Confirm(context.Background(), tenant, []domain.ProductPriceImportInput{{
-		Code: "CEM-001", Price: "$ 10.000,00", MinPrice: &minPrice, Currency: "ars",
+		Code: "CEM-001", Price: "$ 10.000,00", MinPrice: &minPrice,
 	}})
 	if err != nil {
 		t.Fatalf("Confirm() = %v, want no error", err)
@@ -100,6 +104,28 @@ func TestProductPriceImportService_Confirm_AppliesReviewedRows(t *testing.T) {
 	if repo.applied[0].Price != "10000.00" || *repo.applied[0].MinPrice != "9500.00" {
 		t.Errorf("applied = %#v, want normalized decimal strings", repo.applied[0])
 	}
+	if repo.applied[0].Currency != currency {
+		t.Errorf("currency = %q, want current currency %q", repo.applied[0].Currency, currency)
+	}
+}
+
+func TestProductPriceImportService_Preview_DefaultsCurrencyWithoutCurrentPrice(t *testing.T) {
+	t.Parallel()
+	productID := uuid.New()
+	repo := &priceImportTestRepository{products: map[string]domain.ProductPriceLookup{
+		"CEM-001": {ProductID: productID, Code: "CEM-001", ProductName: "Cemento"},
+	}}
+	service := NewProductPriceImportService(priceImportTestDB{}, repo, nil)
+	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(), BranchID: uuid.New()}
+	csvFile := "codigo;precio;moneda\nCEM-001;10000;USD"
+
+	preview, err := service.Preview(context.Background(), tenant, "precios.csv", strings.NewReader(csvFile))
+	if err != nil {
+		t.Fatalf("Preview() = %v, want no error", err)
+	}
+	if preview.Rows[0].Currency != domain.DefaultCurrency {
+		t.Errorf("currency = %q, want %q", preview.Rows[0].Currency, domain.DefaultCurrency)
+	}
 }
 
 func TestProductPriceImportService_Export_CreatesImportableWorkbook(t *testing.T) {
@@ -109,7 +135,7 @@ func TestProductPriceImportService_Export_CreatesImportableWorkbook(t *testing.T
 		BranchName: "Villa Bosch",
 		Rows: []domain.ProductPriceExportRow{{
 			Code: "CEM-001", ProductName: "Cemento", Price: "10000.00",
-			MinPrice: &minPrice, Currency: "ARS",
+			MinPrice: &minPrice,
 		}},
 	}}
 	service := NewProductPriceImportService(priceImportTestDB{}, repo, nil)
@@ -129,8 +155,12 @@ func TestProductPriceImportService_Export_CreatesImportableWorkbook(t *testing.T
 	if len(rows) != 1 || rows[0].code != "CEM-001" || rows[0].price != "10000.00" {
 		t.Fatalf("rows = %#v, want the exported price row", rows)
 	}
-	if rows[0].minPrice != "9500.00" || rows[0].currency != "ARS" {
+	if rows[0].minPrice != "9500.00" {
 		t.Errorf("row = %#v, want all editable values preserved", rows[0])
+	}
+	wantHeaders := []string{"codigo", "producto", "precio", "precio_minimo"}
+	if strings.Join(priceExportHeaders, ",") != strings.Join(wantHeaders, ",") {
+		t.Errorf("headers = %#v, want %#v", priceExportHeaders, wantHeaders)
 	}
 }
 

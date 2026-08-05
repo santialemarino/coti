@@ -8,7 +8,6 @@ import (
 )
 
 var decimalPattern = regexp.MustCompile(`^\d{1,12}(?:\.\d{1,2})?$`)
-var currencyPattern = regexp.MustCompile(`^[A-Z]{3}$`)
 
 func normalizeMoney(raw string) (string, *big.Rat, error) {
 	value := strings.NewReplacer("$", "", "\u00a0", "", " ", "").Replace(strings.TrimSpace(raw))

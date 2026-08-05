@@ -67,7 +67,6 @@ type ProductPriceExportRow struct {
 	ProductName string
 	Price       string
 	MinPrice    *string
-	Currency    string
 }
 
 // ProductPriceImportRow is one spreadsheet row prepared for human review.
@@ -97,7 +96,6 @@ type ProductPriceImportInput struct {
 	Code     string
 	Price    string
 	MinPrice *string
-	Currency string
 }
 
 // ProductPriceImportPreview summarizes a spreadsheet before it can be confirmed.
