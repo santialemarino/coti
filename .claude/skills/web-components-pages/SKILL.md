@@ -136,6 +136,12 @@ The stack is **react-hook-form + zod** with the shared `Form` primitives from
   labels cause — which plain CSS cannot do at all, because `width: auto` is not transitionable.
 - **`Button` defaults to `type="button"`.** A submit opts in with `type="submit"`, so a button added
   to a form can never submit it by accident. `asChild` passes `type` through untouched.
+- **One `useTransition` per action, never one shared between several.** A shared transition only
+  reports that _something_ is running, so a screen with export / preview / confirm buttons lights
+  all three at once. **A flag naming the running action does not fix it:** a form `action` already
+  runs inside a transition, and a state update made there does not commit until that transition
+  ends, so the flag arrives after the spinner is gone. Give each action its own hook and disable on
+  the union when they are mutually exclusive.
 
 ## Feedback: toast, callout, or field message
 
