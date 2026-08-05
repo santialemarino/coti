@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { cache } from 'react';
+
 import { apiRequest } from '@/lib/api/client';
 
 // --- Raw types (API JSON shape, snake_case) ---
@@ -44,7 +46,14 @@ function mapBranch(raw: BranchRaw): Branch {
 
 // --- API functions ---
 
-export async function getBranches(): Promise<Branch[]> {
-  const { items } = await apiRequest<BranchListRaw>({ path: '/v1/branches' });
+/*
+ * The caller's branch reach, which is every active branch of the account for an admin and the
+ * assigned ones for a seller. Deliberately not branch-scoped: a stale cookie would make the API
+ * refuse the one list that lets the caller switch away from it, and there would be no way back.
+ *
+ * Memoised per request because the shell and the page under it both need it.
+ */
+export const getBranches = cache(async (): Promise<Branch[]> => {
+  const { items } = await apiRequest<BranchListRaw>({ path: '/v1/branches', branchScoped: false });
   return items.map(mapBranch);
-}
+});

@@ -45,6 +45,9 @@ an over-long cookie costs nothing but a wasted round trip.
   accounts for what a cookie cannot: a bumped session epoch, a deactivated user, a revoked
   token. `startSession` / `clearSession` / `endSession` own the cookie writes.
 
+`getSession()` and `getBranches()` are wrapped in React's `cache()`, so the shell, the section
+layout and the page under them share one round trip instead of three.
+
 ## The gate
 
 `middleware.ts` runs on everything but static assets and decides reachability:
@@ -84,6 +87,35 @@ A layout cannot write cookies, so redirecting with the dead cookies still set wo
 middleware bounce the caller back to a page that rejects them, forever. The route handler
 clears the cookies and then sends them to login. `/session-ended` is public and, unlike the
 other public routes, is exempt from the signed-in bounce for the same reason.
+
+## The active branch
+
+A fourth cookie, `coti_branch`, holds the branch the caller is working in. `lib/auth/branch.ts`
+owns it and the header switcher is its only writer; every authenticated call then inherits it as
+`X-Branch-Id` without a screen deciding its own scope. Its options are the session's, so a
+branch chosen in a plain session dies with the browser and `clearSession` drops it with the rest
+— a choice that outlived its session would greet the next user on that machine.
+
+Two rules make it safe, and both are the opposite of the obvious thing:
+
+- **The cookie is never validated on read, and never discarded for looking wrong.** No branch
+  header means account-wide for an admin, so dropping a suspicious value _widens_ their scope.
+  It is forwarded as-is and the API — which checks it against the account and the caller's
+  assignments on every request — answers 403. Validation happens once, on the **write**:
+  `setActiveBranch` refuses a branch outside `GET /v1/branches`, so the cookie can never name
+  one the caller never had.
+- **`GET /v1/me` and `GET /v1/branches` opt out of the header** via `branchScoped: false` on the
+  client. A stale cookie on identity would 403 the session itself and sign the caller out
+  instead of failing one screen; a stale cookie on the branch list would 403 the very list
+  needed to switch away from it, with no way back. Everything else inherits by default.
+
+A caller reaching a single branch is shown no switcher: that branch is their whole reach and the
+API scopes to it with or without the header. A screen that genuinely needs one branch named — the
+price import — resolves the active branch, falling back to the sole reachable one.
+
+`requireAdmin()` guards an admin-only page with **`notFound()`**, not a 403 screen, so a seller
+who guesses the URL is not told the page is there. The API refuses them regardless; this only
+decides what the refusal looks like.
 
 ## The browser's address is forwarded
 
@@ -135,6 +167,9 @@ bearer, `X-Branch-Id`, and the error vocabulary, decided once instead of per scr
 - The client carries **transport only**. Turning the API's snake_case JSON into camelCase is
   each `lib/api/<feature>` module's job, with explicit raw types and a mapper per entity.
   Request bodies, query params and headers stay snake_case: that is the wire contract.
+- `X-Branch-Id` comes from the active branch by default. `branchScoped: false` opts a call out
+  and `branchId` pins it to a specific branch — see "The active branch" above for why each
+  exists.
 
 `app/error.tsx` is the recoverable state for anything a screen did not catch, so an unexpected
 response leaves the user with a retry rather than a broken page.

@@ -4,9 +4,11 @@ import { ApiError, apiRequest, errorCodeOf } from '@/lib/api/client';
 
 vi.mock('@/lib/auth/session', () => ({ getAccessToken: vi.fn() }));
 vi.mock('@/lib/auth/client-address', () => ({ clientAddress: vi.fn() }));
+vi.mock('@/lib/auth/branch', () => ({ getActiveBranchId: vi.fn() }));
 
 const { getAccessToken } = await import('@/lib/auth/session');
 const { clientAddress } = await import('@/lib/auth/client-address');
+const { getActiveBranchId } = await import('@/lib/auth/branch');
 
 const TOKEN = 'access-token';
 
@@ -31,6 +33,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(responds('{}')));
   vi.mocked(getAccessToken).mockResolvedValue(TOKEN);
   vi.mocked(clientAddress).mockResolvedValue(undefined);
+  vi.mocked(getActiveBranchId).mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -121,15 +124,40 @@ describe('apiRequest headers', () => {
     expect(getAccessToken).not.toHaveBeenCalled();
   });
 
-  it('names the active branch when one is given', async () => {
-    await apiRequest({ path: '/v1/products', branchId: 'branch-1' });
+  // Inheriting the caller's branch is what stops every screen re-deciding its own scope.
+  it("names the caller's active branch without being asked", async () => {
+    vi.mocked(getActiveBranchId).mockResolvedValue('branch-1');
+    await apiRequest({ path: '/v1/products' });
     expect(headerOf('X-Branch-Id')).toBe('branch-1');
+  });
+
+  // A write prepared for one branch must land there even if the caller switched in between.
+  it('lets an explicit branch pin the request over the active one', async () => {
+    vi.mocked(getActiveBranchId).mockResolvedValue('branch-1');
+    await apiRequest({ path: '/v1/product-prices/import/confirm', branchId: 'branch-2' });
+    expect(headerOf('X-Branch-Id')).toBe('branch-2');
   });
 
   // Absent means account-wide for an admin and the assigned set for a seller, so an empty
   // value must not be sent as if it were a choice.
   it('omits the branch header when none is active', async () => {
     await apiRequest({ path: '/v1/products' });
+    expect(headerOf('X-Branch-Id')).toBeNull();
+  });
+
+  /*
+   * Identity and the branch list opt out, and they must: a stale cookie would 403 the caller's
+   * own identity and sign them out, and 403 the very list they need to switch away from it.
+   */
+  it('sends no branch on a call that opted out, and does not even read one', async () => {
+    vi.mocked(getActiveBranchId).mockResolvedValue('branch-1');
+    await apiRequest({ path: '/v1/me', branchScoped: false });
+    expect(headerOf('X-Branch-Id')).toBeNull();
+    expect(getActiveBranchId).not.toHaveBeenCalled();
+  });
+
+  it('ignores an explicit branch on a call that opted out', async () => {
+    await apiRequest({ path: '/v1/branches', branchScoped: false, branchId: 'branch-1' });
     expect(headerOf('X-Branch-Id')).toBeNull();
   });
 

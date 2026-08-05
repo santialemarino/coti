@@ -21,6 +21,9 @@ export const ACCESS_COOKIE = 'coti_access_token';
 export const REFRESH_COOKIE = 'coti_refresh_token';
 // Marks the session as remembered, so a renewal in middleware keeps it that way.
 export const REMEMBER_COOKIE = 'coti_remember';
+// The branch every request is scoped to. Named here rather than beside its reader so the
+// gate, which cannot import server-only, can clear it alongside the session.
+export const BRANCH_COOKIE = 'coti_branch';
 
 // httpOnly keeps the token out of reach of client code. lax still sends it on a
 // top-level navigation, which is what following a link from a mail client is.

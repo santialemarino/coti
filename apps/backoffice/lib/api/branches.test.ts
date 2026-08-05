@@ -69,12 +69,17 @@ describe('getBranches', () => {
     ]);
   });
 
-  // Collections come wrapped so a list can grow pagination without breaking its callers,
-  // which is exactly the shape branches.ts once got wrong by typing the response as an array.
-  it('reads the items envelope rather than a bare array', async () => {
+  /*
+   * Collections come wrapped so a list can grow pagination without breaking its callers, which
+   * is exactly the shape branches.ts once got wrong by typing the response as an array.
+   *
+   * And the list must never carry the active branch: a cookie the API would refuse turns this
+   * into a 403, leaving the switcher that could fix it with nothing to show and no way back.
+   */
+  it('reads the items envelope, and asks without naming a branch', async () => {
     vi.mocked(apiRequest).mockResolvedValue({ items: [] });
 
     await expect(getBranches()).resolves.toEqual([]);
-    expect(apiRequest).toHaveBeenCalledWith({ path: '/v1/branches' });
+    expect(apiRequest).toHaveBeenCalledWith({ path: '/v1/branches', branchScoped: false });
   });
 });

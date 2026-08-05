@@ -46,6 +46,8 @@ interface ComboboxProps {
   id?: string;
   className?: string;
   contentClassName?: string;
+  /* The trigger names itself after the current selection, so a standalone one needs this. */
+  'aria-label'?: string;
   'aria-invalid'?: boolean;
   'aria-describedby'?: string;
 }
@@ -75,6 +77,7 @@ function Combobox({
   id,
   className,
   contentClassName,
+  'aria-label': ariaLabel,
   'aria-invalid': ariaInvalid,
   'aria-describedby': ariaDescribedBy,
 }: ComboboxProps) {
@@ -131,6 +134,7 @@ function Combobox({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          aria-label={ariaLabel}
           aria-invalid={ariaInvalid}
           aria-describedby={ariaDescribedBy}
           disabled={disabled}

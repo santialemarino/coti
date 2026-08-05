@@ -22,6 +22,13 @@
       "ADMIN": "Administrador",
       "SELLER": "Vendedor"
     },
+    "branch": {
+      "label": "Sucursal activa",
+      "all": "Todas las sucursales",
+      "placeholder": "Seleccioná una sucursal",
+      "search": "Buscá una sucursal...",
+      "empty": "No encontramos esa sucursal."
+    },
     "retry": "Reintentar",
     "form": {
       "togglePassword": "Mostrar u ocultar la contraseña",
@@ -214,20 +221,29 @@
     "stock": "Stock",
     "price": "Precio"
   },
+  "settings": {
+    "title": "Configuración",
+    "nav": {
+      "password": "Contraseña",
+      "prices": "Precios y condiciones"
+    }
+  },
   "priceImport": {
     "title": "Precios y condiciones",
     "description": "Actualizá los precios vigentes de una sucursal. Primero revisás el archivo y después confirmás los cambios.",
+    "targetBranch": "Los cambios se aplican en la sucursal {name}. Cambiala desde el selector del encabezado.",
+    "noBranch": {
+      "title": "Elegí una sucursal",
+      "description": "Los precios se cargan por sucursal. Seleccioná una en el encabezado para actualizarlos o exportarlos."
+    },
     "form": {
-      "branch": {
-        "label": "Sucursal",
-        "placeholder": "Seleccioná una sucursal"
-      },
       "file": {
         "label": "Archivo de precios"
       },
       "preview": "Previsualizar",
       "previewing": "Procesando…",
-      "export": "Exportar precios"
+      "export": "Exportar precios",
+      "exporting": "Exportando…"
     },
     "formatHint": "Usá un archivo .xlsx o .csv con las columnas codigo y precio. También podés incluir precio_minimo, moneda y condiciones.",
     "summary": "Filas válidas: {valid}. Filas con errores: {invalid}.",
@@ -237,8 +253,7 @@
     "valid": "Lista para actualizar",
     "success": "Se actualizaron {count, plural, one {# producto} other {# productos}}.",
     "errors": {
-      "invalidFile": "Seleccioná una sucursal y un archivo válido con el formato indicado.",
-      "selectBranch": "Seleccioná una sucursal para exportar sus precios.",
+      "invalidFile": "Seleccioná un archivo válido con el formato indicado.",
       "noPrices": "La sucursal todavía no tiene precios vigentes para exportar.",
       "unauthorized": "Tu sesión no tiene permiso para actualizar precios. Ingresá con un usuario administrador.",
       "unexpected": "No pudimos procesar la actualización. Intentá de nuevo."
