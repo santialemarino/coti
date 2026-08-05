@@ -9,6 +9,7 @@ export const ROUTES = {
   sessionEnded: '/session-ended',
   changePassword: '/settings/password',
   priceSettings: '/settings/prices',
+  branchSettings: '/settings/branches',
 } as const;
 
 // Reachable without a session. Anything else is behind the gate.

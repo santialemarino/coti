@@ -76,6 +76,10 @@
       "title": "Cambiar contraseña",
       "description": "Cambiá tu contraseña presentando la actual."
     },
+    "branchSettings": {
+      "title": "Sucursales",
+      "description": "Alta y administración de las sucursales del corralón."
+    },
     "priceSettings": {
       "title": "Precios y condiciones",
       "description": "Actualización revisada de precios por sucursal."
@@ -305,7 +309,72 @@
     "title": "Configuración",
     "nav": {
       "password": "Contraseña",
+      "branches": "Sucursales",
       "prices": "Precios y condiciones"
+    }
+  },
+  "branches": {
+    "title": "Sucursales",
+    "description": "Cada sucursal opera con su propia disponibilidad, sus precios y sus canales. El catálogo de productos es de toda la cuenta.",
+    "add": "Agregar sucursal",
+    "cancel": "Cancelar",
+    "table": {
+      "caption": "Sucursales activas del corralón",
+      "name": "Nombre",
+      "address": "Dirección",
+      "expiry": "Vencimiento",
+      "actions": "Acciones",
+      "noAddress": "Sin dirección"
+    },
+    "expiryDays": "{count, plural, one {# día} other {# días}}",
+    "empty": {
+      "title": "Todavía no hay sucursales",
+      "description": "Agregá la primera para empezar a operar."
+    },
+    "create": {
+      "title": "Agregar sucursal",
+      "description": "Va a quedar disponible con el catálogo de la cuenta ya cargado.",
+      "submit": "Crear sucursal",
+      "submitting": "Creando…"
+    },
+    "edit": {
+      "action": "Editar",
+      "title": "Editar sucursal",
+      "description": "Los cambios no afectan a las demás sucursales.",
+      "submit": "Guardar cambios",
+      "submitting": "Guardando…"
+    },
+    "close": {
+      "action": "Cerrar",
+      "title": "Cerrar la sucursal",
+      "description": "Se va a cerrar «{name}». Dejá de verla en el listado y nadie va a poder operar en ella.",
+      "confirm": "Cerrar sucursal",
+      "confirming": "Cerrando…"
+    },
+    "name": {
+      "label": "Nombre",
+      "placeholder": "Ingresá el nombre de la sucursal",
+      "required": "Ingresá el nombre de la sucursal."
+    },
+    "address": {
+      "label": "Dirección",
+      "placeholder": "Ingresá la dirección de la sucursal"
+    },
+    "defaultExpiryDays": {
+      "label": "Días de vencimiento de las cotizaciones",
+      "hint": "Por defecto {count} días. Cada sucursal puede usar el suyo.",
+      "outOfRange": "Ingresá un número entre 1 y 365."
+    },
+    "tooLong": "Máximo 255 caracteres.",
+    "created": "Creamos la sucursal.",
+    "updated": "Guardamos los cambios.",
+    "closed": "Cerramos la sucursal.",
+    "errors": {
+      "lastActive": "Es la única sucursal activa del corralón. Abrí otra antes de cerrarla, porque la cuenta necesita al menos una para operar.",
+      "notFound": "Esa sucursal ya no existe. Actualizá el listado.",
+      "unauthorized": "Tu sesión no tiene permiso para administrar sucursales. Ingresá con un usuario administrador.",
+      "invalid": "Revisá los datos de la sucursal e intentá de nuevo.",
+      "unexpected": "No pudimos guardar la sucursal. Intentá de nuevo."
     }
   },
   "priceImport": {

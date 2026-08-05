@@ -168,6 +168,14 @@ After editing a `packages/ui` component's classNames, rebuild it
 classes never reach the app and the change silently does nothing. `pnpm dev` builds
 `@repo/ui` before starting the apps, so a cold start can't race it.
 
+**Its build declares the app sources as inputs** (`packages/ui/turbo.json`), because the CSS is
+produced by scanning them. A task cached on its own package alone is wrong here: a class used for
+the first time in app code would not invalidate it, so `pnpm build` would hand back a bundle
+missing that class while reporting success. The failure is local-only — CI has no cache and always
+scans — which is exactly what makes it easy to verify a screen against a stale bundle and see a
+layout that will look different in production. If a class is missing, confirm it **positively**
+(list what the bundle does contain) before doubting anything else.
+
 ## Directory layout — apps/backoffice/
 
 ```

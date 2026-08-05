@@ -172,6 +172,28 @@ abandons the wizard has created nothing.
 On 201 the answer carries a token pair, so the action opens a session and sends the caller to
 `/verify-email`: signed in, with an address the API has not confirmed yet.
 
+## Branch administration
+
+`/settings/branches` is admin-gated by `requireAdmin()` and lists the account's branches, opens
+one, edits one and closes one. Two things about it are decided by the API rather than by taste:
+
+- **It lists active branches only, so it cannot reopen a closed one.** `GET /v1/branches` filters
+  `is_active = TRUE` — the same predicate that keeps a closed branch out of the switcher and out of
+  `IsAccessibleBy` — so a closed branch cannot be listed, and therefore cannot be selected to
+  reopen. `PUT /v1/branches/:id` accepts `is_active`, so the capability exists on the API; what is
+  missing is a way to see a closed branch at all.
+- **Closing the active branch drops the selection with it.** The API refuses a branch that is not
+  active, so a `coti_branch` cookie naming the branch just closed would answer 403 on every
+  branch-scoped read afterwards, and the caller would be locked out of the app until they noticed
+  the switcher. The action clears the cookie when the two ids match, and only on success.
+
+The refusal to close the last active branch is a **422**, and it is the only 422 that route answers,
+which is why it maps to its own message. On creating and editing, a 422 means this form and the
+API's validation have drifted apart, so it reads as a generic validation problem instead.
+
+Both writes revalidate `'/'` with `'layout'` rather than the route: a branch that opens or closes
+changes the shell's switcher as much as the list, and the shell is not on this route's tree.
+
 ## The verification screen
 
 `/verify-email?token=…` is the second route the API mails into, alongside `/reset-password`.
