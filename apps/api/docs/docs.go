@@ -3189,6 +3189,7 @@ const docTemplate = `{
             ],
             "properties": {
                 "brand_color": {
+                    "description": "Hexadecimal, with three, four, six or eight digits behind a hash. Checked here because the\nwebapp renders a quote with it, not in whichever client happens to be writing it.",
                     "type": "string",
                     "maxLength": 32
                 },

@@ -76,6 +76,10 @@
       "title": "Cambiar contraseña",
       "description": "Cambiá tu contraseña presentando la actual."
     },
+    "accountSettings": {
+      "title": "Cuenta",
+      "description": "Datos del corralón y la marca que ve tu cliente."
+    },
     "branchSettings": {
       "title": "Sucursales",
       "description": "Alta y administración de las sucursales del corralón."
@@ -313,6 +317,7 @@
     "title": "Configuración",
     "nav": {
       "password": "Contraseña",
+      "account": "Cuenta",
       "branches": "Sucursales",
       "users": "Usuarios",
       "prices": "Precios y condiciones"
@@ -389,6 +394,52 @@
       "unauthorized": "Tu sesión no tiene permiso para administrar sucursales. Ingresá con un usuario administrador.",
       "invalid": "Revisá los datos de la sucursal e intentá de nuevo.",
       "unexpected": "No pudimos guardar la sucursal. Intentá de nuevo."
+    }
+  },
+  "account": {
+    "title": "Cuenta",
+    "description": "Los datos del corralón y la marca con la que tu cliente ve una cotización. Valen para toda la cuenta, no para una sucursal.",
+    "name": {
+      "label": "Nombre del corralón",
+      "placeholder": "Ingresá el nombre del corralón",
+      "hint": "Es el nombre que aparece en el backoffice y en lo que enviamos a tu cliente.",
+      "required": "Ingresá el nombre del corralón."
+    },
+    "legalName": {
+      "label": "Razón social",
+      "placeholder": "Ingresá la razón social"
+    },
+    "taxId": {
+      "label": "CUIT",
+      "placeholder": "Ingresá el CUIT"
+    },
+    "brand": {
+      "title": "Marca",
+      "description": "Con esto armamos las cotizaciones que ve tu cliente. Si lo dejás vacío usamos el diseño de Coti."
+    },
+    "brandLogoUrl": {
+      "label": "Logo",
+      "placeholder": "https://tucorralon.com/logo.png",
+      "hint": "Tiene que ser una imagen accesible desde internet.",
+      "open": "Verla",
+      "tooLong": "Máximo 512 caracteres.",
+      "invalid": "Ingresá una dirección web completa, con https:// adelante."
+    },
+    "brandColor": {
+      "label": "Color de la marca",
+      "placeholder": "#C2410C",
+      "hint": "En hexadecimal, como lo escribís en un diseño: #C2410C.",
+      "invalid": "Ingresá un color hexadecimal, por ejemplo #C2410C."
+    },
+    "tooLong": "Máximo 255 caracteres.",
+    "submit": "Guardar cambios",
+    "submitting": "Guardando…",
+    "saved": "Guardamos los datos del corralón.",
+    "errors": {
+      "invalid": "Revisá los datos del corralón e intentá de nuevo.",
+      "notFound": "No encontramos la cuenta. Volvé a iniciar sesión.",
+      "unauthorized": "Tu sesión no tiene permiso para editar la cuenta. Ingresá con un usuario administrador.",
+      "unexpected": "No pudimos guardar los datos. Intentá de nuevo."
     }
   },
   "users": {

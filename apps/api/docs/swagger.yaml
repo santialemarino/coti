@@ -545,6 +545,9 @@ definitions:
   dto.UpdateAccountRequest:
     properties:
       brand_color:
+        description: |-
+          Hexadecimal, with three, four, six or eight digits behind a hash. Checked here because the
+          webapp renders a quote with it, not in whichever client happens to be writing it.
         maxLength: 32
         type: string
       brand_logo_url:
