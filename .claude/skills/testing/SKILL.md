@@ -179,8 +179,9 @@ apps/api/
 - **Teardown ordering is a rule, not a detail.** `t.Cleanup` runs **after** the test body's `defer`s,
   so a pool a `defer` closed is already gone by the time the deletes run — register the close with
   `t.Cleanup` too. And a teardown that deletes real rows **never discards its error**, because a
-  failed delete leaves rows behind and the suite still passes: route every one through a helper that
-  fails the test when the delete cannot happen (`mustCleanup` is the one in `internal/repository`).
+  failed delete leaves rows behind and the suite still passes: route every one through `mustCleanup`,
+  which fails the test when the delete cannot happen — a function in `internal/repository`, a method
+  on `env` in `internal/integration`.
 - **One row, one owner.** Let the seed that created a row remove it. A second per-test teardown for
   the same row is what puts a delete ahead of a foreign key still pointing at it, and an inline delete
   at the end of a test body is skipped by any `t.Fatal` above it — so it belongs in `t.Cleanup` or

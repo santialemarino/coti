@@ -5,10 +5,12 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
@@ -28,11 +30,17 @@ func signupBody(suffix string) map[string]any {
 func (e *env) dropAccountByAdminEmail(t *testing.T, email string) {
 	t.Helper()
 	t.Cleanup(func() {
-		c := context.Background()
 		var accountID uuid.UUID
-		if err := e.db.CrossAccount().QueryRow(c,
+		err := e.db.CrossAccount().QueryRow(context.Background(),
 			`SELECT account_id FROM app_user WHERE lower(email) = lower($1)`, email,
-		).Scan(&accountID); err != nil {
+		).Scan(&accountID)
+		// No such user means the registration never happened, which is the ordinary outcome for
+		// every test that expects one to be refused. Any other error is not.
+		if errors.Is(err, pgx.ErrNoRows) {
+			return
+		}
+		if err != nil {
+			t.Errorf("find the account to clean up: %v", err)
 			return
 		}
 		for _, stmt := range []string{
@@ -45,7 +53,7 @@ func (e *env) dropAccountByAdminEmail(t *testing.T, email string) {
 			`DELETE FROM branch WHERE account_id = $1`,
 			`DELETE FROM account WHERE id = $1`,
 		} {
-			_, _ = e.db.CrossAccount().Exec(c, stmt, accountID)
+			e.mustCleanup(t, stmt, accountID)
 		}
 	})
 }
