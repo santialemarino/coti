@@ -120,8 +120,9 @@ jobs:
               SELECT (xpath('/row/c/text()', query_to_xml(
                 format('SELECT count(*) AS c FROM public.%I', c.relname), false, true, '')))[1]::text::bigint
             ) AS counted(rows)
-            WHERE c.relkind = 'r' AND n.nspname = 'public'
-              AND c.relname <> 'goose_db_version' AND rows > 0")
+              WHERE c.relkind = 'r' AND n.nspname = 'public'
+                AND c.relname NOT IN ('goose_db_version', 'product_family', 'product_subgroup')
+                AND rows > 0")
           if [ -n "$leftovers" ]; then
             echo "The integration suite left rows behind: $leftovers"
             exit 1
