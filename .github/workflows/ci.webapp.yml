@@ -4,6 +4,17 @@ run-name: 'CI Webapp by @${{ github.actor }}'
 
 on:
   workflow_call:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'apps/webapp/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'turbo.json'
+      - '.github/workflows/ci.webapp.yml'
   pull_request:
     branches:
       - main
