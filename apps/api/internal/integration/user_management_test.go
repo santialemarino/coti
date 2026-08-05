@@ -171,8 +171,8 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 	return &env{router: router, db: db, tokens: tokenService, mail: mailer}
 }
 
-// mustCleanup runs a teardown delete on the owner pool and fails the test when it cannot.
-// Discarding the error is how a whole account once survived a green run, and a cleanup belongs in
+// mustCleanup runs a teardown delete on the owner pool and fails the test when it cannot. A
+// discarded error leaves rows behind while the suite still passes, and a cleanup belongs in
 // t.Cleanup rather than a defer: cleanups run after the body's defers, so a pool one of them closed
 // is already gone.
 func (e *env) mustCleanup(t *testing.T, query string, args ...any) {
