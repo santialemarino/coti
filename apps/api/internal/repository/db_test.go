@@ -43,14 +43,9 @@ func testDB(t *testing.T) *DB {
 	return db
 }
 
-/*
- * mustCleanup runs a teardown delete and fails the test when it cannot. A cleanup is the only
- * thing between this suite and a developer's own database, so a silent one is how a whole
- * account survives a run — the test passes either way.
- *
- * Register it with t.Cleanup, never with defer: cleanups run after the body's deferred calls,
- * so a pool closed by a defer is already gone by the time the deletes run.
- */
+// mustCleanup runs a teardown delete and fails the test when it cannot. Discarding the error is
+// how a whole account once survived a green run, and a cleanup belongs in t.Cleanup rather than a
+// defer: cleanups run after the body's defers, so a pool one of them closed is already gone.
 func mustCleanup(t *testing.T, q Querier, query string, args ...any) {
 	t.Helper()
 	if _, err := q.Exec(context.Background(), query, args...); err != nil {

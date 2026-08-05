@@ -149,9 +149,8 @@ func TestProductRepository_ForeignKeysDoNotEnforceTheAccountBoundary(t *testing.
 			"service reads the product inside the tenant scope first", err)
 	}
 
-	// The row belongs to account B and hangs off account A's product, so neither seed owns it.
-	mustCleanup(t, db.CrossAccount(),
-		`DELETE FROM product_synonym WHERE account_id = $1 AND product_id = $2`, accountB, productA)
+	// No teardown for the row account B just wrote: the product's own removes its synonyms
+	// whatever account they belong to, and an inline delete would be skipped by any t.Fatal above.
 }
 
 func TestProductRepository_CreateRejectsADuplicateCode(t *testing.T) {
