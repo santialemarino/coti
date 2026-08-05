@@ -43,6 +43,16 @@ func testDB(t *testing.T) *DB {
 	return db
 }
 
+// mustCleanup runs a teardown delete and fails the test when it cannot. Discarding the error is
+// how a whole account once survived a green run, and a cleanup belongs in t.Cleanup rather than a
+// defer: cleanups run after the body's defers, so a pool one of them closed is already gone.
+func mustCleanup(t *testing.T, q Querier, query string, args ...any) {
+	t.Helper()
+	if _, err := q.Exec(context.Background(), query, args...); err != nil {
+		t.Errorf("cleanup %q: %v", query, err)
+	}
+}
+
 // seedAccount inserts an account with one branch through the owner pool and removes
 // both when the test ends.
 func seedAccount(t *testing.T, db *DB, name string) uuid.UUID {
@@ -60,9 +70,8 @@ func seedAccount(t *testing.T, db *DB, name string) uuid.UUID {
 	}
 
 	t.Cleanup(func() {
-		cleanupCtx := context.Background()
-		_, _ = db.CrossAccount().Exec(cleanupCtx, `DELETE FROM branch WHERE account_id = $1`, accountID)
-		_, _ = db.CrossAccount().Exec(cleanupCtx, `DELETE FROM account WHERE id = $1`, accountID)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM branch WHERE account_id = $1`, accountID)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM account WHERE id = $1`, accountID)
 	})
 	return accountID
 }
@@ -262,12 +271,11 @@ func seedUser(t *testing.T, db *DB, accountID uuid.UUID, role string) uuid.UUID 
 		t.Fatalf("seed user: %v", err)
 	}
 	t.Cleanup(func() {
-		ctx := context.Background()
-		_, _ = db.CrossAccount().Exec(ctx, `DELETE FROM user_branch WHERE user_id = $1`, id)
-		_, _ = db.CrossAccount().Exec(ctx, `DELETE FROM auth_token WHERE user_id = $1`, id)
-		_, _ = db.CrossAccount().Exec(ctx, `DELETE FROM notification WHERE user_id = $1`, id)
-		_, _ = db.CrossAccount().Exec(ctx, `DELETE FROM refresh_token WHERE user_id = $1`, id)
-		_, _ = db.CrossAccount().Exec(ctx, `DELETE FROM app_user WHERE id = $1`, id)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM user_branch WHERE user_id = $1`, id)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM auth_token WHERE user_id = $1`, id)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM notification WHERE user_id = $1`, id)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM refresh_token WHERE user_id = $1`, id)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM app_user WHERE id = $1`, id)
 	})
 	return id
 }
@@ -282,8 +290,8 @@ func seedExtraBranch(t *testing.T, db *DB, accountID uuid.UUID, name string) uui
 		t.Fatalf("seed extra branch: %v", err)
 	}
 	t.Cleanup(func() {
-		_, _ = db.CrossAccount().Exec(context.Background(), `DELETE FROM user_branch WHERE branch_id = $1`, id)
-		_, _ = db.CrossAccount().Exec(context.Background(), `DELETE FROM branch WHERE id = $1`, id)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM user_branch WHERE branch_id = $1`, id)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM branch WHERE id = $1`, id)
 	})
 	return id
 }

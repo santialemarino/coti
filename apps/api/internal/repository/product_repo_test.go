@@ -26,11 +26,10 @@ func seedProduct(t *testing.T, db *DB, accountID uuid.UUID, name string) uuid.UU
 		t.Fatalf("seed product: %v", err)
 	}
 	t.Cleanup(func() {
-		ctx := context.Background()
-		_, _ = db.CrossAccount().Exec(ctx,
+		mustCleanup(t, db.CrossAccount(),
 			`DELETE FROM product_alternative WHERE base_product_id = $1 OR alternative_product_id = $1`, id)
-		_, _ = db.CrossAccount().Exec(ctx, `DELETE FROM product_synonym WHERE product_id = $1`, id)
-		_, _ = db.CrossAccount().Exec(ctx, `DELETE FROM product WHERE id = $1`, id)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM product_synonym WHERE product_id = $1`, id)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM product WHERE id = $1`, id)
 	})
 	return id
 }
@@ -150,9 +149,8 @@ func TestProductRepository_ForeignKeysDoNotEnforceTheAccountBoundary(t *testing.
 			"service reads the product inside the tenant scope first", err)
 	}
 
-	// Cleanup: the row belongs to account B and hangs off account A's product.
-	_, _ = db.CrossAccount().Exec(ctx,
-		`DELETE FROM product_synonym WHERE account_id = $1 AND product_id = $2`, accountB, productA)
+	// No teardown for the row account B just wrote: the product's own removes its synonyms
+	// whatever account they belong to, and an inline delete would be skipped by any t.Fatal above.
 }
 
 func TestProductRepository_CreateRejectsADuplicateCode(t *testing.T) {
@@ -176,7 +174,7 @@ func TestProductRepository_CreateRejectsADuplicateCode(t *testing.T) {
 		t.Fatalf("Create() = %v, want no error", err)
 	}
 	t.Cleanup(func() {
-		_, _ = db.CrossAccount().Exec(context.Background(), `DELETE FROM product WHERE id = $1`, created)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM product WHERE id = $1`, created)
 	})
 
 	err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountA}, func(q Querier) error {
@@ -214,7 +212,7 @@ func TestProductRepository_CreateAllowsTheSameCodeInAnotherAccount(t *testing.T)
 			t.Fatalf("Create() for account %v = %v, want no error", accountID, err)
 		}
 		t.Cleanup(func() {
-			_, _ = db.CrossAccount().Exec(context.Background(), `DELETE FROM product WHERE id = $1`, created)
+			mustCleanup(t, db.CrossAccount(), `DELETE FROM product WHERE id = $1`, created)
 		})
 	}
 }
