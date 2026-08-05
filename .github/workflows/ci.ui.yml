@@ -4,6 +4,19 @@ run-name: 'CI UI by @${{ github.actor }}'
 
 on:
   workflow_call:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'packages/ui/**'
+      - 'packages/vitest-config/**'
+      - 'packages/eslint-config/**'
+      - 'packages/typescript-config/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'turbo.json'
+      - '.github/workflows/ci.ui.yml'
   pull_request:
     branches:
       - main

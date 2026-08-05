@@ -4,6 +4,13 @@ run-name: 'CI API by @${{ github.actor }}'
 
 on:
   workflow_call:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'apps/api/**'
+      - '.github/workflows/ci.api.yml'
   pull_request:
     branches:
       - main
