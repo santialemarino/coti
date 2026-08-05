@@ -1,0 +1,84 @@
+name: CI Scripts
+
+run-name: 'CI Scripts by @${{ github.actor }}'
+
+# The scripts operate the database with the owner role, and no other workflow watches this
+# path: without this one a change touching only scripts/ or the root manifest reaches dev with
+# zero checks run.
+on:
+  workflow_call:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'scripts/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/ci.scripts.yml'
+  pull_request:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'scripts/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/ci.scripts.yml'
+  workflow_dispatch:
+
+jobs:
+  ci-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Format check
+        run: pnpm prettier --check 'scripts/**' package.json
+      # The database-backed tests skip themselves without a connection string, so this job
+      # covers the half that needs nothing — argument parsing, which is what a mistyped
+      # command line hits first.
+      - name: Tests
+        run: pnpm test:scripts
+
+  # Separate job: exercising the commands for real needs a PostgreSQL with the migration chain
+  # applied, the same setup the API integration suite uses.
+  ci-scripts-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: coti
+          POSTGRES_PASSWORD: coti
+          POSTGRES_DB: coti
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Apply migrations
+        env:
+          DATABASE_ADMIN_URL: postgres://coti:coti@localhost:5432/coti?sslmode=disable
+        run: node scripts/goose.mjs up
+      - name: Tests
+        env:
+          TEST_DATABASE_ADMIN_URL: postgres://coti:coti@localhost:5432/coti?sslmode=disable
+        run: pnpm test:scripts

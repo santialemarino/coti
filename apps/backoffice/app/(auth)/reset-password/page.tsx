@@ -1,7 +1,8 @@
 import Link from 'next/link';
+import { CircleXIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { Button } from '@repo/ui/components';
+import { Card, InlineLink, StatusScreen } from '@repo/ui/components';
 import { ResetPasswordForm } from '@/app/(auth)/reset-password/_components/reset-password-form';
 import { ROUTES } from '@/config/routes';
 import { generatePageMetadata } from '@/lib/utils/page';
@@ -21,22 +22,23 @@ export default async function ResetPasswordPage({ searchParams }: ResetPasswordP
   const params = await searchParams;
   const token = typeof params[TOKEN_PARAM] === 'string' ? params[TOKEN_PARAM] : '';
 
+  // A missing token is the same dead end as an expired one, so it gets the same screen.
   if (!token) {
     return (
-      <>
-        <h1 className="text-3xl font-bold">{t('title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('errors.invalidLink')}</p>
-        <Button asChild variant="outline">
-          <Link href={ROUTES.forgotPassword}>{t('requestAnother')}</Link>
-        </Button>
-      </>
+      <Card>
+        <StatusScreen
+          icon={CircleXIcon}
+          tone="danger"
+          title={t('title')}
+          description={t('errors.invalidLink')}
+        >
+          <InlineLink asChild>
+            <Link href={ROUTES.forgotPassword}>{t('requestAnother')}</Link>
+          </InlineLink>
+        </StatusScreen>
+      </Card>
     );
   }
 
-  return (
-    <>
-      <h1 className="text-3xl font-bold">{t('title')}</h1>
-      <ResetPasswordForm token={token} />
-    </>
-  );
+  return <ResetPasswordForm token={token} />;
 }

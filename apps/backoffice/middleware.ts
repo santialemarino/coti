@@ -9,6 +9,7 @@ import {
 } from '@/config/routes';
 import {
   ACCESS_COOKIE,
+  BRANCH_COOKIE,
   forwardedClientAddress,
   needsRenewal,
   REFRESH_COOKIE,
@@ -80,11 +81,15 @@ function redirectToLogin(request: NextRequest, from: string) {
   response.cookies.delete(ACCESS_COOKIE);
   response.cookies.delete(REFRESH_COOKIE);
   response.cookies.delete(REMEMBER_COOKIE);
+  response.cookies.delete(BRANCH_COOKIE);
   return response;
 }
 
 export const config = {
   // Anchored on whole segments, so a future route merely starting with "icons" or
-  // ending in ".svg" cannot slip past the gate.
-  matcher: ['/((?!_next/static/|_next/image/|favicon\\.ico$|icons/).*)'],
+  // ending in ".svg" cannot slip past the gate. The image optimiser is matched with
+  // and without a trailing slash: its own URL is exactly /_next/image plus a query
+  // string, so a slash-only exclusion never fires and every optimised image would
+  // be sent to the login screen instead.
+  matcher: ['/((?!_next/static/|_next/image$|_next/image/|favicon\\.ico$|icons/|brand/).*)'],
 };

@@ -104,7 +104,7 @@ func TestUserRepository_EmailUniquenessIsGlobal(t *testing.T) {
 	const shared = "compras@corralon.test"
 
 	t.Cleanup(func() {
-		_, _ = db.CrossAccount().Exec(context.Background(),
+		mustCleanup(t, db.CrossAccount(),
 			`DELETE FROM app_user WHERE account_id = ANY($1)`, []uuid.UUID{accountA, accountB})
 	})
 

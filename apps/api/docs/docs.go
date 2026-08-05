@@ -270,7 +270,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Every active branch of the account for an admin; the assigned ones for a seller.",
+                "description": "Every active branch of the account for an admin; the assigned ones for a seller. With include_inactive an administrator also gets the closed ones, which is for administering them rather than operating in one.",
                 "produces": [
                     "application/json"
                 ],
@@ -278,6 +278,14 @@ const docTemplate = `{
                     "branches"
                 ],
                 "summary": "List branches",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Include closed branches (administrators only)",
+                        "name": "include_inactive",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -285,8 +293,20 @@ const docTemplate = `{
                             "$ref": "#/definitions/dto.BranchListResponse"
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -3485,6 +3505,7 @@ const docTemplate = `{
             ],
             "properties": {
                 "brand_color": {
+                    "description": "Hexadecimal, with three, four, six or eight digits behind a hash. Checked here because the\nwebapp renders a quote with it, not in whichever client happens to be writing it.",
                     "type": "string",
                     "maxLength": 32
                 },

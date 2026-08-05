@@ -20,13 +20,27 @@ import (
 // middleware is what enforces it per request, and the verification link only means anything
 // once the transport has been handed one.
 
-// deactivateAccount flips the flag the way an operator eventually will, through the owner
-// pool because no endpoint writes it yet.
+// deactivateAccount flips the flag on the owner pool, the way pnpm db:account:activate does.
 func (e *env) deactivateAccount(t *testing.T, accountID uuid.UUID, active bool) {
 	t.Helper()
 	if _, err := e.db.CrossAccount().Exec(context.Background(),
 		`UPDATE account SET is_active = $2 WHERE id = $1`, accountID, active); err != nil {
 		t.Fatalf("set account is_active=%v: %v", active, err)
+	}
+}
+
+// closeAccount is the full deactivation pnpm db:account:deactivate performs: the flag and the
+// session epoch of every user, in one transaction.
+func (e *env) closeAccount(t *testing.T, accountID uuid.UUID) {
+	t.Helper()
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`UPDATE account SET is_active = FALSE WHERE id = $1`, accountID); err != nil {
+		t.Fatalf("deactivate the account: %v", err)
+	}
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`UPDATE app_user SET session_epoch = session_epoch + 1 WHERE account_id = $1`,
+		accountID); err != nil {
+		t.Fatalf("bump the session epoch: %v", err)
 	}
 }
 
@@ -62,6 +76,33 @@ func TestDeactivatedAccount_CutsEveryWayIn(t *testing.T) {
 	e.deactivateAccount(t, accountID, true)
 	if e.login(t, user.Email, seedPassword) == nil {
 		t.Error("reactivating the account did not restore the login")
+	}
+}
+
+// The live account check is what cuts access, so the epoch bump the deactivation script also
+// performs buys exactly one thing: reopening the corralón must not resurrect the sessions that
+// were live when it closed. Without that bump this passes for the wrong reason.
+func TestReactivatedAccount_DoesNotResurrectPreClosureTokens(t *testing.T) {
+	e := newEnv(t)
+	accountID, _ := e.seedAccount(t, "Corralón Reabierto")
+	user := e.seedUserWithPassword(t, accountID, domain.UserRoleAdmin, seedPassword)
+
+	session := e.login(t, user.Email, seedPassword)
+	if session == nil {
+		t.Fatal("could not open the session the test needs")
+	}
+
+	e.closeAccount(t, accountID)
+	e.deactivateAccount(t, accountID, true)
+
+	// The account is usable again, so only the stale epoch can still refuse this token.
+	if me := e.do(t, request{method: http.MethodGet, path: "/v1/me",
+		token: session.AccessToken}); me.Code != http.StatusUnauthorized {
+		t.Errorf("a token minted before the closure = %d after reopening, want 401", me.Code)
+	}
+	// And the way back in is a fresh login, not the old token.
+	if e.login(t, user.Email, seedPassword) == nil {
+		t.Error("reopening the account did not restore the login")
 	}
 }
 

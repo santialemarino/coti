@@ -22,7 +22,23 @@
       "ADMIN": "Administrador",
       "SELLER": "Vendedor"
     },
-    "retry": "Reintentar"
+    "branch": {
+      "label": "Sucursal activa",
+      "all": "Todas las sucursales",
+      "placeholder": "Seleccioná una sucursal",
+      "search": "Buscá una sucursal...",
+      "empty": "No encontramos esa sucursal."
+    },
+    "retry": "Reintentar",
+    "form": {
+      "togglePassword": "Mostrar u ocultar la contraseña",
+      "clearSearch": "Limpiar la búsqueda"
+    },
+    "pagination": {
+      "label": "Paginación",
+      "previous": "Anterior",
+      "next": "Siguiente"
+    }
   },
   "errors": {
     "badRequest": "Los datos enviados no son válidos. Revisá el formulario.",
@@ -44,6 +60,10 @@
       "title": "Iniciar sesión",
       "description": "Acceso al backoffice del corralón."
     },
+    "signup": {
+      "title": "Crear tu cuenta",
+      "description": "Registrá tu corralón, su primera sucursal y tu usuario."
+    },
     "forgotPassword": {
       "title": "Recuperar contraseña",
       "description": "Pedí un enlace para volver a entrar."
@@ -55,6 +75,18 @@
     "changePassword": {
       "title": "Cambiar contraseña",
       "description": "Cambiá tu contraseña presentando la actual."
+    },
+    "accountSettings": {
+      "title": "Cuenta",
+      "description": "Datos del corralón y la marca que ve tu cliente."
+    },
+    "branchSettings": {
+      "title": "Sucursales",
+      "description": "Alta y administración de las sucursales del corralón."
+    },
+    "userSettings": {
+      "title": "Usuarios",
+      "description": "Alta de usuarios, roles y sucursales asignadas."
     },
     "priceSettings": {
       "title": "Precios y condiciones",
@@ -82,12 +114,87 @@
       "submit": "Ingresar",
       "submitting": "Ingresando…",
       "forgotPassword": "¿Olvidaste tu contraseña?",
+      "noAccount": "¿Todavía no tenés cuenta? Registrá tu corralón",
       "errors": {
         "invalidCredentials": "Correo o contraseña inválidos.",
         "locked": "Demasiados intentos fallidos. Esperá unos minutos antes de volver a probar.",
         "unreachable": "No pudimos comunicarnos con el servidor. Revisá tu conexión e intentá de nuevo.",
         "unexpected": "No pudimos iniciar sesión. Intentá de nuevo.",
         "emailNotVerified": "Tenés que confirmar tu dirección de correo antes de entrar. Buscá el mensaje que te mandamos al registrarte."
+      }
+    },
+    "signup": {
+      "title": "Crear tu cuenta",
+      "steps": {
+        "account": {
+          "label": "Corralón",
+          "description": "Solo el nombre es obligatorio; el resto lo podés completar más adelante."
+        },
+        "branch": {
+          "label": "Sucursal",
+          "description": "Cargá la primera sucursal. Las demás las agregás cuando entres."
+        },
+        "admin": {
+          "label": "Tu usuario",
+          "description": "Con estos datos vas a entrar al backoffice como administrador."
+        }
+      },
+      "accountName": {
+        "label": "Nombre del corralón",
+        "placeholder": "Ingresá el nombre del corralón",
+        "required": "Ingresá el nombre del corralón."
+      },
+      "legalName": {
+        "label": "Razón social",
+        "placeholder": "Ingresá la razón social"
+      },
+      "taxId": {
+        "label": "CUIT",
+        "placeholder": "Ingresá el CUIT"
+      },
+      "branchName": {
+        "label": "Nombre de la sucursal",
+        "placeholder": "Ingresá el nombre de la sucursal",
+        "required": "Ingresá el nombre de la sucursal."
+      },
+      "branchAddress": {
+        "label": "Dirección",
+        "placeholder": "Ingresá la dirección de la sucursal"
+      },
+      "adminName": {
+        "label": "Tu nombre",
+        "placeholder": "Ingresá tu nombre y apellido",
+        "required": "Ingresá tu nombre."
+      },
+      "adminEmail": {
+        "label": "Correo electrónico",
+        "placeholder": "tu@correo.com",
+        "invalid": "Ingresá una dirección de correo válida."
+      },
+      "adminPassword": {
+        "label": "Contraseña",
+        "placeholder": "Elegí una contraseña",
+        "tooShort": "Mínimo 8 caracteres.",
+        "tooLong": "Máximo 72 caracteres."
+      },
+      "confirmPassword": {
+        "label": "Repetir contraseña",
+        "placeholder": "Repetí la contraseña",
+        "mismatch": "Las contraseñas no coinciden."
+      },
+      "minLength": "Mínimo {count} caracteres.",
+      "tooLong": "Máximo 255 caracteres.",
+      "back": "Atrás",
+      "next": "Continuar",
+      "submit": "Crear cuenta",
+      "submitting": "Creando la cuenta…",
+      "haveAccount": "¿Ya tenés una cuenta? Iniciá sesión",
+      "errors": {
+        "emailTaken": "Ya hay una cuenta registrada con esa dirección.",
+        "tooShort": "La contraseña es demasiado corta.",
+        "rateLimited": "Hubo demasiados registros desde acá. Esperá unos minutos antes de volver a probar.",
+        "unreachable": "No pudimos comunicarnos con el servidor. Revisá tu conexión e intentá de nuevo.",
+        "unexpected": "No pudimos crear la cuenta. Intentá de nuevo."
       }
     },
     "forgotPassword": {
@@ -168,6 +275,7 @@
       "confirm": "Confirmar mi correo",
       "confirming": "Confirmando…",
       "done": "Listo, tu dirección quedó confirmada.",
+      "sent": "Te mandamos un correo para confirmar tu dirección. Abrí el enlace que te llegó y ya está.",
       "continue": "Ir al inicio",
       "resendHint": "Podés pedir un enlace nuevo con la dirección que usaste al registrarte.",
       "email": {
@@ -205,20 +313,253 @@
     "stock": "Stock",
     "price": "Precio"
   },
+  "settings": {
+    "title": "Configuración",
+    "nav": {
+      "password": "Contraseña",
+      "account": "Cuenta",
+      "branches": "Sucursales",
+      "users": "Usuarios",
+      "prices": "Precios y condiciones"
+    }
+  },
+  "branches": {
+    "title": "Sucursales",
+    "description": "Cada sucursal opera con su propia disponibilidad, sus precios y sus canales. El catálogo de productos es de toda la cuenta.",
+    "add": "Agregar sucursal",
+    "cancel": "Cancelar",
+    "table": {
+      "caption": "Sucursales activas del corralón",
+      "name": "Nombre",
+      "address": "Dirección",
+      "expiry": "Vencimiento",
+      "status": "Estado",
+      "actions": "Acciones",
+      "noAddress": "Sin dirección"
+    },
+    "expiryDays": "{count, plural, one {# día} other {# días}}",
+    "status": {
+      "active": "Activa",
+      "closed": "Cerrada"
+    },
+    "reopen": {
+      "action": "Reabrir"
+    },
+    "empty": {
+      "title": "Todavía no hay sucursales",
+      "description": "Agregá la primera para empezar a operar."
+    },
+    "create": {
+      "title": "Agregar sucursal",
+      "description": "Va a quedar disponible con el catálogo de la cuenta ya cargado.",
+      "submit": "Crear sucursal",
+      "submitting": "Creando…"
+    },
+    "edit": {
+      "action": "Editar",
+      "title": "Editar sucursal",
+      "description": "Los cambios no afectan a las demás sucursales.",
+      "submit": "Guardar cambios",
+      "submitting": "Guardando…"
+    },
+    "close": {
+      "action": "Cerrar",
+      "title": "Cerrar la sucursal",
+      "description": "Se va a cerrar «{name}». Nadie va a poder operar en ella y sus cotizaciones quedan como están. Podés reabrirla cuando quieras.",
+      "confirm": "Cerrar sucursal",
+      "confirming": "Cerrando…"
+    },
+    "name": {
+      "label": "Nombre",
+      "placeholder": "Ingresá el nombre de la sucursal",
+      "required": "Ingresá el nombre de la sucursal."
+    },
+    "address": {
+      "label": "Dirección",
+      "placeholder": "Ingresá la dirección de la sucursal"
+    },
+    "defaultExpiryDays": {
+      "label": "Días de vencimiento de las cotizaciones",
+      "hint": "Por defecto {count} días. Cada sucursal puede usar el suyo.",
+      "outOfRange": "Ingresá un número entre 1 y 365."
+    },
+    "tooLong": "Máximo 255 caracteres.",
+    "created": "Creamos la sucursal.",
+    "updated": "Guardamos los cambios.",
+    "closed": "Cerramos la sucursal.",
+    "reopened": "Reabrimos la sucursal.",
+    "errors": {
+      "lastActive": "Es la única sucursal activa del corralón. Abrí otra antes de cerrarla, porque la cuenta necesita al menos una para operar.",
+      "notFound": "Esa sucursal ya no existe. Actualizá el listado.",
+      "unauthorized": "Tu sesión no tiene permiso para administrar sucursales. Ingresá con un usuario administrador.",
+      "invalid": "Revisá los datos de la sucursal e intentá de nuevo.",
+      "unexpected": "No pudimos guardar la sucursal. Intentá de nuevo."
+    }
+  },
+  "account": {
+    "title": "Cuenta",
+    "description": "Los datos del corralón y la marca con la que tu cliente ve una cotización. Valen para toda la cuenta, no para una sucursal.",
+    "name": {
+      "label": "Nombre del corralón",
+      "placeholder": "Ingresá el nombre del corralón",
+      "hint": "Es el nombre que aparece en el backoffice y en lo que enviamos a tu cliente.",
+      "required": "Ingresá el nombre del corralón."
+    },
+    "legalName": {
+      "label": "Razón social",
+      "placeholder": "Ingresá la razón social"
+    },
+    "taxId": {
+      "label": "CUIT",
+      "placeholder": "Ingresá el CUIT"
+    },
+    "brand": {
+      "title": "Marca",
+      "description": "Con esto armamos las cotizaciones que ve tu cliente. Si lo dejás vacío usamos el diseño de Coti."
+    },
+    "brandLogoUrl": {
+      "label": "Logo",
+      "placeholder": "https://tucorralon.com/logo.png",
+      "hint": "Tiene que ser una imagen accesible desde internet.",
+      "open": "Verla",
+      "tooLong": "Máximo 512 caracteres.",
+      "invalid": "Ingresá una dirección web completa, con https:// adelante."
+    },
+    "brandColor": {
+      "label": "Color de la marca",
+      "placeholder": "#C2410C",
+      "hint": "En hexadecimal, como lo escribís en un diseño: #C2410C.",
+      "invalid": "Ingresá un color hexadecimal, por ejemplo #C2410C."
+    },
+    "tooLong": "Máximo 255 caracteres.",
+    "submit": "Guardar cambios",
+    "submitting": "Guardando…",
+    "saved": "Guardamos los datos del corralón.",
+    "errors": {
+      "invalid": "Revisá los datos del corralón e intentá de nuevo.",
+      "notFound": "No encontramos la cuenta. Volvé a iniciar sesión.",
+      "unauthorized": "Tu sesión no tiene permiso para editar la cuenta. Ingresá con un usuario administrador.",
+      "unexpected": "No pudimos guardar los datos. Intentá de nuevo."
+    }
+  },
+  "users": {
+    "title": "Usuarios",
+    "description": "Quiénes entran al backoffice, con qué rol y en qué sucursales trabajan. El catálogo y los precios son de toda la cuenta.",
+    "add": "Agregar usuario",
+    "cancel": "Cancelar",
+    "you": "Vos",
+    "yourUser": "Es tu usuario: no podés cambiarte el rol ni desactivarte. Pedíselo a otro administrador.",
+    "table": {
+      "caption": "Usuarios del corralón",
+      "name": "Nombre",
+      "email": "Correo",
+      "role": "Rol",
+      "branches": "Sucursales",
+      "status": "Estado",
+      "lastLogin": "Último ingreso",
+      "actions": "Acciones",
+      "allBranches": "Todas",
+      "noBranches": "Sin sucursales",
+      "neverLoggedIn": "Nunca ingresó"
+    },
+    "roleHints": {
+      "ADMIN": "Administra usuarios, sucursales, catálogo y precios, y opera en todas las sucursales.",
+      "SELLER": "Cotiza solamente en las sucursales que le asignes."
+    },
+    "status": {
+      "active": "Activo",
+      "inactive": "Desactivado"
+    },
+    "create": {
+      "title": "Agregar usuario",
+      "description": "Le vamos a pedir esta contraseña la primera vez que entre y la puede cambiar cuando quiera.",
+      "submit": "Crear usuario",
+      "submitting": "Creando…"
+    },
+    "edit": {
+      "action": "Editar",
+      "title": "Editar usuario",
+      "description": "Los cambios rigen desde su próxima pantalla.",
+      "submit": "Guardar cambios",
+      "submitting": "Guardando…"
+    },
+    "deactivate": {
+      "action": "Desactivar",
+      "title": "Desactivar el usuario",
+      "description": "«{name}» no va a poder entrar más y sus sesiones abiertas se cierran ahora. Sus cotizaciones quedan como están y podés reactivarlo cuando quieras.",
+      "confirm": "Desactivar usuario",
+      "confirming": "Desactivando…"
+    },
+    "reactivate": {
+      "action": "Reactivar"
+    },
+    "passwordReset": {
+      "action": "Enviar enlace de contraseña",
+      "title": "Enviar el enlace de contraseña",
+      "description": "Le vamos a mandar a {email} un enlace de un solo uso para que elija una contraseña nueva. Vos no vas a ver la contraseña.",
+      "confirm": "Enviar enlace",
+      "confirming": "Enviando…"
+    },
+    "name": {
+      "label": "Nombre",
+      "placeholder": "Ingresá el nombre y apellido",
+      "required": "Ingresá el nombre del usuario."
+    },
+    "email": {
+      "label": "Correo electrónico",
+      "placeholder": "Ingresá el correo con el que va a entrar",
+      "invalid": "Ingresá una dirección de correo válida."
+    },
+    "password": {
+      "label": "Contraseña inicial",
+      "placeholder": "Elegí una contraseña",
+      "hint": "Mínimo {count} caracteres. Se la tenés que pasar vos.",
+      "tooShort": "Mínimo 8 caracteres.",
+      "tooLong": "Máximo 72 caracteres."
+    },
+    "role": {
+      "label": "Rol",
+      "required": "Elegí un rol."
+    },
+    "branches": {
+      "label": "Sucursales asignadas",
+      "hint": "Elegí en qué sucursales puede cotizar.",
+      "adminHint": "Un administrador alcanza todas las sucursales, estén marcadas o no.",
+      "closedAssignments": "{count, plural, one {Tiene una sucursal cerrada asignada y al guardar se la vamos a quitar.} other {Tiene # sucursales cerradas asignadas y al guardar se las vamos a quitar.}}"
+    },
+    "tooLong": "Máximo 255 caracteres.",
+    "created": "Creamos el usuario.",
+    "updated": "Guardamos los cambios.",
+    "deactivated": "Desactivamos el usuario.",
+    "reactivated": "Reactivamos el usuario.",
+    "passwordResetSent": "Le enviamos el enlace.",
+    "errors": {
+      "emailTaken": "Ya hay un usuario registrado con esa dirección.",
+      "self": "No podés desactivar tu propio usuario. Pedíselo a otro administrador.",
+      "deactivated": "Ese usuario está desactivado. Reactivalo antes de enviarle el enlace.",
+      "notFound": "Ese usuario ya no existe. Actualizá el listado.",
+      "rateLimited": "Enviamos demasiados correos en poco tiempo. Esperá unos minutos e intentá de nuevo.",
+      "unauthorized": "Tu sesión no tiene permiso para administrar usuarios. Ingresá con un usuario administrador.",
+      "invalid": "Revisá los datos del usuario e intentá de nuevo.",
+      "unexpected": "No pudimos guardar el usuario. Intentá de nuevo."
+    }
+  },
   "priceImport": {
     "title": "Precios y condiciones",
     "description": "Actualizá los precios vigentes de una sucursal. Primero revisás el archivo y después confirmás los cambios.",
+    "targetBranch": "Los cambios se aplican en la sucursal {name}. Cambiala desde el selector del encabezado.",
+    "noBranch": {
+      "title": "Elegí una sucursal",
+      "description": "Los precios se cargan por sucursal. Seleccioná una en el encabezado para actualizarlos o exportarlos."
+    },
     "form": {
-      "branch": {
-        "label": "Sucursal",
-        "placeholder": "Seleccioná una sucursal"
-      },
       "file": {
         "label": "Archivo de precios"
       },
       "preview": "Previsualizar",
       "previewing": "Procesando…",
-      "export": "Exportar precios"
+      "export": "Exportar precios",
+      "exporting": "Exportando…"
     },
     "formatHint": "Usá un archivo .xlsx o .csv con las columnas codigo y precio. También podés incluir precio_minimo, moneda y condiciones.",
     "summary": "Filas válidas: {valid}. Filas con errores: {invalid}.",
@@ -228,8 +569,7 @@
     "valid": "Lista para actualizar",
     "success": "Se actualizaron {count, plural, one {# producto} other {# productos}}.",
     "errors": {
-      "invalidFile": "Seleccioná una sucursal y un archivo válido con el formato indicado.",
-      "selectBranch": "Seleccioná una sucursal para exportar sus precios.",
+      "invalidFile": "Seleccioná un archivo válido con el formato indicado.",
       "noPrices": "La sucursal todavía no tiene precios vigentes para exportar.",
       "unauthorized": "Tu sesión no tiene permiso para actualizar precios. Ingresá con un usuario administrador.",
       "unexpected": "No pudimos procesar la actualización. Intentá de nuevo."

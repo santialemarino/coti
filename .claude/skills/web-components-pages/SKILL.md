@@ -6,8 +6,10 @@ description: How to create a component or a page in Coti's Next.js apps (backoff
 # Web components and pages (Coti frontend)
 
 > **Load `web-structure` first** — it decides which app you are in and where each
-> kind of file goes. This skill covers _how_ to build the page/component once
-> placement is decided. Coti has two apps: **backoffice** (authenticated, port
+> kind of file goes, and **`ux-motion` alongside this one** whenever the change is
+> visual — it owns interaction states, motion, elevation and reduced motion, which
+> this skill points at but does not restate. This skill covers _how_ to build the
+> page/component once placement is decided. Coti has two apps: **backoffice** (authenticated, port
 > 3000, uses `(auth)`/`(protected)` route groups) and **webapp** (public, port
 > 3001, no auth, no route groups). Product language is Argentine Spanish; i18n
 > runs on **next-intl** (single locale `es-AR`, no routing) — see "Copy, i18n,
@@ -57,59 +59,109 @@ composes components. Put UI and interactivity in components.
 
 ## Reuse and componentization
 
-Coti's design system is **nascent** — today `@repo/ui` ships only `Button`. So
-these are the operating principles, not a catalog of existing parts:
+`@repo/ui` is a real design system now — check it before writing markup. The
+catalogue:
 
-- **Reuse-first, in search order.** Before building anything, look in this order:
-  (1) the page's `_components/`, (2) the app's `components/`, (3) `@repo/ui`. Reuse
-  or restyle-through-props what exists before adding new. When you do add
-  something genuinely shared, extend via the base component's props / CVA variants
-  — don't fork a component to change one style.
-- **A control used in two apps is one shared component.** If both the backoffice
-  and the webapp render the same thing (a logo, a form field set, an empty state),
-  it lives in `@repo/ui`, built once. If it's one app only, it lives in that app's
-  `components/`.
-- **Componentize repeated structure.** Structure that repeats — an RFQ list row, a
-  quote line-item row, a page header (title + meta), a section card — is ONE
-  component rendered by mapping data, never copy-pasted markup. Sibling sections
-  that share a shape become section components that a thin page composes.
-- **Consistency beats local cleverness.** The same control means the same thing,
-  in the same place and order, across pages and across both apps (e.g. don't flip
-  primary/secondary CTA order between the backoffice quote view and the public
-  quote view).
-- **Button as a link.** Use `<Button asChild>` wrapping a `<Link>`/`<a>` rather
-  than a hand-rolled styled anchor, so it keeps the variant, ring, and states.
-- **When a new shared primitive is needed** (Dialog, Input, Card, Badge, Form
-  primitives, table, etc.), add it to `@repo/ui` via shadcn (both apps'
-  `components.json` are configured, `iconLibrary: lucide`, base color slate) and
-  export it — do not generate the same primitive separately into each app.
+| Group    | Components                                                                                                                                                         |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Controls | `Button` `PendingButton` `Badge` `Input` `SearchInput` `Textarea` `Label` `Checkbox` `RadioGroup` `Switch` `ToggleGroup` `Combobox` `Pagination` `RowActionButton` |
+| Surfaces | `Card` `Separator` `Table` `Skeleton` `Spinner` `Progress` `Avatar` `Hint` `Callout`                                                                               |
+| Overlays | `Dialog` `Sheet` `Popover` `DropdownMenu` `Tooltip` `Collapsible` `Command` `ConfirmDialog`                                                                        |
+| Patterns | `StatusScreen` `Stepper` `EmptyState` `TableEmptyRow` `SortableTableHead` `InlineLink` `DropdownChevron`                                                           |
+| Forms    | `Form` `FormField` `FormItem` `FormLabel` `FormControl` `FormDescription` `FormMessage` `FormRootMessage`                                                          |
+
+- **Reuse-first, in search order.** Look in this order: (1) the page's
+  `_components/`, (2) the app's `components/`, (3) `@repo/ui`. Restyle through the
+  props and CVA variants a component already exposes — don't fork it to change one
+  style, and don't rebuild something the table above already names.
+- **Use the props before reaching for `className`.** `Button` has `variant`/`size`,
+  `Badge` has `tone`/`size`/`dot`, `Card` has `interactive`, `Label` and `FormItem`
+  have `required`, `Input` has `startIcon`/`endIcon`/`prefix`/`suffix`, `Dialog` has
+  `closeOnClickOutside`, `PendingButton` has `pending`/`pendingLabel`. Passing raw
+  classes where a prop exists is how two call
+  sites end up looking different.
+- **One dropdown: `Combobox`.** Radix `Select` is deliberately absent from the
+  design system because it has no exit animation. Never add it back.
+- **A control used in both apps is one shared component** in `@repo/ui`, exported
+  from `src/components/index.ts`. One app only → that app's `components/`. Never
+  reach across apps.
+- **A domain enum maps to a tone in the app, not in `@repo/ui`.** The design system
+  ships `tone="success" | "warning" | "danger" | …`; the surface that owns the quote
+  status or the match confidence decides which one it is.
+- **Componentize repeated structure.** An RFQ list row, a quote line-item row, a
+  page header, a section card — ONE component rendered by mapping data, never
+  copy-pasted markup. Sibling sections that share a shape become section components
+  a thin page composes.
+- **Consistency beats local cleverness.** The same control means the same thing, in
+  the same place and order, across pages and across both apps.
+- **Button as a link.** `<Button asChild>` wrapping a `<Link>`/`<a>`, so it keeps
+  the variant, ring and states. Same for `InlineLink asChild` — that is why it takes
+  `asChild` at all, so the design system needs no framework dependency.
+- **Adding a new shared primitive:** hand-write it in `packages/ui/src/components`
+  against the tokens and export it. A `shadcn add` is a starting point at best — its
+  output uses raw palette colours and `dark:` variants, both of which are wrong here,
+  so adapt it rather than committing it as generated. Then rebuild `@repo/ui`.
 
 ## Forms and inputs
 
-The form stack is **react-hook-form + zod** (to be added to the app when the first
-form lands). Never wire a bare `<input>` to ad-hoc `useState`. The first forms
-are the backoffice **login** and the webapp **public RFQ submission** — since both
-apps need the same field UX, build the shared Form primitives
-(`Form`/`FormField`/`FormItem`/`FormLabel`/`FormControl`/`FormMessage`) in
-`@repo/ui` and consume them from both apps.
+The stack is **react-hook-form + zod** with the shared `Form` primitives from
+`@repo/ui`. Never wire a bare `<input>` to ad-hoc `useState`.
 
-- **Colocate the schema.** The zod schema lives in `form-schema.ts` next to the
-  page (`app/(auth)/login/form-schema.ts`, `app/rfq/form-schema.ts`). Reuse shared
-  validators (e.g. an email regex, common error messages) rather than re-deriving
-  per form.
-- **`noValidate` on every `<form>`.** The browser's native validation bubbles are
-  ugly and English — suppress them so the inline `FormMessage` is the single
-  source of validation feedback.
-- **Errors reveal without layout shift.** The field message animates height
-  open/closed and reserves no space when absent, so showing/clearing an error
-  never snaps the layout. Don't hand-roll an error `<p>` or pad fixed space for one.
-- **Required marker is a prop, not markup.** Mark required fields through the
-  label's `required` prop, so every asterisk matches — never hand-write a per-label
-  `<span>`.
-- **Surface server-side field errors inline.** When the API rejects a specific
-  field (e.g. a 409 "email already registered", an invalid RFQ line), map it onto
-  the field with `form.setError(name, …)` so it reads like a validation error —
-  same place, same animation — instead of only a toast.
+- **A field is** `FormField` → `FormItem` → `FormLabel` + `FormControl` (wrapping
+  the input) + optional `FormDescription` + `FormMessage`. `FormControl` stamps the
+  id, `aria-invalid`, `aria-describedby` and `aria-required` onto whatever it wraps,
+  which is what makes the error styling and the screen-reader wiring automatic.
+- **Colocate the schema** in `form-schema.ts` next to the page, as a factory taking
+  the translator so messages are localized (`loginSchema(t)`). Reuse shared
+  validators rather than re-deriving per form.
+- **`noValidate` on every `<form>`.** The browser's native bubbles are untranslated
+  and ugly; the inline `FormMessage` is the single source of validation feedback.
+- **Required marker is a prop.** `<FormLabel required>` or `required` on `FormItem`
+  — never a hand-written asterisk `<span>`.
+- **Errors reveal without layout shift** — `FormMessage` and `FormRootMessage`
+  animate height and collapse to zero footprint. Don't hand-roll an error `<p>` or
+  reserve fixed space for one.
+- **A form-level rejection is `FormRootMessage`** fed by `form.setError('root', …)`
+  — for a failure that belongs to no single field, like credentials the API refused
+  without saying which half was wrong.
+- **Surface a server-side field error inline** with `form.setError(name, …)`, so a
+  409 "email already registered" reads like a validation error in the same place with
+  the same animation, instead of only a toast.
+- **Pass the accessible names the design system can't own:** `passwordToggleLabel`
+  on a password `Input`, `clearLabel` on a `SearchInput`. They live under
+  `common.form.*`.
+- **Pending state is the submit button, and it is `PendingButton`** — not a hand-rolled ternary:
+  `<PendingButton type="submit" pending={form.formState.isSubmitting} pendingLabel={t('submitting')}>`.
+  It disables itself, sets `aria-busy`, shows the spinner, and animates the width change the two
+  labels cause — which plain CSS cannot do at all, because `width: auto` is not transitionable.
+- **`Button` defaults to `type="button"`.** A submit opts in with `type="submit"`, so a button added
+  to a form can never submit it by accident. `asChild` passes `type` through untouched.
+- **One `useTransition` per action, never one shared between several.** A shared transition only
+  reports that _something_ is running, so a screen with export / preview / confirm buttons lights
+  all three at once. **A flag naming the running action does not fix it:** a form `action` already
+  runs inside a transition, and a state update made there does not commit until that transition
+  ends, so the flag arrives after the spinner is gone. Give each action its own hook and disable on
+  the union when they are mutually exclusive.
+- **A form spanning steps is one `useForm`, it validates per step, and its step follows the error.**
+  Gate advancing with `form.trigger([...stepFields])`, never the whole form, or messages land on
+  fields the caller has not reached. When the server rejects a field, move to that field's step
+  _and_ `setError`: nothing ties a wizard's position to the form's state, so a message off screen
+  reads as a button that did nothing. Keep the field-to-step map in one module and pin every field
+  of the schema to a step with a test.
+- **A disabled submit button stops a second click, not a second submit.** Enter still reaches the
+  form, so a handler behind a write that must happen once refuses to re-enter while one is in
+  flight.
+
+## Feedback: toast, callout, or field message
+
+Three different things — using the wrong one is a common drift:
+
+- **`toast`** (sonner, mounted once in the root layout) — a transient confirmation of
+  something the user just did. "Se actualizaron 128 productos."
+- **`Callout`** — a standing message about the content on screen. "Hay 2 ítems sin
+  match en el catálogo."
+- **`FormMessage` / `FormRootMessage`** — a field's or a form's rejection. Never a
+  toast for a validation error; it belongs next to the input.
 
 ## Icons
 
@@ -196,33 +248,49 @@ Example: `flex flex-col min-h-screen items-center justify-center px-6 gap-y-8 bg
 
 ## Typography, rounding, and design tokens
 
-The theme lives in `packages/ui/src/styles/theme.css` and defines **color tokens
-(oklch) and a radius only** — there is **no custom typography token scale yet**.
-Be accurate about that; don't reference type tokens that don't exist.
+The token layer is `packages/ui/src/styles/index.css` (the tokens themselves) and
+`theme.css` (the `@theme inline` block mapping them onto Tailwind namespaces). Full
+reference, including how the ramp was derived and every contrast figure:
+[docs/technical/design-system.md](../../../docs/technical/design-system.md).
 
-- **Colors — always tokens, never raw values.** Use the semantic tokens:
-  `bg-background`/`text-foreground`, `bg-card`/`text-card-foreground`,
-  `bg-primary`/`text-primary-foreground`, `bg-secondary`, `bg-muted`/`text-muted-foreground`,
-  `bg-accent`, `bg-destructive`, `border`, `border-input`, `ring`/`focus-visible:ring-ring`.
-  Never inline a hex/oklch value, and **never reach for a raw Tailwind palette
-  color** (`slate-*`, `gray-*`, `zinc-*`) even though the shadcn base color is
-  slate — the tokens abstract it and carry dark mode (`.dark` class,
-  `@custom-variant dark`).
-- **Rounding — never fully square unless intentional.** `--radius` is 0.625rem
-  with the scale `rounded-sm`/`rounded-md`/`rounded-lg` (from `@theme` in
-  `theme.css`). Buttons/inputs use `rounded-md` (see `Button`); cards and grouped
-  surfaces/callouts round too — audit every box you add.
-- **Type — no scale yet, so keep it consistent and centralized.** Today, use
-  Tailwind's standard text utilities (the home pages' `text-3xl font-bold` is the
-  current baseline). Do not scatter one-off sizes ad hoc. When the product needs a
-  real type scale, **define semantic text tokens in `packages/ui/src/styles/theme.css`**
-  (via `@theme`) and consume them as tokens across both apps, rather than sprinkling
-  raw `text-sm`/`font-*` everywhere. Note: `cn()` (`@repo/ui/lib`) is a vanilla
-  `twMerge(clsx())` with no custom class-group config — if you add overlapping
-  custom text tokens, name them so they don't collide (or extend `cn()` with a
-  tailwind-merge config); don't rely on the merger to dedupe unknown tokens.
-- **Variants via CVA.** Extend a component's CVA variants (as `Button` does) —
-  don't fork the component to add a look.
+- **Colours — always semantic tokens, never raw values.** `bg-background`/`text-foreground`,
+  `bg-card`, `bg-popover`, `bg-sunken`, `text-foreground-muted`/`text-foreground-subtle`,
+  `bg-primary`/`text-primary-foreground` (+ `primary-hover`/`primary-active`),
+  `bg-secondary`(+`-hover`), `bg-muted`/`text-muted-foreground`,
+  `bg-accent`/`bg-accent-strong`/`text-accent-foreground`, `border`/`border-strong`,
+  `bg-input`/`bg-input-readonly`, `ring`, `bg-backdrop`. Never inline a hex or oklch
+  value, and **never reach for a raw Tailwind palette colour** (`slate-*`, `blue-*`,
+  `sky-*`) — no Tailwind ramp matches Coti's azure, and the tokens are the only place
+  the mapping lives.
+- **`brand-50`…`brand-950` exist, but reach for a semantic token first.** Use a ramp step
+  only for a deliberately brand-coloured surface (a gradient, a brand tile). `primary`
+  is `brand-600`; the ink `foreground` is `brand-950`.
+- **Status tones come in four steps** — `success`/`warning`/`danger`, each with `-subtle`
+  (tinted surface), `-border`, the base (`bg-success`, fills and icons) and `-foreground`
+  (text). `destructive-*` aliases `danger-*`. Use `-foreground` for copy: `-base` is
+  tuned for fills and does not carry text contrast. **Mapping a domain enum to a tone is
+  the app's job** — `@repo/ui` ships tones, the app that owns the enum picks one.
+- **Light-only.** There is no `.dark` block and no `dark:` variant. Never write a `dark:`
+  class; it cannot match.
+- **Type — use the scale, never a raw size/weight pair.** Headings are
+  `text-heading-1`…`-6` (40/32/24/20/18/16px) and carry the display face themselves.
+  Paragraphs are `text-paragraph{,-medium,-semibold}` and the same for `-sm` (14px),
+  `-xs` (12px), `-mini` (11px). Replace `text-sm font-medium` with
+  `text-paragraph-sm-medium`, and **never add a `font-*` weight next to a scale token** —
+  the token already encodes it. Adding a scale token means also registering it in `cn()`'s
+  tailwind-merge `font-size` group (`packages/ui/src/lib/utils.ts`), or two scale classes
+  on one element will both survive and the loser will win on source order.
+- **Elevation is a token.** `shadow-e1` (control hairline) → `shadow-e2` (resting card) →
+  `shadow-e3` (dropdown, popover, hover-lifted card) → `shadow-e4` (dialog, sheet).
+  Don't hand-roll a `shadow-[...]`.
+- **Rounding — never fully square unless intentional.** `--radius` is 10px. Controls
+  (buttons, inputs, selects) use `rounded-lg`; cards use `rounded-1.5xl` (14px); badges
+  and pills `rounded-full`. Grouped surfaces and callouts round too — audit every box.
+- **Motion durations and easings are tokens.** `duration-150/200/300/500` and
+  `ease-out-soft`/`ease-in-out-soft` in classes; `MOTION`/`EASE` from `@repo/ui/lib` for
+  `motion/react`. Never hardcode a duration.
+- **Variants via CVA.** Extend a component's CVA variants — don't fork the component to
+  add a look.
 
 ## API boundary and naming conventions
 
@@ -409,5 +477,7 @@ When a field has a default value:
 
 - **`web-structure`** — file placement across both apps and the app-vs-`@repo/ui`
   promotion rule (read it first).
+- **`ux-motion`** — interaction states, the motion vocabulary, elevation, reduced
+  motion. Load it with this skill for any visual change.
 - **`agent-workflow`** — branch/ticket flow.
 - **`commit`** / **`pr-format`** — commit and PR conventions.

@@ -17,8 +17,11 @@ frontend). Decide which app you are in **first** — the rules below differ per 
   reviews/responds to a quote via a tokenized link.
 
 Both apps share the same toolchain: Next.js 16 (App Router, React 19), Tailwind
-v4 (CSS-first — no `tailwind.config`), shadcn (see `components.json`), TS 5.9,
-and the shared design system `@repo/ui`. The API is Go + Gin (snake_case JSON) —
+v4 (CSS-first — no `tailwind.config`), TS 5.9, and the shared design system
+`@repo/ui`. Its primitives wrap Radix and are **hand-authored on Coti's semantic
+tokens** — there is no shadcn CLI in this repo, and generating one would emit
+shadcn's own token vocabulary and dark-mode variants, neither of which Coti has.
+The API is Go + Gin (snake_case JSON) —
 see "API boundary" in `web-components-pages`. Product language is Argentine
 Spanish; `<html lang="es">`. **i18n runs on next-intl**, pinned to a single
 locale (`es-AR`) with no locale routing — UI copy lives in `translations/es.json`
@@ -34,9 +37,10 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
 - `@/config/*` → `config/*`
 - `@/hooks/*` → `hooks/*` (app-level client hooks — note: top-level `hooks/`, not `lib/hooks/`)
 - `@/lib/*` → `lib/*`
+- `@/translations/*` → `translations/*` (the message catalog)
 - `@/types/*` → `types/*` (shared TS types)
 - `@/public/*` → `public/*`
-- `@repo/ui/components`, `@repo/ui/hooks`, `@repo/ui/lib`, `@repo/ui/styles`, `@repo/ui/theme` — the shared package.
+- `@repo/ui/components`, `@repo/ui/hooks`, `@repo/ui/lib`, `@repo/ui/styles` — the shared package.
 
 ## App Router layout — backoffice (authenticated)
 
@@ -84,6 +88,12 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
 - **Shared logic (auth, API, utils):** `lib/` — e.g. `lib/auth.ts` (backoffice
   session helpers), `lib/utils/page.tsx`. Use for anything used by more than one
   route or shared between server and client within the app.
+  **A cookie reader returns `undefined` or a real value, never `''`.** Next implements
+  `cookies().delete(name)` as a set to an empty string, so a read after a delete in the same
+  request still finds the entry — blank. A caller falling back with `??` takes that as a real
+  choice and looks up a value nobody set. Normalise at the reader (`?.value || undefined`), and
+  use the `cookieJar()` double from `@repo/vitest-config/cookies` in tests: a hand-rolled jar
+  that drops the key on delete is kinder than production and hides exactly this.
 - **Client hooks (app-level):** `hooks/<name>.ts` (imported `@/hooks/...`), one
   hook per file, kebab-case named after the hook. A hook needed by both apps goes
   in `packages/ui/src/hooks` + its `index.ts` (imported `@repo/ui/hooks`).
@@ -91,6 +101,9 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
   `import 'server-only'`. Called directly from server components (`page.tsx`).
   Backoffice reads use the authenticated fetch (JWT from session); webapp reads
   are unauthenticated (public / token-scoped). Can be imported by multiple pages.
+  **Wrap a read that a layout and a page both perform in React's `cache()`**, so the
+  nested server components share one round trip instead of one each — a layout cannot
+  pass props to the page under it, so re-calling is the only way to get the data there.
 - **Server mutations:** `actions.ts` colocated with the page (`'use server'`).
   Called from client components. Feature-specific — do not put in `lib/`.
 - **Cross-entity API contract types:** `lib/api/types.ts` (e.g. a shared
@@ -123,21 +136,45 @@ two apps.
   `packages/ui/src/components`, export from `src/components/index.ts`, import via
   `@repo/ui/components`. Examples that belong in `@repo/ui`: the form primitives
   (both a login form and a public RFQ form need them), brand/logo, buttons and
-  other shadcn primitives, empty/loading states.
-- **shadcn primitives** shared across both apps live in `@repo/ui` (that is where
-  `Button` already is), not duplicated per app. Add a shared primitive there and
-  consume it from both apps. Per-app `components.json` sets `ui` → `@/components/ui`
-  for the shadcn CLI's default target, but a primitive both apps use should be
-  moved into `@repo/ui` rather than generated twice.
+  the other primitives, empty/loading states.
+- **Primitives shared across both apps live in `@repo/ui`**, not duplicated per app.
+  Add a shared primitive there and consume it from both apps. A new one is written by
+  hand on the semantic tokens, wrapping Radix where a behaviour needs it — match the
+  neighbouring components rather than generating anything.
 - Do not speculatively promote. Build in the app; promote the moment a second app
   needs it, then delete the app-local copy.
 
-**`@repo/ui` ships its CSS prebuilt** (`exports["./styles"]` → `dist/index.css`,
-built by the Tailwind CLI over `@source '../components'`; components are consumed
-from `src`, so their logic is live but their styles are not). After editing a
-`packages/ui` component's classNames, rebuild it (`pnpm --filter @repo/ui build`,
-or rely on its `dev` watcher) and restart the app — otherwise the new classes
-never reach the app and the change silently does nothing.
+### The stylesheet pipeline
+
+`packages/ui/src/styles/index.css` is the **single Tailwind entry for the monorepo**:
+it imports Tailwind, declares the tokens, and is compiled by the Tailwind CLI to
+`packages/ui/dist/index.css`. Each app's `globals.css` imports **only**
+`@repo/ui/styles` — never `tailwindcss` again, because the built bundle already
+carries preflight and the utility layer, so a second import emits both twice. App-only
+one-offs (a third-party library's CSS, a selector for DOM the app doesn't render) go
+below that import.
+
+Class scanning is monorepo-wide from inside the package: `@source` registers the
+`packages/ui` and `apps` **directories**, not globs, so Tailwind walks them itself and a
+class used only in an app is still generated. Tailwind's automatic detection is off, so
+those two entries are the whole input — a class name only _mentioned_ in prose never
+reaches the bundle. Keep them as directories; a glob has to reckon with the parentheses in
+Next's route-group folders.
+
+**`@repo/ui` ships its CSS prebuilt** (`exports["./styles"]` → `dist/index.css`;
+components are consumed from `src`, so their logic is live but their styles are not).
+After editing a `packages/ui` component's classNames, rebuild it
+(`pnpm --filter @repo/ui build`, or rely on its `dev` watcher) — otherwise the new
+classes never reach the app and the change silently does nothing. `pnpm dev` builds
+`@repo/ui` before starting the apps, so a cold start can't race it.
+
+**Its build declares the app sources as inputs** (`packages/ui/turbo.json`), because the CSS is
+produced by scanning them. A task cached on its own package alone is wrong here: a class used for
+the first time in app code would not invalidate it, so `pnpm build` would hand back a bundle
+missing that class while reporting success. The failure is local-only — CI has no cache and always
+scans — which is exactly what makes it easy to verify a screen against a stale bundle and see a
+layout that will look different in production. If a class is missing, confirm it **positively**
+(list what the bundle does contain) before doubting anything else.
 
 ## Directory layout — apps/backoffice/
 
@@ -225,7 +262,8 @@ packages/ui                         # Workspace — shared React + shadcn design
 ## Related skills
 
 - **`web-components-pages`** — how to actually create a page or component, the
-  form stack, the API boundary mapping, icons, order/style, Tailwind class order,
-  design tokens, and copy conventions.
+  `@repo/ui` catalogue, the form stack, the API boundary mapping, icons, order/style,
+  Tailwind class order, design tokens, and copy conventions.
+- **`ux-motion`** — interaction states, motion, elevation, reduced motion.
 - **`agent-workflow`** — branch/ticket flow before you start.
 - **`commit`** / **`pr-format`** — commit message and PR conventions.

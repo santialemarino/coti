@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 
 import {
-  Button,
+  Callout,
   Form,
   FormControl,
   FormField,
@@ -15,6 +15,7 @@ import {
   FormMessage,
   FormRootMessage,
   Input,
+  PendingButton,
 } from '@repo/ui/components';
 import { resendVerification } from '@/app/(auth)/verify-email/actions';
 import {
@@ -45,12 +46,12 @@ export function ResendVerificationForm() {
   }
 
   if (sent) {
-    return <p className="text-sm text-muted-foreground">{t('resent')}</p>;
+    return <Callout tone="success">{t('resent')}</Callout>;
   }
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="flex flex-col gap-y-4">
+      <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="flex flex-col gap-y-5">
         <FormField
           control={form.control}
           name="email"
@@ -72,9 +73,14 @@ export function ResendVerificationForm() {
 
         <FormRootMessage />
 
-        <Button type="submit" variant="outline" disabled={form.formState.isSubmitting}>
-          {form.formState.isSubmitting ? t('resending') : t('resend')}
-        </Button>
+        <PendingButton
+          type="submit"
+          variant="outline"
+          pending={form.formState.isSubmitting}
+          pendingLabel={t('resending')}
+        >
+          {t('resend')}
+        </PendingButton>
       </form>
     </Form>
   );

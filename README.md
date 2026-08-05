@@ -11,14 +11,15 @@ autopilot.
 
 ## Stack
 
-| Layer            | Technology                                        |
-| ---------------- | ------------------------------------------------- |
-| Frontend         | Next.js (React 19) — backoffice + customer webapp |
-| Backend API      | Go + Gin — REST/JSON, layered architecture        |
-| Database         | PostgreSQL + `pgvector` (semantic catalog search) |
-| Monorepo         | Turborepo + pnpm workspaces                       |
-| Containerization | Docker / docker-compose                           |
-| CI/CD            | GitHub Actions                                    |
+| Layer            | Technology                                             |
+| ---------------- | ------------------------------------------------------ |
+| Frontend         | Next.js (React 19) — backoffice + customer webapp      |
+| Styling          | Tailwind v4 (CSS-first) + the `@repo/ui` design system |
+| Backend API      | Go + Gin — REST/JSON, layered architecture             |
+| Database         | PostgreSQL + `pgvector` (semantic catalog search)      |
+| Monorepo         | Turborepo + pnpm workspaces                            |
+| Containerization | Docker / docker-compose                                |
+| CI/CD            | GitHub Actions                                         |
 
 ## Layout
 
@@ -28,7 +29,8 @@ apps/
   webapp       Next.js — customer-facing public web app (no auth)
   api          Go + Gin — REST API, business logic, persistence, AI orchestration
 packages/
-  ui                 Shared React + shadcn design system (@repo/ui)
+  ui                 Shared design system (@repo/ui) — tokens, type scale, motion,
+                     primitives; also the single Tailwind entry for the monorepo
   eslint-config      Shared ESLint flat configs (@repo/eslint-config)
   typescript-config  Shared tsconfig bases (@repo/typescript-config)
 docker/        Dockerfiles for each deployable
@@ -76,16 +78,16 @@ pnpm dev
 
 ## Common scripts
 
-| Command                           | What it does                               |
-| --------------------------------- | ------------------------------------------ |
-| `pnpm dev`                        | Run all apps in parallel (Turbo)           |
-| `pnpm build`                      | Build all apps and packages                |
-| `pnpm lint`                       | Lint all workspaces                        |
-| `pnpm check`                      | Type-check the API and web apps            |
-| `pnpm dev:docker`                 | Bring up the full stack via docker-compose |
-| `pnpm db:migrate`                 | Apply Go (goose) migrations                |
-| `pnpm db:create-migration <name>` | Scaffold a new migration                   |
-| `pnpm docs:api`                   | Regenerate the OpenAPI spec from handlers  |
+| Command                           | What it does                                |
+| --------------------------------- | ------------------------------------------- |
+| `pnpm dev`                        | Build `@repo/ui`, then run all apps (Turbo) |
+| `pnpm build`                      | Build all apps and packages                 |
+| `pnpm lint`                       | Lint all workspaces                         |
+| `pnpm check`                      | Type-check the API and web apps             |
+| `pnpm dev:docker`                 | Bring up the full stack via docker-compose  |
+| `pnpm db:migrate`                 | Apply Go (goose) migrations                 |
+| `pnpm db:create-migration <name>` | Scaffold a new migration                    |
+| `pnpm docs:api`                   | Regenerate the OpenAPI spec from handlers   |
 
 ## API specification
 
@@ -110,6 +112,20 @@ Closing or reopening a corralón is an operational script rather than an endpoin
 `pnpm db:account:activate --account <uuid>` restores it.
 
 See [docs/technical/database.md](docs/technical/database.md).
+
+## Design system
+
+`packages/ui` (`@repo/ui`) holds the tokens, type scale and motion vocabulary both web
+apps consume. Its `src/styles/index.css` is the single Tailwind entry for the monorepo,
+compiled to `dist/index.css`; each app's `globals.css` imports only that, so preflight
+is emitted once. The colour ramp is derived from the logo — the wordmark ink, the dot
+over the i, and both stops of the isotype gradient are exact tokens.
+
+`@repo/ui` ships its CSS prebuilt, so rebuild it after changing a component's
+classNames (`pnpm --filter @repo/ui build`, or its `dev` watcher). `pnpm dev` does that
+first, so a cold start can't race it.
+
+See [docs/technical/design-system.md](docs/technical/design-system.md).
 
 ## Branching & commits
 

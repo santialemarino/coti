@@ -37,14 +37,28 @@ function FormField<
   );
 }
 
-const FormItemContext = React.createContext<{ id: string }>({} as { id: string });
+interface FormItemContextValue {
+  id: string;
+  required?: boolean;
+}
 
-function FormItem({ className, ...props }: React.ComponentProps<'div'>) {
+const FormItemContext = React.createContext<FormItemContextValue>({} as FormItemContextValue);
+
+/*
+ * `required` is declared once on the item and read by both the label (which draws the marker) and
+ * the control (which gets aria-required), so the two can't disagree about whether a field is
+ * required.
+ */
+function FormItem({
+  className,
+  required,
+  ...props
+}: React.ComponentProps<'div'> & { required?: boolean }) {
   const id = React.useId();
 
   return (
-    <FormItemContext.Provider value={{ id }}>
-      <div data-slot="form-item" className={cn('grid gap-y-2', className)} {...props} />
+    <FormItemContext.Provider value={{ id, required }}>
+      <div data-slot="form-item" className={cn('flex flex-col gap-y-2', className)} {...props} />
     </FormItemContext.Provider>
   );
 }
@@ -54,18 +68,23 @@ function FormItem({ className, ...props }: React.ComponentProps<'div'>) {
 function useFormField() {
   const fieldContext = React.useContext(FormFieldContext);
   const itemContext = React.useContext(FormItemContext);
+
+  /* Both contexts default to an empty object, so the useful test is whether they were populated —
+     and it has to come before the reads below, which would otherwise subscribe to a nameless field
+     and mint `undefined-form-item` ids. */
+  if (!fieldContext.name || !itemContext.id) {
+    throw new Error('useFormField has to be used inside a <FormField> and a <FormItem>');
+  }
+
   const { getFieldState } = useFormContext();
   const formState = useFormState({ name: fieldContext.name });
   const fieldState = getFieldState(fieldContext.name, formState);
 
-  if (!fieldContext) {
-    throw new Error('useFormField has to be used inside a <FormField>');
-  }
-
-  const { id } = itemContext;
+  const { id, required } = itemContext;
   return {
     id,
     name: fieldContext.name,
+    required,
     formItemId: `${id}-form-item`,
     formDescriptionId: `${id}-form-item-description`,
     formMessageId: `${id}-form-item-message`,
@@ -73,14 +92,15 @@ function useFormField() {
   };
 }
 
-function FormLabel({ className, ...props }: React.ComponentProps<typeof Label>) {
-  const { error, formItemId } = useFormField();
+function FormLabel({ className, required, ...props }: React.ComponentProps<typeof Label>) {
+  const { error, formItemId, required: fieldRequired } = useFormField();
 
   return (
     <Label
       data-slot="form-label"
       data-error={!!error}
-      className={cn('data-[error=true]:text-destructive', className)}
+      required={required ?? fieldRequired}
+      className={cn('data-[error=true]:text-danger-foreground', className)}
       htmlFor={formItemId}
       {...props}
     />
@@ -90,7 +110,7 @@ function FormLabel({ className, ...props }: React.ComponentProps<typeof Label>) 
 // FormControl is what makes the invalid styling and the screen-reader wiring automatic:
 // it stamps aria-invalid and aria-describedby onto whatever input it wraps.
 function FormControl({ ...props }: React.ComponentProps<typeof Slot>) {
-  const { error, formItemId, formDescriptionId, formMessageId } = useFormField();
+  const { error, formItemId, formDescriptionId, formMessageId, required } = useFormField();
 
   return (
     <Slot
@@ -98,6 +118,7 @@ function FormControl({ ...props }: React.ComponentProps<typeof Slot>) {
       id={formItemId}
       aria-describedby={error ? `${formDescriptionId} ${formMessageId}` : formDescriptionId}
       aria-invalid={!!error}
+      aria-required={required || undefined}
       {...props}
     />
   );
@@ -110,18 +131,27 @@ function FormDescription({ className, ...props }: React.ComponentProps<'p'>) {
     <p
       data-slot="form-description"
       id={formDescriptionId}
-      className={cn('text-sm text-muted-foreground', className)}
+      className={cn('text-paragraph-xs text-foreground-muted', className)}
       {...props}
     />
   );
 }
 
 /*
- * The field's error. The grid row animates between 0fr and 1fr, so the message
- * reveals and hides without the layout snapping and reserves no space when there is
- * nothing to say. Pass children to override the field error, which is how a
- * translated message reaches it.
+ * The reveal is a `grid-template-rows` transition from 0fr to 1fr, which animates height without JS
+ * and without a measured pixel value.
+ *
+ * Three things are load-bearing, and the third is easy to get wrong. The wrapper's negative margin
+ * cancels the parent column's gap; the padding puts that gap back *inside* the animated box; and the
+ * padding must sit on a **descendant** of the grid item, not on the item itself. `overflow: hidden`
+ * only suppresses a grid item's automatic minimum size for its *content* — its own padding still
+ * floors the row, so padding on the item leaves the collapsed message occupying exactly that padding
+ * instead of nothing, and every field keeps a permanent band of empty space waiting for an error that
+ * usually never comes.
  */
+const REVEAL =
+  'grid grid-rows-[0fr] transition-[grid-template-rows] duration-200 ease-out-soft [&>*]:overflow-hidden';
+
 function FormMessage({ className, children, ...props }: React.ComponentProps<'p'>) {
   const { error, formMessageId } = useFormField();
   const body = children ?? error?.message;
@@ -130,27 +160,26 @@ function FormMessage({ className, children, ...props }: React.ComponentProps<'p'
     <div
       data-slot="form-message"
       aria-hidden={!body}
-      className={cn(
-        'grid grid-rows-[0fr] transition-[grid-template-rows] duration-200 ease-out',
-        body && 'grid-rows-[1fr]',
-      )}
+      className={cn(REVEAL, '-mt-2', body && 'grid-rows-[1fr]')}
     >
-      <p
-        id={formMessageId}
-        role="alert"
-        className={cn('overflow-hidden text-sm text-destructive', className)}
-        {...props}
-      >
-        {body}
-      </p>
+      <div>
+        <p
+          id={formMessageId}
+          role="alert"
+          className={cn('pt-2 text-paragraph-xs text-danger-foreground', className)}
+          {...props}
+        >
+          {body}
+        </p>
+      </div>
     </div>
   );
 }
 
 /*
- * A form-level error, for a rejection that belongs to no single field — a login the
- * API refused without saying which half was wrong. Reads react-hook-form's root
- * error, so setError('root', …) is all a caller needs.
+ * A form-level error, for a rejection that belongs to no single field — a login the API refused
+ * without saying which half was wrong. Reads react-hook-form's root error, so setError('root', …) is
+ * all a caller needs. The gap it cancels is the form's own, which is wider than a field's.
  */
 function FormRootMessage({ className, children, ...props }: React.ComponentProps<'p'>) {
   const {
@@ -162,18 +191,17 @@ function FormRootMessage({ className, children, ...props }: React.ComponentProps
     <div
       data-slot="form-root-message"
       aria-hidden={!body}
-      className={cn(
-        'grid grid-rows-[0fr] transition-[grid-template-rows] duration-200 ease-out',
-        body && 'grid-rows-[1fr]',
-      )}
+      className={cn(REVEAL, '-mt-4', body && 'grid-rows-[1fr]')}
     >
-      <p
-        role="alert"
-        className={cn('overflow-hidden text-sm text-destructive', className)}
-        {...props}
-      >
-        {body}
-      </p>
+      <div>
+        <p
+          role="alert"
+          className={cn('pt-4 text-center text-paragraph-sm text-danger-foreground', className)}
+          {...props}
+        >
+          {body}
+        </p>
+      </div>
     </div>
   );
 }

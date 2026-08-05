@@ -615,6 +615,9 @@ definitions:
   dto.UpdateAccountRequest:
     properties:
       brand_color:
+        description: |-
+          Hexadecimal, with three, four, six or eight digits behind a hash. Checked here because the
+          webapp renders a quote with it, not in whichever client happens to be writing it.
         maxLength: 32
         type: string
       brand_logo_url:
@@ -914,7 +917,13 @@ paths:
   /v1/branches:
     get:
       description: Every active branch of the account for an admin; the assigned ones
-        for a seller.
+        for a seller. With include_inactive an administrator also gets the closed
+        ones, which is for administering them rather than operating in one.
+      parameters:
+      - description: Include closed branches (administrators only)
+        in: query
+        name: include_inactive
+        type: boolean
       produces:
       - application/json
       responses:
@@ -922,8 +931,16 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/dto.BranchListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
         "401":
           description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
       security:

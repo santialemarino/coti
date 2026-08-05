@@ -11,6 +11,7 @@
       "@/config/*": ["./config/*"],
       "@/hooks/*": ["./hooks/*"],
       "@/lib/*": ["./lib/*"],
+      "@/translations/*": ["./translations/*"],
       "@/types/*": ["./types/*"],
       "@/public/*": ["./public/*"]
     }

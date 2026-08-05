@@ -4,12 +4,20 @@ run-name: 'CI API by @${{ github.actor }}'
 
 on:
   workflow_call:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'apps/api/**'
+      - '.github/workflows/ci.api.yml'
   pull_request:
     branches:
       - main
       - dev
     paths:
       - 'apps/api/**'
+      - '.github/workflows/ci.api.yml'
   workflow_dispatch:
 
 jobs:
@@ -89,8 +97,48 @@ jobs:
         env:
           DATABASE_ADMIN_URL: postgres://coti:coti@localhost:5432/coti?sslmode=disable
         run: node scripts/goose.mjs up
+      # Coverage is measured here rather than in the unit job because this run is a superset: a
+      # build tag only adds files, so this compiles in both suites. The unit job alone would
+      # report the repository package at zero, all of whose tests are tagged.
       - name: Integration tests
         env:
           TEST_DATABASE_URL: postgres://coti_app:coti_app@localhost:5432/coti?sslmode=disable
           TEST_DATABASE_ADMIN_URL: postgres://coti:coti@localhost:5432/coti?sslmode=disable
-        run: go test -tags=integration -count=1 ./...
+        run: go test -tags=integration -count=1 -coverpkg=./internal/... -coverprofile=coverage.out ./...
+      # A cleanup that fails reports nothing on its own, which is how a stray account once
+      # survived a passing run and stayed in a developer's database. This job applies migrations
+      # and seeds nothing, so every table has to be empty again once the suite is done.
+      - name: Assert the suite left no rows behind
+        env:
+          PGPASSWORD: coti
+        run: |
+          leftovers=$(psql -h localhost -U coti -d coti -tAc "
+            SELECT string_agg(c.relname || '=' || rows, ', ' ORDER BY c.relname)
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            CROSS JOIN LATERAL (
+              SELECT (xpath('/row/c/text()', query_to_xml(
+                format('SELECT count(*) AS c FROM public.%I', c.relname), false, true, '')))[1]::text::bigint
+            ) AS counted(rows)
+            WHERE c.relkind = 'r' AND n.nspname = 'public'
+              AND c.relname <> 'goose_db_version' AND rows > 0")
+          if [ -n "$leftovers" ]; then
+            echo "The integration suite left rows behind: $leftovers"
+            exit 1
+          fi
+      # Reported, never enforced: a threshold set before the suites are real gets met by writing
+      # tests that assert nothing. It lands in the job summary so the number is readable without
+      # opening the log. cmd/api and the generated docs stay out of the denominator.
+      - name: Coverage
+        run: |
+          {
+            echo '### API coverage — `internal/`'
+            echo
+            echo '```'
+            go tool cover -func=coverage.out | awk '$1 == "total:" {print "total  " $3}'
+            go tool cover -func=coverage.out | grep -v '^total:' \
+              | sed 's|github.com/santialemarino/coti/apps/api/||' \
+              | awk -F'[:\t]' '{n=$1; sub(/\/[^\/]*$/,"",n); g=$NF; gsub(/%/,"",g); s[n]+=g; c[n]++}
+                               END {for (k in s) printf "%-38s %5.1f%%\n", k, s[k]/c[k]}' | sort
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

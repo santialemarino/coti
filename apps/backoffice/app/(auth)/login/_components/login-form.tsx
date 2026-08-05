@@ -1,14 +1,12 @@
 'use client';
 
 import { useMemo } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 
 import {
-  Button,
   Checkbox,
   Form,
   FormControl,
@@ -18,10 +16,10 @@ import {
   FormMessage,
   FormRootMessage,
   Input,
+  PendingButton,
 } from '@repo/ui/components';
 import { login } from '@/app/(auth)/login/actions';
 import { loginSchema, type LoginValues } from '@/app/(auth)/login/form-schema';
-import { ROUTES } from '@/config/routes';
 import { PASSWORD_MIN_LENGTH } from '@/lib/constants/auth';
 
 interface LoginFormProps {
@@ -31,6 +29,7 @@ interface LoginFormProps {
 export function LoginForm({ next }: LoginFormProps) {
   const router = useRouter();
   const t = useTranslations('auth.login');
+  const tCommon = useTranslations('common');
   const schema = useMemo(() => loginSchema(t), [t]);
   const form = useForm<LoginValues>({
     resolver: zodResolver(schema),
@@ -52,7 +51,7 @@ export function LoginForm({ next }: LoginFormProps) {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="flex flex-col gap-y-4">
+      <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="flex flex-col gap-y-5">
         <FormField
           control={form.control}
           name="email"
@@ -84,6 +83,7 @@ export function LoginForm({ next }: LoginFormProps) {
                   autoComplete="current-password"
                   minLength={PASSWORD_MIN_LENGTH}
                   placeholder={t('password.placeholder')}
+                  passwordToggleLabel={tCommon('form.togglePassword')}
                   {...field}
                 />
               </FormControl>
@@ -96,24 +96,27 @@ export function LoginForm({ next }: LoginFormProps) {
           control={form.control}
           name="rememberMe"
           render={({ field }) => (
-            <FormItem className="flex flex-row items-center gap-x-2">
+            <FormItem className="flex-row items-center gap-x-2">
               <FormControl>
                 <Checkbox checked={field.value} onCheckedChange={field.onChange} />
               </FormControl>
-              <FormLabel>{t('rememberMe')}</FormLabel>
+              <FormLabel className="cursor-pointer text-paragraph-sm text-foreground-muted">
+                {t('rememberMe')}
+              </FormLabel>
             </FormItem>
           )}
         />
 
         <FormRootMessage />
 
-        <Button type="submit" disabled={form.formState.isSubmitting}>
-          {form.formState.isSubmitting ? t('submitting') : t('submit')}
-        </Button>
-
-        <Link href={ROUTES.forgotPassword} className="text-sm text-muted-foreground underline">
-          {t('forgotPassword')}
-        </Link>
+        <PendingButton
+          type="submit"
+          size="lg"
+          pending={form.formState.isSubmitting}
+          pendingLabel={t('submitting')}
+        >
+          {t('submit')}
+        </PendingButton>
       </form>
     </Form>
   );

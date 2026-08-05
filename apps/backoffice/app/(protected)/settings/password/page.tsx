@@ -9,10 +9,10 @@ export default async function ChangePasswordPage() {
   const t = await getTranslations('auth.changePassword');
 
   return (
-    <main className="flex flex-col px-6 py-10 gap-y-6">
+    <main className="flex flex-col max-w-xl gap-y-6">
       <header className="flex flex-col gap-y-2">
-        <h1 className="text-3xl font-bold">{t('title')}</h1>
-        <p className="text-muted-foreground">{t('description')}</p>
+        <h1 className="text-heading-2">{t('title')}</h1>
+        <p className="text-paragraph text-foreground-muted">{t('description')}</p>
       </header>
       <ChangePasswordForm />
     </main>

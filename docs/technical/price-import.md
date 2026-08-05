@@ -5,9 +5,9 @@ is always scoped to one branch and needs an `ADMIN` user.
 
 ## Flow
 
-1. The administrator picks the branch and downloads its prices in force with **Exportar
-   precios**. `GET /v1/product-prices/export` returns an `.xlsx` with a pre-filled `Precios`
-   sheet and an `Instrucciones` sheet.
+1. The screen works on the shell's active branch, chosen once in the header switcher, and
+   downloads its prices in force with **Exportar precios**. `GET /v1/product-prices/export`
+   returns an `.xlsx` with a pre-filled `Precios` sheet and an `Instrucciones` sheet.
 2. The administrator edits that file — or prepares a compatible `.xlsx` or `.csv` — and
    uploads it on the same screen.
 3. `POST /v1/product-prices/import/preview` parses the file and returns every row with the
@@ -50,6 +50,9 @@ the compressed size only, so each XLSX entry is additionally bounded when it is 
 
 ## Supporting endpoints
 
-`GET /v1/branches` returns the active branches the user can reach and feeds the backoffice
-selector. The chosen branch travels in `X-Branch-Id`, where the middleware revalidates access
-before the import runs.
+`GET /v1/branches` returns the active branches the user can reach and feeds the header
+switcher. The branch travels in `X-Branch-Id`, where the middleware revalidates access before
+the import runs — and it is named **explicitly** on all three calls rather than inherited from
+the active branch, so a preview confirmed after a switch still writes where it was prepared. An
+administrator reaching several branches who has selected none is asked to pick one; the screen
+offers nothing to run until they do, because the API refuses a price operation with no branch.

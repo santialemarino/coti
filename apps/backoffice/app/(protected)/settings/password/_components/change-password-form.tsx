@@ -6,7 +6,6 @@ import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 
 import {
-  Button,
   Form,
   FormControl,
   FormDescription,
@@ -16,6 +15,7 @@ import {
   FormMessage,
   FormRootMessage,
   Input,
+  PendingButton,
 } from '@repo/ui/components';
 import { changePassword } from '@/app/(protected)/settings/password/actions';
 import {
@@ -127,11 +127,15 @@ export function ChangePasswordForm() {
         />
 
         <FormRootMessage />
-        {done ? <p className="text-sm text-muted-foreground">{t('done')}</p> : null}
+        {done ? <p className="text-paragraph-sm text-foreground-muted">{t('done')}</p> : null}
 
-        <Button type="submit" disabled={form.formState.isSubmitting}>
-          {form.formState.isSubmitting ? t('submitting') : t('submit')}
-        </Button>
+        <PendingButton
+          type="submit"
+          pending={form.formState.isSubmitting}
+          pendingLabel={t('submitting')}
+        >
+          {t('submit')}
+        </PendingButton>
       </form>
     </Form>
   );
