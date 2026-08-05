@@ -80,6 +80,10 @@
       "title": "Sucursales",
       "description": "Alta y administración de las sucursales del corralón."
     },
+    "userSettings": {
+      "title": "Usuarios",
+      "description": "Alta de usuarios, roles y sucursales asignadas."
+    },
     "priceSettings": {
       "title": "Precios y condiciones",
       "description": "Actualización revisada de precios por sucursal."
@@ -310,6 +314,7 @@
     "nav": {
       "password": "Contraseña",
       "branches": "Sucursales",
+      "users": "Usuarios",
       "prices": "Precios y condiciones"
     }
   },
@@ -384,6 +389,108 @@
       "unauthorized": "Tu sesión no tiene permiso para administrar sucursales. Ingresá con un usuario administrador.",
       "invalid": "Revisá los datos de la sucursal e intentá de nuevo.",
       "unexpected": "No pudimos guardar la sucursal. Intentá de nuevo."
+    }
+  },
+  "users": {
+    "title": "Usuarios",
+    "description": "Quiénes entran al backoffice, con qué rol y en qué sucursales trabajan. El catálogo y los precios son de toda la cuenta.",
+    "add": "Agregar usuario",
+    "cancel": "Cancelar",
+    "you": "Vos",
+    "yourUser": "Es tu usuario: no podés cambiarte el rol ni desactivarte. Pedíselo a otro administrador.",
+    "table": {
+      "caption": "Usuarios del corralón",
+      "name": "Nombre",
+      "email": "Correo",
+      "role": "Rol",
+      "branches": "Sucursales",
+      "status": "Estado",
+      "lastLogin": "Último ingreso",
+      "actions": "Acciones",
+      "allBranches": "Todas",
+      "noBranches": "Sin sucursales",
+      "neverLoggedIn": "Nunca ingresó"
+    },
+    "roleHints": {
+      "ADMIN": "Administra usuarios, sucursales, catálogo y precios, y opera en todas las sucursales.",
+      "SELLER": "Cotiza solamente en las sucursales que le asignes."
+    },
+    "status": {
+      "active": "Activo",
+      "inactive": "Desactivado"
+    },
+    "create": {
+      "title": "Agregar usuario",
+      "description": "Le vamos a pedir esta contraseña la primera vez que entre y la puede cambiar cuando quiera.",
+      "submit": "Crear usuario",
+      "submitting": "Creando…"
+    },
+    "edit": {
+      "action": "Editar",
+      "title": "Editar usuario",
+      "description": "Los cambios rigen desde su próxima pantalla.",
+      "submit": "Guardar cambios",
+      "submitting": "Guardando…"
+    },
+    "deactivate": {
+      "action": "Desactivar",
+      "title": "Desactivar el usuario",
+      "description": "«{name}» no va a poder entrar más y sus sesiones abiertas se cierran ahora. Sus cotizaciones quedan como están y podés reactivarlo cuando quieras.",
+      "confirm": "Desactivar usuario",
+      "confirming": "Desactivando…"
+    },
+    "reactivate": {
+      "action": "Reactivar"
+    },
+    "passwordReset": {
+      "action": "Enviar enlace de contraseña",
+      "title": "Enviar el enlace de contraseña",
+      "description": "Le vamos a mandar a {email} un enlace de un solo uso para que elija una contraseña nueva. Vos no vas a ver la contraseña.",
+      "confirm": "Enviar enlace",
+      "confirming": "Enviando…"
+    },
+    "name": {
+      "label": "Nombre",
+      "placeholder": "Ingresá el nombre y apellido",
+      "required": "Ingresá el nombre del usuario."
+    },
+    "email": {
+      "label": "Correo electrónico",
+      "placeholder": "Ingresá el correo con el que va a entrar",
+      "invalid": "Ingresá una dirección de correo válida."
+    },
+    "password": {
+      "label": "Contraseña inicial",
+      "placeholder": "Elegí una contraseña",
+      "hint": "Mínimo {count} caracteres. Se la tenés que pasar vos.",
+      "tooShort": "Mínimo 8 caracteres.",
+      "tooLong": "Máximo 72 caracteres."
+    },
+    "role": {
+      "label": "Rol",
+      "required": "Elegí un rol."
+    },
+    "branches": {
+      "label": "Sucursales asignadas",
+      "hint": "Elegí en qué sucursales puede cotizar.",
+      "adminHint": "Un administrador alcanza todas las sucursales, estén marcadas o no.",
+      "closedAssignments": "{count, plural, one {Tiene una sucursal cerrada asignada y al guardar se la vamos a quitar.} other {Tiene # sucursales cerradas asignadas y al guardar se las vamos a quitar.}}"
+    },
+    "tooLong": "Máximo 255 caracteres.",
+    "created": "Creamos el usuario.",
+    "updated": "Guardamos los cambios.",
+    "deactivated": "Desactivamos el usuario.",
+    "reactivated": "Reactivamos el usuario.",
+    "passwordResetSent": "Le enviamos el enlace.",
+    "errors": {
+      "emailTaken": "Ya hay un usuario registrado con esa dirección.",
+      "self": "No podés desactivar tu propio usuario. Pedíselo a otro administrador.",
+      "deactivated": "Ese usuario está desactivado. Reactivalo antes de enviarle el enlace.",
+      "notFound": "Ese usuario ya no existe. Actualizá el listado.",
+      "rateLimited": "Enviamos demasiados correos en poco tiempo. Esperá unos minutos e intentá de nuevo.",
+      "unauthorized": "Tu sesión no tiene permiso para administrar usuarios. Ingresá con un usuario administrador.",
+      "invalid": "Revisá los datos del usuario e intentá de nuevo.",
+      "unexpected": "No pudimos guardar el usuario. Intentá de nuevo."
     }
   },
   "priceImport": {
