@@ -153,6 +153,11 @@ export function PriceImport({ branch }: PriceImportProps) {
               {t('confirm')}
             </PendingButton>
           </div>
+          {preview.invalidRows > 0 && preview.canConfirm ? (
+            <Callout tone="warning">
+              {t('invalidRowsSkipped', { count: preview.invalidRows })}
+            </Callout>
+          ) : null}
           <div className="overflow-x-auto border rounded-lg">
             <table className="w-full border-collapse text-paragraph-sm">
               <thead className="bg-muted">

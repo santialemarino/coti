@@ -1,9 +1,32 @@
 package services
 
 import (
-	"fmt"
 	"io"
+
+	"github.com/santialemarino/coti/apps/api/internal/utils/spreadsheet"
 )
+
+const (
+	catalogColumnCode        = "code"
+	catalogColumnName        = "name"
+	catalogColumnDescription = "description"
+	catalogColumnUnit        = "unit"
+	catalogColumnFamily      = "family"
+	catalogColumnSubgroup    = "subgroup"
+	catalogColumnPrice       = "price"
+	catalogColumnMinPrice    = "min_price"
+)
+
+var catalogImportSchema = spreadsheet.Schema{Columns: []spreadsheet.Column{
+	{Key: catalogColumnCode, Headers: []string{"codigo", "code"}, Required: true},
+	{Key: catalogColumnName, Headers: []string{"nombre", "name", "canonical_name"}, Required: true},
+	{Key: catalogColumnDescription, Headers: []string{"descripcion", "description"}},
+	{Key: catalogColumnUnit, Headers: []string{"unidad", "unit"}, Required: true},
+	{Key: catalogColumnFamily, Headers: []string{"familia", "family"}, Required: true},
+	{Key: catalogColumnSubgroup, Headers: []string{"subgrupo", "subgroup"}},
+	{Key: catalogColumnPrice, Headers: []string{"precio", "price"}, Required: true},
+	{Key: catalogColumnMinPrice, Headers: []string{"precio_minimo", "min_price", "minimum_price"}},
+}}
 
 type catalogImportRawRow struct {
 	rowNumber   int
@@ -18,52 +41,23 @@ type catalogImportRawRow struct {
 }
 
 func parseCatalogImport(filename string, src io.Reader) ([]catalogImportRawRow, error) {
-	records, err := readImportRecords(filename, src)
+	rows, err := spreadsheet.Read(filename, src, catalogImportSchema)
 	if err != nil {
 		return nil, err
 	}
-	return mapCatalogImportRows(records)
-}
-
-func mapCatalogImportRows(records [][]string) ([]catalogImportRawRow, error) {
-	if len(records) == 0 {
-		return nil, fmt.Errorf("spreadsheet is empty")
-	}
-	headers := make(map[string]int, len(records[0]))
-	for index, header := range records[0] {
-		headers[normalizeImportHeader(header)] = index
-	}
-	codeIndex, codeOK := firstHeader(headers, "codigo", "code")
-	nameIndex, nameOK := firstHeader(headers, "nombre", "name", "canonical_name")
-	unitIndex, unitOK := firstHeader(headers, "unidad", "unit")
-	familyIndex, familyOK := firstHeader(headers, "familia", "family")
-	priceIndex, priceOK := firstHeader(headers, "precio", "price")
-	if !codeOK || !nameOK || !unitOK || !familyOK || !priceOK {
-		return nil, fmt.Errorf("spreadsheet needs codigo, nombre, unidad, familia and precio columns")
-	}
-	descriptionIndex, _ := firstHeader(headers, "descripcion", "description")
-	subgroupIndex, _ := firstHeader(headers, "subgrupo", "subgroup")
-	minPriceIndex, _ := firstHeader(headers, "precio_minimo", "min_price", "minimum_price")
-
-	rows := make([]catalogImportRawRow, 0, len(records)-1)
-	for index, record := range records[1:] {
-		if rowIsEmpty(record) {
-			continue
+	result := make([]catalogImportRawRow, len(rows))
+	for index, row := range rows {
+		result[index] = catalogImportRawRow{
+			rowNumber:   row.Number,
+			code:        row.Values[catalogColumnCode],
+			name:        row.Values[catalogColumnName],
+			description: row.Values[catalogColumnDescription],
+			unit:        row.Values[catalogColumnUnit],
+			family:      row.Values[catalogColumnFamily],
+			subgroup:    row.Values[catalogColumnSubgroup],
+			price:       row.Values[catalogColumnPrice],
+			minPrice:    row.Values[catalogColumnMinPrice],
 		}
-		rows = append(rows, catalogImportRawRow{
-			rowNumber:   index + 2,
-			code:        valueAt(record, codeIndex),
-			name:        valueAt(record, nameIndex),
-			description: valueAt(record, descriptionIndex),
-			unit:        valueAt(record, unitIndex),
-			family:      valueAt(record, familyIndex),
-			subgroup:    valueAt(record, subgroupIndex),
-			price:       valueAt(record, priceIndex),
-			minPrice:    valueAt(record, minPriceIndex),
-		})
 	}
-	if len(rows) == 0 {
-		return nil, fmt.Errorf("spreadsheet has no data rows")
-	}
-	return rows, nil
+	return result, nil
 }

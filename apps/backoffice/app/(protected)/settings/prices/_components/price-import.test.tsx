@@ -123,3 +123,52 @@ describe('PriceImport pending state', () => {
     );
   });
 });
+
+describe('PriceImport partial confirmation', () => {
+  it('allows valid rows and explains that invalid rows are skipped', async () => {
+    vi.mocked(previewPriceImport).mockResolvedValue({
+      ok: true,
+      preview: {
+        branchId: BRANCH.id,
+        rows: [
+          {
+            rowNumber: 2,
+            code: 'CEM-001',
+            productName: 'Cemento',
+            currentPrice: null,
+            currentMinPrice: null,
+            price: '10000.00',
+            minPrice: null,
+            currency: 'ARS',
+            errors: [],
+          },
+          {
+            rowNumber: 3,
+            code: 'DESCONOCIDO',
+            productName: '',
+            currentPrice: null,
+            currentMinPrice: null,
+            price: '5000.00',
+            minPrice: null,
+            currency: 'ARS',
+            errors: ['unknown_product'],
+          },
+        ],
+        validRows: 1,
+        invalidRows: 1,
+        canConfirm: true,
+        previewedAt: '2026-08-05T12:00:00Z',
+      },
+    });
+
+    const view = renderImport();
+    submitPreview(view.form);
+
+    await waitFor(() => expect(view.container.textContent).toContain('se omitirán 1 fila'));
+    const confirm = [...view.container.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes(copy.confirm),
+    );
+    expect(confirm).toBeDefined();
+    await waitFor(() => expect(confirm?.disabled).toBe(false));
+  });
+});

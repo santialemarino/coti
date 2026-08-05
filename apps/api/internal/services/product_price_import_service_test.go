@@ -25,6 +25,21 @@ func (priceImportTestDB) CrossAccount() repository.Querier {
 	return nil
 }
 
+type countingPriceImportTestDB struct {
+	transactions int
+}
+
+func (db *countingPriceImportTestDB) InTenantTx(
+	_ context.Context, _ domain.Tenant, fn func(repository.Querier) error,
+) error {
+	db.transactions++
+	return fn(nil)
+}
+
+func (db *countingPriceImportTestDB) CrossAccount() repository.Querier {
+	return nil
+}
+
 type priceImportTestRepository struct {
 	products map[string]domain.ProductPriceLookup
 	export   *domain.ProductPriceExport
@@ -78,6 +93,24 @@ func TestProductPriceImportService_Preview_ReportsEveryInvalidRow(t *testing.T) 
 	}
 }
 
+func TestProductPriceImportService_Preview_AllowsValidRowsAlongsideInvalidRows(t *testing.T) {
+	t.Parallel()
+	repo := &priceImportTestRepository{products: map[string]domain.ProductPriceLookup{
+		"CEM-001": {ProductID: uuid.New(), Code: "CEM-001", ProductName: "Cemento"},
+	}}
+	service := NewProductPriceImportService(priceImportTestDB{}, repo, nil)
+	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(), BranchID: uuid.New()}
+	csvFile := "codigo;precio\nCEM-001;10000\nDESCONOCIDO;5000"
+
+	preview, err := service.Preview(context.Background(), tenant, "precios.csv", strings.NewReader(csvFile))
+	if err != nil {
+		t.Fatalf("Preview() = %v, want no error", err)
+	}
+	if !preview.CanConfirm || preview.ValidRows != 1 || preview.InvalidRows != 1 {
+		t.Fatalf("preview = %#v, want one confirmable row and one invalid row", preview)
+	}
+}
+
 func TestProductPriceImportService_Confirm_AppliesReviewedRows(t *testing.T) {
 	t.Parallel()
 	productID := uuid.New()
@@ -106,6 +139,30 @@ func TestProductPriceImportService_Confirm_AppliesReviewedRows(t *testing.T) {
 	}
 	if repo.applied[0].Currency != currency {
 		t.Errorf("currency = %q, want current currency %q", repo.applied[0].Currency, currency)
+	}
+}
+
+func TestProductPriceImportService_Confirm_RevalidatesAndSkipsInvalidRowsInOneTransaction(t *testing.T) {
+	t.Parallel()
+	db := &countingPriceImportTestDB{}
+	repo := &priceImportTestRepository{products: map[string]domain.ProductPriceLookup{
+		"CEM-001": {ProductID: uuid.New(), Code: "CEM-001", ProductName: "Cemento"},
+	}}
+	service := NewProductPriceImportService(db, repo, nil)
+	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(), BranchID: uuid.New()}
+
+	count, err := service.Confirm(context.Background(), tenant, []domain.ProductPriceImportInput{
+		{Code: "CEM-001", Price: "10000"},
+		{Code: "DESCONOCIDO", Price: "5000"},
+	})
+	if err != nil {
+		t.Fatalf("Confirm() = %v, want no error", err)
+	}
+	if db.transactions != 1 {
+		t.Fatalf("transactions = %d, want one for revalidation and writes", db.transactions)
+	}
+	if count != 1 || len(repo.applied) != 1 || repo.applied[0].ProductID != repo.products["CEM-001"].ProductID {
+		t.Fatalf("count = %d, applied = %#v; want only the valid row", count, repo.applied)
 	}
 }
 
@@ -148,7 +205,7 @@ func TestProductPriceImportService_Export_CreatesImportableWorkbook(t *testing.T
 	if file.Filename != "precios-villa-bosch.xlsx" {
 		t.Errorf("Filename = %q, want precios-villa-bosch.xlsx", file.Filename)
 	}
-	rows, err := parsePriceImportXLSX(bytes.NewReader(file.Content))
+	rows, err := parsePriceImport("precios.xlsx", bytes.NewReader(file.Content))
 	if err != nil {
 		t.Fatalf("parse exported workbook = %v, want no error", err)
 	}
@@ -164,7 +221,7 @@ func TestProductPriceImportService_Export_CreatesImportableWorkbook(t *testing.T
 	}
 }
 
-func TestParsePriceImportXLSX_ReadsInlineStrings(t *testing.T) {
+func TestParsePriceImport_ReadsXLSXInlineStrings(t *testing.T) {
 	t.Parallel()
 	var file bytes.Buffer
 	writer := zip.NewWriter(&file)
@@ -181,9 +238,9 @@ func TestParsePriceImportXLSX_ReadsInlineStrings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows, err := parsePriceImportXLSX(bytes.NewReader(file.Bytes()))
+	rows, err := parsePriceImport("precios.xlsx", bytes.NewReader(file.Bytes()))
 	if err != nil {
-		t.Fatalf("parsePriceImportXLSX() = %v, want no error", err)
+		t.Fatalf("parsePriceImport() = %v, want no error", err)
 	}
 	if len(rows) != 1 || rows[0].code != "CEM-001" || rows[0].price != "12500" {
 		t.Fatalf("rows = %#v, want one parsed row", rows)

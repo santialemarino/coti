@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/http"
 
@@ -79,25 +78,13 @@ func (h *ProductPriceHandler) PreviewImport(c *gin.Context) {
 	if !ok {
 		return
 	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, h.maxBytes)
-	fileHeader, err := c.FormFile("file")
-	if err != nil {
-		var maxBytesErr *http.MaxBytesError
-		if errors.As(err, &maxBytesErr) {
-			c.JSON(http.StatusRequestEntityTooLarge, dto.ErrorResponse{Error: "file too large"})
-			return
-		}
-		RespondBindError(c, err)
-		return
-	}
-	file, err := fileHeader.Open()
-	if err != nil {
-		Respond(c, err)
+	file, filename, ok := openSpreadsheetUpload(c, h.maxBytes)
+	if !ok {
 		return
 	}
 	defer file.Close()
 
-	preview, err := h.imports.Preview(c.Request.Context(), tenant, fileHeader.Filename, file)
+	preview, err := h.imports.Preview(c.Request.Context(), tenant, filename, file)
 	if err != nil {
 		Respond(c, err)
 		return

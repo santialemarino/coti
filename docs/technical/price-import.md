@@ -13,9 +13,10 @@ is always scoped to one branch and needs an `ADMIN` user.
 3. `POST /v1/product-prices/import/preview` parses the file and returns every row with the
    product it matched, the price in force, the proposed value and any validation errors. It
    writes nothing.
-4. The screen only allows confirming when every row is valid.
-5. `POST /v1/product-prices/import/confirm` revalidates the content and, in one transaction,
-   closes the current price periods and inserts the new `product_price` rows.
+4. The screen allows confirming when at least one row is valid and explains that invalid rows will
+   be skipped.
+5. `POST /v1/product-prices/import/confirm` revalidates the content and, in the same transaction,
+   closes the current price periods and inserts replacements for every valid row.
 
 Existing quotes are untouched. Every `quote_item` keeps the price and minimum-price snapshots
 taken when its version was built; repricing a quote is a separate, explicit action.
@@ -40,13 +41,16 @@ currency; the first price for a product defaults to `ARS`.
 The equivalent English headers are accepted too: `code`, `price` and `min_price`. CSV files may
 use a comma or a semicolon as the separator.
 
-The whole file is refused for confirmation when it carries duplicate codes, unknown or inactive
-products, invalid amounts, or a minimum above the sale price.
+Rows with duplicate codes, unknown or inactive products, invalid amounts, or a minimum above the
+sale price are reported and skipped. They do not block valid rows in the same file.
 
 ## Configuration
 
 `PRICE_IMPORT_MAX_BYTES` caps the upload in bytes, defaulting to `5242880` (5 MiB). That caps
 the compressed size only, so each XLSX entry is additionally bounded when it is decompressed.
+
+CSV/XLSX parsing, row mapping, workbook generation, and the upload boundary use the shared
+spreadsheet contract described in [Shared spreadsheet layer](spreadsheets.md).
 
 ## Supporting endpoints
 
