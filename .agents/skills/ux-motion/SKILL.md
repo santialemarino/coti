@@ -49,9 +49,15 @@ _is_:
   className="group-focus-visible/clear:animate-focus-bump"
   ```
 
-  **The colour shift is not optional.** `prefers-reduced-motion` removes the bump, and a focus
-  indicator that disappears for a user who needs less motion is not a focus indicator. This is the
-  one rule in this skill most likely to be forgotten — check it on every icon-only control you write.
+  **The colour shift is not optional**, because the bump is a one-shot: it ends, and once it does
+  nothing marks the focused element unless something persistent does. Note the reason is _not_ reduced
+  motion — Coti's gate deliberately keeps the bump for a user who asked for less movement, since it is
+  functional feedback. This is the one rule in this skill most likely to be forgotten; check it on
+  every icon-only control you write.
+
+  **`InlineLink` is the one deliberate exception.** Its focus signal is the bump alone, because focus
+  reading differently from hover is the point there, so a focused link is indistinguishable from an
+  unfocused one once the bump ends. That is known and accepted — do not add a colour shift to it.
 
 The bump comes in three intensities: `animate-focus-bump` (→1.5, icon-only buttons),
 `animate-focus-bump-soft` (→1.15, inline icons), `animate-focus-bump-subtle` (→1.05, text links,
