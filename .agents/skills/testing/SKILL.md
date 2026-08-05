@@ -30,6 +30,12 @@ description: Where tests live, how to run them, and what to test in the Coti rep
   a PR touching only it goes green having run nothing. Adding a top-level directory means
   adding or widening a workflow in the same change. Each workflow also lists **itself** in its
   `paths`, so editing one is covered by the run it configures.
+- **Each one runs on a pull request into `main`/`dev` and on a push to either**, on the same
+  paths. The push half is what checks the merge commit: a pull-request run tests a preview of the
+  merge, which goes stale the moment the base branch moves under it, and without the push run
+  nothing at all would notice a broken `dev` — the branch everyone else starts from. It is
+  deliberately **not** wired to required status checks: with path filters a check that never runs
+  for a given PR stays pending forever and blocks the merge instead of passing it.
 
 ## Running tests
 
