@@ -135,7 +135,7 @@ func (h *ProductPriceHandler) ConfirmImport(c *gin.Context) {
 	inputs := make([]domain.ProductPriceImportInput, len(body.Rows))
 	for i, row := range body.Rows {
 		inputs[i] = domain.ProductPriceImportInput{Code: row.Code, Price: row.Price,
-			MinPrice: row.MinPrice, Currency: row.Currency, Conditions: row.Conditions}
+			MinPrice: row.MinPrice, Currency: row.Currency}
 	}
 	importedRows, err := h.imports.Confirm(c.Request.Context(), tenant, inputs)
 	if err != nil {
@@ -152,7 +152,7 @@ func toProductPriceImportPreviewResponse(preview *domain.ProductPriceImportPrevi
 			RowNumber: row.RowNumber, Code: row.Code, ProductName: row.ProductName,
 			CurrentPrice: row.CurrentPrice, CurrentMinPrice: row.CurrentMinPrice,
 			Price: row.Price, MinPrice: row.MinPrice, Currency: row.Currency,
-			Conditions: row.Conditions, Errors: row.Errors,
+			Errors: row.Errors,
 		}
 	}
 	return dto.ProductPriceImportPreviewResponse{

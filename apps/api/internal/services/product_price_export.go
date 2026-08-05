@@ -11,7 +11,7 @@ import (
 )
 
 var priceExportHeaders = []string{
-	"codigo", "producto", "precio", "precio_minimo", "moneda", "condiciones",
+	"codigo", "producto", "precio", "precio_minimo", "moneda",
 }
 
 var priceExportInstructions = []string{
@@ -60,7 +60,7 @@ func buildPriceExportSheet(export domain.ProductPriceExport) string {
 	sheet.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`)
 	sheet.WriteString(`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`)
 	sheet.WriteString(`<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`)
-	sheet.WriteString(`<cols><col min="1" max="1" width="20" customWidth="1"/><col min="2" max="2" width="38" customWidth="1"/><col min="3" max="5" width="18" customWidth="1"/><col min="6" max="6" width="42" customWidth="1"/></cols><sheetData>`)
+	sheet.WriteString(`<cols><col min="1" max="1" width="20" customWidth="1"/><col min="2" max="2" width="38" customWidth="1"/><col min="3" max="5" width="18" customWidth="1"/></cols><sheetData>`)
 	writeXLSXRow(&sheet, 1, priceExportHeaders, true)
 	for index, row := range export.Rows {
 		writeXLSXRow(&sheet, index+2, []string{
@@ -69,11 +69,10 @@ func buildPriceExportSheet(export domain.ProductPriceExport) string {
 			row.Price,
 			optionalString(row.MinPrice),
 			row.Currency,
-			optionalString(row.Conditions),
 		}, false)
 	}
 	sheet.WriteString(`</sheetData>`)
-	sheet.WriteString(fmt.Sprintf(`<autoFilter ref="A1:F%d"/>`, len(export.Rows)+1))
+	sheet.WriteString(fmt.Sprintf(`<autoFilter ref="A1:E%d"/>`, len(export.Rows)+1))
 	sheet.WriteString(`</worksheet>`)
 	return sheet.String()
 }

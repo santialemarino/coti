@@ -11,11 +11,10 @@ type catalogImportRawRow struct {
 	name        string
 	description string
 	unit        string
-	category    string
+	family      string
+	subgroup    string
 	price       string
 	minPrice    string
-	currency    string
-	conditions  string
 }
 
 func parseCatalogImport(filename string, src io.Reader) ([]catalogImportRawRow, error) {
@@ -35,17 +34,16 @@ func mapCatalogImportRows(records [][]string) ([]catalogImportRawRow, error) {
 		headers[normalizeImportHeader(header)] = index
 	}
 	codeIndex, codeOK := firstHeader(headers, "codigo", "code")
-	descriptionIndex, descriptionOK := firstHeader(headers, "descripcion", "description")
+	nameIndex, nameOK := firstHeader(headers, "nombre", "name", "canonical_name")
 	unitIndex, unitOK := firstHeader(headers, "unidad", "unit")
+	familyIndex, familyOK := firstHeader(headers, "familia", "family")
 	priceIndex, priceOK := firstHeader(headers, "precio", "price")
-	if !codeOK || !descriptionOK || !unitOK || !priceOK {
-		return nil, fmt.Errorf("spreadsheet needs codigo, descripcion, unidad and precio columns")
+	if !codeOK || !nameOK || !unitOK || !familyOK || !priceOK {
+		return nil, fmt.Errorf("spreadsheet needs codigo, nombre, unidad, familia and precio columns")
 	}
-	nameIndex, _ := firstHeader(headers, "nombre", "name")
-	categoryIndex, _ := firstHeader(headers, "categoria", "category")
+	descriptionIndex, _ := firstHeader(headers, "descripcion", "description")
+	subgroupIndex, _ := firstHeader(headers, "subgrupo", "subgroup")
 	minPriceIndex, _ := firstHeader(headers, "precio_minimo", "min_price", "minimum_price")
-	currencyIndex, _ := firstHeader(headers, "moneda", "currency")
-	conditionsIndex, _ := firstHeader(headers, "condiciones", "conditions")
 
 	rows := make([]catalogImportRawRow, 0, len(records)-1)
 	for index, record := range records[1:] {
@@ -58,11 +56,10 @@ func mapCatalogImportRows(records [][]string) ([]catalogImportRawRow, error) {
 			name:        valueAt(record, nameIndex),
 			description: valueAt(record, descriptionIndex),
 			unit:        valueAt(record, unitIndex),
-			category:    valueAt(record, categoryIndex),
+			family:      valueAt(record, familyIndex),
+			subgroup:    valueAt(record, subgroupIndex),
 			price:       valueAt(record, priceIndex),
 			minPrice:    valueAt(record, minPriceIndex),
-			currency:    valueAt(record, currencyIndex),
-			conditions:  valueAt(record, conditionsIndex),
 		})
 	}
 	if len(rows) == 0 {

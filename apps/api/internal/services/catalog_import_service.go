@@ -15,6 +15,7 @@ import (
 )
 
 type catalogImportRepository interface {
+	ListTaxonomy(ctx context.Context, q repository.Querier) ([]domain.ProductFamily, error)
 	ListExistingCodes(ctx context.Context, q repository.Querier, accountID uuid.UUID, codes []string) (map[string]struct{}, error)
 	ApplyImport(ctx context.Context, q repository.Querier, tenant domain.Tenant, effectiveAt time.Time, rows []domain.CatalogImportRow) error
 }
@@ -38,12 +39,20 @@ func NewCatalogImportService(
 
 // Template creates the Spanish XLSX used for an initial catalog load.
 func (s *CatalogImportService) Template(
-	_ context.Context, tenant domain.Tenant,
+	ctx context.Context, tenant domain.Tenant,
 ) (*domain.CatalogImportFile, error) {
 	if !tenant.HasBranch() {
 		return nil, fmt.Errorf("%w: select a branch", domain.ErrInvalidInput)
 	}
-	content, err := buildCatalogImportXLSX()
+	var families []domain.ProductFamily
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		var err error
+		families, err = s.catalog.ListTaxonomy(ctx, q)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	content, err := buildCatalogImportXLSX(families)
 	if err != nil {
 		return nil, err
 	}
@@ -87,16 +96,13 @@ func (s *CatalogImportService) Confirm(
 		rawRows[i] = catalogImportRawRow{
 			rowNumber: i + 2, code: input.Code, name: input.Name,
 			description: input.Description, unit: input.Unit, price: input.Price,
-			currency: input.Currency,
+			family: input.Family,
 		}
-		if input.Category != nil {
-			rawRows[i].category = *input.Category
+		if input.Subgroup != nil {
+			rawRows[i].subgroup = *input.Subgroup
 		}
 		if input.MinPrice != nil {
 			rawRows[i].minPrice = *input.MinPrice
-		}
-		if input.Conditions != nil {
-			rawRows[i].conditions = *input.Conditions
 		}
 	}
 
@@ -144,12 +150,16 @@ func (s *CatalogImportService) prepare(
 	if err != nil {
 		return nil, err
 	}
+	families, err := s.catalog.ListTaxonomy(ctx, q)
+	if err != nil {
+		return nil, err
+	}
 
 	preview := &domain.CatalogImportPreview{
 		Rows: make([]domain.CatalogImportRow, 0, len(rawRows)), PreviewedAt: s.now().UTC(),
 	}
 	for _, raw := range rawRows {
-		row := prepareCatalogImportRow(raw, existing, seen)
+		row := prepareCatalogImportRow(raw, existing, seen, families)
 		if len(row.Errors) == 0 {
 			preview.ValidRows++
 		} else {
@@ -163,14 +173,12 @@ func (s *CatalogImportService) prepare(
 
 func prepareCatalogImportRow(
 	raw catalogImportRawRow, existing map[string]struct{}, seen map[string]int,
+	families []domain.ProductFamily,
 ) domain.CatalogImportRow {
 	description := strings.TrimSpace(raw.description)
 	row := domain.CatalogImportRow{
 		RowNumber: raw.rowNumber, Code: strings.TrimSpace(raw.code),
 		Name: strings.TrimSpace(raw.name), Description: description, Unit: strings.TrimSpace(raw.unit),
-	}
-	if row.Name == "" {
-		row.Name = description
 	}
 	if row.Code == "" {
 		row.Errors = append(row.Errors, "missing_code")
@@ -185,12 +193,12 @@ func prepareCatalogImportRow(
 			row.Errors = append(row.Errors, "existing_code")
 		}
 	}
-	if description == "" {
-		row.Errors = append(row.Errors, "missing_description")
-	} else if utf8.RuneCountInString(description) > 512 {
+	if utf8.RuneCountInString(description) > 512 {
 		row.Errors = append(row.Errors, "description_too_long")
 	}
-	if utf8.RuneCountInString(row.Name) > 255 {
+	if row.Name == "" {
+		row.Errors = append(row.Errors, "missing_name")
+	} else if utf8.RuneCountInString(row.Name) > 255 {
 		row.Errors = append(row.Errors, "name_too_long")
 	}
 	if row.Unit == "" {
@@ -198,12 +206,7 @@ func prepareCatalogImportRow(
 	} else if utf8.RuneCountInString(row.Unit) > 64 {
 		row.Errors = append(row.Errors, "unit_too_long")
 	}
-	category := strings.TrimSpace(raw.category)
-	if utf8.RuneCountInString(category) > 255 {
-		row.Errors = append(row.Errors, "category_too_long")
-	} else if category != "" {
-		row.Category = &category
-	}
+	resolveCatalogTaxonomy(&row, raw, families)
 
 	price, priceValue, err := normalizeMoney(raw.price)
 	if err != nil || priceValue.Sign() <= 0 {
@@ -223,18 +226,39 @@ func prepareCatalogImportRow(
 		}
 	}
 
-	row.Currency = strings.ToUpper(strings.TrimSpace(raw.currency))
-	if row.Currency == "" {
-		row.Currency = domain.DefaultCurrency
-	}
-	if !currencyPattern.MatchString(row.Currency) {
-		row.Errors = append(row.Errors, "invalid_currency")
-	}
-	conditions := strings.TrimSpace(raw.conditions)
-	if utf8.RuneCountInString(conditions) > 255 {
-		row.Errors = append(row.Errors, "conditions_too_long")
-	} else if conditions != "" {
-		row.Conditions = &conditions
-	}
 	return row
+}
+
+func resolveCatalogTaxonomy(
+	row *domain.CatalogImportRow, raw catalogImportRawRow, families []domain.ProductFamily,
+) {
+	familyName := strings.ToUpper(strings.TrimSpace(raw.family))
+	if familyName == "" {
+		row.Errors = append(row.Errors, "missing_family")
+		return
+	}
+	var selected *domain.ProductFamily
+	for i := range families {
+		if strings.EqualFold(families[i].Name, familyName) {
+			selected = &families[i]
+			break
+		}
+	}
+	if selected == nil {
+		row.Errors = append(row.Errors, "invalid_family")
+		return
+	}
+	row.FamilyID, row.Family = selected.ID, selected.Name
+	subgroupName := strings.TrimSpace(raw.subgroup)
+	if subgroupName == "" {
+		return
+	}
+	for _, subgroup := range selected.Subgroups {
+		if strings.EqualFold(subgroup.Name, subgroupName) {
+			row.SubgroupID = &subgroup.ID
+			row.Subgroup = &subgroup.Name
+			return
+		}
+	}
+	row.Errors = append(row.Errors, "invalid_subgroup")
 }

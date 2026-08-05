@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
@@ -24,18 +26,26 @@ func TestCatalogImportRepository_ApplyImport_CreatesTheAccountAndBranchRows(t *t
 		_, _ = db.CrossAccount().Exec(cleanupCtx, `DELETE FROM product WHERE account_id = $1`, accountID)
 	})
 
-	category := "Cementos"
 	minPrice := "9500.00"
-	conditions := "Contado"
+	var familyID, subgroupID uuid.UUID
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT f.id, s.id
+		 FROM product_family f
+		 JOIN product_subgroup s ON s.family_id = f.id
+		 WHERE f.name = 'MATERIALES DE CONSTRUCCION' AND s.name = 'ARIDOS'`,
+	).Scan(&familyID, &subgroupID); err != nil {
+		t.Fatal(err)
+	}
 	rows := []domain.CatalogImportRow{
 		{
 			Code: "CEM-001", Name: "Cemento Portland", Description: "Cemento Portland 50 kg",
-			Unit: "bolsa", Category: &category, Price: "10000.00", MinPrice: &minPrice,
-			Currency: "ARS", Conditions: &conditions,
+			Unit: "bolsa", FamilyID: familyID, Family: "MATERIALES DE CONSTRUCCION",
+			SubgroupID: &subgroupID, Price: "10000.00", MinPrice: &minPrice,
 		},
 		{
 			Code: "ARE-001", Name: "Arena fina", Description: "Arena fina a granel",
-			Unit: "m3", Price: "5000.00", Currency: "ARS",
+			Unit: "m3", FamilyID: familyID, Family: "MATERIALES DE CONSTRUCCION",
+			Price: "5000.00",
 		},
 	}
 

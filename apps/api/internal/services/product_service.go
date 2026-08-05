@@ -68,7 +68,6 @@ func (s *ProductService) ListProducts(
 	ctx context.Context, tenant domain.Tenant, filter domain.ProductFilter,
 ) (domain.ProductPage, error) {
 	filter.Search = strings.TrimSpace(filter.Search)
-	filter.Category = strings.TrimSpace(filter.Category)
 	filter.Limit = s.resolveLimit(filter.Limit)
 	if filter.Offset < 0 {
 		filter.Offset = 0
@@ -115,7 +114,6 @@ func (s *ProductService) CreateProduct(
 	in.Code = optionalText(in.Code)
 	in.Description = optionalText(in.Description)
 	in.Unit = optionalText(in.Unit)
-	in.Category = optionalText(in.Category)
 
 	var product *domain.Product
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
@@ -140,7 +138,6 @@ func (s *ProductService) UpdateProduct(
 	in.Code = optionalText(in.Code)
 	in.Description = optionalText(in.Description)
 	in.Unit = optionalText(in.Unit)
-	in.Category = optionalText(in.Category)
 
 	var product *domain.Product
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {

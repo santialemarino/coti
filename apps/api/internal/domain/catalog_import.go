@@ -1,6 +1,24 @@
 package domain
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// ProductFamily is a global catalog family available to every account.
+type ProductFamily struct {
+	ID        uuid.UUID
+	Name      string
+	Subgroups []ProductSubgroup
+}
+
+// ProductSubgroup is an optional classification within one product family.
+type ProductSubgroup struct {
+	ID       uuid.UUID
+	FamilyID uuid.UUID
+	Name     string
+}
 
 // CatalogImportFile is the Spanish XLSX template for an initial catalog load.
 type CatalogImportFile struct {
@@ -15,11 +33,12 @@ type CatalogImportRow struct {
 	Name        string
 	Description string
 	Unit        string
-	Category    *string
+	FamilyID    uuid.UUID
+	Family      string
+	SubgroupID  *uuid.UUID
+	Subgroup    *string
 	Price       string
 	MinPrice    *string
-	Currency    string
-	Conditions  *string
 	Errors      []string
 }
 
@@ -29,11 +48,10 @@ type CatalogImportInput struct {
 	Name        string
 	Description string
 	Unit        string
-	Category    *string
+	Family      string
+	Subgroup    *string
 	Price       string
 	MinPrice    *string
-	Currency    string
-	Conditions  *string
 }
 
 // CatalogImportPreview summarizes a catalog spreadsheet before confirmation.

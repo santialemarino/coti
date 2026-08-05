@@ -182,6 +182,24 @@ CREATE TABLE auth_token (
 -- CATALOG
 -- =============================================================================
 
+CREATE TABLE product_family (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       VARCHAR(255) NOT NULL UNIQUE,
+  sort_order INTEGER NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE product_subgroup (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  family_id  UUID NOT NULL,
+  name       VARCHAR(255) NOT NULL,
+  sort_order INTEGER NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_product_subgroup_family_name UNIQUE (family_id, name),
+  CONSTRAINT uq_product_subgroup_family_order UNIQUE (family_id, sort_order),
+  CONSTRAINT uq_product_subgroup_id_family UNIQUE (id, family_id)
+);
+
 -- The catalog belongs to the account: one product row, one embedding, one set of synonyms
 -- and alternatives per account. Which branch carries it and with how much stock lives in
 -- branch_product; the price in product_price.
@@ -192,7 +210,8 @@ CREATE TABLE product (
   canonical_name VARCHAR(255) NOT NULL,
   description    VARCHAR(512),
   unit           VARCHAR(64),
-  category       VARCHAR(255),
+  family_id      UUID,
+  subgroup_id    UUID,
   embedding      VECTOR(1536),
   is_active      BOOLEAN NOT NULL DEFAULT TRUE,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -230,7 +249,6 @@ CREATE TABLE product_price (
   user_id    UUID,
   price      NUMERIC(14,2) NOT NULL,
   currency   VARCHAR(8) NOT NULL DEFAULT 'ARS',
-  conditions VARCHAR(255),
   min_price  NUMERIC(14,2),
   valid_from TIMESTAMPTZ NOT NULL,
   valid_to   TIMESTAMPTZ,
@@ -570,10 +588,13 @@ CREATE TABLE promotion_condition_item (
   account_id   UUID NOT NULL,
   promotion_id UUID NOT NULL,
   product_id   UUID,
-  category     VARCHAR(255),
+  family_id    UUID,
+  subgroup_id  UUID,
   min_quantity NUMERIC(14,2),
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT ck_pci_target CHECK (product_id IS NOT NULL OR category IS NOT NULL)
+  CONSTRAINT ck_pci_target CHECK (
+    product_id IS NOT NULL OR family_id IS NOT NULL OR subgroup_id IS NOT NULL
+  )
 );
 
 CREATE TABLE promotion_tier (
@@ -663,7 +684,10 @@ ALTER TABLE refresh_token ADD CONSTRAINT fk_refresh_token_user FOREIGN KEY (user
 ALTER TABLE auth_token ADD CONSTRAINT fk_auth_token_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE auth_token ADD CONSTRAINT fk_auth_token_user FOREIGN KEY (user_id) REFERENCES app_user(id);
 
+ALTER TABLE product_subgroup ADD CONSTRAINT fk_product_subgroup_family FOREIGN KEY (family_id) REFERENCES product_family(id);
 ALTER TABLE product ADD CONSTRAINT fk_product_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE product ADD CONSTRAINT fk_product_family FOREIGN KEY (family_id) REFERENCES product_family(id);
+ALTER TABLE product ADD CONSTRAINT fk_product_subgroup_family FOREIGN KEY (subgroup_id, family_id) REFERENCES product_subgroup(id, family_id);
 ALTER TABLE branch_product ADD CONSTRAINT fk_branch_product_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE branch_product ADD CONSTRAINT fk_branch_product_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
 ALTER TABLE branch_product ADD CONSTRAINT fk_branch_product_product FOREIGN KEY (product_id) REFERENCES product(id);
@@ -744,6 +768,8 @@ ALTER TABLE promotion ADD CONSTRAINT fk_promotion_branch FOREIGN KEY (branch_id)
 ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_promotion FOREIGN KEY (promotion_id) REFERENCES promotion(id);
 ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_product FOREIGN KEY (product_id) REFERENCES product(id);
+ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_family FOREIGN KEY (family_id) REFERENCES product_family(id);
+ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_subgroup FOREIGN KEY (subgroup_id) REFERENCES product_subgroup(id);
 ALTER TABLE promotion_tier ADD CONSTRAINT fk_promotion_tier_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE promotion_tier ADD CONSTRAINT fk_promotion_tier_promotion FOREIGN KEY (promotion_id) REFERENCES promotion(id);
 ALTER TABLE quote_discount ADD CONSTRAINT fk_quote_discount_account FOREIGN KEY (account_id) REFERENCES account(id);
@@ -803,6 +829,9 @@ CREATE INDEX idx_quote_expires ON quote(expires_at) WHERE expires_at IS NOT NULL
 CREATE INDEX idx_quote_needs_followup ON quote(needs_followup) WHERE needs_followup = TRUE;
 CREATE INDEX idx_quote_version_quote ON quote_version(quote_id);
 CREATE INDEX idx_quote_item_version ON quote_item(version_id);
+CREATE INDEX idx_product_family_id ON product(family_id);
+CREATE INDEX idx_product_subgroup_id ON product(subgroup_id);
+CREATE INDEX idx_product_subgroup_family_id ON product_subgroup(family_id);
 CREATE INDEX idx_quote_discount_version ON quote_discount(quote_version_id);
 CREATE INDEX idx_promotion_account ON promotion(account_id) WHERE is_active = TRUE;
 CREATE INDEX idx_quote_message_quote ON quote_message(quote_id, received_at);
@@ -873,6 +902,8 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO coti_app;
 GRANT EXECUTE ON FUNCTION app_current_account_id() TO coti_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO coti_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO coti_app;
+
+REVOKE INSERT, UPDATE, DELETE ON product_family, product_subgroup FROM coti_app;
 
 -- account matches on its own id; everything else on its account_id column.
 ALTER TABLE account ENABLE ROW LEVEL SECURITY;

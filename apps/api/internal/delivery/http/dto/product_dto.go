@@ -8,33 +8,36 @@ import (
 
 // ListProductsQuery is the query string for GET /v1/products.
 type ListProductsQuery struct {
-	Search          string `form:"search" binding:"omitempty,max=255"`
-	Category        string `form:"category" binding:"omitempty,max=255"`
-	IncludeInactive bool   `form:"include_inactive"`
-	Limit           int    `form:"limit" binding:"omitempty,min=1"`
-	Offset          int    `form:"offset" binding:"omitempty,min=0"`
+	Search          string     `form:"search" binding:"omitempty,max=255"`
+	FamilyID        *uuid.UUID `form:"family_id"`
+	SubgroupID      *uuid.UUID `form:"subgroup_id"`
+	IncludeInactive bool       `form:"include_inactive"`
+	Limit           int        `form:"limit" binding:"omitempty,min=1"`
+	Offset          int        `form:"offset" binding:"omitempty,min=0"`
 }
 
 // CreateProductRequest is the body for POST /v1/products. The account comes from the
 // tenant context, never the body.
 type CreateProductRequest struct {
-	Code          *string `json:"code" binding:"omitempty,max=255"`
-	CanonicalName string  `json:"canonical_name" binding:"required,min=1,max=255"`
-	Description   *string `json:"description" binding:"omitempty,max=512"`
-	Unit          *string `json:"unit" binding:"omitempty,max=64"`
-	Category      *string `json:"category" binding:"omitempty,max=255"`
+	Code          *string    `json:"code" binding:"omitempty,max=255"`
+	CanonicalName string     `json:"canonical_name" binding:"required,min=1,max=255"`
+	Description   *string    `json:"description" binding:"omitempty,max=512"`
+	Unit          *string    `json:"unit" binding:"omitempty,max=64"`
+	FamilyID      uuid.UUID  `json:"family_id" binding:"required"`
+	SubgroupID    *uuid.UUID `json:"subgroup_id"`
 }
 
 // UpdateProductRequest is the body for PUT /v1/products/:productId. It replaces the
 // editable attributes, so an omitted nullable field clears the column. is_active is the
 // exception — omitted leaves the flag alone.
 type UpdateProductRequest struct {
-	Code          *string `json:"code" binding:"omitempty,max=255"`
-	CanonicalName string  `json:"canonical_name" binding:"required,min=1,max=255"`
-	Description   *string `json:"description" binding:"omitempty,max=512"`
-	Unit          *string `json:"unit" binding:"omitempty,max=64"`
-	Category      *string `json:"category" binding:"omitempty,max=255"`
-	IsActive      *bool   `json:"is_active"`
+	Code          *string    `json:"code" binding:"omitempty,max=255"`
+	CanonicalName string     `json:"canonical_name" binding:"required,min=1,max=255"`
+	Description   *string    `json:"description" binding:"omitempty,max=512"`
+	Unit          *string    `json:"unit" binding:"omitempty,max=64"`
+	FamilyID      uuid.UUID  `json:"family_id" binding:"required"`
+	SubgroupID    *uuid.UUID `json:"subgroup_id"`
+	IsActive      *bool      `json:"is_active"`
 }
 
 // AddSynonymRequest is the body for POST /v1/products/:productId/synonyms. source
@@ -59,15 +62,16 @@ type AddAlternativeRequest struct {
 
 // ProductResponse is returned by list, get, create, and update.
 type ProductResponse struct {
-	ID            uuid.UUID `json:"id"`
-	Code          *string   `json:"code"`
-	CanonicalName string    `json:"canonical_name"`
-	Description   *string   `json:"description"`
-	Unit          *string   `json:"unit"`
-	Category      *string   `json:"category"`
-	IsActive      bool      `json:"is_active"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID            uuid.UUID  `json:"id"`
+	Code          *string    `json:"code"`
+	CanonicalName string     `json:"canonical_name"`
+	Description   *string    `json:"description"`
+	Unit          *string    `json:"unit"`
+	FamilyID      *uuid.UUID `json:"family_id"`
+	SubgroupID    *uuid.UUID `json:"subgroup_id"`
+	IsActive      bool       `json:"is_active"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
 // ProductListResponse is returned by GET /v1/products. total counts every row the filter

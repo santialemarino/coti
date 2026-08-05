@@ -753,8 +753,14 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Exact category match",
-                        "name": "category",
+                        "description": "Exact family id",
+                        "name": "family_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Exact subgroup id",
+                        "name": "subgroup_id",
                         "in": "query"
                     },
                     {
@@ -2750,19 +2756,13 @@ const docTemplate = `{
         "dto.CatalogImportInput": {
             "type": "object",
             "properties": {
-                "category": {
-                    "type": "string"
-                },
                 "code": {
                     "type": "string"
                 },
-                "conditions": {
-                    "type": "string"
-                },
-                "currency": {
-                    "type": "string"
-                },
                 "description": {
+                    "type": "string"
+                },
+                "family": {
                     "type": "string"
                 },
                 "min_price": {
@@ -2772,6 +2772,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "price": {
+                    "type": "string"
+                },
+                "subgroup": {
                     "type": "string"
                 },
                 "unit": {
@@ -2805,16 +2808,7 @@ const docTemplate = `{
         "dto.CatalogImportRowResponse": {
             "type": "object",
             "properties": {
-                "category": {
-                    "type": "string"
-                },
                 "code": {
-                    "type": "string"
-                },
-                "conditions": {
-                    "type": "string"
-                },
-                "currency": {
                     "type": "string"
                 },
                 "description": {
@@ -2825,6 +2819,9 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "family": {
+                    "type": "string"
                 },
                 "min_price": {
                     "type": "string"
@@ -2837,6 +2834,9 @@ const docTemplate = `{
                 },
                 "row_number": {
                     "type": "integer"
+                },
+                "subgroup": {
+                    "type": "string"
                 },
                 "unit": {
                     "type": "string"
@@ -2946,17 +2946,14 @@ const docTemplate = `{
         "dto.CreateProductRequest": {
             "type": "object",
             "required": [
-                "canonical_name"
+                "canonical_name",
+                "family_id"
             ],
             "properties": {
                 "canonical_name": {
                     "type": "string",
                     "maxLength": 255,
                     "minLength": 1
-                },
-                "category": {
-                    "type": "string",
-                    "maxLength": 255
                 },
                 "code": {
                     "type": "string",
@@ -2965,6 +2962,12 @@ const docTemplate = `{
                 "description": {
                     "type": "string",
                     "maxLength": 512
+                },
+                "family_id": {
+                    "type": "string"
+                },
+                "subgroup_id": {
+                    "type": "string"
                 },
                 "unit": {
                     "type": "string",
@@ -3117,9 +3120,6 @@ const docTemplate = `{
                 "branch_id": {
                     "type": "string"
                 },
-                "conditions": {
-                    "type": "string"
-                },
                 "created_at": {
                     "type": "string"
                 },
@@ -3182,10 +3182,6 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 255
                 },
-                "conditions": {
-                    "type": "string",
-                    "maxLength": 255
-                },
                 "currency": {
                     "type": "string"
                 },
@@ -3226,9 +3222,6 @@ const docTemplate = `{
                 "code": {
                     "type": "string"
                 },
-                "conditions": {
-                    "type": "string"
-                },
                 "currency": {
                     "type": "string"
                 },
@@ -3264,9 +3257,6 @@ const docTemplate = `{
                 "canonical_name": {
                     "type": "string"
                 },
-                "category": {
-                    "type": "string"
-                },
                 "code": {
                     "type": "string"
                 },
@@ -3276,11 +3266,17 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
+                "family_id": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
                 "is_active": {
                     "type": "boolean"
+                },
+                "subgroup_id": {
+                    "type": "string"
                 },
                 "unit": {
                     "type": "string"
@@ -3358,10 +3354,6 @@ const docTemplate = `{
                 "price"
             ],
             "properties": {
-                "conditions": {
-                    "type": "string",
-                    "maxLength": 255
-                },
                 "currency": {
                     "description": "e.g. \"ARS\"; defaults to ARS.",
                     "type": "string"
@@ -3544,17 +3536,14 @@ const docTemplate = `{
         "dto.UpdateProductRequest": {
             "type": "object",
             "required": [
-                "canonical_name"
+                "canonical_name",
+                "family_id"
             ],
             "properties": {
                 "canonical_name": {
                     "type": "string",
                     "maxLength": 255,
                     "minLength": 1
-                },
-                "category": {
-                    "type": "string",
-                    "maxLength": 255
                 },
                 "code": {
                     "type": "string",
@@ -3564,8 +3553,14 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 512
                 },
+                "family_id": {
+                    "type": "string"
+                },
                 "is_active": {
                     "type": "boolean"
+                },
+                "subgroup_id": {
+                    "type": "string"
                 },
                 "unit": {
                     "type": "string",

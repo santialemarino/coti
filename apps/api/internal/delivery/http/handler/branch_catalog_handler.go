@@ -202,10 +202,9 @@ func (h *BranchCatalogHandler) SetPrice(c *gin.Context) {
 	}
 
 	in := domain.NewProductPrice{
-		Price:      price,
-		Currency:   body.Currency,
-		Conditions: body.Conditions,
-		MinPrice:   minPrice,
+		Price:    price,
+		Currency: body.Currency,
+		MinPrice: minPrice,
 	}
 	if body.ValidFrom != nil {
 		in.ValidFrom = *body.ValidFrom
@@ -256,16 +255,15 @@ func toAvailabilityResponse(a domain.BranchProduct) dto.AvailabilityResponse {
 
 func toPriceResponse(p domain.ProductPrice) dto.PriceResponse {
 	return dto.PriceResponse{
-		ID:         p.ID,
-		BranchID:   p.BranchID,
-		ProductID:  p.ProductID,
-		Price:      p.Price.StringFixed(domain.MoneyScale),
-		Currency:   p.Currency,
-		MinPrice:   amountString(p.MinPrice),
-		Conditions: p.Conditions,
-		ValidFrom:  p.ValidFrom,
-		ValidTo:    p.ValidTo,
-		SetBy:      p.UserID,
-		CreatedAt:  p.CreatedAt,
+		ID:        p.ID,
+		BranchID:  p.BranchID,
+		ProductID: p.ProductID,
+		Price:     p.Price.StringFixed(domain.MoneyScale),
+		Currency:  p.Currency,
+		MinPrice:  amountString(p.MinPrice),
+		ValidFrom: p.ValidFrom,
+		ValidTo:   p.ValidTo,
+		SetBy:     p.UserID,
+		CreatedAt: p.CreatedAt,
 	}
 }

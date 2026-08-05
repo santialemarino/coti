@@ -105,12 +105,11 @@ func TestProductPriceImportService_Confirm_AppliesReviewedRows(t *testing.T) {
 func TestProductPriceImportService_Export_CreatesImportableWorkbook(t *testing.T) {
 	t.Parallel()
 	minPrice := "9500.00"
-	conditions := "Contado"
 	repo := &priceImportTestRepository{export: &domain.ProductPriceExport{
 		BranchName: "Villa Bosch",
 		Rows: []domain.ProductPriceExportRow{{
 			Code: "CEM-001", ProductName: "Cemento", Price: "10000.00",
-			MinPrice: &minPrice, Currency: "ARS", Conditions: &conditions,
+			MinPrice: &minPrice, Currency: "ARS",
 		}},
 	}}
 	service := NewProductPriceImportService(priceImportTestDB{}, repo, nil)
@@ -130,7 +129,7 @@ func TestProductPriceImportService_Export_CreatesImportableWorkbook(t *testing.T
 	if len(rows) != 1 || rows[0].code != "CEM-001" || rows[0].price != "10000.00" {
 		t.Fatalf("rows = %#v, want the exported price row", rows)
 	}
-	if rows[0].minPrice != "9500.00" || rows[0].currency != "ARS" || rows[0].conditions != "Contado" {
+	if rows[0].minPrice != "9500.00" || rows[0].currency != "ARS" {
 		t.Errorf("row = %#v, want all editable values preserved", rows[0])
 	}
 }

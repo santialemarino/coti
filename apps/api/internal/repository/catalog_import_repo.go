@@ -17,6 +17,39 @@ func NewCatalogImportRepository() *CatalogImportRepository {
 	return &CatalogImportRepository{}
 }
 
+// ListTaxonomy returns the global families and their optional subgroups in display order.
+func (r *CatalogImportRepository) ListTaxonomy(
+	ctx context.Context, q Querier,
+) ([]domain.ProductFamily, error) {
+	rows, err := q.Query(ctx,
+		`SELECT f.id, f.name, s.id, s.name
+		 FROM product_family f
+		 LEFT JOIN product_subgroup s ON s.family_id = f.id
+		 ORDER BY f.sort_order, s.sort_order`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var families []domain.ProductFamily
+	for rows.Next() {
+		var familyID uuid.UUID
+		var familyName string
+		var subgroupID *uuid.UUID
+		var subgroupName *string
+		if err := rows.Scan(&familyID, &familyName, &subgroupID, &subgroupName); err != nil {
+			return nil, err
+		}
+		if len(families) == 0 || families[len(families)-1].ID != familyID {
+			families = append(families, domain.ProductFamily{ID: familyID, Name: familyName})
+		}
+		if subgroupID != nil {
+			families[len(families)-1].Subgroups = append(families[len(families)-1].Subgroups,
+				domain.ProductSubgroup{ID: *subgroupID, FamilyID: familyID, Name: *subgroupName})
+		}
+	}
+	return families, rows.Err()
+}
+
 // ListExistingCodes returns the requested codes already owned by the account.
 func (r *CatalogImportRepository) ListExistingCodes(
 	ctx context.Context, q Querier, accountID uuid.UUID, codes []string,
@@ -52,40 +85,37 @@ func (r *CatalogImportRepository) ApplyImport(
 	names := make([]string, len(rows))
 	descriptions := make([]string, len(rows))
 	units := make([]string, len(rows))
-	categories := make([]string, len(rows))
+	familyIDs := make([]uuid.UUID, len(rows))
+	subgroupIDs := make([]string, len(rows))
 	prices := make([]string, len(rows))
 	minPrices := make([]string, len(rows))
-	currencies := make([]string, len(rows))
-	conditions := make([]string, len(rows))
 	for i, row := range rows {
 		codes[i] = row.Code
 		names[i] = row.Name
 		descriptions[i] = row.Description
 		units[i] = row.Unit
 		prices[i] = row.Price
-		currencies[i] = row.Currency
-		if row.Category != nil {
-			categories[i] = *row.Category
+		familyIDs[i] = row.FamilyID
+		if row.SubgroupID != nil {
+			subgroupIDs[i] = row.SubgroupID.String()
 		}
 		if row.MinPrice != nil {
 			minPrices[i] = *row.MinPrice
-		}
-		if row.Conditions != nil {
-			conditions[i] = *row.Conditions
 		}
 	}
 
 	var imported int
 	err := q.QueryRow(ctx,
 		`WITH incoming AS (
-		   SELECT code, name, description, unit, category, price, min_price, currency, conditions
+		   SELECT code, name, description, unit, family_id, subgroup_id, price, min_price
 		   FROM unnest(
-		     $5::text[], $6::text[], $7::text[], $8::text[], $9::text[],
-		     $10::text[], $11::text[], $12::text[], $13::text[]
-		   ) AS u(code, name, description, unit, category, price, min_price, currency, conditions)
+		     $5::text[], $6::text[], $7::text[], $8::text[], $9::uuid[],
+		     $10::text[], $11::text[], $12::text[]
+		   ) AS u(code, name, description, unit, family_id, subgroup_id, price, min_price)
 		 ), inserted_products AS (
-		   INSERT INTO product (account_id, code, canonical_name, description, unit, category)
-		   SELECT $1, code, name, description, unit, NULLIF(category, '')
+		   INSERT INTO product (account_id, code, canonical_name, description, unit, family_id, subgroup_id)
+		   SELECT $1, code, name, NULLIF(description, ''), unit, family_id,
+		          NULLIF(subgroup_id, '')::uuid
 		   FROM incoming
 		   RETURNING id, code
 		 ), inserted_availability AS (
@@ -95,10 +125,9 @@ func (r *CatalogImportRepository) ApplyImport(
 		   RETURNING product_id
 		 ), inserted_prices AS (
 		   INSERT INTO product_price
-		     (account_id, branch_id, product_id, user_id, price, currency, conditions,
-		      min_price, valid_from)
-		   SELECT $1, $2, p.id, $3, i.price::numeric, i.currency,
-		          NULLIF(i.conditions, ''), NULLIF(i.min_price, '')::numeric, $4
+		     (account_id, branch_id, product_id, user_id, price, currency, min_price, valid_from)
+		   SELECT $1, $2, p.id, $3, i.price::numeric, 'ARS',
+		          NULLIF(i.min_price, '')::numeric, $4
 		   FROM inserted_products p
 		   JOIN incoming i ON i.code = p.code
 		   JOIN inserted_availability a ON a.product_id = p.id
@@ -106,7 +135,7 @@ func (r *CatalogImportRepository) ApplyImport(
 		 )
 		 SELECT count(*) FROM inserted_prices`,
 		tenant.AccountID, tenant.BranchID, tenant.UserID, effectiveAt, codes, names,
-		descriptions, units, categories, prices, minPrices, currencies, conditions,
+		descriptions, units, familyIDs, subgroupIDs, prices, minPrices,
 	).Scan(&imported)
 	if isUniqueViolation(err, productCodeIndex) {
 		return domain.ErrConflict

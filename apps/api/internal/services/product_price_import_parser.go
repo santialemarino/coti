@@ -18,12 +18,11 @@ import (
 const maxXLSXEntryBytes = 64 << 20
 
 type priceImportRawRow struct {
-	rowNumber  int
-	code       string
-	price      string
-	minPrice   string
-	currency   string
-	conditions string
+	rowNumber int
+	code      string
+	price     string
+	minPrice  string
+	currency  string
 }
 
 type xlsxCell struct {
@@ -288,7 +287,6 @@ func mapPriceImportRows(records [][]string) ([]priceImportRawRow, error) {
 	}
 	minPriceIndex, _ := firstHeader(headers, "precio_minimo", "min_price", "minimum_price")
 	currencyIndex, _ := firstHeader(headers, "moneda", "currency")
-	conditionsIndex, _ := firstHeader(headers, "condiciones", "conditions")
 
 	rows := make([]priceImportRawRow, 0, len(records)-1)
 	for index, record := range records[1:] {
@@ -296,12 +294,11 @@ func mapPriceImportRows(records [][]string) ([]priceImportRawRow, error) {
 			continue
 		}
 		rows = append(rows, priceImportRawRow{
-			rowNumber:  index + 2,
-			code:       valueAt(record, codeIndex),
-			price:      valueAt(record, priceIndex),
-			minPrice:   valueAt(record, minPriceIndex),
-			currency:   valueAt(record, currencyIndex),
-			conditions: valueAt(record, conditionsIndex),
+			rowNumber: index + 2,
+			code:      valueAt(record, codeIndex),
+			price:     valueAt(record, priceIndex),
+			minPrice:  valueAt(record, minPriceIndex),
+			currency:  valueAt(record, currencyIndex),
 		})
 	}
 	if len(rows) == 0 {

@@ -99,9 +99,6 @@ func (s *ProductPriceImportService) Confirm(
 		if input.MinPrice != nil {
 			rawRows[i].minPrice = *input.MinPrice
 		}
-		if input.Conditions != nil {
-			rawRows[i].conditions = *input.Conditions
-		}
 	}
 
 	preview, err := s.prepare(ctx, tenant, rawRows)
@@ -114,11 +111,10 @@ func (s *ProductPriceImportService) Confirm(
 	updates := make([]domain.ProductPriceUpdate, len(preview.Rows))
 	for i, row := range preview.Rows {
 		updates[i] = domain.ProductPriceUpdate{
-			ProductID:  row.ProductID,
-			Price:      row.Price,
-			MinPrice:   row.MinPrice,
-			Currency:   row.Currency,
-			Conditions: row.Conditions,
+			ProductID: row.ProductID,
+			Price:     row.Price,
+			MinPrice:  row.MinPrice,
+			Currency:  row.Currency,
 		}
 	}
 	effectiveAt := s.now().UTC()
@@ -217,11 +213,5 @@ func preparePriceImportRow(
 		row.Errors = append(row.Errors, "invalid_currency")
 	}
 
-	conditions := strings.TrimSpace(raw.conditions)
-	if len(conditions) > 255 {
-		row.Errors = append(row.Errors, "conditions_too_long")
-	} else if conditions != "" {
-		row.Conditions = &conditions
-	}
 	return row
 }

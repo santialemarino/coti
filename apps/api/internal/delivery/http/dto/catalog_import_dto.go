@@ -13,11 +13,10 @@ type CatalogImportInput struct {
 	Name        string  `json:"name"`
 	Description string  `json:"description"`
 	Unit        string  `json:"unit"`
-	Category    *string `json:"category"`
+	Family      string  `json:"family"`
+	Subgroup    *string `json:"subgroup"`
 	Price       string  `json:"price"`
 	MinPrice    *string `json:"min_price"`
-	Currency    string  `json:"currency"`
-	Conditions  *string `json:"conditions"`
 }
 
 // CatalogImportRowResponse is one validated row in the catalog import preview.
@@ -27,11 +26,10 @@ type CatalogImportRowResponse struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Unit        string   `json:"unit"`
-	Category    *string  `json:"category"`
+	Family      string   `json:"family"`
+	Subgroup    *string  `json:"subgroup"`
 	Price       string   `json:"price"`
 	MinPrice    *string  `json:"min_price"`
-	Currency    string   `json:"currency"`
-	Conditions  *string  `json:"conditions"`
 	Errors      []string `json:"errors"`
 }
 
