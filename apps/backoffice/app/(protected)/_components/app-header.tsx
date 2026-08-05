@@ -13,9 +13,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@repo/ui/components';
+import { BranchSwitcher } from '@/app/(protected)/_components/branch-switcher';
 import { signOut } from '@/app/(protected)/actions';
 import { Brand } from '@/components/brand';
 import { ROUTES } from '@/config/routes';
+import { getBranches } from '@/lib/api/branches';
+import { getActiveBranchId } from '@/lib/auth/branch';
 import type { SessionUser } from '@/lib/auth/session';
 
 interface AppHeaderProps {
@@ -35,6 +38,8 @@ function initials(name: string) {
 
 export async function AppHeader({ session }: AppHeaderProps) {
   const t = await getTranslations('common');
+  const branches = await getBranches();
+  const activeBranchId = await getActiveBranchId();
 
   return (
     <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center justify-between px-6 bg-background/85 border-b border-border backdrop-blur">
@@ -46,46 +51,53 @@ export async function AppHeader({ session }: AppHeaderProps) {
         <Brand variant="wordmark" size="md" />
       </Link>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          {/* Two stacked lines beside a 28px avatar need more room than any fixed size gives, so
-              the trigger sizes to its content with its own padding. */}
-          <Button variant="ghost" size="sm" className="gap-x-2 h-auto py-1.5 pl-2 pr-3">
-            <Avatar size="sm">
-              <AvatarFallback>{initials(session.name)}</AvatarFallback>
-            </Avatar>
-            <span className="hidden sm:flex flex-col items-start">
-              <span className="text-paragraph-sm-medium text-foreground">{session.name}</span>
-              <span className="text-paragraph-mini text-foreground-muted">
-                {t(`roles.${session.role}`)}
+      <div className="flex items-center gap-x-2">
+        {/* One reachable branch is the caller's whole reach, so there is nothing to switch. */}
+        {branches.length > 1 ? (
+          <BranchSwitcher branches={branches} activeBranchId={activeBranchId ?? null} />
+        ) : null}
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            {/* Two stacked lines beside a 28px avatar need more room than any fixed size gives, so
+                the trigger sizes to its content with its own padding. */}
+            <Button variant="ghost" size="sm" className="gap-x-2 h-auto py-1.5 pl-2 pr-3">
+              <Avatar size="sm">
+                <AvatarFallback>{initials(session.name)}</AvatarFallback>
+              </Avatar>
+              <span className="hidden sm:flex flex-col items-start">
+                <span className="text-paragraph-sm-medium text-foreground">{session.name}</span>
+                <span className="text-paragraph-mini text-foreground-muted">
+                  {t(`roles.${session.role}`)}
+                </span>
               </span>
-            </span>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent className="min-w-52">
-          <DropdownMenuLabel>{t(`roles.${session.role}`)}</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem asChild>
-            <Link href={ROUTES.changePassword}>
-              <KeyRoundIcon aria-hidden="true" />
-              {t('nav.changePassword')}
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          {/*
-            Signing out is a POST, so it stays a form action rather than a link — and the menu item
-            renders as the submit button so it keeps the menu's highlight and keyboard behaviour.
-          */}
-          <form action={signOut}>
-            <DropdownMenuItem asChild tone="danger">
-              <button type="submit" className="w-full">
-                <LogOutIcon aria-hidden="true" />
-                {t('nav.signOut')}
-              </button>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="min-w-52">
+            <DropdownMenuLabel>{t(`roles.${session.role}`)}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href={ROUTES.changePassword}>
+                <KeyRoundIcon aria-hidden="true" />
+                {t('nav.changePassword')}
+              </Link>
             </DropdownMenuItem>
-          </form>
-        </DropdownMenuContent>
-      </DropdownMenu>
+            <DropdownMenuSeparator />
+            {/*
+              Signing out is a POST, so it stays a form action rather than a link — and the menu item
+              renders as the submit button so it keeps the menu's highlight and keyboard behaviour.
+            */}
+            <form action={signOut}>
+              <DropdownMenuItem asChild tone="danger">
+                <button type="submit" className="w-full">
+                  <LogOutIcon aria-hidden="true" />
+                  {t('nav.signOut')}
+                </button>
+              </DropdownMenuItem>
+            </form>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </header>
   );
 }
