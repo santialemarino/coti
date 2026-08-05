@@ -95,6 +95,9 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
   `import 'server-only'`. Called directly from server components (`page.tsx`).
   Backoffice reads use the authenticated fetch (JWT from session); webapp reads
   are unauthenticated (public / token-scoped). Can be imported by multiple pages.
+  **Wrap a read that a layout and a page both perform in React's `cache()`**, so the
+  nested server components share one round trip instead of one each — a layout cannot
+  pass props to the page under it, so re-calling is the only way to get the data there.
 - **Server mutations:** `actions.ts` colocated with the page (`'use server'`).
   Called from client components. Feature-specific — do not put in `lib/`.
 - **Cross-entity API contract types:** `lib/api/types.ts` (e.g. a shared
