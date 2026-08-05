@@ -188,6 +188,9 @@ strings throughout the HTTP contract; currency and price conditions are not spre
 columns. Every route requires an administrator and an active `X-Branch-Id`; the account
 always comes from the authenticated tenant.
 
+Catalog declares its columns and workbook sheets on the shared contract documented in
+[Shared spreadsheet layer](spreadsheets.md); it does not own CSV, XLSX, ZIP, or cell serialization.
+
 ## Configuration
 
 | Variable                    | Default | What for                                      |

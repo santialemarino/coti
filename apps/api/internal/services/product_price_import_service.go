@@ -73,7 +73,15 @@ func (s *ProductPriceImportService) Preview(
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", domain.ErrInvalidInput, err)
 	}
-	return s.prepare(ctx, tenant, rawRows)
+	var preview *domain.ProductPriceImportPreview
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		var prepareErr error
+		preview, prepareErr = s.prepare(ctx, q, tenant, rawRows)
+		return prepareErr
+	}); err != nil {
+		return nil, err
+	}
+	return preview, nil
 }
 
 // Confirm validates the reviewed rows again and atomically creates the new price versions.
@@ -98,33 +106,40 @@ func (s *ProductPriceImportService) Confirm(
 		}
 	}
 
-	preview, err := s.prepare(ctx, tenant, rawRows)
-	if err != nil {
-		return 0, err
-	}
-	if !preview.CanConfirm {
-		return 0, fmt.Errorf("%w: import contains invalid rows", domain.ErrInvalidInput)
-	}
-	updates := make([]domain.ProductPriceUpdate, len(preview.Rows))
-	for i, row := range preview.Rows {
-		updates[i] = domain.ProductPriceUpdate{
-			ProductID: row.ProductID,
-			Price:     row.Price,
-			MinPrice:  row.MinPrice,
-			Currency:  row.Currency,
-		}
-	}
-	effectiveAt := s.now().UTC()
+	importedRows := 0
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		return s.prices.ApplyImport(ctx, q, tenant, effectiveAt, updates)
+		preview, prepareErr := s.prepare(ctx, q, tenant, rawRows)
+		if prepareErr != nil {
+			return prepareErr
+		}
+		updates := make([]domain.ProductPriceUpdate, 0, preview.ValidRows)
+		for _, row := range preview.Rows {
+			if len(row.Errors) > 0 {
+				continue
+			}
+			updates = append(updates, domain.ProductPriceUpdate{
+				ProductID: row.ProductID,
+				Price:     row.Price,
+				MinPrice:  row.MinPrice,
+				Currency:  row.Currency,
+			})
+		}
+		if len(updates) == 0 {
+			return fmt.Errorf("%w: import has no valid rows", domain.ErrInvalidInput)
+		}
+		if applyErr := s.prices.ApplyImport(ctx, q, tenant, s.now().UTC(), updates); applyErr != nil {
+			return applyErr
+		}
+		importedRows = len(updates)
+		return nil
 	}); err != nil {
 		return 0, err
 	}
-	return len(updates), nil
+	return importedRows, nil
 }
 
 func (s *ProductPriceImportService) prepare(
-	ctx context.Context, tenant domain.Tenant, rawRows []priceImportRawRow,
+	ctx context.Context, q repository.Querier, tenant domain.Tenant, rawRows []priceImportRawRow,
 ) (*domain.ProductPriceImportPreview, error) {
 	codes := make([]string, 0, len(rawRows))
 	seen := make(map[string]int, len(rawRows))
@@ -136,12 +151,8 @@ func (s *ProductPriceImportService) prepare(
 		}
 	}
 
-	var products map[string]domain.ProductPriceLookup
-	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		var err error
-		products, err = s.prices.GetByCodes(ctx, q, tenant.AccountID, tenant.BranchID, codes)
-		return err
-	}); err != nil {
+	products, err := s.prices.GetByCodes(ctx, q, tenant.AccountID, tenant.BranchID, codes)
+	if err != nil {
 		return nil, err
 	}
 
@@ -158,7 +169,7 @@ func (s *ProductPriceImportService) prepare(
 		}
 		preview.Rows = append(preview.Rows, row)
 	}
-	preview.CanConfirm = preview.ValidRows > 0 && preview.InvalidRows == 0
+	preview.CanConfirm = preview.ValidRows > 0
 	return preview, nil
 }
 

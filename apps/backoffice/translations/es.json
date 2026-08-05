@@ -565,7 +565,8 @@
     "summary": "Filas válidas: {valid}. Filas con errores: {invalid}.",
     "confirm": "Confirmar actualización",
     "confirming": "Actualizando…",
-    "fixErrors": "Corregí todas las filas marcadas y volvé a cargar el archivo antes de confirmar.",
+    "fixErrors": "No hay filas válidas para actualizar. Corregí las filas marcadas y volvé a cargar el archivo.",
+    "invalidRowsSkipped": "Al confirmar se omitirán {count, plural, one {# fila con errores} other {# filas con errores}}.",
     "valid": "Lista para actualizar",
     "success": "Se actualizaron {count, plural, one {# producto} other {# productos}}.",
     "errors": {

@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -150,13 +151,6 @@ func TestCatalogImportService_Template_IsSpanishAndCarriesInstructions(t *testin
 	if file.Filename != "catalogo-inicial.xlsx" {
 		t.Errorf("Filename = %q, want catalogo-inicial.xlsx", file.Filename)
 	}
-	records, err := readImportXLSXRecords(bytes.NewReader(file.Content))
-	if err != nil {
-		t.Fatalf("read template = %v, want no error", err)
-	}
-	if len(records) != 1 || strings.Join(records[0], ",") != strings.Join(catalogImportHeaders, ",") {
-		t.Fatalf("headers = %#v, want %#v", records, catalogImportHeaders)
-	}
 	archive, err := zip.NewReader(bytes.NewReader(file.Content), int64(len(file.Content)))
 	if err != nil {
 		t.Fatal(err)
@@ -165,25 +159,25 @@ func TestCatalogImportService_Template_IsSpanishAndCarriesInstructions(t *testin
 	for _, entry := range archive.File {
 		switch entry.Name {
 		case "xl/workbook.xml":
-			content, readErr := readZIPFile(entry)
+			content, readErr := readTestZIPEntry(entry)
 			if readErr != nil {
 				t.Fatal(readErr)
 			}
 			workbook = string(content)
 		case "xl/worksheets/sheet1.xml":
-			content, readErr := readZIPFile(entry)
+			content, readErr := readTestZIPEntry(entry)
 			if readErr != nil {
 				t.Fatal(readErr)
 			}
 			catalog = string(content)
 		case "xl/worksheets/sheet2.xml":
-			content, readErr := readZIPFile(entry)
+			content, readErr := readTestZIPEntry(entry)
 			if readErr != nil {
 				t.Fatal(readErr)
 			}
 			instructions = string(content)
 		case "xl/worksheets/sheet3.xml":
-			content, readErr := readZIPFile(entry)
+			content, readErr := readTestZIPEntry(entry)
 			if readErr != nil {
 				t.Fatal(readErr)
 			}
@@ -192,6 +186,11 @@ func TestCatalogImportService_Template_IsSpanishAndCarriesInstructions(t *testin
 	}
 	if !strings.Contains(workbook, `name="Catálogo"`) || !strings.Contains(workbook, `name="Instrucciones"`) {
 		t.Errorf("workbook does not carry the Spanish catalog and instructions sheet names")
+	}
+	for _, header := range catalogImportHeaders {
+		if !strings.Contains(catalog, ">"+header+"</t>") {
+			t.Errorf("catalog sheet does not carry header %q", header)
+		}
 	}
 	if !strings.Contains(workbook, `name="Listas" sheetId="3" state="hidden"`) ||
 		strings.Contains(workbook, "MapaFamilias") ||
@@ -217,4 +216,13 @@ func containsError(errors []string, expected string) bool {
 		}
 	}
 	return false
+}
+
+func readTestZIPEntry(entry *zip.File) ([]byte, error) {
+	reader, err := entry.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+	return io.ReadAll(reader)
 }
