@@ -142,6 +142,15 @@ The stack is **react-hook-form + zod** with the shared `Form` primitives from
   runs inside a transition, and a state update made there does not commit until that transition
   ends, so the flag arrives after the spinner is gone. Give each action its own hook and disable on
   the union when they are mutually exclusive.
+- **A form spanning steps is one `useForm`, it validates per step, and its step follows the error.**
+  Gate advancing with `form.trigger([...stepFields])`, never the whole form, or messages land on
+  fields the caller has not reached. When the server rejects a field, move to that field's step
+  _and_ `setError`: nothing ties a wizard's position to the form's state, so a message off screen
+  reads as a button that did nothing. Keep the field-to-step map in one module and pin every field
+  of the schema to a step with a test.
+- **A disabled submit button stops a second click, not a second submit.** Enter still reaches the
+  form, so a handler behind a write that must happen once refuses to re-enter while one is in
+  flight.
 
 ## Feedback: toast, callout, or field message
 
