@@ -218,8 +218,7 @@ change touching only these paths reaches `dev` with no check having run at all.
 
 **One shared config: `@repo/vitest-config`.** Each package's `vitest.config.ts` is three
 lines re-exporting it, the way `eslint.config.js` consumes `@repo/eslint-config`. Put a
-setting that should hold everywhere in the shared package, not in one app. It carries two
-things worth knowing:
+setting that should hold everywhere in the shared package, not in one app. What it carries:
 
 - **`server-only` is aliased to a stub.** Next resolves that marker in its own bundler and
   ships no package for it, so any module importing it — the API client, the session, every
@@ -227,6 +226,12 @@ things worth knowing:
 - **Path aliases come from each package's own `tsconfig.json`** (`resolve.tsconfigPaths`),
   so `@/lib/...` resolves in a test exactly as it does in the app, with no second copy of
   the alias map to drift.
+- **A `ResizeObserver` stub**, because jsdom implements none and Radix measures with one the
+  moment a `Checkbox`, `Switch` or `RadioGroup` mounts — without it any test rendering a form
+  dies.
+- **A `cookieJar()` double**, from `@repo/vitest-config/cookies`. Use it rather than hand-rolling
+  one: it reproduces Next's `delete`, which is a **set to `''`** and not a removal, so a reader
+  that mishandles the blank fails here instead of in a browser.
 
 ### What to test
 

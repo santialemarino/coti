@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { cookieJar } from '@repo/vitest-config/cookies';
 import { ROUTES } from '@/config/routes';
-import { clearSession, getSession, requireAdmin } from '@/lib/auth/session';
+import { clearSession, getAccessToken, getSession, requireAdmin } from '@/lib/auth/session';
 import { ACCESS_COOKIE, BRANCH_COOKIE, REFRESH_COOKIE, REMEMBER_COOKIE } from '@/lib/auth/tokens';
 
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
@@ -25,14 +26,9 @@ const ADMIN = { id: 'u1', account_id: 'a1', name: 'Ana', email: 'ana@coti.test',
 const SELLER = { ...ADMIN, id: 'u2', name: 'Beto', role: 'SELLER' };
 
 function jar(initial: Record<string, string> = { [ACCESS_COOKIE]: 'token' }) {
-  const store = new Map(Object.entries(initial));
-  const fake = {
-    get: (name: string) => (store.has(name) ? { name, value: store.get(name) } : undefined),
-    set: vi.fn(),
-    delete: vi.fn((name: string) => store.delete(name)),
-  };
+  const fake = cookieJar(initial);
   vi.mocked(cookies).mockResolvedValue(fake as unknown as Awaited<ReturnType<typeof cookies>>);
-  return { ...fake, store };
+  return fake;
 }
 
 beforeEach(() => vi.clearAllMocks());
@@ -87,6 +83,20 @@ describe('requireAdmin', () => {
     vi.mocked(errorCodeOf).mockReturnValue('unauthenticated');
 
     await expect(requireAdmin()).rejects.toThrow(`NEXT_REDIRECT:${ROUTES.sessionEnded}`);
+  });
+});
+
+describe('getAccessToken', () => {
+  /*
+   * The same trap the branch cookie hit: a delete leaves the entry blank for the rest of the
+   * request. Every consumer today happens to test truthiness, so `''` behaves like absence by
+   * luck — one `??` would end that, and the reader is where the invariant belongs.
+   */
+  it('reports no token once the session has been cleared in this request', async () => {
+    jar();
+    await clearSession();
+
+    await expect(getAccessToken()).resolves.toBeUndefined();
   });
 });
 

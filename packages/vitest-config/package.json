@@ -7,6 +7,10 @@
     ".": {
       "types": "./config.d.ts",
       "default": "./config.js"
+    },
+    "./cookies": {
+      "types": "./cookies.d.ts",
+      "default": "./cookies.js"
     }
   },
   "devDependencies": {

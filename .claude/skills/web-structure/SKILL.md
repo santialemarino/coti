@@ -88,6 +88,12 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
 - **Shared logic (auth, API, utils):** `lib/` — e.g. `lib/auth.ts` (backoffice
   session helpers), `lib/utils/page.tsx`. Use for anything used by more than one
   route or shared between server and client within the app.
+  **A cookie reader returns `undefined` or a real value, never `''`.** Next implements
+  `cookies().delete(name)` as a set to an empty string, so a read after a delete in the same
+  request still finds the entry — blank. A caller falling back with `??` takes that as a real
+  choice and looks up a value nobody set. Normalise at the reader (`?.value || undefined`), and
+  use the `cookieJar()` double from `@repo/vitest-config/cookies` in tests: a hand-rolled jar
+  that drops the key on delete is kinder than production and hides exactly this.
 - **Client hooks (app-level):** `hooks/<name>.ts` (imported `@/hooks/...`), one
   hook per file, kebab-case named after the hook. A hook needed by both apps goes
   in `packages/ui/src/hooks` + its `index.ts` (imported `@repo/ui/hooks`).

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { cookieJar } from '@repo/vitest-config/cookies';
 import { clearActiveBranch, getActiveBranchId, setActiveBranch } from '@/lib/auth/branch';
 import { BRANCH_COOKIE } from '@/lib/auth/tokens';
 
@@ -14,18 +15,10 @@ const { isRemembered } = await import('@/lib/auth/session');
 const VILLA_BOSCH = '11111111-1111-4111-8111-111111111111';
 const MORON = '22222222-2222-4222-8222-222222222222';
 
-// The slice of Next's cookie jar this module touches, backed by a real map so a write is
-// readable afterwards — the round trip is the thing under test.
 function jar(initial: Record<string, string> = {}) {
-  const store = new Map(Object.entries(initial));
-  const fake = {
-    get: (name: string) => (store.has(name) ? { name, value: store.get(name) } : undefined),
-    // Rest-typed so a test can read back the options the writer chose, third argument included.
-    set: vi.fn((...args: [string, string, { maxAge?: number }?]) => store.set(args[0], args[1])),
-    delete: vi.fn((name: string) => store.delete(name)),
-  };
+  const fake = cookieJar(initial);
   vi.mocked(cookies).mockResolvedValue(fake as unknown as Awaited<ReturnType<typeof cookies>>);
-  return { ...fake, store };
+  return fake;
 }
 
 function reachable(...ids: string[]) {
@@ -41,12 +34,12 @@ beforeEach(() => {
 
 describe('the active branch cookie', () => {
   it('reads back the branch it wrote', async () => {
-    const cookieJar = jar();
+    const store = jar();
     reachable(VILLA_BOSCH, MORON);
 
     await expect(setActiveBranch(MORON)).resolves.toBe(true);
     await expect(getActiveBranchId()).resolves.toBe(MORON);
-    expect(cookieJar.set).toHaveBeenCalledWith(BRANCH_COOKIE, MORON, expect.anything());
+    expect(store.set).toHaveBeenCalledWith(BRANCH_COOKIE, MORON, expect.anything());
   });
 
   it('reports no selection when nothing was chosen', async () => {
@@ -55,9 +48,10 @@ describe('the active branch cookie', () => {
   });
 
   /*
-   * A delete leaves an empty-valued marker in the jar for the rest of the request, so a read
-   * that followed one in the same render got `''`. Callers fall back with `??`, which takes
-   * that as a real choice — the switcher went blank after switching to account-wide.
+   * Next implements a delete as a set to `''`, so the entry survives the request blank. A caller
+   * falling back with `??` takes that as a real choice and looks up a branch nobody selected,
+   * leaving the switcher on its placeholder. Pinned directly as well as through the delete
+   * below, because this is the reader's contract and not a property of how the value got there.
    */
   it('reads a blank cookie as no selection, not as a branch named nothing', async () => {
     jar({ [BRANCH_COOKIE]: '' });
@@ -69,11 +63,11 @@ describe('the active branch cookie', () => {
    * checked against the caller's reach, so a value that never passed here can never be in it.
    */
   it('refuses a branch the caller does not reach, and writes nothing', async () => {
-    const cookieJar = jar();
+    const store = jar();
     reachable(VILLA_BOSCH);
 
     await expect(setActiveBranch(MORON)).resolves.toBe(false);
-    expect(cookieJar.set).not.toHaveBeenCalled();
+    expect(store.set).not.toHaveBeenCalled();
     await expect(getActiveBranchId()).resolves.toBeUndefined();
   });
 
@@ -85,13 +79,17 @@ describe('the active branch cookie', () => {
     await expect(getActiveBranchId()).resolves.toBe(VILLA_BOSCH);
   });
 
-  // Clearing is how a caller gets back to account-wide, so it must remove the cookie rather
-  // than blank it: an empty header and an absent one are different asks.
-  it('clears the selection', async () => {
-    const cookieJar = jar({ [BRANCH_COOKIE]: MORON });
+  /*
+   * The assertion in the middle is what keeps this honest: the store must still hold the entry,
+   * blank, the way Next leaves it. Without that line a jar that simply drops the key passes, and
+   * a double kinder than production is what hides the case above.
+   */
+  it('clears the selection, leaving the blank entry Next leaves', async () => {
+    const store = jar({ [BRANCH_COOKIE]: MORON });
 
     await clearActiveBranch();
-    expect(cookieJar.delete).toHaveBeenCalledWith(BRANCH_COOKIE);
+    expect(store.delete).toHaveBeenCalledWith(BRANCH_COOKIE);
+    expect(store.get(BRANCH_COOKIE)).toEqual({ name: BRANCH_COOKIE, value: '' });
     await expect(getActiveBranchId()).resolves.toBeUndefined();
   });
 

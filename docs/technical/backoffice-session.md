@@ -48,6 +48,15 @@ an over-long cookie costs nothing but a wasted round trip.
 `getSession()` and `getBranches()` are wrapped in React's `cache()`, so the shell, the section
 layout and the page under them share one round trip instead of three.
 
+**Every cookie reader here returns `undefined` or a real value, never `''`.** Next implements
+`cookies().delete(name)` as a set to an empty string with an expiry in the past, so a read after a
+delete in the same request still finds the entry — blank. Consumers that test truthiness cannot
+tell the difference, but one falling back with `??` takes the blank as a choice and looks up a
+value nobody set. Normalising at the reader is what keeps that from being each caller's problem.
+Tests use the `cookieJar()` double from `@repo/vitest-config/cookies`, which reproduces the
+delete-as-empty-value behaviour; a hand-rolled jar that drops the key is kinder than production
+and hides exactly this.
+
 ## The gate
 
 `middleware.ts` runs on everything but static assets and decides reachability:
