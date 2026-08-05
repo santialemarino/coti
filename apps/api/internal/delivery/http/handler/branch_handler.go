@@ -33,12 +33,12 @@ func NewBranchHandler(branches BranchService) *BranchHandler {
 // listFor picks the read the query asked for. The service refuses the account-wide one to a
 // seller, so the role check lives in one place rather than being repeated here.
 func (h *BranchHandler) listFor(
-	c *gin.Context, tenant domain.Tenant, includeInactive bool,
+	ctx context.Context, tenant domain.Tenant, includeInactive bool,
 ) ([]domain.Branch, error) {
 	if includeInactive {
-		return h.branches.ListAllBranches(c.Request.Context(), tenant)
+		return h.branches.ListAllBranches(ctx, tenant)
 	}
-	return h.branches.ListBranches(c.Request.Context(), tenant)
+	return h.branches.ListBranches(ctx, tenant)
 }
 
 // List returns the branches the caller may operate on, or every branch for an administrator.
@@ -65,7 +65,7 @@ func (h *BranchHandler) List(c *gin.Context) {
 		return
 	}
 
-	branches, err := h.listFor(c, tenant, query.IncludeInactive)
+	branches, err := h.listFor(c.Request.Context(), tenant, query.IncludeInactive)
 	if err != nil {
 		Respond(c, err)
 		return
