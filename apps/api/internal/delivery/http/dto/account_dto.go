@@ -33,7 +33,9 @@ type UpdateAccountRequest struct {
 	LegalName    *string `json:"legal_name" binding:"omitempty,max=255"`
 	TaxID        *string `json:"tax_id" binding:"omitempty,max=255"`
 	BrandLogoURL *string `json:"brand_logo_url" binding:"omitempty,url,max=512"`
-	BrandColor   *string `json:"brand_color" binding:"omitempty,max=32"`
+	// Hexadecimal, with three, four, six or eight digits behind a hash. Checked here because the
+	// webapp renders a quote with it, not in whichever client happens to be writing it.
+	BrandColor *string `json:"brand_color" binding:"omitempty,hexcolor,max=32"`
 }
 
 // AccountResponse is the corralón record the backoffice reads and edits.
