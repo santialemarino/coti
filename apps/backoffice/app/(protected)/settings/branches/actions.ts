@@ -13,6 +13,14 @@ export interface BranchResult {
   error?: BranchErrorKey;
 }
 
+/* What reopening needs to replace the record with, which is whatever the row already holds. */
+export interface ReopenableBranch {
+  id: string;
+  name: string;
+  address: string | null;
+  defaultExpiryDays: number;
+}
+
 export async function createBranch(values: BranchValues): Promise<BranchResult> {
   // Re-validated server-side: the client's schema is a courtesy, not a guarantee.
   const parsed = branchSchema().safeParse(values);
@@ -42,6 +50,26 @@ export async function closeBranch(branchId: string): Promise<BranchResult> {
 
   if ((await getActiveBranchId()) === branchId) await clearActiveBranch();
   return result;
+}
+
+/*
+ * Reopening is the same replace as an edit with the flag turned back on, which is why it carries the
+ * branch's current name and expiry: `PUT` replaces the record and requires both.
+ */
+export async function reopenBranch(branch: ReopenableBranch): Promise<BranchResult> {
+  return write(
+    {
+      path: `/v1/branches/${branch.id}`,
+      method: 'PUT',
+      body: {
+        name: branch.name,
+        address: branch.address ?? undefined,
+        default_expiry_days: branch.defaultExpiryDays,
+        is_active: true,
+      },
+    },
+    'invalid',
+  );
 }
 
 function bodyOf(values: BranchValues) {

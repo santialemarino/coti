@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { BuildingIcon, PencilIcon, PlusIcon, XCircleIcon } from 'lucide-react';
+import { BuildingIcon, PencilIcon, PlusIcon, RotateCcwIcon, XCircleIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import {
+  Badge,
   Button,
   Callout,
   ConfirmDialog,
@@ -23,13 +24,14 @@ import { BranchFormDialog } from '@/app/(protected)/settings/branches/_component
 import {
   closeBranch,
   createBranch,
+  reopenBranch,
   updateBranch,
   type BranchErrorKey,
 } from '@/app/(protected)/settings/branches/actions';
 import type { BranchValues } from '@/app/(protected)/settings/branches/form-schema';
 import type { Branch } from '@/lib/api/branches';
 
-const COLUMN_COUNT = 4;
+const COLUMN_COUNT = 5;
 
 interface BranchTableProps {
   branches: Branch[];
@@ -46,7 +48,8 @@ export function BranchTable({ branches }: BranchTableProps) {
    */
   const [saving, startSave] = useTransition();
   const [removing, startRemove] = useTransition();
-  const busy = saving || removing;
+  const [reopening, startReopen] = useTransition();
+  const busy = saving || removing || reopening;
 
   function onSubmit(values: BranchValues) {
     const target = form;
@@ -86,6 +89,18 @@ export function BranchTable({ branches }: BranchTableProps) {
     });
   }
 
+  function onReopen(branch: Branch) {
+    setError(null);
+    startReopen(async () => {
+      const result = await reopenBranch(branch);
+      if (!result.ok) {
+        setError(result.error ?? 'unexpected');
+        return;
+      }
+      toast.success(t('reopened'));
+    });
+  }
+
   return (
     <div className="flex flex-col gap-y-6">
       {error ? <Callout tone="danger">{t(`errors.${error}`)}</Callout> : null}
@@ -104,6 +119,7 @@ export function BranchTable({ branches }: BranchTableProps) {
             <TableHead>{t('table.name')}</TableHead>
             <TableHead>{t('table.address')}</TableHead>
             <TableHead>{t('table.expiry')}</TableHead>
+            <TableHead>{t('table.status')}</TableHead>
             <TableHead className="text-right">{t('table.actions')}</TableHead>
           </TableRow>
         </TableHeader>
@@ -126,6 +142,11 @@ export function BranchTable({ branches }: BranchTableProps) {
                 </TableCell>
                 <TableCell>{t('expiryDays', { count: branch.defaultExpiryDays })}</TableCell>
                 <TableCell>
+                  <Badge tone={branch.isActive ? 'success' : 'neutral'}>
+                    {t(branch.isActive ? 'status.active' : 'status.closed')}
+                  </Badge>
+                </TableCell>
+                <TableCell>
                   <div className="flex justify-end gap-x-1">
                     <RowActionButton
                       icon={PencilIcon}
@@ -133,13 +154,22 @@ export function BranchTable({ branches }: BranchTableProps) {
                       disabled={busy}
                       onClick={() => setForm({ mode: 'edit', branch })}
                     />
-                    <RowActionButton
-                      icon={XCircleIcon}
-                      label={t('close.action')}
-                      tone="danger"
-                      disabled={busy}
-                      onClick={() => setClosing(branch)}
-                    />
+                    {branch.isActive ? (
+                      <RowActionButton
+                        icon={XCircleIcon}
+                        label={t('close.action')}
+                        tone="danger"
+                        disabled={busy}
+                        onClick={() => setClosing(branch)}
+                      />
+                    ) : (
+                      <RowActionButton
+                        icon={RotateCcwIcon}
+                        label={t('reopen.action')}
+                        disabled={busy}
+                        onClick={() => onReopen(branch)}
+                      />
+                    )}
                   </div>
                 </TableCell>
               </TableRow>

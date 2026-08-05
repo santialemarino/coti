@@ -323,10 +323,18 @@
       "name": "Nombre",
       "address": "Dirección",
       "expiry": "Vencimiento",
+      "status": "Estado",
       "actions": "Acciones",
       "noAddress": "Sin dirección"
     },
     "expiryDays": "{count, plural, one {# día} other {# días}}",
+    "status": {
+      "active": "Activa",
+      "closed": "Cerrada"
+    },
+    "reopen": {
+      "action": "Reabrir"
+    },
     "empty": {
       "title": "Todavía no hay sucursales",
       "description": "Agregá la primera para empezar a operar."
@@ -347,7 +355,7 @@
     "close": {
       "action": "Cerrar",
       "title": "Cerrar la sucursal",
-      "description": "Se va a cerrar «{name}». Dejá de verla en el listado y nadie va a poder operar en ella.",
+      "description": "Se va a cerrar «{name}». Nadie va a poder operar en ella y sus cotizaciones quedan como están. Podés reabrirla cuando quieras.",
       "confirm": "Cerrar sucursal",
       "confirming": "Cerrando…"
     },
@@ -369,6 +377,7 @@
     "created": "Creamos la sucursal.",
     "updated": "Guardamos los cambios.",
     "closed": "Cerramos la sucursal.",
+    "reopened": "Reabrimos la sucursal.",
     "errors": {
       "lastActive": "Es la única sucursal activa del corralón. Abrí otra antes de cerrarla, porque la cuenta necesita al menos una para operar.",
       "notFound": "Esa sucursal ya no existe. Actualizá el listado.",
