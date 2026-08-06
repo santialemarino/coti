@@ -1,11 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
-import { useForm } from 'react-hook-form';
+import { useForm, type FieldErrors, type Resolver } from 'react-hook-form';
 
 import {
   Button,
@@ -20,9 +19,10 @@ import { AccountStep } from '@/app/(auth)/signup/_components/account-step';
 import { AdminStep } from '@/app/(auth)/signup/_components/admin-step';
 import { BranchStep } from '@/app/(auth)/signup/_components/branch-step';
 import { signup } from '@/app/(auth)/signup/actions';
-import { signupSchema, type SignupValues } from '@/app/(auth)/signup/form-schema';
-import { STEP_ORDER, stepOwning, STEPS, type StepKey } from '@/app/(auth)/signup/steps';
+import { type SignupValues } from '@/app/(auth)/signup/form-schema';
+import { STEP_ORDER, stepOwning, STEPS, stepSchema, type StepKey } from '@/app/(auth)/signup/steps';
 import { ROUTES } from '@/config/routes';
+import { FORM_VALIDATION } from '@/lib/forms/options';
 
 const STEP_FIELDS: Record<StepKey, () => React.ReactNode> = {
   account: AccountStep,
@@ -50,10 +50,36 @@ const EMPTY_VALUES: SignupValues = {
 export function SignupForm() {
   const router = useRouter();
   const t = useTranslations('auth.signup');
-  const schema = useMemo(() => signupSchema(t), [t]);
+  const tErrors = useTranslations('common.form.errors');
+  const text = useMemo(() => ({ field: t, shared: tErrors }), [t, tErrors]);
   const [stepKey, setStepKey] = useState<StepKey>('account');
+  /* Read by the resolver, which runs outside a render and needs the step as of the submit. */
+  const currentStep = useRef<StepKey>('account');
+
+  /*
+   * The step decides what a submit validates, so the schema changes under the form and
+   * `zodResolver` — built around one fixed schema — is not what runs here. The values pass through
+   * untouched, since a step's schema covers only its own fields.
+   */
+  const resolver: Resolver<SignupValues> = useCallback(
+    async (values) => {
+      const parsed = await stepSchema(currentStep.current, text).safeParseAsync(values);
+      if (parsed.success) return { values, errors: {} };
+
+      const errors: Record<string, { type: string; message: string }> = {};
+      for (const issue of parsed.error.issues) {
+        // Every field of the wizard is a flat key, so the first path segment names it.
+        const name = String(issue.path[0]);
+        errors[name] ??= { type: issue.code, message: issue.message };
+      }
+      return { values: {}, errors: errors as FieldErrors<SignupValues> };
+    },
+    [text],
+  );
+
   const form = useForm<SignupValues>({
-    resolver: zodResolver(schema),
+    ...FORM_VALIDATION,
+    resolver,
     defaultValues: EMPTY_VALUES,
   });
 
@@ -83,13 +109,8 @@ export function SignupForm() {
 
   function goToStep(next: StepKey) {
     navigated.current = true;
+    currentStep.current = next;
     setStepKey(next);
-  }
-
-  async function advance(next: StepKey) {
-    // This step's fields only. Validating the whole form here would mark fields the caller has
-    // not reached, leaving messages on steps nobody is looking at.
-    if (await form.trigger(step.fields)) goToStep(next);
   }
 
   async function create(values: SignupValues) {
@@ -118,10 +139,15 @@ export function SignupForm() {
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    // The primary button submits on every step so Enter does what pressing it does; which of
-    // the two things that means is decided here.
-    if (step.next) {
-      void advance(step.next);
+    /*
+     * The primary button submits on every step so Enter does what pressing it does; which of the two
+     * things that means is decided here. Advancing goes through `handleSubmit` rather than
+     * `trigger` — only a submit puts the form in the state where a rejected field re-checks itself
+     * on every keystroke.
+     */
+    const { next } = step;
+    if (next) {
+      void form.handleSubmit(() => goToStep(next))(event);
       return;
     }
     // A disabled button stops a second click, not a second submit — and this is the one
@@ -163,7 +189,7 @@ export function SignupForm() {
                   type="button"
                   variant="outline"
                   size="lg"
-                  onClick={() => setStepKey(previous)}
+                  onClick={() => goToStep(previous)}
                 >
                   {t('back')}
                 </Button>

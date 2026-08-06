@@ -27,6 +27,7 @@ import { branchSchema, type BranchValues } from '@/app/(protected)/settings/bran
 import type { Branch } from '@/lib/api/branches';
 import { DEFAULT_EXPIRY_DAYS, EXPIRY_MAX_DAYS, EXPIRY_MIN_DAYS } from '@/lib/constants/branch';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
+import { FORM_VALIDATION } from '@/lib/forms/options';
 
 interface BranchFormDialogProps {
   open: boolean;
@@ -55,12 +56,14 @@ export function BranchFormDialog({
   pending,
 }: BranchFormDialogProps) {
   const t = useTranslations('branches');
-  const schema = useMemo(() => branchSchema(t), [t]);
+  const tErrors = useTranslations('common.form.errors');
+  const schema = useMemo(() => branchSchema({ field: t, shared: tErrors }), [t, tErrors]);
   const lastMode = useRef(mode);
   if (open) lastMode.current = mode;
   const copy = open ? mode : lastMode.current;
 
   const form = useForm<BranchValues>({
+    ...FORM_VALIDATION,
     resolver: zodResolver(schema),
     defaultValues: { name: '', address: '', defaultExpiryDays: String(DEFAULT_EXPIRY_DAYS) },
   });

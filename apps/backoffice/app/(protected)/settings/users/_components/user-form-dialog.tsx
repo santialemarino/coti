@@ -40,12 +40,12 @@ import type { AccountUser } from '@/lib/api/users';
 import {
   ADMIN_ROLE,
   PASSWORD_MAX_LENGTH,
-  PASSWORD_MIN_LENGTH,
   SELLER_ROLE,
   USER_ROLES,
   type UserRole,
 } from '@/lib/constants/auth';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
+import { FORM_VALIDATION } from '@/lib/forms/options';
 
 interface UserFormDialogProps {
   open: boolean;
@@ -78,6 +78,7 @@ export function UserFormDialog({
 }: UserFormDialogProps) {
   const t = useTranslations('users');
   const tCommon = useTranslations('common');
+  const tErrors = useTranslations('common.form.errors');
   const fieldId = useId();
   /*
    * An assignment to a branch that has since closed cannot be sent back — the API only accepts
@@ -94,8 +95,12 @@ export function UserFormDialog({
   if (open) lastShown.current = { mode, isSelf, closedAssignments };
   const shown = open ? { mode, isSelf, closedAssignments } : lastShown.current;
 
-  const schema = useMemo(() => userSchema(shown.mode, t), [shown.mode, t]);
+  const schema = useMemo(
+    () => userSchema(shown.mode, { field: t, shared: tErrors }),
+    [shown.mode, t, tErrors],
+  );
   const form = useForm<UserValues>({
+    ...FORM_VALIDATION,
     resolver: zodResolver(schema),
     defaultValues: { name: '', email: '', role: SELLER_ROLE, branchIds: [], password: '' },
   });
@@ -186,16 +191,13 @@ export function UserFormDialog({
                       <Input
                         type="password"
                         autoComplete="new-password"
-                        minLength={PASSWORD_MIN_LENGTH}
                         maxLength={PASSWORD_MAX_LENGTH}
                         placeholder={t('password.placeholder')}
                         passwordToggleLabel={tCommon('form.togglePassword')}
                         {...field}
                       />
                     </FormControl>
-                    <FormDescription>
-                      {t('password.hint', { count: PASSWORD_MIN_LENGTH })}
-                    </FormDescription>
+                    <FormDescription>{t('password.hint')}</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

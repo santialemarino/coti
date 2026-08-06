@@ -19,8 +19,6 @@ export const PASSWORD_MIN_LENGTH = 8;
 // than that instead of silently accepting a password whose tail never mattered.
 export const PASSWORD_MAX_LENGTH = 72;
 
-// The shape a schema factory takes, so a zod message is a catalog key the form
-// resolves rather than a string baked into the schema.
-export type MessageFor = (key: string) => string;
-
-export const rawKey: MessageFor = (key) => key;
+// The cap on a password being presented rather than chosen, which is what the API accepts on the
+// routes that only compare one. Wider than the one above so an older, longer password still logs in.
+export const SECRET_MAX_LENGTH = 128;

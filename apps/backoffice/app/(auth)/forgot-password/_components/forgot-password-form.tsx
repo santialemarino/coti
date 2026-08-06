@@ -29,6 +29,8 @@ import {
   type ForgotPasswordValues,
 } from '@/app/(auth)/forgot-password/form-schema';
 import { ROUTES } from '@/config/routes';
+import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
+import { FORM_VALIDATION } from '@/lib/forms/options';
 
 /*
  * Owns the whole screen rather than just the form, because the sent state replaces the card entirely
@@ -36,9 +38,11 @@ import { ROUTES } from '@/config/routes';
  */
 export function ForgotPasswordForm() {
   const t = useTranslations('auth.forgotPassword');
-  const schema = useMemo(() => forgotPasswordSchema(t), [t]);
+  const tErrors = useTranslations('common.form.errors');
+  const schema = useMemo(() => forgotPasswordSchema({ field: t, shared: tErrors }), [t, tErrors]);
   const [sent, setSent] = useState(false);
   const form = useForm<ForgotPasswordValues>({
+    ...FORM_VALIDATION,
     resolver: zodResolver(schema),
     defaultValues: { email: '' },
   });
@@ -50,7 +54,7 @@ export function ForgotPasswordForm() {
       return;
     }
     if (result.fieldError) {
-      form.setError(result.fieldError.field, { message: t(`email.${result.fieldError.key}`) });
+      form.setError(result.fieldError.field, { message: tErrors('invalidEmail') });
       return;
     }
     form.setError('root', { message: t('errors.unexpected') });
@@ -92,6 +96,7 @@ export function ForgotPasswordForm() {
                       <Input
                         type="email"
                         autoComplete="email"
+                        maxLength={TEXT_FIELD_MAX_LENGTH}
                         placeholder={t('email.placeholder')}
                         {...field}
                       />

@@ -11,6 +11,10 @@
     "./cookies": {
       "types": "./cookies.d.ts",
       "default": "./cookies.js"
+    },
+    "./schema-text": {
+      "types": "./schema-text.d.ts",
+      "default": "./schema-text.js"
     }
   },
   "devDependencies": {

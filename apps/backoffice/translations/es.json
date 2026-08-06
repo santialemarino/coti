@@ -32,7 +32,14 @@
     "retry": "Reintentar",
     "form": {
       "togglePassword": "Mostrar u ocultar la contraseña",
-      "clearSearch": "Limpiar la búsqueda"
+      "clearSearch": "Limpiar la búsqueda",
+      "errors": {
+        "invalidEmail": "Ingresá una dirección de correo válida.",
+        "tooLong": "Máximo {max} caracteres.",
+        "passwordTooShort": "Mínimo {min} caracteres.",
+        "passwordTooLong": "Máximo {max} caracteres.",
+        "passwordMismatch": "Las contraseñas no coinciden."
+      }
     },
     "pagination": {
       "label": "Paginación",
@@ -103,12 +110,12 @@
       "email": {
         "label": "Correo electrónico",
         "placeholder": "tu@correo.com",
-        "invalid": "Ingresá una dirección de correo válida."
+        "required": "Ingresá tu correo electrónico."
       },
       "password": {
         "label": "Contraseña",
         "placeholder": "Ingresá tu contraseña",
-        "tooShort": "La contraseña es demasiado corta."
+        "required": "Ingresá tu contraseña."
       },
       "rememberMe": "Mantener la sesión abierta",
       "submit": "Ingresar",
@@ -169,21 +176,18 @@
       "adminEmail": {
         "label": "Correo electrónico",
         "placeholder": "tu@correo.com",
-        "invalid": "Ingresá una dirección de correo válida."
+        "required": "Ingresá tu correo electrónico."
       },
       "adminPassword": {
         "label": "Contraseña",
         "placeholder": "Elegí una contraseña",
-        "tooShort": "Mínimo 8 caracteres.",
-        "tooLong": "Máximo 72 caracteres."
+        "required": "Elegí una contraseña."
       },
       "confirmPassword": {
         "label": "Repetir contraseña",
         "placeholder": "Repetí la contraseña",
-        "mismatch": "Las contraseñas no coinciden."
+        "required": "Repetí la contraseña."
       },
-      "minLength": "Mínimo {count} caracteres.",
-      "tooLong": "Máximo 255 caracteres.",
       "back": "Atrás",
       "next": "Continuar",
       "submit": "Crear cuenta",
@@ -203,7 +207,7 @@
       "email": {
         "label": "Correo electrónico",
         "placeholder": "tu@correo.com",
-        "invalid": "Ingresá una dirección de correo válida."
+        "required": "Ingresá tu correo electrónico."
       },
       "submit": "Enviar enlace",
       "submitting": "Enviando…",
@@ -219,14 +223,13 @@
       "newPassword": {
         "label": "Contraseña nueva",
         "placeholder": "Ingresá la contraseña nueva",
-        "tooShort": "Mínimo 8 caracteres."
+        "required": "Ingresá la contraseña nueva."
       },
       "confirmPassword": {
         "label": "Repetir contraseña",
         "placeholder": "Repetí la contraseña nueva",
-        "mismatch": "Las contraseñas no coinciden."
+        "required": "Repetí la contraseña nueva."
       },
-      "minLength": "Mínimo {count} caracteres.",
       "submit": "Cambiar contraseña",
       "submitting": "Cambiando…",
       "done": "Listo. Ya podés entrar con tu contraseña nueva.",
@@ -250,14 +253,13 @@
       "newPassword": {
         "label": "Contraseña nueva",
         "placeholder": "Ingresá la contraseña nueva",
-        "tooShort": "Mínimo 8 caracteres."
+        "required": "Ingresá la contraseña nueva."
       },
       "confirmPassword": {
         "label": "Repetir contraseña",
         "placeholder": "Repetí la contraseña nueva",
-        "mismatch": "Las contraseñas no coinciden."
+        "required": "Repetí la contraseña nueva."
       },
-      "minLength": "Mínimo {count} caracteres.",
       "submit": "Cambiar contraseña",
       "submitting": "Cambiando…",
       "done": "Contraseña cambiada. Las demás sesiones se cerraron.",
@@ -281,7 +283,7 @@
       "email": {
         "label": "Correo electrónico",
         "placeholder": "tu@correo.com",
-        "invalid": "Ingresá una dirección de correo válida."
+        "required": "Ingresá tu correo electrónico."
       },
       "resend": "Enviar un enlace nuevo",
       "resending": "Enviando…",
@@ -381,9 +383,9 @@
     "defaultExpiryDays": {
       "label": "Días de vencimiento de las cotizaciones",
       "hint": "Por defecto {count} días. Cada sucursal puede usar el suyo.",
-      "outOfRange": "Ingresá un número entre 1 y 365."
+      "required": "Ingresá los días de vencimiento.",
+      "outOfRange": "Ingresá un número entre {min} y {max}."
     },
-    "tooLong": "Máximo 255 caracteres.",
     "created": "Creamos la sucursal.",
     "updated": "Guardamos los cambios.",
     "closed": "Cerramos la sucursal.",
@@ -422,7 +424,6 @@
       "placeholder": "https://tucorralon.com/logo.png",
       "hint": "Tiene que ser una imagen accesible desde internet.",
       "open": "Verla",
-      "tooLong": "Máximo 512 caracteres.",
       "invalid": "Ingresá una dirección web completa, con https:// adelante."
     },
     "brandColor": {
@@ -431,7 +432,6 @@
       "hint": "En hexadecimal, como lo escribís en un diseño: #C2410C.",
       "invalid": "Ingresá un color hexadecimal, por ejemplo #C2410C."
     },
-    "tooLong": "Máximo 255 caracteres.",
     "submit": "Guardar cambios",
     "submitting": "Guardando…",
     "saved": "Guardamos los datos del corralón.",
@@ -508,14 +508,13 @@
     "email": {
       "label": "Correo electrónico",
       "placeholder": "Ingresá el correo con el que va a entrar",
-      "invalid": "Ingresá una dirección de correo válida."
+      "required": "Ingresá el correo del usuario."
     },
     "password": {
       "label": "Contraseña inicial",
       "placeholder": "Elegí una contraseña",
-      "hint": "Mínimo {count} caracteres. Se la tenés que pasar vos.",
-      "tooShort": "Mínimo 8 caracteres.",
-      "tooLong": "Máximo 72 caracteres."
+      "required": "Elegí una contraseña inicial.",
+      "hint": "Se la tenés que pasar vos."
     },
     "role": {
       "label": "Rol",
@@ -527,7 +526,6 @@
       "adminHint": "Un administrador alcanza todas las sucursales, estén marcadas o no.",
       "closedAssignments": "{count, plural, one {Tiene una sucursal cerrada asignada y al guardar se la vamos a quitar.} other {Tiene # sucursales cerradas asignadas y al guardar se las vamos a quitar.}}"
     },
-    "tooLong": "Máximo 255 caracteres.",
     "created": "Creamos el usuario.",
     "updated": "Guardamos los cambios.",
     "deactivated": "Desactivamos el usuario.",

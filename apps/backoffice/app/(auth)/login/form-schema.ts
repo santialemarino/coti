@@ -1,11 +1,11 @@
 import { z } from 'zod';
 
-import { PASSWORD_MIN_LENGTH, rawKey, type MessageFor } from '@/lib/constants/auth';
+import { currentSecret, emailAddress, rawText, type SchemaText } from '@/lib/forms/validators';
 
-export function loginSchema(t: MessageFor = rawKey) {
+export function loginSchema(t: SchemaText = rawText) {
   return z.object({
-    email: z.email(t('email.invalid')),
-    password: z.string().min(PASSWORD_MIN_LENGTH, t('password.tooShort')),
+    email: emailAddress(t, 'email.required'),
+    password: currentSecret(t, 'password.required'),
     rememberMe: z.boolean(),
   });
 }
