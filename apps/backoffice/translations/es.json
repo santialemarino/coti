@@ -214,7 +214,6 @@
       "sent": "Si la dirección está registrada, va a recibir un enlace en unos minutos. Revisá también el correo no deseado.",
       "backToLogin": "Volver a iniciar sesión",
       "errors": {
-        "invalidEmail": "Ingresá una dirección de correo válida.",
         "unexpected": "No pudimos procesar el pedido. Intentá de nuevo."
       }
     },
@@ -236,8 +235,6 @@
       "goToLogin": "Iniciar sesión",
       "requestAnother": "Pedir un enlace nuevo",
       "errors": {
-        "mismatch": "Las contraseñas no coinciden.",
-        "tooShort": "La contraseña es demasiado corta.",
         "invalidLink": "El enlace no es válido, ya se usó o venció. Pedí uno nuevo.",
         "unexpected": "No pudimos cambiar la contraseña. Intentá de nuevo."
       }
@@ -264,8 +261,6 @@
       "submitting": "Cambiando…",
       "done": "Contraseña cambiada. Las demás sesiones se cerraron.",
       "errors": {
-        "mismatch": "Las contraseñas no coinciden.",
-        "tooShort": "La contraseña es demasiado corta.",
         "wrongCurrentPassword": "La contraseña actual no es correcta.",
         "unexpected": "No pudimos cambiar la contraseña. Intentá de nuevo.",
         "sessionExpired": "Tu sesión expiró. Volvé a iniciar sesión."
