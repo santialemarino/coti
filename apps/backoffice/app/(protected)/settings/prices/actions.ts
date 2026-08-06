@@ -11,7 +11,7 @@ interface ProductPriceImportRowRaw {
   price: string;
   min_price: string | null;
   currency: string;
-  errors: string[];
+  errors: string[] | null;
 }
 
 interface ProductPriceImportPreviewRaw {
@@ -69,7 +69,7 @@ function mapProductPriceImportRow(raw: ProductPriceImportRowRaw): ProductPriceIm
     price: raw.price,
     minPrice: raw.min_price,
     currency: raw.currency,
-    errors: raw.errors,
+    errors: raw.errors ?? [],
   };
 }
 

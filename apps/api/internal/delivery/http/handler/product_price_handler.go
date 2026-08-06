@@ -139,7 +139,7 @@ func toProductPriceImportPreviewResponse(preview *domain.ProductPriceImportPrevi
 			RowNumber: row.RowNumber, Code: row.Code, ProductName: row.ProductName,
 			CurrentPrice: row.CurrentPrice, CurrentMinPrice: row.CurrentMinPrice,
 			Price: row.Price, MinPrice: row.MinPrice, Currency: row.Currency,
-			Errors: row.Errors,
+			Errors: append([]string{}, row.Errors...),
 		}
 	}
 	return dto.ProductPriceImportPreviewResponse{
