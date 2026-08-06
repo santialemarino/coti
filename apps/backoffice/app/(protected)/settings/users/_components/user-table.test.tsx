@@ -278,7 +278,7 @@ describe('UserTable dialogs', () => {
     await waitFor(() => expect(within(dialog(view)).getByText(copy.create.title)).toBeTruthy());
     fireEvent.change(field(view, 'name'), { target: { value: 'Dana López' } });
     fireEvent.change(field(view, 'email'), { target: { value: 'dana@corralon.test' } });
-    fireEvent.change(field(view, 'password'), { target: { value: 'coti1234' } });
+    fireEvent.change(field(view, 'password'), { target: { value: 'Coti-1234-larga' } });
     submitDialog(view);
 
     await waitFor(() => expect(createUser).toHaveBeenCalledOnce());

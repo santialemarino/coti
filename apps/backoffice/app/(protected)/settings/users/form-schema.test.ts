@@ -2,15 +2,16 @@ import { describe, expect, it } from 'vitest';
 
 import { schemaText } from '@repo/vitest-config/schema-text';
 import { userSchema, type UserValues } from '@/app/(protected)/settings/users/form-schema';
-import { ADMIN_ROLE, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@/lib/constants/auth';
+import { ADMIN_ROLE } from '@/lib/constants/auth';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
+import { PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH } from '@/lib/constants/password';
 
 const VALID: UserValues = {
   name: 'Ana Gómez',
   email: 'ana@corralon.test',
   role: ADMIN_ROLE,
   branchIds: [],
-  password: 'coti1234',
+  password: 'Coti-1234-larga',
 };
 
 function messagesFor(values: Partial<UserValues>, mode: 'create' | 'edit' = 'create') {
@@ -78,23 +79,27 @@ describe('userSchema', () => {
  * none, so requiring one to edit a profile would make every edit impossible.
  */
 describe('userSchema and the initial password', () => {
-  it.each(['corto', 'a'.repeat(PASSWORD_MIN_LENGTH - 1)])(
+  it.each(['Aa1!bcd', `Aa1!${'b'.repeat(PASSWORD_MIN_LENGTH - 5)}`])(
     'refuses %p when creating',
     (password) => {
       expect(messagesFor({ password }).password).toBe('passwordTooShort');
     },
   );
 
+  it('refuses a long password that is missing a character class', () => {
+    expect(messagesFor({ password: 'contraseña-larga' }).password).toBe('passwordRequirements');
+  });
+
   // bcrypt hashes the first 72 bytes and ignores the rest, so the API refuses a longer one rather
   // than accepting a password whose tail never mattered.
   it('refuses a password past what the API stores', () => {
-    expect(messagesFor({ password: 'a'.repeat(PASSWORD_MAX_LENGTH + 1) }).password).toBe(
+    expect(messagesFor({ password: `Aa1!${'b'.repeat(PASSWORD_MAX_BYTES)}` }).password).toBe(
       'passwordTooLong',
     );
   });
 
   it('accepts a password of exactly the minimum length', () => {
-    const password = 'a'.repeat(PASSWORD_MIN_LENGTH);
+    const password = `Aa1!${'b'.repeat(PASSWORD_MIN_LENGTH - 4)}`;
 
     expect(userSchema('create').safeParse({ ...VALID, password }).success).toBe(true);
   });

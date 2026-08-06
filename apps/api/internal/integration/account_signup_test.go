@@ -22,7 +22,7 @@ func signupBody(suffix string) map[string]any {
 		"branch_name":    "Casa Central",
 		"admin_name":     "Admin " + suffix,
 		"admin_email":    suffix + "@test.local",
-		"admin_password": "coti1234",
+		"admin_password": "Coti1234-seed",
 	}
 }
 

@@ -19,7 +19,7 @@ import {
 } from '@repo/ui/components';
 import { login } from '@/app/(auth)/login/actions';
 import { loginSchema, type LoginValues } from '@/app/(auth)/login/form-schema';
-import { SECRET_MAX_LENGTH } from '@/lib/constants/auth';
+import { PasswordField } from '@/components/password-field';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 
@@ -30,7 +30,6 @@ interface LoginFormProps {
 export function LoginForm({ next }: LoginFormProps) {
   const router = useRouter();
   const t = useTranslations('auth.login');
-  const tCommon = useTranslations('common');
   const tErrors = useTranslations('common.form.errors');
   const schema = useMemo(() => loginSchema({ field: t, shared: tErrors }), [t, tErrors]);
   const form = useForm<LoginValues>({
@@ -79,25 +78,12 @@ export function LoginForm({ next }: LoginFormProps) {
           )}
         />
 
-        <FormField
+        <PasswordField
           control={form.control}
           name="password"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel required>{t('password.label')}</FormLabel>
-              <FormControl>
-                <Input
-                  type="password"
-                  autoComplete="current-password"
-                  maxLength={SECRET_MAX_LENGTH}
-                  placeholder={t('password.placeholder')}
-                  passwordToggleLabel={tCommon('form.togglePassword')}
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
+          label={t('password.label')}
+          placeholder={t('password.placeholder')}
+          existing
         />
 
         <FormField

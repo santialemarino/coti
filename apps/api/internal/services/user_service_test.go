@@ -199,7 +199,7 @@ func storedSeller() *domain.AppUser {
 
 func validNewUser() domain.NewUser {
 	return domain.NewUser{
-		Name: "Nuevo Vendedor", Email: "nuevo@corralon.test", Password: "una-clave-larga",
+		Name: "Nuevo Vendedor", Email: "nuevo@corralon.test", Password: "Una-clave-larga1",
 		Role: domain.UserRoleSeller, BranchIDs: []uuid.UUID{assignedBranch},
 	}
 }

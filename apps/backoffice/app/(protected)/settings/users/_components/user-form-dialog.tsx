@@ -35,15 +35,10 @@ import {
   type UserFormMode,
   type UserValues,
 } from '@/app/(protected)/settings/users/form-schema';
+import { PasswordField } from '@/components/password-field';
 import type { Branch } from '@/lib/api/branches';
 import type { AccountUser } from '@/lib/api/users';
-import {
-  ADMIN_ROLE,
-  PASSWORD_MAX_LENGTH,
-  SELLER_ROLE,
-  USER_ROLES,
-  type UserRole,
-} from '@/lib/constants/auth';
+import { ADMIN_ROLE, SELLER_ROLE, USER_ROLES, type UserRole } from '@/lib/constants/auth';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 
@@ -181,27 +176,16 @@ export function UserFormDialog({
             />
 
             {shown.mode === 'create' ? (
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel required>{t('password.label')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        autoComplete="new-password"
-                        maxLength={PASSWORD_MAX_LENGTH}
-                        placeholder={t('password.placeholder')}
-                        passwordToggleLabel={tCommon('form.togglePassword')}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormDescription>{t('password.hint')}</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="flex flex-col gap-y-2">
+                <PasswordField
+                  control={form.control}
+                  name="password"
+                  label={t('password.label')}
+                  placeholder={t('password.placeholder')}
+                  meter
+                />
+                <Hint>{t('password.hint')}</Hint>
+              </div>
             ) : null}
 
             {/* The explanation stands where the control would have been. */}

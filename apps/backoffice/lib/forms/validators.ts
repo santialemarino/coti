@@ -1,7 +1,13 @@
 import { z } from 'zod';
 
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, SECRET_MAX_LENGTH } from '@/lib/constants/auth';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
+import {
+  hasEveryCharacterClass,
+  PASSWORD_MAX_BYTES,
+  PASSWORD_MIN_LENGTH,
+  passwordByteLength,
+  SECRET_MAX_LENGTH,
+} from '@/lib/constants/password';
 
 /* A schema message is a catalog key the form resolves, so no copy is baked into a schema. */
 export type MessageFor = (key: string, values?: Record<string, string | number>) => string;
@@ -47,7 +53,7 @@ export function emailAddress(t: SchemaText, requiredKey: string) {
     );
 }
 
-/* Presented, never chosen: no floor, because one added later would lock out an older password. */
+/* Presented, never chosen: no policy, because one added later would lock out an older password. */
 export function currentSecret(t: SchemaText, requiredKey: string) {
   return z
     .string()
@@ -56,9 +62,9 @@ export function currentSecret(t: SchemaText, requiredKey: string) {
 }
 
 /*
- * A password being set; the API applies the same floor and answers 422 when this one drifts low.
- * Piped rather than chained because chained checks all run, and "obligatorio" plus "mínimo 8
- * caracteres" on one blank field is two answers to one question.
+ * A password being set, against the same policy the API applies. Piped rather than chained because
+ * chained checks all run, and "obligatorio" plus "mínimo 12 caracteres" on one blank field is two
+ * answers to one question. The cap is counted in bytes, which is the unit bcrypt stops at.
  */
 export function newPassword(t: SchemaText, requiredKey: string) {
   return z
@@ -68,7 +74,11 @@ export function newPassword(t: SchemaText, requiredKey: string) {
       z
         .string()
         .min(PASSWORD_MIN_LENGTH, t.shared('passwordTooShort', { min: PASSWORD_MIN_LENGTH }))
-        .max(PASSWORD_MAX_LENGTH, t.shared('passwordTooLong', { max: PASSWORD_MAX_LENGTH })),
+        .refine(
+          (value) => passwordByteLength(value) <= PASSWORD_MAX_BYTES,
+          t.shared('passwordTooLong', { max: PASSWORD_MAX_BYTES }),
+        )
+        .refine(hasEveryCharacterClass, t.shared('passwordRequirements')),
     );
 }
 

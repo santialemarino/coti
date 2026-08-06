@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { schemaText } from '@repo/vitest-config/schema-text';
 import { loginSchema } from '@/app/(auth)/login/form-schema';
-import { SECRET_MAX_LENGTH } from '@/lib/constants/auth';
+import { SECRET_MAX_LENGTH } from '@/lib/constants/password';
 
 const VALID = { email: 'admin@corralon.test', password: 'coti1234', rememberMe: false };
 

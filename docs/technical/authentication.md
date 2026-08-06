@@ -269,7 +269,7 @@ seller reaching any of it gets **403**.
 - **The account comes from the session**, never the body — there is no account field on the
   wire, so an admin cannot create a user anywhere but their own account.
 - **An admin sets the initial password.** There is no invitation flow, so this is the only way
-  a user gets credentials. It must clear `AUTH_PASSWORD_MIN_LENGTH`.
+  a user gets credentials. It clears the same policy as every other password.
 - **An admin may create either role.** `ADMIN` and `SELLER` are both accepted.
 - **A duplicate email is a 409**, raised by a constraint rather than a read-then-write. Two
   back it: `uq_app_user_email` per account, and `uq_app_user_email_global` on `lower(email)`
@@ -292,10 +292,24 @@ seller reaching any of it gets **403**.
 ## Passwords
 
 bcrypt at the default cost. It is a cryptographic constant, so it is **not** configurable per
-environment, unlike the operational thresholds. `AUTH_PASSWORD_MIN_LENGTH` is the operational
-one, it floors at 8, and all three change paths apply it.
+environment, unlike the operational thresholds.
 
-The two development seed users have the password `coti1234`. Development only.
+**One policy, applied wherever a password is stored** — `domain.PasswordPolicy`, called by signup,
+admin user creation, the self-service change and the recovery reset. A password must be at least
+`AUTH_PASSWORD_MIN_LENGTH` characters (12 by default; the config refuses to be set below 8) and
+carry an uppercase letter, a lowercase letter, a number and a symbol. The character rules are fixed
+rather than configurable: they are a product decision, not an operational threshold an environment
+tunes.
+
+The cap is **72 bytes, not 72 characters**, because that is what bcrypt hashes — it refuses a longer
+input outright, so the policy catches it as invalid input instead of letting the write fail. A
+password of accented characters reaches that cap in fewer characters than an ASCII one.
+
+**Logging in applies no policy at all.** The password is being compared, not chosen, so a rule
+introduced after an account was created never locks that account out of its own login screen.
+
+The two development seed users have the password `coti1234`. Development only — it predates the
+policy, and only logging in accepts it.
 
 ## Password lifecycle
 

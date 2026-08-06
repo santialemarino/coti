@@ -38,7 +38,24 @@
         "tooLong": "Máximo {max} caracteres.",
         "passwordTooShort": "Mínimo {min} caracteres.",
         "passwordTooLong": "Máximo {max} caracteres.",
-        "passwordMismatch": "Las contraseñas no coinciden."
+        "passwordMismatch": "Las contraseñas no coinciden.",
+        "passwordRequirements": "La contraseña no cumple con los requisitos."
+      }
+    },
+    "passwordMeter": {
+      "title": "Seguridad",
+      "strength": {
+        "weak": "Débil",
+        "moderate": "Media",
+        "strong": "Fuerte"
+      },
+      "requirements": {
+        "title": "Tiene que tener:",
+        "length": "Al menos {count} caracteres",
+        "uppercase": "Una letra mayúscula",
+        "lowercase": "Una letra minúscula",
+        "number": "Un número",
+        "symbol": "Un símbolo, por ejemplo ! # - ."
       }
     },
     "pagination": {

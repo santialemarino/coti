@@ -179,7 +179,7 @@ func Load() (*Config, error) {
 			RefreshReuseGrace:    getDuration("AUTH_REFRESH_REUSE_GRACE_SECONDS", 30*time.Second, &problems),
 			MaxFailedAttempts:    getInt("AUTH_MAX_FAILED_ATTEMPTS", 5, &problems),
 			LockoutDuration:      getDuration("AUTH_LOCKOUT_MINUTES", 15*time.Minute, &problems),
-			PasswordMinLength:    getInt("AUTH_PASSWORD_MIN_LENGTH", 8, &problems),
+			PasswordMinLength:    getInt("AUTH_PASSWORD_MIN_LENGTH", 12, &problems),
 			PasswordResetTTL:     getDuration("AUTH_PASSWORD_RESET_TTL_MINUTES", 60*time.Minute, &problems),
 			RequireVerifiedEmail: getBool("AUTH_REQUIRE_VERIFIED_EMAIL", false, &problems),
 			VerificationTTL:      getDuration("AUTH_EMAIL_VERIFICATION_TTL_HOURS", 48*time.Hour, &problems),

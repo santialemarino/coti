@@ -278,7 +278,7 @@ func (e *env) do(t *testing.T, r request) *httptest.ResponseRecorder {
 
 func createUserBody(email string, role domain.UserRole, branchIDs []uuid.UUID) map[string]any {
 	return map[string]any{
-		"name": "Nuevo", "email": email, "password": "una-clave-larga",
+		"name": "Nuevo", "email": email, "password": "Una-clave-larga1",
 		"role": string(role), "branch_ids": branchIDs,
 	}
 }
