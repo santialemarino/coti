@@ -71,6 +71,34 @@ describe('previewPriceImport', () => {
       },
     });
   });
+
+  it('normalizes null row errors from the API', async () => {
+    vi.mocked(apiRequest).mockResolvedValue({
+      rows: [
+        {
+          row_number: 2,
+          code: 'CEM-001',
+          product_name: 'Cemento',
+          current_price: null,
+          current_min_price: null,
+          price: '10000.00',
+          min_price: null,
+          currency: 'ARS',
+          errors: null,
+        },
+      ],
+      valid_rows: 1,
+      invalid_rows: 0,
+      can_confirm: true,
+      previewed_at: '2026-08-05T12:00:00Z',
+    });
+    const formData = new FormData();
+    formData.set('file', new File(['codigo,precio\nCEM-001,10000'], 'precios.csv'));
+
+    const result = await previewPriceImport(BRANCH_ID, formData);
+
+    expect(result.ok && result.preview.rows[0]?.errors).toEqual([]);
+  });
 });
 
 describe('confirmPriceImport', () => {
