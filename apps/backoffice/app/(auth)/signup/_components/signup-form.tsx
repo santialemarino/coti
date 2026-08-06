@@ -14,6 +14,7 @@ import {
   PendingButton,
   Stepper,
 } from '@repo/ui/components';
+import { AnimatedHeight } from '@/app/(auth)/_components/animated-height';
 import { AuthCard } from '@/app/(auth)/_components/auth-card';
 import { AccountStep } from '@/app/(auth)/signup/_components/account-step';
 import { AdminStep } from '@/app/(auth)/signup/_components/admin-step';
@@ -169,63 +170,69 @@ export function SignupForm() {
   }
 
   return (
-    <AuthCard
-      title={t('title')}
-      description={t(`steps.${stepKey}.description`)}
-      footer={
-        <InlineLink asChild tone="muted">
-          <Link href={ROUTES.login}>{t('haveAccount')}</Link>
-        </InlineLink>
-      }
-    >
-      <div className="flex flex-col gap-y-6">
-        <Stepper steps={labels} currentIndex={STEP_ORDER.indexOf(stepKey)} />
+    /*
+     * The card is the box that resizes: the three steps do not hold the same number of fields, and
+     * the stepper, the description and the buttons all move with the card's edge.
+     */
+    <AnimatedHeight trigger={stepKey}>
+      <AuthCard
+        title={t('title')}
+        description={t(`steps.${stepKey}.description`)}
+        footer={
+          <InlineLink asChild tone="muted">
+            <Link href={ROUTES.login}>{t('haveAccount')}</Link>
+          </InlineLink>
+        }
+      >
+        <div className="flex flex-col gap-y-6">
+          <Stepper steps={labels} currentIndex={STEP_ORDER.indexOf(stepKey)} />
 
-        <Form {...form}>
-          <form onSubmit={onSubmit} noValidate className="flex flex-col gap-y-5">
-            {/*
+          <Form {...form}>
+            <form onSubmit={onSubmit} noValidate className="flex flex-col gap-y-5">
+              {/*
               Keyed so the fields remount and replay the entrance, and so the swap stays atomic:
               the stepper, the description and the button all sit outside this box, and fields that
               outlive a step change put one step's inputs under the next step's button — where a
               click submits a step nobody has filled in.
             */}
-            <div key={stepKey} className="flex flex-col gap-y-5 animate-rise-in">
-              <Fields />
-            </div>
+              <div key={stepKey} className="flex flex-col gap-y-5 animate-rise-in">
+                <Fields />
+              </div>
 
-            <FormRootMessage />
+              <FormRootMessage />
 
-            <div className="flex items-center gap-x-3">
-              {previous ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="lg"
-                  onClick={() => goToStep(previous)}
-                >
-                  {t('back')}
-                </Button>
-              ) : null}
+              <div className="flex items-center gap-x-3">
+                {previous ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="lg"
+                    onClick={() => goToStep(previous)}
+                  >
+                    {t('back')}
+                  </Button>
+                ) : null}
 
-              {step.next ? (
-                <Button type="submit" size="lg" className="flex-1">
-                  {t('next')}
-                </Button>
-              ) : (
-                <PendingButton
-                  type="submit"
-                  size="lg"
-                  className="flex-1"
-                  pending={submitting}
-                  pendingLabel={t('submitting')}
-                >
-                  {t('submit')}
-                </PendingButton>
-              )}
-            </div>
-          </form>
-        </Form>
-      </div>
-    </AuthCard>
+                {step.next ? (
+                  <Button type="submit" size="lg" className="flex-1">
+                    {t('next')}
+                  </Button>
+                ) : (
+                  <PendingButton
+                    type="submit"
+                    size="lg"
+                    className="flex-1"
+                    pending={submitting}
+                    pendingLabel={t('submitting')}
+                  >
+                    {t('submit')}
+                  </PendingButton>
+                )}
+              </div>
+            </form>
+          </Form>
+        </div>
+      </AuthCard>
+    </AnimatedHeight>
   );
 }

@@ -2,6 +2,7 @@ import { fireEvent, render, waitFor, type RenderResult } from '@testing-library/
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { isMessageShown } from '@repo/vitest-config/form-messages';
 import { SignupForm } from '@/app/(auth)/signup/_components/signup-form';
 import messages from '@/translations/es.json';
 
@@ -133,7 +134,9 @@ describe('SignupForm steps', () => {
     await waitFor(() => expect(view.getByText(copy.accountName.required)).toBeTruthy());
 
     fill(view, ACCOUNT);
-    await waitFor(() => expect(view.queryByText(copy.accountName.required)).toBeNull());
+    await waitFor(() =>
+      expect(isMessageShown(view.container, copy.accountName.required)).toBe(false),
+    );
   });
 
   /*

@@ -2,6 +2,7 @@ import { fireEvent, render, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { isMessageHeld, isMessageShown } from '@repo/vitest-config/form-messages';
 import { LoginForm } from '@/app/(auth)/login/_components/login-form';
 import messages from '@/translations/es.json';
 
@@ -108,13 +109,18 @@ describe('LoginForm messages', () => {
    * so a corrected value clears its message without waiting for another submit.
    */
   it('clears a field message as soon as the value is corrected', async () => {
-    const { container, submit, getByText, queryByText } = renderLogin();
+    const { container, submit, getByText } = renderLogin();
 
     fireEvent.click(submit);
     await waitFor(() => expect(getByText(copy.password.required)).toBeTruthy());
 
     fireEvent.change(field(container, 'password'), { target: { value: 'coti1234' } });
-    await waitFor(() => expect(queryByText(copy.password.required)).toBeNull());
+    await waitFor(() => expect(isMessageShown(container, copy.password.required)).toBe(false));
+    /*
+     * Still in the tree, and that is the point: the box collapses over 200ms and would otherwise
+     * be animating nothing. It is aria-hidden, so a screen reader is not read a stale rejection.
+     */
+    expect(isMessageHeld(container, copy.password.required)).toBe(true);
   });
 
   /*
@@ -124,15 +130,14 @@ describe('LoginForm messages', () => {
   it('puts a refused login on the password field, and clears it on the next attempt', async () => {
     vi.mocked(login).mockResolvedValue({ error: 'UNAUTHENTICATED' });
 
-    const { container, submit, getByText, queryByText } = renderLogin();
+    const { container, submit } = renderLogin();
     fillCredentials(container);
     fireEvent.click(submit);
 
-    const message = await waitFor(() => getByText(copy.errors.UNAUTHENTICATED));
+    await waitFor(() => expect(isMessageShown(container, copy.errors.UNAUTHENTICATED)).toBe(true));
     expect(field(container, 'password').getAttribute('aria-invalid')).toBe('true');
-    expect(message).toBeTruthy();
 
     fireEvent.change(field(container, 'password'), { target: { value: 'otra-clave' } });
-    await waitFor(() => expect(queryByText(copy.errors.UNAUTHENTICATED)).toBeNull());
+    await waitFor(() => expect(isMessageShown(container, copy.errors.UNAUTHENTICATED)).toBe(false));
   });
 });
