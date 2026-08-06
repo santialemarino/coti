@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { render } from '@testing-library/react';
 import { useForm } from 'react-hook-form';
 import { describe, expect, it } from 'vitest';
@@ -19,13 +20,14 @@ function messageBox(container: HTMLElement, slot: string) {
 function Harness({ error }: { error: boolean }) {
   const form = useForm({ defaultValues: { email: '' } });
 
-  if (error && !form.formState.errors.email) {
-    form.setError('email', { message: REJECTION });
-    form.setError('root', { message: REJECTION });
-  }
-  if (!error && form.formState.errors.email) {
+  useEffect(() => {
+    if (error) {
+      form.setError('email', { message: REJECTION });
+      form.setError('root', { message: REJECTION });
+      return;
+    }
     form.clearErrors();
-  }
+  }, [error, form]);
 
   return (
     <Form {...form}>

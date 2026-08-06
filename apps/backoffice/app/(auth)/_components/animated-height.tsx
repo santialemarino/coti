@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
-import { useAnimate, useReducedMotion } from 'motion/react';
+import { useAnimate, useReducedMotion, type AnimationPlaybackControls } from 'motion/react';
 
 import { EASE, MOTION } from '@repo/ui/lib';
 
@@ -35,6 +35,7 @@ export function AnimatedHeight({ trigger, children }: AnimatedHeightProps) {
   const content = useRef<HTMLDivElement>(null);
   const restingHeight = useRef<number>(undefined);
   const armed = useRef(false);
+  const travel = useRef<AnimationPlaybackControls>(undefined);
 
   useLayoutEffect(() => {
     armed.current = true;
@@ -52,15 +53,20 @@ export function AnimatedHeight({ trigger, children }: AnimatedHeightProps) {
     // Nothing to travel from on the first observation, which is what disarms the mount.
     if (previous === undefined || previous === next) return;
 
-    void animate(
+    const playback = animate(
       box.current,
       { height: [previous, next] },
       { duration: MOTION.slow, ease: EASE.outSoft },
-    )
-      // Released, or the box would hold this height while the content under it kept changing.
-      .then(() => {
-        if (box.current) box.current.style.height = '';
-      });
+    );
+    travel.current = playback;
+    void playback.then(() => {
+      /*
+       * Released, or the box would hold this height while the content under it kept changing — but
+       * only by the travel still running. A second swap starting mid-flight supersedes this one,
+       * and clearing the height then would drop the new animation on the frame it resolved.
+       */
+      if (travel.current === playback && box.current) box.current.style.height = '';
+    });
   }, [animate, box, reduced]);
 
   /*
