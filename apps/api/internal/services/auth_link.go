@@ -84,12 +84,12 @@ func (i *authLinkIssuer) redeem(
 	stored, err := i.tokens.GetByHashCrossAccount(ctx, i.db.CrossAccount(), hashToken(rawToken))
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, domain.ErrUnauthenticated
+			return nil, domain.WithCode(domain.CodeInvalidLink, domain.ErrUnauthenticated)
 		}
 		return nil, err
 	}
 	if stored.Type != tokenType || !stored.IsUsable(i.now()) {
-		return nil, domain.ErrUnauthenticated
+		return nil, domain.WithCode(domain.CodeInvalidLink, domain.ErrUnauthenticated)
 	}
 	return stored, nil
 }

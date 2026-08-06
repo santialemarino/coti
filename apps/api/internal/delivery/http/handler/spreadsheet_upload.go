@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
+	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
 func openSpreadsheetUpload(c *gin.Context, maxBytes int64) (multipart.File, string, bool) {
@@ -16,7 +17,8 @@ func openSpreadsheetUpload(c *gin.Context, maxBytes int64) (multipart.File, stri
 	if err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
-			c.JSON(http.StatusRequestEntityTooLarge, dto.ErrorResponse{Error: "file too large"})
+			c.JSON(http.StatusRequestEntityTooLarge, dto.ErrorResponse{
+				Error: "file too large", Code: string(domain.CodeFileTooLarge)})
 			return nil, "", false
 		}
 		RespondBindError(c, err)

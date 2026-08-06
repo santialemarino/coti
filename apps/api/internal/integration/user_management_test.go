@@ -276,6 +276,19 @@ func (e *env) do(t *testing.T, r request) *httptest.ResponseRecorder {
 	return rec
 }
 
+// errorCode reads the envelope's stable code, which is what a client branches on when one route
+// answers the same status for more than one reason.
+func errorCode(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+	var body struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body %s: %v", rec.Body, err)
+	}
+	return body.Code
+}
+
 func createUserBody(email string, role domain.UserRole, branchIDs []uuid.UUID) map[string]any {
 	return map[string]any{
 		"name": "Nuevo", "email": email, "password": "Una-clave-larga1",
@@ -448,6 +461,9 @@ func TestUsers_DuplicateEmailIsAConflictAcrossAccounts(t *testing.T) {
 		t.Errorf("duplicate in the same account: status = %d, want %d; body = %s",
 			dup.Code, http.StatusConflict, dup.Body)
 	}
+	if got := errorCode(t, dup); got != string(domain.CodeEmailTaken) {
+		t.Errorf("duplicate in the same account: code = %q, want %q", got, domain.CodeEmailTaken)
+	}
 
 	other := e.do(t, request{method: http.MethodPost, path: "/v1/users", token: e.tokenFor(t, adminB),
 		body: createUserBody(shared, domain.UserRoleSeller, []uuid.UUID{branchB})})
@@ -517,6 +533,9 @@ func TestUsers_AdminCannotDeactivateThemselves(t *testing.T) {
 		t.Errorf("DELETE self: status = %d, want %d; body = %s",
 			rec.Code, http.StatusUnprocessableEntity, rec.Body)
 	}
+	if got := errorCode(t, rec); got != string(domain.CodeSelfDeactivation) {
+		t.Errorf("DELETE self: code = %q, want %q", got, domain.CodeSelfDeactivation)
+	}
 
 	rec = e.do(t, request{method: http.MethodPut, path: "/v1/users/" + admin.ID.String(), token: token,
 		body: map[string]any{"name": "Admin", "email": admin.Email, "role": "ADMIN", "is_active": false}})
@@ -530,6 +549,11 @@ func TestUsers_AdminCannotDeactivateThemselves(t *testing.T) {
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("PUT self role=SELLER: status = %d, want %d; body = %s",
 			rec.Code, http.StatusUnprocessableEntity, rec.Body)
+	}
+	// Two refusals, one status, two codes: the screen removes the role control for the caller's
+	// own row and keeps a message for the deactivation, and it can only tell them apart by code.
+	if got := errorCode(t, rec); got != string(domain.CodeSelfRoleChange) {
+		t.Errorf("PUT self role=SELLER: code = %q, want %q", got, domain.CodeSelfRoleChange)
 	}
 
 	// The admin must still be an active admin after all three refusals.

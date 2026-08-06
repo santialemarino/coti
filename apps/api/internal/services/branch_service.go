@@ -179,8 +179,8 @@ func (s *BranchService) assertNotLastActive(
 		return err
 	}
 	if remaining == 0 {
-		return fmt.Errorf("%w: an account needs at least one active branch",
-			domain.ErrInvalidInput)
+		return domain.WithCode(domain.CodeLastActiveBranch,
+			fmt.Errorf("%w: an account needs at least one active branch", domain.ErrInvalidInput))
 	}
 	return nil
 }

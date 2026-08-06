@@ -17,12 +17,14 @@ type PasswordPolicy struct {
 // Validate reports the first rule the password fails, as ErrInvalidInput.
 func (p PasswordPolicy) Validate(password string) error {
 	if len([]rune(password)) < p.MinLength {
-		return fmt.Errorf("%w: password must be at least %d characters", ErrInvalidInput, p.MinLength)
+		return WithCode(CodePasswordPolicy,
+			fmt.Errorf("%w: password must be at least %d characters", ErrInvalidInput, p.MinLength))
 	}
 	// Counted in bytes, because that is the unit bcrypt truncates at: a rune count would pass an
 	// accented password whose tail the hash silently ignores, and bcrypt then fails the write.
 	if len(password) > PasswordMaxBytes {
-		return fmt.Errorf("%w: password must be at most %d bytes", ErrInvalidInput, PasswordMaxBytes)
+		return WithCode(CodePasswordPolicy,
+			fmt.Errorf("%w: password must be at most %d bytes", ErrInvalidInput, PasswordMaxBytes))
 	}
 
 	var upper, lower, digit, symbol bool
@@ -39,9 +41,9 @@ func (p PasswordPolicy) Validate(password string) error {
 		}
 	}
 	if !upper || !lower || !digit || !symbol {
-		return fmt.Errorf(
+		return WithCode(CodePasswordPolicy, fmt.Errorf(
 			"%w: password must include an uppercase letter, a lowercase letter, a number and a symbol",
-			ErrInvalidInput)
+			ErrInvalidInput))
 	}
 	return nil
 }

@@ -3036,6 +3036,10 @@ const docTemplate = `{
         "dto.ErrorResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "description": "Code is the stable identifier a client branches on; the English text above is for logs.",
+                    "type": "string"
+                },
                 "detail": {
                     "description": "set when a body failed binding or validation.",
                     "type": "string"
@@ -3306,6 +3310,9 @@ const docTemplate = `{
         "dto.RateLimitResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "string"
+                },
                 "error": {
                     "type": "string"
                 },

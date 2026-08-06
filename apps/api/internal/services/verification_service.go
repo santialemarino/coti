@@ -111,7 +111,7 @@ func (s *VerificationService) Confirm(ctx context.Context, rawToken string) erro
 			return getErr
 		}
 		if !user.IsUsable() {
-			return domain.ErrUnauthenticated
+			return domain.WithCode(domain.CodeInvalidLink, domain.ErrUnauthenticated)
 		}
 		// Already verified is a success, not a failure: the link did its job the first time
 		// and the user has no way to tell the two clicks apart.
@@ -121,7 +121,7 @@ func (s *VerificationService) Confirm(ctx context.Context, rawToken string) erro
 		return s.users.MarkEmailVerified(ctx, q, stored.AccountID, stored.UserID)
 	})
 	if errors.Is(err, domain.ErrConflict) || errors.Is(err, domain.ErrNotFound) {
-		return domain.ErrUnauthenticated
+		return domain.WithCode(domain.CodeInvalidLink, domain.ErrUnauthenticated)
 	}
 	return err
 }

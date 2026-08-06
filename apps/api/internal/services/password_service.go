@@ -163,7 +163,7 @@ func (s *PasswordService) Reset(ctx context.Context, rawToken, next string) erro
 			return getErr
 		}
 		if !user.IsUsable() {
-			return domain.ErrUnauthenticated
+			return domain.WithCode(domain.CodeInvalidLink, domain.ErrUnauthenticated)
 		}
 		if updateErr := s.users.UpdatePassword(ctx, q, stored.AccountID, stored.UserID, hash); updateErr != nil {
 			return updateErr
@@ -172,7 +172,7 @@ func (s *PasswordService) Reset(ctx context.Context, rawToken, next string) erro
 		return endErr
 	})
 	if errors.Is(err, domain.ErrConflict) || errors.Is(err, domain.ErrNotFound) {
-		return domain.ErrUnauthenticated
+		return domain.WithCode(domain.CodeInvalidLink, domain.ErrUnauthenticated)
 	}
 	return err
 }
