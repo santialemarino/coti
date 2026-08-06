@@ -10,6 +10,7 @@ import {
   previewPriceImport,
   type ProductPriceImportPreview,
 } from '@/app/(protected)/settings/prices/actions';
+import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Branch } from '@/lib/api/branches';
 import { useFormatters } from '@/lib/i18n/formatters';
 
@@ -20,6 +21,10 @@ interface PriceImportProps {
 export function PriceImport({ branch }: PriceImportProps) {
   const fmt = useFormatters();
   const t = useTranslations('priceImport');
+  // Two resolvers: exporting words a 422 as "this branch has no prices yet", where the import
+  // reads the same code as a file it could not use.
+  const message = useApiErrorMessage('priceImport');
+  const exportMessage = useApiErrorMessage('priceImport.export');
   const [preview, setPreview] = useState<ProductPriceImportPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successCount, setSuccessCount] = useState<number | null>(null);
@@ -43,7 +48,7 @@ export function PriceImport({ branch }: PriceImportProps) {
       const result = await previewPriceImport(branch.id, formData);
       if (!result.ok) {
         setPreview(null);
-        setError(t(`errors.${result.error}`));
+        setError(message(result.error));
         return;
       }
       setPreview(result.preview);
@@ -56,7 +61,7 @@ export function PriceImport({ branch }: PriceImportProps) {
     startConfirm(async () => {
       const result = await confirmPriceImport(preview);
       if (!result.ok) {
-        setError(t(`errors.${result.error}`));
+        setError(message(result.error));
         return;
       }
       setSuccessCount(result.importedRows);
@@ -69,7 +74,7 @@ export function PriceImport({ branch }: PriceImportProps) {
     startExport(async () => {
       const result = await exportPrices(branch.id);
       if (!result.ok) {
-        setError(t(`errors.${result.error}`));
+        setError(exportMessage(result.error));
         return;
       }
       const binary = atob(result.contentBase64);
@@ -116,9 +121,9 @@ export function PriceImport({ branch }: PriceImportProps) {
             onClick={onExport}
             disabled={busy}
             pending={exporting}
-            pendingLabel={t('form.exporting')}
+            pendingLabel={t('export.submitting')}
           >
-            {t('form.export')}
+            {t('export.submit')}
           </PendingButton>
           <PendingButton
             type="submit"
@@ -191,8 +196,8 @@ export function PriceImport({ branch }: PriceImportProps) {
                         <span>{t('valid')}</span>
                       ) : (
                         <ul className="flex flex-col gap-y-1 text-danger-foreground">
-                          {row.errors.map((message) => (
-                            <li key={message}>{t(`rowErrors.${message}`)}</li>
+                          {row.errors.map((rowError) => (
+                            <li key={rowError}>{t(`rowErrors.${rowError}`)}</li>
                           ))}
                         </ul>
                       )}

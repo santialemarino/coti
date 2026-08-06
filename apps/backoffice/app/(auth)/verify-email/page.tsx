@@ -7,6 +7,7 @@ import { ConfirmEmailForm } from '@/app/(auth)/verify-email/_components/confirm-
 import { ResendVerificationForm } from '@/app/(auth)/verify-email/_components/resend-verification-form';
 import { ROUTES } from '@/config/routes';
 import { getSession } from '@/lib/auth/session';
+import { apiErrorMessage } from '@/lib/i18n/api-error';
 import { generatePageMetadata } from '@/lib/utils/page';
 
 // The route the API mails, so its shape is a contract: WEB_BACKOFFICE_URL plus
@@ -21,6 +22,7 @@ interface VerifyEmailPageProps {
 
 export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageProps) {
   const t = await getTranslations('auth.verifyEmail');
+  const tRoot = await getTranslations();
   const params = await searchParams;
   const token = typeof params[TOKEN_PARAM] === 'string' ? params[TOKEN_PARAM] : '';
 
@@ -38,10 +40,12 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
           icon={registered ? MailCheckIcon : CircleXIcon}
           tone={registered ? 'info' : 'danger'}
           title={t('title')}
-          description={registered ? t('sent') : t('errors.invalidLink')}
+          description={
+            registered ? t('sent') : apiErrorMessage(tRoot, 'auth.verifyEmail', 'INVALID_LINK')
+          }
         />
         <div className="flex flex-col px-6 gap-y-4">
-          <Hint>{t('resendHint')}</Hint>
+          <Hint>{t('resend.hint')}</Hint>
           <ResendVerificationForm />
           <InlineLink asChild tone="muted" className="self-center">
             <Link href={registered ? ROUTES.home : ROUTES.login}>

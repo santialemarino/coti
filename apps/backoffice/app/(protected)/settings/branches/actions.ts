@@ -3,14 +3,13 @@
 import { revalidatePath } from 'next/cache';
 
 import { branchSchema, type BranchValues } from '@/app/(protected)/settings/branches/form-schema';
-import { apiRequest, errorCodeOf, type ApiErrorCode } from '@/lib/api/client';
+import { apiRequest } from '@/lib/api/client';
+import { errorCodeOf, type ApiErrorCode } from '@/lib/api/errors';
 import { clearActiveBranch, getActiveBranchId } from '@/lib/auth/branch';
-
-export type BranchErrorKey = 'lastActive' | 'notFound' | 'unauthorized' | 'invalid' | 'unexpected';
 
 export interface BranchResult {
   ok?: true;
-  error?: BranchErrorKey;
+  error?: ApiErrorCode;
 }
 
 /* What reopening needs to replace the record with, which is whatever the row already holds. */
@@ -24,19 +23,16 @@ export interface ReopenableBranch {
 export async function createBranch(values: BranchValues): Promise<BranchResult> {
   // Re-validated server-side: the client's schema is a courtesy, not a guarantee.
   const parsed = branchSchema().safeParse(values);
-  if (!parsed.success) return { error: 'invalid' };
+  if (!parsed.success) return { error: 'INVALID_BODY' };
 
-  return write({ path: '/v1/branches', method: 'POST', body: bodyOf(parsed.data) }, 'invalid');
+  return write({ path: '/v1/branches', method: 'POST', body: bodyOf(parsed.data) });
 }
 
 export async function updateBranch(branchId: string, values: BranchValues): Promise<BranchResult> {
   const parsed = branchSchema().safeParse(values);
-  if (!parsed.success) return { error: 'invalid' };
+  if (!parsed.success) return { error: 'INVALID_BODY' };
 
-  return write(
-    { path: `/v1/branches/${branchId}`, method: 'PUT', body: bodyOf(parsed.data) },
-    'invalid',
-  );
+  return write({ path: `/v1/branches/${branchId}`, method: 'PUT', body: bodyOf(parsed.data) });
 }
 
 /*
@@ -45,7 +41,7 @@ export async function updateBranch(branchId: string, values: BranchValues): Prom
  * and leave them locked out of the app until they noticed the switcher.
  */
 export async function closeBranch(branchId: string): Promise<BranchResult> {
-  const result = await write({ path: `/v1/branches/${branchId}`, method: 'DELETE' }, 'lastActive');
+  const result = await write({ path: `/v1/branches/${branchId}`, method: 'DELETE' });
   if (!result.ok) return result;
 
   if ((await getActiveBranchId()) === branchId) await clearActiveBranch();
@@ -57,19 +53,16 @@ export async function closeBranch(branchId: string): Promise<BranchResult> {
  * branch's current name and expiry: `PUT` replaces the record and requires both.
  */
 export async function reopenBranch(branch: ReopenableBranch): Promise<BranchResult> {
-  return write(
-    {
-      path: `/v1/branches/${branch.id}`,
-      method: 'PUT',
-      body: {
-        name: branch.name,
-        address: branch.address ?? undefined,
-        default_expiry_days: branch.defaultExpiryDays,
-        is_active: true,
-      },
+  return write({
+    path: `/v1/branches/${branch.id}`,
+    method: 'PUT',
+    body: {
+      name: branch.name,
+      address: branch.address ?? undefined,
+      default_expiry_days: branch.defaultExpiryDays,
+      is_active: true,
     },
-    'invalid',
-  );
+  });
 }
 
 function bodyOf(values: BranchValues) {
@@ -89,27 +82,15 @@ interface BranchWrite {
 }
 
 /*
- * `refusal` is what a 422 means for this route, which is not the same on all of them: closing
- * answers 422 only for the last active branch, while creating and editing answer it for a value
- * this form already refuses — so there it means the two validations have drifted apart.
- *
  * Revalidates the whole layout rather than this route: a branch that opens or closes changes the
  * switcher in the shell as much as the list here, and the shell is not on this route's tree.
  */
-async function write(request: BranchWrite, refusal: BranchErrorKey): Promise<BranchResult> {
+async function write(request: BranchWrite): Promise<BranchResult> {
   try {
     await apiRequest(request);
   } catch (error) {
-    const code = errorCodeOf(error);
-    return { error: code === 'unprocessable' ? refusal : branchErrorFor(code) };
+    return { error: errorCodeOf(error) };
   }
   revalidatePath('/', 'layout');
   return { ok: true };
-}
-
-function branchErrorFor(code: ApiErrorCode): BranchErrorKey {
-  if (code === 'notFound') return 'notFound';
-  if (code === 'forbidden' || code === 'unauthenticated') return 'unauthorized';
-  if (code === 'badRequest') return 'invalid';
-  return 'unexpected';
 }

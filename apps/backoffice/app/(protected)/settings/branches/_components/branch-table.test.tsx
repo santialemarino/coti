@@ -214,14 +214,14 @@ describe('BranchTable closing a branch', () => {
    * gone before it can be read.
    */
   it('puts the last-active refusal on the page and shuts the dialog', async () => {
-    vi.mocked(closeBranch).mockResolvedValue({ error: 'lastActive' });
+    vi.mocked(closeBranch).mockResolvedValue({ error: 'LAST_ACTIVE_BRANCH' });
     const view = renderTable([CENTRAL]);
 
     fireEvent.click(rowActions(view, CENTRAL.name).close);
     await waitFor(() => expect(dialog(view)).toBeTruthy());
     fireEvent.click(within(dialog(view)).getByRole('button', { name: copy.close.confirm }));
 
-    await waitFor(() => expect(view.getByText(copy.errors.lastActive)).toBeTruthy());
+    await waitFor(() => expect(view.getByText(messages.errors.LAST_ACTIVE_BRANCH)).toBeTruthy());
     await waitFor(() => expect(view.baseElement.querySelector('[role="dialog"]')).toBeNull());
   });
 
@@ -308,7 +308,7 @@ describe('BranchTable closed branches', () => {
   });
 
   it('puts a refused reopen on the list', async () => {
-    vi.mocked(reopenBranch).mockResolvedValue({ error: 'notFound' });
+    vi.mocked(reopenBranch).mockResolvedValue({ error: 'NOT_FOUND' });
     const view = renderTable([MORON, CLOSED]);
 
     fireEvent.click(
@@ -317,6 +317,6 @@ describe('BranchTable closed branches', () => {
       }),
     );
 
-    await waitFor(() => expect(view.getByText(copy.errors.notFound)).toBeTruthy());
+    await waitFor(() => expect(view.getByText(copy.errors.NOT_FOUND)).toBeTruthy());
   });
 });

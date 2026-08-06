@@ -21,7 +21,8 @@ vi.mock('@/lib/api/client', async (importOriginal) => ({
 
 const { cookies } = await import('next/headers');
 const { revalidatePath } = await import('next/cache');
-const { ApiError, apiRequest } = await import('@/lib/api/client');
+const { apiRequest } = await import('@/lib/api/client');
+const { ApiError } = await import('@/lib/api/errors');
 
 const BRANCH_ID = 'b0000000-0000-4000-8000-000000000001';
 const VALUES: BranchValues = {
@@ -82,17 +83,21 @@ describe('createBranch', () => {
   it('never reaches the API with values its own schema refuses', async () => {
     jar();
 
-    await expect(createBranch({ ...VALUES, name: '  ' })).resolves.toEqual({ error: 'invalid' });
+    await expect(createBranch({ ...VALUES, name: '  ' })).resolves.toEqual({
+      error: 'INVALID_BODY',
+    });
     expect(apiRequest).not.toHaveBeenCalled();
   });
 
-  // Creating cannot hit the last-active refusal, so a 422 here means this form and the API's own
-  // validation have drifted apart — not something to explain with a branch-count message.
-  it('reads a 422 as a validation problem, not as the last active branch', async () => {
+  /*
+   * Creating cannot hit the last-active refusal, and it no longer has to be told apart by the
+   * route it arrived on: the API names which rule refused, so a generic 422 here stays generic.
+   */
+  it('reads a plain 422 as a validation problem, not as the last active branch', async () => {
     jar();
-    vi.mocked(apiRequest).mockRejectedValue(new ApiError('unprocessable', 422));
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('INVALID_INPUT', 422));
 
-    await expect(createBranch(VALUES)).resolves.toEqual({ error: 'invalid' });
+    await expect(createBranch(VALUES)).resolves.toEqual({ error: 'INVALID_INPUT' });
   });
 });
 
@@ -110,9 +115,9 @@ describe('updateBranch', () => {
 
   it('reports a branch that is gone', async () => {
     jar();
-    vi.mocked(apiRequest).mockRejectedValue(new ApiError('notFound', 404));
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('NOT_FOUND', 404));
 
-    await expect(updateBranch(BRANCH_ID, VALUES)).resolves.toEqual({ error: 'notFound' });
+    await expect(updateBranch(BRANCH_ID, VALUES)).resolves.toEqual({ error: 'NOT_FOUND' });
   });
 });
 
@@ -129,13 +134,12 @@ describe('closeBranch', () => {
     expect(revalidatePath).toHaveBeenCalledWith('/', 'layout');
   });
 
-  // The one 422 this route answers, and the whole reason it gets its own message: an account has to
-  // keep somewhere to operate.
-  it('names the last active branch when the API refuses to close it', async () => {
+  // The refusal names itself now, rather than being inferred from the route that received it.
+  it('carries the last-active-branch code through', async () => {
     jar();
-    vi.mocked(apiRequest).mockRejectedValue(new ApiError('unprocessable', 422));
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('LAST_ACTIVE_BRANCH', 422));
 
-    await expect(closeBranch(BRANCH_ID)).resolves.toEqual({ error: 'lastActive' });
+    await expect(closeBranch(BRANCH_ID)).resolves.toEqual({ error: 'LAST_ACTIVE_BRANCH' });
   });
 
   /*
@@ -163,7 +167,7 @@ describe('closeBranch', () => {
 
   it('keeps the selection when the close was refused', async () => {
     const store = jar({ [BRANCH_COOKIE]: BRANCH_ID });
-    vi.mocked(apiRequest).mockRejectedValue(new ApiError('unprocessable', 422));
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('LAST_ACTIVE_BRANCH', 422));
 
     await closeBranch(BRANCH_ID);
 

@@ -24,7 +24,7 @@ import {
 } from '@/app/(auth)/reset-password/form-schema';
 import { PasswordField } from '@/components/password-field';
 import { ROUTES } from '@/config/routes';
-import { PASSWORD_MIN_LENGTH } from '@/lib/constants/password';
+import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 
 interface ResetPasswordFormProps {
@@ -34,6 +34,7 @@ interface ResetPasswordFormProps {
 export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
   const t = useTranslations('auth.resetPassword');
   const tErrors = useTranslations('common.form.errors');
+  const message = useApiErrorMessage('auth.resetPassword');
   const schema = useMemo(() => resetPasswordSchema({ field: t, shared: tErrors }), [t, tErrors]);
   const [done, setDone] = useState(false);
   const form = useForm<ResetPasswordValues>({
@@ -48,13 +49,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
       setDone(true);
       return;
     }
-    if (result.fieldError) {
-      form.setError(result.fieldError.field, {
-        message: tErrors('passwordTooShort', { min: PASSWORD_MIN_LENGTH }),
-      });
-      return;
-    }
-    form.setError('root', { message: t(`errors.${result.error ?? 'unexpected'}`) });
+    form.setError(result.field ?? 'root', { message: message(result.error) });
   }
 
   return (

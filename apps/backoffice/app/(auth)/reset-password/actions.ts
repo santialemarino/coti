@@ -4,19 +4,27 @@ import {
   resetPasswordSchema,
   type ResetPasswordValues,
 } from '@/app/(auth)/reset-password/form-schema';
-import { apiRequest, errorCodeOf } from '@/lib/api/client';
+import { apiRequest } from '@/lib/api/client';
+import { errorCodeOf, type ApiErrorCode } from '@/lib/api/errors';
 
 export interface ResetPasswordResult {
   done?: boolean;
-  error?: 'invalidLink' | 'unexpected';
-  /* The API's own floor, which is the only field-level rejection this route answers. */
-  fieldError?: { field: 'newPassword' };
+  error?: ApiErrorCode;
+  field?: 'newPassword';
 }
+
+/*
+ * Which field a refusal belongs on. Only the policy is the password's; a link that is unknown,
+ * expired or already used belongs to the screen, and so does anything else.
+ */
+const FIELD_FOR: Partial<Record<ApiErrorCode, 'newPassword'>> = {
+  PASSWORD_POLICY: 'newPassword',
+};
 
 export async function resetPassword(values: ResetPasswordValues): Promise<ResetPasswordResult> {
   // The form validated this already, so a failure here means the request did not come from it.
   const parsed = resetPasswordSchema().safeParse(values);
-  if (!parsed.success) return { error: 'unexpected' };
+  if (!parsed.success) return { error: 'INVALID_BODY' };
 
   try {
     await apiRequest({
@@ -28,10 +36,6 @@ export async function resetPassword(values: ResetPasswordValues): Promise<ResetP
     return { done: true };
   } catch (error) {
     const code = errorCodeOf(error);
-    // The API answers 401 for a link that is unknown, expired or already used, and
-    // the screen keeps them together for the same reason it does.
-    if (code === 'unauthenticated') return { error: 'invalidLink' };
-    if (code === 'unprocessable') return { fieldError: { field: 'newPassword' } };
-    return { error: 'unexpected' };
+    return { error: code, field: FIELD_FOR[code] };
   }
 }

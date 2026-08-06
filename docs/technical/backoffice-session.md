@@ -229,16 +229,31 @@ bearer, `X-Branch-Id`, and the error vocabulary, decided once instead of per scr
   `Content-Disposition`.
 - Emptiness is read off the **body**, not the status: the API answers 204 for a completed write
   and 202 for an accepted one, and neither carries a body.
-- Every status maps to one `ApiErrorCode` (`badRequest`, `unauthenticated`, `forbidden`,
-  `notFound`, `conflict`, `unprocessable`, `rateLimited`, `unreachable`, `unexpected`), so no
-  screen branches on a raw status. The API's `{error, detail}` text is kept for the log and
-  never rendered; the interface owns its own message per code, in `translations/es.json`.
+- A refusal becomes an `ApiErrorCode` — the API's own `code` from the error envelope, listed in
+  `lib/api/errors.ts`. A response carrying none falls back to the code its status implies, which
+  is what covers the aborts the API writes before a handler is reached. Two codes are the
+  client's own, because the API cannot answer them: `UNREACHABLE`, for a request that never
+  arrived, and `SESSION_EXPIRED`, for a session a re-check confirmed is over. The envelope's
+  `error` and `detail` text is kept for the log and never rendered.
 - The client carries **transport only**. Turning the API's snake_case JSON into camelCase is
   each `lib/api/<feature>` module's job, with explicit raw types and a mapper per entity.
   Request bodies, query params and headers stay snake_case: that is the wire contract.
 - `X-Branch-Id` comes from the active branch by default. `branchScoped: false` opts a call out
   and `branchId` pins it to a specific branch — see "The active branch" above for why each
   exists.
+
+## Wording a refusal
+
+A server action returns the code and, where the refusal belongs to a field, which field —
+never a sentence and never a key of its own. One resolver turns the code into Spanish:
+`useApiErrorMessage(namespace)` in a client component, `apiErrorMessage(t, namespace, code)` in a
+server one.
+
+`errors.<CODE>` in `translations/es.json` words every code once; a flow that says one differently
+repeats it under its own `<flow>.errors.<CODE>`. The namespace is walked back a segment at a time,
+so `users.passwordReset` inherits `users` and then the shared catalog — which is how mailing a
+recovery link reads a 422 as "that user is deactivated" while the rest of the flow reads the same
+code as "check these values", with neither action branching on it.
 
 `app/error.tsx` is the recoverable state for anything a screen did not catch, so an unexpected
 response leaves the user with a retry rather than a broken page.

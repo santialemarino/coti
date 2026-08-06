@@ -22,12 +22,14 @@ import {
   resendVerificationSchema,
   type ResendVerificationValues,
 } from '@/app/(auth)/verify-email/form-schema';
+import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 
 export function ResendVerificationForm() {
   const t = useTranslations('auth.verifyEmail');
   const tErrors = useTranslations('common.form.errors');
+  const message = useApiErrorMessage('auth.verifyEmail.resend');
   const schema = useMemo(
     () => resendVerificationSchema({ field: t, shared: tErrors }),
     [t, tErrors],
@@ -45,15 +47,11 @@ export function ResendVerificationForm() {
       setSent(true);
       return;
     }
-    if (result.error === 'invalidEmail') {
-      form.setError('email', { message: tErrors('invalidEmail') });
-      return;
-    }
-    form.setError('root', { message: t('errors.unexpected') });
+    form.setError(result.field ?? 'root', { message: message(result.error) });
   }
 
   if (sent) {
-    return <Callout tone="success">{t('resent')}</Callout>;
+    return <Callout tone="success">{t('resend.sent')}</Callout>;
   }
 
   return (
@@ -85,9 +83,9 @@ export function ResendVerificationForm() {
           type="submit"
           variant="outline"
           pending={form.formState.isSubmitting}
-          pendingLabel={t('resending')}
+          pendingLabel={t('resend.submitting')}
         >
-          {t('resend')}
+          {t('resend.submit')}
         </PendingButton>
       </form>
     </Form>

@@ -15,7 +15,7 @@ export default function AppError({ reset }: { error: Error; reset: () => void })
 
   return (
     <main className="flex flex-col min-h-screen items-center justify-center px-6 gap-y-4">
-      <p className="text-muted-foreground">{t('errors.unexpected')}</p>
+      <p className="text-muted-foreground">{t('errors.INTERNAL')}</p>
       <Button onClick={reset} variant="outline">
         {t('common.retry')}
       </Button>

@@ -20,6 +20,7 @@ import {
 import { login } from '@/app/(auth)/login/actions';
 import { loginSchema, type LoginValues } from '@/app/(auth)/login/form-schema';
 import { PasswordField } from '@/components/password-field';
+import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 
@@ -31,6 +32,7 @@ export function LoginForm({ next }: LoginFormProps) {
   const router = useRouter();
   const t = useTranslations('auth.login');
   const tErrors = useTranslations('common.form.errors');
+  const message = useApiErrorMessage('auth.login');
   const schema = useMemo(() => loginSchema({ field: t, shared: tErrors }), [t, tErrors]);
   const form = useForm<LoginValues>({
     ...FORM_VALIDATION,
@@ -52,7 +54,7 @@ export function LoginForm({ next }: LoginFormProps) {
      * message has to clear when the caller edits their attempt, and a root error only clears on the
      * next submit — leaving a stale rejection under a corrected password.
      */
-    form.setError('password', { message: t(`errors.${result.error ?? 'unexpected'}`) });
+    form.setError('password', { message: message(result.error) });
   }
 
   return (

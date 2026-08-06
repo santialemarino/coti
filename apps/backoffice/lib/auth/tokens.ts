@@ -10,6 +10,7 @@
  * is the API's answer on every request.
  */
 
+import { codeForStatus, knownErrorCode, type ApiErrorCode } from '@/lib/api/errors';
 import {
   API_URL,
   REFRESH_SKEW_SECONDS,
@@ -53,6 +54,8 @@ export interface TokenPair {
 export interface AuthAttempt {
   ok: boolean;
   status: number;
+  /* Why it was refused, in the same vocabulary every other call answers in. */
+  code?: ApiErrorCode;
   tokens?: TokenPair;
 }
 
@@ -148,17 +151,33 @@ async function postForTokens(
     });
   } catch {
     // An unreachable API is not a rejected credential, and must not read as one.
-    return { ok: false, status: 0 };
+    return { ok: false, status: 0, code: 'UNREACHABLE' };
   }
-  if (!response.ok) return { ok: false, status: response.status };
+  if (!response.ok)
+    return { ok: false, status: response.status, code: await refusalCode(response) };
 
   const payload = (await response.json()) as { access_token?: string; refresh_token?: string };
-  if (!payload.access_token || !payload.refresh_token) return { ok: false, status: 502 };
+  if (!payload.access_token || !payload.refresh_token)
+    return { ok: false, status: 502, code: 'INTERNAL' };
   return {
     ok: true,
     status: response.status,
     tokens: { accessToken: payload.access_token, refreshToken: payload.refresh_token },
   };
+}
+
+/*
+ * The envelope's code, which is what tells a spent allowance from a locked account — both 429.
+ * The status answers for a body that carries none, the way lib/api/client.ts does it; this path
+ * cannot go through that module because middleware renews a session and cannot import server-only.
+ */
+async function refusalCode(response: Response): Promise<ApiErrorCode> {
+  try {
+    const payload = (await response.json()) as { code?: string };
+    return knownErrorCode(payload.code) ?? codeForStatus(response.status);
+  } catch {
+    return codeForStatus(response.status);
+  }
 }
 
 function readExpiry(token: string): number | null {
