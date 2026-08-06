@@ -135,16 +135,18 @@ describe('AccountForm', () => {
   });
 
   /*
-   * The rejection belongs to the form: the statuses the API answers with are both values this
-   * schema already refuses, so there is no field to point at.
+   * The rejection belongs to the form: the codes the API answers with are all values this schema
+   * already refuses, so there is no field to point at. A code this flow words itself, so a screen
+   * bound to the wrong namespace fails here instead of falling back to a sentence that reads fine.
    */
   it('puts a refused save on the form, not on a field', async () => {
-    vi.mocked(updateAccount).mockResolvedValue({ error: 'FORBIDDEN' });
+    vi.mocked(updateAccount).mockResolvedValue({ error: 'NOT_FOUND' });
     const view = renderForm();
 
     submit(view);
 
-    await waitFor(() => expect(view.getByText(messages.errors.FORBIDDEN)).toBeTruthy());
+    await waitFor(() => expect(view.getByText(copy.errors.NOT_FOUND)).toBeTruthy());
+    expect(copy.errors.NOT_FOUND).not.toBe(messages.errors.NOT_FOUND);
     expect(toast.success).not.toHaveBeenCalled();
   });
 

@@ -18,7 +18,11 @@ export interface LoginResult {
 }
 
 export async function login(values: LoginValues, next?: string): Promise<LoginResult> {
-  // Re-validated server-side: the client's schema is a courtesy, not a guarantee.
+  /*
+   * Re-validated server-side: the client's schema is a courtesy, not a guarantee. A request that
+   * did not come from the form is answered the way a refused credential is, because that is all
+   * a caller hand-crafting one is entitled to learn.
+   */
   const parsed = loginSchema().safeParse(values);
   if (!parsed.success) return { error: 'UNAUTHENTICATED' };
 

@@ -71,7 +71,7 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
   const [form, setForm] = useState<{ mode: UserFormMode; row: UserRow | null } | null>(null);
   const [deactivating, setDeactivating] = useState<UserRow | null>(null);
   const [resetting, setResetting] = useState<UserRow | null>(null);
-  const [refusal, setRefusal] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   /*
    * One transition per action, never one shared: a shared transition only reports that something is
    * running, so mailing a recovery link would light the button that deactivates. Saving needs none —
@@ -93,7 +93,7 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
   async function onSubmit(values: UserValues): Promise<UserResult> {
     const target = form;
     if (!target) return { error: 'INTERNAL' };
-    setRefusal(null);
+    setError(null);
     const result =
       target.mode === 'edit' && target.row
         ? await updateUser(target.row.user.id, values)
@@ -107,21 +107,21 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
     }
     // Every rejection but one belongs to the list. The address belongs to its field, and the dialog
     // is what puts it there.
-    if (result.error !== 'EMAIL_TAKEN') setRefusal(message(result.error));
+    if (result.error !== 'EMAIL_TAKEN') setError(message(result.error));
     return result;
   }
 
   function onDeactivate() {
     const target = deactivating;
     if (!target) return;
-    setRefusal(null);
+    setError(null);
     startRemove(async () => {
       const result = await deactivateUser(target.user.id);
       if (!result.ok) {
         // Closed either way: the refusal belongs to the list, not to a dialog that is about to
         // disappear.
         setDeactivating(null);
-        setRefusal(message(result.error));
+        setError(message(result.error));
         return;
       }
       toast.success(t('deactivated'));
@@ -130,7 +130,7 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
   }
 
   function onReactivate(row: UserRow) {
-    setRefusal(null);
+    setError(null);
     startReactivate(async () => {
       const result = await reactivateUser({
         id: row.user.id,
@@ -142,7 +142,7 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
         branchIds: row.assigned.map((branch) => branch.id),
       });
       if (!result.ok) {
-        setRefusal(message(result.error));
+        setError(message(result.error));
         return;
       }
       toast.success(t('reactivated'));
@@ -152,12 +152,12 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
   function onSendPasswordReset() {
     const target = resetting;
     if (!target) return;
-    setRefusal(null);
+    setError(null);
     startMail(async () => {
       const result = await sendPasswordReset(target.user.id);
       if (!result.ok) {
         setResetting(null);
-        setRefusal(resetMessage(result.error));
+        setError(resetMessage(result.error));
         return;
       }
       toast.success(t('passwordResetSent'));
@@ -167,7 +167,7 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
 
   return (
     <div className="flex flex-col gap-y-6">
-      {refusal ? <Callout tone="danger">{refusal}</Callout> : null}
+      {error ? <Callout tone="danger">{error}</Callout> : null}
 
       <div className="flex justify-end">
         <Button disabled={busy} onClick={() => setForm({ mode: 'create', row: null })}>
