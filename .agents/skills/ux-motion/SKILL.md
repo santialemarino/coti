@@ -183,6 +183,24 @@ panel enters from the trigger and then dissolves in place.
   commit that the `layout` parent never re-renders for, so it measures nothing and the resize snaps.
   Use `mode="popLayout"`, which pulls the outgoing child out of flow in the same commit the state
   changes, and give the parent `relative` so the popped child is positioned against it.
+- **`layout` is the wrong tool for a box that contains a form.** A layout animation scale-corrects
+  its children, which squashes inputs mid-flight. Measure the height and animate it directly
+  instead — `AnimatedHeight` in the backoffice's auth flow is the reference, and three things in it
+  are load-bearing:
+  - **Arm on the state change, travel on the resize that follows.** They are not the same moment: an
+    atomic swap resizes in the commit its key changes, but a crossfade holds the outgoing stage for
+    its exit first, so measuring when the key changes reads the size the box already has and
+    concludes there is nothing to animate.
+  - **Animate imperatively, from an explicit `[from, to]` pair.** Rendering the old height and then
+    the new one is two commits, and the box pins to the first while the second never arrives.
+  - **Read the resize through a ref, and never re-create the observer.** Re-observing delivers a
+    measurement immediately, and that delivery spends the arm on a size that has not changed yet.
+    Release the box to its natural height afterwards, so a message opening under a field still resizes
+    it live — that is already smooth, and following it would only make the container lag behind it.
+- **Clipping an animated box costs the elevation inside it.** `overflow: hidden` cuts a card's own
+  shadow off on all four sides. `overflow: clip` with an `overflow-clip-margin` keeps the clip a few
+  pixels outside the border box, so growing content is still contained and the card still reads as
+  lifted off the page.
 - **A disclosure chevron rotates on open**, driven off the open state, and its transition must name
   **`rotate`** (see the transform-family rule above). Use the shared `DropdownChevron`, not a new one.
 
@@ -194,6 +212,13 @@ panel enters from the trigger and then dissolves in place.
   sort icon are the references.
 - **A height reveal is `grid-template-rows` 0fr → 1fr** with `overflow-hidden` on the inner element.
   No JS, no measured pixels. `FormMessage` is the reference.
+- **A height animation is only half of an exit.** Whatever is inside has to be held and faded with
+  the box, or the words vanish on frame one and an empty box animates its own collapse — which is
+  what "the error disappearing is not animated" looks like from the outside, even with the height
+  transition working perfectly. Hold the last non-empty body in a ref, fade it with the same duration
+  the box uses, and `aria-hidden` the wrapper so a screen reader is not read a rejection that no
+  longer applies. `FormMessage` is the reference; the same applies to any panel that empties its
+  content on the state change that closes it.
 - **Cancel the parent's gap when a collapsible block sits in a flex column.** A collapsed
   height-animated child still contributes the column's `gap`, so it leaves a permanent band of empty
   space. Give the wrapper a negative margin equal to the gap and restore the gap as padding _inside_

@@ -273,12 +273,19 @@ response leaves the user with a retry rather than a broken page.
 - **`FormControl` stamps `aria-invalid` and `aria-describedby`** onto the input it wraps, so the
   invalid styling and the screen-reader wiring are automatic instead of per call site.
 - **The message row animates between `0fr` and `1fr`** and reserves no space when empty, so
-  revealing an error never snaps the layout.
+  revealing an error never snaps the layout. It leaves the same way it arrives: the last body is
+  held and faded out with the collapsing box, because a height animation over an already-empty
+  paragraph animates nothing anybody can see. The wrapper goes `aria-hidden` as the error clears,
+  so the held copy is never read out.
 - **A required marker is `<FormLabel required>`**, never a hand-written asterisk.
 - **A server-side rejection lands inline on its field** via `form.setError`, so it reads like a
   validation error — a wrong current password marks `currentPassword`. A rejection that belongs
   to no field goes to `root` and renders in `FormRootMessage`: login answers "invalid
   credentials" without saying which half was wrong, and the form must not invent a guess.
+- **The card animates its own height between stages and steps.** `AnimatedHeight` measures the box
+  and animates it directly rather than using motion's `layout`, which scale-corrects its children
+  and would squash the inputs. It arms on the stage or step key and travels on the resize that
+  follows, because a crossfade holds the outgoing stage through its exit and only resizes after it.
 
 ## Configuration
 
