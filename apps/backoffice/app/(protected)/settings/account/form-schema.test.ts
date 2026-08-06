@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { schemaText } from '@repo/vitest-config/schema-text';
 import { accountSchema, type AccountValues } from '@/app/(protected)/settings/account/form-schema';
 import { TEXT_FIELD_MAX_LENGTH, URL_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 
@@ -47,10 +48,16 @@ describe('accountSchema', () => {
     expect(messagesFor({ taxId: tooLong }).taxId).toBe('tooLong');
   });
 
-  it('resolves every message through the translator it is given', () => {
-    const parsed = accountSchema((key) => `t:${key}`).safeParse({ ...VALID, name: '' });
+  it('resolves each message through the catalog it belongs to', () => {
+    const schema = accountSchema(schemaText(true));
 
-    expect(parsed.error?.issues[0]?.message).toBe('t:name.required');
+    expect(schema.safeParse({ ...VALID, name: '' }).error?.issues[0]?.message).toBe(
+      'field:name.required',
+    );
+    expect(
+      schema.safeParse({ ...VALID, legalName: 'a'.repeat(TEXT_FIELD_MAX_LENGTH + 1) }).error
+        ?.issues[0]?.message,
+    ).toBe('shared:tooLong');
   });
 });
 
@@ -93,7 +100,7 @@ describe('accountSchema and the brand', () => {
 
     // Its own message, because the cap is 512 rather than the 255 every other field shares — and a
     // schema message cannot interpolate, so each number is baked into its own key.
-    expect(messagesFor({ brandLogoUrl: tooLong }).brandLogoUrl).toBe('brandLogoUrl.tooLong');
+    expect(messagesFor({ brandLogoUrl: tooLong }).brandLogoUrl).toBe('tooLong');
   });
 
   // Empty is how the brand is cleared, so neither format check may reject it.

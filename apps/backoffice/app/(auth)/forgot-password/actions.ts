@@ -9,7 +9,7 @@ import { apiRequest, errorCodeOf } from '@/lib/api/client';
 export interface ForgotPasswordResult {
   sent?: boolean;
   error?: 'unexpected';
-  fieldError?: { field: 'email'; key: 'invalid' };
+  fieldError?: { field: 'email' };
 }
 
 /*
@@ -21,7 +21,7 @@ export async function requestPasswordRecovery(
   values: ForgotPasswordValues,
 ): Promise<ForgotPasswordResult> {
   const parsed = forgotPasswordSchema().safeParse(values);
-  if (!parsed.success) return { fieldError: { field: 'email', key: 'invalid' } };
+  if (!parsed.success) return { fieldError: { field: 'email' } };
 
   try {
     await apiRequest({
@@ -33,7 +33,7 @@ export async function requestPasswordRecovery(
     return { sent: true };
   } catch (error) {
     if (errorCodeOf(error) === 'badRequest') {
-      return { fieldError: { field: 'email', key: 'invalid' } };
+      return { fieldError: { field: 'email' } };
     }
     return { error: 'unexpected' };
   }

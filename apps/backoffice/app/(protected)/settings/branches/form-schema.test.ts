@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { schemaText } from '@repo/vitest-config/schema-text';
 import { branchSchema, type BranchValues } from '@/app/(protected)/settings/branches/form-schema';
 import { EXPIRY_MAX_DAYS, EXPIRY_MIN_DAYS } from '@/lib/constants/branch';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
@@ -40,8 +41,14 @@ describe('branchSchema', () => {
    * typed. Anything that is not a plain count of days is refused rather than coerced — `Number('')`
    * is 0 and `Number('7d')` is NaN, and both would otherwise slip past a bare comparison.
    */
-  it.each(['', ' ', '0', '7.5', '-3', '7d', 'siete', String(EXPIRY_MAX_DAYS + 1)])(
-    'refuses an expiry of %p',
+  it.each(['', ' '])('reports an expiry of %p as missing', (raw) => {
+    expect(messagesFor({ defaultExpiryDays: raw }).defaultExpiryDays).toBe(
+      'defaultExpiryDays.required',
+    );
+  });
+
+  it.each(['0', '7.5', '-3', '7d', 'siete', String(EXPIRY_MAX_DAYS + 1)])(
+    'reports an expiry of %p as out of range',
     (raw) => {
       expect(messagesFor({ defaultExpiryDays: raw }).defaultExpiryDays).toBe(
         'defaultExpiryDays.outOfRange',
@@ -56,9 +63,15 @@ describe('branchSchema', () => {
     },
   );
 
-  it('resolves every message through the translator it is given', () => {
-    const parsed = branchSchema((key) => `t:${key}`).safeParse({ ...VALID, name: '' });
+  it('resolves each message through the catalog it belongs to', () => {
+    const schema = branchSchema(schemaText(true));
 
-    expect(parsed.error?.issues[0]?.message).toBe('t:name.required');
+    expect(schema.safeParse({ ...VALID, name: '' }).error?.issues[0]?.message).toBe(
+      'field:name.required',
+    );
+    expect(
+      schema.safeParse({ ...VALID, name: 'a'.repeat(TEXT_FIELD_MAX_LENGTH + 1) }).error?.issues[0]
+        ?.message,
+    ).toBe('shared:tooLong');
   });
 });

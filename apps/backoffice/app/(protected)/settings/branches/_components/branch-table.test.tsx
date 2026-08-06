@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BranchTable } from '@/app/(protected)/settings/branches/_components/branch-table';
 import type { Branch } from '@/lib/api/branches';
+import { EXPIRY_MAX_DAYS, EXPIRY_MIN_DAYS } from '@/lib/constants/branch';
 import messages from '@/translations/es.json';
 
 vi.mock('@/app/(protected)/settings/branches/actions', () => ({
@@ -162,9 +163,9 @@ describe('BranchTable dialogs', () => {
   });
 
   /*
-   * A schema message is resolved by a translator that takes a key and nothing else, so a catalog
-   * entry with an ICU placeholder in it renders the placeholder. Only the browser showed it: the
-   * schema test asserts the key, and the key was right.
+   * A schema message carries its numbers as ICU placeholders, so the range the caller reads comes
+   * from the constants rather than from the copy. Only a rendered form shows whether they resolved:
+   * the schema test asserts the key, and the key is right either way.
    */
   it('renders a validation message with nothing left to interpolate', async () => {
     const view = renderTable();
@@ -174,9 +175,10 @@ describe('BranchTable dialogs', () => {
     fireEvent.change(field(view, 'defaultExpiryDays'), { target: { value: '400' } });
     submitDialog(view);
 
-    const message = await waitFor(() =>
-      within(dialog(view)).getByText(copy.defaultExpiryDays.outOfRange),
-    );
+    const expected = copy.defaultExpiryDays.outOfRange
+      .replace('{min}', String(EXPIRY_MIN_DAYS))
+      .replace('{max}', String(EXPIRY_MAX_DAYS));
+    const message = await waitFor(() => within(dialog(view)).getByText(expected));
     expect(message.textContent).not.toMatch(/[{}]/);
   });
 

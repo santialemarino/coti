@@ -121,6 +121,21 @@ describe('SignupForm steps', () => {
     expect(signup).not.toHaveBeenCalled();
   });
 
+  /*
+   * Advancing goes through `handleSubmit`, not `trigger`: react-hook-form only re-checks a field on
+   * change once the form has been submitted, so a step gated with `trigger` alone leaves its
+   * required message standing while the caller types the value that answers it.
+   */
+  it('clears a step message as soon as the field is filled', async () => {
+    const view = renderSignup();
+
+    fireEvent.submit(view.form);
+    await waitFor(() => expect(view.getByText(copy.accountName.required)).toBeTruthy());
+
+    fill(view, ACCOUNT);
+    await waitFor(() => expect(view.queryByText(copy.accountName.required)).toBeNull());
+  });
+
   it('advances once the step validates, and keeps what was typed on the way back', async () => {
     const view = renderSignup();
 

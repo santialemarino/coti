@@ -112,18 +112,26 @@ The stack is **react-hook-form + zod** with the shared `Form` primitives from
   id, `aria-invalid`, `aria-describedby` and `aria-required` onto whatever it wraps,
   which is what makes the error styling and the screen-reader wiring automatic.
 - **Colocate the schema** in `form-schema.ts` next to the page, as a factory taking
-  the translator so messages are localized (`loginSchema(t)`). Reuse shared
-  validators rather than re-deriving per form.
+  the two translators (`loginSchema({ field, shared })`) so every message is a catalog
+  key the form resolves. Build it from the shared validators in `lib/forms/validators.ts`
+  — `requiredText`, `optionalText`, `emailAddress`, `currentSecret`, `newPassword`,
+  `passwordConfirmation` — and add to that module rather than re-deriving a rule per form.
+- **Every `useForm` spreads `FORM_VALIDATION`** from `lib/forms/options.ts`, so when a
+  message appears is one decision for the whole app, not nine.
 - **`noValidate` on every `<form>`.** The browser's native bubbles are untranslated
-  and ugly; the inline `FormMessage` is the single source of validation feedback.
+  and ugly; the inline `FormMessage` is the single source of validation feedback. A
+  `minLength`/`pattern` attribute is dead weight next to it — the schema is the rule.
+  `maxLength` stays, because stopping the keystroke is kinder than reporting it after.
 - **Required marker is a prop.** `<FormLabel required>` or `required` on `FormItem`
   — never a hand-written asterisk `<span>`.
 - **Errors reveal without layout shift** — `FormMessage` and `FormRootMessage`
   animate height and collapse to zero footprint. Don't hand-roll an error `<p>` or
   reserve fixed space for one.
-- **A form-level rejection is `FormRootMessage`** fed by `form.setError('root', …)`
-  — for a failure that belongs to no single field, like credentials the API refused
-  without saying which half was wrong.
+- **A form-level rejection is `FormRootMessage`** fed by `form.setError('root', …)` — for a
+  failure that belongs to no single field, like a rate limit or an unreachable API. **A rejection
+  the caller can act on goes on the field they will edit**, even when the API deliberately does not
+  say which one was wrong: a refused login sits on the password, because a root error only clears
+  on the next submit and would otherwise outlive the attempt it belongs to.
 - **Surface a server-side field error inline** with `form.setError(name, …)`, so a
   409 "email already registered" reads like a validation error in the same place with
   the same animation, instead of only a toast.
@@ -143,14 +151,42 @@ The stack is **react-hook-form + zod** with the shared `Form` primitives from
   ends, so the flag arrives after the spinner is gone. Give each action its own hook and disable on
   the union when they are mutually exclusive.
 - **A form spanning steps is one `useForm`, it validates per step, and its step follows the error.**
-  Gate advancing with `form.trigger([...stepFields])`, never the whole form, or messages land on
-  fields the caller has not reached. When the server rejects a field, move to that field's step
-  _and_ `setError`: nothing ties a wizard's position to the form's state, so a message off screen
-  reads as a button that did nothing. Keep the field-to-step map in one module and pin every field
-  of the schema to a step with a test.
+  Advancing is a **submit of that step**: give the form a resolver that validates the current step's
+  schema (the step read from a ref, since the resolver runs outside a render) and advance from
+  `form.handleSubmit`. Never gate with `form.trigger` — it raises errors without marking the form
+  submitted, and react-hook-form only re-checks a field on change once it is, so every message
+  raised that way stands there while the caller types the value that answers it. Validating the
+  whole object instead of the step is the other half of the trap: it marks fields nobody has
+  reached. The last step validates everything, because a field two steps back can still have been
+  emptied on the way through. When the server rejects a field, move to that field's step _and_
+  `setError`: nothing ties a wizard's position to the form's state, so a message off screen reads as
+  a button that did nothing. Keep the field-to-step map in one module and pin every field of the
+  schema to a step with a test.
 - **A disabled submit button stops a second click, not a second submit.** Enter still reaches the
   form, so a handler behind a write that must happen once refuses to re-enter while one is in
   flight.
+
+### Validation messages
+
+One rejection, one message, naming what is actually wrong:
+
+- **Empty is not malformed.** Presence is checked before format, and the two carry different
+  messages — `Ingresá tu correo electrónico.` then `Ingresá una dirección de correo válida.`.
+  Chained zod checks all run and produce two issues for one field, so short-circuit with `.pipe()`
+  (`min(1, required).pipe(z.email(invalid).max(…))`) and guard a cross-field refinement on the
+  field being present, or a blank confirmation reports both "obligatorio" and "no coinciden".
+- **A message about the field lives in the flow's catalog; a message every form shares lives in
+  `common.form.errors`.** "Ingresá el nombre del corralón." is the field's; `tooLong`,
+  `invalidEmail`, `passwordTooShort`, `passwordTooLong` and `passwordMismatch` are shared, and
+  interpolate their numbers (`Máximo {max} caracteres.`) so a constant is never retyped as copy.
+- **Mirror the API's limits, maximums included.** A cap the column or the binding tag enforces is
+  refused inline instead of becoming a 400 with nothing to point at. A field the API only compares
+  (a current password) carries no floor — a rule that grew later must not lock out an account that
+  predates it.
+- **Never say the same thing twice on one field.** A `FormDescription` repeating the message the
+  error will show is a defect; the hint keeps only what the error does not say.
+- **One tone.** A required message is an instruction in Argentine Spanish naming the field
+  (`Ingresá…`, `Elegí…`, `Repetí…`); a format message states the rule. Match the neighbours.
 
 ## Feedback: toast, callout, or field message
 

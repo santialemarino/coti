@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { schemaText } from '@repo/vitest-config/schema-text';
 import { userSchema, type UserValues } from '@/app/(protected)/settings/users/form-schema';
 import { ADMIN_ROLE, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@/lib/constants/auth';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
@@ -41,10 +42,10 @@ describe('userSchema', () => {
     expect(messagesFor({ name: 'a'.repeat(length) }).name).toBe('tooLong');
   });
 
-  it.each(['', 'ana', 'ana@', '@corralon.test', 'ana corralon.test'])(
-    'refuses %p as an address',
+  it.each(['ana', 'ana@', '@corralon.test', 'ana corralon.test'])(
+    'reports %p as a malformed address',
     (email) => {
-      expect(messagesFor({ email }).email).toBe('email.invalid');
+      expect(messagesFor({ email }).email).toBe('invalidEmail');
     },
   );
 
@@ -52,10 +53,23 @@ describe('userSchema', () => {
     expect(messagesFor({ role: 'OWNER' as UserValues['role'] }).role).toBe('role.required');
   });
 
-  it('resolves every message through the translator it is given', () => {
-    const parsed = userSchema('create', (key) => `t:${key}`).safeParse({ ...VALID, name: '' });
+  it('resolves each message through the catalog it belongs to', () => {
+    const schema = userSchema('create', schemaText(true));
 
-    expect(parsed.error?.issues[0]?.message).toBe('t:name.required');
+    expect(schema.safeParse({ ...VALID, name: '' }).error?.issues[0]?.message).toBe(
+      'field:name.required',
+    );
+    expect(schema.safeParse({ ...VALID, email: 'nope' }).error?.issues[0]?.message).toBe(
+      'shared:invalidEmail',
+    );
+  });
+
+  // Empty and malformed are different rejections, and an admin filling this in needs to know which.
+  it.each([
+    ['email', '', 'email.required'],
+    ['password', '', 'password.required'],
+  ] as const)('reports an empty %s as missing', (field, value, message) => {
+    expect(messagesFor({ [field]: value })[field]).toBe(message);
   });
 });
 
@@ -64,10 +78,10 @@ describe('userSchema', () => {
  * none, so requiring one to edit a profile would make every edit impossible.
  */
 describe('userSchema and the initial password', () => {
-  it.each(['', 'corto', 'a'.repeat(PASSWORD_MIN_LENGTH - 1)])(
+  it.each(['corto', 'a'.repeat(PASSWORD_MIN_LENGTH - 1)])(
     'refuses %p when creating',
     (password) => {
-      expect(messagesFor({ password }).password).toBe('password.tooShort');
+      expect(messagesFor({ password }).password).toBe('passwordTooShort');
     },
   );
 
@@ -75,7 +89,7 @@ describe('userSchema and the initial password', () => {
   // than accepting a password whose tail never mattered.
   it('refuses a password past what the API stores', () => {
     expect(messagesFor({ password: 'a'.repeat(PASSWORD_MAX_LENGTH + 1) }).password).toBe(
-      'password.tooLong',
+      'passwordTooLong',
     );
   });
 

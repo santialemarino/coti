@@ -251,6 +251,10 @@ setting that should hold everywhere in the shared package, not in one app. What 
 - **A `cookieJar()` double**, from `@repo/vitest-config/cookies`. Use it rather than hand-rolling
   one: it reproduces Next's `delete`, which is a **set to `''`** and not a removal, so a reader
   that mishandles the blank fails here instead of in a browser.
+- **A `schemaText()` double**, from `@repo/vitest-config/schema-text`, for the translator pair a
+  form schema takes. `schemaText(true)` tags each message with the catalog it came from
+  (`field:…` / `shared:…`), which is how a test asserts that "empty" and "malformed" resolve to
+  different messages without hard-coding Spanish.
 
 ### What to test
 

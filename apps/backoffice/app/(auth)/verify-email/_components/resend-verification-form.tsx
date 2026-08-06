@@ -22,12 +22,19 @@ import {
   resendVerificationSchema,
   type ResendVerificationValues,
 } from '@/app/(auth)/verify-email/form-schema';
+import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
+import { FORM_VALIDATION } from '@/lib/forms/options';
 
 export function ResendVerificationForm() {
   const t = useTranslations('auth.verifyEmail');
-  const schema = useMemo(() => resendVerificationSchema(t), [t]);
+  const tErrors = useTranslations('common.form.errors');
+  const schema = useMemo(
+    () => resendVerificationSchema({ field: t, shared: tErrors }),
+    [t, tErrors],
+  );
   const [sent, setSent] = useState(false);
   const form = useForm<ResendVerificationValues>({
+    ...FORM_VALIDATION,
     resolver: zodResolver(schema),
     defaultValues: { email: '' },
   });
@@ -39,7 +46,7 @@ export function ResendVerificationForm() {
       return;
     }
     if (result.error === 'invalidEmail') {
-      form.setError('email', { message: t('email.invalid') });
+      form.setError('email', { message: tErrors('invalidEmail') });
       return;
     }
     form.setError('root', { message: t('errors.unexpected') });
@@ -62,6 +69,7 @@ export function ResendVerificationForm() {
                 <Input
                   type="email"
                   autoComplete="email"
+                  maxLength={TEXT_FIELD_MAX_LENGTH}
                   placeholder={t('email.placeholder')}
                   {...field}
                 />

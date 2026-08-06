@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { schemaText } from '@repo/vitest-config/schema-text';
 import { signupSchema, type SignupValues } from '@/app/(auth)/signup/form-schema';
 import { PASSWORD_MAX_LENGTH } from '@/lib/constants/auth';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
@@ -57,32 +58,39 @@ describe('signupSchema', () => {
 
   it('refuses a password past the length bcrypt reads', () => {
     expect(messagesFor({ adminPassword: 'a'.repeat(PASSWORD_MAX_LENGTH + 1) }).adminPassword).toBe(
-      'adminPassword.tooLong',
+      'passwordTooLong',
     );
   });
 
   it('refuses a short password', () => {
     expect(messagesFor({ adminPassword: 'short', confirmPassword: 'short' }).adminPassword).toBe(
-      'adminPassword.tooShort',
+      'passwordTooShort',
     );
+  });
+
+  // Empty and malformed are different rejections, on every field that has a format.
+  it.each([
+    ['adminEmail', '', 'adminEmail.required'],
+    ['adminEmail', 'ana@', 'invalidEmail'],
+    ['adminPassword', '', 'adminPassword.required'],
+    ['confirmPassword', '', 'confirmPassword.required'],
+  ] as const)('reports %s of %p as %s', (field, value, message) => {
+    expect(messagesFor({ [field]: value })[field]).toBe(message);
   });
 
   it('reports a mistyped confirmation on the confirmation field', () => {
-    expect(messagesFor({ confirmPassword: 'coti12345' }).confirmPassword).toBe(
-      'confirmPassword.mismatch',
-    );
-  });
-
-  it('refuses an address that is not one', () => {
-    expect(messagesFor({ adminEmail: 'ana@' }).adminEmail).toBe('adminEmail.invalid');
+    expect(messagesFor({ confirmPassword: 'coti12345' }).confirmPassword).toBe('passwordMismatch');
   });
 
   // The messages are catalog keys the form resolves, never strings baked into the schema.
-  it('resolves every message through the translator it is given', () => {
-    const schema = signupSchema((key) => `t:${key}`);
-    const parsed = schema.safeParse({ ...VALID, accountName: '' });
+  it('resolves each message through the catalog it belongs to', () => {
+    const schema = signupSchema(schemaText(true));
 
-    expect(parsed.success).toBe(false);
-    expect(parsed.error?.issues[0]?.message).toBe('t:accountName.required');
+    expect(schema.safeParse({ ...VALID, accountName: '' }).error?.issues[0]?.message).toBe(
+      'field:accountName.required',
+    );
+    expect(schema.safeParse({ ...VALID, adminEmail: 'ana@' }).error?.issues[0]?.message).toBe(
+      'shared:invalidEmail',
+    );
   });
 });

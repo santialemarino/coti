@@ -11,7 +11,6 @@ import {
   Card,
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -30,7 +29,8 @@ import {
   type ResetPasswordValues,
 } from '@/app/(auth)/reset-password/form-schema';
 import { ROUTES } from '@/config/routes';
-import { PASSWORD_MIN_LENGTH } from '@/lib/constants/auth';
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@/lib/constants/auth';
+import { FORM_VALIDATION } from '@/lib/forms/options';
 
 interface ResetPasswordFormProps {
   token: string;
@@ -39,9 +39,11 @@ interface ResetPasswordFormProps {
 export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
   const t = useTranslations('auth.resetPassword');
   const tCommon = useTranslations('common');
-  const schema = useMemo(() => resetPasswordSchema(t), [t]);
+  const tErrors = useTranslations('common.form.errors');
+  const schema = useMemo(() => resetPasswordSchema({ field: t, shared: tErrors }), [t, tErrors]);
   const [done, setDone] = useState(false);
   const form = useForm<ResetPasswordValues>({
+    ...FORM_VALIDATION,
     resolver: zodResolver(schema),
     defaultValues: { token, newPassword: '', confirmPassword: '' },
   });
@@ -53,7 +55,9 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
       return;
     }
     if (result.fieldError) {
-      form.setError(result.fieldError.field, { message: t('newPassword.tooShort') });
+      form.setError(result.fieldError.field, {
+        message: tErrors('passwordTooShort', { min: PASSWORD_MIN_LENGTH }),
+      });
       return;
     }
     form.setError('root', { message: t(`errors.${result.error ?? 'unexpected'}`) });
@@ -92,15 +96,12 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
                       <Input
                         type="password"
                         autoComplete="new-password"
-                        minLength={PASSWORD_MIN_LENGTH}
+                        maxLength={PASSWORD_MAX_LENGTH}
                         placeholder={t('newPassword.placeholder')}
                         passwordToggleLabel={tCommon('form.togglePassword')}
                         {...field}
                       />
                     </FormControl>
-                    <FormDescription>
-                      {t('minLength', { count: PASSWORD_MIN_LENGTH })}
-                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -116,7 +117,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
                       <Input
                         type="password"
                         autoComplete="new-password"
-                        minLength={PASSWORD_MIN_LENGTH}
+                        maxLength={PASSWORD_MAX_LENGTH}
                         placeholder={t('confirmPassword.placeholder')}
                         passwordToggleLabel={tCommon('form.togglePassword')}
                         {...field}

@@ -1,17 +1,23 @@
 import { z } from 'zod';
 
-import { PASSWORD_MIN_LENGTH, rawKey, type MessageFor } from '@/lib/constants/auth';
+import {
+  currentSecret,
+  newPassword,
+  passwordConfirmation,
+  rawText,
+  type SchemaText,
+} from '@/lib/forms/validators';
 
-export function changePasswordSchema(t: MessageFor = rawKey) {
+export function changePasswordSchema(t: SchemaText = rawText) {
   return z
     .object({
-      currentPassword: z.string().min(1, t('currentPassword.required')),
-      newPassword: z.string().min(PASSWORD_MIN_LENGTH, t('newPassword.tooShort')),
-      confirmPassword: z.string(),
+      currentPassword: currentSecret(t, 'currentPassword.required'),
+      newPassword: newPassword(t, 'newPassword.required'),
+      confirmPassword: passwordConfirmation(t, 'confirmPassword.required'),
     })
-    .refine((values) => values.newPassword === values.confirmPassword, {
+    .refine((values) => !values.confirmPassword || values.newPassword === values.confirmPassword, {
       path: ['confirmPassword'],
-      message: t('confirmPassword.mismatch'),
+      message: t.shared('passwordMismatch'),
     });
 }
 

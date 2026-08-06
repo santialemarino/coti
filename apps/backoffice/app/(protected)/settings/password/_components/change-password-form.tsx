@@ -8,7 +8,6 @@ import { useForm } from 'react-hook-form';
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -22,7 +21,8 @@ import {
   changePasswordSchema,
   type ChangePasswordValues,
 } from '@/app/(protected)/settings/password/form-schema';
-import { PASSWORD_MIN_LENGTH } from '@/lib/constants/auth';
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, SECRET_MAX_LENGTH } from '@/lib/constants/auth';
+import { FORM_VALIDATION } from '@/lib/forms/options';
 
 const EMPTY_VALUES: ChangePasswordValues = {
   currentPassword: '',
@@ -32,9 +32,12 @@ const EMPTY_VALUES: ChangePasswordValues = {
 
 export function ChangePasswordForm() {
   const t = useTranslations('auth.changePassword');
-  const schema = useMemo(() => changePasswordSchema(t), [t]);
+  const tCommon = useTranslations('common');
+  const tErrors = useTranslations('common.form.errors');
+  const schema = useMemo(() => changePasswordSchema({ field: t, shared: tErrors }), [t, tErrors]);
   const [done, setDone] = useState(false);
   const form = useForm<ChangePasswordValues>({
+    ...FORM_VALIDATION,
     resolver: zodResolver(schema),
     defaultValues: EMPTY_VALUES,
   });
@@ -52,7 +55,7 @@ export function ChangePasswordForm() {
       const message =
         result.fieldError.key === 'wrong'
           ? t('errors.wrongCurrentPassword')
-          : t('newPassword.tooShort');
+          : tErrors('passwordTooShort', { min: PASSWORD_MIN_LENGTH });
       form.setError(result.fieldError.field, { message });
       return;
     }
@@ -76,7 +79,9 @@ export function ChangePasswordForm() {
                 <Input
                   type="password"
                   autoComplete="current-password"
+                  maxLength={SECRET_MAX_LENGTH}
                   placeholder={t('currentPassword.placeholder')}
+                  passwordToggleLabel={tCommon('form.togglePassword')}
                   {...field}
                 />
               </FormControl>
@@ -95,12 +100,12 @@ export function ChangePasswordForm() {
                 <Input
                   type="password"
                   autoComplete="new-password"
-                  minLength={PASSWORD_MIN_LENGTH}
+                  maxLength={PASSWORD_MAX_LENGTH}
                   placeholder={t('newPassword.placeholder')}
+                  passwordToggleLabel={tCommon('form.togglePassword')}
                   {...field}
                 />
               </FormControl>
-              <FormDescription>{t('minLength', { count: PASSWORD_MIN_LENGTH })}</FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -116,8 +121,9 @@ export function ChangePasswordForm() {
                 <Input
                   type="password"
                   autoComplete="new-password"
-                  minLength={PASSWORD_MIN_LENGTH}
+                  maxLength={PASSWORD_MAX_LENGTH}
                   placeholder={t('confirmPassword.placeholder')}
+                  passwordToggleLabel={tCommon('form.togglePassword')}
                   {...field}
                 />
               </FormControl>

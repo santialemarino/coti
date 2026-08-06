@@ -25,6 +25,7 @@ import { accountSchema, type AccountValues } from '@/app/(protected)/settings/ac
 import type { Account } from '@/lib/api/account';
 import { HEX_COLOR } from '@/lib/constants/brand';
 import { TEXT_FIELD_MAX_LENGTH, URL_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
+import { FORM_VALIDATION } from '@/lib/forms/options';
 
 interface AccountFormProps {
   account: Account;
@@ -32,8 +33,10 @@ interface AccountFormProps {
 
 export function AccountForm({ account }: AccountFormProps) {
   const t = useTranslations('account');
-  const schema = useMemo(() => accountSchema(t), [t]);
+  const tErrors = useTranslations('common.form.errors');
+  const schema = useMemo(() => accountSchema({ field: t, shared: tErrors }), [t, tErrors]);
   const form = useForm<AccountValues>({
+    ...FORM_VALIDATION,
     resolver: zodResolver(schema),
     defaultValues: {
       name: account.name,

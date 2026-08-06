@@ -26,8 +26,9 @@ interface TokenPairRaw {
  * is logged out by their own change.
  */
 export async function changePassword(values: ChangePasswordValues): Promise<ChangePasswordResult> {
+  // The form validated this already, so a failure here means the request did not come from it.
   const parsed = changePasswordSchema().safeParse(values);
-  if (!parsed.success) return { fieldError: { field: 'newPassword', key: 'tooShort' } };
+  if (!parsed.success) return { error: 'unexpected' };
 
   try {
     const tokens = await apiRequest<TokenPairRaw>({
