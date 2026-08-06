@@ -135,6 +135,12 @@ The stack is **react-hook-form + zod** with the shared `Form` primitives from
 - **Surface a server-side field error inline** with `form.setError(name, …)`, so a
   409 "email already registered" reads like a validation error in the same place with
   the same animation, instead of only a toast.
+- **A password input is `PasswordField`**, never a bare `Input type="password"`: it owns the cap,
+  the reveal toggle, the autocomplete hint and the meter, so eight fields across five forms cannot
+  drift apart. `meter` goes on the field where a password is **chosen** and never on its
+  confirmation or on a login, where the caller is presenting one they already have. The meter marks
+  what is missing in red only once that field has actually been rejected — keyed on the field's own
+  error, not on the form's submit count, which a wizard step would trip on arrival.
 - **Pass the accessible names the design system can't own:** `passwordToggleLabel`
   on a password `Input`, `clearLabel` on a `SearchInput`. They live under
   `common.form.*`.
@@ -155,7 +161,11 @@ The stack is **react-hook-form + zod** with the shared `Form` primitives from
   schema (the step read from a ref, since the resolver runs outside a render) and advance from
   `form.handleSubmit`. Never gate with `form.trigger` — it raises errors without marking the form
   submitted, and react-hook-form only re-checks a field on change once it is, so every message
-  raised that way stands there while the caller types the value that answers it. Validating the
+  raised that way stands there while the caller types the value that answers it. **Track submission
+  per step**, though: `isSubmitted` is a property of the whole form, so once one step has advanced
+  the next one starts reporting errors on the first character typed into it. A ref the resolver
+  reads — set on submit, cleared on every step change — keeps a step quiet until the caller has
+  tried to leave it. Validating the
   whole object instead of the step is the other half of the trap: it marks fields nobody has
   reached. The last step validates everything, because a field two steps back can still have been
   emptied on the way through. When the server rejects a field, move to that field's step _and_
@@ -179,6 +189,9 @@ One rejection, one message, naming what is actually wrong:
   `common.form.errors`.** "Ingresá el nombre del corralón." is the field's; `tooLong`,
   `invalidEmail`, `passwordTooShort`, `passwordTooLong` and `passwordMismatch` are shared, and
   interpolate their numbers (`Máximo {max} caracteres.`) so a constant is never retyped as copy.
+- **A rule the interface shows, the API enforces.** A requirement list the caller can read is a
+  promise; if only the form checks it, an admin-created or API-created password walks straight past
+  it. Mirror the constants in one module per side and let the API answer 422 when they drift.
 - **Mirror the API's limits, maximums included.** A cap the column or the binding tag enforces is
   refused inline instead of becoming a 400 with nothing to point at. A field the API only compares
   (a current password) carries no floor — a rule that grew later must not lock out an account that

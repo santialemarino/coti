@@ -19,8 +19,8 @@ const BRANCH = { branchName: 'Villa Bosch' };
 const ADMIN = {
   adminName: 'Ana Pérez',
   adminEmail: 'ana@corralonsanmartin.test',
-  adminPassword: 'coti1234',
-  confirmPassword: 'coti1234',
+  adminPassword: 'Coti-1234-larga',
+  confirmPassword: 'Coti-1234-larga',
 };
 
 // The real catalog, so a renamed or missing key fails here rather than rendering its own name.
@@ -134,6 +134,30 @@ describe('SignupForm steps', () => {
 
     fill(view, ACCOUNT);
     await waitFor(() => expect(view.queryByText(copy.accountName.required)).toBeNull());
+  });
+
+  /*
+   * Advancing marks the whole form submitted, so without a per-step flag the last step would start
+   * reporting errors on the first character typed into a field the caller has never submitted.
+   */
+  it('stays quiet while a step nobody has submitted is being filled in', async () => {
+    const view = renderSignup();
+
+    fill(view, ACCOUNT);
+    fireEvent.submit(view.form);
+    await waitForStep(view, 'branchName');
+    fill(view, BRANCH);
+    fireEvent.submit(view.form);
+    await waitForStep(view, 'adminPassword');
+
+    // Halfway through typing a password: invalid, but not yet submitted on this step.
+    fill(view, { adminPassword: 'abc' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const messages = [...view.container.querySelectorAll('[data-slot="form-message"] p')]
+      .map((p) => p.textContent)
+      .filter(Boolean);
+    expect(messages).toEqual([]);
   });
 
   it('advances once the step validates, and keeps what was typed on the way back', async () => {

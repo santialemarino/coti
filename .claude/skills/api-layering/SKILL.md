@@ -339,6 +339,16 @@ The token's signature covers `account_id`, which is what lets the middleware bui
 
 **By the time a service sees `Tenant.BranchID`, it is already validated.** Filter by it; do not re-check it.
 
+**A rule about a value lives with the value, not with the route that happens to write it.**
+`domain.PasswordPolicy` is the shape to copy: one type in `internal/domain`, built from config once
+per service, and called by **every** path that stores a password — signup, admin user creation, the
+self-service change, the recovery reset. Four routes had the same length check inline before, which
+is three chances for one of them to fall behind. Two details of that policy generalise: a limit
+imposed by a library is expressed in the library's own unit (bcrypt stops at 72 **bytes**, so the
+cap is bytes and not characters, or the hash fails a write the input check should have refused), and
+a rule that only applies when a value is **chosen** is not applied when it is merely **compared** —
+logging in checks nothing, so a policy tightened later cannot lock out an account that predates it.
+
 ## Translating domain errors to HTTP
 
 `handler.Respond(c, err)` is the **single** mapping point from a domain error to a status code. Services return `domain.ErrNotFound` / `ErrConflict` / `ErrUnauthenticated` / `ErrLocked` / `ErrForbidden` / `ErrImmutable` / `ErrInvalidInput`; the handler calls `Respond` and never picks a code itself. Anything unmapped becomes a 500 with a generic body and the real error attached to the request log — an unmapped error is a bug, and its text may not be safe to show a client.

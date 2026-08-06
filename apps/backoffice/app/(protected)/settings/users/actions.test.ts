@@ -8,7 +8,8 @@ import {
   updateUser,
 } from '@/app/(protected)/settings/users/actions';
 import { type UserValues } from '@/app/(protected)/settings/users/form-schema';
-import { ADMIN_ROLE, PASSWORD_MIN_LENGTH, SELLER_ROLE } from '@/lib/constants/auth';
+import { ADMIN_ROLE, SELLER_ROLE } from '@/lib/constants/auth';
+import { PASSWORD_MIN_LENGTH } from '@/lib/constants/password';
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 // Only the request: the error vocabulary is what maps a status onto a rejection, and that mapping
@@ -28,7 +29,7 @@ const VALUES: UserValues = {
   email: 'ana@corralon.test',
   role: SELLER_ROLE,
   branchIds: [BRANCH_ID],
-  password: 'coti1234',
+  password: 'Coti-1234-larga',
 };
 
 function requestSent() {
@@ -58,7 +59,7 @@ describe('createUser', () => {
       email: 'ana@corralon.test',
       role: SELLER_ROLE,
       branch_ids: [BRANCH_ID],
-      password: 'coti1234',
+      password: 'Coti-1234-larga',
     });
   });
 

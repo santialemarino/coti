@@ -10,14 +10,8 @@ import { useForm } from 'react-hook-form';
 import {
   Card,
   Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
   FormRootMessage,
   InlineLink,
-  Input,
   PendingButton,
   StatusScreen,
 } from '@repo/ui/components';
@@ -28,8 +22,9 @@ import {
   resetPasswordSchema,
   type ResetPasswordValues,
 } from '@/app/(auth)/reset-password/form-schema';
+import { PasswordField } from '@/components/password-field';
 import { ROUTES } from '@/config/routes';
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@/lib/constants/auth';
+import { PASSWORD_MIN_LENGTH } from '@/lib/constants/password';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 
 interface ResetPasswordFormProps {
@@ -38,7 +33,6 @@ interface ResetPasswordFormProps {
 
 export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
   const t = useTranslations('auth.resetPassword');
-  const tCommon = useTranslations('common');
   const tErrors = useTranslations('common.form.errors');
   const schema = useMemo(() => resetPasswordSchema({ field: t, shared: tErrors }), [t, tErrors]);
   const [done, setDone] = useState(false);
@@ -86,46 +80,19 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
               noValidate
               className="flex flex-col gap-y-5"
             >
-              <FormField
+              <PasswordField
                 control={form.control}
                 name="newPassword"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel required>{t('newPassword.label')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        autoComplete="new-password"
-                        maxLength={PASSWORD_MAX_LENGTH}
-                        placeholder={t('newPassword.placeholder')}
-                        passwordToggleLabel={tCommon('form.togglePassword')}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                label={t('newPassword.label')}
+                placeholder={t('newPassword.placeholder')}
+                meter
               />
 
-              <FormField
+              <PasswordField
                 control={form.control}
                 name="confirmPassword"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel required>{t('confirmPassword.label')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        autoComplete="new-password"
-                        maxLength={PASSWORD_MAX_LENGTH}
-                        placeholder={t('confirmPassword.placeholder')}
-                        passwordToggleLabel={tCommon('form.togglePassword')}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                label={t('confirmPassword.label')}
+                placeholder={t('confirmPassword.placeholder')}
               />
 
               <FormRootMessage />

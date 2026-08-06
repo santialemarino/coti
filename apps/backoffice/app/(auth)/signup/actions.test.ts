@@ -25,8 +25,8 @@ const VALUES: SignupValues = {
   branchAddress: '',
   adminName: 'Ana Pérez',
   adminEmail: 'ana@corralonsanmartin.test',
-  adminPassword: 'coti1234',
-  confirmPassword: 'coti1234',
+  adminPassword: 'Coti-1234-larga',
+  confirmPassword: 'Coti-1234-larga',
 };
 
 const TOKENS = { access_token: 'access', refresh_token: 'refresh' };
@@ -74,7 +74,7 @@ describe('signup', () => {
       branch_address: undefined,
       admin_name: 'Ana Pérez',
       admin_email: 'ana@corralonsanmartin.test',
-      admin_password: 'coti1234',
+      admin_password: 'Coti-1234-larga',
     });
   });
 

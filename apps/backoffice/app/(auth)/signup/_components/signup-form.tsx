@@ -55,6 +55,12 @@ export function SignupForm() {
   const [stepKey, setStepKey] = useState<StepKey>('account');
   /* Read by the resolver, which runs outside a render and needs the step as of the submit. */
   const currentStep = useRef<StepKey>('account');
+  /*
+   * Whether the caller has tried to leave the step they are on. Advancing marks the whole form
+   * submitted, and react-hook-form re-checks every change from then on — so without this the last
+   * step starts reporting errors on the first character typed into a field nobody has submitted.
+   */
+  const stepSubmitted = useRef(false);
 
   /*
    * The step decides what a submit validates, so the schema changes under the form and
@@ -63,6 +69,8 @@ export function SignupForm() {
    */
   const resolver: Resolver<SignupValues> = useCallback(
     async (values) => {
+      if (!stepSubmitted.current) return { values, errors: {} };
+
       const parsed = await stepSchema(currentStep.current, text).safeParseAsync(values);
       if (parsed.success) return { values, errors: {} };
 
@@ -110,6 +118,7 @@ export function SignupForm() {
   function goToStep(next: StepKey) {
     navigated.current = true;
     currentStep.current = next;
+    stepSubmitted.current = false;
     setStepKey(next);
   }
 
@@ -139,6 +148,9 @@ export function SignupForm() {
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // Set before either branch, because both reach the resolver, which reads it.
+    stepSubmitted.current = true;
+
     /*
      * The primary button submits on every step so Enter does what pressing it does; which of the two
      * things that means is decided here. Advancing goes through `handleSubmit` rather than

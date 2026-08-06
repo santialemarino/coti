@@ -37,11 +37,11 @@ type branchExistence interface {
 // UserService owns the account's users: who exists, what role they carry, and which branches
 // they may operate on.
 type UserService struct {
-	db           tenantTxRunner
-	users        userAdminRepository
-	assignments  userBranchRepository
-	branches     branchExistence
-	passwordMinL int
+	db          tenantTxRunner
+	users       userAdminRepository
+	assignments userBranchRepository
+	branches    branchExistence
+	policy      domain.PasswordPolicy
 }
 
 // NewUserService builds a UserService.
@@ -51,7 +51,7 @@ func NewUserService(
 ) *UserService {
 	return &UserService{
 		db: db, users: users, assignments: assignments, branches: branches,
-		passwordMinL: cfg.PasswordMinLength,
+		policy: domain.PasswordPolicy{MinLength: cfg.PasswordMinLength},
 	}
 }
 
@@ -116,9 +116,8 @@ func (s *UserService) CreateUser(
 	if err := s.validateProfile(in.Name, in.Email, in.Role); err != nil {
 		return nil, err
 	}
-	if len([]rune(in.Password)) < s.passwordMinL {
-		return nil, fmt.Errorf("%w: password must be at least %d characters",
-			domain.ErrInvalidInput, s.passwordMinL)
+	if err := s.policy.Validate(in.Password); err != nil {
+		return nil, err
 	}
 	branchIDs := dedupeUUIDs(in.BranchIDs)
 	in.BranchIDs = branchIDs
