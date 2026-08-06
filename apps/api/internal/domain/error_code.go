@@ -61,8 +61,10 @@ func CodeOf(err error) ErrorCode {
 	switch {
 	case errors.Is(err, ErrNotFound):
 		return CodeNotFound
-	case errors.Is(err, ErrConflict), errors.Is(err, ErrImmutable):
-		return codeForConflict(err)
+	case errors.Is(err, ErrImmutable):
+		return CodeImmutable
+	case errors.Is(err, ErrConflict):
+		return CodeConflict
 	case errors.Is(err, ErrInvalidInput):
 		return CodeInvalidInput
 	case errors.Is(err, ErrUnauthenticated):
@@ -78,11 +80,4 @@ func CodeOf(err error) ErrorCode {
 	default:
 		return CodeInternal
 	}
-}
-
-func codeForConflict(err error) ErrorCode {
-	if errors.Is(err, ErrImmutable) {
-		return CodeImmutable
-	}
-	return CodeConflict
 }
