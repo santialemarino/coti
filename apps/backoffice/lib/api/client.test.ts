@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError, apiRequest, errorCodeOf } from '@/lib/api/client';
+import { apiRequest } from '@/lib/api/client';
 
 vi.mock('@/lib/auth/session', () => ({ getAccessToken: vi.fn() }));
 vi.mock('@/lib/auth/client-address', () => ({ clientAddress: vi.fn() }));
@@ -59,45 +59,70 @@ describe('apiRequest bodies', () => {
 
   it('rejects a success whose body is not JSON', async () => {
     vi.mocked(fetch).mockImplementation(responds('<html>nope</html>'));
-    await expect(apiRequest({ path: '/v1/me' })).rejects.toMatchObject({ code: 'unexpected' });
+    await expect(apiRequest({ path: '/v1/me' })).rejects.toMatchObject({ code: 'INTERNAL' });
   });
 });
 
 describe('apiRequest error vocabulary', () => {
+  /*
+   * The envelope's code is the contract, and it is what tells apart two rules answering one
+   * status: a 422 is the password policy on one route and the last active branch on another.
+   */
+  it('reads the code the API sent rather than deriving one', async () => {
+    vi.mocked(fetch).mockImplementation(
+      responds('{"error":"invalid input","code":"LAST_ACTIVE_BRANCH"}', 422),
+    );
+    await expect(apiRequest({ path: '/v1/branches/x' })).rejects.toMatchObject({
+      code: 'LAST_ACTIVE_BRANCH',
+      status: 422,
+    });
+  });
+
+  /*
+   * The four aborts in the API's auth middleware answer without one, so the status is not a
+   * fallback for a hypothetical: it is the only thing those responses carry.
+   */
   it.each([
-    [400, 'badRequest'],
-    [401, 'unauthenticated'],
-    [403, 'forbidden'],
-    [404, 'notFound'],
-    [409, 'conflict'],
-    [422, 'unprocessable'],
-    [429, 'rateLimited'],
-    [500, 'unexpected'],
-    [418, 'unexpected'],
-  ])('maps %i onto %s', async (status, code) => {
+    [400, 'INVALID_BODY'],
+    [401, 'UNAUTHENTICATED'],
+    [403, 'FORBIDDEN'],
+    [404, 'NOT_FOUND'],
+    [409, 'CONFLICT'],
+    [413, 'FILE_TOO_LARGE'],
+    [422, 'INVALID_INPUT'],
+    [429, 'RATE_LIMITED'],
+    [500, 'INTERNAL'],
+    [418, 'INTERNAL'],
+  ])('falls back to the status when no code arrives, mapping %i onto %s', async (status, code) => {
     vi.mocked(fetch).mockImplementation(responds('{}', status));
     await expect(apiRequest({ path: '/v1/me' })).rejects.toMatchObject({ code, status });
   });
 
+  // A code this app does not know is not a code it can word, so the status still answers.
+  it('ignores a code it has no wording for', async () => {
+    vi.mocked(fetch).mockImplementation(responds('{"code":"QUOTE_FROZEN"}', 409));
+    await expect(apiRequest({ path: '/v1/quotes/x' })).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+
   // An unreachable API is not a rejected credential and must not read as one.
-  it('maps a transport failure onto unreachable with no status', async () => {
+  it('maps a transport failure onto UNREACHABLE with no status', async () => {
     vi.mocked(fetch).mockRejectedValue(new TypeError('connect ECONNREFUSED'));
     await expect(apiRequest({ path: '/v1/me' })).rejects.toMatchObject({
-      code: 'unreachable',
+      code: 'UNREACHABLE',
       status: 0,
     });
   });
 
   it('keeps the envelope for the log without promising it to a screen', async () => {
     vi.mocked(fetch).mockImplementation(
-      responds('{"error":"conflict","detail":"email taken"}', 409),
+      responds('{"error":"conflict","code":"EMAIL_TAKEN","detail":"email taken"}', 409),
     );
     await expect(apiRequest({ path: '/v1/users' })).rejects.toThrow('conflict: email taken');
   });
 
   it('survives an error body that is not the envelope', async () => {
     vi.mocked(fetch).mockImplementation(responds('gateway timeout', 504));
-    await expect(apiRequest({ path: '/v1/me' })).rejects.toMatchObject({ code: 'unexpected' });
+    await expect(apiRequest({ path: '/v1/me' })).rejects.toMatchObject({ code: 'INTERNAL' });
   });
 });
 
@@ -112,7 +137,7 @@ describe('apiRequest headers', () => {
   it('refuses an authenticated call with no token, before fetching', async () => {
     vi.mocked(getAccessToken).mockResolvedValue(undefined);
     await expect(apiRequest({ path: '/v1/me' })).rejects.toMatchObject({
-      code: 'unauthenticated',
+      code: 'UNAUTHENTICATED',
       status: 401,
     });
     expect(fetch).not.toHaveBeenCalled();
@@ -209,17 +234,4 @@ describe('apiRequest query strings', () => {
     await apiRequest({ path: '/v1/products', query: { search: 'cal & arena' } });
     expect(lastRequest().url).toContain('search=cal+%26+arena');
   });
-});
-
-describe('errorCodeOf', () => {
-  it('reads the code off an ApiError', () => {
-    expect(errorCodeOf(new ApiError('conflict', 409))).toBe('conflict');
-  });
-
-  it.each([new Error('boom'), 'a string', null, undefined])(
-    'calls anything else unexpected (%p)',
-    (thrown) => {
-      expect(errorCodeOf(thrown)).toBe('unexpected');
-    },
-  );
 });

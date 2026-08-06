@@ -5,7 +5,8 @@ import { cookies } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 
 import { ROUTES } from '@/config/routes';
-import { apiRequest, errorCodeOf } from '@/lib/api/client';
+import { apiRequest } from '@/lib/api/client';
+import { errorCodeOf } from '@/lib/api/errors';
 import {
   ACCESS_COOKIE,
   BRANCH_COOKIE,
@@ -59,7 +60,7 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
     };
   } catch (error) {
     const code = errorCodeOf(error);
-    if (code === 'unauthenticated' || code === 'forbidden') return null;
+    if (code === 'UNAUTHENTICATED' || code === 'FORBIDDEN') return null;
     throw error;
   }
 });

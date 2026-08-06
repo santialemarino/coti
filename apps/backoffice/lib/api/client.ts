@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { ApiError, codeForStatus, knownErrorCode } from '@/lib/api/errors';
 import { getActiveBranchId } from '@/lib/auth/branch';
 import { clientAddress } from '@/lib/auth/client-address';
 import { getAccessToken } from '@/lib/auth/session';
@@ -13,31 +14,6 @@ import { API_URL } from '@/lib/config';
  * It carries transport only. Turning the API's snake_case JSON into the camelCase
  * the component tree uses is each lib/api/<feature> module's job.
  */
-
-// The error vocabulary the interface translates. Every status the API can answer
-// maps onto one of these, so no screen ever branches on a raw status code.
-export type ApiErrorCode =
-  | 'badRequest'
-  | 'unauthenticated'
-  | 'forbidden'
-  | 'notFound'
-  | 'conflict'
-  | 'unprocessable'
-  | 'rateLimited'
-  | 'unreachable'
-  | 'unexpected';
-
-export class ApiError extends Error {
-  readonly code: ApiErrorCode;
-  readonly status: number;
-
-  constructor(code: ApiErrorCode, status: number, message?: string) {
-    super(message ?? code);
-    this.name = 'ApiError';
-    this.code = code;
-    this.status = status;
-  }
-}
 
 export interface ApiRequest {
   path: string;
@@ -70,7 +46,7 @@ export async function apiRequest<T>(request: ApiRequest): Promise<T> {
   try {
     return JSON.parse(text) as T;
   } catch {
-    throw new ApiError('unexpected', response.status, 'response body is not json');
+    throw new ApiError('INTERNAL', response.status, 'response body is not json');
   }
 }
 
@@ -93,7 +69,7 @@ export async function apiFetch(request: ApiRequest): Promise<Response> {
     const token = await getAccessToken();
     // No token means middleware let a public route through, or the session expired
     // between the gate and here. Either way it is the same answer the API gives.
-    if (!token) throw new ApiError('unauthenticated', 401);
+    if (!token) throw new ApiError('UNAUTHENTICATED', 401);
     headers.set('Authorization', `Bearer ${token}`);
   }
   if (branchScoped) {
@@ -114,46 +90,31 @@ export async function apiFetch(request: ApiRequest): Promise<Response> {
       cache: 'no-store',
     });
   } catch {
-    throw new ApiError('unreachable', 0);
+    throw new ApiError('UNREACHABLE', 0);
   }
 }
 
-// toApiError reads the API's {error, detail} envelope for the log, and never lets
-// its text reach a screen: the interface renders its own message per code.
-async function toApiError(response: Response): Promise<ApiError> {
+/*
+ * toApiError reads the API's {error, code, detail} envelope: `code` is the contract a screen
+ * branches on, `error` and `detail` are English prose kept for the log and never rendered.
+ * The status decides only when no code arrived — which the four aborts in the API's auth
+ * middleware still do.
+ */
+export async function toApiError(response: Response): Promise<ApiError> {
+  let code: string | undefined;
   let detail = '';
   try {
-    const payload = (await response.json()) as { error?: string; detail?: string };
+    const payload = (await response.json()) as { error?: string; code?: string; detail?: string };
+    code = payload.code;
     detail = [payload.error, payload.detail].filter(Boolean).join(': ');
   } catch {
     // A body that is not the envelope tells us nothing extra; the status still does.
   }
-  return new ApiError(codeForStatus(response.status), response.status, detail || undefined);
-}
-
-function codeForStatus(status: number): ApiErrorCode {
-  switch (status) {
-    case 400:
-      return 'badRequest';
-    case 401:
-      return 'unauthenticated';
-    case 403:
-      return 'forbidden';
-    case 404:
-      return 'notFound';
-    case 409:
-      return 'conflict';
-    case 422:
-      return 'unprocessable';
-    case 429:
-      return 'rateLimited';
-    default:
-      return 'unexpected';
-  }
-}
-
-export function errorCodeOf(error: unknown): ApiErrorCode {
-  return error instanceof ApiError ? error.code : 'unexpected';
+  return new ApiError(
+    knownErrorCode(code) ?? codeForStatus(response.status),
+    response.status,
+    detail || undefined,
+  );
 }
 
 function buildQuery(query: ApiRequest['query']): string {

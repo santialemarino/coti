@@ -65,15 +65,26 @@
     }
   },
   "errors": {
-    "badRequest": "Los datos enviados no son válidos. Revisá el formulario.",
-    "unauthenticated": "Tu sesión expiró. Volvé a iniciar sesión.",
-    "forbidden": "No tenés permiso para hacer esto.",
-    "notFound": "No encontramos lo que buscabas.",
-    "conflict": "Ese dato ya está en uso.",
-    "unprocessable": "No pudimos procesar los datos enviados.",
-    "rateLimited": "Demasiados intentos. Esperá unos minutos.",
-    "unreachable": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
-    "unexpected": "Ocurrió un error inesperado. Intentá de nuevo."
+    "NOT_FOUND": "No encontramos lo que buscabas.",
+    "CONFLICT": "Ese dato ya está en uso.",
+    "INVALID_INPUT": "No pudimos procesar los datos enviados.",
+    "INVALID_BODY": "Los datos enviados no son válidos. Revisá el formulario.",
+    "UNAUTHENTICATED": "Tu sesión expiró. Volvé a iniciar sesión.",
+    "FORBIDDEN": "No tenés permiso para hacer esto.",
+    "IMMUTABLE": "Eso ya no se puede modificar.",
+    "ACCOUNT_LOCKED": "Demasiados intentos fallidos. Esperá unos minutos antes de volver a probar.",
+    "EMAIL_NOT_VERIFIED": "Tenés que confirmar tu dirección de correo antes de entrar. Buscá el mensaje que te mandamos al registrarte.",
+    "RATE_LIMITED": "Demasiados intentos. Esperá unos minutos.",
+    "FILE_TOO_LARGE": "El archivo es demasiado grande.",
+    "EMAIL_TAKEN": "Ya hay una cuenta registrada con esa dirección.",
+    "LAST_ACTIVE_BRANCH": "Es la única sucursal activa del corralón. Abrí otra antes de cerrarla, porque la cuenta necesita al menos una para operar.",
+    "SELF_DEACTIVATION": "No podés desactivar tu propio usuario. Pedíselo a otro administrador.",
+    "SELF_ROLE_CHANGE": "No podés cambiar tu propio rol. Pedíselo a otro administrador.",
+    "PASSWORD_POLICY": "La contraseña no cumple con los requisitos.",
+    "INVALID_LINK": "El enlace no es válido, ya se usó o venció.",
+    "INTERNAL": "Ocurrió un error inesperado. Intentá de nuevo.",
+    "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
+    "SESSION_EXPIRED": "Tu sesión expiró. Volvé a iniciar sesión."
   },
   "meta": {
     "home": {
@@ -140,11 +151,8 @@
       "forgotPassword": "¿Olvidaste tu contraseña?",
       "noAccount": "¿Todavía no tenés cuenta? Registrá tu corralón",
       "errors": {
-        "invalidCredentials": "Correo o contraseña inválidos.",
-        "locked": "Demasiados intentos fallidos. Esperá unos minutos antes de volver a probar.",
-        "unreachable": "No pudimos comunicarnos con el servidor. Revisá tu conexión e intentá de nuevo.",
-        "unexpected": "No pudimos iniciar sesión. Intentá de nuevo.",
-        "emailNotVerified": "Tenés que confirmar tu dirección de correo antes de entrar. Buscá el mensaje que te mandamos al registrarte."
+        "UNAUTHENTICATED": "Correo o contraseña inválidos.",
+        "INTERNAL": "No pudimos iniciar sesión. Intentá de nuevo."
       }
     },
     "signup": {
@@ -211,11 +219,8 @@
       "submitting": "Creando la cuenta…",
       "haveAccount": "¿Ya tenés una cuenta? Iniciá sesión",
       "errors": {
-        "emailTaken": "Ya hay una cuenta registrada con esa dirección.",
-        "tooShort": "La contraseña es demasiado corta.",
-        "rateLimited": "Hubo demasiados registros desde acá. Esperá unos minutos antes de volver a probar.",
-        "unreachable": "No pudimos comunicarnos con el servidor. Revisá tu conexión e intentá de nuevo.",
-        "unexpected": "No pudimos crear la cuenta. Intentá de nuevo."
+        "RATE_LIMITED": "Hubo demasiados registros desde acá. Esperá unos minutos antes de volver a probar.",
+        "INTERNAL": "No pudimos crear la cuenta. Intentá de nuevo."
       }
     },
     "forgotPassword": {
@@ -231,7 +236,8 @@
       "sent": "Si la dirección está registrada, va a recibir un enlace en unos minutos. Revisá también el correo no deseado.",
       "backToLogin": "Volver a iniciar sesión",
       "errors": {
-        "unexpected": "No pudimos procesar el pedido. Intentá de nuevo."
+        "INVALID_BODY": "Ingresá una dirección de correo válida.",
+        "INTERNAL": "No pudimos procesar el pedido. Intentá de nuevo."
       }
     },
     "resetPassword": {
@@ -252,8 +258,8 @@
       "goToLogin": "Iniciar sesión",
       "requestAnother": "Pedir un enlace nuevo",
       "errors": {
-        "invalidLink": "El enlace no es válido, ya se usó o venció. Pedí uno nuevo.",
-        "unexpected": "No pudimos cambiar la contraseña. Intentá de nuevo."
+        "INVALID_LINK": "El enlace no es válido, ya se usó o venció. Pedí uno nuevo.",
+        "INTERNAL": "No pudimos cambiar la contraseña. Intentá de nuevo."
       }
     },
     "changePassword": {
@@ -278,9 +284,8 @@
       "submitting": "Cambiando…",
       "done": "Contraseña cambiada. Las demás sesiones se cerraron.",
       "errors": {
-        "wrongCurrentPassword": "La contraseña actual no es correcta.",
-        "unexpected": "No pudimos cambiar la contraseña. Intentá de nuevo.",
-        "sessionExpired": "Tu sesión expiró. Volvé a iniciar sesión."
+        "UNAUTHENTICATED": "La contraseña actual no es correcta.",
+        "INTERNAL": "No pudimos cambiar la contraseña. Intentá de nuevo."
       }
     },
     "verifyEmail": {
@@ -291,18 +296,23 @@
       "done": "Listo, tu dirección quedó confirmada.",
       "sent": "Te mandamos un correo para confirmar tu dirección. Abrí el enlace que te llegó y ya está.",
       "continue": "Ir al inicio",
-      "resendHint": "Podés pedir un enlace nuevo con la dirección que usaste al registrarte.",
       "email": {
         "label": "Correo electrónico",
         "placeholder": "tu@correo.com",
         "required": "Ingresá tu correo electrónico."
       },
-      "resend": "Enviar un enlace nuevo",
-      "resending": "Enviando…",
-      "resent": "Si la dirección está registrada y falta confirmarla, va a recibir un enlace en unos minutos.",
+      "resend": {
+        "hint": "Podés pedir un enlace nuevo con la dirección que usaste al registrarte.",
+        "submit": "Enviar un enlace nuevo",
+        "submitting": "Enviando…",
+        "sent": "Si la dirección está registrada y falta confirmarla, va a recibir un enlace en unos minutos.",
+        "errors": {
+          "INVALID_BODY": "Ingresá una dirección de correo válida.",
+          "INTERNAL": "No pudimos enviar el enlace. Intentá de nuevo."
+        }
+      },
       "errors": {
-        "invalidLink": "El enlace no es válido, ya se usó o venció.",
-        "unexpected": "No pudimos confirmar tu dirección. Intentá de nuevo."
+        "INTERNAL": "No pudimos confirmar tu dirección. Intentá de nuevo."
       },
       "backToLogin": "Volver a iniciar sesión"
     }
@@ -403,11 +413,9 @@
     "closed": "Cerramos la sucursal.",
     "reopened": "Reabrimos la sucursal.",
     "errors": {
-      "lastActive": "Es la única sucursal activa del corralón. Abrí otra antes de cerrarla, porque la cuenta necesita al menos una para operar.",
-      "notFound": "Esa sucursal ya no existe. Actualizá el listado.",
-      "unauthorized": "Tu sesión no tiene permiso para administrar sucursales. Ingresá con un usuario administrador.",
-      "invalid": "Revisá los datos de la sucursal e intentá de nuevo.",
-      "unexpected": "No pudimos guardar la sucursal. Intentá de nuevo."
+      "NOT_FOUND": "Esa sucursal ya no existe. Actualizá el listado.",
+      "INVALID_INPUT": "Revisá los datos de la sucursal e intentá de nuevo.",
+      "INTERNAL": "No pudimos guardar la sucursal. Intentá de nuevo."
     }
   },
   "account": {
@@ -448,10 +456,9 @@
     "submitting": "Guardando…",
     "saved": "Guardamos los datos del corralón.",
     "errors": {
-      "invalid": "Revisá los datos del corralón e intentá de nuevo.",
-      "notFound": "No encontramos la cuenta. Volvé a iniciar sesión.",
-      "unauthorized": "Tu sesión no tiene permiso para editar la cuenta. Ingresá con un usuario administrador.",
-      "unexpected": "No pudimos guardar los datos. Intentá de nuevo."
+      "NOT_FOUND": "No encontramos la cuenta. Volvé a iniciar sesión.",
+      "INVALID_INPUT": "Revisá los datos del corralón e intentá de nuevo.",
+      "INTERNAL": "No pudimos guardar los datos. Intentá de nuevo."
     }
   },
   "users": {
@@ -510,7 +517,12 @@
       "title": "Enviar el enlace de contraseña",
       "description": "Le vamos a mandar a {email} un enlace de un solo uso para que elija una contraseña nueva. Vos no vas a ver la contraseña.",
       "confirm": "Enviar enlace",
-      "confirming": "Enviando…"
+      "confirming": "Enviando…",
+      "errors": {
+        "INVALID_INPUT": "Ese usuario está desactivado. Reactivalo antes de enviarle el enlace.",
+        "RATE_LIMITED": "Enviamos demasiados correos en poco tiempo. Esperá unos minutos e intentá de nuevo.",
+        "INTERNAL": "No pudimos enviar el enlace. Intentá de nuevo."
+      }
     },
     "name": {
       "label": "Nombre",
@@ -544,14 +556,10 @@
     "reactivated": "Reactivamos el usuario.",
     "passwordResetSent": "Le enviamos el enlace.",
     "errors": {
-      "emailTaken": "Ya hay un usuario registrado con esa dirección.",
-      "self": "No podés desactivar tu propio usuario. Pedíselo a otro administrador.",
-      "deactivated": "Ese usuario está desactivado. Reactivalo antes de enviarle el enlace.",
-      "notFound": "Ese usuario ya no existe. Actualizá el listado.",
-      "rateLimited": "Enviamos demasiados correos en poco tiempo. Esperá unos minutos e intentá de nuevo.",
-      "unauthorized": "Tu sesión no tiene permiso para administrar usuarios. Ingresá con un usuario administrador.",
-      "invalid": "Revisá los datos del usuario e intentá de nuevo.",
-      "unexpected": "No pudimos guardar el usuario. Intentá de nuevo."
+      "EMAIL_TAKEN": "Ya hay un usuario registrado con esa dirección.",
+      "NOT_FOUND": "Ese usuario ya no existe. Actualizá el listado.",
+      "INVALID_INPUT": "Revisá los datos del usuario e intentá de nuevo.",
+      "INTERNAL": "No pudimos guardar el usuario. Intentá de nuevo."
     }
   },
   "priceImport": {
@@ -567,9 +575,15 @@
         "label": "Archivo de precios"
       },
       "preview": "Previsualizar",
-      "previewing": "Procesando…",
-      "export": "Exportar precios",
-      "exporting": "Exportando…"
+      "previewing": "Procesando…"
+    },
+    "export": {
+      "submit": "Exportar precios",
+      "submitting": "Exportando…",
+      "errors": {
+        "INVALID_INPUT": "La sucursal todavía no tiene precios vigentes para exportar.",
+        "INTERNAL": "No pudimos exportar los precios. Intentá de nuevo."
+      }
     },
     "formatHint": "Usá un archivo .xlsx o .csv con las columnas codigo y precio. También podés incluir precio_minimo.",
     "summary": "Filas válidas: {valid}. Filas con errores: {invalid}.",
@@ -580,10 +594,9 @@
     "valid": "Lista para actualizar",
     "success": "Se actualizaron {count, plural, one {# producto} other {# productos}}.",
     "errors": {
-      "invalidFile": "Seleccioná un archivo válido con el formato indicado.",
-      "noPrices": "La sucursal todavía no tiene precios vigentes para exportar.",
-      "unauthorized": "Tu sesión no tiene permiso para actualizar precios. Ingresá con un usuario administrador.",
-      "unexpected": "No pudimos procesar la actualización. Intentá de nuevo."
+      "INVALID_BODY": "Seleccioná un archivo válido con el formato indicado.",
+      "INVALID_INPUT": "Seleccioná un archivo válido con el formato indicado.",
+      "INTERNAL": "No pudimos procesar la actualización. Intentá de nuevo."
     },
     "rowErrors": {
       "missing_code": "El código es obligatorio.",
