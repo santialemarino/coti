@@ -351,7 +351,11 @@ logging in checks nothing, so a policy tightened later cannot lock out an accoun
 
 ## Translating domain errors to HTTP
 
-`handler.Respond(c, err)` is the **single** mapping point from a domain error to a status code. Services return `domain.ErrNotFound` / `ErrConflict` / `ErrUnauthenticated` / `ErrLocked` / `ErrForbidden` / `ErrImmutable` / `ErrInvalidInput`; the handler calls `Respond` and never picks a code itself. Anything unmapped becomes a 500 with a generic body and the real error attached to the request log — an unmapped error is a bug, and its text may not be safe to show a client.
+`handler.Respond(c, err)` is the **single** mapping point from a domain error to a status code. Services return `domain.ErrNotFound` / `ErrConflict` / `ErrUnauthenticated` / `ErrLocked` / `ErrForbidden` / `ErrImmutable` / `ErrInvalidInput`; the handler calls `Respond` and never picks a status itself. Anything unmapped becomes a 500 with a generic body and the real error attached to the request log — an unmapped error is a bug, and its text may not be safe to show a client.
+
+**Every error also carries a stable `code`, and that is the part a client reads.** The status says how a request failed; the code says which rule refused it, which one status cannot when a route answers 422 for several reasons. `domain.CodeOf` derives a default from the sentinel; a service tags a specific one with `domain.WithCode(domain.CodeLastActiveBranch, fmt.Errorf("%w: …", domain.ErrInvalidInput))`, which leaves `errors.Is` matching the sentinel so nothing above changes. Tag a refusal the moment a caller has to tell it from a sibling on the same status, and add the constant to `internal/domain/error_code.go` rather than writing a literal at the call site.
+
+**The `error` string is for a log, never for a screen** — the frontend owns its own wording, so a rewording is not a breaking change. And **a code must never distinguish what the status deliberately does not**: login answers `UNAUTHENTICATED` for a wrong password, an unknown address and a disabled user alike, because a code per case would hand back the enumeration the shared 401 exists to withhold.
 
 `domain.ErrNotFound` covers "does not exist" **and** "belongs to another account". Under row level security those are indistinguishable, and they must stay that way: a distinct response would confirm another tenant's data exists.
 

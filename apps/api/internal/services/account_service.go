@@ -126,7 +126,7 @@ func (s *AccountService) Register(
 		return nil, nil, err
 	}
 	if taken {
-		return nil, nil, domain.ErrConflict
+		return nil, nil, domain.WithCode(domain.CodeEmailTaken, domain.ErrConflict)
 	}
 
 	account, err := s.accounts.Create(ctx, tx, strings.TrimSpace(in.AccountName),

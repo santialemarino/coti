@@ -121,7 +121,7 @@ func (r *UserRepository) Create(
 		 RETURNING `+userColumns,
 		accountID, in.Name, in.Email, passwordHash, in.Role))
 	if isEmailTaken(err) {
-		return nil, domain.ErrConflict
+		return nil, domain.WithCode(domain.CodeEmailTaken, domain.ErrConflict)
 	}
 	return user, err
 }
@@ -138,7 +138,7 @@ func (r *UserRepository) Update(
 		 RETURNING `+userColumns,
 		accountID, id, in.Name, in.Email, in.Role, in.IsActive))
 	if isEmailTaken(err) {
-		return nil, domain.ErrConflict
+		return nil, domain.WithCode(domain.CodeEmailTaken, domain.ErrConflict)
 	}
 	return user, err
 }

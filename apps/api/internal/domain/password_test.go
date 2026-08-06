@@ -37,6 +37,9 @@ func TestPasswordPolicy_RefusesWhatItMustRefuse(t *testing.T) {
 			if !errors.Is(err, domain.ErrInvalidInput) {
 				t.Fatalf("Validate(%q) = %v, want ErrInvalidInput", tc.password, err)
 			}
+			if got := domain.CodeOf(err); got != domain.CodePasswordPolicy {
+				t.Errorf("Validate(%q) code = %q, want %q", tc.password, got, domain.CodePasswordPolicy)
+			}
 		})
 	}
 }

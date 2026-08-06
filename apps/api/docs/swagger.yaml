@@ -302,6 +302,10 @@ definitions:
     type: object
   dto.ErrorResponse:
     properties:
+      code:
+        description: Code is the stable identifier a client branches on; `error` is
+          English prose for a log.
+        type: string
       detail:
         description: set when a body failed binding or validation.
         type: string
@@ -481,6 +485,10 @@ definitions:
     type: object
   dto.RateLimitResponse:
     properties:
+      code:
+        description: Code is the stable identifier a client branches on; `error` is
+          English prose for a log.
+        type: string
       error:
         type: string
       retry_after_seconds:
