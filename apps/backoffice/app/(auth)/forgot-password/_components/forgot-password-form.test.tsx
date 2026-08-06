@@ -2,6 +2,7 @@ import { fireEvent, render, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { isMessageShown } from '@repo/vitest-config/form-messages';
 import { ForgotPasswordForm } from '@/app/(auth)/forgot-password/_components/forgot-password-form';
 import messages from '@/translations/es.json';
 
@@ -72,11 +73,15 @@ describe('ForgotPasswordForm', () => {
 
     request(view);
 
-    await waitFor(() => expect(view.getByText(copy.errors.INVALID_BODY)).toBeTruthy());
+    await waitFor(() =>
+      expect(isMessageShown(view.container, copy.errors.INVALID_BODY)).toBe(true),
+    );
     expect(view.email.getAttribute('aria-invalid')).toBe('true');
 
     fireEvent.change(view.email, { target: { value: 'ana@otro.test' } });
-    await waitFor(() => expect(view.queryByText(copy.errors.INVALID_BODY)).toBeNull());
+    await waitFor(() =>
+      expect(isMessageShown(view.container, copy.errors.INVALID_BODY)).toBe(false),
+    );
   });
 
   it('falls back to the flow wording when the failure carried no code', async () => {
