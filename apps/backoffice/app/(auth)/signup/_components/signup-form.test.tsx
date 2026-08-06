@@ -294,7 +294,7 @@ describe('SignupForm rejections', () => {
     vi.mocked(signup).mockImplementation(
       () =>
         new Promise((resolve) => {
-          release = () => resolve({ fieldError: { field: 'adminEmail', key: 'emailTaken' } });
+          release = () => resolve({ error: 'EMAIL_TAKEN', field: 'adminEmail' });
         }),
     );
 
@@ -311,20 +311,20 @@ describe('SignupForm rejections', () => {
     release();
 
     await waitForStep(view, 'adminEmail');
-    expect(view.getByText(copy.errors.emailTaken)).toBeTruthy();
+    expect(view.getByText(messages.errors.EMAIL_TAKEN)).toBeTruthy();
     expect(fieldOf(view, 'adminEmail')?.getAttribute('aria-invalid')).toBe('true');
     // On the refused field, not merely on the step: it is the one the caller has to change.
     await waitFor(() => expect(document.activeElement).toBe(fieldOf(view, 'adminEmail')));
   });
 
   it('reports a failure that belongs to no field on the form itself', async () => {
-    vi.mocked(signup).mockResolvedValue({ error: 'unreachable' });
+    vi.mocked(signup).mockResolvedValue({ error: 'UNREACHABLE' });
 
     const view = renderSignup();
     await reachAdminStep(view);
     fill(view, ADMIN);
     fireEvent.submit(view.form);
 
-    await waitFor(() => expect(view.getByText(copy.errors.unreachable)).toBeTruthy());
+    await waitFor(() => expect(view.getByText(messages.errors.UNREACHABLE)).toBeTruthy());
   });
 });

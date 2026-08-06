@@ -29,6 +29,7 @@ import {
   type ForgotPasswordValues,
 } from '@/app/(auth)/forgot-password/form-schema';
 import { ROUTES } from '@/config/routes';
+import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 
@@ -39,6 +40,7 @@ import { FORM_VALIDATION } from '@/lib/forms/options';
 export function ForgotPasswordForm() {
   const t = useTranslations('auth.forgotPassword');
   const tErrors = useTranslations('common.form.errors');
+  const message = useApiErrorMessage('auth.forgotPassword');
   const schema = useMemo(() => forgotPasswordSchema({ field: t, shared: tErrors }), [t, tErrors]);
   const [sent, setSent] = useState(false);
   const form = useForm<ForgotPasswordValues>({
@@ -53,11 +55,7 @@ export function ForgotPasswordForm() {
       setSent(true);
       return;
     }
-    if (result.fieldError) {
-      form.setError(result.fieldError.field, { message: tErrors('invalidEmail') });
-      return;
-    }
-    form.setError('root', { message: t('errors.unexpected') });
+    form.setError(result.field ?? 'root', { message: message(result.error) });
   }
 
   return (

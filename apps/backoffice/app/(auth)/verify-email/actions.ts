@@ -1,10 +1,11 @@
 'use server';
 
-import { apiRequest, errorCodeOf } from '@/lib/api/client';
+import { apiRequest } from '@/lib/api/client';
+import { errorCodeOf, type ApiErrorCode } from '@/lib/api/errors';
 
 export interface ConfirmEmailResult {
   done?: boolean;
-  error?: 'invalidLink' | 'unexpected';
+  error?: ApiErrorCode;
 }
 
 export async function confirmEmail(
@@ -12,7 +13,7 @@ export async function confirmEmail(
   formData: FormData,
 ): Promise<ConfirmEmailResult> {
   const token = String(formData.get('token') ?? '');
-  if (!token) return { error: 'invalidLink' };
+  if (!token) return { error: 'INVALID_LINK' };
 
   try {
     await apiRequest({
@@ -23,21 +24,23 @@ export async function confirmEmail(
     });
     return { done: true };
   } catch (error) {
-    // The API answers 401 for a link that is unknown, expired or already used, and the
-    // screen keeps them together for the same reason it does.
-    if (errorCodeOf(error) === 'unauthenticated') return { error: 'invalidLink' };
-    return { error: 'unexpected' };
+    return { error: errorCodeOf(error) };
   }
 }
 
 export interface ResendVerificationResult {
   sent?: boolean;
-  error?: 'invalidEmail' | 'unexpected';
+  error?: ApiErrorCode;
+  /* The address is the only thing this form can be wrong about. */
+  field?: 'email';
 }
+
+/* Which field a refusal belongs on. A code absent from the map belongs to the form. */
+const RESEND_FIELD_FOR: Partial<Record<ApiErrorCode, 'email'>> = { INVALID_BODY: 'email' };
 
 // Answers the same whether or not the address is registered or already confirmed.
 export async function resendVerification(email: string): Promise<ResendVerificationResult> {
-  if (!email) return { error: 'invalidEmail' };
+  if (!email) return { error: 'INVALID_BODY', field: 'email' };
 
   try {
     await apiRequest({
@@ -48,6 +51,7 @@ export async function resendVerification(email: string): Promise<ResendVerificat
     });
     return { sent: true };
   } catch (error) {
-    return { error: errorCodeOf(error) === 'badRequest' ? 'invalidEmail' : 'unexpected' };
+    const code = errorCodeOf(error);
+    return { error: code, field: RESEND_FIELD_FOR[code] };
   }
 }

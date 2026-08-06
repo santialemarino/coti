@@ -22,6 +22,7 @@ import { signup } from '@/app/(auth)/signup/actions';
 import { type SignupValues } from '@/app/(auth)/signup/form-schema';
 import { STEP_ORDER, stepOwning, STEPS, stepSchema, type StepKey } from '@/app/(auth)/signup/steps';
 import { ROUTES } from '@/config/routes';
+import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 
 const STEP_FIELDS: Record<StepKey, () => React.ReactNode> = {
@@ -51,6 +52,7 @@ export function SignupForm() {
   const router = useRouter();
   const t = useTranslations('auth.signup');
   const tErrors = useTranslations('common.form.errors');
+  const message = useApiErrorMessage('auth.signup');
   const text = useMemo(() => ({ field: t, shared: tErrors }), [t, tErrors]);
   const [stepKey, setStepKey] = useState<StepKey>('account');
   /* Read by the resolver, which runs outside a render and needs the step as of the submit. */
@@ -131,19 +133,17 @@ export function SignupForm() {
       router.refresh();
       return;
     }
-    if (result.fieldError) {
+    if (result.field) {
       /*
        * The step has to move with the error. Nothing ties the wizard's position to the form's
        * state, so a message set on a field the caller cannot see makes the button look dead —
        * and stepping back while the request is in flight is enough to be somewhere else when
        * this lands.
        */
-      const owner = stepOwning(result.fieldError.field);
+      const owner = stepOwning(result.field);
       if (owner) goToStep(owner);
-      form.setError(result.fieldError.field, { message: t(`errors.${result.fieldError.key}`) });
-      return;
     }
-    form.setError('root', { message: t(`errors.${result.error ?? 'unexpected'}`) });
+    form.setError(result.field ?? 'root', { message: message(result.error) });
   }
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {

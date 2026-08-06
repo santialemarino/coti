@@ -122,17 +122,17 @@ describe('LoginForm messages', () => {
    * rejection that outlives the attempt it belongs to reads as a screen that stopped working.
    */
   it('puts a refused login on the password field, and clears it on the next attempt', async () => {
-    vi.mocked(login).mockResolvedValue({ error: 'invalidCredentials' });
+    vi.mocked(login).mockResolvedValue({ error: 'UNAUTHENTICATED' });
 
     const { container, submit, getByText, queryByText } = renderLogin();
     fillCredentials(container);
     fireEvent.click(submit);
 
-    const message = await waitFor(() => getByText(copy.errors.invalidCredentials));
+    const message = await waitFor(() => getByText(copy.errors.UNAUTHENTICATED));
     expect(field(container, 'password').getAttribute('aria-invalid')).toBe('true');
     expect(message).toBeTruthy();
 
     fireEvent.change(field(container, 'password'), { target: { value: 'otra-clave' } });
-    await waitFor(() => expect(queryByText(copy.errors.invalidCredentials)).toBeNull());
+    await waitFor(() => expect(queryByText(copy.errors.UNAUTHENTICATED)).toBeNull());
   });
 });

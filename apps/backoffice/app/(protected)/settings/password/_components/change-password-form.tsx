@@ -12,7 +12,7 @@ import {
   type ChangePasswordValues,
 } from '@/app/(protected)/settings/password/form-schema';
 import { PasswordField } from '@/components/password-field';
-import { PASSWORD_MIN_LENGTH } from '@/lib/constants/password';
+import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 
 const EMPTY_VALUES: ChangePasswordValues = {
@@ -24,6 +24,7 @@ const EMPTY_VALUES: ChangePasswordValues = {
 export function ChangePasswordForm() {
   const t = useTranslations('auth.changePassword');
   const tErrors = useTranslations('common.form.errors');
+  const message = useApiErrorMessage('auth.changePassword');
   const schema = useMemo(() => changePasswordSchema({ field: t, shared: tErrors }), [t, tErrors]);
   const [done, setDone] = useState(false);
   const form = useForm<ChangePasswordValues>({
@@ -41,15 +42,7 @@ export function ChangePasswordForm() {
       form.reset(EMPTY_VALUES);
       return;
     }
-    if (result.fieldError) {
-      const message =
-        result.fieldError.key === 'wrong'
-          ? t('errors.wrongCurrentPassword')
-          : tErrors('passwordTooShort', { min: PASSWORD_MIN_LENGTH });
-      form.setError(result.fieldError.field, { message });
-      return;
-    }
-    form.setError('root', { message: t(`errors.${result.error ?? 'unexpected'}`) });
+    form.setError(result.field ?? 'root', { message: message(result.error) });
   }
 
   return (
