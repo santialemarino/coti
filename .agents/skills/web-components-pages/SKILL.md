@@ -132,9 +132,10 @@ The stack is **react-hook-form + zod** with the shared `Form` primitives from
   the caller can act on goes on the field they will edit**, even when the API deliberately does not
   say which one was wrong: a refused login sits on the password, because a root error only clears
   on the next submit and would otherwise outlive the attempt it belongs to.
-- **Surface a server-side field error inline** with `form.setError(name, …)`, so a
-  409 "email already registered" reads like a validation error in the same place with
-  the same animation, instead of only a toast.
+- **Surface a server-side field error inline** with `form.setError(name, …)`, so an address
+  the API already holds reads like a validation error in the same place with the same animation,
+  instead of only a toast. The action names the field and the resolver names the sentence — see
+  "Errors across the boundary".
 - **A password input is `PasswordField`**, never a bare `Input type="password"`: it owns the cap,
   the reveal toggle, the autocomplete hint and the meter, so eight fields across five forms cannot
   drift apart. `meter` goes on the field where a password is **chosen** and never on its
@@ -437,6 +438,40 @@ await authenticatedFetch('/v1/quotes', {
   body: { ...rest, branch_id: branchId, total },
 });
 ```
+
+### Errors across the boundary
+
+The API answers a refusal with a **stable `code`** beside the status (`docs/technical/api-specification.md`,
+"The error envelope"). The code is the contract; the envelope's `error` prose is English, kept for
+the log, and never reaches a screen. The status alone is not enough — one route answers 422 for the
+password policy and another for the account's last active branch — so nothing branches on it.
+
+- **`lib/api/client.ts` reads the code into `ApiError`**, narrowed against `API_ERROR_CODES` in
+  `lib/api/errors.ts`. A code this app cannot word falls back to the one the status implies, which
+  is also what covers the aborts the API writes before a handler is reached. The client mints two
+  codes the API cannot answer: `UNREACHABLE`, for a request that never arrived, and
+  `SESSION_EXPIRED`, for a session a re-check confirmed is over.
+- **An action returns the code — never a sentence, never a key of its own.** `errorCodeOf(error)`
+  is the whole mapping. Where a refusal belongs on a field, the action says _which_ field with a
+  `Partial<Record<ApiErrorCode, …>>` map: placement is the action's business, wording is not.
+- **One resolver turns a code into a sentence.** `useApiErrorMessage(namespace)` in a client
+  component, `apiErrorMessage(await getTranslations(), namespace, code)` in a server one. Bind the
+  flow's namespace once and pass the code straight through. **A ladder of `code === …` in a screen
+  is the thing the codes exist to delete.**
+- **The catalog is the only place wording is decided.** `errors.<CODE>` words every code once; a
+  flow that says one differently repeats it under its own `<flow>.errors.<CODE>`. The namespace is
+  walked back a segment at a time, so `users.passwordReset` inherits `users` and then the shared
+  catalog — which is how one action words a code the rest of its flow shares. Override only where
+  the shared sentence is wrong, never to restate it.
+- **Every code carries an entry**, or next-intl renders the key. `lib/api/errors.test.ts` pins
+  that, and `lib/i18n/api-error.test.ts` pins that no override names a code the wire cannot
+  produce — a typo there falls through silently and the screen keeps working while saying the
+  wrong thing.
+- **A refusal the screen cannot act on is still a real answer.** A 429 says wait, a 400 says the
+  body was refused; neither is "Ocurrió un error inesperado". Letting a status fall through to the
+  generic sentence is a defect, not a default.
+- **`common.form.errors` is a different catalog** — the schema's, keyed by rejection (`tooLong`,
+  `invalidEmail`) rather than by API code. No API code is ever resolved against it.
 
 ## Copy, i18n, and formatting
 
