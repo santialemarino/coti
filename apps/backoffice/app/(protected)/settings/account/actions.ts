@@ -4,33 +4,26 @@ import { revalidatePath } from 'next/cache';
 
 import { accountSchema, type AccountValues } from '@/app/(protected)/settings/account/form-schema';
 import { ROUTES } from '@/config/routes';
-import { apiRequest, errorCodeOf } from '@/lib/api/client';
-
-export type AccountErrorKey = 'invalid' | 'notFound' | 'unauthorized' | 'unexpected';
+import { apiRequest } from '@/lib/api/client';
+import { errorCodeOf, type ApiErrorCode } from '@/lib/api/errors';
 
 export interface AccountResult {
   ok?: true;
-  error?: AccountErrorKey;
+  error?: ApiErrorCode;
 }
 
 export async function updateAccount(values: AccountValues): Promise<AccountResult> {
   // Re-validated server-side: the client's schema is a courtesy, not a guarantee.
   const parsed = accountSchema().safeParse(values);
-  if (!parsed.success) return { error: 'invalid' };
+  if (!parsed.success) return { error: 'INVALID_BODY' };
 
   // Built before the try, so a mapping bug here surfaces as itself instead of as the same
-  // 'unexpected' the API path answers with.
+  // 'INTERNAL' the API path answers with.
   const body = bodyOf(parsed.data);
   try {
     await apiRequest({ path: '/v1/account', method: 'PUT', body });
   } catch (error) {
-    const code = errorCodeOf(error);
-    if (code === 'notFound') return { error: 'notFound' };
-    if (code === 'forbidden' || code === 'unauthenticated') return { error: 'unauthorized' };
-    // A 400 or a 422 both mean this form and the API's own validation have drifted apart: the
-    // blank name and both brand formats are refused here before the request is made.
-    if (code === 'badRequest' || code === 'unprocessable') return { error: 'invalid' };
-    return { error: 'unexpected' };
+    return { error: errorCodeOf(error) };
   }
   // Only this route: no other screen renders the account, so the shell has nothing to refresh.
   revalidatePath(ROUTES.accountSettings);

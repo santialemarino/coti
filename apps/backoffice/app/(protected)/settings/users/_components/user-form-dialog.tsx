@@ -36,6 +36,7 @@ import {
   type UserValues,
 } from '@/app/(protected)/settings/users/form-schema';
 import { PasswordField } from '@/components/password-field';
+import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Branch } from '@/lib/api/branches';
 import type { AccountUser } from '@/lib/api/users';
 import { ADMIN_ROLE, SELLER_ROLE, USER_ROLES, type UserRole } from '@/lib/constants/auth';
@@ -74,6 +75,7 @@ export function UserFormDialog({
   const t = useTranslations('users');
   const tCommon = useTranslations('common');
   const tErrors = useTranslations('common.form.errors');
+  const message = useApiErrorMessage('users');
   const fieldId = useId();
   /*
    * An assignment to a branch that has since closed cannot be sent back — the API only accepts
@@ -121,8 +123,8 @@ export function UserFormDialog({
     const result = await onSubmit(values);
     // The address is the one rejection that belongs to a field, so it reads like a validation error
     // in the place the caller has to fix.
-    if (result.error === 'emailTaken') {
-      form.setError('email', { message: t('errors.emailTaken') });
+    if (result.error === 'EMAIL_TAKEN') {
+      form.setError('email', { message: message(result.error) });
     }
   }
 

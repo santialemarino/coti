@@ -29,10 +29,10 @@ import {
   reactivateUser,
   sendPasswordReset,
   updateUser,
-  type UserErrorKey,
   type UserResult,
 } from '@/app/(protected)/settings/users/actions';
 import type { UserFormMode, UserValues } from '@/app/(protected)/settings/users/form-schema';
+import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Branch } from '@/lib/api/branches';
 import type { AccountUser } from '@/lib/api/users';
 import { ADMIN_ROLE } from '@/lib/constants/auth';
@@ -62,10 +62,16 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
   const fmt = useFormatters();
   const t = useTranslations('users');
   const tCommon = useTranslations('common');
+  /*
+   * Two resolvers because mailing a link words two codes differently from the rest of the flow:
+   * a 422 there means the user is deactivated, and a 429 that the mail allowance is spent.
+   */
+  const message = useApiErrorMessage('users');
+  const resetMessage = useApiErrorMessage('users.passwordReset');
   const [form, setForm] = useState<{ mode: UserFormMode; row: UserRow | null } | null>(null);
   const [deactivating, setDeactivating] = useState<UserRow | null>(null);
   const [resetting, setResetting] = useState<UserRow | null>(null);
-  const [error, setError] = useState<UserErrorKey | null>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
   /*
    * One transition per action, never one shared: a shared transition only reports that something is
    * running, so mailing a recovery link would light the button that deactivates. Saving needs none —
@@ -86,8 +92,8 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
 
   async function onSubmit(values: UserValues): Promise<UserResult> {
     const target = form;
-    if (!target) return { error: 'unexpected' };
-    setError(null);
+    if (!target) return { error: 'INTERNAL' };
+    setRefusal(null);
     const result =
       target.mode === 'edit' && target.row
         ? await updateUser(target.row.user.id, values)
@@ -101,21 +107,21 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
     }
     // Every rejection but one belongs to the list. The address belongs to its field, and the dialog
     // is what puts it there.
-    if (result.error !== 'emailTaken') setError(result.error ?? 'unexpected');
+    if (result.error !== 'EMAIL_TAKEN') setRefusal(message(result.error));
     return result;
   }
 
   function onDeactivate() {
     const target = deactivating;
     if (!target) return;
-    setError(null);
+    setRefusal(null);
     startRemove(async () => {
       const result = await deactivateUser(target.user.id);
       if (!result.ok) {
         // Closed either way: the refusal belongs to the list, not to a dialog that is about to
         // disappear.
         setDeactivating(null);
-        setError(result.error ?? 'unexpected');
+        setRefusal(message(result.error));
         return;
       }
       toast.success(t('deactivated'));
@@ -124,7 +130,7 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
   }
 
   function onReactivate(row: UserRow) {
-    setError(null);
+    setRefusal(null);
     startReactivate(async () => {
       const result = await reactivateUser({
         id: row.user.id,
@@ -136,7 +142,7 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
         branchIds: row.assigned.map((branch) => branch.id),
       });
       if (!result.ok) {
-        setError(result.error ?? 'unexpected');
+        setRefusal(message(result.error));
         return;
       }
       toast.success(t('reactivated'));
@@ -146,12 +152,12 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
   function onSendPasswordReset() {
     const target = resetting;
     if (!target) return;
-    setError(null);
+    setRefusal(null);
     startMail(async () => {
       const result = await sendPasswordReset(target.user.id);
       if (!result.ok) {
         setResetting(null);
-        setError(result.error ?? 'unexpected');
+        setRefusal(resetMessage(result.error));
         return;
       }
       toast.success(t('passwordResetSent'));
@@ -161,7 +167,7 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
 
   return (
     <div className="flex flex-col gap-y-6">
-      {error ? <Callout tone="danger">{t(`errors.${error}`)}</Callout> : null}
+      {refusal ? <Callout tone="danger">{refusal}</Callout> : null}
 
       <div className="flex justify-end">
         <Button disabled={busy} onClick={() => setForm({ mode: 'create', row: null })}>

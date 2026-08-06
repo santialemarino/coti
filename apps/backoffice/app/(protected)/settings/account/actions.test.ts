@@ -13,7 +13,8 @@ vi.mock('@/lib/api/client', async (importOriginal) => ({
 }));
 
 const { revalidatePath } = await import('next/cache');
-const { ApiError, apiRequest } = await import('@/lib/api/client');
+const { apiRequest } = await import('@/lib/api/client');
+const { ApiError } = await import('@/lib/api/errors');
 
 const VALUES: AccountValues = {
   name: 'Corralón San Martín',
@@ -81,46 +82,36 @@ describe('updateAccount', () => {
   );
 
   it('never reaches the API with values its own schema refuses', async () => {
-    await expect(updateAccount({ ...VALUES, name: '  ' })).resolves.toEqual({ error: 'invalid' });
+    await expect(updateAccount({ ...VALUES, name: '  ' })).resolves.toEqual({
+      error: 'INVALID_BODY',
+    });
     await expect(updateAccount({ ...VALUES, brandColor: 'naranja' })).resolves.toEqual({
-      error: 'invalid',
+      error: 'INVALID_BODY',
     });
     await expect(updateAccount({ ...VALUES, brandLogoUrl: 'tucorralon.com' })).resolves.toEqual({
-      error: 'invalid',
+      error: 'INVALID_BODY',
     });
     expect(apiRequest).not.toHaveBeenCalled();
   });
 
-  /*
-   * Both statuses mean the same thing here and neither is a message worth its own copy: this form
-   * refuses the blank name and both brand formats before asking, so a 400 or a 422 says the two
-   * validations have drifted apart.
-   */
+  // The code reaches the screen untouched, so the catalog is the only thing that decides what any
+  // of them says.
   it.each([
-    ['badRequest', 400],
-    ['unprocessable', 422],
-  ] as const)('reads a %s as a validation problem', async (code, status) => {
+    ['INVALID_BODY', 400],
+    ['INVALID_INPUT', 422],
+    ['FORBIDDEN', 403],
+    ['NOT_FOUND', 404],
+    ['INTERNAL', 500],
+  ] as const)('hands %s back as it arrived', async (code, status) => {
     vi.mocked(apiRequest).mockRejectedValue(new ApiError(code, status));
 
-    await expect(updateAccount(VALUES)).resolves.toEqual({ error: 'invalid' });
-  });
-
-  it('reads a 403 as a session without the role', async () => {
-    vi.mocked(apiRequest).mockRejectedValue(new ApiError('forbidden', 403));
-
-    await expect(updateAccount(VALUES)).resolves.toEqual({ error: 'unauthorized' });
-  });
-
-  it('reports an account that is gone', async () => {
-    vi.mocked(apiRequest).mockRejectedValue(new ApiError('notFound', 404));
-
-    await expect(updateAccount(VALUES)).resolves.toEqual({ error: 'notFound' });
+    await expect(updateAccount(VALUES)).resolves.toEqual({ error: code });
   });
 
   it('leaves the tree alone when the write was refused', async () => {
-    vi.mocked(apiRequest).mockRejectedValue(new ApiError('unexpected', 500));
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('INTERNAL', 500));
 
-    await expect(updateAccount(VALUES)).resolves.toEqual({ error: 'unexpected' });
+    await expect(updateAccount(VALUES)).resolves.toEqual({ error: 'INTERNAL' });
     expect(revalidatePath).not.toHaveBeenCalled();
   });
 });

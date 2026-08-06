@@ -139,12 +139,12 @@ describe('AccountForm', () => {
    * schema already refuses, so there is no field to point at.
    */
   it('puts a refused save on the form, not on a field', async () => {
-    vi.mocked(updateAccount).mockResolvedValue({ error: 'unauthorized' });
+    vi.mocked(updateAccount).mockResolvedValue({ error: 'FORBIDDEN' });
     const view = renderForm();
 
     submit(view);
 
-    await waitFor(() => expect(view.getByText(copy.errors.unauthorized)).toBeTruthy());
+    await waitFor(() => expect(view.getByText(messages.errors.FORBIDDEN)).toBeTruthy());
     expect(toast.success).not.toHaveBeenCalled();
   });
 

@@ -22,6 +22,7 @@ import {
 } from '@repo/ui/components';
 import { updateAccount } from '@/app/(protected)/settings/account/actions';
 import { accountSchema, type AccountValues } from '@/app/(protected)/settings/account/form-schema';
+import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Account } from '@/lib/api/account';
 import { HEX_COLOR } from '@/lib/constants/brand';
 import { TEXT_FIELD_MAX_LENGTH, URL_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
@@ -34,6 +35,7 @@ interface AccountFormProps {
 export function AccountForm({ account }: AccountFormProps) {
   const t = useTranslations('account');
   const tErrors = useTranslations('common.form.errors');
+  const message = useApiErrorMessage('account');
   const schema = useMemo(() => accountSchema({ field: t, shared: tErrors }), [t, tErrors]);
   const form = useForm<AccountValues>({
     ...FORM_VALIDATION,
@@ -61,7 +63,7 @@ export function AccountForm({ account }: AccountFormProps) {
     }
     // The rejection belongs to the form, not to a field: the two the API answers with are both
     // values this schema already refuses.
-    form.setError('root', { message: t(`errors.${result.error ?? 'unexpected'}`) });
+    form.setError('root', { message: message(result.error) });
   }
 
   return (

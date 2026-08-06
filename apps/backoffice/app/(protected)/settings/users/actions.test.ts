@@ -20,7 +20,8 @@ vi.mock('@/lib/api/client', async (importOriginal) => ({
 }));
 
 const { revalidatePath } = await import('next/cache');
-const { ApiError, apiRequest } = await import('@/lib/api/client');
+const { apiRequest } = await import('@/lib/api/client');
+const { ApiError } = await import('@/lib/api/errors');
 
 const USER_ID = 'u0000000-0000-4000-8000-000000000001';
 const BRANCH_ID = 'b0000000-0000-4000-8000-000000000001';
@@ -66,30 +67,31 @@ describe('createUser', () => {
   it('never reaches the API with values its own schema refuses', async () => {
     await expect(
       createUser({ ...VALUES, password: 'a'.repeat(PASSWORD_MIN_LENGTH - 1) }),
-    ).resolves.toEqual({ error: 'invalid' });
+    ).resolves.toEqual({ error: 'INVALID_BODY' });
     expect(apiRequest).not.toHaveBeenCalled();
   });
 
-  // The address is unique across every account since the global constraint, so a 409 is the one
-  // rejection that belongs to a field rather than to the list.
-  it('reads a 409 as an address already in use', async () => {
-    vi.mocked(apiRequest).mockRejectedValue(new ApiError('conflict', 409));
+  // The address is unique across every account since the global constraint, so this is the one
+  // rejection that belongs to a field rather than to the list — and the dialog is what places it.
+  it('carries the taken address through', async () => {
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('EMAIL_TAKEN', 409));
 
-    await expect(createUser(VALUES)).resolves.toEqual({ error: 'emailTaken' });
+    await expect(createUser(VALUES)).resolves.toEqual({ error: 'EMAIL_TAKEN' });
   });
 
   /*
-   * Creating cannot hit a self-edit guard, so a 422 here means this form and the API's own
-   * validation have drifted apart — or a branch closed between the page load and the submit.
+   * Creating cannot hit a self-edit guard, and it no longer has to be told apart by the route it
+   * arrived on: a plain 422 here means this form and the API's own validation have drifted apart
+   * — or a branch closed between the page load and the submit.
    */
-  it('reads a 422 as a validation problem', async () => {
-    vi.mocked(apiRequest).mockRejectedValue(new ApiError('unprocessable', 422));
+  it('reads a plain 422 as a validation problem', async () => {
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('INVALID_INPUT', 422));
 
-    await expect(createUser(VALUES)).resolves.toEqual({ error: 'invalid' });
+    await expect(createUser(VALUES)).resolves.toEqual({ error: 'INVALID_INPUT' });
   });
 
   it('leaves the tree alone when the write was refused', async () => {
-    vi.mocked(apiRequest).mockRejectedValue(new ApiError('conflict', 409));
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('EMAIL_TAKEN', 409));
 
     await createUser(VALUES);
 
@@ -137,15 +139,15 @@ describe('updateUser', () => {
   });
 
   it('reports a user that is gone', async () => {
-    vi.mocked(apiRequest).mockRejectedValue(new ApiError('notFound', 404));
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('NOT_FOUND', 404));
 
-    await expect(updateUser(USER_ID, VALUES)).resolves.toEqual({ error: 'notFound' });
+    await expect(updateUser(USER_ID, VALUES)).resolves.toEqual({ error: 'NOT_FOUND' });
   });
 
   it('reads a 409 as an address already in use', async () => {
-    vi.mocked(apiRequest).mockRejectedValue(new ApiError('conflict', 409));
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('EMAIL_TAKEN', 409));
 
-    await expect(updateUser(USER_ID, VALUES)).resolves.toEqual({ error: 'emailTaken' });
+    await expect(updateUser(USER_ID, VALUES)).resolves.toEqual({ error: 'EMAIL_TAKEN' });
   });
 });
 
@@ -159,21 +161,20 @@ describe('deactivateUser', () => {
   });
 
   /*
-   * The one 422 this route answers, and the reason it gets its own message: an admin who
-   * deactivates themselves has no way back into the account. The API answers 422 and not 403,
-   * which is the mistake to avoid — the list hides the action, so seeing this means the two
-   * disagree.
+   * An admin who deactivates themselves has no way back into the account. The guard answers 422
+   * and not 403, which is the mistake to avoid — and its own code is what keeps it apart from
+   * the 403 below without either action guessing from the route.
    */
-  it('names the self-deactivation guard when the API refuses', async () => {
-    vi.mocked(apiRequest).mockRejectedValue(new ApiError('unprocessable', 422));
+  it('carries the self-deactivation guard through', async () => {
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('SELF_DEACTIVATION', 422));
 
-    await expect(deactivateUser(USER_ID)).resolves.toEqual({ error: 'self' });
+    await expect(deactivateUser(USER_ID)).resolves.toEqual({ error: 'SELF_DEACTIVATION' });
   });
 
-  it('reads a 403 as a session without the role, not as the guard', async () => {
-    vi.mocked(apiRequest).mockRejectedValue(new ApiError('forbidden', 403));
+  it('keeps a 403 apart from the guard', async () => {
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('FORBIDDEN', 403));
 
-    await expect(deactivateUser(USER_ID)).resolves.toEqual({ error: 'unauthorized' });
+    await expect(deactivateUser(USER_ID)).resolves.toEqual({ error: 'FORBIDDEN' });
   });
 });
 
@@ -216,19 +217,23 @@ describe('sendPasswordReset', () => {
     });
   });
 
-  // The only 422 this route answers: a deactivated user gets no recovery link, because the link
-  // would let them back in without reactivating them.
-  it('names the deactivated user when the API refuses to mail one', async () => {
-    vi.mocked(apiRequest).mockRejectedValue(new ApiError('unprocessable', 422));
+  /*
+   * The only 422 this route answers: a deactivated user gets no recovery link, because the link
+   * would let them back in without reactivating them. It shares INVALID_INPUT with the create and
+   * edit routes, so what tells them apart is the catalog the screen resolves it against, not the
+   * action.
+   */
+  it('carries a refusal to mail a deactivated user through', async () => {
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('INVALID_INPUT', 422));
 
-    await expect(sendPasswordReset(USER_ID)).resolves.toEqual({ error: 'deactivated' });
+    await expect(sendPasswordReset(USER_ID)).resolves.toEqual({ error: 'INVALID_INPUT' });
   });
 
   // The route shares the mail allowance, so an admin resetting several users in a row is the one
   // place in this screen a 429 is expected rather than abusive.
   it('reports the mail allowance running out', async () => {
-    vi.mocked(apiRequest).mockRejectedValue(new ApiError('rateLimited', 429));
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('RATE_LIMITED', 429));
 
-    await expect(sendPasswordReset(USER_ID)).resolves.toEqual({ error: 'rateLimited' });
+    await expect(sendPasswordReset(USER_ID)).resolves.toEqual({ error: 'RATE_LIMITED' });
   });
 });
