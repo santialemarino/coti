@@ -12,6 +12,10 @@
       "types": "./cookies.d.ts",
       "default": "./cookies.js"
     },
+    "./form-messages": {
+      "types": "./form-messages.d.ts",
+      "default": "./form-messages.js"
+    },
     "./schema-text": {
       "types": "./schema-text.d.ts",
       "default": "./schema-text.js"
