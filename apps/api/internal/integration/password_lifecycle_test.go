@@ -21,8 +21,8 @@ import (
 // the recovery link only exists because the transport was handed one.
 
 const (
-	seedPassword = "clave-original-1"
-	nextPassword = "clave-nueva-2026"
+	seedPassword = "Clave-original-1"
+	nextPassword = "Clave-nueva-2026"
 )
 
 var errUndeliverable = errors.New("provider rejected the message")
@@ -197,7 +197,7 @@ func TestForgotPassword_LinkRecoversTheAccountAndWorksOnlyOnce(t *testing.T) {
 	}
 
 	replay := e.do(t, request{method: http.MethodPost, path: "/v1/public/auth/reset-password",
-		body: map[string]any{"token": token, "new_password": "otra-clave-mas-3"}})
+		body: map[string]any{"token": token, "new_password": "Otra-clave-mas-3"}})
 	if replay.Code != http.StatusUnauthorized {
 		t.Fatalf("replaying the link = %d, want 401: it is single use", replay.Code)
 	}
