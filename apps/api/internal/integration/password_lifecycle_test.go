@@ -223,6 +223,11 @@ func TestForgotPassword_RequestingANewLinkRetiresThePrevious(t *testing.T) {
 	if res.Code != http.StatusUnauthorized {
 		t.Fatalf("redeeming the superseded link = %d, want 401", res.Code)
 	}
+	// Distinct from a refused credential, which answers the same status: the reset screen says
+	// "pedí un enlace nuevo" and the login screen says nothing of the sort.
+	if got := errorCode(t, res); got != string(domain.CodeInvalidLink) {
+		t.Errorf("redeeming the superseded link: code = %q, want %q", got, domain.CodeInvalidLink)
+	}
 	if e.login(t, user.Email, seedPassword) == nil {
 		t.Error("the superseded link changed the password anyway")
 	}

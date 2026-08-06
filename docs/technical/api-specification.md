@@ -101,8 +101,8 @@ status cannot: `/v1/users/{id}` answers 422 both for "an admin cannot deactivate
 for "an admin cannot change their own role", and the two screens differ. `domain.CodeOf` derives
 a code from the sentinel an error wraps — `NOT_FOUND`, `CONFLICT`, `INVALID_INPUT`,
 `UNAUTHENTICATED`, `FORBIDDEN`, `IMMUTABLE`, `ACCOUNT_LOCKED`, `EMAIL_NOT_VERIFIED`,
-`RATE_LIMITED`, `INTERNAL`, plus `INVALID_BODY` for a binding failure — and a service tags a more
-specific one with `domain.WithCode` where a caller has to tell siblings apart:
+`RATE_LIMITED`, `INTERNAL` — and a service tags a more specific one with `domain.WithCode` where a
+caller has to tell siblings apart:
 
 | Code                 | Status | Raised when                                                     |
 | -------------------- | ------ | --------------------------------------------------------------- |
@@ -112,7 +112,6 @@ specific one with `domain.WithCode` where a caller has to tell siblings apart:
 | `SELF_ROLE_CHANGE`   | 422    | an admin changing their own role                                |
 | `PASSWORD_POLICY`    | 422    | a password that does not clear `domain.PasswordPolicy`          |
 | `INVALID_LINK`       | 401    | a mailed link that is unknown, expired, used or wrong-typed     |
-| `FILE_TOO_LARGE`     | 413    | an upload past the configured cap                               |
 
 **A code must never say more than the status already does.** Login answers `UNAUTHENTICATED` for a
 wrong password, an unknown address and a disabled user alike — three cases the API deliberately does

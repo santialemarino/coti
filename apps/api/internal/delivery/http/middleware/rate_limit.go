@@ -67,8 +67,8 @@ func RateLimit(limiter Limiter, opts RateLimitOptions) gin.HandlerFunc {
 		// API how its buckets are laid out.
 		_ = c.Error(domain.ErrRateLimited)
 		c.AbortWithStatusJSON(http.StatusTooManyRequests, dto.RateLimitResponse{
-			Code:              string(domain.CodeRateLimited),
 			Error:             "too many requests",
+			Code:              string(domain.CodeRateLimited),
 			RetryAfterSeconds: retryAfter,
 		})
 	}

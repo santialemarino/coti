@@ -2,20 +2,16 @@ package domain
 
 import "errors"
 
-/*
- * The status says how a request failed; the code says which rule refused it. One route can answer
- * 422 for several reasons, and a client that has to guess from the status alone guesses wrong the
- * day a second reason is added — so every refusal a caller is expected to act on carries a stable
- * identifier, and the wording stays the client's to choose.
- */
+// ErrorCode is the stable identifier a client branches on, alongside the status. One route can
+// answer 422 for several reasons, so the status alone stops being enough the day a second reason is
+// added — and the wording stays the client's to choose.
 type ErrorCode string
 
-// The code every error of that kind carries unless a call site tags a more specific one.
+// What an error of each kind carries unless a call site tags something more specific.
 const (
 	CodeNotFound         ErrorCode = "NOT_FOUND"
 	CodeConflict         ErrorCode = "CONFLICT"
 	CodeInvalidInput     ErrorCode = "INVALID_INPUT"
-	CodeInvalidBody      ErrorCode = "INVALID_BODY"
 	CodeUnauthenticated  ErrorCode = "UNAUTHENTICATED"
 	CodeForbidden        ErrorCode = "FORBIDDEN"
 	CodeImmutable        ErrorCode = "IMMUTABLE"
@@ -25,7 +21,7 @@ const (
 	CodeInternal         ErrorCode = "INTERNAL"
 )
 
-// The refusals a screen has to tell apart from their siblings on the same status.
+// The refusals a screen has to tell apart from a sibling answering the same status.
 const (
 	CodeEmailTaken       ErrorCode = "EMAIL_TAKEN"
 	CodeLastActiveBranch ErrorCode = "LAST_ACTIVE_BRANCH"
@@ -33,9 +29,16 @@ const (
 	CodeSelfRoleChange   ErrorCode = "SELF_ROLE_CHANGE"
 	CodePasswordPolicy   ErrorCode = "PASSWORD_POLICY"
 	CodeInvalidLink      ErrorCode = "INVALID_LINK"
-	CodeFileTooLarge     ErrorCode = "FILE_TOO_LARGE"
 )
 
+// The two the delivery layer raises on its own, before any service is reached, so CodeOf never
+// returns them.
+const (
+	CodeInvalidBody  ErrorCode = "INVALID_BODY"
+	CodeFileTooLarge ErrorCode = "FILE_TOO_LARGE"
+)
+
+// codedError carries the tag without hiding the sentinel underneath it.
 type codedError struct {
 	code ErrorCode
 	err  error

@@ -3037,7 +3037,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "code": {
-                    "description": "Code is the stable identifier a client branches on; the English text above is for logs.",
+                    "description": "Code is the stable identifier a client branches on; ` + "`" + `error` + "`" + ` is English prose for a log.",
                     "type": "string"
                 },
                 "detail": {
@@ -3311,6 +3311,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "code": {
+                    "description": "Code is the stable identifier a client branches on; ` + "`" + `error` + "`" + ` is English prose for a log.",
                     "type": "string"
                 },
                 "error": {

@@ -209,6 +209,9 @@ func TestBranches_RefusesToCloseTheLastActiveBranch(t *testing.T) {
 	if res.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("close last branch = %d, want 422 (body %s)", res.Code, res.Body.String())
 	}
+	if got := errorCode(t, res); got != string(domain.CodeLastActiveBranch) {
+		t.Errorf("close last branch: code = %q, want %q", got, domain.CodeLastActiveBranch)
+	}
 
 	// With a second branch open, closing the first is allowed.
 	created := e.do(t, request{method: http.MethodPost, path: "/v1/branches", token: token, body: map[string]any{"name": "Segunda"}})

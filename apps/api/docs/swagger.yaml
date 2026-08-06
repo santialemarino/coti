@@ -303,8 +303,8 @@ definitions:
   dto.ErrorResponse:
     properties:
       code:
-        description: Code is the stable identifier a client branches on; the English
-          text above is for logs.
+        description: Code is the stable identifier a client branches on; `error` is
+          English prose for a log.
         type: string
       detail:
         description: set when a body failed binding or validation.
@@ -486,6 +486,8 @@ definitions:
   dto.RateLimitResponse:
     properties:
       code:
+        description: Code is the stable identifier a client branches on; `error` is
+          English prose for a log.
         type: string
       error:
         type: string
