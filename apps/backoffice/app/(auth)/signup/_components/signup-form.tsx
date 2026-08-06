@@ -148,15 +148,15 @@ export function SignupForm() {
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // Set before either branch, because both reach the resolver, which reads it.
+    stepSubmitted.current = true;
+
     /*
      * The primary button submits on every step so Enter does what pressing it does; which of the two
      * things that means is decided here. Advancing goes through `handleSubmit` rather than
      * `trigger` — only a submit puts the form in the state where a rejected field re-checks itself
      * on every keystroke.
      */
-    // Before either branch, because both go through the resolver, which reads it.
-    stepSubmitted.current = true;
-
     const { next } = step;
     if (next) {
       void form.handleSubmit(() => goToStep(next))(event);
