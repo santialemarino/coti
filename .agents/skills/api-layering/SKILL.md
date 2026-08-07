@@ -306,9 +306,12 @@ Discounts are **backend-computed and deterministic — never the LLM.** Keep the
 
 - **`promotion`** is a reusable rule (hangs off `account_id`, optional `branch_id`); **`quote_discount`** is one application of a discount to a `quote_version` (with `quote_discount_item` as the bridge for `ITEM` / `ITEM_SET` scope). Two entities, do not conflate.
 - The automatic sweep runs on `GENERATED → QUOTED` and after every item change; it applies active promotions that match the quote as-is.
-- `ON_TOTAL` is computed on the **net** (line discounts first, then total). Round to 2 decimals per discount. The result **floors at `product_price.min_price`** and never goes negative.
+- `ON_TOTAL` is computed on the **net** (line discounts first, then total). Round to 2 decimals per discount. The result never goes negative.
+- **The floor is `quote_item.min_price_snapshot`, never the live `product_price.min_price`.** The evaluator reads only frozen values; otherwise re-sweeping one version after a price change returns a different total for the same items.
+- **The floor is optional, and absent is the common case.** `min_price` is nullable and most accounts never set one, so a null snapshot means _no floor_ — never a floor of zero, which would let a discount drive the line to nothing.
+- **The floor binds the sweep, not people.** A seller may price a line below it by hand; that is warned and recorded in the version's `comment`, and the service does not reject it.
 - Conflicts resolve by `is_exclusive` + `priority` (higher priority wins; tie → larger discount; not stackable by default).
-- `quote_version.total = Σ quote_item.subtotal − Σ quote_discount.amount`. `quote_item` itself holds a price snapshot and **no discount** — the discount is its own entity.
+- `quote_version.total = Σ quote_item.subtotal − Σ quote_discount.amount`. `quote_item` itself holds its price snapshots and **no discount** — the discount is its own entity.
 
 ## Multi-tenancy — non-negotiable
 
