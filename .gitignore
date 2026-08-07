@@ -44,6 +44,9 @@ yarn-error.log*
 # Claude Code / Codex — agent plans are ephemeral working docs (never commit)
 .claude/plans/
 .claude/settings.json
+# A worktree checked out in here is a second copy of the repo: committing it would nest the tree
+# inside itself, and every repo-wide tool walks into it.
+.claude/worktrees/
 
 # Internal docs — plans, costs, architecture, phase specs, decisions
 docs/internal/
