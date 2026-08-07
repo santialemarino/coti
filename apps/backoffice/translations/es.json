@@ -318,6 +318,7 @@
         "hint": "Podés pedir un enlace nuevo con la dirección que usaste al registrarte.",
         "submit": "Enviar un enlace nuevo",
         "submitting": "Enviando…",
+        "cooldown": "Enviar de nuevo en {seconds} s",
         "sent": "Si la dirección está registrada y falta confirmarla, va a recibir un enlace en unos minutos.",
         "errors": {
           "INVALID_BODY": "Ingresá una dirección de correo válida.",
