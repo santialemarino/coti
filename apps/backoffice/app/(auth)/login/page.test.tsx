@@ -12,7 +12,7 @@ const { default: LoginPage } = await import('@/app/(auth)/login/page');
 
 const copy = messages.auth.login;
 
-// The real catalog, so a renamed or missing key fails here rather than rendering its own name.
+// Resolves against the real catalog, so a renamed or missing key renders nothing and fails here.
 function translator(namespace: string) {
   return (key: string) =>
     `${namespace}.${key}`

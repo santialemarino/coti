@@ -17,8 +17,10 @@ interface AuthCardProps {
  */
 export function AuthCard({ title, description, children, footer, className }: AuthCardProps) {
   return (
-    // The vertical rhythm is deliberately asymmetric — the title needs more room above it than the
-    // footer link needs below it — so it overrides the product card's symmetric `py-6`.
+    /*
+     * The vertical rhythm is deliberately asymmetric — the title needs more room above it than the
+     * footer link needs below it — so it overrides the product card's symmetric `py-6`.
+     */
     <Card className={cn('pt-8 pb-6 gap-y-6', className)}>
       <CardHeader className="items-center text-center">
         <CardTitle className="text-heading-4">{title}</CardTitle>

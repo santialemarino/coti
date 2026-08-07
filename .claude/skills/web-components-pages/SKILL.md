@@ -562,6 +562,10 @@ messages": the hint keeps only what the message does not say.
   - **muted** for every other alternative beside a form — login's
     `"¿Olvidaste tu contraseña?"`, signup's `"Iniciá sesión"`, a resend footer's
     `"Volver a iniciar sesión"`.
+  - **brand** for an inline action on the value beside it — `settings/account`'s
+    `"Verla"`, which opens the logo the caller just pasted. It acts on the field
+    rather than offering a way off the screen, so the alternative cases above do
+    not reach it.
   - **danger** only for a destructive action worded as a link; an error's link
     is not danger-toned.
 - **A screen has one loud link at most.** Two brand-toned links in one footer is

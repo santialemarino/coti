@@ -44,6 +44,12 @@ function fill(view: RenderResult, values: Record<string, string>) {
   });
 }
 
+function values(view: RenderResult): string[] {
+  return [...view.baseElement.querySelectorAll('input[name]')].map(
+    (i) => (i as HTMLInputElement).value,
+  );
+}
+
 // Clicking a submit button does not reach a React form in jsdom, which implements no requestSubmit.
 function submit(view: RenderResult) {
   const form = view.baseElement.querySelector('form');
@@ -69,18 +75,16 @@ describe('ChangePasswordForm', () => {
     expect(view.queryByText(copy.done)).toBeNull();
   });
 
-  it('empties the fields once the password is changed', async () => {
+  // A password should not sit in the DOM once it has been used, and there is nothing to resubmit.
+  it('empties every field once the password is changed', async () => {
     vi.mocked(changePassword).mockResolvedValue({ done: true });
     const view = renderForm();
 
     fill(view, VALUES);
     submit(view);
 
-    await waitFor(() => expect(changePassword).toHaveBeenCalledOnce());
-    await waitFor(() => {
-      const current = view.baseElement.querySelector('input[name="currentPassword"]');
-      expect((current as HTMLInputElement).value).toBe('');
-    });
+    await waitFor(() => expect(changePassword).toHaveBeenCalledWith(VALUES));
+    await waitFor(() => expect(values(view)).toEqual(['', '', '']));
   });
 
   // The wrong current password is the caller's to fix, so it lands on the field they will edit.
