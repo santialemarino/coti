@@ -98,6 +98,18 @@ describe('SignupForm steps', () => {
   });
 
   /*
+   * A CTA is a prompt plus a short link, never one long link: the whole sentence inside the anchor
+   * is what a screen reader announces as the link's name.
+   */
+  it('offers the login CTA as a prompt with a short link', () => {
+    const view = renderSignup();
+    const link = view.getByRole('link', { name: copy.login });
+
+    expect(link.textContent).toBe(copy.login);
+    expect(link.closest('p')?.textContent).toBe(`${copy.haveAccount} ${copy.login}`);
+  });
+
+  /*
    * A CUIT is written with hyphens — the dev seed's own is `30-71234567-9` — and an `inputMode` of
    * `numeric` gives iOS a keypad with no hyphen key, so the value cannot be typed on a phone.
    */

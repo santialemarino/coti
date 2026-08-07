@@ -123,6 +123,7 @@ export function AccountForm({ account }: AccountFormProps) {
                   {...field}
                 />
               </FormControl>
+              <FormDescription>{t('taxId.hint')}</FormDescription>
               <FormMessage />
             </FormItem>
           )}

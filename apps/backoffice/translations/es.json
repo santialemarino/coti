@@ -137,7 +137,7 @@
       "title": "Iniciar sesión",
       "email": {
         "label": "Correo electrónico",
-        "placeholder": "tu@correo.com",
+        "placeholder": "Ingresá tu correo electrónico",
         "required": "Ingresá tu correo electrónico."
       },
       "password": {
@@ -149,7 +149,8 @@
       "submit": "Ingresar",
       "submitting": "Ingresando…",
       "forgotPassword": "¿Olvidaste tu contraseña?",
-      "noAccount": "¿Todavía no tenés cuenta? Registrá tu corralón",
+      "noAccount": "¿Todavía no tenés cuenta?",
+      "signup": "Registrá tu corralón",
       "errors": {
         "UNAUTHENTICATED": "Correo o contraseña inválidos.",
         "INTERNAL": "No pudimos iniciar sesión. Intentá de nuevo."
@@ -182,7 +183,8 @@
       },
       "taxId": {
         "label": "CUIT",
-        "placeholder": "Ingresá el CUIT"
+        "placeholder": "Ingresá el CUIT",
+        "hint": "Son 11 dígitos, con guiones o sin ellos: 30-70123456-8."
       },
       "branchName": {
         "label": "Nombre de la sucursal",
@@ -200,7 +202,7 @@
       },
       "adminEmail": {
         "label": "Correo electrónico",
-        "placeholder": "tu@correo.com",
+        "placeholder": "Ingresá tu correo electrónico",
         "required": "Ingresá tu correo electrónico."
       },
       "adminPassword": {
@@ -217,7 +219,8 @@
       "next": "Continuar",
       "submit": "Crear cuenta",
       "submitting": "Creando la cuenta…",
-      "haveAccount": "¿Ya tenés una cuenta? Iniciá sesión",
+      "haveAccount": "¿Ya tenés una cuenta?",
+      "login": "Iniciá sesión",
       "errors": {
         "RATE_LIMITED": "Hubo demasiados registros desde acá. Esperá unos minutos antes de volver a probar.",
         "INTERNAL": "No pudimos crear la cuenta. Intentá de nuevo."
@@ -228,7 +231,7 @@
       "description": "Te mandamos un enlace para que elijas una contraseña nueva.",
       "email": {
         "label": "Correo electrónico",
-        "placeholder": "tu@correo.com",
+        "placeholder": "Ingresá tu correo electrónico",
         "required": "Ingresá tu correo electrónico."
       },
       "submit": "Enviar enlace",
@@ -282,7 +285,7 @@
       },
       "submit": "Cambiar contraseña",
       "submitting": "Cambiando…",
-      "done": "Contraseña cambiada. Las demás sesiones se cerraron.",
+      "done": "Cambiamos tu contraseña.",
       "errors": {
         "UNAUTHENTICATED": "La contraseña actual no es correcta.",
         "INTERNAL": "No pudimos cambiar la contraseña. Intentá de nuevo."
@@ -298,7 +301,7 @@
       "continue": "Ir al inicio",
       "email": {
         "label": "Correo electrónico",
-        "placeholder": "tu@correo.com",
+        "placeholder": "Ingresá tu correo electrónico",
         "required": "Ingresá tu correo electrónico."
       },
       "resend": {
@@ -433,7 +436,8 @@
     },
     "taxId": {
       "label": "CUIT",
-      "placeholder": "Ingresá el CUIT"
+      "placeholder": "Ingresá el CUIT",
+      "hint": "Son 11 dígitos, con guiones o sin ellos: 30-70123456-8."
     },
     "brand": {
       "title": "Marca",
@@ -441,16 +445,16 @@
     },
     "brandLogoUrl": {
       "label": "Logo",
-      "placeholder": "https://tucorralon.com/logo.png",
-      "hint": "Tiene que ser una imagen accesible desde internet.",
+      "placeholder": "Ingresá la dirección de la imagen",
+      "hint": "Tiene que ser una imagen accesible desde internet, como https://tucorralon.com/logo.png.",
       "open": "Verla",
       "invalid": "Ingresá una dirección web completa, con https:// adelante."
     },
     "brandColor": {
       "label": "Color de la marca",
-      "placeholder": "#C2410C",
+      "placeholder": "Ingresá el color de tu marca",
       "hint": "En hexadecimal, como lo escribís en un diseño: #C2410C.",
-      "invalid": "Ingresá un color hexadecimal, por ejemplo #C2410C."
+      "invalid": "Ingresá un color hexadecimal válido."
     },
     "submit": "Guardar cambios",
     "submitting": "Guardando…",

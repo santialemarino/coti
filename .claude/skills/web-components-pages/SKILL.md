@@ -514,26 +514,62 @@ reintroducing negotiation in `i18n/request.ts`; nothing at the call sites change
 
 ### Placeholder wording (Argentine Spanish) — the copy you author in the catalog
 
-Descriptive action phrases, by input type:
+**A placeholder is always an instruction, never an example.** One rule for every
+field in the product, so two styles can never sit in one card — an example
+(`tu@correo.com`) beside an instruction (`Ingresá tu contraseña`) is the specific
+drift this rule exists to stop. By input type:
 
-- **Text inputs:** `"Ingresá el/la ..."` (e.g. `"Ingresá el nombre del producto"`).
-- **Search inputs:** `"Buscá ..."` (e.g. `"Buscá productos..."`, `"Buscá cotizaciones..."`).
-- **Select inputs:** `"Seleccioná un/una ..."` (e.g. `"Seleccioná una sucursal"`).
-- **Number inputs:** `"Ingresá ..."` (e.g. `"Ingresá la cantidad"`).
+- **Text inputs:** `"Ingresá el/la ..."` (`"Ingresá el nombre del producto"`).
+- **Search inputs:** `"Buscá ..."` (`"Buscá productos..."`).
+- **Select / `Combobox`:** `"Seleccioná un/una ..."` (`"Seleccioná una sucursal"`).
+- **Number inputs:** `"Ingresá ..."` (`"Ingresá la cantidad"`).
+- **A value the caller invents:** `"Elegí ..."` (`"Elegí una contraseña"`); its
+  confirmation, `"Repetí ..."`.
 - **Optional/notes:** `"Notas opcionales..."`.
 
-Only use examples (`"ej.: 25kg"`) when the field needs domain knowledge the user
-might not have. Never use examples for standard fields like names or amounts.
+**When the _shape_ matters, the example moves to the hint line** — a CUIT, an
+image URL, a hex colour, a unit. The caller has to see the form the value takes,
+and a greyed-out example in the box vanishes on the first keystroke, exactly when
+they still need it. So the `FormDescription` carries it (`"Son 11 dígitos, con
+guiones o sin ellos: 30-70123456-8."`) and the placeholder stays an instruction.
+A field whose shape is obvious — an email, a person's name, an amount — gets no
+hint at all.
 
-### Fields with defaults
+**A field with a default names it on the hint line**, interpolated from the same
+source the default comes from (`"Por defecto {count} días."`), never retyped into
+the string. The placeholder is still the instruction: an input pre-filled-looking
+with a number reads as a value already chosen.
 
-When a field has a default value:
+**The hint never repeats the error.** Both are visible at once — see "Validation
+messages": the hint keeps only what the message does not say.
 
-- **Placeholder:** the default value itself (`placeholder="50"`) — shows what will
-  be used if left empty. Don't use "Ingresá ..." for these.
-- **Hint below input:** a "por defecto" line with the value interpolated (never
-  hardcode the default in the string). Both placeholder and hint refer to the same
-  default from the same source.
+### Calls to action and links
+
+- **A CTA is plain text plus a short link, never one long link.** The prompt is a
+  muted `<p>` and only the words you act on are the `InlineLink` inside it:
+  _¿Todavía no tenés cuenta?_ then _Registrá tu corralón_. A link wrapping the
+  whole sentence is what a screen reader announces as the link's name, and it
+  leaves the eye nothing to aim at. The linked words must read alone too —
+  `"Iniciá sesión"`, never `"acá"`.
+- **Link tone is decided by this rule, not per screen.** `InlineLink` ships
+  `tone="brand"` (default), `"muted"` and `"danger"`:
+  - **brand** on a **terminal** screen, where the link _is_ the next action —
+    a sent recovery mail, a completed reset, a confirmed address, an expired
+    link's `"Pedir un enlace nuevo"`.
+  - **brand** for a **form screen's primary alternative**, when it offers more
+    than one — login's `"Registrá tu corralón"`: someone without an account has
+    nowhere else to go from that screen.
+  - **muted** for every other alternative beside a form — login's
+    `"¿Olvidaste tu contraseña?"`, signup's `"Iniciá sesión"`, a resend footer's
+    `"Volver a iniciar sesión"`.
+  - **brand** for an inline action on the value beside it — `settings/account`'s
+    `"Verla"`, which opens the logo the caller just pasted. It acts on the field
+    rather than offering a way off the screen, so the alternative cases above do
+    not reach it.
+  - **danger** only for a destructive action worded as a link; an error's link
+    is not danger-toned.
+- **A screen has one loud link at most.** Two brand-toned links in one footer is
+  the same defect as two primary buttons.
 
 ## Comments
 
