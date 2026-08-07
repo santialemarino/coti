@@ -46,6 +46,7 @@ export function ResendVerificationForm() {
     [t, tErrors],
   );
   const opensAt = useRef(0);
+  const sending = useRef(false);
   const [remaining, setRemaining] = useState(0);
   const cooling = remaining > 0;
   const form = useForm<ResendVerificationValues>({
@@ -69,18 +70,28 @@ export function ResendVerificationForm() {
     return () => clearInterval(ticker);
   }, [cooling]);
 
+  /*
+   * Two guards, because they cover different windows. A shut button stops a click but not the Enter
+   * key that reaches the form behind it, and `cooling` is a render's value — two submits fired
+   * before the first resolves both read it false, which is the one case the cooldown exists to stop.
+   * The ref closes that window because it is set in the same tick it is read.
+   */
   async function onSubmit(values: ResendVerificationValues) {
-    // A shut button stops a click, not the Enter key that reaches the form behind it.
-    if (cooling) return;
+    if (cooling || sending.current) return;
+    sending.current = true;
 
-    const result = await resendVerification(values.email);
-    if (result.sent) {
-      toast.success(t('resend.sent'));
-      opensAt.current = Date.now() + RESEND_COOLDOWN_SECONDS * A_SECOND;
-      setRemaining(RESEND_COOLDOWN_SECONDS);
-      return;
+    try {
+      const result = await resendVerification(values.email);
+      if (result.sent) {
+        toast.success(t('resend.sent'));
+        opensAt.current = Date.now() + RESEND_COOLDOWN_SECONDS * A_SECOND;
+        setRemaining(RESEND_COOLDOWN_SECONDS);
+        return;
+      }
+      form.setError(result.field ?? 'root', { message: message(result.error) });
+    } finally {
+      sending.current = false;
     }
-    form.setError(result.field ?? 'root', { message: message(result.error) });
   }
 
   return (

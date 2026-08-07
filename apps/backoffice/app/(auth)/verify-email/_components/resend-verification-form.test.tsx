@@ -135,6 +135,32 @@ describe('ResendVerificationForm', () => {
     expect(resendVerification).toHaveBeenCalledOnce();
   });
 
+  /*
+   * The window the cooldown alone cannot cover: two submits fired before the first resolves both
+   * read a `cooling` that is still false, because it is a render's value and no render has happened
+   * yet. Only a ref set in the same tick it is read closes it.
+   */
+  it('sends once when two submits are fired before the first resolves', async () => {
+    let release = () => {};
+    vi.mocked(resendVerification).mockImplementation(
+      () => new Promise((resolve) => (release = () => resolve({ sent: true }))),
+    );
+    const view = renderForm();
+
+    fillEmail(view);
+    // Both fired before either resolves — validation is async, so neither has reached the action yet.
+    submit(view);
+    submit(view);
+
+    await waitFor(() => expect(resendVerification).toHaveBeenCalled());
+    release();
+
+    // Flushed, then asserted hard: `waitFor` would stop at the first call and prove nothing.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(resendVerification).toHaveBeenCalledOnce();
+  });
+
   it('puts a refused address on the field and starts no cooldown', async () => {
     vi.mocked(resendVerification).mockResolvedValue({ error: 'INVALID_BODY', field: 'email' });
     const view = renderForm();
