@@ -5,7 +5,7 @@ import { getTranslations } from 'next-intl/server';
 import { Button, Card, StatusScreen } from '@repo/ui/components';
 import { BrandedScreen } from '@/components/branded-screen';
 import { ROUTES } from '@/config/routes';
-import { getSession } from '@/lib/auth/session';
+import { getAccessToken } from '@/lib/auth/session';
 import { generatePageMetadata } from '@/lib/utils/page';
 
 export const generateMetadata = () => generatePageMetadata('notFound');
@@ -15,13 +15,18 @@ export const generateMetadata = () => generatePageMetadata('notFound');
  * to reach — so it brings its own frame.
  *
  * The gate never lets a signed-out caller reach an unknown path directly: it is not a public route,
- * so they are sent to log in and arrive here afterwards through `next`. The session is read anyway,
- * because Next renders this for a `notFound()` raised inside a page too, and because sending someone
- * to a login screen they are already past is a dead end.
+ * so they are sent to log in and arrive here afterwards through `next`. Which way out to offer is
+ * still worth deciding, because Next renders this for a `notFound()` raised inside a page too, and
+ * sending someone to a login screen they are already past is a dead end.
+ *
+ * The token is read from the cookie rather than validated against the API: this is a guess about
+ * where to send someone, not an authorization decision, and `getSession` throws when the API is
+ * unreachable — which would replace "this page does not exist" with an error screen over an outage
+ * that has nothing to do with it. A stale token costs one bounce off the gate, which handles it.
  */
 export default async function NotFound() {
   const t = await getTranslations('notFound');
-  const session = await getSession();
+  const signedIn = (await getAccessToken()) !== undefined;
 
   return (
     <BrandedScreen>
@@ -33,8 +38,8 @@ export default async function NotFound() {
           description={t('description')}
         >
           <Button asChild size="lg">
-            <Link href={session ? ROUTES.home : ROUTES.login}>
-              {session ? t('goHome') : t('goToLogin')}
+            <Link href={signedIn ? ROUTES.home : ROUTES.login}>
+              {signedIn ? t('goHome') : t('goToLogin')}
             </Link>
           </Button>
         </StatusScreen>
