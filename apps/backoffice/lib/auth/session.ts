@@ -80,7 +80,7 @@ export async function getAccessToken(): Promise<string | undefined> {
 }
 
 // Next allows a cookie write only from a server action or a route handler, which is
-// why the renewal path lives in middleware instead.
+// why the renewal path lives in the proxy instead.
 export async function startSession(tokens: TokenPair, rememberMe = false): Promise<void> {
   const jar = await cookies();
   const options = sessionCookieOptions(rememberMe);

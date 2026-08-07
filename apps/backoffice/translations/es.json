@@ -130,7 +130,17 @@
     "verifyEmail": {
       "title": "Confirmar tu correo",
       "description": "Confirmá la dirección con la que te registraste."
+    },
+    "notFound": {
+      "title": "Página no encontrada",
+      "description": "La dirección que abriste no existe en el backoffice."
     }
+  },
+  "notFound": {
+    "title": "No encontramos esta página",
+    "description": "La dirección que abriste no existe o dejó de estar disponible. Puede que el enlace esté mal copiado o que la pantalla haya cambiado de lugar.",
+    "goHome": "Ir al inicio",
+    "goToLogin": "Iniciar sesión"
   },
   "auth": {
     "login": {

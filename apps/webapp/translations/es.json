@@ -4,7 +4,8 @@
     "actions": {
       "send": "Enviar",
       "back": "Volver",
-      "add": "Agregar"
+      "add": "Agregar",
+      "retry": "Reintentar"
     },
     "states": {
       "loading": "Cargando…",
@@ -29,5 +30,10 @@
     "total": "Total: {amount}",
     "validUntil": "Válida hasta el {date}",
     "empty": "Esta cotización todavía no tiene ítems."
+  },
+  "notFound": {
+    "title": "No encontramos esta página",
+    "description": "La dirección que abriste no existe o dejó de estar disponible. Si llegaste desde un enlace que te pasaron, pedí que te lo manden de nuevo.",
+    "goHome": "Ir al inicio"
   }
 }

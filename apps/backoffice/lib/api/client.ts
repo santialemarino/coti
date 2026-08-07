@@ -67,7 +67,7 @@ export async function apiFetch(request: ApiRequest): Promise<Response> {
   const headers = new Headers();
   if (authenticated) {
     const token = await getAccessToken();
-    // No token means middleware let a public route through, or the session expired
+    // No token means the proxy let a public route through, or the session expired
     // between the gate and here. Either way it is the same answer the API gives.
     if (!token) throw new ApiError('UNAUTHENTICATED', 401);
     headers.set('Authorization', `Bearer ${token}`);

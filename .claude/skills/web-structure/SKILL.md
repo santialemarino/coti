@@ -56,6 +56,10 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
   locale + messages via next-intl, wraps `children` in `NextIntlClientProvider`,
   and sets `<html lang={locale}>` (always `es` today); imports `globals.css`.
   Each route group has its own `layout.tsx` for its shared wrapper.
+- **`proxy.ts`** at the app root — the gate: reachability and the one place a
+  session is renewed. This is the **Next 16 name** for what used to be
+  `middleware.ts`, and the exported function is `proxy`. Never add a
+  `middleware.ts` beside it — the build refuses both at once.
 
 ## App Router layout — webapp (public)
 
@@ -68,6 +72,24 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
   tokenized quote-review route (`quotes/[token]/`). Access control for a customer
   route is the **unguessable token in the URL**, resolved server-side — never a
   session.
+
+## `error.tsx` and `not-found.tsx` — both apps, both required
+
+Next's own fallbacks are unstyled English (_"404 · This page could not be found."_), so every app
+ships its own at the **root of `app/`**:
+
+- **`error.tsx`** is a client component taking `{ error, reset }`. Production hands a boundary only
+  a digest, so its copy is the generic one from the catalog — a failure a screen can name is worded
+  where it happened, not here.
+- **`not-found.tsx`** is a server component, so it can read whatever decides its call to action. In
+  the backoffice that is whether a token cookie exists: offering the login screen to someone already
+  signed in is a dead end, and offering the home page to someone signed out bounces them back to
+  login. Read the **cookie**, not `getSession()` — a 404 must not depend on the API being up, and
+  `getSession` rethrows anything that is not a 401/403, which would turn an unrelated outage into an
+  error screen where a plain "this page does not exist" belonged. A stale token costs one bounce off
+  the gate, which is exactly what the gate is for.
+- Both render **outside every route group's layout** — an unmatched URL is exactly what failed to
+  reach one — so they bring their own page frame rather than inheriting it.
 
 ## Where to create files (both apps, unless noted)
 
@@ -182,6 +204,8 @@ layout that will look different in production. If a class is missing, confirm it
 app/
 ├── layout.tsx                       # root: <html lang="es">, imports globals.css
 ├── globals.css
+├── error.tsx                        # root error boundary (client)
+├── not-found.tsx                    # branded 404, CTA follows the token cookie
 ├── page.tsx                         # entry (redirect to inbox or login)
 ├── (auth)/                          # No session; redirect out if already logged in
 │   ├── layout.tsx
@@ -218,6 +242,7 @@ app/
 │   └── utils/page.tsx
 ├── config/
 │   └── routes.ts                    # ROUTES, AUTH_ROUTES, LOGIN_ROUTE
+├── proxy.ts                         # the gate (Next 16's name for middleware.ts)
 ├── i18n/request.ts                  # next-intl request config (locale es, AR timezone)
 ├── translations/es.json            # message catalog (namespaced by feature)
 ├── lib/i18n/                        # formatter stack (shared shape across both apps)
@@ -231,6 +256,8 @@ app/
 app/
 ├── layout.tsx                       # root: <html lang="es">, imports globals.css
 ├── globals.css
+├── error.tsx                        # root error boundary (client)
+├── not-found.tsx                    # branded 404
 ├── page.tsx                         # public landing / entry
 ├── rfq/                             # public RFQ submission
 │   ├── page.tsx
