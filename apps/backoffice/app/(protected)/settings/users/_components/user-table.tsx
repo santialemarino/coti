@@ -101,7 +101,7 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
     if (result.ok) {
       // A confirmation of something just done is transient, so it is a toast; the standing message
       // about what is on screen is the Callout above.
-      toast.success(t(target.mode === 'edit' ? 'updated' : 'created'));
+      toast.success(t(target.mode === 'edit' ? 'updated' : 'created', { name: values.name }));
       setForm(null);
       return result;
     }
@@ -124,7 +124,7 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
         setError(message(result.error));
         return;
       }
-      toast.success(t('deactivated'));
+      toast.success(t('deactivated', { name: target.user.name }));
       setDeactivating(null);
     });
   }
@@ -145,7 +145,7 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
         setError(message(result.error));
         return;
       }
-      toast.success(t('reactivated'));
+      toast.success(t('reactivated', { name: row.user.name }));
     });
   }
 
@@ -160,7 +160,7 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
         setError(resetMessage(result.error));
         return;
       }
-      toast.success(t('passwordResetSent'));
+      toast.success(t('passwordResetSent', { email: target.user.email }));
       setResetting(null);
     });
   }

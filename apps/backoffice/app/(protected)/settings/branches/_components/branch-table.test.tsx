@@ -193,7 +193,11 @@ describe('BranchTable dialogs', () => {
 
     await waitFor(() => expect(createBranch).toHaveBeenCalledOnce());
     expect(updateBranch).not.toHaveBeenCalled();
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.created));
+    // Names the branch: a toast that arrives while the caller is looking elsewhere has to say
+    // which one it is about, so the assertion is on the name reaching it, not on the sentence.
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('Villa Bosch')),
+    );
   });
 });
 
@@ -235,8 +239,10 @@ describe('BranchTable closing a branch', () => {
 
     await waitFor(() => expect(closeBranch).toHaveBeenCalledWith(MORON.id));
     // A confirmation of something just done is transient, so it is a toast rather than a standing
-    // Callout on the list — which is what the refusal above is.
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.closed));
+    // Callout on the list — which is what the refusal above is — and it names the branch it closed.
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(expect.stringContaining(MORON.name)),
+    );
   });
 
   /*
@@ -304,7 +310,9 @@ describe('BranchTable closed branches', () => {
     await waitFor(() => expect(reopenBranch).toHaveBeenCalledOnce());
     expect(reopenBranch).toHaveBeenCalledWith(CLOSED);
     expect(view.baseElement.querySelector('[role="dialog"]')).toBeNull();
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.reopened));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(expect.stringContaining(CLOSED.name)),
+    );
   });
 
   it('puts a refused reopen on the list', async () => {

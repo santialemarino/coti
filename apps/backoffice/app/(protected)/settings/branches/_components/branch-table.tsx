@@ -67,7 +67,7 @@ export function BranchTable({ branches }: BranchTableProps) {
       }
       // A confirmation of something just done is transient, so it is a toast; the standing
       // message about what is on screen is the Callout above.
-      toast.success(t(target.mode === 'edit' ? 'updated' : 'created'));
+      toast.success(t(target.mode === 'edit' ? 'updated' : 'created', { name: values.name }));
       setForm(null);
     });
   }
@@ -85,7 +85,7 @@ export function BranchTable({ branches }: BranchTableProps) {
         setError(message(result.error));
         return;
       }
-      toast.success(t('closed'));
+      toast.success(t('closed', { name: target.name }));
       setClosing(null);
     });
   }
@@ -98,7 +98,7 @@ export function BranchTable({ branches }: BranchTableProps) {
         setError(message(result.error));
         return;
       }
-      toast.success(t('reopened'));
+      toast.success(t('reopened', { name: branch.name }));
     });
   }
 
