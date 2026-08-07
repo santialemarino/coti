@@ -269,14 +269,38 @@ Honour `prefers-reduced-motion: reduce`. The split:
 ## Verify what you built
 
 For any UI change, drive it in a real browser with `playwright-cli` (see the `playwright-cli` skill)
-rather than reasoning about it. Check, at minimum:
+rather than reasoning about it.
+
+**Measure motion against a production build, and sample inside the page.** Two things make a browser
+pass lie, and both report a broken animation as a clean one:
+
+- **`next dev` is the wrong surface.** It degrades badly under a session's worth of HMR — renders
+  reaching minutes — and a starved page cannot run the sampler at frame rate. Use
+  `pnpm --filter <app> run build` then `next start` on a fresh port; it serves in ~100ms and does not
+  drift. (Never reuse a port a browser has already touched: the network service holds the socket and
+  the restart dies with `EADDRINUSE`.)
+- **One `page.evaluate` per sample is far too slow.** Each is a round trip, so a dozen samples span
+  much longer than the 300ms you are measuring and the first can land after the animation finished —
+  which reads as a snap. Run **one** `page.evaluate` containing a `requestAnimationFrame` loop that
+  pushes the value per frame and returns the array. Have it record the largest gap between frames and
+  throw the run away if that is not ~17ms: a starved sample proves nothing, and its early frames are
+  the ones you were going to draw conclusions from.
+
+A snapped animation and a working one are identical at rest, so read the interpolation, never the end
+state. Then check, at minimum:
 
 - **Tab through every interactive element.** A ring or a bump on each, no native outline left, nothing
   skipped.
 - **Open and close every overlay.** Confirm the exit animates — inspect `data-state="closed"` and
   `getAnimations()` if in doubt, because a missing exit looks like a fast close.
 - **Emulate `prefers-reduced-motion: reduce`.** Decorative motion gone, no stray artefacts, copy
-  visible, focus feedback intact.
+  visible, focus feedback intact. **Probe a utility by injecting an element that carries it and
+  reading `getComputedStyle().animationName`** — racing a live one is a timing race. But a bare
+  probe only answers for utilities Tailwind generated in bare form: `animate-focus-bump` reads
+  `none` in _both_ states simply because every call site uses it behind a `group-focus-visible/x:`
+  variant. Read that as no information, not as the gate swallowing functional feedback — confirm
+  against the gate's own list in `packages/ui/src/styles/index.css`, which names only the decorative
+  keyframes.
 - **Check contrast** for any new colour pair against `docs/technical/design-system.md`; if a pair
   isn't in the table, compute it before shipping.
 
