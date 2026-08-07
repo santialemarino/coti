@@ -185,12 +185,20 @@ panel enters from the trigger and then dissolves in place.
   changes, and give the parent `relative` so the popped child is positioned against it.
 - **`layout` is the wrong tool for a box that contains a form.** A layout animation scale-corrects
   its children, which squashes inputs mid-flight. Measure the height and animate it directly
-  instead — `AnimatedHeight` in the backoffice's auth flow is the reference, and three things in it
+  instead — `AnimatedHeight` in the backoffice's auth flow is the reference, and four things in it
   are load-bearing:
   - **Arm on the state change, travel on the resize that follows.** They are not the same moment: an
     atomic swap resizes in the commit its key changes, but a crossfade holds the outgoing stage for
     its exit first, so measuring when the key changes reads the size the box already has and
     concludes there is nothing to animate.
+  - **Freeze the box at the same moment you arm it, in a layout effect.** A layout effect is the last
+    point before the browser paints; a `ResizeObserver` notification is not, because it arrives a
+    frame **after** the new size has already been painted. A box left loose between the content
+    resizing and the animation taking hold flashes its destination height and then jumps back to
+    travel from — measured at two frames plus a 57px reversal before this was added. Skip the freeze
+    when the box already carries a height (it is then frozen or mid-travel, and writing to it
+    overwrites the frame the travel was about to write), and release it if the swap turns out not to
+    change the height at all.
   - **Animate imperatively, from an explicit `[from, to]` pair.** Rendering the old height and then
     the new one is two commits, and the box pins to the first while the second never arrives.
   - **Read the resize through a ref, and never re-create the observer.** Re-observing delivers a
