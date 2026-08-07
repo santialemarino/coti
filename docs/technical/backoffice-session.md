@@ -14,8 +14,8 @@ That leaves a clean split:
 
 | Question                        | Answered by                                          |
 | ------------------------------- | ---------------------------------------------------- |
-| Is there a token at all?        | `middleware.ts`, from the cookie                     |
-| Has it expired?                 | `middleware.ts`, from the unverified `exp` claim     |
+| Is there a token at all?        | `proxy.ts`, from the cookie                          |
+| Has it expired?                 | `proxy.ts`, from the unverified `exp` claim          |
 | Is the session behind it valid? | the API, via `GET /v1/me` and on every other request |
 | May this caller do this?        | the API, always                                      |
 
@@ -31,7 +31,7 @@ client code cannot read either, so no script on the page can lift the token.
 that die with the browser and the API issues its short refresh TTL. Checked, `remember_me` goes
 to the API — which is what unlocks its 30-day refresh window — a third cookie `coti_remember`
 records the choice, and all three get a `maxAge` of `AUTH_REMEMBERED_SESSION_DAYS`. The flag has
-to be recorded because middleware renews on the edge with no other way to know, and because
+to be recorded because the proxy renews on the edge with no other way to know, and because
 `change-password` re-issues the pair: without it a remembered session would quietly decay into
 one that dies with the browser. The API remains what decides whether a refresh token is live, so
 an over-long cookie costs nothing but a wasted round trip.
@@ -40,7 +40,7 @@ an over-long cookie costs nothing but a wasted round trip.
   read, and the three calls to `/v1/public/auth/{login,refresh}` and `/v1/auth/logout`. It
   talks to the API with its own `fetch` because the authenticated client reads the session, so
   a session that read the client would be a cycle. It may not import `next/headers` or
-  `server-only`: `middleware.ts` imports it, and middleware runs on the edge.
+  `server-only`: `proxy.ts` imports it, and the proxy runs on the edge.
 - **`lib/auth/session.ts`** — server-only. `getSession()` asks `GET /v1/me`, so its answer
   accounts for what a cookie cannot: a bumped session epoch, a deactivated user, a revoked
   token. `startSession` / `clearSession` / `endSession` own the cookie writes.
@@ -59,7 +59,9 @@ and hides exactly this.
 
 ## The gate
 
-`middleware.ts` runs on everything but static assets and decides reachability:
+`proxy.ts` runs on everything but static assets and decides reachability. It is the file
+convention Next 16 renamed from `middleware`; the exported function is `proxy` and nothing else
+about it changed:
 
 | Situation                                           | Result                                                     |
 | --------------------------------------------------- | ---------------------------------------------------------- |
@@ -70,8 +72,8 @@ and hides exactly this.
 | Protected route, refresh rejected                   | cookies cleared, redirected to login with `?next=`         |
 | Protected route, API unreachable                    | through — the cookies survive and the next request retries |
 
-**Middleware is the only place a session is renewed.** Next allows a cookie write from a server
-action, a route handler or middleware, and only middleware runs before the page renders — so
+**The proxy is the only place a session is renewed.** Next allows a cookie write from a server
+action, a route handler or the proxy, and only the proxy runs before the page renders — so
 renewing here is what lets a server component read a live token without ever handling expiry.
 The renewed pair is written onto the request as well as the response, so the render this
 request triggers already sees it.
@@ -88,12 +90,12 @@ which the API's `AUTH_REFRESH_REUSE_GRACE_SECONDS` window absorbs.
 ## Two gates, because one cannot see everything
 
 `app/(protected)/layout.tsx` calls `getSession()` and redirects when it comes back null. That
-is not a duplicate of the middleware check — middleware knows only that a token exists and has
+is not a duplicate of the proxy's check — the proxy knows only that a token exists and has
 not expired, while this asks the API whether the session is still good.
 
 It redirects to **`/session-ended`**, a route handler, rather than straight to the login screen.
 A layout cannot write cookies, so redirecting with the dead cookies still set would have
-middleware bounce the caller back to a page that rejects them, forever. The route handler
+the proxy bounce the caller back to a page that rejects them, forever. The route handler
 clears the cookies and then sends them to login. `/session-ended` is public and, unlike the
 other public routes, is exempt from the signed-in bounce for the same reason.
 

@@ -1,6 +1,6 @@
 /*
  * Session primitives that must run in the edge runtime as well as on the server,
- * because middleware.ts is the one place a session is renewed. Nothing here may
+ * because proxy.ts is the one place a session is renewed. Nothing here may
  * import next/headers or server-only.
  *
  * The access token is opaque to the backoffice. It is forwarded, never inspected
@@ -20,7 +20,7 @@ import {
 
 export const ACCESS_COOKIE = 'coti_access_token';
 export const REFRESH_COOKIE = 'coti_refresh_token';
-// Marks the session as remembered, so a renewal in middleware keeps it that way.
+// Marks the session as remembered, so a renewal in the proxy keeps it that way.
 export const REMEMBER_COOKIE = 'coti_remember';
 // The branch every request is scoped to. Named here rather than beside its reader so the
 // gate, which cannot import server-only, can clear it alongside the session.
@@ -169,7 +169,7 @@ async function postForTokens(
 /*
  * The envelope's code, which is what tells a spent allowance from a locked account — both 429.
  * The status answers for a body that carries none, the way lib/api/client.ts does it; this path
- * cannot go through that module because middleware renews a session and cannot import server-only.
+ * cannot go through that module because the proxy renews a session and cannot import server-only.
  */
 async function refusalCode(response: Response): Promise<ApiErrorCode> {
   try {

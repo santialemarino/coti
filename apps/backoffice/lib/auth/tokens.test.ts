@@ -155,7 +155,7 @@ describe('requestLogin', () => {
   /*
    * Both are 429, and they are not the same thing: one is the account's failed-attempt lockout and
    * the other the caller's own request allowance. Reading the envelope is what tells them apart —
-   * this path cannot go through lib/api/client.ts, because middleware renews a session and cannot
+   * this path cannot go through lib/api/client.ts, because the proxy renews a session and cannot
    * import server-only.
    */
   it.each([
