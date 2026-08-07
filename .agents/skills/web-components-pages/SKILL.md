@@ -213,6 +213,29 @@ Three different things — using the wrong one is a common drift:
 - **`FormMessage` / `FormRootMessage`** — a field's or a form's rejection. Never a
   toast for a validation error; it belongs next to the input.
 
+### What a confirmation has to say
+
+**Short is not the goal; informative is.** A confirmation stripped to its verb —
+_"Creamos la sucursal."_, _"Guardamos los cambios."_ — is the drift to avoid, and it is
+easy to arrive at by trimming toward the house voice. Two things earn their place:
+
+- **Name the record it changed.** A toast appears while the caller may already be looking
+  somewhere else, so "we saved it" has to say _what_: `Guardamos los cambios de «{name}».`
+  The handler almost always has the entity in scope — pass it as an ICU arg rather than
+  writing a second, vaguer string.
+- **State the consequence they would otherwise have to guess**, when the verb does not
+  imply it: that the other sessions closed, that the admin has to pass the password on
+  themselves, that the thing can be undone. Skip it when the action already says it.
+
+The counterweight is length, not brevity for its own sake: a toast dismisses itself, so
+**measure the rendered string** — up to ~100 characters reads comfortably, past ~110 it
+cannot be finished. When both a dialog and its toast could carry the consequence, the
+toast keeps the half the caller acts on and drops what the dialog already said.
+
+Note this does **not** conflict with "never say the same thing twice on one field" under
+"Validation messages" — that governs a hint against its own error, both on screen at once.
+It is not a licence to strip a confirmation of what it confirms.
+
 ## Icons
 
 - **Prefer Lucide.** Use `lucide-react` (a dependency of `@repo/ui`) whenever an
