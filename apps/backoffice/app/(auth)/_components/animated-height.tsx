@@ -38,14 +38,17 @@ export function AnimatedHeight({ trigger, children }: AnimatedHeightProps) {
   const travel = useRef<AnimationPlaybackControls>(undefined);
 
   /*
-   * Arming also freezes the box at the size it has right now, before the browser paints again. The
-   * content resizes either in this very commit (an atomic swap) or once the outgoing stage has left
-   * (a crossfade), and a ResizeObserver notification lands a frame *after* that new size is painted
-   * — so a box left loose flashes its destination height and then jumps back to travel from.
+   * Arming also freezes the box at the size its content last settled at, before the browser paints
+   * again. The content resizes either in this very commit (an atomic swap) or once the outgoing
+   * stage has left (a crossfade), and a ResizeObserver notification lands a frame *after* that new
+   * size is painted — so a box left loose flashes its destination height and then jumps back to
+   * travel from. A box already carrying a height is either frozen or mid-travel, and freezing it
+   * again would overwrite the frame the travel was about to write.
    */
   useLayoutEffect(() => {
     armed.current = true;
-    if (reduced || !box.current || restingHeight.current === undefined) return;
+    if (reduced || !box.current || box.current.style.height !== '') return;
+    if (restingHeight.current === undefined) return;
     box.current.style.height = `${restingHeight.current}px`;
   }, [trigger, reduced, box]);
 
