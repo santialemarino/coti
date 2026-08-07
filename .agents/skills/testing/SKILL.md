@@ -20,7 +20,9 @@ description: Where tests live, how to run them, and what to test in the Coti rep
 - **CI:** `.github/workflows/ci.api.yml` runs `gofmt` check, `go vet`,
   `golangci-lint`, `go build`, and `go test ./...` on API PRs; the web workflows run
   lint + `check-types` + test + build, and `ci.ui.yml` does the same for the design
-  system; `ci.scripts.yml` covers `scripts/` and the root manifest.
+  system; `ci.scripts.yml` covers `scripts/` and the root manifest; and `ci.skills.yml` covers the
+  two skill trees, where its whole job is `diff -r` — the mirrors are byte-equal by contract and
+  nothing else could catch a teammate editing one side only.
   Two workflows carry a **second job** that stands up PostgreSQL + pgvector and applies the
   migration chain: the API's runs the integration suite, which guards tenant isolation, and
   the scripts' runs the commands for real. Both gate merges rather than being a local-only
@@ -29,7 +31,9 @@ description: Where tests live, how to run them, and what to test in the Coti rep
 - **Every workflow is path-filtered**, so a directory nothing watches gets no checks at all —
   a PR touching only it goes green having run nothing. Adding a top-level directory means
   adding or widening a workflow in the same change. Each workflow also lists **itself** in its
-  `paths`, so editing one is covered by the run it configures.
+  `paths`, so editing one is covered by the run it configures. **None of them is a required
+  check, deliberately:** under path filters a check that never runs for a given PR stays pending
+  forever and blocks the merge instead of passing it.
 - **Each one runs on a pull request into `main`/`dev` and on a push to either**, on the same
   paths. The push half is what checks the merge commit: a pull-request run tests a preview of the
   merge, which goes stale the moment the base branch moves under it, and without the push run
