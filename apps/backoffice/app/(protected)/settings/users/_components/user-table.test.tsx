@@ -267,7 +267,11 @@ describe('UserTable dialogs', () => {
       password: '',
     });
     expect(createUser).not.toHaveBeenCalled();
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.updated));
+    // Names the user: a toast that arrives while the caller is looking elsewhere has to say who
+    // it is about, so the assertion is on the name reaching it, not on the sentence.
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('Bruno D. Díaz')),
+    );
   });
 
   it('creates rather than edits when opened from the add button', async () => {
@@ -283,7 +287,9 @@ describe('UserTable dialogs', () => {
 
     await waitFor(() => expect(createUser).toHaveBeenCalledOnce());
     expect(updateUser).not.toHaveBeenCalled();
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.created));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('Dana López')),
+    );
   });
 
   /*
@@ -459,7 +465,9 @@ describe('UserTable deactivating and reactivating', () => {
     fireEvent.click(within(dialog(view)).getByRole('button', { name: copy.deactivate.confirm }));
 
     await waitFor(() => expect(deactivateUser).toHaveBeenCalledWith(SELLER.id));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.deactivated));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(expect.stringContaining(SELLER.name)),
+    );
   });
 
   /*
@@ -516,7 +524,9 @@ describe('UserTable deactivating and reactivating', () => {
       branchIds: [MORON.id],
     });
     expect(view.baseElement.querySelector('[role="dialog"]')).toBeNull();
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.reactivated));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(expect.stringContaining(stale.name)),
+    );
   });
 });
 
@@ -546,7 +556,10 @@ describe('UserTable mailing a recovery link', () => {
     fireEvent.click(within(dialog(view)).getByRole('button', { name: copy.passwordReset.confirm }));
 
     await waitFor(() => expect(sendPasswordReset).toHaveBeenCalledWith(SELLER.id));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.passwordResetSent));
+    // The address is the point of this confirmation: it is where the link went.
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(expect.stringContaining(SELLER.email)),
+    );
   });
 
   it('puts the mail allowance running out on the list', async () => {

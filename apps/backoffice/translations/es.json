@@ -11,7 +11,7 @@
     },
     "states": {
       "loading": "Cargando…",
-      "empty": "No hay datos para mostrar",
+      "empty": "No hay datos para mostrar.",
       "error": "Ocurrió un error. Intentá de nuevo."
     },
     "nav": {
@@ -295,7 +295,7 @@
       },
       "submit": "Cambiar contraseña",
       "submitting": "Cambiando…",
-      "done": "Cambiamos tu contraseña.",
+      "done": "Cambiamos tu contraseña. Las demás sesiones abiertas se cerraron.",
       "errors": {
         "UNAUTHENTICATED": "La contraseña actual no es correcta.",
         "INTERNAL": "No pudimos cambiar la contraseña. Intentá de nuevo."
@@ -422,10 +422,10 @@
       "required": "Ingresá los días de vencimiento.",
       "outOfRange": "Ingresá un número entre {min} y {max}."
     },
-    "created": "Creamos la sucursal.",
-    "updated": "Guardamos los cambios.",
-    "closed": "Cerramos la sucursal.",
-    "reopened": "Reabrimos la sucursal.",
+    "created": "Creamos «{name}», con el catálogo de la cuenta ya disponible.",
+    "updated": "Guardamos los cambios de «{name}».",
+    "closed": "Cerramos «{name}». Nadie puede operar ahí, y podés reabrirla cuando quieras.",
+    "reopened": "Reabrimos «{name}». Ya se puede volver a operar ahí.",
     "errors": {
       "NOT_FOUND": "Esa sucursal ya no existe. Actualizá el listado.",
       "INVALID_INPUT": "Revisá los datos de la sucursal e intentá de nuevo.",
@@ -469,7 +469,7 @@
     },
     "submit": "Guardar cambios",
     "submitting": "Guardando…",
-    "saved": "Guardamos los datos del corralón.",
+    "saved": "Guardamos los datos del corralón. Tu cliente los va a ver en la próxima cotización que le envíes.",
     "errors": {
       "NOT_FOUND": "No encontramos la cuenta. Volvé a iniciar sesión.",
       "INVALID_INPUT": "Revisá los datos del corralón e intentá de nuevo.",
@@ -565,11 +565,11 @@
       "adminHint": "Un administrador alcanza todas las sucursales, estén marcadas o no.",
       "closedAssignments": "{count, plural, one {Tiene una sucursal cerrada asignada y al guardar se la vamos a quitar.} other {Tiene # sucursales cerradas asignadas y al guardar se las vamos a quitar.}}"
     },
-    "created": "Creamos el usuario.",
-    "updated": "Guardamos los cambios.",
-    "deactivated": "Desactivamos el usuario.",
-    "reactivated": "Reactivamos el usuario.",
-    "passwordResetSent": "Le enviamos el enlace.",
+    "created": "Creamos a «{name}». Acordate de pasarle la contraseña: nosotros no se la mandamos.",
+    "updated": "Guardamos los cambios de «{name}». Rigen desde su próxima pantalla.",
+    "deactivated": "Desactivamos a «{name}». Ya no puede entrar, y podés reactivarlo cuando quieras.",
+    "reactivated": "Reactivamos a «{name}». Ya puede volver a entrar.",
+    "passwordResetSent": "Le mandamos a {email} un enlace de un solo uso para que elija una contraseña nueva.",
     "errors": {
       "EMAIL_TAKEN": "Ya hay un usuario registrado con esa dirección.",
       "NOT_FOUND": "Ese usuario ya no existe. Actualizá el listado.",
