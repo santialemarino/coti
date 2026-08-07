@@ -46,8 +46,12 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
 
 - **`app/(auth)/`** — Route group for unauthenticated routes: login, signup, the
   forgot/reset-password pair, email verification and `session-ended`. Its
-  `layout.tsx` does **not** require a session — the gate is what bounces an
-  already-authenticated caller to `ROUTES.home`, before the layout renders.
+  `layout.tsx` does **not** require a session — bouncing an already-authenticated
+  caller to `ROUTES.home` is the gate's job, before the layout renders, and it does
+  it for the routes in `SIGNED_OUT_ONLY_ROUTES` only. `verify-email` and
+  `session-ended` deliberately opt out: signup hands the caller a session and sends
+  them to the first, and the second exists to clear the cookies of someone who still
+  looks signed in, so bouncing it would loop.
 - **`app/(protected)/`** — Route group for authenticated routes: RFQ inbox,
   quote (cotización) review, catalog (productos), sucursal-scoped surfaces,
   account/settings. Its `layout.tsx` calls `getSession()` and redirects to
@@ -208,6 +212,10 @@ layout that will look different in production. If a class is missing, confirm it
 (list what the bundle does contain) before doubting anything else.
 
 ## Directory layout — apps/backoffice/
+
+Both trees below are the **target** shape: they name where a thing goes, not only what
+is built. `lib/api/` holds `account.ts`, `branches.ts`, `users.ts`, `client.ts` and
+`errors.ts` today — `rfqs.ts` and `quotes.ts` are where those reads will go.
 
 ```
 app/

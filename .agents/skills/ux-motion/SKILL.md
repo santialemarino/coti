@@ -294,7 +294,13 @@ state. Then check, at minimum:
 - **Open and close every overlay.** Confirm the exit animates — inspect `data-state="closed"` and
   `getAnimations()` if in doubt, because a missing exit looks like a fast close.
 - **Emulate `prefers-reduced-motion: reduce`.** Decorative motion gone, no stray artefacts, copy
-  visible, focus feedback intact.
+  visible, focus feedback intact. **Probe a utility by injecting an element that carries it and
+  reading `getComputedStyle().animationName`** — racing a live one is a timing race. But a bare
+  probe only answers for utilities Tailwind generated in bare form: `animate-focus-bump` reads
+  `none` in _both_ states simply because every call site uses it behind a `group-focus-visible/x:`
+  variant. Read that as no information, not as the gate swallowing functional feedback — confirm
+  against the gate's own list in `packages/ui/src/styles/index.css`, which names only the decorative
+  keyframes.
 - **Check contrast** for any new colour pair against `docs/technical/design-system.md`; if a pair
   isn't in the table, compute it before shipping.
 
