@@ -82,8 +82,12 @@ ships its own at the **root of `app/`**:
   a digest, so its copy is the generic one from the catalog — a failure a screen can name is worded
   where it happened, not here.
 - **`not-found.tsx`** is a server component, so it can read whatever decides its call to action. In
-  the backoffice that is the session: offering the login screen to someone already signed in is a
-  dead end, and offering the home page to someone signed out bounces them back to login.
+  the backoffice that is whether a token cookie exists: offering the login screen to someone already
+  signed in is a dead end, and offering the home page to someone signed out bounces them back to
+  login. Read the **cookie**, not `getSession()` — a 404 must not depend on the API being up, and
+  `getSession` rethrows anything that is not a 401/403, which would turn an unrelated outage into an
+  error screen where a plain "this page does not exist" belonged. A stale token costs one bounce off
+  the gate, which is exactly what the gate is for.
 - Both render **outside every route group's layout** — an unmatched URL is exactly what failed to
   reach one — so they bring their own page frame rather than inheriting it.
 
@@ -201,7 +205,7 @@ app/
 ├── layout.tsx                       # root: <html lang="es">, imports globals.css
 ├── globals.css
 ├── error.tsx                        # root error boundary (client)
-├── not-found.tsx                    # branded 404, session-aware CTA
+├── not-found.tsx                    # branded 404, CTA follows the token cookie
 ├── page.tsx                         # entry (redirect to inbox or login)
 ├── (auth)/                          # No session; redirect out if already logged in
 │   ├── layout.tsx
