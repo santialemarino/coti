@@ -1,9 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
 
 import { Form, FormRootMessage, PendingButton } from '@repo/ui/components';
 import { changePassword } from '@/app/(protected)/settings/password/actions';
@@ -26,7 +27,6 @@ export function ChangePasswordForm() {
   const tErrors = useTranslations('common.form.errors');
   const message = useApiErrorMessage('auth.changePassword');
   const schema = useMemo(() => changePasswordSchema({ field: t, shared: tErrors }), [t, tErrors]);
-  const [done, setDone] = useState(false);
   const form = useForm<ChangePasswordValues>({
     ...FORM_VALIDATION,
     resolver: zodResolver(schema),
@@ -34,10 +34,9 @@ export function ChangePasswordForm() {
   });
 
   async function onSubmit(values: ChangePasswordValues) {
-    setDone(false);
     const result = await changePassword(values);
     if (result.done) {
-      setDone(true);
+      toast.success(t('done'));
       // Nothing is left to resubmit, and a password should not sit in the DOM.
       form.reset(EMPTY_VALUES);
       return;
@@ -76,7 +75,6 @@ export function ChangePasswordForm() {
         />
 
         <FormRootMessage />
-        {done ? <p className="text-paragraph-sm text-foreground-muted">{t('done')}</p> : null}
 
         <PendingButton
           type="submit"

@@ -26,9 +26,12 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           <InlineLink asChild tone="muted">
             <Link href={ROUTES.forgotPassword}>{t('forgotPassword')}</Link>
           </InlineLink>
-          <InlineLink asChild>
-            <Link href={ROUTES.signup}>{t('noAccount')}</Link>
-          </InlineLink>
+          <p className="text-paragraph-sm text-foreground-muted">
+            {t('noAccount')}{' '}
+            <InlineLink asChild>
+              <Link href={ROUTES.signup}>{t('signup')}</Link>
+            </InlineLink>
+          </p>
         </div>
       }
     >

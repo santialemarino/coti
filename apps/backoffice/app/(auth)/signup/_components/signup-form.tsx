@@ -179,9 +179,12 @@ export function SignupForm() {
         title={t('title')}
         description={t(`steps.${stepKey}.description`)}
         footer={
-          <InlineLink asChild tone="muted">
-            <Link href={ROUTES.login}>{t('haveAccount')}</Link>
-          </InlineLink>
+          <p className="text-paragraph-sm text-foreground-muted">
+            {t('haveAccount')}{' '}
+            <InlineLink asChild tone="muted">
+              <Link href={ROUTES.login}>{t('login')}</Link>
+            </InlineLink>
+          </p>
         }
       >
         <div className="flex flex-col gap-y-6">
