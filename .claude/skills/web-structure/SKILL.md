@@ -44,9 +44,10 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
 
 ## App Router layout — backoffice (authenticated)
 
-- **`app/(auth)/`** — Route group for unauthenticated routes: login (and later
-  password reset / invitation acceptance). Its `layout.tsx` does **not** require a
-  session; it should redirect an already-authenticated user to `ROUTES.home`.
+- **`app/(auth)/`** — Route group for unauthenticated routes: login, signup, the
+  forgot/reset-password pair, email verification and `session-ended`. Its
+  `layout.tsx` does **not** require a session — the gate is what bounces an
+  already-authenticated caller to `ROUTES.home`, before the layout renders.
 - **`app/(protected)/`** — Route group for authenticated routes: RFQ inbox,
   quote (cotización) review, catalog (productos), sucursal-scoped surfaces,
   account/settings. Its `layout.tsx` calls `getSession()` and redirects to
@@ -107,9 +108,13 @@ ships its own at the **root of `app/`**:
 - **Reusable across BOTH apps (design system):** `packages/ui/src/components`,
   add to the package's `src/components/index.ts`, import from `@repo/ui/components`.
   See "App vs @repo/ui" below — this is the promotion rule that matters most here.
-- **Shared logic (auth, API, utils):** `lib/` — e.g. `lib/auth.ts` (backoffice
-  session helpers), `lib/utils/page.tsx`. Use for anything used by more than one
-  route or shared between server and client within the app.
+- **Shared logic (auth, API, utils):** `lib/` — e.g. `lib/utils/page.tsx`. Use for
+  anything used by more than one route or shared between server and client within
+  the app. The backoffice's session layer is deliberately **two** modules:
+  `lib/auth/session.ts` is `server-only` and asks the API who the caller is, while
+  `lib/auth/tokens.ts` holds the edge-safe primitives (cookie names, the expiry
+  read, the raw token calls) because `proxy.ts` imports them and the proxy runs on
+  the edge, where `next/headers` and `server-only` are unavailable.
   **A cookie reader returns `undefined` or a real value, never `''`.** Next implements
   `cookies().delete(name)` as a set to an empty string, so a read after a delete in the same
   request still finds the entry — blank. A caller falling back with `??` takes that as a real
@@ -131,10 +136,14 @@ ships its own at the **root of `app/`**:
 - **Cross-entity API contract types:** `lib/api/types.ts` (e.g. a shared
   `SortOrder`) — shared by multiple `lib/api/<feature>.ts` modules; entity-specific
   types stay in their feature module.
-- **Routes:** `config/routes.ts` for `ROUTES` (and in backoffice also `AUTH_ROUTES` and `LOGIN_ROUTE`).
-- **Constants:** `lib/constants/<topic>.ts` — one file per topic (e.g.
-  `rfq.ts`, `quotes.ts`, `catalog.ts`, `animations.ts`). Only for constants
-  imported by 2+ files. Single-file constants stay in the file that uses them.
+- **Routes:** `config/routes.ts` for `ROUTES`. The backoffice also exports what the
+  gate reads — `PUBLIC_ROUTES`, `SIGNED_OUT_ONLY_ROUTES`, `LOGIN_ROUTE`, `NEXT_PARAM`
+  — and `safeNextPath`, which is what makes a `?next=` round trip same-origin only.
+- **Constants:** `lib/constants/<topic>.ts` — one file per topic (the backoffice
+  has `auth.ts`, `branch.ts`, `brand.ts`, `forms.ts`, `password.ts`). Only for
+  constants imported by 2+ files; single-file constants stay in the file that uses
+  them. **Motion values are not among them** — durations and easings are tokens in
+  `@repo/ui` (`MOTION`/`EASE` from `@repo/ui/lib`), never an app constant.
 - **Shared TS types:** `types/` (imported `@/types/...`) for app-wide types that
   aren't tied to one `lib/api` module.
 - **i18n (per app):** `translations/es.json` (the message catalog — one file,
@@ -233,7 +242,7 @@ app/
 ├── components/                      # app-wide (used by 2+ routes)
 ├── hooks/                           # app-level client hooks (@/hooks)
 ├── lib/
-│   ├── auth.ts                      # getSession + session helpers
+│   ├── auth/                        # session.ts (server-only) + tokens.ts (edge-safe)
 │   ├── api/                         # server-only reads (authenticated fetch)
 │   │   ├── rfqs.ts
 │   │   ├── quotes.ts
@@ -241,7 +250,7 @@ app/
 │   ├── constants/<topic>.ts
 │   └── utils/page.tsx
 ├── config/
-│   └── routes.ts                    # ROUTES, AUTH_ROUTES, LOGIN_ROUTE
+│   └── routes.ts                    # ROUTES, PUBLIC_ROUTES, LOGIN_ROUTE, safeNextPath
 ├── proxy.ts                         # the gate (Next 16's name for middleware.ts)
 ├── i18n/request.ts                  # next-intl request config (locale es, AR timezone)
 ├── translations/es.json            # message catalog (namespaced by feature)
@@ -276,7 +285,7 @@ lib/
 ├── constants/<topic>.ts
 └── utils/page.tsx
 config/
-└── routes.ts                        # ROUTES (no AUTH_ROUTES/LOGIN_ROUTE — public app)
+└── routes.ts                        # ROUTES only — no gate, so nothing it would read
 i18n/request.ts                      # next-intl request config (locale es, AR timezone)
 translations/es.json                # message catalog (namespaced by feature)
 lib/i18n/                            # formatter stack (shared shape across both apps)
