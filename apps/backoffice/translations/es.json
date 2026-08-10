@@ -7,7 +7,8 @@
       "delete": "Eliminar",
       "confirm": "Confirmar",
       "edit": "Editar",
-      "search": "Buscar"
+      "search": "Buscar",
+      "back": "Volver"
     },
     "states": {
       "loading": "Cargando…",
@@ -16,7 +17,11 @@
     },
     "nav": {
       "signOut": "Cerrar sesión",
-      "changePassword": "Cambiar contraseña"
+      "changePassword": "Cambiar contraseña",
+      "orders": "Pedidos",
+      "clients": "Clientes",
+      "reports": "Reportes",
+      "administration": "Administración"
     },
     "roles": {
       "ADMIN": "Administrador",
@@ -55,6 +60,26 @@
     "home": {
       "title": "Inicio",
       "description": "Workspace del corralón."
+    },
+    "rfqs": {
+      "title": "Pedidos",
+      "description": "Seguimiento de los pedidos de cotización en proceso."
+    },
+    "rfqsDetail": {
+      "title": "Detalle del pedido",
+      "description": "Revisión de la cotización del pedido."
+    },
+    "clients": {
+      "title": "Clientes",
+      "description": "Listado y detalle de clientes del corralón."
+    },
+    "reports": {
+      "title": "Reportes",
+      "description": "Reportes de pedidos y cotizaciones."
+    },
+    "administration": {
+      "title": "Administración",
+      "description": "Administración de la cuenta."
     },
     "login": {
       "title": "Iniciar sesión",
@@ -302,6 +327,165 @@
     "itemCount": "{count, plural, =0 {Sin ítems} one {# ítem} other {# ítems}}",
     "total": "Total: {amount}",
     "createdAt": "Creada el {date}"
+  },
+  "rfqs": {
+    "title": "Pedidos",
+    "greeting": "¡Hola, {name}!",
+    "selectHint": "Buscá, filtrá y abrí un pedido para revisar su cotización.",
+    "status": {
+      "RECEIVED": "Recibido",
+      "GENERATED": "Generado",
+      "QUOTED": "Cotizado",
+      "SENT": "Enviado",
+      "CHANGE_REQUESTED": "Cambio solicitado",
+      "ACCEPTED": "Aceptado",
+      "REJECTED": "Rechazado"
+    },
+    "priority": {
+      "high": "Alta",
+      "normal": "Normal",
+      "low": "Baja"
+    },
+    "channels": {
+      "whatsapp": "WhatsApp",
+      "email": "Email",
+      "audio": "Audio",
+      "photo": "Foto",
+      "pdf": "PDF",
+      "excel": "Excel",
+      "link": "Enlace"
+    },
+    "list": {
+      "title": "Pedidos",
+      "caption": "Pedidos de cotización recibidos",
+      "create": "Crear pedido",
+      "search": "Buscar por pedido, cliente, vendedor…",
+      "all": "Todos",
+      "tabs": "Filtrar por estado",
+      "resultsTotal": "{total, plural, one {# pedido} other {# pedidos}}",
+      "results": "Mostrando {from}–{to} de {total} pedidos",
+      "items": "{count, plural, one {# ítem} other {# ítems}}",
+      "selectAll": "Seleccionar todos los pedidos de esta página",
+      "selectRow": "Seleccionar el pedido {id}",
+      "selected": "{count, plural, one {# pedido seleccionado} other {# pedidos seleccionados}}",
+      "filters": {
+        "channel": "Canal",
+        "branch": "Sucursal",
+        "seller": "Vendedor",
+        "priority": "Prioridad",
+        "allChannel": "Canales",
+        "allBranch": "Sucursales",
+        "allSeller": "Vendedores",
+        "allPriority": "Prioridades",
+        "clear": "Limpiar filtros"
+      },
+      "columns": {
+        "id": "Pedido",
+        "date": "Fecha",
+        "channel": "Canal",
+        "seller": "Vendedor",
+        "branch": "Sucursal",
+        "items": "Ítems",
+        "total": "Monto",
+        "priority": "Prioridad",
+        "status": "Estado",
+        "actions": "Acciones"
+      },
+      "bulk": {
+        "clear": "Limpiar selección",
+        "archive": "Archivar"
+      },
+      "actions": {
+        "more": "Acciones del pedido",
+        "view": "Ver detalle",
+        "edit": "Editar pedido",
+        "changeStatus": "Cambiar estado",
+        "archive": "Archivar pedido"
+      },
+      "empty": {
+        "title": "Todavía no hay pedidos",
+        "description": "Los pedidos de cotización que reciban tus clientes van a aparecer acá."
+      },
+      "noResults": {
+        "title": "No encontramos pedidos",
+        "description": "Probá con otra búsqueda o quitá algún filtro."
+      },
+      "error": {
+        "title": "No pudimos cargar los pedidos",
+        "description": "Revisá tu conexión e intentá de nuevo.",
+        "retry": "Reintentar"
+      },
+      "toast": {
+        "statusChanged": "El pedido {id} quedó en “{status}”.",
+        "archived": "El pedido {id} se archivó.",
+        "archivedMany": "{count, plural, one {# pedido archivado} other {# pedidos archivados}}.",
+        "comingSoon": "La edición del pedido va a estar disponible en el detalle."
+      }
+    },
+    "create": {
+      "title": "Crear pedido",
+      "description": "Elegí cómo querés armar el pedido.",
+      "importOption": {
+        "title": "Importar archivo",
+        "description": "La IA lee el archivo (PDF, Excel, foto o audio) y arma el pedido automáticamente."
+      },
+      "manualOption": {
+        "title": "Cargar manualmente",
+        "description": "Elegís los productos del catálogo y definís las cantidades."
+      },
+      "import": {
+        "fileLabel": "Archivo",
+        "acceptHint": "Podés subir un PDF, un Excel, un CSV, una imagen o un audio con el pedido del cliente.",
+        "back": "Volver",
+        "processing": "Procesando…",
+        "submit": "Crear pedido con IA"
+      },
+      "manual": {
+        "clientLabel": "Cliente",
+        "clientPlaceholder": "Nombre del cliente",
+        "clearSearch": "Limpiar búsqueda",
+        "search": "Buscar producto por nombre, código o categoría…",
+        "loading": "Cargando catálogo…",
+        "catalogEmpty": "No hay productos que coincidan con la búsqueda.",
+        "catalogLabel": "Catálogo",
+        "add": "Agregar",
+        "itemsLabel": "{count, plural, one {# ítem} other {# ítems}}",
+        "itemsEmpty": "Todavía no agregaste productos.",
+        "each": "c/u",
+        "quantityLabel": "Cantidad de {name}",
+        "remove": "Quitar {name}",
+        "subtotal": "Subtotal",
+        "back": "Volver",
+        "creating": "Creando pedido…",
+        "submit": "Crear pedido"
+      },
+      "toast": {
+        "imported": "La IA procesó “{filename}” y generó el pedido.",
+        "created": "El pedido de {client} se creó correctamente."
+      }
+    },
+    "sidebar": {
+      "search": "Buscar pedidos",
+      "filter": "Filtros",
+      "noResults": "No encontramos pedidos que coincidan con la búsqueda."
+    },
+    "detail": {
+      "back": "Volver a pedidos",
+      "placeholderTitle": "Detalle del pedido {id}",
+      "placeholderDescription": "El detalle de la cotización y sus ítems se va a mostrar acá."
+    }
+  },
+  "clients": {
+    "placeholderTitle": "Clientes",
+    "placeholderDescription": "El listado de clientes y sus cuentas corrientes se va a mostrar acá."
+  },
+  "reports": {
+    "placeholderTitle": "Reportes",
+    "placeholderDescription": "Los reportes de pedidos y cotizaciones se van a mostrar acá."
+  },
+  "administration": {
+    "placeholderTitle": "Administración",
+    "placeholderDescription": "La administración de la cuenta se va a mostrar acá."
   },
   "catalog": {
     "title": "Catálogo",

@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from '@repo/ui/components';
 import { BranchSwitcher } from '@/app/(protected)/_components/branch-switcher';
+import { PrimaryNav } from '@/app/(protected)/_components/primary-nav';
 import { signOut } from '@/app/(protected)/actions';
 import { Brand } from '@/components/brand';
 import { ROUTES } from '@/config/routes';
@@ -42,16 +43,18 @@ export async function AppHeader({ session }: AppHeaderProps) {
   const activeBranchId = await getActiveBranchId();
 
   return (
-    <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center justify-between px-6 bg-background/85 border-b border-border backdrop-blur">
+    <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-6 px-6 bg-background/85 border-b border-border backdrop-blur">
       <Link
         href={ROUTES.home}
         aria-label={t('appName')}
-        className="flex items-center rounded-md outline-none focus-visible:animate-focus-bump-subtle"
+        className="flex shrink-0 items-center rounded-md outline-none focus-visible:animate-focus-bump-subtle"
       >
         <Brand variant="wordmark" size="md" />
       </Link>
 
-      <div className="flex items-center gap-x-2">
+      <PrimaryNav />
+
+      <div className="ml-auto flex items-center gap-x-3">
         {/* One reachable branch is the caller's whole reach, so there is nothing to switch. */}
         {branches.length > 1 ? (
           <BranchSwitcher branches={branches} activeBranchId={activeBranchId ?? null} />
