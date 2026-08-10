@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import { schemaText } from '@repo/vitest-config/schema-text';
 import { signupSchema, type SignupValues } from '@/app/(auth)/signup/form-schema';
-import { PASSWORD_MAX_LENGTH } from '@/lib/constants/auth';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
+import { PASSWORD_MAX_BYTES } from '@/lib/constants/password';
 
 const VALID: SignupValues = {
   accountName: 'Corralón San Martín',
@@ -12,8 +13,8 @@ const VALID: SignupValues = {
   branchAddress: '',
   adminName: 'Ana Pérez',
   adminEmail: 'ana@corralonsanmartin.test',
-  adminPassword: 'coti1234',
-  confirmPassword: 'coti1234',
+  adminPassword: 'Coti-1234-larga',
+  confirmPassword: 'Coti-1234-larga',
 };
 
 function messagesFor(values: Partial<SignupValues>): Record<string, string> {
@@ -56,33 +57,54 @@ describe('signupSchema', () => {
   });
 
   it('refuses a password past the length bcrypt reads', () => {
-    expect(messagesFor({ adminPassword: 'a'.repeat(PASSWORD_MAX_LENGTH + 1) }).adminPassword).toBe(
-      'adminPassword.tooLong',
+    const past = `Aa1!${'b'.repeat(PASSWORD_MAX_BYTES)}`;
+
+    expect(messagesFor({ adminPassword: past, confirmPassword: past }).adminPassword).toBe(
+      'passwordTooLong',
     );
   });
 
-  it('refuses a short password', () => {
-    expect(messagesFor({ adminPassword: 'short', confirmPassword: 'short' }).adminPassword).toBe(
-      'adminPassword.tooShort',
-    );
+  it('refuses a short password even when it carries every character class', () => {
+    expect(
+      messagesFor({ adminPassword: 'Aa1!bcd', confirmPassword: 'Aa1!bcd' }).adminPassword,
+    ).toBe('passwordTooShort');
+  });
+
+  // Long enough is not enough: the policy the API applies is mirrored here, class by class.
+  it.each(['contraseña-larga1', 'CONTRASEÑA-LARGA1', 'Contraseña-larga', 'Contrasena1larga'])(
+    'refuses %p for the class it is missing',
+    (adminPassword) => {
+      expect(messagesFor({ adminPassword, confirmPassword: adminPassword }).adminPassword).toBe(
+        'passwordRequirements',
+      );
+    },
+  );
+
+  // Empty and malformed are different rejections, on every field that has a format.
+  it.each([
+    ['adminEmail', '', 'adminEmail.required'],
+    ['adminEmail', 'ana@', 'invalidEmail'],
+    ['adminPassword', '', 'adminPassword.required'],
+    ['confirmPassword', '', 'confirmPassword.required'],
+  ] as const)('reports %s of %p as %s', (field, value, message) => {
+    expect(messagesFor({ [field]: value })[field]).toBe(message);
   });
 
   it('reports a mistyped confirmation on the confirmation field', () => {
-    expect(messagesFor({ confirmPassword: 'coti12345' }).confirmPassword).toBe(
-      'confirmPassword.mismatch',
+    expect(messagesFor({ confirmPassword: 'Coti-1234-larga!' }).confirmPassword).toBe(
+      'passwordMismatch',
     );
   });
 
-  it('refuses an address that is not one', () => {
-    expect(messagesFor({ adminEmail: 'ana@' }).adminEmail).toBe('adminEmail.invalid');
-  });
-
   // The messages are catalog keys the form resolves, never strings baked into the schema.
-  it('resolves every message through the translator it is given', () => {
-    const schema = signupSchema((key) => `t:${key}`);
-    const parsed = schema.safeParse({ ...VALID, accountName: '' });
+  it('resolves each message through the catalog it belongs to', () => {
+    const schema = signupSchema(schemaText(true));
 
-    expect(parsed.success).toBe(false);
-    expect(parsed.error?.issues[0]?.message).toBe('t:accountName.required');
+    expect(schema.safeParse({ ...VALID, accountName: '' }).error?.issues[0]?.message).toBe(
+      'field:accountName.required',
+    );
+    expect(schema.safeParse({ ...VALID, adminEmail: 'ana@' }).error?.issues[0]?.message).toBe(
+      'shared:invalidEmail',
+    );
   });
 });

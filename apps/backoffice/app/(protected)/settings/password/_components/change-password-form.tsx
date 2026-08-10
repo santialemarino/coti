@@ -1,28 +1,20 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
 
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-  FormRootMessage,
-  Input,
-  PendingButton,
-} from '@repo/ui/components';
+import { Form, FormRootMessage, PendingButton } from '@repo/ui/components';
 import { changePassword } from '@/app/(protected)/settings/password/actions';
 import {
   changePasswordSchema,
   type ChangePasswordValues,
 } from '@/app/(protected)/settings/password/form-schema';
-import { PASSWORD_MIN_LENGTH } from '@/lib/constants/auth';
+import { PasswordField } from '@/components/password-field';
+import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import { FORM_VALIDATION } from '@/lib/forms/options';
 
 const EMPTY_VALUES: ChangePasswordValues = {
   currentPassword: '',
@@ -32,31 +24,24 @@ const EMPTY_VALUES: ChangePasswordValues = {
 
 export function ChangePasswordForm() {
   const t = useTranslations('auth.changePassword');
-  const schema = useMemo(() => changePasswordSchema(t), [t]);
-  const [done, setDone] = useState(false);
+  const tErrors = useTranslations('common.form.errors');
+  const message = useApiErrorMessage('auth.changePassword');
+  const schema = useMemo(() => changePasswordSchema({ field: t, shared: tErrors }), [t, tErrors]);
   const form = useForm<ChangePasswordValues>({
+    ...FORM_VALIDATION,
     resolver: zodResolver(schema),
     defaultValues: EMPTY_VALUES,
   });
 
   async function onSubmit(values: ChangePasswordValues) {
-    setDone(false);
     const result = await changePassword(values);
     if (result.done) {
-      setDone(true);
+      toast.success(t('done'));
       // Nothing is left to resubmit, and a password should not sit in the DOM.
       form.reset(EMPTY_VALUES);
       return;
     }
-    if (result.fieldError) {
-      const message =
-        result.fieldError.key === 'wrong'
-          ? t('errors.wrongCurrentPassword')
-          : t('newPassword.tooShort');
-      form.setError(result.fieldError.field, { message });
-      return;
-    }
-    form.setError('root', { message: t(`errors.${result.error ?? 'unexpected'}`) });
+    form.setError(result.field ?? 'root', { message: message(result.error) });
   }
 
   return (
@@ -66,68 +51,30 @@ export function ChangePasswordForm() {
         noValidate
         className="flex flex-col max-w-sm gap-y-4"
       >
-        <FormField
+        <PasswordField
           control={form.control}
           name="currentPassword"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel required>{t('currentPassword.label')}</FormLabel>
-              <FormControl>
-                <Input
-                  type="password"
-                  autoComplete="current-password"
-                  placeholder={t('currentPassword.placeholder')}
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
+          label={t('currentPassword.label')}
+          placeholder={t('currentPassword.placeholder')}
+          existing
         />
 
-        <FormField
+        <PasswordField
           control={form.control}
           name="newPassword"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel required>{t('newPassword.label')}</FormLabel>
-              <FormControl>
-                <Input
-                  type="password"
-                  autoComplete="new-password"
-                  minLength={PASSWORD_MIN_LENGTH}
-                  placeholder={t('newPassword.placeholder')}
-                  {...field}
-                />
-              </FormControl>
-              <FormDescription>{t('minLength', { count: PASSWORD_MIN_LENGTH })}</FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
+          label={t('newPassword.label')}
+          placeholder={t('newPassword.placeholder')}
+          meter
         />
 
-        <FormField
+        <PasswordField
           control={form.control}
           name="confirmPassword"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel required>{t('confirmPassword.label')}</FormLabel>
-              <FormControl>
-                <Input
-                  type="password"
-                  autoComplete="new-password"
-                  minLength={PASSWORD_MIN_LENGTH}
-                  placeholder={t('confirmPassword.placeholder')}
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
+          label={t('confirmPassword.label')}
+          placeholder={t('confirmPassword.placeholder')}
         />
 
         <FormRootMessage />
-        {done ? <p className="text-paragraph-sm text-foreground-muted">{t('done')}</p> : null}
 
         <PendingButton
           type="submit"

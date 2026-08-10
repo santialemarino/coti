@@ -10,15 +10,8 @@ import { useForm } from 'react-hook-form';
 import {
   Card,
   Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
   FormRootMessage,
   InlineLink,
-  Input,
   PendingButton,
   StatusScreen,
 } from '@repo/ui/components';
@@ -29,8 +22,10 @@ import {
   resetPasswordSchema,
   type ResetPasswordValues,
 } from '@/app/(auth)/reset-password/form-schema';
+import { PasswordField } from '@/components/password-field';
 import { ROUTES } from '@/config/routes';
-import { PASSWORD_MIN_LENGTH } from '@/lib/constants/auth';
+import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import { FORM_VALIDATION } from '@/lib/forms/options';
 
 interface ResetPasswordFormProps {
   token: string;
@@ -38,10 +33,12 @@ interface ResetPasswordFormProps {
 
 export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
   const t = useTranslations('auth.resetPassword');
-  const tCommon = useTranslations('common');
-  const schema = useMemo(() => resetPasswordSchema(t), [t]);
+  const tErrors = useTranslations('common.form.errors');
+  const message = useApiErrorMessage('auth.resetPassword');
+  const schema = useMemo(() => resetPasswordSchema({ field: t, shared: tErrors }), [t, tErrors]);
   const [done, setDone] = useState(false);
   const form = useForm<ResetPasswordValues>({
+    ...FORM_VALIDATION,
     resolver: zodResolver(schema),
     defaultValues: { token, newPassword: '', confirmPassword: '' },
   });
@@ -52,11 +49,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
       setDone(true);
       return;
     }
-    if (result.fieldError) {
-      form.setError(result.fieldError.field, { message: t('newPassword.tooShort') });
-      return;
-    }
-    form.setError('root', { message: t(`errors.${result.error ?? 'unexpected'}`) });
+    form.setError(result.field ?? 'root', { message: message(result.error) });
   }
 
   return (
@@ -82,49 +75,19 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
               noValidate
               className="flex flex-col gap-y-5"
             >
-              <FormField
+              <PasswordField
                 control={form.control}
                 name="newPassword"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel required>{t('newPassword.label')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        autoComplete="new-password"
-                        minLength={PASSWORD_MIN_LENGTH}
-                        placeholder={t('newPassword.placeholder')}
-                        passwordToggleLabel={tCommon('form.togglePassword')}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t('minLength', { count: PASSWORD_MIN_LENGTH })}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                label={t('newPassword.label')}
+                placeholder={t('newPassword.placeholder')}
+                meter
               />
 
-              <FormField
+              <PasswordField
                 control={form.control}
                 name="confirmPassword"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel required>{t('confirmPassword.label')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        autoComplete="new-password"
-                        minLength={PASSWORD_MIN_LENGTH}
-                        placeholder={t('confirmPassword.placeholder')}
-                        passwordToggleLabel={tCommon('form.togglePassword')}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                label={t('confirmPassword.label')}
+                placeholder={t('confirmPassword.placeholder')}
               />
 
               <FormRootMessage />

@@ -48,7 +48,7 @@ function renderImport() {
   const form = view.container.querySelector('form');
   if (!form) throw new Error('no form rendered');
 
-  return { ...view, form, preview: button(copy.form.preview), export: button(copy.form.export) };
+  return { ...view, form, preview: button(copy.form.preview), export: button(copy.export.submit) };
 }
 
 /*
@@ -70,14 +70,14 @@ describe('PriceImport pending state', () => {
   it('only lets the running action claim the pending state', async () => {
     let release = () => {};
     vi.mocked(exportPrices).mockImplementation(
-      () => new Promise((resolve) => (release = () => resolve({ ok: false, error: 'unexpected' }))),
+      () => new Promise((resolve) => (release = () => resolve({ ok: false, error: 'INTERNAL' }))),
     );
 
     const view = renderImport();
     fireEvent.click(view.export);
 
     await waitFor(() => expect(view.export.getAttribute('aria-busy')).toBe('true'));
-    expect(view.export.textContent).toContain(copy.form.exporting);
+    expect(view.export.textContent).toContain(copy.export.submitting);
     expect(view.preview.getAttribute('aria-busy')).toBe('false');
     expect(view.preview.textContent).toContain(copy.form.preview);
     expect(view.preview.textContent).not.toContain(copy.form.previewing);
@@ -91,7 +91,7 @@ describe('PriceImport pending state', () => {
   it('goes busy on the submit button when the preview is the action in flight', async () => {
     let release = () => {};
     vi.mocked(previewPriceImport).mockImplementation(
-      () => new Promise((resolve) => (release = () => resolve({ ok: false, error: 'unexpected' }))),
+      () => new Promise((resolve) => (release = () => resolve({ ok: false, error: 'INTERNAL' }))),
     );
 
     const view = renderImport();
@@ -108,18 +108,67 @@ describe('PriceImport pending state', () => {
   // The page resolves the branch and the component carries it, so no call can be made without
   // one — the API rejects a price write that names no branch.
   it('sends the page-resolved branch with every call', async () => {
-    vi.mocked(exportPrices).mockResolvedValue({ ok: false, error: 'unexpected' });
+    vi.mocked(exportPrices).mockResolvedValue({ ok: false, error: 'INTERNAL' });
 
     const view = renderImport();
     fireEvent.click(view.export);
 
     await waitFor(() => expect(exportPrices).toHaveBeenCalledWith(BRANCH.id));
 
-    vi.mocked(previewPriceImport).mockResolvedValue({ ok: false, error: 'invalidFile' });
+    vi.mocked(previewPriceImport).mockResolvedValue({ ok: false, error: 'INVALID_INPUT' });
     submitPreview(view.form);
 
     await waitFor(() =>
       expect(previewPriceImport).toHaveBeenCalledWith(BRANCH.id, expect.any(FormData)),
     );
+  });
+});
+
+describe('PriceImport partial confirmation', () => {
+  it('allows valid rows and explains that invalid rows are skipped', async () => {
+    vi.mocked(previewPriceImport).mockResolvedValue({
+      ok: true,
+      preview: {
+        branchId: BRANCH.id,
+        rows: [
+          {
+            rowNumber: 2,
+            code: 'CEM-001',
+            productName: 'Cemento',
+            currentPrice: null,
+            currentMinPrice: null,
+            price: '10000.00',
+            minPrice: null,
+            currency: 'ARS',
+            errors: [],
+          },
+          {
+            rowNumber: 3,
+            code: 'DESCONOCIDO',
+            productName: '',
+            currentPrice: null,
+            currentMinPrice: null,
+            price: '5000.00',
+            minPrice: null,
+            currency: 'ARS',
+            errors: ['unknown_product'],
+          },
+        ],
+        validRows: 1,
+        invalidRows: 1,
+        canConfirm: true,
+        previewedAt: '2026-08-05T12:00:00Z',
+      },
+    });
+
+    const view = renderImport();
+    submitPreview(view.form);
+
+    await waitFor(() => expect(view.container.textContent).toContain('se omitirán 1 fila'));
+    const confirm = [...view.container.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes(copy.confirm),
+    );
+    expect(confirm).toBeDefined();
+    await waitFor(() => expect(confirm?.disabled).toBe(false));
   });
 });

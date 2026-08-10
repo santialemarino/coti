@@ -1,4 +1,5 @@
-import { type SignupValues } from '@/app/(auth)/signup/form-schema';
+import { signupObject, signupSchema, type SignupValues } from '@/app/(auth)/signup/form-schema';
+import { rawText, type SchemaText } from '@/lib/forms/validators';
 
 export type StepKey = 'account' | 'branch' | 'admin';
 
@@ -27,6 +28,19 @@ export const STEPS: Record<StepKey, SignupStep> = {
 };
 
 export const STEP_ORDER: readonly StepKey[] = ['account', 'branch', 'admin'];
+
+/*
+ * What the form validates while the caller is on a given step. Advancing is a submit of that step,
+ * so the schema covers its fields and nothing else — validating the whole object would mark fields
+ * nobody has reached. The last step validates everything, because a field two steps back can still
+ * have been emptied on the way through.
+ */
+export function stepSchema(step: StepKey, t: SchemaText = rawText) {
+  if (step === 'account')
+    return signupObject(t).pick({ accountName: true, legalName: true, taxId: true });
+  if (step === 'branch') return signupObject(t).pick({ branchName: true, branchAddress: true });
+  return signupSchema(t);
+}
 
 // Which step shows a given field, so a rejection the API attaches to one can be put on screen.
 export function stepOwning(field: keyof SignupValues): StepKey | undefined {

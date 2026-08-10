@@ -30,9 +30,6 @@ func passwordResetValidity(minutes int) string {
 		if hours == 1 {
 			return "El enlace vence en 1 hora y se puede usar una sola vez."
 		}
-		if hours == 1 {
-			return "El enlace vence en 1 hora y se puede usar una sola vez."
-		}
 		return fmt.Sprintf("El enlace vence en %d horas y se puede usar una sola vez.", hours)
 	}
 	return fmt.Sprintf("El enlace vence en %d minutos y se puede usar una sola vez.", minutes)

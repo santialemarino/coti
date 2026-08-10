@@ -18,11 +18,10 @@ type SetAvailabilityRequest struct {
 // STRING, never a float: a JSON number would lose NUMERIC(14,2) precision on the round
 // trip. valid_from defaults to now.
 type SetPriceRequest struct {
-	Price      string     `json:"price" binding:"required,numeric"`
-	Currency   string     `json:"currency" binding:"omitempty,len=3"` // e.g. "ARS"; defaults to ARS.
-	MinPrice   *string    `json:"min_price" binding:"omitempty,numeric"`
-	Conditions *string    `json:"conditions" binding:"omitempty,max=255"`
-	ValidFrom  *time.Time `json:"valid_from"`
+	Price     string     `json:"price" binding:"required,numeric"`
+	Currency  string     `json:"currency" binding:"omitempty,len=3"` // e.g. "ARS"; defaults to ARS.
+	MinPrice  *string    `json:"min_price" binding:"omitempty,numeric"`
+	ValidFrom *time.Time `json:"valid_from"`
 }
 
 // AvailabilityResponse is returned by the availability list and set endpoints.
@@ -43,17 +42,16 @@ type AvailabilityListResponse struct {
 
 // PriceResponse is one validity period. valid_to is null on the period in force.
 type PriceResponse struct {
-	ID         uuid.UUID  `json:"id"`
-	BranchID   uuid.UUID  `json:"branch_id"`
-	ProductID  uuid.UUID  `json:"product_id"`
-	Price      string     `json:"price"` // decimal string, never a float.
-	Currency   string     `json:"currency"`
-	MinPrice   *string    `json:"min_price"` // discount-engine floor; decimal string.
-	Conditions *string    `json:"conditions"`
-	ValidFrom  time.Time  `json:"valid_from"`
-	ValidTo    *time.Time `json:"valid_to"`
-	SetBy      *uuid.UUID `json:"set_by"`
-	CreatedAt  time.Time  `json:"created_at"`
+	ID        uuid.UUID  `json:"id"`
+	BranchID  uuid.UUID  `json:"branch_id"`
+	ProductID uuid.UUID  `json:"product_id"`
+	Price     string     `json:"price"` // decimal string, never a float.
+	Currency  string     `json:"currency"`
+	MinPrice  *string    `json:"min_price"` // discount-engine floor; decimal string.
+	ValidFrom time.Time  `json:"valid_from"`
+	ValidTo   *time.Time `json:"valid_to"`
+	SetBy     *uuid.UUID `json:"set_by"`
+	CreatedAt time.Time  `json:"created_at"`
 }
 
 // PriceListResponse is returned by GET /v1/products/:productId/prices, grouped by branch

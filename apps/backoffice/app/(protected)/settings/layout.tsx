@@ -21,6 +21,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
     { href: ROUTES.changePassword, label: t('nav.password') },
     ...(session?.role === ADMIN_ROLE
       ? [
+          { href: ROUTES.accountSettings, label: t('nav.account') },
           { href: ROUTES.branchSettings, label: t('nav.branches') },
           { href: ROUTES.userSettings, label: t('nav.users') },
           { href: ROUTES.priceSettings, label: t('nav.prices') },

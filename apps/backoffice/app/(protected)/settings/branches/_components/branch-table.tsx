@@ -26,9 +26,9 @@ import {
   createBranch,
   reopenBranch,
   updateBranch,
-  type BranchErrorKey,
 } from '@/app/(protected)/settings/branches/actions';
 import type { BranchValues } from '@/app/(protected)/settings/branches/form-schema';
+import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Branch } from '@/lib/api/branches';
 
 const COLUMN_COUNT = 5;
@@ -39,9 +39,10 @@ interface BranchTableProps {
 
 export function BranchTable({ branches }: BranchTableProps) {
   const t = useTranslations('branches');
+  const message = useApiErrorMessage('branches');
   const [form, setForm] = useState<{ mode: 'create' | 'edit'; branch: Branch | null } | null>(null);
   const [closing, setClosing] = useState<Branch | null>(null);
-  const [error, setError] = useState<BranchErrorKey | null>(null);
+  const [error, setError] = useState<string | null>(null);
   /*
    * One transition per action, never one shared: a shared transition only reports that something
    * is running, so closing a branch would light the dialog that saves one.
@@ -61,12 +62,12 @@ export function BranchTable({ branches }: BranchTableProps) {
           ? await updateBranch(target.branch.id, values)
           : await createBranch(values);
       if (!result.ok) {
-        setError(result.error ?? 'unexpected');
+        setError(message(result.error));
         return;
       }
       // A confirmation of something just done is transient, so it is a toast; the standing
       // message about what is on screen is the Callout above.
-      toast.success(t(target.mode === 'edit' ? 'updated' : 'created'));
+      toast.success(t(target.mode === 'edit' ? 'updated' : 'created', { name: values.name }));
       setForm(null);
     });
   }
@@ -81,10 +82,10 @@ export function BranchTable({ branches }: BranchTableProps) {
         // Closed either way: the refusal belongs to the list, not to a dialog that is about to
         // disappear, and the account needing one active branch is a fact about the whole account.
         setClosing(null);
-        setError(result.error ?? 'unexpected');
+        setError(message(result.error));
         return;
       }
-      toast.success(t('closed'));
+      toast.success(t('closed', { name: target.name }));
       setClosing(null);
     });
   }
@@ -94,16 +95,16 @@ export function BranchTable({ branches }: BranchTableProps) {
     startReopen(async () => {
       const result = await reopenBranch(branch);
       if (!result.ok) {
-        setError(result.error ?? 'unexpected');
+        setError(message(result.error));
         return;
       }
-      toast.success(t('reopened'));
+      toast.success(t('reopened', { name: branch.name }));
     });
   }
 
   return (
     <div className="flex flex-col gap-y-6">
-      {error ? <Callout tone="danger">{t(`errors.${error}`)}</Callout> : null}
+      {error ? <Callout tone="danger">{error}</Callout> : null}
 
       <div className="flex justify-end">
         <Button disabled={busy} onClick={() => setForm({ mode: 'create', branch: null })}>

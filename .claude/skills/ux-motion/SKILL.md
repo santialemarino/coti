@@ -49,9 +49,15 @@ _is_:
   className="group-focus-visible/clear:animate-focus-bump"
   ```
 
-  **The colour shift is not optional.** `prefers-reduced-motion` removes the bump, and a focus
-  indicator that disappears for a user who needs less motion is not a focus indicator. This is the
-  one rule in this skill most likely to be forgotten — check it on every icon-only control you write.
+  **The colour shift is not optional**, because the bump is a one-shot: it ends, and once it does
+  nothing marks the focused element unless something persistent does. Note the reason is _not_ reduced
+  motion — Coti's gate deliberately keeps the bump for a user who asked for less movement, since it is
+  functional feedback. This is the one rule in this skill most likely to be forgotten; check it on
+  every icon-only control you write.
+
+  **`InlineLink` is the one deliberate exception.** Its focus signal is the bump alone, because focus
+  reading differently from hover is the point there, so a focused link is indistinguishable from an
+  unfocused one once the bump ends. That is known and accepted — do not add a colour shift to it.
 
 The bump comes in three intensities: `animate-focus-bump` (→1.5, icon-only buttons),
 `animate-focus-bump-soft` (→1.15, inline icons), `animate-focus-bump-subtle` (→1.05, text links,
@@ -177,6 +183,32 @@ panel enters from the trigger and then dissolves in place.
   commit that the `layout` parent never re-renders for, so it measures nothing and the resize snaps.
   Use `mode="popLayout"`, which pulls the outgoing child out of flow in the same commit the state
   changes, and give the parent `relative` so the popped child is positioned against it.
+- **`layout` is the wrong tool for a box that contains a form.** A layout animation scale-corrects
+  its children, which squashes inputs mid-flight. Measure the height and animate it directly
+  instead — `AnimatedHeight` in the backoffice's auth flow is the reference, and four things in it
+  are load-bearing:
+  - **Arm on the state change, travel on the resize that follows.** They are not the same moment: an
+    atomic swap resizes in the commit its key changes, but a crossfade holds the outgoing stage for
+    its exit first, so measuring when the key changes reads the size the box already has and
+    concludes there is nothing to animate.
+  - **Freeze the box at the same moment you arm it, in a layout effect.** A layout effect is the last
+    point before the browser paints; a `ResizeObserver` notification is not, because it arrives a
+    frame **after** the new size has already been painted. A box left loose between the content
+    resizing and the animation taking hold flashes its destination height and then jumps back to
+    travel from — measured at two frames plus a 57px reversal before this was added. Skip the freeze
+    when the box already carries a height (it is then frozen or mid-travel, and writing to it
+    overwrites the frame the travel was about to write), and release it if the swap turns out not to
+    change the height at all.
+  - **Animate imperatively, from an explicit `[from, to]` pair.** Rendering the old height and then
+    the new one is two commits, and the box pins to the first while the second never arrives.
+  - **Read the resize through a ref, and never re-create the observer.** Re-observing delivers a
+    measurement immediately, and that delivery spends the arm on a size that has not changed yet.
+    Release the box to its natural height afterwards, so a message opening under a field still resizes
+    it live — that is already smooth, and following it would only make the container lag behind it.
+- **Clipping an animated box costs the elevation inside it.** `overflow: hidden` cuts a card's own
+  shadow off on all four sides. `overflow: clip` with an `overflow-clip-margin` keeps the clip a few
+  pixels outside the border box, so growing content is still contained and the card still reads as
+  lifted off the page.
 - **A disclosure chevron rotates on open**, driven off the open state, and its transition must name
   **`rotate`** (see the transform-family rule above). Use the shared `DropdownChevron`, not a new one.
 
@@ -188,6 +220,13 @@ panel enters from the trigger and then dissolves in place.
   sort icon are the references.
 - **A height reveal is `grid-template-rows` 0fr → 1fr** with `overflow-hidden` on the inner element.
   No JS, no measured pixels. `FormMessage` is the reference.
+- **A height animation is only half of an exit.** Whatever is inside has to be held and faded with
+  the box, or the words vanish on frame one and an empty box animates its own collapse — which is
+  what "the error disappearing is not animated" looks like from the outside, even with the height
+  transition working perfectly. Hold the last non-empty body in a ref, fade it with the same duration
+  the box uses, and `aria-hidden` the wrapper so a screen reader is not read a rejection that no
+  longer applies. `FormMessage` is the reference; the same applies to any panel that empties its
+  content on the state change that closes it.
 - **Cancel the parent's gap when a collapsible block sits in a flex column.** A collapsed
   height-animated child still contributes the column's `gap`, so it leaves a permanent band of empty
   space. Give the wrapper a negative margin equal to the gap and restore the gap as padding _inside_
@@ -230,14 +269,38 @@ Honour `prefers-reduced-motion: reduce`. The split:
 ## Verify what you built
 
 For any UI change, drive it in a real browser with `playwright-cli` (see the `playwright-cli` skill)
-rather than reasoning about it. Check, at minimum:
+rather than reasoning about it.
+
+**Measure motion against a production build, and sample inside the page.** Two things make a browser
+pass lie, and both report a broken animation as a clean one:
+
+- **`next dev` is the wrong surface.** It degrades badly under a session's worth of HMR — renders
+  reaching minutes — and a starved page cannot run the sampler at frame rate. Use
+  `pnpm --filter <app> run build` then `next start` on a fresh port; it serves in ~100ms and does not
+  drift. (Never reuse a port a browser has already touched: the network service holds the socket and
+  the restart dies with `EADDRINUSE`.)
+- **One `page.evaluate` per sample is far too slow.** Each is a round trip, so a dozen samples span
+  much longer than the 300ms you are measuring and the first can land after the animation finished —
+  which reads as a snap. Run **one** `page.evaluate` containing a `requestAnimationFrame` loop that
+  pushes the value per frame and returns the array. Have it record the largest gap between frames and
+  throw the run away if that is not ~17ms: a starved sample proves nothing, and its early frames are
+  the ones you were going to draw conclusions from.
+
+A snapped animation and a working one are identical at rest, so read the interpolation, never the end
+state. Then check, at minimum:
 
 - **Tab through every interactive element.** A ring or a bump on each, no native outline left, nothing
   skipped.
 - **Open and close every overlay.** Confirm the exit animates — inspect `data-state="closed"` and
   `getAnimations()` if in doubt, because a missing exit looks like a fast close.
 - **Emulate `prefers-reduced-motion: reduce`.** Decorative motion gone, no stray artefacts, copy
-  visible, focus feedback intact.
+  visible, focus feedback intact. **Probe a utility by injecting an element that carries it and
+  reading `getComputedStyle().animationName`** — racing a live one is a timing race. But a bare
+  probe only answers for utilities Tailwind generated in bare form: `animate-focus-bump` reads
+  `none` in _both_ states simply because every call site uses it behind a `group-focus-visible/x:`
+  variant. Read that as no information, not as the gate swallowing functional feedback — confirm
+  against the gate's own list in `packages/ui/src/styles/index.css`, which names only the decorative
+  keyframes.
 - **Check contrast** for any new colour pair against `docs/technical/design-system.md`; if a pair
   isn't in the table, compute it before shipping.
 

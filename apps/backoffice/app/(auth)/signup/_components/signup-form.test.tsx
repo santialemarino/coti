@@ -2,6 +2,7 @@ import { fireEvent, render, waitFor, type RenderResult } from '@testing-library/
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { isMessageShown } from '@repo/vitest-config/form-messages';
 import { SignupForm } from '@/app/(auth)/signup/_components/signup-form';
 import messages from '@/translations/es.json';
 
@@ -19,8 +20,8 @@ const BRANCH = { branchName: 'Villa Bosch' };
 const ADMIN = {
   adminName: 'Ana Pérez',
   adminEmail: 'ana@corralonsanmartin.test',
-  adminPassword: 'coti1234',
-  confirmPassword: 'coti1234',
+  adminPassword: 'Coti-1234-larga',
+  confirmPassword: 'Coti-1234-larga',
 };
 
 // The real catalog, so a renamed or missing key fails here rather than rendering its own name.
@@ -97,6 +98,18 @@ describe('SignupForm steps', () => {
   });
 
   /*
+   * A CTA is a prompt plus a short link, never one long link: the whole sentence inside the anchor
+   * is what a screen reader announces as the link's name.
+   */
+  it('offers the login CTA as a prompt with a short link', () => {
+    const view = renderSignup();
+    const link = view.getByRole('link', { name: copy.login });
+
+    expect(link.textContent).toBe(copy.login);
+    expect(link.closest('p')?.textContent).toBe(`${copy.haveAccount} ${copy.login}`);
+  });
+
+  /*
    * A CUIT is written with hyphens — the dev seed's own is `30-71234567-9` — and an `inputMode` of
    * `numeric` gives iOS a keypad with no hyphen key, so the value cannot be typed on a phone.
    */
@@ -119,6 +132,47 @@ describe('SignupForm steps', () => {
     await waitFor(() => expect(view.getByText(copy.accountName.required)).toBeTruthy());
     expect(fieldOf(view, 'branchName')).toBeNull();
     expect(signup).not.toHaveBeenCalled();
+  });
+
+  /*
+   * Advancing goes through `handleSubmit`, not `trigger`: react-hook-form only re-checks a field on
+   * change once the form has been submitted, so a step gated with `trigger` alone leaves its
+   * required message standing while the caller types the value that answers it.
+   */
+  it('clears a step message as soon as the field is filled', async () => {
+    const view = renderSignup();
+
+    fireEvent.submit(view.form);
+    await waitFor(() => expect(view.getByText(copy.accountName.required)).toBeTruthy());
+
+    fill(view, ACCOUNT);
+    await waitFor(() =>
+      expect(isMessageShown(view.container, copy.accountName.required)).toBe(false),
+    );
+  });
+
+  /*
+   * Advancing marks the whole form submitted, so without a per-step flag the last step would start
+   * reporting errors on the first character typed into a field the caller has never submitted.
+   */
+  it('stays quiet while a step nobody has submitted is being filled in', async () => {
+    const view = renderSignup();
+
+    fill(view, ACCOUNT);
+    fireEvent.submit(view.form);
+    await waitForStep(view, 'branchName');
+    fill(view, BRANCH);
+    fireEvent.submit(view.form);
+    await waitForStep(view, 'adminPassword');
+
+    // Halfway through typing a password: invalid, but not yet submitted on this step.
+    fill(view, { adminPassword: 'abc' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const messages = [...view.container.querySelectorAll('[data-slot="form-message"] p')]
+      .map((p) => p.textContent)
+      .filter(Boolean);
+    expect(messages).toEqual([]);
   });
 
   it('advances once the step validates, and keeps what was typed on the way back', async () => {
@@ -255,7 +309,7 @@ describe('SignupForm rejections', () => {
     vi.mocked(signup).mockImplementation(
       () =>
         new Promise((resolve) => {
-          release = () => resolve({ fieldError: { field: 'adminEmail', key: 'emailTaken' } });
+          release = () => resolve({ error: 'EMAIL_TAKEN', field: 'adminEmail' });
         }),
     );
 
@@ -272,20 +326,20 @@ describe('SignupForm rejections', () => {
     release();
 
     await waitForStep(view, 'adminEmail');
-    expect(view.getByText(copy.errors.emailTaken)).toBeTruthy();
+    expect(view.getByText(messages.errors.EMAIL_TAKEN)).toBeTruthy();
     expect(fieldOf(view, 'adminEmail')?.getAttribute('aria-invalid')).toBe('true');
     // On the refused field, not merely on the step: it is the one the caller has to change.
     await waitFor(() => expect(document.activeElement).toBe(fieldOf(view, 'adminEmail')));
   });
 
   it('reports a failure that belongs to no field on the form itself', async () => {
-    vi.mocked(signup).mockResolvedValue({ error: 'unreachable' });
+    vi.mocked(signup).mockResolvedValue({ error: 'UNREACHABLE' });
 
     const view = renderSignup();
     await reachAdminStep(view);
     fill(view, ADMIN);
     fireEvent.submit(view.form);
 
-    await waitFor(() => expect(view.getByText(copy.errors.unreachable)).toBeTruthy());
+    await waitFor(() => expect(view.getByText(messages.errors.UNREACHABLE)).toBeTruthy());
   });
 });

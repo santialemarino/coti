@@ -12,7 +12,7 @@ import (
 
 // productColumns keeps the SELECT list, the scan order, and the struct in one place.
 // embedding is left out on purpose: 1536 floats that no catalog read needs.
-const productColumns = `id, account_id, code, canonical_name, description, unit, category,
+const productColumns = `id, account_id, code, canonical_name, description, unit, family_id, subgroup_id,
 	is_active, created_at, updated_at`
 
 // productCodeIndex is the partial unique index behind "one code per account". Partial
@@ -39,10 +39,11 @@ func (r *ProductRepository) List(
 		   AND ($2 OR is_active = TRUE)
 		   AND ($3::text = '' OR canonical_name ILIKE '%' || $3 || '%'
 		        OR coalesce(code, '') ILIKE '%' || $3 || '%')
-		   AND ($4::text = '' OR category = $4)
+		   AND ($4::uuid IS NULL OR family_id = $4)
+		   AND ($5::uuid IS NULL OR subgroup_id = $5)
 		 ORDER BY canonical_name, id
-		 LIMIT $5 OFFSET $6`,
-		accountID, f.IncludeInactive, f.Search, f.Category, f.Limit, f.Offset)
+		 LIMIT $6 OFFSET $7`,
+		accountID, f.IncludeInactive, f.Search, f.FamilyID, f.SubgroupID, f.Limit, f.Offset)
 	if err != nil {
 		return domain.ProductPage{}, err
 	}
@@ -52,7 +53,7 @@ func (r *ProductRepository) List(
 	for rows.Next() {
 		var p domain.Product
 		if err := rows.Scan(&p.ID, &p.AccountID, &p.Code, &p.CanonicalName, &p.Description,
-			&p.Unit, &p.Category, &p.IsActive, &p.CreatedAt, &p.UpdatedAt, &page.Total); err != nil {
+			&p.Unit, &p.FamilyID, &p.SubgroupID, &p.IsActive, &p.CreatedAt, &p.UpdatedAt, &page.Total); err != nil {
 			return domain.ProductPage{}, err
 		}
 		page.Items = append(page.Items, p)
@@ -88,10 +89,10 @@ func (r *ProductRepository) Create(
 	ctx context.Context, q Querier, accountID uuid.UUID, in domain.NewProduct,
 ) (*domain.Product, error) {
 	p, err := scanProduct(q.QueryRow(ctx,
-		`INSERT INTO product (account_id, code, canonical_name, description, unit, category)
-		 VALUES ($1, $2, $3, $4, $5, $6)
+		`INSERT INTO product (account_id, code, canonical_name, description, unit, family_id, subgroup_id)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 RETURNING `+productColumns,
-		accountID, in.Code, in.CanonicalName, in.Description, in.Unit, in.Category))
+		accountID, in.Code, in.CanonicalName, in.Description, in.Unit, in.FamilyID, in.SubgroupID))
 	if isUniqueViolation(err, productCodeIndex) {
 		return nil, domain.ErrConflict
 	}
@@ -105,12 +106,12 @@ func (r *ProductRepository) Update(
 ) (*domain.Product, error) {
 	p, err := scanProduct(q.QueryRow(ctx,
 		`UPDATE product
-		 SET code = $3, canonical_name = $4, description = $5, unit = $6, category = $7,
-		     is_active = coalesce($8, is_active)
+		 SET code = $3, canonical_name = $4, description = $5, unit = $6, family_id = $7,
+		     subgroup_id = $8, is_active = coalesce($9, is_active)
 		 WHERE account_id = $1 AND id = $2
 		 RETURNING `+productColumns,
-		accountID, id, in.Code, in.CanonicalName, in.Description, in.Unit, in.Category,
-		in.IsActive))
+		accountID, id, in.Code, in.CanonicalName, in.Description, in.Unit, in.FamilyID,
+		in.SubgroupID, in.IsActive))
 	if isUniqueViolation(err, productCodeIndex) {
 		return nil, domain.ErrConflict
 	}
@@ -135,7 +136,7 @@ func (r *ProductRepository) Delete(ctx context.Context, q Querier, accountID, id
 func scanProduct(row pgx.Row) (*domain.Product, error) {
 	var p domain.Product
 	err := row.Scan(&p.ID, &p.AccountID, &p.Code, &p.CanonicalName, &p.Description, &p.Unit,
-		&p.Category, &p.IsActive, &p.CreatedAt, &p.UpdatedAt)
+		&p.FamilyID, &p.SubgroupID, &p.IsActive, &p.CreatedAt, &p.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

@@ -14,13 +14,15 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-  FormRootMessage,
   Input,
   PendingButton,
 } from '@repo/ui/components';
 import { login } from '@/app/(auth)/login/actions';
 import { loginSchema, type LoginValues } from '@/app/(auth)/login/form-schema';
-import { PASSWORD_MIN_LENGTH } from '@/lib/constants/auth';
+import { PasswordField } from '@/components/password-field';
+import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
+import { FORM_VALIDATION } from '@/lib/forms/options';
 
 interface LoginFormProps {
   next?: string;
@@ -29,9 +31,11 @@ interface LoginFormProps {
 export function LoginForm({ next }: LoginFormProps) {
   const router = useRouter();
   const t = useTranslations('auth.login');
-  const tCommon = useTranslations('common');
-  const schema = useMemo(() => loginSchema(t), [t]);
+  const tErrors = useTranslations('common.form.errors');
+  const message = useApiErrorMessage('auth.login');
+  const schema = useMemo(() => loginSchema({ field: t, shared: tErrors }), [t, tErrors]);
   const form = useForm<LoginValues>({
+    ...FORM_VALIDATION,
     resolver: zodResolver(schema),
     defaultValues: { email: '', password: '', rememberMe: false },
   });
@@ -45,8 +49,12 @@ export function LoginForm({ next }: LoginFormProps) {
       router.refresh();
       return;
     }
-    // Which credential was wrong is deliberately not knowable, so it is a form error.
-    form.setError('root', { message: t(`errors.${result.error ?? 'unexpected'}`) });
+    /*
+     * On the password rather than the form: which credential was wrong stays unknowable, but the
+     * message has to clear when the caller edits their attempt, and a root error only clears on the
+     * next submit — leaving a stale rejection under a corrected password.
+     */
+    form.setError('password', { message: message(result.error) });
   }
 
   return (
@@ -62,6 +70,7 @@ export function LoginForm({ next }: LoginFormProps) {
                 <Input
                   type="email"
                   autoComplete="email"
+                  maxLength={TEXT_FIELD_MAX_LENGTH}
                   placeholder={t('email.placeholder')}
                   {...field}
                 />
@@ -71,25 +80,12 @@ export function LoginForm({ next }: LoginFormProps) {
           )}
         />
 
-        <FormField
+        <PasswordField
           control={form.control}
           name="password"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel required>{t('password.label')}</FormLabel>
-              <FormControl>
-                <Input
-                  type="password"
-                  autoComplete="current-password"
-                  minLength={PASSWORD_MIN_LENGTH}
-                  placeholder={t('password.placeholder')}
-                  passwordToggleLabel={tCommon('form.togglePassword')}
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
+          label={t('password.label')}
+          placeholder={t('password.placeholder')}
+          existing
         />
 
         <FormField
@@ -106,8 +102,6 @@ export function LoginForm({ next }: LoginFormProps) {
             </FormItem>
           )}
         />
-
-        <FormRootMessage />
 
         <PendingButton
           type="submit"

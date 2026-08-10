@@ -3,6 +3,7 @@
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 
 import { MOTION } from '@repo/ui/lib';
+import { AnimatedHeight } from '@/app/(auth)/_components/animated-height';
 
 interface AuthStageProps {
   /* Changing this key is what triggers the crossfade, so it must name the stage. */
@@ -12,30 +13,33 @@ interface AuthStageProps {
 
 /*
  * Crossfades between the stages of an auth flow — the form, then the result. `mode="wait"` holds the
- * incoming stage until the outgoing one has finished leaving, so the two never overlap and the card
- * never jumps height mid-swap.
+ * incoming stage until the outgoing one has finished leaving, so the two never overlap.
  *
  * Without this the result would replace the form on the same frame: the most visible moment in the
- * flow, and the one place a hard cut is most obvious.
+ * flow, and the one place a hard cut is most obvious. The crossfade alone was only half of it,
+ * though — it fades the content while the box around it snaps to the new stage's height, so
+ * `AnimatedHeight` carries the box.
  */
 export function AuthStage({ stageKey, children }: AuthStageProps) {
   const reduced = useReducedMotion();
 
   return (
-    <AnimatePresence mode="wait" initial={false}>
-      <motion.div
-        key={stageKey}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        /*
-         * Zeroed rather than dropped: motion inlines its own styles, so swapping the element out
-         * under reduced motion would strand a stage at opacity 0.
-         */
-        transition={{ duration: reduced ? 0 : MOTION.default }}
-      >
-        {children}
-      </motion.div>
-    </AnimatePresence>
+    <AnimatedHeight trigger={stageKey}>
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={stageKey}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          /*
+           * Zeroed rather than dropped: motion inlines its own styles, so swapping the element out
+           * under reduced motion would strand a stage at opacity 0.
+           */
+          transition={{ duration: reduced ? 0 : MOTION.default }}
+        >
+          {children}
+        </motion.div>
+      </AnimatePresence>
+    </AnimatedHeight>
   );
 }

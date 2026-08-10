@@ -68,6 +68,7 @@ func RateLimit(limiter Limiter, opts RateLimitOptions) gin.HandlerFunc {
 		_ = c.Error(domain.ErrRateLimited)
 		c.AbortWithStatusJSON(http.StatusTooManyRequests, dto.RateLimitResponse{
 			Error:             "too many requests",
+			Code:              string(domain.CodeRateLimited),
 			RetryAfterSeconds: retryAfter,
 		})
 	}

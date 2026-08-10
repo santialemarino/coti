@@ -34,6 +34,16 @@ func seedProduct(t *testing.T, db *DB, accountID uuid.UUID, name string) uuid.UU
 	return id
 }
 
+func seededProductFamilyID(t *testing.T, db *DB) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	if err := db.CrossAccount().QueryRow(context.Background(),
+		`SELECT id FROM product_family ORDER BY sort_order LIMIT 1`).Scan(&id); err != nil {
+		t.Fatalf("read seeded product family: %v", err)
+	}
+	return id
+}
+
 // The acceptance criterion of the catalog ticket: a product of one account is neither
 // visible nor modifiable from another. Read, list, update, and delete are all checked,
 // because a missing predicate on any one of them is the same leak.
@@ -159,11 +169,12 @@ func TestProductRepository_CreateRejectsADuplicateCode(t *testing.T) {
 	accountA := seedAccount(t, db, "Corralon A")
 	repo := NewProductRepository()
 	code := "CEM-" + uuid.NewString()[:8]
+	familyID := seededProductFamilyID(t, db)
 
 	var created uuid.UUID
 	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountA}, func(q Querier) error {
 		p, createErr := repo.Create(ctx, q, accountA, domain.NewProduct{
-			Code: &code, CanonicalName: "Cemento Portland 50kg",
+			Code: &code, CanonicalName: "Cemento Portland 50kg", FamilyID: familyID,
 		})
 		if createErr != nil {
 			return createErr
@@ -179,7 +190,7 @@ func TestProductRepository_CreateRejectsADuplicateCode(t *testing.T) {
 
 	err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountA}, func(q Querier) error {
 		_, createErr := repo.Create(ctx, q, accountA, domain.NewProduct{
-			Code: &code, CanonicalName: "Cemento Portland 50kg (bis)",
+			Code: &code, CanonicalName: "Cemento Portland 50kg (bis)", FamilyID: familyID,
 		})
 		return createErr
 	})
@@ -196,12 +207,13 @@ func TestProductRepository_CreateAllowsTheSameCodeInAnotherAccount(t *testing.T)
 	accountB := seedAccount(t, db, "Corralon B")
 	repo := NewProductRepository()
 	code := "CEM-" + uuid.NewString()[:8]
+	familyID := seededProductFamilyID(t, db)
 
 	for _, accountID := range []uuid.UUID{accountA, accountB} {
 		var created uuid.UUID
 		if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID}, func(q Querier) error {
 			p, createErr := repo.Create(ctx, q, accountID, domain.NewProduct{
-				Code: &code, CanonicalName: "Cemento Portland 50kg",
+				Code: &code, CanonicalName: "Cemento Portland 50kg", FamilyID: familyID,
 			})
 			if createErr != nil {
 				return createErr

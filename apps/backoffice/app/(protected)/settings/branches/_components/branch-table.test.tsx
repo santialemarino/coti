@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BranchTable } from '@/app/(protected)/settings/branches/_components/branch-table';
 import type { Branch } from '@/lib/api/branches';
+import { EXPIRY_MAX_DAYS, EXPIRY_MIN_DAYS } from '@/lib/constants/branch';
 import messages from '@/translations/es.json';
 
 vi.mock('@/app/(protected)/settings/branches/actions', () => ({
@@ -162,9 +163,9 @@ describe('BranchTable dialogs', () => {
   });
 
   /*
-   * A schema message is resolved by a translator that takes a key and nothing else, so a catalog
-   * entry with an ICU placeholder in it renders the placeholder. Only the browser showed it: the
-   * schema test asserts the key, and the key was right.
+   * A schema message carries its numbers as ICU placeholders, so the range the caller reads comes
+   * from the constants rather than from the copy. Only a rendered form shows whether they resolved:
+   * the schema test asserts the key, and the key is right either way.
    */
   it('renders a validation message with nothing left to interpolate', async () => {
     const view = renderTable();
@@ -174,9 +175,10 @@ describe('BranchTable dialogs', () => {
     fireEvent.change(field(view, 'defaultExpiryDays'), { target: { value: '400' } });
     submitDialog(view);
 
-    const message = await waitFor(() =>
-      within(dialog(view)).getByText(copy.defaultExpiryDays.outOfRange),
-    );
+    const expected = copy.defaultExpiryDays.outOfRange
+      .replace('{min}', String(EXPIRY_MIN_DAYS))
+      .replace('{max}', String(EXPIRY_MAX_DAYS));
+    const message = await waitFor(() => within(dialog(view)).getByText(expected));
     expect(message.textContent).not.toMatch(/[{}]/);
   });
 
@@ -191,7 +193,11 @@ describe('BranchTable dialogs', () => {
 
     await waitFor(() => expect(createBranch).toHaveBeenCalledOnce());
     expect(updateBranch).not.toHaveBeenCalled();
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.created));
+    // Names the branch: a toast that arrives while the caller is looking elsewhere has to say
+    // which one it is about, so the assertion is on the name reaching it, not on the sentence.
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('Villa Bosch')),
+    );
   });
 });
 
@@ -212,14 +218,14 @@ describe('BranchTable closing a branch', () => {
    * gone before it can be read.
    */
   it('puts the last-active refusal on the page and shuts the dialog', async () => {
-    vi.mocked(closeBranch).mockResolvedValue({ error: 'lastActive' });
+    vi.mocked(closeBranch).mockResolvedValue({ error: 'LAST_ACTIVE_BRANCH' });
     const view = renderTable([CENTRAL]);
 
     fireEvent.click(rowActions(view, CENTRAL.name).close);
     await waitFor(() => expect(dialog(view)).toBeTruthy());
     fireEvent.click(within(dialog(view)).getByRole('button', { name: copy.close.confirm }));
 
-    await waitFor(() => expect(view.getByText(copy.errors.lastActive)).toBeTruthy());
+    await waitFor(() => expect(view.getByText(messages.errors.LAST_ACTIVE_BRANCH)).toBeTruthy());
     await waitFor(() => expect(view.baseElement.querySelector('[role="dialog"]')).toBeNull());
   });
 
@@ -233,8 +239,10 @@ describe('BranchTable closing a branch', () => {
 
     await waitFor(() => expect(closeBranch).toHaveBeenCalledWith(MORON.id));
     // A confirmation of something just done is transient, so it is a toast rather than a standing
-    // Callout on the list — which is what the refusal above is.
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.closed));
+    // Callout on the list — which is what the refusal above is — and it names the branch it closed.
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(expect.stringContaining(MORON.name)),
+    );
   });
 
   /*
@@ -302,11 +310,13 @@ describe('BranchTable closed branches', () => {
     await waitFor(() => expect(reopenBranch).toHaveBeenCalledOnce());
     expect(reopenBranch).toHaveBeenCalledWith(CLOSED);
     expect(view.baseElement.querySelector('[role="dialog"]')).toBeNull();
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.reopened));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(expect.stringContaining(CLOSED.name)),
+    );
   });
 
   it('puts a refused reopen on the list', async () => {
-    vi.mocked(reopenBranch).mockResolvedValue({ error: 'notFound' });
+    vi.mocked(reopenBranch).mockResolvedValue({ error: 'NOT_FOUND' });
     const view = renderTable([MORON, CLOSED]);
 
     fireEvent.click(
@@ -315,6 +325,6 @@ describe('BranchTable closed branches', () => {
       }),
     );
 
-    await waitFor(() => expect(view.getByText(copy.errors.notFound)).toBeTruthy());
+    await waitFor(() => expect(view.getByText(copy.errors.NOT_FOUND)).toBeTruthy());
   });
 });

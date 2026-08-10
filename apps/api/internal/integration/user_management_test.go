@@ -171,6 +171,17 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 	return &env{router: router, db: db, tokens: tokenService, mail: mailer}
 }
 
+// mustCleanup runs a teardown delete on the owner pool and fails the test when it cannot. A
+// discarded error leaves rows behind while the suite still passes, and a cleanup belongs in
+// t.Cleanup rather than a defer: cleanups run after the body's defers, so a pool one of them closed
+// is already gone.
+func (e *env) mustCleanup(t *testing.T, query string, args ...any) {
+	t.Helper()
+	if _, err := e.db.CrossAccount().Exec(context.Background(), query, args...); err != nil {
+		t.Errorf("cleanup %q: %v", query, err)
+	}
+}
+
 // seedAccount creates an account with one branch through the owner pool, and removes both at
 // the end of the test.
 func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.UUID) {
@@ -189,7 +200,6 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 	}
 
 	t.Cleanup(func() {
-		c := context.Background()
 		for _, stmt := range []string{
 			`DELETE FROM user_branch WHERE account_id = $1`,
 			`DELETE FROM auth_token WHERE account_id = $1`,
@@ -200,7 +210,7 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 			`DELETE FROM branch WHERE account_id = $1`,
 			`DELETE FROM account WHERE id = $1`,
 		} {
-			_, _ = e.db.CrossAccount().Exec(c, stmt, accountID)
+			e.mustCleanup(t, stmt, accountID)
 		}
 	})
 	return accountID, branchID
@@ -266,9 +276,22 @@ func (e *env) do(t *testing.T, r request) *httptest.ResponseRecorder {
 	return rec
 }
 
+// errorCode reads the envelope's stable code, which is what a client branches on when one route
+// answers the same status for more than one reason.
+func errorCode(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+	var body struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body %s: %v", rec.Body, err)
+	}
+	return body.Code
+}
+
 func createUserBody(email string, role domain.UserRole, branchIDs []uuid.UUID) map[string]any {
 	return map[string]any{
-		"name": "Nuevo", "email": email, "password": "una-clave-larga",
+		"name": "Nuevo", "email": email, "password": "Una-clave-larga1",
 		"role": string(role), "branch_ids": branchIDs,
 	}
 }
@@ -438,6 +461,9 @@ func TestUsers_DuplicateEmailIsAConflictAcrossAccounts(t *testing.T) {
 		t.Errorf("duplicate in the same account: status = %d, want %d; body = %s",
 			dup.Code, http.StatusConflict, dup.Body)
 	}
+	if got := errorCode(t, dup); got != string(domain.CodeEmailTaken) {
+		t.Errorf("duplicate in the same account: code = %q, want %q", got, domain.CodeEmailTaken)
+	}
 
 	other := e.do(t, request{method: http.MethodPost, path: "/v1/users", token: e.tokenFor(t, adminB),
 		body: createUserBody(shared, domain.UserRoleSeller, []uuid.UUID{branchB})})
@@ -507,6 +533,9 @@ func TestUsers_AdminCannotDeactivateThemselves(t *testing.T) {
 		t.Errorf("DELETE self: status = %d, want %d; body = %s",
 			rec.Code, http.StatusUnprocessableEntity, rec.Body)
 	}
+	if got := errorCode(t, rec); got != string(domain.CodeSelfDeactivation) {
+		t.Errorf("DELETE self: code = %q, want %q", got, domain.CodeSelfDeactivation)
+	}
 
 	rec = e.do(t, request{method: http.MethodPut, path: "/v1/users/" + admin.ID.String(), token: token,
 		body: map[string]any{"name": "Admin", "email": admin.Email, "role": "ADMIN", "is_active": false}})
@@ -520,6 +549,11 @@ func TestUsers_AdminCannotDeactivateThemselves(t *testing.T) {
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("PUT self role=SELLER: status = %d, want %d; body = %s",
 			rec.Code, http.StatusUnprocessableEntity, rec.Body)
+	}
+	// Two refusals, one status, two codes: the screen removes the role control for the caller's
+	// own row and keeps a message for the deactivation, and it can only tell them apart by code.
+	if got := errorCode(t, rec); got != string(domain.CodeSelfRoleChange) {
+		t.Errorf("PUT self role=SELLER: code = %q, want %q", got, domain.CodeSelfRoleChange)
 	}
 
 	// The admin must still be an active admin after all three refusals.
@@ -612,9 +646,8 @@ func TestPrices_SellerCannotReadAnUnassignedBranchByOmittingTheHeader(t *testing
 		}
 	}
 	t.Cleanup(func() {
-		c := context.Background()
-		_, _ = e.db.CrossAccount().Exec(c, `DELETE FROM product_price WHERE product_id = $1`, productID)
-		_, _ = e.db.CrossAccount().Exec(c, `DELETE FROM product WHERE id = $1`, productID)
+		e.mustCleanup(t, `DELETE FROM product_price WHERE product_id = $1`, productID)
+		e.mustCleanup(t, `DELETE FROM product WHERE id = $1`, productID)
 	})
 
 	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)

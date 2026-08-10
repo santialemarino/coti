@@ -14,8 +14,8 @@ That leaves a clean split:
 
 | Question                        | Answered by                                          |
 | ------------------------------- | ---------------------------------------------------- |
-| Is there a token at all?        | `middleware.ts`, from the cookie                     |
-| Has it expired?                 | `middleware.ts`, from the unverified `exp` claim     |
+| Is there a token at all?        | `proxy.ts`, from the cookie                          |
+| Has it expired?                 | `proxy.ts`, from the unverified `exp` claim          |
 | Is the session behind it valid? | the API, via `GET /v1/me` and on every other request |
 | May this caller do this?        | the API, always                                      |
 
@@ -31,7 +31,7 @@ client code cannot read either, so no script on the page can lift the token.
 that die with the browser and the API issues its short refresh TTL. Checked, `remember_me` goes
 to the API — which is what unlocks its 30-day refresh window — a third cookie `coti_remember`
 records the choice, and all three get a `maxAge` of `AUTH_REMEMBERED_SESSION_DAYS`. The flag has
-to be recorded because middleware renews on the edge with no other way to know, and because
+to be recorded because the proxy renews on the edge with no other way to know, and because
 `change-password` re-issues the pair: without it a remembered session would quietly decay into
 one that dies with the browser. The API remains what decides whether a refresh token is live, so
 an over-long cookie costs nothing but a wasted round trip.
@@ -40,7 +40,7 @@ an over-long cookie costs nothing but a wasted round trip.
   read, and the three calls to `/v1/public/auth/{login,refresh}` and `/v1/auth/logout`. It
   talks to the API with its own `fetch` because the authenticated client reads the session, so
   a session that read the client would be a cycle. It may not import `next/headers` or
-  `server-only`: `middleware.ts` imports it, and middleware runs on the edge.
+  `server-only`: `proxy.ts` imports it, and the proxy runs on the edge.
 - **`lib/auth/session.ts`** — server-only. `getSession()` asks `GET /v1/me`, so its answer
   accounts for what a cookie cannot: a bumped session epoch, a deactivated user, a revoked
   token. `startSession` / `clearSession` / `endSession` own the cookie writes.
@@ -59,7 +59,9 @@ and hides exactly this.
 
 ## The gate
 
-`middleware.ts` runs on everything but static assets and decides reachability:
+`proxy.ts` runs on everything but static assets and decides reachability. It is the file
+convention Next 16 renamed from `middleware`; the exported function is `proxy` and nothing else
+about it changed:
 
 | Situation                                           | Result                                                     |
 | --------------------------------------------------- | ---------------------------------------------------------- |
@@ -70,8 +72,8 @@ and hides exactly this.
 | Protected route, refresh rejected                   | cookies cleared, redirected to login with `?next=`         |
 | Protected route, API unreachable                    | through — the cookies survive and the next request retries |
 
-**Middleware is the only place a session is renewed.** Next allows a cookie write from a server
-action, a route handler or middleware, and only middleware runs before the page renders — so
+**The proxy is the only place a session is renewed.** Next allows a cookie write from a server
+action, a route handler or the proxy, and only the proxy runs before the page renders — so
 renewing here is what lets a server component read a live token without ever handling expiry.
 The renewed pair is written onto the request as well as the response, so the render this
 request triggers already sees it.
@@ -88,12 +90,12 @@ which the API's `AUTH_REFRESH_REUSE_GRACE_SECONDS` window absorbs.
 ## Two gates, because one cannot see everything
 
 `app/(protected)/layout.tsx` calls `getSession()` and redirects when it comes back null. That
-is not a duplicate of the middleware check — middleware knows only that a token exists and has
+is not a duplicate of the proxy's check — the proxy knows only that a token exists and has
 not expired, while this asks the API whether the session is still good.
 
 It redirects to **`/session-ended`**, a route handler, rather than straight to the login screen.
 A layout cannot write cookies, so redirecting with the dead cookies still set would have
-middleware bounce the caller back to a page that rejects them, forever. The route handler
+the proxy bounce the caller back to a page that rejects them, forever. The route handler
 clears the cookies and then sends them to login. `/session-ended` is public and, unlike the
 other public routes, is exempt from the signed-in bounce for the same reason.
 
@@ -229,16 +231,31 @@ bearer, `X-Branch-Id`, and the error vocabulary, decided once instead of per scr
   `Content-Disposition`.
 - Emptiness is read off the **body**, not the status: the API answers 204 for a completed write
   and 202 for an accepted one, and neither carries a body.
-- Every status maps to one `ApiErrorCode` (`badRequest`, `unauthenticated`, `forbidden`,
-  `notFound`, `conflict`, `unprocessable`, `rateLimited`, `unreachable`, `unexpected`), so no
-  screen branches on a raw status. The API's `{error, detail}` text is kept for the log and
-  never rendered; the interface owns its own message per code, in `translations/es.json`.
+- A refusal becomes an `ApiErrorCode` — the API's own `code` from the error envelope, listed in
+  `lib/api/errors.ts`. A response carrying none falls back to the code its status implies, which
+  is what covers the aborts the API writes before a handler is reached. Two codes are the
+  client's own, because the API cannot answer them: `UNREACHABLE`, for a request that never
+  arrived, and `SESSION_EXPIRED`, for a session a re-check confirmed is over. The envelope's
+  `error` and `detail` text is kept for the log and never rendered.
 - The client carries **transport only**. Turning the API's snake_case JSON into camelCase is
   each `lib/api/<feature>` module's job, with explicit raw types and a mapper per entity.
   Request bodies, query params and headers stay snake_case: that is the wire contract.
 - `X-Branch-Id` comes from the active branch by default. `branchScoped: false` opts a call out
   and `branchId` pins it to a specific branch — see "The active branch" above for why each
   exists.
+
+## Wording a refusal
+
+A server action returns the code and, where the refusal belongs to a field, which field —
+never a sentence and never a key of its own. One resolver turns the code into Spanish:
+`useApiErrorMessage(namespace)` in a client component, `apiErrorMessage(t, namespace, code)` in a
+server one.
+
+`errors.<CODE>` in `translations/es.json` words every code once; a flow that says one differently
+repeats it under its own `<flow>.errors.<CODE>`. The namespace is walked back a segment at a time,
+so `users.passwordReset` inherits `users` and then the shared catalog — which is how mailing a
+recovery link reads a 422 as "that user is deactivated" while the rest of the flow reads the same
+code as "check these values", with neither action branching on it.
 
 `app/error.tsx` is the recoverable state for anything a screen did not catch, so an unexpected
 response leaves the user with a retry rather than a broken page.
@@ -258,12 +275,19 @@ response leaves the user with a retry rather than a broken page.
 - **`FormControl` stamps `aria-invalid` and `aria-describedby`** onto the input it wraps, so the
   invalid styling and the screen-reader wiring are automatic instead of per call site.
 - **The message row animates between `0fr` and `1fr`** and reserves no space when empty, so
-  revealing an error never snaps the layout.
+  revealing an error never snaps the layout. It leaves the same way it arrives: the last body is
+  held and faded out with the collapsing box, because a height animation over an already-empty
+  paragraph animates nothing anybody can see. The wrapper goes `aria-hidden` as the error clears,
+  so the held copy is never read out.
 - **A required marker is `<FormLabel required>`**, never a hand-written asterisk.
 - **A server-side rejection lands inline on its field** via `form.setError`, so it reads like a
   validation error — a wrong current password marks `currentPassword`. A rejection that belongs
   to no field goes to `root` and renders in `FormRootMessage`: login answers "invalid
   credentials" without saying which half was wrong, and the form must not invent a guess.
+- **The card animates its own height between stages and steps.** `AnimatedHeight` measures the box
+  and animates it directly rather than using motion's `layout`, which scale-corrects its children
+  and would squash the inputs. It arms on the stage or step key and travels on the resize that
+  follows, because a crossfade holds the outgoing stage through its exit and only resizes after it.
 
 ## Configuration
 

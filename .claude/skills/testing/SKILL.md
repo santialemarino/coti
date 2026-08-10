@@ -20,7 +20,9 @@ description: Where tests live, how to run them, and what to test in the Coti rep
 - **CI:** `.github/workflows/ci.api.yml` runs `gofmt` check, `go vet`,
   `golangci-lint`, `go build`, and `go test ./...` on API PRs; the web workflows run
   lint + `check-types` + test + build, and `ci.ui.yml` does the same for the design
-  system; `ci.scripts.yml` covers `scripts/` and the root manifest.
+  system; `ci.scripts.yml` covers `scripts/` and the root manifest; and `ci.skills.yml` covers the
+  two skill trees, where its whole job is `diff -r` — the mirrors are byte-equal by contract and
+  nothing else could catch a teammate editing one side only.
   Two workflows carry a **second job** that stands up PostgreSQL + pgvector and applies the
   migration chain: the API's runs the integration suite, which guards tenant isolation, and
   the scripts' runs the commands for real. Both gate merges rather than being a local-only
@@ -29,7 +31,9 @@ description: Where tests live, how to run them, and what to test in the Coti rep
 - **Every workflow is path-filtered**, so a directory nothing watches gets no checks at all —
   a PR touching only it goes green having run nothing. Adding a top-level directory means
   adding or widening a workflow in the same change. Each workflow also lists **itself** in its
-  `paths`, so editing one is covered by the run it configures.
+  `paths`, so editing one is covered by the run it configures. **None of them is a required
+  check, deliberately:** under path filters a check that never runs for a given PR stays pending
+  forever and blocks the merge instead of passing it.
 - **Each one runs on a pull request into `main`/`dev` and on a push to either**, on the same
   paths. The push half is what checks the merge commit: a pull-request run tests a preview of the
   merge, which goes stale the moment the base branch moves under it, and without the push run
@@ -179,8 +183,9 @@ apps/api/
 - **Teardown ordering is a rule, not a detail.** `t.Cleanup` runs **after** the test body's `defer`s,
   so a pool a `defer` closed is already gone by the time the deletes run — register the close with
   `t.Cleanup` too. And a teardown that deletes real rows **never discards its error**, because a
-  failed delete leaves rows behind and the suite still passes: route every one through a helper that
-  fails the test when the delete cannot happen (`mustCleanup` is the one in `internal/repository`).
+  failed delete leaves rows behind and the suite still passes: route every one through `mustCleanup`,
+  which fails the test when the delete cannot happen — a function in `internal/repository`, a method
+  on `env` in `internal/integration`.
 - **One row, one owner.** Let the seed that created a row remove it. A second per-test teardown for
   the same row is what puts a delete ahead of a foreign key still pointing at it, and an inline delete
   at the end of a test body is skipped by any `t.Fatal` above it — so it belongs in `t.Cleanup` or
@@ -250,6 +255,27 @@ setting that should hold everywhere in the shared package, not in one app. What 
 - **A `cookieJar()` double**, from `@repo/vitest-config/cookies`. Use it rather than hand-rolling
   one: it reproduces Next's `delete`, which is a **set to `''`** and not a removal, so a reader
   that mishandles the blank fails here instead of in a browser.
+- **A `schemaText()` double**, from `@repo/vitest-config/schema-text`, for the translator pair a
+  form schema takes. `schemaText(true)` tags each message with the catalog it came from
+  (`field:…` / `shared:…`), which is how a test asserts that "empty" and "malformed" resolve to
+  different messages without hard-coding Spanish.
+- **`isMessageShown` / `isMessageHeld`**, from `@repo/vitest-config/form-messages`. A form message is
+  held and faded on its way out, so it is still in the DOM after it clears —
+  `queryByText(...)` going null is the **defect**, not the expectation. These read `aria-hidden`
+  instead, which is the one definition of "shown".
+
+### Fake timers, and the one that bites
+
+Anything counting down needs `vi.useFakeTimers()`, and there is a trap in how you enable it:
+
+- **`{ shouldAdvanceTime: true }` is required** for Testing Library's `waitFor` to resolve at all —
+  without it nothing drives the poll and every wait in the file times out.
+- **But it advances fake time twice**: once with real elapsed time and again with each explicit
+  `advanceTimersByTimeAsync`. Anything reading the wall clock then moves at roughly double speed and
+  lands on a number the test cannot predict.
+- So **assert the contract, not the tick** — that the control is shut with a number on it, that the
+  number falls, and that it opens once the wait has passed. A test pinned to `N - 1` is testing the
+  harness.
 
 ### What to test
 

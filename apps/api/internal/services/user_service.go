@@ -37,11 +37,11 @@ type branchExistence interface {
 // UserService owns the account's users: who exists, what role they carry, and which branches
 // they may operate on.
 type UserService struct {
-	db           tenantTxRunner
-	users        userAdminRepository
-	assignments  userBranchRepository
-	branches     branchExistence
-	passwordMinL int
+	db          tenantTxRunner
+	users       userAdminRepository
+	assignments userBranchRepository
+	branches    branchExistence
+	policy      domain.PasswordPolicy
 }
 
 // NewUserService builds a UserService.
@@ -51,7 +51,7 @@ func NewUserService(
 ) *UserService {
 	return &UserService{
 		db: db, users: users, assignments: assignments, branches: branches,
-		passwordMinL: cfg.PasswordMinLength,
+		policy: domain.PasswordPolicy{MinLength: cfg.PasswordMinLength},
 	}
 }
 
@@ -116,9 +116,8 @@ func (s *UserService) CreateUser(
 	if err := s.validateProfile(in.Name, in.Email, in.Role); err != nil {
 		return nil, err
 	}
-	if len([]rune(in.Password)) < s.passwordMinL {
-		return nil, fmt.Errorf("%w: password must be at least %d characters",
-			domain.ErrInvalidInput, s.passwordMinL)
+	if err := s.policy.Validate(in.Password); err != nil {
+		return nil, err
 	}
 	branchIDs := dedupeUUIDs(in.BranchIDs)
 	in.BranchIDs = branchIDs
@@ -160,7 +159,8 @@ func (s *UserService) UpdateUser(
 	}
 	isSelf := id == tenant.UserID
 	if isSelf && in.IsActive != nil && !*in.IsActive {
-		return nil, fmt.Errorf("%w: an admin cannot deactivate themselves", domain.ErrInvalidInput)
+		return nil, domain.WithCode(domain.CodeSelfDeactivation,
+			fmt.Errorf("%w: an admin cannot deactivate themselves", domain.ErrInvalidInput))
 	}
 	branchIDs := dedupeUUIDs(in.BranchIDs)
 	in.BranchIDs = branchIDs
@@ -172,7 +172,8 @@ func (s *UserService) UpdateUser(
 			return getErr
 		}
 		if isSelf && in.Role != current.Role {
-			return fmt.Errorf("%w: an admin cannot change their own role", domain.ErrInvalidInput)
+			return domain.WithCode(domain.CodeSelfRoleChange,
+				fmt.Errorf("%w: an admin cannot change their own role", domain.ErrInvalidInput))
 		}
 		if assignErr := s.assertBranchesInAccount(ctx, q, tenant.AccountID, branchIDs); assignErr != nil {
 			return assignErr
@@ -203,7 +204,8 @@ func (s *UserService) UpdateUser(
 // tokens they already hold stop working at once. An admin cannot deactivate themselves.
 func (s *UserService) DeactivateUser(ctx context.Context, tenant domain.Tenant, id uuid.UUID) error {
 	if id == tenant.UserID {
-		return fmt.Errorf("%w: an admin cannot deactivate themselves", domain.ErrInvalidInput)
+		return domain.WithCode(domain.CodeSelfDeactivation,
+			fmt.Errorf("%w: an admin cannot deactivate themselves", domain.ErrInvalidInput))
 	}
 
 	return s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {

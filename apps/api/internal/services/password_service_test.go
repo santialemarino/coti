@@ -21,8 +21,8 @@ import (
 // against in-memory fakes. What reaches the database is covered by the integration suites.
 
 const (
-	testCurrentPassword = "current-horse-battery"
-	testNewPassword     = "brand-new-staple-42"
+	testCurrentPassword = "Current-horse-battery1"
+	testNewPassword     = "Brand-new-staple-42"
 	testRawResetToken   = "raw-reset-token"
 )
 

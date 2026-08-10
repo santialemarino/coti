@@ -1,11 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
-import { useForm } from 'react-hook-form';
+import { useForm, type FieldErrors, type Resolver } from 'react-hook-form';
 
 import {
   Button,
@@ -15,14 +14,17 @@ import {
   PendingButton,
   Stepper,
 } from '@repo/ui/components';
+import { AnimatedHeight } from '@/app/(auth)/_components/animated-height';
 import { AuthCard } from '@/app/(auth)/_components/auth-card';
 import { AccountStep } from '@/app/(auth)/signup/_components/account-step';
 import { AdminStep } from '@/app/(auth)/signup/_components/admin-step';
 import { BranchStep } from '@/app/(auth)/signup/_components/branch-step';
 import { signup } from '@/app/(auth)/signup/actions';
-import { signupSchema, type SignupValues } from '@/app/(auth)/signup/form-schema';
-import { STEP_ORDER, stepOwning, STEPS, type StepKey } from '@/app/(auth)/signup/steps';
+import { type SignupValues } from '@/app/(auth)/signup/form-schema';
+import { STEP_ORDER, stepOwning, STEPS, stepSchema, type StepKey } from '@/app/(auth)/signup/steps';
 import { ROUTES } from '@/config/routes';
+import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import { FORM_VALIDATION } from '@/lib/forms/options';
 
 const STEP_FIELDS: Record<StepKey, () => React.ReactNode> = {
   account: AccountStep,
@@ -50,10 +52,45 @@ const EMPTY_VALUES: SignupValues = {
 export function SignupForm() {
   const router = useRouter();
   const t = useTranslations('auth.signup');
-  const schema = useMemo(() => signupSchema(t), [t]);
+  const tErrors = useTranslations('common.form.errors');
+  const message = useApiErrorMessage('auth.signup');
+  const text = useMemo(() => ({ field: t, shared: tErrors }), [t, tErrors]);
   const [stepKey, setStepKey] = useState<StepKey>('account');
+  /* Read by the resolver, which runs outside a render and needs the step as of the submit. */
+  const currentStep = useRef<StepKey>('account');
+  /*
+   * Whether the caller has tried to leave the step they are on. Advancing marks the whole form
+   * submitted, and react-hook-form re-checks every change from then on — so without this the last
+   * step starts reporting errors on the first character typed into a field nobody has submitted.
+   */
+  const stepSubmitted = useRef(false);
+
+  /*
+   * The step decides what a submit validates, so the schema changes under the form and
+   * `zodResolver` — built around one fixed schema — is not what runs here. The values pass through
+   * untouched, since a step's schema covers only its own fields.
+   */
+  const resolver: Resolver<SignupValues> = useCallback(
+    async (values) => {
+      if (!stepSubmitted.current) return { values, errors: {} };
+
+      const parsed = await stepSchema(currentStep.current, text).safeParseAsync(values);
+      if (parsed.success) return { values, errors: {} };
+
+      const errors: Record<string, { type: string; message: string }> = {};
+      for (const issue of parsed.error.issues) {
+        // Every field of the wizard is a flat key, so the first path segment names it.
+        const name = String(issue.path[0]);
+        errors[name] ??= { type: issue.code, message: issue.message };
+      }
+      return { values: {}, errors: errors as FieldErrors<SignupValues> };
+    },
+    [text],
+  );
+
   const form = useForm<SignupValues>({
-    resolver: zodResolver(schema),
+    ...FORM_VALIDATION,
+    resolver,
     defaultValues: EMPTY_VALUES,
   });
 
@@ -83,13 +120,9 @@ export function SignupForm() {
 
   function goToStep(next: StepKey) {
     navigated.current = true;
+    currentStep.current = next;
+    stepSubmitted.current = false;
     setStepKey(next);
-  }
-
-  async function advance(next: StepKey) {
-    // This step's fields only. Validating the whole form here would mark fields the caller has
-    // not reached, leaving messages on steps nobody is looking at.
-    if (await form.trigger(step.fields)) goToStep(next);
   }
 
   async function create(values: SignupValues) {
@@ -101,27 +134,33 @@ export function SignupForm() {
       router.refresh();
       return;
     }
-    if (result.fieldError) {
+    if (result.field) {
       /*
        * The step has to move with the error. Nothing ties the wizard's position to the form's
        * state, so a message set on a field the caller cannot see makes the button look dead —
        * and stepping back while the request is in flight is enough to be somewhere else when
        * this lands.
        */
-      const owner = stepOwning(result.fieldError.field);
+      const owner = stepOwning(result.field);
       if (owner) goToStep(owner);
-      form.setError(result.fieldError.field, { message: t(`errors.${result.fieldError.key}`) });
-      return;
     }
-    form.setError('root', { message: t(`errors.${result.error ?? 'unexpected'}`) });
+    form.setError(result.field ?? 'root', { message: message(result.error) });
   }
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    // The primary button submits on every step so Enter does what pressing it does; which of
-    // the two things that means is decided here.
-    if (step.next) {
-      void advance(step.next);
+    // Set before either branch, because both reach the resolver, which reads it.
+    stepSubmitted.current = true;
+
+    /*
+     * The primary button submits on every step so Enter does what pressing it does; which of the two
+     * things that means is decided here. Advancing goes through `handleSubmit` rather than
+     * `trigger` — only a submit puts the form in the state where a rejected field re-checks itself
+     * on every keystroke.
+     */
+    const { next } = step;
+    if (next) {
+      void form.handleSubmit(() => goToStep(next))(event);
       return;
     }
     // A disabled button stops a second click, not a second submit — and this is the one
@@ -131,63 +170,72 @@ export function SignupForm() {
   }
 
   return (
-    <AuthCard
-      title={t('title')}
-      description={t(`steps.${stepKey}.description`)}
-      footer={
-        <InlineLink asChild tone="muted">
-          <Link href={ROUTES.login}>{t('haveAccount')}</Link>
-        </InlineLink>
-      }
-    >
-      <div className="flex flex-col gap-y-6">
-        <Stepper steps={labels} currentIndex={STEP_ORDER.indexOf(stepKey)} />
+    /*
+     * The card is the box that resizes: the three steps do not hold the same number of fields, and
+     * the stepper, the description and the buttons all move with the card's edge.
+     */
+    <AnimatedHeight trigger={stepKey}>
+      <AuthCard
+        title={t('title')}
+        description={t(`steps.${stepKey}.description`)}
+        footer={
+          <p className="text-paragraph-sm text-foreground-muted">
+            {t('haveAccount')}{' '}
+            <InlineLink asChild tone="muted">
+              <Link href={ROUTES.login}>{t('login')}</Link>
+            </InlineLink>
+          </p>
+        }
+      >
+        <div className="flex flex-col gap-y-6">
+          <Stepper steps={labels} currentIndex={STEP_ORDER.indexOf(stepKey)} />
 
-        <Form {...form}>
-          <form onSubmit={onSubmit} noValidate className="flex flex-col gap-y-5">
-            {/*
+          <Form {...form}>
+            <form onSubmit={onSubmit} noValidate className="flex flex-col gap-y-5">
+              {/*
               Keyed so the fields remount and replay the entrance, and so the swap stays atomic:
               the stepper, the description and the button all sit outside this box, and fields that
               outlive a step change put one step's inputs under the next step's button — where a
               click submits a step nobody has filled in.
             */}
-            <div key={stepKey} className="flex flex-col gap-y-5 animate-rise-in">
-              <Fields />
-            </div>
+              <div key={stepKey} className="flex flex-col gap-y-5 animate-rise-in">
+                <Fields />
+              </div>
 
-            <FormRootMessage />
+              <FormRootMessage />
 
-            <div className="flex items-center gap-x-3">
-              {previous ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="lg"
-                  onClick={() => setStepKey(previous)}
-                >
-                  {t('back')}
-                </Button>
-              ) : null}
+              <div className="flex items-center gap-x-3">
+                {previous ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="lg"
+                    onClick={() => goToStep(previous)}
+                  >
+                    {t('back')}
+                  </Button>
+                ) : null}
 
-              {step.next ? (
-                <Button type="submit" size="lg" className="flex-1">
-                  {t('next')}
-                </Button>
-              ) : (
-                <PendingButton
-                  type="submit"
-                  size="lg"
-                  className="flex-1"
-                  pending={submitting}
-                  pendingLabel={t('submitting')}
-                >
-                  {t('submit')}
-                </PendingButton>
-              )}
-            </div>
-          </form>
-        </Form>
-      </div>
-    </AuthCard>
+                {step.next ? (
+                  <Button type="submit" size="lg" className="flex-1">
+                    {t('next')}
+                  </Button>
+                ) : (
+                  <PendingButton
+                    type="submit"
+                    size="lg"
+                    className="flex-1"
+                    pending={submitting}
+                    pendingLabel={t('submitting')}
+                  >
+                    {t('submit')}
+                  </PendingButton>
+                )}
+              </div>
+            </form>
+          </Form>
+        </div>
+      </AuthCard>
+    </AnimatedHeight>
   );
 }

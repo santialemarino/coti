@@ -12,7 +12,7 @@
     },
     "states": {
       "loading": "Cargando…",
-      "empty": "No hay datos para mostrar",
+      "empty": "No hay datos para mostrar.",
       "error": "Ocurrió un error. Intentá de nuevo."
     },
     "nav": {
@@ -37,7 +37,31 @@
     "retry": "Reintentar",
     "form": {
       "togglePassword": "Mostrar u ocultar la contraseña",
-      "clearSearch": "Limpiar la búsqueda"
+      "clearSearch": "Limpiar la búsqueda",
+      "errors": {
+        "invalidEmail": "Ingresá una dirección de correo válida.",
+        "tooLong": "Máximo {max} caracteres.",
+        "passwordTooShort": "Mínimo {min} caracteres.",
+        "passwordTooLong": "Máximo {max} caracteres.",
+        "passwordMismatch": "Las contraseñas no coinciden.",
+        "passwordRequirements": "La contraseña no cumple con los requisitos."
+      }
+    },
+    "passwordMeter": {
+      "title": "Seguridad",
+      "strength": {
+        "weak": "Débil",
+        "moderate": "Media",
+        "strong": "Fuerte"
+      },
+      "requirements": {
+        "title": "Tiene que tener:",
+        "length": "Al menos {count} caracteres",
+        "uppercase": "Una letra mayúscula",
+        "lowercase": "Una letra minúscula",
+        "number": "Un número",
+        "symbol": "Un símbolo, por ejemplo ! # - ."
+      }
     },
     "pagination": {
       "label": "Paginación",
@@ -46,15 +70,26 @@
     }
   },
   "errors": {
-    "badRequest": "Los datos enviados no son válidos. Revisá el formulario.",
-    "unauthenticated": "Tu sesión expiró. Volvé a iniciar sesión.",
-    "forbidden": "No tenés permiso para hacer esto.",
-    "notFound": "No encontramos lo que buscabas.",
-    "conflict": "Ese dato ya está en uso.",
-    "unprocessable": "No pudimos procesar los datos enviados.",
-    "rateLimited": "Demasiados intentos. Esperá unos minutos.",
-    "unreachable": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
-    "unexpected": "Ocurrió un error inesperado. Intentá de nuevo."
+    "NOT_FOUND": "No encontramos lo que buscabas.",
+    "CONFLICT": "Ese dato ya está en uso.",
+    "INVALID_INPUT": "No pudimos procesar los datos enviados.",
+    "INVALID_BODY": "Los datos enviados no son válidos. Revisá el formulario.",
+    "UNAUTHENTICATED": "Tu sesión expiró. Volvé a iniciar sesión.",
+    "FORBIDDEN": "No tenés permiso para hacer esto.",
+    "IMMUTABLE": "Eso ya no se puede modificar.",
+    "ACCOUNT_LOCKED": "Demasiados intentos fallidos. Esperá unos minutos antes de volver a probar.",
+    "EMAIL_NOT_VERIFIED": "Tenés que confirmar tu dirección de correo antes de entrar. Buscá el mensaje que te mandamos al registrarte.",
+    "RATE_LIMITED": "Demasiados intentos. Esperá unos minutos.",
+    "FILE_TOO_LARGE": "El archivo es demasiado grande.",
+    "EMAIL_TAKEN": "Ya hay una cuenta registrada con esa dirección.",
+    "LAST_ACTIVE_BRANCH": "Es la única sucursal activa del corralón. Abrí otra antes de cerrarla, porque la cuenta necesita al menos una para operar.",
+    "SELF_DEACTIVATION": "No podés desactivar tu propio usuario. Pedíselo a otro administrador.",
+    "SELF_ROLE_CHANGE": "No podés cambiar tu propio rol. Pedíselo a otro administrador.",
+    "PASSWORD_POLICY": "La contraseña no cumple con los requisitos.",
+    "INVALID_LINK": "El enlace no es válido, ya se usó o venció.",
+    "INTERNAL": "Ocurrió un error inesperado. Intentá de nuevo.",
+    "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
+    "SESSION_EXPIRED": "Tu sesión expiró. Volvé a iniciar sesión."
   },
   "meta": {
     "home": {
@@ -101,6 +136,10 @@
       "title": "Cambiar contraseña",
       "description": "Cambiá tu contraseña presentando la actual."
     },
+    "accountSettings": {
+      "title": "Cuenta",
+      "description": "Datos del corralón y la marca que ve tu cliente."
+    },
     "branchSettings": {
       "title": "Sucursales",
       "description": "Alta y administración de las sucursales del corralón."
@@ -110,38 +149,46 @@
       "description": "Alta de usuarios, roles y sucursales asignadas."
     },
     "priceSettings": {
-      "title": "Precios y condiciones",
+      "title": "Precios",
       "description": "Actualización revisada de precios por sucursal."
     },
     "verifyEmail": {
       "title": "Confirmar tu correo",
       "description": "Confirmá la dirección con la que te registraste."
+    },
+    "notFound": {
+      "title": "Página no encontrada",
+      "description": "La dirección que abriste no existe en el backoffice."
     }
+  },
+  "notFound": {
+    "title": "No encontramos esta página",
+    "description": "La dirección que abriste no existe o dejó de estar disponible. Puede que el enlace esté mal copiado o que la pantalla haya cambiado de lugar.",
+    "goHome": "Ir al inicio",
+    "goToLogin": "Iniciar sesión"
   },
   "auth": {
     "login": {
       "title": "Iniciar sesión",
       "email": {
         "label": "Correo electrónico",
-        "placeholder": "tu@correo.com",
-        "invalid": "Ingresá una dirección de correo válida."
+        "placeholder": "Ingresá tu correo electrónico",
+        "required": "Ingresá tu correo electrónico."
       },
       "password": {
         "label": "Contraseña",
         "placeholder": "Ingresá tu contraseña",
-        "tooShort": "La contraseña es demasiado corta."
+        "required": "Ingresá tu contraseña."
       },
       "rememberMe": "Mantener la sesión abierta",
       "submit": "Ingresar",
       "submitting": "Ingresando…",
       "forgotPassword": "¿Olvidaste tu contraseña?",
-      "noAccount": "¿Todavía no tenés cuenta? Registrá tu corralón",
+      "noAccount": "¿Todavía no tenés cuenta?",
+      "signup": "Registrá tu corralón",
       "errors": {
-        "invalidCredentials": "Correo o contraseña inválidos.",
-        "locked": "Demasiados intentos fallidos. Esperá unos minutos antes de volver a probar.",
-        "unreachable": "No pudimos comunicarnos con el servidor. Revisá tu conexión e intentá de nuevo.",
-        "unexpected": "No pudimos iniciar sesión. Intentá de nuevo.",
-        "emailNotVerified": "Tenés que confirmar tu dirección de correo antes de entrar. Buscá el mensaje que te mandamos al registrarte."
+        "UNAUTHENTICATED": "Correo o contraseña inválidos.",
+        "INTERNAL": "No pudimos iniciar sesión. Intentá de nuevo."
       }
     },
     "signup": {
@@ -171,7 +218,8 @@
       },
       "taxId": {
         "label": "CUIT",
-        "placeholder": "Ingresá el CUIT"
+        "placeholder": "Ingresá el CUIT",
+        "hint": "Son 11 dígitos, con guiones o sin ellos: 30-70123456-8."
       },
       "branchName": {
         "label": "Nombre de la sucursal",
@@ -189,33 +237,28 @@
       },
       "adminEmail": {
         "label": "Correo electrónico",
-        "placeholder": "tu@correo.com",
-        "invalid": "Ingresá una dirección de correo válida."
+        "placeholder": "Ingresá tu correo electrónico",
+        "required": "Ingresá tu correo electrónico."
       },
       "adminPassword": {
         "label": "Contraseña",
         "placeholder": "Elegí una contraseña",
-        "tooShort": "Mínimo 8 caracteres.",
-        "tooLong": "Máximo 72 caracteres."
+        "required": "Elegí una contraseña."
       },
       "confirmPassword": {
         "label": "Repetir contraseña",
         "placeholder": "Repetí la contraseña",
-        "mismatch": "Las contraseñas no coinciden."
+        "required": "Repetí la contraseña."
       },
-      "minLength": "Mínimo {count} caracteres.",
-      "tooLong": "Máximo 255 caracteres.",
       "back": "Atrás",
       "next": "Continuar",
       "submit": "Crear cuenta",
       "submitting": "Creando la cuenta…",
-      "haveAccount": "¿Ya tenés una cuenta? Iniciá sesión",
+      "haveAccount": "¿Ya tenés una cuenta?",
+      "login": "Iniciá sesión",
       "errors": {
-        "emailTaken": "Ya hay una cuenta registrada con esa dirección.",
-        "tooShort": "La contraseña es demasiado corta.",
-        "rateLimited": "Hubo demasiados registros desde acá. Esperá unos minutos antes de volver a probar.",
-        "unreachable": "No pudimos comunicarnos con el servidor. Revisá tu conexión e intentá de nuevo.",
-        "unexpected": "No pudimos crear la cuenta. Intentá de nuevo."
+        "RATE_LIMITED": "Hubo demasiados registros desde acá. Esperá unos minutos antes de volver a probar.",
+        "INTERNAL": "No pudimos crear la cuenta. Intentá de nuevo."
       }
     },
     "forgotPassword": {
@@ -223,16 +266,16 @@
       "description": "Te mandamos un enlace para que elijas una contraseña nueva.",
       "email": {
         "label": "Correo electrónico",
-        "placeholder": "tu@correo.com",
-        "invalid": "Ingresá una dirección de correo válida."
+        "placeholder": "Ingresá tu correo electrónico",
+        "required": "Ingresá tu correo electrónico."
       },
       "submit": "Enviar enlace",
       "submitting": "Enviando…",
       "sent": "Si la dirección está registrada, va a recibir un enlace en unos minutos. Revisá también el correo no deseado.",
       "backToLogin": "Volver a iniciar sesión",
       "errors": {
-        "invalidEmail": "Ingresá una dirección de correo válida.",
-        "unexpected": "No pudimos procesar el pedido. Intentá de nuevo."
+        "INVALID_BODY": "Ingresá una dirección de correo válida.",
+        "INTERNAL": "No pudimos procesar el pedido. Intentá de nuevo."
       }
     },
     "resetPassword": {
@@ -240,24 +283,21 @@
       "newPassword": {
         "label": "Contraseña nueva",
         "placeholder": "Ingresá la contraseña nueva",
-        "tooShort": "Mínimo 8 caracteres."
+        "required": "Ingresá la contraseña nueva."
       },
       "confirmPassword": {
         "label": "Repetir contraseña",
         "placeholder": "Repetí la contraseña nueva",
-        "mismatch": "Las contraseñas no coinciden."
+        "required": "Repetí la contraseña nueva."
       },
-      "minLength": "Mínimo {count} caracteres.",
       "submit": "Cambiar contraseña",
       "submitting": "Cambiando…",
       "done": "Listo. Ya podés entrar con tu contraseña nueva.",
       "goToLogin": "Iniciar sesión",
       "requestAnother": "Pedir un enlace nuevo",
       "errors": {
-        "mismatch": "Las contraseñas no coinciden.",
-        "tooShort": "La contraseña es demasiado corta.",
-        "invalidLink": "El enlace no es válido, ya se usó o venció. Pedí uno nuevo.",
-        "unexpected": "No pudimos cambiar la contraseña. Intentá de nuevo."
+        "INVALID_LINK": "El enlace no es válido, ya se usó o venció. Pedí uno nuevo.",
+        "INTERNAL": "No pudimos cambiar la contraseña. Intentá de nuevo."
       }
     },
     "changePassword": {
@@ -271,23 +311,19 @@
       "newPassword": {
         "label": "Contraseña nueva",
         "placeholder": "Ingresá la contraseña nueva",
-        "tooShort": "Mínimo 8 caracteres."
+        "required": "Ingresá la contraseña nueva."
       },
       "confirmPassword": {
         "label": "Repetir contraseña",
         "placeholder": "Repetí la contraseña nueva",
-        "mismatch": "Las contraseñas no coinciden."
+        "required": "Repetí la contraseña nueva."
       },
-      "minLength": "Mínimo {count} caracteres.",
       "submit": "Cambiar contraseña",
       "submitting": "Cambiando…",
-      "done": "Contraseña cambiada. Las demás sesiones se cerraron.",
+      "done": "Cambiamos tu contraseña. Las demás sesiones abiertas se cerraron.",
       "errors": {
-        "mismatch": "Las contraseñas no coinciden.",
-        "tooShort": "La contraseña es demasiado corta.",
-        "wrongCurrentPassword": "La contraseña actual no es correcta.",
-        "unexpected": "No pudimos cambiar la contraseña. Intentá de nuevo.",
-        "sessionExpired": "Tu sesión expiró. Volvé a iniciar sesión."
+        "UNAUTHENTICATED": "La contraseña actual no es correcta.",
+        "INTERNAL": "No pudimos cambiar la contraseña. Intentá de nuevo."
       }
     },
     "verifyEmail": {
@@ -298,18 +334,24 @@
       "done": "Listo, tu dirección quedó confirmada.",
       "sent": "Te mandamos un correo para confirmar tu dirección. Abrí el enlace que te llegó y ya está.",
       "continue": "Ir al inicio",
-      "resendHint": "Podés pedir un enlace nuevo con la dirección que usaste al registrarte.",
       "email": {
         "label": "Correo electrónico",
-        "placeholder": "tu@correo.com",
-        "invalid": "Ingresá una dirección de correo válida."
+        "placeholder": "Ingresá tu correo electrónico",
+        "required": "Ingresá tu correo electrónico."
       },
-      "resend": "Enviar un enlace nuevo",
-      "resending": "Enviando…",
-      "resent": "Si la dirección está registrada y falta confirmarla, va a recibir un enlace en unos minutos.",
+      "resend": {
+        "hint": "Podés pedir un enlace nuevo con la dirección que usaste al registrarte.",
+        "submit": "Enviar un enlace nuevo",
+        "submitting": "Enviando…",
+        "cooldown": "Enviar de nuevo en {seconds} s",
+        "sent": "Si la dirección está registrada y falta confirmarla, va a recibir un enlace en unos minutos.",
+        "errors": {
+          "INVALID_BODY": "Ingresá una dirección de correo válida.",
+          "INTERNAL": "No pudimos enviar el enlace. Intentá de nuevo."
+        }
+      },
       "errors": {
-        "invalidLink": "El enlace no es válido, ya se usó o venció.",
-        "unexpected": "No pudimos confirmar tu dirección. Intentá de nuevo."
+        "INTERNAL": "No pudimos confirmar tu dirección. Intentá de nuevo."
       },
       "backToLogin": "Volver a iniciar sesión"
     }
@@ -318,7 +360,7 @@
     "title": "Coti",
     "signedInAs": "Sesión iniciada como {role}.",
     "links": {
-      "prices": "Precios y condiciones"
+      "prices": "Precios"
     }
   },
   "quotes": {
@@ -497,9 +539,10 @@
     "title": "Configuración",
     "nav": {
       "password": "Contraseña",
+      "account": "Cuenta",
       "branches": "Sucursales",
       "users": "Usuarios",
-      "prices": "Precios y condiciones"
+      "prices": "Precios"
     }
   },
   "branches": {
@@ -560,19 +603,61 @@
     "defaultExpiryDays": {
       "label": "Días de vencimiento de las cotizaciones",
       "hint": "Por defecto {count} días. Cada sucursal puede usar el suyo.",
-      "outOfRange": "Ingresá un número entre 1 y 365."
+      "required": "Ingresá los días de vencimiento.",
+      "outOfRange": "Ingresá un número entre {min} y {max}."
     },
-    "tooLong": "Máximo 255 caracteres.",
-    "created": "Creamos la sucursal.",
-    "updated": "Guardamos los cambios.",
-    "closed": "Cerramos la sucursal.",
-    "reopened": "Reabrimos la sucursal.",
+    "created": "Creamos «{name}», con el catálogo de la cuenta ya disponible.",
+    "updated": "Guardamos los cambios de «{name}».",
+    "closed": "Cerramos «{name}». Nadie puede operar ahí, y podés reabrirla cuando quieras.",
+    "reopened": "Reabrimos «{name}». Ya se puede volver a operar ahí.",
     "errors": {
-      "lastActive": "Es la única sucursal activa del corralón. Abrí otra antes de cerrarla, porque la cuenta necesita al menos una para operar.",
-      "notFound": "Esa sucursal ya no existe. Actualizá el listado.",
-      "unauthorized": "Tu sesión no tiene permiso para administrar sucursales. Ingresá con un usuario administrador.",
-      "invalid": "Revisá los datos de la sucursal e intentá de nuevo.",
-      "unexpected": "No pudimos guardar la sucursal. Intentá de nuevo."
+      "NOT_FOUND": "Esa sucursal ya no existe. Actualizá el listado.",
+      "INVALID_INPUT": "Revisá los datos de la sucursal e intentá de nuevo.",
+      "INTERNAL": "No pudimos guardar la sucursal. Intentá de nuevo."
+    }
+  },
+  "account": {
+    "title": "Cuenta",
+    "description": "Los datos del corralón y la marca con la que tu cliente ve una cotización. Valen para toda la cuenta, no para una sucursal.",
+    "name": {
+      "label": "Nombre del corralón",
+      "placeholder": "Ingresá el nombre del corralón",
+      "hint": "Es el nombre que aparece en el backoffice y en lo que enviamos a tu cliente.",
+      "required": "Ingresá el nombre del corralón."
+    },
+    "legalName": {
+      "label": "Razón social",
+      "placeholder": "Ingresá la razón social"
+    },
+    "taxId": {
+      "label": "CUIT",
+      "placeholder": "Ingresá el CUIT",
+      "hint": "Son 11 dígitos, con guiones o sin ellos: 30-70123456-8."
+    },
+    "brand": {
+      "title": "Marca",
+      "description": "Con esto armamos las cotizaciones que ve tu cliente. Si lo dejás vacío usamos el diseño de Coti."
+    },
+    "brandLogoUrl": {
+      "label": "Logo",
+      "placeholder": "Ingresá la dirección de la imagen",
+      "hint": "Tiene que ser una imagen accesible desde internet, como https://tucorralon.com/logo.png.",
+      "open": "Verla",
+      "invalid": "Ingresá una dirección web completa, con https:// adelante."
+    },
+    "brandColor": {
+      "label": "Color de la marca",
+      "placeholder": "Ingresá el color de tu marca",
+      "hint": "En hexadecimal, como lo escribís en un diseño: #C2410C.",
+      "invalid": "Ingresá un color hexadecimal válido."
+    },
+    "submit": "Guardar cambios",
+    "submitting": "Guardando…",
+    "saved": "Guardamos los datos del corralón. Tu cliente los va a ver en la próxima cotización que le envíes.",
+    "errors": {
+      "NOT_FOUND": "No encontramos la cuenta. Volvé a iniciar sesión.",
+      "INVALID_INPUT": "Revisá los datos del corralón e intentá de nuevo.",
+      "INTERNAL": "No pudimos guardar los datos. Intentá de nuevo."
     }
   },
   "users": {
@@ -631,7 +716,12 @@
       "title": "Enviar el enlace de contraseña",
       "description": "Le vamos a mandar a {email} un enlace de un solo uso para que elija una contraseña nueva. Vos no vas a ver la contraseña.",
       "confirm": "Enviar enlace",
-      "confirming": "Enviando…"
+      "confirming": "Enviando…",
+      "errors": {
+        "INVALID_INPUT": "Ese usuario está desactivado. Reactivalo antes de enviarle el enlace.",
+        "RATE_LIMITED": "Enviamos demasiados correos en poco tiempo. Esperá unos minutos e intentá de nuevo.",
+        "INTERNAL": "No pudimos enviar el enlace. Intentá de nuevo."
+      }
     },
     "name": {
       "label": "Nombre",
@@ -641,14 +731,13 @@
     "email": {
       "label": "Correo electrónico",
       "placeholder": "Ingresá el correo con el que va a entrar",
-      "invalid": "Ingresá una dirección de correo válida."
+      "required": "Ingresá el correo del usuario."
     },
     "password": {
       "label": "Contraseña inicial",
       "placeholder": "Elegí una contraseña",
-      "hint": "Mínimo {count} caracteres. Se la tenés que pasar vos.",
-      "tooShort": "Mínimo 8 caracteres.",
-      "tooLong": "Máximo 72 caracteres."
+      "required": "Elegí una contraseña inicial.",
+      "hint": "Se la tenés que pasar vos."
     },
     "role": {
       "label": "Rol",
@@ -660,25 +749,20 @@
       "adminHint": "Un administrador alcanza todas las sucursales, estén marcadas o no.",
       "closedAssignments": "{count, plural, one {Tiene una sucursal cerrada asignada y al guardar se la vamos a quitar.} other {Tiene # sucursales cerradas asignadas y al guardar se las vamos a quitar.}}"
     },
-    "tooLong": "Máximo 255 caracteres.",
-    "created": "Creamos el usuario.",
-    "updated": "Guardamos los cambios.",
-    "deactivated": "Desactivamos el usuario.",
-    "reactivated": "Reactivamos el usuario.",
-    "passwordResetSent": "Le enviamos el enlace.",
+    "created": "Creamos a «{name}». Acordate de pasarle la contraseña: nosotros no se la mandamos.",
+    "updated": "Guardamos los cambios de «{name}». Rigen desde su próxima pantalla.",
+    "deactivated": "Desactivamos a «{name}». Ya no puede entrar, y podés reactivarlo cuando quieras.",
+    "reactivated": "Reactivamos a «{name}». Ya puede volver a entrar.",
+    "passwordResetSent": "Le mandamos a {email} un enlace de un solo uso para que elija una contraseña nueva.",
     "errors": {
-      "emailTaken": "Ya hay un usuario registrado con esa dirección.",
-      "self": "No podés desactivar tu propio usuario. Pedíselo a otro administrador.",
-      "deactivated": "Ese usuario está desactivado. Reactivalo antes de enviarle el enlace.",
-      "notFound": "Ese usuario ya no existe. Actualizá el listado.",
-      "rateLimited": "Enviamos demasiados correos en poco tiempo. Esperá unos minutos e intentá de nuevo.",
-      "unauthorized": "Tu sesión no tiene permiso para administrar usuarios. Ingresá con un usuario administrador.",
-      "invalid": "Revisá los datos del usuario e intentá de nuevo.",
-      "unexpected": "No pudimos guardar el usuario. Intentá de nuevo."
+      "EMAIL_TAKEN": "Ya hay un usuario registrado con esa dirección.",
+      "NOT_FOUND": "Ese usuario ya no existe. Actualizá el listado.",
+      "INVALID_INPUT": "Revisá los datos del usuario e intentá de nuevo.",
+      "INTERNAL": "No pudimos guardar el usuario. Intentá de nuevo."
     }
   },
   "priceImport": {
-    "title": "Precios y condiciones",
+    "title": "Precios",
     "description": "Actualizá los precios vigentes de una sucursal. Primero revisás el archivo y después confirmás los cambios.",
     "targetBranch": "Los cambios se aplican en la sucursal {name}. Cambiala desde el selector del encabezado.",
     "noBranch": {
@@ -690,22 +774,28 @@
         "label": "Archivo de precios"
       },
       "preview": "Previsualizar",
-      "previewing": "Procesando…",
-      "export": "Exportar precios",
-      "exporting": "Exportando…"
+      "previewing": "Procesando…"
     },
-    "formatHint": "Usá un archivo .xlsx o .csv con las columnas codigo y precio. También podés incluir precio_minimo, moneda y condiciones.",
+    "export": {
+      "submit": "Exportar precios",
+      "submitting": "Exportando…",
+      "errors": {
+        "INVALID_INPUT": "La sucursal todavía no tiene precios vigentes para exportar.",
+        "INTERNAL": "No pudimos exportar los precios. Intentá de nuevo."
+      }
+    },
+    "formatHint": "Usá un archivo .xlsx o .csv con las columnas codigo y precio. También podés incluir precio_minimo.",
     "summary": "Filas válidas: {valid}. Filas con errores: {invalid}.",
     "confirm": "Confirmar actualización",
     "confirming": "Actualizando…",
-    "fixErrors": "Corregí todas las filas marcadas y volvé a cargar el archivo antes de confirmar.",
+    "fixErrors": "No hay filas válidas para actualizar. Corregí las filas marcadas y volvé a cargar el archivo.",
+    "invalidRowsSkipped": "Al confirmar se omitirán {count, plural, one {# fila con errores} other {# filas con errores}}.",
     "valid": "Lista para actualizar",
     "success": "Se actualizaron {count, plural, one {# producto} other {# productos}}.",
     "errors": {
-      "invalidFile": "Seleccioná un archivo válido con el formato indicado.",
-      "noPrices": "La sucursal todavía no tiene precios vigentes para exportar.",
-      "unauthorized": "Tu sesión no tiene permiso para actualizar precios. Ingresá con un usuario administrador.",
-      "unexpected": "No pudimos procesar la actualización. Intentá de nuevo."
+      "INVALID_BODY": "Seleccioná un archivo válido con el formato indicado.",
+      "INVALID_INPUT": "Seleccioná un archivo válido con el formato indicado.",
+      "INTERNAL": "No pudimos procesar la actualización. Intentá de nuevo."
     },
     "rowErrors": {
       "missing_code": "El código es obligatorio.",
@@ -713,9 +803,7 @@
       "unknown_product": "El producto no existe, está inactivo o no está disponible en la sucursal.",
       "invalid_price": "El precio debe ser numérico y mayor a cero, con hasta 2 decimales.",
       "invalid_min_price": "El precio mínimo debe ser numérico y mayor a cero, con hasta 2 decimales.",
-      "min_price_above_price": "El precio mínimo no puede superar el precio de venta.",
-      "invalid_currency": "La moneda debe tener un código de 3 letras.",
-      "conditions_too_long": "Las condiciones no pueden superar 255 caracteres."
+      "min_price_above_price": "El precio mínimo no puede superar el precio de venta."
     },
     "table": {
       "row": "Fila",
@@ -724,7 +812,6 @@
       "currentPrice": "Precio vigente",
       "newPrice": "Precio nuevo",
       "minPrice": "Precio mínimo",
-      "conditions": "Condiciones",
       "result": "Validación"
     }
   }

@@ -9,11 +9,9 @@ type ConfirmProductPriceImportRequest struct {
 
 // ProductPriceImportInput is a reviewed spreadsheet row sent for confirmation.
 type ProductPriceImportInput struct {
-	Code       string  `json:"code" binding:"required,max=255"`
-	Price      string  `json:"price" binding:"required"`
-	MinPrice   *string `json:"min_price"`
-	Currency   string  `json:"currency" binding:"omitempty,len=3"`
-	Conditions *string `json:"conditions" binding:"omitempty,max=255"`
+	Code     string  `json:"code" binding:"required,max=255"`
+	Price    string  `json:"price" binding:"required"`
+	MinPrice *string `json:"min_price"`
 }
 
 // ProductPriceImportRowResponse is one validated row in the import preview.
@@ -26,7 +24,6 @@ type ProductPriceImportRowResponse struct {
 	Price           string   `json:"price"`
 	MinPrice        *string  `json:"min_price"`
 	Currency        string   `json:"currency"`
-	Conditions      *string  `json:"conditions"`
 	Errors          []string `json:"errors"`
 }
 

@@ -49,7 +49,7 @@ INSERT INTO channel (account_id, branch_id, type) VALUES
 ON CONFLICT (branch_id, type) WHERE identifier IS NULL DO NOTHING;
 
 -- Account catalog. embedding stays NULL: the AI pipeline populates it.
-INSERT INTO product (id, account_id, code, canonical_name, description, unit, category) VALUES
+WITH products (id, account_id, code, canonical_name, description, unit, legacy_category) AS (VALUES
   ('d0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', 'CEM-LN-50', 'Cemento Loma Negra 50 kg', 'Cemento portland normal CPN40', 'bolsa', 'Cementos'),
   ('d0000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001', 'CEM-AVE-50', 'Cemento Avellaneda 50 kg', 'Cemento portland compuesto CPC40', 'bolsa', 'Cementos'),
   ('d0000000-0000-4000-8000-000000000003', 'a0000000-0000-4000-8000-000000000001', 'CAL-HID-25', 'Cal hidratada 25 kg', 'Cal hidratada para revoques', 'bolsa', 'Cales'),
@@ -70,6 +70,34 @@ INSERT INTO product (id, account_id, code, canonical_name, description, unit, ca
   ('d0000000-0000-4000-8000-000000000018', 'a0000000-0000-4000-8000-000000000001', 'CAN-TER-20', 'Caño termofusión 20 mm x 4 m', 'Caño para agua caliente', 'unidad', 'Sanitarios'),
   ('d0000000-0000-4000-8000-000000000019', 'a0000000-0000-4000-8000-000000000001', 'LAT-4-PIN', 'Látex interior 4 L', 'Pintura látex mate blanco', 'lata', 'Pinturas'),
   ('d0000000-0000-4000-8000-000000000020', 'a0000000-0000-4000-8000-000000000001', 'HID-20', 'Hidrófugo 20 kg', 'Aditivo hidrófugo para mezclas', 'balde', 'Impermeabilizantes')
+)
+INSERT INTO product (id, account_id, code, canonical_name, description, unit, family_id, subgroup_id)
+SELECT p.id::uuid, p.account_id::uuid, p.code, p.canonical_name, p.description, p.unit,
+       f.id, s.id
+FROM products p
+JOIN product_family f ON f.name = CASE
+  WHEN p.legacy_category = 'Chapas' THEN 'CHAPAS Y PERFILES'
+  WHEN p.legacy_category = 'Construcción en seco' THEN 'DURLOCK'
+  WHEN p.legacy_category IN ('Adhesivos', 'Revestimientos') THEN 'CERAMICAS Y PORCELANATOS'
+  WHEN p.legacy_category = 'Sanitarios' THEN 'AGUA Y CLOACAS'
+  ELSE 'MATERIALES DE CONSTRUCCION'
+END
+LEFT JOIN product_subgroup s ON s.family_id = f.id AND s.name = CASE
+  WHEN p.legacy_category IN ('Cementos', 'Cales') THEN 'BOLSAS'
+  WHEN p.legacy_category = 'Áridos' THEN 'ARIDOS'
+  WHEN p.legacy_category = 'Mampostería' THEN 'LADRILLOS'
+  WHEN p.legacy_category = 'Hierros' AND p.code LIKE 'MAL-%' THEN 'MALLAS'
+  WHEN p.legacy_category = 'Hierros' THEN 'HIERROS'
+  WHEN p.legacy_category = 'Chapas' THEN 'CHAPAS'
+  WHEN p.legacy_category = 'Impermeabilizantes' AND p.code = 'MEM-4MM' THEN 'PINTURAS ASFALTICAS'
+  WHEN p.legacy_category = 'Impermeabilizantes' THEN 'ADITIVOS'
+  WHEN p.legacy_category = 'Construcción en seco' AND p.code LIKE 'PLAC-%' THEN 'PLACAS DE DURLOCK'
+  WHEN p.legacy_category = 'Construcción en seco' THEN 'PERFILES PARA DURLOCK'
+  WHEN p.legacy_category = 'Adhesivos' THEN 'PASTINAS Y PEGAMENTOS'
+  WHEN p.legacy_category = 'Revestimientos' THEN 'CERAMICAS'
+  WHEN p.legacy_category = 'Sanitarios' AND p.code = 'CAN-PVC-110' THEN 'CLOACAS'
+  WHEN p.legacy_category = 'Sanitarios' THEN 'AGUA'
+END
 ON CONFLICT (id) DO NOTHING;
 
 -- Colloquial synonyms: what a client actually types on WhatsApp.
@@ -101,7 +129,8 @@ INSERT INTO branch_product (account_id, branch_id, product_id, stock)
 SELECT 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000002', id, 60
 FROM product
 WHERE account_id = 'a0000000-0000-4000-8000-000000000001'
-  AND category IN ('Cementos', 'Cales', 'Áridos', 'Mampostería', 'Hierros')
+  AND code IN ('CEM-LN-50', 'CEM-AVE-50', 'CAL-HID-25', 'AREN-M3', 'PIED-M3',
+               'LAD-HUE-12', 'LAD-COM', 'HIE-8', 'HIE-10', 'MAL-Q188')
 ON CONFLICT (branch_id, product_id) DO NOTHING;
 
 -- The price in force per branch. Moron runs 4% higher.

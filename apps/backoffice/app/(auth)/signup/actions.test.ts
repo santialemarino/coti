@@ -15,7 +15,8 @@ vi.mock('@/lib/api/client', async (importOriginal) => ({
 }));
 
 const { cookies } = await import('next/headers');
-const { ApiError, apiRequest } = await import('@/lib/api/client');
+const { apiRequest } = await import('@/lib/api/client');
+const { ApiError } = await import('@/lib/api/errors');
 
 const VALUES: SignupValues = {
   accountName: 'Corralón San Martín',
@@ -25,8 +26,8 @@ const VALUES: SignupValues = {
   branchAddress: '',
   adminName: 'Ana Pérez',
   adminEmail: 'ana@corralonsanmartin.test',
-  adminPassword: 'coti1234',
-  confirmPassword: 'coti1234',
+  adminPassword: 'Coti-1234-larga',
+  confirmPassword: 'Coti-1234-larga',
 };
 
 const TOKENS = { access_token: 'access', refresh_token: 'refresh' };
@@ -74,7 +75,7 @@ describe('signup', () => {
       branch_address: undefined,
       admin_name: 'Ana Pérez',
       admin_email: 'ana@corralonsanmartin.test',
-      admin_password: 'coti1234',
+      admin_password: 'Coti-1234-larga',
     });
   });
 
@@ -111,7 +112,7 @@ describe('signup', () => {
     const store = jar();
     vi.mocked(apiRequest).mockResolvedValue({ tokens: { access_token: 'access' } });
 
-    await expect(signup(VALUES)).resolves.toEqual({ error: 'unexpected' });
+    await expect(signup(VALUES)).resolves.toEqual({ error: 'INTERNAL' });
     expect(store.set).not.toHaveBeenCalled();
   });
 
@@ -119,41 +120,46 @@ describe('signup', () => {
   // error would leave the caller re-reading eight fields for the one the API meant.
   it('lands a refused address on the email field', async () => {
     jar();
-    vi.mocked(apiRequest).mockRejectedValue(new ApiError('conflict', 409));
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('EMAIL_TAKEN', 409));
 
     await expect(signup(VALUES)).resolves.toEqual({
-      fieldError: { field: 'adminEmail', key: 'emailTaken' },
+      error: 'EMAIL_TAKEN',
+      field: 'adminEmail',
     });
   });
 
-  // Only reachable when the API's own floor sits above the one the form mirrors, which is
-  // exactly when the caller needs to be told which field to change.
+  // Only reachable when the API's policy and the one the form mirrors have drifted apart, which
+  // is exactly when the caller needs to be told which field to change.
   it('lands a refused password on the password field', async () => {
     jar();
-    vi.mocked(apiRequest).mockRejectedValue(new ApiError('unprocessable', 422));
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('PASSWORD_POLICY', 422));
 
     await expect(signup(VALUES)).resolves.toEqual({
-      fieldError: { field: 'adminPassword', key: 'tooShort' },
+      error: 'PASSWORD_POLICY',
+      field: 'adminPassword',
     });
   });
 
+  // Every other code reaches the form untouched, the 400 included: it used to fall through to
+  // the same "unexpected" a 500 produces, with nothing for the caller to act on.
   it.each([
-    ['rateLimited', 429, 'rateLimited'],
-    ['unreachable', 0, 'unreachable'],
-    ['unexpected', 500, 'unexpected'],
-    ['badRequest', 400, 'unexpected'],
-  ] as const)('reports a %s as the form error %s', async (code, status, expected) => {
+    ['RATE_LIMITED', 429],
+    ['UNREACHABLE', 0],
+    ['INTERNAL', 500],
+    ['INVALID_BODY', 400],
+    ['INVALID_INPUT', 422],
+  ] as const)('reports a %s with no field of its own', async (code, status) => {
     jar();
     vi.mocked(apiRequest).mockRejectedValue(new ApiError(code, status));
 
-    await expect(signup(VALUES)).resolves.toEqual({ error: expected });
+    await expect(signup(VALUES)).resolves.toEqual({ error: code, field: undefined });
   });
 
   it('never reaches the API with values its own schema refuses', async () => {
     jar();
 
     await expect(signup({ ...VALUES, adminEmail: 'nope' })).resolves.toEqual({
-      error: 'unexpected',
+      error: 'INVALID_BODY',
     });
     expect(apiRequest).not.toHaveBeenCalled();
   });

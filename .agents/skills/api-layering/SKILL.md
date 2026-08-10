@@ -306,9 +306,12 @@ Discounts are **backend-computed and deterministic — never the LLM.** Keep the
 
 - **`promotion`** is a reusable rule (hangs off `account_id`, optional `branch_id`); **`quote_discount`** is one application of a discount to a `quote_version` (with `quote_discount_item` as the bridge for `ITEM` / `ITEM_SET` scope). Two entities, do not conflate.
 - The automatic sweep runs on `GENERATED → QUOTED` and after every item change; it applies active promotions that match the quote as-is.
-- `ON_TOTAL` is computed on the **net** (line discounts first, then total). Round to 2 decimals per discount. The result **floors at `product_price.min_price`** and never goes negative.
+- `ON_TOTAL` is computed on the **net** (line discounts first, then total). Round to 2 decimals per discount. The result never goes negative.
+- **The floor is `quote_item.min_price_snapshot`, never the live `product_price.min_price`.** The evaluator reads only frozen values; otherwise re-sweeping one version after a price change returns a different total for the same items.
+- **The floor is optional, and absent is the common case.** `min_price` is nullable and most accounts never set one, so a null snapshot means _no floor_ — never a floor of zero, which would let a discount drive the line to nothing.
+- **The floor binds the sweep, not people.** A seller may price a line below it by hand; that is warned and recorded in the version's `comment`, and the service does not reject it.
 - Conflicts resolve by `is_exclusive` + `priority` (higher priority wins; tie → larger discount; not stackable by default).
-- `quote_version.total = Σ quote_item.subtotal − Σ quote_discount.amount`. `quote_item` itself holds a price snapshot and **no discount** — the discount is its own entity.
+- `quote_version.total = Σ quote_item.subtotal − Σ quote_discount.amount`. `quote_item` itself holds its price snapshots and **no discount** — the discount is its own entity.
 
 ## Multi-tenancy — non-negotiable
 
@@ -339,9 +342,23 @@ The token's signature covers `account_id`, which is what lets the middleware bui
 
 **By the time a service sees `Tenant.BranchID`, it is already validated.** Filter by it; do not re-check it.
 
+**A rule about a value lives with the value, not with the route that happens to write it.**
+`domain.PasswordPolicy` is the shape to copy: one type in `internal/domain`, built from config once
+per service, and called by **every** path that stores a password — signup, admin user creation, the
+self-service change, the recovery reset. Four routes had the same length check inline before, which
+is three chances for one of them to fall behind. Two details of that policy generalise: a limit
+imposed by a library is expressed in the library's own unit (bcrypt stops at 72 **bytes**, so the
+cap is bytes and not characters, or the hash fails a write the input check should have refused), and
+a rule that only applies when a value is **chosen** is not applied when it is merely **compared** —
+logging in checks nothing, so a policy tightened later cannot lock out an account that predates it.
+
 ## Translating domain errors to HTTP
 
-`handler.Respond(c, err)` is the **single** mapping point from a domain error to a status code. Services return `domain.ErrNotFound` / `ErrConflict` / `ErrUnauthenticated` / `ErrLocked` / `ErrForbidden` / `ErrImmutable` / `ErrInvalidInput`; the handler calls `Respond` and never picks a code itself. Anything unmapped becomes a 500 with a generic body and the real error attached to the request log — an unmapped error is a bug, and its text may not be safe to show a client.
+`handler.Respond(c, err)` is the **single** mapping point from a domain error to a status code. Services return `domain.ErrNotFound` / `ErrConflict` / `ErrUnauthenticated` / `ErrLocked` / `ErrForbidden` / `ErrImmutable` / `ErrInvalidInput`; the handler calls `Respond` and never picks a status itself. Anything unmapped becomes a 500 with a generic body and the real error attached to the request log — an unmapped error is a bug, and its text may not be safe to show a client.
+
+**Every error also carries a stable `code`, and that is the part a client reads.** The status says how a request failed; the code says which rule refused it, which one status cannot when a route answers 422 for several reasons. `domain.CodeOf` derives a default from the sentinel; a service tags a specific one with `domain.WithCode(domain.CodeLastActiveBranch, fmt.Errorf("%w: …", domain.ErrInvalidInput))`, which leaves `errors.Is` matching the sentinel so nothing above changes. Tag a refusal the moment a caller has to tell it from a sibling on the same status, and add the constant to `internal/domain/error_code.go` rather than writing a literal at the call site.
+
+**The `error` string is for a log, never for a screen** — the frontend owns its own wording, so a rewording is not a breaking change. And **a code must never distinguish what the status deliberately does not**: login answers `UNAUTHENTICATED` for a wrong password, an unknown address and a disabled user alike, because a code per case would hand back the enumeration the shared 401 exists to withhold.
 
 `domain.ErrNotFound` covers "does not exist" **and** "belongs to another account". Under row level security those are indistinguishable, and they must stay that way: a distinct response would confirm another tenant's data exists.
 

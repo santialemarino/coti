@@ -152,57 +152,80 @@ function FormDescription({ className, ...props }: React.ComponentProps<'p'>) {
 const REVEAL =
   'grid grid-rows-[0fr] transition-[grid-template-rows] duration-200 ease-out-soft [&>*]:overflow-hidden';
 
-function FormMessage({ className, children, ...props }: React.ComponentProps<'p'>) {
-  const { error, formMessageId } = useFormField();
-  const body = children ?? error?.message;
+interface RevealedMessageProps extends React.ComponentProps<'p'> {
+  slot: string;
+  body: React.ReactNode;
+  /* The gap this cancels: a field's own, or the wider one between a form's rows. */
+  spacing: 'field' | 'form';
+}
+
+/*
+ * A height animation is only half of an exit. `body` empties in the same commit the row starts
+ * collapsing, so the words would vanish on frame one while an empty box shrank — which is what "the
+ * error disappearing is not animated" looks like from the outside, even with the height animation
+ * working perfectly. The last body is held and faded out with the box instead, and `aria-hidden`
+ * keeps the held copy off the accessibility tree while it leaves.
+ */
+function RevealedMessage({ slot, body, spacing, className, ...props }: RevealedMessageProps) {
+  const lastBody = React.useRef(body);
+  if (body) lastBody.current = body;
 
   return (
     <div
-      data-slot="form-message"
+      data-slot={slot}
       aria-hidden={!body}
-      className={cn(REVEAL, '-mt-2', body && 'grid-rows-[1fr]')}
+      className={cn(REVEAL, spacing === 'form' ? '-mt-4' : '-mt-2', body && 'grid-rows-[1fr]')}
     >
       <div>
         <p
-          id={formMessageId}
           role="alert"
-          className={cn('pt-2 text-paragraph-xs text-danger-foreground', className)}
+          className={cn(
+            'transition-opacity duration-200 ease-out-soft',
+            spacing === 'form' ? 'pt-4 text-center text-paragraph-sm' : 'pt-2 text-paragraph-xs',
+            'text-danger-foreground',
+            !body && 'opacity-0',
+            className,
+          )}
           {...props}
         >
-          {body}
+          {body ?? lastBody.current}
         </p>
       </div>
     </div>
   );
 }
 
+function FormMessage({ children, ...props }: React.ComponentProps<'p'>) {
+  const { error, formMessageId } = useFormField();
+
+  return (
+    <RevealedMessage
+      slot="form-message"
+      body={children ?? error?.message}
+      spacing="field"
+      id={formMessageId}
+      {...props}
+    />
+  );
+}
+
 /*
  * A form-level error, for a rejection that belongs to no single field — a login the API refused
  * without saying which half was wrong. Reads react-hook-form's root error, so setError('root', …) is
- * all a caller needs. The gap it cancels is the form's own, which is wider than a field's.
+ * all a caller needs.
  */
-function FormRootMessage({ className, children, ...props }: React.ComponentProps<'p'>) {
+function FormRootMessage({ children, ...props }: React.ComponentProps<'p'>) {
   const {
     formState: { errors },
   } = useFormContext();
-  const body = children ?? errors.root?.message;
 
   return (
-    <div
-      data-slot="form-root-message"
-      aria-hidden={!body}
-      className={cn(REVEAL, '-mt-4', body && 'grid-rows-[1fr]')}
-    >
-      <div>
-        <p
-          role="alert"
-          className={cn('pt-4 text-center text-paragraph-sm text-danger-foreground', className)}
-          {...props}
-        >
-          {body}
-        </p>
-      </div>
-    </div>
+    <RevealedMessage
+      slot="form-root-message"
+      body={children ?? errors.root?.message}
+      spacing="form"
+      {...props}
+    />
   );
 }
 

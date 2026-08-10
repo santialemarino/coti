@@ -17,6 +17,7 @@ import (
 // minJWTSecretLength is the floor for AUTH_JWT_SECRET. HMAC-SHA256 keys shorter
 // than the digest add no security.
 const minJWTSecretLength = 32
+const defaultCatalogImportMaxBytes = 5 * 1024 * 1024
 const defaultPriceImportMaxBytes = 5 * 1024 * 1024
 
 // Environment is the deployment environment the process runs in.
@@ -37,17 +38,18 @@ const (
 
 // Config is the fully resolved runtime configuration.
 type Config struct {
-	Environment Environment
-	LogLevel    string
-	Server      ServerConfig
-	Database    DatabaseConfig
-	Auth        AuthConfig
-	Mail        MailConfig
-	Web         WebConfig
-	Catalog     CatalogConfig
-	RateLimit   RateLimitConfig
-	Branch      BranchConfig
-	PriceImport PriceImportConfig
+	Environment   Environment
+	LogLevel      string
+	Server        ServerConfig
+	Database      DatabaseConfig
+	Auth          AuthConfig
+	Mail          MailConfig
+	Web           WebConfig
+	Catalog       CatalogConfig
+	RateLimit     RateLimitConfig
+	Branch        BranchConfig
+	CatalogImport SpreadsheetImportConfig
+	PriceImport   SpreadsheetImportConfig
 }
 
 // RateLimitConfig holds the request allowances, all of them settings rather than literals.
@@ -123,8 +125,8 @@ type WebConfig struct {
 	BackofficeURL string
 }
 
-// PriceImportConfig holds operational limits for spreadsheet imports.
-type PriceImportConfig struct {
+// SpreadsheetImportConfig holds operational limits for spreadsheet imports.
+type SpreadsheetImportConfig struct {
 	MaxBytes int64
 }
 
@@ -177,7 +179,7 @@ func Load() (*Config, error) {
 			RefreshReuseGrace:    getDuration("AUTH_REFRESH_REUSE_GRACE_SECONDS", 30*time.Second, &problems),
 			MaxFailedAttempts:    getInt("AUTH_MAX_FAILED_ATTEMPTS", 5, &problems),
 			LockoutDuration:      getDuration("AUTH_LOCKOUT_MINUTES", 15*time.Minute, &problems),
-			PasswordMinLength:    getInt("AUTH_PASSWORD_MIN_LENGTH", 8, &problems),
+			PasswordMinLength:    getInt("AUTH_PASSWORD_MIN_LENGTH", 12, &problems),
 			PasswordResetTTL:     getDuration("AUTH_PASSWORD_RESET_TTL_MINUTES", 60*time.Minute, &problems),
 			RequireVerifiedEmail: getBool("AUTH_REQUIRE_VERIFIED_EMAIL", false, &problems),
 			VerificationTTL:      getDuration("AUTH_EMAIL_VERIFICATION_TTL_HOURS", 48*time.Hour, &problems),
@@ -212,7 +214,10 @@ func Load() (*Config, error) {
 		Branch: BranchConfig{
 			DefaultExpiryDays: getInt("BRANCH_DEFAULT_EXPIRY_DAYS", 7, &problems),
 		},
-		PriceImport: PriceImportConfig{
+		CatalogImport: SpreadsheetImportConfig{
+			MaxBytes: int64(getInt("CATALOG_IMPORT_MAX_BYTES", defaultCatalogImportMaxBytes, &problems)),
+		},
+		PriceImport: SpreadsheetImportConfig{
 			MaxBytes: int64(getInt("PRICE_IMPORT_MAX_BYTES", defaultPriceImportMaxBytes, &problems)),
 		},
 	}
@@ -233,6 +238,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.Branch.DefaultExpiryDays <= 0 {
 		problems = append(problems, "BRANCH_DEFAULT_EXPIRY_DAYS must be greater than zero")
+	}
+	if cfg.CatalogImport.MaxBytes <= 0 {
+		problems = append(problems, "CATALOG_IMPORT_MAX_BYTES must be greater than zero")
 	}
 	if cfg.PriceImport.MaxBytes <= 0 {
 		problems = append(problems, "PRICE_IMPORT_MAX_BYTES must be greater than zero")

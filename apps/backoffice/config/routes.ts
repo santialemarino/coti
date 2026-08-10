@@ -13,6 +13,7 @@ export const ROUTES = {
   verifyEmail: '/verify-email',
   sessionEnded: '/session-ended',
   changePassword: '/settings/password',
+  accountSettings: '/settings/account',
   priceSettings: '/settings/prices',
   branchSettings: '/settings/branches',
   userSettings: '/settings/users',

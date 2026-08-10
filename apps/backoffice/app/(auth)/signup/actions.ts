@@ -2,7 +2,8 @@
 
 import { signupSchema, type SignupValues } from '@/app/(auth)/signup/form-schema';
 import { ROUTES } from '@/config/routes';
-import { apiRequest, errorCodeOf } from '@/lib/api/client';
+import { apiRequest } from '@/lib/api/client';
+import { errorCodeOf, type ApiErrorCode } from '@/lib/api/errors';
 import { startSession } from '@/lib/auth/session';
 
 // The answer also carries the account and the branch, which no screen needs from here. Optional
@@ -11,21 +12,28 @@ interface SignupRaw {
   tokens?: { access_token?: string; refresh_token?: string };
 }
 
-export type SignupErrorKey = 'rateLimited' | 'unreachable' | 'unexpected';
+export type SignupField = 'adminEmail' | 'adminPassword';
 
 export interface SignupResult {
   redirectTo?: string;
-  error?: SignupErrorKey;
+  error?: ApiErrorCode;
   /* The field the API's rejection belongs to. The wizard has to show that field's step for it. */
-  fieldError?:
-    | { field: 'adminEmail'; key: 'emailTaken' }
-    | { field: 'adminPassword'; key: 'tooShort' };
+  field?: SignupField;
 }
+
+/* Which field a refusal belongs on. A code absent from the map belongs to the form. */
+const FIELD_FOR: Partial<Record<ApiErrorCode, SignupField>> = {
+  // The address is already registered somewhere, and login resolves a user across every
+  // account, so it cannot be reused.
+  EMAIL_TAKEN: 'adminEmail',
+  // Only reachable when the API's policy and the one this form mirrors have drifted apart.
+  PASSWORD_POLICY: 'adminPassword',
+};
 
 export async function signup(values: SignupValues): Promise<SignupResult> {
   // Re-validated server-side: the client's schema is a courtesy, not a guarantee.
   const parsed = signupSchema().safeParse(values);
-  if (!parsed.success) return { error: 'unexpected' };
+  if (!parsed.success) return { error: 'INVALID_BODY' };
   const data = parsed.data;
 
   // Built outside the try, which is there for a request that fails — a mapping bug caught by
@@ -50,11 +58,11 @@ export async function signup(values: SignupValues): Promise<SignupResult> {
       body,
     });
   } catch (error) {
-    return rejectionFor(errorCodeOf(error));
+    const code = errorCodeOf(error);
+    return { error: code, field: FIELD_FOR[code] };
   }
 
-  if (!created.tokens?.access_token || !created.tokens.refresh_token)
-    return { error: 'unexpected' };
+  if (!created.tokens?.access_token || !created.tokens.refresh_token) return { error: 'INTERNAL' };
 
   // The account exists either way, so a session is opened rather than sending them to log in
   // with a password the API has not confirmed the address for yet.
@@ -72,15 +80,4 @@ export async function signup(values: SignupValues): Promise<SignupResult> {
  */
 function optional(value: string): string | undefined {
   return value || undefined;
-}
-
-function rejectionFor(code: ReturnType<typeof errorCodeOf>): SignupResult {
-  // The one conflict registration can answer: the address is already registered somewhere,
-  // and login resolves a user across every account, so it cannot be reused.
-  if (code === 'conflict') return { fieldError: { field: 'adminEmail', key: 'emailTaken' } };
-  // Only reachable when the API's own floor sits above the one this form mirrors.
-  if (code === 'unprocessable') return { fieldError: { field: 'adminPassword', key: 'tooShort' } };
-  if (code === 'rateLimited') return { error: 'rateLimited' };
-  if (code === 'unreachable') return { error: 'unreachable' };
-  return { error: 'unexpected' };
 }

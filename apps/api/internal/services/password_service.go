@@ -31,14 +31,14 @@ type sessionRevoker interface {
 
 // PasswordService owns the three ways a password changes after the user exists.
 type PasswordService struct {
-	db        tenantScoper
-	users     passwordUserRepository
-	tokens    authTokenRepository
-	sessions  sessionRevoker
-	links     *authLinkIssuer
-	issuer    tokenIssuer
-	minLength int
-	resetTTL  time.Duration
+	db       tenantScoper
+	users    passwordUserRepository
+	tokens   authTokenRepository
+	sessions sessionRevoker
+	links    *authLinkIssuer
+	issuer   tokenIssuer
+	policy   domain.PasswordPolicy
+	resetTTL time.Duration
 }
 
 // NewPasswordService builds a PasswordService. now is injectable so expiry is deterministic.
@@ -59,7 +59,7 @@ func NewPasswordService(
 			db: db, tokens: tokens, mail: mail, log: log,
 			baseURL: web.BackofficeURL, now: now, newSecret: newTokenSecret,
 		},
-		minLength: cfg.PasswordMinLength, resetTTL: cfg.PasswordResetTTL,
+		policy: domain.PasswordPolicy{MinLength: cfg.PasswordMinLength}, resetTTL: cfg.PasswordResetTTL,
 	}
 }
 
@@ -68,7 +68,7 @@ func NewPasswordService(
 func (s *PasswordService) ChangeOwn(
 	ctx context.Context, tenant domain.Tenant, current, next string,
 ) (*domain.TokenPair, error) {
-	if err := s.validateLength(next); err != nil {
+	if err := s.policy.Validate(next); err != nil {
 		return nil, err
 	}
 
@@ -138,7 +138,7 @@ func (s *PasswordService) Forgot(ctx context.Context, email string) error {
 // Reset redeems a recovery link and sets the new password. An unknown, expired, already-used
 // or wrong-type token all answer domain.ErrUnauthenticated alike.
 func (s *PasswordService) Reset(ctx context.Context, rawToken, next string) error {
-	if err := s.validateLength(next); err != nil {
+	if err := s.policy.Validate(next); err != nil {
 		return err
 	}
 
@@ -163,7 +163,7 @@ func (s *PasswordService) Reset(ctx context.Context, rawToken, next string) erro
 			return getErr
 		}
 		if !user.IsUsable() {
-			return domain.ErrUnauthenticated
+			return domain.WithCode(domain.CodeInvalidLink, domain.ErrUnauthenticated)
 		}
 		if updateErr := s.users.UpdatePassword(ctx, q, stored.AccountID, stored.UserID, hash); updateErr != nil {
 			return updateErr
@@ -172,7 +172,7 @@ func (s *PasswordService) Reset(ctx context.Context, rawToken, next string) erro
 		return endErr
 	})
 	if errors.Is(err, domain.ErrConflict) || errors.Is(err, domain.ErrNotFound) {
-		return domain.ErrUnauthenticated
+		return domain.WithCode(domain.CodeInvalidLink, domain.ErrUnauthenticated)
 	}
 	return err
 }
@@ -238,13 +238,4 @@ func (s *PasswordService) endSessions(
 		return 0, err
 	}
 	return epoch, nil
-}
-
-// validateLength applies the configured floor, which is the same in all three paths.
-func (s *PasswordService) validateLength(password string) error {
-	if len([]rune(password)) < s.minLength {
-		return fmt.Errorf("%w: password must be at least %d characters",
-			domain.ErrInvalidInput, s.minLength)
-	}
-	return nil
 }

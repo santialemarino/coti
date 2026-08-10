@@ -4,16 +4,23 @@ import {
   changePasswordSchema,
   type ChangePasswordValues,
 } from '@/app/(protected)/settings/password/form-schema';
-import { apiRequest, errorCodeOf } from '@/lib/api/client';
+import { apiRequest } from '@/lib/api/client';
+import { errorCodeOf, type ApiErrorCode } from '@/lib/api/errors';
 import { getSession, isRemembered, startSession } from '@/lib/auth/session';
+
+export type ChangePasswordField = 'currentPassword' | 'newPassword';
 
 export interface ChangePasswordResult {
   done?: boolean;
-  error?: 'sessionExpired' | 'unexpected';
-  fieldError?:
-    | { field: 'currentPassword'; key: 'wrong' }
-    | { field: 'newPassword'; key: 'tooShort' };
+  error?: ApiErrorCode;
+  field?: ChangePasswordField;
 }
+
+/* Which field a refusal belongs on. A code absent from the map belongs to the form. */
+const FIELD_FOR: Partial<Record<ApiErrorCode, ChangePasswordField>> = {
+  UNAUTHENTICATED: 'currentPassword',
+  PASSWORD_POLICY: 'newPassword',
+};
 
 interface TokenPairRaw {
   access_token: string;
@@ -26,8 +33,9 @@ interface TokenPairRaw {
  * is logged out by their own change.
  */
 export async function changePassword(values: ChangePasswordValues): Promise<ChangePasswordResult> {
+  // The form validated this already, so a failure here means the request did not come from it.
   const parsed = changePasswordSchema().safeParse(values);
-  if (!parsed.success) return { fieldError: { field: 'newPassword', key: 'tooShort' } };
+  if (!parsed.success) return { error: 'INVALID_BODY' };
 
   try {
     const tokens = await apiRequest<TokenPairRaw>({
@@ -45,15 +53,12 @@ export async function changePassword(values: ChangePasswordValues): Promise<Chan
     return { done: true };
   } catch (error) {
     const code = errorCodeOf(error);
-    if (code === 'unprocessable') return { fieldError: { field: 'newPassword', key: 'tooShort' } };
-    if (code === 'unauthenticated') {
-      // The route answers 401 for a wrong current password and for a bearer the API
-      // no longer honours; telling a user their password is wrong when their session
-      // simply lapsed sends them chasing the wrong problem.
-      const stillSignedIn = await getSession();
-      if (stillSignedIn) return { fieldError: { field: 'currentPassword', key: 'wrong' } };
-      return { error: 'sessionExpired' };
-    }
-    return { error: 'unexpected' };
+    /*
+     * The route answers 401 for a wrong current password and for a bearer the API no longer
+     * honours, and only asking again tells them apart — telling a user their password is wrong
+     * when their session simply lapsed sends them chasing the wrong problem.
+     */
+    if (code === 'UNAUTHENTICATED' && !(await getSession())) return { error: 'SESSION_EXPIRED' };
+    return { error: code, field: FIELD_FOR[code] };
   }
 }

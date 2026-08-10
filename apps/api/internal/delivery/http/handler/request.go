@@ -29,6 +29,7 @@ func pathUUID(c *gin.Context, name string) (uuid.UUID, bool) {
 	if err != nil {
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{
 			Error:  name + " is not a valid uuid",
+			Code:   string(domain.CodeInvalidBody),
 			Detail: err.Error(),
 		})
 		return uuid.Nil, false

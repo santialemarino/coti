@@ -267,7 +267,11 @@ describe('UserTable dialogs', () => {
       password: '',
     });
     expect(createUser).not.toHaveBeenCalled();
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.updated));
+    // Names the user: a toast that arrives while the caller is looking elsewhere has to say who
+    // it is about, so the assertion is on the name reaching it, not on the sentence.
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('Bruno D. Díaz')),
+    );
   });
 
   it('creates rather than edits when opened from the add button', async () => {
@@ -278,12 +282,14 @@ describe('UserTable dialogs', () => {
     await waitFor(() => expect(within(dialog(view)).getByText(copy.create.title)).toBeTruthy());
     fireEvent.change(field(view, 'name'), { target: { value: 'Dana López' } });
     fireEvent.change(field(view, 'email'), { target: { value: 'dana@corralon.test' } });
-    fireEvent.change(field(view, 'password'), { target: { value: 'coti1234' } });
+    fireEvent.change(field(view, 'password'), { target: { value: 'Coti-1234-larga' } });
     submitDialog(view);
 
     await waitFor(() => expect(createUser).toHaveBeenCalledOnce());
     expect(updateUser).not.toHaveBeenCalled();
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.created));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('Dana López')),
+    );
   });
 
   /*
@@ -292,7 +298,7 @@ describe('UserTable dialogs', () => {
    * the list anyway.
    */
   it('puts a refused address on the email field, and nowhere else', async () => {
-    vi.mocked(updateUser).mockResolvedValue({ error: 'emailTaken' });
+    vi.mocked(updateUser).mockResolvedValue({ error: 'EMAIL_TAKEN' });
     const view = renderTable();
 
     await openEdit(view, SELLER.name);
@@ -300,20 +306,20 @@ describe('UserTable dialogs', () => {
     submitDialog(view);
 
     await waitFor(() =>
-      expect(within(dialog(view)).getByText(copy.errors.emailTaken)).toBeTruthy(),
+      expect(within(dialog(view)).getByText(copy.errors.EMAIL_TAKEN)).toBeTruthy(),
     );
-    expect(view.getAllByText(copy.errors.emailTaken)).toHaveLength(1);
+    expect(view.getAllByText(copy.errors.EMAIL_TAKEN)).toHaveLength(1);
   });
 
   it('puts every other refusal on the list', async () => {
-    vi.mocked(updateUser).mockResolvedValue({ error: 'notFound' });
+    vi.mocked(updateUser).mockResolvedValue({ error: 'NOT_FOUND' });
     const view = renderTable();
 
     await openEdit(view, SELLER.name);
     await waitFor(() => expect(field(view, 'name').value).toBe(SELLER.name));
     submitDialog(view);
 
-    await waitFor(() => expect(view.getByText(copy.errors.notFound)).toBeTruthy());
+    await waitFor(() => expect(view.getByText(copy.errors.NOT_FOUND)).toBeTruthy());
   });
 
   /*
@@ -459,7 +465,9 @@ describe('UserTable deactivating and reactivating', () => {
     fireEvent.click(within(dialog(view)).getByRole('button', { name: copy.deactivate.confirm }));
 
     await waitFor(() => expect(deactivateUser).toHaveBeenCalledWith(SELLER.id));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.deactivated));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(expect.stringContaining(SELLER.name)),
+    );
   });
 
   /*
@@ -467,7 +475,7 @@ describe('UserTable deactivating and reactivating', () => {
    * closing overlay is gone before it can be read.
    */
   it('puts a refused deactivation on the page and shuts the dialog', async () => {
-    vi.mocked(deactivateUser).mockResolvedValue({ error: 'self' });
+    vi.mocked(deactivateUser).mockResolvedValue({ error: 'SELF_DEACTIVATION' });
     const view = renderTable();
 
     fireEvent.click(
@@ -476,7 +484,7 @@ describe('UserTable deactivating and reactivating', () => {
     await waitFor(() => expect(dialog(view)).toBeTruthy());
     fireEvent.click(within(dialog(view)).getByRole('button', { name: copy.deactivate.confirm }));
 
-    await waitFor(() => expect(view.getByText(copy.errors.self)).toBeTruthy());
+    await waitFor(() => expect(view.getByText(messages.errors.SELF_DEACTIVATION)).toBeTruthy());
     await waitFor(() => expect(view.baseElement.querySelector('[role="dialog"]')).toBeNull());
   });
 
@@ -516,7 +524,9 @@ describe('UserTable deactivating and reactivating', () => {
       branchIds: [MORON.id],
     });
     expect(view.baseElement.querySelector('[role="dialog"]')).toBeNull();
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.reactivated));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(expect.stringContaining(stale.name)),
+    );
   });
 });
 
@@ -546,11 +556,14 @@ describe('UserTable mailing a recovery link', () => {
     fireEvent.click(within(dialog(view)).getByRole('button', { name: copy.passwordReset.confirm }));
 
     await waitFor(() => expect(sendPasswordReset).toHaveBeenCalledWith(SELLER.id));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.passwordResetSent));
+    // The address is the point of this confirmation: it is where the link went.
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(expect.stringContaining(SELLER.email)),
+    );
   });
 
   it('puts the mail allowance running out on the list', async () => {
-    vi.mocked(sendPasswordReset).mockResolvedValue({ error: 'rateLimited' });
+    vi.mocked(sendPasswordReset).mockResolvedValue({ error: 'RATE_LIMITED' });
     const view = renderTable();
 
     fireEvent.click(
@@ -559,6 +572,8 @@ describe('UserTable mailing a recovery link', () => {
     await waitFor(() => expect(dialog(view)).toBeTruthy());
     fireEvent.click(within(dialog(view)).getByRole('button', { name: copy.passwordReset.confirm }));
 
-    await waitFor(() => expect(view.getByText(copy.errors.rateLimited)).toBeTruthy());
+    await waitFor(() =>
+      expect(view.getByText(copy.passwordReset.errors.RATE_LIMITED)).toBeTruthy(),
+    );
   });
 });

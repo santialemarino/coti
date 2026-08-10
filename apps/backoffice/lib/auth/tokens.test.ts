@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { needsRenewal, sessionCookieOptions } from '@/lib/auth/tokens';
+import { needsRenewal, requestLogin, sessionCookieOptions } from '@/lib/auth/tokens';
 
 const NOW_SECONDS = 1_800_000_000;
 // The default AUTH_REFRESH_SKEW_SECONDS, which is what these cases are measured against.
@@ -126,6 +126,84 @@ describe('sessionCookieOptions', () => {
       httpOnly: true,
       sameSite: 'lax',
       path: '/',
+    });
+  });
+});
+
+describe('requestLogin', () => {
+  function responds(body: string, status: number) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(body, { status })),
+    );
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it('hands back the pair it was answered with', async () => {
+    responds('{"access_token":"a","refresh_token":"r"}', 200);
+
+    await expect(requestLogin('ana@coti.test', 'secret', false)).resolves.toMatchObject({
+      ok: true,
+      tokens: { accessToken: 'a', refreshToken: 'r' },
+    });
+  });
+
+  /*
+   * Both are 429, and they are not the same thing: one is the account's failed-attempt lockout and
+   * the other the caller's own request allowance. Reading the envelope is what tells them apart —
+   * this path cannot go through lib/api/client.ts, because the proxy renews a session and cannot
+   * import server-only.
+   */
+  it.each([
+    ['ACCOUNT_LOCKED', '{"error":"account temporarily locked","code":"ACCOUNT_LOCKED"}'],
+    [
+      'RATE_LIMITED',
+      '{"error":"too many requests","code":"RATE_LIMITED","retry_after_seconds":60}',
+    ],
+  ])('reads a 429 carrying %s as itself', async (code, body) => {
+    responds(body, 429);
+
+    await expect(requestLogin('ana@coti.test', 'secret', false)).resolves.toMatchObject({
+      ok: false,
+      code,
+    });
+  });
+
+  it('falls back to the status for a refusal that carries no code', async () => {
+    responds('{"error":"unauthenticated"}', 401);
+
+    await expect(requestLogin('ana@coti.test', 'secret', false)).resolves.toMatchObject({
+      ok: false,
+      code: 'UNAUTHENTICATED',
+    });
+  });
+
+  // An unreachable API is not a rejected credential and must not read as one.
+  it('reports an unreachable API rather than a refusal', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('connect ECONNREFUSED');
+      }),
+    );
+
+    await expect(requestLogin('ana@coti.test', 'secret', false)).resolves.toMatchObject({
+      ok: false,
+      status: 0,
+      code: 'UNREACHABLE',
+    });
+  });
+
+  it('reports an answer with no pair in it as unexpected, not as a refused credential', async () => {
+    responds('{"access_token":"a"}', 200);
+
+    await expect(requestLogin('ana@coti.test', 'secret', false)).resolves.toMatchObject({
+      ok: false,
+      code: 'INTERNAL',
     });
   });
 });

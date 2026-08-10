@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { cookieJar } from '@repo/vitest-config/cookies';
 import { ROUTES } from '@/config/routes';
+import { ApiError } from '@/lib/api/errors';
 import { clearSession, getAccessToken, getSession, requireAdmin } from '@/lib/auth/session';
 import { ACCESS_COOKIE, BRANCH_COOKIE, REFRESH_COOKIE, REMEMBER_COOKIE } from '@/lib/auth/tokens';
 
@@ -15,12 +16,13 @@ vi.mock('next/navigation', () => ({
   }),
 }));
 // Fully, not partially: the real client pulls in the branch reader, which pulls the branch
-// list back through the client, and a session unit test has no business in that cycle.
-vi.mock('@/lib/api/client', () => ({ apiRequest: vi.fn(), errorCodeOf: vi.fn() }));
+// list back through the client, and a session unit test has no business in that cycle. The error
+// vocabulary is left real — it is a pure module, and mocking it would hide the mapping.
+vi.mock('@/lib/api/client', () => ({ apiRequest: vi.fn() }));
 
 const { cookies } = await import('next/headers');
 const { notFound, redirect } = await import('next/navigation');
-const { apiRequest, errorCodeOf } = await import('@/lib/api/client');
+const { apiRequest } = await import('@/lib/api/client');
 
 const ADMIN = { id: 'u1', account_id: 'a1', name: 'Ana', email: 'ana@coti.test', role: 'ADMIN' };
 const SELLER = { ...ADMIN, id: 'u2', name: 'Beto', role: 'SELLER' };
@@ -79,8 +81,7 @@ describe('requireAdmin', () => {
 
   it('sends a caller the API no longer knows to the same screen', async () => {
     jar();
-    vi.mocked(apiRequest).mockRejectedValue(new Error('401'));
-    vi.mocked(errorCodeOf).mockReturnValue('unauthenticated');
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('UNAUTHENTICATED', 401));
 
     await expect(requireAdmin()).rejects.toThrow(`NEXT_REDIRECT:${ROUTES.sessionEnded}`);
   });
