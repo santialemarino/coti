@@ -173,6 +173,20 @@ the route the link lands on.
   **public-registration** problem, and an admin works inside their own account and can squat
   nothing. Mailing a link instead would make a mistyped address a permanent lockout rather than
   a recoverable one that surfaces at password recovery.
+- **Changing the address drops the confirmation.** The stamp proved one mailbox reachable and
+  says nothing about the next, so `UserRepository.Update` nulls `email_verified_at` whenever the
+  address actually changes — compared folded, like the unique index, so a change of case alone
+  is not a change. Without it an account could be pointed at a mailbox nobody proved while still
+  reading as verified, which is the one thing this flag exists to prevent. A user whose address
+  was corrected asks for a new link from `/verify-email`; the address is registered and
+  unconfirmed, so the resend genuinely sends.
+- **`GET /v1/me` reports `email_verified`**, which is what lets a screen tell "confirm your
+  address" from "already done" instead of guessing.
+- **Enforced at login only** — not on refresh, not on tenant resolution. Registration hands out a
+  session on purpose, so the new admin can reach the screen that explains the mail; checking on
+  every request would make signup hand over a session that can do nothing. It still bites:
+  registration issues a **non-remembered** pair, so the session dies within
+  `AUTH_REFRESH_TTL_HOURS` (12h) and the next login is refused until the address is confirmed.
 - **When it is on, the caller is told why** — a 403 naming the reason, unlike every other
   rejection here. That is safe because it is only reachable _after_ the password matched:
   the check sits below the credential comparison, so it can never answer for someone who

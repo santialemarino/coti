@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -133,6 +134,80 @@ func TestUserRepository_EmailUniquenessIsGlobal(t *testing.T) {
 	if _, err := createUser(t, db, accountB, repo, newUser(strings.ToUpper(shared), "SELLER")); !errors.Is(err, domain.ErrConflict) {
 		t.Errorf("same email in a different case = %v, want %v", err, domain.ErrConflict)
 	}
+}
+
+// A confirmation proves one address reachable. Carrying it across an address change would let
+// an account be pointed at a mailbox nobody proved, while still reading as verified — which is
+// exactly what AUTH_REQUIRE_VERIFIED_EMAIL is there to prevent.
+func TestUserRepository_UpdateClearsVerificationOnlyWhenTheAddressChanges(t *testing.T) {
+	db := testDB(t)
+	repo := NewUserRepository()
+	ctx := context.Background()
+
+	accountID := seedAccount(t, db, "Corralón")
+	userID := seedUser(t, db, accountID, "SELLER")
+	tenant := domain.Tenant{AccountID: accountID}
+
+	verifiedAt := func(t *testing.T) *time.Time {
+		t.Helper()
+		var at *time.Time
+		if err := db.CrossAccount().QueryRow(ctx,
+			`SELECT email_verified_at FROM app_user WHERE id = $1`, userID).Scan(&at); err != nil {
+			t.Fatalf("read email_verified_at: %v", err)
+		}
+		return at
+	}
+	stamp := func(t *testing.T) {
+		t.Helper()
+		if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+			return repo.MarkEmailVerified(ctx, q, accountID, userID)
+		}); err != nil {
+			t.Fatalf("MarkEmailVerified() = %v, want no error", err)
+		}
+	}
+	update := func(t *testing.T, name, email string) {
+		t.Helper()
+		if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+			_, updErr := repo.Update(ctx, q, accountID, userID, domain.UserUpdate{
+				Name: name, Email: email, Role: domain.UserRoleSeller,
+			})
+			return updErr
+		}); err != nil {
+			t.Fatalf("Update() = %v, want no error", err)
+		}
+	}
+
+	var current string
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT email FROM app_user WHERE id = $1`, userID).Scan(&current); err != nil {
+		t.Fatalf("read email: %v", err)
+	}
+
+	t.Run("an unrelated edit keeps it", func(t *testing.T) {
+		stamp(t)
+		update(t, "Renombrado", current)
+		if verifiedAt(t) == nil {
+			t.Error("email_verified_at was cleared by an edit that left the address alone")
+		}
+	})
+
+	// Only the case differs, and the unique index is on lower(email) — so this is the same
+	// address, and dropping the confirmation here would be a needless re-verification.
+	t.Run("a case-only change keeps it", func(t *testing.T) {
+		stamp(t)
+		update(t, "Renombrado", strings.ToUpper(current))
+		if verifiedAt(t) == nil {
+			t.Error("email_verified_at was cleared by a change of case alone")
+		}
+	})
+
+	t.Run("a real address change drops it", func(t *testing.T) {
+		stamp(t)
+		update(t, "Renombrado", "otra+"+uuid.NewString()+"@corralon.test")
+		if at := verifiedAt(t); at != nil {
+			t.Errorf("email_verified_at = %v after the address changed, want null", at)
+		}
+	})
 }
 
 // Deactivating bumps nothing on its own — the service pairs it with the epoch bump. This
