@@ -319,17 +319,17 @@
       },
       "resend": {
         "hint": "Podés pedir un enlace nuevo con la dirección que usaste al registrarte.",
+        "hintKnown": "¿No te llegó? Revisá el correo no deseado y, si no está, pedí uno nuevo.",
         "submit": "Enviar un enlace nuevo",
+        "again": "Reenviar el correo",
         "submitting": "Enviando…",
         "cooldown": "Enviar de nuevo en {seconds} s",
         "sent": "Si la dirección está registrada y falta confirmarla, va a recibir un enlace en unos minutos.",
+        "sentAgain": "Pedimos un enlace nuevo para {email}. Puede tardar unos minutos en llegar.",
         "errors": {
           "INVALID_BODY": "Ingresá una dirección de correo válida.",
           "INTERNAL": "No pudimos enviar el enlace. Intentá de nuevo."
-        },
-        "hintKnown": "¿No te llegó? Revisá el correo no deseado y, si no está, pedí uno nuevo.",
-        "again": "Reenviar el correo",
-        "sentAgain": "Si hacía falta, te va a llegar un correo nuevo en unos minutos."
+        }
       },
       "errors": {
         "INTERNAL": "No pudimos confirmar tu dirección. Intentá de nuevo."

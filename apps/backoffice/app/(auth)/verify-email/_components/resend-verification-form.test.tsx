@@ -192,7 +192,25 @@ describe('with the caller address known', () => {
     submit(view);
 
     await waitFor(() => expect(resendVerification).toHaveBeenCalledWith(EMAIL));
-    expect(toast.success).toHaveBeenCalledWith(copy.resend.sentAgain);
+    // The address is what this variant adds, so that is what is pinned — not the whole sentence,
+    // which a copy edit may legitimately reword.
+    expect(toast.success).toHaveBeenCalledWith(expect.stringContaining(EMAIL));
+  });
+
+  /*
+   * The refusal the API attaches to the address renders inside the field, and there is no field
+   * here — so routed as-is it would be set and shown nowhere, and a refusal would look exactly
+   * like nothing happening.
+   */
+  it('still shows a refusal that the API attached to the address', async () => {
+    vi.mocked(resendVerification).mockResolvedValue({ error: 'INVALID_BODY', field: 'email' });
+    const view = renderForm(EMAIL);
+
+    submit(view);
+
+    await waitFor(() => expect(view.getByText(copy.resend.errors.INVALID_BODY)).toBeTruthy());
+    expect(submitButton(view).disabled).toBe(false);
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it('shuts the button for the cooldown, the same as the typed form', async () => {

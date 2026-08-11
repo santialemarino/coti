@@ -93,12 +93,19 @@ export function ResendVerificationForm({ address }: ResendVerificationFormProps)
     try {
       const result = await resendVerification(values.email);
       if (result.sent) {
-        toast.success(address ? t('resend.sentAgain') : t('resend.sent'));
+        toast.success(address ? t('resend.sentAgain', { email: address }) : t('resend.sent'));
         opensAt.current = Date.now() + RESEND_COOLDOWN_SECONDS * A_SECOND;
         setRemaining(RESEND_COOLDOWN_SECONDS);
         return;
       }
-      form.setError(result.field ?? 'root', { message: message(result.error) });
+      /*
+       * Onto the form when the field is not on screen: a message attached to `email` renders
+       * inside that field, so with a known address it would be set and shown nowhere, and the
+       * refusal would look like nothing happening at all.
+       */
+      form.setError(address ? 'root' : (result.field ?? 'root'), {
+        message: message(result.error),
+      });
     } finally {
       sending.current = false;
     }

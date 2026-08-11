@@ -62,20 +62,35 @@ describe('with a token', () => {
     await renderPage({ token: 'abc123' });
 
     expect(ConfirmEmailForm).toHaveBeenCalledWith(
-      expect.objectContaining({ token: 'abc123', signedIn: true }),
+      expect.objectContaining({ token: 'abc123', address: EMAIL }),
       undefined,
     );
   });
 
   // Opening the mailed link in the browser the mail client owns is the common case, and it
   // usually holds no session — the success CTA has to lead somewhere reachable.
-  it('says there is no session when there is none', async () => {
+  it('names no address when there is no session', async () => {
     vi.mocked(getSession).mockResolvedValue(null);
 
     await renderPage({ token: 'abc123' });
 
     expect(ConfirmEmailForm).toHaveBeenCalledWith(
-      expect.objectContaining({ signedIn: false }),
+      expect.objectContaining({ address: undefined }),
+      undefined,
+    );
+  });
+
+  /*
+   * getSession rethrows anything that is not a refusal, so an unreachable API used to take the
+   * confirm button down with it — on the one path where the token, not the session, is the point.
+   */
+  it('still renders the confirm button when the session cannot be resolved', async () => {
+    vi.mocked(getSession).mockRejectedValue(new Error('UNREACHABLE'));
+
+    await renderPage({ token: 'abc123' });
+
+    expect(ConfirmEmailForm).toHaveBeenCalledWith(
+      expect.objectContaining({ token: 'abc123', address: undefined }),
       undefined,
     );
   });
