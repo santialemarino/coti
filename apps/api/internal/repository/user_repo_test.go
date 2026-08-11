@@ -5,6 +5,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -101,7 +102,10 @@ func TestUserRepository_EmailUniquenessIsGlobal(t *testing.T) {
 
 	accountA := seedAccount(t, db, "Corralón A")
 	accountB := seedAccount(t, db, "Corralón B")
-	const shared = "compras@corralon.test"
+	// Unique per run: the address has to be shared inside this test and nowhere else, because
+	// the index is global and `go test ./internal/...` runs this package beside the one that
+	// exercises the same rule through the API.
+	shared := "compras+" + uuid.NewString() + "@corralon.test"
 
 	t.Cleanup(func() {
 		mustCleanup(t, db.CrossAccount(),
@@ -126,7 +130,7 @@ func TestUserRepository_EmailUniquenessIsGlobal(t *testing.T) {
 
 	// Case is not a way around it: the index is on lower(email), so it holds even if a writer
 	// forgets to normalize.
-	if _, err := createUser(t, db, accountB, repo, newUser("COMPRAS@Corralon.TEST", "SELLER")); !errors.Is(err, domain.ErrConflict) {
+	if _, err := createUser(t, db, accountB, repo, newUser(strings.ToUpper(shared), "SELLER")); !errors.Is(err, domain.ErrConflict) {
 		t.Errorf("same email in a different case = %v, want %v", err, domain.ErrConflict)
 	}
 }
