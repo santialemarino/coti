@@ -66,6 +66,7 @@ type Config struct {
 	Job           JobConfig
 	CatalogImport SpreadsheetImportConfig
 	PriceImport   SpreadsheetImportConfig
+	Storage       StorageConfig
 }
 
 // RateLimitConfig holds the request allowances, all of them settings rather than literals.
@@ -415,6 +416,17 @@ type CatalogConfig struct {
 	MatchLexicalConfidencePercent int
 }
 
+// StorageConfig holds the object storage settings and file limits.
+type StorageConfig struct {
+	Endpoint        string
+	Region          string
+	Bucket          string
+	AccessKey       string
+	SecretKey       string
+	MaxFileSize     int64
+	SignedURLExpiry time.Duration
+}
+
 // Load resolves the configuration from the environment, applying defaults for everything
 // optional. It reports every validation problem at once, not the first.
 func Load() (*Config, error) {
@@ -514,6 +526,15 @@ func Load() (*Config, error) {
 			MatchAmbiguityMarginPercent:   getInt("CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT", 5, &problems),
 			MatchLexicalConfidencePercent: getInt("CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT", 75, &problems),
 		},
+		Storage: StorageConfig{
+			Endpoint:        getString("STORAGE_ENDPOINT", ""),
+			Region:          getString("STORAGE_REGION", ""),
+			Bucket:          getString("STORAGE_BUCKET", ""),
+			AccessKey:       getString("STORAGE_ACCESS_KEY", ""),
+			SecretKey:       getString("STORAGE_SECRET_KEY", ""),
+			MaxFileSize:     int64(getInt("STORAGE_MAX_FILE_SIZE_BYTES", 10*1024*1024, &problems)),
+			SignedURLExpiry: getDuration("STORAGE_SIGNED_URL_EXPIRY_MINUTES", 15*time.Minute, &problems),
+		},
 		RateLimit: RateLimitConfig{
 			Enabled:          getBool("RATE_LIMIT_ENABLED", true, &problems),
 			Window:           getDuration("RATE_LIMIT_WINDOW_SECONDS", time.Minute, &problems),
@@ -584,6 +605,13 @@ func Load() (*Config, error) {
 	if cfg.Auth.RequireVerifiedEmail && cfg.Mail.Provider == MailProviderConsole {
 		problems = append(problems, "AUTH_REQUIRE_VERIFIED_EMAIL needs a mail provider that "+
 			"delivers: the console transport only writes to the log")
+	}
+	if cfg.Storage.MaxFileSize <= 0 {
+		problems = append(problems, "STORAGE_MAX_FILE_SIZE_BYTES must be greater than zero")
+	}
+
+	if cfg.Storage.SignedURLExpiry <= 0 {
+		problems = append(problems, "STORAGE_SIGNED_URL_EXPIRY_MINUTES must be greater than zero")
 	}
 
 	// The console transport reaches nothing, so it needs no sender of its own; a real one
