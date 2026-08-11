@@ -360,12 +360,19 @@ func TestUsers_CreatedInTheCallersAccount(t *testing.T) {
 	}
 
 	var storedAccount uuid.UUID
+	var verifiedAt *time.Time
 	if err := e.db.CrossAccount().QueryRow(context.Background(),
-		`SELECT account_id FROM app_user WHERE id = $1`, created.ID).Scan(&storedAccount); err != nil {
+		`SELECT account_id, email_verified_at FROM app_user WHERE id = $1`,
+		created.ID).Scan(&storedAccount, &verifiedAt); err != nil {
 		t.Fatalf("read created user: %v", err)
 	}
 	if storedAccount != accountA {
 		t.Errorf("created in account %v, want %v", storedAccount, accountA)
+	}
+	// Nothing mails an admin-created user a confirmation link, so the row has to carry the
+	// stamp already or AUTH_REQUIRE_VERIFIED_EMAIL would lock them out permanently.
+	if verifiedAt == nil {
+		t.Error("email_verified_at is null on an admin-created user")
 	}
 	if storedAccount == accountB {
 		t.Error("an admin of one account created a user in another")
