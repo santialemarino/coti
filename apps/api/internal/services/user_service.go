@@ -21,6 +21,7 @@ type userAdminRepository interface {
 	Update(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, in domain.UserUpdate) (*domain.AppUser, error)
 	Deactivate(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) error
 	BumpSessionEpoch(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) (int, error)
+	MarkEmailVerified(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) error
 }
 
 // userBranchRepository is the seller-to-branch assignment surface.
@@ -135,6 +136,14 @@ func (s *UserService) CreateUser(
 		user, createErr := s.users.Create(ctx, q, tenant.AccountID, in, string(hash))
 		if createErr != nil {
 			return createErr
+		}
+		// The address is trusted on the admin's word. Verification exists to stop someone
+		// reserving an address they cannot read, which is a public-registration threat: an admin
+		// works inside their own account and can squat nothing. Mailing a link instead would turn
+		// a mistyped address into a permanent lockout once a verified address is required, rather
+		// than a recoverable one that only bites at password recovery.
+		if verifyErr := s.users.MarkEmailVerified(ctx, q, tenant.AccountID, user.ID); verifyErr != nil {
+			return verifyErr
 		}
 		if replaceErr := s.assignments.Replace(ctx, q, tenant.AccountID, user.ID, branchIDs); replaceErr != nil {
 			return replaceErr

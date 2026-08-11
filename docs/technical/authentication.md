@@ -165,6 +165,14 @@ the route the link lands on.
   only writes to a log cannot deliver the link anyone would need, so enforcing it would lock
   every user out of the environment. Under `smtp` the flag is free to be turned on — see
   [Outbound email](./outbound-email.md).
+- **An admin-created user is verified on creation, in the same transaction.** No path mails
+  them a link — only public registration does — so without this they would carry a null
+  `email_verified_at` forever and the flag would lock them out of an account they were
+  deliberately given access to. Trusting the admin's word is the right reading of the threat:
+  verification exists to stop someone reserving an address they cannot read, which is a
+  **public-registration** problem, and an admin works inside their own account and can squat
+  nothing. Mailing a link instead would make a mistyped address a permanent lockout rather than
+  a recoverable one that surfaces at password recovery.
 - **When it is on, the caller is told why** — a 403 naming the reason, unlike every other
   rejection here. That is safe because it is only reachable _after_ the password matched:
   the check sits below the credential comparison, so it can never answer for someone who

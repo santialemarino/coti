@@ -5,6 +5,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -31,6 +32,7 @@ type fakeAdminUsers struct {
 	updated       []domain.UserUpdate
 	deactivated   []uuid.UUID
 	epochBumpedID []uuid.UUID
+	verified      []uuid.UUID
 }
 
 func newFakeAdminUsers(users ...*domain.AppUser) *fakeAdminUsers {
@@ -99,6 +101,15 @@ func (f *fakeAdminUsers) Deactivate(_ context.Context, _ repository.Querier, _, 
 func (f *fakeAdminUsers) BumpSessionEpoch(_ context.Context, _ repository.Querier, _, id uuid.UUID) (int, error) {
 	f.epochBumpedID = append(f.epochBumpedID, id)
 	return 2, nil
+}
+
+func (f *fakeAdminUsers) MarkEmailVerified(_ context.Context, _ repository.Querier, _, id uuid.UUID) error {
+	f.verified = append(f.verified, id)
+	if u, ok := f.stored[id]; ok {
+		at := time.Now()
+		u.EmailVerifiedAt = &at
+	}
+	return nil
 }
 
 type fakeAssignments struct {
@@ -221,6 +232,30 @@ func TestUserService_CreateUsesTheTenantAccount(t *testing.T) {
 	}
 	if len(h.db.scopes) != 1 || h.db.scopes[0] != testAccountID {
 		t.Errorf("transaction scoped to %v, want [%v]", h.db.scopes, testAccountID)
+	}
+}
+
+// An admin-created user is trusted on the admin's word, in the same transaction that created
+// them. Nothing else ever would: no path mails these users a confirmation link, so without this
+// they carry a null email_verified_at forever and AUTH_REQUIRE_VERIFIED_EMAIL locks them out of
+// an account they were deliberately given access to.
+func TestUserService_CreateMarksTheAddressVerified(t *testing.T) {
+	h := newUserHarness(storedAdmin())
+
+	created, err := h.svc.CreateUser(context.Background(), adminTenant(), validNewUser())
+	if err != nil {
+		t.Fatalf("CreateUser() = %v, want no error", err)
+	}
+	if len(h.users.verified) != 1 || h.users.verified[0] != created.ID {
+		t.Fatalf("verified %v, want [%v]", h.users.verified, created.ID)
+	}
+	if stored := h.users.stored[created.ID]; stored.EmailVerifiedAt == nil {
+		t.Error("the created user carries a null email_verified_at")
+	}
+	// One transaction for the whole creation: a verification written outside it could survive a
+	// rollback that took the user with it.
+	if len(h.db.scopes) != 1 {
+		t.Errorf("creation opened %d transactions, want 1", len(h.db.scopes))
 	}
 }
 
