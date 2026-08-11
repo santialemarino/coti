@@ -54,7 +54,7 @@ describe('with no session', () => {
     expect(linkHrefs(view)).toContain('/login');
   });
 
-  it('asks for an address on a burned link, having none of its own', () => {
+  it('points an unconfirmed caller at the login screen from the prompt', () => {
     const view = renderForm();
 
     expect(view.getByText(copy.prompt)).toBeTruthy();
@@ -80,7 +80,7 @@ describe('with the caller address known', () => {
     );
   });
 
-  it('goes home rather than to the login screen', () => {
+  it('points a known caller home from the prompt instead', () => {
     const view = renderForm(EMAIL);
 
     expect(linkHrefs(view)).toContain('/');
