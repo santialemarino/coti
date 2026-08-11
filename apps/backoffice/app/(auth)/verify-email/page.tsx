@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { CircleXIcon, MailCheckIcon } from 'lucide-react';
+import { CircleCheckIcon, CircleXIcon, MailCheckIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 import { Card, Hint, InlineLink, StatusScreen } from '@repo/ui/components';
@@ -25,37 +25,59 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
   const tRoot = await getTranslations();
   const params = await searchParams;
   const token = typeof params[TOKEN_PARAM] === 'string' ? params[TOKEN_PARAM] : '';
+  const session = await getSession();
 
-  if (!token) {
-    /*
-     * Signed in with no token means they just registered: signup opens a session and sends them
-     * here, so this is the notice that the mail is on its way rather than a broken link. The
-     * resend form is offered either way — a mail that never arrives looks the same from here.
-     */
-    const registered = (await getSession()) !== null;
+  if (token) return <ConfirmEmailForm token={token} signedIn={session !== null} />;
 
+  /*
+   * Nothing left to do, and saying so beats repeating that a mail is on its way — which is what
+   * this screen said to anyone who came back to it after confirming.
+   */
+  if (session?.emailVerified) {
     return (
-      <Card className="gap-y-6">
+      <Card>
         <StatusScreen
-          icon={registered ? MailCheckIcon : CircleXIcon}
-          tone={registered ? 'info' : 'danger'}
-          title={t('title')}
-          description={
-            registered ? t('sent') : apiErrorMessage(tRoot, 'auth.verifyEmail', 'INVALID_LINK')
-          }
-        />
-        <div className="flex flex-col px-6 gap-y-4">
-          <Hint>{t('resend.hint')}</Hint>
-          <ResendVerificationForm />
-          <InlineLink asChild tone="muted" className="self-center">
-            <Link href={registered ? ROUTES.home : ROUTES.login}>
-              {registered ? t('continue') : t('backToLogin')}
-            </Link>
+          icon={CircleCheckIcon}
+          tone="success"
+          title={t('alreadyTitle')}
+          description={t('already')}
+        >
+          <InlineLink asChild>
+            <Link href={ROUTES.home}>{t('continue')}</Link>
           </InlineLink>
-        </div>
+        </StatusScreen>
       </Card>
     );
   }
 
-  return <ConfirmEmailForm token={token} />;
+  /*
+   * A session with an unconfirmed address means they just registered: signup opens one and sends
+   * them here, so this is the notice that the mail is on its way rather than a broken link.
+   * Without a session there is nothing to name and nothing to resend to but a typed address.
+   */
+  const registered = session !== null;
+
+  return (
+    <Card className="gap-y-6">
+      <StatusScreen
+        icon={registered ? MailCheckIcon : CircleXIcon}
+        tone={registered ? 'info' : 'danger'}
+        title={t('title')}
+        description={
+          registered
+            ? t('sentTo', { email: session.email })
+            : apiErrorMessage(tRoot, 'auth.verifyEmail', 'INVALID_LINK')
+        }
+      />
+      <div className="flex flex-col px-6 gap-y-4">
+        <Hint>{registered ? t('resend.hintKnown') : t('resend.hint')}</Hint>
+        <ResendVerificationForm address={registered ? session.email : undefined} />
+        <InlineLink asChild tone="muted" className="self-center">
+          <Link href={registered ? ROUTES.home : ROUTES.login}>
+            {registered ? t('continue') : t('backToLogin')}
+          </Link>
+        </InlineLink>
+      </div>
+    </Card>
+  );
 }
