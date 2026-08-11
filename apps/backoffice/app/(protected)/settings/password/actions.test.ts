@@ -30,6 +30,7 @@ const SESSION = {
   accountId: 'a1',
   name: 'Ana',
   email: 'ana@coti.test',
+  emailVerified: true,
   role: 'ADMIN',
 };
 

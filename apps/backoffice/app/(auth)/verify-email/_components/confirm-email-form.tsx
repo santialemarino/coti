@@ -17,6 +17,9 @@ const INITIAL_STATE: ConfirmEmailResult = {};
 
 interface ConfirmEmailFormProps {
   token: string;
+  /* Whether there is a session to go back to. Confirming from the mail client that opened the
+   * link often happens in a browser that has none, and home would only bounce off the gate. */
+  signedIn: boolean;
 }
 
 /*
@@ -24,7 +27,7 @@ interface ConfirmEmailFormProps {
  * and a mail client's scanner, a corporate link checker or a router prefetch will all issue a
  * GET — any of which would burn the token before the person reading the mail ever clicked.
  */
-export function ConfirmEmailForm({ token }: ConfirmEmailFormProps) {
+export function ConfirmEmailForm({ token, signedIn }: ConfirmEmailFormProps) {
   const t = useTranslations('auth.verifyEmail');
   const message = useApiErrorMessage('auth.verifyEmail');
   const [state, formAction, pending] = useActionState(confirmEmail, INITIAL_STATE);
@@ -42,7 +45,9 @@ export function ConfirmEmailForm({ token }: ConfirmEmailFormProps) {
             description={t('done')}
           >
             <InlineLink asChild>
-              <Link href={ROUTES.home}>{t('continue')}</Link>
+              <Link href={signedIn ? ROUTES.home : ROUTES.login}>
+                {signedIn ? t('continue') : t('goToLogin')}
+              </Link>
             </InlineLink>
           </StatusScreen>
         </Card>

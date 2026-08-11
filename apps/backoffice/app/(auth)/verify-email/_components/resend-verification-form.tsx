@@ -29,6 +29,16 @@ import { FORM_VALIDATION } from '@/lib/forms/options';
 
 const A_SECOND = 1000;
 
+interface ResendVerificationFormProps {
+  /*
+   * The caller's own address, when a session says who they are. Given one, the field goes away:
+   * resend can only ever mail the address already on the account, so offering an editable one
+   * promises a correction it cannot make — type a different address and it answers the same 202
+   * having sent nothing. A typo is fixed by changing the address, not by asking again.
+   */
+  address?: string;
+}
+
 /*
  * The form outlives its own success: a mail that never arrives looks exactly like one that was
  * never sent, so the way to ask again has to still be here afterwards. What changes is the button,
@@ -37,7 +47,7 @@ const A_SECOND = 1000;
  * they worked. The cooldown is a courtesy, not the defence: it lives in component state and a
  * reload clears it, while the API's counters are what actually bound the mailbox.
  */
-export function ResendVerificationForm() {
+export function ResendVerificationForm({ address }: ResendVerificationFormProps) {
   const t = useTranslations('auth.verifyEmail');
   const tErrors = useTranslations('common.form.errors');
   const message = useApiErrorMessage('auth.verifyEmail.resend');
@@ -52,7 +62,7 @@ export function ResendVerificationForm() {
   const form = useForm<ResendVerificationValues>({
     ...FORM_VALIDATION,
     resolver: zodResolver(schema),
-    defaultValues: { email: '' },
+    defaultValues: { email: address ?? '' },
   });
 
   /*
@@ -83,7 +93,7 @@ export function ResendVerificationForm() {
     try {
       const result = await resendVerification(values.email);
       if (result.sent) {
-        toast.success(t('resend.sent'));
+        toast.success(address ? t('resend.sentAgain') : t('resend.sent'));
         opensAt.current = Date.now() + RESEND_COOLDOWN_SECONDS * A_SECOND;
         setRemaining(RESEND_COOLDOWN_SECONDS);
         return;
@@ -97,25 +107,27 @@ export function ResendVerificationForm() {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="flex flex-col gap-y-5">
-        <FormField
-          control={form.control}
-          name="email"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel required>{t('email.label')}</FormLabel>
-              <FormControl>
-                <Input
-                  type="email"
-                  autoComplete="email"
-                  maxLength={TEXT_FIELD_MAX_LENGTH}
-                  placeholder={t('email.placeholder')}
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {!address && (
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel required>{t('email.label')}</FormLabel>
+                <FormControl>
+                  <Input
+                    type="email"
+                    autoComplete="email"
+                    maxLength={TEXT_FIELD_MAX_LENGTH}
+                    placeholder={t('email.placeholder')}
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         <FormRootMessage />
 
@@ -127,7 +139,11 @@ export function ResendVerificationForm() {
           pending={form.formState.isSubmitting}
           pendingLabel={t('resend.submitting')}
         >
-          {cooling ? t('resend.cooldown', { seconds: remaining }) : t('resend.submit')}
+          {cooling
+            ? t('resend.cooldown', { seconds: remaining })
+            : address
+              ? t('resend.again')
+              : t('resend.submit')}
         </PendingButton>
       </form>
     </Form>

@@ -21,6 +21,7 @@ const SESSION = {
   accountId: 'a1',
   name: 'Ana Gómez',
   email: 'ana@corralon.test',
+  emailVerified: true,
   role: 'ADMIN',
 };
 const CENTRAL = {
