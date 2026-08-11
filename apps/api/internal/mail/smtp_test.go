@@ -394,8 +394,8 @@ func addressOf(arg string) string {
 	_, rest, _ := strings.Cut(arg, ":")
 	rest = strings.TrimSpace(rest)
 	if open := strings.Index(rest, "<"); open >= 0 {
-		if close := strings.Index(rest[open:], ">"); close >= 0 {
-			return rest[open+1 : open+close]
+		if end := strings.Index(rest[open:], ">"); end >= 0 {
+			return rest[open+1 : open+end]
 		}
 	}
 	address, _, _ := strings.Cut(rest, " ")
