@@ -163,7 +163,8 @@ the route the link lands on.
 - **Requiring it to log in is a flag that starts off** (`AUTH_REQUIRE_VERIFIED_EMAIL`).
   `config.Load` **refuses to turn it on while `MAIL_PROVIDER` is `console`**: a transport that
   only writes to a log cannot deliver the link anyone would need, so enforcing it would lock
-  every user out of the environment.
+  every user out of the environment. Under `smtp` the flag is free to be turned on — see
+  [Outbound email](./outbound-email.md).
 - **When it is on, the caller is told why** — a 403 naming the reason, unlike every other
   rejection here. That is safe because it is only reachable _after_ the password matched:
   the check sits below the credential comparison, so it can never answer for someone who
@@ -174,10 +175,10 @@ the route the link lands on.
 - **`resend-verification` answers 202 for every address** — unregistered, already confirmed,
   deactivated — for the same reason `forgot-password` does.
 
-**This does not close the address-squatting hole**, and the ticket says so. Reserving someone
-else's address is only prevented by _requiring_ verification, which needs a transport that
-delivers, or by expiring unverified registrations, which needs the scheduled-job runtime. What
-is in place is the flow, so closing it later is a configuration change rather than a feature.
+**This does not close the address-squatting hole on its own.** Reserving someone else's address
+is only prevented by _requiring_ verification, or by expiring unverified registrations, which
+needs the scheduled-job runtime. The transport that requirement waited on now exists, so closing
+it is the configuration change the flow was built for.
 
 ## Rate limits
 

@@ -107,8 +107,8 @@ type AuthConfig struct {
 	VerificationTTL      time.Duration
 }
 
-// MailConfig holds the outbound-mail transport settings. The SMTP fields are the contract an
-// SMTP adapter will read; until one exists, selecting that provider is a startup error.
+// MailConfig holds the outbound-mail transport settings. One account per environment: the SMTP
+// credentials are the whole installation's, not an individual corralón's.
 type MailConfig struct {
 	Provider     MailProvider
 	FromAddress  string
@@ -117,6 +117,10 @@ type MailConfig struct {
 	SMTPPort     int
 	SMTPUsername string
 	SMTPPassword string
+	// SMTPStartTLS is declared rather than negotiated, so a server that stops advertising
+	// STARTTLS fails the send instead of quietly downgrading it to plaintext.
+	SMTPStartTLS bool
+	SMTPTimeout  time.Duration
 }
 
 // WebConfig holds the frontend base URLs an emailed link points at. The API never serves
@@ -192,6 +196,8 @@ func Load() (*Config, error) {
 			SMTPPort:     getInt("MAIL_SMTP_PORT", 587, &problems),
 			SMTPUsername: getString("MAIL_SMTP_USERNAME", ""),
 			SMTPPassword: getString("MAIL_SMTP_PASSWORD", ""),
+			SMTPStartTLS: getBool("MAIL_SMTP_STARTTLS", true, &problems),
+			SMTPTimeout:  getDuration("MAIL_SMTP_TIMEOUT_SECONDS", 10*time.Second, &problems),
 		},
 		Web: WebConfig{
 			BackofficeURL: getString("WEB_BACKOFFICE_URL", "http://localhost:3000"),
@@ -271,11 +277,6 @@ func Load() (*Config, error) {
 			cfg.Mail.FromAddress = "no-reply@coti.local"
 		}
 	case MailProviderSMTP:
-		// Reported here rather than at the composition root so an operator sees it alongside
-		// whatever else is missing, instead of one restart per problem.
-		problems = append(problems, "MAIL_PROVIDER is "+string(MailProviderSMTP)+
-			", which has no adapter wired yet: the only working transport is "+
-			string(MailProviderConsole))
 		required := []struct{ key, value string }{
 			{"MAIL_FROM_ADDRESS", cfg.Mail.FromAddress},
 			{"MAIL_SMTP_HOST", cfg.Mail.SMTPHost},
@@ -291,6 +292,9 @@ func Load() (*Config, error) {
 		if cfg.Mail.SMTPPort <= 0 {
 			problems = append(problems, fmt.Sprintf("MAIL_SMTP_PORT must be greater than zero, got %d",
 				cfg.Mail.SMTPPort))
+		}
+		if cfg.Mail.SMTPTimeout <= 0 {
+			problems = append(problems, "MAIL_SMTP_TIMEOUT_SECONDS must be greater than zero")
 		}
 	default:
 		problems = append(problems, fmt.Sprintf("MAIL_PROVIDER must be %q or %q, got %q",
