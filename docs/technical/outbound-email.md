@@ -9,10 +9,10 @@ behind it.
 `domain.Mailer` is the port — one method, `Send(ctx, EmailMessage)`. Adapters live in
 `apps/api/internal/mail/`, and `cmd/api/main.go` is the only place one is bound.
 
-| Provider  | Behaviour                                                                      |
-| --------- | ------------------------------------------------------------------------------ |
-| `console` | Writes the message to the log, body included, and reports success              |
-| `smtp`    | Delivers over SMTP, with STARTTLS and authentication where the server has them |
+| Provider  | Behaviour                                                           |
+| --------- | ------------------------------------------------------------------- |
+| `console` | Writes the message to the log, body included, and reports success   |
+| `smtp`    | Delivers over SMTP: STARTTLS as configured, authentication if asked |
 
 `console` is the default. Its log line is deliberately the whole body: with no provider behind
 it, that is the only place a recovery link can be read. It is also the reason
@@ -42,8 +42,9 @@ where the server asks for it, which is what lets the same adapter talk to a sand
 credentials at all.
 
 `MAIL_SMTP_TIMEOUT_SECONDS` bounds the dial and the conversation after it, and a cancelled
-request context closes the connection under an exchange already in flight: `net/smtp` takes no
-context and cannot be interrupted any other way.
+context closes the connection under an exchange already in flight: `net/smtp` takes no context
+and cannot be interrupted any other way. That is the adapter's own contract — what the service
+hands it is deliberately not the caller's request, per [What the service does](#what-the-service-does).
 
 ### Reading mail in development
 
@@ -70,6 +71,13 @@ Messages land at **http://localhost:8025**. Mailpit speaks plain SMTP on 1025, s
 3. Hands the message to the transport — **outside** any transaction, because it is off-process.
 4. Writes the `notification` row with the outcome: `SENT` plus a `sent_at`, or `FAILED` with
    `sent_at` left null.
+
+**Step 3 onward is detached from the caller's request** (`context.WithoutCancel`). By the time
+the account has been read the single-use token is already minted and stored, so a client that
+hangs up mid-send would otherwise abort a delivery already committed to — and lose the
+`notification` row too, since that write shares the same context. The transport imposes its own
+bound (`MAIL_SMTP_TIMEOUT_SECONDS`), so detaching does not mean unbounded. A caller who is gone
+_before_ the account is read is still refused: they have cost nothing yet.
 
 **A delivery failure is recorded and does not fail the operation that caused it.** `Send`
 returns the transport's error so a caller can react, and the callers whose own work must

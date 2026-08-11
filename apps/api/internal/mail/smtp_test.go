@@ -35,7 +35,7 @@ func TestSMTPMailer_Send_DeliversBothPartsWithEveryHeaderEncoded(t *testing.T) {
 	t.Parallel()
 	server := startFakeSMTP(t, nil)
 
-	err := NewSMTPMailer(smtpConfig(server.addr, false)).Send(context.Background(), domain.EmailMessage{
+	err := NewSMTPMailer(smtpConfig(t, server.addr, false)).Send(context.Background(), domain.EmailMessage{
 		To: testTo, ToName: smtpToName, Subject: smtpSubject, TextBody: smtpText, HTMLBody: smtpHTML,
 	})
 	if err != nil {
@@ -150,7 +150,7 @@ func TestSMTPMailer_Send_AuthenticatesWhenTheServerOffersIt(t *testing.T) {
 	t.Parallel()
 	server := startFakeSMTP(t, []string{"AUTH PLAIN"})
 
-	err := NewSMTPMailer(smtpConfig(server.addr, false)).Send(context.Background(), domain.EmailMessage{
+	err := NewSMTPMailer(smtpConfig(t, server.addr, false)).Send(context.Background(), domain.EmailMessage{
 		To: testTo, Subject: smtpSubject, TextBody: smtpText, HTMLBody: smtpHTML,
 	})
 	if err != nil {
@@ -169,7 +169,7 @@ func TestSMTPMailer_Send_SkipsAuthWhenTheServerDoesNotOfferIt(t *testing.T) {
 	t.Parallel()
 	server := startFakeSMTP(t, nil)
 
-	err := NewSMTPMailer(smtpConfig(server.addr, false)).Send(context.Background(), domain.EmailMessage{
+	err := NewSMTPMailer(smtpConfig(t, server.addr, false)).Send(context.Background(), domain.EmailMessage{
 		To: testTo, Subject: smtpSubject, TextBody: smtpText, HTMLBody: smtpHTML,
 	})
 	if err != nil {
@@ -186,7 +186,7 @@ func TestSMTPMailer_Send_RefusesAServerWithNoSTARTTLSWhenTLSIsRequired(t *testin
 	t.Parallel()
 	server := startFakeSMTP(t, nil)
 
-	err := NewSMTPMailer(smtpConfig(server.addr, true)).Send(context.Background(), domain.EmailMessage{
+	err := NewSMTPMailer(smtpConfig(t, server.addr, true)).Send(context.Background(), domain.EmailMessage{
 		To: testTo, Subject: smtpSubject, TextBody: smtpText, HTMLBody: smtpHTML,
 	})
 	if err == nil {
@@ -206,7 +206,7 @@ func TestSMTPMailer_Send_StopsOnACancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := NewSMTPMailer(smtpConfig(server.addr, false)).Send(ctx, domain.EmailMessage{
+	err := NewSMTPMailer(smtpConfig(t, server.addr, false)).Send(ctx, domain.EmailMessage{
 		To: testTo, Subject: smtpSubject, TextBody: smtpText, HTMLBody: smtpHTML,
 	})
 	if !errors.Is(err, context.Canceled) {
@@ -219,9 +219,16 @@ const (
 	testPassword = "s3cret"
 )
 
-func smtpConfig(addr string, startTLS bool) config.MailConfig {
-	host, port, _ := net.SplitHostPort(addr)
-	n, _ := strconv.Atoi(port)
+func smtpConfig(t *testing.T, addr string, startTLS bool) config.MailConfig {
+	t.Helper()
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatalf("the fake server's address %q does not split: %v", addr, err)
+	}
+	n, err := strconv.Atoi(port)
+	if err != nil {
+		t.Fatalf("the fake server's port %q is not a number: %v", port, err)
+	}
 	return config.MailConfig{
 		Provider:     config.MailProviderSMTP,
 		FromAddress:  testFrom,

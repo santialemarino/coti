@@ -76,6 +76,19 @@ pnpm dev
 | webapp     | http://localhost:3001 |
 | api        | http://localhost:8000 |
 
+Outbound mail goes to the log by default. To read a real message — a password-reset or
+address-verification link — start the Mailpit sandbox, set `MAIL_PROVIDER=smtp` in
+`apps/api/.env` (its `MAIL_SMTP_*` keys already point at Mailpit), and open the inbox:
+
+```bash
+docker compose up -d mailpit   # included in pnpm dev:docker
+```
+
+| Service      | URL                   |
+| ------------ | --------------------- |
+| mailpit UI   | http://localhost:8025 |
+| mailpit SMTP | localhost:1025        |
+
 ## Common scripts
 
 | Command                           | What it does                                |
