@@ -194,6 +194,18 @@ apps/api/
   nothing, so every table must be empty once the suite finishes; a step counts all of them and fails
   naming whatever is left. Locally, compare **every** table before and after rather than a hand-picked
   few; a subset says nothing about the tables it does not name.
+- **A fixture value bound by a GLOBAL constraint must be unique per run.** `app_user.email` has a
+  unique index on `lower(email)` across every account, and `go test ./internal/...` runs
+  `internal/repository` and `internal/integration` **in parallel** — so the same hard-coded address
+  in both packages makes whichever arrives second see a conflict where it expected a create.
+  Build it as `"compras+" + uuid.NewString() + "@corralon.test"`: shared inside one test, shared
+  with nothing else. And when a test pairs two literals (an address and its uppercase twin, to
+  prove the index is case-insensitive), **derive the second from the first** — making only one
+  unique breaks the pair and the test then fails every run.
+- **Prove a regression test fails without its fix.** Remove the fix, watch the new test go red for
+  the stated reason, restore it. A test written after the fix can pass on the surrounding code and
+  pin nothing. Watch the command actually run, too: a `cd` that fails inside an `&&` chain
+  short-circuits the rest, and a check that never executed reads exactly like one that passed.
 - **Compute expected values by hand.** Assert against manually derived numbers;
   never call the function under test (or its formula) a second time to produce
   the "expected" value — that only proves the code equals itself.
