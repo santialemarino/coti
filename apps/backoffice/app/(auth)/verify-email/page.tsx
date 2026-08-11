@@ -25,9 +25,19 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
   const tRoot = await getTranslations();
   const params = await searchParams;
   const token = typeof params[TOKEN_PARAM] === 'string' ? params[TOKEN_PARAM] : '';
-  const session = await getSession();
 
-  if (token) return <ConfirmEmailForm token={token} signedIn={session !== null} />;
+  /*
+   * With a token the session only picks a label, so it must not be able to take the confirm
+   * button down with it: getSession rethrows anything that is not a refusal, and an API that is
+   * merely unreachable would otherwise turn a live link into an error screen. Everything below
+   * genuinely needs the answer, so there the throw stands.
+   */
+  if (token) {
+    const owner = await getSession().catch(() => null);
+    return <ConfirmEmailForm token={token} address={owner?.email} />;
+  }
+
+  const session = await getSession();
 
   /*
    * Nothing left to do, and saying so beats repeating that a mail is on its way — which is what
