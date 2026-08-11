@@ -369,13 +369,13 @@ func TestUsers_CreatedInTheCallersAccount(t *testing.T) {
 	if storedAccount != accountA {
 		t.Errorf("created in account %v, want %v", storedAccount, accountA)
 	}
+	if storedAccount == accountB {
+		t.Error("an admin of one account created a user in another")
+	}
 	// Nothing mails an admin-created user a confirmation link, so the row has to carry the
 	// stamp already or AUTH_REQUIRE_VERIFIED_EMAIL would lock them out permanently.
 	if verifiedAt == nil {
 		t.Error("email_verified_at is null on an admin-created user")
-	}
-	if storedAccount == accountB {
-		t.Error("an admin of one account created a user in another")
 	}
 	if len(created.BranchIDs) != 1 || created.BranchIDs[0] != branchA {
 		t.Errorf("branch_ids = %v, want [%v]", created.BranchIDs, branchA)
