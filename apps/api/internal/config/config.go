@@ -36,6 +36,14 @@ const (
 	MailProviderSMTP    MailProvider = "smtp"
 )
 
+// AIProvider selects the external model provider behind AI ports.
+type AIProvider string
+
+const (
+	AIProviderDisabled  AIProvider = "disabled"
+	AIProviderAnthropic AIProvider = "anthropic"
+)
+
 // Config is the fully resolved runtime configuration.
 type Config struct {
 	Environment   Environment
@@ -43,6 +51,7 @@ type Config struct {
 	Server        ServerConfig
 	Database      DatabaseConfig
 	Auth          AuthConfig
+	AI            AIConfig
 	Mail          MailConfig
 	Web           WebConfig
 	Catalog       CatalogConfig
@@ -105,6 +114,17 @@ type AuthConfig struct {
 	PasswordResetTTL     time.Duration
 	RequireVerifiedEmail bool
 	VerificationTTL      time.Duration
+}
+
+// AIConfig holds provider settings for AI-backed application ports.
+type AIConfig struct {
+	Provider              AIProvider
+	AnthropicAPIKey       string
+	AnthropicBaseURL      string
+	AnthropicVersion      string
+	RFQExtractorModel     string
+	RFQExtractorMaxTokens int
+	RFQExtractorTimeout   time.Duration
 }
 
 // MailConfig holds the outbound-mail transport settings. One account per environment: the SMTP
@@ -188,6 +208,15 @@ func Load() (*Config, error) {
 			RequireVerifiedEmail: getBool("AUTH_REQUIRE_VERIFIED_EMAIL", false, &problems),
 			VerificationTTL:      getDuration("AUTH_EMAIL_VERIFICATION_TTL_HOURS", 48*time.Hour, &problems),
 		},
+		AI: AIConfig{
+			Provider:              AIProvider(getString("AI_PROVIDER", string(AIProviderDisabled))),
+			AnthropicAPIKey:       os.Getenv("AI_ANTHROPIC_API_KEY"),
+			AnthropicBaseURL:      getString("AI_ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
+			AnthropicVersion:      getString("AI_ANTHROPIC_VERSION", "2023-06-01"),
+			RFQExtractorModel:     getString("AI_RFQ_EXTRACTOR_MODEL", "claude-sonnet-4-6"),
+			RFQExtractorMaxTokens: getInt("AI_RFQ_EXTRACTOR_MAX_TOKENS", 1024, &problems),
+			RFQExtractorTimeout:   getDuration("AI_RFQ_EXTRACTOR_TIMEOUT_SECONDS", 20*time.Second, &problems),
+		},
 		Mail: MailConfig{
 			Provider:     MailProvider(getString("MAIL_PROVIDER", string(MailProviderConsole))),
 			FromAddress:  getString("MAIL_FROM_ADDRESS", ""),
@@ -261,6 +290,27 @@ func Load() (*Config, error) {
 	}
 	if cfg.Auth.VerificationTTL <= 0 {
 		problems = append(problems, "AUTH_EMAIL_VERIFICATION_TTL_HOURS must be greater than zero")
+	}
+	switch cfg.AI.Provider {
+	case AIProviderDisabled:
+	case AIProviderAnthropic:
+		if cfg.AI.AnthropicAPIKey == "" {
+			problems = append(problems, "AI_ANTHROPIC_API_KEY is required when AI_PROVIDER is anthropic")
+		}
+		if u, err := url.Parse(cfg.AI.AnthropicBaseURL); err != nil || u.Scheme == "" || u.Host == "" {
+			problems = append(problems, fmt.Sprintf(
+				"AI_ANTHROPIC_BASE_URL must be an absolute URL with a scheme and host, got %q",
+				cfg.AI.AnthropicBaseURL))
+		}
+	default:
+		problems = append(problems, fmt.Sprintf("AI_PROVIDER must be %q or %q, got %q",
+			AIProviderDisabled, AIProviderAnthropic, cfg.AI.Provider))
+	}
+	if cfg.AI.RFQExtractorMaxTokens <= 0 {
+		problems = append(problems, "AI_RFQ_EXTRACTOR_MAX_TOKENS must be greater than zero")
+	}
+	if cfg.AI.RFQExtractorTimeout <= 0 {
+		problems = append(problems, "AI_RFQ_EXTRACTOR_TIMEOUT_SECONDS must be greater than zero")
 	}
 	// Demanding a confirmed address while the only transport writes to a log would lock
 	// every user out of an environment nobody can receive mail in.

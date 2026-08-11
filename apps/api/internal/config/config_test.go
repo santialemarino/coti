@@ -22,6 +22,9 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"AUTH_MAX_FAILED_ATTEMPTS", "AUTH_LOCKOUT_MINUTES", "AUTH_PASSWORD_MIN_LENGTH",
 		"AUTH_PASSWORD_RESET_TTL_MINUTES", "AUTH_EMAIL_VERIFICATION_TTL_HOURS",
 		"AUTH_REQUIRE_VERIFIED_EMAIL",
+		"AI_PROVIDER", "AI_ANTHROPIC_API_KEY", "AI_ANTHROPIC_BASE_URL",
+		"AI_ANTHROPIC_VERSION", "AI_RFQ_EXTRACTOR_MODEL",
+		"AI_RFQ_EXTRACTOR_MAX_TOKENS", "AI_RFQ_EXTRACTOR_TIMEOUT_SECONDS",
 		"RATE_LIMIT_ENABLED", "RATE_LIMIT_WINDOW_SECONDS", "RATE_LIMIT_GLOBAL_MAX",
 		"RATE_LIMIT_CREDENTIALS_MAX", "RATE_LIMIT_SIGNUP_MAX", "RATE_LIMIT_MAIL_MAX",
 		"RATE_LIMIT_MAIL_PER_ADDRESS_MAX", "RATE_LIMIT_TRUSTED_PROXY_HOPS",
@@ -79,6 +82,15 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.Mail.Provider != MailProviderConsole {
 		t.Errorf("Mail.Provider = %q, want %q", cfg.Mail.Provider, MailProviderConsole)
+	}
+	if cfg.AI.Provider != AIProviderDisabled {
+		t.Errorf("AI.Provider = %q, want %q", cfg.AI.Provider, AIProviderDisabled)
+	}
+	if cfg.AI.RFQExtractorTimeout != 20*time.Second {
+		t.Errorf("AI.RFQExtractorTimeout = %v, want 20s", cfg.AI.RFQExtractorTimeout)
+	}
+	if cfg.AI.RFQExtractorMaxTokens != 1024 {
+		t.Errorf("AI.RFQExtractorMaxTokens = %d, want 1024", cfg.AI.RFQExtractorMaxTokens)
 	}
 	// A transport that reaches nobody still needs an address to sign messages with, so the
 	// console default must not leave one missing.
@@ -187,6 +199,35 @@ func TestLoad_Invalid(t *testing.T) {
 			wantSub: `MAIL_PROVIDER must be "console" or "smtp"`,
 		},
 		{
+			name:    "unknown ai provider",
+			mutate:  func(e map[string]string) { e["AI_PROVIDER"] = "oracle" },
+			wantSub: `AI_PROVIDER must be "disabled" or "anthropic"`,
+		},
+		{
+			name:    "anthropic provider without api key",
+			mutate:  func(e map[string]string) { e["AI_PROVIDER"] = "anthropic" },
+			wantSub: "AI_ANTHROPIC_API_KEY is required when AI_PROVIDER is anthropic",
+		},
+		{
+			name: "anthropic provider with invalid base url",
+			mutate: func(e map[string]string) {
+				e["AI_PROVIDER"] = "anthropic"
+				e["AI_ANTHROPIC_API_KEY"] = "secret"
+				e["AI_ANTHROPIC_BASE_URL"] = "api.anthropic.test"
+			},
+			wantSub: "AI_ANTHROPIC_BASE_URL must be an absolute URL",
+		},
+		{
+			name:    "rfq extractor max tokens of zero",
+			mutate:  func(e map[string]string) { e["AI_RFQ_EXTRACTOR_MAX_TOKENS"] = "0" },
+			wantSub: "AI_RFQ_EXTRACTOR_MAX_TOKENS must be greater than zero",
+		},
+		{
+			name:    "rfq extractor timeout of zero",
+			mutate:  func(e map[string]string) { e["AI_RFQ_EXTRACTOR_TIMEOUT_SECONDS"] = "0" },
+			wantSub: "AI_RFQ_EXTRACTOR_TIMEOUT_SECONDS must be greater than zero",
+		},
+		{
 			// A real transport with no sender and no credentials has to fail at startup, not
 			// on the first message nobody receives.
 			name:    "real provider without credentials",
@@ -293,6 +334,33 @@ func smtpEnv() map[string]string {
 	env["MAIL_SMTP_USERNAME"] = "coti"
 	env["MAIL_SMTP_PASSWORD"] = "s3cret"
 	return env
+}
+
+func TestLoad_AnthropicProviderLoadsWithAPIKey(t *testing.T) {
+	env := minimalEnv()
+	env["AI_PROVIDER"] = "anthropic"
+	env["AI_ANTHROPIC_API_KEY"] = "secret"
+	env["AI_RFQ_EXTRACTOR_MODEL"] = "claude-sonnet-test"
+	env["AI_RFQ_EXTRACTOR_TIMEOUT_SECONDS"] = "7"
+	env["AI_RFQ_EXTRACTOR_MAX_TOKENS"] = "2048"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.AI.Provider != AIProviderAnthropic {
+		t.Errorf("AI.Provider = %q, want %q", cfg.AI.Provider, AIProviderAnthropic)
+	}
+	if cfg.AI.RFQExtractorModel != "claude-sonnet-test" {
+		t.Errorf("AI.RFQExtractorModel = %q, want custom model", cfg.AI.RFQExtractorModel)
+	}
+	if cfg.AI.RFQExtractorTimeout != 7*time.Second {
+		t.Errorf("AI.RFQExtractorTimeout = %v, want 7s", cfg.AI.RFQExtractorTimeout)
+	}
+	if cfg.AI.RFQExtractorMaxTokens != 2048 {
+		t.Errorf("AI.RFQExtractorMaxTokens = %d, want 2048", cfg.AI.RFQExtractorMaxTokens)
+	}
 }
 
 func TestLoad_SMTPProviderLoadsWithEveryCredentialPresent(t *testing.T) {

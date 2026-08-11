@@ -21,6 +21,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/santialemarino/coti/apps/api/internal/ai"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
@@ -143,6 +144,8 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 		repository.NewProductSynonymRepository(), repository.NewProductAlternativeRepository(), cfg.Catalog)
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo,
 		repository.NewBranchProductRepository(), repository.NewProductPriceRepository(), nil)
+	rfqService := services.NewRFQService(db, repository.NewRFQRepository(),
+		repository.NewQuoteRepository(), ai.NewDisabledRFQExtractor())
 
 	limiter := ratelimit.NewMemory(nil)
 	mailTargetLimiter := handler.NewMailTargetLimiter(limiter, handler.MailTargetLimitOptions{
@@ -161,6 +164,7 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 			Branch:        handler.NewBranchHandler(services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)),
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
+			RFQ:           handler.NewRFQHandler(rfqService),
 			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
 				branchRepo, channelRepo, userRepo, authService, verificationService, quiet,
 				cfg.Auth, cfg.Branch)),

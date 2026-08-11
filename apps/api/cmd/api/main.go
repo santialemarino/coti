@@ -24,6 +24,7 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"github.com/santialemarino/coti/apps/api/internal/ai"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
@@ -72,6 +73,8 @@ func run() error {
 	branchProductRepo := repository.NewBranchProductRepository()
 	productPriceRepo := repository.NewProductPriceRepository()
 	catalogImportRepo := repository.NewCatalogImportRepository()
+	rfqRepo := repository.NewRFQRepository()
+	quoteRepo := repository.NewQuoteRepository()
 	accountRepo := repository.NewAccountRepository()
 	channelRepo := repository.NewChannelRepository()
 	authTokenRepo := repository.NewAuthTokenRepository()
@@ -84,6 +87,10 @@ func run() error {
 	})
 
 	mailer, err := newMailer(cfg, log)
+	if err != nil {
+		return err
+	}
+	rfqExtractor, err := newRFQExtractor(cfg, log)
 	if err != nil {
 		return err
 	}
@@ -105,6 +112,7 @@ func run() error {
 		productPriceRepo, nil)
 	productPriceImportService := services.NewProductPriceImportService(db, productPriceRepo, nil)
 	catalogImportService := services.NewCatalogImportService(db, catalogImportRepo, nil)
+	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo, rfqExtractor)
 
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
@@ -116,6 +124,7 @@ func run() error {
 			Branch:        handler.NewBranchHandler(branchService),
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
+			RFQ:           handler.NewRFQHandler(rfqService),
 			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
 			CatalogImport: handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
 			Account:       handler.NewAccountHandler(accountService),
@@ -161,6 +170,19 @@ func identifyForRateLimit(tokens *services.TokenService) func(string) (string, b
 			return "", false
 		}
 		return claims.UserID.String(), true
+	}
+}
+
+// newRFQExtractor binds the RFQ extraction port to the configured AI provider.
+func newRFQExtractor(cfg *config.Config, log *slog.Logger) (domain.RFQExtractor, error) {
+	switch cfg.AI.Provider {
+	case config.AIProviderDisabled:
+		log.Warn("rfq extraction is disabled", slog.String("provider", string(cfg.AI.Provider)))
+		return ai.NewDisabledRFQExtractor(), nil
+	case config.AIProviderAnthropic:
+		return ai.NewAnthropicRFQExtractor(cfg.AI, nil), nil
+	default:
+		return nil, fmt.Errorf("no rfq extractor adapter for provider %q", cfg.AI.Provider)
 	}
 }
 

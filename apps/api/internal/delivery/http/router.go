@@ -29,6 +29,7 @@ type Handlers struct {
 	Branch        *handler.BranchHandler
 	Product       *handler.ProductHandler
 	BranchCatalog *handler.BranchCatalogHandler
+	RFQ           *handler.RFQHandler
 	Account       *handler.AccountHandler
 	Prices        *handler.ProductPriceHandler
 	CatalogImport *handler.CatalogImportHandler
@@ -115,6 +116,9 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 
 	// The frontend reads its own identity here instead of decoding the access token.
 	authed.GET("/me", h.User.Me)
+
+	rfqs := authed.Group("/rfqs")
+	rfqs.POST("/text-drafts", h.RFQ.CreateTextDraft)
 
 	account := authed.Group("/account")
 	account.GET("", h.Account.Get)

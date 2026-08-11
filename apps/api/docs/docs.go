@@ -2226,6 +2226,70 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/rfqs/text-drafts": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Persists the original text, extracts complete material lines, and creates a seller-reviewable quote DRAFT. It does not price or send the quote.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rfq"
+                ],
+                "summary": "Create an RFQ text draft",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "RFQ text to process",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateTextRFQDraftRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.TextRFQDraftResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch, no extractor, or no complete line items",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/users": {
             "get": {
                 "security": [
@@ -2995,6 +3059,33 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.CreateTextRFQDraftRequest": {
+            "type": "object",
+            "required": [
+                "channel_id",
+                "raw_text"
+            ],
+            "properties": {
+                "channel_id": {
+                    "type": "string"
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "client_label": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "raw_text": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "work_type": {
+                    "type": "string",
+                    "maxLength": 255
+                }
+            }
+        },
         "dto.CreateUserRequest": {
             "type": "object",
             "required": [
@@ -3311,6 +3402,161 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.QuoteItemResponse": {
+            "type": "object",
+            "properties": {
+                "confidence_score": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "match_status": {
+                    "type": "string"
+                },
+                "min_price_snapshot": {
+                    "type": "string"
+                },
+                "product_id": {
+                    "type": "string"
+                },
+                "quantity": {
+                    "type": "string"
+                },
+                "quantity_rationale": {
+                    "type": "string"
+                },
+                "requested_description": {
+                    "type": "string"
+                },
+                "subtotal": {
+                    "type": "string"
+                },
+                "unit": {
+                    "type": "string"
+                },
+                "unit_price_snapshot": {
+                    "type": "string"
+                },
+                "version_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.QuoteResponse": {
+            "type": "object",
+            "properties": {
+                "archived_at": {
+                    "type": "string"
+                },
+                "branch_id": {
+                    "type": "string"
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "current_status": {
+                    "type": "string"
+                },
+                "current_version_id": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "followup_flagged_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "needs_followup": {
+                    "type": "boolean"
+                },
+                "rfq_id": {
+                    "type": "string"
+                },
+                "seller_id": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.QuoteVersionResponse": {
+            "type": "object",
+            "properties": {
+                "author_id": {
+                    "type": "string"
+                },
+                "comment": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_immutable": {
+                    "type": "boolean"
+                },
+                "quote_id": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "string"
+                },
+                "version_number": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.RFQResponse": {
+            "type": "object",
+            "properties": {
+                "branch_id": {
+                    "type": "string"
+                },
+                "channel_id": {
+                    "type": "string"
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "client_label": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "raw_text": {
+                    "type": "string"
+                },
+                "received_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "work_type": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.RateLimitResponse": {
             "type": "object",
             "properties": {
@@ -3487,6 +3733,26 @@ const docTemplate = `{
                 },
                 "term": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.TextRFQDraftResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.QuoteItemResponse"
+                    }
+                },
+                "quote": {
+                    "$ref": "#/definitions/dto.QuoteResponse"
+                },
+                "rfq": {
+                    "$ref": "#/definitions/dto.RFQResponse"
+                },
+                "version": {
+                    "$ref": "#/definitions/dto.QuoteVersionResponse"
                 }
             }
         },
