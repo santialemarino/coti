@@ -447,7 +447,10 @@ func TestUsers_DuplicateEmailIsAConflictAcrossAccounts(t *testing.T) {
 	accountB, branchB := e.seedAccount(t, "Corralón B")
 	adminA := e.seedUser(t, accountA, domain.UserRoleAdmin)
 	adminB := e.seedUser(t, accountB, domain.UserRoleAdmin)
-	const shared = "compras@corralon.test"
+	// Unique per run: the address has to be shared inside this test and nowhere else, because
+	// the index is global and `go test ./internal/...` runs this package beside the repository
+	// one, which exercises the same rule against the same table.
+	shared := "compras+" + uuid.NewString() + "@corralon.test"
 
 	first := e.do(t, request{method: http.MethodPost, path: "/v1/users", token: e.tokenFor(t, adminA),
 		body: createUserBody(shared, domain.UserRoleSeller, []uuid.UUID{branchA})})
