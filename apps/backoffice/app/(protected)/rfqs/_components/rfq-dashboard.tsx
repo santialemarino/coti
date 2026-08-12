@@ -59,10 +59,15 @@ import {
 } from '@repo/ui/components';
 import { cn } from '@repo/ui/lib';
 import { CreateRfqDialog } from '@/app/(protected)/rfqs/_components/create-rfq-dialog';
-import { RfqStatusBadge, STATUS_ORDER } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
+import {
+  hasQuoteTotal,
+  RfqStatusBadge,
+  STATUS_ORDER,
+} from '@/app/(protected)/rfqs/_components/rfq-status-badge';
 import { ROUTES } from '@/config/routes';
 import {
   fetchRfqs,
+  QUOTE_GENERATION_MS,
   type RfqChannel,
   type RfqPriority,
   type RfqRecord,
@@ -133,7 +138,8 @@ function compareRfqs(a: RfqRecord, b: RfqRecord, key: SortKey, order: SortOrder)
       result = a.itemCount - b.itemCount;
       break;
     case 'total':
-      result = Number(a.total) - Number(b.total);
+      // No amount yet (no quote) sorts as the smallest number, not the largest.
+      result = Number(a.total ?? 0) - Number(b.total ?? 0);
       break;
     case 'priority':
       result = PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
@@ -286,21 +292,18 @@ export function RfqDashboard() {
     sortOrder,
   ]);
 
-  const statusCounts = useMemo(() => {
-    const counts = new Map<RfqStatus, number>();
-    records?.forEach((rfq) => counts.set(rfq.status, (counts.get(rfq.status) ?? 0) + 1));
-    return counts;
-  }, [records]);
-
   const branches = useMemo(() => unique(records?.map((rfq) => rfq.branch) ?? []), [records]);
   const sellers = useMemo(() => unique(records?.map((rfq) => rfq.seller) ?? []), [records]);
 
-  const filtered = useMemo(() => {
+  /*
+   * Everything except the status tab. The tab counts recount within the active criteria — a seller
+   * filter narrows the tabs too — and clicking one then narrows that same set further.
+   */
+  const filteredBase = useMemo(() => {
     if (!records) return [];
     const needle = query.trim().toLowerCase();
     return records
       .filter((rfq) => {
-        if (statusFilter !== 'all' && rfq.status !== statusFilter) return false;
         if (channelFilter !== 'all' && rfq.channel !== channelFilter) return false;
         if (branchFilter !== 'all' && rfq.branch !== branchFilter) return false;
         if (sellerFilter !== 'all' && rfq.seller !== sellerFilter) return false;
@@ -315,7 +318,6 @@ export function RfqDashboard() {
   }, [
     records,
     query,
-    statusFilter,
     channelFilter,
     branchFilter,
     sellerFilter,
@@ -323,6 +325,17 @@ export function RfqDashboard() {
     sortBy,
     sortOrder,
   ]);
+
+  const statusCounts = useMemo(() => {
+    const counts = new Map<RfqStatus, number>();
+    filteredBase.forEach((rfq) => counts.set(rfq.status, (counts.get(rfq.status) ?? 0) + 1));
+    return counts;
+  }, [filteredBase]);
+
+  const filtered = useMemo(() => {
+    if (statusFilter === 'all') return filteredBase;
+    return filteredBase.filter((rfq) => rfq.status === statusFilter);
+  }, [filteredBase, statusFilter]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
@@ -375,6 +388,30 @@ export function RfqDashboard() {
   }
 
   function updateStatus(rfq: RfqRecord, status: RfqStatus) {
+    // A change mid-generation would race the timer below, so ignore it.
+    if (rfq.processing) return;
+
+    // Generating the quote is the AI step the list simulates: the row shows the processing spinner
+    // for QUOTE_GENERATION_MS and then lands on QUOTED, instead of jumping straight there.
+    if (status === 'QUOTED' && rfq.status !== 'QUOTED') {
+      setRecords((previous) =>
+        previous
+          ? previous.map((item) => (item.id === rfq.id ? { ...item, processing: true } : item))
+          : previous,
+      );
+      window.setTimeout(() => {
+        setRecords((previous) =>
+          previous
+            ? previous.map((item) =>
+                item.id === rfq.id ? { ...item, processing: false, status: 'QUOTED' } : item,
+              )
+            : previous,
+        );
+        toast.success(t('list.toast.quoteGenerated', { id: rfq.id }));
+      }, QUOTE_GENERATION_MS);
+      return;
+    }
+
     setRecords((previous) =>
       previous
         ? previous.map((item) => (item.id === rfq.id ? { ...item, status } : item))
@@ -384,7 +421,12 @@ export function RfqDashboard() {
   }
 
   function archiveOne(rfq: RfqRecord) {
-    setRecords((previous) => (previous ? previous.filter((item) => item.id !== rfq.id) : previous));
+    // Archivado is a flag, not a state: the row stays and shows the grey pill over its real status.
+    setRecords((previous) =>
+      previous
+        ? previous.map((item) => (item.id === rfq.id ? { ...item, archived: true } : item))
+        : previous,
+    );
     setSelected((previous) => {
       const next = new Set(previous);
       next.delete(rfq.id);
@@ -397,7 +439,9 @@ export function RfqDashboard() {
     const ids = [...selected];
     if (ids.length === 0) return;
     setRecords((previous) =>
-      previous ? previous.filter((item) => !selected.has(item.id)) : previous,
+      previous
+        ? previous.map((item) => (selected.has(item.id) ? { ...item, archived: true } : item))
+        : previous,
     );
     setSelected(new Set());
     toast.success(t('list.toast.archivedMany', { count: ids.length }));
@@ -428,7 +472,7 @@ export function RfqDashboard() {
     <>
       <Card className="gap-y-0 overflow-hidden py-0">
         <CardHeader className="flex-row items-center justify-between py-6">
-          <CardTitle className="text-heading-4">{t('list.title')}</CardTitle>
+          <CardTitle className="text-heading-3">{t('list.title')}</CardTitle>
           <div className="flex items-center gap-x-3">
             {records ? (
               <Badge tone="neutral">{t('list.resultsTotal', { total: records.length })}</Badge>
@@ -679,13 +723,23 @@ export function RfqDashboard() {
                       <TableCell className="whitespace-nowrap">{rfq.branch}</TableCell>
                       <TableCell>{t('list.items', { count: rfq.itemCount })}</TableCell>
                       <TableCell className="whitespace-nowrap text-right tabular-nums">
-                        {fmt.currency(rfq.total)}
+                        {hasQuoteTotal(rfq.status) && rfq.total != null ? (
+                          fmt.currency(rfq.total)
+                        ) : (
+                          <span className="text-foreground-subtle" aria-hidden="true">
+                            -
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <PriorityBadge priority={rfq.priority} />
                       </TableCell>
                       <TableCell>
-                        <RfqStatusBadge status={rfq.status} />
+                        <RfqStatusBadge
+                          status={rfq.status}
+                          processing={rfq.processing}
+                          archived={rfq.archived}
+                        />
                       </TableCell>
                       <TableCell>
                         <div className="flex justify-end">

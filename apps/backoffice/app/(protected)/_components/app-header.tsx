@@ -43,7 +43,7 @@ export async function AppHeader({ session }: AppHeaderProps) {
   const activeBranchId = await getActiveBranchId();
 
   return (
-    <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-6 px-6 bg-background/85 border-b border-border backdrop-blur">
+    <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-8 px-6 bg-background/85 border-b border-border backdrop-blur">
       <Link
         href={ROUTES.home}
         aria-label={t('appName')}

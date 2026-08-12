@@ -381,7 +381,12 @@
       "SENT": "Enviado",
       "CHANGE_REQUESTED": "Cambio solicitado",
       "ACCEPTED": "Aceptado",
-      "REJECTED": "Rechazado"
+      "REJECTED": "Rechazado",
+      "ARCHIVED": "Archivado"
+    },
+    "processing": {
+      "ingestion": "Procesando pedido…",
+      "quote": "Generando cotización…"
     },
     "priority": {
       "high": "Alta",
@@ -459,6 +464,7 @@
       },
       "toast": {
         "statusChanged": "El pedido {id} quedó en “{status}”.",
+        "quoteGenerated": "La cotización del pedido {id} está lista.",
         "archived": "El pedido {id} se archivó.",
         "archivedMany": "{count, plural, one {# pedido archivado} other {# pedidos archivados}}.",
         "comingSoon": "La edición del pedido va a estar disponible en el detalle."

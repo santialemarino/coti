@@ -1,5 +1,3 @@
-import { cache } from 'react';
-
 /*
  * The RFQ domain has no backend endpoints yet, so this module owns the shapes the screens consume
  * and serves example data. The list goes through an async boundary (`fetchRfqs`) so the screens
@@ -22,18 +20,6 @@ export type RfqChannel = 'whatsapp' | 'email' | 'audio' | 'photo' | 'pdf' | 'exc
 
 export type RfqPriority = 'high' | 'normal' | 'low';
 
-export interface RfqMessage {
-  id: string;
-  client: string;
-  snippet: string;
-  at: string;
-  status: RfqStatus;
-}
-
-export interface RfqDashboardData {
-  messages: RfqMessage[];
-}
-
 export interface RfqRecord {
   id: string;
   client: string;
@@ -42,63 +28,24 @@ export interface RfqRecord {
   seller: string;
   branch: string;
   itemCount: number;
-  // Decimal string, the wire format money travels as (NUMERIC(14,2)); currency is per-account.
-  total: string;
+  /*
+   * Decimal string, the wire format money travels as (NUMERIC(14,2)); currency is per-account.
+   * Absent until the quote exists — an uncotized request has no amount to show.
+   */
+  total?: string;
   priority: RfqPriority;
   status: RfqStatus;
+  /*
+   * UI-only while the mock stands in for the backend: true while the AI is generating the quote
+   * (status still GENERATED). A real API would derive it from a generation job id.
+   */
+  processing?: boolean;
+  /*
+   * Archivado is an orthogonal flag, not a status (see docs/internal/domain/estados.md): a quote
+   * keeps its real status and simply gets marked archived.
+   */
+  archived?: boolean;
 }
-
-const MOCK_MESSAGES: RfqMessage[] = [
-  {
-    id: 'm1',
-    client: 'Constructora Andina',
-    snippet: 'Necesito presupuesto de cemento y hierro',
-    at: '2026-08-05T19:52:00.000Z',
-    status: 'ACCEPTED',
-  },
-  {
-    id: 'm2',
-    client: 'Ferretería El Tanque',
-    snippet: '¿Cuánto sale el bulto de cal?',
-    at: '2026-08-05T19:40:00.000Z',
-    status: 'GENERATED',
-  },
-  {
-    id: 'm3',
-    client: 'Obra Delia S.A.',
-    snippet: 'Audio: listado de materiales para losa',
-    at: '2026-08-05T19:21:00.000Z',
-    status: 'QUOTED',
-  },
-  {
-    id: 'm4',
-    client: 'Materiales Don Pedro',
-    snippet: 'Adjunto el PDF del pedido',
-    at: '2026-08-05T18:55:00.000Z',
-    status: 'SENT',
-  },
-  {
-    id: 'm5',
-    client: 'Cooperativa La Unión',
-    snippet: 'Pueden ajustar los precios de la cotización',
-    at: '2026-08-05T18:30:00.000Z',
-    status: 'CHANGE_REQUESTED',
-  },
-  {
-    id: 'm6',
-    client: 'Albañilería Ruiz',
-    snippet: 'Quería hacer un pedido más grande',
-    at: '2026-08-05T18:12:00.000Z',
-    status: 'GENERATED',
-  },
-  {
-    id: 'm7',
-    client: 'Pinturería San Cayetano',
-    snippet: 'No me cierra el total, lo reviso',
-    at: '2026-08-05T17:58:00.000Z',
-    status: 'REJECTED',
-  },
-];
 
 const RFQS: RfqRecord[] = [
   {
@@ -109,9 +56,10 @@ const RFQS: RfqRecord[] = [
     seller: 'María López',
     branch: 'Sucursal Centro',
     itemCount: 28,
-    total: '412850.50',
     priority: 'high',
     status: 'GENERATED',
+    // The mock stands in for an in-flight AI generation, so the spinner is visible at load.
+    processing: true,
   },
   {
     id: '1047',
@@ -157,7 +105,6 @@ const RFQS: RfqRecord[] = [
     seller: 'Pedro Silva',
     branch: 'Sucursal Norte',
     itemCount: 22,
-    total: '198760.00',
     priority: 'normal',
     status: 'CHANGE_REQUESTED',
   },
@@ -169,7 +116,6 @@ const RFQS: RfqRecord[] = [
     seller: 'María López',
     branch: 'Sucursal Centro',
     itemCount: 6,
-    total: '25400.00',
     priority: 'low',
     status: 'GENERATED',
   },
@@ -181,7 +127,6 @@ const RFQS: RfqRecord[] = [
     seller: 'Juan Pérez',
     branch: 'Sucursal Oeste',
     itemCount: 15,
-    total: '331250.00',
     priority: 'high',
     status: 'RECEIVED',
   },
@@ -241,7 +186,6 @@ const RFQS: RfqRecord[] = [
     seller: 'Juan Pérez',
     branch: 'Sucursal Centro',
     itemCount: 34,
-    total: '512340.00',
     priority: 'high',
     status: 'GENERATED',
   },
@@ -289,7 +233,6 @@ const RFQS: RfqRecord[] = [
     seller: 'María López',
     branch: 'Sucursal Oeste',
     itemCount: 52,
-    total: '731800.00',
     priority: 'high',
     status: 'CHANGE_REQUESTED',
   },
@@ -301,7 +244,6 @@ const RFQS: RfqRecord[] = [
     seller: 'Juan Pérez',
     branch: 'Sucursal Norte',
     itemCount: 5,
-    total: '19600.00',
     priority: 'low',
     status: 'GENERATED',
   },
@@ -349,7 +291,6 @@ const RFQS: RfqRecord[] = [
     seller: 'María López',
     branch: 'Sucursal Centro',
     itemCount: 26,
-    total: '298450.00',
     priority: 'normal',
     status: 'CHANGE_REQUESTED',
   },
@@ -361,7 +302,6 @@ const RFQS: RfqRecord[] = [
     seller: 'Juan Pérez',
     branch: 'Sucursal Oeste',
     itemCount: 10,
-    total: '68900.50',
     priority: 'normal',
     status: 'GENERATED',
   },
@@ -385,7 +325,6 @@ const RFQS: RfqRecord[] = [
     seller: 'Carlos Gómez',
     branch: 'Sucursal Centro',
     itemCount: 38,
-    total: '594700.00',
     priority: 'high',
     status: 'RECEIVED',
   },
@@ -421,7 +360,6 @@ const RFQS: RfqRecord[] = [
     seller: 'Juan Pérez',
     branch: 'Sucursal Centro',
     itemCount: 20,
-    total: '165430.00',
     priority: 'normal',
     status: 'GENERATED',
   },
@@ -433,7 +371,6 @@ const RFQS: RfqRecord[] = [
     seller: 'Lucía Fernández',
     branch: 'Sucursal Oeste',
     itemCount: 55,
-    total: '842300.50',
     priority: 'high',
     status: 'CHANGE_REQUESTED',
   },
@@ -467,14 +404,11 @@ const RFQS: RfqRecord[] = [
 // the shape. Copies are returned so an archive in the UI never mutates the module's data.
 const LATENCY_MS = 450;
 
+// The stand-in duration of an AI quote generation until the backend drives it; the dashboard shows
+// the processing spinner for this long when the seller marks a pedido as QUOTED.
+export const QUOTE_GENERATION_MS = 1200;
+
 export async function fetchRfqs(): Promise<RfqRecord[]> {
   await new Promise((resolve) => setTimeout(resolve, LATENCY_MS));
   return RFQS.map((rfq) => ({ ...rfq }));
 }
-
-// Memoised per request because the layout (sidebar) and any future screen both read it.
-export const getRfqDashboard = cache(
-  async (): Promise<RfqDashboardData> => ({
-    messages: MOCK_MESSAGES,
-  }),
-);

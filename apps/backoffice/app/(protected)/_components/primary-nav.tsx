@@ -27,7 +27,7 @@ export function PrimaryNav() {
   ];
 
   return (
-    <nav aria-label={t('nav.orders')} className="flex items-center gap-x-1">
+    <nav aria-label={t('nav.orders')} className="ml-2 flex items-center gap-x-2">
       {items.map((item) => {
         // A section stays active through its children, so the RFQ detail keeps "Pedidos" lit.
         const active = pathname === item.href || pathname.startsWith(`${item.href}/`);

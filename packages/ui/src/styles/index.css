@@ -75,6 +75,27 @@
   --danger-base: oklch(0.585 0.215 27); /* #DF2A2A — white on it 4.67:1 */
   --danger-foreground: oklch(0.545 0.2 27); /* #CB2526 — 5.49:1 */
 
+  /*
+   * RFQ status colours, one per lifecycle state. Each `-base` reproduces the product's exact hex.
+   * The Backoffice status badge is the only consumer: it paints the label with the base colour and
+   * tints the backdrop with the same colour at 20% opacity (bg-current), so a state needs nothing
+   * else here. Archivado is a grey family: it is an orthogonal flag, not a lifecycle state, but it
+   * still needs a colour when a row is marked archived.
+   */
+  --status-accepted-base: oklch(0.694 0.1287 176.98); /* #00B69B */
+
+  --status-rejected-base: oklch(0.6234 0.2208 30.05); /* #EF3826 */
+
+  --status-change-requested-base: oklch(0.8008 0.1415 61.04); /* #FFA756 */
+
+  --status-generated-base: oklch(0.6155 0.2868 310.79); /* #BA29FF */
+
+  --status-quoted-base: oklch(0.8652 0.1768 90.38); /* #FFCC00 */
+
+  --status-sent-base: oklch(0.6321 0.2018 254.09); /* #0088FF */
+
+  --status-archived-base: oklch(0.6764 0 89.88); /* #979797 */
+
   /* Semantic tokens — what components actually consume. */
   --radius: 0.625rem;
 
