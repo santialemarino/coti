@@ -172,6 +172,8 @@ func newMailer(cfg *config.Config, log *slog.Logger) (domain.Mailer, error) {
 		log.Warn("outbound mail goes to the log, not to a recipient",
 			slog.String("provider", string(cfg.Mail.Provider)))
 		return mail.NewConsoleMailer(log, cfg.Mail.FromAddress), nil
+	case config.MailProviderSMTP:
+		return mail.NewSMTPMailer(cfg.Mail), nil
 	default:
 		return nil, fmt.Errorf("no mail adapter for provider %q", cfg.Mail.Provider)
 	}

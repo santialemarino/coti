@@ -25,6 +25,7 @@ interface MeRaw {
   account_id: string;
   name: string;
   email: string;
+  email_verified: boolean;
   role: string;
 }
 
@@ -35,6 +36,7 @@ export interface SessionUser {
   accountId: string;
   name: string;
   email: string;
+  emailVerified: boolean;
   role: string;
 }
 
@@ -56,6 +58,7 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
       accountId: me.account_id,
       name: me.name,
       email: me.email,
+      emailVerified: me.email_verified,
       role: me.role,
     };
   } catch (error) {

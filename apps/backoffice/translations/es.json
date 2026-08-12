@@ -328,12 +328,15 @@
     },
     "verifyEmail": {
       "title": "Confirmar tu correo",
+      "alreadyTitle": "Tu correo ya está confirmado",
+      "already": "Tu dirección ya quedó confirmada. No hace falta que hagas nada más.",
       "prompt": "Tocá el botón para confirmar la dirección con la que te registraste.",
       "confirm": "Confirmar mi correo",
       "confirming": "Confirmando…",
       "done": "Listo, tu dirección quedó confirmada.",
-      "sent": "Te mandamos un correo para confirmar tu dirección. Abrí el enlace que te llegó y ya está.",
+      "sentTo": "Te mandamos un correo a {email} para confirmar tu dirección. Abrí el enlace que te llegó y ya está.",
       "continue": "Ir al inicio",
+      "goToLogin": "Iniciar sesión",
       "email": {
         "label": "Correo electrónico",
         "placeholder": "Ingresá tu correo electrónico",
@@ -341,10 +344,13 @@
       },
       "resend": {
         "hint": "Podés pedir un enlace nuevo con la dirección que usaste al registrarte.",
+        "hintKnown": "¿No te llegó? Revisá el correo no deseado y, si no está, pedí uno nuevo.",
         "submit": "Enviar un enlace nuevo",
+        "again": "Reenviar el correo",
         "submitting": "Enviando…",
         "cooldown": "Enviar de nuevo en {seconds} s",
         "sent": "Si la dirección está registrada y falta confirmarla, va a recibir un enlace en unos minutos.",
+        "sentAgain": "Pedimos un enlace nuevo para {email}. Puede tardar unos minutos en llegar.",
         "errors": {
           "INVALID_BODY": "Ingresá una dirección de correo válida.",
           "INTERNAL": "No pudimos enviar el enlace. Intentá de nuevo."

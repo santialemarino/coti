@@ -18,13 +18,15 @@ INSERT INTO branch (id, account_id, name, address, default_expiry_days) VALUES
    'Morón', 'Rivadavia 18400, Morón', 5)
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO app_user (id, account_id, name, email, password_hash, role) VALUES
+-- Verified on insert, so a developer who turns AUTH_REQUIRE_VERIFIED_EMAIL on is not locked out
+-- of the only account they have: nothing would ever mail these two a confirmation link.
+INSERT INTO app_user (id, account_id, name, email, password_hash, role, email_verified_at) VALUES
   ('c0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001',
    'Admin Dev', 'admin@corralonsanmartin.test',
-   '$2a$10$S3vHxTMC/Pp5KLw4YAlyeOBduPSvE1Dh0D8ho0VNzjBXWrTjb.fJ2', 'ADMIN'),
+   '$2a$10$S3vHxTMC/Pp5KLw4YAlyeOBduPSvE1Dh0D8ho0VNzjBXWrTjb.fJ2', 'ADMIN', now()),
   ('c0000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001',
    'Vendedor Dev', 'vendedor@corralonsanmartin.test',
-   '$2a$10$S3vHxTMC/Pp5KLw4YAlyeOBduPSvE1Dh0D8ho0VNzjBXWrTjb.fJ2', 'SELLER')
+   '$2a$10$S3vHxTMC/Pp5KLw4YAlyeOBduPSvE1Dh0D8ho0VNzjBXWrTjb.fJ2', 'SELLER', now())
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO user_branch (account_id, user_id, branch_id) VALUES

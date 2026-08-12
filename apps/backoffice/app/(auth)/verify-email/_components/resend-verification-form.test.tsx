@@ -16,14 +16,14 @@ const copy = messages.auth.verifyEmail;
 const EMAIL = 'ana@corralonsanmartin.test';
 
 // The real catalog, so a renamed or missing key fails here rather than rendering its own name.
-function renderForm() {
+function renderForm(address?: string) {
   return render(
     <NextIntlClientProvider
       locale="es"
       messages={messages}
       timeZone="America/Argentina/Buenos_Aires"
     >
-      <ResendVerificationForm />
+      <ResendVerificationForm address={address} />
     </NextIntlClientProvider>,
   );
 }
@@ -170,5 +170,56 @@ describe('ResendVerificationForm', () => {
     await waitFor(() => expect(view.getByText(copy.resend.errors.INVALID_BODY)).toBeTruthy());
     expect(submitButton(view)).toHaveProperty('disabled', false);
     expect(toast.success).not.toHaveBeenCalled();
+  });
+});
+
+/*
+ * Given the caller's own address there is nothing to type: resend can only mail the address the
+ * account already holds, so an editable field would promise a correction it cannot make. These
+ * pin that the field is gone and that the address still reaches the action.
+ */
+describe('with the caller address known', () => {
+  it('offers no field to type an address into', () => {
+    const view = renderForm(EMAIL);
+
+    expect(view.baseElement.querySelector('input[name="email"]')).toBeNull();
+  });
+
+  it('resends to that address without it being typed', async () => {
+    vi.mocked(resendVerification).mockResolvedValue({ sent: true });
+    const view = renderForm(EMAIL);
+
+    submit(view);
+
+    await waitFor(() => expect(resendVerification).toHaveBeenCalledWith(EMAIL));
+    // The address is what this variant adds, so that is what is pinned — not the whole sentence,
+    // which a copy edit may legitimately reword.
+    expect(toast.success).toHaveBeenCalledWith(expect.stringContaining(EMAIL));
+  });
+
+  /*
+   * The refusal the API attaches to the address renders inside the field, and there is no field
+   * here — so routed as-is it would be set and shown nowhere, and a refusal would look exactly
+   * like nothing happening.
+   */
+  it('still shows a refusal that the API attached to the address', async () => {
+    vi.mocked(resendVerification).mockResolvedValue({ error: 'INVALID_BODY', field: 'email' });
+    const view = renderForm(EMAIL);
+
+    submit(view);
+
+    await waitFor(() => expect(view.getByText(copy.resend.errors.INVALID_BODY)).toBeTruthy());
+    expect(submitButton(view).disabled).toBe(false);
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it('shuts the button for the cooldown, the same as the typed form', async () => {
+    vi.mocked(resendVerification).mockResolvedValue({ sent: true });
+    const view = renderForm(EMAIL);
+
+    submit(view);
+
+    await waitFor(() => expect(submitButton(view).disabled).toBe(true));
+    expect(secondsLeft(view)).toBeLessThanOrEqual(RESEND_COOLDOWN_SECONDS);
   });
 });

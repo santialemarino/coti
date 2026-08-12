@@ -3116,6 +3116,10 @@ const docTemplate = `{
                 "email": {
                     "type": "string"
                 },
+                "email_verified": {
+                    "description": "EmailVerified is what lets a screen tell \"confirm your address\" from \"already done\".",
+                    "type": "boolean"
+                },
                 "id": {
                     "type": "string"
                 },

@@ -53,10 +53,12 @@ type AccountResponse struct {
 
 // MeResponse is the authenticated caller's own identity and reach.
 type MeResponse struct {
-	ID        uuid.UUID   `json:"id"`
-	Name      string      `json:"name"`
-	Email     string      `json:"email"`
-	Role      string      `json:"role"`
-	AccountID uuid.UUID   `json:"account_id"`
-	BranchIDs []uuid.UUID `json:"branch_ids"`
+	ID    uuid.UUID `json:"id"`
+	Name  string    `json:"name"`
+	Email string    `json:"email"`
+	// EmailVerified is what lets a screen tell "confirm your address" from "already done".
+	EmailVerified bool        `json:"email_verified"`
+	Role          string      `json:"role"`
+	AccountID     uuid.UUID   `json:"account_id"`
+	BranchIDs     []uuid.UUID `json:"branch_ids"`
 }

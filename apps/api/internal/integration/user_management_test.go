@@ -327,6 +327,55 @@ func TestUsers_SellerIsForbidden(t *testing.T) {
 	}
 }
 
+// The screen that asks a user to confirm their address needs to know whether it already is,
+// or it tells someone who is done that a mail is on its way. The flag also depends on it being
+// dropped the moment the address changes — a stamp proves one mailbox, not the next one.
+func TestMe_ReportsWhetherTheAddressIsVerified(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "Corralón")
+	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	token := e.tokenFor(t, admin)
+
+	verified := func(t *testing.T) bool {
+		t.Helper()
+		rec := e.do(t, request{method: http.MethodGet, path: "/v1/me", token: token})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET /v1/me: status = %d, want %d; body = %s", rec.Code, http.StatusOK, rec.Body)
+		}
+		var me struct {
+			EmailVerified bool `json:"email_verified"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &me); err != nil {
+			t.Fatalf("decode /v1/me: %v", err)
+		}
+		return me.EmailVerified
+	}
+
+	if verified(t) {
+		t.Fatal("a seeded user reports email_verified true, want false")
+	}
+
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`UPDATE app_user SET email_verified_at = now() WHERE id = $1`, admin.ID); err != nil {
+		t.Fatalf("stamp verification: %v", err)
+	}
+	if !verified(t) {
+		t.Fatal("a confirmed address reports email_verified false, want true")
+	}
+
+	// Changing the address through the real endpoint has to drop it again.
+	rec := e.do(t, request{method: http.MethodPut, path: "/v1/users/" + admin.ID.String(),
+		token: token,
+		body: map[string]any{"name": "Admin", "email": "otra+" + uuid.NewString() + "@corralon.test",
+			"role": string(domain.UserRoleAdmin), "branch_ids": []uuid.UUID{branchID}}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT /v1/users: status = %d, want %d; body = %s", rec.Code, http.StatusOK, rec.Body)
+	}
+	if verified(t) {
+		t.Error("email_verified stayed true after the address changed")
+	}
+}
+
 // The account comes from the session. There is no account field on the wire, and this asserts
 // the created row lands in the caller's account rather than anywhere a body could name.
 func TestUsers_CreatedInTheCallersAccount(t *testing.T) {
@@ -360,8 +409,10 @@ func TestUsers_CreatedInTheCallersAccount(t *testing.T) {
 	}
 
 	var storedAccount uuid.UUID
+	var verifiedAt *time.Time
 	if err := e.db.CrossAccount().QueryRow(context.Background(),
-		`SELECT account_id FROM app_user WHERE id = $1`, created.ID).Scan(&storedAccount); err != nil {
+		`SELECT account_id, email_verified_at FROM app_user WHERE id = $1`,
+		created.ID).Scan(&storedAccount, &verifiedAt); err != nil {
 		t.Fatalf("read created user: %v", err)
 	}
 	if storedAccount != accountA {
@@ -369,6 +420,11 @@ func TestUsers_CreatedInTheCallersAccount(t *testing.T) {
 	}
 	if storedAccount == accountB {
 		t.Error("an admin of one account created a user in another")
+	}
+	// Nothing mails an admin-created user a confirmation link, so the row has to carry the
+	// stamp already or AUTH_REQUIRE_VERIFIED_EMAIL would lock them out permanently.
+	if verifiedAt == nil {
+		t.Error("email_verified_at is null on an admin-created user")
 	}
 	if len(created.BranchIDs) != 1 || created.BranchIDs[0] != branchA {
 		t.Errorf("branch_ids = %v, want [%v]", created.BranchIDs, branchA)
@@ -447,7 +503,10 @@ func TestUsers_DuplicateEmailIsAConflictAcrossAccounts(t *testing.T) {
 	accountB, branchB := e.seedAccount(t, "Corralón B")
 	adminA := e.seedUser(t, accountA, domain.UserRoleAdmin)
 	adminB := e.seedUser(t, accountB, domain.UserRoleAdmin)
-	const shared = "compras@corralon.test"
+	// Unique per run: the address has to be shared inside this test and nowhere else, because
+	// the index is global and `go test ./internal/...` runs this package beside the repository
+	// one, which exercises the same rule against the same table.
+	shared := "compras+" + uuid.NewString() + "@corralon.test"
 
 	first := e.do(t, request{method: http.MethodPost, path: "/v1/users", token: e.tokenFor(t, adminA),
 		body: createUserBody(shared, domain.UserRoleSeller, []uuid.UUID{branchA})})

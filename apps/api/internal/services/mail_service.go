@@ -81,6 +81,11 @@ func (s *MailService) Send(ctx context.Context, out OutboundMail) error {
 		Status:    domain.NotificationStatusFailed,
 	}
 
+	// Detached from here on: the send and the row that records it are not the caller's request.
+	// A client that disconnects would otherwise abort a delivery already under way and lose the
+	// record of it, leaving a minted token nobody was ever sent. The transport bounds itself.
+	ctx = context.WithoutCancel(ctx)
+
 	msg, err := renderEmail(*account, out)
 	if err != nil {
 		// A message that cannot be rendered never reaches the transport, but the attempt

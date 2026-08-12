@@ -27,6 +27,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"RATE_LIMIT_MAIL_PER_ADDRESS_MAX", "RATE_LIMIT_TRUSTED_PROXY_HOPS",
 		"MAIL_PROVIDER", "MAIL_FROM_ADDRESS", "MAIL_FROM_NAME",
 		"MAIL_SMTP_HOST", "MAIL_SMTP_PORT", "MAIL_SMTP_USERNAME", "MAIL_SMTP_PASSWORD",
+		"MAIL_SMTP_STARTTLS", "MAIL_SMTP_TIMEOUT_SECONDS",
 		"WEB_BACKOFFICE_URL",
 		"CATALOG_IMPORT_MAX_BYTES",
 		"PRICE_IMPORT_MAX_BYTES",
@@ -281,6 +282,92 @@ func TestLoad_PerAddressMailAllowanceMayExceedTheGlobalOne(t *testing.T) {
 	}
 	if cfg.RateLimit.MailPerAddress != 50 {
 		t.Errorf("RateLimit.MailPerAddress = %d, want 50", cfg.RateLimit.MailPerAddress)
+	}
+}
+
+func smtpEnv() map[string]string {
+	env := minimalEnv()
+	env["MAIL_PROVIDER"] = "smtp"
+	env["MAIL_FROM_ADDRESS"] = "no-reply@coti.test"
+	env["MAIL_SMTP_HOST"] = "smtp.coti.test"
+	env["MAIL_SMTP_USERNAME"] = "coti"
+	env["MAIL_SMTP_PASSWORD"] = "s3cret"
+	return env
+}
+
+func TestLoad_SMTPProviderLoadsWithEveryCredentialPresent(t *testing.T) {
+	setEnv(t, smtpEnv())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.Mail.Provider != MailProviderSMTP {
+		t.Errorf("Mail.Provider = %q, want %q", cfg.Mail.Provider, MailProviderSMTP)
+	}
+	if cfg.Mail.SMTPPort != 587 {
+		t.Errorf("Mail.SMTPPort = %d, want 587", cfg.Mail.SMTPPort)
+	}
+	// Encryption defaults on: an operator who says nothing gets the safe transport, and
+	// reaching a sandbox that speaks no TLS is the case that has to be asked for.
+	if !cfg.Mail.SMTPStartTLS {
+		t.Error("Mail.SMTPStartTLS = false by default, want true")
+	}
+	if cfg.Mail.SMTPTimeout != 10*time.Second {
+		t.Errorf("Mail.SMTPTimeout = %v, want 10s", cfg.Mail.SMTPTimeout)
+	}
+}
+
+// The address a verification link is demanded of has to be reachable, which is exactly what the
+// console transport cannot do — and what landing this adapter is for.
+func TestLoad_SMTPProviderMayRequireVerifiedEmail(t *testing.T) {
+	env := smtpEnv()
+	env["AUTH_REQUIRE_VERIFIED_EMAIL"] = "true"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if !cfg.Auth.RequireVerifiedEmail {
+		t.Error("Auth.RequireVerifiedEmail = false, want true")
+	}
+}
+
+// One pass names every missing credential, so an operator fixes the environment once instead of
+// discovering the next blank key on the next restart.
+func TestLoad_SMTPProviderReportsEveryMissingKeyTogether(t *testing.T) {
+	env := smtpEnv()
+	for _, key := range []string{"MAIL_FROM_ADDRESS", "MAIL_SMTP_HOST", "MAIL_SMTP_USERNAME", "MAIL_SMTP_PASSWORD"} {
+		delete(env, key)
+	}
+	setEnv(t, env)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() = nil error, want an error")
+	}
+	for _, want := range []string{"MAIL_FROM_ADDRESS", "MAIL_SMTP_HOST", "MAIL_SMTP_USERNAME", "MAIL_SMTP_PASSWORD"} {
+		if !strings.Contains(err.Error(), want+" is required when MAIL_PROVIDER is smtp") {
+			t.Errorf("Load() error is missing %q; got:\n%s", want, err.Error())
+		}
+	}
+}
+
+func TestLoad_SMTPProviderRejectsAnUnusableConnection(t *testing.T) {
+	env := smtpEnv()
+	env["MAIL_SMTP_PORT"] = "0"
+	env["MAIL_SMTP_TIMEOUT_SECONDS"] = "0"
+	setEnv(t, env)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() = nil error, want an error")
+	}
+	for _, want := range []string{"MAIL_SMTP_PORT", "MAIL_SMTP_TIMEOUT_SECONDS"} {
+		if !strings.Contains(err.Error(), want+" must be greater than zero") {
+			t.Errorf("Load() error is missing %q; got:\n%s", want, err.Error())
+		}
 	}
 }
 

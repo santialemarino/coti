@@ -17,6 +17,14 @@ services:
       timeout: 3s
       retries: 20
 
+  mailpit:
+    image: axllent/mailpit:v1.21
+    container_name: coti-mailpit
+    restart: unless-stopped
+    ports:
+      - '1025:1025' # SMTP
+      - '8025:8025' # web UI
+
   api:
     container_name: coti-api
     restart: unless-stopped
@@ -30,13 +38,17 @@ services:
         condition: service_healthy
     env_file:
       - .env
-    # Las URLs del .env apuntan al host, y dentro de la red de compose el host de la base es
-    # el servicio `postgres`: ahí localhost es el contenedor del API. Por eso se sobreescriben
-    # las dos, y el puerto que Postgres publica al host deja de importar para el stack
-    # dockerizado.
+    # The .env URLs point at the host, and inside the compose network the database is the
+    # `postgres` service: in here localhost is the API's own container. Both are overridden for
+    # that reason, and the port Postgres publishes to the host stops mattering to this stack.
     environment:
       - DATABASE_URL=postgres://coti_app:coti_app@postgres:5432/${POSTGRES_DB:-coti}?sslmode=disable
       - DATABASE_ADMIN_URL=postgres://${POSTGRES_USER:-coti}:${POSTGRES_PASSWORD:-coti}@postgres:5432/${POSTGRES_DB:-coti}?sslmode=disable
+      # For the same reason the mail sandbox is the `mailpit` service. It speaks plain SMTP, so
+      # the stack pins the TLS expectation too; which provider is used stays the .env's call.
+      - MAIL_SMTP_HOST=mailpit
+      - MAIL_SMTP_PORT=1025
+      - MAIL_SMTP_STARTTLS=false
 
   backoffice:
     container_name: coti-backoffice
