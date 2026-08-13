@@ -101,8 +101,8 @@ status cannot: `/v1/users/{id}` answers 422 both for "an admin cannot deactivate
 for "an admin cannot change their own role", and the two screens differ. `domain.CodeOf` derives
 a code from the sentinel an error wraps — `NOT_FOUND`, `CONFLICT`, `INVALID_INPUT`,
 `UNAUTHENTICATED`, `FORBIDDEN`, `IMMUTABLE`, `ACCOUNT_LOCKED`, `EMAIL_NOT_VERIFIED`,
-`RATE_LIMITED`, `INTERNAL` — and a service tags a more specific one with `domain.WithCode` where a
-caller has to tell siblings apart:
+`RATE_LIMITED`, `AI_UNAVAILABLE`, `INTERNAL` — and a service tags a more specific one with
+`domain.WithCode` where a caller has to tell siblings apart:
 
 | Code                 | Status | Raised when                                                     |
 | -------------------- | ------ | --------------------------------------------------------------- |
@@ -112,6 +112,11 @@ caller has to tell siblings apart:
 | `SELF_ROLE_CHANGE`   | 422    | an admin changing their own role                                |
 | `PASSWORD_POLICY`    | 422    | a password that does not clear `domain.PasswordPolicy`          |
 | `INVALID_LINK`       | 401    | a mailed link that is unknown, expired, used or wrong-typed     |
+
+`AI_UNAVAILABLE` is the API's only **503**, and the only code whose status says "come back later":
+no AI provider is bound, or the one that is could not answer. A request the provider _rejected_ is
+our own fault and stays a 500, so a client is never invited to retry something that cannot succeed.
+See [ai-providers.md](ai-providers.md).
 
 **A code must never say more than the status already does.** Login answers `UNAUTHENTICATED` for a
 wrong password, an unknown address and a disabled user alike — three cases the API deliberately does

@@ -126,6 +126,16 @@ Closing or reopening a corralón is an operational script rather than an endpoin
 
 See [docs/technical/database.md](docs/technical/database.md).
 
+## AI providers
+
+Three ports in `apps/api/internal/domain` — schema-forced generation, embeddings and
+transcription — with adapters under `apps/api/internal/ai/`, one subpackage per provider,
+bound only in `cmd/api/main.go`. Each capability is selected on its own (no provider covers
+all three) and each arrives disabled, so a checkout with no keys still boots and the engine
+refuses the calls that needed a model. Turning one on makes its key required at startup.
+
+See [docs/technical/ai-providers.md](docs/technical/ai-providers.md).
+
 ## Design system
 
 `packages/ui` (`@repo/ui`) holds the tokens, type scale and motion vocabulary both web
