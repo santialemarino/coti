@@ -24,9 +24,7 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"github.com/santialemarino/coti/apps/api/internal/ai"
-	"github.com/santialemarino/coti/apps/api/internal/ai/anthropic"
-	"github.com/santialemarino/coti/apps/api/internal/ai/openai"
+	"github.com/santialemarino/coti/apps/api/internal/ai/provider"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
@@ -91,11 +89,11 @@ func run() error {
 		return err
 	}
 
-	providers, err := newAIProviders(cfg, log)
+	providers, err := provider.Bind(cfg.AI, log)
 	if err != nil {
 		return err
 	}
-	providers.describe(log)
+	providers.Describe(log)
 
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
 	authService := services.NewAuthService(db, userRepo, branchRepo, refreshTokenRepo, tokenService, cfg.Auth, nil)
@@ -171,63 +169,6 @@ func identifyForRateLimit(tokens *services.TokenService) func(string) (string, b
 		}
 		return claims.UserID.String(), true
 	}
-}
-
-// aiProviders is the set of AI adapters bound at startup. The RFQ engine's services take them
-// from here through the domain ports, so none of them ever names a provider.
-type aiProviders struct {
-	Generator   domain.StructuredGenerator
-	Embedder    domain.Embedder
-	Transcriber domain.Transcriber
-}
-
-// newAIProviders binds each AI port to the provider selected for it, and is the only place those
-// choices are made. No provider covers all three capabilities, so each is selected on its own and
-// any of them can be left unbound. config.Load rejects a provider with no adapter.
-func newAIProviders(cfg *config.Config, log *slog.Logger) (aiProviders, error) {
-	providers := aiProviders{
-		Generator:   ai.DisabledGenerator{},
-		Embedder:    ai.DisabledEmbedder{},
-		Transcriber: ai.DisabledTranscriber{},
-	}
-
-	switch cfg.AI.LLMProvider {
-	case config.AIProviderDisabled:
-		log.Warn("no language model is bound: extraction and the change handler will refuse")
-	case config.AIProviderAnthropic:
-		providers.Generator = anthropic.NewGenerator(cfg.AI.Anthropic(), log)
-	default:
-		return providers, fmt.Errorf("no language model adapter for provider %q", cfg.AI.LLMProvider)
-	}
-
-	switch cfg.AI.EmbeddingsProvider {
-	case config.AIProviderDisabled:
-		log.Warn("no embedding provider is bound: semantic catalog search will refuse")
-	case config.AIProviderOpenAI:
-		providers.Embedder = openai.NewEmbedder(cfg.AI.Embeddings(), log)
-	default:
-		return providers, fmt.Errorf("no embedding adapter for provider %q", cfg.AI.EmbeddingsProvider)
-	}
-
-	switch cfg.AI.TranscriptionProvider {
-	case config.AIProviderDisabled:
-		log.Warn("no transcription provider is bound: audio ingest will refuse")
-	case config.AIProviderOpenAI:
-		providers.Transcriber = openai.NewTranscriber(cfg.AI.Transcription(), log)
-	default:
-		return providers, fmt.Errorf("no transcription adapter for provider %q",
-			cfg.AI.TranscriptionProvider)
-	}
-	return providers, nil
-}
-
-// describe records which adapter ended up behind each AI port, so a deployment can be read back
-// from its own startup log instead of from the environment it was given.
-func (p aiProviders) describe(log *slog.Logger) {
-	log.Info("ai providers bound",
-		slog.String("language_model", fmt.Sprintf("%T", p.Generator)),
-		slog.String("embeddings", fmt.Sprintf("%T", p.Embedder)),
-		slog.String("transcription", fmt.Sprintf("%T", p.Transcriber)))
 }
 
 // newMailer binds the domain.Mailer port to the transport configuration selected, and is the
