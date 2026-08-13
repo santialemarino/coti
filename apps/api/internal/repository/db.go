@@ -8,6 +8,7 @@ import (
 	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	pgxvector "github.com/pgvector/pgvector-go/pgx"
 
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
@@ -113,11 +114,12 @@ func openPool(ctx context.Context, cfg config.DatabaseConfig, url string) (*pgxp
 	poolCfg.MaxConnIdleTime = cfg.MaxConnIdleTime
 	poolCfg.ConnConfig.ConnectTimeout = cfg.ConnectTimeout
 
-	// The decimal codec has to be registered per connection, not once in main: the pool
-	// opens connections on its own schedule, replacements for dead ones included.
-	poolCfg.AfterConnect = func(_ context.Context, conn *pgx.Conn) error {
+	// Both codecs have to be registered per connection, not once in main: the pool opens
+	// connections on its own schedule, replacements for dead ones included. The vector one
+	// looks its type up in the database, so it costs a query per connection.
+	poolCfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		pgxdecimal.Register(conn.TypeMap())
-		return nil
+		return pgxvector.RegisterTypes(ctx, conn)
 	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)

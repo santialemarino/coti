@@ -9,6 +9,13 @@
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
+-- The lexical half of the catalog search reads this configuration. Informal RFQ text drops
+-- accents constantly, so "hormigon" has to reach "hormigón"; the stock spanish one keeps them.
+CREATE TEXT SEARCH CONFIGURATION spanish_unaccent (COPY = spanish);
+ALTER TEXT SEARCH CONFIGURATION spanish_unaccent
+  ALTER MAPPING FOR hword, hword_part, word WITH unaccent, spanish_stem;
 
 -- =============================================================================
 -- ENUMS
@@ -213,6 +220,13 @@ CREATE TABLE product (
   family_id      UUID,
   subgroup_id    UUID,
   embedding      VECTOR(1536),
+  -- Older than updated_at means the row was edited after it was embedded, which is how the
+  -- backfill knows what to re-embed without re-embedding the whole catalog.
+  embedding_updated_at TIMESTAMPTZ,
+  search_document TSVECTOR
+    GENERATED ALWAYS AS (
+      to_tsvector('spanish_unaccent'::regconfig, canonical_name || ' ' || coalesce(description, ''))
+    ) STORED,
   is_active      BOOLEAN NOT NULL DEFAULT TRUE,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -237,6 +251,8 @@ CREATE TABLE product_synonym (
   product_id UUID NOT NULL,
   term       VARCHAR(255) NOT NULL,
   source     product_synonym_source NOT NULL DEFAULT 'MANUAL',
+  search_document TSVECTOR
+    GENERATED ALWAYS AS (to_tsvector('spanish_unaccent'::regconfig, term)) STORED,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -792,8 +808,9 @@ ALTER TABLE notification ADD CONSTRAINT fk_notification_quote FOREIGN KEY (quote
 -- INDEXES
 -- =============================================================================
 
--- The vector index is created AFTER the catalog loads: built on an empty table it is
--- suboptimal. Commented out on purpose.
+-- The vector index is created AFTER the catalog loads and is embedded: built on an empty table
+-- it is degenerate. Commented out on purpose — `pnpm db:vector-index` creates it, sizing lists
+-- to the number of embedded rows.
 -- CREATE INDEX idx_product_embedding ON product USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 CREATE INDEX idx_branch_account ON branch(account_id);
@@ -812,6 +829,9 @@ CREATE INDEX idx_product_account ON product(account_id);
 -- Partial because code is nullable.
 CREATE UNIQUE INDEX uq_product_account_code ON product (account_id, code) WHERE code IS NOT NULL;
 CREATE INDEX idx_branch_product_branch ON branch_product(branch_id) WHERE is_active = TRUE;
+-- The lexical half of the hybrid search: one document per product, one per synonym term.
+CREATE INDEX idx_product_search_document ON product USING GIN (search_document);
+CREATE INDEX idx_product_synonym_search_document ON product_synonym USING GIN (search_document);
 CREATE INDEX idx_product_synonym_product ON product_synonym(product_id);
 -- One term per product, case-insensitively: "Portland" and "portland" are the same term to
 -- a matcher. It is also the ON CONFLICT target the insert names.
