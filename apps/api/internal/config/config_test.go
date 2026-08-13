@@ -38,6 +38,10 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"AI_MAX_ATTEMPTS", "AI_RETRY_BACKOFF_SECONDS", "AI_MAX_BACKOFF_SECONDS",
 		"AI_EMBEDDINGS_BATCH_SIZE",
 		"WEB_BACKOFFICE_URL",
+		"CATALOG_DEFAULT_PAGE_SIZE", "CATALOG_MAX_PAGE_SIZE",
+		"CATALOG_SEARCH_TOP_K", "CATALOG_SEARCH_OVER_FETCH_FACTOR",
+		"CATALOG_SEARCH_MAX_FETCH", "CATALOG_SEARCH_IVFFLAT_PROBES", "CATALOG_SEARCH_RRF_K",
+		"CATALOG_EMBEDDING_BATCH_SIZE",
 		"CATALOG_IMPORT_MAX_BYTES",
 		"PRICE_IMPORT_MAX_BYTES",
 	}
@@ -107,6 +111,30 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.RateLimit.TrustedProxyHops != 0 {
 		t.Errorf("RateLimit.TrustedProxyHops = %d, want 0: nothing is in front by default",
 			cfg.RateLimit.TrustedProxyHops)
+	}
+	// An over-fetch factor of one would ask for exactly what the caller wants, which the
+	// branch filter then cuts into, and one probe recalls too little to make up for it.
+	if cfg.Catalog.SearchOverFetchFactor < 2 {
+		t.Errorf("Catalog.SearchOverFetchFactor = %d, want more than 1 by default",
+			cfg.Catalog.SearchOverFetchFactor)
+	}
+	if cfg.Catalog.SearchProbes < 2 {
+		t.Errorf("Catalog.SearchProbes = %d, want more than the database's own 1",
+			cfg.Catalog.SearchProbes)
+	}
+	if cfg.Catalog.SearchTopK != 10 {
+		t.Errorf("Catalog.SearchTopK = %d, want 10", cfg.Catalog.SearchTopK)
+	}
+	// A ceiling below the first fetch would make the widening shrink instead of grow.
+	if cfg.Catalog.SearchMaxFetch < cfg.Catalog.SearchTopK*cfg.Catalog.SearchOverFetchFactor {
+		t.Errorf("Catalog.SearchMaxFetch = %d, want at least the first fetch width",
+			cfg.Catalog.SearchMaxFetch)
+	}
+	if cfg.Catalog.SearchRRFK != 60 {
+		t.Errorf("Catalog.SearchRRFK = %d, want 60", cfg.Catalog.SearchRRFK)
+	}
+	if cfg.Catalog.EmbeddingBatchSize != 200 {
+		t.Errorf("Catalog.EmbeddingBatchSize = %d, want 200", cfg.Catalog.EmbeddingBatchSize)
 	}
 	if cfg.IsProduction() {
 		t.Error("IsProduction() = true, want false")
@@ -257,6 +285,32 @@ func TestLoad_Invalid(t *testing.T) {
 			name:    "catalog import size of zero",
 			mutate:  func(e map[string]string) { e["CATALOG_IMPORT_MAX_BYTES"] = "0" },
 			wantSub: "CATALOG_IMPORT_MAX_BYTES must be greater than zero",
+		},
+		{
+			name:    "no search results asked for",
+			mutate:  func(e map[string]string) { e["CATALOG_SEARCH_TOP_K"] = "0" },
+			wantSub: "CATALOG_SEARCH_TOP_K must be at least 1",
+		},
+		{
+			// Below one the search would ask the database for fewer rows than the caller wants.
+			name:    "an over-fetch factor that shrinks the fetch",
+			mutate:  func(e map[string]string) { e["CATALOG_SEARCH_OVER_FETCH_FACTOR"] = "0" },
+			wantSub: "CATALOG_SEARCH_OVER_FETCH_FACTOR must be at least 1",
+		},
+		{
+			name:    "a fetch ceiling of nothing",
+			mutate:  func(e map[string]string) { e["CATALOG_SEARCH_MAX_FETCH"] = "0" },
+			wantSub: "CATALOG_SEARCH_MAX_FETCH must be at least 1",
+		},
+		{
+			name:    "no index partitions visited",
+			mutate:  func(e map[string]string) { e["CATALOG_SEARCH_IVFFLAT_PROBES"] = "0" },
+			wantSub: "CATALOG_SEARCH_IVFFLAT_PROBES must be at least 1",
+		},
+		{
+			name:    "an embedding batch of nothing",
+			mutate:  func(e map[string]string) { e["CATALOG_EMBEDDING_BATCH_SIZE"] = "0" },
+			wantSub: "CATALOG_EMBEDDING_BATCH_SIZE must be at least 1",
 		},
 	}
 

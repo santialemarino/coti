@@ -190,6 +190,43 @@ func TestInTenantTx_RollsBackOnError(t *testing.T) {
 	}
 }
 
+// A process with no cross-account job opens the restricted pool alone, so it needs no owner
+// credential and holds nothing that could read past its tenant. The absence of CrossAccount and
+// AdminTx on the type is the rest of the guarantee, and the compiler enforces that.
+func TestNewTenantDB_NeedsNoOwnerCredential(t *testing.T) {
+	appURL := os.Getenv("TEST_DATABASE_URL")
+	if appURL == "" {
+		t.Skip("TEST_DATABASE_URL is required for integration tests")
+	}
+
+	db, err := NewTenantDB(context.Background(), config.DatabaseConfig{
+		URL:             appURL,
+		MaxConns:        2,
+		MinConns:        1,
+		MaxConnLifetime: time.Minute,
+		MaxConnIdleTime: time.Minute,
+		ConnectTimeout:  5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewTenantDB() = %v, want no error", err)
+	}
+	t.Cleanup(db.Close)
+
+	owner := testDB(t)
+	account := seedAccount(t, owner, "Corralon Restringido")
+	ctx := context.Background()
+
+	var accounts int
+	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: account}, func(q Querier) error {
+		return q.QueryRow(ctx, `SELECT count(*) FROM account`).Scan(&accounts)
+	}); err != nil {
+		t.Fatalf("InTenantTx() = %v, want no error", err)
+	}
+	if accounts != 1 {
+		t.Errorf("accounts visible = %d, want 1 (its own)", accounts)
+	}
+}
+
 // The owner pool bypasses row level security on purpose, for the follow-up cron and
 // the pre-auth lookups that cannot know the account yet.
 func TestCrossAccount_SeesEveryAccount(t *testing.T) {

@@ -101,12 +101,13 @@ in: the provider makes no ordering promise, and trusting arrival order attaches 
 the wrong product with nothing to notice it. Those indexes are per request, so the adapter maps each
 batch back onto its slice of the caller's list.
 
-**Binding a `pgvector.Vector` as a query argument needs a codec pgx does not have yet.** The type
-is the port's return value, but nothing persists one yet, so the codec is deliberately not
-registered: it is a `SELECT` looking the type up in the database, and in `AfterConnect` it would
-run on every connection the pool ever opens. The work belongs to whichever change writes the first
-vector query — add `github.com/pgvector/pgvector-go/pgx` and call `RegisterTypes` from the pool's
-`AfterConnect` in `apps/api/internal/repository/db.go`, alongside the decimal codec already there.
+**Binding a `pgvector.Vector` as a query argument needs a codec**, registered from the pool's
+`AfterConnect` in `apps/api/internal/repository/db.go` alongside the decimal one. It costs a
+`SELECT` per connection, which is what looks the type's oid up in the database, so it has to be
+per connection rather than once at startup: the pool opens them on its own schedule.
+
+What is done with the vectors — the catalog backfill, the hybrid search and the index it reads —
+is in `catalog.md`.
 
 ## Retries, timeouts and the usage log
 

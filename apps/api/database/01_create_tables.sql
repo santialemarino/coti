@@ -9,6 +9,13 @@
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
+-- The lexical half of the catalog search reads this configuration. Informal RFQ text drops
+-- accents constantly, so "hormigon" has to reach "hormigón"; the stock spanish one keeps them.
+CREATE TEXT SEARCH CONFIGURATION spanish_unaccent (COPY = spanish);
+ALTER TEXT SEARCH CONFIGURATION spanish_unaccent
+  ALTER MAPPING FOR hword, hword_part, word WITH unaccent, spanish_stem;
 
 -- =============================================================================
 -- ENUMS
@@ -213,6 +220,13 @@ CREATE TABLE product (
   family_id      UUID,
   subgroup_id    UUID,
   embedding      VECTOR(1536),
+  -- Older than updated_at means the row was edited after it was embedded, which is how the
+  -- backfill knows what to re-embed without re-embedding the whole catalog.
+  embedding_updated_at TIMESTAMPTZ,
+  search_document TSVECTOR
+    GENERATED ALWAYS AS (
+      to_tsvector('spanish_unaccent'::regconfig, canonical_name || ' ' || coalesce(description, ''))
+    ) STORED,
   is_active      BOOLEAN NOT NULL DEFAULT TRUE,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -237,6 +251,8 @@ CREATE TABLE product_synonym (
   product_id UUID NOT NULL,
   term       VARCHAR(255) NOT NULL,
   source     product_synonym_source NOT NULL DEFAULT 'MANUAL',
+  search_document TSVECTOR
+    GENERATED ALWAYS AS (to_tsvector('spanish_unaccent'::regconfig, term)) STORED,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -792,8 +808,9 @@ ALTER TABLE notification ADD CONSTRAINT fk_notification_quote FOREIGN KEY (quote
 -- INDEXES
 -- =============================================================================
 
--- The vector index is created AFTER the catalog loads: built on an empty table it is
--- suboptimal. Commented out on purpose.
+-- The vector index is created AFTER the catalog loads and is embedded: built on an empty table
+-- it is degenerate. Commented out on purpose — `pnpm db:vector-index` creates it, sizing lists
+-- to the number of embedded rows.
 -- CREATE INDEX idx_product_embedding ON product USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 CREATE INDEX idx_branch_account ON branch(account_id);
@@ -812,6 +829,9 @@ CREATE INDEX idx_product_account ON product(account_id);
 -- Partial because code is nullable.
 CREATE UNIQUE INDEX uq_product_account_code ON product (account_id, code) WHERE code IS NOT NULL;
 CREATE INDEX idx_branch_product_branch ON branch_product(branch_id) WHERE is_active = TRUE;
+-- The lexical half of the hybrid search: one document per product, one per synonym term.
+CREATE INDEX idx_product_search_document ON product USING GIN (search_document);
+CREATE INDEX idx_product_synonym_search_document ON product_synonym USING GIN (search_document);
 CREATE INDEX idx_product_synonym_product ON product_synonym(product_id);
 -- One term per product, case-insensitively: "Portland" and "portland" are the same term to
 -- a matcher. It is also the ON CONFLICT target the insert names.
@@ -860,7 +880,19 @@ CREATE UNIQUE INDEX uq_message_batch_processing ON message_batch(quote_id) WHERE
 CREATE TRIGGER trg_account_updated        BEFORE UPDATE ON account        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_branch_updated         BEFORE UPDATE ON branch         FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_app_user_updated       BEFORE UPDATE ON app_user       FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER trg_product_updated        BEFORE UPDATE ON product        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+-- product is the exception: updated_at says a person changed the row, and it is what
+-- embedding_updated_at is compared against, so a vector written by the backfill must not bump it.
+CREATE TRIGGER trg_product_updated        BEFORE UPDATE ON product        FOR EACH ROW
+  WHEN (
+    OLD.code IS DISTINCT FROM NEW.code
+    OR OLD.canonical_name IS DISTINCT FROM NEW.canonical_name
+    OR OLD.description IS DISTINCT FROM NEW.description
+    OR OLD.unit IS DISTINCT FROM NEW.unit
+    OR OLD.family_id IS DISTINCT FROM NEW.family_id
+    OR OLD.subgroup_id IS DISTINCT FROM NEW.subgroup_id
+    OR OLD.is_active IS DISTINCT FROM NEW.is_active
+  )
+  EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_branch_product_updated BEFORE UPDATE ON branch_product FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_combo_updated          BEFORE UPDATE ON combo          FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_branch_combo_updated   BEFORE UPDATE ON branch_combo   FOR EACH ROW EXECUTE FUNCTION set_updated_at();

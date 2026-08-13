@@ -355,11 +355,28 @@ type BranchConfig struct {
 	DefaultExpiryDays int
 }
 
-// CatalogConfig holds the catalog listing limits. The cap is what stops a client from
-// asking for the whole catalog in one response.
+// CatalogConfig holds the catalog listing limits and the knobs behind the hybrid search. The
+// listing cap is what stops a client from asking for the whole catalog in one response.
 type CatalogConfig struct {
 	DefaultPageSize int
 	MaxPageSize     int
+	// SearchTopK is how many candidates a search returns when the caller names no limit.
+	SearchTopK int
+	// SearchOverFetchFactor multiplies the rows each half of the search asks the database for.
+	// An approximate vector scan filters by branch after ordering, so asking for exactly K
+	// leaves fewer than K once what the branch does not carry is dropped.
+	SearchOverFetchFactor int
+	// SearchMaxFetch is the widest one round may ask the database for. Without it a branch that
+	// yields one more row per round drives the doubling up to the size of the catalog.
+	SearchMaxFetch int
+	// SearchProbes is how many index partitions an approximate scan visits. One is the
+	// database's default and recalls too little to survive the branch filter.
+	SearchProbes int
+	// SearchRRFK is the constant in the reciprocal rank fusion that merges the lexical and
+	// semantic halves. Higher flattens the ranking, so the tail counts for more.
+	SearchRRFK int
+	// EmbeddingBatchSize is how many products the backfill loads and writes back per round.
+	EmbeddingBatchSize int
 }
 
 // Load resolves the configuration from the environment, applying defaults for everything
@@ -449,8 +466,14 @@ func Load() (*Config, error) {
 			BackofficeURL: getString("WEB_BACKOFFICE_URL", "http://localhost:3000"),
 		},
 		Catalog: CatalogConfig{
-			DefaultPageSize: getInt("CATALOG_DEFAULT_PAGE_SIZE", 50, &problems),
-			MaxPageSize:     getInt("CATALOG_MAX_PAGE_SIZE", 200, &problems),
+			DefaultPageSize:       getInt("CATALOG_DEFAULT_PAGE_SIZE", 50, &problems),
+			MaxPageSize:           getInt("CATALOG_MAX_PAGE_SIZE", 200, &problems),
+			SearchTopK:            getInt("CATALOG_SEARCH_TOP_K", 10, &problems),
+			SearchOverFetchFactor: getInt("CATALOG_SEARCH_OVER_FETCH_FACTOR", 4, &problems),
+			SearchMaxFetch:        getInt("CATALOG_SEARCH_MAX_FETCH", 2000, &problems),
+			SearchProbes:          getInt("CATALOG_SEARCH_IVFFLAT_PROBES", 10, &problems),
+			SearchRRFK:            getInt("CATALOG_SEARCH_RRF_K", 60, &problems),
+			EmbeddingBatchSize:    getInt("CATALOG_EMBEDDING_BATCH_SIZE", 200, &problems),
 		},
 		RateLimit: RateLimitConfig{
 			Enabled:          getBool("RATE_LIMIT_ENABLED", true, &problems),
@@ -564,6 +587,26 @@ func Load() (*Config, error) {
 	if cfg.Catalog.DefaultPageSize > cfg.Catalog.MaxPageSize {
 		problems = append(problems, fmt.Sprintf("CATALOG_DEFAULT_PAGE_SIZE (%d) exceeds CATALOG_MAX_PAGE_SIZE (%d)",
 			cfg.Catalog.DefaultPageSize, cfg.Catalog.MaxPageSize))
+	}
+	catalogFloors := []struct {
+		key   string
+		value int
+		floor int
+	}{
+		{"CATALOG_SEARCH_TOP_K", cfg.Catalog.SearchTopK, 1},
+		// Below 1 the search would ask for fewer rows than the caller wants, which is the
+		// shortfall the factor exists to prevent.
+		{"CATALOG_SEARCH_OVER_FETCH_FACTOR", cfg.Catalog.SearchOverFetchFactor, 1},
+		{"CATALOG_SEARCH_MAX_FETCH", cfg.Catalog.SearchMaxFetch, 1},
+		{"CATALOG_SEARCH_IVFFLAT_PROBES", cfg.Catalog.SearchProbes, 1},
+		{"CATALOG_SEARCH_RRF_K", cfg.Catalog.SearchRRFK, 1},
+		{"CATALOG_EMBEDDING_BATCH_SIZE", cfg.Catalog.EmbeddingBatchSize, 1},
+	}
+	for _, f := range catalogFloors {
+		if f.value < f.floor {
+			problems = append(problems, fmt.Sprintf("%s must be at least %d, got %d",
+				f.key, f.floor, f.value))
+		}
 	}
 
 	if cfg.RateLimit.Enabled {
