@@ -183,10 +183,13 @@ the route the link lands on.
 - **`GET /v1/me` reports `email_verified`**, which is what lets a screen tell "confirm your
   address" from "already done" instead of guessing.
 - **Enforced at login only** — not on refresh, not on tenant resolution. Registration hands out a
-  session on purpose, so the new admin can reach the screen that explains the mail; checking on
-  every request would make signup hand over a session that can do nothing. It still bites:
-  registration issues a **non-remembered** pair, so the session dies within
+  session on purpose, so the new admin can reach the screen that explains the mail. It bites
+  because registration issues a **non-remembered** pair: the session dies within
   `AUTH_REFRESH_TTL_HOURS` (12h) and the next login is refused until the address is confirmed.
+  **This is the shape today, and it is agreed to change.** Refusing at the door leaves someone who
+  mistyped their address at signup with no way back once that window closes. The agreed model
+  enforces on **use** instead — authenticate normally, then reach nothing but your own identity,
+  logout and a correction of your own address until you confirm. Not built yet.
 - **When it is on, the caller is told why** — a 403 naming the reason, unlike every other
   rejection here. That is safe because it is only reachable _after_ the password matched:
   the check sits below the credential comparison, so it can never answer for someone who
