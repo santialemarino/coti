@@ -269,28 +269,37 @@ func (r *ProductRepository) SearchByEmbedding(ctx context.Context, q Querier, ac
 
 Coti is a **human-in-the-loop copilot**. Two pipelines touch external models: the RFQ pipeline (extract informal RFQ text → line items → embed → match against the catalog → assemble a review-ready `quote`) and the change-request handler (interpret a client message → propose a typed action on an existing quote). Both talk to models only through domain ports.
 
-- **Ports** are Go interfaces in **`internal/domain`** (so both services and adapters import them without a cycle):
+- **Ports** are Go interfaces in **`internal/domain`** (so both services and adapters import them without a cycle). Three are the **provider layer** — one per external capability, because no provider covers all three:
 
   ```go
-  // RFQExtractor parses an informal RFQ (WhatsApp/email/web) into structured line items.
-  type RFQExtractor interface {
-      Extract(ctx context.Context, raw string) ([]RFQLine, error)
+  // StructuredGenerator asks a language model for one answer shaped by req.Schema and
+  // decodes it into out. Text, images and documents all ride req.Input, so vision and
+  // PDF need no port of their own.
+  type StructuredGenerator interface {
+      Generate(ctx context.Context, req GenerationRequest, out any) (*GenerationUsage, error)
   }
 
-  // Embedder produces 1536-dim embeddings for catalog and RFQ text.
+  // Embedder produces EmbeddingDimension-wide embeddings for catalog and RFQ text.
   type Embedder interface {
       Embed(ctx context.Context, texts []string) ([]pgvector.Vector, error)
   }
 
-  // ChangeRequestHandler interprets a client change request against the CLOSED
-  // action catalog and returns a typed, schema-validated proposal — never free JSON.
-  type ChangeRequestHandler interface {
-      Propose(ctx context.Context, in ChangeRequestInput) (ChangeProposal, error)
+  // Transcriber turns a recording into text.
+  type Transcriber interface {
+      Transcribe(ctx context.Context, audio Audio) (string, error)
   }
   ```
 
-- **Adapters** implement them in **`internal/ai/`** (per-provider subpackage when there is more than one). All prompt assembly, SDK calls, retries, and response parsing live there.
+  **Feature ports sit on top of those, never beside them.** `RFQExtractor` and `ChangeRequestHandler` are the domain's vocabulary for what the engine does; their adapters own the prompt and the schema and reach the model through `StructuredGenerator`. A feature adapter never talks to a provider SDK directly.
+
+- **Adapters** implement the ports in **`internal/ai/`**, one subpackage per provider (`anthropic`, `openai`). Prompt assembly, SDK calls and response parsing live in the subpackage; **the policy every provider shares lives in the package root** — `Retry`, the usage log, the `Disabled*` stand-ins, `RetryableStatus`, `RetryAfter`, `Fail`. Do not reimplement retry or status classification per adapter: that is one decision, and a copy per provider is a copy to keep in sync.
+- **An adapter is handed only its own settings.** `config.AIConfig` exposes `Anthropic()`, `Embeddings()` and `Transcription()`, each carrying one provider's key, model, timeout and the shared retry policy. Passing the whole config would put every provider's credential in every adapter, one `%+v` away from a log.
+- **The adapter says which of its failures are transient; the shared loop only reads the mark.** `ai.Retryable` / `ai.RetryableAfter` for a rate limit, a provider fault, a dropped connection or an answer that missed the schema; `ai.Rejected` for a request the provider would not serve — a bad schema, model or key, or a safety refusal. Then `ai.Fail` decides what the caller sees: `Rejected` and a cancelled caller stay as they are, everything else becomes `domain.ErrAIUnavailable`. **A fault of ours must never surface as a provider outage**, or a client is invited to retry something that cannot succeed.
+- **Every capability defaults to `disabled`**, and the stand-in refuses with `ErrAIUnavailable`. A checkout with no keys has to boot; the failure belongs on the call that needed a model, not on startup. A stub that answers with invented data is the one thing this layer exists to prevent.
+- **Each external call is bounded per attempt, and the chain is not.** `AI_*_TIMEOUT_SECONDS` caps one attempt, so the worst case is that times `AI_MAX_ATTEMPTS` plus the backoff — which outruns `SERVER_WRITE_TIMEOUT_SECONDS`. An AI call does not belong inline in a request handler on that budget.
 - The **service depends on the interface**, so swapping providers is a one-line change in `cmd/api/main.go`. It never imports `internal/ai`.
+
+See `docs/technical/ai-providers.md` for the whole layer, including what a retry costs and why the vector codec is deliberately not registered yet.
 
 These invariants are **enforced in the service layer**, and the code must make them true — they are product invariants, not style:
 
@@ -404,7 +413,9 @@ apps/api/
 │   │       ├── handler/                # <feature>_handler.go (Gin handlers)
 │   │       ├── middleware/             # JWT auth, tenant (account/branch) resolution, logging, rate limit
 │   │       └── dto/                    # request/response DTOs (snake_case json + binding tags)
-│   ├── ai/                             # adapters for RFQExtractor / Embedder / ChangeRequestHandler ports
+│   ├── ai/                             # shared policy (retry, usage log, Disabled* stand-ins)
+│   │   ├── anthropic/                  # StructuredGenerator: schema-forced generation, vision, PDF
+│   │   └── openai/                     # Embedder + Transcriber
 │   ├── mail/                           # adapters for the Mailer port (console by default)
 │   ├── ratelimit/                      # request counters behind middleware.Limiter
 │   └── utils/                          # generic, entity-agnostic helpers
