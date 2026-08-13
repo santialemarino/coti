@@ -42,6 +42,11 @@ pnpm db:reset     # drop the volume and rebuild
 pnpm db:create-migration <name>
 ```
 
+**One index is not in the chain, on purpose.** The catalog's approximate vector index is
+degenerate when built on an empty table, so it is a start-up step run once the catalog is loaded
+and embedded — `pnpm db:vector-index`, documented in [catalog.md](catalog.md#embedding-the-catalog).
+A fresh database is correct without it; the semantic search is just slower.
+
 `POSTGRES_PORT` (default 5432) changes the port the container publishes when another local
 Postgres already holds it. It has to stay in sync with the URLs.
 
@@ -101,8 +106,10 @@ lifetime. `activate` is therefore the flag alone. The behavioural side is in
 The four legitimate owner cases:
 
 1. **Migrations** — they create tables and grant permissions.
-2. **Operational scripts** — `pnpm db:seed` and the account activation pair above. They are
-   run by hand, from outside any request, so there is no tenant to scope them to.
+2. **Operational scripts** — `pnpm db:seed`, the account activation pair above, and
+   `pnpm db:vector-index`, which spans accounts and creates an index the request role does not
+   own the table for. They are run by hand, from outside any request, so there is no tenant to
+   scope them to.
 3. **The follow-up cron** — it sweeps quotes across every account.
 4. **Pre-auth lookups** — login by email (the account is not known yet) and resolving
    `quote_send.public_token` for the sessionless webapp. The correct pattern for the token:

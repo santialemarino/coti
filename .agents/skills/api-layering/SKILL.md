@@ -29,7 +29,7 @@ Request flow: **handler → service → repository → DB**.
 - **internal/ratelimit/** — The counters behind the rate-limit middleware, which consumes them through its own `Limiter` interface. In-memory today; a shared store swaps in behind the same interface once there is more than one instance.
 - **internal/config/** — Env loading (`godotenv` is loaded in `main`) + defaults; the one place for every configurable threshold (match cutoffs, top-K, timeouts, default expiry days).
 - **internal/utils/** — Generic, entity-agnostic helpers reused across features.
-- **cmd/api/main.go** — Composition root: read config, open the `pgxpool.Pool`, construct AI adapters, inject repos + adapters into services, build the router, start the server. **The only place a port is bound to an adapter.** No business logic.
+- **cmd/** — One directory per binary, each a composition root: read config, open the pools, take the AI adapters from `internal/ai/provider`, inject repos + adapters into services, and do the binary's job. `cmd/api` builds the router and serves HTTP; `cmd/catalog-embed` vectorizes one account's catalog. No business logic in either. **A job too long for a request budget is a command, not a route** — embedding a whole catalog outruns `SERVER_WRITE_TIMEOUT_SECONDS` several times over.
 
 Do not put business logic in handlers or SQL strings in services. Do not let HTTP types (request/response bodies) leak into domain or repositories.
 
@@ -231,7 +231,7 @@ Catalog matching is the core of the RFQ pipeline. `product.embedding` is `VECTOR
 - Query with pgvector's distance operators: **`<=>` cosine**, **`<->` L2**. Order by the distance and `LIMIT` the top-K. Coti uses `<=>` (cosine) as the default — bake the K and any cutoff in `internal/config`, not inline.
 - Pass the query vector as a `pgvector.Vector` bind param (`pgvector.NewVector([]float32{...})`), never string-interpolate it.
 - Combine semantic hits with `product_synonym` matches in the **repository**; the service decides confidence, not the SQL.
-- **Every search is account-scoped, and filtered to what the branch carries** — `product` hangs off `account`, so filter `WHERE p.account_id = $n` and join `branch_product` for the active branch alongside the vector order. Because an ANN scan filters _after_ ordering, over-fetch (`LIMIT k * over_fetch_factor`, both in `internal/config`) and trim in the service, or the branch filter can leave you short of K.
+- **Every search is account-scoped, and filtered to what the branch carries** — `product` hangs off `account`, so filter `WHERE p.account_id = $n` and join `branch_product` for the active branch alongside the vector order. Because an ANN scan filters _after_ ordering, over-fetch (`LIMIT k * over_fetch_factor`, both in `internal/config`) and trim in the service, or the branch filter can leave you short of K. One over-fetch is not a guarantee: the service widens the fetch until it has K or a wider one returns nothing new. And set `ivfflat.probes` for the transaction — the database visits one partition per scan by default, which recalls too little to survive the filter.
 - **Unmatched lines are flagged, never discarded.** A line with no acceptable match becomes a `quote_item` with `product_id` NULL and `match_status = NO_MATCH`; ambiguous ones get `AMBIGUOUS`. Every item carries a `confidence_score`. The search returns candidates; the service assigns `match_status`.
 
 ```go
@@ -293,11 +293,12 @@ Coti is a **human-in-the-loop copilot**. Two pipelines touch external models: th
   **Feature ports sit on top of those, never beside them.** `RFQExtractor` and `ChangeRequestHandler` are the domain's vocabulary for what the engine does; their adapters own the prompt and the schema and reach the model through `StructuredGenerator`. A feature adapter never talks to a provider SDK directly.
 
 - **Adapters** implement the ports in **`internal/ai/`**, one subpackage per provider (`anthropic`, `openai`). Prompt assembly, SDK calls and response parsing live in the subpackage; **the policy every provider shares lives in the package root** — `Retry`, the usage log, the `Disabled*` stand-ins, `RetryableStatus`, `RetryAfter`, `Fail`. Do not reimplement retry or status classification per adapter: that is one decision, and a copy per provider is a copy to keep in sync.
+- **Which adapter answers is decided in `internal/ai/provider`, once.** It sits above the adapters, so every binary that needs a model makes the same choices from the same settings; a `switch` copied into a second command is a second place to edit when a provider is added. Adding one is a new subpackage plus a `case` there.
 - **An adapter is handed only its own settings.** `config.AIConfig` exposes `Anthropic()`, `Embeddings()` and `Transcription()`, each carrying one provider's key, model, timeout and the shared retry policy. Passing the whole config would put every provider's credential in every adapter, one `%+v` away from a log.
 - **The adapter says which of its failures are transient; the shared loop only reads the mark.** `ai.Retryable` / `ai.RetryableAfter` for a rate limit, a provider fault, a dropped connection or an answer that missed the schema; `ai.Rejected` for a request the provider would not serve — a bad schema, model or key, or a safety refusal. Then `ai.Fail` decides what the caller sees: `Rejected` and a cancelled caller stay as they are, everything else becomes `domain.ErrAIUnavailable`. **A fault of ours must never surface as a provider outage**, or a client is invited to retry something that cannot succeed.
 - **Every capability defaults to `disabled`**, and the stand-in refuses with `ErrAIUnavailable`. A checkout with no keys has to boot; the failure belongs on the call that needed a model, not on startup. A stub that answers with invented data is the one thing this layer exists to prevent.
 - **Each external call is bounded per attempt, and the chain is not.** `AI_*_TIMEOUT_SECONDS` caps one attempt, so the worst case is that times `AI_MAX_ATTEMPTS` plus the backoff — which outruns `SERVER_WRITE_TIMEOUT_SECONDS`. An AI call does not belong inline in a request handler on that budget.
-- The **service depends on the interface**, so swapping providers is a one-line change in `cmd/api/main.go`. It never imports `internal/ai`.
+- The **service depends on the interface**, so swapping providers is a one-line change in `internal/ai/provider`. It never imports `internal/ai`.
 
 See `docs/technical/ai-providers.md` for the whole layer, including what a retry costs and why the vector codec is deliberately not registered yet.
 
@@ -401,8 +402,10 @@ Build and vet before you commit: `pnpm check:api` (runs `go build` + `go vet ./.
 ```
 apps/api/
 ├── cmd/
-│   └── api/
-│       └── main.go                     # composition root: config, pgxpool, adapters, router
+│   ├── api/
+│   │   └── main.go                     # composition root: config, pgxpool, adapters, router
+│   └── catalog-embed/
+│       └── main.go                     # offline job: vectorize one account's catalog
 ├── internal/
 │   ├── config/                         # env loading + defaults; all thresholds (top-K, cutoffs, timeouts)
 │   ├── domain/                         # entities, value objects, enums, errors, AI port interfaces
@@ -415,7 +418,8 @@ apps/api/
 │   │       └── dto/                    # request/response DTOs (snake_case json + binding tags)
 │   ├── ai/                             # shared policy (retry, usage log, Disabled* stand-ins)
 │   │   ├── anthropic/                  # StructuredGenerator: schema-forced generation, vision, PDF
-│   │   └── openai/                     # Embedder + Transcriber
+│   │   ├── openai/                     # Embedder + Transcriber
+│   │   └── provider/                   # binds each port to its adapter; used by every cmd/
 │   ├── mail/                           # adapters for the Mailer port (console by default)
 │   ├── ratelimit/                      # request counters behind middleware.Limiter
 │   └── utils/                          # generic, entity-agnostic helpers

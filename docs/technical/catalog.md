@@ -191,13 +191,88 @@ always comes from the authenticated tenant.
 Catalog declares its columns and workbook sheets on the shared contract documented in
 [Shared spreadsheet layer](spreadsheets.md); it does not own CSV, XLSX, ZIP, or cell serialization.
 
+## Hybrid search
+
+Product matching resolves an RFQ line against the catalog through two halves at once, and both
+are needed: the semantic half generalizes past wording the catalog never used, the lexical half
+carries the exact trade vocabulary that a vector model has no way to know.
+
+- **The lexical half** is Postgres full-text search over a `search_document` generated column —
+  on `product` it is the name plus the description, on `product_synonym` it is the term. Both
+  are `GIN` indexed. They read the `spanish_unaccent` text search configuration, a copy of
+  `spanish` with `unaccent` in front of the stemmer: informal request text drops accents
+  constantly, and under the stock configuration "hormigon" would never reach "hormigón".
+- **The semantic half** orders `product.embedding` by cosine distance (`<=>`).
+- **Both halves are account-scoped in the query**, and the result is joined against
+  `branch_product` so a search can only ever offer what the active branch carries. A search with
+  no active branch is refused rather than answered account-wide.
+
+**Recognition quality is not a model-choice problem.** Trade terms — a `telagoma` for a membrane,
+a `pastina` for a grout — are what the synonym table and the lexical half are for. Reaching for a
+larger embedding model instead solves nothing, and the escape hatch if recognition really does
+disappoint is in [ai-providers.md](ai-providers.md): a wider model can be truncated back to 1536
+dimensions and the catalog re-embedded into the same column, with no migration.
+
+### Merging the two halves, and the trim
+
+Each half is ranked on its own and the two are merged by **reciprocal rank fusion**: a candidate
+contributes `1 / (CATALOG_SEARCH_RRF_K + its rank)` from every half that found it. Ranks are what
+make the halves comparable at all — a cosine distance and a `ts_rank` share no scale — and a
+candidate both halves found therefore outranks one only a single half saw.
+
+**The service asks the database for more rows than the caller wants and trims the result.** An
+approximate vector scan orders before the branch filter runs, so a request for twenty candidates
+can come back with six once the products the branch does not stock are dropped. The first fetch
+is `top K × CATALOG_SEARCH_OVER_FETCH_FACTOR`, and it widens until the limit is met or a wider
+fetch stops returning anything new — which is what a branch carrying fewer than K matches looks
+like. Asking for K usable candidates therefore returns K whenever the branch has them.
+
+The search returns candidates and their evidence, and decides nothing: which of them counts as a
+match, which line is `AMBIGUOUS`, and which is flagged `NO_MATCH` belongs to the matching service.
+
+## Embedding the catalog
+
+Vectors are written by a command, never by a request:
+
+```bash
+go run ./cmd/catalog-embed --account <uuid> [--refresh-all]   # from apps/api
+pnpm db:vector-index [--lists <n>]                            # from the repo root
+```
+
+`catalog-embed` pages through the account's catalog by product id, embedding each page outside
+any transaction and writing it back in a short one. **It is a command because the work does not
+fit a request:** a catalog is thousands of texts, and the AI timeouts are per attempt rather than
+per chain, so one page can outlast any HTTP response budget. A run that fails halfway keeps the
+pages before it, and a re-run resumes.
+
+By default it takes only what needs it — no vector, or `embedding_updated_at` older than the
+row's `updated_at`, which is how an edited product comes back around. `--refresh-all` re-embeds
+everything, which is what a change of embedding model needs. It requires
+`AI_EMBEDDINGS_PROVIDER=openai` and a key, and refuses up front without them.
+
+**The vector index is created afterwards, and deliberately not by a migration.** Built on an
+empty table an approximate index is degenerate — it has no data to partition, and it does not
+improve later on its own. `pnpm db:vector-index` builds it once the catalog is embedded, with
+`lists` sized to the rows that carry a vector (pgvector's own guidance: `rows/1000`, or
+`sqrt(rows)` past a million), and `--lists` overrides that. It runs as the owner role and rebuilds
+the index from scratch, so it is the command to re-run after the catalog grows an order of
+magnitude. The build holds a write lock on `product` for its duration.
+
+`CATALOG_SEARCH_IVFFLAT_PROBES` is the query-side companion: the database visits one partition
+per scan by default, which recalls too little of the catalog to survive the branch filter.
+
 ## Configuration
 
-| Variable                    | Default | What for                                      |
-| --------------------------- | ------- | --------------------------------------------- |
-| `CATALOG_DEFAULT_PAGE_SIZE` | 50      | Page size when `limit` is omitted             |
-| `CATALOG_MAX_PAGE_SIZE`     | 200     | Cap on `limit`, so nobody asks for everything |
-| `CATALOG_IMPORT_MAX_BYTES`  | 5242880 | Maximum catalog spreadsheet upload size       |
+| Variable                           | Default | What for                                           |
+| ---------------------------------- | ------- | -------------------------------------------------- |
+| `CATALOG_DEFAULT_PAGE_SIZE`        | 50      | Page size when `limit` is omitted                  |
+| `CATALOG_MAX_PAGE_SIZE`            | 200     | Cap on `limit`, so nobody asks for everything      |
+| `CATALOG_IMPORT_MAX_BYTES`         | 5242880 | Maximum catalog spreadsheet upload size            |
+| `CATALOG_SEARCH_TOP_K`             | 10      | Candidates per line when the caller names no limit |
+| `CATALOG_SEARCH_OVER_FETCH_FACTOR` | 4       | Multiplier on the rows each half is asked for      |
+| `CATALOG_SEARCH_IVFFLAT_PROBES`    | 10      | Index partitions one approximate scan visits       |
+| `CATALOG_SEARCH_RRF_K`             | 60      | Constant in the rank fusion merging the two halves |
+| `CATALOG_EMBEDDING_BATCH_SIZE`     | 200     | Products the backfill reads and writes per round   |
 
 ## API specification
 
