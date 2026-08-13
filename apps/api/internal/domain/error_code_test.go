@@ -22,6 +22,7 @@ func TestCodeOf_FallsBackToTheSentinelTheErrorWraps(t *testing.T) {
 		{domain.ErrLocked, domain.CodeLocked},
 		{domain.ErrForbidden, domain.CodeForbidden},
 		{domain.ErrRateLimited, domain.CodeRateLimited},
+		{domain.ErrAIUnavailable, domain.CodeAIUnavailable},
 		{errors.New("something else entirely"), domain.CodeInternal},
 	}
 

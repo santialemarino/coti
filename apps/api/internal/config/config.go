@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -36,6 +37,18 @@ const (
 	MailProviderSMTP    MailProvider = "smtp"
 )
 
+// AIProvider selects the adapter behind one of the domain AI ports.
+type AIProvider string
+
+const (
+	AIProviderDisabled  AIProvider = "disabled"
+	AIProviderAnthropic AIProvider = "anthropic"
+	AIProviderOpenAI    AIProvider = "openai"
+)
+
+// aiEfforts are the reasoning-depth levels the language model accepts.
+var aiEfforts = []string{"low", "medium", "high", "xhigh", "max"}
+
 // Config is the fully resolved runtime configuration.
 type Config struct {
 	Environment   Environment
@@ -44,6 +57,7 @@ type Config struct {
 	Database      DatabaseConfig
 	Auth          AuthConfig
 	Mail          MailConfig
+	AI            AIConfig
 	Web           WebConfig
 	Catalog       CatalogConfig
 	RateLimit     RateLimitConfig
@@ -123,6 +137,124 @@ type MailConfig struct {
 	SMTPTimeout  time.Duration
 }
 
+// AIConfig holds the provider selection, credentials and limits for the three external AI
+// capabilities. Each is selected on its own because no single provider covers all three, and
+// because an environment may want the language model without the transcriber.
+type AIConfig struct {
+	AnthropicAPIKey string
+	// AnthropicBaseURL is empty in normal use: the SDK carries the provider's own address, and
+	// duplicating it here would be a second copy to keep current. Set it to reach a gateway.
+	AnthropicBaseURL string
+	OpenAIAPIKey     string
+	OpenAIBaseURL    string
+
+	LLMProvider AIProvider
+	LLMModel    string
+	// LLMEffort is how much reasoning the model spends. Extraction and classification are
+	// mapping work rather than open-ended writing, so the default sits at the low end.
+	LLMEffort string
+	// LLMMaxTokens caps one answer, the model's own reasoning included.
+	LLMMaxTokens int
+	LLMTimeout   time.Duration
+
+	EmbeddingsProvider AIProvider
+	EmbeddingsModel    string
+	EmbeddingsTimeout  time.Duration
+
+	TranscriptionProvider AIProvider
+	TranscriptionModel    string
+	TranscriptionTimeout  time.Duration
+
+	Retry AIRetryPolicy
+}
+
+// AIRetryPolicy is how many times one provider call is attempted, and how long the wait between
+// attempts starts at. The wait doubles from there.
+type AIRetryPolicy struct {
+	MaxAttempts int
+	Backoff     time.Duration
+}
+
+// problems reports everything wrong with the AI settings, naming the key at fault. A capability
+// left disabled needs no credentials, so the requirements are collected per capability.
+func (a AIConfig) problems() []string {
+	var problems []string
+	needsAnthropic, needsOpenAI := false, false
+
+	switch a.LLMProvider {
+	case AIProviderDisabled:
+	case AIProviderAnthropic:
+		needsAnthropic = true
+		if !slices.Contains(aiEfforts, a.LLMEffort) {
+			problems = append(problems, fmt.Sprintf("AI_LLM_EFFORT must be one of %s, got %q",
+				strings.Join(aiEfforts, ", "), a.LLMEffort))
+		}
+		if a.LLMMaxTokens <= 0 {
+			problems = append(problems, "AI_LLM_MAX_TOKENS must be greater than zero")
+		}
+		if a.LLMTimeout <= 0 {
+			problems = append(problems, "AI_LLM_TIMEOUT_SECONDS must be greater than zero")
+		}
+	default:
+		problems = append(problems, fmt.Sprintf("AI_LLM_PROVIDER must be %q or %q, got %q",
+			AIProviderDisabled, AIProviderAnthropic, a.LLMProvider))
+	}
+
+	switch a.EmbeddingsProvider {
+	case AIProviderDisabled:
+	case AIProviderOpenAI:
+		needsOpenAI = true
+		if a.EmbeddingsTimeout <= 0 {
+			problems = append(problems, "AI_EMBEDDINGS_TIMEOUT_SECONDS must be greater than zero")
+		}
+	default:
+		problems = append(problems, fmt.Sprintf("AI_EMBEDDINGS_PROVIDER must be %q or %q, got %q",
+			AIProviderDisabled, AIProviderOpenAI, a.EmbeddingsProvider))
+	}
+
+	switch a.TranscriptionProvider {
+	case AIProviderDisabled:
+	case AIProviderOpenAI:
+		needsOpenAI = true
+		if a.TranscriptionTimeout <= 0 {
+			problems = append(problems, "AI_TRANSCRIPTION_TIMEOUT_SECONDS must be greater than zero")
+		}
+	default:
+		problems = append(problems, fmt.Sprintf("AI_TRANSCRIPTION_PROVIDER must be %q or %q, got %q",
+			AIProviderDisabled, AIProviderOpenAI, a.TranscriptionProvider))
+	}
+
+	// One key per provider, reported once however many capabilities it backs.
+	if needsAnthropic && a.AnthropicAPIKey == "" {
+		problems = append(problems, "AI_ANTHROPIC_API_KEY is required when AI_LLM_PROVIDER is "+
+			string(AIProviderAnthropic))
+	}
+	if needsOpenAI && a.OpenAIAPIKey == "" {
+		problems = append(problems, "AI_OPENAI_API_KEY is required when AI_EMBEDDINGS_PROVIDER "+
+			"or AI_TRANSCRIPTION_PROVIDER is "+string(AIProviderOpenAI))
+	}
+	if needsOpenAI {
+		if u, err := url.Parse(a.OpenAIBaseURL); err != nil || u.Scheme == "" || u.Host == "" {
+			problems = append(problems, fmt.Sprintf("AI_OPENAI_BASE_URL must be an absolute URL "+
+				"with a scheme and host, got %q", a.OpenAIBaseURL))
+		}
+	}
+	if a.AnthropicBaseURL != "" {
+		if u, err := url.Parse(a.AnthropicBaseURL); err != nil || u.Scheme == "" || u.Host == "" {
+			problems = append(problems, fmt.Sprintf("AI_ANTHROPIC_BASE_URL must be an absolute URL "+
+				"with a scheme and host, got %q", a.AnthropicBaseURL))
+		}
+	}
+
+	if a.Retry.MaxAttempts < 1 {
+		problems = append(problems, "AI_MAX_ATTEMPTS must be at least 1")
+	}
+	if a.Retry.Backoff <= 0 {
+		problems = append(problems, "AI_RETRY_BACKOFF_SECONDS must be greater than zero")
+	}
+	return problems
+}
+
 // WebConfig holds the frontend base URLs an emailed link points at. The API never serves
 // those routes, so it cannot derive them from its own address.
 type WebConfig struct {
@@ -198,6 +330,34 @@ func Load() (*Config, error) {
 			SMTPPassword: getString("MAIL_SMTP_PASSWORD", ""),
 			SMTPStartTLS: getBool("MAIL_SMTP_STARTTLS", true, &problems),
 			SMTPTimeout:  getDuration("MAIL_SMTP_TIMEOUT_SECONDS", 10*time.Second, &problems),
+		},
+		AI: AIConfig{
+			AnthropicAPIKey:  getString("AI_ANTHROPIC_API_KEY", ""),
+			AnthropicBaseURL: getString("AI_ANTHROPIC_BASE_URL", ""),
+			OpenAIAPIKey:     getString("AI_OPENAI_API_KEY", ""),
+			OpenAIBaseURL:    getString("AI_OPENAI_BASE_URL", "https://api.openai.com/v1"),
+
+			LLMProvider:  AIProvider(getString("AI_LLM_PROVIDER", string(AIProviderDisabled))),
+			LLMModel:     getString("AI_LLM_MODEL", "claude-opus-5"),
+			LLMEffort:    getString("AI_LLM_EFFORT", "low"),
+			LLMMaxTokens: getInt("AI_LLM_MAX_TOKENS", 16000, &problems),
+			LLMTimeout:   getDuration("AI_LLM_TIMEOUT_SECONDS", 60*time.Second, &problems),
+
+			EmbeddingsProvider: AIProvider(getString("AI_EMBEDDINGS_PROVIDER",
+				string(AIProviderDisabled))),
+			EmbeddingsModel:   getString("AI_EMBEDDINGS_MODEL", "text-embedding-3-small"),
+			EmbeddingsTimeout: getDuration("AI_EMBEDDINGS_TIMEOUT_SECONDS", 30*time.Second, &problems),
+
+			TranscriptionProvider: AIProvider(getString("AI_TRANSCRIPTION_PROVIDER",
+				string(AIProviderDisabled))),
+			TranscriptionModel: getString("AI_TRANSCRIPTION_MODEL", "whisper-1"),
+			TranscriptionTimeout: getDuration("AI_TRANSCRIPTION_TIMEOUT_SECONDS",
+				120*time.Second, &problems),
+
+			Retry: AIRetryPolicy{
+				MaxAttempts: getInt("AI_MAX_ATTEMPTS", 3, &problems),
+				Backoff:     getDuration("AI_RETRY_BACKOFF_SECONDS", time.Second, &problems),
+			},
 		},
 		Web: WebConfig{
 			BackofficeURL: getString("WEB_BACKOFFICE_URL", "http://localhost:3000"),
@@ -300,6 +460,8 @@ func Load() (*Config, error) {
 		problems = append(problems, fmt.Sprintf("MAIL_PROVIDER must be %q or %q, got %q",
 			MailProviderConsole, MailProviderSMTP, cfg.Mail.Provider))
 	}
+
+	problems = append(problems, cfg.AI.problems()...)
 
 	// A base URL missing its scheme or host yields recovery links that go nowhere, and the
 	// only symptom is a user reporting that the mail does not work.

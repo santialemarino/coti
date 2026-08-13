@@ -39,6 +39,12 @@ func Respond(c *gin.Context, err error) {
 		c.JSON(http.StatusForbidden, dto.ErrorResponse{Error: "forbidden", Code: code})
 	case errors.Is(err, domain.ErrImmutable):
 		c.JSON(http.StatusConflict, dto.ErrorResponse{Error: "target is immutable", Code: code})
+	case errors.Is(err, domain.ErrAIUnavailable):
+		// Attached as well: which provider failed, and why, belongs in the log and not in the
+		// response. The caller only needs to know the proposal is not coming.
+		_ = c.Error(err)
+		c.JSON(http.StatusServiceUnavailable,
+			dto.ErrorResponse{Error: "ai provider unavailable", Code: code})
 	default:
 		// Attached so the request log carries the detail the client does not get.
 		_ = c.Error(err)

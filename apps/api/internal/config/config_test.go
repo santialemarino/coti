@@ -25,9 +25,16 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"RATE_LIMIT_ENABLED", "RATE_LIMIT_WINDOW_SECONDS", "RATE_LIMIT_GLOBAL_MAX",
 		"RATE_LIMIT_CREDENTIALS_MAX", "RATE_LIMIT_SIGNUP_MAX", "RATE_LIMIT_MAIL_MAX",
 		"RATE_LIMIT_MAIL_PER_ADDRESS_MAX", "RATE_LIMIT_TRUSTED_PROXY_HOPS",
+		"RATE_LIMIT_TRUSTED_PROXY_CIDRS",
 		"MAIL_PROVIDER", "MAIL_FROM_ADDRESS", "MAIL_FROM_NAME",
 		"MAIL_SMTP_HOST", "MAIL_SMTP_PORT", "MAIL_SMTP_USERNAME", "MAIL_SMTP_PASSWORD",
 		"MAIL_SMTP_STARTTLS", "MAIL_SMTP_TIMEOUT_SECONDS",
+		"AI_ANTHROPIC_API_KEY", "AI_ANTHROPIC_BASE_URL", "AI_OPENAI_API_KEY", "AI_OPENAI_BASE_URL",
+		"AI_LLM_PROVIDER", "AI_LLM_MODEL", "AI_LLM_EFFORT", "AI_LLM_MAX_TOKENS",
+		"AI_LLM_TIMEOUT_SECONDS",
+		"AI_EMBEDDINGS_PROVIDER", "AI_EMBEDDINGS_MODEL", "AI_EMBEDDINGS_TIMEOUT_SECONDS",
+		"AI_TRANSCRIPTION_PROVIDER", "AI_TRANSCRIPTION_MODEL", "AI_TRANSCRIPTION_TIMEOUT_SECONDS",
+		"AI_MAX_ATTEMPTS", "AI_RETRY_BACKOFF_SECONDS",
 		"WEB_BACKOFFICE_URL",
 		"CATALOG_IMPORT_MAX_BYTES",
 		"PRICE_IMPORT_MAX_BYTES",
@@ -368,6 +375,178 @@ func TestLoad_SMTPProviderRejectsAnUnusableConnection(t *testing.T) {
 		if !strings.Contains(err.Error(), want+" must be greater than zero") {
 			t.Errorf("Load() error is missing %q; got:\n%s", want, err.Error())
 		}
+	}
+}
+
+// No AI provider needs to exist for the API to boot: a fresh checkout has no keys, and the engine
+// refuses the calls that needed a model rather than the process refusing to start.
+func TestLoad_AIProvidersArriveDisabled(t *testing.T) {
+	setEnv(t, minimalEnv())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	for _, provider := range []struct {
+		name  string
+		value AIProvider
+	}{
+		{"AI.LLMProvider", cfg.AI.LLMProvider},
+		{"AI.EmbeddingsProvider", cfg.AI.EmbeddingsProvider},
+		{"AI.TranscriptionProvider", cfg.AI.TranscriptionProvider},
+	} {
+		if provider.value != AIProviderDisabled {
+			t.Errorf("%s = %q, want %q", provider.name, provider.value, AIProviderDisabled)
+		}
+	}
+	// Mapping work rather than open-ended writing, so the reasoning default sits at the low end.
+	if cfg.AI.LLMEffort != "low" {
+		t.Errorf("AI.LLMEffort = %q, want low", cfg.AI.LLMEffort)
+	}
+	if cfg.AI.Retry.MaxAttempts != 3 || cfg.AI.Retry.Backoff != time.Second {
+		t.Errorf("AI.Retry = %+v, want 3 attempts from 1s", cfg.AI.Retry)
+	}
+}
+
+// A capability left disabled must not demand the credentials it would never use.
+func TestLoad_DisabledAICapabilitiesNeedNoCredentials(t *testing.T) {
+	env := minimalEnv()
+	env["AI_LLM_PROVIDER"] = "anthropic"
+	env["AI_ANTHROPIC_API_KEY"] = "sk-ant-test"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error: embeddings and transcription are off", err)
+	}
+	if cfg.AI.LLMProvider != AIProviderAnthropic {
+		t.Errorf("AI.LLMProvider = %q, want %q", cfg.AI.LLMProvider, AIProviderAnthropic)
+	}
+}
+
+// A missing key fails the boot with a message naming it, rather than at the first call. Both are
+// reported in the same pass, so enabling two capabilities at once is diagnosed once.
+func TestLoad_AIProviderReportsEveryMissingKeyByName(t *testing.T) {
+	env := minimalEnv()
+	env["AI_LLM_PROVIDER"] = "anthropic"
+	env["AI_EMBEDDINGS_PROVIDER"] = "openai"
+	setEnv(t, env)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() = nil error, want an error")
+	}
+	for _, want := range []string{
+		"AI_ANTHROPIC_API_KEY is required",
+		"AI_OPENAI_API_KEY is required",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("Load() error is missing %q; got:\n%s", want, err.Error())
+		}
+	}
+}
+
+// One key backs two capabilities, so it is named once and not once per capability.
+func TestLoad_TheOpenAIKeyIsReportedOnce(t *testing.T) {
+	env := minimalEnv()
+	env["AI_EMBEDDINGS_PROVIDER"] = "openai"
+	env["AI_TRANSCRIPTION_PROVIDER"] = "openai"
+	setEnv(t, env)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() = nil error, want an error")
+	}
+	if got := strings.Count(err.Error(), "AI_OPENAI_API_KEY is required"); got != 1 {
+		t.Errorf("AI_OPENAI_API_KEY named %d times, want 1:\n%s", got, err.Error())
+	}
+}
+
+func TestLoad_AIRejectsUnusableSettings(t *testing.T) {
+	cases := []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{
+			name: "unknown language model provider",
+			env:  map[string]string{"AI_LLM_PROVIDER": "openai"},
+			want: "AI_LLM_PROVIDER must be",
+		},
+		{
+			name: "unknown embeddings provider",
+			env:  map[string]string{"AI_EMBEDDINGS_PROVIDER": "anthropic"},
+			want: "AI_EMBEDDINGS_PROVIDER must be",
+		},
+		{
+			name: "unknown transcription provider",
+			env:  map[string]string{"AI_TRANSCRIPTION_PROVIDER": "anthropic"},
+			want: "AI_TRANSCRIPTION_PROVIDER must be",
+		},
+		{
+			name: "effort outside the accepted levels",
+			env: map[string]string{
+				"AI_LLM_PROVIDER":      "anthropic",
+				"AI_ANTHROPIC_API_KEY": "sk-ant-test",
+				"AI_LLM_EFFORT":        "medium-high",
+			},
+			want: "AI_LLM_EFFORT must be one of",
+		},
+		{
+			name: "no token budget",
+			env: map[string]string{
+				"AI_LLM_PROVIDER":      "anthropic",
+				"AI_ANTHROPIC_API_KEY": "sk-ant-test",
+				"AI_LLM_MAX_TOKENS":    "0",
+			},
+			want: "AI_LLM_MAX_TOKENS must be greater than zero",
+		},
+		{
+			name: "base URL without a scheme",
+			env: map[string]string{
+				"AI_EMBEDDINGS_PROVIDER": "openai",
+				"AI_OPENAI_API_KEY":      "sk-test",
+				"AI_OPENAI_BASE_URL":     "api.openai.com/v1",
+			},
+			want: "AI_OPENAI_BASE_URL must be an absolute URL",
+		},
+		{
+			name: "gateway address without a scheme",
+			env: map[string]string{
+				"AI_LLM_PROVIDER":       "anthropic",
+				"AI_ANTHROPIC_API_KEY":  "sk-ant-test",
+				"AI_ANTHROPIC_BASE_URL": "gateway.internal",
+			},
+			want: "AI_ANTHROPIC_BASE_URL must be an absolute URL",
+		},
+		{
+			name: "no attempts",
+			env:  map[string]string{"AI_MAX_ATTEMPTS": "0"},
+			want: "AI_MAX_ATTEMPTS must be at least 1",
+		},
+		{
+			name: "no wait between attempts",
+			env:  map[string]string{"AI_RETRY_BACKOFF_SECONDS": "0"},
+			want: "AI_RETRY_BACKOFF_SECONDS must be greater than zero",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := minimalEnv()
+			for k, v := range tc.env {
+				env[k] = v
+			}
+			setEnv(t, env)
+
+			_, err := Load()
+			if err == nil {
+				t.Fatalf("Load() = nil error, want %q", tc.want)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("Load() error is missing %q; got:\n%s", tc.want, err.Error())
+			}
+		})
 	}
 }
 
