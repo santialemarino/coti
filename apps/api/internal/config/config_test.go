@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -34,7 +35,8 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"AI_LLM_TIMEOUT_SECONDS",
 		"AI_EMBEDDINGS_PROVIDER", "AI_EMBEDDINGS_MODEL", "AI_EMBEDDINGS_TIMEOUT_SECONDS",
 		"AI_TRANSCRIPTION_PROVIDER", "AI_TRANSCRIPTION_MODEL", "AI_TRANSCRIPTION_TIMEOUT_SECONDS",
-		"AI_MAX_ATTEMPTS", "AI_RETRY_BACKOFF_SECONDS",
+		"AI_MAX_ATTEMPTS", "AI_RETRY_BACKOFF_SECONDS", "AI_MAX_BACKOFF_SECONDS",
+		"AI_EMBEDDINGS_BATCH_SIZE",
 		"WEB_BACKOFFICE_URL",
 		"CATALOG_IMPORT_MAX_BYTES",
 		"PRICE_IMPORT_MAX_BYTES",
@@ -406,6 +408,14 @@ func TestLoad_AIProvidersArriveDisabled(t *testing.T) {
 	if cfg.AI.Retry.MaxAttempts != 3 || cfg.AI.Retry.Backoff != time.Second {
 		t.Errorf("AI.Retry = %+v, want 3 attempts from 1s", cfg.AI.Retry)
 	}
+	// Without a ceiling the doubling is unbounded, so raising the attempt count alone would
+	// produce waits measured in minutes.
+	if cfg.AI.Retry.MaxBackoff != 8*time.Second {
+		t.Errorf("AI.Retry.MaxBackoff = %v, want 8s", cfg.AI.Retry.MaxBackoff)
+	}
+	if cfg.AI.EmbeddingsBatchSize != 100 {
+		t.Errorf("AI.EmbeddingsBatchSize = %d, want 100", cfg.AI.EmbeddingsBatchSize)
+	}
 }
 
 // A capability left disabled must not demand the credentials it would never use.
@@ -529,6 +539,29 @@ func TestLoad_AIRejectsUnusableSettings(t *testing.T) {
 			env:  map[string]string{"AI_RETRY_BACKOFF_SECONDS": "0"},
 			want: "AI_RETRY_BACKOFF_SECONDS must be greater than zero",
 		},
+		{
+			name: "no ceiling on the wait",
+			env:  map[string]string{"AI_MAX_BACKOFF_SECONDS": "0"},
+			want: "AI_MAX_BACKOFF_SECONDS must be greater than zero",
+		},
+		{
+			// A ceiling below the first wait would make the ladder shrink instead of grow.
+			name: "ceiling below the first wait",
+			env: map[string]string{
+				"AI_RETRY_BACKOFF_SECONDS": "10",
+				"AI_MAX_BACKOFF_SECONDS":   "5",
+			},
+			want: "AI_MAX_BACKOFF_SECONDS (5s) is below AI_RETRY_BACKOFF_SECONDS (10s)",
+		},
+		{
+			name: "no batch size",
+			env: map[string]string{
+				"AI_EMBEDDINGS_PROVIDER":   "openai",
+				"AI_OPENAI_API_KEY":        "sk-test",
+				"AI_EMBEDDINGS_BATCH_SIZE": "0",
+			},
+			want: "AI_EMBEDDINGS_BATCH_SIZE must be at least 1",
+		},
 	}
 
 	for _, tc := range cases {
@@ -561,6 +594,64 @@ func TestLoad_ReportsEveryProblemAtOnce(t *testing.T) {
 	for _, want := range []string{"DATABASE_URL is required", "DATABASE_ADMIN_URL is required", "AUTH_JWT_SECRET"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("Load() error is missing %q; got:\n%s", want, err.Error())
+		}
+	}
+}
+
+// Each adapter is handed only its own settings, so no package holds a key it must not use — and a
+// stray %+v of one cannot print another provider's credential.
+func TestAIConfig_NarrowsWhatEachAdapterSees(t *testing.T) {
+	t.Parallel()
+
+	cfg := AIConfig{
+		AnthropicAPIKey:      "sk-ant-secret",
+		AnthropicBaseURL:     "https://gateway.internal",
+		OpenAIAPIKey:         "sk-openai-secret",
+		OpenAIBaseURL:        "https://api.openai.com/v1",
+		LLMModel:             "claude-opus-5",
+		LLMEffort:            "low",
+		LLMMaxTokens:         16000,
+		LLMTimeout:           time.Minute,
+		EmbeddingsModel:      "text-embedding-3-small",
+		EmbeddingsBatchSize:  100,
+		EmbeddingsTimeout:    30 * time.Second,
+		TranscriptionModel:   "whisper-1",
+		TranscriptionTimeout: 2 * time.Minute,
+		Retry:                AIRetryPolicy{MaxAttempts: 3, Backoff: time.Second, MaxBackoff: 8 * time.Second},
+	}
+
+	llm := cfg.Anthropic()
+	if llm.APIKey != "sk-ant-secret" || llm.Model != "claude-opus-5" || llm.MaxTokens != 16000 {
+		t.Fatalf("Anthropic() = %+v, want the language-model settings", llm)
+	}
+	if strings.Contains(fmt.Sprintf("%+v", llm), "sk-openai-secret") {
+		t.Fatal("Anthropic() carries the OpenAI key, which that adapter must not hold")
+	}
+
+	embeddings := cfg.Embeddings()
+	if embeddings.APIKey != "sk-openai-secret" || embeddings.BatchSize != 100 {
+		t.Fatalf("Embeddings() = %+v, want the embedding settings", embeddings)
+	}
+	if strings.Contains(fmt.Sprintf("%+v", embeddings), "sk-ant-secret") {
+		t.Fatal("Embeddings() carries the Anthropic key, which that adapter must not hold")
+	}
+
+	transcription := cfg.Transcription()
+	if transcription.APIKey != "sk-openai-secret" || transcription.Model != "whisper-1" {
+		t.Fatalf("Transcription() = %+v, want the transcription settings", transcription)
+	}
+	if strings.Contains(fmt.Sprintf("%+v", transcription), "sk-ant-secret") {
+		t.Fatal("Transcription() carries the Anthropic key, which that adapter must not hold")
+	}
+
+	// The retry policy is shared on purpose: it is one operational decision, not three.
+	for name, got := range map[string]AIRetryPolicy{
+		"Anthropic":     llm.Retry,
+		"Embeddings":    embeddings.Retry,
+		"Transcription": transcription.Retry,
+	} {
+		if got != cfg.Retry {
+			t.Errorf("%s().Retry = %+v, want the shared policy %+v", name, got, cfg.Retry)
 		}
 	}
 }

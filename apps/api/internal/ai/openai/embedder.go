@@ -19,14 +19,14 @@ var _ domain.Embedder = (*Embedder)(nil)
 // Embedder vectorizes catalog and RFQ text for semantic search.
 type Embedder struct {
 	client *http.Client
-	cfg    config.AIConfig
+	cfg    config.EmbeddingsConfig
 	log    *slog.Logger
 }
 
-// NewEmbedder builds an Embedder from the AI configuration.
-func NewEmbedder(cfg config.AIConfig, log *slog.Logger) *Embedder {
+// NewEmbedder builds an Embedder from the embedding settings.
+func NewEmbedder(cfg config.EmbeddingsConfig, log *slog.Logger) *Embedder {
 	return &Embedder{
-		client: &http.Client{Timeout: cfg.EmbeddingsTimeout},
+		client: &http.Client{Timeout: cfg.Timeout},
 		cfg:    cfg,
 		log:    log,
 	}
@@ -54,7 +54,11 @@ type embedReply struct {
 	} `json:"usage"`
 }
 
-// Embed vectorizes texts in one call, returning vectors index-aligned with the input.
+// Embed vectorizes texts, returning vectors index-aligned with the input.
+//
+// The list is sent in batches: a catalog import hands over thousands of descriptions at once, and
+// one request carrying all of them would exceed the provider's per-request limits and be rejected
+// wholesale, losing every vector in the batch.
 func (e *Embedder) Embed(ctx context.Context, texts []string) ([]pgvector.Vector, error) {
 	if len(texts) == 0 {
 		return nil, nil
@@ -65,39 +69,73 @@ func (e *Embedder) Embed(ctx context.Context, texts []string) ([]pgvector.Vector
 		}
 	}
 
-	body := embedRequest{
-		Model:      e.cfg.EmbeddingsModel,
-		Input:      texts,
-		Dimensions: domain.EmbeddingDimension,
+	batch := e.cfg.BatchSize
+	if batch < 1 {
+		batch = len(texts)
 	}
+
 	var (
-		vectors []pgvector.Vector
+		vectors = make([]pgvector.Vector, 0, len(texts))
 		tokens  int
+		batches int
+		err     error
 	)
 	started := time.Now()
-	attempts, err := ai.Retry(ctx, e.cfg.Retry, func(ctx context.Context) error {
-		var reply embedReply
-		if err := post(ctx, e.client, e.cfg.OpenAIBaseURL, e.cfg.OpenAIAPIKey,
-			"/embeddings", body, &reply); err != nil {
-			return err
+	attempts := 0
+	for start := 0; start < len(texts) && err == nil; start += batch {
+		end := min(start+batch, len(texts))
+		chunk := texts[start:end]
+		batches++
+
+		var chunkVectors []pgvector.Vector
+		var chunkAttempts int
+		chunkAttempts, err = ai.Retry(ctx, e.cfg.Retry, func(ctx context.Context) error {
+			var reply embedReply
+			if callErr := e.request(ctx, chunk, &reply); callErr != nil {
+				return callErr
+			}
+			// Added rather than assigned: every attempt submitted the text and was charged.
+			tokens += reply.Usage.PromptTokens
+			var readErr error
+			chunkVectors, readErr = readVectors(reply, len(chunk))
+			return readErr
+		})
+		attempts += chunkAttempts
+		if err == nil {
+			vectors = append(vectors, chunkVectors...)
 		}
-		tokens = reply.Usage.PromptTokens
-		var readErr error
-		vectors, readErr = readVectors(reply, len(texts))
-		return readErr
-	})
+	}
+
 	ai.LogCall(ctx, e.log, ai.Call{
-		Provider:    string(config.AIProviderOpenAI),
-		Model:       e.cfg.EmbeddingsModel,
-		Operation:   "embed",
+		Provider:  string(config.AIProviderOpenAI),
+		Model:     e.cfg.Model,
+		Operation: "embed",
+		// Summed over the batches, so the count reflects the requests actually made.
 		Attempts:    attempts,
 		Elapsed:     time.Since(started),
 		InputTokens: tokens,
 	}, err)
 	if err != nil {
-		return nil, ai.Unavailable(err)
+		return nil, ai.Fail(fmt.Errorf("embedding batch %d of %d: %w", batches, batchCount(len(texts), batch), err))
 	}
 	return vectors, nil
+}
+
+// request sends one batch.
+func (e *Embedder) request(ctx context.Context, chunk []string, reply *embedReply) error {
+	return post(ctx, e.client, e.cfg.BaseURL, e.cfg.APIKey, "/embeddings", embedRequest{
+		Model:      e.cfg.Model,
+		Input:      chunk,
+		Dimensions: domain.EmbeddingDimension,
+	}, reply)
+}
+
+// batchCount is how many requests a list of this length takes.
+func batchCount(texts, batch int) int {
+	if batch < 1 {
+		return 1
+	}
+	return (texts + batch - 1) / batch
 }
 
 // readVectors places each returned embedding at the index it was asked for, and refuses a width
@@ -115,19 +153,19 @@ func readVectors(reply embedReply, want int) ([]pgvector.Vector, error) {
 	seen := make([]bool, want)
 	for _, item := range reply.Data {
 		if item.Index < 0 || item.Index >= want {
-			return nil, fmt.Errorf("embedding index %d falls outside the %d texts asked for",
-				item.Index, want)
+			return nil, ai.Rejected(fmt.Errorf("embedding index %d falls outside the %d texts asked for",
+				item.Index, want))
 		}
 		if len(item.Embedding) != domain.EmbeddingDimension {
-			return nil, fmt.Errorf("embedding has %d dimensions, the catalog column holds %d",
-				len(item.Embedding), domain.EmbeddingDimension)
+			return nil, ai.Rejected(fmt.Errorf("embedding has %d dimensions, the catalog column holds %d",
+				len(item.Embedding), domain.EmbeddingDimension))
 		}
 		vectors[item.Index] = pgvector.NewVector(item.Embedding)
 		seen[item.Index] = true
 	}
 	for i, ok := range seen {
 		if !ok {
-			return nil, fmt.Errorf("no embedding came back for text %d", i)
+			return nil, ai.Rejected(fmt.Errorf("no embedding came back for text %d", i))
 		}
 	}
 	return vectors, nil

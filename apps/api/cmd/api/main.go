@@ -195,7 +195,7 @@ func newAIProviders(cfg *config.Config, log *slog.Logger) (aiProviders, error) {
 	case config.AIProviderDisabled:
 		log.Warn("no language model is bound: extraction and the change handler will refuse")
 	case config.AIProviderAnthropic:
-		providers.Generator = anthropic.NewGenerator(cfg.AI, log)
+		providers.Generator = anthropic.NewGenerator(cfg.AI.Anthropic(), log)
 	default:
 		return providers, fmt.Errorf("no language model adapter for provider %q", cfg.AI.LLMProvider)
 	}
@@ -204,7 +204,7 @@ func newAIProviders(cfg *config.Config, log *slog.Logger) (aiProviders, error) {
 	case config.AIProviderDisabled:
 		log.Warn("no embedding provider is bound: semantic catalog search will refuse")
 	case config.AIProviderOpenAI:
-		providers.Embedder = openai.NewEmbedder(cfg.AI, log)
+		providers.Embedder = openai.NewEmbedder(cfg.AI.Embeddings(), log)
 	default:
 		return providers, fmt.Errorf("no embedding adapter for provider %q", cfg.AI.EmbeddingsProvider)
 	}
@@ -213,7 +213,7 @@ func newAIProviders(cfg *config.Config, log *slog.Logger) (aiProviders, error) {
 	case config.AIProviderDisabled:
 		log.Warn("no transcription provider is bound: audio ingest will refuse")
 	case config.AIProviderOpenAI:
-		providers.Transcriber = openai.NewTranscriber(cfg.AI, log)
+		providers.Transcriber = openai.NewTranscriber(cfg.AI.Transcription(), log)
 	default:
 		return providers, fmt.Errorf("no transcription adapter for provider %q",
 			cfg.AI.TranscriptionProvider)

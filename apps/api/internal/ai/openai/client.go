@@ -53,6 +53,10 @@ func newRequest(ctx context.Context, baseURL, apiKey, path, contentType string, 
 func send(client *http.Client, request *http.Request, reply any) error {
 	response, err := client.Do(request)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			// The caller walked away; that is not an outage to report as one.
+			return err
+		}
 		// No response at all: a dial, TLS or read failure, all worth another attempt.
 		return ai.Retryable(fmt.Errorf("call %s: %w", request.URL.Path, err))
 	}
@@ -67,17 +71,22 @@ func send(client *http.Client, request *http.Request, reply any) error {
 	return nil
 }
 
-// statusError turns a non-200 into an error, marking for retry the ones another attempt could
-// clear. A rejected request is final: repeating it would only spend the allowance.
+// statusError turns a non-200 into an error of the right kind, using the one shared definition of
+// which statuses another attempt could clear. A rejected request is our fault and final: repeating
+// it would only spend the allowance.
 func statusError(path string, response *http.Response) error {
 	detail, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorBody))
 	err := fmt.Errorf("call %s: provider answered %d: %s", path, response.StatusCode,
 		strings.TrimSpace(string(detail)))
-	if response.StatusCode == http.StatusTooManyRequests ||
-		response.StatusCode >= http.StatusInternalServerError {
-		return ai.Retryable(err)
+
+	if !ai.RetryableStatus(response.StatusCode) {
+		return ai.Rejected(err)
 	}
-	return err
+	// The provider's own window beats our ladder, which is measured in single seconds.
+	if after := ai.RetryAfter(response.Header); after > 0 {
+		return ai.RetryableAfter(err, after)
+	}
+	return ai.Retryable(err)
 }
 
 var errEmptyReply = errors.New("provider returned an empty reply")

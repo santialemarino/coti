@@ -66,6 +66,14 @@ drifts away from the struct behind it fails loudly instead of silently dropping 
 truncated answer (`max_tokens`) is retried too. A refusal is not: the same prompt would be refused
 again.
 
+**The output is zeroed before each attempt, and that is load-bearing.** `encoding/json` assigns
+fields as it walks, so a rejected answer leaves its values in the caller's struct; the next attempt
+would then decode over the top and hand back a mix of the two — a quantity from the answer that was
+thrown away, which is exactly the invented number this layer exists to prevent.
+
+`AI_LLM_MAX_TOKENS` is a ceiling, not a default: a request may ask for less but never for more, so
+the env key is the operational limit it claims to be.
+
 **Reasoning depth replaces temperature.** The model no longer accepts `temperature`, `top_p` or
 `top_k` — sending any of them is rejected outright. `AI_LLM_EFFORT` is the knob that took over,
 and it defaults to `low` for the same reason the closed decision asked for a low temperature:
@@ -80,9 +88,18 @@ asks the provider for that width explicitly and **refuses any other**, so a mode
 changes it fails at the call instead of writing vectors the column cannot hold. Changing the
 constant means an `ALTER` on the column and re-embedding the whole catalog.
 
-Texts go in one request and come back index-aligned. The entries are placed by the index each one
-carries, not by the order they arrive in — the provider makes no ordering promise, and trusting
-arrival order attaches the wrong vector to the wrong product with nothing to notice it.
+Texts are sent in batches of `AI_EMBEDDINGS_BATCH_SIZE` and come back index-aligned with the input.
+
+**Batching is not an optimisation.** A catalog import hands over thousands of descriptions at once,
+and one request carrying all of them exceeds the provider's per-request limits and is rejected
+wholesale — losing every vector in the batch, with nothing to tell the caller where the cap was. A
+batch that fails fails the whole call, rather than returning a short list a caller would read as
+complete.
+
+**Within a batch, entries are placed by the index each one carries**, not by the order they arrive
+in: the provider makes no ordering promise, and trusting arrival order attaches the wrong vector to
+the wrong product with nothing to notice it. Those indexes are per request, so the adapter maps each
+batch back onto its slice of the caller's list.
 
 **Binding a `pgvector.Vector` as a query argument needs a codec pgx does not have yet.** The type
 is the port's return value, but nothing persists one yet, so the codec is deliberately not
@@ -96,25 +113,43 @@ vector query — add `github.com/pgvector/pgvector-go/pgx` and call `RegisterTyp
 One policy, shared by every adapter, in `apps/api/internal/ai/retry.go`.
 
 - **Retried:** rate limits, provider-side faults, connections that never produced a response, and
-  answers that miss the schema. The wait doubles from `AI_RETRY_BACKOFF_SECONDS`.
+  answers that miss the schema. The wait doubles from `AI_RETRY_BACKOFF_SECONDS` up to
+  `AI_MAX_BACKOFF_SECONDS` — without a ceiling the doubling is unbounded, and eight attempts alone
+  would reach a two-minute wait.
+- **A provider that names its own window wins.** A `Retry-After` header is honoured in place of our
+  ladder, because a real rate-limit window is measured in tens of seconds and three attempts at 1s
+  and 2s would all land inside it and fail. Asked for longer than the ceiling, we stop instead of
+  sitting it out: every attempt inside that window would fail and spend the allowance anyway.
 - **Not retried:** a request the provider rejected, and a refusal. Repeating either only spends the
   allowance. Only the adapter knows which of its failures are transient, so it marks them and the
-  shared loop reads the mark.
+  shared loop reads the mark; `ai.RetryableStatus` is the single definition of which statuses count,
+  so adding one is one edit rather than one per provider.
 - **Timeouts are per attempt**, not per chain: `AI_LLM_TIMEOUT_SECONDS` and its two siblings cap one
-  call, and `AI_MAX_ATTEMPTS` bounds how many there are.
-- **The provider SDK's own retries are turned off.** Left on they would silently multiply every
-  configured attempt — three configured attempts became nine real requests — and the attempt count
-  in the log would be a third of the truth.
+  call, and `AI_MAX_ATTEMPTS` bounds how many there are. **The whole chain can therefore run far
+  longer than `SERVER_WRITE_TIMEOUT_SECONDS` allows a response** — 60s × 3 for one generation
+  against a 30s server budget. The first AI-backed route cannot simply wait for a call inline: it
+  belongs off the request path, or that budget has to be raised deliberately for it.
 
 Every call is logged once, on success and on failure alike, with provider, model, operation,
-attempt count, elapsed time and token counts. That is the pilot's cost measurement: a call that
-failed after three attempts still cost something, so it is recorded too. Transcription reports no
-token count, and logs zero rather than a guess.
+attempt count, elapsed time and token counts. **The counts are summed over every attempt**, because
+each attempt submitted the prompt and was charged for it — a call that succeeds on its third try
+cost three prompts, and one that failed after three still cost something. Both cache figures are
+recorded separately: writing the instruction prefix costs more than an ordinary input token and
+reading it costs a fraction, and neither is included in the input count, so total input is the
+three added together. Transcription reports no token count, and logs zero rather than a guess.
 
-When the attempts run out, the caller gets `domain.ErrAIUnavailable`, tagged `AI_UNAVAILABLE`,
-which the handler layer answers as a `503`. A caller's own mistake — no schema, an empty recording,
-a document type the provider does not read — is `ErrInvalidInput` instead, raised before any round
-trip, so a bug of ours is never reported as a provider outage.
+Failures are told apart by whether retrying could ever help:
+
+| Failure                                                    | Caller sees                          | Status |
+| ---------------------------------------------------------- | ------------------------------------ | ------ |
+| No provider bound, an outage, a rate limit, attempts spent | `domain.ErrAIUnavailable`            | 503    |
+| The provider rejected the request, or refused the prompt   | a plain error, the detail in the log | 500    |
+| A caller's own mistake, caught before any round trip       | `domain.ErrInvalidInput`             | 422    |
+| The caller cancelled                                       | `context.Canceled`                   | —      |
+
+The middle row is the one worth naming: a malformed schema, a wrong model or a bad key is **our**
+fault, and reporting it as an outage would point monitoring at a healthy provider and invite a
+client to retry a request that can never succeed.
 
 ## What this layer does not decide
 

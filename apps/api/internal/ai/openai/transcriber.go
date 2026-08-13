@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"mime/multipart"
 	"net/http"
@@ -21,14 +22,14 @@ var _ domain.Transcriber = (*Transcriber)(nil)
 // Transcriber turns a voice note into the text an RFQ can be extracted from.
 type Transcriber struct {
 	client *http.Client
-	cfg    config.AIConfig
+	cfg    config.TranscriptionConfig
 	log    *slog.Logger
 }
 
-// NewTranscriber builds a Transcriber from the AI configuration.
-func NewTranscriber(cfg config.AIConfig, log *slog.Logger) *Transcriber {
+// NewTranscriber builds a Transcriber from the transcription settings.
+func NewTranscriber(cfg config.TranscriptionConfig, log *slog.Logger) *Transcriber {
 	return &Transcriber{
-		client: &http.Client{Timeout: cfg.TranscriptionTimeout},
+		client: &http.Client{Timeout: cfg.Timeout},
 		cfg:    cfg,
 		log:    log,
 	}
@@ -45,15 +46,21 @@ func (t *Transcriber) Transcribe(ctx context.Context, audio domain.Audio) (strin
 		return "", err
 	}
 
+	// Composed once. A retry rewinds it instead of copying the recording again: a voice note near
+	// the provider's size ceiling would otherwise be duplicated per attempt, in the path that only
+	// runs when the provider is already struggling.
+	body, contentType, err := t.multipartBody(audio)
+	if err != nil {
+		return "", ai.Fail(err)
+	}
+
 	var text string
 	started := time.Now()
 	attempts, err := ai.Retry(ctx, t.cfg.Retry, func(ctx context.Context) error {
-		// Rebuilt per attempt: the body is a reader the previous attempt consumed.
-		body, contentType, err := t.multipartBody(audio)
-		if err != nil {
-			return err
+		if _, err := body.Seek(0, io.SeekStart); err != nil {
+			return fmt.Errorf("rewind transcription request: %w", err)
 		}
-		request, err := newRequest(ctx, t.cfg.OpenAIBaseURL, t.cfg.OpenAIAPIKey,
+		request, err := newRequest(ctx, t.cfg.BaseURL, t.cfg.APIKey,
 			"/audio/transcriptions", contentType, body)
 		if err != nil {
 			return err
@@ -71,13 +78,13 @@ func (t *Transcriber) Transcribe(ctx context.Context, audio domain.Audio) (strin
 	})
 	ai.LogCall(ctx, t.log, ai.Call{
 		Provider:  string(config.AIProviderOpenAI),
-		Model:     t.cfg.TranscriptionModel,
+		Model:     t.cfg.Model,
 		Operation: "transcribe",
 		Attempts:  attempts,
 		Elapsed:   time.Since(started),
 	}, err)
 	if err != nil {
-		return "", ai.Unavailable(err)
+		return "", ai.Fail(err)
 	}
 	return text, nil
 }
@@ -88,7 +95,7 @@ func (t *Transcriber) multipartBody(audio domain.Audio) (*bytes.Reader, string, 
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
 
-	if err := form.WriteField("model", t.cfg.TranscriptionModel); err != nil {
+	if err := form.WriteField("model", t.cfg.Model); err != nil {
 		return nil, "", fmt.Errorf("compose transcription request: %w", err)
 	}
 	if err := form.WriteField("response_format", "json"); err != nil {

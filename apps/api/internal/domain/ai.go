@@ -93,14 +93,19 @@ func (r GenerationRequest) Validate() error {
 	return nil
 }
 
-// GenerationUsage is what one call consumed. Recorded per call so the pilot's AI spend can be
-// measured per operation.
+// GenerationUsage is what one call consumed, summed over every attempt it took. Recorded per call
+// so the pilot's AI spend can be measured per operation.
+//
+// The two cache figures are separate because they are priced differently: writing the prefix costs
+// more than an uncached read, reading it costs a fraction, and neither is included in InputTokens —
+// so total input is the three added together.
 type GenerationUsage struct {
-	Provider          string
-	Model             string
-	InputTokens       int
-	OutputTokens      int
-	CachedInputTokens int
+	Provider         string
+	Model            string
+	InputTokens      int
+	OutputTokens     int
+	CacheReadTokens  int
+	CacheWriteTokens int
 }
 
 // Audio is one recording to transcribe. Filename travels to the provider, which reads its

@@ -88,9 +88,10 @@ func message(stopReason, text string) string {
 		"stop_reason": stopReason,
 		"content":     []map[string]any{{"type": "text", "text": text}},
 		"usage": map[string]any{
-			"input_tokens":            120,
-			"output_tokens":           42,
-			"cache_read_input_tokens": 100,
+			"input_tokens":                120,
+			"output_tokens":               42,
+			"cache_read_input_tokens":     100,
+			"cache_creation_input_tokens": 60,
 		},
 	})
 	return string(body)
@@ -100,15 +101,18 @@ func message(stopReason, text string) string {
 func newGenerator(t *testing.T, srv *httptest.Server, attempts int) *Generator {
 	t.Helper()
 
-	return NewGenerator(config.AIConfig{
-		AnthropicAPIKey:  "test-key",
-		AnthropicBaseURL: srv.URL,
-		LLMProvider:      config.AIProviderAnthropic,
-		LLMModel:         "claude-opus-5",
-		LLMEffort:        "low",
-		LLMMaxTokens:     16000,
-		LLMTimeout:       5 * time.Second,
-		Retry:            config.AIRetryPolicy{MaxAttempts: attempts, Backoff: time.Microsecond},
+	return NewGenerator(config.AnthropicConfig{
+		APIKey:    "test-key",
+		BaseURL:   srv.URL,
+		Model:     "claude-opus-5",
+		Effort:    "low",
+		MaxTokens: 16000,
+		Timeout:   5 * time.Second,
+		Retry: config.AIRetryPolicy{
+			MaxAttempts: attempts,
+			Backoff:     time.Microsecond,
+			MaxBackoff:  time.Millisecond,
+		},
 	}, slog.New(slog.DiscardHandler))
 }
 
@@ -135,8 +139,13 @@ func TestGenerator_DecodesTheAnswerAndReportsUsage(t *testing.T) {
 	if got.Description != "cemento" || got.Quantity != "300" {
 		t.Fatalf("decoded %+v, want cemento/300", got)
 	}
-	if usage.InputTokens != 120 || usage.OutputTokens != 42 || usage.CachedInputTokens != 100 {
-		t.Fatalf("usage = %+v, want 120/42/100 tokens", usage)
+	if usage.InputTokens != 120 || usage.OutputTokens != 42 {
+		t.Fatalf("usage = %+v, want 120 input and 42 output tokens", usage)
+	}
+	// Both cache figures are recorded: the write is what the caching marker costs on a cold call,
+	// and it is billed above an ordinary input token.
+	if usage.CacheReadTokens != 100 || usage.CacheWriteTokens != 60 {
+		t.Fatalf("usage = %+v, want 100 read and 60 written cache tokens", usage)
 	}
 	if usage.Provider != "anthropic" || usage.Model != "claude-opus-5" {
 		t.Fatalf("usage = %+v, want it to name the provider and model", usage)
@@ -257,8 +266,16 @@ func TestGenerator_DoesNotRepeatARejectedRequest(t *testing.T) {
 
 	var got extraction
 	_, err := newGenerator(t, srv, 3).Generate(context.Background(), request(), &got)
-	if !errors.Is(err, domain.ErrAIUnavailable) {
-		t.Fatalf("Generate() = %v, want it to match domain.ErrAIUnavailable", err)
+	// Our schema or our model, not an outage: reporting it as one would invite a retry that can
+	// never succeed and point monitoring at the provider.
+	if errors.Is(err, domain.ErrAIUnavailable) {
+		t.Fatalf("Generate() = %v, want a rejected request NOT to read as a provider outage", err)
+	}
+	if err == nil {
+		t.Fatal("Generate() = nil, want the rejection reported")
+	}
+	if got := domain.CodeOf(err); got != domain.CodeInternal {
+		t.Fatalf("CodeOf() = %q, want %q", got, domain.CodeInternal)
 	}
 	if provider.calls() != 1 {
 		t.Fatalf("calls = %d, want 1: a rejected request must not be repeated", provider.calls())
@@ -282,8 +299,12 @@ func TestGenerator_DoesNotRepeatARefusal(t *testing.T) {
 
 	var got extraction
 	_, err := newGenerator(t, srv, 3).Generate(context.Background(), request(), &got)
-	if !errors.Is(err, domain.ErrAIUnavailable) {
-		t.Fatalf("Generate() = %v, want it to match domain.ErrAIUnavailable", err)
+	if err == nil {
+		t.Fatal("Generate() = nil, want the refusal reported")
+	}
+	// The provider answered and is healthy; only this prompt was declined.
+	if errors.Is(err, domain.ErrAIUnavailable) {
+		t.Fatalf("Generate() = %v, want a refusal NOT to read as a provider outage", err)
 	}
 	if provider.calls() != 1 {
 		t.Fatalf("calls = %d, want 1: the same prompt would be refused again", provider.calls())
@@ -423,5 +444,187 @@ func TestGenerator_AuthenticatesWithTheConfiguredKey(t *testing.T) {
 	}
 	if !strings.Contains(header, "test-key") {
 		t.Fatalf("X-Api-Key = %q, want the configured key", header)
+	}
+}
+
+// A rejected answer must leave nothing behind. encoding/json assigns fields as it walks, so
+// without a reset the accepted answer is merged into the discarded one's leftovers — and the
+// caller receives a quantity that no answer it accepted ever contained.
+func TestGenerator_ARejectedAnswerLeavesNoFieldBehind(t *testing.T) {
+	t.Parallel()
+
+	srv, provider := serve(t,
+		// Rejected on its unknown field, but description and quantity are already assigned.
+		reply{http.StatusOK, message("end_turn",
+			`{"description":"cemento","quantity":"300","cantidad":"x"}`)},
+		// Accepted, and it says nothing about a quantity.
+		reply{http.StatusOK, message("end_turn", `{"description":"arena"}`)},
+	)
+
+	var got extraction
+	if _, err := newGenerator(t, srv, 3).Generate(context.Background(), request(), &got); err != nil {
+		t.Fatalf("Generate() = %v, want nil", err)
+	}
+	if provider.calls() != 2 {
+		t.Fatalf("calls = %d, want 2", provider.calls())
+	}
+	if got.Description != "arena" {
+		t.Fatalf("Description = %q, want arena", got.Description)
+	}
+	if got.Quantity != "" {
+		t.Fatalf("Quantity = %q, want empty: it is residue from the answer that was thrown away",
+			got.Quantity)
+	}
+}
+
+// Every attempt submitted the prompt and was charged for it, so the figure the pilot measures cost
+// with has to be the sum rather than whatever the last attempt happened to report.
+func TestGenerator_UsageSumsEveryAttempt(t *testing.T) {
+	t.Parallel()
+
+	srv, provider := serve(t,
+		reply{http.StatusTooManyRequests, `{"type":"error","error":{"type":"rate_limit_error"}}`},
+		reply{http.StatusOK, message("end_turn", `{"description":"cemento","cantidad":"300"}`)},
+		reply{http.StatusOK, message("end_turn", `{"description":"cemento","quantity":"300"}`)},
+	)
+
+	var got extraction
+	usage, err := newGenerator(t, srv, 3).Generate(context.Background(), request(), &got)
+	if err != nil {
+		t.Fatalf("Generate() = %v, want nil", err)
+	}
+	if provider.calls() != 3 {
+		t.Fatalf("calls = %d, want 3", provider.calls())
+	}
+	// Two of the three attempts reached the model and each reported 120 input tokens; the rate
+	// limit never produced a message.
+	if usage.InputTokens != 240 {
+		t.Fatalf("InputTokens = %d, want 240 — the two attempts that were charged",
+			usage.InputTokens)
+	}
+	if usage.OutputTokens != 84 {
+		t.Fatalf("OutputTokens = %d, want 84", usage.OutputTokens)
+	}
+}
+
+// The env key is the operational ceiling, so a caller may ask for less but never for more.
+func TestGenerator_BoundsTheCallersTokenCeilingByTheConfiguredOne(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		requested int
+		want      float64
+	}{
+		{"unset takes the configured ceiling", 0, 16000},
+		{"below the ceiling is honoured", 2048, 2048},
+		{"above the ceiling is clamped", 500000, 16000},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			srv, provider := serve(t, reply{http.StatusOK,
+				message("end_turn", `{"description":"cemento","quantity":"300"}`)})
+
+			req := request()
+			req.MaxTokens = tc.requested
+
+			var got extraction
+			if _, err := newGenerator(t, srv, 3).Generate(context.Background(), req, &got); err != nil {
+				t.Fatalf("Generate() = %v, want nil", err)
+			}
+			if sent := provider.bodies[0]["max_tokens"]; sent != tc.want {
+				t.Fatalf("max_tokens = %v, want %v", sent, tc.want)
+			}
+		})
+	}
+}
+
+// A rate limit names its own window, and 1s/2s is nothing against it: every attempt inside the
+// window would fail and spend the allowance. Past what we are willing to wait we stop instead.
+func TestGenerator_HonoursRetryAfterAndStopsWhenItExceedsTheCeiling(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "600")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"type":"error","error":{"type":"rate_limit_error"}}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	var calls int
+	counted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		srv.Config.Handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(counted.Close)
+
+	var got extraction
+	_, err := newGenerator(t, counted, 3).Generate(context.Background(), request(), &got)
+	if err == nil {
+		t.Fatal("Generate() = nil, want the rate limit reported")
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1: a 600s window is longer than we wait, so further attempts "+
+			"inside it would only spend the allowance", calls)
+	}
+	if !strings.Contains(err.Error(), "10m0s") || !strings.Contains(err.Error(), "longer than") {
+		t.Fatalf("err = %v, want it to say the window the provider asked for exceeds ours", err)
+	}
+}
+
+// A caller who walks away is not a provider outage, and must not be reported as one.
+func TestGenerator_CancelledCallerIsNotAnOutage(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		cancel()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, message("end_turn", `{"description":"cemento","quantity":"300"}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	var got extraction
+	_, err := newGenerator(t, srv, 3).Generate(ctx, request(), &got)
+	if err == nil {
+		t.Fatal("Generate() = nil, want the cancellation reported")
+	}
+	if errors.Is(err, domain.ErrAIUnavailable) {
+		t.Fatalf("Generate() = %v, want a cancelled caller NOT to read as a provider outage", err)
+	}
+}
+
+// out is where the answer lands, so a caller that passes something unwritable is told before the
+// mistake costs a round trip.
+func TestGenerator_RejectsAnUnwritableOutput(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		out  any
+	}{
+		{"nil", nil},
+		{"not a pointer", extraction{}},
+		{"nil pointer", (*extraction)(nil)},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			srv, provider := serve(t, reply{http.StatusOK, message("end_turn", `{}`)})
+
+			_, err := newGenerator(t, srv, 3).Generate(context.Background(), request(), tc.out)
+			if !errors.Is(err, domain.ErrInvalidInput) {
+				t.Fatalf("Generate() = %v, want it to match domain.ErrInvalidInput", err)
+			}
+			if provider.calls() != 0 {
+				t.Fatalf("calls = %d, want 0", provider.calls())
+			}
+		})
 	}
 }

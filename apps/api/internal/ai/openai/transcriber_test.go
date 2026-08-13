@@ -11,12 +11,20 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
 func newTranscriber(srv *httptest.Server, attempts int) *Transcriber {
-	return NewTranscriber(settings(srv, attempts), slog.New(slog.DiscardHandler))
+	return NewTranscriber(config.TranscriptionConfig{
+		APIKey:  "test-key",
+		BaseURL: srv.URL,
+		Model:   "whisper-1",
+		Timeout: 5 * time.Second,
+		Retry:   policy(attempts),
+	}, slog.New(slog.DiscardHandler))
 }
 
 func voiceNote() domain.Audio {
@@ -104,9 +112,9 @@ func TestTranscriber_UploadsTheRecordingAsMultipart(t *testing.T) {
 	}
 }
 
-// The body is a reader the first attempt consumes, so a retry has to compose it again. Reusing it
-// would upload an empty file on every attempt after the first.
-func TestTranscriber_RebuildsTheUploadOnEachAttempt(t *testing.T) {
+// The body is a reader the first attempt consumes, so a retry has to rewind it. Left where the
+// previous attempt stopped, it would upload an empty file on every attempt after the first.
+func TestTranscriber_ResendsTheWholeRecordingOnEachAttempt(t *testing.T) {
 	t.Parallel()
 
 	srv, provider := serve(t,
@@ -154,8 +162,11 @@ func TestTranscriber_DoesNotRepeatARejectedRequest(t *testing.T) {
 	srv, provider := serve(t, reply{http.StatusBadRequest, `{"error":{"message":"unsupported format"}}`})
 
 	_, err := newTranscriber(srv, 3).Transcribe(context.Background(), voiceNote())
-	if !errors.Is(err, domain.ErrAIUnavailable) {
-		t.Fatalf("Transcribe() = %v, want it to match domain.ErrAIUnavailable", err)
+	if err == nil {
+		t.Fatal("Transcribe() = nil, want the rejection reported")
+	}
+	if errors.Is(err, domain.ErrAIUnavailable) {
+		t.Fatalf("Transcribe() = %v, want a rejected upload NOT to read as a provider outage", err)
 	}
 	if provider.calls() != 1 {
 		t.Fatalf("calls = %d, want 1", provider.calls())

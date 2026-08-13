@@ -159,7 +159,10 @@ type AIConfig struct {
 
 	EmbeddingsProvider AIProvider
 	EmbeddingsModel    string
-	EmbeddingsTimeout  time.Duration
+	// EmbeddingsBatchSize caps how many texts go in one request, so a catalog-sized list is
+	// chunked instead of rejected wholesale for exceeding the provider's per-request limits.
+	EmbeddingsBatchSize int
+	EmbeddingsTimeout   time.Duration
 
 	TranscriptionProvider AIProvider
 	TranscriptionModel    string
@@ -169,10 +172,80 @@ type AIConfig struct {
 }
 
 // AIRetryPolicy is how many times one provider call is attempted, and how long the wait between
-// attempts starts at. The wait doubles from there.
+// attempts starts at. The wait doubles from there, up to MaxBackoff.
 type AIRetryPolicy struct {
 	MaxAttempts int
 	Backoff     time.Duration
+	// MaxBackoff is the ceiling on one wait. Without it the doubling is unbounded, and it is also
+	// the longest window a provider may ask us to sit out before we give up instead.
+	MaxBackoff time.Duration
+}
+
+// AnthropicConfig is the slice of the AI settings the language-model adapter reads.
+type AnthropicConfig struct {
+	APIKey    string
+	BaseURL   string
+	Model     string
+	Effort    string
+	MaxTokens int
+	Timeout   time.Duration
+	Retry     AIRetryPolicy
+}
+
+// EmbeddingsConfig is the slice of the AI settings the embedding adapter reads.
+type EmbeddingsConfig struct {
+	APIKey    string
+	BaseURL   string
+	Model     string
+	BatchSize int
+	Timeout   time.Duration
+	Retry     AIRetryPolicy
+}
+
+// TranscriptionConfig is the slice of the AI settings the transcription adapter reads.
+type TranscriptionConfig struct {
+	APIKey  string
+	BaseURL string
+	Model   string
+	Timeout time.Duration
+	Retry   AIRetryPolicy
+}
+
+// Anthropic returns what the language-model adapter needs and nothing else, so no adapter is
+// handed another provider's key.
+func (a AIConfig) Anthropic() AnthropicConfig {
+	return AnthropicConfig{
+		APIKey:    a.AnthropicAPIKey,
+		BaseURL:   a.AnthropicBaseURL,
+		Model:     a.LLMModel,
+		Effort:    a.LLMEffort,
+		MaxTokens: a.LLMMaxTokens,
+		Timeout:   a.LLMTimeout,
+		Retry:     a.Retry,
+	}
+}
+
+// Embeddings returns what the embedding adapter needs and nothing else.
+func (a AIConfig) Embeddings() EmbeddingsConfig {
+	return EmbeddingsConfig{
+		APIKey:    a.OpenAIAPIKey,
+		BaseURL:   a.OpenAIBaseURL,
+		Model:     a.EmbeddingsModel,
+		BatchSize: a.EmbeddingsBatchSize,
+		Timeout:   a.EmbeddingsTimeout,
+		Retry:     a.Retry,
+	}
+}
+
+// Transcription returns what the transcription adapter needs and nothing else.
+func (a AIConfig) Transcription() TranscriptionConfig {
+	return TranscriptionConfig{
+		APIKey:  a.OpenAIAPIKey,
+		BaseURL: a.OpenAIBaseURL,
+		Model:   a.TranscriptionModel,
+		Timeout: a.TranscriptionTimeout,
+		Retry:   a.Retry,
+	}
 }
 
 // problems reports everything wrong with the AI settings, naming the key at fault. A capability
@@ -206,6 +279,9 @@ func (a AIConfig) problems() []string {
 		needsOpenAI = true
 		if a.EmbeddingsTimeout <= 0 {
 			problems = append(problems, "AI_EMBEDDINGS_TIMEOUT_SECONDS must be greater than zero")
+		}
+		if a.EmbeddingsBatchSize < 1 {
+			problems = append(problems, "AI_EMBEDDINGS_BATCH_SIZE must be at least 1")
 		}
 	default:
 		problems = append(problems, fmt.Sprintf("AI_EMBEDDINGS_PROVIDER must be %q or %q, got %q",
@@ -251,6 +327,14 @@ func (a AIConfig) problems() []string {
 	}
 	if a.Retry.Backoff <= 0 {
 		problems = append(problems, "AI_RETRY_BACKOFF_SECONDS must be greater than zero")
+	}
+	if a.Retry.MaxBackoff <= 0 {
+		problems = append(problems, "AI_MAX_BACKOFF_SECONDS must be greater than zero")
+	}
+	// A ceiling below the first wait would make the ladder shrink instead of grow.
+	if a.Retry.MaxBackoff > 0 && a.Retry.MaxBackoff < a.Retry.Backoff {
+		problems = append(problems, fmt.Sprintf("AI_MAX_BACKOFF_SECONDS (%s) is below "+
+			"AI_RETRY_BACKOFF_SECONDS (%s)", a.Retry.MaxBackoff, a.Retry.Backoff))
 	}
 	return problems
 }
@@ -345,8 +429,9 @@ func Load() (*Config, error) {
 
 			EmbeddingsProvider: AIProvider(getString("AI_EMBEDDINGS_PROVIDER",
 				string(AIProviderDisabled))),
-			EmbeddingsModel:   getString("AI_EMBEDDINGS_MODEL", "text-embedding-3-small"),
-			EmbeddingsTimeout: getDuration("AI_EMBEDDINGS_TIMEOUT_SECONDS", 30*time.Second, &problems),
+			EmbeddingsModel:     getString("AI_EMBEDDINGS_MODEL", "text-embedding-3-small"),
+			EmbeddingsBatchSize: getInt("AI_EMBEDDINGS_BATCH_SIZE", 100, &problems),
+			EmbeddingsTimeout:   getDuration("AI_EMBEDDINGS_TIMEOUT_SECONDS", 30*time.Second, &problems),
 
 			TranscriptionProvider: AIProvider(getString("AI_TRANSCRIPTION_PROVIDER",
 				string(AIProviderDisabled))),
@@ -357,6 +442,7 @@ func Load() (*Config, error) {
 			Retry: AIRetryPolicy{
 				MaxAttempts: getInt("AI_MAX_ATTEMPTS", 3, &problems),
 				Backoff:     getDuration("AI_RETRY_BACKOFF_SECONDS", time.Second, &problems),
+				MaxBackoff:  getDuration("AI_MAX_BACKOFF_SECONDS", 8*time.Second, &problems),
 			},
 		},
 		Web: WebConfig{
