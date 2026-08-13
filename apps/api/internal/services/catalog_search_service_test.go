@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/google/uuid"
@@ -28,6 +29,7 @@ func testSearchConfig() config.CatalogConfig {
 		MaxPageSize:           200,
 		SearchTopK:            3,
 		SearchOverFetchFactor: 2,
+		SearchMaxFetch:        200,
 		SearchProbes:          7,
 		SearchRRFK:            60,
 		EmbeddingBatchSize:    100,
@@ -66,11 +68,14 @@ func (f *fakeEmbedder) Embed(_ context.Context, texts []string) ([]pgvector.Vect
 type fakeSearch struct {
 	// byFetch maps a fetch width to how many candidates come back at it. The largest staged
 	// width at or below the ask is used, which is how a real index behaves as the limit grows.
-	byFetch  map[int]int
-	fetches  []int
-	probes   []int
-	searched []string
-	err      error
+	byFetch map[int]int
+	// exactByFetch answers by the exact width instead, for the case a wider round comes back
+	// with fewer rows than a narrower one did.
+	exactByFetch map[int]int
+	fetches      []int
+	probes       []int
+	searched     []string
+	err          error
 }
 
 func (f *fakeSearch) SetSearchProbes(_ context.Context, _ repository.Querier, probes int) error {
@@ -88,12 +93,19 @@ func (f *fakeSearch) SearchCandidates(
 		return nil, f.err
 	}
 
+	if f.exactByFetch != nil {
+		return f.candidates(f.exactByFetch[fetch]), nil
+	}
 	count := 0
 	for width, found := range f.byFetch {
 		if width <= fetch && found > count {
 			count = found
 		}
 	}
+	return f.candidates(count), nil
+}
+
+func (f *fakeSearch) candidates(count int) []domain.CatalogCandidate {
 	candidates := make([]domain.CatalogCandidate, count)
 	for i := range candidates {
 		distance := float64(i) / 10
@@ -103,7 +115,7 @@ func (f *fakeSearch) SearchCandidates(
 			Distance:      &distance,
 		}
 	}
-	return candidates, nil
+	return candidates
 }
 
 func TestCatalogSearchService_TrimsToTheRequestedLimit(t *testing.T) {
@@ -157,7 +169,7 @@ func TestCatalogSearchService_WidensTheFetchUntilTheLimitIsMet(t *testing.T) {
 	if got := len(results[0].Candidates); got != 3 {
 		t.Errorf("candidates = %d, want the 3 asked for", got)
 	}
-	if want := []int{6, 12}; !equalInts(search.fetches, want) {
+	if want := []int{6, 12}; !slices.Equal(search.fetches, want) {
 		t.Errorf("fetch widths = %v, want %v", search.fetches, want)
 	}
 }
@@ -177,8 +189,60 @@ func TestCatalogSearchService_StopsWideningWhenTheCatalogIsExhausted(t *testing.
 		t.Errorf("candidates = %d, want the only one the branch carries", got)
 	}
 	// Two rounds: the second returns no more than the first, which is what ends it.
-	if want := []int{6, 12}; !equalInts(search.fetches, want) {
+	if want := []int{6, 12}; !slices.Equal(search.fetches, want) {
 		t.Errorf("fetch widths = %v, want %v", search.fetches, want)
+	}
+}
+
+// The first round coming back empty is the very case widening exists for: the nearest vectors
+// can all be stock this branch does not carry, and only a wider fetch reaches the ones it does.
+func TestCatalogSearchService_WidensPastAnEmptyFirstRound(t *testing.T) {
+	search := &fakeSearch{byFetch: map[int]int{12: 3}}
+	service := NewCatalogSearchService(&fakeDB{}, search, &fakeEmbedder{}, testSearchConfig())
+
+	results, err := service.Search(context.Background(), testSearchTenant(),
+		domain.CatalogSearch{Texts: []string{"cemento"}, Limit: 3})
+	if err != nil {
+		t.Fatalf("Search() = %v, want no error", err)
+	}
+	if got := len(results[0].Candidates); got != 3 {
+		t.Errorf("candidates = %d, want the 3 the branch carries at a wider fetch", got)
+	}
+	if want := []int{6, 12}; !slices.Equal(search.fetches, want) {
+		t.Errorf("fetch widths = %v, want %v", search.fetches, want)
+	}
+}
+
+// The fetch cannot double forever: a branch that yields one more row per round would otherwise
+// walk the doubling all the way up to the size of the catalog.
+func TestCatalogSearchService_StopsWideningAtTheConfiguredCeiling(t *testing.T) {
+	cfg := testSearchConfig()
+	cfg.SearchMaxFetch = 20
+	search := &fakeSearch{byFetch: map[int]int{6: 1, 12: 2, 20: 3}}
+	service := NewCatalogSearchService(&fakeDB{}, search, &fakeEmbedder{}, cfg)
+
+	if _, err := service.Search(context.Background(), testSearchTenant(),
+		domain.CatalogSearch{Texts: []string{"cemento"}, Limit: 50}); err != nil {
+		t.Fatalf("Search() = %v, want no error", err)
+	}
+	if want := []int{20}; !slices.Equal(search.fetches, want) {
+		t.Errorf("fetch widths = %v, want %v: the first fetch is already at the ceiling",
+			search.fetches, want)
+	}
+}
+
+// A round that comes back smaller has dropped candidates an earlier one already had.
+func TestCatalogSearchService_KeepsTheWidestRoundNotTheLast(t *testing.T) {
+	search := &fakeSearch{exactByFetch: map[int]int{6: 2, 12: 1}}
+	service := NewCatalogSearchService(&fakeDB{}, search, &fakeEmbedder{}, testSearchConfig())
+
+	results, err := service.Search(context.Background(), testSearchTenant(),
+		domain.CatalogSearch{Texts: []string{"cemento"}, Limit: 3})
+	if err != nil {
+		t.Fatalf("Search() = %v, want no error", err)
+	}
+	if got := len(results[0].Candidates); got != 2 {
+		t.Errorf("candidates = %d, want the 2 the wider round should not have lost", got)
 	}
 }
 
@@ -301,16 +365,4 @@ func TestCatalogSearchService_RefusesAMisalignedEmbeddingAnswer(t *testing.T) {
 	if errors.Is(err, domain.ErrAIUnavailable) {
 		t.Errorf("Search() = %v, want a fault of ours rather than a provider outage", err)
 	}
-}
-
-func equalInts(got, want []int) bool {
-	if len(got) != len(want) {
-		return false
-	}
-	for i := range got {
-		if got[i] != want[i] {
-			return false
-		}
-	}
-	return true
 }

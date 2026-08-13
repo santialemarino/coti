@@ -366,6 +366,9 @@ type CatalogConfig struct {
 	// An approximate vector scan filters by branch after ordering, so asking for exactly K
 	// leaves fewer than K once what the branch does not carry is dropped.
 	SearchOverFetchFactor int
+	// SearchMaxFetch is the widest one round may ask the database for. Without it a branch that
+	// yields one more row per round drives the doubling up to the size of the catalog.
+	SearchMaxFetch int
 	// SearchProbes is how many index partitions an approximate scan visits. One is the
 	// database's default and recalls too little to survive the branch filter.
 	SearchProbes int
@@ -467,6 +470,7 @@ func Load() (*Config, error) {
 			MaxPageSize:           getInt("CATALOG_MAX_PAGE_SIZE", 200, &problems),
 			SearchTopK:            getInt("CATALOG_SEARCH_TOP_K", 10, &problems),
 			SearchOverFetchFactor: getInt("CATALOG_SEARCH_OVER_FETCH_FACTOR", 4, &problems),
+			SearchMaxFetch:        getInt("CATALOG_SEARCH_MAX_FETCH", 2000, &problems),
 			SearchProbes:          getInt("CATALOG_SEARCH_IVFFLAT_PROBES", 10, &problems),
 			SearchRRFK:            getInt("CATALOG_SEARCH_RRF_K", 60, &problems),
 			EmbeddingBatchSize:    getInt("CATALOG_EMBEDDING_BATCH_SIZE", 200, &problems),
@@ -593,6 +597,7 @@ func Load() (*Config, error) {
 		// Below 1 the search would ask for fewer rows than the caller wants, which is the
 		// shortfall the factor exists to prevent.
 		{"CATALOG_SEARCH_OVER_FETCH_FACTOR", cfg.Catalog.SearchOverFetchFactor, 1},
+		{"CATALOG_SEARCH_MAX_FETCH", cfg.Catalog.SearchMaxFetch, 1},
 		{"CATALOG_SEARCH_IVFFLAT_PROBES", cfg.Catalog.SearchProbes, 1},
 		{"CATALOG_SEARCH_RRF_K", cfg.Catalog.SearchRRFK, 1},
 		{"CATALOG_EMBEDDING_BATCH_SIZE", cfg.Catalog.EmbeddingBatchSize, 1},

@@ -44,6 +44,18 @@ func (f *fakeCatalogEmbedding) SetEmbeddings(
 	return len(embeddings), nil
 }
 
+// fakeAccounts answers the existence check the backfill runs before any work.
+type fakeAccounts struct{ missing bool }
+
+func (f *fakeAccounts) GetByID(
+	_ context.Context, _ repository.Querier, accountID uuid.UUID,
+) (*domain.Account, error) {
+	if f.missing {
+		return nil, domain.ErrNotFound
+	}
+	return &domain.Account{ID: accountID}, nil
+}
+
 func productPage(names ...string) []domain.ProductEmbeddingInput {
 	page := make([]domain.ProductEmbeddingInput, len(names))
 	for i, name := range names {
@@ -59,7 +71,7 @@ func TestCatalogEmbeddingService_PagesThroughTheCatalog(t *testing.T) {
 	second := productPage("Arena fina")
 	products := &fakeCatalogEmbedding{pages: [][]domain.ProductEmbeddingInput{first, second}}
 	embedder := &fakeEmbedder{}
-	service := NewCatalogEmbeddingService(&fakeDB{}, products, embedder, testSearchConfig())
+	service := NewCatalogEmbeddingService(&fakeDB{}, &fakeAccounts{}, products, embedder, testSearchConfig())
 
 	report, err := service.Backfill(context.Background(), domain.Tenant{AccountID: testAccountID}, false)
 	if err != nil {
@@ -89,7 +101,7 @@ func TestCatalogEmbeddingService_PagesThroughTheCatalog(t *testing.T) {
 
 func TestCatalogEmbeddingService_PassesRefreshAllThrough(t *testing.T) {
 	products := &fakeCatalogEmbedding{}
-	service := NewCatalogEmbeddingService(&fakeDB{}, products, &fakeEmbedder{}, testSearchConfig())
+	service := NewCatalogEmbeddingService(&fakeDB{}, &fakeAccounts{}, products, &fakeEmbedder{}, testSearchConfig())
 
 	if _, err := service.Backfill(context.Background(),
 		domain.Tenant{AccountID: testAccountID}, true); err != nil {
@@ -130,7 +142,7 @@ func TestCatalogEmbeddingService_CountsNothingForAFailedRound(t *testing.T) {
 			pages:    [][]domain.ProductEmbeddingInput{productPage("Cemento Portland 50kg")},
 			writeErr: wantErr,
 		}
-		service := NewCatalogEmbeddingService(&fakeDB{}, products, &fakeEmbedder{},
+		service := NewCatalogEmbeddingService(&fakeDB{}, &fakeAccounts{}, products, &fakeEmbedder{},
 			testSearchConfig())
 
 		report, err := service.Backfill(context.Background(),
@@ -149,7 +161,7 @@ func TestCatalogEmbeddingService_CountsNothingForAFailedRound(t *testing.T) {
 		products := &fakeCatalogEmbedding{
 			pages: [][]domain.ProductEmbeddingInput{productPage("Cemento Portland 50kg")},
 		}
-		service := NewCatalogEmbeddingService(&lateFailingDB{err: wantErr}, products,
+		service := NewCatalogEmbeddingService(&lateFailingDB{err: wantErr}, &fakeAccounts{}, products,
 			&fakeEmbedder{}, testSearchConfig())
 
 		report, err := service.Backfill(context.Background(),
@@ -169,7 +181,7 @@ func TestCatalogEmbeddingService_RefusesAMisalignedEmbeddingAnswer(t *testing.T)
 	products := &fakeCatalogEmbedding{
 		pages: [][]domain.ProductEmbeddingInput{productPage("Cemento", "Cal")},
 	}
-	service := NewCatalogEmbeddingService(&fakeDB{}, products, &fakeEmbedder{short: true},
+	service := NewCatalogEmbeddingService(&fakeDB{}, &fakeAccounts{}, products, &fakeEmbedder{short: true},
 		testSearchConfig())
 
 	_, err := service.Backfill(context.Background(), domain.Tenant{AccountID: testAccountID}, false)
@@ -178,5 +190,21 @@ func TestCatalogEmbeddingService_RefusesAMisalignedEmbeddingAnswer(t *testing.T)
 	}
 	if len(products.written) != 0 {
 		t.Errorf("wrote %d batches, want none", len(products.written))
+	}
+}
+
+// A mistyped account id has nothing pending, which read as "already embedded" and sent the
+// operator on to the index command for a second, more confusing failure.
+func TestCatalogEmbeddingService_RefusesAnUnknownAccount(t *testing.T) {
+	products := &fakeCatalogEmbedding{}
+	service := NewCatalogEmbeddingService(&fakeDB{}, &fakeAccounts{missing: true}, products,
+		&fakeEmbedder{}, testSearchConfig())
+
+	_, err := service.Backfill(context.Background(), domain.Tenant{AccountID: testAccountID}, false)
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("Backfill() = %v, want %v", err, domain.ErrNotFound)
+	}
+	if len(products.cursors) != 0 {
+		t.Errorf("read %d pages, want none before the account is known", len(products.cursors))
 	}
 }

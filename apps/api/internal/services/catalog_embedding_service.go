@@ -11,6 +11,12 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
 
+// catalogEmbeddingAccounts is the account lookup that tells a mistyped id from a catalog with
+// nothing left to embed — under row level security both read as zero rows otherwise.
+type catalogEmbeddingAccounts interface {
+	GetByID(ctx context.Context, q repository.Querier, accountID uuid.UUID) (*domain.Account, error)
+}
+
 // catalogEmbeddingRepository is the persistence surface the backfill needs. Defined here, in
 // the consumer, so a test can fake it without a database.
 type catalogEmbeddingRepository interface {
@@ -28,6 +34,7 @@ type catalogEmbeddingRepository interface {
 // budget — so this is driven by the catalog-embed command, never by a route.
 type CatalogEmbeddingService struct {
 	db       tenantTxRunner
+	accounts catalogEmbeddingAccounts
 	products catalogEmbeddingRepository
 	embedder domain.Embedder
 	cfg      config.CatalogConfig
@@ -35,10 +42,12 @@ type CatalogEmbeddingService struct {
 
 // NewCatalogEmbeddingService builds a CatalogEmbeddingService.
 func NewCatalogEmbeddingService(
-	db tenantTxRunner, products catalogEmbeddingRepository, embedder domain.Embedder,
-	cfg config.CatalogConfig,
+	db tenantTxRunner, accounts catalogEmbeddingAccounts, products catalogEmbeddingRepository,
+	embedder domain.Embedder, cfg config.CatalogConfig,
 ) *CatalogEmbeddingService {
-	return &CatalogEmbeddingService{db: db, products: products, embedder: embedder, cfg: cfg}
+	return &CatalogEmbeddingService{
+		db: db, accounts: accounts, products: products, embedder: embedder, cfg: cfg,
+	}
 }
 
 // Backfill embeds every product of the account that has no vector or was edited after the one
@@ -52,8 +61,16 @@ func (s *CatalogEmbeddingService) Backfill(
 	ctx context.Context, tenant domain.Tenant, refreshAll bool,
 ) (domain.CatalogEmbeddingReport, error) {
 	var report domain.CatalogEmbeddingReport
-	cursor := uuid.Nil
+	// Checked before any work: an unknown account has nothing pending, which would otherwise
+	// report as a catalog already fully embedded and send the operator on to the index command.
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		_, getErr := s.accounts.GetByID(ctx, q, tenant.AccountID)
+		return getErr
+	}); err != nil {
+		return report, err
+	}
 
+	cursor := uuid.Nil
 	for {
 		var pending []domain.ProductEmbeddingInput
 		err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {

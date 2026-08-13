@@ -42,13 +42,27 @@ describe('parseArgs', () => {
     assert.deepEqual(parseArgs([]), { lists: null });
   });
 
-  it('takes an operator override', () => {
+  it('takes an operator override in either form', () => {
     assert.deepEqual(parseArgs(['--lists', '32']), { lists: 32 });
+    assert.deepEqual(parseArgs(['--lists=32']), { lists: 32 });
   });
 
   it('refuses anything that is not a positive whole number', () => {
-    for (const bad of [['--lists'], ['--lists', '0'], ['--lists', '-4'], ['--lists', 'many']]) {
+    for (const bad of [
+      ['--lists'],
+      ['--lists', '0'],
+      ['--lists', '-4'],
+      ['--lists', 'many'],
+      ['--lists='],
+    ]) {
       assert.throws(() => parseArgs(bad), /--lists takes a positive integer/);
+    }
+  });
+
+  // A dropped flag on a command that takes a write lock for minutes is expensive to notice.
+  it('refuses an argument it does not know rather than ignoring it', () => {
+    for (const bad of [['--list', '32'], ['--lists', '32', '--force'], ['32']]) {
+      assert.throws(() => parseArgs(bad), /Unknown argument/);
     }
   });
 });
@@ -75,8 +89,9 @@ describe('createVectorIndex', () => {
     const result = await createVectorIndex(client);
 
     assert.deepEqual(result, { embedded: 12_000, lists: 12, created: true });
-    assert.match(client.statements.at(-1), /USING ivfflat \(embedding vector_cosine_ops\)/);
-    assert.match(client.statements.at(-1), /WITH \(lists = 12\)/);
+    const created = client.statements.find((s) => s.includes('CREATE INDEX'));
+    assert.match(created, /USING ivfflat \(embedding vector_cosine_ops\)/);
+    assert.match(created, /WITH \(lists = 12\)/);
   });
 
   // Rebuilding is what lets the command run again once the catalog has grown.
@@ -90,5 +105,24 @@ describe('createVectorIndex', () => {
     assert.ok(dropped !== -1 && created !== -1, 'both statements should run');
     assert.ok(dropped < created, 'the drop has to come first');
     assert.match(client.statements[created], /WITH \(lists = 7\)/);
+  });
+
+  // A build that runs out of memory or is interrupted must not leave the catalog with the old
+  // index dropped and nothing in its place.
+  it('rolls back rather than leaving no index at all', async () => {
+    const client = fakeClient(3000);
+    const failing = {
+      statements: client.statements,
+      async query(sql) {
+        client.statements.push(sql);
+        if (sql.startsWith('SELECT count')) return { rows: [{ rows: 3000 }] };
+        if (sql.includes('CREATE INDEX')) throw new Error('out of maintenance_work_mem');
+        return { rows: [] };
+      },
+    };
+
+    await assert.rejects(() => createVectorIndex(failing), /maintenance_work_mem/);
+    assert.ok(failing.statements.includes('BEGIN'), 'the rebuild should open a transaction');
+    assert.ok(failing.statements.includes('ROLLBACK'), 'a failed build has to roll back');
   });
 });

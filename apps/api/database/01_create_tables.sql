@@ -880,7 +880,19 @@ CREATE UNIQUE INDEX uq_message_batch_processing ON message_batch(quote_id) WHERE
 CREATE TRIGGER trg_account_updated        BEFORE UPDATE ON account        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_branch_updated         BEFORE UPDATE ON branch         FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_app_user_updated       BEFORE UPDATE ON app_user       FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER trg_product_updated        BEFORE UPDATE ON product        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+-- product is the exception: updated_at says a person changed the row, and it is what
+-- embedding_updated_at is compared against, so a vector written by the backfill must not bump it.
+CREATE TRIGGER trg_product_updated        BEFORE UPDATE ON product        FOR EACH ROW
+  WHEN (
+    OLD.code IS DISTINCT FROM NEW.code
+    OR OLD.canonical_name IS DISTINCT FROM NEW.canonical_name
+    OR OLD.description IS DISTINCT FROM NEW.description
+    OR OLD.unit IS DISTINCT FROM NEW.unit
+    OR OLD.family_id IS DISTINCT FROM NEW.family_id
+    OR OLD.subgroup_id IS DISTINCT FROM NEW.subgroup_id
+    OR OLD.is_active IS DISTINCT FROM NEW.is_active
+  )
+  EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_branch_product_updated BEFORE UPDATE ON branch_product FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_combo_updated          BEFORE UPDATE ON combo          FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_branch_combo_updated   BEFORE UPDATE ON branch_combo   FOR EACH ROW EXECUTE FUNCTION set_updated_at();

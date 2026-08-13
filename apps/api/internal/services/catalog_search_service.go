@@ -67,6 +67,9 @@ func (s *CatalogSearchService) Search(
 	if limit < 1 {
 		limit = s.cfg.SearchTopK
 	}
+	// The same ceiling the catalog listing uses: no caller asks the database for the whole
+	// catalog in one answer, and here the over-fetch would multiply it again.
+	limit = min(limit, s.cfg.MaxPageSize)
 
 	// Outside the transaction on purpose: a provider call is slow and can fail on its own
 	// timeline, and no transaction is held open across it.
@@ -107,21 +110,29 @@ func (s *CatalogSearchService) candidatesFor(
 	ctx context.Context, q repository.Querier, tenant domain.Tenant,
 	text string, vector pgvector.Vector, limit int,
 ) ([]domain.CatalogCandidate, error) {
-	fetch := limit * s.cfg.SearchOverFetchFactor
+	fetch := min(limit*s.cfg.SearchOverFetchFactor, s.cfg.SearchMaxFetch)
 	var candidates []domain.CatalogCandidate
-	for previous := 0; ; fetch *= 2 {
+	// Below zero so the first round always counts as progress: coming back empty is the very
+	// case widening exists for, since the nearest vectors can all be stock the branch lacks.
+	previous := -1
+	for {
 		found, err := s.products.SearchCandidates(ctx, q, tenant.AccountID, tenant.BranchID,
 			text, vector, fetch)
 		if err != nil {
 			return nil, err
 		}
-		candidates = found
-		// Widening stopped paying: the index has no more of this account's catalog to give,
-		// so another round would repeat the same rows.
-		if len(found) >= limit || len(found) <= previous {
+		// The widest round wins rather than the last: a shrinking one has dropped candidates an
+		// earlier round already had.
+		if len(found) > len(candidates) {
+			candidates = found
+		}
+		// Widening stopped paying: the index has no more of this account's catalog to give, so
+		// another round would repeat the same rows.
+		if len(found) >= limit || len(found) <= previous || fetch >= s.cfg.SearchMaxFetch {
 			break
 		}
 		previous = len(found)
+		fetch = min(fetch*2, s.cfg.SearchMaxFetch)
 	}
 
 	fuse(candidates, s.cfg.SearchRRFK)

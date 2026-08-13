@@ -300,7 +300,7 @@ Coti is a **human-in-the-loop copilot**. Two pipelines touch external models: th
 - **Each external call is bounded per attempt, and the chain is not.** `AI_*_TIMEOUT_SECONDS` caps one attempt, so the worst case is that times `AI_MAX_ATTEMPTS` plus the backoff — which outruns `SERVER_WRITE_TIMEOUT_SECONDS`. An AI call does not belong inline in a request handler on that budget.
 - The **service depends on the interface**, so swapping providers is a one-line change in `internal/ai/provider`. It never imports `internal/ai`.
 
-See `docs/technical/ai-providers.md` for the whole layer, including what a retry costs and why the vector codec is deliberately not registered yet.
+See `docs/technical/ai-providers.md` for the whole layer, including what a retry costs and where the vector codec is registered, and `docs/technical/catalog.md` for what is done with the vectors.
 
 These invariants are **enforced in the service layer**, and the code must make them true — they are product invariants, not style:
 

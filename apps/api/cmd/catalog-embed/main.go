@@ -66,6 +66,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// Which model produced these vectors is the one fact a later --refresh-all decision needs.
+	providers.Describe(log)
 
 	db, err := repository.NewDB(ctx, cfg.Database)
 	if err != nil {
@@ -73,15 +75,20 @@ func run() error {
 	}
 	defer db.Close()
 
-	embeddings := services.NewCatalogEmbeddingService(db, repository.NewProductRepository(),
-		providers.Embedder, cfg.Catalog)
+	embeddings := services.NewCatalogEmbeddingService(db, repository.NewAccountRepository(),
+		repository.NewProductRepository(), providers.Embedder, cfg.Catalog)
 
 	log.Info("embedding catalog", slog.String("account", accountID.String()),
 		slog.Bool("refresh_all", *refreshAll))
 	report, err := embeddings.Backfill(ctx, domain.Tenant{AccountID: accountID}, *refreshAll)
-	// Reported either way: a run that failed halfway still stored the pages before it, and the
-	// next run resumes from there.
+	if err != nil {
+		// A run that stopped halfway still stored the pages before it, and the next one resumes
+		// from there — so the count is worth having, but not under a message saying it finished.
+		log.Error("stopped before the catalog was embedded",
+			slog.Int("products_stored", report.Embedded), slog.Int("rounds", report.Rounds))
+		return err
+	}
 	log.Info("catalog embedded", slog.Int("products", report.Embedded),
 		slog.Int("rounds", report.Rounds))
-	return err
+	return nil
 }

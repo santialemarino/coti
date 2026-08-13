@@ -180,6 +180,32 @@ func TestProductRepository_SetEmbeddingsStoresAVectorThatOrdersByDistance(t *tes
 	}
 }
 
+// updated_at says a person changed the product. A backfill over a loaded catalog would otherwise
+// stamp every row as edited at once, and leave the staleness comparison with nothing to measure.
+func TestProductRepository_SetEmbeddingsDoesNotMarkTheProductEdited(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	account := seedAccount(t, db, "Corralon Trigger")
+	product := seedCatalogProduct(t, db, account, "Cemento Portland 50kg", "bolsa")
+
+	before := currentUpdatedAt(t, db, product)
+	writeEmbedding(t, db, account, product, alignedVector(1))
+
+	if after := currentUpdatedAt(t, db, product); !after.Equal(before) {
+		t.Errorf("updated_at moved from %v to %v on an embedding write", before, after)
+	}
+
+	// A real edit still moves it, or nothing would ever read as stale again.
+	if _, err := db.CrossAccount().Exec(ctx,
+		`UPDATE product SET canonical_name = 'Cemento Portland 25kg' WHERE id = $1`,
+		product); err != nil {
+		t.Fatalf("edit product: %v", err)
+	}
+	if after := currentUpdatedAt(t, db, product); !after.After(before) {
+		t.Errorf("updated_at = %v after an edit, want it past %v", after, before)
+	}
+}
+
 // Embedding a product takes a provider call, and an edit can land during it. Writing the vector
 // anyway would store one computed from text the product no longer has, and stamp it as current.
 func TestProductRepository_SetEmbeddingsSkipsAProductEditedSinceItWasRead(t *testing.T) {

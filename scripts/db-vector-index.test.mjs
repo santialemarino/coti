@@ -31,13 +31,18 @@ describe(
   () => {
     let client;
     let accountID;
-    let preexisting = false;
+    let preexistingDefinition = null;
 
     before(async () => {
       client = new pg.Client({ connectionString: ADMIN_URL });
       await client.connect();
-      const existing = await client.query('SELECT to_regclass($1) AS found', [INDEX_NAME]);
-      preexisting = existing.rows[0].found !== null;
+      // The whole definition, not just whether it exists: the tests below rebuild the index with
+      // their own lists, and putting back an index with the wrong partition count is no better
+      // than leaving none.
+      const existing = await client.query('SELECT indexdef FROM pg_indexes WHERE indexname = $1', [
+        INDEX_NAME,
+      ]);
+      preexistingDefinition = existing.rows[0]?.indexdef ?? null;
 
       const account = await client.query(
         `INSERT INTO account (name) VALUES ('Vector index coverage') RETURNING id`,
@@ -50,8 +55,9 @@ describe(
     });
 
     after(async () => {
-      // Only what this file created: an index that was already there is somebody else's.
-      if (!preexisting) await client.query(`DROP INDEX IF EXISTS ${INDEX_NAME}`);
+      await client.query(`DROP INDEX IF EXISTS ${INDEX_NAME}`);
+      // An index that was already there is somebody else's, so it goes back as it was.
+      if (preexistingDefinition) await client.query(preexistingDefinition);
       if (accountID) {
         await client.query('DELETE FROM product WHERE account_id = $1', [accountID]);
         await client.query('DELETE FROM account WHERE id = $1', [accountID]);

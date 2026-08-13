@@ -223,9 +223,12 @@ candidate both halves found therefore outranks one only a single half saw.
 **The service asks the database for more rows than the caller wants and trims the result.** An
 approximate vector scan orders before the branch filter runs, so a request for twenty candidates
 can come back with six once the products the branch does not stock are dropped. The first fetch
-is `top K × CATALOG_SEARCH_OVER_FETCH_FACTOR`, and it widens until the limit is met or a wider
-fetch stops returning anything new — which is what a branch carrying fewer than K matches looks
-like. Asking for K usable candidates therefore returns K whenever the branch has them.
+is `top K × CATALOG_SEARCH_OVER_FETCH_FACTOR`, and it widens until the limit is met, a wider fetch
+stops returning anything new — which is what a branch carrying fewer than K matches looks like — or
+`CATALOG_SEARCH_MAX_FETCH` is reached. **An empty round is not a stopping condition**: the nearest
+vectors in the account can all be stock this branch does not carry, which is precisely the case
+widening exists for. Asking for K usable candidates therefore returns K whenever the branch has
+them within the ceiling.
 
 The search returns candidates and their evidence, and decides nothing: which of them counts as a
 match, which line is `AMBIGUOUS`, and which is flagged `NO_MATCH` belongs to the matching service.
@@ -239,7 +242,9 @@ go run ./cmd/catalog-embed --account <uuid> [--refresh-all]   # from apps/api
 pnpm db:vector-index [--lists <n>]                            # from the repo root
 ```
 
-`catalog-embed` pages through the account's catalog by product id, embedding each page outside
+`catalog-embed` refuses an account that does not exist — under row level security a mistyped id
+otherwise reads as a catalog with nothing left to embed. It pages through the account's catalog by
+product id, embedding each page outside
 any transaction and writing it back in a short one. **It is a command because the work does not
 fit a request:** a catalog is thousands of texts, and the AI timeouts are per attempt rather than
 per chain, so one page can outlast any HTTP response budget. A run that fails halfway keeps the
@@ -254,7 +259,9 @@ everything, which is what a change of embedding model needs. It requires
 empty table an approximate index is degenerate — it has no data to partition, and it does not
 improve later on its own. `pnpm db:vector-index` builds it once the catalog is embedded, with
 `lists` sized to the rows that carry a vector (pgvector's own guidance: `rows/1000`, or
-`sqrt(rows)` past a million), and `--lists` overrides that. It runs as the owner role and rebuilds
+`sqrt(rows)` past a million), and `--lists` overrides that. The drop and the build run in one
+transaction, so a build that is interrupted or runs out of memory leaves the working index in place
+rather than none. It runs as the owner role and rebuilds
 the index from scratch, so it is the command to re-run after the catalog grows an order of
 magnitude. The build holds a write lock on `product` for its duration.
 
