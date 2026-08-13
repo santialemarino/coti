@@ -42,6 +42,7 @@
     "db:migrate:status": "node scripts/goose.mjs status",
     "db:create-migration": "node scripts/goose.mjs create",
     "db:seed": "node scripts/db-seed.mjs",
+    "db:vector-index": "node scripts/db-vector-index.mjs",
     "db:account:deactivate": "node scripts/db-account.mjs deactivate",
     "db:account:activate": "node scripts/db-account.mjs activate",
     "db:reset": "docker compose down -v && pnpm db:init",
