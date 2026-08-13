@@ -242,7 +242,8 @@ go run ./cmd/catalog-embed --account <uuid> [--refresh-all]   # from apps/api
 pnpm db:vector-index [--lists <n>]                            # from the repo root
 ```
 
-`catalog-embed` refuses an account that does not exist — under row level security a mistyped id
+`catalog-embed` opens the restricted pool alone, so the backfill cannot reach past the account it
+was given. It refuses an account that does not exist — under row level security a mistyped id
 otherwise reads as a catalog with nothing left to embed. It pages through the account's catalog by
 product id, embedding each page outside
 any transaction and writing it back in a short one. **It is a command because the work does not

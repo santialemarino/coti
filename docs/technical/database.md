@@ -103,6 +103,11 @@ lifetime. `activate` is therefore the flag alone. The behavioural side is in
 
 **Never use the owner role for a request-scoped query.** It bypasses RLS.
 
+**A process with no cross-account job does not open it at all.** `repository.NewTenantDB` opens the
+restricted pool alone and returns a type carrying neither `CrossAccount` nor `AdminTx`, so the
+boundary is the compiler rather than a rule someone has to remember — `cmd/catalog-embed` runs that
+way. `repository.NewDB` adds the owner pool for the processes below.
+
 The four legitimate owner cases:
 
 1. **Migrations** — they create tables and grant permissions.

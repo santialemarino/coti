@@ -18,37 +18,66 @@ import (
 // is_local = true so it cannot leak to whoever borrows the connection next.
 const tenantGUC = "app.current_account_id"
 
-// DB owns both connection pools: app is the restricted, RLS-subject role that carries
-// every request-scoped query; admin is the owner role, which bypasses RLS.
+// TenantDB is the restricted, RLS-subject pool on its own. A process that never legitimately
+// crosses accounts opens this instead of DB, and then holds no RLS-exempt connection at all —
+// the boundary is the type rather than a rule nobody can check.
+type TenantDB struct {
+	app *pgxpool.Pool
+}
+
+// NewTenantDB opens only the restricted pool and verifies it answers before returning.
+func NewTenantDB(ctx context.Context, cfg config.DatabaseConfig) (*TenantDB, error) {
+	app, err := openPool(ctx, cfg, cfg.URL)
+	if err != nil {
+		return nil, fmt.Errorf("app pool: %w", err)
+	}
+	return &TenantDB{app: app}, nil
+}
+
+// Close releases the pool.
+func (db *TenantDB) Close() {
+	db.app.Close()
+}
+
+// Ping verifies the pool still answers.
+func (db *TenantDB) Ping(ctx context.Context) error {
+	if err := db.app.Ping(ctx); err != nil {
+		return fmt.Errorf("app pool: %w", err)
+	}
+	return nil
+}
+
+// DB adds the owner pool, which bypasses RLS, to the restricted one every request-scoped query
+// runs on. Only a process with a legitimate cross-account job opens it.
 type DB struct {
-	app   *pgxpool.Pool
+	*TenantDB
 	admin *pgxpool.Pool
 }
 
 // NewDB opens both pools and verifies each one answers before returning.
 func NewDB(ctx context.Context, cfg config.DatabaseConfig) (*DB, error) {
-	app, err := openPool(ctx, cfg, cfg.URL)
+	tenant, err := NewTenantDB(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("app pool: %w", err)
+		return nil, err
 	}
 	admin, err := openPool(ctx, cfg, cfg.AdminURL)
 	if err != nil {
-		app.Close()
+		tenant.Close()
 		return nil, fmt.Errorf("admin pool: %w", err)
 	}
-	return &DB{app: app, admin: admin}, nil
+	return &DB{TenantDB: tenant, admin: admin}, nil
 }
 
 // Close releases both pools.
 func (db *DB) Close() {
-	db.app.Close()
+	db.TenantDB.Close()
 	db.admin.Close()
 }
 
 // Ping verifies both pools still answer. Used by the readiness probe.
 func (db *DB) Ping(ctx context.Context) error {
-	if err := db.app.Ping(ctx); err != nil {
-		return fmt.Errorf("app pool: %w", err)
+	if err := db.TenantDB.Ping(ctx); err != nil {
+		return err
 	}
 	if err := db.admin.Ping(ctx); err != nil {
 		return fmt.Errorf("admin pool: %w", err)
@@ -61,7 +90,7 @@ func (db *DB) Ping(ctx context.Context) error {
 //
 // It has to be a transaction: the GUC is transaction-scoped, so a bare pool query would
 // run outside it, match no policy, and silently read zero rows.
-func (db *DB) InTenantTx(ctx context.Context, tenant domain.Tenant, fn func(Querier) error) error {
+func (db *TenantDB) InTenantTx(ctx context.Context, tenant domain.Tenant, fn func(Querier) error) error {
 	if tenant.AccountID == uuid.Nil {
 		return domain.ErrNoTenantContext
 	}
