@@ -8,16 +8,6 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// ChannelType is how an RFQ reached the branch.
-type ChannelType string
-
-const (
-	ChannelTypeWhatsApp    ChannelType = "WHATSAPP"
-	ChannelTypeEmail       ChannelType = "EMAIL"
-	ChannelTypeWebApp      ChannelType = "WEBAPP"
-	ChannelTypeManualEntry ChannelType = "MANUAL_ENTRY"
-)
-
 // RFQStatus is the pre-quote lifecycle state.
 type RFQStatus string
 
@@ -85,6 +75,14 @@ type TextRFQDraftInput struct {
 	ClientLabel *string
 	RawText     string
 	WorkType    *string
+}
+
+// WhatsAppMockRFQInput simulates one inbound WhatsApp text message in development.
+type WhatsAppMockRFQInput struct {
+	ChannelID   *uuid.UUID
+	From        string
+	ProfileName *string
+	Text        string
 }
 
 // TextRFQDraft is the persisted result of the RFQ text pipeline.

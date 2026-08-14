@@ -104,6 +104,7 @@ func run() error {
 		mailService, log, cfg.Auth, cfg.Web, nil)
 	userService := services.NewUserService(db, userRepo, userBranchRepo, branchRepo, cfg.Auth)
 	branchService := services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)
+	channelService := services.NewChannelService(db, channelRepo)
 	accountService := services.NewAccountService(db, accountRepo, branchRepo, channelRepo,
 		userRepo, authService, verificationService, log, cfg.Auth, cfg.Branch)
 	productService := services.NewProductService(db, productRepo, productSynonymRepo,
@@ -112,7 +113,7 @@ func run() error {
 		productPriceRepo, nil)
 	productPriceImportService := services.NewProductPriceImportService(db, productPriceRepo, nil)
 	catalogImportService := services.NewCatalogImportService(db, catalogImportRepo, nil)
-	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo, rfqExtractor)
+	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo, channelRepo, rfqExtractor)
 
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
@@ -122,6 +123,7 @@ func run() error {
 			Verification:  handler.NewVerificationHandler(verificationService, mailTargetLimiter),
 			User:          handler.NewUserHandler(userService),
 			Branch:        handler.NewBranchHandler(branchService),
+			Channel:       handler.NewChannelHandler(channelService),
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			RFQ:           handler.NewRFQHandler(rfqService),

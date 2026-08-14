@@ -15,6 +15,14 @@ type CreateTextRFQDraftRequest struct {
 	WorkType    *string    `json:"work_type" binding:"omitempty,max=255"`
 }
 
+// CreateWhatsAppMockRFQDraftRequest is the body for POST /v1/dev/whatsapp/messages.
+type CreateWhatsAppMockRFQDraftRequest struct {
+	ChannelID   *uuid.UUID `json:"channel_id"`
+	From        string     `json:"from" binding:"required,min=1,max=64"`
+	ProfileName *string    `json:"profile_name" binding:"omitempty,max=160"`
+	Text        string     `json:"text" binding:"required,min=1"`
+}
+
 // TextRFQDraftResponse is returned by POST /v1/rfqs/text-drafts.
 type TextRFQDraftResponse struct {
 	RFQ     RFQResponse          `json:"rfq"`

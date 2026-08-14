@@ -14,6 +14,7 @@ import (
 // RFQService is the RFQ surface the handler needs.
 type RFQService interface {
 	CreateTextDraft(ctx context.Context, tenant domain.Tenant, in domain.TextRFQDraftInput) (*domain.TextRFQDraft, error)
+	CreateWhatsAppMockDraft(ctx context.Context, tenant domain.Tenant, in domain.WhatsAppMockRFQInput) (*domain.TextRFQDraft, error)
 }
 
 // RFQHandler serves RFQ intake endpoints.
@@ -60,6 +61,46 @@ func (h *RFQHandler) CreateTextDraft(c *gin.Context) {
 		RawText:     body.RawText,
 		WorkType:    body.WorkType,
 	})
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, toTextRFQDraftResponse(*draft))
+}
+
+// CreateWhatsAppMockDraft simulates one inbound WhatsApp message outside production.
+//
+//	@Summary		Simulate an inbound WhatsApp message
+//	@Description	Development-only intake that resolves an active WhatsApp channel and creates the same seller-reviewable RFQ draft as the production text flow.
+//	@Tags			development
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header		string									true	"Active branch"
+//	@Param			body		body		dto.CreateWhatsAppMockRFQDraftRequest	true	"Inbound WhatsApp message"
+//	@Success		201			{object}	dto.TextRFQDraftResponse
+//	@Failure		400			{object}	dto.ErrorResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse	"No active WhatsApp channel"
+//	@Failure		422			{object}	dto.ErrorResponse	"Ambiguous channel, disabled extractor, or incomplete material lines"
+//	@Router			/v1/dev/whatsapp/messages [post]
+func (h *RFQHandler) CreateWhatsAppMockDraft(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+
+	var body dto.CreateWhatsAppMockRFQDraftRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+
+	draft, err := h.rfqs.CreateWhatsAppMockDraft(c.Request.Context(), tenant,
+		domain.WhatsAppMockRFQInput{
+			ChannelID: body.ChannelID, From: body.From, ProfileName: body.ProfileName,
+			Text: body.Text,
+		})
 	if err != nil {
 		Respond(c, err)
 		return

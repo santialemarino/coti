@@ -145,7 +145,8 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo,
 		repository.NewBranchProductRepository(), repository.NewProductPriceRepository(), nil)
 	rfqService := services.NewRFQService(db, repository.NewRFQRepository(),
-		repository.NewQuoteRepository(), ai.NewDisabledRFQExtractor())
+		repository.NewQuoteRepository(), channelRepo, ai.NewDisabledRFQExtractor())
+	channelService := services.NewChannelService(db, channelRepo)
 
 	limiter := ratelimit.NewMemory(nil)
 	mailTargetLimiter := handler.NewMailTargetLimiter(limiter, handler.MailTargetLimitOptions{
@@ -162,6 +163,7 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 			Verification:  handler.NewVerificationHandler(verificationService, mailTargetLimiter),
 			User:          handler.NewUserHandler(userService),
 			Branch:        handler.NewBranchHandler(services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)),
+			Channel:       handler.NewChannelHandler(channelService),
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			RFQ:           handler.NewRFQHandler(rfqService),

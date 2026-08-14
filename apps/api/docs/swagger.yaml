@@ -194,6 +194,30 @@ definitions:
     - current_password
     - new_password
     type: object
+  dto.ChannelListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ChannelResponse'
+        type: array
+    type: object
+  dto.ChannelResponse:
+    properties:
+      branch_id:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      identifier:
+        type: string
+      is_active:
+        type: boolean
+      type:
+        type: string
+      updated_at:
+        type: string
+    type: object
   dto.ConfirmCatalogImportRequest:
     properties:
       rows:
@@ -318,6 +342,24 @@ definitions:
     - name
     - password
     - role
+    type: object
+  dto.CreateWhatsAppMockRFQDraftRequest:
+    properties:
+      channel_id:
+        type: string
+      from:
+        maxLength: 64
+        minLength: 1
+        type: string
+      profile_name:
+        maxLength: 160
+        type: string
+      text:
+        minLength: 1
+        type: string
+    required:
+    - from
+    - text
     type: object
   dto.ErrorResponse:
     properties:
@@ -1221,6 +1263,87 @@ paths:
       summary: Update a branch
       tags:
       - branches
+  /v1/channels:
+    get:
+      description: Returns active intake channels for the branch selected through
+        X-Branch-Id.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ChannelListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List intake channels
+      tags:
+      - channels
+  /v1/dev/whatsapp/messages:
+    post:
+      consumes:
+      - application/json
+      description: Development-only intake that resolves an active WhatsApp channel
+        and creates the same seller-reviewable RFQ draft as the production text flow.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Inbound WhatsApp message
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateWhatsAppMockRFQDraftRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.TextRFQDraftResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No active WhatsApp channel
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Ambiguous channel, disabled extractor, or incomplete material
+            lines
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Simulate an inbound WhatsApp message
+      tags:
+      - development
   /v1/me:
     get:
       description: Returns the caller's identity and branch reach, so the frontend

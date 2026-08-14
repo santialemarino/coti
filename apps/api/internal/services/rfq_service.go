@@ -28,20 +28,29 @@ type quoteDraftRepository interface {
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID, previousStatus *domain.QuoteStatus, newStatus domain.QuoteStatus, userID *uuid.UUID) (*domain.QuoteStatusChange, error)
 }
 
+// rfqChannelReader is the channel validation surface the RFQ flow needs.
+type rfqChannelReader interface {
+	ListActiveByType(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, channelType domain.ChannelType) ([]domain.Channel, error)
+	GetActiveByID(ctx context.Context, q repository.Querier, accountID, branchID, channelID uuid.UUID) (*domain.Channel, error)
+}
+
 // RFQService owns the text RFQ pipeline up to a seller-reviewable quote draft.
 type RFQService struct {
 	db        tenantTxRunner
 	rfqs      rfqRepository
 	quotes    quoteDraftRepository
+	channels  rfqChannelReader
 	extractor domain.RFQExtractor
 }
 
 // NewRFQService builds an RFQService.
 func NewRFQService(
 	db tenantTxRunner, rfqs rfqRepository, quotes quoteDraftRepository,
-	extractor domain.RFQExtractor,
+	channels rfqChannelReader, extractor domain.RFQExtractor,
 ) *RFQService {
-	return &RFQService{db: db, rfqs: rfqs, quotes: quotes, extractor: extractor}
+	return &RFQService{
+		db: db, rfqs: rfqs, quotes: quotes, channels: channels, extractor: extractor,
+	}
 }
 
 // CreateTextDraft turns plain RFQ text into a quote DRAFT for seller review.
@@ -51,26 +60,68 @@ func (s *RFQService) CreateTextDraft(
 	if err := requireBranch(tenant, "rfq draft"); err != nil {
 		return nil, err
 	}
-	if in.ChannelID == uuid.Nil {
-		return nil, fmt.Errorf("%w: channel_id is required", domain.ErrInvalidInput)
-	}
-	raw, err := requiredText(in.RawText, "raw_text")
-	if err != nil {
-		return nil, err
-	}
-	clientLabel, err := optionalLimitedText(in.ClientLabel, "client_label", 255)
-	if err != nil {
-		return nil, err
-	}
-	workType, err := optionalLimitedText(in.WorkType, "work_type", 255)
+	normalized, err := normalizeTextRFQDraftInput(in)
 	if err != nil {
 		return nil, err
 	}
 	if s.extractor == nil {
 		return nil, fmt.Errorf("%w: rfq extractor is not configured", domain.ErrInvalidInput)
 	}
+	if s.channels == nil {
+		return nil, fmt.Errorf("%w: channel repository is not configured", domain.ErrInvalidInput)
+	}
+	if _, err := s.getActiveChannel(ctx, tenant, normalized.ChannelID); err != nil {
+		return nil, err
+	}
+	return s.createTextDraft(ctx, tenant, normalized)
+}
 
-	lines, err := s.extractor.Extract(ctx, raw)
+// CreateWhatsAppMockDraft simulates an inbound WhatsApp text message in development.
+func (s *RFQService) CreateWhatsAppMockDraft(
+	ctx context.Context, tenant domain.Tenant, in domain.WhatsAppMockRFQInput,
+) (*domain.TextRFQDraft, error) {
+	if err := requireBranch(tenant, "WhatsApp mock"); err != nil {
+		return nil, err
+	}
+	from, err := requiredText(in.From, "from")
+	if err != nil {
+		return nil, err
+	}
+	if err := requireMaxRunes(from, "from", 64); err != nil {
+		return nil, err
+	}
+	profileName, err := optionalLimitedText(in.ProfileName, "profile_name", 160)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := requiredText(in.Text, "text")
+	if err != nil {
+		return nil, err
+	}
+	if s.extractor == nil {
+		return nil, fmt.Errorf("%w: rfq extractor is not configured", domain.ErrInvalidInput)
+	}
+	if s.channels == nil {
+		return nil, fmt.Errorf("%w: channel repository is not configured", domain.ErrInvalidInput)
+	}
+
+	channel, err := s.resolveWhatsAppChannel(ctx, tenant, in.ChannelID)
+	if err != nil {
+		return nil, err
+	}
+	clientLabel := from
+	if profileName != nil {
+		clientLabel = fmt.Sprintf("%s (%s)", *profileName, from)
+	}
+	return s.createTextDraft(ctx, tenant, domain.TextRFQDraftInput{
+		ChannelID: channel.ID, ClientLabel: &clientLabel, RawText: raw,
+	})
+}
+
+func (s *RFQService) createTextDraft(
+	ctx context.Context, tenant domain.Tenant, in domain.TextRFQDraftInput,
+) (*domain.TextRFQDraft, error) {
+	lines, err := s.extractor.Extract(ctx, in.RawText)
 	if err != nil {
 		return nil, err
 	}
@@ -81,14 +132,18 @@ func (s *RFQService) CreateTextDraft(
 
 	var draft domain.TextRFQDraft
 	err = s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		if _, channelErr := s.channels.GetActiveByID(ctx, q, tenant.AccountID, tenant.BranchID,
+			in.ChannelID); channelErr != nil {
+			return channelErr
+		}
 		rfq, createRFQErr := s.rfqs.Create(ctx, q, tenant.AccountID, domain.NewRFQ{
 			BranchID:    tenant.BranchID,
 			ClientID:    in.ClientID,
 			ChannelID:   in.ChannelID,
-			RawText:     &raw,
+			RawText:     &in.RawText,
 			Status:      domain.RFQStatusReceived,
-			WorkType:    workType,
-			ClientLabel: clientLabel,
+			WorkType:    in.WorkType,
+			ClientLabel: in.ClientLabel,
 		})
 		if createRFQErr != nil {
 			return createRFQErr
@@ -158,6 +213,86 @@ func (s *RFQService) CreateTextDraft(
 		return nil, err
 	}
 	return &draft, nil
+}
+
+func (s *RFQService) getActiveChannel(
+	ctx context.Context, tenant domain.Tenant, channelID uuid.UUID,
+) (*domain.Channel, error) {
+	var channel *domain.Channel
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		var getErr error
+		channel, getErr = s.channels.GetActiveByID(ctx, q, tenant.AccountID, tenant.BranchID,
+			channelID)
+		return getErr
+	})
+	if err != nil {
+		return nil, err
+	}
+	return channel, nil
+}
+
+func (s *RFQService) resolveWhatsAppChannel(
+	ctx context.Context, tenant domain.Tenant, channelID *uuid.UUID,
+) (*domain.Channel, error) {
+	if channelID != nil {
+		if *channelID == uuid.Nil {
+			return nil, fmt.Errorf("%w: channel_id must be a valid UUID", domain.ErrInvalidInput)
+		}
+		channel, err := s.getActiveChannel(ctx, tenant, *channelID)
+		if err != nil {
+			return nil, err
+		}
+		if channel.Type != domain.ChannelTypeWhatsApp {
+			return nil, fmt.Errorf("%w: channel_id must identify a WhatsApp channel",
+				domain.ErrInvalidInput)
+		}
+		return channel, nil
+	}
+
+	var channels []domain.Channel
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		var listErr error
+		channels, listErr = s.channels.ListActiveByType(ctx, q, tenant.AccountID,
+			tenant.BranchID, domain.ChannelTypeWhatsApp)
+		return listErr
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(channels) == 0 {
+		return nil, fmt.Errorf("%w: no active WhatsApp channel for the selected branch",
+			domain.ErrNotFound)
+	}
+	if len(channels) > 1 {
+		return nil, fmt.Errorf("%w: channel_id is required when the branch has multiple WhatsApp channels",
+			domain.ErrInvalidInput)
+	}
+	return &channels[0], nil
+}
+
+func normalizeTextRFQDraftInput(
+	in domain.TextRFQDraftInput,
+) (domain.TextRFQDraftInput, error) {
+	if in.ChannelID == uuid.Nil {
+		return domain.TextRFQDraftInput{}, fmt.Errorf("%w: channel_id is required",
+			domain.ErrInvalidInput)
+	}
+	raw, err := requiredText(in.RawText, "raw_text")
+	if err != nil {
+		return domain.TextRFQDraftInput{}, err
+	}
+	clientLabel, err := optionalLimitedText(in.ClientLabel, "client_label", 255)
+	if err != nil {
+		return domain.TextRFQDraftInput{}, err
+	}
+	workType, err := optionalLimitedText(in.WorkType, "work_type", 255)
+	if err != nil {
+		return domain.TextRFQDraftInput{}, err
+	}
+	in.RawText = raw
+	in.ClientLabel = clientLabel
+	in.WorkType = workType
+	return in, nil
 }
 
 func newQuoteItemsFromRFQLines(lines []domain.ExtractedRFQLine) ([]domain.NewQuoteItem, error) {

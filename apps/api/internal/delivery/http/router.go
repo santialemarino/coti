@@ -27,6 +27,7 @@ type Handlers struct {
 	Verification  *handler.VerificationHandler
 	User          *handler.UserHandler
 	Branch        *handler.BranchHandler
+	Channel       *handler.ChannelHandler
 	Product       *handler.ProductHandler
 	BranchCatalog *handler.BranchCatalogHandler
 	RFQ           *handler.RFQHandler
@@ -119,6 +120,12 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 
 	rfqs := authed.Group("/rfqs")
 	rfqs.POST("/text-drafts", h.RFQ.CreateTextDraft)
+	authed.GET("/channels", h.Channel.List)
+
+	if !cfg.IsProduction() {
+		development := authed.Group("/dev")
+		development.POST("/whatsapp/messages", h.RFQ.CreateWhatsAppMockDraft)
+	}
 
 	account := authed.Group("/account")
 	account.GET("", h.Account.Get)
