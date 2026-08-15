@@ -34,6 +34,10 @@ type signupUserRepository interface {
 	Create(ctx context.Context, q repository.Querier, accountID uuid.UUID, in domain.NewUser, passwordHash string) (*domain.AppUser, error)
 }
 
+type signupOnboardingRepository interface {
+	Create(ctx context.Context, q repository.Querier, accountID uuid.UUID) (*domain.Onboarding, error)
+}
+
 type tokenIssuer interface {
 	IssueForUser(ctx context.Context, user domain.AppUser) (*domain.TokenPair, error)
 }
@@ -56,6 +60,7 @@ type AccountService struct {
 	branches          signupBranchRepository
 	channels          channelRepository
 	users             signupUserRepository
+	onboarding        signupOnboardingRepository
 	tokens            tokenIssuer
 	verifier          emailVerifier
 	log               *slog.Logger
@@ -66,14 +71,15 @@ type AccountService struct {
 // NewAccountService builds an AccountService.
 func NewAccountService(
 	db adminTxScoper, accounts accountRepository, branches signupBranchRepository,
-	channels channelRepository, users signupUserRepository, tokens tokenIssuer,
+	channels channelRepository, users signupUserRepository, onboarding signupOnboardingRepository,
+	tokens tokenIssuer,
 	verifier emailVerifier, log *slog.Logger, cfg config.AuthConfig, branchCfg config.BranchConfig,
 ) *AccountService {
 	if log == nil {
 		log = slog.Default()
 	}
 	return &AccountService{db: db, accounts: accounts, branches: branches, channels: channels,
-		users: users, tokens: tokens, verifier: verifier, log: log,
+		users: users, onboarding: onboarding, tokens: tokens, verifier: verifier, log: log,
 		policy:            domain.PasswordPolicy{MinLength: cfg.PasswordMinLength},
 		defaultExpiryDays: branchCfg.DefaultExpiryDays}
 }
@@ -132,6 +138,9 @@ func (s *AccountService) Register(
 	account, err := s.accounts.Create(ctx, tx, strings.TrimSpace(in.AccountName),
 		in.LegalName, in.TaxID)
 	if err != nil {
+		return nil, nil, err
+	}
+	if _, err := s.onboarding.Create(ctx, tx, account.ID); err != nil {
 		return nil, nil, err
 	}
 	branch, err := s.branches.Create(ctx, tx, account.ID, domain.NewBranch{

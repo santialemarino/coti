@@ -5,6 +5,7 @@ import {
   type SettingsNavItem,
 } from '@/app/(protected)/settings/_components/settings-nav';
 import { ROUTES } from '@/config/routes';
+import { getOnboarding } from '@/lib/api/onboarding';
 import { getSession } from '@/lib/auth/session';
 import { ADMIN_ROLE } from '@/lib/constants/auth';
 
@@ -16,6 +17,7 @@ import { ADMIN_ROLE } from '@/lib/constants/auth';
 export default async function SettingsLayout({ children }: { children: React.ReactNode }) {
   const t = await getTranslations('settings');
   const session = await getSession();
+  const onboarding = session?.role === ADMIN_ROLE ? await getOnboarding() : null;
 
   const items: SettingsNavItem[] = [
     { href: ROUTES.changePassword, label: t('nav.password') },
@@ -24,7 +26,11 @@ export default async function SettingsLayout({ children }: { children: React.Rea
           { href: ROUTES.accountSettings, label: t('nav.account') },
           { href: ROUTES.branchSettings, label: t('nav.branches') },
           { href: ROUTES.userSettings, label: t('nav.users') },
+          { href: ROUTES.catalogSettings, label: t('nav.catalog') },
           { href: ROUTES.priceSettings, label: t('nav.prices') },
+          ...(onboarding?.status === 'DISMISSED'
+            ? [{ href: ROUTES.onboarding, label: t('nav.onboarding') }]
+            : []),
         ]
       : []),
   ];

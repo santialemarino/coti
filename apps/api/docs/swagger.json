@@ -540,6 +540,200 @@
                 }
             }
         },
+        "/v1/onboarding": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the current flow version, resume step, and resolved steps for the account.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "onboarding"
+                ],
+                "summary": "Get onboarding progress",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.OnboardingResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Records a completed or skipped step and the stable step key to resume from.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "onboarding"
+                ],
+                "summary": "Save onboarding progress",
+                "parameters": [
+                    {
+                        "description": "Progress",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.SaveOnboardingProgressRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.OnboardingResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/onboarding/complete": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "onboarding"
+                ],
+                "summary": "Complete onboarding",
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/onboarding/dismiss": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "onboarding"
+                ],
+                "summary": "Dismiss onboarding",
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/onboarding/resume": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "onboarding"
+                ],
+                "summary": "Resume onboarding",
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/product-prices/export": {
             "get": {
                 "security": [
@@ -3124,6 +3318,29 @@
                 }
             }
         },
+        "dto.OnboardingResponse": {
+            "type": "object",
+            "properties": {
+                "completed_at": {
+                    "type": "string"
+                },
+                "current_step": {
+                    "type": "string"
+                },
+                "flow_version": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "steps": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "dto.PriceListResponse": {
             "type": "object",
             "properties": {
@@ -3356,6 +3573,47 @@
                 },
                 "token": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.SaveOnboardingProgressRequest": {
+            "type": "object",
+            "required": [
+                "current_step",
+                "step",
+                "step_status"
+            ],
+            "properties": {
+                "current_step": {
+                    "type": "string",
+                    "enum": [
+                        "WELCOME",
+                        "BRAND",
+                        "FIRST_BRANCH",
+                        "CATALOG_UPLOAD",
+                        "CATALOG_REVIEW",
+                        "TEAM",
+                        "COMPLETE"
+                    ]
+                },
+                "step": {
+                    "type": "string",
+                    "enum": [
+                        "WELCOME",
+                        "BRAND",
+                        "FIRST_BRANCH",
+                        "CATALOG_UPLOAD",
+                        "CATALOG_REVIEW",
+                        "TEAM",
+                        "COMPLETE"
+                    ]
+                },
+                "step_status": {
+                    "type": "string",
+                    "enum": [
+                        "COMPLETED",
+                        "SKIPPED"
+                    ]
                 }
             }
         },

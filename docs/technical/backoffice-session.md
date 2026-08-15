@@ -174,6 +174,10 @@ abandons the wizard has created nothing.
 On 201 the answer carries a token pair, so the action opens a session and sends the caller to
 `/verify-email`: signed in, with an address the API has not confirmed yet.
 
+After verification, an administrator whose account onboarding is still `IN_PROGRESS` is redirected
+to `/onboarding`. Completed and dismissed setup do not block the protected application. The flow and
+its resumable state are described in [onboarding.md](onboarding.md).
+
 ## Branch administration
 
 `/settings/branches` is admin-gated by `requireAdmin()` and lists the account's branches, opens
