@@ -253,6 +253,15 @@ something on their own scale:
 - **The margin** over the runner-up, on the same scale. This is what separates a decided line from
   a choice: two cements at `0.91` and `0.90` are not a confident match.
 
+Two consequences of that shape are deliberate rather than oversights. **`ts_rank` never enters the
+score**, because it is not comparable across queries — it moves with term frequency and document
+length, so a flat configured worth is more honest than a number that looks precise and is not. Which
+means two candidates reached only by the lexical half tie at exactly that worth, and the line comes
+back `AMBIGUOUS` however much better one text match was. And **a candidate both halves found scores
+no higher than one the vector half found alone at the same distance**: the agreement between the
+halves already decided which candidate leads, and counting it again in the confidence would count it
+twice. Confidence measures the winner; the ranking measures the agreement.
+
 The leading candidate is the one the **search** ranked first, never a re-ranking. Matching decides
 status; ranking is the search's, and the margin can therefore come out **negative** when the two
 halves disagree about which product a line is — which is an ambiguous line, and needs no special
