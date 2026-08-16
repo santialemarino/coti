@@ -377,6 +377,15 @@ type CatalogConfig struct {
 	SearchRRFK int
 	// EmbeddingBatchSize is how many products the backfill loads and writes back per round.
 	EmbeddingBatchSize int
+	// MatchMinConfidencePercent is the similarity a line's leading candidate clears to be a
+	// match at all. Below it the line is flagged NO_MATCH and keeps no product.
+	MatchMinConfidencePercent int
+	// MatchAmbiguityMarginPercent is how far the leading candidate sits above the runner-up
+	// before the line counts as decided. Two cements a point apart are a choice, not a match.
+	MatchAmbiguityMarginPercent int
+	// MatchLexicalConfidencePercent is what a candidate only the lexical half scored is worth.
+	// A synonym hit carries no cosine similarity to read, and it is evidence rather than none.
+	MatchLexicalConfidencePercent int
 }
 
 // Load resolves the configuration from the environment, applying defaults for everything
@@ -466,14 +475,17 @@ func Load() (*Config, error) {
 			BackofficeURL: getString("WEB_BACKOFFICE_URL", "http://localhost:3000"),
 		},
 		Catalog: CatalogConfig{
-			DefaultPageSize:       getInt("CATALOG_DEFAULT_PAGE_SIZE", 50, &problems),
-			MaxPageSize:           getInt("CATALOG_MAX_PAGE_SIZE", 200, &problems),
-			SearchTopK:            getInt("CATALOG_SEARCH_TOP_K", 10, &problems),
-			SearchOverFetchFactor: getInt("CATALOG_SEARCH_OVER_FETCH_FACTOR", 4, &problems),
-			SearchMaxFetch:        getInt("CATALOG_SEARCH_MAX_FETCH", 2000, &problems),
-			SearchProbes:          getInt("CATALOG_SEARCH_IVFFLAT_PROBES", 10, &problems),
-			SearchRRFK:            getInt("CATALOG_SEARCH_RRF_K", 60, &problems),
-			EmbeddingBatchSize:    getInt("CATALOG_EMBEDDING_BATCH_SIZE", 200, &problems),
+			DefaultPageSize:               getInt("CATALOG_DEFAULT_PAGE_SIZE", 50, &problems),
+			MaxPageSize:                   getInt("CATALOG_MAX_PAGE_SIZE", 200, &problems),
+			SearchTopK:                    getInt("CATALOG_SEARCH_TOP_K", 10, &problems),
+			SearchOverFetchFactor:         getInt("CATALOG_SEARCH_OVER_FETCH_FACTOR", 4, &problems),
+			SearchMaxFetch:                getInt("CATALOG_SEARCH_MAX_FETCH", 2000, &problems),
+			SearchProbes:                  getInt("CATALOG_SEARCH_IVFFLAT_PROBES", 10, &problems),
+			SearchRRFK:                    getInt("CATALOG_SEARCH_RRF_K", 60, &problems),
+			EmbeddingBatchSize:            getInt("CATALOG_EMBEDDING_BATCH_SIZE", 200, &problems),
+			MatchMinConfidencePercent:     getInt("CATALOG_MATCH_MIN_CONFIDENCE_PERCENT", 60, &problems),
+			MatchAmbiguityMarginPercent:   getInt("CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT", 5, &problems),
+			MatchLexicalConfidencePercent: getInt("CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT", 75, &problems),
 		},
 		RateLimit: RateLimitConfig{
 			Enabled:          getBool("RATE_LIMIT_ENABLED", true, &problems),
@@ -593,7 +605,9 @@ func Load() (*Config, error) {
 		value int
 		floor int
 	}{
-		{"CATALOG_SEARCH_TOP_K", cfg.Catalog.SearchTopK, 1},
+		// Two, not one: a single candidate leaves matching with no runner-up, so every line
+		// above the confidence floor would read as decided and AMBIGUOUS could never happen.
+		{"CATALOG_SEARCH_TOP_K", cfg.Catalog.SearchTopK, 2},
 		// Below 1 the search would ask for fewer rows than the caller wants, which is the
 		// shortfall the factor exists to prevent.
 		{"CATALOG_SEARCH_OVER_FETCH_FACTOR", cfg.Catalog.SearchOverFetchFactor, 1},
@@ -606,6 +620,20 @@ func Load() (*Config, error) {
 		if f.value < f.floor {
 			problems = append(problems, fmt.Sprintf("%s must be at least %d, got %d",
 				f.key, f.floor, f.value))
+		}
+	}
+	catalogPercents := []struct {
+		key   string
+		value int
+	}{
+		{"CATALOG_MATCH_MIN_CONFIDENCE_PERCENT", cfg.Catalog.MatchMinConfidencePercent},
+		{"CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT", cfg.Catalog.MatchAmbiguityMarginPercent},
+		{"CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT", cfg.Catalog.MatchLexicalConfidencePercent},
+	}
+	for _, p := range catalogPercents {
+		if p.value < 0 || p.value > 100 {
+			problems = append(problems, fmt.Sprintf("%s must be between 0 and 100, got %d",
+				p.key, p.value))
 		}
 	}
 
