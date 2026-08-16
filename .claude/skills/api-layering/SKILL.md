@@ -29,7 +29,7 @@ Request flow: **handler → service → repository → DB**.
 - **internal/ratelimit/** — The counters behind the rate-limit middleware, which consumes them through its own `Limiter` interface. In-memory today; a shared store swaps in behind the same interface once there is more than one instance.
 - **internal/config/** — Env loading (`godotenv` is loaded in `main`) + defaults; the one place for every configurable threshold (match cutoffs, top-K, timeouts, default expiry days).
 - **internal/utils/** — Generic, entity-agnostic helpers reused across features.
-- **cmd/** — One directory per binary, each a composition root: read config, open the pools, take the AI adapters from `internal/ai/provider`, inject repos + adapters into services, and do the binary's job. **A binary with no cross-account job opens `repository.NewTenantDB`, not `NewDB`** — the restricted pool alone, on a type that has no `CrossAccount` or `AdminTx`, so the boundary is checked by the compiler. `cmd/api` builds the router and serves HTTP; `cmd/catalog-embed` vectorizes one account's catalog. No business logic in either. **A job too long for a request budget is a command, not a route** — embedding a whole catalog outruns `SERVER_WRITE_TIMEOUT_SECONDS` several times over.
+- **cmd/** — One directory per binary, each a composition root: read config, open the pools, take the AI adapters from `internal/ai/provider`, inject repos + adapters into services, and do the binary's job. **A binary with no cross-account job opens `repository.NewTenantDB`, not `NewDB`** — the restricted pool alone, on a type that has no `CrossAccount` or `AdminTx`, so the boundary is checked by the compiler. `cmd/api` builds the router and serves HTTP; `cmd/catalog-embed` vectorizes one account's catalog; `cmd/scheduled-job` runs one unit of scheduled work and exits, with the deployment platform owning the schedule so a frequency is never compiled in. No business logic in any of them. **A job too long for a request budget is a command, not a route** — embedding a whole catalog outruns `SERVER_WRITE_TIMEOUT_SECONDS` several times over.
 
 Do not put business logic in handlers or SQL strings in services. Do not let HTTP types (request/response bodies) leak into domain or repositories.
 
@@ -60,6 +60,8 @@ Repositories accept the `Querier` — the read/write surface shared by `*pgxpool
 ### Cross-account access is explicit and rare
 
 Three operations legitimately span accounts, and they use `db.CrossAccount()` (the owner pool, which bypasses RLS): the follow-up cron, login by email (the account is unknown until the user is found), and resolving a `quote_send.public_token` for the public webapp. The token flow resolves the account there and then continues through `InTenantTx` — it does not keep querying on the owner pool. **Any other use is a cross-tenant leak.**
+
+`DB.AdminConn` is a third door onto the owner pool, and it exists for one reason: a Postgres advisory lock is **session-scoped**, so a scheduled job that took one through the pool would leave it on whichever connection served that call and release it on whichever served the next. It holds a single connection for the length of the run instead.
 
 ```go
 // internal/repository/querier.go
@@ -404,8 +406,10 @@ apps/api/
 ├── cmd/
 │   ├── api/
 │   │   └── main.go                     # composition root: config, pgxpool, adapters, router
-│   └── catalog-embed/
-│       └── main.go                     # offline job: vectorize one account's catalog
+│   ├── catalog-embed/
+│   │   └── main.go                     # offline job: vectorize one account's catalog
+│   └── scheduled-job/
+│       └── main.go                     # one scheduled sweep, invoked by the platform's cron
 ├── internal/
 │   ├── config/                         # env loading + defaults; all thresholds (top-K, cutoffs, timeouts)
 │   ├── domain/                         # entities, value objects, enums, errors, AI port interfaces

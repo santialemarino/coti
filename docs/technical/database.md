@@ -115,7 +115,10 @@ The four legitimate owner cases:
    `pnpm db:vector-index`, which spans accounts and creates an index the request role does not
    own the table for. They are run by hand, from outside any request, so there is no tenant to
    scope them to.
-3. **The follow-up cron** — it sweeps quotes across every account.
+3. **Scheduled jobs** — `cmd/scheduled-job` sweeps across every account, because "every quote with
+   no movement" belongs to no single corralón. It holds one owner connection for the run rather
+   than working through the pool (`DB.AdminConn`), since the advisory lock keeping two runs apart
+   lives on the connection that took it. See [scheduled-jobs.md](scheduled-jobs.md).
 4. **Pre-auth lookups** — login by email (the account is not known yet) and resolving
    `quote_send.public_token` for the sessionless webapp. The correct pattern for the token:
    the owner resolves token → `account_id`, and the rest of the request continues on the

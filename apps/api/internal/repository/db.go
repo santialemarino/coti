@@ -132,6 +132,20 @@ func (db *DB) AdminTx(ctx context.Context) (pgx.Tx, error) {
 	return db.admin.Begin(ctx)
 }
 
+// AdminConn holds one owner connection for the life of fn.
+//
+// A scheduled job needs this rather than the pool: an advisory lock lives on the connection that
+// took it, so taken through a pool it would be held by whichever connection served that one call
+// and released — or not — by whichever served the next.
+func (db *DB) AdminConn(ctx context.Context, fn func(Querier) error) error {
+	conn, err := db.admin.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Release()
+	return fn(conn)
+}
+
 func openPool(ctx context.Context, cfg config.DatabaseConfig, url string) (*pgxpool.Pool, error) {
 	poolCfg, err := pgxpool.ParseConfig(url)
 	if err != nil {
