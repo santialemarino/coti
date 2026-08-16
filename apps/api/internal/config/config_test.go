@@ -46,6 +46,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT",
 		"CATALOG_IMPORT_MAX_BYTES",
 		"PRICE_IMPORT_MAX_BYTES",
+		"JOB_TIMEOUT_MINUTES",
 	}
 	for _, k := range known {
 		t.Setenv(k, "")
@@ -163,6 +164,9 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Catalog.MatchAmbiguityMarginPercent < 1 {
 		t.Errorf("Catalog.MatchAmbiguityMarginPercent = %d, want a margin by default",
 			cfg.Catalog.MatchAmbiguityMarginPercent)
+	}
+	if cfg.Job.Timeout != 30*time.Minute {
+		t.Errorf("Job.Timeout = %v, want 30m", cfg.Job.Timeout)
 	}
 	if cfg.IsProduction() {
 		t.Error("IsProduction() = true, want false")
@@ -308,6 +312,13 @@ func TestLoad_Invalid(t *testing.T) {
 			name:    "password reset ttl of zero",
 			mutate:  func(e map[string]string) { e["AUTH_PASSWORD_RESET_TTL_MINUTES"] = "0" },
 			wantSub: "AUTH_PASSWORD_RESET_TTL_MINUTES must be greater than zero",
+		},
+		{
+			// A run bounded at nothing holds its lock until the process is killed, and every
+			// later firing then does nothing while it waits.
+			name:    "a scheduled run bounded at nothing",
+			mutate:  func(e map[string]string) { e["JOB_TIMEOUT_MINUTES"] = "0" },
+			wantSub: "JOB_TIMEOUT_MINUTES must be greater than zero",
 		},
 		{
 			name:    "catalog import size of zero",

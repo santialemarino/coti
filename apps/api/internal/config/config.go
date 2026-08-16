@@ -62,6 +62,7 @@ type Config struct {
 	Catalog       CatalogConfig
 	RateLimit     RateLimitConfig
 	Branch        BranchConfig
+	Job           JobConfig
 	CatalogImport SpreadsheetImportConfig
 	PriceImport   SpreadsheetImportConfig
 }
@@ -355,6 +356,14 @@ type BranchConfig struct {
 	DefaultExpiryDays int
 }
 
+// JobConfig holds the settings for the scheduled-job runner. How often a job runs is not here: it
+// is the deployment platform's schedule, one component per job.
+type JobConfig struct {
+	// Timeout bounds one run. Without it a job wedged on a slow query holds its lock until the
+	// process is killed, and every later firing does nothing while it waits.
+	Timeout time.Duration
+}
+
 // CatalogConfig holds the catalog listing limits and the knobs behind the hybrid search. The
 // listing cap is what stops a client from asking for the whole catalog in one response.
 type CatalogConfig struct {
@@ -498,6 +507,9 @@ func Load() (*Config, error) {
 			TrustedProxyHops: getInt("RATE_LIMIT_TRUSTED_PROXY_HOPS", 0, &problems),
 			TrustedProxies:   getCIDRs("RATE_LIMIT_TRUSTED_PROXY_CIDRS", &problems),
 		},
+		Job: JobConfig{
+			Timeout: getDuration("JOB_TIMEOUT_MINUTES", 30*time.Minute, &problems),
+		},
 		Branch: BranchConfig{
 			DefaultExpiryDays: getInt("BRANCH_DEFAULT_EXPIRY_DAYS", 7, &problems),
 		},
@@ -622,6 +634,12 @@ func Load() (*Config, error) {
 				f.key, f.floor, f.value))
 		}
 	}
+	// A run bounded at nothing would hold its lock until the process is killed, and every later
+	// firing would do nothing while it waited.
+	if cfg.Job.Timeout <= 0 {
+		problems = append(problems, "JOB_TIMEOUT_MINUTES must be greater than zero")
+	}
+
 	catalogPercents := []struct {
 		key   string
 		value int
