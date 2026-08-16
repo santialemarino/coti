@@ -267,6 +267,7 @@ func TestCatalogMatchService_ScoresAnUnusableDistanceAsNoEvidence(t *testing.T) 
 	}{
 		{"a zero-length vector", math.NaN()},
 		{"an infinite distance", math.Inf(1)},
+		{"a negative infinite distance", math.Inf(-1)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := matchOne(t, []domain.CatalogCandidate{semantic("Vector roto", tc.distance)})
@@ -291,16 +292,14 @@ func TestCatalogMatchService_ScoresAnUnusableRunnerUpAsNoEvidence(t *testing.T) 
 func TestCatalogMatchService_FollowsTheConfiguredThreshold(t *testing.T) {
 	candidates := []domain.CatalogCandidate{semantic("Arena fina", 0.55)}
 
-	got := matchOneWith(t, testMatchConfig(), candidates)
-	if got.MatchStatus != domain.ItemMatchStatusNoMatch {
-		t.Fatalf("match status at the default floor = %q, want NO_MATCH", got.MatchStatus)
-	}
+	// Same candidate and so the same score in both runs: only the verdict moves.
+	strict := matchOneWith(t, testMatchConfig(), candidates)
+	wantDecision(t, strict, domain.ItemMatchStatusNoMatch, "0.45", nil)
 
 	lowered := testMatchConfig()
 	lowered.MatchMinConfidencePercent = 40
-	if got := matchOneWith(t, lowered, candidates); got.MatchStatus != domain.ItemMatchStatusMatched {
-		t.Errorf("match status at a floor of 40%% = %q, want MATCHED", got.MatchStatus)
-	}
+	relaxed := matchOneWith(t, lowered, candidates)
+	wantDecision(t, relaxed, domain.ItemMatchStatusMatched, "0.45", &candidates[0].ProductID)
 }
 
 // Every line is resolved in one search, because the search embeds the whole set in a single
@@ -376,6 +375,11 @@ func TestCatalogMatchService_RefusesAMisalignedSearchAnswer(t *testing.T) {
 	_, err := service.Match(context.Background(), testSearchTenant(), []string{"cemento", "cal"})
 	if err == nil {
 		t.Fatal("Match() = nil error, want the short answer refused")
+	}
+	// Not an outage: the search answered, the answer was unusable. A fault of ours surfacing as a
+	// provider outage would invite a retry that cannot succeed.
+	if errors.Is(err, domain.ErrAIUnavailable) {
+		t.Errorf("Match() = %v, want a fault of ours rather than a provider outage", err)
 	}
 }
 

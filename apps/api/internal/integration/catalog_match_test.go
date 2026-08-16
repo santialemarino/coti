@@ -125,6 +125,14 @@ func (e *env) synonym(t *testing.T, accountID, productID uuid.UUID, term string)
 	}
 }
 
+func nameOf(candidates []domain.CatalogCandidate) []string {
+	names := make([]string, len(candidates))
+	for i, c := range candidates {
+		names[i] = c.CanonicalName
+	}
+	return names
+}
+
 func (e *env) matchOne(
 	t *testing.T, cfg config.CatalogConfig, accountID, branchID uuid.UUID, text string,
 ) domain.LineMatch {
@@ -243,6 +251,11 @@ func TestCatalogMatch_FlagsALineTheBranchCannotServeNoMatch(t *testing.T) {
 	}
 	if !got.Confidence.IsZero() {
 		t.Errorf("confidence = %s, want zero: nothing was offered", got.Confidence)
+	}
+	// The branch filter runs in the search's SQL, so the line is offered nothing at all rather
+	// than offered the cement and then talked out of it.
+	if len(got.Candidates) != 0 {
+		t.Errorf("candidates = %v, want none reaching the service", nameOf(got.Candidates))
 	}
 }
 
