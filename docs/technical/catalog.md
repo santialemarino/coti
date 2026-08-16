@@ -233,6 +233,64 @@ them within the ceiling.
 The search returns candidates and their evidence, and decides nothing: which of them counts as a
 match, which line is `AMBIGUOUS`, and which is flagged `NO_MATCH` belongs to the matching service.
 
+## Matching
+
+Matching turns the candidates a search offered into one decision per RFQ line: which product, how
+confident, and whether the seller has to look. It resolves every line of a request in a single
+search, which is what keeps the whole set to one embedding call and one transaction.
+
+### The fused score is a ranking, not a confidence
+
+Reciprocal rank fusion answers "which candidate first", and its figure maxes at
+`2 / (CATALOG_SEARCH_RRF_K + 1)` — about `0.033` at the default. Persisting it would put every
+line under any threshold worth setting. Confidence is derived instead from figures that mean
+something on their own scale:
+
+- **Cosine similarity**, `1 - distance`, clamped to `0..1`. A candidate the vector half never
+  scored — a synonym hit on a product carrying no embedding — has no similarity to read and takes
+  `CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT` instead. It has to sit above the floor, or a trade
+  term loaded as a synonym could never resolve to its product.
+- **The margin** over the runner-up, on the same scale. This is what separates a decided line from
+  a choice: two cements at `0.91` and `0.90` are not a confident match.
+
+The leading candidate is the one the **search** ranked first, never a re-ranking. Matching decides
+status; ranking is the search's, and the margin can therefore come out **negative** when the two
+halves disagree about which product a line is — which is an ambiguous line, and needs no special
+case.
+
+Every figure is carried as a decimal and **rounded to four decimals before it is compared**, not
+on the way to the database. `quote_item.confidence_score` is `NUMERIC(5,4)`, so the persisted
+number is then exactly the one the decision was taken on.
+
+### The decision
+
+| Situation                                                                        | `match_status` | `product_id` | `confidence_score` |
+| -------------------------------------------------------------------------------- | -------------- | ------------ | ------------------ |
+| No candidate at all                                                              | `NO_MATCH`     | NULL         | `0.0000`           |
+| Leader below `CATALOG_MATCH_MIN_CONFIDENCE_PERCENT`                              | `NO_MATCH`     | NULL         | the leader's       |
+| Above the floor, margin at or above the ambiguity margin (or a single candidate) | `MATCHED`      | the leader   | the leader's       |
+| Above the floor, margin below it                                                 | `AMBIGUOUS`    | the leader   | the leader's       |
+
+Two parts of that are deliberate. **A rejected line keeps its best candidate's score**, because
+`0.55` and `0.00` are different problems for whoever reviews the unmatched items. And **an
+`AMBIGUOUS` line keeps the leading product**, so the seller confirms or replaces one proposal
+rather than searching the catalog from scratch; `match_status` is what says it is unconfirmed. Only
+`NO_MATCH` clears the product, which is the shape the domain asks for: **a line nothing matched is
+flagged and stays in the quote, never dropped.**
+
+Every line comes back, in the order it went in, and the candidates ride along with it — the seller
+picks another from them, and the unmatched-items report shows what was considered.
+
+### Calibration
+
+The three settings are the whole knob, and they exist to be moved against a real catalog rather
+than guessed here. If matching disappoints, the place to look is `product_synonym` and the relative
+weight of the two halves — **not** the embedding model.
+
+`CATALOG_SEARCH_TOP_K` is bound to this: below two there is no runner-up, so every line above the
+floor would read as decided and `AMBIGUOUS` could never happen. Configuration refuses it at boot
+rather than letting the quality drop silently.
+
 ## Embedding the catalog
 
 Vectors are written by a command, never by a request:
@@ -271,16 +329,20 @@ per scan by default, which recalls too little of the catalog to survive the bran
 
 ## Configuration
 
-| Variable                           | Default | What for                                           |
-| ---------------------------------- | ------- | -------------------------------------------------- |
-| `CATALOG_DEFAULT_PAGE_SIZE`        | 50      | Page size when `limit` is omitted                  |
-| `CATALOG_MAX_PAGE_SIZE`            | 200     | Cap on `limit`, so nobody asks for everything      |
-| `CATALOG_IMPORT_MAX_BYTES`         | 5242880 | Maximum catalog spreadsheet upload size            |
-| `CATALOG_SEARCH_TOP_K`             | 10      | Candidates per line when the caller names no limit |
-| `CATALOG_SEARCH_OVER_FETCH_FACTOR` | 4       | Multiplier on the rows each half is asked for      |
-| `CATALOG_SEARCH_IVFFLAT_PROBES`    | 10      | Index partitions one approximate scan visits       |
-| `CATALOG_SEARCH_RRF_K`             | 60      | Constant in the rank fusion merging the two halves |
-| `CATALOG_EMBEDDING_BATCH_SIZE`     | 200     | Products the backfill reads and writes per round   |
+| Variable                                   | Default | What for                                                       |
+| ------------------------------------------ | ------- | -------------------------------------------------------------- |
+| `CATALOG_DEFAULT_PAGE_SIZE`                | 50      | Page size when `limit` is omitted                              |
+| `CATALOG_MAX_PAGE_SIZE`                    | 200     | Cap on `limit`, so nobody asks for everything                  |
+| `CATALOG_IMPORT_MAX_BYTES`                 | 5242880 | Maximum catalog spreadsheet upload size                        |
+| `CATALOG_SEARCH_TOP_K`                     | 10      | Candidates per line when the caller names no limit; at least 2 |
+| `CATALOG_SEARCH_OVER_FETCH_FACTOR`         | 4       | Multiplier on the rows each half is asked for                  |
+| `CATALOG_SEARCH_MAX_FETCH`                 | 2000    | Widest one round of the widening may ask for                   |
+| `CATALOG_SEARCH_IVFFLAT_PROBES`            | 10      | Index partitions one approximate scan visits                   |
+| `CATALOG_SEARCH_RRF_K`                     | 60      | Constant in the rank fusion merging the two halves             |
+| `CATALOG_EMBEDDING_BATCH_SIZE`             | 200     | Products the backfill reads and writes per round               |
+| `CATALOG_MATCH_MIN_CONFIDENCE_PERCENT`     | 60      | Similarity below which a line is flagged `NO_MATCH`            |
+| `CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT`   | 5       | Lead over the runner-up that makes a line `MATCHED`            |
+| `CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT` | 75      | Worth of a candidate only the lexical half scored              |
 
 ## API specification
 
