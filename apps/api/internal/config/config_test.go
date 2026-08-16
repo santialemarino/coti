@@ -42,6 +42,8 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"CATALOG_SEARCH_TOP_K", "CATALOG_SEARCH_OVER_FETCH_FACTOR",
 		"CATALOG_SEARCH_MAX_FETCH", "CATALOG_SEARCH_IVFFLAT_PROBES", "CATALOG_SEARCH_RRF_K",
 		"CATALOG_EMBEDDING_BATCH_SIZE",
+		"CATALOG_MATCH_MIN_CONFIDENCE_PERCENT", "CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT",
+		"CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT",
 		"CATALOG_IMPORT_MAX_BYTES",
 		"PRICE_IMPORT_MAX_BYTES",
 	}
@@ -135,6 +137,17 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.Catalog.EmbeddingBatchSize != 200 {
 		t.Errorf("Catalog.EmbeddingBatchSize = %d, want 200", cfg.Catalog.EmbeddingBatchSize)
+	}
+	// A trade term loaded as a synonym has to resolve to its product out of the box, and the
+	// lexical half is the only half that reaches an unembedded row.
+	if cfg.Catalog.MatchLexicalConfidencePercent < cfg.Catalog.MatchMinConfidencePercent {
+		t.Errorf("Catalog.MatchLexicalConfidencePercent = %d, want at least the floor of %d",
+			cfg.Catalog.MatchLexicalConfidencePercent, cfg.Catalog.MatchMinConfidencePercent)
+	}
+	// At zero every leading candidate is decided, whatever sits behind it.
+	if cfg.Catalog.MatchAmbiguityMarginPercent < 1 {
+		t.Errorf("Catalog.MatchAmbiguityMarginPercent = %d, want a margin by default",
+			cfg.Catalog.MatchAmbiguityMarginPercent)
 	}
 	if cfg.IsProduction() {
 		t.Error("IsProduction() = true, want false")
@@ -289,7 +302,14 @@ func TestLoad_Invalid(t *testing.T) {
 		{
 			name:    "no search results asked for",
 			mutate:  func(e map[string]string) { e["CATALOG_SEARCH_TOP_K"] = "0" },
-			wantSub: "CATALOG_SEARCH_TOP_K must be at least 1",
+			wantSub: "CATALOG_SEARCH_TOP_K must be at least 2",
+		},
+		{
+			// One candidate never has a runner-up, so matching could never call a line
+			// ambiguous and every line above the floor would read as decided.
+			name:    "a single search result, leaving matching no runner-up",
+			mutate:  func(e map[string]string) { e["CATALOG_SEARCH_TOP_K"] = "1" },
+			wantSub: "CATALOG_SEARCH_TOP_K must be at least 2",
 		},
 		{
 			// Below one the search would ask the database for fewer rows than the caller wants.
@@ -311,6 +331,25 @@ func TestLoad_Invalid(t *testing.T) {
 			name:    "an embedding batch of nothing",
 			mutate:  func(e map[string]string) { e["CATALOG_EMBEDDING_BATCH_SIZE"] = "0" },
 			wantSub: "CATALOG_EMBEDDING_BATCH_SIZE must be at least 1",
+		},
+		{
+			// The similarity these are compared against never exceeds 1, so a threshold past
+			// 100 would flag every line NO_MATCH with nothing in the logs to say why.
+			name:    "a confidence floor no candidate could reach",
+			mutate:  func(e map[string]string) { e["CATALOG_MATCH_MIN_CONFIDENCE_PERCENT"] = "101" },
+			wantSub: "CATALOG_MATCH_MIN_CONFIDENCE_PERCENT must be between 0 and 100",
+		},
+		{
+			name:    "a negative ambiguity margin",
+			mutate:  func(e map[string]string) { e["CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT"] = "-1" },
+			wantSub: "CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT must be between 0 and 100",
+		},
+		{
+			name: "a lexical confidence off the scale",
+			mutate: func(e map[string]string) {
+				e["CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT"] = "140"
+			},
+			wantSub: "CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT must be between 0 and 100",
 		},
 	}
 
