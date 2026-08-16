@@ -26,8 +26,8 @@ import (
 // 1-alignment from it, so its similarity is exactly the alignment; a product on any other axis
 // is orthogonal to the line, which is a distance of 1 and a similarity of zero.
 
-// unrelatedAxis is where a line nothing was seeded for lands.
-const unrelatedAxis = 0
+// defaultAxis is where a line lands when the test staged no axis for it.
+const defaultAxis = 0
 
 // axisVector builds a unit vector carrying alignment on one axis and the remainder on the next.
 func axisVector(axis int, alignment float64) pgvector.Vector {
@@ -46,7 +46,7 @@ func (e axisEmbedder) Embed(_ context.Context, texts []string) ([]pgvector.Vecto
 	for i, text := range texts {
 		axis, ok := e.axes[text]
 		if !ok {
-			axis = unrelatedAxis
+			axis = defaultAxis
 		}
 		vectors[i] = axisVector(axis, 1)
 	}
@@ -113,7 +113,7 @@ func (e *env) embedOn(t *testing.T, productID uuid.UUID, axis int, alignment flo
 
 func (e *env) embed(t *testing.T, productID uuid.UUID, alignment float64) {
 	t.Helper()
-	e.embedOn(t, productID, unrelatedAxis, alignment)
+	e.embedOn(t, productID, defaultAxis, alignment)
 }
 
 func (e *env) synonym(t *testing.T, accountID, productID uuid.UUID, term string) {
