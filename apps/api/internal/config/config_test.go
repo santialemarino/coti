@@ -138,6 +138,21 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Catalog.EmbeddingBatchSize != 200 {
 		t.Errorf("Catalog.EmbeddingBatchSize = %d, want 200", cfg.Catalog.EmbeddingBatchSize)
 	}
+	// Pinned exactly, because .env.example and the catalog documentation both quote these three
+	// and nothing else would notice them drifting apart.
+	for _, tc := range []struct {
+		name string
+		got  int
+		want int
+	}{
+		{"Catalog.MatchMinConfidencePercent", cfg.Catalog.MatchMinConfidencePercent, 60},
+		{"Catalog.MatchAmbiguityMarginPercent", cfg.Catalog.MatchAmbiguityMarginPercent, 5},
+		{"Catalog.MatchLexicalConfidencePercent", cfg.Catalog.MatchLexicalConfidencePercent, 75},
+	} {
+		if tc.got != tc.want {
+			t.Errorf("%s = %d, want %d", tc.name, tc.got, tc.want)
+		}
+	}
 	// A trade term loaded as a synonym has to resolve to its product out of the box, and the
 	// lexical half is the only half that reaches an unembedded row.
 	if cfg.Catalog.MatchLexicalConfidencePercent < cfg.Catalog.MatchMinConfidencePercent {
