@@ -9,6 +9,13 @@
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
+-- The lexical half of the catalog search reads this configuration. Informal RFQ text drops
+-- accents constantly, so "hormigon" has to reach "hormigón"; the stock spanish one keeps them.
+CREATE TEXT SEARCH CONFIGURATION spanish_unaccent (COPY = spanish);
+ALTER TEXT SEARCH CONFIGURATION spanish_unaccent
+  ALTER MAPPING FOR hword, hword_part, word WITH unaccent, spanish_stem;
 
 -- =============================================================================
 -- ENUMS
@@ -65,6 +72,8 @@ CREATE TYPE send_tracking_status AS ENUM ('PENDING', 'SENT', 'DELIVERED', 'VIEWE
 
 CREATE TYPE handler_seller_decision AS ENUM ('APPROVED_AS_IS', 'EDITED', 'REJECTED', 'MANUAL_OVERRIDE');
 CREATE TYPE notification_status AS ENUM ('PENDING', 'SENT', 'FAILED');
+
+CREATE TYPE job_run_status AS ENUM ('RUNNING', 'SUCCEEDED', 'FAILED');
 
 -- What a single-use link entitles its bearer to do without a session.
 CREATE TYPE auth_token_type AS ENUM ('PASSWORD_RESET', 'EMAIL_VERIFICATION');
@@ -182,6 +191,24 @@ CREATE TABLE auth_token (
 -- CATALOG
 -- =============================================================================
 
+CREATE TABLE product_family (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       VARCHAR(255) NOT NULL UNIQUE,
+  sort_order INTEGER NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE product_subgroup (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  family_id  UUID NOT NULL,
+  name       VARCHAR(255) NOT NULL,
+  sort_order INTEGER NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_product_subgroup_family_name UNIQUE (family_id, name),
+  CONSTRAINT uq_product_subgroup_family_order UNIQUE (family_id, sort_order),
+  CONSTRAINT uq_product_subgroup_id_family UNIQUE (id, family_id)
+);
+
 -- The catalog belongs to the account: one product row, one embedding, one set of synonyms
 -- and alternatives per account. Which branch carries it and with how much stock lives in
 -- branch_product; the price in product_price.
@@ -192,8 +219,16 @@ CREATE TABLE product (
   canonical_name VARCHAR(255) NOT NULL,
   description    VARCHAR(512),
   unit           VARCHAR(64),
-  category       VARCHAR(255),
+  family_id      UUID,
+  subgroup_id    UUID,
   embedding      VECTOR(1536),
+  -- Older than updated_at means the row was edited after it was embedded, which is how the
+  -- backfill knows what to re-embed without re-embedding the whole catalog.
+  embedding_updated_at TIMESTAMPTZ,
+  search_document TSVECTOR
+    GENERATED ALWAYS AS (
+      to_tsvector('spanish_unaccent'::regconfig, canonical_name || ' ' || coalesce(description, ''))
+    ) STORED,
   is_active      BOOLEAN NOT NULL DEFAULT TRUE,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -218,6 +253,8 @@ CREATE TABLE product_synonym (
   product_id UUID NOT NULL,
   term       VARCHAR(255) NOT NULL,
   source     product_synonym_source NOT NULL DEFAULT 'MANUAL',
+  search_document TSVECTOR
+    GENERATED ALWAYS AS (to_tsvector('spanish_unaccent'::regconfig, term)) STORED,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -230,7 +267,6 @@ CREATE TABLE product_price (
   user_id    UUID,
   price      NUMERIC(14,2) NOT NULL,
   currency   VARCHAR(8) NOT NULL DEFAULT 'ARS',
-  conditions VARCHAR(255),
   min_price  NUMERIC(14,2),
   valid_from TIMESTAMPTZ NOT NULL,
   valid_to   TIMESTAMPTZ,
@@ -570,10 +606,13 @@ CREATE TABLE promotion_condition_item (
   account_id   UUID NOT NULL,
   promotion_id UUID NOT NULL,
   product_id   UUID,
-  category     VARCHAR(255),
+  family_id    UUID,
+  subgroup_id  UUID,
   min_quantity NUMERIC(14,2),
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT ck_pci_target CHECK (product_id IS NOT NULL OR category IS NOT NULL)
+  CONSTRAINT ck_pci_target CHECK (
+    product_id IS NOT NULL OR family_id IS NOT NULL OR subgroup_id IS NOT NULL
+  )
 );
 
 CREATE TABLE promotion_tier (
@@ -649,6 +688,24 @@ CREATE TABLE notification (
 );
 
 -- =============================================================================
+-- SCHEDULED JOBS
+-- =============================================================================
+
+-- What each scheduled run swept and changed. No account_id: a job runs as the owner across every
+-- account, so one run is one row for all of them, and a per-account column would be a list.
+CREATE TABLE job_run (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_name    VARCHAR(64) NOT NULL,
+  status      job_run_status NOT NULL DEFAULT 'RUNNING',
+  scanned     INTEGER NOT NULL DEFAULT 0,
+  changed     INTEGER NOT NULL DEFAULT 0,
+  error       TEXT,
+  started_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  finished_at TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- =============================================================================
 -- FOREIGN KEYS
 -- (at the end, to resolve the circular quote <-> quote_version dependency)
 -- =============================================================================
@@ -663,7 +720,10 @@ ALTER TABLE refresh_token ADD CONSTRAINT fk_refresh_token_user FOREIGN KEY (user
 ALTER TABLE auth_token ADD CONSTRAINT fk_auth_token_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE auth_token ADD CONSTRAINT fk_auth_token_user FOREIGN KEY (user_id) REFERENCES app_user(id);
 
+ALTER TABLE product_subgroup ADD CONSTRAINT fk_product_subgroup_family FOREIGN KEY (family_id) REFERENCES product_family(id);
 ALTER TABLE product ADD CONSTRAINT fk_product_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE product ADD CONSTRAINT fk_product_family FOREIGN KEY (family_id) REFERENCES product_family(id);
+ALTER TABLE product ADD CONSTRAINT fk_product_subgroup_family FOREIGN KEY (subgroup_id, family_id) REFERENCES product_subgroup(id, family_id);
 ALTER TABLE branch_product ADD CONSTRAINT fk_branch_product_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE branch_product ADD CONSTRAINT fk_branch_product_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
 ALTER TABLE branch_product ADD CONSTRAINT fk_branch_product_product FOREIGN KEY (product_id) REFERENCES product(id);
@@ -744,6 +804,8 @@ ALTER TABLE promotion ADD CONSTRAINT fk_promotion_branch FOREIGN KEY (branch_id)
 ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_promotion FOREIGN KEY (promotion_id) REFERENCES promotion(id);
 ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_product FOREIGN KEY (product_id) REFERENCES product(id);
+ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_family FOREIGN KEY (family_id) REFERENCES product_family(id);
+ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_subgroup FOREIGN KEY (subgroup_id) REFERENCES product_subgroup(id);
 ALTER TABLE promotion_tier ADD CONSTRAINT fk_promotion_tier_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE promotion_tier ADD CONSTRAINT fk_promotion_tier_promotion FOREIGN KEY (promotion_id) REFERENCES promotion(id);
 ALTER TABLE quote_discount ADD CONSTRAINT fk_quote_discount_account FOREIGN KEY (account_id) REFERENCES account(id);
@@ -766,8 +828,9 @@ ALTER TABLE notification ADD CONSTRAINT fk_notification_quote FOREIGN KEY (quote
 -- INDEXES
 -- =============================================================================
 
--- The vector index is created AFTER the catalog loads: built on an empty table it is
--- suboptimal. Commented out on purpose.
+-- The vector index is created AFTER the catalog loads and is embedded: built on an empty table
+-- it is degenerate. Commented out on purpose — `pnpm db:vector-index` creates it, sizing lists
+-- to the number of embedded rows.
 -- CREATE INDEX idx_product_embedding ON product USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 CREATE INDEX idx_branch_account ON branch(account_id);
@@ -786,6 +849,9 @@ CREATE INDEX idx_product_account ON product(account_id);
 -- Partial because code is nullable.
 CREATE UNIQUE INDEX uq_product_account_code ON product (account_id, code) WHERE code IS NOT NULL;
 CREATE INDEX idx_branch_product_branch ON branch_product(branch_id) WHERE is_active = TRUE;
+-- The lexical half of the hybrid search: one document per product, one per synonym term.
+CREATE INDEX idx_product_search_document ON product USING GIN (search_document);
+CREATE INDEX idx_product_synonym_search_document ON product_synonym USING GIN (search_document);
 CREATE INDEX idx_product_synonym_product ON product_synonym(product_id);
 -- One term per product, case-insensitively: "Portland" and "portland" are the same term to
 -- a matcher. It is also the ON CONFLICT target the insert names.
@@ -803,6 +869,9 @@ CREATE INDEX idx_quote_expires ON quote(expires_at) WHERE expires_at IS NOT NULL
 CREATE INDEX idx_quote_needs_followup ON quote(needs_followup) WHERE needs_followup = TRUE;
 CREATE INDEX idx_quote_version_quote ON quote_version(quote_id);
 CREATE INDEX idx_quote_item_version ON quote_item(version_id);
+CREATE INDEX idx_product_family_id ON product(family_id);
+CREATE INDEX idx_product_subgroup_id ON product(subgroup_id);
+CREATE INDEX idx_product_subgroup_family_id ON product_subgroup(family_id);
 CREATE INDEX idx_quote_discount_version ON quote_discount(quote_version_id);
 CREATE INDEX idx_promotion_account ON promotion(account_id) WHERE is_active = TRUE;
 CREATE INDEX idx_quote_message_quote ON quote_message(quote_id, received_at);
@@ -824,6 +893,10 @@ CREATE UNIQUE INDEX uq_product_price_open_period
 CREATE UNIQUE INDEX uq_message_batch_open ON message_batch(quote_id) WHERE status = 'OPEN';
 CREATE UNIQUE INDEX uq_message_batch_processing ON message_batch(quote_id) WHERE status = 'PROCESSING';
 
+-- "Which run changed this row?" is answered by the row's own timestamp falling inside a run's
+-- window, so the history is read newest-first per job.
+CREATE INDEX idx_job_run_name_started ON job_run(job_name, started_at DESC);
+
 -- =============================================================================
 -- updated_at TRIGGERS (only tables that mutate in place)
 -- =============================================================================
@@ -831,7 +904,19 @@ CREATE UNIQUE INDEX uq_message_batch_processing ON message_batch(quote_id) WHERE
 CREATE TRIGGER trg_account_updated        BEFORE UPDATE ON account        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_branch_updated         BEFORE UPDATE ON branch         FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_app_user_updated       BEFORE UPDATE ON app_user       FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER trg_product_updated        BEFORE UPDATE ON product        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+-- product is the exception: updated_at says a person changed the row, and it is what
+-- embedding_updated_at is compared against, so a vector written by the backfill must not bump it.
+CREATE TRIGGER trg_product_updated        BEFORE UPDATE ON product        FOR EACH ROW
+  WHEN (
+    OLD.code IS DISTINCT FROM NEW.code
+    OR OLD.canonical_name IS DISTINCT FROM NEW.canonical_name
+    OR OLD.description IS DISTINCT FROM NEW.description
+    OR OLD.unit IS DISTINCT FROM NEW.unit
+    OR OLD.family_id IS DISTINCT FROM NEW.family_id
+    OR OLD.subgroup_id IS DISTINCT FROM NEW.subgroup_id
+    OR OLD.is_active IS DISTINCT FROM NEW.is_active
+  )
+  EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_branch_product_updated BEFORE UPDATE ON branch_product FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_combo_updated          BEFORE UPDATE ON combo          FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_branch_combo_updated   BEFORE UPDATE ON branch_combo   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -873,6 +958,12 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO coti_app;
 GRANT EXECUTE ON FUNCTION app_current_account_id() TO coti_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO coti_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO coti_app;
+
+REVOKE INSERT, UPDATE, DELETE ON product_family, product_subgroup FROM coti_app;
+
+-- The grant above reaches every table, and job_run is an audit trail no request has any reason to
+-- read, let alone rewrite. Only the owner the scheduled jobs run as touches it.
+REVOKE ALL ON job_run FROM coti_app;
 
 -- account matches on its own id; everything else on its account_id column.
 ALTER TABLE account ENABLE ROW LEVEL SECURITY;

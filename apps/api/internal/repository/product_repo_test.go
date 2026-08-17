@@ -26,12 +26,21 @@ func seedProduct(t *testing.T, db *DB, accountID uuid.UUID, name string) uuid.UU
 		t.Fatalf("seed product: %v", err)
 	}
 	t.Cleanup(func() {
-		ctx := context.Background()
-		_, _ = db.CrossAccount().Exec(ctx,
+		mustCleanup(t, db.CrossAccount(),
 			`DELETE FROM product_alternative WHERE base_product_id = $1 OR alternative_product_id = $1`, id)
-		_, _ = db.CrossAccount().Exec(ctx, `DELETE FROM product_synonym WHERE product_id = $1`, id)
-		_, _ = db.CrossAccount().Exec(ctx, `DELETE FROM product WHERE id = $1`, id)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM product_synonym WHERE product_id = $1`, id)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM product WHERE id = $1`, id)
 	})
+	return id
+}
+
+func seededProductFamilyID(t *testing.T, db *DB) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	if err := db.CrossAccount().QueryRow(context.Background(),
+		`SELECT id FROM product_family ORDER BY sort_order LIMIT 1`).Scan(&id); err != nil {
+		t.Fatalf("read seeded product family: %v", err)
+	}
 	return id
 }
 
@@ -150,9 +159,8 @@ func TestProductRepository_ForeignKeysDoNotEnforceTheAccountBoundary(t *testing.
 			"service reads the product inside the tenant scope first", err)
 	}
 
-	// Cleanup: the row belongs to account B and hangs off account A's product.
-	_, _ = db.CrossAccount().Exec(ctx,
-		`DELETE FROM product_synonym WHERE account_id = $1 AND product_id = $2`, accountB, productA)
+	// No teardown for the row account B just wrote: the product's own removes its synonyms
+	// whatever account they belong to, and an inline delete would be skipped by any t.Fatal above.
 }
 
 func TestProductRepository_CreateRejectsADuplicateCode(t *testing.T) {
@@ -161,11 +169,12 @@ func TestProductRepository_CreateRejectsADuplicateCode(t *testing.T) {
 	accountA := seedAccount(t, db, "Corralon A")
 	repo := NewProductRepository()
 	code := "CEM-" + uuid.NewString()[:8]
+	familyID := seededProductFamilyID(t, db)
 
 	var created uuid.UUID
 	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountA}, func(q Querier) error {
 		p, createErr := repo.Create(ctx, q, accountA, domain.NewProduct{
-			Code: &code, CanonicalName: "Cemento Portland 50kg",
+			Code: &code, CanonicalName: "Cemento Portland 50kg", FamilyID: familyID,
 		})
 		if createErr != nil {
 			return createErr
@@ -176,12 +185,12 @@ func TestProductRepository_CreateRejectsADuplicateCode(t *testing.T) {
 		t.Fatalf("Create() = %v, want no error", err)
 	}
 	t.Cleanup(func() {
-		_, _ = db.CrossAccount().Exec(context.Background(), `DELETE FROM product WHERE id = $1`, created)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM product WHERE id = $1`, created)
 	})
 
 	err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountA}, func(q Querier) error {
 		_, createErr := repo.Create(ctx, q, accountA, domain.NewProduct{
-			Code: &code, CanonicalName: "Cemento Portland 50kg (bis)",
+			Code: &code, CanonicalName: "Cemento Portland 50kg (bis)", FamilyID: familyID,
 		})
 		return createErr
 	})
@@ -198,12 +207,13 @@ func TestProductRepository_CreateAllowsTheSameCodeInAnotherAccount(t *testing.T)
 	accountB := seedAccount(t, db, "Corralon B")
 	repo := NewProductRepository()
 	code := "CEM-" + uuid.NewString()[:8]
+	familyID := seededProductFamilyID(t, db)
 
 	for _, accountID := range []uuid.UUID{accountA, accountB} {
 		var created uuid.UUID
 		if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID}, func(q Querier) error {
 			p, createErr := repo.Create(ctx, q, accountID, domain.NewProduct{
-				Code: &code, CanonicalName: "Cemento Portland 50kg",
+				Code: &code, CanonicalName: "Cemento Portland 50kg", FamilyID: familyID,
 			})
 			if createErr != nil {
 				return createErr
@@ -214,7 +224,7 @@ func TestProductRepository_CreateAllowsTheSameCodeInAnotherAccount(t *testing.T)
 			t.Fatalf("Create() for account %v = %v, want no error", accountID, err)
 		}
 		t.Cleanup(func() {
-			_, _ = db.CrossAccount().Exec(context.Background(), `DELETE FROM product WHERE id = $1`, created)
+			mustCleanup(t, db.CrossAccount(), `DELETE FROM product WHERE id = $1`, created)
 		})
 	}
 }

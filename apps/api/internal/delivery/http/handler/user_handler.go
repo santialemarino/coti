@@ -253,11 +253,12 @@ func (h *UserHandler) Me(c *gin.Context) {
 		branchIDs = []uuid.UUID{}
 	}
 	c.JSON(http.StatusOK, dto.MeResponse{
-		ID:        user.ID,
-		Name:      user.Name,
-		Email:     user.Email,
-		Role:      string(user.Role),
-		AccountID: user.AccountID,
-		BranchIDs: branchIDs,
+		ID:            user.ID,
+		Name:          user.Name,
+		Email:         user.Email,
+		EmailVerified: user.EmailVerifiedAt != nil,
+		Role:          string(user.Role),
+		AccountID:     user.AccountID,
+		BranchIDs:     branchIDs,
 	})
 }

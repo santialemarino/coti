@@ -121,7 +121,7 @@ func (r *UserRepository) Create(
 		 RETURNING `+userColumns,
 		accountID, in.Name, in.Email, passwordHash, in.Role))
 	if isEmailTaken(err) {
-		return nil, domain.ErrConflict
+		return nil, domain.WithCode(domain.CodeEmailTaken, domain.ErrConflict)
 	}
 	return user, err
 }
@@ -131,14 +131,19 @@ func (r *UserRepository) Create(
 func (r *UserRepository) Update(
 	ctx context.Context, q Querier, accountID, id uuid.UUID, in domain.UserUpdate,
 ) (*domain.AppUser, error) {
+	// A changed address drops the confirmation: the stamp proved the OLD address was reachable
+	// and says nothing about the new one. Every SET expression reads the pre-update row, so the
+	// comparison sees the address being replaced. Compared folded, like the unique index.
 	user, err := scanUser(q.QueryRow(ctx,
 		`UPDATE app_user
-		 SET name = $3, email = $4, role = $5, is_active = COALESCE($6, is_active)
+		 SET name = $3, email = $4::text, role = $5, is_active = COALESCE($6, is_active),
+		     email_verified_at = CASE WHEN lower(email) IS DISTINCT FROM lower($4::text)
+		                              THEN NULL ELSE email_verified_at END
 		 WHERE account_id = $1 AND id = $2
 		 RETURNING `+userColumns,
 		accountID, id, in.Name, in.Email, in.Role, in.IsActive))
 	if isEmailTaken(err) {
-		return nil, domain.ErrConflict
+		return nil, domain.WithCode(domain.CodeEmailTaken, domain.ErrConflict)
 	}
 	return user, err
 }

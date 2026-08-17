@@ -37,15 +37,21 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
 - `@/config/*` → `config/*`
 - `@/hooks/*` → `hooks/*` (app-level client hooks — note: top-level `hooks/`, not `lib/hooks/`)
 - `@/lib/*` → `lib/*`
+- `@/translations/*` → `translations/*` (the message catalog)
 - `@/types/*` → `types/*` (shared TS types)
 - `@/public/*` → `public/*`
 - `@repo/ui/components`, `@repo/ui/hooks`, `@repo/ui/lib`, `@repo/ui/styles` — the shared package.
 
 ## App Router layout — backoffice (authenticated)
 
-- **`app/(auth)/`** — Route group for unauthenticated routes: login (and later
-  password reset / invitation acceptance). Its `layout.tsx` does **not** require a
-  session; it should redirect an already-authenticated user to `ROUTES.home`.
+- **`app/(auth)/`** — Route group for unauthenticated routes: login, signup, the
+  forgot/reset-password pair, email verification and `session-ended`. Its
+  `layout.tsx` does **not** require a session — bouncing an already-authenticated
+  caller to `ROUTES.home` is the gate's job, before the layout renders, and it does
+  it for the routes in `SIGNED_OUT_ONLY_ROUTES` only. `verify-email` and
+  `session-ended` deliberately opt out: signup hands the caller a session and sends
+  them to the first, and the second exists to clear the cookies of someone who still
+  looks signed in, so bouncing it would loop.
 - **`app/(protected)/`** — Route group for authenticated routes: RFQ inbox,
   quote (cotización) review, catalog (productos), sucursal-scoped surfaces,
   account/settings. Its `layout.tsx` calls `getSession()` and redirects to
@@ -55,6 +61,10 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
   locale + messages via next-intl, wraps `children` in `NextIntlClientProvider`,
   and sets `<html lang={locale}>` (always `es` today); imports `globals.css`.
   Each route group has its own `layout.tsx` for its shared wrapper.
+- **`proxy.ts`** at the app root — the gate: reachability and the one place a
+  session is renewed. This is the **Next 16 name** for what used to be
+  `middleware.ts`, and the exported function is `proxy`. Never add a
+  `middleware.ts` beside it — the build refuses both at once.
 
 ## App Router layout — webapp (public)
 
@@ -67,6 +77,24 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
   tokenized quote-review route (`quotes/[token]/`). Access control for a customer
   route is the **unguessable token in the URL**, resolved server-side — never a
   session.
+
+## `error.tsx` and `not-found.tsx` — both apps, both required
+
+Next's own fallbacks are unstyled English (_"404 · This page could not be found."_), so every app
+ships its own at the **root of `app/`**:
+
+- **`error.tsx`** is a client component taking `{ error, reset }`. Production hands a boundary only
+  a digest, so its copy is the generic one from the catalog — a failure a screen can name is worded
+  where it happened, not here.
+- **`not-found.tsx`** is a server component, so it can read whatever decides its call to action. In
+  the backoffice that is whether a token cookie exists: offering the login screen to someone already
+  signed in is a dead end, and offering the home page to someone signed out bounces them back to
+  login. Read the **cookie**, not `getSession()` — a 404 must not depend on the API being up, and
+  `getSession` rethrows anything that is not a 401/403, which would turn an unrelated outage into an
+  error screen where a plain "this page does not exist" belonged. A stale token costs one bounce off
+  the gate, which is exactly what the gate is for.
+- Both render **outside every route group's layout** — an unmatched URL is exactly what failed to
+  reach one — so they bring their own page frame rather than inheriting it.
 
 ## Where to create files (both apps, unless noted)
 
@@ -84,9 +112,19 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
 - **Reusable across BOTH apps (design system):** `packages/ui/src/components`,
   add to the package's `src/components/index.ts`, import from `@repo/ui/components`.
   See "App vs @repo/ui" below — this is the promotion rule that matters most here.
-- **Shared logic (auth, API, utils):** `lib/` — e.g. `lib/auth.ts` (backoffice
-  session helpers), `lib/utils/page.tsx`. Use for anything used by more than one
-  route or shared between server and client within the app.
+- **Shared logic (auth, API, utils):** `lib/` — e.g. `lib/utils/page.tsx`. Use for
+  anything used by more than one route or shared between server and client within
+  the app. The backoffice's session layer is deliberately **two** modules:
+  `lib/auth/session.ts` is `server-only` and asks the API who the caller is, while
+  `lib/auth/tokens.ts` holds the edge-safe primitives (cookie names, the expiry
+  read, the raw token calls) because `proxy.ts` imports them and the proxy runs on
+  the edge, where `next/headers` and `server-only` are unavailable.
+  **A cookie reader returns `undefined` or a real value, never `''`.** Next implements
+  `cookies().delete(name)` as a set to an empty string, so a read after a delete in the same
+  request still finds the entry — blank. A caller falling back with `??` takes that as a real
+  choice and looks up a value nobody set. Normalise at the reader (`?.value || undefined`), and
+  use the `cookieJar()` double from `@repo/vitest-config/cookies` in tests: a hand-rolled jar
+  that drops the key on delete is kinder than production and hides exactly this.
 - **Client hooks (app-level):** `hooks/<name>.ts` (imported `@/hooks/...`), one
   hook per file, kebab-case named after the hook. A hook needed by both apps goes
   in `packages/ui/src/hooks` + its `index.ts` (imported `@repo/ui/hooks`).
@@ -94,15 +132,22 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
   `import 'server-only'`. Called directly from server components (`page.tsx`).
   Backoffice reads use the authenticated fetch (JWT from session); webapp reads
   are unauthenticated (public / token-scoped). Can be imported by multiple pages.
+  **Wrap a read that a layout and a page both perform in React's `cache()`**, so the
+  nested server components share one round trip instead of one each — a layout cannot
+  pass props to the page under it, so re-calling is the only way to get the data there.
 - **Server mutations:** `actions.ts` colocated with the page (`'use server'`).
   Called from client components. Feature-specific — do not put in `lib/`.
 - **Cross-entity API contract types:** `lib/api/types.ts` (e.g. a shared
   `SortOrder`) — shared by multiple `lib/api/<feature>.ts` modules; entity-specific
   types stay in their feature module.
-- **Routes:** `config/routes.ts` for `ROUTES` (and in backoffice also `AUTH_ROUTES` and `LOGIN_ROUTE`).
-- **Constants:** `lib/constants/<topic>.ts` — one file per topic (e.g.
-  `rfq.ts`, `quotes.ts`, `catalog.ts`, `animations.ts`). Only for constants
-  imported by 2+ files. Single-file constants stay in the file that uses them.
+- **Routes:** `config/routes.ts` for `ROUTES`. The backoffice also exports what the
+  gate reads — `PUBLIC_ROUTES`, `SIGNED_OUT_ONLY_ROUTES`, `LOGIN_ROUTE`, `NEXT_PARAM`
+  — and `safeNextPath`, which is what makes a `?next=` round trip same-origin only.
+- **Constants:** `lib/constants/<topic>.ts` — one file per topic (the backoffice
+  has `auth.ts`, `branch.ts`, `brand.ts`, `forms.ts`, `password.ts`). Only for
+  constants imported by 2+ files; single-file constants stay in the file that uses
+  them. **Motion values are not among them** — durations and easings are tokens in
+  `@repo/ui` (`MOTION`/`EASE` from `@repo/ui/lib`), never an app constant.
 - **Shared TS types:** `types/` (imported `@/types/...`) for app-wide types that
   aren't tied to one `lib/api` module.
 - **i18n (per app):** `translations/es.json` (the message catalog — one file,
@@ -158,12 +203,26 @@ After editing a `packages/ui` component's classNames, rebuild it
 classes never reach the app and the change silently does nothing. `pnpm dev` builds
 `@repo/ui` before starting the apps, so a cold start can't race it.
 
+**Its build declares the app sources as inputs** (`packages/ui/turbo.json`), because the CSS is
+produced by scanning them. A task cached on its own package alone is wrong here: a class used for
+the first time in app code would not invalidate it, so `pnpm build` would hand back a bundle
+missing that class while reporting success. The failure is local-only — CI has no cache and always
+scans — which is exactly what makes it easy to verify a screen against a stale bundle and see a
+layout that will look different in production. If a class is missing, confirm it **positively**
+(list what the bundle does contain) before doubting anything else.
+
 ## Directory layout — apps/backoffice/
+
+Both trees below are the **target** shape: they name where a thing goes, not only what
+is built. `lib/api/` holds `account.ts`, `branches.ts`, `users.ts`, `client.ts` and
+`errors.ts` today — `rfqs.ts` and `quotes.ts` are where those reads will go.
 
 ```
 app/
 ├── layout.tsx                       # root: <html lang="es">, imports globals.css
 ├── globals.css
+├── error.tsx                        # root error boundary (client)
+├── not-found.tsx                    # branded 404, CTA follows the token cookie
 ├── page.tsx                         # entry (redirect to inbox or login)
 ├── (auth)/                          # No session; redirect out if already logged in
 │   ├── layout.tsx
@@ -191,7 +250,7 @@ app/
 ├── components/                      # app-wide (used by 2+ routes)
 ├── hooks/                           # app-level client hooks (@/hooks)
 ├── lib/
-│   ├── auth.ts                      # getSession + session helpers
+│   ├── auth/                        # session.ts (server-only) + tokens.ts (edge-safe)
 │   ├── api/                         # server-only reads (authenticated fetch)
 │   │   ├── rfqs.ts
 │   │   ├── quotes.ts
@@ -199,7 +258,8 @@ app/
 │   ├── constants/<topic>.ts
 │   └── utils/page.tsx
 ├── config/
-│   └── routes.ts                    # ROUTES, AUTH_ROUTES, LOGIN_ROUTE
+│   └── routes.ts                    # ROUTES, PUBLIC_ROUTES, LOGIN_ROUTE, safeNextPath
+├── proxy.ts                         # the gate (Next 16's name for middleware.ts)
 ├── i18n/request.ts                  # next-intl request config (locale es, AR timezone)
 ├── translations/es.json            # message catalog (namespaced by feature)
 ├── lib/i18n/                        # formatter stack (shared shape across both apps)
@@ -213,6 +273,8 @@ app/
 app/
 ├── layout.tsx                       # root: <html lang="es">, imports globals.css
 ├── globals.css
+├── error.tsx                        # root error boundary (client)
+├── not-found.tsx                    # branded 404
 ├── page.tsx                         # public landing / entry
 ├── rfq/                             # public RFQ submission
 │   ├── page.tsx
@@ -231,7 +293,7 @@ lib/
 ├── constants/<topic>.ts
 └── utils/page.tsx
 config/
-└── routes.ts                        # ROUTES (no AUTH_ROUTES/LOGIN_ROUTE — public app)
+└── routes.ts                        # ROUTES only — no gate, so nothing it would read
 i18n/request.ts                      # next-intl request config (locale es, AR timezone)
 translations/es.json                # message catalog (namespaced by feature)
 lib/i18n/                            # formatter stack (shared shape across both apps)

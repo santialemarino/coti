@@ -21,6 +21,7 @@ type userAdminRepository interface {
 	Update(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, in domain.UserUpdate) (*domain.AppUser, error)
 	Deactivate(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) error
 	BumpSessionEpoch(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) (int, error)
+	MarkEmailVerified(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) error
 }
 
 // userBranchRepository is the seller-to-branch assignment surface.
@@ -37,11 +38,11 @@ type branchExistence interface {
 // UserService owns the account's users: who exists, what role they carry, and which branches
 // they may operate on.
 type UserService struct {
-	db           tenantTxRunner
-	users        userAdminRepository
-	assignments  userBranchRepository
-	branches     branchExistence
-	passwordMinL int
+	db          tenantTxRunner
+	users       userAdminRepository
+	assignments userBranchRepository
+	branches    branchExistence
+	policy      domain.PasswordPolicy
 }
 
 // NewUserService builds a UserService.
@@ -51,7 +52,7 @@ func NewUserService(
 ) *UserService {
 	return &UserService{
 		db: db, users: users, assignments: assignments, branches: branches,
-		passwordMinL: cfg.PasswordMinLength,
+		policy: domain.PasswordPolicy{MinLength: cfg.PasswordMinLength},
 	}
 }
 
@@ -116,9 +117,8 @@ func (s *UserService) CreateUser(
 	if err := s.validateProfile(in.Name, in.Email, in.Role); err != nil {
 		return nil, err
 	}
-	if len([]rune(in.Password)) < s.passwordMinL {
-		return nil, fmt.Errorf("%w: password must be at least %d characters",
-			domain.ErrInvalidInput, s.passwordMinL)
+	if err := s.policy.Validate(in.Password); err != nil {
+		return nil, err
 	}
 	branchIDs := dedupeUUIDs(in.BranchIDs)
 	in.BranchIDs = branchIDs
@@ -136,6 +136,14 @@ func (s *UserService) CreateUser(
 		user, createErr := s.users.Create(ctx, q, tenant.AccountID, in, string(hash))
 		if createErr != nil {
 			return createErr
+		}
+		// The address is trusted on the admin's word. Verification exists to stop someone
+		// reserving an address they cannot read, which is a public-registration threat: an admin
+		// works inside their own account and can squat nothing. Mailing a link instead would turn
+		// a mistyped address into a permanent lockout once a verified address is required, rather
+		// than a recoverable one that only bites at password recovery.
+		if verifyErr := s.users.MarkEmailVerified(ctx, q, tenant.AccountID, user.ID); verifyErr != nil {
+			return verifyErr
 		}
 		if replaceErr := s.assignments.Replace(ctx, q, tenant.AccountID, user.ID, branchIDs); replaceErr != nil {
 			return replaceErr
@@ -160,7 +168,8 @@ func (s *UserService) UpdateUser(
 	}
 	isSelf := id == tenant.UserID
 	if isSelf && in.IsActive != nil && !*in.IsActive {
-		return nil, fmt.Errorf("%w: an admin cannot deactivate themselves", domain.ErrInvalidInput)
+		return nil, domain.WithCode(domain.CodeSelfDeactivation,
+			fmt.Errorf("%w: an admin cannot deactivate themselves", domain.ErrInvalidInput))
 	}
 	branchIDs := dedupeUUIDs(in.BranchIDs)
 	in.BranchIDs = branchIDs
@@ -172,7 +181,8 @@ func (s *UserService) UpdateUser(
 			return getErr
 		}
 		if isSelf && in.Role != current.Role {
-			return fmt.Errorf("%w: an admin cannot change their own role", domain.ErrInvalidInput)
+			return domain.WithCode(domain.CodeSelfRoleChange,
+				fmt.Errorf("%w: an admin cannot change their own role", domain.ErrInvalidInput))
 		}
 		if assignErr := s.assertBranchesInAccount(ctx, q, tenant.AccountID, branchIDs); assignErr != nil {
 			return assignErr
@@ -203,7 +213,8 @@ func (s *UserService) UpdateUser(
 // tokens they already hold stop working at once. An admin cannot deactivate themselves.
 func (s *UserService) DeactivateUser(ctx context.Context, tenant domain.Tenant, id uuid.UUID) error {
 	if id == tenant.UserID {
-		return fmt.Errorf("%w: an admin cannot deactivate themselves", domain.ErrInvalidInput)
+		return domain.WithCode(domain.CodeSelfDeactivation,
+			fmt.Errorf("%w: an admin cannot deactivate themselves", domain.ErrInvalidInput))
 	}
 
 	return s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {

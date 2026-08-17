@@ -37,6 +37,11 @@ var (
 	// ErrRateLimited is returned when a caller has spent its request allowance.
 	ErrRateLimited = errors.New("too many requests")
 
+	// ErrAIUnavailable is returned when an AI provider could not answer — no provider is bound,
+	// it refused, or it kept failing. The caller handles it like any other refusal instead of
+	// carrying on with a proposal it never got.
+	ErrAIUnavailable = errors.New("ai provider unavailable")
+
 	// ErrNoTenantContext is a programming error, not a client one: a request-scoped query
 	// without tenant context silently returns nothing under row level security.
 	ErrNoTenantContext = errors.New("no tenant context")

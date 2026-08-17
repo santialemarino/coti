@@ -1,6 +1,6 @@
 /*
  * Session primitives that must run in the edge runtime as well as on the server,
- * because middleware.ts is the one place a session is renewed. Nothing here may
+ * because proxy.ts is the one place a session is renewed. Nothing here may
  * import next/headers or server-only.
  *
  * The access token is opaque to the backoffice. It is forwarded, never inspected
@@ -10,6 +10,7 @@
  * is the API's answer on every request.
  */
 
+import { codeForStatus, knownErrorCode, type ApiErrorCode } from '@/lib/api/errors';
 import {
   API_URL,
   REFRESH_SKEW_SECONDS,
@@ -19,8 +20,11 @@ import {
 
 export const ACCESS_COOKIE = 'coti_access_token';
 export const REFRESH_COOKIE = 'coti_refresh_token';
-// Marks the session as remembered, so a renewal in middleware keeps it that way.
+// Marks the session as remembered, so a renewal in the proxy keeps it that way.
 export const REMEMBER_COOKIE = 'coti_remember';
+// The branch every request is scoped to. Named here rather than beside its reader so the
+// gate, which cannot import server-only, can clear it alongside the session.
+export const BRANCH_COOKIE = 'coti_branch';
 
 // httpOnly keeps the token out of reach of client code. lax still sends it on a
 // top-level navigation, which is what following a link from a mail client is.
@@ -50,6 +54,8 @@ export interface TokenPair {
 export interface AuthAttempt {
   ok: boolean;
   status: number;
+  /* Why it was refused, in the same vocabulary every other call answers in. */
+  code?: ApiErrorCode;
   tokens?: TokenPair;
 }
 
@@ -145,17 +151,33 @@ async function postForTokens(
     });
   } catch {
     // An unreachable API is not a rejected credential, and must not read as one.
-    return { ok: false, status: 0 };
+    return { ok: false, status: 0, code: 'UNREACHABLE' };
   }
-  if (!response.ok) return { ok: false, status: response.status };
+  if (!response.ok)
+    return { ok: false, status: response.status, code: await refusalCode(response) };
 
   const payload = (await response.json()) as { access_token?: string; refresh_token?: string };
-  if (!payload.access_token || !payload.refresh_token) return { ok: false, status: 502 };
+  if (!payload.access_token || !payload.refresh_token)
+    return { ok: false, status: 502, code: 'INTERNAL' };
   return {
     ok: true,
     status: response.status,
     tokens: { accessToken: payload.access_token, refreshToken: payload.refresh_token },
   };
+}
+
+/*
+ * The envelope's code, which is what tells a spent allowance from a locked account — both 429.
+ * The status answers for a body that carries none, the way lib/api/client.ts does it; this path
+ * cannot go through that module because the proxy renews a session and cannot import server-only.
+ */
+async function refusalCode(response: Response): Promise<ApiErrorCode> {
+  try {
+    const payload = (await response.json()) as { code?: string };
+    return knownErrorCode(payload.code) ?? codeForStatus(response.status);
+  } catch {
+    return codeForStatus(response.status);
+  }
 }
 
 function readExpiry(token: string): number | null {

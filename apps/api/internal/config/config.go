@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +18,7 @@ import (
 // minJWTSecretLength is the floor for AUTH_JWT_SECRET. HMAC-SHA256 keys shorter
 // than the digest add no security.
 const minJWTSecretLength = 32
+const defaultCatalogImportMaxBytes = 5 * 1024 * 1024
 const defaultPriceImportMaxBytes = 5 * 1024 * 1024
 
 // Environment is the deployment environment the process runs in.
@@ -35,19 +37,34 @@ const (
 	MailProviderSMTP    MailProvider = "smtp"
 )
 
+// AIProvider selects the adapter behind one of the domain AI ports.
+type AIProvider string
+
+const (
+	AIProviderDisabled  AIProvider = "disabled"
+	AIProviderAnthropic AIProvider = "anthropic"
+	AIProviderOpenAI    AIProvider = "openai"
+)
+
+// aiEfforts are the reasoning-depth levels the language model accepts.
+var aiEfforts = []string{"low", "medium", "high", "xhigh", "max"}
+
 // Config is the fully resolved runtime configuration.
 type Config struct {
-	Environment Environment
-	LogLevel    string
-	Server      ServerConfig
-	Database    DatabaseConfig
-	Auth        AuthConfig
-	Mail        MailConfig
-	Web         WebConfig
-	Catalog     CatalogConfig
-	RateLimit   RateLimitConfig
-	Branch      BranchConfig
-	PriceImport PriceImportConfig
+	Environment   Environment
+	LogLevel      string
+	Server        ServerConfig
+	Database      DatabaseConfig
+	Auth          AuthConfig
+	Mail          MailConfig
+	AI            AIConfig
+	Web           WebConfig
+	Catalog       CatalogConfig
+	RateLimit     RateLimitConfig
+	Branch        BranchConfig
+	Job           JobConfig
+	CatalogImport SpreadsheetImportConfig
+	PriceImport   SpreadsheetImportConfig
 }
 
 // RateLimitConfig holds the request allowances, all of them settings rather than literals.
@@ -105,8 +122,8 @@ type AuthConfig struct {
 	VerificationTTL      time.Duration
 }
 
-// MailConfig holds the outbound-mail transport settings. The SMTP fields are the contract an
-// SMTP adapter will read; until one exists, selecting that provider is a startup error.
+// MailConfig holds the outbound-mail transport settings. One account per environment: the SMTP
+// credentials are the whole installation's, not an individual corralón's.
 type MailConfig struct {
 	Provider     MailProvider
 	FromAddress  string
@@ -115,6 +132,212 @@ type MailConfig struct {
 	SMTPPort     int
 	SMTPUsername string
 	SMTPPassword string
+	// SMTPStartTLS is declared rather than negotiated, so a server that stops advertising
+	// STARTTLS fails the send instead of quietly downgrading it to plaintext.
+	SMTPStartTLS bool
+	SMTPTimeout  time.Duration
+}
+
+// AIConfig holds the provider selection, credentials and limits for the three external AI
+// capabilities. Each is selected on its own because no single provider covers all three, and
+// because an environment may want the language model without the transcriber.
+type AIConfig struct {
+	AnthropicAPIKey string
+	// AnthropicBaseURL is empty in normal use: the SDK carries the provider's own address, and
+	// duplicating it here would be a second copy to keep current. Set it to reach a gateway.
+	AnthropicBaseURL string
+	OpenAIAPIKey     string
+	OpenAIBaseURL    string
+
+	LLMProvider AIProvider
+	LLMModel    string
+	// LLMEffort is how much reasoning the model spends. Extraction and classification are
+	// mapping work rather than open-ended writing, so the default sits at the low end.
+	LLMEffort string
+	// LLMMaxTokens caps one answer, the model's own reasoning included.
+	LLMMaxTokens int
+	LLMTimeout   time.Duration
+
+	EmbeddingsProvider AIProvider
+	EmbeddingsModel    string
+	// EmbeddingsBatchSize caps how many texts go in one request, so a catalog-sized list is
+	// chunked instead of rejected wholesale for exceeding the provider's per-request limits.
+	EmbeddingsBatchSize int
+	EmbeddingsTimeout   time.Duration
+
+	TranscriptionProvider AIProvider
+	TranscriptionModel    string
+	TranscriptionTimeout  time.Duration
+
+	Retry AIRetryPolicy
+}
+
+// AIRetryPolicy is how many times one provider call is attempted, and how long the wait between
+// attempts starts at. The wait doubles from there, up to MaxBackoff.
+type AIRetryPolicy struct {
+	MaxAttempts int
+	Backoff     time.Duration
+	// MaxBackoff is the ceiling on one wait. Without it the doubling is unbounded, and it is also
+	// the longest window a provider may ask us to sit out before we give up instead.
+	MaxBackoff time.Duration
+}
+
+// AnthropicConfig is the slice of the AI settings the language-model adapter reads.
+type AnthropicConfig struct {
+	APIKey    string
+	BaseURL   string
+	Model     string
+	Effort    string
+	MaxTokens int
+	Timeout   time.Duration
+	Retry     AIRetryPolicy
+}
+
+// EmbeddingsConfig is the slice of the AI settings the embedding adapter reads.
+type EmbeddingsConfig struct {
+	APIKey    string
+	BaseURL   string
+	Model     string
+	BatchSize int
+	Timeout   time.Duration
+	Retry     AIRetryPolicy
+}
+
+// TranscriptionConfig is the slice of the AI settings the transcription adapter reads.
+type TranscriptionConfig struct {
+	APIKey  string
+	BaseURL string
+	Model   string
+	Timeout time.Duration
+	Retry   AIRetryPolicy
+}
+
+// Anthropic returns what the language-model adapter needs and nothing else, so no adapter is
+// handed another provider's key.
+func (a AIConfig) Anthropic() AnthropicConfig {
+	return AnthropicConfig{
+		APIKey:    a.AnthropicAPIKey,
+		BaseURL:   a.AnthropicBaseURL,
+		Model:     a.LLMModel,
+		Effort:    a.LLMEffort,
+		MaxTokens: a.LLMMaxTokens,
+		Timeout:   a.LLMTimeout,
+		Retry:     a.Retry,
+	}
+}
+
+// Embeddings returns what the embedding adapter needs and nothing else.
+func (a AIConfig) Embeddings() EmbeddingsConfig {
+	return EmbeddingsConfig{
+		APIKey:    a.OpenAIAPIKey,
+		BaseURL:   a.OpenAIBaseURL,
+		Model:     a.EmbeddingsModel,
+		BatchSize: a.EmbeddingsBatchSize,
+		Timeout:   a.EmbeddingsTimeout,
+		Retry:     a.Retry,
+	}
+}
+
+// Transcription returns what the transcription adapter needs and nothing else.
+func (a AIConfig) Transcription() TranscriptionConfig {
+	return TranscriptionConfig{
+		APIKey:  a.OpenAIAPIKey,
+		BaseURL: a.OpenAIBaseURL,
+		Model:   a.TranscriptionModel,
+		Timeout: a.TranscriptionTimeout,
+		Retry:   a.Retry,
+	}
+}
+
+// problems reports everything wrong with the AI settings, naming the key at fault. A capability
+// left disabled needs no credentials, so the requirements are collected per capability.
+func (a AIConfig) problems() []string {
+	var problems []string
+	needsAnthropic, needsOpenAI := false, false
+
+	switch a.LLMProvider {
+	case AIProviderDisabled:
+	case AIProviderAnthropic:
+		needsAnthropic = true
+		if !slices.Contains(aiEfforts, a.LLMEffort) {
+			problems = append(problems, fmt.Sprintf("AI_LLM_EFFORT must be one of %s, got %q",
+				strings.Join(aiEfforts, ", "), a.LLMEffort))
+		}
+		if a.LLMMaxTokens <= 0 {
+			problems = append(problems, "AI_LLM_MAX_TOKENS must be greater than zero")
+		}
+		if a.LLMTimeout <= 0 {
+			problems = append(problems, "AI_LLM_TIMEOUT_SECONDS must be greater than zero")
+		}
+	default:
+		problems = append(problems, fmt.Sprintf("AI_LLM_PROVIDER must be %q or %q, got %q",
+			AIProviderDisabled, AIProviderAnthropic, a.LLMProvider))
+	}
+
+	switch a.EmbeddingsProvider {
+	case AIProviderDisabled:
+	case AIProviderOpenAI:
+		needsOpenAI = true
+		if a.EmbeddingsTimeout <= 0 {
+			problems = append(problems, "AI_EMBEDDINGS_TIMEOUT_SECONDS must be greater than zero")
+		}
+		if a.EmbeddingsBatchSize < 1 {
+			problems = append(problems, "AI_EMBEDDINGS_BATCH_SIZE must be at least 1")
+		}
+	default:
+		problems = append(problems, fmt.Sprintf("AI_EMBEDDINGS_PROVIDER must be %q or %q, got %q",
+			AIProviderDisabled, AIProviderOpenAI, a.EmbeddingsProvider))
+	}
+
+	switch a.TranscriptionProvider {
+	case AIProviderDisabled:
+	case AIProviderOpenAI:
+		needsOpenAI = true
+		if a.TranscriptionTimeout <= 0 {
+			problems = append(problems, "AI_TRANSCRIPTION_TIMEOUT_SECONDS must be greater than zero")
+		}
+	default:
+		problems = append(problems, fmt.Sprintf("AI_TRANSCRIPTION_PROVIDER must be %q or %q, got %q",
+			AIProviderDisabled, AIProviderOpenAI, a.TranscriptionProvider))
+	}
+
+	// One key per provider, reported once however many capabilities it backs.
+	if needsAnthropic && a.AnthropicAPIKey == "" {
+		problems = append(problems, "AI_ANTHROPIC_API_KEY is required when AI_LLM_PROVIDER is "+
+			string(AIProviderAnthropic))
+	}
+	if needsOpenAI && a.OpenAIAPIKey == "" {
+		problems = append(problems, "AI_OPENAI_API_KEY is required when AI_EMBEDDINGS_PROVIDER "+
+			"or AI_TRANSCRIPTION_PROVIDER is "+string(AIProviderOpenAI))
+	}
+	if needsOpenAI {
+		if u, err := url.Parse(a.OpenAIBaseURL); err != nil || u.Scheme == "" || u.Host == "" {
+			problems = append(problems, fmt.Sprintf("AI_OPENAI_BASE_URL must be an absolute URL "+
+				"with a scheme and host, got %q", a.OpenAIBaseURL))
+		}
+	}
+	if a.AnthropicBaseURL != "" {
+		if u, err := url.Parse(a.AnthropicBaseURL); err != nil || u.Scheme == "" || u.Host == "" {
+			problems = append(problems, fmt.Sprintf("AI_ANTHROPIC_BASE_URL must be an absolute URL "+
+				"with a scheme and host, got %q", a.AnthropicBaseURL))
+		}
+	}
+
+	if a.Retry.MaxAttempts < 1 {
+		problems = append(problems, "AI_MAX_ATTEMPTS must be at least 1")
+	}
+	if a.Retry.Backoff <= 0 {
+		problems = append(problems, "AI_RETRY_BACKOFF_SECONDS must be greater than zero")
+	}
+	if a.Retry.MaxBackoff <= 0 {
+		problems = append(problems, "AI_MAX_BACKOFF_SECONDS must be greater than zero")
+	}
+	// A ceiling below the first wait would make the ladder shrink instead of grow.
+	if a.Retry.MaxBackoff > 0 && a.Retry.MaxBackoff < a.Retry.Backoff {
+		problems = append(problems, fmt.Sprintf("AI_MAX_BACKOFF_SECONDS (%s) is below "+
+			"AI_RETRY_BACKOFF_SECONDS (%s)", a.Retry.MaxBackoff, a.Retry.Backoff))
+	}
+	return problems
 }
 
 // WebConfig holds the frontend base URLs an emailed link points at. The API never serves
@@ -123,8 +346,8 @@ type WebConfig struct {
 	BackofficeURL string
 }
 
-// PriceImportConfig holds operational limits for spreadsheet imports.
-type PriceImportConfig struct {
+// SpreadsheetImportConfig holds operational limits for spreadsheet imports.
+type SpreadsheetImportConfig struct {
 	MaxBytes int64
 }
 
@@ -133,11 +356,45 @@ type BranchConfig struct {
 	DefaultExpiryDays int
 }
 
-// CatalogConfig holds the catalog listing limits. The cap is what stops a client from
-// asking for the whole catalog in one response.
+// JobConfig holds the settings for the scheduled-job runner. How often a job runs is not here: it
+// is the deployment platform's schedule, one component per job.
+type JobConfig struct {
+	// Timeout bounds one run. Without it a job wedged on a slow query holds its lock until the
+	// process is killed, and every later firing does nothing while it waits.
+	Timeout time.Duration
+}
+
+// CatalogConfig holds the catalog listing limits and the knobs behind the hybrid search. The
+// listing cap is what stops a client from asking for the whole catalog in one response.
 type CatalogConfig struct {
 	DefaultPageSize int
 	MaxPageSize     int
+	// SearchTopK is how many candidates a search returns when the caller names no limit.
+	SearchTopK int
+	// SearchOverFetchFactor multiplies the rows each half of the search asks the database for.
+	// An approximate vector scan filters by branch after ordering, so asking for exactly K
+	// leaves fewer than K once what the branch does not carry is dropped.
+	SearchOverFetchFactor int
+	// SearchMaxFetch is the widest one round may ask the database for. Without it a branch that
+	// yields one more row per round drives the doubling up to the size of the catalog.
+	SearchMaxFetch int
+	// SearchProbes is how many index partitions an approximate scan visits. One is the
+	// database's default and recalls too little to survive the branch filter.
+	SearchProbes int
+	// SearchRRFK is the constant in the reciprocal rank fusion that merges the lexical and
+	// semantic halves. Higher flattens the ranking, so the tail counts for more.
+	SearchRRFK int
+	// EmbeddingBatchSize is how many products the backfill loads and writes back per round.
+	EmbeddingBatchSize int
+	// MatchMinConfidencePercent is the similarity a line's leading candidate clears to be a
+	// match at all. Below it the line is flagged NO_MATCH and keeps no product.
+	MatchMinConfidencePercent int
+	// MatchAmbiguityMarginPercent is how far the leading candidate sits above the runner-up
+	// before the line counts as decided. Two cements a point apart are a choice, not a match.
+	MatchAmbiguityMarginPercent int
+	// MatchLexicalConfidencePercent is what a candidate only the lexical half scored is worth.
+	// A synonym hit carries no cosine similarity to read, and it is evidence rather than none.
+	MatchLexicalConfidencePercent int
 }
 
 // Load resolves the configuration from the environment, applying defaults for everything
@@ -177,7 +434,7 @@ func Load() (*Config, error) {
 			RefreshReuseGrace:    getDuration("AUTH_REFRESH_REUSE_GRACE_SECONDS", 30*time.Second, &problems),
 			MaxFailedAttempts:    getInt("AUTH_MAX_FAILED_ATTEMPTS", 5, &problems),
 			LockoutDuration:      getDuration("AUTH_LOCKOUT_MINUTES", 15*time.Minute, &problems),
-			PasswordMinLength:    getInt("AUTH_PASSWORD_MIN_LENGTH", 8, &problems),
+			PasswordMinLength:    getInt("AUTH_PASSWORD_MIN_LENGTH", 12, &problems),
 			PasswordResetTTL:     getDuration("AUTH_PASSWORD_RESET_TTL_MINUTES", 60*time.Minute, &problems),
 			RequireVerifiedEmail: getBool("AUTH_REQUIRE_VERIFIED_EMAIL", false, &problems),
 			VerificationTTL:      getDuration("AUTH_EMAIL_VERIFICATION_TTL_HOURS", 48*time.Hour, &problems),
@@ -190,13 +447,54 @@ func Load() (*Config, error) {
 			SMTPPort:     getInt("MAIL_SMTP_PORT", 587, &problems),
 			SMTPUsername: getString("MAIL_SMTP_USERNAME", ""),
 			SMTPPassword: getString("MAIL_SMTP_PASSWORD", ""),
+			SMTPStartTLS: getBool("MAIL_SMTP_STARTTLS", true, &problems),
+			SMTPTimeout:  getDuration("MAIL_SMTP_TIMEOUT_SECONDS", 10*time.Second, &problems),
+		},
+		AI: AIConfig{
+			AnthropicAPIKey:  getString("AI_ANTHROPIC_API_KEY", ""),
+			AnthropicBaseURL: getString("AI_ANTHROPIC_BASE_URL", ""),
+			OpenAIAPIKey:     getString("AI_OPENAI_API_KEY", ""),
+			OpenAIBaseURL:    getString("AI_OPENAI_BASE_URL", "https://api.openai.com/v1"),
+
+			LLMProvider:  AIProvider(getString("AI_LLM_PROVIDER", string(AIProviderDisabled))),
+			LLMModel:     getString("AI_LLM_MODEL", "claude-opus-5"),
+			LLMEffort:    getString("AI_LLM_EFFORT", "low"),
+			LLMMaxTokens: getInt("AI_LLM_MAX_TOKENS", 16000, &problems),
+			LLMTimeout:   getDuration("AI_LLM_TIMEOUT_SECONDS", 60*time.Second, &problems),
+
+			EmbeddingsProvider: AIProvider(getString("AI_EMBEDDINGS_PROVIDER",
+				string(AIProviderDisabled))),
+			EmbeddingsModel:     getString("AI_EMBEDDINGS_MODEL", "text-embedding-3-small"),
+			EmbeddingsBatchSize: getInt("AI_EMBEDDINGS_BATCH_SIZE", 100, &problems),
+			EmbeddingsTimeout:   getDuration("AI_EMBEDDINGS_TIMEOUT_SECONDS", 30*time.Second, &problems),
+
+			TranscriptionProvider: AIProvider(getString("AI_TRANSCRIPTION_PROVIDER",
+				string(AIProviderDisabled))),
+			TranscriptionModel: getString("AI_TRANSCRIPTION_MODEL", "whisper-1"),
+			TranscriptionTimeout: getDuration("AI_TRANSCRIPTION_TIMEOUT_SECONDS",
+				120*time.Second, &problems),
+
+			Retry: AIRetryPolicy{
+				MaxAttempts: getInt("AI_MAX_ATTEMPTS", 3, &problems),
+				Backoff:     getDuration("AI_RETRY_BACKOFF_SECONDS", time.Second, &problems),
+				MaxBackoff:  getDuration("AI_MAX_BACKOFF_SECONDS", 8*time.Second, &problems),
+			},
 		},
 		Web: WebConfig{
 			BackofficeURL: getString("WEB_BACKOFFICE_URL", "http://localhost:3000"),
 		},
 		Catalog: CatalogConfig{
-			DefaultPageSize: getInt("CATALOG_DEFAULT_PAGE_SIZE", 50, &problems),
-			MaxPageSize:     getInt("CATALOG_MAX_PAGE_SIZE", 200, &problems),
+			DefaultPageSize:               getInt("CATALOG_DEFAULT_PAGE_SIZE", 50, &problems),
+			MaxPageSize:                   getInt("CATALOG_MAX_PAGE_SIZE", 200, &problems),
+			SearchTopK:                    getInt("CATALOG_SEARCH_TOP_K", 10, &problems),
+			SearchOverFetchFactor:         getInt("CATALOG_SEARCH_OVER_FETCH_FACTOR", 4, &problems),
+			SearchMaxFetch:                getInt("CATALOG_SEARCH_MAX_FETCH", 2000, &problems),
+			SearchProbes:                  getInt("CATALOG_SEARCH_IVFFLAT_PROBES", 10, &problems),
+			SearchRRFK:                    getInt("CATALOG_SEARCH_RRF_K", 60, &problems),
+			EmbeddingBatchSize:            getInt("CATALOG_EMBEDDING_BATCH_SIZE", 200, &problems),
+			MatchMinConfidencePercent:     getInt("CATALOG_MATCH_MIN_CONFIDENCE_PERCENT", 60, &problems),
+			MatchAmbiguityMarginPercent:   getInt("CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT", 5, &problems),
+			MatchLexicalConfidencePercent: getInt("CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT", 75, &problems),
 		},
 		RateLimit: RateLimitConfig{
 			Enabled:          getBool("RATE_LIMIT_ENABLED", true, &problems),
@@ -209,10 +507,16 @@ func Load() (*Config, error) {
 			TrustedProxyHops: getInt("RATE_LIMIT_TRUSTED_PROXY_HOPS", 0, &problems),
 			TrustedProxies:   getCIDRs("RATE_LIMIT_TRUSTED_PROXY_CIDRS", &problems),
 		},
+		Job: JobConfig{
+			Timeout: getDuration("JOB_TIMEOUT_MINUTES", 30*time.Minute, &problems),
+		},
 		Branch: BranchConfig{
 			DefaultExpiryDays: getInt("BRANCH_DEFAULT_EXPIRY_DAYS", 7, &problems),
 		},
-		PriceImport: PriceImportConfig{
+		CatalogImport: SpreadsheetImportConfig{
+			MaxBytes: int64(getInt("CATALOG_IMPORT_MAX_BYTES", defaultCatalogImportMaxBytes, &problems)),
+		},
+		PriceImport: SpreadsheetImportConfig{
 			MaxBytes: int64(getInt("PRICE_IMPORT_MAX_BYTES", defaultPriceImportMaxBytes, &problems)),
 		},
 	}
@@ -233,6 +537,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.Branch.DefaultExpiryDays <= 0 {
 		problems = append(problems, "BRANCH_DEFAULT_EXPIRY_DAYS must be greater than zero")
+	}
+	if cfg.CatalogImport.MaxBytes <= 0 {
+		problems = append(problems, "CATALOG_IMPORT_MAX_BYTES must be greater than zero")
 	}
 	if cfg.PriceImport.MaxBytes <= 0 {
 		problems = append(problems, "PRICE_IMPORT_MAX_BYTES must be greater than zero")
@@ -263,11 +570,6 @@ func Load() (*Config, error) {
 			cfg.Mail.FromAddress = "no-reply@coti.local"
 		}
 	case MailProviderSMTP:
-		// Reported here rather than at the composition root so an operator sees it alongside
-		// whatever else is missing, instead of one restart per problem.
-		problems = append(problems, "MAIL_PROVIDER is "+string(MailProviderSMTP)+
-			", which has no adapter wired yet: the only working transport is "+
-			string(MailProviderConsole))
 		required := []struct{ key, value string }{
 			{"MAIL_FROM_ADDRESS", cfg.Mail.FromAddress},
 			{"MAIL_SMTP_HOST", cfg.Mail.SMTPHost},
@@ -284,10 +586,15 @@ func Load() (*Config, error) {
 			problems = append(problems, fmt.Sprintf("MAIL_SMTP_PORT must be greater than zero, got %d",
 				cfg.Mail.SMTPPort))
 		}
+		if cfg.Mail.SMTPTimeout <= 0 {
+			problems = append(problems, "MAIL_SMTP_TIMEOUT_SECONDS must be greater than zero")
+		}
 	default:
 		problems = append(problems, fmt.Sprintf("MAIL_PROVIDER must be %q or %q, got %q",
 			MailProviderConsole, MailProviderSMTP, cfg.Mail.Provider))
 	}
+
+	problems = append(problems, cfg.AI.problems()...)
 
 	// A base URL missing its scheme or host yields recovery links that go nowhere, and the
 	// only symptom is a user reporting that the mail does not work.
@@ -304,6 +611,48 @@ func Load() (*Config, error) {
 	if cfg.Catalog.DefaultPageSize > cfg.Catalog.MaxPageSize {
 		problems = append(problems, fmt.Sprintf("CATALOG_DEFAULT_PAGE_SIZE (%d) exceeds CATALOG_MAX_PAGE_SIZE (%d)",
 			cfg.Catalog.DefaultPageSize, cfg.Catalog.MaxPageSize))
+	}
+	catalogFloors := []struct {
+		key   string
+		value int
+		floor int
+	}{
+		// Two, not one: a single candidate leaves matching with no runner-up, so every line
+		// above the confidence floor would read as decided and AMBIGUOUS could never happen.
+		{"CATALOG_SEARCH_TOP_K", cfg.Catalog.SearchTopK, 2},
+		// Below 1 the search would ask for fewer rows than the caller wants, which is the
+		// shortfall the factor exists to prevent.
+		{"CATALOG_SEARCH_OVER_FETCH_FACTOR", cfg.Catalog.SearchOverFetchFactor, 1},
+		{"CATALOG_SEARCH_MAX_FETCH", cfg.Catalog.SearchMaxFetch, 1},
+		{"CATALOG_SEARCH_IVFFLAT_PROBES", cfg.Catalog.SearchProbes, 1},
+		{"CATALOG_SEARCH_RRF_K", cfg.Catalog.SearchRRFK, 1},
+		{"CATALOG_EMBEDDING_BATCH_SIZE", cfg.Catalog.EmbeddingBatchSize, 1},
+	}
+	for _, f := range catalogFloors {
+		if f.value < f.floor {
+			problems = append(problems, fmt.Sprintf("%s must be at least %d, got %d",
+				f.key, f.floor, f.value))
+		}
+	}
+	// A run bounded at nothing would hold its lock until the process is killed, and every later
+	// firing would do nothing while it waited.
+	if cfg.Job.Timeout <= 0 {
+		problems = append(problems, "JOB_TIMEOUT_MINUTES must be greater than zero")
+	}
+
+	catalogPercents := []struct {
+		key   string
+		value int
+	}{
+		{"CATALOG_MATCH_MIN_CONFIDENCE_PERCENT", cfg.Catalog.MatchMinConfidencePercent},
+		{"CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT", cfg.Catalog.MatchAmbiguityMarginPercent},
+		{"CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT", cfg.Catalog.MatchLexicalConfidencePercent},
+	}
+	for _, p := range catalogPercents {
+		if p.value < 0 || p.value > 100 {
+			problems = append(problems, fmt.Sprintf("%s must be between 0 and 100, got %d",
+				p.key, p.value))
+		}
 	}
 
 	if cfg.RateLimit.Enabled {

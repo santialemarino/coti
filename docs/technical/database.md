@@ -42,6 +42,11 @@ pnpm db:reset     # drop the volume and rebuild
 pnpm db:create-migration <name>
 ```
 
+**One index is not in the chain, on purpose.** The catalog's approximate vector index is
+degenerate when built on an empty table, so it is a start-up step run once the catalog is loaded
+and embedded — `pnpm db:vector-index`, documented in [catalog.md](catalog.md#embedding-the-catalog).
+A fresh database is correct without it; the semantic search is just slower.
+
 `POSTGRES_PORT` (default 5432) changes the port the container publishes when another local
 Postgres already holds it. It has to stay in sync with the URLs.
 
@@ -98,12 +103,22 @@ lifetime. `activate` is therefore the flag alone. The behavioural side is in
 
 **Never use the owner role for a request-scoped query.** It bypasses RLS.
 
+**A process with no cross-account job does not open it at all.** `repository.NewTenantDB` opens the
+restricted pool alone and returns a type carrying neither `CrossAccount` nor `AdminTx`, so the
+boundary is the compiler rather than a rule someone has to remember — `cmd/catalog-embed` runs that
+way. `repository.NewDB` adds the owner pool for the processes below.
+
 The four legitimate owner cases:
 
 1. **Migrations** — they create tables and grant permissions.
-2. **Operational scripts** — `pnpm db:seed` and the account activation pair above. They are
-   run by hand, from outside any request, so there is no tenant to scope them to.
-3. **The follow-up cron** — it sweeps quotes across every account.
+2. **Operational scripts** — `pnpm db:seed`, the account activation pair above, and
+   `pnpm db:vector-index`, which spans accounts and creates an index the request role does not
+   own the table for. They are run by hand, from outside any request, so there is no tenant to
+   scope them to.
+3. **Scheduled jobs** — `cmd/scheduled-job` sweeps across every account, because "every quote with
+   no movement" belongs to no single corralón. It holds one owner connection for the run rather
+   than working through the pool (`DB.AdminConn`), since the advisory lock keeping two runs apart
+   lives on the connection that took it. See [scheduled-jobs.md](scheduled-jobs.md).
 4. **Pre-auth lookups** — login by email (the account is not known yet) and resolving
    `quote_send.public_token` for the sessionless webapp. The correct pattern for the token:
    the owner resolves token → `account_id`, and the rest of the request continues on the

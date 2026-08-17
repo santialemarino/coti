@@ -4,24 +4,30 @@ import {
   forgotPasswordSchema,
   type ForgotPasswordValues,
 } from '@/app/(auth)/forgot-password/form-schema';
-import { apiRequest, errorCodeOf } from '@/lib/api/client';
+import { apiRequest } from '@/lib/api/client';
+import { errorCodeOf, type ApiErrorCode } from '@/lib/api/errors';
 
 export interface ForgotPasswordResult {
   sent?: boolean;
-  error?: 'unexpected';
-  fieldError?: { field: 'email'; key: 'invalid' };
+  error?: ApiErrorCode;
+  /* The address is the only thing this screen can be wrong about. */
+  field?: 'email';
 }
+
+/* Which field a refusal belongs on. A code absent from the map belongs to the form. */
+const FIELD_FOR: Partial<Record<ApiErrorCode, 'email'>> = { INVALID_BODY: 'email' };
 
 /*
  * The screen says the same thing whether or not the address is registered, which is
  * the API's contract and the point of the flow: any difference here would hand back
- * the enumeration the 202 was designed to withhold.
+ * the enumeration the 202 was designed to withhold. The per-address cap answers 202 for
+ * the same reason; the 429 that does arrive is the caller's own allowance.
  */
 export async function requestPasswordRecovery(
   values: ForgotPasswordValues,
 ): Promise<ForgotPasswordResult> {
   const parsed = forgotPasswordSchema().safeParse(values);
-  if (!parsed.success) return { fieldError: { field: 'email', key: 'invalid' } };
+  if (!parsed.success) return { error: 'INVALID_BODY', field: 'email' };
 
   try {
     await apiRequest({
@@ -32,9 +38,7 @@ export async function requestPasswordRecovery(
     });
     return { sent: true };
   } catch (error) {
-    if (errorCodeOf(error) === 'badRequest') {
-      return { fieldError: { field: 'email', key: 'invalid' } };
-    }
-    return { error: 'unexpected' };
+    const code = errorCodeOf(error);
+    return { error: code, field: FIELD_FOR[code] };
   }
 }

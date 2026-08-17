@@ -13,7 +13,7 @@ import (
 
 // productPriceColumns keeps the SELECT list, the scan order, and the struct in one place.
 const productPriceColumns = `id, account_id, branch_id, product_id, user_id, price, currency,
-	conditions, min_price, valid_from, valid_to, created_at`
+	min_price, valid_from, valid_to, created_at`
 
 // ProductPriceRepository owns persistence for product_price.
 type ProductPriceRepository struct{}
@@ -28,8 +28,7 @@ func (r *ProductPriceRepository) ListCurrentForExport(
 	ctx context.Context, q Querier, accountID, branchID uuid.UUID,
 ) (*domain.ProductPriceExport, error) {
 	rows, err := q.Query(ctx,
-		`SELECT b.name, p.code, p.canonical_name, pp.price::text, pp.min_price::text,
-		        pp.currency, pp.conditions
+		`SELECT b.name, p.code, p.canonical_name, pp.price::text, pp.min_price::text
 		 FROM branch b
 		 JOIN branch_product bp
 		   ON bp.account_id = b.account_id
@@ -41,7 +40,7 @@ func (r *ProductPriceRepository) ListCurrentForExport(
 		  AND p.is_active = TRUE
 		  AND p.code IS NOT NULL
 		 JOIN LATERAL (
-		   SELECT price, min_price, currency, conditions
+		   SELECT price, min_price
 		   FROM product_price
 		   WHERE account_id = $1
 		     AND branch_id = $2
@@ -65,7 +64,7 @@ func (r *ProductPriceRepository) ListCurrentForExport(
 	for rows.Next() {
 		var row domain.ProductPriceExportRow
 		if err := rows.Scan(&export.BranchName, &row.Code, &row.ProductName, &row.Price,
-			&row.MinPrice, &row.Currency, &row.Conditions); err != nil {
+			&row.MinPrice); err != nil {
 			return nil, err
 		}
 		export.Rows = append(export.Rows, row)
@@ -79,7 +78,7 @@ func (r *ProductPriceRepository) GetByCodes(
 ) (map[string]domain.ProductPriceLookup, error) {
 	rows, err := q.Query(ctx,
 		`SELECT p.id, p.code, p.canonical_name,
-		        pp.price::text, pp.min_price::text, pp.currency, pp.conditions
+		        pp.price::text, pp.min_price::text, pp.currency
 		 FROM product p
 		 JOIN branch_product bp
 		   ON bp.account_id = $1
@@ -87,7 +86,7 @@ func (r *ProductPriceRepository) GetByCodes(
 		  AND bp.product_id = p.id
 		  AND bp.is_active = TRUE
 		 LEFT JOIN LATERAL (
-		   SELECT price, min_price, currency, conditions
+		   SELECT price, min_price, currency
 		   FROM product_price
 		   WHERE account_id = $1
 		     AND branch_id = $2
@@ -110,8 +109,7 @@ func (r *ProductPriceRepository) GetByCodes(
 	for rows.Next() {
 		var product domain.ProductPriceLookup
 		if err := rows.Scan(&product.ProductID, &product.Code, &product.ProductName,
-			&product.CurrentPrice, &product.CurrentMinPrice, &product.CurrentCurrency,
-			&product.CurrentConditions); err != nil {
+			&product.CurrentPrice, &product.CurrentMinPrice, &product.CurrentCurrency); err != nil {
 			return nil, err
 		}
 		products[product.Code] = product
@@ -128,16 +126,12 @@ func (r *ProductPriceRepository) ApplyImport(
 	prices := make([]string, len(updates))
 	minPrices := make([]string, len(updates))
 	currencies := make([]string, len(updates))
-	conditions := make([]string, len(updates))
 	for i, update := range updates {
 		productIDs[i] = update.ProductID
 		prices[i] = update.Price
 		currencies[i] = update.Currency
 		if update.MinPrice != nil {
 			minPrices[i] = *update.MinPrice
-		}
-		if update.Conditions != nil {
-			conditions[i] = *update.Conditions
 		}
 	}
 	lockedRows, err := q.Query(ctx,
@@ -190,23 +184,23 @@ func (r *ProductPriceRepository) ApplyImport(
 	_, err = q.Exec(ctx,
 		`WITH incoming AS (
 		   SELECT *
-		   FROM unnest($4::uuid[], $5::text[], $6::text[], $7::text[], $8::text[])
-		     AS u(product_id, price, min_price, currency, conditions)
+		   FROM unnest($4::uuid[], $5::text[], $6::text[], $7::text[])
+		     AS u(product_id, price, min_price, currency)
 		 )
 		 INSERT INTO product_price
 		   (account_id, branch_id, product_id, user_id, price, min_price, currency,
-		    conditions, valid_from, valid_to)
+		    valid_from, valid_to)
 		 SELECT $1, $2, i.product_id, $3, i.price::numeric,
-		        NULLIF(i.min_price, '')::numeric, i.currency, NULLIF(i.conditions, ''), $9,
+		        NULLIF(i.min_price, '')::numeric, i.currency, $8,
 		        (SELECT MIN(pp.valid_from)
 		         FROM product_price pp
 		         WHERE pp.account_id = $1
 		           AND pp.branch_id = $2
 		           AND pp.product_id = i.product_id
-		           AND pp.valid_from > $9)
+		           AND pp.valid_from > $8)
 		 FROM incoming i`,
 		tenant.AccountID, tenant.BranchID, tenant.UserID, productIDs, prices, minPrices,
-		currencies, conditions, effectiveAt)
+		currencies, effectiveAt)
 	return err
 }
 
@@ -265,12 +259,10 @@ func (r *ProductPriceRepository) Create(
 ) (*domain.ProductPrice, error) {
 	return scanProductPrice(q.QueryRow(ctx,
 		`INSERT INTO product_price
-		   (account_id, branch_id, product_id, user_id, price, currency, conditions,
-		    min_price, valid_from)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		   (account_id, branch_id, product_id, user_id, price, currency, min_price, valid_from)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		 RETURNING `+productPriceColumns,
-		accountID, branchID, productID, userID, in.Price, in.Currency, in.Conditions,
-		in.MinPrice, in.ValidFrom))
+		accountID, branchID, productID, userID, in.Price, in.Currency, in.MinPrice, in.ValidFrom))
 }
 
 // CloseOpenPeriod stamps valid_to on the open period, so the price stops applying at the
@@ -297,7 +289,7 @@ type scanRow interface {
 func scanProductPrice(row scanRow) (*domain.ProductPrice, error) {
 	var p domain.ProductPrice
 	err := row.Scan(&p.ID, &p.AccountID, &p.BranchID, &p.ProductID, &p.UserID, &p.Price,
-		&p.Currency, &p.Conditions, &p.MinPrice, &p.ValidFrom, &p.ValidTo, &p.CreatedAt)
+		&p.Currency, &p.MinPrice, &p.ValidFrom, &p.ValidTo, &p.CreatedAt)
 	if err != nil {
 		return nil, err
 	}

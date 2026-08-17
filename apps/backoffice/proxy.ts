@@ -9,6 +9,7 @@ import {
 } from '@/config/routes';
 import {
   ACCESS_COOKIE,
+  BRANCH_COOKIE,
   forwardedClientAddress,
   needsRenewal,
   REFRESH_COOKIE,
@@ -19,15 +20,15 @@ import {
 
 /*
  * The gate, and the only place a session is renewed: of the three contexts Next
- * allows a cookie write from, middleware is the one that runs before the page
- * renders. Renewing here is what lets a server component read a live token without
- * ever handling expiry itself.
+ * allows a cookie write from, this is the one that runs before the page renders.
+ * Renewing here is what lets a server component read a live token without ever
+ * handling expiry itself.
  *
  * It decides reachability, not authorization. It knows whether a token exists and
  * whether it has expired; whether the session behind it is still good is the API's
  * answer, which the protected layout asks for on every render.
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
   const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value;
@@ -80,6 +81,7 @@ function redirectToLogin(request: NextRequest, from: string) {
   response.cookies.delete(ACCESS_COOKIE);
   response.cookies.delete(REFRESH_COOKIE);
   response.cookies.delete(REMEMBER_COOKIE);
+  response.cookies.delete(BRANCH_COOKIE);
   return response;
 }
 

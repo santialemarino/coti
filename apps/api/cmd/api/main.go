@@ -24,6 +24,7 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"github.com/santialemarino/coti/apps/api/internal/ai/provider"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
@@ -71,6 +72,7 @@ func run() error {
 	productAlternativeRepo := repository.NewProductAlternativeRepository()
 	branchProductRepo := repository.NewBranchProductRepository()
 	productPriceRepo := repository.NewProductPriceRepository()
+	catalogImportRepo := repository.NewCatalogImportRepository()
 	accountRepo := repository.NewAccountRepository()
 	channelRepo := repository.NewChannelRepository()
 	authTokenRepo := repository.NewAuthTokenRepository()
@@ -86,6 +88,12 @@ func run() error {
 	if err != nil {
 		return err
 	}
+
+	providers, err := provider.Bind(cfg.AI, log)
+	if err != nil {
+		return err
+	}
+	providers.Describe(log)
 
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
 	authService := services.NewAuthService(db, userRepo, branchRepo, refreshTokenRepo, tokenService, cfg.Auth, nil)
@@ -103,6 +111,7 @@ func run() error {
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo, branchProductRepo,
 		productPriceRepo, nil)
 	productPriceImportService := services.NewProductPriceImportService(db, productPriceRepo, nil)
+	catalogImportService := services.NewCatalogImportService(db, catalogImportRepo, nil)
 
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
@@ -115,6 +124,7 @@ func run() error {
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
+			CatalogImport: handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
 			Account:       handler.NewAccountHandler(accountService),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
@@ -169,6 +179,8 @@ func newMailer(cfg *config.Config, log *slog.Logger) (domain.Mailer, error) {
 		log.Warn("outbound mail goes to the log, not to a recipient",
 			slog.String("provider", string(cfg.Mail.Provider)))
 		return mail.NewConsoleMailer(log, cfg.Mail.FromAddress), nil
+	case config.MailProviderSMTP:
+		return mail.NewSMTPMailer(cfg.Mail), nil
 	default:
 		return nil, fmt.Errorf("no mail adapter for provider %q", cfg.Mail.Provider)
 	}

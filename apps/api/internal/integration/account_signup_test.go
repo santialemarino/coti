@@ -5,10 +5,12 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
@@ -20,7 +22,7 @@ func signupBody(suffix string) map[string]any {
 		"branch_name":    "Casa Central",
 		"admin_name":     "Admin " + suffix,
 		"admin_email":    suffix + "@test.local",
-		"admin_password": "coti1234",
+		"admin_password": "Coti1234-seed",
 	}
 }
 
@@ -28,11 +30,17 @@ func signupBody(suffix string) map[string]any {
 func (e *env) dropAccountByAdminEmail(t *testing.T, email string) {
 	t.Helper()
 	t.Cleanup(func() {
-		c := context.Background()
 		var accountID uuid.UUID
-		if err := e.db.CrossAccount().QueryRow(c,
+		err := e.db.CrossAccount().QueryRow(context.Background(),
 			`SELECT account_id FROM app_user WHERE lower(email) = lower($1)`, email,
-		).Scan(&accountID); err != nil {
+		).Scan(&accountID)
+		// No such user means the registration never happened, which is the ordinary outcome for
+		// every test that expects one to be refused. Any other error is not.
+		if errors.Is(err, pgx.ErrNoRows) {
+			return
+		}
+		if err != nil {
+			t.Errorf("find the account to clean up: %v", err)
 			return
 		}
 		for _, stmt := range []string{
@@ -45,7 +53,7 @@ func (e *env) dropAccountByAdminEmail(t *testing.T, email string) {
 			`DELETE FROM branch WHERE account_id = $1`,
 			`DELETE FROM account WHERE id = $1`,
 		} {
-			_, _ = e.db.CrossAccount().Exec(c, stmt, accountID)
+			e.mustCleanup(t, stmt, accountID)
 		}
 	})
 }
@@ -200,6 +208,9 @@ func TestBranches_RefusesToCloseTheLastActiveBranch(t *testing.T) {
 	res := e.do(t, request{method: http.MethodDelete, path: "/v1/branches/" + branchID.String(), token: token})
 	if res.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("close last branch = %d, want 422 (body %s)", res.Code, res.Body.String())
+	}
+	if got := errorCode(t, res); got != string(domain.CodeLastActiveBranch) {
+		t.Errorf("close last branch: code = %q, want %q", got, domain.CodeLastActiveBranch)
 	}
 
 	// With a second branch open, closing the first is allowed.

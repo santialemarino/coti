@@ -163,7 +163,33 @@ the route the link lands on.
 - **Requiring it to log in is a flag that starts off** (`AUTH_REQUIRE_VERIFIED_EMAIL`).
   `config.Load` **refuses to turn it on while `MAIL_PROVIDER` is `console`**: a transport that
   only writes to a log cannot deliver the link anyone would need, so enforcing it would lock
-  every user out of the environment.
+  every user out of the environment. Under `smtp` the flag is free to be turned on — see
+  [Outbound email](./outbound-email.md).
+- **An admin-created user is verified on creation, in the same transaction.** No path mails
+  them a link — only public registration does — so without this they would carry a null
+  `email_verified_at` forever and the flag would lock them out of an account they were
+  deliberately given access to. Trusting the admin's word is the right reading of the threat:
+  verification exists to stop someone reserving an address they cannot read, which is a
+  **public-registration** problem, and an admin works inside their own account and can squat
+  nothing. Mailing a link instead would make a mistyped address a permanent lockout rather than
+  a recoverable one that surfaces at password recovery.
+- **Changing the address drops the confirmation.** The stamp proved one mailbox reachable and
+  says nothing about the next, so `UserRepository.Update` nulls `email_verified_at` whenever the
+  address actually changes — compared folded, like the unique index, so a change of case alone
+  is not a change. Without it an account could be pointed at a mailbox nobody proved while still
+  reading as verified, which is the one thing this flag exists to prevent. A user whose address
+  was corrected asks for a new link from `/verify-email`; the address is registered and
+  unconfirmed, so the resend genuinely sends.
+- **`GET /v1/me` reports `email_verified`**, which is what lets a screen tell "confirm your
+  address" from "already done" instead of guessing.
+- **Enforced at login only** — not on refresh, not on tenant resolution. Registration hands out a
+  session on purpose, so the new admin can reach the screen that explains the mail. It bites
+  because registration issues a **non-remembered** pair: the session dies within
+  `AUTH_REFRESH_TTL_HOURS` (12h) and the next login is refused until the address is confirmed.
+  **This is the shape today, and it is agreed to change.** Refusing at the door leaves someone who
+  mistyped their address at signup with no way back once that window closes. The agreed model
+  enforces on **use** instead — authenticate normally, then reach nothing but your own identity,
+  logout and a correction of your own address until you confirm. Not built yet.
 - **When it is on, the caller is told why** — a 403 naming the reason, unlike every other
   rejection here. That is safe because it is only reachable _after_ the password matched:
   the check sits below the credential comparison, so it can never answer for someone who
@@ -174,10 +200,10 @@ the route the link lands on.
 - **`resend-verification` answers 202 for every address** — unregistered, already confirmed,
   deactivated — for the same reason `forgot-password` does.
 
-**This does not close the address-squatting hole**, and the ticket says so. Reserving someone
-else's address is only prevented by _requiring_ verification, which needs a transport that
-delivers, or by expiring unverified registrations, which needs the scheduled-job runtime. What
-is in place is the flow, so closing it later is a configuration change rather than a feature.
+**This does not close the address-squatting hole on its own.** Reserving someone else's address
+is only prevented by _requiring_ verification, or by expiring unverified registrations, which
+needs the scheduled-job runtime. The transport that requirement waited on now exists, so closing
+it is the configuration change the flow was built for.
 
 ## Rate limits
 
@@ -269,7 +295,7 @@ seller reaching any of it gets **403**.
 - **The account comes from the session**, never the body — there is no account field on the
   wire, so an admin cannot create a user anywhere but their own account.
 - **An admin sets the initial password.** There is no invitation flow, so this is the only way
-  a user gets credentials. It must clear `AUTH_PASSWORD_MIN_LENGTH`.
+  a user gets credentials. It clears the same policy as every other password.
 - **An admin may create either role.** `ADMIN` and `SELLER` are both accepted.
 - **A duplicate email is a 409**, raised by a constraint rather than a read-then-write. Two
   back it: `uq_app_user_email` per account, and `uq_app_user_email_global` on `lower(email)`
@@ -292,10 +318,24 @@ seller reaching any of it gets **403**.
 ## Passwords
 
 bcrypt at the default cost. It is a cryptographic constant, so it is **not** configurable per
-environment, unlike the operational thresholds. `AUTH_PASSWORD_MIN_LENGTH` is the operational
-one, it floors at 8, and all three change paths apply it.
+environment, unlike the operational thresholds.
 
-The two development seed users have the password `coti1234`. Development only.
+**One policy, applied wherever a password is stored** — `domain.PasswordPolicy`, called by signup,
+admin user creation, the self-service change and the recovery reset. A password must be at least
+`AUTH_PASSWORD_MIN_LENGTH` characters (12 by default; the config refuses to be set below 8) and
+carry an uppercase letter, a lowercase letter, a number and a symbol. The character rules are fixed
+rather than configurable: they are a product decision, not an operational threshold an environment
+tunes.
+
+The cap is **72 bytes, not 72 characters**, because that is what bcrypt hashes — it refuses a longer
+input outright, so the policy catches it as invalid input instead of letting the write fail. A
+password of accented characters reaches that cap in fewer characters than an ASCII one.
+
+**Logging in applies no policy at all.** The password is being compared, not chosen, so a rule
+introduced after an account was created never locks that account out of its own login screen.
+
+The two development seed users have the password `coti1234`. Development only — it predates the
+policy, and only logging in accepts it.
 
 ## Password lifecycle
 

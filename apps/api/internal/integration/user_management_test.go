@@ -171,6 +171,17 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 	return &env{router: router, db: db, tokens: tokenService, mail: mailer}
 }
 
+// mustCleanup runs a teardown delete on the owner pool and fails the test when it cannot. A
+// discarded error leaves rows behind while the suite still passes, and a cleanup belongs in
+// t.Cleanup rather than a defer: cleanups run after the body's defers, so a pool one of them closed
+// is already gone.
+func (e *env) mustCleanup(t *testing.T, query string, args ...any) {
+	t.Helper()
+	if _, err := e.db.CrossAccount().Exec(context.Background(), query, args...); err != nil {
+		t.Errorf("cleanup %q: %v", query, err)
+	}
+}
+
 // seedAccount creates an account with one branch through the owner pool, and removes both at
 // the end of the test.
 func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.UUID) {
@@ -189,7 +200,6 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 	}
 
 	t.Cleanup(func() {
-		c := context.Background()
 		for _, stmt := range []string{
 			`DELETE FROM user_branch WHERE account_id = $1`,
 			`DELETE FROM auth_token WHERE account_id = $1`,
@@ -200,7 +210,7 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 			`DELETE FROM branch WHERE account_id = $1`,
 			`DELETE FROM account WHERE id = $1`,
 		} {
-			_, _ = e.db.CrossAccount().Exec(c, stmt, accountID)
+			e.mustCleanup(t, stmt, accountID)
 		}
 	})
 	return accountID, branchID
@@ -266,9 +276,22 @@ func (e *env) do(t *testing.T, r request) *httptest.ResponseRecorder {
 	return rec
 }
 
+// errorCode reads the envelope's stable code, which is what a client branches on when one route
+// answers the same status for more than one reason.
+func errorCode(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+	var body struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body %s: %v", rec.Body, err)
+	}
+	return body.Code
+}
+
 func createUserBody(email string, role domain.UserRole, branchIDs []uuid.UUID) map[string]any {
 	return map[string]any{
-		"name": "Nuevo", "email": email, "password": "una-clave-larga",
+		"name": "Nuevo", "email": email, "password": "Una-clave-larga1",
 		"role": string(role), "branch_ids": branchIDs,
 	}
 }
@@ -301,6 +324,55 @@ func TestUsers_SellerIsForbidden(t *testing.T) {
 				t.Errorf("status = %d, want %d; body = %s", rec.Code, http.StatusForbidden, rec.Body)
 			}
 		})
+	}
+}
+
+// The screen that asks a user to confirm their address needs to know whether it already is,
+// or it tells someone who is done that a mail is on its way. The flag also depends on it being
+// dropped the moment the address changes — a stamp proves one mailbox, not the next one.
+func TestMe_ReportsWhetherTheAddressIsVerified(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "Corralón")
+	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	token := e.tokenFor(t, admin)
+
+	verified := func(t *testing.T) bool {
+		t.Helper()
+		rec := e.do(t, request{method: http.MethodGet, path: "/v1/me", token: token})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET /v1/me: status = %d, want %d; body = %s", rec.Code, http.StatusOK, rec.Body)
+		}
+		var me struct {
+			EmailVerified bool `json:"email_verified"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &me); err != nil {
+			t.Fatalf("decode /v1/me: %v", err)
+		}
+		return me.EmailVerified
+	}
+
+	if verified(t) {
+		t.Fatal("a seeded user reports email_verified true, want false")
+	}
+
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`UPDATE app_user SET email_verified_at = now() WHERE id = $1`, admin.ID); err != nil {
+		t.Fatalf("stamp verification: %v", err)
+	}
+	if !verified(t) {
+		t.Fatal("a confirmed address reports email_verified false, want true")
+	}
+
+	// Changing the address through the real endpoint has to drop it again.
+	rec := e.do(t, request{method: http.MethodPut, path: "/v1/users/" + admin.ID.String(),
+		token: token,
+		body: map[string]any{"name": "Admin", "email": "otra+" + uuid.NewString() + "@corralon.test",
+			"role": string(domain.UserRoleAdmin), "branch_ids": []uuid.UUID{branchID}}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT /v1/users: status = %d, want %d; body = %s", rec.Code, http.StatusOK, rec.Body)
+	}
+	if verified(t) {
+		t.Error("email_verified stayed true after the address changed")
 	}
 }
 
@@ -337,8 +409,10 @@ func TestUsers_CreatedInTheCallersAccount(t *testing.T) {
 	}
 
 	var storedAccount uuid.UUID
+	var verifiedAt *time.Time
 	if err := e.db.CrossAccount().QueryRow(context.Background(),
-		`SELECT account_id FROM app_user WHERE id = $1`, created.ID).Scan(&storedAccount); err != nil {
+		`SELECT account_id, email_verified_at FROM app_user WHERE id = $1`,
+		created.ID).Scan(&storedAccount, &verifiedAt); err != nil {
 		t.Fatalf("read created user: %v", err)
 	}
 	if storedAccount != accountA {
@@ -346,6 +420,11 @@ func TestUsers_CreatedInTheCallersAccount(t *testing.T) {
 	}
 	if storedAccount == accountB {
 		t.Error("an admin of one account created a user in another")
+	}
+	// Nothing mails an admin-created user a confirmation link, so the row has to carry the
+	// stamp already or AUTH_REQUIRE_VERIFIED_EMAIL would lock them out permanently.
+	if verifiedAt == nil {
+		t.Error("email_verified_at is null on an admin-created user")
 	}
 	if len(created.BranchIDs) != 1 || created.BranchIDs[0] != branchA {
 		t.Errorf("branch_ids = %v, want [%v]", created.BranchIDs, branchA)
@@ -424,7 +503,10 @@ func TestUsers_DuplicateEmailIsAConflictAcrossAccounts(t *testing.T) {
 	accountB, branchB := e.seedAccount(t, "Corralón B")
 	adminA := e.seedUser(t, accountA, domain.UserRoleAdmin)
 	adminB := e.seedUser(t, accountB, domain.UserRoleAdmin)
-	const shared = "compras@corralon.test"
+	// Unique per run: the address has to be shared inside this test and nowhere else, because
+	// the index is global and `go test ./internal/...` runs this package beside the repository
+	// one, which exercises the same rule against the same table.
+	shared := "compras+" + uuid.NewString() + "@corralon.test"
 
 	first := e.do(t, request{method: http.MethodPost, path: "/v1/users", token: e.tokenFor(t, adminA),
 		body: createUserBody(shared, domain.UserRoleSeller, []uuid.UUID{branchA})})
@@ -437,6 +519,9 @@ func TestUsers_DuplicateEmailIsAConflictAcrossAccounts(t *testing.T) {
 	if dup.Code != http.StatusConflict {
 		t.Errorf("duplicate in the same account: status = %d, want %d; body = %s",
 			dup.Code, http.StatusConflict, dup.Body)
+	}
+	if got := errorCode(t, dup); got != string(domain.CodeEmailTaken) {
+		t.Errorf("duplicate in the same account: code = %q, want %q", got, domain.CodeEmailTaken)
 	}
 
 	other := e.do(t, request{method: http.MethodPost, path: "/v1/users", token: e.tokenFor(t, adminB),
@@ -507,6 +592,9 @@ func TestUsers_AdminCannotDeactivateThemselves(t *testing.T) {
 		t.Errorf("DELETE self: status = %d, want %d; body = %s",
 			rec.Code, http.StatusUnprocessableEntity, rec.Body)
 	}
+	if got := errorCode(t, rec); got != string(domain.CodeSelfDeactivation) {
+		t.Errorf("DELETE self: code = %q, want %q", got, domain.CodeSelfDeactivation)
+	}
 
 	rec = e.do(t, request{method: http.MethodPut, path: "/v1/users/" + admin.ID.String(), token: token,
 		body: map[string]any{"name": "Admin", "email": admin.Email, "role": "ADMIN", "is_active": false}})
@@ -520,6 +608,11 @@ func TestUsers_AdminCannotDeactivateThemselves(t *testing.T) {
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("PUT self role=SELLER: status = %d, want %d; body = %s",
 			rec.Code, http.StatusUnprocessableEntity, rec.Body)
+	}
+	// Two refusals, one status, two codes: the screen removes the role control for the caller's
+	// own row and keeps a message for the deactivation, and it can only tell them apart by code.
+	if got := errorCode(t, rec); got != string(domain.CodeSelfRoleChange) {
+		t.Errorf("PUT self role=SELLER: code = %q, want %q", got, domain.CodeSelfRoleChange)
 	}
 
 	// The admin must still be an active admin after all three refusals.
@@ -612,9 +705,8 @@ func TestPrices_SellerCannotReadAnUnassignedBranchByOmittingTheHeader(t *testing
 		}
 	}
 	t.Cleanup(func() {
-		c := context.Background()
-		_, _ = e.db.CrossAccount().Exec(c, `DELETE FROM product_price WHERE product_id = $1`, productID)
-		_, _ = e.db.CrossAccount().Exec(c, `DELETE FROM product WHERE id = $1`, productID)
+		e.mustCleanup(t, `DELETE FROM product_price WHERE product_id = $1`, productID)
+		e.mustCleanup(t, `DELETE FROM product WHERE id = $1`, productID)
 	})
 
 	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)

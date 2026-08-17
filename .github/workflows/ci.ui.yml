@@ -1,0 +1,67 @@
+name: CI UI
+
+run-name: 'CI UI by @${{ github.actor }}'
+
+on:
+  workflow_call:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'packages/ui/**'
+      - 'packages/vitest-config/**'
+      - 'packages/eslint-config/**'
+      - 'packages/typescript-config/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'turbo.json'
+      - '.github/workflows/ci.ui.yml'
+  pull_request:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'packages/ui/**'
+      - 'packages/vitest-config/**'
+      - 'packages/eslint-config/**'
+      - 'packages/typescript-config/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'turbo.json'
+      - '.github/workflows/ci.ui.yml'
+  workflow_dispatch:
+
+jobs:
+  ci-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm --filter @repo/ui run lint
+      - name: Type check
+        run: pnpm --filter @repo/ui run check-types
+      - name: Test
+        run: pnpm --filter @repo/ui run test:coverage
+      # Reported, never enforced: a threshold set before the suites are real gets met by writing
+      # tests that assert nothing. It lands in the job summary so the number needs no log dive.
+      - name: Coverage
+        run: |
+          {
+            echo '### Design system coverage'
+            echo
+            echo '```'
+            node -e "const t=require('./packages/ui/coverage/coverage-summary.json').total;for(const k of ['statements','branches','functions','lines'])console.log(k.padEnd(12),t[k].pct.toFixed(1)+'%')"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Build
+        run: pnpm build:ui

@@ -76,6 +76,19 @@ pnpm dev
 | webapp     | http://localhost:3001 |
 | api        | http://localhost:8000 |
 
+Outbound mail goes to the log by default. To read a real message — a password-reset or
+address-verification link — start the Mailpit sandbox, set `MAIL_PROVIDER=smtp` in
+`apps/api/.env` (its `MAIL_SMTP_*` keys already point at Mailpit), and open the inbox:
+
+```bash
+docker compose up -d mailpit   # included in pnpm dev:docker
+```
+
+| Service      | URL                   |
+| ------------ | --------------------- |
+| mailpit UI   | http://localhost:8025 |
+| mailpit SMTP | localhost:1025        |
+
 ## Common scripts
 
 | Command                           | What it does                                |
@@ -87,6 +100,7 @@ pnpm dev
 | `pnpm dev:docker`                 | Bring up the full stack via docker-compose  |
 | `pnpm db:migrate`                 | Apply Go (goose) migrations                 |
 | `pnpm db:create-migration <name>` | Scaffold a new migration                    |
+| `pnpm db:vector-index`            | Build the catalog's vector index            |
 | `pnpm docs:api`                   | Regenerate the OpenAPI spec from handlers   |
 
 ## API specification
@@ -112,6 +126,17 @@ Closing or reopening a corralón is an operational script rather than an endpoin
 `pnpm db:account:activate --account <uuid>` restores it.
 
 See [docs/technical/database.md](docs/technical/database.md).
+
+## AI providers
+
+Three ports in `apps/api/internal/domain` — schema-forced generation, embeddings and
+transcription — with adapters under `apps/api/internal/ai/`, one subpackage per provider, bound
+in `apps/api/internal/ai/provider` and nowhere else. Each capability is selected on its own (no
+provider covers all three) and each arrives disabled, so a checkout with no keys still boots and
+the engine refuses the calls that needed a model. Turning one on makes its key required at
+startup.
+
+See [docs/technical/ai-providers.md](docs/technical/ai-providers.md).
 
 ## Design system
 

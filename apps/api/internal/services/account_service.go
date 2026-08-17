@@ -59,7 +59,7 @@ type AccountService struct {
 	tokens            tokenIssuer
 	verifier          emailVerifier
 	log               *slog.Logger
-	passwordMinL      int
+	policy            domain.PasswordPolicy
 	defaultExpiryDays int
 }
 
@@ -74,7 +74,8 @@ func NewAccountService(
 	}
 	return &AccountService{db: db, accounts: accounts, branches: branches, channels: channels,
 		users: users, tokens: tokens, verifier: verifier, log: log,
-		passwordMinL: cfg.PasswordMinLength, defaultExpiryDays: branchCfg.DefaultExpiryDays}
+		policy:            domain.PasswordPolicy{MinLength: cfg.PasswordMinLength},
+		defaultExpiryDays: branchCfg.DefaultExpiryDays}
 }
 
 // Get returns the caller's own account.
@@ -103,9 +104,8 @@ func (s *AccountService) Register(
 	if email == "" {
 		return nil, nil, fmt.Errorf("%w: email is required", domain.ErrInvalidInput)
 	}
-	if len([]rune(in.AdminPassword)) < s.passwordMinL {
-		return nil, nil, fmt.Errorf("%w: password must be at least %d characters",
-			domain.ErrInvalidInput, s.passwordMinL)
+	if err := s.policy.Validate(in.AdminPassword); err != nil {
+		return nil, nil, err
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(in.AdminPassword), bcrypt.DefaultCost)
@@ -126,7 +126,7 @@ func (s *AccountService) Register(
 		return nil, nil, err
 	}
 	if taken {
-		return nil, nil, domain.ErrConflict
+		return nil, nil, domain.WithCode(domain.CodeEmailTaken, domain.ErrConflict)
 	}
 
 	account, err := s.accounts.Create(ctx, tx, strings.TrimSpace(in.AccountName),

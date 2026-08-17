@@ -122,6 +122,65 @@ definitions:
       updated_at:
         type: string
     type: object
+  dto.CatalogImportInput:
+    properties:
+      code:
+        type: string
+      description:
+        type: string
+      family:
+        type: string
+      min_price:
+        type: string
+      name:
+        type: string
+      price:
+        type: string
+      subgroup:
+        type: string
+      unit:
+        type: string
+    type: object
+  dto.CatalogImportPreviewResponse:
+    properties:
+      can_confirm:
+        type: boolean
+      invalid_rows:
+        type: integer
+      previewed_at:
+        type: string
+      rows:
+        items:
+          $ref: '#/definitions/dto.CatalogImportRowResponse'
+        type: array
+      valid_rows:
+        type: integer
+    type: object
+  dto.CatalogImportRowResponse:
+    properties:
+      code:
+        type: string
+      description:
+        type: string
+      errors:
+        items:
+          type: string
+        type: array
+      family:
+        type: string
+      min_price:
+        type: string
+      name:
+        type: string
+      price:
+        type: string
+      row_number:
+        type: integer
+      subgroup:
+        type: string
+      unit:
+        type: string
+    type: object
   dto.ChangePasswordRequest:
     properties:
       current_password:
@@ -134,6 +193,23 @@ definitions:
     required:
     - current_password
     - new_password
+    type: object
+  dto.ConfirmCatalogImportRequest:
+    properties:
+      rows:
+        items:
+          $ref: '#/definitions/dto.CatalogImportInput'
+        minItems: 1
+        type: array
+    required:
+    - rows
+    type: object
+  dto.ConfirmCatalogImportResponse:
+    properties:
+      imported_rows:
+        type: integer
+      skipped_rows:
+        type: integer
     type: object
   dto.ConfirmEmailRequest:
     properties:
@@ -179,20 +255,22 @@ definitions:
         maxLength: 255
         minLength: 1
         type: string
-      category:
-        maxLength: 255
-        type: string
       code:
         maxLength: 255
         type: string
       description:
         maxLength: 512
         type: string
+      family_id:
+        type: string
+      subgroup_id:
+        type: string
       unit:
         maxLength: 64
         type: string
     required:
     - canonical_name
+    - family_id
     type: object
   dto.CreateUserRequest:
     properties:
@@ -224,6 +302,10 @@ definitions:
     type: object
   dto.ErrorResponse:
     properties:
+      code:
+        description: Code is the stable identifier a client branches on; `error` is
+          English prose for a log.
+        type: string
       detail:
         description: set when a body failed binding or validation.
         type: string
@@ -275,6 +357,10 @@ definitions:
         type: array
       email:
         type: string
+      email_verified:
+        description: EmailVerified is what lets a screen tell "confirm your address"
+          from "already done".
+        type: boolean
       id:
         type: string
       name:
@@ -292,8 +378,6 @@ definitions:
   dto.PriceResponse:
     properties:
       branch_id:
-        type: string
-      conditions:
         type: string
       created_at:
         type: string
@@ -334,11 +418,6 @@ definitions:
       code:
         maxLength: 255
         type: string
-      conditions:
-        maxLength: 255
-        type: string
-      currency:
-        type: string
       min_price:
         type: string
       price:
@@ -366,8 +445,6 @@ definitions:
     properties:
       code:
         type: string
-      conditions:
-        type: string
       currency:
         type: string
       current_min_price:
@@ -391,18 +468,20 @@ definitions:
     properties:
       canonical_name:
         type: string
-      category:
-        type: string
       code:
         type: string
       created_at:
         type: string
       description:
         type: string
+      family_id:
+        type: string
       id:
         type: string
       is_active:
         type: boolean
+      subgroup_id:
+        type: string
       unit:
         type: string
       updated_at:
@@ -410,6 +489,10 @@ definitions:
     type: object
   dto.RateLimitResponse:
     properties:
+      code:
+        description: Code is the stable identifier a client branches on; `error` is
+          English prose for a log.
+        type: string
       error:
         type: string
       retry_after_seconds:
@@ -451,9 +534,6 @@ definitions:
     type: object
   dto.SetPriceRequest:
     properties:
-      conditions:
-        maxLength: 255
-        type: string
       currency:
         description: e.g. "ARS"; defaults to ARS.
         type: string
@@ -545,6 +625,9 @@ definitions:
   dto.UpdateAccountRequest:
     properties:
       brand_color:
+        description: |-
+          Hexadecimal, with three, four, six or eight digits behind a hash. Checked here because the
+          webapp renders a quote with it, not in whichever client happens to be writing it.
         maxLength: 32
         type: string
       brand_logo_url:
@@ -588,22 +671,24 @@ definitions:
         maxLength: 255
         minLength: 1
         type: string
-      category:
-        maxLength: 255
-        type: string
       code:
         maxLength: 255
         type: string
       description:
         maxLength: 512
         type: string
+      family_id:
+        type: string
       is_active:
         type: boolean
+      subgroup_id:
+        type: string
       unit:
         maxLength: 64
         type: string
     required:
     - canonical_name
+    - family_id
     type: object
   dto.UpdateUserRequest:
     properties:
@@ -842,7 +927,13 @@ paths:
   /v1/branches:
     get:
       description: Every active branch of the account for an admin; the assigned ones
-        for a seller.
+        for a seller. With include_inactive an administrator also gets the closed
+        ones, which is for administering them rather than operating in one.
+      parameters:
+      - description: Include closed branches (administrators only)
+        in: query
+        name: include_inactive
+        type: boolean
       produces:
       - application/json
       responses:
@@ -850,8 +941,16 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/dto.BranchListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
         "401":
           description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
@@ -1154,9 +1253,13 @@ paths:
         in: query
         name: search
         type: string
-      - description: Exact category match
+      - description: Exact family id
         in: query
-        name: category
+        name: family_id
+        type: string
+      - description: Exact subgroup id
+        in: query
+        name: subgroup_id
         type: string
       - description: Include deactivated items
         in: query
@@ -1760,6 +1863,139 @@ paths:
       security:
       - BearerAuth: []
       summary: Remove a product synonym
+      tags:
+      - catalog
+  /v1/products/export:
+    get:
+      description: Returns a Spanish XLSX with the catalog columns and a second sheet
+        of instructions.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Download the initial catalog template
+      tags:
+      - catalog
+  /v1/products/import/confirm:
+    post:
+      consumes:
+      - application/json
+      description: Revalidates all rows, skips invalid ones, and creates valid products,
+        availability, and prices atomically.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Reviewed rows
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ConfirmCatalogImportRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ConfirmCatalogImportResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Confirm an initial catalog import
+      tags:
+      - catalog
+  /v1/products/import/preview:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Parses the spreadsheet and reports every valid and invalid row
+        without writing data.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Catalog spreadsheet to preview (.xlsx or .csv)
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CatalogImportPreviewResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Preview an initial catalog import
       tags:
       - catalog
   /v1/public/accounts:

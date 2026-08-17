@@ -1,10 +1,10 @@
 import { z } from 'zod';
 
-import { rawKey, type MessageFor } from '@/lib/constants/auth';
+import { emailAddress, rawText, type SchemaText } from '@/lib/forms/validators';
 
-export function resendVerificationSchema(t: MessageFor = rawKey) {
+export function resendVerificationSchema(t: SchemaText = rawText) {
   return z.object({
-    email: z.email(t('email.invalid')),
+    email: emailAddress(t, 'email.required'),
   });
 }
 

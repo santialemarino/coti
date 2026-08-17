@@ -270,7 +270,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Every active branch of the account for an admin; the assigned ones for a seller.",
+                "description": "Every active branch of the account for an admin; the assigned ones for a seller. With include_inactive an administrator also gets the closed ones, which is for administering them rather than operating in one.",
                 "produces": [
                     "application/json"
                 ],
@@ -278,6 +278,14 @@ const docTemplate = `{
                     "branches"
                 ],
                 "summary": "List branches",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Include closed branches (administrators only)",
+                        "name": "include_inactive",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -285,8 +293,20 @@ const docTemplate = `{
                             "$ref": "#/definitions/dto.BranchListResponse"
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -753,8 +773,14 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Exact category match",
-                        "name": "category",
+                        "description": "Exact family id",
+                        "name": "family_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Exact subgroup id",
+                        "name": "subgroup_id",
                         "in": "query"
                     },
                     {
@@ -846,6 +872,208 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "The account already has a product with that code",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/products/export": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a Spanish XLSX with the catalog columns and a second sheet of instructions.",
+                "produces": [
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Download the initial catalog template",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/products/import/confirm": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Revalidates all rows, skips invalid ones, and creates valid products, availability, and prices atomically.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Confirm an initial catalog import",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Reviewed rows",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ConfirmCatalogImportRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ConfirmCatalogImportResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/products/import/preview": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Parses the spreadsheet and reports every valid and invalid row without writing data.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Preview an initial catalog import",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "Catalog spreadsheet to preview (.xlsx or .csv)",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CatalogImportPreviewResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -2545,6 +2773,96 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.CatalogImportInput": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "family": {
+                    "type": "string"
+                },
+                "min_price": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "price": {
+                    "type": "string"
+                },
+                "subgroup": {
+                    "type": "string"
+                },
+                "unit": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.CatalogImportPreviewResponse": {
+            "type": "object",
+            "properties": {
+                "can_confirm": {
+                    "type": "boolean"
+                },
+                "invalid_rows": {
+                    "type": "integer"
+                },
+                "previewed_at": {
+                    "type": "string"
+                },
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.CatalogImportRowResponse"
+                    }
+                },
+                "valid_rows": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.CatalogImportRowResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "family": {
+                    "type": "string"
+                },
+                "min_price": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "price": {
+                    "type": "string"
+                },
+                "row_number": {
+                    "type": "integer"
+                },
+                "subgroup": {
+                    "type": "string"
+                },
+                "unit": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.ChangePasswordRequest": {
             "type": "object",
             "required": [
@@ -2560,6 +2878,32 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 128,
                     "minLength": 8
+                }
+            }
+        },
+        "dto.ConfirmCatalogImportRequest": {
+            "type": "object",
+            "required": [
+                "rows"
+            ],
+            "properties": {
+                "rows": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/dto.CatalogImportInput"
+                    }
+                }
+            }
+        },
+        "dto.ConfirmCatalogImportResponse": {
+            "type": "object",
+            "properties": {
+                "imported_rows": {
+                    "type": "integer"
+                },
+                "skipped_rows": {
+                    "type": "integer"
                 }
             }
         },
@@ -2622,17 +2966,14 @@ const docTemplate = `{
         "dto.CreateProductRequest": {
             "type": "object",
             "required": [
-                "canonical_name"
+                "canonical_name",
+                "family_id"
             ],
             "properties": {
                 "canonical_name": {
                     "type": "string",
                     "maxLength": 255,
                     "minLength": 1
-                },
-                "category": {
-                    "type": "string",
-                    "maxLength": 255
                 },
                 "code": {
                     "type": "string",
@@ -2641,6 +2982,12 @@ const docTemplate = `{
                 "description": {
                     "type": "string",
                     "maxLength": 512
+                },
+                "family_id": {
+                    "type": "string"
+                },
+                "subgroup_id": {
+                    "type": "string"
                 },
                 "unit": {
                     "type": "string",
@@ -2689,6 +3036,10 @@ const docTemplate = `{
         "dto.ErrorResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "description": "Code is the stable identifier a client branches on; ` + "`" + `error` + "`" + ` is English prose for a log.",
+                    "type": "string"
+                },
                 "detail": {
                     "description": "set when a body failed binding or validation.",
                     "type": "string"
@@ -2765,6 +3116,10 @@ const docTemplate = `{
                 "email": {
                     "type": "string"
                 },
+                "email_verified": {
+                    "description": "EmailVerified is what lets a screen tell \"confirm your address\" from \"already done\".",
+                    "type": "boolean"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -2791,9 +3146,6 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "branch_id": {
-                    "type": "string"
-                },
-                "conditions": {
                     "type": "string"
                 },
                 "created_at": {
@@ -2858,13 +3210,6 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 255
                 },
-                "conditions": {
-                    "type": "string",
-                    "maxLength": 255
-                },
-                "currency": {
-                    "type": "string"
-                },
                 "min_price": {
                     "type": "string"
                 },
@@ -2902,9 +3247,6 @@ const docTemplate = `{
                 "code": {
                     "type": "string"
                 },
-                "conditions": {
-                    "type": "string"
-                },
                 "currency": {
                     "type": "string"
                 },
@@ -2940,9 +3282,6 @@ const docTemplate = `{
                 "canonical_name": {
                     "type": "string"
                 },
-                "category": {
-                    "type": "string"
-                },
                 "code": {
                     "type": "string"
                 },
@@ -2952,11 +3291,17 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
+                "family_id": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
                 "is_active": {
                     "type": "boolean"
+                },
+                "subgroup_id": {
+                    "type": "string"
                 },
                 "unit": {
                     "type": "string"
@@ -2969,6 +3314,10 @@ const docTemplate = `{
         "dto.RateLimitResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "description": "Code is the stable identifier a client branches on; ` + "`" + `error` + "`" + ` is English prose for a log.",
+                    "type": "string"
+                },
                 "error": {
                     "type": "string"
                 },
@@ -3034,10 +3383,6 @@ const docTemplate = `{
                 "price"
             ],
             "properties": {
-                "conditions": {
-                    "type": "string",
-                    "maxLength": 255
-                },
                 "currency": {
                     "description": "e.g. \"ARS\"; defaults to ARS.",
                     "type": "string"
@@ -3169,6 +3514,7 @@ const docTemplate = `{
             ],
             "properties": {
                 "brand_color": {
+                    "description": "Hexadecimal, with three, four, six or eight digits behind a hash. Checked here because the\nwebapp renders a quote with it, not in whichever client happens to be writing it.",
                     "type": "string",
                     "maxLength": 32
                 },
@@ -3220,17 +3566,14 @@ const docTemplate = `{
         "dto.UpdateProductRequest": {
             "type": "object",
             "required": [
-                "canonical_name"
+                "canonical_name",
+                "family_id"
             ],
             "properties": {
                 "canonical_name": {
                     "type": "string",
                     "maxLength": 255,
                     "minLength": 1
-                },
-                "category": {
-                    "type": "string",
-                    "maxLength": 255
                 },
                 "code": {
                     "type": "string",
@@ -3240,8 +3583,14 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 512
                 },
+                "family_id": {
+                    "type": "string"
+                },
                 "is_active": {
                     "type": "boolean"
+                },
+                "subgroup_id": {
+                    "type": "string"
                 },
                 "unit": {
                     "type": "string",

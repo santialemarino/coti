@@ -1,0 +1,29 @@
+{
+  "name": "@repo/vitest-config",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./config.d.ts",
+      "default": "./config.js"
+    },
+    "./cookies": {
+      "types": "./cookies.d.ts",
+      "default": "./cookies.js"
+    },
+    "./form-messages": {
+      "types": "./form-messages.d.ts",
+      "default": "./form-messages.js"
+    },
+    "./schema-text": {
+      "types": "./schema-text.d.ts",
+      "default": "./schema-text.js"
+    }
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@vitejs/plugin-react": "^6.0.5",
+    "vitest": "^4.1.10"
+  }
+}

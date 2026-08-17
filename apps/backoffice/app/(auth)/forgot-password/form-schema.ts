@@ -1,10 +1,10 @@
 import { z } from 'zod';
 
-import { rawKey, type MessageFor } from '@/lib/constants/auth';
+import { emailAddress, rawText, type SchemaText } from '@/lib/forms/validators';
 
-export function forgotPasswordSchema(t: MessageFor = rawKey) {
+export function forgotPasswordSchema(t: SchemaText = rawText) {
   return z.object({
-    email: z.email(t('email.invalid')),
+    email: emailAddress(t, 'email.required'),
   });
 }
 

@@ -2,17 +2,22 @@
 export const ROUTES = {
   home: '/',
   login: '/login',
+  signup: '/signup',
   forgotPassword: '/forgot-password',
   resetPassword: '/reset-password',
   verifyEmail: '/verify-email',
   sessionEnded: '/session-ended',
   changePassword: '/settings/password',
+  accountSettings: '/settings/account',
   priceSettings: '/settings/prices',
+  branchSettings: '/settings/branches',
+  userSettings: '/settings/users',
 } as const;
 
 // Reachable without a session. Anything else is behind the gate.
 export const PUBLIC_ROUTES: readonly string[] = [
   ROUTES.login,
+  ROUTES.signup,
   ROUTES.forgotPassword,
   ROUTES.resetPassword,
   ROUTES.verifyEmail,
@@ -26,6 +31,7 @@ export const PUBLIC_ROUTES: readonly string[] = [
  */
 export const SIGNED_OUT_ONLY_ROUTES: readonly string[] = [
   ROUTES.login,
+  ROUTES.signup,
   ROUTES.forgotPassword,
   ROUTES.resetPassword,
 ];

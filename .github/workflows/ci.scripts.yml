@@ -7,6 +7,15 @@ run-name: 'CI Scripts by @${{ github.actor }}'
 # zero checks run.
 on:
   workflow_call:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'scripts/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/ci.scripts.yml'
   pull_request:
     branches:
       - main

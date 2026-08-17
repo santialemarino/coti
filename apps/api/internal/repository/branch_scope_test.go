@@ -187,3 +187,102 @@ func TestProductPriceRepository_BranchFilterArraySemantics(t *testing.T) {
 		})
 	}
 }
+
+/*
+ * The two branch lists answer different questions and must not drift into each other. One says
+ * which branches the caller may operate in — active, assigned — and backs the switcher, so a
+ * closed branch reaching it would let a session pin itself to one the API refuses on every
+ * request. The other says which branches the account has, closed ones included, so an
+ * administrator can reopen one.
+ */
+func TestBranchRepository_ClosedBranchesAreAdministrationOnly(t *testing.T) {
+	db := testDB(t)
+	repo := NewBranchRepository()
+	ctx := context.Background()
+
+	account := seedAccount(t, db, "Corralón con una cerrada")
+	open := branchOf(t, db, account)
+	closed := seedExtraBranch(t, db, account, "Sucursal Cerrada")
+	closeBranch(t, db, closed)
+	admin := seedUser(t, db, account, "ADMIN")
+
+	var reach, all []domain.Branch
+	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: account}, func(q Querier) error {
+		var err error
+		if reach, err = repo.ListForUser(ctx, q, account, admin, true); err != nil {
+			return err
+		}
+		all, err = repo.ListAllForAccount(ctx, q, account)
+		return err
+	}); err != nil {
+		t.Fatalf("listing branches = %v, want no error", err)
+	}
+
+	if len(reach) != 1 || reach[0].ID != open {
+		t.Errorf("reach = %v, want only the open branch %v", ids(reach), open)
+	}
+	if len(all) != 2 {
+		t.Fatalf("account-wide list = %v, want both branches", ids(all))
+	}
+	if !containsBranch(all, closed) {
+		t.Errorf("account-wide list = %v, want the closed branch %v", ids(all), closed)
+	}
+
+	// Closed ones sort last, so administering the live branches never means scrolling past them.
+	if !all[0].IsActive || all[1].IsActive {
+		t.Errorf("order = [%t %t], want the active branch first", all[0].IsActive, all[1].IsActive)
+	}
+
+	// A closed branch is not reachable either, which is what makes the selection unusable and so
+	// what the interface has to clear when it closes the active one.
+	var accessible bool
+	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: account}, func(q Querier) error {
+		var err error
+		accessible, err = repo.IsAccessibleBy(ctx, q, account, admin, closed, true)
+		return err
+	}); err != nil {
+		t.Fatalf("IsAccessibleBy() = %v, want no error", err)
+	}
+	if accessible {
+		t.Error("IsAccessibleBy() = true for a closed branch, want false")
+	}
+
+	// And it is still fetchable by id, which is what keeps a quote that came in through it
+	// explainable after it closes.
+	var fetched *domain.Branch
+	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: account}, func(q Querier) error {
+		var err error
+		fetched, err = repo.GetByID(ctx, q, account, closed)
+		return err
+	}); err != nil {
+		t.Fatalf("GetByID() = %v, want no error", err)
+	}
+	if fetched.IsActive {
+		t.Error("GetByID() reported the closed branch as active")
+	}
+}
+
+func closeBranch(t *testing.T, db *DB, branchID uuid.UUID) {
+	t.Helper()
+	if _, err := db.CrossAccount().Exec(context.Background(),
+		`UPDATE branch SET is_active = FALSE WHERE id = $1`, branchID); err != nil {
+		t.Fatalf("closing branch: %v", err)
+	}
+}
+
+func ids(branches []domain.Branch) []uuid.UUID {
+	out := make([]uuid.UUID, 0, len(branches))
+	for _, b := range branches {
+		out = append(out, b.ID)
+	}
+	return out
+}
+
+func containsBranch(branches []domain.Branch, id uuid.UUID) bool {
+	for _, b := range branches {
+		if b.ID == id {
+			return true
+		}
+	}
+	return false
+}

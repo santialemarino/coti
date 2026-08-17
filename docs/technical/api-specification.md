@@ -71,7 +71,7 @@ Rules already settled:
 - **`@Security BearerAuth`** on every route that needs a session; the `/v1/public` ones do
   not carry it.
 - **Errors are always `dto.ErrorResponse`**, one shape for the whole API. `Respond` and
-  `RespondBindError` both return it.
+  `RespondBindError` both return it, and every one carries a **`code`** — see below.
 - **`host` is not declared**, so the UI uses whatever origin serves it and does not go stale
   when `API_PORT` changes.
 - **Keep `@Description` to one line.** Changing one means regenerating `apps/api/docs/` in
@@ -81,3 +81,44 @@ DTO validations travel on their own: swag reads the `binding` tags and turns the
 spec's `required`, `enum`, `minLength` and `maxLength`. A `binding:"oneof=MANUAL LEARNED"`
 shows up as an `enum` — one more reason for validation to live in the tag rather than the
 handler.
+
+## The error envelope
+
+```json
+{
+  "error": "invalid input: an account needs at least one active branch",
+  "code": "LAST_ACTIVE_BRANCH"
+}
+```
+
+**`error` is English prose for a log; `code` is the contract.** A client branches on the code and
+writes its own wording, so the API stays locale-agnostic and a message can be reworded without
+breaking a screen. `detail` appears only when a body failed binding, and carries the validator's
+own text.
+
+The status still says _how_ a request failed. The code says _which rule_ refused it, which the
+status cannot: `/v1/users/{id}` answers 422 both for "an admin cannot deactivate themselves" and
+for "an admin cannot change their own role", and the two screens differ. `domain.CodeOf` derives
+a code from the sentinel an error wraps — `NOT_FOUND`, `CONFLICT`, `INVALID_INPUT`,
+`UNAUTHENTICATED`, `FORBIDDEN`, `IMMUTABLE`, `ACCOUNT_LOCKED`, `EMAIL_NOT_VERIFIED`,
+`RATE_LIMITED`, `AI_UNAVAILABLE`, `INTERNAL` — and a service tags a more specific one with
+`domain.WithCode` where a caller has to tell siblings apart:
+
+| Code                 | Status | Raised when                                                     |
+| -------------------- | ------ | --------------------------------------------------------------- |
+| `EMAIL_TAKEN`        | 409    | the address is already registered, in this account or any other |
+| `LAST_ACTIVE_BRANCH` | 422    | closing the account's only active branch                        |
+| `SELF_DEACTIVATION`  | 422    | an admin deactivating themselves                                |
+| `SELF_ROLE_CHANGE`   | 422    | an admin changing their own role                                |
+| `PASSWORD_POLICY`    | 422    | a password that does not clear `domain.PasswordPolicy`          |
+| `INVALID_LINK`       | 401    | a mailed link that is unknown, expired, used or wrong-typed     |
+
+`AI_UNAVAILABLE` is the API's only **503**, and the only code whose status says "come back later":
+no AI provider is bound, or the one that is could not answer. A request the provider _rejected_ is
+our own fault and stays a 500, so a client is never invited to retry something that cannot succeed.
+See [ai-providers.md](ai-providers.md).
+
+**A code must never say more than the status already does.** Login answers `UNAUTHENTICATED` for a
+wrong password, an unknown address and a disabled user alike — three cases the API deliberately does
+not distinguish, and a code per case would hand back the enumeration the shared 401 exists to
+withhold.

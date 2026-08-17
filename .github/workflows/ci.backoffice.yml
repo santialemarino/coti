@@ -4,6 +4,17 @@ run-name: 'CI Backoffice by @${{ github.actor }}'
 
 on:
   workflow_call:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'apps/backoffice/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'turbo.json'
+      - '.github/workflows/ci.backoffice.yml'
   pull_request:
     branches:
       - main
@@ -14,6 +25,7 @@ on:
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'turbo.json'
+      - '.github/workflows/ci.backoffice.yml'
   workflow_dispatch:
 
 jobs:
@@ -34,6 +46,19 @@ jobs:
         run: pnpm --filter backoffice run lint
       - name: Type check
         run: pnpm --filter backoffice run check-types
+      - name: Test
+        run: pnpm --filter backoffice run test:coverage
+      # Reported, never enforced: a threshold set before the suites are real gets met by writing
+      # tests that assert nothing. It lands in the job summary so the number needs no log dive.
+      - name: Coverage
+        run: |
+          {
+            echo '### Backoffice coverage'
+            echo
+            echo '```'
+            node -e "const t=require('./apps/backoffice/coverage/coverage-summary.json').total;for(const k of ['statements','branches','functions','lines'])console.log(k.padEnd(12),t[k].pct.toFixed(1)+'%')"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Build UI package
         run: pnpm build:ui
       - name: Build backoffice

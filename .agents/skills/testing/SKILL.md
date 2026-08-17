@@ -14,13 +14,15 @@ description: Where tests live, how to run them, and what to test in the Coti rep
 - **Script tests (`scripts/`):** Node's built-in runner (`node:test` + `node:assert`),
   co-located as `<name>.test.mjs`. No dependency to install. See
   [Operational scripts](#operational-scripts).
-- **Web tests (backoffice / webapp):** **NOT YET SET UP.** No runner is installed
-  and `pnpm test:web` currently just echoes a placeholder. See
-  [Web testing](#web-testing-not-yet-set-up) for the intended convention — do not
-  assume any web test infrastructure exists until it is scaffolded.
+- **Web tests (backoffice / webapp / `@repo/ui`):** **Vitest + jsdom**, co-located as
+  `<file>.test.ts` / `<file>.test.tsx` beside the code under test. All three packages
+  share one config from `@repo/vitest-config`. See [Web testing](#web-testing).
 - **CI:** `.github/workflows/ci.api.yml` runs `gofmt` check, `go vet`,
   `golangci-lint`, `go build`, and `go test ./...` on API PRs; the web workflows run
-  lint + `check-types` + build; `ci.scripts.yml` covers `scripts/` and the root manifest.
+  lint + `check-types` + test + build, and `ci.ui.yml` does the same for the design
+  system; `ci.scripts.yml` covers `scripts/` and the root manifest; and `ci.skills.yml` covers the
+  two skill trees, where its whole job is `diff -r` — the mirrors are byte-equal by contract and
+  nothing else could catch a teammate editing one side only.
   Two workflows carry a **second job** that stands up PostgreSQL + pgvector and applies the
   migration chain: the API's runs the integration suite, which guards tenant isolation, and
   the scripts' runs the commands for real. Both gate merges rather than being a local-only
@@ -28,7 +30,16 @@ description: Where tests live, how to run them, and what to test in the Coti rep
   it is faster than waiting for CI to tell you.
 - **Every workflow is path-filtered**, so a directory nothing watches gets no checks at all —
   a PR touching only it goes green having run nothing. Adding a top-level directory means
-  adding or widening a workflow in the same change.
+  adding or widening a workflow in the same change. Each workflow also lists **itself** in its
+  `paths`, so editing one is covered by the run it configures. **None of them is a required
+  check, deliberately:** under path filters a check that never runs for a given PR stays pending
+  forever and blocks the merge instead of passing it.
+- **Each one runs on a pull request into `main`/`dev` and on a push to either**, on the same
+  paths. The push half is what checks the merge commit: a pull-request run tests a preview of the
+  merge, which goes stale the moment the base branch moves under it, and without the push run
+  nothing at all would notice a broken `dev` — the branch everyone else starts from. It is
+  deliberately **not** wired to required status checks: with path filters a check that never runs
+  for a given PR stays pending forever and blocks the merge instead of passing it.
 
 ## Running tests
 
@@ -47,7 +58,14 @@ TEST_DATABASE_ADMIN_URL=postgres://coti:coti@localhost:5432/coti?sslmode=disable
 # From repo root
 pnpm test:api                                   # go test ./... in apps/api
 pnpm test:scripts                               # node --test over scripts/
+pnpm test:web                                   # vitest in backoffice + webapp + @repo/ui
 pnpm test                                       # test:scripts + test:api + test:web
+
+# One web package, or one file
+pnpm --filter backoffice run test
+pnpm --filter @repo/ui run test:watch
+pnpm --filter backoffice run test lib/api/client.test.ts
+pnpm --filter backoffice run test:coverage
 ```
 
 Before pushing, run `pnpm check` (api: `go build` + `go vet`; web: `check-types`)
@@ -159,10 +177,44 @@ apps/api/
 
 - Place test factories next to the package they support
   (`func makeQuote(...) Quote`).
-- For integration tests, define a `setupTestDB(t *testing.T) *pgxpool.Pool`
-  helper that spins up (or connects to) the pgvector test DB, runs goose
-  migrations, and registers `t.Cleanup(...)` to drop the schema or roll back a
-  transaction. Return a live pool — never a mock.
+- For integration tests, connect through the package's `testDB(t) *DB` helper: it reads both role
+  URLs, skips the test when they are absent, and registers `t.Cleanup(db.Close)`. Return a live
+  pool — never a mock.
+- **Teardown ordering is a rule, not a detail.** `t.Cleanup` runs **after** the test body's `defer`s,
+  so a pool a `defer` closed is already gone by the time the deletes run — register the close with
+  `t.Cleanup` too. And a teardown that deletes real rows **never discards its error**, because a
+  failed delete leaves rows behind and the suite still passes: route every one through `mustCleanup`,
+  which fails the test when the delete cannot happen — a function in `internal/repository`, a method
+  on `env` in `internal/integration`.
+- **One row, one owner.** Let the seed that created a row remove it. A second per-test teardown for
+  the same row is what puts a delete ahead of a foreign key still pointing at it, and an inline delete
+  at the end of a test body is skipped by any `t.Fatal` above it — so it belongs in `t.Cleanup` or
+  nowhere.
+- **The suite leaves the database as it found it, and CI checks that.** The integration job seeds
+  nothing, so every table must be empty once the suite finishes; a step counts all of them and fails
+  naming whatever is left. Locally, compare **every** table before and after rather than a hand-picked
+  few; a subset says nothing about the tables it does not name.
+- **A fixture value bound by a GLOBAL constraint must be unique per run.** `app_user.email` has a
+  unique index on `lower(email)` across every account, and `go test ./internal/...` runs
+  `internal/repository` and `internal/integration` **in parallel** — so the same hard-coded address
+  in both packages makes whichever arrives second see a conflict where it expected a create.
+  Build it as `"compras+" + uuid.NewString() + "@corralon.test"`: shared inside one test, shared
+  with nothing else. And when a test pairs two literals (an address and its uppercase twin, to
+  prove the index is case-insensitive), **derive the second from the first** — making only one
+  unique breaks the pair and the test then fails every run.
+- **Prove a regression test fails without its fix.** Remove the fix, watch the new test go red for
+  the stated reason, restore it. A test written after the fix can pass on the surrounding code and
+  pin nothing. Watch the command actually run, too: a `cd` that fails inside an `&&` chain
+  short-circuits the rest, and a check that never executed reads exactly like one that passed.
+  **A removal that stops the package compiling is not a proof either** — deleting a check can orphan
+  an import, and `[build failed]` looks like a red test while proving nothing about the assertion.
+  Break the behaviour with an edit that still builds (invert a condition, widen a comparison).
+- **Mutate each field when a constructor maps sibling settings onto sibling fields.** Three
+  same-typed values read from three sibling config keys is the copy-paste bug the compiler cannot
+  see: swapping two of them builds, vets clean, and silently changes every decision downstream. One
+  mutation per field is what proves the wiring, and asserting only a _relationship_ between defaults
+  (rather than each exact value) lets the same drift through a second way — pin the values too, since
+  `.env.example` and the docs quote them.
 - **Compute expected values by hand.** Assert against manually derived numbers;
   never call the function under test (or its formula) a second time to produce
   the "expected" value — that only proves the code equals itself.
@@ -202,17 +254,82 @@ TEST_DATABASE_ADMIN_URL=postgres://coti:coti@localhost:5433/coti?sslmode=disable
 It exists because every other workflow is path-filtered to an app directory: without it a
 change touching only these paths reaches `dev` with no check having run at all.
 
-## Web testing (NOT YET SET UP)
+## Web testing
 
-No web test runner exists in the repo yet. When it is added, the intended
-convention is:
+**Vitest + jsdom** in all three frontend packages — `apps/backoffice`, `apps/webapp` and
+`packages/ui`. Tests are **co-located** beside the code under test as `<file>.test.ts`
+(`.test.tsx` when it renders), the same shape the API and `scripts/` already use.
 
-- **Vitest** for unit tests of pure functions / hooks / utilities in `backoffice`
-  and `webapp`.
-- **jsdom** (via Vitest) for component tests.
+**One shared config: `@repo/vitest-config`.** Each package's `vitest.config.ts` is three
+lines re-exporting it, the way `eslint.config.js` consumes `@repo/eslint-config`. Put a
+setting that should hold everywhere in the shared package, not in one app. What it carries:
 
-Until that scaffolding lands, `pnpm test:web` is a no-op placeholder — do not
-write web tests assuming a runner is present, and don't claim web coverage exists.
+- **`server-only` is aliased to a stub.** Next resolves that marker in its own bundler and
+  ships no package for it, so any module importing it — the API client, the session, every
+  `lib/api/*` — is unresolvable under a plain runner without the alias.
+- **Path aliases come from each package's own `tsconfig.json`** (`resolve.tsconfigPaths`),
+  so `@/lib/...` resolves in a test exactly as it does in the app, with no second copy of
+  the alias map to drift.
+- **A `ResizeObserver` stub**, because jsdom implements none and Radix measures with one the
+  moment a `Checkbox`, `Switch` or `RadioGroup` mounts — without it any test rendering a form
+  dies.
+- **A `cookieJar()` double**, from `@repo/vitest-config/cookies`. Use it rather than hand-rolling
+  one: it reproduces Next's `delete`, which is a **set to `''`** and not a removal, so a reader
+  that mishandles the blank fails here instead of in a browser.
+- **A `schemaText()` double**, from `@repo/vitest-config/schema-text`, for the translator pair a
+  form schema takes. `schemaText(true)` tags each message with the catalog it came from
+  (`field:…` / `shared:…`), which is how a test asserts that "empty" and "malformed" resolve to
+  different messages without hard-coding Spanish.
+- **`isMessageShown` / `isMessageHeld`**, from `@repo/vitest-config/form-messages`. A form message is
+  held and faded on its way out, so it is still in the DOM after it clears —
+  `queryByText(...)` going null is the **defect**, not the expectation. These read `aria-hidden`
+  instead, which is the one definition of "shown".
+
+### Fake timers, and the one that bites
+
+Anything counting down needs `vi.useFakeTimers()`, and there is a trap in how you enable it:
+
+- **`{ shouldAdvanceTime: true }` is required** for Testing Library's `waitFor` to resolve at all —
+  without it nothing drives the poll and every wait in the file times out.
+- **But it advances fake time twice**: once with real elapsed time and again with each explicit
+  `advanceTimersByTimeAsync`. Anything reading the wall clock then moves at roughly double speed and
+  lands on a number the test cannot predict.
+- So **assert the contract, not the tick** — that the control is shut with a number on it, that the
+  number falls, and that it opens once the wait has passed. A test pinned to `N - 1` is testing the
+  harness.
+
+### What to test
+
+- **`lib/api/*` mapping.** The API speaks snake_case and the component tree speaks
+  camelCase; that boundary is the highest-value target in either app, because an unmapped
+  field surfaces as `undefined` deep in a screen rather than as an error. Assert the whole
+  mapped object, so a field added to the raw type but not the mapper fails here.
+- **`lib/auth/*` and `config/routes.ts`.** Session and reachability logic: token expiry,
+  the proxy-hop count, `safeNextPath`. This is where a security bug is cheapest to catch.
+- **Schema factories** (`form-schema.ts`) — including that a message resolves through the
+  translator rather than being baked in.
+- **`@repo/ui` components** — the contract a caller depends on: `type="button"` by default,
+  `aria-busy` and self-disabling on `PendingButton`, `asChild` passthrough. Not the styling.
+- **Don't test** framework behaviour, or a component's exact class list.
+
+### Assert behaviour, not ICU glyphs
+
+The formatters are locale-bound, and `Intl` output changes with the Node build: the compact
+separator is a **non-breaking** space, and `es-AR` renders a 12-hour clock. A test pinned to
+`'1,5 M'` or `'14:30'` goes red on an ICU upgrade with nothing broken. Assert what the module
+decides — rounding, sign, the date-only anchoring, the zone the day is computed in — and use
+`\s` rather than a literal space.
+
+### Coverage
+
+Reported, never enforced — `pnpm --filter <pkg> run test:coverage` locally, and each web workflow
+publishes its own number into the **job summary**, the way `ci.api.yml` does, so it needs no log
+dive. No threshold anywhere, deliberately: one set before the suites are real is met by writing
+tests that assert nothing.
+
+`ci.backoffice.yml` and `ci.webapp.yml` each run their own app's suite, and **`ci.ui.yml`**
+covers the design system — which until it existed was only ever _built_ in CI, never linted,
+type-checked or tested.
 
 ## Related skills
 

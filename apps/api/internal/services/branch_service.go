@@ -15,6 +15,7 @@ import (
 // fake it without a database.
 type branchReader interface {
 	ListForUser(ctx context.Context, q repository.Querier, accountID, userID uuid.UUID, isAdmin bool) ([]domain.Branch, error)
+	ListAllForAccount(ctx context.Context, q repository.Querier, accountID uuid.UUID) ([]domain.Branch, error)
 	GetByID(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (*domain.Branch, error)
 	CountActiveExcluding(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (int, error)
 	Create(ctx context.Context, q repository.Querier, accountID uuid.UUID, in domain.NewBranch) (*domain.Branch, error)
@@ -54,6 +55,27 @@ func (s *BranchService) ListBranches(ctx context.Context, tenant domain.Tenant) 
 		return listErr
 	})
 	if err != nil {
+		return nil, err
+	}
+	return branches, nil
+}
+
+// ListAllBranches returns every branch of the account, closed ones included, so an administrator
+// can reopen one. A closed branch is deliberately absent from every other read — it is not a
+// branch anyone may operate in — which is why administration needs its own.
+func (s *BranchService) ListAllBranches(
+	ctx context.Context, tenant domain.Tenant,
+) ([]domain.Branch, error) {
+	if !tenant.IsAdmin() {
+		return nil, domain.ErrForbidden
+	}
+
+	var branches []domain.Branch
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		var err error
+		branches, err = s.branches.ListAllForAccount(ctx, q, tenant.AccountID)
+		return err
+	}); err != nil {
 		return nil, err
 	}
 	return branches, nil
@@ -157,8 +179,8 @@ func (s *BranchService) assertNotLastActive(
 		return err
 	}
 	if remaining == 0 {
-		return fmt.Errorf("%w: an account needs at least one active branch",
-			domain.ErrInvalidInput)
+		return domain.WithCode(domain.CodeLastActiveBranch,
+			fmt.Errorf("%w: an account needs at least one active branch", domain.ErrInvalidInput))
 	}
 	return nil
 }

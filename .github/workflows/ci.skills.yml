@@ -1,0 +1,50 @@
+name: CI Skills
+
+run-name: 'CI Skills by @${{ github.actor }}'
+
+# The two skill trees are kept byte-for-byte identical — Claude Code reads .claude/skills/, Codex
+# reads .agents/skills/ — and nothing else watches either path, so until this existed a PR touching
+# only them reported zero checks and a teammate editing one mirror and not the other was caught by
+# nobody.
+on:
+  workflow_call:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - '.claude/skills/**'
+      - '.agents/skills/**'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
+      - '.github/workflows/ci.skills.yml'
+  pull_request:
+    branches:
+      - main
+      - dev
+    paths:
+      - '.claude/skills/**'
+      - '.agents/skills/**'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
+      - '.github/workflows/ci.skills.yml'
+  workflow_dispatch:
+
+jobs:
+  ci-skills:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      # `diff -r` reports a file present in one tree only, which a per-file compare would miss
+      # entirely — a whole skill added to one side and not the other is the likeliest drift.
+      - name: Mirrors are byte-equal
+        run: diff -r .claude/skills .agents/skills
+      - name: Format check
+        run: pnpm prettier --check '.claude/skills/**/*.md' '.agents/skills/**/*.md' CLAUDE.md AGENTS.md
