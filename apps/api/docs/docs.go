@@ -624,7 +624,7 @@ const docTemplate = `{
                         }
                     },
                     "422": {
-                        "description": "Ambiguous channel, disabled extractor, or incomplete material lines",
+                        "description": "Ambiguous channel, disabled extractor, or invalid extractor output",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -2355,7 +2355,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Persists the original text, extracts complete material lines, and creates a seller-reviewable quote DRAFT. It does not price or send the quote.",
+                "description": "Persists the original text before extraction, then returns a quote DRAFT or seller-reviewable clarification questions. It does not price or send the quote.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2404,7 +2404,7 @@ const docTemplate = `{
                         }
                     },
                     "422": {
-                        "description": "No active branch, no extractor, or no complete line items",
+                        "description": "No active branch, disabled extractor, or invalid extractor output",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -3703,6 +3703,56 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.RFQClarificationResponse": {
+            "type": "object",
+            "properties": {
+                "answer": {
+                    "type": "string"
+                },
+                "answered_at": {
+                    "type": "string"
+                },
+                "approved_question": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "decided_at": {
+                    "type": "string"
+                },
+                "decided_by": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "issue_type": {
+                    "type": "string"
+                },
+                "question": {
+                    "type": "string"
+                },
+                "quote_item_id": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "requested_description": {
+                    "type": "string"
+                },
+                "rfq_id": {
+                    "type": "string"
+                },
+                "sent_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.RFQResponse": {
             "type": "object",
             "properties": {
@@ -3923,6 +3973,12 @@ const docTemplate = `{
         "dto.TextRFQDraftResponse": {
             "type": "object",
             "properties": {
+                "clarifications": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.RFQClarificationResponse"
+                    }
+                },
                 "items": {
                     "type": "array",
                     "items": {

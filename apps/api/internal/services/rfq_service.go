@@ -17,6 +17,7 @@ type rfqRepository interface {
 	Create(ctx context.Context, q repository.Querier, accountID uuid.UUID, in domain.NewRFQ) (*domain.RFQ, error)
 	UpdateStatus(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, status domain.RFQStatus) (*domain.RFQ, error)
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID, previousStatus *domain.RFQStatus, newStatus domain.RFQStatus, userID *uuid.UUID) (*domain.RFQStatusChange, error)
+	CreateClarifications(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID, clarifications []domain.NewRFQClarification) ([]domain.RFQClarification, error)
 }
 
 // quoteDraftRepository is the quote persistence surface for creating draft versions.
@@ -70,10 +71,8 @@ func (s *RFQService) CreateTextDraft(
 	if s.channels == nil {
 		return nil, fmt.Errorf("%w: channel repository is not configured", domain.ErrInvalidInput)
 	}
-	if _, err := s.getActiveChannel(ctx, tenant, normalized.ChannelID); err != nil {
-		return nil, err
-	}
-	return s.createTextDraft(ctx, tenant, normalized)
+	sellerID := tenant.UserID
+	return s.createTextDraft(ctx, tenant, normalized, &sellerID)
 }
 
 // CreateWhatsAppMockDraft simulates an inbound WhatsApp text message in development.
@@ -115,28 +114,54 @@ func (s *RFQService) CreateWhatsAppMockDraft(
 	}
 	return s.createTextDraft(ctx, tenant, domain.TextRFQDraftInput{
 		ChannelID: channel.ID, ClientLabel: &clientLabel, RawText: raw,
-	})
+	}, nil)
 }
 
 func (s *RFQService) createTextDraft(
-	ctx context.Context, tenant domain.Tenant, in domain.TextRFQDraftInput,
+	ctx context.Context, tenant domain.Tenant, in domain.TextRFQDraftInput, sellerID *uuid.UUID,
 ) (*domain.TextRFQDraft, error) {
-	lines, err := s.extractor.Extract(ctx, in.RawText)
-	if err != nil {
-		return nil, err
-	}
-	items, err := newQuoteItemsFromRFQLines(lines)
+	rfq, err := s.persistReceivedRFQ(ctx, tenant, in)
 	if err != nil {
 		return nil, err
 	}
 
-	var draft domain.TextRFQDraft
-	err = s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+	extraction, err := s.extractor.Extract(ctx, in.RawText)
+	if err != nil {
+		return nil, err
+	}
+	items, err := newQuoteItemsFromRFQLines(extraction.Lines)
+	if err != nil {
+		return nil, err
+	}
+	clarifications, err := newClarificationsFromRFQExtraction(extraction.Clarifications)
+	if err != nil {
+		return nil, err
+	}
+	if len(clarifications) > 0 {
+		created, persistErr := s.persistClarifications(ctx, tenant, rfq.ID, clarifications)
+		if persistErr != nil {
+			return nil, persistErr
+		}
+		return &domain.TextRFQDraft{RFQ: *rfq, Clarifications: created}, nil
+	}
+	if len(items) == 0 {
+		return nil, fmt.Errorf("%w: extractor returned no line items or clarifications",
+			domain.ErrInvalidInput)
+	}
+	return s.persistGeneratedDraft(ctx, tenant, rfq, sellerID, items)
+}
+
+func (s *RFQService) persistReceivedRFQ(
+	ctx context.Context, tenant domain.Tenant, in domain.TextRFQDraftInput,
+) (*domain.RFQ, error) {
+	var rfq *domain.RFQ
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		if _, channelErr := s.channels.GetActiveByID(ctx, q, tenant.AccountID, tenant.BranchID,
 			in.ChannelID); channelErr != nil {
 			return channelErr
 		}
-		rfq, createRFQErr := s.rfqs.Create(ctx, q, tenant.AccountID, domain.NewRFQ{
+		var createErr error
+		rfq, createErr = s.rfqs.Create(ctx, q, tenant.AccountID, domain.NewRFQ{
 			BranchID:    tenant.BranchID,
 			ClientID:    in.ClientID,
 			ChannelID:   in.ChannelID,
@@ -145,16 +170,42 @@ func (s *RFQService) createTextDraft(
 			WorkType:    in.WorkType,
 			ClientLabel: in.ClientLabel,
 		})
-		if createRFQErr != nil {
-			return createRFQErr
-		}
+		return createErr
+	})
+	if err != nil {
+		return nil, err
+	}
+	return rfq, nil
+}
 
-		sellerID := tenant.UserID
+func (s *RFQService) persistClarifications(
+	ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID,
+	clarifications []domain.NewRFQClarification,
+) ([]domain.RFQClarification, error) {
+	var created []domain.RFQClarification
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		var createErr error
+		created, createErr = s.rfqs.CreateClarifications(ctx, q, tenant.AccountID, rfqID,
+			clarifications)
+		return createErr
+	})
+	if err != nil {
+		return nil, err
+	}
+	return created, nil
+}
+
+func (s *RFQService) persistGeneratedDraft(
+	ctx context.Context, tenant domain.Tenant, rfq *domain.RFQ, sellerID *uuid.UUID,
+	items []domain.NewQuoteItem,
+) (*domain.TextRFQDraft, error) {
+	var draft domain.TextRFQDraft
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		quote, createQuoteErr := s.quotes.Create(ctx, q, tenant.AccountID, domain.NewQuote{
 			BranchID:      tenant.BranchID,
-			ClientID:      in.ClientID,
+			ClientID:      rfq.ClientID,
 			RFQID:         rfq.ID,
-			SellerID:      &sellerID,
+			SellerID:      sellerID,
 			CurrentStatus: domain.QuoteStatusDraft,
 		})
 		if createQuoteErr != nil {
@@ -164,7 +215,7 @@ func (s *RFQService) createTextDraft(
 		version, createVersionErr := s.quotes.CreateVersion(ctx, q, tenant.AccountID,
 			domain.NewQuoteVersion{
 				QuoteID:       quote.ID,
-				AuthorID:      &sellerID,
+				AuthorID:      sellerID,
 				VersionNumber: 1,
 				Total:         decimal.Zero,
 				IsImmutable:   false,
@@ -187,11 +238,11 @@ func (s *RFQService) createTextDraft(
 
 		previousRFQStatus := rfq.Status
 		if _, appendRFQErr := s.rfqs.AppendStatusChange(ctx, q, tenant.AccountID, rfq.ID,
-			&previousRFQStatus, domain.RFQStatusGenerated, &sellerID); appendRFQErr != nil {
+			&previousRFQStatus, domain.RFQStatusGenerated, sellerID); appendRFQErr != nil {
 			return appendRFQErr
 		}
 		if _, appendQuoteErr := s.quotes.AppendStatusChange(ctx, q, tenant.AccountID, quote.ID,
-			nil, domain.QuoteStatusDraft, &sellerID); appendQuoteErr != nil {
+			nil, domain.QuoteStatusDraft, sellerID); appendQuoteErr != nil {
 			return appendQuoteErr
 		}
 
@@ -203,8 +254,8 @@ func (s *RFQService) createTextDraft(
 
 		draft = domain.TextRFQDraft{
 			RFQ:     *rfq,
-			Quote:   *quote,
-			Version: *version,
+			Quote:   quote,
+			Version: version,
 			Items:   createdItems,
 		}
 		return nil
@@ -296,10 +347,6 @@ func normalizeTextRFQDraftInput(
 }
 
 func newQuoteItemsFromRFQLines(lines []domain.ExtractedRFQLine) ([]domain.NewQuoteItem, error) {
-	if len(lines) == 0 {
-		return nil, fmt.Errorf("%w: extractor returned no line items", domain.ErrInvalidInput)
-	}
-
 	items := make([]domain.NewQuoteItem, 0, len(lines))
 	for i, line := range lines {
 		field := fmt.Sprintf("items[%d]", i)
@@ -334,6 +381,59 @@ func newQuoteItemsFromRFQLines(lines []domain.ExtractedRFQLine) ([]domain.NewQuo
 		})
 	}
 	return items, nil
+}
+
+func newClarificationsFromRFQExtraction(
+	proposals []domain.ProposedRFQClarification,
+) ([]domain.NewRFQClarification, error) {
+	clarifications := make([]domain.NewRFQClarification, 0, len(proposals))
+	for i, proposal := range proposals {
+		field := fmt.Sprintf("clarifications[%d]", i)
+		if !validRFQClarificationIssueType(proposal.IssueType) {
+			return nil, fmt.Errorf("%w: %s.issue_type is invalid", domain.ErrInvalidInput, field)
+		}
+		description, err := requiredText(proposal.RequestedDescription,
+			field+".requested_description")
+		if err != nil {
+			return nil, err
+		}
+		if err := requireMaxRunes(description, field+".requested_description", 512); err != nil {
+			return nil, err
+		}
+		question, err := requiredText(proposal.Question, field+".question")
+		if err != nil {
+			return nil, err
+		}
+		if err := requireMaxRunes(question, field+".question", 512); err != nil {
+			return nil, err
+		}
+		reason, err := requiredText(proposal.Reason, field+".reason")
+		if err != nil {
+			return nil, err
+		}
+		if err := requireMaxRunes(reason, field+".reason", 512); err != nil {
+			return nil, err
+		}
+		clarifications = append(clarifications, domain.NewRFQClarification{
+			IssueType:            proposal.IssueType,
+			RequestedDescription: description,
+			Question:             question,
+			Reason:               reason,
+		})
+	}
+	return clarifications, nil
+}
+
+func validRFQClarificationIssueType(issueType domain.RFQClarificationIssueType) bool {
+	switch issueType {
+	case domain.RFQClarificationMissingQuantity,
+		domain.RFQClarificationMissingUnit,
+		domain.RFQClarificationMissingPresentation,
+		domain.RFQClarificationAmbiguousDescription:
+		return true
+	default:
+		return false
+	}
 }
 
 func optionalLimitedText(raw *string, field string, max int) (*string, error) {

@@ -16,6 +16,28 @@ const (
 	RFQStatusGenerated RFQStatus = "GENERATED"
 )
 
+// RFQClarificationIssueType is the blocking ambiguity an RFQ question addresses.
+type RFQClarificationIssueType string
+
+const (
+	RFQClarificationMissingQuantity       RFQClarificationIssueType = "MISSING_QUANTITY"
+	RFQClarificationMissingUnit           RFQClarificationIssueType = "MISSING_UNIT"
+	RFQClarificationMissingPresentation   RFQClarificationIssueType = "MISSING_PRESENTATION"
+	RFQClarificationAmbiguousDescription  RFQClarificationIssueType = "AMBIGUOUS_DESCRIPTION"
+	RFQClarificationAmbiguousCatalogMatch RFQClarificationIssueType = "AMBIGUOUS_CATALOG_MATCH"
+)
+
+// RFQClarificationStatus is the seller-controlled lifecycle of a proposed question.
+type RFQClarificationStatus string
+
+const (
+	RFQClarificationStatusProposed  RFQClarificationStatus = "PROPOSED"
+	RFQClarificationStatusApproved  RFQClarificationStatus = "APPROVED"
+	RFQClarificationStatusSent      RFQClarificationStatus = "SENT"
+	RFQClarificationStatusAnswered  RFQClarificationStatus = "ANSWERED"
+	RFQClarificationStatusDismissed RFQClarificationStatus = "DISMISSED"
+)
+
 // RFQ is the original request the quote is built from.
 type RFQ struct {
 	ID          uuid.UUID
@@ -55,6 +77,35 @@ type RFQStatusChange struct {
 	CreatedAt      time.Time
 }
 
+// RFQClarification is a reviewable question proposed for a blocking RFQ ambiguity.
+type RFQClarification struct {
+	ID                   uuid.UUID
+	AccountID            uuid.UUID
+	RFQID                uuid.UUID
+	QuoteItemID          *uuid.UUID
+	IssueType            RFQClarificationIssueType
+	RequestedDescription string
+	Question             string
+	Reason               string
+	Status               RFQClarificationStatus
+	ApprovedQuestion     *string
+	DecidedBy            *uuid.UUID
+	DecidedAt            *time.Time
+	SentAt               *time.Time
+	Answer               *string
+	AnsweredAt           *time.Time
+	CreatedAt            time.Time
+}
+
+// NewRFQClarification is the input for storing an AI-proposed clarification.
+type NewRFQClarification struct {
+	QuoteItemID          *uuid.UUID
+	IssueType            RFQClarificationIssueType
+	RequestedDescription string
+	Question             string
+	Reason               string
+}
+
 // ExtractedRFQLine is one schema-forced line item proposed from informal RFQ text.
 type ExtractedRFQLine struct {
 	RequestedDescription string
@@ -63,9 +114,23 @@ type ExtractedRFQLine struct {
 	QuantityRationale    *string
 }
 
+// ProposedRFQClarification is one blocking question returned by the extractor.
+type ProposedRFQClarification struct {
+	IssueType            RFQClarificationIssueType
+	RequestedDescription string
+	Question             string
+	Reason               string
+}
+
+// RFQExtraction is the schema-forced result proposed from informal RFQ text.
+type RFQExtraction struct {
+	Lines          []ExtractedRFQLine
+	Clarifications []ProposedRFQClarification
+}
+
 // RFQExtractor parses informal RFQ text into structured line items.
 type RFQExtractor interface {
-	Extract(ctx context.Context, raw string) ([]ExtractedRFQLine, error)
+	Extract(ctx context.Context, raw string) (RFQExtraction, error)
 }
 
 // TextRFQDraftInput creates the first reviewable quote draft from plain RFQ text.
@@ -87,8 +152,9 @@ type WhatsAppMockRFQInput struct {
 
 // TextRFQDraft is the persisted result of the RFQ text pipeline.
 type TextRFQDraft struct {
-	RFQ     RFQ
-	Quote   Quote
-	Version QuoteVersion
-	Items   []QuoteItem
+	RFQ            RFQ
+	Quote          *Quote
+	Version        *QuoteVersion
+	Items          []QuoteItem
+	Clarifications []RFQClarification
 }

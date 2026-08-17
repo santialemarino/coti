@@ -32,18 +32,18 @@ func NewAnthropicRFQExtractor(cfg config.AIConfig, client *http.Client) *Anthrop
 	return &AnthropicRFQExtractor{cfg: cfg, client: client}
 }
 
-// Extract parses informal RFQ text into line items.
-func (e *AnthropicRFQExtractor) Extract(ctx context.Context, raw string) ([]domain.ExtractedRFQLine, error) {
+// Extract parses informal RFQ text into complete lines and blocking clarifications.
+func (e *AnthropicRFQExtractor) Extract(ctx context.Context, raw string) (domain.RFQExtraction, error) {
 	ctx, cancel := context.WithTimeout(ctx, e.cfg.RFQExtractorTimeout)
 	defer cancel()
 
 	body, err := json.Marshal(e.request(raw))
 	if err != nil {
-		return nil, err
+		return domain.RFQExtraction{}, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.messagesURL(), bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return domain.RFQExtraction{}, err
 	}
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("x-api-key", e.cfg.AnthropicAPIKey)
@@ -51,27 +51,27 @@ func (e *AnthropicRFQExtractor) Extract(ctx context.Context, raw string) ([]doma
 
 	resp, err := e.client.Do(req)
 	if err != nil {
-		return nil, err
+		return domain.RFQExtraction{}, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return nil, err
+		return domain.RFQExtraction{}, err
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, anthropicStatusError(resp.StatusCode, respBody)
+		return domain.RFQExtraction{}, anthropicStatusError(resp.StatusCode, respBody)
 	}
 
 	var out anthropicMessageResponse
 	if err := json.Unmarshal(respBody, &out); err != nil {
-		return nil, err
+		return domain.RFQExtraction{}, err
 	}
 	input, err := toolInput(out)
 	if err != nil {
-		return nil, err
+		return domain.RFQExtraction{}, err
 	}
-	return extractedLines(input)
+	return extractionResult(input)
 }
 
 type anthropicMessageRequest struct {
@@ -111,7 +111,8 @@ type anthropicContentBlock struct {
 }
 
 type rfqExtractionInput struct {
-	Items []rfqExtractionItem `json:"items"`
+	Items          []rfqExtractionItem          `json:"items"`
+	Clarifications []rfqExtractionClarification `json:"clarifications"`
 }
 
 type rfqExtractionItem struct {
@@ -119,6 +120,13 @@ type rfqExtractionItem struct {
 	Quantity             string  `json:"quantity"`
 	Unit                 *string `json:"unit"`
 	QuantityRationale    *string `json:"quantity_rationale"`
+}
+
+type rfqExtractionClarification struct {
+	IssueType            domain.RFQClarificationIssueType `json:"issue_type"`
+	RequestedDescription string                           `json:"requested_description"`
+	Question             string                           `json:"question"`
+	Reason               string                           `json:"reason"`
 }
 
 type anthropicErrorResponse struct {
@@ -136,15 +144,16 @@ func (e *AnthropicRFQExtractor) request(raw string) anthropicMessageRequest {
 			"You extract construction-material RFQs for Coti.",
 			"Return only the forced tool call.",
 			"Extract only line items whose quantity is explicit or directly computable from the message.",
-			"Do not infer a default quantity and do not price, match, discount, or contact anyone.",
-			"Omit incomplete line items until clarification persistence exists.",
+			"Do not infer default quantities, units, presentations, or product specifications.",
+			"When a missing or unclear quantity, unit, presentation, or product description blocks a line, omit that line from items and propose one concise clarification question in the client's language.",
+			"Do not ask for contact details or work type, and do not price, match, discount, or contact anyone.",
 		}, " "),
 		Messages: []anthropicMessage{
 			{Role: "user", Content: raw},
 		},
 		Tools: []anthropicTool{{
 			Name:        rfqExtractionToolName,
-			Description: "Records complete RFQ material lines extracted from the client's message. Use it only for materials with a positive explicit quantity. Do not include prices, catalog matches, or clarification questions.",
+			Description: "Records complete RFQ material lines and reviewable questions for blocking ambiguities. Do not include prices, catalog matches, or outbound messages.",
 			InputSchema: rfqExtractionSchema(),
 			Strict:      true,
 		}},
@@ -160,7 +169,7 @@ func rfqExtractionSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
-		"required":             []string{"items"},
+		"required":             []string{"items", "clarifications"},
 		"properties": map[string]any{
 			"items": map[string]any{
 				"type":     "array",
@@ -193,6 +202,46 @@ func rfqExtractionSchema() map[string]any {
 					},
 				},
 			},
+			"clarifications": map[string]any{
+				"type":     "array",
+				"minItems": 0,
+				"items": map[string]any{
+					"type":                 "object",
+					"additionalProperties": false,
+					"required": []string{
+						"issue_type", "requested_description", "question", "reason",
+					},
+					"properties": map[string]any{
+						"issue_type": map[string]any{
+							"type": "string",
+							"enum": []string{
+								string(domain.RFQClarificationMissingQuantity),
+								string(domain.RFQClarificationMissingUnit),
+								string(domain.RFQClarificationMissingPresentation),
+								string(domain.RFQClarificationAmbiguousDescription),
+							},
+						},
+						"requested_description": map[string]any{
+							"type":        "string",
+							"minLength":   1,
+							"maxLength":   512,
+							"description": "The incomplete or ambiguous material phrase from the client message.",
+						},
+						"question": map[string]any{
+							"type":        "string",
+							"minLength":   1,
+							"maxLength":   512,
+							"description": "One concise clarification question in the client's language.",
+						},
+						"reason": map[string]any{
+							"type":        "string",
+							"minLength":   1,
+							"maxLength":   512,
+							"description": "Why the missing or unclear value blocks a reliable RFQ line.",
+						},
+					},
+				},
+			},
 		},
 	}
 }
@@ -213,12 +262,12 @@ func toolInput(out anthropicMessageResponse) (rfqExtractionInput, error) {
 		domain.ErrInvalidInput)
 }
 
-func extractedLines(input rfqExtractionInput) ([]domain.ExtractedRFQLine, error) {
+func extractionResult(input rfqExtractionInput) (domain.RFQExtraction, error) {
 	lines := make([]domain.ExtractedRFQLine, 0, len(input.Items))
 	for i, item := range input.Items {
 		quantity, err := decimal.NewFromString(item.Quantity)
 		if err != nil {
-			return nil, fmt.Errorf("%w: items[%d].quantity is not a decimal", domain.ErrInvalidInput, i)
+			return domain.RFQExtraction{}, fmt.Errorf("%w: items[%d].quantity is not a decimal", domain.ErrInvalidInput, i)
 		}
 		lines = append(lines, domain.ExtractedRFQLine{
 			RequestedDescription: item.RequestedDescription,
@@ -227,7 +276,16 @@ func extractedLines(input rfqExtractionInput) ([]domain.ExtractedRFQLine, error)
 			QuantityRationale:    item.QuantityRationale,
 		})
 	}
-	return lines, nil
+	clarifications := make([]domain.ProposedRFQClarification, 0, len(input.Clarifications))
+	for _, clarification := range input.Clarifications {
+		clarifications = append(clarifications, domain.ProposedRFQClarification{
+			IssueType:            clarification.IssueType,
+			RequestedDescription: clarification.RequestedDescription,
+			Question:             clarification.Question,
+			Reason:               clarification.Reason,
+		})
+	}
+	return domain.RFQExtraction{Lines: lines, Clarifications: clarifications}, nil
 }
 
 func anthropicStatusError(status int, body []byte) error {

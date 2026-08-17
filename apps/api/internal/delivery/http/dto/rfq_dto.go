@@ -25,10 +25,11 @@ type CreateWhatsAppMockRFQDraftRequest struct {
 
 // TextRFQDraftResponse is returned by POST /v1/rfqs/text-drafts.
 type TextRFQDraftResponse struct {
-	RFQ     RFQResponse          `json:"rfq"`
-	Quote   QuoteResponse        `json:"quote"`
-	Version QuoteVersionResponse `json:"version"`
-	Items   []QuoteItemResponse  `json:"items"`
+	RFQ            RFQResponse                `json:"rfq"`
+	Quote          *QuoteResponse             `json:"quote"`
+	Version        *QuoteVersionResponse      `json:"version"`
+	Items          []QuoteItemResponse        `json:"items"`
+	Clarifications []RFQClarificationResponse `json:"clarifications"`
 }
 
 // RFQResponse represents the source request stored from client input.
@@ -44,6 +45,25 @@ type RFQResponse struct {
 	ReceivedAt  time.Time  `json:"received_at"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+// RFQClarificationResponse represents a seller-reviewable question for an incomplete RFQ.
+type RFQClarificationResponse struct {
+	ID                   uuid.UUID  `json:"id"`
+	RFQID                uuid.UUID  `json:"rfq_id"`
+	QuoteItemID          *uuid.UUID `json:"quote_item_id"`
+	IssueType            string     `json:"issue_type"`
+	RequestedDescription string     `json:"requested_description"`
+	Question             string     `json:"question"`
+	Reason               string     `json:"reason"`
+	Status               string     `json:"status"`
+	ApprovedQuestion     *string    `json:"approved_question"`
+	DecidedBy            *uuid.UUID `json:"decided_by"`
+	DecidedAt            *time.Time `json:"decided_at"`
+	SentAt               *time.Time `json:"sent_at"`
+	Answer               *string    `json:"answer"`
+	AnsweredAt           *time.Time `json:"answered_at"`
+	CreatedAt            time.Time  `json:"created_at"`
 }
 
 // QuoteResponse represents the quote shell created from one RFQ.

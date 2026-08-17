@@ -16,6 +16,22 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TYPE rfq_status AS ENUM ('RECEIVED', 'GENERATED');
 
+CREATE TYPE rfq_clarification_issue_type AS ENUM (
+  'MISSING_QUANTITY',
+  'MISSING_UNIT',
+  'MISSING_PRESENTATION',
+  'AMBIGUOUS_DESCRIPTION',
+  'AMBIGUOUS_CATALOG_MATCH'
+);
+
+CREATE TYPE rfq_clarification_status AS ENUM (
+  'PROPOSED',
+  'APPROVED',
+  'SENT',
+  'ANSWERED',
+  'DISMISSED'
+);
+
 -- DRAFT: the quote exists with matched materials but no accepted prices. It is the state
 -- while the RFQ is GENERATED, and what lets the state x intention matrix evaluate on one
 -- input. "Archived" is not a state: it is the orthogonal quote.archived_at flag.
@@ -400,6 +416,26 @@ CREATE TABLE rfq_status_change (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- The AI proposes a question; the seller controls every state after PROPOSED.
+CREATE TABLE rfq_clarification (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id            UUID NOT NULL,
+  rfq_id                UUID NOT NULL,
+  quote_item_id         UUID,
+  issue_type            rfq_clarification_issue_type NOT NULL,
+  requested_description VARCHAR(512) NOT NULL,
+  question              VARCHAR(512) NOT NULL,
+  reason                VARCHAR(512) NOT NULL,
+  status                rfq_clarification_status NOT NULL DEFAULT 'PROPOSED',
+  approved_question     VARCHAR(512),
+  decided_by            UUID,
+  decided_at            TIMESTAMPTZ,
+  sent_at               TIMESTAMPTZ,
+  answer                TEXT,
+  answered_at           TIMESTAMPTZ,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- =============================================================================
 -- QUOTES
 -- =============================================================================
@@ -725,6 +761,10 @@ ALTER TABLE rfq_attachment ADD CONSTRAINT fk_rfq_attachment_rfq FOREIGN KEY (rfq
 ALTER TABLE rfq_status_change ADD CONSTRAINT fk_rfq_status_change_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE rfq_status_change ADD CONSTRAINT fk_rfq_status_change_rfq FOREIGN KEY (rfq_id) REFERENCES rfq(id);
 ALTER TABLE rfq_status_change ADD CONSTRAINT fk_rfq_status_change_user FOREIGN KEY (user_id) REFERENCES app_user(id);
+ALTER TABLE rfq_clarification ADD CONSTRAINT fk_rfq_clarification_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE rfq_clarification ADD CONSTRAINT fk_rfq_clarification_rfq FOREIGN KEY (rfq_id) REFERENCES rfq(id);
+ALTER TABLE rfq_clarification ADD CONSTRAINT fk_rfq_clarification_item FOREIGN KEY (quote_item_id) REFERENCES quote_item(id);
+ALTER TABLE rfq_clarification ADD CONSTRAINT fk_rfq_clarification_decider FOREIGN KEY (decided_by) REFERENCES app_user(id);
 
 ALTER TABLE quote ADD CONSTRAINT fk_quote_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE quote ADD CONSTRAINT fk_quote_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
@@ -823,6 +863,8 @@ CREATE INDEX idx_branch_combo_branch ON branch_combo(branch_id) WHERE is_active 
 CREATE INDEX idx_client_account ON client(account_id);
 CREATE INDEX idx_rfq_branch_status ON rfq(branch_id, status);
 CREATE INDEX idx_rfq_attachment_pending ON rfq_attachment(processing_status) WHERE processing_status IN ('PENDING', 'PROCESSING');
+CREATE INDEX idx_rfq_clarification_pending ON rfq_clarification(rfq_id, status)
+  WHERE status IN ('PROPOSED', 'APPROVED', 'SENT');
 
 CREATE INDEX idx_quote_branch_status ON quote(branch_id, current_status);
 CREATE INDEX idx_quote_expires ON quote(expires_at) WHERE expires_at IS NOT NULL AND archived_at IS NULL;
@@ -919,7 +961,7 @@ BEGIN
     'product', 'branch_product', 'product_synonym', 'product_price', 'product_alternative',
     'combo', 'combo_item', 'branch_combo',
     'client', 'tag', 'client_tag',
-    'channel', 'rfq', 'rfq_attachment', 'rfq_status_change',
+    'channel', 'rfq', 'rfq_attachment', 'rfq_status_change', 'rfq_clarification',
     'quote', 'quote_version', 'quote_item', 'quote_item_alternative', 'quote_status_change',
     'quote_send', 'client_action',
     'message_batch', 'quote_message',

@@ -16,6 +16,6 @@ func NewDisabledRFQExtractor() *DisabledRFQExtractor {
 }
 
 // Extract returns domain.ErrInvalidInput because RFQ AI is disabled.
-func (e *DisabledRFQExtractor) Extract(_ context.Context, _ string) ([]domain.ExtractedRFQLine, error) {
-	return nil, fmt.Errorf("%w: rfq extractor is disabled", domain.ErrInvalidInput)
+func (e *DisabledRFQExtractor) Extract(_ context.Context, _ string) (domain.RFQExtraction, error) {
+	return domain.RFQExtraction{}, fmt.Errorf("%w: rfq extractor is disabled", domain.ErrInvalidInput)
 }

@@ -38,7 +38,7 @@ func (f *fakeRFQDB) InTenantTx(
 }
 
 type fakeRFQExtractor struct {
-	lines           []domain.ExtractedRFQLine
+	extraction      domain.RFQExtraction
 	err             error
 	calls           int
 	raw             string
@@ -46,13 +46,15 @@ type fakeRFQExtractor struct {
 	calledOutsideTx bool
 }
 
-func (f *fakeRFQExtractor) Extract(_ context.Context, raw string) ([]domain.ExtractedRFQLine, error) {
+func (f *fakeRFQExtractor) Extract(
+	_ context.Context, raw string,
+) (domain.RFQExtraction, error) {
 	f.calls++
 	f.raw = raw
 	if f.db != nil {
 		f.calledOutsideTx = f.db.activeTransactions == 0
 	}
-	return f.lines, f.err
+	return f.extraction, f.err
 }
 
 type fakeRFQChannels struct {
@@ -100,9 +102,10 @@ type rfqStatusChangeCall struct {
 }
 
 type fakeRFQs struct {
-	created       []domain.NewRFQ
-	updatedStatus []domain.RFQStatus
-	statusChanges []rfqStatusChangeCall
+	created        []domain.NewRFQ
+	updatedStatus  []domain.RFQStatus
+	statusChanges  []rfqStatusChangeCall
+	clarifications [][]domain.NewRFQClarification
 }
 
 func (f *fakeRFQs) Create(
@@ -136,6 +139,24 @@ func (f *fakeRFQs) AppendStatusChange(
 	}, nil
 }
 
+func (f *fakeRFQs) CreateClarifications(
+	_ context.Context, _ repository.Querier, accountID, rfqID uuid.UUID,
+	clarifications []domain.NewRFQClarification,
+) ([]domain.RFQClarification, error) {
+	f.clarifications = append(f.clarifications, clarifications)
+	created := make([]domain.RFQClarification, 0, len(clarifications))
+	for _, clarification := range clarifications {
+		created = append(created, domain.RFQClarification{
+			ID: uuid.New(), AccountID: accountID, RFQID: rfqID,
+			IssueType:            clarification.IssueType,
+			RequestedDescription: clarification.RequestedDescription,
+			Question:             clarification.Question, Reason: clarification.Reason,
+			Status: domain.RFQClarificationStatusProposed,
+		})
+	}
+	return created, nil
+}
+
 type quoteStatusChangeCall struct {
 	quoteID        uuid.UUID
 	previousStatus *domain.QuoteStatus
@@ -166,9 +187,13 @@ func (f *fakeQuoteDrafts) UpdateCurrentVersion(
 	_ context.Context, _ repository.Querier, accountID, quoteID, versionID uuid.UUID,
 ) (*domain.Quote, error) {
 	f.currentVersion = append(f.currentVersion, versionID)
+	var sellerID *uuid.UUID
+	if len(f.created) > 0 {
+		sellerID = f.created[len(f.created)-1].SellerID
+	}
 	return &domain.Quote{
 		ID: quoteID, AccountID: accountID, BranchID: testBranchID, RFQID: testRFQID,
-		SellerID: &testUserID, CurrentVersionID: &versionID, CurrentStatus: domain.QuoteStatusDraft,
+		SellerID: sellerID, CurrentVersionID: &versionID, CurrentStatus: domain.QuoteStatusDraft,
 	}, nil
 }
 
@@ -224,7 +249,7 @@ type rfqHarness struct {
 
 func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 	db := &fakeRFQDB{}
-	extractor := &fakeRFQExtractor{lines: lines, db: db}
+	extractor := &fakeRFQExtractor{extraction: domain.RFQExtraction{Lines: lines}, db: db}
 	h := &rfqHarness{
 		db: db, extractor: extractor, rfqs: &fakeRFQs{}, quotes: &fakeQuoteDrafts{},
 		channels: &fakeRFQChannels{},
@@ -274,11 +299,11 @@ func TestRFQService_CreateTextDraft_PersistsGeneratedDraft(t *testing.T) {
 	}
 	if len(h.db.scopes) != 2 || h.db.scopes[0] != testAccountID ||
 		h.db.scopes[1] != testAccountID {
-		t.Fatalf("tenant scopes = %v, want channel validation and persistence for %v",
+		t.Fatalf("tenant scopes = %v, want receipt and draft persistence for %v",
 			h.db.scopes, testAccountID)
 	}
-	if h.channels.getCalls != 2 {
-		t.Fatalf("channel get calls = %d, want validation before extraction and persistence",
+	if h.channels.getCalls != 1 {
+		t.Fatalf("channel get calls = %d, want validation while persisting the source",
 			h.channels.getCalls)
 	}
 
@@ -365,6 +390,9 @@ func TestRFQService_CreateTextDraft_PersistsGeneratedDraft(t *testing.T) {
 	if draft.RFQ.Status != domain.RFQStatusGenerated {
 		t.Errorf("draft rfq status = %s, want %s", draft.RFQ.Status, domain.RFQStatusGenerated)
 	}
+	if draft.Quote == nil {
+		t.Fatal("draft quote = nil, want generated quote")
+	}
 	if draft.Quote.CurrentVersionID == nil || *draft.Quote.CurrentVersionID != testVersionID {
 		t.Errorf("draft current_version_id = %v, want %v", draft.Quote.CurrentVersionID, testVersionID)
 	}
@@ -391,13 +419,14 @@ func TestRFQService_CreateTextDraft_RejectsWithoutBranch(t *testing.T) {
 	}
 }
 
-func TestRFQService_CreateTextDraft_RejectsInvalidInputsBeforePersisting(t *testing.T) {
+func TestRFQService_CreateTextDraft_RejectsInvalidInputsWithoutLosingTheSource(t *testing.T) {
 	longUnit := strings.Repeat("u", 65)
 	cases := []struct {
 		name       string
 		input      domain.TextRFQDraftInput
 		lines      []domain.ExtractedRFQLine
 		wantScopes int
+		wantRFQs   int
 	}{
 		{
 			name:  "missing channel",
@@ -414,18 +443,21 @@ func TestRFQService_CreateTextDraft_RejectsInvalidInputsBeforePersisting(t *test
 			input:      domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "cement"},
 			lines:      nil,
 			wantScopes: 1,
+			wantRFQs:   1,
 		},
 		{
 			name:       "blank extracted description",
 			input:      domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "cement"},
 			lines:      []domain.ExtractedRFQLine{{RequestedDescription: "  ", Quantity: decimal.NewFromInt(1)}},
 			wantScopes: 1,
+			wantRFQs:   1,
 		},
 		{
 			name:       "zero quantity",
 			input:      domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "cement"},
 			lines:      []domain.ExtractedRFQLine{{RequestedDescription: "cement", Quantity: decimal.Zero}},
 			wantScopes: 1,
+			wantRFQs:   1,
 		},
 		{
 			name:  "too many quantity decimals",
@@ -434,6 +466,7 @@ func TestRFQService_CreateTextDraft_RejectsInvalidInputsBeforePersisting(t *test
 				{RequestedDescription: "cement", Quantity: decimal.RequireFromString("1.111")},
 			},
 			wantScopes: 1,
+			wantRFQs:   1,
 		},
 		{
 			name:  "unit too long",
@@ -442,6 +475,7 @@ func TestRFQService_CreateTextDraft_RejectsInvalidInputsBeforePersisting(t *test
 				{RequestedDescription: "cement", Quantity: decimal.NewFromInt(1), Unit: &longUnit},
 			},
 			wantScopes: 1,
+			wantRFQs:   1,
 		},
 	}
 
@@ -456,15 +490,15 @@ func TestRFQService_CreateTextDraft_RejectsInvalidInputsBeforePersisting(t *test
 			if len(h.db.scopes) != tc.wantScopes {
 				t.Errorf("tenant scopes = %v, want %d", h.db.scopes, tc.wantScopes)
 			}
-			if len(h.rfqs.created) != 0 || len(h.quotes.created) != 0 {
-				t.Errorf("persisted rfqs/quotes = %d/%d, want none", len(h.rfqs.created),
-					len(h.quotes.created))
+			if len(h.rfqs.created) != tc.wantRFQs || len(h.quotes.created) != 0 {
+				t.Errorf("persisted rfqs/quotes = %d/%d, want %d/0", len(h.rfqs.created),
+					len(h.quotes.created), tc.wantRFQs)
 			}
 		})
 	}
 }
 
-func TestRFQService_CreateTextDraft_PropagatesExtractorErrorBeforePersisting(t *testing.T) {
+func TestRFQService_CreateTextDraft_PersistsSourceBeforePropagatingExtractorError(t *testing.T) {
 	h := newRFQHarness(validExtractedLines())
 	h.extractor.err = domain.ErrInvalidInput
 
@@ -475,7 +509,50 @@ func TestRFQService_CreateTextDraft_PropagatesExtractorErrorBeforePersisting(t *
 		t.Fatalf("CreateTextDraft() = %v, want %v", err, domain.ErrInvalidInput)
 	}
 	if len(h.db.scopes) != 1 {
-		t.Errorf("tenant scopes = %v, want channel validation before extraction", h.db.scopes)
+		t.Errorf("tenant scopes = %v, want one source-persistence transaction", h.db.scopes)
+	}
+	if len(h.rfqs.created) != 1 || len(h.quotes.created) != 0 {
+		t.Errorf("persisted rfqs/quotes = %d/%d, want 1/0", len(h.rfqs.created),
+			len(h.quotes.created))
+	}
+}
+
+func TestRFQService_CreateTextDraft_PersistsBlockingClarificationsWithoutCreatingQuote(t *testing.T) {
+	h := newRFQHarness(validExtractedLines())
+	h.extractor.extraction.Clarifications = []domain.ProposedRFQClarification{{
+		IssueType:            domain.RFQClarificationMissingPresentation,
+		RequestedDescription: " cemento ",
+		Question:             " En bolsa de cuantos kilos? ",
+		Reason:               " La presentacion define el producto. ",
+	}}
+
+	draft, err := h.service.CreateTextDraft(context.Background(), branchTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "10 de cemento"})
+	if err != nil {
+		t.Fatalf("CreateTextDraft() = %v, want no error", err)
+	}
+	if len(h.db.scopes) != 2 {
+		t.Fatalf("tenant scopes = %v, want receipt and clarification persistence", h.db.scopes)
+	}
+	if len(h.rfqs.created) != 1 || len(h.rfqs.clarifications) != 1 {
+		t.Fatalf("rfqs/clarification batches = %d/%d, want 1/1", len(h.rfqs.created),
+			len(h.rfqs.clarifications))
+	}
+	stored := h.rfqs.clarifications[0][0]
+	if stored.RequestedDescription != "cemento" || stored.Question != "En bolsa de cuantos kilos?" ||
+		stored.Reason != "La presentacion define el producto." {
+		t.Errorf("stored clarification = %#v, want trimmed proposal", stored)
+	}
+	if draft.RFQ.Status != domain.RFQStatusReceived || draft.Quote != nil || draft.Version != nil ||
+		len(draft.Items) != 0 {
+		t.Errorf("draft = %#v, want RECEIVED RFQ without quote", draft)
+	}
+	if len(draft.Clarifications) != 1 ||
+		draft.Clarifications[0].Status != domain.RFQClarificationStatusProposed {
+		t.Errorf("clarifications = %#v, want one PROPOSED question", draft.Clarifications)
+	}
+	if len(h.quotes.created) != 0 {
+		t.Errorf("quotes created = %d, want none while clarification blocks", len(h.quotes.created))
 	}
 }
 
@@ -498,23 +575,26 @@ func TestRFQService_CreateTextDraft_RejectsAnUnavailableChannelBeforeExtraction(
 	}
 }
 
-func TestRFQService_CreateTextDraft_RevalidatesChannelBeforePersistence(t *testing.T) {
+func TestRFQService_CreateTextDraft_ProcessesAnAlreadyReceivedRFQAfterChannelChanges(t *testing.T) {
 	h := newRFQHarness(validExtractedLines())
 	h.channels.getErr = domain.ErrNotFound
 	h.channels.getErrOnCall = 2
 
-	_, err := h.service.CreateTextDraft(context.Background(), branchTenant(), domain.TextRFQDraftInput{
+	draft, err := h.service.CreateTextDraft(context.Background(), branchTenant(), domain.TextRFQDraftInput{
 		ChannelID: testChannelID, RawText: "cement",
 	})
-	if !errors.Is(err, domain.ErrNotFound) {
-		t.Fatalf("CreateTextDraft() = %v, want %v", err, domain.ErrNotFound)
+	if err != nil {
+		t.Fatalf("CreateTextDraft() = %v, want no error after receipt", err)
 	}
 	if h.extractor.calls != 1 {
-		t.Errorf("extractor calls = %d, want one before the channel changed", h.extractor.calls)
+		t.Errorf("extractor calls = %d, want one", h.extractor.calls)
 	}
-	if len(h.rfqs.created) != 0 || len(h.quotes.created) != 0 {
-		t.Errorf("persisted rfqs/quotes = %d/%d, want none after channel deactivation",
-			len(h.rfqs.created), len(h.quotes.created))
+	if h.channels.getCalls != 1 {
+		t.Errorf("channel gets = %d, want no second validation after receipt", h.channels.getCalls)
+	}
+	if draft.Quote == nil || len(h.rfqs.created) != 1 || len(h.quotes.created) != 1 {
+		t.Errorf("draft/rfqs/quotes = %v/%d/%d, want generated draft and 1/1",
+			draft.Quote, len(h.rfqs.created), len(h.quotes.created))
 	}
 }
 
@@ -543,6 +623,11 @@ func TestRFQService_CreateWhatsAppMockDraft_ResolvesChannelAndPreservesSenderLab
 	}
 	if draft.RFQ.ChannelID != testChannelID {
 		t.Errorf("draft channel = %v, want %v", draft.RFQ.ChannelID, testChannelID)
+	}
+	if len(h.quotes.created) != 1 || h.quotes.created[0].SellerID != nil ||
+		len(h.quotes.versions) != 1 || h.quotes.versions[0].AuthorID != nil {
+		t.Errorf("WhatsApp quote seller/author = %#v/%#v, want unassigned",
+			h.quotes.created, h.quotes.versions)
 	}
 }
 
