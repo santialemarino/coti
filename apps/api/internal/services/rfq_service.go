@@ -85,8 +85,7 @@ func (s *RFQService) CreateTextDraft(
 }
 
 // CreateWhatsAppMockDraft simulates one inbound WhatsApp text message in development. It resolves
-// the branch's WhatsApp channel and then runs the production pipeline unchanged, so what it
-// exercises is the real path rather than a copy of it.
+// the branch's channel and then runs the production pipeline, rather than a copy that would drift.
 func (s *RFQService) CreateWhatsAppMockDraft(
 	ctx context.Context, tenant domain.Tenant, in domain.WhatsAppMockRFQInput,
 ) (*domain.TextRFQDraft, error) {
@@ -154,9 +153,8 @@ func (s *RFQService) createTextDraft(
 	return s.persistGeneratedDraft(ctx, tenant, rfq, sellerID, items)
 }
 
-// readMaterials runs the two external stages under one deadline and returns the lines to persist.
-// The caller's context is left alone: the writes that follow have to survive a pipeline that ran
-// out of time, or a slow model would cost the extraction it just paid for.
+// readMaterials runs the two provider stages under one deadline. The caller's context is left
+// alone, so the writes that follow survive a pipeline that ran out of time.
 func (s *RFQService) readMaterials(
 	ctx context.Context, tenant domain.Tenant, raw string,
 ) ([]domain.NewQuoteItem, error) {
@@ -185,8 +183,7 @@ func (s *RFQService) readMaterials(
 }
 
 // applyMatches writes each line's catalog decision onto it. A matcher that cannot answer leaves
-// every line NO_MATCH with no score, which is the flagged state the seller resolves — losing the
-// extraction over it would discard what the client asked for.
+// every line flagged rather than costing the extraction what the client asked for.
 func (s *RFQService) applyMatches(
 	ctx context.Context, tenant domain.Tenant, items []domain.NewQuoteItem,
 ) {
@@ -462,7 +459,7 @@ func newQuoteItemsFromRFQLines(lines []domain.ExtractedRFQLine) ([]domain.NewQuo
 }
 
 // validateQuantitySource refuses a line that contradicts itself: a source outside the closed set,
-// a stated quantity of zero, or an unresolved one carrying a number the model was told not to send.
+// a stated quantity of zero, or an unresolved one carrying a number.
 func validateQuantitySource(line domain.ExtractedRFQLine, field string) error {
 	switch line.Source {
 	case domain.QuantitySourceExplicit, domain.QuantitySourceDerived:

@@ -25,9 +25,8 @@ const (
 	QuantitySourceExplicit QuantitySource = "EXPLICIT"
 	// QuantitySourceDerived is a quantity computed from what the client stated.
 	QuantitySourceDerived QuantitySource = "DERIVED"
-	// QuantitySourceUnresolved is the schema's escape value: the material is recognisable but
-	// the message carries no quantity that can be defended. It exists so "I cannot tell how many"
-	// is a structurally valid answer instead of an invented number.
+	// QuantitySourceUnresolved is the schema's escape value, so "I cannot tell how many" is a
+	// structurally valid answer instead of an invented number.
 	QuantitySourceUnresolved QuantitySource = "UNRESOLVED"
 )
 
@@ -76,14 +75,13 @@ type ExtractedRFQLine struct {
 	// RequestedDescription is what the client wrote, unnormalised, so the seller can read the
 	// interpretation against the original.
 	RequestedDescription string
-	// Quantity is meaningless unless Source is EXPLICIT or DERIVED, and the service zeroes it on
-	// the escape value rather than trusting a number the model was told not to produce.
+	// Quantity means nothing unless Source is EXPLICIT or DERIVED: on the escape value it is
+	// zeroed rather than trusted.
 	Quantity decimal.Decimal
 	Unit     *string
 	Source   QuantitySource
-	// QuantityRationale is why the quantity is what it is, in one short defensible sentence. It
-	// is required on every line: a seller has to understand the number without reopening the
-	// message, and on the escape value it is what says which datum is missing.
+	// QuantityRationale is why the quantity is what it is, and is required on every line: a
+	// seller reads it instead of reopening the message, and it names what is missing.
 	QuantityRationale string
 }
 
@@ -111,9 +109,8 @@ type WhatsAppMockRFQInput struct {
 	Text        string
 }
 
-// TextRFQDraft is what the pipeline persisted. Quote, Version and Items are absent when the
-// extractor read no material at all: the text is kept and the RFQ stays RECEIVED, because a
-// quote whose generation produced nothing has not reached GENERATED.
+// TextRFQDraft is what the pipeline persisted. Quote, Version and Items are absent when no
+// material was read at all: the text is kept and the RFQ stays RECEIVED.
 type TextRFQDraft struct {
 	RFQ     RFQ
 	Quote   *Quote

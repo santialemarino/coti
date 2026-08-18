@@ -88,9 +88,8 @@ type rfqExtractedItem struct {
 	QuantityRationale    string  `json:"quantity_rationale"`
 }
 
-// rfqExtractionSchema is the forced shape of the answer. It carries no length or size keywords:
-// structured outputs do not enforce them, so stating them here would only read as a guarantee
-// the service is the one actually making.
+// rfqExtractionSchema is the forced shape of the answer. It states no length or size keyword:
+// structured outputs enforce none of them, and the service is what checks lengths.
 func rfqExtractionSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
