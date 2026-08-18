@@ -314,3 +314,23 @@ func TestChannelsRoute_ListsOnlyTheSelectedBranch(t *testing.T) {
 		t.Errorf("branch = %v, want %v", body.Items[0].BranchID, branchID)
 	}
 }
+
+func TestWhatsAppMockRoute_IsAbsentInProduction(t *testing.T) {
+	e := newEnv(t, func(cfg *config.Config) { cfg.Environment = config.EnvironmentProduction })
+	accountID, branchID := e.seedAccount(t, "WhatsApp mock in production")
+	seller := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	channelID := e.seedIntakeChannel(t, accountID, branchID)
+
+	rec := e.do(t, request{
+		method: http.MethodPost, path: "/v1/dev/whatsapp/messages",
+		token: e.tokenFor(t, seller), branch: branchID.String(),
+		body: map[string]any{"channel_id": channelID, "from": "+5491122334455", "text": "cemento"},
+	})
+
+	// The route is registered on the environment, not guarded inside the handler: shipped to
+	// production it would let anyone post an order attributed to WhatsApp with no webhook behind it.
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d body %s, want 404: the development route reached a production router",
+			rec.Code, rec.Body)
+	}
+}
