@@ -8,7 +8,7 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// RFQStatus is the pre-quote lifecycle state.
+// RFQStatus is the pre-quote lifecycle state, living on the rfq entity.
 type RFQStatus string
 
 const (
@@ -16,29 +16,23 @@ const (
 	RFQStatusGenerated RFQStatus = "GENERATED"
 )
 
-// RFQClarificationIssueType is the blocking ambiguity an RFQ question addresses.
-type RFQClarificationIssueType string
+// QuantitySource is where an extracted line's quantity came from, and it is a closed enum in the
+// extraction schema so the model cannot answer outside it.
+type QuantitySource string
 
 const (
-	RFQClarificationMissingQuantity       RFQClarificationIssueType = "MISSING_QUANTITY"
-	RFQClarificationMissingUnit           RFQClarificationIssueType = "MISSING_UNIT"
-	RFQClarificationMissingPresentation   RFQClarificationIssueType = "MISSING_PRESENTATION"
-	RFQClarificationAmbiguousDescription  RFQClarificationIssueType = "AMBIGUOUS_DESCRIPTION"
-	RFQClarificationAmbiguousCatalogMatch RFQClarificationIssueType = "AMBIGUOUS_CATALOG_MATCH"
+	// QuantitySourceExplicit is a quantity the client stated.
+	QuantitySourceExplicit QuantitySource = "EXPLICIT"
+	// QuantitySourceDerived is a quantity computed from what the client stated.
+	QuantitySourceDerived QuantitySource = "DERIVED"
+	// QuantitySourceUnresolved is the schema's escape value: the material is recognisable but
+	// the message carries no quantity that can be defended. It exists so "I cannot tell how many"
+	// is a structurally valid answer instead of an invented number.
+	QuantitySourceUnresolved QuantitySource = "UNRESOLVED"
 )
 
-// RFQClarificationStatus is the seller-controlled lifecycle of a proposed question.
-type RFQClarificationStatus string
-
-const (
-	RFQClarificationStatusProposed  RFQClarificationStatus = "PROPOSED"
-	RFQClarificationStatusApproved  RFQClarificationStatus = "APPROVED"
-	RFQClarificationStatusSent      RFQClarificationStatus = "SENT"
-	RFQClarificationStatusAnswered  RFQClarificationStatus = "ANSWERED"
-	RFQClarificationStatusDismissed RFQClarificationStatus = "DISMISSED"
-)
-
-// RFQ is the original request the quote is built from.
+// RFQ is the original request a quote is built from. The raw text is stored before anything is
+// extracted from it, so a quote can always be reconstructed from its source.
 type RFQ struct {
 	ID          uuid.UUID
 	AccountID   uuid.UUID
@@ -77,63 +71,30 @@ type RFQStatusChange struct {
 	CreatedAt      time.Time
 }
 
-// RFQClarification is a reviewable question proposed for a blocking RFQ ambiguity.
-type RFQClarification struct {
-	ID                   uuid.UUID
-	AccountID            uuid.UUID
-	RFQID                uuid.UUID
-	QuoteItemID          *uuid.UUID
-	IssueType            RFQClarificationIssueType
-	RequestedDescription string
-	Question             string
-	Reason               string
-	Status               RFQClarificationStatus
-	ApprovedQuestion     *string
-	DecidedBy            *uuid.UUID
-	DecidedAt            *time.Time
-	SentAt               *time.Time
-	Answer               *string
-	AnsweredAt           *time.Time
-	CreatedAt            time.Time
-}
-
-// NewRFQClarification is the input for storing an AI-proposed clarification.
-type NewRFQClarification struct {
-	QuoteItemID          *uuid.UUID
-	IssueType            RFQClarificationIssueType
-	RequestedDescription string
-	Question             string
-	Reason               string
-}
-
-// ExtractedRFQLine is one schema-forced line item proposed from informal RFQ text.
+// ExtractedRFQLine is one material the extractor read out of informal RFQ text.
 type ExtractedRFQLine struct {
+	// RequestedDescription is what the client wrote, unnormalised, so the seller can read the
+	// interpretation against the original.
 	RequestedDescription string
-	Quantity             decimal.Decimal
-	Unit                 *string
-	QuantityRationale    *string
+	// Quantity is meaningless unless Source is EXPLICIT or DERIVED, and the service zeroes it on
+	// the escape value rather than trusting a number the model was told not to produce.
+	Quantity decimal.Decimal
+	Unit     *string
+	Source   QuantitySource
+	// QuantityRationale is why the quantity is what it is, in one short defensible sentence. It
+	// is required on every line: a seller has to understand the number without reopening the
+	// message, and on the escape value it is what says which datum is missing.
+	QuantityRationale string
 }
 
-// ProposedRFQClarification is one blocking question returned by the extractor.
-type ProposedRFQClarification struct {
-	IssueType            RFQClarificationIssueType
-	RequestedDescription string
-	Question             string
-	Reason               string
-}
-
-// RFQExtraction is the schema-forced result proposed from informal RFQ text.
-type RFQExtraction struct {
-	Lines          []ExtractedRFQLine
-	Clarifications []ProposedRFQClarification
-}
-
-// RFQExtractor parses informal RFQ text into structured line items.
+// RFQExtractor turns informal RFQ text into the lines a quote draft is built from. It is a
+// feature port: its adapter owns the prompt and the schema and reaches the model through
+// StructuredGenerator, never a provider SDK.
 type RFQExtractor interface {
-	Extract(ctx context.Context, raw string) (RFQExtraction, error)
+	Extract(ctx context.Context, raw string) ([]ExtractedRFQLine, error)
 }
 
-// TextRFQDraftInput creates the first reviewable quote draft from plain RFQ text.
+// TextRFQDraftInput is one plain-text order to run through the RFQ pipeline.
 type TextRFQDraftInput struct {
 	ChannelID   uuid.UUID
 	ClientID    *uuid.UUID
@@ -142,7 +103,7 @@ type TextRFQDraftInput struct {
 	WorkType    *string
 }
 
-// WhatsAppMockRFQInput simulates one inbound WhatsApp text message in development.
+// WhatsAppMockRFQInput simulates one inbound WhatsApp text message outside production.
 type WhatsAppMockRFQInput struct {
 	ChannelID   *uuid.UUID
 	From        string
@@ -150,11 +111,12 @@ type WhatsAppMockRFQInput struct {
 	Text        string
 }
 
-// TextRFQDraft is the persisted result of the RFQ text pipeline.
+// TextRFQDraft is what the pipeline persisted. Quote, Version and Items are absent when the
+// extractor read no material at all: the text is kept and the RFQ stays RECEIVED, because a
+// quote whose generation produced nothing has not reached GENERATED.
 type TextRFQDraft struct {
-	RFQ            RFQ
-	Quote          *Quote
-	Version        *QuoteVersion
-	Items          []QuoteItem
-	Clarifications []RFQClarification
+	RFQ     RFQ
+	Quote   *Quote
+	Version *QuoteVersion
+	Items   []QuoteItem
 }

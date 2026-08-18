@@ -30,7 +30,7 @@ func NewRFQHandler(rfqs RFQService) *RFQHandler {
 // CreateTextDraft creates a quote draft from plain RFQ text.
 //
 //	@Summary		Create an RFQ text draft
-//	@Description	Persists the original text before extraction, then returns a quote DRAFT or seller-reviewable clarification questions. It does not price or send the quote.
+//	@Description	Persists the original text before reading it, then returns a quote DRAFT with one line per material, each carrying its catalog match and confidence. It does not price or send the quote.
 //	@Tags			rfq
 //	@Accept			json
 //	@Produce		json
@@ -40,7 +40,8 @@ func NewRFQHandler(rfqs RFQService) *RFQHandler {
 //	@Success		201			{object}	dto.TextRFQDraftResponse
 //	@Failure		400			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
-//	@Failure		422			{object}	dto.ErrorResponse	"No active branch, disabled extractor, or invalid extractor output"
+//	@Failure		422			{object}	dto.ErrorResponse	"No active branch, or an answer the model could not shape"
+//	@Failure		503			{object}	dto.ErrorResponse	"No language model is bound, or it could not answer"
 //	@Router			/v1/rfqs/text-drafts [post]
 func (h *RFQHandler) CreateTextDraft(c *gin.Context) {
 	tenant, ok := tenantOf(c)
@@ -82,7 +83,8 @@ func (h *RFQHandler) CreateTextDraft(c *gin.Context) {
 //	@Failure		400			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
 //	@Failure		404			{object}	dto.ErrorResponse	"No active WhatsApp channel"
-//	@Failure		422			{object}	dto.ErrorResponse	"Ambiguous channel, disabled extractor, or invalid extractor output"
+//	@Failure		422			{object}	dto.ErrorResponse	"Ambiguous channel, or an answer the model could not shape"
+//	@Failure		503			{object}	dto.ErrorResponse	"No language model is bound, or it could not answer"
 //	@Router			/v1/dev/whatsapp/messages [post]
 func (h *RFQHandler) CreateWhatsAppMockDraft(c *gin.Context) {
 	tenant, ok := tenantOf(c)
@@ -113,10 +115,6 @@ func toTextRFQDraftResponse(draft domain.TextRFQDraft) dto.TextRFQDraftResponse 
 	for _, item := range draft.Items {
 		items = append(items, toQuoteItemResponse(item))
 	}
-	clarifications := make([]dto.RFQClarificationResponse, 0, len(draft.Clarifications))
-	for _, clarification := range draft.Clarifications {
-		clarifications = append(clarifications, toRFQClarificationResponse(clarification))
-	}
 	var quote *dto.QuoteResponse
 	if draft.Quote != nil {
 		response := toQuoteResponse(*draft.Quote)
@@ -128,11 +126,10 @@ func toTextRFQDraftResponse(draft domain.TextRFQDraft) dto.TextRFQDraftResponse 
 		version = &response
 	}
 	return dto.TextRFQDraftResponse{
-		RFQ:            toRFQResponse(draft.RFQ),
-		Quote:          quote,
-		Version:        version,
-		Items:          items,
-		Clarifications: clarifications,
+		RFQ:     toRFQResponse(draft.RFQ),
+		Quote:   quote,
+		Version: version,
+		Items:   items,
 	}
 }
 
@@ -142,21 +139,6 @@ func toRFQResponse(rfq domain.RFQ) dto.RFQResponse {
 		RawText: rfq.RawText, Status: string(rfq.Status), WorkType: rfq.WorkType,
 		ClientLabel: rfq.ClientLabel, ReceivedAt: rfq.ReceivedAt, CreatedAt: rfq.CreatedAt,
 		UpdatedAt: rfq.UpdatedAt,
-	}
-}
-
-func toRFQClarificationResponse(
-	clarification domain.RFQClarification,
-) dto.RFQClarificationResponse {
-	return dto.RFQClarificationResponse{
-		ID: clarification.ID, RFQID: clarification.RFQID,
-		QuoteItemID: clarification.QuoteItemID, IssueType: string(clarification.IssueType),
-		RequestedDescription: clarification.RequestedDescription,
-		Question:             clarification.Question, Reason: clarification.Reason,
-		Status: string(clarification.Status), ApprovedQuestion: clarification.ApprovedQuestion,
-		DecidedBy: clarification.DecidedBy, DecidedAt: clarification.DecidedAt,
-		SentAt: clarification.SentAt, Answer: clarification.Answer,
-		AnsweredAt: clarification.AnsweredAt, CreatedAt: clarification.CreatedAt,
 	}
 }
 

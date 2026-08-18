@@ -19,15 +19,6 @@ const (
 	QuoteStatusRejected        QuoteStatus = "REJECTED"
 )
 
-// ItemMatchStatus is the catalog-match outcome for a quote line.
-type ItemMatchStatus string
-
-const (
-	ItemMatchStatusMatched   ItemMatchStatus = "MATCHED"
-	ItemMatchStatusAmbiguous ItemMatchStatus = "AMBIGUOUS"
-	ItemMatchStatusNoMatch   ItemMatchStatus = "NO_MATCH"
-)
-
 // Quote is the seller-facing quote created from one RFQ.
 type Quote struct {
 	ID                uuid.UUID

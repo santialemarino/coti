@@ -83,7 +83,8 @@ func (r *QuoteRepository) CreateVersion(
 	return version, err
 }
 
-// CreateItems inserts a quote version's line items in one statement.
+// CreateItems inserts a quote version's line items in one statement, in the order given — the
+// order the client listed the materials in.
 func (r *QuoteRepository) CreateItems(
 	ctx context.Context, q Querier, accountID, versionID uuid.UUID, items []domain.NewQuoteItem,
 ) ([]domain.QuoteItem, error) {
@@ -105,7 +106,8 @@ func (r *QuoteRepository) CreateItems(
 		     subtotal numeric,
 		     confidence_score numeric,
 		     match_status text,
-		     quantity_rationale text
+		     quantity_rationale text,
+		     position int
 		   )
 		 )
 		 INSERT INTO quote_item (
@@ -113,10 +115,13 @@ func (r *QuoteRepository) CreateItems(
 		   unit_price_snapshot, min_price_snapshot, subtotal, confidence_score,
 		   match_status, quantity_rationale
 		 )
-		 SELECT $1, $2, product_id, requested_description, quantity, unit, unit_price_snapshot,
-		        min_price_snapshot, subtotal, confidence_score, match_status::item_match_status,
-		        quantity_rationale
+		 SELECT $1, version.id, incoming.product_id, incoming.requested_description,
+		        incoming.quantity, incoming.unit, incoming.unit_price_snapshot,
+		        incoming.min_price_snapshot, incoming.subtotal, incoming.confidence_score,
+		        incoming.match_status::item_match_status, incoming.quantity_rationale
 		 FROM incoming
+		 JOIN quote_version version ON version.account_id = $1 AND version.id = $2
+		 ORDER BY incoming.position
 		 RETURNING `+quoteItemColumns,
 		accountID, versionID, payload)
 	if err != nil {
@@ -132,7 +137,15 @@ func (r *QuoteRepository) CreateItems(
 		}
 		created = append(created, *item)
 	}
-	return created, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// The join is what refuses a version of another account: the foreign key alone would accept
+	// one, and the row would land in this tenant pointing at somebody else's quote.
+	if len(created) != len(items) {
+		return nil, domain.ErrNotFound
+	}
+	return created, nil
 }
 
 // AppendStatusChange records a quote lifecycle transition.
@@ -148,6 +161,9 @@ func (r *QuoteRepository) AppendStatusChange(
 }
 
 type quoteItemPayload struct {
+	// Position rides the payload because the caller's order is the client's order, and
+	// jsonb_to_recordset promises none of its own.
+	Position             int        `json:"position"`
 	ProductID            *uuid.UUID `json:"product_id"`
 	RequestedDescription string     `json:"requested_description"`
 	Quantity             string     `json:"quantity"`
@@ -162,8 +178,9 @@ type quoteItemPayload struct {
 
 func quoteItemPayloads(items []domain.NewQuoteItem) []quoteItemPayload {
 	payloads := make([]quoteItemPayload, 0, len(items))
-	for _, item := range items {
+	for i, item := range items {
 		payloads = append(payloads, quoteItemPayload{
+			Position:             i,
 			ProductID:            item.ProductID,
 			RequestedDescription: item.RequestedDescription,
 			Quantity:             item.Quantity.String(),

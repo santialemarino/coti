@@ -3,11 +3,13 @@ package services
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
+	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
@@ -17,7 +19,6 @@ type rfqRepository interface {
 	Create(ctx context.Context, q repository.Querier, accountID uuid.UUID, in domain.NewRFQ) (*domain.RFQ, error)
 	UpdateStatus(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, status domain.RFQStatus) (*domain.RFQ, error)
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID, previousStatus *domain.RFQStatus, newStatus domain.RFQStatus, userID *uuid.UUID) (*domain.RFQStatusChange, error)
-	CreateClarifications(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID, clarifications []domain.NewRFQClarification) ([]domain.RFQClarification, error)
 }
 
 // quoteDraftRepository is the quote persistence surface for creating draft versions.
@@ -35,6 +36,12 @@ type rfqChannelReader interface {
 	GetActiveByID(ctx context.Context, q repository.Querier, accountID, branchID, channelID uuid.UUID) (*domain.Channel, error)
 }
 
+// catalogMatcher is the matching surface the RFQ flow needs. Defined here, in the consumer, so a
+// test can stage decisions per line without a provider or a vectorized catalog.
+type catalogMatcher interface {
+	Match(ctx context.Context, tenant domain.Tenant, descriptions []string) ([]domain.LineMatch, error)
+}
+
 // RFQService owns the text RFQ pipeline up to a seller-reviewable quote draft.
 type RFQService struct {
 	db        tenantTxRunner
@@ -42,15 +49,23 @@ type RFQService struct {
 	quotes    quoteDraftRepository
 	channels  rfqChannelReader
 	extractor domain.RFQExtractor
+	matcher   catalogMatcher
+	log       *slog.Logger
+	cfg       config.RFQConfig
 }
 
 // NewRFQService builds an RFQService.
 func NewRFQService(
 	db tenantTxRunner, rfqs rfqRepository, quotes quoteDraftRepository,
-	channels rfqChannelReader, extractor domain.RFQExtractor,
+	channels rfqChannelReader, extractor domain.RFQExtractor, matcher catalogMatcher,
+	log *slog.Logger, cfg config.RFQConfig,
 ) *RFQService {
+	if log == nil {
+		log = slog.Default()
+	}
 	return &RFQService{
 		db: db, rfqs: rfqs, quotes: quotes, channels: channels, extractor: extractor,
+		matcher: matcher, log: log, cfg: cfg,
 	}
 }
 
@@ -58,28 +73,24 @@ func NewRFQService(
 func (s *RFQService) CreateTextDraft(
 	ctx context.Context, tenant domain.Tenant, in domain.TextRFQDraftInput,
 ) (*domain.TextRFQDraft, error) {
-	if err := requireBranch(tenant, "rfq draft"); err != nil {
+	if err := requireBranch(tenant, "an RFQ draft"); err != nil {
 		return nil, err
 	}
-	normalized, err := normalizeTextRFQDraftInput(in)
+	normalized, err := s.normalizeTextRFQDraftInput(in)
 	if err != nil {
 		return nil, err
-	}
-	if s.extractor == nil {
-		return nil, fmt.Errorf("%w: rfq extractor is not configured", domain.ErrInvalidInput)
-	}
-	if s.channels == nil {
-		return nil, fmt.Errorf("%w: channel repository is not configured", domain.ErrInvalidInput)
 	}
 	sellerID := tenant.UserID
 	return s.createTextDraft(ctx, tenant, normalized, &sellerID)
 }
 
-// CreateWhatsAppMockDraft simulates an inbound WhatsApp text message in development.
+// CreateWhatsAppMockDraft simulates one inbound WhatsApp text message in development. It resolves
+// the branch's WhatsApp channel and then runs the production pipeline unchanged, so what it
+// exercises is the real path rather than a copy of it.
 func (s *RFQService) CreateWhatsAppMockDraft(
 	ctx context.Context, tenant domain.Tenant, in domain.WhatsAppMockRFQInput,
 ) (*domain.TextRFQDraft, error) {
-	if err := requireBranch(tenant, "WhatsApp mock"); err != nil {
+	if err := requireBranch(tenant, "a WhatsApp mock message"); err != nil {
 		return nil, err
 	}
 	from, err := requiredText(in.From, "from")
@@ -93,62 +104,117 @@ func (s *RFQService) CreateWhatsAppMockDraft(
 	if err != nil {
 		return nil, err
 	}
-	raw, err := requiredText(in.Text, "text")
+	raw, err := s.requiredRFQText(in.Text)
 	if err != nil {
 		return nil, err
-	}
-	if s.extractor == nil {
-		return nil, fmt.Errorf("%w: rfq extractor is not configured", domain.ErrInvalidInput)
-	}
-	if s.channels == nil {
-		return nil, fmt.Errorf("%w: channel repository is not configured", domain.ErrInvalidInput)
 	}
 
 	channel, err := s.resolveWhatsAppChannel(ctx, tenant, in.ChannelID)
 	if err != nil {
 		return nil, err
 	}
+	// The sender is who the order is for, and there is no client record to point at: client_label
+	// describes this order rather than a person to match later.
 	clientLabel := from
 	if profileName != nil {
 		clientLabel = fmt.Sprintf("%s (%s)", *profileName, from)
 	}
+	// No seller: an order that arrives overnight has nobody assigned until it is taken from the
+	// inbox.
 	return s.createTextDraft(ctx, tenant, domain.TextRFQDraftInput{
 		ChannelID: channel.ID, ClientLabel: &clientLabel, RawText: raw,
 	}, nil)
 }
 
+// createTextDraft runs the pipeline: store the order, read it, match it, then persist the draft.
 func (s *RFQService) createTextDraft(
 	ctx context.Context, tenant domain.Tenant, in domain.TextRFQDraftInput, sellerID *uuid.UUID,
 ) (*domain.TextRFQDraft, error) {
+	if s.extractor == nil || s.channels == nil {
+		return nil, fmt.Errorf("%w: the RFQ pipeline is not fully wired", domain.ErrInvalidInput)
+	}
+
+	// Stored before anything reads it, in its own transaction, so a model that fails or times out
+	// leaves a recoverable order instead of losing what the client wrote.
 	rfq, err := s.persistReceivedRFQ(ctx, tenant, in)
 	if err != nil {
 		return nil, err
 	}
 
-	extraction, err := s.extractor.Extract(ctx, in.RawText)
+	items, err := s.readMaterials(ctx, tenant, in.RawText)
 	if err != nil {
 		return nil, err
 	}
-	items, err := newQuoteItemsFromRFQLines(extraction.Lines)
-	if err != nil {
-		return nil, err
-	}
-	clarifications, err := newClarificationsFromRFQExtraction(extraction.Clarifications)
-	if err != nil {
-		return nil, err
-	}
-	if len(clarifications) > 0 {
-		created, persistErr := s.persistClarifications(ctx, tenant, rfq.ID, clarifications)
-		if persistErr != nil {
-			return nil, persistErr
-		}
-		return &domain.TextRFQDraft{RFQ: *rfq, Clarifications: created}, nil
-	}
+	// Nothing the client wrote is a material, so the order never reached GENERATED. The text is
+	// kept and the seller decides what it was.
 	if len(items) == 0 {
-		return nil, fmt.Errorf("%w: extractor returned no line items or clarifications",
-			domain.ErrInvalidInput)
+		s.log.InfoContext(ctx, "rfq produced no materials", slog.String("rfq_id", rfq.ID.String()))
+		return &domain.TextRFQDraft{RFQ: *rfq}, nil
 	}
 	return s.persistGeneratedDraft(ctx, tenant, rfq, sellerID, items)
+}
+
+// readMaterials runs the two external stages under one deadline and returns the lines to persist.
+// The caller's context is left alone: the writes that follow have to survive a pipeline that ran
+// out of time, or a slow model would cost the extraction it just paid for.
+func (s *RFQService) readMaterials(
+	ctx context.Context, tenant domain.Tenant, raw string,
+) ([]domain.NewQuoteItem, error) {
+	pipelineCtx, cancel := context.WithTimeout(ctx, s.cfg.PipelineTimeout)
+	defer cancel()
+
+	lines, err := s.extractor.Extract(pipelineCtx, raw)
+	if err != nil {
+		return nil, err
+	}
+	// Matching runs one query per line, so an order that came back as a catalog would turn one
+	// request into hundreds of them. Stated in the prompt, enforced here.
+	if len(lines) > s.cfg.MaxItems {
+		return nil, fmt.Errorf("%w: the order lists more than %d materials, which is a catalog "+
+			"rather than a message", domain.ErrInvalidInput, s.cfg.MaxItems)
+	}
+	items, err := newQuoteItemsFromRFQLines(lines)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return nil, nil
+	}
+	s.applyMatches(pipelineCtx, tenant, items)
+	return items, nil
+}
+
+// applyMatches writes each line's catalog decision onto it. A matcher that cannot answer leaves
+// every line NO_MATCH with no score, which is the flagged state the seller resolves — losing the
+// extraction over it would discard what the client asked for.
+func (s *RFQService) applyMatches(
+	ctx context.Context, tenant domain.Tenant, items []domain.NewQuoteItem,
+) {
+	if s.matcher == nil {
+		return
+	}
+	descriptions := make([]string, len(items))
+	for i, item := range items {
+		descriptions[i] = item.RequestedDescription
+	}
+	matches, err := s.matcher.Match(ctx, tenant, descriptions)
+	if err != nil {
+		s.log.WarnContext(ctx, "catalog matching did not run; every line stays flagged",
+			slog.Any("error", err), slog.Int("lines", len(items)))
+		return
+	}
+	// Pairing a line with another line's decision is a wrong product nothing downstream could
+	// notice, so a broken alignment leaves every line flagged rather than indexing into it.
+	if len(matches) != len(items) {
+		s.log.ErrorContext(ctx, "catalog matching returned a different number of decisions",
+			slog.Int("decisions", len(matches)), slog.Int("lines", len(items)))
+		return
+	}
+	for i, match := range matches {
+		items[i].ProductID = match.ProductID
+		items[i].MatchStatus = match.MatchStatus
+		items[i].ConfidenceScore = decimal.NewNullDecimal(match.Confidence)
+	}
 }
 
 func (s *RFQService) persistReceivedRFQ(
@@ -178,23 +244,8 @@ func (s *RFQService) persistReceivedRFQ(
 	return rfq, nil
 }
 
-func (s *RFQService) persistClarifications(
-	ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID,
-	clarifications []domain.NewRFQClarification,
-) ([]domain.RFQClarification, error) {
-	var created []domain.RFQClarification
-	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		var createErr error
-		created, createErr = s.rfqs.CreateClarifications(ctx, q, tenant.AccountID, rfqID,
-			clarifications)
-		return createErr
-	})
-	if err != nil {
-		return nil, err
-	}
-	return created, nil
-}
-
+// persistGeneratedDraft writes the whole RECEIVED to GENERATED transition as one unit: the quote,
+// its first unfrozen version, its lines, and both status histories.
 func (s *RFQService) persistGeneratedDraft(
 	ctx context.Context, tenant domain.Tenant, rfq *domain.RFQ, sellerID *uuid.UUID,
 	items []domain.NewQuoteItem,
@@ -212,6 +263,8 @@ func (s *RFQService) persistGeneratedDraft(
 			return createQuoteErr
 		}
 
+		// Total stays zero and the version unfrozen: the prices are the next stage's, and a
+		// seller has to accept the materials before any of them are computed.
 		version, createVersionErr := s.quotes.CreateVersion(ctx, q, tenant.AccountID,
 			domain.NewQuoteVersion{
 				QuoteID:       quote.ID,
@@ -246,14 +299,14 @@ func (s *RFQService) persistGeneratedDraft(
 			return appendQuoteErr
 		}
 
-		rfq, updateRFQErr := s.rfqs.UpdateStatus(ctx, q, tenant.AccountID, rfq.ID,
+		generated, updateRFQErr := s.rfqs.UpdateStatus(ctx, q, tenant.AccountID, rfq.ID,
 			domain.RFQStatusGenerated)
 		if updateRFQErr != nil {
 			return updateRFQErr
 		}
 
 		draft = domain.TextRFQDraft{
-			RFQ:     *rfq,
+			RFQ:     *generated,
 			Quote:   quote,
 			Version: version,
 			Items:   createdItems,
@@ -282,9 +335,14 @@ func (s *RFQService) getActiveChannel(
 	return channel, nil
 }
 
+// resolveWhatsAppChannel finds the branch's WhatsApp channel. A branch may have more than one
+// number, and guessing which one an order arrived on would route the answer to the wrong client.
 func (s *RFQService) resolveWhatsAppChannel(
 	ctx context.Context, tenant domain.Tenant, channelID *uuid.UUID,
 ) (*domain.Channel, error) {
+	if s.channels == nil {
+		return nil, fmt.Errorf("%w: the RFQ pipeline is not fully wired", domain.ErrInvalidInput)
+	}
 	if channelID != nil {
 		if *channelID == uuid.Nil {
 			return nil, fmt.Errorf("%w: channel_id must be a valid UUID", domain.ErrInvalidInput)
@@ -315,20 +373,21 @@ func (s *RFQService) resolveWhatsAppChannel(
 			domain.ErrNotFound)
 	}
 	if len(channels) > 1 {
-		return nil, fmt.Errorf("%w: channel_id is required when the branch has multiple WhatsApp channels",
+		return nil, fmt.Errorf(
+			"%w: channel_id is required when the branch has multiple WhatsApp channels",
 			domain.ErrInvalidInput)
 	}
 	return &channels[0], nil
 }
 
-func normalizeTextRFQDraftInput(
+func (s *RFQService) normalizeTextRFQDraftInput(
 	in domain.TextRFQDraftInput,
 ) (domain.TextRFQDraftInput, error) {
 	if in.ChannelID == uuid.Nil {
 		return domain.TextRFQDraftInput{}, fmt.Errorf("%w: channel_id is required",
 			domain.ErrInvalidInput)
 	}
-	raw, err := requiredText(in.RawText, "raw_text")
+	raw, err := s.requiredRFQText(in.RawText)
 	if err != nil {
 		return domain.TextRFQDraftInput{}, err
 	}
@@ -346,6 +405,22 @@ func normalizeTextRFQDraftInput(
 	return in, nil
 }
 
+// requiredRFQText bounds the order before a model is asked to read it. rfq.raw_text is unbounded,
+// so the cap is the only thing between a pasted document and one very expensive call.
+func (s *RFQService) requiredRFQText(raw string) (string, error) {
+	text, err := requiredText(raw, "raw_text")
+	if err != nil {
+		return "", err
+	}
+	if err := requireMaxRunes(text, "raw_text", s.cfg.MaxTextCharacters); err != nil {
+		return "", err
+	}
+	return text, nil
+}
+
+// newQuoteItemsFromRFQLines validates what the model proposed and turns it into lines. Every line
+// starts NO_MATCH: the catalog decision is matching's to make, and a line nothing matches keeps
+// that value.
 func newQuoteItemsFromRFQLines(lines []domain.ExtractedRFQLine) ([]domain.NewQuoteItem, error) {
 	items := make([]domain.NewQuoteItem, 0, len(lines))
 	for i, line := range lines {
@@ -357,8 +432,8 @@ func newQuoteItemsFromRFQLines(lines []domain.ExtractedRFQLine) ([]domain.NewQuo
 		if err := requireMaxRunes(description, field+".requested_description", 512); err != nil {
 			return nil, err
 		}
-		if !line.Quantity.IsPositive() {
-			return nil, fmt.Errorf("%w: %s.quantity must be positive", domain.ErrInvalidInput, field)
+		if err := validateQuantitySource(line, field); err != nil {
+			return nil, err
 		}
 		if err := validateAmount(line.Quantity, field+".quantity"); err != nil {
 			return nil, err
@@ -367,8 +442,11 @@ func newQuoteItemsFromRFQLines(lines []domain.ExtractedRFQLine) ([]domain.NewQuo
 		if err != nil {
 			return nil, err
 		}
-		rationale, err := optionalLimitedText(line.QuantityRationale, field+".quantity_rationale", 512)
+		rationale, err := requiredText(line.QuantityRationale, field+".quantity_rationale")
 		if err != nil {
+			return nil, err
+		}
+		if err := requireMaxRunes(rationale, field+".quantity_rationale", 512); err != nil {
 			return nil, err
 		}
 
@@ -377,63 +455,31 @@ func newQuoteItemsFromRFQLines(lines []domain.ExtractedRFQLine) ([]domain.NewQuo
 			Quantity:             line.Quantity,
 			Unit:                 unit,
 			MatchStatus:          domain.ItemMatchStatusNoMatch,
-			QuantityRationale:    rationale,
+			QuantityRationale:    &rationale,
 		})
 	}
 	return items, nil
 }
 
-func newClarificationsFromRFQExtraction(
-	proposals []domain.ProposedRFQClarification,
-) ([]domain.NewRFQClarification, error) {
-	clarifications := make([]domain.NewRFQClarification, 0, len(proposals))
-	for i, proposal := range proposals {
-		field := fmt.Sprintf("clarifications[%d]", i)
-		if !validRFQClarificationIssueType(proposal.IssueType) {
-			return nil, fmt.Errorf("%w: %s.issue_type is invalid", domain.ErrInvalidInput, field)
+// validateQuantitySource refuses a line that contradicts itself: a source outside the closed set,
+// a stated quantity of zero, or an unresolved one carrying a number the model was told not to send.
+func validateQuantitySource(line domain.ExtractedRFQLine, field string) error {
+	switch line.Source {
+	case domain.QuantitySourceExplicit, domain.QuantitySourceDerived:
+		if !line.Quantity.IsPositive() {
+			return fmt.Errorf("%w: %s.quantity must be positive when it comes from the message",
+				domain.ErrInvalidInput, field)
 		}
-		description, err := requiredText(proposal.RequestedDescription,
-			field+".requested_description")
-		if err != nil {
-			return nil, err
+	case domain.QuantitySourceUnresolved:
+		if !line.Quantity.IsZero() {
+			return fmt.Errorf("%w: %s.quantity must be zero when no quantity could be read",
+				domain.ErrInvalidInput, field)
 		}
-		if err := requireMaxRunes(description, field+".requested_description", 512); err != nil {
-			return nil, err
-		}
-		question, err := requiredText(proposal.Question, field+".question")
-		if err != nil {
-			return nil, err
-		}
-		if err := requireMaxRunes(question, field+".question", 512); err != nil {
-			return nil, err
-		}
-		reason, err := requiredText(proposal.Reason, field+".reason")
-		if err != nil {
-			return nil, err
-		}
-		if err := requireMaxRunes(reason, field+".reason", 512); err != nil {
-			return nil, err
-		}
-		clarifications = append(clarifications, domain.NewRFQClarification{
-			IssueType:            proposal.IssueType,
-			RequestedDescription: description,
-			Question:             question,
-			Reason:               reason,
-		})
-	}
-	return clarifications, nil
-}
-
-func validRFQClarificationIssueType(issueType domain.RFQClarificationIssueType) bool {
-	switch issueType {
-	case domain.RFQClarificationMissingQuantity,
-		domain.RFQClarificationMissingUnit,
-		domain.RFQClarificationMissingPresentation,
-		domain.RFQClarificationAmbiguousDescription:
-		return true
 	default:
-		return false
+		return fmt.Errorf("%w: %s.quantity_source %q is not a known source",
+			domain.ErrInvalidInput, field, line.Source)
 	}
+	return nil
 }
 
 func optionalLimitedText(raw *string, field string, max int) (*string, error) {

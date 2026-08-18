@@ -24,6 +24,7 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"github.com/santialemarino/coti/apps/api/internal/ai"
 	"github.com/santialemarino/coti/apps/api/internal/ai/provider"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
@@ -73,6 +74,8 @@ func run() error {
 	branchProductRepo := repository.NewBranchProductRepository()
 	productPriceRepo := repository.NewProductPriceRepository()
 	catalogImportRepo := repository.NewCatalogImportRepository()
+	rfqRepo := repository.NewRFQRepository()
+	quoteRepo := repository.NewQuoteRepository()
 	accountRepo := repository.NewAccountRepository()
 	channelRepo := repository.NewChannelRepository()
 	authTokenRepo := repository.NewAuthTokenRepository()
@@ -112,6 +115,13 @@ func run() error {
 		productPriceRepo, nil)
 	productPriceImportService := services.NewProductPriceImportService(db, productPriceRepo, nil)
 	catalogImportService := services.NewCatalogImportService(db, catalogImportRepo, nil)
+	channelService := services.NewChannelService(db, channelRepo)
+	catalogSearchService := services.NewCatalogSearchService(db, productRepo, providers.Embedder,
+		cfg.Catalog)
+	catalogMatchService := services.NewCatalogMatchService(catalogSearchService, cfg.Catalog)
+	rfqExtractor := ai.NewRFQExtractor(providers.Generator, cfg.RFQ.MaxItems)
+	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo, channelRepo, rfqExtractor,
+		catalogMatchService, log, cfg.RFQ)
 
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
@@ -121,8 +131,10 @@ func run() error {
 			Verification:  handler.NewVerificationHandler(verificationService, mailTargetLimiter),
 			User:          handler.NewUserHandler(userService),
 			Branch:        handler.NewBranchHandler(branchService),
+			Channel:       handler.NewChannelHandler(channelService),
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
+			RFQ:           handler.NewRFQHandler(rfqService),
 			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
 			CatalogImport: handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
 			Account:       handler.NewAccountHandler(accountService),

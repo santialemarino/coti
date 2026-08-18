@@ -60,6 +60,7 @@ type Config struct {
 	AI            AIConfig
 	Web           WebConfig
 	Catalog       CatalogConfig
+	RFQ           RFQConfig
 	RateLimit     RateLimitConfig
 	Branch        BranchConfig
 	Job           JobConfig
@@ -364,6 +365,20 @@ type JobConfig struct {
 	Timeout time.Duration
 }
 
+// RFQConfig bounds one run of the RFQ text pipeline.
+type RFQConfig struct {
+	// MaxTextCharacters caps the order the extractor is asked to read. rfq.raw_text is unbounded,
+	// so without this a pasted document would be sent to the model whole.
+	MaxTextCharacters int
+	// MaxItems caps the lines one order may produce. Matching runs a query per line, so a
+	// spreadsheet pasted as text would turn one request into hundreds of them.
+	MaxItems int
+	// PipelineTimeout bounds the whole extract-and-match pass. The AI timeouts are per attempt,
+	// so a retrying chain outruns the response budget; this makes the route answer 503 instead
+	// of having its response cut off mid-write.
+	PipelineTimeout time.Duration
+}
+
 // CatalogConfig holds the catalog listing limits and the knobs behind the hybrid search. The
 // listing cap is what stops a client from asking for the whole catalog in one response.
 type CatalogConfig struct {
@@ -507,6 +522,11 @@ func Load() (*Config, error) {
 			TrustedProxyHops: getInt("RATE_LIMIT_TRUSTED_PROXY_HOPS", 0, &problems),
 			TrustedProxies:   getCIDRs("RATE_LIMIT_TRUSTED_PROXY_CIDRS", &problems),
 		},
+		RFQ: RFQConfig{
+			MaxTextCharacters: getInt("RFQ_MAX_TEXT_CHARACTERS", 20000, &problems),
+			MaxItems:          getInt("RFQ_MAX_ITEMS", 200, &problems),
+			PipelineTimeout:   getDuration("RFQ_PIPELINE_TIMEOUT_SECONDS", 25*time.Second, &problems),
+		},
 		Job: JobConfig{
 			Timeout: getDuration("JOB_TIMEOUT_MINUTES", 30*time.Minute, &problems),
 		},
@@ -638,6 +658,21 @@ func Load() (*Config, error) {
 	// firing would do nothing while it waited.
 	if cfg.Job.Timeout <= 0 {
 		problems = append(problems, "JOB_TIMEOUT_MINUTES must be greater than zero")
+	}
+	if cfg.RFQ.MaxTextCharacters <= 0 {
+		problems = append(problems, "RFQ_MAX_TEXT_CHARACTERS must be greater than zero")
+	}
+	if cfg.RFQ.MaxItems <= 0 {
+		problems = append(problems, "RFQ_MAX_ITEMS must be greater than zero")
+	}
+	if cfg.RFQ.PipelineTimeout <= 0 {
+		problems = append(problems, "RFQ_PIPELINE_TIMEOUT_SECONDS must be greater than zero")
+	} else if cfg.RFQ.PipelineTimeout >= cfg.Server.WriteTimeout {
+		// A pipeline allowed to outlast the response budget has its answer cut off mid-write,
+		// which the client reads as a broken connection rather than as a model that timed out.
+		problems = append(problems, fmt.Sprintf(
+			"RFQ_PIPELINE_TIMEOUT_SECONDS (%s) must be below SERVER_WRITE_TIMEOUT_SECONDS (%s)",
+			cfg.RFQ.PipelineTimeout, cfg.Server.WriteTimeout))
 	}
 
 	catalogPercents := []struct {
