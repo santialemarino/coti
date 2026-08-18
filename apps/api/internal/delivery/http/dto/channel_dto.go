@@ -6,7 +6,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// ChannelResponse represents one active intake channel of the selected branch.
+// ChannelResponse represents one active intake channel of the selected branch. It deliberately
+// omits channel.config: that is where a provider credential lives, and this route exists so a
+// caller can name a channel, not read its secrets.
 type ChannelResponse struct {
 	ID         uuid.UUID `json:"id"`
 	BranchID   uuid.UUID `json:"branch_id"`

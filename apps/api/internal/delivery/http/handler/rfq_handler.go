@@ -41,6 +41,7 @@ func NewRFQHandler(rfqs RFQService) *RFQHandler {
 //	@Failure		400			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
 //	@Failure		422			{object}	dto.ErrorResponse	"No active branch, or an answer the model could not shape"
+//	@Failure		429			{object}	dto.RateLimitResponse	"Rate limit spent; retry_after_seconds says when"
 //	@Failure		503			{object}	dto.ErrorResponse	"No language model is bound, or it could not answer"
 //	@Router			/v1/rfqs/text-drafts [post]
 func (h *RFQHandler) CreateTextDraft(c *gin.Context) {
@@ -84,6 +85,7 @@ func (h *RFQHandler) CreateTextDraft(c *gin.Context) {
 //	@Failure		401			{object}	dto.ErrorResponse
 //	@Failure		404			{object}	dto.ErrorResponse	"No active WhatsApp channel"
 //	@Failure		422			{object}	dto.ErrorResponse	"Ambiguous channel, or an answer the model could not shape"
+//	@Failure		429			{object}	dto.RateLimitResponse	"Rate limit spent; retry_after_seconds says when"
 //	@Failure		503			{object}	dto.ErrorResponse	"No language model is bound, or it could not answer"
 //	@Router			/v1/dev/whatsapp/messages [post]
 func (h *RFQHandler) CreateWhatsAppMockDraft(c *gin.Context) {

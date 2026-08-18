@@ -77,6 +77,9 @@ type RateLimitConfig struct {
 	Credentials int
 	Signup      int
 	Mail        int
+	// AI bounds the routes billed per call by a provider, the way Mail bounds the ones whose
+	// effect is a message. The global allowance is far too wide for a route that costs money.
+	AI int
 	// MailPerAddress is counted by target address instead of by caller, so it bounds what one
 	// mailbox receives however many callers ask for it.
 	MailPerAddress int
@@ -518,6 +521,7 @@ func Load() (*Config, error) {
 			Credentials:      getInt("RATE_LIMIT_CREDENTIALS_MAX", 10, &problems),
 			Signup:           getInt("RATE_LIMIT_SIGNUP_MAX", 5, &problems),
 			Mail:             getInt("RATE_LIMIT_MAIL_MAX", 5, &problems),
+			AI:               getInt("RATE_LIMIT_AI_MAX", 10, &problems),
 			MailPerAddress:   getInt("RATE_LIMIT_MAIL_PER_ADDRESS_MAX", 3, &problems),
 			TrustedProxyHops: getInt("RATE_LIMIT_TRUSTED_PROXY_HOPS", 0, &problems),
 			TrustedProxies:   getCIDRs("RATE_LIMIT_TRUSTED_PROXY_CIDRS", &problems),
@@ -701,6 +705,7 @@ func Load() (*Config, error) {
 			{"RATE_LIMIT_CREDENTIALS_MAX", cfg.RateLimit.Credentials},
 			{"RATE_LIMIT_SIGNUP_MAX", cfg.RateLimit.Signup},
 			{"RATE_LIMIT_MAIL_MAX", cfg.RateLimit.Mail},
+			{"RATE_LIMIT_AI_MAX", cfg.RateLimit.AI},
 		}
 		if cfg.RateLimit.Global < 1 {
 			problems = append(problems, "RATE_LIMIT_GLOBAL_MAX must be at least 1")

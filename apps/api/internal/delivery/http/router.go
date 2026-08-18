@@ -118,13 +118,14 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	// The frontend reads its own identity here instead of decoding the access token.
 	authed.GET("/me", h.User.Me)
 
-	rfqs := authed.Group("/rfqs")
-	rfqs.POST("/text-drafts", h.RFQ.CreateTextDraft)
+	// The first surface billed per call: reading one order costs a generation and an embedding,
+	// so it gets its own allowance instead of sharing the global one.
+	ai := limit("ai", cfg.RateLimit.AI)
+	authed.POST("/rfqs/text-drafts", ai, h.RFQ.CreateTextDraft)
 	authed.GET("/channels", h.Channel.List)
 
 	if !cfg.IsProduction() {
-		development := authed.Group("/dev")
-		development.POST("/whatsapp/messages", h.RFQ.CreateWhatsAppMockDraft)
+		authed.POST("/dev/whatsapp/messages", ai, h.RFQ.CreateWhatsAppMockDraft)
 	}
 
 	account := authed.Group("/account")

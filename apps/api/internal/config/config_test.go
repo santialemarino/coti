@@ -25,6 +25,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"AUTH_REQUIRE_VERIFIED_EMAIL",
 		"RATE_LIMIT_ENABLED", "RATE_LIMIT_WINDOW_SECONDS", "RATE_LIMIT_GLOBAL_MAX",
 		"RATE_LIMIT_CREDENTIALS_MAX", "RATE_LIMIT_SIGNUP_MAX", "RATE_LIMIT_MAIL_MAX",
+		"RATE_LIMIT_AI_MAX",
 		"RATE_LIMIT_MAIL_PER_ADDRESS_MAX", "RATE_LIMIT_TRUSTED_PROXY_HOPS",
 		"RATE_LIMIT_TRUSTED_PROXY_CIDRS",
 		"MAIL_PROVIDER", "MAIL_FROM_ADDRESS", "MAIL_FROM_NAME",
@@ -125,6 +126,9 @@ func TestLoad_Defaults(t *testing.T) {
 	// The requirement has to arrive off, or a fresh environment locks everyone out.
 	if cfg.Auth.RequireVerifiedEmail {
 		t.Error("Auth.RequireVerifiedEmail = true, want false by default")
+	}
+	if cfg.RateLimit.AI != 10 {
+		t.Errorf("RateLimit.AI = %d, want 10", cfg.RateLimit.AI)
 	}
 	if !cfg.RateLimit.Enabled {
 		t.Error("RateLimit.Enabled = false, want true by default")
@@ -362,6 +366,13 @@ func TestLoad_Invalid(t *testing.T) {
 			name:    "a scheduled run bounded at nothing",
 			mutate:  func(e map[string]string) { e["JOB_TIMEOUT_MINUTES"] = "0" },
 			wantSub: "JOB_TIMEOUT_MINUTES must be greater than zero",
+		},
+		{
+			// An allowance above the global one can never bite, so it reads as a cost bound that
+			// is not there.
+			name:    "an AI allowance wider than the global one",
+			mutate:  func(e map[string]string) { e["RATE_LIMIT_AI_MAX"] = "301" },
+			wantSub: "RATE_LIMIT_AI_MAX (301) exceeds RATE_LIMIT_GLOBAL_MAX",
 		},
 		{
 			name:    "an order bounded at nothing",
