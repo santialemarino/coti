@@ -629,6 +629,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
                     },
+                    "429": {
+                        "description": "Rate limit spent; retry_after_seconds says when",
+                        "schema": {
+                            "$ref": "#/definitions/dto.RateLimitResponse"
+                        }
+                    },
                     "503": {
                         "description": "No language model is bound, or it could not answer",
                         "schema": {
@@ -2413,6 +2419,12 @@ const docTemplate = `{
                         "description": "No active branch, or an answer the model could not shape",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit spent; retry_after_seconds says when",
+                        "schema": {
+                            "$ref": "#/definitions/dto.RateLimitResponse"
                         }
                     },
                     "503": {

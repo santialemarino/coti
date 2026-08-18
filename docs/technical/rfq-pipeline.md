@@ -16,6 +16,8 @@ product decision in [catalog.md](catalog.md). This document is the flow that con
 | `GET`  | `/v1/channels`              | The active intake channels of the selected branch                    |
 | `POST` | `/v1/dev/whatsapp/messages` | Simulates one inbound WhatsApp message. Not registered in production |
 
+The two that reach a model share **their own rate-limit allowance**, `RATE_LIMIT_AI_MAX` — the global one would let a single seller spend 300 generations a minute, and this is the first surface in the product billed per call.
+
 All three are branch-scoped and read the branch from `X-Branch-Id`. `channel_id` is required on a
 text draft, which is why the channel listing exists: `rfq.channel_id` is `NOT NULL`, and a caller
 has to name the route the order arrived through rather than have one guessed for it.
@@ -132,6 +134,9 @@ Three settings, all in `apps/api/.env.example`:
   three-hundred-line list reads as a complete quote and is not one. A list that long is a
   spreadsheet, and spreadsheets have their own ingest path.
 - **`RFQ_PIPELINE_TIMEOUT_SECONDS`** (25) bounds extraction and matching together.
+- **`RATE_LIMIT_AI_MAX`** (10) is the fourth, and it lives with the other allowances rather than
+  here: it bounds calls per caller per window on the routes that reach a provider. Startup refuses
+  a value above `RATE_LIMIT_GLOBAL_MAX`, which could never bite.
 
 That last one exists because the AI timeouts are **per attempt**: `AI_LLM_TIMEOUT_SECONDS` times
 `AI_MAX_ATTEMPTS` plus backoff is several times `SERVER_WRITE_TIMEOUT_SECONDS`. Left alone, the
