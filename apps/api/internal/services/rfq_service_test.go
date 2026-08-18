@@ -506,9 +506,8 @@ func TestRFQService_CreateTextDraft_KeepsTheOrderWhenNoMaterialIsRead(t *testing
 
 func TestRFQService_CreateTextDraft_FlagsEveryLineWhenMatchingCannotAnswer(t *testing.T) {
 	cases := []struct {
-		name    string
-		stage   func(*rfqHarness)
-		wantErr bool
+		name  string
+		stage func(*rfqHarness)
 	}{
 		{
 			name:  "matching refuses",
@@ -617,7 +616,7 @@ func TestRFQService_CreateTextDraft_RejectsAContradictoryLine(t *testing.T) {
 			wantSub: "is not a known source",
 		},
 		{
-			name: "a negative quantity",
+			name: "a stated quantity below zero",
 			line: domain.ExtractedRFQLine{
 				RequestedDescription: "cemento", Quantity: decimal.RequireFromString("-1"),
 				Source: domain.QuantitySourceExplicit, QuantityRationale: "pidió cemento",

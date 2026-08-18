@@ -162,8 +162,8 @@ func TestQuoteRepository_CreateItemsKeepsOrderAndScale(t *testing.T) {
 		if !item.Quantity.Equal(wantQuantity) {
 			t.Errorf("row %d quantity = %s, want %s", i, item.Quantity, wantQuantity)
 		}
-		if item.ProductID != nil && i != 2 {
-			t.Errorf("row %d carries product %v, want none", i, item.ProductID)
+		if item.ProductID != nil {
+			t.Errorf("row %d carries product %v, want none: no line named one", i, item.ProductID)
 		}
 	}
 	// Four decimals survive the round trip: rounding here would store a score no decision was

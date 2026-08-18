@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -56,6 +57,10 @@ func TestRFQExtractor_Extract_MapsEverySource(t *testing.T) {
 	}
 	if len(lines) != 3 {
 		t.Fatalf("read %d lines, want 3", len(lines))
+	}
+	// One call for the whole order: a call per line would pay for the instructions each time.
+	if generator.calls != 1 {
+		t.Errorf("generator called %d times, want once for the whole order", generator.calls)
 	}
 
 	if lines[0].Source != domain.QuantitySourceExplicit {
@@ -186,7 +191,7 @@ func TestRFQExtractionSchema_ForcesTheClosedSourceEnum(t *testing.T) {
 	}
 	// Without the escape value in the enum the model has no valid way to say it cannot tell, so
 	// it invents a number instead.
-	if !slicesContain(got, string(domain.QuantitySourceUnresolved)) {
+	if !slices.Contains(got, string(domain.QuantitySourceUnresolved)) {
 		t.Error("the enum has no escape value; an unresolvable quantity would have to be invented")
 	}
 }
@@ -261,13 +266,4 @@ func itemSchema(t *testing.T, schema map[string]any) map[string]any {
 		t.Fatal("the items array declares no element schema")
 	}
 	return item
-}
-
-func slicesContain(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
 }

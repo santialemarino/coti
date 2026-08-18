@@ -28,13 +28,12 @@ import (
 // provider while everything below it stays real.
 type stagedExtractor struct {
 	lines []domain.ExtractedRFQLine
-	err   error
 }
 
 func (s stagedExtractor) Extract(
 	_ context.Context, _ string,
 ) ([]domain.ExtractedRFQLine, error) {
-	return s.lines, s.err
+	return s.lines, nil
 }
 
 func rfqConfig() config.RFQConfig {
@@ -95,16 +94,18 @@ func TestRFQPipeline_PersistsTheMatchRealSearchDecided(t *testing.T) {
 	// Two lines on axes of their own, one product sitting on each. The cement product is a near
 	// perfect match; the sand one is far enough away to be rejected.
 	cement := e.seedProduct(t, accountID, "Cemento Portland 50kg", "bolsa de cemento")
-	sand := e.seedProduct(t, accountID, "Arena fina", "arena")
+	// Deliberately named nothing like the second line: a shared word would let the lexical half
+	// offer it, and then whichever half won would decide the status instead of the arithmetic.
+	other := e.seedProduct(t, accountID, "Cal hidratada", "cal")
 	e.stock(t, accountID, branchID, cement)
-	e.stock(t, accountID, branchID, sand)
+	e.stock(t, accountID, branchID, other)
 	e.embedOn(t, cement, 0, 0.95)
-	e.embedOn(t, sand, 4, 0.20)
-	axes := map[string]int{"10 bolsas de cemento": 0, "arena": 2}
+	e.embedOn(t, other, 2, 0.20)
+	axes := map[string]int{"10 bolsas de cemento": 0, "membrana liquida": 2}
 
 	unit := "bolsa"
 	rationale := "el cliente pidió 10 bolsas"
-	sandRationale := "no indicó cuánta arena"
+	unresolvedRationale := "no indicó cuánta membrana"
 	draft, err := e.pipeline(t, stagedExtractor{lines: []domain.ExtractedRFQLine{
 		{
 			RequestedDescription: "10 bolsas de cemento",
@@ -114,16 +115,16 @@ func TestRFQPipeline_PersistsTheMatchRealSearchDecided(t *testing.T) {
 			QuantityRationale:    rationale,
 		},
 		{
-			RequestedDescription: "arena",
+			RequestedDescription: "membrana liquida",
 			Quantity:             decimal.Zero,
 			Source:               domain.QuantitySourceUnresolved,
-			QuantityRationale:    sandRationale,
+			QuantityRationale:    unresolvedRationale,
 		},
 	}}, axes).CreateTextDraft(ctx,
 		domain.Tenant{AccountID: accountID, BranchID: branchID, UserID: seller.ID,
 			Role: domain.UserRoleAdmin},
 		domain.TextRFQDraftInput{
-			ChannelID: channelID, RawText: "10 bolsas de cemento y arena",
+			ChannelID: channelID, RawText: "10 bolsas de cemento y membrana liquida",
 		})
 	if err != nil {
 		t.Fatalf("CreateTextDraft() = %v, want no error", err)
@@ -196,9 +197,12 @@ func TestRFQPipeline_PersistsTheMatchRealSearchDecided(t *testing.T) {
 		t.Errorf("cement rationale = %v, want %q", matched.rationale, rationale)
 	}
 
-	// The sand line is flagged and kept: nothing came close enough, and the quantity was never
+	// The second line is flagged and kept: nothing came close enough, and the quantity was never
 	// given. It stays in the quote either way — that is the whole of US-07's premise.
 	flagged := lines[1]
+	if flagged.description != "membrana liquida" {
+		t.Fatalf("second line = %q, want the unresolved one", flagged.description)
+	}
 	if flagged.status != string(domain.ItemMatchStatusNoMatch) {
 		t.Errorf("sand status = %q, want NO_MATCH", flagged.status)
 	}
@@ -208,10 +212,12 @@ func TestRFQPipeline_PersistsTheMatchRealSearchDecided(t *testing.T) {
 	if !flagged.quantity.IsZero() {
 		t.Errorf("sand quantity = %s, want zero", flagged.quantity)
 	}
-	// It kept the score of the candidate it rejected, which is what tells a near miss from a line
-	// nothing was offered for.
-	if !flagged.confidence.Valid {
-		t.Error("sand confidence is null, want the rejected candidate's score")
+	// It kept the score of the candidate it rejected — 0.20 is the alignment the product was
+	// embedded at — which is what tells a near miss from a line nothing was offered for.
+	wantRejected := decimal.RequireFromString("0.2000")
+	if !flagged.confidence.Valid || !flagged.confidence.Decimal.Equal(wantRejected) {
+		t.Errorf("flagged confidence = %v, want the rejected candidate's %s", flagged.confidence,
+			wantRejected)
 	}
 
 	var versionNumber int
