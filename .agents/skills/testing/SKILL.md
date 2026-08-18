@@ -208,13 +208,19 @@ apps/api/
   short-circuits the rest, and a check that never executed reads exactly like one that passed.
   **A removal that stops the package compiling is not a proof either** — deleting a check can orphan
   an import, and `[build failed]` looks like a red test while proving nothing about the assertion.
-  Break the behaviour with an edit that still builds (invert a condition, widen a comparison).
+  Break the behaviour with an edit that still builds (invert a condition, widen a comparison). Beware the mutation the database absorbs: dropping an `ORDER BY` leaves
+  the test green, because Postgres happens to return input order anyway. **Invert the clause instead**
+  (`ORDER BY x DESC`) — that proves the assertion reads the order, and the honest claim afterwards is
+  that the test pins the behaviour, not the clause.
 - **Mutate each field when a constructor maps sibling settings onto sibling fields.** Three
   same-typed values read from three sibling config keys is the copy-paste bug the compiler cannot
   see: swapping two of them builds, vets clean, and silently changes every decision downstream. One
   mutation per field is what proves the wiring, and asserting only a _relationship_ between defaults
   (rather than each exact value) lets the same drift through a second way — pin the values too, since
-  `.env.example` and the docs quote them.
+  `.env.example` and the docs quote them. **A defaults test cannot catch the swap at all**, whichever way it
+  asserts: with every key cleared, both fields fall back to their own default and read correctly.
+  Proving the wiring needs a second test that sets each key to a **distinct** value and checks each
+  field for its own.
 - **Compute expected values by hand.** Assert against manually derived numbers;
   never call the function under test (or its formula) a second time to produce
   the "expected" value — that only proves the code equals itself.
