@@ -5,20 +5,26 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
+	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
 
 var (
-	testRFQID     = uuid.MustParse("33333333-3333-4333-8333-333333333333")
-	testQuoteID   = uuid.MustParse("44444444-4444-4444-8444-444444444444")
-	testVersionID = uuid.MustParse("66666666-6666-4666-8666-666666666666")
-	testChannelID = uuid.MustParse("77777777-7777-4777-8777-777777777777")
+	testRFQID     = uuid.MustParse("a1111111-1111-4111-8111-111111111111")
+	testQuoteID   = uuid.MustParse("a2222222-2222-4222-8222-222222222222")
+	testVersionID = uuid.MustParse("a3333333-3333-4333-8333-333333333333")
+	testChannelID = uuid.MustParse("a4444444-4444-4444-8444-444444444444")
 )
+
+func testRFQConfig() config.RFQConfig {
+	return config.RFQConfig{MaxTextCharacters: 200, MaxItems: 3, PipelineTimeout: time.Minute}
+}
 
 type fakeRFQDB struct {
 	scopes             []uuid.UUID
@@ -26,8 +32,13 @@ type fakeRFQDB struct {
 }
 
 func (f *fakeRFQDB) InTenantTx(
-	_ context.Context, tenant domain.Tenant, fn func(repository.Querier) error,
+	ctx context.Context, tenant domain.Tenant, fn func(repository.Querier) error,
 ) error {
+	// A real pool cannot begin a transaction on a context that is already done, so neither does
+	// the fake: it is what makes a write handed an expired deadline observable.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if tenant.AccountID == uuid.Nil {
 		return domain.ErrNoTenantContext
 	}
@@ -38,7 +49,7 @@ func (f *fakeRFQDB) InTenantTx(
 }
 
 type fakeRFQExtractor struct {
-	extraction      domain.RFQExtraction
+	lines           []domain.ExtractedRFQLine
 	err             error
 	calls           int
 	raw             string
@@ -48,28 +59,57 @@ type fakeRFQExtractor struct {
 
 func (f *fakeRFQExtractor) Extract(
 	_ context.Context, raw string,
-) (domain.RFQExtraction, error) {
+) ([]domain.ExtractedRFQLine, error) {
 	f.calls++
 	f.raw = raw
 	if f.db != nil {
 		f.calledOutsideTx = f.db.activeTransactions == 0
 	}
-	return f.extraction, f.err
+	return f.lines, f.err
+}
+
+type fakeCatalogMatcher struct {
+	matches         []domain.LineMatch
+	err             error
+	calls           int
+	descriptions    []string
+	db              *fakeRFQDB
+	calledOutsideTx bool
+}
+
+func (f *fakeCatalogMatcher) Match(
+	_ context.Context, _ domain.Tenant, descriptions []string,
+) ([]domain.LineMatch, error) {
+	f.calls++
+	f.descriptions = descriptions
+	if f.db != nil {
+		f.calledOutsideTx = f.db.activeTransactions == 0
+	}
+	return f.matches, f.err
+}
+
+// blockingMatcher waits for its context to end, the way a provider call that outlives the
+// pipeline's deadline does.
+type blockingMatcher struct{}
+
+func (blockingMatcher) Match(
+	ctx context.Context, _ domain.Tenant, _ []string,
+) ([]domain.LineMatch, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
 }
 
 type fakeRFQChannels struct {
 	channel        *domain.Channel
 	channelsByType []domain.Channel
 	getErr         error
-	getErrOnCall   int
 	listErr        error
 	getCalls       int
 	listCalls      int
 }
 
 func (f *fakeRFQChannels) ListActiveByType(
-	_ context.Context, _ repository.Querier, accountID, branchID uuid.UUID,
-	channelType domain.ChannelType,
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID, _ domain.ChannelType,
 ) ([]domain.Channel, error) {
 	f.listCalls++
 	if f.listErr != nil {
@@ -81,10 +121,10 @@ func (f *fakeRFQChannels) ListActiveByType(
 }
 
 func (f *fakeRFQChannels) GetActiveByID(
-	_ context.Context, _ repository.Querier, accountID, branchID, channelID uuid.UUID,
+	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID,
 ) (*domain.Channel, error) {
 	f.getCalls++
-	if f.getErr != nil && (f.getErrOnCall == 0 || f.getCalls == f.getErrOnCall) {
+	if f.getErr != nil {
 		return nil, f.getErr
 	}
 	if f.channel == nil {
@@ -102,10 +142,9 @@ type rfqStatusChangeCall struct {
 }
 
 type fakeRFQs struct {
-	created        []domain.NewRFQ
-	updatedStatus  []domain.RFQStatus
-	statusChanges  []rfqStatusChangeCall
-	clarifications [][]domain.NewRFQClarification
+	created       []domain.NewRFQ
+	updatedStatus []domain.RFQStatus
+	statusChanges []rfqStatusChangeCall
 }
 
 func (f *fakeRFQs) Create(
@@ -123,7 +162,10 @@ func (f *fakeRFQs) UpdateStatus(
 	_ context.Context, _ repository.Querier, accountID, id uuid.UUID, status domain.RFQStatus,
 ) (*domain.RFQ, error) {
 	f.updatedStatus = append(f.updatedStatus, status)
-	return &domain.RFQ{ID: id, AccountID: accountID, BranchID: testBranchID, ChannelID: testChannelID, Status: status}, nil
+	return &domain.RFQ{
+		ID: id, AccountID: accountID, BranchID: testBranchID, ChannelID: testChannelID,
+		Status: status,
+	}, nil
 }
 
 func (f *fakeRFQs) AppendStatusChange(
@@ -137,24 +179,6 @@ func (f *fakeRFQs) AppendStatusChange(
 		AccountID: accountID, RFQID: rfqID, PreviousStatus: previousStatus,
 		NewStatus: newStatus, UserID: userID,
 	}, nil
-}
-
-func (f *fakeRFQs) CreateClarifications(
-	_ context.Context, _ repository.Querier, accountID, rfqID uuid.UUID,
-	clarifications []domain.NewRFQClarification,
-) ([]domain.RFQClarification, error) {
-	f.clarifications = append(f.clarifications, clarifications)
-	created := make([]domain.RFQClarification, 0, len(clarifications))
-	for _, clarification := range clarifications {
-		created = append(created, domain.RFQClarification{
-			ID: uuid.New(), AccountID: accountID, RFQID: rfqID,
-			IssueType:            clarification.IssueType,
-			RequestedDescription: clarification.RequestedDescription,
-			Question:             clarification.Question, Reason: clarification.Reason,
-			Status: domain.RFQClarificationStatusProposed,
-		})
-	}
-	return created, nil
 }
 
 type quoteStatusChangeCall struct {
@@ -217,9 +241,9 @@ func (f *fakeQuoteDrafts) CreateItems(
 	for i, item := range items {
 		created = append(created, domain.QuoteItem{
 			ID: uuid.New(), AccountID: accountID, VersionID: versionID, ProductID: item.ProductID,
-			RequestedDescription: item.RequestedDescription, Quantity: item.Quantity, Unit: item.Unit,
-			MatchStatus: item.MatchStatus, QuantityRationale: item.QuantityRationale,
-			CreatedAt: fixedNow.AddDate(0, 0, i),
+			RequestedDescription: item.RequestedDescription, Quantity: item.Quantity,
+			Unit: item.Unit, ConfidenceScore: item.ConfidenceScore, MatchStatus: item.MatchStatus,
+			QuantityRationale: item.QuantityRationale, CreatedAt: fixedNow.AddDate(0, 0, i),
 		})
 	}
 	return created, nil
@@ -242,17 +266,32 @@ type rfqHarness struct {
 	service   *RFQService
 	db        *fakeRFQDB
 	extractor *fakeRFQExtractor
+	matcher   *fakeCatalogMatcher
 	rfqs      *fakeRFQs
 	quotes    *fakeQuoteDrafts
 	channels  *fakeRFQChannels
 }
 
+// newRFQHarness wires the service to fakes, with matching answering MATCHED for every line so a
+// test only stages the part it is about.
 func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 	db := &fakeRFQDB{}
-	extractor := &fakeRFQExtractor{extraction: domain.RFQExtraction{Lines: lines}, db: db}
+	matches := make([]domain.LineMatch, len(lines))
+	for i := range lines {
+		productID := testProductID
+		matches[i] = domain.LineMatch{
+			ProductID:   &productID,
+			MatchStatus: domain.ItemMatchStatusMatched,
+			Confidence:  decimal.RequireFromString("0.9100"),
+		}
+	}
 	h := &rfqHarness{
-		db: db, extractor: extractor, rfqs: &fakeRFQs{}, quotes: &fakeQuoteDrafts{},
-		channels: &fakeRFQChannels{},
+		db:        db,
+		extractor: &fakeRFQExtractor{lines: lines, db: db},
+		matcher:   &fakeCatalogMatcher{matches: matches, db: db},
+		rfqs:      &fakeRFQs{},
+		quotes:    &fakeQuoteDrafts{},
+		channels:  &fakeRFQChannels{},
 	}
 	channel := domain.Channel{
 		ID: testChannelID, AccountID: testAccountID, BranchID: testBranchID,
@@ -260,413 +299,587 @@ func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 	}
 	h.channels.channel = &channel
 	h.channels.channelsByType = []domain.Channel{channel}
-	h.service = NewRFQService(h.db, h.rfqs, h.quotes, h.channels, h.extractor)
+	h.service = NewRFQService(h.db, h.rfqs, h.quotes, h.channels, h.extractor, h.matcher, nil,
+		testRFQConfig())
 	return h
 }
 
+// rfqTenant carries a branch: the whole pipeline is branch-scoped, and the package's other
+// tenant helper deliberately has none.
+func rfqTenant() domain.Tenant {
+	return domain.Tenant{AccountID: testAccountID, BranchID: testBranchID, UserID: testUserID}
+}
+
+func explicitLine(description, quantity, unit, rationale string) domain.ExtractedRFQLine {
+	line := domain.ExtractedRFQLine{
+		RequestedDescription: description,
+		Quantity:             decimal.RequireFromString(quantity),
+		Source:               domain.QuantitySourceExplicit,
+		QuantityRationale:    rationale,
+	}
+	if unit != "" {
+		line.Unit = &unit
+	}
+	return line
+}
+
 func TestRFQService_CreateTextDraft_PersistsGeneratedDraft(t *testing.T) {
-	unit := " bag "
-	rationale := " client asked for bags "
-	clientLabel := " North job "
-	workType := " extension "
 	h := newRFQHarness([]domain.ExtractedRFQLine{
-		{
-			RequestedDescription: " Portland Cement ",
-			Quantity:             decimal.RequireFromString("10.00"),
-			Unit:                 &unit,
-			QuantityRationale:    &rationale,
-		},
-		{
-			RequestedDescription: "Sand",
-			Quantity:             decimal.RequireFromString("3"),
-		},
+		explicitLine(" 10 bolsas de cemento ", "10", " bolsa ", " el cliente pidió 10 bolsas "),
 	})
+	clientLabel := " Obra Norte "
 
-	draft, err := h.service.CreateTextDraft(context.Background(), branchTenant(), domain.TextRFQDraftInput{
-		ChannelID: testChannelID, ClientLabel: &clientLabel, RawText: "  Need cement and sand  ",
-		WorkType: &workType,
-	})
+	draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{
+			ChannelID:   testChannelID,
+			ClientLabel: &clientLabel,
+			RawText:     "  10 bolsas de cemento  ",
+		})
 	if err != nil {
-		t.Fatalf("CreateTextDraft() = %v, want no error", err)
-	}
-
-	if h.extractor.calls != 1 || h.extractor.raw != "Need cement and sand" {
-		t.Fatalf("extractor calls/raw = %d/%q, want one call with trimmed raw text",
-			h.extractor.calls, h.extractor.raw)
-	}
-	if !h.extractor.calledOutsideTx {
-		t.Fatal("extractor ran inside a transaction; provider calls must stay outside it")
-	}
-	if len(h.db.scopes) != 2 || h.db.scopes[0] != testAccountID ||
-		h.db.scopes[1] != testAccountID {
-		t.Fatalf("tenant scopes = %v, want receipt and draft persistence for %v",
-			h.db.scopes, testAccountID)
-	}
-	if h.channels.getCalls != 1 {
-		t.Fatalf("channel get calls = %d, want validation while persisting the source",
-			h.channels.getCalls)
+		t.Fatalf("CreateTextDraft returned %v", err)
 	}
 
 	if len(h.rfqs.created) != 1 {
-		t.Fatalf("rfqs created = %d, want 1", len(h.rfqs.created))
+		t.Fatalf("created %d RFQs, want 1", len(h.rfqs.created))
 	}
-	createdRFQ := h.rfqs.created[0]
-	if createdRFQ.BranchID != testBranchID || createdRFQ.ChannelID != testChannelID {
-		t.Errorf("rfq branch/channel = %v/%v, want %v/%v", createdRFQ.BranchID,
-			createdRFQ.ChannelID, testBranchID, testChannelID)
+	created := h.rfqs.created[0]
+	if created.Status != domain.RFQStatusReceived {
+		t.Errorf("RFQ created with status %q, want RECEIVED", created.Status)
 	}
-	if createdRFQ.RawText == nil || *createdRFQ.RawText != "Need cement and sand" {
-		t.Errorf("rfq raw_text = %v, want trimmed original text", createdRFQ.RawText)
+	if created.RawText == nil || *created.RawText != "10 bolsas de cemento" {
+		t.Errorf("stored raw text %v, want the trimmed order", created.RawText)
 	}
-	if createdRFQ.Status != domain.RFQStatusReceived {
-		t.Errorf("rfq initial status = %s, want %s", createdRFQ.Status, domain.RFQStatusReceived)
+	if created.ClientLabel == nil || *created.ClientLabel != "Obra Norte" {
+		t.Errorf("stored client label %v, want %q", created.ClientLabel, "Obra Norte")
 	}
-	if createdRFQ.ClientLabel == nil || *createdRFQ.ClientLabel != "North job" {
-		t.Errorf("client_label = %v, want trimmed label", createdRFQ.ClientLabel)
-	}
-	if createdRFQ.WorkType == nil || *createdRFQ.WorkType != "extension" {
-		t.Errorf("work_type = %v, want trimmed work type", createdRFQ.WorkType)
+	if created.BranchID != testBranchID {
+		t.Errorf("RFQ branch %s, want the tenant's %s", created.BranchID, testBranchID)
 	}
 
-	if len(h.quotes.created) != 1 {
-		t.Fatalf("quotes created = %d, want 1", len(h.quotes.created))
+	// The extractor reads what the client wrote, not a normalised copy of it.
+	if h.extractor.raw != "10 bolsas de cemento" {
+		t.Errorf("extractor read %q, want the stored order", h.extractor.raw)
 	}
-	createdQuote := h.quotes.created[0]
-	if createdQuote.CurrentStatus != domain.QuoteStatusDraft {
-		t.Errorf("quote status = %s, want %s", createdQuote.CurrentStatus, domain.QuoteStatusDraft)
+	if !h.extractor.calledOutsideTx {
+		t.Error("the extractor ran inside a transaction; a provider call must not hold one open")
 	}
-	if createdQuote.SellerID == nil || *createdQuote.SellerID != testUserID {
-		t.Errorf("seller_id = %v, want caller %v", createdQuote.SellerID, testUserID)
+	if !h.matcher.calledOutsideTx {
+		t.Error("matching ran inside a transaction; it opens its own")
+	}
+	if len(h.matcher.descriptions) != 1 || h.matcher.descriptions[0] != "10 bolsas de cemento" {
+		t.Errorf("matched %v, want the line's own description", h.matcher.descriptions)
 	}
 
+	if len(h.quotes.itemBatches) != 1 || len(h.quotes.itemBatches[0]) != 1 {
+		t.Fatalf("persisted item batches %v, want one line", h.quotes.itemBatches)
+	}
+	item := h.quotes.itemBatches[0][0]
+	if item.RequestedDescription != "10 bolsas de cemento" {
+		t.Errorf("line description %q, want the client's own words", item.RequestedDescription)
+	}
+	if !item.Quantity.Equal(decimal.RequireFromString("10")) {
+		t.Errorf("line quantity %s, want 10", item.Quantity)
+	}
+	if item.Unit == nil || *item.Unit != "bolsa" {
+		t.Errorf("line unit %v, want %q", item.Unit, "bolsa")
+	}
+	if item.QuantityRationale == nil || *item.QuantityRationale != "el cliente pidió 10 bolsas" {
+		t.Errorf("line rationale %v, want the trimmed explanation", item.QuantityRationale)
+	}
+	if item.MatchStatus != domain.ItemMatchStatusMatched {
+		t.Errorf("line match status %q, want MATCHED", item.MatchStatus)
+	}
+	if item.ProductID == nil || *item.ProductID != testProductID {
+		t.Errorf("line product %v, want the matched one", item.ProductID)
+	}
+	if !item.ConfidenceScore.Valid ||
+		!item.ConfidenceScore.Decimal.Equal(decimal.RequireFromString("0.9100")) {
+		t.Errorf("line confidence %v, want 0.9100", item.ConfidenceScore)
+	}
+
+	if len(h.quotes.created) != 1 || h.quotes.created[0].CurrentStatus != domain.QuoteStatusDraft {
+		t.Fatalf("created quotes %v, want one DRAFT", h.quotes.created)
+	}
+	if h.quotes.created[0].SellerID == nil || *h.quotes.created[0].SellerID != testUserID {
+		t.Errorf("quote seller %v, want the caller", h.quotes.created[0].SellerID)
+	}
 	if len(h.quotes.versions) != 1 {
-		t.Fatalf("versions created = %d, want 1", len(h.quotes.versions))
+		t.Fatalf("created %d versions, want 1", len(h.quotes.versions))
 	}
 	version := h.quotes.versions[0]
-	if version.VersionNumber != 1 || version.IsImmutable {
-		t.Errorf("version number/immutable = %d/%v, want 1/false", version.VersionNumber,
-			version.IsImmutable)
+	if version.VersionNumber != 1 {
+		t.Errorf("version number %d, want 1", version.VersionNumber)
+	}
+	if version.IsImmutable {
+		t.Error("version 1 is frozen; the seller has not reviewed it yet")
 	}
 	if !version.Total.IsZero() {
-		t.Errorf("version total = %s, want zero before pricing", version.Total)
+		t.Errorf("version total %s, want zero: pricing is the next stage", version.Total)
+	}
+	if len(h.quotes.currentVersion) != 1 || h.quotes.currentVersion[0] != testVersionID {
+		t.Errorf("current version pointer %v, want the new version", h.quotes.currentVersion)
 	}
 
-	if len(h.quotes.itemBatches) != 1 || len(h.quotes.itemBatches[0]) != 2 {
-		t.Fatalf("item batches = %#v, want one batch with two items", h.quotes.itemBatches)
+	if len(h.rfqs.updatedStatus) != 1 || h.rfqs.updatedStatus[0] != domain.RFQStatusGenerated {
+		t.Errorf("RFQ statuses written %v, want one GENERATED", h.rfqs.updatedStatus)
 	}
-	firstItem := h.quotes.itemBatches[0][0]
-	if firstItem.ProductID != nil {
-		t.Errorf("product_id = %v, want nil until catalog matching runs", firstItem.ProductID)
-	}
-	if firstItem.MatchStatus != domain.ItemMatchStatusNoMatch {
-		t.Errorf("match_status = %s, want %s", firstItem.MatchStatus, domain.ItemMatchStatusNoMatch)
-	}
-	if firstItem.RequestedDescription != "Portland Cement" {
-		t.Errorf("requested_description = %q, want trimmed description", firstItem.RequestedDescription)
-	}
-	if firstItem.Unit == nil || *firstItem.Unit != "bag" {
-		t.Errorf("unit = %v, want trimmed unit", firstItem.Unit)
-	}
-	if firstItem.QuantityRationale == nil || *firstItem.QuantityRationale != "client asked for bags" {
-		t.Errorf("quantity_rationale = %v, want trimmed rationale", firstItem.QuantityRationale)
-	}
-
 	if len(h.rfqs.statusChanges) != 1 {
-		t.Fatalf("rfq status changes = %d, want 1", len(h.rfqs.statusChanges))
+		t.Fatalf("appended %d RFQ status changes, want 1", len(h.rfqs.statusChanges))
 	}
-	rfqChange := h.rfqs.statusChanges[0]
-	if rfqChange.previousStatus == nil || *rfqChange.previousStatus != domain.RFQStatusReceived ||
-		rfqChange.newStatus != domain.RFQStatusGenerated {
-		t.Errorf("rfq status change = %#v, want RECEIVED -> GENERATED", rfqChange)
+	change := h.rfqs.statusChanges[0]
+	if change.previousStatus == nil || *change.previousStatus != domain.RFQStatusReceived {
+		t.Errorf("RFQ change came from %v, want RECEIVED", change.previousStatus)
 	}
-	if len(h.quotes.statusChanges) != 1 {
-		t.Fatalf("quote status changes = %d, want 1", len(h.quotes.statusChanges))
+	if change.newStatus != domain.RFQStatusGenerated {
+		t.Errorf("RFQ change went to %q, want GENERATED", change.newStatus)
 	}
-	quoteChange := h.quotes.statusChanges[0]
-	if quoteChange.previousStatus != nil || quoteChange.newStatus != domain.QuoteStatusDraft {
-		t.Errorf("quote status change = %#v, want nil -> DRAFT", quoteChange)
+	if len(h.quotes.statusChanges) != 1 ||
+		h.quotes.statusChanges[0].newStatus != domain.QuoteStatusDraft {
+		t.Errorf("quote status changes %v, want one into DRAFT", h.quotes.statusChanges)
+	}
+	if h.quotes.statusChanges[0].previousStatus != nil {
+		t.Error("the first quote status change has a previous status; the quote did not exist")
 	}
 
+	if draft.Quote == nil || draft.Version == nil || len(draft.Items) != 1 {
+		t.Fatalf("draft returned %+v, want the quote, its version and its line", draft)
+	}
 	if draft.RFQ.Status != domain.RFQStatusGenerated {
-		t.Errorf("draft rfq status = %s, want %s", draft.RFQ.Status, domain.RFQStatusGenerated)
+		t.Errorf("returned RFQ status %q, want GENERATED", draft.RFQ.Status)
 	}
-	if draft.Quote == nil {
-		t.Fatal("draft quote = nil, want generated quote")
-	}
-	if draft.Quote.CurrentVersionID == nil || *draft.Quote.CurrentVersionID != testVersionID {
-		t.Errorf("draft current_version_id = %v, want %v", draft.Quote.CurrentVersionID, testVersionID)
-	}
-	if len(draft.Items) != 2 || draft.Items[0].MatchStatus != domain.ItemMatchStatusNoMatch {
-		t.Errorf("draft items = %#v, want persisted no-match items", draft.Items)
-	}
-}
-
-func TestRFQService_CreateTextDraft_RejectsWithoutBranch(t *testing.T) {
-	h := newRFQHarness(validExtractedLines())
-	accountWide := domain.Tenant{AccountID: testAccountID, UserID: testUserID, Role: domain.UserRoleAdmin}
-
-	_, err := h.service.CreateTextDraft(context.Background(), accountWide, domain.TextRFQDraftInput{
-		ChannelID: testChannelID, RawText: "cement",
-	})
-	if !errors.Is(err, domain.ErrInvalidInput) {
-		t.Fatalf("CreateTextDraft() = %v, want %v", err, domain.ErrInvalidInput)
-	}
-	if h.extractor.calls != 0 {
-		t.Errorf("extractor calls = %d, want none for a request without active branch", h.extractor.calls)
-	}
-	if len(h.db.scopes) != 0 {
-		t.Errorf("tenant scopes = %v, want none for rejected input", h.db.scopes)
-	}
-}
-
-func TestRFQService_CreateTextDraft_RejectsInvalidInputsWithoutLosingTheSource(t *testing.T) {
-	longUnit := strings.Repeat("u", 65)
-	cases := []struct {
-		name       string
-		input      domain.TextRFQDraftInput
-		lines      []domain.ExtractedRFQLine
-		wantScopes int
-		wantRFQs   int
-	}{
-		{
-			name:  "missing channel",
-			input: domain.TextRFQDraftInput{RawText: "cement"},
-			lines: validExtractedLines(),
-		},
-		{
-			name:  "blank text",
-			input: domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "  "},
-			lines: validExtractedLines(),
-		},
-		{
-			name:       "no extracted lines",
-			input:      domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "cement"},
-			lines:      nil,
-			wantScopes: 1,
-			wantRFQs:   1,
-		},
-		{
-			name:       "blank extracted description",
-			input:      domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "cement"},
-			lines:      []domain.ExtractedRFQLine{{RequestedDescription: "  ", Quantity: decimal.NewFromInt(1)}},
-			wantScopes: 1,
-			wantRFQs:   1,
-		},
-		{
-			name:       "zero quantity",
-			input:      domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "cement"},
-			lines:      []domain.ExtractedRFQLine{{RequestedDescription: "cement", Quantity: decimal.Zero}},
-			wantScopes: 1,
-			wantRFQs:   1,
-		},
-		{
-			name:  "too many quantity decimals",
-			input: domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "cement"},
-			lines: []domain.ExtractedRFQLine{
-				{RequestedDescription: "cement", Quantity: decimal.RequireFromString("1.111")},
-			},
-			wantScopes: 1,
-			wantRFQs:   1,
-		},
-		{
-			name:  "unit too long",
-			input: domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "cement"},
-			lines: []domain.ExtractedRFQLine{
-				{RequestedDescription: "cement", Quantity: decimal.NewFromInt(1), Unit: &longUnit},
-			},
-			wantScopes: 1,
-			wantRFQs:   1,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			h := newRFQHarness(tc.lines)
-
-			_, err := h.service.CreateTextDraft(context.Background(), branchTenant(), tc.input)
-			if !errors.Is(err, domain.ErrInvalidInput) {
-				t.Fatalf("CreateTextDraft() = %v, want %v", err, domain.ErrInvalidInput)
-			}
-			if len(h.db.scopes) != tc.wantScopes {
-				t.Errorf("tenant scopes = %v, want %d", h.db.scopes, tc.wantScopes)
-			}
-			if len(h.rfqs.created) != tc.wantRFQs || len(h.quotes.created) != 0 {
-				t.Errorf("persisted rfqs/quotes = %d/%d, want %d/0", len(h.rfqs.created),
-					len(h.quotes.created), tc.wantRFQs)
-			}
-		})
-	}
-}
-
-func TestRFQService_CreateTextDraft_PersistsSourceBeforePropagatingExtractorError(t *testing.T) {
-	h := newRFQHarness(validExtractedLines())
-	h.extractor.err = domain.ErrInvalidInput
-
-	_, err := h.service.CreateTextDraft(context.Background(), branchTenant(), domain.TextRFQDraftInput{
-		ChannelID: testChannelID, RawText: "cement",
-	})
-	if !errors.Is(err, domain.ErrInvalidInput) {
-		t.Fatalf("CreateTextDraft() = %v, want %v", err, domain.ErrInvalidInput)
-	}
-	if len(h.db.scopes) != 1 {
-		t.Errorf("tenant scopes = %v, want one source-persistence transaction", h.db.scopes)
-	}
-	if len(h.rfqs.created) != 1 || len(h.quotes.created) != 0 {
-		t.Errorf("persisted rfqs/quotes = %d/%d, want 1/0", len(h.rfqs.created),
-			len(h.quotes.created))
-	}
-}
-
-func TestRFQService_CreateTextDraft_PersistsBlockingClarificationsWithoutCreatingQuote(t *testing.T) {
-	h := newRFQHarness(validExtractedLines())
-	h.extractor.extraction.Clarifications = []domain.ProposedRFQClarification{{
-		IssueType:            domain.RFQClarificationMissingPresentation,
-		RequestedDescription: " cemento ",
-		Question:             " En bolsa de cuantos kilos? ",
-		Reason:               " La presentacion define el producto. ",
-	}}
-
-	draft, err := h.service.CreateTextDraft(context.Background(), branchTenant(),
-		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "10 de cemento"})
-	if err != nil {
-		t.Fatalf("CreateTextDraft() = %v, want no error", err)
-	}
+	// One transaction for the order, one for the draft. Anything more means a read that could
+	// have travelled with a write.
 	if len(h.db.scopes) != 2 {
-		t.Fatalf("tenant scopes = %v, want receipt and clarification persistence", h.db.scopes)
+		t.Errorf("opened %d transactions, want 2", len(h.db.scopes))
 	}
-	if len(h.rfqs.created) != 1 || len(h.rfqs.clarifications) != 1 {
-		t.Fatalf("rfqs/clarification batches = %d/%d, want 1/1", len(h.rfqs.created),
-			len(h.rfqs.clarifications))
+	for _, scope := range h.db.scopes {
+		if scope != testAccountID {
+			t.Errorf("transaction scoped to %s, want the tenant's account", scope)
+		}
 	}
-	stored := h.rfqs.clarifications[0][0]
-	if stored.RequestedDescription != "cemento" || stored.Question != "En bolsa de cuantos kilos?" ||
-		stored.Reason != "La presentacion define el producto." {
-		t.Errorf("stored clarification = %#v, want trimmed proposal", stored)
+}
+
+func TestRFQService_CreateTextDraft_StoresTheOrderBeforeReadingIt(t *testing.T) {
+	h := newRFQHarness(nil)
+	h.extractor.err = errors.New("the model timed out")
+
+	_, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "10 bolsas de cemento"})
+	if err == nil {
+		t.Fatal("CreateTextDraft succeeded with a failing extractor")
 	}
-	if draft.RFQ.Status != domain.RFQStatusReceived || draft.Quote != nil || draft.Version != nil ||
-		len(draft.Items) != 0 {
-		t.Errorf("draft = %#v, want RECEIVED RFQ without quote", draft)
-	}
-	if len(draft.Clarifications) != 1 ||
-		draft.Clarifications[0].Status != domain.RFQClarificationStatusProposed {
-		t.Errorf("clarifications = %#v, want one PROPOSED question", draft.Clarifications)
+	// The order survives the failure: without it the client's message is gone and nothing can be
+	// retried.
+	if len(h.rfqs.created) != 1 {
+		t.Fatalf("created %d RFQs, want the order stored before the read", len(h.rfqs.created))
 	}
 	if len(h.quotes.created) != 0 {
-		t.Errorf("quotes created = %d, want none while clarification blocks", len(h.quotes.created))
+		t.Errorf("created %d quotes, want none", len(h.quotes.created))
+	}
+	if len(h.rfqs.updatedStatus) != 0 {
+		t.Errorf("wrote RFQ statuses %v, want none: it never reached GENERATED",
+			h.rfqs.updatedStatus)
 	}
 }
 
-func TestRFQService_CreateTextDraft_RejectsAnUnavailableChannelBeforeExtraction(t *testing.T) {
-	h := newRFQHarness(validExtractedLines())
-	h.channels.getErr = domain.ErrNotFound
+func TestRFQService_CreateTextDraft_KeepsTheOrderWhenNoMaterialIsRead(t *testing.T) {
+	h := newRFQHarness(nil)
 
-	_, err := h.service.CreateTextDraft(context.Background(), branchTenant(), domain.TextRFQDraftInput{
-		ChannelID: testChannelID, RawText: "cement",
-	})
-	if !errors.Is(err, domain.ErrNotFound) {
-		t.Fatalf("CreateTextDraft() = %v, want %v", err, domain.ErrNotFound)
-	}
-	if h.extractor.calls != 0 {
-		t.Errorf("extractor calls = %d, want none for an unavailable channel", h.extractor.calls)
-	}
-	if len(h.rfqs.created) != 0 || len(h.quotes.created) != 0 {
-		t.Errorf("persisted rfqs/quotes = %d/%d, want none", len(h.rfqs.created),
-			len(h.quotes.created))
-	}
-}
-
-func TestRFQService_CreateTextDraft_ProcessesAnAlreadyReceivedRFQAfterChannelChanges(t *testing.T) {
-	h := newRFQHarness(validExtractedLines())
-	h.channels.getErr = domain.ErrNotFound
-	h.channels.getErrOnCall = 2
-
-	draft, err := h.service.CreateTextDraft(context.Background(), branchTenant(), domain.TextRFQDraftInput{
-		ChannelID: testChannelID, RawText: "cement",
-	})
+	draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "hola, están abiertos?"})
 	if err != nil {
-		t.Fatalf("CreateTextDraft() = %v, want no error after receipt", err)
+		t.Fatalf("CreateTextDraft returned %v, want the order kept rather than an error", err)
 	}
-	if h.extractor.calls != 1 {
-		t.Errorf("extractor calls = %d, want one", h.extractor.calls)
+	if draft.Quote != nil || draft.Version != nil || len(draft.Items) != 0 {
+		t.Errorf("draft returned %+v, want the RFQ alone", draft)
 	}
-	if h.channels.getCalls != 1 {
-		t.Errorf("channel gets = %d, want no second validation after receipt", h.channels.getCalls)
+	if draft.RFQ.Status != domain.RFQStatusReceived {
+		t.Errorf("RFQ status %q, want RECEIVED: generation produced no materials", draft.RFQ.Status)
 	}
-	if draft.Quote == nil || len(h.rfqs.created) != 1 || len(h.quotes.created) != 1 {
-		t.Errorf("draft/rfqs/quotes = %v/%d/%d, want generated draft and 1/1",
-			draft.Quote, len(h.rfqs.created), len(h.quotes.created))
+	if len(h.quotes.created) != 0 || len(h.rfqs.statusChanges) != 0 {
+		t.Error("a quote or a transition was written for an order with no materials")
+	}
+	if h.matcher.calls != 0 {
+		t.Errorf("matching ran %d times with nothing to match", h.matcher.calls)
 	}
 }
 
-func TestRFQService_CreateWhatsAppMockDraft_ResolvesChannelAndPreservesSenderLabel(t *testing.T) {
-	h := newRFQHarness(validExtractedLines())
-	profileName := " Juan Perez "
+func TestRFQService_CreateTextDraft_FlagsEveryLineWhenMatchingCannotAnswer(t *testing.T) {
+	cases := []struct {
+		name    string
+		stage   func(*rfqHarness)
+		wantErr bool
+	}{
+		{
+			name:  "matching refuses",
+			stage: func(h *rfqHarness) { h.matcher.err = domain.ErrAIUnavailable },
+		},
+		{
+			name: "matching answers for a different number of lines",
+			stage: func(h *rfqHarness) {
+				h.matcher.matches = []domain.LineMatch{{MatchStatus: domain.ItemMatchStatusMatched}}
+			},
+		},
+		{
+			name:  "no matcher is wired",
+			stage: func(h *rfqHarness) { h.service.matcher = nil },
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newRFQHarness([]domain.ExtractedRFQLine{
+				explicitLine("cemento", "10", "bolsa", "pidió 10"),
+				explicitLine("arena", "2", "m3", "pidió 2"),
+			})
+			tc.stage(h)
 
-	draft, err := h.service.CreateWhatsAppMockDraft(context.Background(), branchTenant(),
+			draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+				domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "cemento y arena"})
+			if err != nil {
+				t.Fatalf("CreateTextDraft returned %v; losing the extraction over a match is worse "+
+					"than flagging the lines", err)
+			}
+			if len(draft.Items) != 2 {
+				t.Fatalf("persisted %d lines, want both of them", len(draft.Items))
+			}
+			for i, item := range h.quotes.itemBatches[0] {
+				if item.MatchStatus != domain.ItemMatchStatusNoMatch {
+					t.Errorf("line %d status %q, want NO_MATCH", i, item.MatchStatus)
+				}
+				if item.ProductID != nil {
+					t.Errorf("line %d carries product %v, want none", i, item.ProductID)
+				}
+				// Null rather than zero: nothing scored this line, which is a different fact
+				// from a candidate that scored badly.
+				if item.ConfidenceScore.Valid {
+					t.Errorf("line %d carries confidence %v, want null", i, item.ConfidenceScore)
+				}
+			}
+		})
+	}
+}
+
+func TestRFQService_CreateTextDraft_KeepsAnUnresolvedQuantityAtZero(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{{
+		RequestedDescription: "cemento",
+		Quantity:             decimal.Zero,
+		Source:               domain.QuantitySourceUnresolved,
+		QuantityRationale:    "el cliente no indicó cuántas bolsas",
+	}})
+
+	draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "necesito cemento"})
+	if err != nil {
+		t.Fatalf("CreateTextDraft returned %v; an unresolved quantity is a valid answer", err)
+	}
+	// The material still reaches the quote: the seller types the number, and dropping the line
+	// would lose what the client asked for.
+	if len(draft.Items) != 1 {
+		t.Fatalf("persisted %d lines, want the material kept", len(draft.Items))
+	}
+	item := h.quotes.itemBatches[0][0]
+	if !item.Quantity.IsZero() {
+		t.Errorf("line quantity %s, want zero", item.Quantity)
+	}
+	if item.QuantityRationale == nil || *item.QuantityRationale == "" {
+		t.Error("an unresolved line carries no rationale, so nothing says what is missing")
+	}
+}
+
+func TestRFQService_CreateTextDraft_RejectsAContradictoryLine(t *testing.T) {
+	cases := []struct {
+		name    string
+		line    domain.ExtractedRFQLine
+		wantSub string
+	}{
+		{
+			name: "a stated quantity of zero",
+			line: domain.ExtractedRFQLine{
+				RequestedDescription: "cemento", Quantity: decimal.Zero,
+				Source: domain.QuantitySourceExplicit, QuantityRationale: "pidió cemento",
+			},
+			wantSub: "must be positive",
+		},
+		{
+			name: "an unresolved line carrying a number",
+			line: domain.ExtractedRFQLine{
+				RequestedDescription: "cemento", Quantity: decimal.RequireFromString("1"),
+				Source: domain.QuantitySourceUnresolved, QuantityRationale: "no dijo cuántas",
+			},
+			wantSub: "must be zero",
+		},
+		{
+			name: "a source outside the closed set",
+			line: domain.ExtractedRFQLine{
+				RequestedDescription: "cemento", Quantity: decimal.RequireFromString("1"),
+				Source: domain.QuantitySource("GUESSED"), QuantityRationale: "estimado",
+			},
+			wantSub: "is not a known source",
+		},
+		{
+			name: "a negative quantity",
+			line: domain.ExtractedRFQLine{
+				RequestedDescription: "cemento", Quantity: decimal.RequireFromString("-1"),
+				Source: domain.QuantitySourceExplicit, QuantityRationale: "pidió cemento",
+			},
+			wantSub: "must be positive",
+		},
+		{
+			name: "a quantity finer than the column",
+			line: domain.ExtractedRFQLine{
+				RequestedDescription: "cemento", Quantity: decimal.RequireFromString("1.005"),
+				Source: domain.QuantitySourceExplicit, QuantityRationale: "pidió 1,005",
+			},
+			wantSub: "at most 2 decimals",
+		},
+		{
+			name: "no description",
+			line: domain.ExtractedRFQLine{
+				RequestedDescription: "   ", Quantity: decimal.RequireFromString("1"),
+				Source: domain.QuantitySourceExplicit, QuantityRationale: "pidió uno",
+			},
+			wantSub: "cannot be blank",
+		},
+		{
+			name: "no rationale",
+			line: domain.ExtractedRFQLine{
+				RequestedDescription: "cemento", Quantity: decimal.RequireFromString("1"),
+				Source: domain.QuantitySourceExplicit, QuantityRationale: "  ",
+			},
+			wantSub: "quantity_rationale cannot be blank",
+		},
+		{
+			name: "a description longer than the column",
+			line: domain.ExtractedRFQLine{
+				RequestedDescription: strings.Repeat("a", 513),
+				Quantity:             decimal.RequireFromString("1"),
+				Source:               domain.QuantitySourceExplicit, QuantityRationale: "pidió uno",
+			},
+			wantSub: "cannot exceed 512 characters",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newRFQHarness([]domain.ExtractedRFQLine{tc.line})
+
+			_, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+				domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "cemento"})
+			if !errors.Is(err, domain.ErrInvalidInput) {
+				t.Fatalf("CreateTextDraft returned %v, want ErrInvalidInput", err)
+			}
+			if !strings.Contains(err.Error(), tc.wantSub) {
+				t.Errorf("error %q does not mention %q", err, tc.wantSub)
+			}
+			if len(h.quotes.created) != 0 {
+				t.Error("a quote was created from a line the service refused")
+			}
+		})
+	}
+}
+
+func TestRFQService_CreateTextDraft_RejectsMoreLinesThanTheCap(t *testing.T) {
+	lines := make([]domain.ExtractedRFQLine, testRFQConfig().MaxItems+1)
+	for i := range lines {
+		lines[i] = explicitLine("cemento", "1", "bolsa", "pidió uno")
+	}
+	h := newRFQHarness(lines)
+
+	_, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "una lista larga"})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("CreateTextDraft returned %v, want ErrInvalidInput", err)
+	}
+	if len(h.quotes.created) != 0 {
+		t.Error("a quote was created from an order over the line cap")
+	}
+}
+
+func TestRFQService_CreateTextDraft_RejectsBadInput(t *testing.T) {
+	cases := []struct {
+		name    string
+		tenant  domain.Tenant
+		in      domain.TextRFQDraftInput
+		wantSub string
+	}{
+		{
+			name:    "no active branch",
+			tenant:  domain.Tenant{AccountID: testAccountID, UserID: testUserID},
+			in:      domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "cemento"},
+			wantSub: "needs an active branch",
+		},
+		{
+			name:    "no channel",
+			tenant:  rfqTenant(),
+			in:      domain.TextRFQDraftInput{RawText: "cemento"},
+			wantSub: "channel_id is required",
+		},
+		{
+			name:    "a blank order",
+			tenant:  rfqTenant(),
+			in:      domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "   "},
+			wantSub: "raw_text cannot be blank",
+		},
+		{
+			name:   "an order longer than the cap",
+			tenant: rfqTenant(),
+			in: domain.TextRFQDraftInput{
+				ChannelID: testChannelID,
+				RawText:   strings.Repeat("a", testRFQConfig().MaxTextCharacters+1),
+			},
+			wantSub: "raw_text cannot exceed 200 characters",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newRFQHarness([]domain.ExtractedRFQLine{
+				explicitLine("cemento", "1", "bolsa", "pidió uno"),
+			})
+
+			_, err := h.service.CreateTextDraft(context.Background(), tc.tenant, tc.in)
+			if !errors.Is(err, domain.ErrInvalidInput) {
+				t.Fatalf("CreateTextDraft returned %v, want ErrInvalidInput", err)
+			}
+			if !strings.Contains(err.Error(), tc.wantSub) {
+				t.Errorf("error %q does not mention %q", err, tc.wantSub)
+			}
+			// Refused before anything was written, and before a model was paid.
+			if len(h.rfqs.created) != 0 {
+				t.Error("an RFQ was stored for input the service refused")
+			}
+			if h.extractor.calls != 0 {
+				t.Errorf("the extractor ran %d times on refused input", h.extractor.calls)
+			}
+		})
+	}
+}
+
+func TestRFQService_CreateTextDraft_RejectsAnUnreachableChannelBeforeReading(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("cemento", "1", "bolsa", "pidió uno"),
+	})
+	h.channels.getErr = domain.ErrNotFound
+
+	_, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "cemento"})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("CreateTextDraft returned %v, want ErrNotFound", err)
+	}
+	// A channel of another branch is not this branch's to receive on, and the check is what
+	// stops the order being attributed to it.
+	if h.extractor.calls != 0 {
+		t.Errorf("the extractor ran %d times for an unreachable channel", h.extractor.calls)
+	}
+}
+
+func TestRFQService_CreateWhatsAppMockDraft_ResolvesTheChannelAndLabelsTheSender(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("cemento", "10", "bolsa", "pidió 10"),
+	})
+	profileName := " Corralón Pueblo "
+
+	draft, err := h.service.CreateWhatsAppMockDraft(context.Background(), rfqTenant(),
 		domain.WhatsAppMockRFQInput{
-			From: " +5491155551234 ", ProfileName: &profileName, Text: "  2 bags of cement  ",
+			From: " +5491122334455 ", ProfileName: &profileName, Text: " 10 bolsas de cemento ",
 		})
 	if err != nil {
-		t.Fatalf("CreateWhatsAppMockDraft() = %v, want no error", err)
+		t.Fatalf("CreateWhatsAppMockDraft returned %v", err)
 	}
-	if h.channels.listCalls != 1 || h.channels.getCalls != 1 {
-		t.Fatalf("channel list/get calls = %d/%d, want resolution and persistence validation",
-			h.channels.listCalls,
-			h.channels.getCalls)
+	if h.channels.listCalls != 1 {
+		t.Errorf("listed channels %d times, want once", h.channels.listCalls)
 	}
-	if h.extractor.raw != "2 bags of cement" {
-		t.Errorf("extractor raw = %q, want trimmed WhatsApp text", h.extractor.raw)
+	created := h.rfqs.created[0]
+	if created.ChannelID != testChannelID {
+		t.Errorf("RFQ channel %s, want the branch's WhatsApp channel", created.ChannelID)
 	}
-	if len(h.rfqs.created) != 1 || h.rfqs.created[0].ClientLabel == nil ||
-		*h.rfqs.created[0].ClientLabel != "Juan Perez (+5491155551234)" {
-		t.Fatalf("created rfq client label = %#v, want sender name and number", h.rfqs.created)
+	want := "Corralón Pueblo (+5491122334455)"
+	if created.ClientLabel == nil || *created.ClientLabel != want {
+		t.Errorf("client label %v, want %q", created.ClientLabel, want)
 	}
-	if draft.RFQ.ChannelID != testChannelID {
-		t.Errorf("draft channel = %v, want %v", draft.RFQ.ChannelID, testChannelID)
+	// Nobody has taken the order from the inbox yet, so it has no seller and no author.
+	if h.quotes.created[0].SellerID != nil {
+		t.Errorf("quote seller %v, want none on an inbound message",
+			h.quotes.created[0].SellerID)
 	}
-	if len(h.quotes.created) != 1 || h.quotes.created[0].SellerID != nil ||
-		len(h.quotes.versions) != 1 || h.quotes.versions[0].AuthorID != nil {
-		t.Errorf("WhatsApp quote seller/author = %#v/%#v, want unassigned",
-			h.quotes.created, h.quotes.versions)
+	if h.quotes.versions[0].AuthorID != nil {
+		t.Errorf("version author %v, want none on an inbound message",
+			h.quotes.versions[0].AuthorID)
+	}
+	if draft.Quote == nil {
+		t.Error("the mock produced no quote; it has to run the same pipeline as the text route")
 	}
 }
 
-func TestRFQService_CreateWhatsAppMockDraft_RequiresChannelIDWhenAmbiguous(t *testing.T) {
-	h := newRFQHarness(validExtractedLines())
-	h.channels.channelsByType = append(h.channels.channelsByType, domain.Channel{
-		ID: uuid.New(), AccountID: testAccountID, BranchID: testBranchID,
-		Type: domain.ChannelTypeWhatsApp, IsActive: true,
+func TestRFQService_CreateWhatsAppMockDraft_RefusesToGuessAmongChannels(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("cemento", "1", "bolsa", "pidió uno"),
 	})
+	second := *h.channels.channel
+	second.ID = uuid.New()
+	h.channels.channelsByType = []domain.Channel{*h.channels.channel, second}
 
-	_, err := h.service.CreateWhatsAppMockDraft(context.Background(), branchTenant(),
-		domain.WhatsAppMockRFQInput{From: "+5491155551234", Text: "cement"})
+	_, err := h.service.CreateWhatsAppMockDraft(context.Background(), rfqTenant(),
+		domain.WhatsAppMockRFQInput{From: "+5491122334455", Text: "cemento"})
 	if !errors.Is(err, domain.ErrInvalidInput) {
-		t.Fatalf("CreateWhatsAppMockDraft() = %v, want %v", err, domain.ErrInvalidInput)
+		t.Fatalf("CreateWhatsAppMockDraft returned %v, want ErrInvalidInput", err)
 	}
-	if h.extractor.calls != 0 {
-		t.Errorf("extractor calls = %d, want none for an ambiguous channel", h.extractor.calls)
+	if !strings.Contains(err.Error(), "channel_id is required") {
+		t.Errorf("error %q does not ask for a channel", err)
 	}
 }
 
 func TestRFQService_CreateWhatsAppMockDraft_RejectsANonWhatsAppChannel(t *testing.T) {
-	h := newRFQHarness(validExtractedLines())
-	h.channels.channel.Type = domain.ChannelTypeEmail
-	channelID := h.channels.channel.ID
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("cemento", "1", "bolsa", "pidió uno"),
+	})
+	channel := *h.channels.channel
+	channel.Type = domain.ChannelTypeManualEntry
+	h.channels.channel = &channel
+	channelID := channel.ID
 
-	_, err := h.service.CreateWhatsAppMockDraft(context.Background(), branchTenant(),
+	_, err := h.service.CreateWhatsAppMockDraft(context.Background(), rfqTenant(),
 		domain.WhatsAppMockRFQInput{
-			ChannelID: &channelID, From: "+5491155551234", Text: "cement",
+			ChannelID: &channelID, From: "+5491122334455", Text: "cemento",
 		})
 	if !errors.Is(err, domain.ErrInvalidInput) {
-		t.Fatalf("CreateWhatsAppMockDraft() = %v, want %v", err, domain.ErrInvalidInput)
+		t.Fatalf("CreateWhatsAppMockDraft returned %v, want ErrInvalidInput", err)
 	}
 	if h.extractor.calls != 0 {
-		t.Errorf("extractor calls = %d, want none for a non-WhatsApp channel", h.extractor.calls)
+		t.Errorf("the extractor ran %d times for the wrong channel type", h.extractor.calls)
 	}
 }
 
-func validExtractedLines() []domain.ExtractedRFQLine {
-	return []domain.ExtractedRFQLine{
-		{RequestedDescription: "cement", Quantity: decimal.RequireFromString("2.00")},
+func TestRFQService_CreateWhatsAppMockDraft_RequiresASender(t *testing.T) {
+	h := newRFQHarness(nil)
+
+	_, err := h.service.CreateWhatsAppMockDraft(context.Background(), rfqTenant(),
+		domain.WhatsAppMockRFQInput{From: "  ", Text: "cemento"})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("CreateWhatsAppMockDraft returned %v, want ErrInvalidInput", err)
+	}
+	if h.channels.listCalls != 0 {
+		t.Error("a channel was resolved for a message with no sender")
+	}
+}
+
+func TestRFQService_CreateTextDraft_PersistsTheDraftAfterThePipelineRunsOutOfTime(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("cemento", "10", "bolsa", "pidió 10"),
+	})
+	h.service.matcher = blockingMatcher{}
+	h.service.cfg.PipelineTimeout = 20 * time.Millisecond
+
+	draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "10 bolsas de cemento"})
+	if err != nil {
+		t.Fatalf("CreateTextDraft returned %v; the deadline bounds the model, not the writes", err)
+	}
+	// The extraction was already paid for. Persisting it on the deadline that just expired would
+	// throw it away at the last step.
+	if len(draft.Items) != 1 {
+		t.Fatalf("persisted %d lines, want the extraction kept", len(draft.Items))
+	}
+	if draft.Items[0].MatchStatus != domain.ItemMatchStatusNoMatch {
+		t.Errorf("line status %q, want NO_MATCH: matching never answered",
+			draft.Items[0].MatchStatus)
 	}
 }

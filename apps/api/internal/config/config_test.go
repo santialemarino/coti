@@ -47,6 +47,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"CATALOG_IMPORT_MAX_BYTES",
 		"PRICE_IMPORT_MAX_BYTES",
 		"JOB_TIMEOUT_MINUTES",
+		"RFQ_MAX_TEXT_CHARACTERS", "RFQ_MAX_ITEMS", "RFQ_PIPELINE_TIMEOUT_SECONDS",
 	}
 	for _, k := range known {
 		t.Setenv(k, "")
@@ -92,6 +93,23 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.CatalogImport.MaxBytes != defaultCatalogImportMaxBytes {
 		t.Errorf("CatalogImport.MaxBytes = %d, want %d", cfg.CatalogImport.MaxBytes, defaultCatalogImportMaxBytes)
+	}
+	// Pinned exactly rather than as a relationship: .env.example and docs/technical quote these
+	// three numbers, and a drifting default would leave them describing a different product.
+	if cfg.RFQ.MaxTextCharacters != 20000 {
+		t.Errorf("RFQ.MaxTextCharacters = %d, want 20000", cfg.RFQ.MaxTextCharacters)
+	}
+	if cfg.RFQ.MaxItems != 200 {
+		t.Errorf("RFQ.MaxItems = %d, want 200", cfg.RFQ.MaxItems)
+	}
+	if cfg.RFQ.PipelineTimeout != 25*time.Second {
+		t.Errorf("RFQ.PipelineTimeout = %v, want 25s", cfg.RFQ.PipelineTimeout)
+	}
+	// The pipeline has to answer inside the response budget, or its reply is cut off mid-write
+	// and the client reads a broken connection instead of a model that ran out of time.
+	if cfg.RFQ.PipelineTimeout >= cfg.Server.WriteTimeout {
+		t.Errorf("RFQ.PipelineTimeout = %v, want it below Server.WriteTimeout %v",
+			cfg.RFQ.PipelineTimeout, cfg.Server.WriteTimeout)
 	}
 	if cfg.Mail.Provider != MailProviderConsole {
 		t.Errorf("Mail.Provider = %q, want %q", cfg.Mail.Provider, MailProviderConsole)
@@ -174,6 +192,31 @@ func TestLoad_Defaults(t *testing.T) {
 }
 
 // The suffix on a duration key carries its unit, so the env file holds plain numbers.
+// TestLoad_RFQKeysLandOnTheirOwnFields reads three distinct values, because three sibling keys
+// mapped onto three sibling fields is the copy-paste the compiler cannot see: swapping two of them
+// builds, vets clean, and every default pin still passes.
+func TestLoad_RFQKeysLandOnTheirOwnFields(t *testing.T) {
+	env := minimalEnv()
+	env["RFQ_MAX_TEXT_CHARACTERS"] = "1234"
+	env["RFQ_MAX_ITEMS"] = "77"
+	env["RFQ_PIPELINE_TIMEOUT_SECONDS"] = "9"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.RFQ.MaxTextCharacters != 1234 {
+		t.Errorf("RFQ.MaxTextCharacters = %d, want 1234", cfg.RFQ.MaxTextCharacters)
+	}
+	if cfg.RFQ.MaxItems != 77 {
+		t.Errorf("RFQ.MaxItems = %d, want 77", cfg.RFQ.MaxItems)
+	}
+	if cfg.RFQ.PipelineTimeout != 9*time.Second {
+		t.Errorf("RFQ.PipelineTimeout = %v, want 9s", cfg.RFQ.PipelineTimeout)
+	}
+}
+
 func TestLoad_DurationUnitsComeFromKeySuffix(t *testing.T) {
 	env := minimalEnv()
 	env["AUTH_ACCESS_TTL_MINUTES"] = "5"
@@ -319,6 +362,31 @@ func TestLoad_Invalid(t *testing.T) {
 			name:    "a scheduled run bounded at nothing",
 			mutate:  func(e map[string]string) { e["JOB_TIMEOUT_MINUTES"] = "0" },
 			wantSub: "JOB_TIMEOUT_MINUTES must be greater than zero",
+		},
+		{
+			name:    "an order bounded at nothing",
+			mutate:  func(e map[string]string) { e["RFQ_MAX_TEXT_CHARACTERS"] = "0" },
+			wantSub: "RFQ_MAX_TEXT_CHARACTERS must be greater than zero",
+		},
+		{
+			name:    "no line allowed per order",
+			mutate:  func(e map[string]string) { e["RFQ_MAX_ITEMS"] = "0" },
+			wantSub: "RFQ_MAX_ITEMS must be greater than zero",
+		},
+		{
+			name:    "a pipeline bounded at nothing",
+			mutate:  func(e map[string]string) { e["RFQ_PIPELINE_TIMEOUT_SECONDS"] = "0" },
+			wantSub: "RFQ_PIPELINE_TIMEOUT_SECONDS must be greater than zero",
+		},
+		{
+			// Allowed to outlast the response budget, the pipeline's answer is cut off while it
+			// is being written, which reaches the client as a broken connection.
+			name: "a pipeline allowed to outlast the response budget",
+			mutate: func(e map[string]string) {
+				e["RFQ_PIPELINE_TIMEOUT_SECONDS"] = "30"
+				e["SERVER_WRITE_TIMEOUT_SECONDS"] = "30"
+			},
+			wantSub: "must be below SERVER_WRITE_TIMEOUT_SECONDS",
 		},
 		{
 			name:    "catalog import size of zero",
