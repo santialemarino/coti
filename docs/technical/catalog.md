@@ -239,6 +239,9 @@ Matching turns the candidates a search offered into one decision per RFQ line: w
 confident, and whether the seller has to look. It resolves every line of a request in a single
 search, which is what keeps the whole set to one embedding call and one transaction.
 
+Its caller is the plain-text RFQ pipeline — see [rfq-pipeline.md](rfq-pipeline.md), which also
+describes what a line looks like when matching cannot answer at all.
+
 ### The fused score is a ranking, not a confidence
 
 Reciprocal rank fusion answers "which candidate first", and its figure maxes at

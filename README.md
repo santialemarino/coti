@@ -138,6 +138,17 @@ startup.
 
 See [docs/technical/ai-providers.md](docs/technical/ai-providers.md).
 
+## The RFQ pipeline
+
+`POST /v1/rfqs/text-drafts` turns one informal order into a quote a seller can review: the text is
+stored first, then read into materials with a forced schema, then matched against the branch's
+catalog, then written as a `DRAFT` quote with one line per material. A material the message gives no
+defensible quantity for comes back on the schema's escape value and is still written to the quote —
+flagged for the seller, never dropped. `GET /v1/channels` lists the branch's intake routes, and a
+development-only route simulates an inbound WhatsApp message through the same pipeline.
+
+See [docs/technical/rfq-pipeline.md](docs/technical/rfq-pipeline.md).
+
 ## Design system
 
 `packages/ui` (`@repo/ui`) holds the tokens, type scale and motion vocabulary both web
