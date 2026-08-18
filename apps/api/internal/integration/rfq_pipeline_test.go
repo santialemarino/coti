@@ -340,3 +340,47 @@ func TestWhatsAppMockRoute_IsAbsentInProduction(t *testing.T) {
 			rec.Code, rec.Body)
 	}
 }
+
+func TestRFQTextDraftRoute_CarriesItsOwnAllowance(t *testing.T) {
+	// The route is billed per call by a provider, so it must not be sharing the global allowance:
+	// 300 a minute is a spend nobody authorised, and the global counter is what it would fall back
+	// to if the middleware were left off.
+	const allowance = 2
+	e := newEnv(t, func(cfg *config.Config) {
+		cfg.RateLimit = config.RateLimitConfig{
+			Enabled: true, Window: time.Minute, Global: 100, Credentials: 100, Signup: 100,
+			Mail: 100, MailPerAddress: 100, AI: allowance,
+		}
+	})
+	accountID, branchID := e.seedAccount(t, "RFQ allowance")
+	channelID := e.seedIntakeChannel(t, accountID, branchID)
+	seller := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	token := e.tokenFor(t, seller)
+
+	send := func() int {
+		order := "cemento " + uuid.NewString()
+		rec := e.do(t, request{
+			method: http.MethodPost, path: "/v1/rfqs/text-drafts",
+			token: token, branch: branchID.String(),
+			body: map[string]any{"channel_id": channelID, "raw_text": order},
+		})
+		var rfqID uuid.UUID
+		if err := e.db.CrossAccount().QueryRow(context.Background(),
+			`SELECT id FROM rfq WHERE raw_text = $1`, order).Scan(&rfqID); err == nil {
+			e.dropDraft(t, rfqID)
+		}
+		return rec.Code
+	}
+
+	// No model is bound, so a call that gets through answers 503 — which is still a call that
+	// reached the pipeline and would have been paid for.
+	for i := range allowance {
+		if code := send(); code != http.StatusServiceUnavailable {
+			t.Fatalf("call %d = %d, want %d inside the allowance", i+1, code,
+				http.StatusServiceUnavailable)
+		}
+	}
+	if code := send(); code != http.StatusTooManyRequests {
+		t.Errorf("call past the allowance = %d, want 429", code)
+	}
+}

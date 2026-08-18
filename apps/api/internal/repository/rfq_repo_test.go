@@ -265,3 +265,75 @@ func TestQuoteRepository_CreateRefusesASecondQuoteForOneRFQ(t *testing.T) {
 		t.Errorf("second Create() = %v, want %v", err, domain.ErrConflict)
 	}
 }
+
+// seedClient creates a client for one account and removes it with the test.
+func seedClient(t *testing.T, db *DB, accountID uuid.UUID) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	if _, err := db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO client (id, account_id, name) VALUES ($1, $2, $3)`,
+		id, accountID, "Cliente "+id.String()); err != nil {
+		t.Fatalf("seed client: %v", err)
+	}
+	t.Cleanup(func() { mustCleanup(t, db.CrossAccount(), `DELETE FROM client WHERE id = $1`, id) })
+	return id
+}
+
+func TestRFQRepository_CreateRefusesAnotherAccountsClient(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountA := seedAccount(t, db, "RFQ client account A")
+	accountB := seedAccount(t, db, "RFQ client account B")
+	branchA := branchOf(t, db, accountA)
+	channelA := seedChannel(t, db, accountA, branchA, domain.ChannelTypeWhatsApp, true)
+	foreignClient := seedClient(t, db, accountB)
+	ownClient := seedClient(t, db, accountA)
+	repo := NewRFQRepository()
+	tenantA := domain.Tenant{AccountID: accountA, BranchID: branchA}
+	raw := "Necesito cemento"
+
+	// The client is the one reference that arrives from the body. Its foreign key resolves across
+	// accounts, and account A's own row-level scope says nothing about who the client belongs to.
+	err := db.InTenantTx(ctx, tenantA, func(q Querier) error {
+		_, createErr := repo.Create(ctx, q, accountA, domain.NewRFQ{
+			BranchID: branchA, ChannelID: channelA, ClientID: &foreignClient, RawText: &raw,
+		})
+		return createErr
+	})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("Create() with another account's client = %v, want %v", err, domain.ErrNotFound)
+	}
+	var planted int
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT count(*) FROM rfq WHERE client_id = $1`, foreignClient).Scan(&planted); err != nil {
+		t.Fatalf("count rfqs: %v", err)
+	}
+	if planted != 0 {
+		t.Errorf("%d rfqs point at account B's client, want 0", planted)
+	}
+
+	// Its own client still works, and so does no client at all — counter sales have none.
+	for name, clientID := range map[string]*uuid.UUID{"own client": &ownClient, "no client": nil} {
+		t.Run(name, func(t *testing.T) {
+			var rfq *domain.RFQ
+			if err := db.InTenantTx(ctx, tenantA, func(q Querier) error {
+				var createErr error
+				rfq, createErr = repo.Create(ctx, q, accountA, domain.NewRFQ{
+					BranchID: branchA, ChannelID: channelA, ClientID: clientID, RawText: &raw,
+				})
+				return createErr
+			}); err != nil {
+				t.Fatalf("Create() = %v, want no error", err)
+			}
+			t.Cleanup(func() {
+				mustCleanup(t, db.CrossAccount(), `DELETE FROM rfq WHERE id = $1`, rfq.ID)
+			})
+			if clientID == nil && rfq.ClientID != nil {
+				t.Errorf("stored client = %v, want none", rfq.ClientID)
+			}
+			if clientID != nil && (rfq.ClientID == nil || *rfq.ClientID != *clientID) {
+				t.Errorf("stored client = %v, want %v", rfq.ClientID, *clientID)
+			}
+		})
+	}
+}
