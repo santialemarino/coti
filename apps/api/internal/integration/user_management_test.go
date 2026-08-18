@@ -21,6 +21,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/santialemarino/coti/apps/api/internal/ai"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
@@ -99,8 +100,11 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 			VerificationTTL:   48 * time.Hour,
 		},
 		Catalog: config.CatalogConfig{DefaultPageSize: 50, MaxPageSize: 200},
-		Branch:  config.BranchConfig{DefaultExpiryDays: 7},
-		Web:     config.WebConfig{BackofficeURL: "https://backoffice.test"},
+		RFQ: config.RFQConfig{
+			MaxTextCharacters: 20000, MaxItems: 200, PipelineTimeout: 25 * time.Second,
+		},
+		Branch: config.BranchConfig{DefaultExpiryDays: 7},
+		Web:    config.WebConfig{BackofficeURL: "https://backoffice.test"},
 		// Off for the suite at large, so an unrelated test cannot trip an allowance. The two
 		// that exercise it build their own env.
 		RateLimit: config.RateLimitConfig{Enabled: false},
@@ -143,6 +147,15 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 		repository.NewProductSynonymRepository(), repository.NewProductAlternativeRepository(), cfg.Catalog)
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo,
 		repository.NewBranchProductRepository(), repository.NewProductPriceRepository(), nil)
+	// No provider is bound here, so the pipeline refuses on the call that needed a model rather
+	// than at startup — which is the behaviour the routes are meant to have with none.
+	catalogSearchService := services.NewCatalogSearchService(db, productRepo,
+		ai.DisabledEmbedder{}, cfg.Catalog)
+	rfqService := services.NewRFQService(db, repository.NewRFQRepository(),
+		repository.NewQuoteRepository(), channelRepo,
+		ai.NewRFQExtractor(ai.DisabledGenerator{}, cfg.RFQ.MaxItems),
+		services.NewCatalogMatchService(catalogSearchService, cfg.Catalog), quiet, cfg.RFQ)
+	channelService := services.NewChannelService(db, channelRepo)
 
 	limiter := ratelimit.NewMemory(nil)
 	mailTargetLimiter := handler.NewMailTargetLimiter(limiter, handler.MailTargetLimitOptions{
@@ -159,8 +172,10 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 			Verification:  handler.NewVerificationHandler(verificationService, mailTargetLimiter),
 			User:          handler.NewUserHandler(userService),
 			Branch:        handler.NewBranchHandler(services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)),
+			Channel:       handler.NewChannelHandler(channelService),
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
+			RFQ:           handler.NewRFQHandler(rfqService),
 			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
 				branchRepo, channelRepo, userRepo, authService, verificationService, quiet,
 				cfg.Auth, cfg.Branch)),

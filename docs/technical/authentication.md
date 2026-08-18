@@ -208,8 +208,8 @@ it is the configuration change the flow was built for.
 ## Rate limits
 
 A global allowance over all of `/v1`, plus tighter ones on the surfaces a stranger can use to
-flood the database or someone's mailbox. It sits **ahead of `Authenticate`**, so a flood is
-refused before it costs a query.
+flood the database or someone's mailbox, and on the ones a **provider bills per call**. It sits
+**ahead of `Authenticate`**, so a flood is refused before it costs a query.
 
 | Scope         | Setting                      | Routes                                            |
 | ------------- | ---------------------------- | ------------------------------------------------- |
@@ -217,9 +217,14 @@ refused before it costs a query.
 | `credentials` | `RATE_LIMIT_CREDENTIALS_MAX` | login, reset-password, verify-email               |
 | `signup`      | `RATE_LIMIT_SIGNUP_MAX`      | public account registration                       |
 | `mail`        | `RATE_LIMIT_MAIL_MAX`        | forgot-password, resend-verification, admin reset |
+| `ai`          | `RATE_LIMIT_AI_MAX`          | the RFQ text draft and the development intake     |
 
 Refresh is deliberately left on the global allowance alone: the backoffice renews on a
 schedule the user does not control, and a tighter limit there would log people out.
+
+`ai` is the odd one out: it guards spend rather than load. The routes behind it each cost a
+generation and an embedding, and the global allowance would let one authenticated seller run 300
+of them a minute. Startup refuses a value above `RATE_LIMIT_GLOBAL_MAX`, which could never bite.
 
 ### A second counter, keyed on the mailbox
 

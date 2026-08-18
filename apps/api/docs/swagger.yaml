@@ -194,6 +194,30 @@ definitions:
     - current_password
     - new_password
     type: object
+  dto.ChannelListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ChannelResponse'
+        type: array
+    type: object
+  dto.ChannelResponse:
+    properties:
+      branch_id:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      identifier:
+        type: string
+      is_active:
+        type: boolean
+      type:
+        type: string
+      updated_at:
+        type: string
+    type: object
   dto.ConfirmCatalogImportRequest:
     properties:
       rows:
@@ -272,6 +296,25 @@ definitions:
     - canonical_name
     - family_id
     type: object
+  dto.CreateTextRFQDraftRequest:
+    properties:
+      channel_id:
+        type: string
+      client_id:
+        type: string
+      client_label:
+        maxLength: 255
+        type: string
+      raw_text:
+        minLength: 1
+        type: string
+      work_type:
+        maxLength: 255
+        type: string
+    required:
+    - channel_id
+    - raw_text
+    type: object
   dto.CreateUserRequest:
     properties:
       branch_ids:
@@ -299,6 +342,24 @@ definitions:
     - name
     - password
     - role
+    type: object
+  dto.CreateWhatsAppMockRFQDraftRequest:
+    properties:
+      channel_id:
+        type: string
+      from:
+        maxLength: 64
+        minLength: 1
+        type: string
+      profile_name:
+        maxLength: 160
+        type: string
+      text:
+        minLength: 1
+        type: string
+    required:
+    - from
+    - text
     type: object
   dto.ErrorResponse:
     properties:
@@ -487,6 +548,108 @@ definitions:
       updated_at:
         type: string
     type: object
+  dto.QuoteItemResponse:
+    properties:
+      confidence_score:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      match_status:
+        type: string
+      min_price_snapshot:
+        type: string
+      product_id:
+        type: string
+      quantity:
+        type: string
+      quantity_rationale:
+        type: string
+      requested_description:
+        type: string
+      subtotal:
+        type: string
+      unit:
+        type: string
+      unit_price_snapshot:
+        type: string
+      version_id:
+        type: string
+    type: object
+  dto.QuoteResponse:
+    properties:
+      archived_at:
+        type: string
+      branch_id:
+        type: string
+      client_id:
+        type: string
+      created_at:
+        type: string
+      current_status:
+        type: string
+      current_version_id:
+        type: string
+      expires_at:
+        type: string
+      followup_flagged_at:
+        type: string
+      id:
+        type: string
+      needs_followup:
+        type: boolean
+      rfq_id:
+        type: string
+      seller_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  dto.QuoteVersionResponse:
+    properties:
+      author_id:
+        type: string
+      comment:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      is_immutable:
+        type: boolean
+      quote_id:
+        type: string
+      total:
+        type: string
+      version_number:
+        type: integer
+    type: object
+  dto.RFQResponse:
+    properties:
+      branch_id:
+        type: string
+      channel_id:
+        type: string
+      client_id:
+        type: string
+      client_label:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      raw_text:
+        type: string
+      received_at:
+        type: string
+      status:
+        type: string
+      updated_at:
+        type: string
+      work_type:
+        type: string
+    type: object
   dto.RateLimitResponse:
     properties:
       code:
@@ -610,6 +773,19 @@ definitions:
         type: string
       term:
         type: string
+    type: object
+  dto.TextRFQDraftResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.QuoteItemResponse'
+        type: array
+      quote:
+        $ref: '#/definitions/dto.QuoteResponse'
+      rfq:
+        $ref: '#/definitions/dto.RFQResponse'
+      version:
+        $ref: '#/definitions/dto.QuoteVersionResponse'
     type: object
   dto.TokenResponse:
     properties:
@@ -1087,6 +1263,94 @@ paths:
       summary: Update a branch
       tags:
       - branches
+  /v1/channels:
+    get:
+      description: Returns active intake channels for the branch selected through
+        X-Branch-Id.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ChannelListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List intake channels
+      tags:
+      - channels
+  /v1/dev/whatsapp/messages:
+    post:
+      consumes:
+      - application/json
+      description: Development-only intake that resolves an active WhatsApp channel
+        and creates the same seller-reviewable RFQ draft as the production text flow.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Inbound WhatsApp message
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateWhatsAppMockRFQDraftRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.TextRFQDraftResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No active WhatsApp channel
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Ambiguous channel, or an answer the model could not shape
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: Rate limit spent; retry_after_seconds says when
+          schema:
+            $ref: '#/definitions/dto.RateLimitResponse'
+        "503":
+          description: No language model is bound, or it could not answer
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Simulate an inbound WhatsApp message
+      tags:
+      - development
   /v1/me:
     get:
       description: Returns the caller's identity and branch reach, so the frontend
@@ -2222,6 +2486,57 @@ paths:
       summary: Confirm an email address
       tags:
       - auth
+  /v1/rfqs/text-drafts:
+    post:
+      consumes:
+      - application/json
+      description: Persists the original text before reading it, then returns a quote
+        DRAFT with one line per material, each carrying its catalog match and confidence.
+        It does not price or send the quote.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: RFQ text to process
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateTextRFQDraftRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.TextRFQDraftResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch, or an answer the model could not shape
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: Rate limit spent; retry_after_seconds says when
+          schema:
+            $ref: '#/definitions/dto.RateLimitResponse'
+        "503":
+          description: No language model is bound, or it could not answer
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create an RFQ text draft
+      tags:
+      - rfq
   /v1/users:
     get:
       description: Admin only. Ordered by name, deactivated users included so they
