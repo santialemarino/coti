@@ -24,17 +24,23 @@ func NewRFQRepository() *RFQRepository {
 	return &RFQRepository{}
 }
 
-// Create inserts an RFQ source record.
+// Create inserts an RFQ source record. Returns domain.ErrNotFound when in.ClientID names a
+// client this account does not have.
 func (r *RFQRepository) Create(
 	ctx context.Context, q Querier, accountID uuid.UUID, in domain.NewRFQ,
 ) (*domain.RFQ, error) {
 	if in.Status == "" {
 		in.Status = domain.RFQStatusReceived
 	}
+	// The client is the one reference that arrives from the request body, and the foreign key
+	// would accept another account's: client hangs off account_id, so the row has to be proved
+	// to be this account's before it can be pointed at.
 	return scanRFQ(q.QueryRow(ctx,
 		`INSERT INTO rfq (account_id, branch_id, client_id, channel_id, raw_text, status,
 		                  work_type, client_label)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		 SELECT $1, $2, $3, $4, $5, $6, $7, $8
+		 WHERE $3::uuid IS NULL
+		    OR EXISTS (SELECT 1 FROM client WHERE account_id = $1 AND id = $3::uuid)
 		 RETURNING `+rfqColumns,
 		accountID, in.BranchID, in.ClientID, in.ChannelID, in.RawText, in.Status, in.WorkType,
 		in.ClientLabel))
