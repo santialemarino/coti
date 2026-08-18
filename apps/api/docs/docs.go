@@ -624,7 +624,13 @@ const docTemplate = `{
                         }
                     },
                     "422": {
-                        "description": "Ambiguous channel, disabled extractor, or invalid extractor output",
+                        "description": "Ambiguous channel, or an answer the model could not shape",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "No language model is bound, or it could not answer",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -2355,7 +2361,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Persists the original text before extraction, then returns a quote DRAFT or seller-reviewable clarification questions. It does not price or send the quote.",
+                "description": "Persists the original text before reading it, then returns a quote DRAFT with one line per material, each carrying its catalog match and confidence. It does not price or send the quote.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2404,7 +2410,13 @@ const docTemplate = `{
                         }
                     },
                     "422": {
-                        "description": "No active branch, disabled extractor, or invalid extractor output",
+                        "description": "No active branch, or an answer the model could not shape",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "No language model is bound, or it could not answer",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -3703,56 +3715,6 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.RFQClarificationResponse": {
-            "type": "object",
-            "properties": {
-                "answer": {
-                    "type": "string"
-                },
-                "answered_at": {
-                    "type": "string"
-                },
-                "approved_question": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "decided_at": {
-                    "type": "string"
-                },
-                "decided_by": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "issue_type": {
-                    "type": "string"
-                },
-                "question": {
-                    "type": "string"
-                },
-                "quote_item_id": {
-                    "type": "string"
-                },
-                "reason": {
-                    "type": "string"
-                },
-                "requested_description": {
-                    "type": "string"
-                },
-                "rfq_id": {
-                    "type": "string"
-                },
-                "sent_at": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                }
-            }
-        },
         "dto.RFQResponse": {
             "type": "object",
             "properties": {
@@ -3973,12 +3935,6 @@ const docTemplate = `{
         "dto.TextRFQDraftResponse": {
             "type": "object",
             "properties": {
-                "clarifications": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.RFQClarificationResponse"
-                    }
-                },
                 "items": {
                     "type": "array",
                     "items": {
