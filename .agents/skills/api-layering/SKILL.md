@@ -29,7 +29,7 @@ Request flow: **handler → service → repository → DB**.
 - **internal/ratelimit/** — The counters behind the rate-limit middleware, which consumes them through its own `Limiter` interface. In-memory today; a shared store swaps in behind the same interface once there is more than one instance.
 - **internal/config/** — Env loading (`godotenv` is loaded in `main`) + defaults; the one place for every configurable threshold (match cutoffs, top-K, timeouts, default expiry days).
 - **internal/utils/** — Generic, entity-agnostic helpers reused across features.
-- **cmd/api/main.go** — Composition root: read config, open the `pgxpool.Pool`, construct AI adapters, inject repos + adapters into services, build the router, start the server. **The only place a port is bound to an adapter.** No business logic.
+- **cmd/** — One directory per binary, each a composition root: read config, open the pools, take the AI adapters from `internal/ai/provider`, inject repos + adapters into services, and do the binary's job. **A binary with no cross-account job opens `repository.NewTenantDB`, not `NewDB`** — the restricted pool alone, on a type that has no `CrossAccount` or `AdminTx`, so the boundary is checked by the compiler. `cmd/api` builds the router and serves HTTP; `cmd/catalog-embed` vectorizes one account's catalog; `cmd/scheduled-job` runs one unit of scheduled work and exits, with the deployment platform owning the schedule so a frequency is never compiled in. No business logic in any of them. **A job too long for a request budget is a command, not a route** — embedding a whole catalog outruns `SERVER_WRITE_TIMEOUT_SECONDS` several times over.
 
 Do not put business logic in handlers or SQL strings in services. Do not let HTTP types (request/response bodies) leak into domain or repositories.
 
@@ -60,6 +60,8 @@ Repositories accept the `Querier` — the read/write surface shared by `*pgxpool
 ### Cross-account access is explicit and rare
 
 Three operations legitimately span accounts, and they use `db.CrossAccount()` (the owner pool, which bypasses RLS): the follow-up cron, login by email (the account is unknown until the user is found), and resolving a `quote_send.public_token` for the public webapp. The token flow resolves the account there and then continues through `InTenantTx` — it does not keep querying on the owner pool. **Any other use is a cross-tenant leak.**
+
+`DB.AdminConn` is a third door onto the owner pool, and it exists for one reason: a Postgres advisory lock is **session-scoped**, so a scheduled job that took one through the pool would leave it on whichever connection served that call and release it on whichever served the next. It holds a single connection for the length of the run instead.
 
 ```go
 // internal/repository/querier.go
@@ -231,7 +233,7 @@ Catalog matching is the core of the RFQ pipeline. `product.embedding` is `VECTOR
 - Query with pgvector's distance operators: **`<=>` cosine**, **`<->` L2**. Order by the distance and `LIMIT` the top-K. Coti uses `<=>` (cosine) as the default — bake the K and any cutoff in `internal/config`, not inline.
 - Pass the query vector as a `pgvector.Vector` bind param (`pgvector.NewVector([]float32{...})`), never string-interpolate it.
 - Combine semantic hits with `product_synonym` matches in the **repository**; the service decides confidence, not the SQL.
-- **Every search is account-scoped, and filtered to what the branch carries** — `product` hangs off `account`, so filter `WHERE p.account_id = $n` and join `branch_product` for the active branch alongside the vector order. Because an ANN scan filters _after_ ordering, over-fetch (`LIMIT k * over_fetch_factor`, both in `internal/config`) and trim in the service, or the branch filter can leave you short of K.
+- **Every search is account-scoped, and filtered to what the branch carries** — `product` hangs off `account`, so filter `WHERE p.account_id = $n` and join `branch_product` for the active branch alongside the vector order. Because an ANN scan filters _after_ ordering, over-fetch (`LIMIT k * over_fetch_factor`, both in `internal/config`) and trim in the service, or the branch filter can leave you short of K. One over-fetch is not a guarantee: the service widens the fetch until it has K or a wider one returns nothing new. And set `ivfflat.probes` for the transaction — the database visits one partition per scan by default, which recalls too little to survive the filter.
 - **Unmatched lines are flagged, never discarded.** A line with no acceptable match becomes a `quote_item` with `product_id` NULL and `match_status = NO_MATCH`; ambiguous ones get `AMBIGUOUS`. Every item carries a `confidence_score`. The search returns candidates; the service assigns `match_status`.
 
 ```go
@@ -269,28 +271,38 @@ func (r *ProductRepository) SearchByEmbedding(ctx context.Context, q Querier, ac
 
 Coti is a **human-in-the-loop copilot**. Two pipelines touch external models: the RFQ pipeline (extract informal RFQ text → line items → embed → match against the catalog → assemble a review-ready `quote`) and the change-request handler (interpret a client message → propose a typed action on an existing quote). Both talk to models only through domain ports.
 
-- **Ports** are Go interfaces in **`internal/domain`** (so both services and adapters import them without a cycle):
+- **Ports** are Go interfaces in **`internal/domain`** (so both services and adapters import them without a cycle). Three are the **provider layer** — one per external capability, because no provider covers all three:
 
   ```go
-  // RFQExtractor parses an informal RFQ (WhatsApp/email/web) into structured line items.
-  type RFQExtractor interface {
-      Extract(ctx context.Context, raw string) ([]RFQLine, error)
+  // StructuredGenerator asks a language model for one answer shaped by req.Schema and
+  // decodes it into out. Text, images and documents all ride req.Input, so vision and
+  // PDF need no port of their own.
+  type StructuredGenerator interface {
+      Generate(ctx context.Context, req GenerationRequest, out any) (*GenerationUsage, error)
   }
 
-  // Embedder produces 1536-dim embeddings for catalog and RFQ text.
+  // Embedder produces EmbeddingDimension-wide embeddings for catalog and RFQ text.
   type Embedder interface {
       Embed(ctx context.Context, texts []string) ([]pgvector.Vector, error)
   }
 
-  // ChangeRequestHandler interprets a client change request against the CLOSED
-  // action catalog and returns a typed, schema-validated proposal — never free JSON.
-  type ChangeRequestHandler interface {
-      Propose(ctx context.Context, in ChangeRequestInput) (ChangeProposal, error)
+  // Transcriber turns a recording into text.
+  type Transcriber interface {
+      Transcribe(ctx context.Context, audio Audio) (string, error)
   }
   ```
 
-- **Adapters** implement them in **`internal/ai/`** (per-provider subpackage when there is more than one). All prompt assembly, SDK calls, retries, and response parsing live there.
-- The **service depends on the interface**, so swapping providers is a one-line change in `cmd/api/main.go`. It never imports `internal/ai`.
+  **Feature ports sit on top of those, never beside them.** `RFQExtractor` and `ChangeRequestHandler` are the domain's vocabulary for what the engine does; their adapters own the prompt and the schema and reach the model through `StructuredGenerator`. A feature adapter never talks to a provider SDK directly.
+
+- **Adapters** implement the ports in **`internal/ai/`**, one subpackage per provider (`anthropic`, `openai`). Prompt assembly, SDK calls and response parsing live in the subpackage; **the policy every provider shares lives in the package root** — `Retry`, the usage log, the `Disabled*` stand-ins, `RetryableStatus`, `RetryAfter`, `Fail`. Do not reimplement retry or status classification per adapter: that is one decision, and a copy per provider is a copy to keep in sync.
+- **Which adapter answers is decided in `internal/ai/provider`, once.** It sits above the adapters, so every binary that needs a model makes the same choices from the same settings; a `switch` copied into a second command is a second place to edit when a provider is added. Adding one is a new subpackage plus a `case` there.
+- **An adapter is handed only its own settings.** `config.AIConfig` exposes `Anthropic()`, `Embeddings()` and `Transcription()`, each carrying one provider's key, model, timeout and the shared retry policy. Passing the whole config would put every provider's credential in every adapter, one `%+v` away from a log.
+- **The adapter says which of its failures are transient; the shared loop only reads the mark.** `ai.Retryable` / `ai.RetryableAfter` for a rate limit, a provider fault, a dropped connection or an answer that missed the schema; `ai.Rejected` for a request the provider would not serve — a bad schema, model or key, or a safety refusal. Then `ai.Fail` decides what the caller sees: `Rejected` and a cancelled caller stay as they are, everything else becomes `domain.ErrAIUnavailable`. **A fault of ours must never surface as a provider outage**, or a client is invited to retry something that cannot succeed.
+- **Every capability defaults to `disabled`**, and the stand-in refuses with `ErrAIUnavailable`. A checkout with no keys has to boot; the failure belongs on the call that needed a model, not on startup. A stub that answers with invented data is the one thing this layer exists to prevent.
+- **Each external call is bounded per attempt, and the chain is not.** `AI_*_TIMEOUT_SECONDS` caps one attempt, so the worst case is that times `AI_MAX_ATTEMPTS` plus the backoff — which outruns `SERVER_WRITE_TIMEOUT_SECONDS`. An AI call does not belong inline in a request handler on that budget.
+- The **service depends on the interface**, so swapping providers is a one-line change in `internal/ai/provider`. It never imports `internal/ai`.
+
+See `docs/technical/ai-providers.md` for the whole layer, including what a retry costs and where the vector codec is registered, and `docs/technical/catalog.md` for what is done with the vectors.
 
 These invariants are **enforced in the service layer**, and the code must make them true — they are product invariants, not style:
 
@@ -392,8 +404,12 @@ Build and vet before you commit: `pnpm check:api` (runs `go build` + `go vet ./.
 ```
 apps/api/
 ├── cmd/
-│   └── api/
-│       └── main.go                     # composition root: config, pgxpool, adapters, router
+│   ├── api/
+│   │   └── main.go                     # composition root: config, pgxpool, adapters, router
+│   ├── catalog-embed/
+│   │   └── main.go                     # offline job: vectorize one account's catalog
+│   └── scheduled-job/
+│       └── main.go                     # one scheduled sweep, invoked by the platform's cron
 ├── internal/
 │   ├── config/                         # env loading + defaults; all thresholds (top-K, cutoffs, timeouts)
 │   ├── domain/                         # entities, value objects, enums, errors, AI port interfaces
@@ -404,7 +420,10 @@ apps/api/
 │   │       ├── handler/                # <feature>_handler.go (Gin handlers)
 │   │       ├── middleware/             # JWT auth, tenant (account/branch) resolution, logging, rate limit
 │   │       └── dto/                    # request/response DTOs (snake_case json + binding tags)
-│   ├── ai/                             # adapters for RFQExtractor / Embedder / ChangeRequestHandler ports
+│   ├── ai/                             # shared policy (retry, usage log, Disabled* stand-ins)
+│   │   ├── anthropic/                  # StructuredGenerator: schema-forced generation, vision, PDF
+│   │   ├── openai/                     # Embedder + Transcriber
+│   │   └── provider/                   # binds each port to its adapter; used by every cmd/
 │   ├── mail/                           # adapters for the Mailer port (console by default)
 │   ├── ratelimit/                      # request counters behind middleware.Limiter
 │   └── utils/                          # generic, entity-agnostic helpers

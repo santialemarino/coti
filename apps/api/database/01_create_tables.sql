@@ -9,28 +9,19 @@
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
+-- The lexical half of the catalog search reads this configuration. Informal RFQ text drops
+-- accents constantly, so "hormigon" has to reach "hormigón"; the stock spanish one keeps them.
+CREATE TEXT SEARCH CONFIGURATION spanish_unaccent (COPY = spanish);
+ALTER TEXT SEARCH CONFIGURATION spanish_unaccent
+  ALTER MAPPING FOR hword, hword_part, word WITH unaccent, spanish_stem;
 
 -- =============================================================================
 -- ENUMS
 -- =============================================================================
 
 CREATE TYPE rfq_status AS ENUM ('RECEIVED', 'GENERATED');
-
-CREATE TYPE rfq_clarification_issue_type AS ENUM (
-  'MISSING_QUANTITY',
-  'MISSING_UNIT',
-  'MISSING_PRESENTATION',
-  'AMBIGUOUS_DESCRIPTION',
-  'AMBIGUOUS_CATALOG_MATCH'
-);
-
-CREATE TYPE rfq_clarification_status AS ENUM (
-  'PROPOSED',
-  'APPROVED',
-  'SENT',
-  'ANSWERED',
-  'DISMISSED'
-);
 
 -- DRAFT: the quote exists with matched materials but no accepted prices. It is the state
 -- while the RFQ is GENERATED, and what lets the state x intention matrix evaluate on one
@@ -81,6 +72,8 @@ CREATE TYPE send_tracking_status AS ENUM ('PENDING', 'SENT', 'DELIVERED', 'VIEWE
 
 CREATE TYPE handler_seller_decision AS ENUM ('APPROVED_AS_IS', 'EDITED', 'REJECTED', 'MANUAL_OVERRIDE');
 CREATE TYPE notification_status AS ENUM ('PENDING', 'SENT', 'FAILED');
+
+CREATE TYPE job_run_status AS ENUM ('RUNNING', 'SUCCEEDED', 'FAILED');
 
 -- What a single-use link entitles its bearer to do without a session.
 CREATE TYPE auth_token_type AS ENUM ('PASSWORD_RESET', 'EMAIL_VERIFICATION');
@@ -229,6 +222,13 @@ CREATE TABLE product (
   family_id      UUID,
   subgroup_id    UUID,
   embedding      VECTOR(1536),
+  -- Older than updated_at means the row was edited after it was embedded, which is how the
+  -- backfill knows what to re-embed without re-embedding the whole catalog.
+  embedding_updated_at TIMESTAMPTZ,
+  search_document TSVECTOR
+    GENERATED ALWAYS AS (
+      to_tsvector('spanish_unaccent'::regconfig, canonical_name || ' ' || coalesce(description, ''))
+    ) STORED,
   is_active      BOOLEAN NOT NULL DEFAULT TRUE,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -253,6 +253,8 @@ CREATE TABLE product_synonym (
   product_id UUID NOT NULL,
   term       VARCHAR(255) NOT NULL,
   source     product_synonym_source NOT NULL DEFAULT 'MANUAL',
+  search_document TSVECTOR
+    GENERATED ALWAYS AS (to_tsvector('spanish_unaccent'::regconfig, term)) STORED,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -414,26 +416,6 @@ CREATE TABLE rfq_status_change (
   user_id         UUID,
   changed_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- The AI proposes a question; the seller controls every state after PROPOSED.
-CREATE TABLE rfq_clarification (
-  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  account_id            UUID NOT NULL,
-  rfq_id                UUID NOT NULL,
-  quote_item_id         UUID,
-  issue_type            rfq_clarification_issue_type NOT NULL,
-  requested_description VARCHAR(512) NOT NULL,
-  question              VARCHAR(512) NOT NULL,
-  reason                VARCHAR(512) NOT NULL,
-  status                rfq_clarification_status NOT NULL DEFAULT 'PROPOSED',
-  approved_question     VARCHAR(512),
-  decided_by            UUID,
-  decided_at            TIMESTAMPTZ,
-  sent_at               TIMESTAMPTZ,
-  answer                TEXT,
-  answered_at           TIMESTAMPTZ,
-  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- =============================================================================
@@ -706,6 +688,24 @@ CREATE TABLE notification (
 );
 
 -- =============================================================================
+-- SCHEDULED JOBS
+-- =============================================================================
+
+-- What each scheduled run swept and changed. No account_id: a job runs as the owner across every
+-- account, so one run is one row for all of them, and a per-account column would be a list.
+CREATE TABLE job_run (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_name    VARCHAR(64) NOT NULL,
+  status      job_run_status NOT NULL DEFAULT 'RUNNING',
+  scanned     INTEGER NOT NULL DEFAULT 0,
+  changed     INTEGER NOT NULL DEFAULT 0,
+  error       TEXT,
+  started_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  finished_at TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- =============================================================================
 -- FOREIGN KEYS
 -- (at the end, to resolve the circular quote <-> quote_version dependency)
 -- =============================================================================
@@ -761,10 +761,6 @@ ALTER TABLE rfq_attachment ADD CONSTRAINT fk_rfq_attachment_rfq FOREIGN KEY (rfq
 ALTER TABLE rfq_status_change ADD CONSTRAINT fk_rfq_status_change_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE rfq_status_change ADD CONSTRAINT fk_rfq_status_change_rfq FOREIGN KEY (rfq_id) REFERENCES rfq(id);
 ALTER TABLE rfq_status_change ADD CONSTRAINT fk_rfq_status_change_user FOREIGN KEY (user_id) REFERENCES app_user(id);
-ALTER TABLE rfq_clarification ADD CONSTRAINT fk_rfq_clarification_account FOREIGN KEY (account_id) REFERENCES account(id);
-ALTER TABLE rfq_clarification ADD CONSTRAINT fk_rfq_clarification_rfq FOREIGN KEY (rfq_id) REFERENCES rfq(id);
-ALTER TABLE rfq_clarification ADD CONSTRAINT fk_rfq_clarification_item FOREIGN KEY (quote_item_id) REFERENCES quote_item(id);
-ALTER TABLE rfq_clarification ADD CONSTRAINT fk_rfq_clarification_decider FOREIGN KEY (decided_by) REFERENCES app_user(id);
 
 ALTER TABLE quote ADD CONSTRAINT fk_quote_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE quote ADD CONSTRAINT fk_quote_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
@@ -832,8 +828,9 @@ ALTER TABLE notification ADD CONSTRAINT fk_notification_quote FOREIGN KEY (quote
 -- INDEXES
 -- =============================================================================
 
--- The vector index is created AFTER the catalog loads: built on an empty table it is
--- suboptimal. Commented out on purpose.
+-- The vector index is created AFTER the catalog loads and is embedded: built on an empty table
+-- it is degenerate. Commented out on purpose — `pnpm db:vector-index` creates it, sizing lists
+-- to the number of embedded rows.
 -- CREATE INDEX idx_product_embedding ON product USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 CREATE INDEX idx_branch_account ON branch(account_id);
@@ -852,6 +849,9 @@ CREATE INDEX idx_product_account ON product(account_id);
 -- Partial because code is nullable.
 CREATE UNIQUE INDEX uq_product_account_code ON product (account_id, code) WHERE code IS NOT NULL;
 CREATE INDEX idx_branch_product_branch ON branch_product(branch_id) WHERE is_active = TRUE;
+-- The lexical half of the hybrid search: one document per product, one per synonym term.
+CREATE INDEX idx_product_search_document ON product USING GIN (search_document);
+CREATE INDEX idx_product_synonym_search_document ON product_synonym USING GIN (search_document);
 CREATE INDEX idx_product_synonym_product ON product_synonym(product_id);
 -- One term per product, case-insensitively: "Portland" and "portland" are the same term to
 -- a matcher. It is also the ON CONFLICT target the insert names.
@@ -863,8 +863,6 @@ CREATE INDEX idx_branch_combo_branch ON branch_combo(branch_id) WHERE is_active 
 CREATE INDEX idx_client_account ON client(account_id);
 CREATE INDEX idx_rfq_branch_status ON rfq(branch_id, status);
 CREATE INDEX idx_rfq_attachment_pending ON rfq_attachment(processing_status) WHERE processing_status IN ('PENDING', 'PROCESSING');
-CREATE INDEX idx_rfq_clarification_pending ON rfq_clarification(rfq_id, status)
-  WHERE status IN ('PROPOSED', 'APPROVED', 'SENT');
 
 CREATE INDEX idx_quote_branch_status ON quote(branch_id, current_status);
 CREATE INDEX idx_quote_expires ON quote(expires_at) WHERE expires_at IS NOT NULL AND archived_at IS NULL;
@@ -895,6 +893,10 @@ CREATE UNIQUE INDEX uq_product_price_open_period
 CREATE UNIQUE INDEX uq_message_batch_open ON message_batch(quote_id) WHERE status = 'OPEN';
 CREATE UNIQUE INDEX uq_message_batch_processing ON message_batch(quote_id) WHERE status = 'PROCESSING';
 
+-- "Which run changed this row?" is answered by the row's own timestamp falling inside a run's
+-- window, so the history is read newest-first per job.
+CREATE INDEX idx_job_run_name_started ON job_run(job_name, started_at DESC);
+
 -- =============================================================================
 -- updated_at TRIGGERS (only tables that mutate in place)
 -- =============================================================================
@@ -902,7 +904,19 @@ CREATE UNIQUE INDEX uq_message_batch_processing ON message_batch(quote_id) WHERE
 CREATE TRIGGER trg_account_updated        BEFORE UPDATE ON account        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_branch_updated         BEFORE UPDATE ON branch         FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_app_user_updated       BEFORE UPDATE ON app_user       FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER trg_product_updated        BEFORE UPDATE ON product        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+-- product is the exception: updated_at says a person changed the row, and it is what
+-- embedding_updated_at is compared against, so a vector written by the backfill must not bump it.
+CREATE TRIGGER trg_product_updated        BEFORE UPDATE ON product        FOR EACH ROW
+  WHEN (
+    OLD.code IS DISTINCT FROM NEW.code
+    OR OLD.canonical_name IS DISTINCT FROM NEW.canonical_name
+    OR OLD.description IS DISTINCT FROM NEW.description
+    OR OLD.unit IS DISTINCT FROM NEW.unit
+    OR OLD.family_id IS DISTINCT FROM NEW.family_id
+    OR OLD.subgroup_id IS DISTINCT FROM NEW.subgroup_id
+    OR OLD.is_active IS DISTINCT FROM NEW.is_active
+  )
+  EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_branch_product_updated BEFORE UPDATE ON branch_product FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_combo_updated          BEFORE UPDATE ON combo          FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_branch_combo_updated   BEFORE UPDATE ON branch_combo   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -947,6 +961,10 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO co
 
 REVOKE INSERT, UPDATE, DELETE ON product_family, product_subgroup FROM coti_app;
 
+-- The grant above reaches every table, and job_run is an audit trail no request has any reason to
+-- read, let alone rewrite. Only the owner the scheduled jobs run as touches it.
+REVOKE ALL ON job_run FROM coti_app;
+
 -- account matches on its own id; everything else on its account_id column.
 ALTER TABLE account ENABLE ROW LEVEL SECURITY;
 CREATE POLICY account_isolation ON account
@@ -961,7 +979,7 @@ BEGIN
     'product', 'branch_product', 'product_synonym', 'product_price', 'product_alternative',
     'combo', 'combo_item', 'branch_combo',
     'client', 'tag', 'client_tag',
-    'channel', 'rfq', 'rfq_attachment', 'rfq_status_change', 'rfq_clarification',
+    'channel', 'rfq', 'rfq_attachment', 'rfq_status_change',
     'quote', 'quote_version', 'quote_item', 'quote_item_alternative', 'quote_status_change',
     'quote_send', 'client_action',
     'message_batch', 'quote_message',

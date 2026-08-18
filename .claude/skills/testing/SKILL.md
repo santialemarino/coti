@@ -206,6 +206,15 @@ apps/api/
   the stated reason, restore it. A test written after the fix can pass on the surrounding code and
   pin nothing. Watch the command actually run, too: a `cd` that fails inside an `&&` chain
   short-circuits the rest, and a check that never executed reads exactly like one that passed.
+  **A removal that stops the package compiling is not a proof either** — deleting a check can orphan
+  an import, and `[build failed]` looks like a red test while proving nothing about the assertion.
+  Break the behaviour with an edit that still builds (invert a condition, widen a comparison).
+- **Mutate each field when a constructor maps sibling settings onto sibling fields.** Three
+  same-typed values read from three sibling config keys is the copy-paste bug the compiler cannot
+  see: swapping two of them builds, vets clean, and silently changes every decision downstream. One
+  mutation per field is what proves the wiring, and asserting only a _relationship_ between defaults
+  (rather than each exact value) lets the same drift through a second way — pin the values too, since
+  `.env.example` and the docs quote them.
 - **Compute expected values by hand.** Assert against manually derived numbers;
   never call the function under test (or its formula) a second time to produce
   the "expected" value — that only proves the code equals itself.

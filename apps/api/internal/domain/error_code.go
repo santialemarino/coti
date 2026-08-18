@@ -18,6 +18,7 @@ const (
 	CodeLocked           ErrorCode = "ACCOUNT_LOCKED"
 	CodeEmailNotVerified ErrorCode = "EMAIL_NOT_VERIFIED"
 	CodeRateLimited      ErrorCode = "RATE_LIMITED"
+	CodeAIUnavailable    ErrorCode = "AI_UNAVAILABLE"
 	CodeInternal         ErrorCode = "INTERNAL"
 )
 
@@ -80,6 +81,8 @@ func CodeOf(err error) ErrorCode {
 		return CodeForbidden
 	case errors.Is(err, ErrRateLimited):
 		return CodeRateLimited
+	case errors.Is(err, ErrAIUnavailable):
+		return CodeAIUnavailable
 	default:
 		return CodeInternal
 	}

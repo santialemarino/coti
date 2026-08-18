@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -22,18 +23,30 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"AUTH_MAX_FAILED_ATTEMPTS", "AUTH_LOCKOUT_MINUTES", "AUTH_PASSWORD_MIN_LENGTH",
 		"AUTH_PASSWORD_RESET_TTL_MINUTES", "AUTH_EMAIL_VERIFICATION_TTL_HOURS",
 		"AUTH_REQUIRE_VERIFIED_EMAIL",
-		"AI_PROVIDER", "AI_ANTHROPIC_API_KEY", "AI_ANTHROPIC_BASE_URL",
-		"AI_ANTHROPIC_VERSION", "AI_RFQ_EXTRACTOR_MODEL",
-		"AI_RFQ_EXTRACTOR_MAX_TOKENS", "AI_RFQ_EXTRACTOR_TIMEOUT_SECONDS",
 		"RATE_LIMIT_ENABLED", "RATE_LIMIT_WINDOW_SECONDS", "RATE_LIMIT_GLOBAL_MAX",
 		"RATE_LIMIT_CREDENTIALS_MAX", "RATE_LIMIT_SIGNUP_MAX", "RATE_LIMIT_MAIL_MAX",
 		"RATE_LIMIT_MAIL_PER_ADDRESS_MAX", "RATE_LIMIT_TRUSTED_PROXY_HOPS",
+		"RATE_LIMIT_TRUSTED_PROXY_CIDRS",
 		"MAIL_PROVIDER", "MAIL_FROM_ADDRESS", "MAIL_FROM_NAME",
 		"MAIL_SMTP_HOST", "MAIL_SMTP_PORT", "MAIL_SMTP_USERNAME", "MAIL_SMTP_PASSWORD",
 		"MAIL_SMTP_STARTTLS", "MAIL_SMTP_TIMEOUT_SECONDS",
+		"AI_ANTHROPIC_API_KEY", "AI_ANTHROPIC_BASE_URL", "AI_OPENAI_API_KEY", "AI_OPENAI_BASE_URL",
+		"AI_LLM_PROVIDER", "AI_LLM_MODEL", "AI_LLM_EFFORT", "AI_LLM_MAX_TOKENS",
+		"AI_LLM_TIMEOUT_SECONDS",
+		"AI_EMBEDDINGS_PROVIDER", "AI_EMBEDDINGS_MODEL", "AI_EMBEDDINGS_TIMEOUT_SECONDS",
+		"AI_TRANSCRIPTION_PROVIDER", "AI_TRANSCRIPTION_MODEL", "AI_TRANSCRIPTION_TIMEOUT_SECONDS",
+		"AI_MAX_ATTEMPTS", "AI_RETRY_BACKOFF_SECONDS", "AI_MAX_BACKOFF_SECONDS",
+		"AI_EMBEDDINGS_BATCH_SIZE",
 		"WEB_BACKOFFICE_URL",
+		"CATALOG_DEFAULT_PAGE_SIZE", "CATALOG_MAX_PAGE_SIZE",
+		"CATALOG_SEARCH_TOP_K", "CATALOG_SEARCH_OVER_FETCH_FACTOR",
+		"CATALOG_SEARCH_MAX_FETCH", "CATALOG_SEARCH_IVFFLAT_PROBES", "CATALOG_SEARCH_RRF_K",
+		"CATALOG_EMBEDDING_BATCH_SIZE",
+		"CATALOG_MATCH_MIN_CONFIDENCE_PERCENT", "CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT",
+		"CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT",
 		"CATALOG_IMPORT_MAX_BYTES",
 		"PRICE_IMPORT_MAX_BYTES",
+		"JOB_TIMEOUT_MINUTES",
 	}
 	for _, k := range known {
 		t.Setenv(k, "")
@@ -83,15 +96,6 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Mail.Provider != MailProviderConsole {
 		t.Errorf("Mail.Provider = %q, want %q", cfg.Mail.Provider, MailProviderConsole)
 	}
-	if cfg.AI.Provider != AIProviderDisabled {
-		t.Errorf("AI.Provider = %q, want %q", cfg.AI.Provider, AIProviderDisabled)
-	}
-	if cfg.AI.RFQExtractorTimeout != 20*time.Second {
-		t.Errorf("AI.RFQExtractorTimeout = %v, want 20s", cfg.AI.RFQExtractorTimeout)
-	}
-	if cfg.AI.RFQExtractorMaxTokens != 1024 {
-		t.Errorf("AI.RFQExtractorMaxTokens = %d, want 1024", cfg.AI.RFQExtractorMaxTokens)
-	}
 	// A transport that reaches nobody still needs an address to sign messages with, so the
 	// console default must not leave one missing.
 	if cfg.Mail.FromAddress == "" {
@@ -110,6 +114,59 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.RateLimit.TrustedProxyHops != 0 {
 		t.Errorf("RateLimit.TrustedProxyHops = %d, want 0: nothing is in front by default",
 			cfg.RateLimit.TrustedProxyHops)
+	}
+	// An over-fetch factor of one would ask for exactly what the caller wants, which the
+	// branch filter then cuts into, and one probe recalls too little to make up for it.
+	if cfg.Catalog.SearchOverFetchFactor < 2 {
+		t.Errorf("Catalog.SearchOverFetchFactor = %d, want more than 1 by default",
+			cfg.Catalog.SearchOverFetchFactor)
+	}
+	if cfg.Catalog.SearchProbes < 2 {
+		t.Errorf("Catalog.SearchProbes = %d, want more than the database's own 1",
+			cfg.Catalog.SearchProbes)
+	}
+	if cfg.Catalog.SearchTopK != 10 {
+		t.Errorf("Catalog.SearchTopK = %d, want 10", cfg.Catalog.SearchTopK)
+	}
+	// A ceiling below the first fetch would make the widening shrink instead of grow.
+	if cfg.Catalog.SearchMaxFetch < cfg.Catalog.SearchTopK*cfg.Catalog.SearchOverFetchFactor {
+		t.Errorf("Catalog.SearchMaxFetch = %d, want at least the first fetch width",
+			cfg.Catalog.SearchMaxFetch)
+	}
+	if cfg.Catalog.SearchRRFK != 60 {
+		t.Errorf("Catalog.SearchRRFK = %d, want 60", cfg.Catalog.SearchRRFK)
+	}
+	if cfg.Catalog.EmbeddingBatchSize != 200 {
+		t.Errorf("Catalog.EmbeddingBatchSize = %d, want 200", cfg.Catalog.EmbeddingBatchSize)
+	}
+	// Pinned exactly, because .env.example and the catalog documentation both quote these three
+	// and nothing else would notice them drifting apart.
+	for _, tc := range []struct {
+		name string
+		got  int
+		want int
+	}{
+		{"Catalog.MatchMinConfidencePercent", cfg.Catalog.MatchMinConfidencePercent, 60},
+		{"Catalog.MatchAmbiguityMarginPercent", cfg.Catalog.MatchAmbiguityMarginPercent, 5},
+		{"Catalog.MatchLexicalConfidencePercent", cfg.Catalog.MatchLexicalConfidencePercent, 75},
+	} {
+		if tc.got != tc.want {
+			t.Errorf("%s = %d, want %d", tc.name, tc.got, tc.want)
+		}
+	}
+	// A trade term loaded as a synonym has to resolve to its product out of the box, and the
+	// lexical half is the only half that reaches an unembedded row.
+	if cfg.Catalog.MatchLexicalConfidencePercent < cfg.Catalog.MatchMinConfidencePercent {
+		t.Errorf("Catalog.MatchLexicalConfidencePercent = %d, want at least the floor of %d",
+			cfg.Catalog.MatchLexicalConfidencePercent, cfg.Catalog.MatchMinConfidencePercent)
+	}
+	// At zero every leading candidate is decided, whatever sits behind it.
+	if cfg.Catalog.MatchAmbiguityMarginPercent < 1 {
+		t.Errorf("Catalog.MatchAmbiguityMarginPercent = %d, want a margin by default",
+			cfg.Catalog.MatchAmbiguityMarginPercent)
+	}
+	if cfg.Job.Timeout != 30*time.Minute {
+		t.Errorf("Job.Timeout = %v, want 30m", cfg.Job.Timeout)
 	}
 	if cfg.IsProduction() {
 		t.Error("IsProduction() = true, want false")
@@ -199,35 +256,6 @@ func TestLoad_Invalid(t *testing.T) {
 			wantSub: `MAIL_PROVIDER must be "console" or "smtp"`,
 		},
 		{
-			name:    "unknown ai provider",
-			mutate:  func(e map[string]string) { e["AI_PROVIDER"] = "oracle" },
-			wantSub: `AI_PROVIDER must be "disabled" or "anthropic"`,
-		},
-		{
-			name:    "anthropic provider without api key",
-			mutate:  func(e map[string]string) { e["AI_PROVIDER"] = "anthropic" },
-			wantSub: "AI_ANTHROPIC_API_KEY is required when AI_PROVIDER is anthropic",
-		},
-		{
-			name: "anthropic provider with invalid base url",
-			mutate: func(e map[string]string) {
-				e["AI_PROVIDER"] = "anthropic"
-				e["AI_ANTHROPIC_API_KEY"] = "secret"
-				e["AI_ANTHROPIC_BASE_URL"] = "api.anthropic.test"
-			},
-			wantSub: "AI_ANTHROPIC_BASE_URL must be an absolute URL",
-		},
-		{
-			name:    "rfq extractor max tokens of zero",
-			mutate:  func(e map[string]string) { e["AI_RFQ_EXTRACTOR_MAX_TOKENS"] = "0" },
-			wantSub: "AI_RFQ_EXTRACTOR_MAX_TOKENS must be greater than zero",
-		},
-		{
-			name:    "rfq extractor timeout of zero",
-			mutate:  func(e map[string]string) { e["AI_RFQ_EXTRACTOR_TIMEOUT_SECONDS"] = "0" },
-			wantSub: "AI_RFQ_EXTRACTOR_TIMEOUT_SECONDS must be greater than zero",
-		},
-		{
 			// A real transport with no sender and no credentials has to fail at startup, not
 			// on the first message nobody receives.
 			name:    "real provider without credentials",
@@ -286,9 +314,68 @@ func TestLoad_Invalid(t *testing.T) {
 			wantSub: "AUTH_PASSWORD_RESET_TTL_MINUTES must be greater than zero",
 		},
 		{
+			// A run bounded at nothing holds its lock until the process is killed, and every
+			// later firing then does nothing while it waits.
+			name:    "a scheduled run bounded at nothing",
+			mutate:  func(e map[string]string) { e["JOB_TIMEOUT_MINUTES"] = "0" },
+			wantSub: "JOB_TIMEOUT_MINUTES must be greater than zero",
+		},
+		{
 			name:    "catalog import size of zero",
 			mutate:  func(e map[string]string) { e["CATALOG_IMPORT_MAX_BYTES"] = "0" },
 			wantSub: "CATALOG_IMPORT_MAX_BYTES must be greater than zero",
+		},
+		{
+			name:    "no search results asked for",
+			mutate:  func(e map[string]string) { e["CATALOG_SEARCH_TOP_K"] = "0" },
+			wantSub: "CATALOG_SEARCH_TOP_K must be at least 2",
+		},
+		{
+			// One candidate never has a runner-up, so matching could never call a line
+			// ambiguous and every line above the floor would read as decided.
+			name:    "a single search result, leaving matching no runner-up",
+			mutate:  func(e map[string]string) { e["CATALOG_SEARCH_TOP_K"] = "1" },
+			wantSub: "CATALOG_SEARCH_TOP_K must be at least 2",
+		},
+		{
+			// Below one the search would ask the database for fewer rows than the caller wants.
+			name:    "an over-fetch factor that shrinks the fetch",
+			mutate:  func(e map[string]string) { e["CATALOG_SEARCH_OVER_FETCH_FACTOR"] = "0" },
+			wantSub: "CATALOG_SEARCH_OVER_FETCH_FACTOR must be at least 1",
+		},
+		{
+			name:    "a fetch ceiling of nothing",
+			mutate:  func(e map[string]string) { e["CATALOG_SEARCH_MAX_FETCH"] = "0" },
+			wantSub: "CATALOG_SEARCH_MAX_FETCH must be at least 1",
+		},
+		{
+			name:    "no index partitions visited",
+			mutate:  func(e map[string]string) { e["CATALOG_SEARCH_IVFFLAT_PROBES"] = "0" },
+			wantSub: "CATALOG_SEARCH_IVFFLAT_PROBES must be at least 1",
+		},
+		{
+			name:    "an embedding batch of nothing",
+			mutate:  func(e map[string]string) { e["CATALOG_EMBEDDING_BATCH_SIZE"] = "0" },
+			wantSub: "CATALOG_EMBEDDING_BATCH_SIZE must be at least 1",
+		},
+		{
+			// The similarity these are compared against never exceeds 1, so a threshold past
+			// 100 would flag every line NO_MATCH with nothing in the logs to say why.
+			name:    "a confidence floor no candidate could reach",
+			mutate:  func(e map[string]string) { e["CATALOG_MATCH_MIN_CONFIDENCE_PERCENT"] = "101" },
+			wantSub: "CATALOG_MATCH_MIN_CONFIDENCE_PERCENT must be between 0 and 100",
+		},
+		{
+			name:    "a negative ambiguity margin",
+			mutate:  func(e map[string]string) { e["CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT"] = "-1" },
+			wantSub: "CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT must be between 0 and 100",
+		},
+		{
+			name: "a lexical confidence off the scale",
+			mutate: func(e map[string]string) {
+				e["CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT"] = "140"
+			},
+			wantSub: "CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT must be between 0 and 100",
 		},
 	}
 
@@ -334,33 +421,6 @@ func smtpEnv() map[string]string {
 	env["MAIL_SMTP_USERNAME"] = "coti"
 	env["MAIL_SMTP_PASSWORD"] = "s3cret"
 	return env
-}
-
-func TestLoad_AnthropicProviderLoadsWithAPIKey(t *testing.T) {
-	env := minimalEnv()
-	env["AI_PROVIDER"] = "anthropic"
-	env["AI_ANTHROPIC_API_KEY"] = "secret"
-	env["AI_RFQ_EXTRACTOR_MODEL"] = "claude-sonnet-test"
-	env["AI_RFQ_EXTRACTOR_TIMEOUT_SECONDS"] = "7"
-	env["AI_RFQ_EXTRACTOR_MAX_TOKENS"] = "2048"
-	setEnv(t, env)
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() = %v, want no error", err)
-	}
-	if cfg.AI.Provider != AIProviderAnthropic {
-		t.Errorf("AI.Provider = %q, want %q", cfg.AI.Provider, AIProviderAnthropic)
-	}
-	if cfg.AI.RFQExtractorModel != "claude-sonnet-test" {
-		t.Errorf("AI.RFQExtractorModel = %q, want custom model", cfg.AI.RFQExtractorModel)
-	}
-	if cfg.AI.RFQExtractorTimeout != 7*time.Second {
-		t.Errorf("AI.RFQExtractorTimeout = %v, want 7s", cfg.AI.RFQExtractorTimeout)
-	}
-	if cfg.AI.RFQExtractorMaxTokens != 2048 {
-		t.Errorf("AI.RFQExtractorMaxTokens = %d, want 2048", cfg.AI.RFQExtractorMaxTokens)
-	}
 }
 
 func TestLoad_SMTPProviderLoadsWithEveryCredentialPresent(t *testing.T) {
@@ -439,6 +499,209 @@ func TestLoad_SMTPProviderRejectsAnUnusableConnection(t *testing.T) {
 	}
 }
 
+// No AI provider needs to exist for the API to boot: a fresh checkout has no keys, and the engine
+// refuses the calls that needed a model rather than the process refusing to start.
+func TestLoad_AIProvidersArriveDisabled(t *testing.T) {
+	setEnv(t, minimalEnv())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	for _, provider := range []struct {
+		name  string
+		value AIProvider
+	}{
+		{"AI.LLMProvider", cfg.AI.LLMProvider},
+		{"AI.EmbeddingsProvider", cfg.AI.EmbeddingsProvider},
+		{"AI.TranscriptionProvider", cfg.AI.TranscriptionProvider},
+	} {
+		if provider.value != AIProviderDisabled {
+			t.Errorf("%s = %q, want %q", provider.name, provider.value, AIProviderDisabled)
+		}
+	}
+	// Mapping work rather than open-ended writing, so the reasoning default sits at the low end.
+	if cfg.AI.LLMEffort != "low" {
+		t.Errorf("AI.LLMEffort = %q, want low", cfg.AI.LLMEffort)
+	}
+	if cfg.AI.Retry.MaxAttempts != 3 || cfg.AI.Retry.Backoff != time.Second {
+		t.Errorf("AI.Retry = %+v, want 3 attempts from 1s", cfg.AI.Retry)
+	}
+	// Without a ceiling the doubling is unbounded, so raising the attempt count alone would
+	// produce waits measured in minutes.
+	if cfg.AI.Retry.MaxBackoff != 8*time.Second {
+		t.Errorf("AI.Retry.MaxBackoff = %v, want 8s", cfg.AI.Retry.MaxBackoff)
+	}
+	if cfg.AI.EmbeddingsBatchSize != 100 {
+		t.Errorf("AI.EmbeddingsBatchSize = %d, want 100", cfg.AI.EmbeddingsBatchSize)
+	}
+}
+
+// A capability left disabled must not demand the credentials it would never use.
+func TestLoad_DisabledAICapabilitiesNeedNoCredentials(t *testing.T) {
+	env := minimalEnv()
+	env["AI_LLM_PROVIDER"] = "anthropic"
+	env["AI_ANTHROPIC_API_KEY"] = "sk-ant-test"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error: embeddings and transcription are off", err)
+	}
+	if cfg.AI.LLMProvider != AIProviderAnthropic {
+		t.Errorf("AI.LLMProvider = %q, want %q", cfg.AI.LLMProvider, AIProviderAnthropic)
+	}
+}
+
+// A missing key fails the boot with a message naming it, rather than at the first call. Both are
+// reported in the same pass, so enabling two capabilities at once is diagnosed once.
+func TestLoad_AIProviderReportsEveryMissingKeyByName(t *testing.T) {
+	env := minimalEnv()
+	env["AI_LLM_PROVIDER"] = "anthropic"
+	env["AI_EMBEDDINGS_PROVIDER"] = "openai"
+	setEnv(t, env)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() = nil error, want an error")
+	}
+	for _, want := range []string{
+		"AI_ANTHROPIC_API_KEY is required",
+		"AI_OPENAI_API_KEY is required",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("Load() error is missing %q; got:\n%s", want, err.Error())
+		}
+	}
+}
+
+// One key backs two capabilities, so it is named once and not once per capability.
+func TestLoad_TheOpenAIKeyIsReportedOnce(t *testing.T) {
+	env := minimalEnv()
+	env["AI_EMBEDDINGS_PROVIDER"] = "openai"
+	env["AI_TRANSCRIPTION_PROVIDER"] = "openai"
+	setEnv(t, env)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() = nil error, want an error")
+	}
+	if got := strings.Count(err.Error(), "AI_OPENAI_API_KEY is required"); got != 1 {
+		t.Errorf("AI_OPENAI_API_KEY named %d times, want 1:\n%s", got, err.Error())
+	}
+}
+
+func TestLoad_AIRejectsUnusableSettings(t *testing.T) {
+	cases := []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{
+			name: "unknown language model provider",
+			env:  map[string]string{"AI_LLM_PROVIDER": "openai"},
+			want: "AI_LLM_PROVIDER must be",
+		},
+		{
+			name: "unknown embeddings provider",
+			env:  map[string]string{"AI_EMBEDDINGS_PROVIDER": "anthropic"},
+			want: "AI_EMBEDDINGS_PROVIDER must be",
+		},
+		{
+			name: "unknown transcription provider",
+			env:  map[string]string{"AI_TRANSCRIPTION_PROVIDER": "anthropic"},
+			want: "AI_TRANSCRIPTION_PROVIDER must be",
+		},
+		{
+			name: "effort outside the accepted levels",
+			env: map[string]string{
+				"AI_LLM_PROVIDER":      "anthropic",
+				"AI_ANTHROPIC_API_KEY": "sk-ant-test",
+				"AI_LLM_EFFORT":        "medium-high",
+			},
+			want: "AI_LLM_EFFORT must be one of",
+		},
+		{
+			name: "no token budget",
+			env: map[string]string{
+				"AI_LLM_PROVIDER":      "anthropic",
+				"AI_ANTHROPIC_API_KEY": "sk-ant-test",
+				"AI_LLM_MAX_TOKENS":    "0",
+			},
+			want: "AI_LLM_MAX_TOKENS must be greater than zero",
+		},
+		{
+			name: "base URL without a scheme",
+			env: map[string]string{
+				"AI_EMBEDDINGS_PROVIDER": "openai",
+				"AI_OPENAI_API_KEY":      "sk-test",
+				"AI_OPENAI_BASE_URL":     "api.openai.com/v1",
+			},
+			want: "AI_OPENAI_BASE_URL must be an absolute URL",
+		},
+		{
+			name: "gateway address without a scheme",
+			env: map[string]string{
+				"AI_LLM_PROVIDER":       "anthropic",
+				"AI_ANTHROPIC_API_KEY":  "sk-ant-test",
+				"AI_ANTHROPIC_BASE_URL": "gateway.internal",
+			},
+			want: "AI_ANTHROPIC_BASE_URL must be an absolute URL",
+		},
+		{
+			name: "no attempts",
+			env:  map[string]string{"AI_MAX_ATTEMPTS": "0"},
+			want: "AI_MAX_ATTEMPTS must be at least 1",
+		},
+		{
+			name: "no wait between attempts",
+			env:  map[string]string{"AI_RETRY_BACKOFF_SECONDS": "0"},
+			want: "AI_RETRY_BACKOFF_SECONDS must be greater than zero",
+		},
+		{
+			name: "no ceiling on the wait",
+			env:  map[string]string{"AI_MAX_BACKOFF_SECONDS": "0"},
+			want: "AI_MAX_BACKOFF_SECONDS must be greater than zero",
+		},
+		{
+			// A ceiling below the first wait would make the ladder shrink instead of grow.
+			name: "ceiling below the first wait",
+			env: map[string]string{
+				"AI_RETRY_BACKOFF_SECONDS": "10",
+				"AI_MAX_BACKOFF_SECONDS":   "5",
+			},
+			want: "AI_MAX_BACKOFF_SECONDS (5s) is below AI_RETRY_BACKOFF_SECONDS (10s)",
+		},
+		{
+			name: "no batch size",
+			env: map[string]string{
+				"AI_EMBEDDINGS_PROVIDER":   "openai",
+				"AI_OPENAI_API_KEY":        "sk-test",
+				"AI_EMBEDDINGS_BATCH_SIZE": "0",
+			},
+			want: "AI_EMBEDDINGS_BATCH_SIZE must be at least 1",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := minimalEnv()
+			for k, v := range tc.env {
+				env[k] = v
+			}
+			setEnv(t, env)
+
+			_, err := Load()
+			if err == nil {
+				t.Fatalf("Load() = nil error, want %q", tc.want)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("Load() error is missing %q; got:\n%s", tc.want, err.Error())
+			}
+		})
+	}
+}
+
 // Every problem is reported in one pass so a bad deploy is diagnosed once.
 func TestLoad_ReportsEveryProblemAtOnce(t *testing.T) {
 	setEnv(t, map[string]string{"AUTH_JWT_SECRET": "short"})
@@ -450,6 +713,64 @@ func TestLoad_ReportsEveryProblemAtOnce(t *testing.T) {
 	for _, want := range []string{"DATABASE_URL is required", "DATABASE_ADMIN_URL is required", "AUTH_JWT_SECRET"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("Load() error is missing %q; got:\n%s", want, err.Error())
+		}
+	}
+}
+
+// Each adapter is handed only its own settings, so no package holds a key it must not use — and a
+// stray %+v of one cannot print another provider's credential.
+func TestAIConfig_NarrowsWhatEachAdapterSees(t *testing.T) {
+	t.Parallel()
+
+	cfg := AIConfig{
+		AnthropicAPIKey:      "sk-ant-secret",
+		AnthropicBaseURL:     "https://gateway.internal",
+		OpenAIAPIKey:         "sk-openai-secret",
+		OpenAIBaseURL:        "https://api.openai.com/v1",
+		LLMModel:             "claude-opus-5",
+		LLMEffort:            "low",
+		LLMMaxTokens:         16000,
+		LLMTimeout:           time.Minute,
+		EmbeddingsModel:      "text-embedding-3-small",
+		EmbeddingsBatchSize:  100,
+		EmbeddingsTimeout:    30 * time.Second,
+		TranscriptionModel:   "whisper-1",
+		TranscriptionTimeout: 2 * time.Minute,
+		Retry:                AIRetryPolicy{MaxAttempts: 3, Backoff: time.Second, MaxBackoff: 8 * time.Second},
+	}
+
+	llm := cfg.Anthropic()
+	if llm.APIKey != "sk-ant-secret" || llm.Model != "claude-opus-5" || llm.MaxTokens != 16000 {
+		t.Fatalf("Anthropic() = %+v, want the language-model settings", llm)
+	}
+	if strings.Contains(fmt.Sprintf("%+v", llm), "sk-openai-secret") {
+		t.Fatal("Anthropic() carries the OpenAI key, which that adapter must not hold")
+	}
+
+	embeddings := cfg.Embeddings()
+	if embeddings.APIKey != "sk-openai-secret" || embeddings.BatchSize != 100 {
+		t.Fatalf("Embeddings() = %+v, want the embedding settings", embeddings)
+	}
+	if strings.Contains(fmt.Sprintf("%+v", embeddings), "sk-ant-secret") {
+		t.Fatal("Embeddings() carries the Anthropic key, which that adapter must not hold")
+	}
+
+	transcription := cfg.Transcription()
+	if transcription.APIKey != "sk-openai-secret" || transcription.Model != "whisper-1" {
+		t.Fatalf("Transcription() = %+v, want the transcription settings", transcription)
+	}
+	if strings.Contains(fmt.Sprintf("%+v", transcription), "sk-ant-secret") {
+		t.Fatal("Transcription() carries the Anthropic key, which that adapter must not hold")
+	}
+
+	// The retry policy is shared on purpose: it is one operational decision, not three.
+	for name, got := range map[string]AIRetryPolicy{
+		"Anthropic":     llm.Retry,
+		"Embeddings":    embeddings.Retry,
+		"Transcription": transcription.Retry,
+	} {
+		if got != cfg.Retry {
+			t.Errorf("%s().Retry = %+v, want the shared policy %+v", name, got, cfg.Retry)
 		}
 	}
 }
