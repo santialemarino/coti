@@ -297,6 +297,19 @@ func TestQuotePricing_KeepsUnvaluedLinesNullAndRoundTripsTheScale(t *testing.T) 
 		t.Fatalf("returned %d lines, want all 3: an unvalued line is never dropped",
 			len(body.Items))
 	}
+	// On the wire too, and not only in the column: a mapper that rendered an empty amount as
+	// "0.00" would leave the rows right and still tell the seller the line costs nothing. Found by
+	// description rather than by index, because quote_item carries no ordinal.
+	for _, item := range body.Items {
+		if item.RequestedDescription == "a arena" {
+			continue
+		}
+		if item.UnitPriceSnapshot != nil || item.MinPriceSnapshot != nil || item.Subtotal != nil {
+			t.Errorf("%q serialized as (%s, %s, %s), want three JSON nulls",
+				item.RequestedDescription, amountOrNull(item.UnitPriceSnapshot),
+				amountOrNull(item.MinPriceSnapshot), amountOrNull(item.Subtotal))
+		}
+	}
 
 	lines := e.storedLines(t, seeded.versionID)
 	if len(lines) != 3 {
@@ -429,6 +442,14 @@ func (e *env) countStatusChanges(t *testing.T, quoteID uuid.UUID) int {
 	return changes
 }
 
+// amountOrNull renders a wire amount for a failure message: %v on a *string prints its address.
+func amountOrNull(amount *string) string {
+	if amount == nil {
+		return "null"
+	}
+	return *amount
+}
+
 func assertStored(t *testing.T, what string, got decimal.NullDecimal, want string) {
 	t.Helper()
 	if !got.Valid {
@@ -437,5 +458,48 @@ func assertStored(t *testing.T, what string, got decimal.NullDecimal, want strin
 	}
 	if got.Decimal.StringFixed(domain.MoneyScale) != want {
 		t.Errorf("%s = %s, want %s", what, got.Decimal.StringFixed(domain.MoneyScale), want)
+	}
+}
+
+// Each line rounds to the money scale before anything is summed, so the total equals the sum of
+// the subtotals the seller can see. Summing first and rounding once gives a different number, and
+// a total that disagrees with its own lines is the kind of discrepancy a client notices.
+func TestQuotePricing_TotalsTheRoundedSubtotalsNotTheRoundedSum(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "Quote pricing rounding")
+	seller := e.seedUser(t, accountID, domain.UserRoleSeller)
+	e.assignBranch(t, accountID, seller, branchID)
+	// 1.5 × 3.75 = 5.625 per line: exactly on the half, so the two orders of operations differ.
+	product := e.seedPricedProduct(t, accountID, branchID, "Cable 2.5mm", "3.75", nil)
+	seeded := e.seedDraftQuote(t, accountID, branchID, seller, []draftLine{
+		{description: "a cable rollo", quantity: "1.50", productID: &product},
+		{description: "b cable suelto", quantity: "1.50", productID: &product},
+	})
+
+	body := e.acceptMaterials(t, seeded.quoteID, e.tokenFor(t, seller), branchID.String())
+
+	// Rounded per line: 5.63 + 5.63. Summed first: 11.25, which is the wrong answer here.
+	if body.Version.Total != "11.26" {
+		t.Fatalf("total = %q, want 11.26 — 5.63 + 5.63, not round(5.625 + 5.625)",
+			body.Version.Total)
+	}
+
+	lines := e.storedLines(t, seeded.versionID)
+	if len(lines) != 2 {
+		t.Fatalf("stored %d lines, want 2", len(lines))
+	}
+	summed := decimal.Zero
+	for _, line := range lines {
+		assertStored(t, line.description+" subtotal", line.subtotal, "5.63")
+		summed = summed.Add(line.subtotal.Decimal)
+	}
+	// The invariant, read back out of the database: the total is what its own lines add up to.
+	stored := e.storedVersionTotal(t, seeded.versionID)
+	if !stored.Equal(summed) {
+		t.Errorf("stored total %s, lines add up to %s — a total its lines do not explain",
+			stored, summed)
+	}
+	if !stored.Equal(decimal.RequireFromString("11.26")) {
+		t.Errorf("stored total = %s, want 11.26", stored)
 	}
 }

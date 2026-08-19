@@ -38,9 +38,10 @@ func (f *fakeQuoteDB) InTenantTx(
 }
 
 type quoteStatusUpdate struct {
-	quoteID uuid.UUID
-	from    domain.QuoteStatus
-	to      domain.QuoteStatus
+	branchID uuid.UUID
+	quoteID  uuid.UUID
+	from     domain.QuoteStatus
+	to       domain.QuoteStatus
 }
 
 // fakeQuoteRepo records what the service asked of persistence, so a test can assert on the
@@ -54,6 +55,7 @@ type fakeQuoteRepo struct {
 	applyPricingErr error
 
 	branchesAskedFor []uuid.UUID
+	versionBranches  []uuid.UUID
 	listedVersionIDs []uuid.UUID
 	pricedVersionIDs []uuid.UUID
 	appliedPricings  [][]domain.QuoteItemPricing
@@ -76,9 +78,12 @@ func (f *fakeQuoteRepo) GetByID(
 }
 
 func (f *fakeQuoteRepo) UpdateStatus(
-	_ context.Context, _ repository.Querier, _, quoteID uuid.UUID, from, to domain.QuoteStatus,
+	_ context.Context, _ repository.Querier, _, branchID, quoteID uuid.UUID,
+	from, to domain.QuoteStatus,
 ) (*domain.Quote, error) {
-	f.statusUpdates = append(f.statusUpdates, quoteStatusUpdate{quoteID: quoteID, from: from, to: to})
+	f.statusUpdates = append(f.statusUpdates, quoteStatusUpdate{
+		branchID: branchID, quoteID: quoteID, from: from, to: to,
+	})
 	if f.updateStatusErr != nil {
 		return nil, f.updateStatusErr
 	}
@@ -88,8 +93,9 @@ func (f *fakeQuoteRepo) UpdateStatus(
 }
 
 func (f *fakeQuoteRepo) GetCurrentVersion(
-	_ context.Context, _ repository.Querier, _, _ uuid.UUID,
+	_ context.Context, _ repository.Querier, _, branchID, _ uuid.UUID,
 ) (*domain.QuoteVersion, error) {
+	f.versionBranches = append(f.versionBranches, branchID)
 	if f.version == nil {
 		return nil, domain.ErrNotFound
 	}
@@ -455,9 +461,18 @@ func TestQuoteService_AcceptMaterials_ScopesTheReadToTheCallersAccountAndBranch(
 		t.Errorf("transaction scopes = %v, want [%v]", f.db.scopes, f.tenant.AccountID)
 	}
 	// Row level security guards the account boundary only, so the branch has to be in the
-	// predicate or a caller reads another branch of their own account.
+	// predicate or a caller reads another branch of their own account. Every call that takes the
+	// request's quote id carries it, the write included.
 	if len(f.quotes.branchesAskedFor) != 1 || f.quotes.branchesAskedFor[0] != f.branchID {
 		t.Errorf("read scoped to branches %v, want [%v]", f.quotes.branchesAskedFor, f.branchID)
+	}
+	if len(f.quotes.versionBranches) != 1 || f.quotes.versionBranches[0] != f.branchID {
+		t.Errorf("version read scoped to branches %v, want [%v]", f.quotes.versionBranches,
+			f.branchID)
+	}
+	if len(f.quotes.statusUpdates) != 1 || f.quotes.statusUpdates[0].branchID != f.branchID {
+		t.Errorf("status write scoped to branch %v, want %v",
+			f.quotes.statusUpdates[0].branchID, f.branchID)
 	}
 }
 
@@ -492,5 +507,31 @@ func TestQuoteService_AcceptMaterials_LeavesTheStatusAloneWhenAWriteFails(t *tes
 	if len(f.quotes.statusUpdates) != 0 || len(f.quotes.statusChanges) != 0 {
 		t.Errorf("status updates = %d and history rows = %d, want none",
 			len(f.quotes.statusUpdates), len(f.quotes.statusChanges))
+	}
+}
+
+func TestQuoteService_AcceptMaterials_QuotesAtZeroWhenNoLineCanBePriced(t *testing.T) {
+	t.Parallel()
+	// What the pipeline leaves when matching could not run at all: every line flagged. The seller
+	// still accepts the materials, and the arithmetic over lines that contribute nothing is zero.
+	// Refusing would block a transition the rules allow; the flagged lines are what they review.
+	f := newQuoteFixture([]domain.QuoteItem{flaggedLine("4"), flaggedLine("9")}, nil)
+
+	priced, err := f.service.AcceptMaterials(context.Background(), f.tenant, f.quoteID)
+	if err != nil {
+		t.Fatalf("AcceptMaterials() = %v, want no error", err)
+	}
+	if !priced.Version.Total.IsZero() {
+		t.Errorf("total = %s, want 0", priced.Version.Total)
+	}
+	if priced.Quote.CurrentStatus != domain.QuoteStatusQuoted {
+		t.Errorf("status = %q, want QUOTED", priced.Quote.CurrentStatus)
+	}
+	if len(priced.Items) != 2 {
+		t.Errorf("kept %d lines, want both", len(priced.Items))
+	}
+	// No product on any line, so there is no unpriced product to report either.
+	if f.prices.calls != 1 || len(f.prices.askedFor[0]) != 0 {
+		t.Errorf("price lookup asked for %v, want one call for no products", f.prices.askedFor)
 	}
 }

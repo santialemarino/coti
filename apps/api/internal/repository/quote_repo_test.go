@@ -71,6 +71,17 @@ func seedQuoteChain(
 	return quoteID, versionID, itemID
 }
 
+// carryAtBranch makes the branch stock the product, which every current-price query requires: a
+// price on a product the branch does not carry is not a price at that branch.
+func carryAtBranch(t *testing.T, db *DB, accountID, branchID, productID uuid.UUID, active bool) {
+	t.Helper()
+	if _, err := db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO branch_product (account_id, branch_id, product_id, is_active)
+		 VALUES ($1, $2, $3, $4)`, accountID, branchID, productID, active); err != nil {
+		t.Fatalf("seed branch_product: %v", err)
+	}
+}
+
 func insertPricePeriod(
 	t *testing.T, db *DB, accountID, branchID, productID uuid.UUID,
 	price string, minPrice *string, validFrom time.Time, validTo *time.Time,
@@ -97,8 +108,16 @@ func TestProductPriceRepository_GetCurrentByProductIDs_ReadsOnlyThePeriodInForce
 	future := seedProduct(t, db, accountID, "Cal hidratada")
 	floored := seedProduct(t, db, accountID, "Hierro del 8")
 	unpriced := seedProduct(t, db, accountID, "Membrana liquida")
-	for _, id := range []uuid.UUID{current, expired, future, floored, unpriced} {
+	withdrawn := seedProduct(t, db, accountID, "Ladrillo hueco discontinuado")
+	unstocked := seedProduct(t, db, accountID, "Pinotea")
+	every := []uuid.UUID{current, expired, future, floored, unpriced, withdrawn, unstocked}
+	for _, id := range every {
 		priceCleanup(t, db, id)
+		carryAtBranch(t, db, accountID, branchID, id, id != unstocked)
+	}
+	if _, err := db.CrossAccount().Exec(ctx,
+		`UPDATE product SET is_active = FALSE WHERE id = $1`, withdrawn); err != nil {
+		t.Fatalf("deactivate product: %v", err)
 	}
 
 	now := time.Now()
@@ -118,14 +137,17 @@ func TestProductPriceRepository_GetCurrentByProductIDs_ReadsOnlyThePeriodInForce
 	floor := "800.00"
 	insertPricePeriod(t, db, accountID, branchID, floored, "1000.00", &floor,
 		now.Add(-time.Hour), nil)
+	// Both priced and both in force, but the branch cannot sell either: one product is
+	// deactivated, the other the branch no longer carries.
+	insertPricePeriod(t, db, accountID, branchID, withdrawn, "300.00", nil, now.Add(-time.Hour), nil)
+	insertPricePeriod(t, db, accountID, branchID, unstocked, "400.00", nil, now.Add(-time.Hour), nil)
 
 	repo := NewProductPriceRepository()
 	tenant := domain.Tenant{AccountID: accountID, BranchID: branchID, Role: domain.UserRoleAdmin}
 	var prices map[uuid.UUID]domain.BranchPrice
 	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
 		var err error
-		prices, err = repo.GetCurrentByProductIDs(ctx, q, accountID, branchID,
-			[]uuid.UUID{current, expired, future, floored, unpriced})
+		prices, err = repo.GetCurrentByProductIDs(ctx, q, accountID, branchID, every)
 		return err
 	}); err != nil {
 		t.Fatalf("GetCurrentByProductIDs() = %v, want no error", err)
@@ -149,7 +171,8 @@ func TestProductPriceRepository_GetCurrentByProductIDs_ReadsOnlyThePeriodInForce
 	}
 	for name, id := range map[string]uuid.UUID{
 		"a period that ended": expired, "a period that has not started": future,
-		"a product never priced": unpriced,
+		"a product never priced": unpriced, "a deactivated product": withdrawn,
+		"a product the branch stopped carrying": unstocked,
 	} {
 		if _, ok := prices[id]; ok {
 			t.Errorf("%s is in force, want absent from the map", name)
@@ -280,8 +303,8 @@ func TestQuoteRepository_UpdateStatus_OnlyMovesFromTheStatusRead(t *testing.T) {
 	var quote *domain.Quote
 	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
 		var err error
-		quote, err = repo.UpdateStatus(ctx, q, accountID, quoteID, domain.QuoteStatusDraft,
-			domain.QuoteStatusQuoted)
+		quote, err = repo.UpdateStatus(ctx, q, accountID, branchID, quoteID,
+			domain.QuoteStatusDraft, domain.QuoteStatusQuoted)
 		return err
 	}); err != nil {
 		t.Fatalf("first UpdateStatus() = %v, want no error", err)
@@ -292,8 +315,8 @@ func TestQuoteRepository_UpdateStatus_OnlyMovesFromTheStatusRead(t *testing.T) {
 
 	// The second caller still believes it read DRAFT. The row says otherwise.
 	err := db.InTenantTx(ctx, tenant, func(q Querier) error {
-		_, updateErr := repo.UpdateStatus(ctx, q, accountID, quoteID, domain.QuoteStatusDraft,
-			domain.QuoteStatusQuoted)
+		_, updateErr := repo.UpdateStatus(ctx, q, accountID, branchID, quoteID,
+			domain.QuoteStatusDraft, domain.QuoteStatusQuoted)
 		return updateErr
 	})
 	if !errors.Is(err, domain.ErrConflict) {
@@ -304,7 +327,7 @@ func TestQuoteRepository_UpdateStatus_OnlyMovesFromTheStatusRead(t *testing.T) {
 	intruderAccount := seedAccount(t, db, "Status guard intruder")
 	err = db.InTenantTx(ctx, domain.Tenant{AccountID: intruderAccount, Role: domain.UserRoleAdmin},
 		func(q Querier) error {
-			_, updateErr := repo.UpdateStatus(ctx, q, intruderAccount, quoteID,
+			_, updateErr := repo.UpdateStatus(ctx, q, intruderAccount, branchID, quoteID,
 				domain.QuoteStatusQuoted, domain.QuoteStatusSent)
 			return updateErr
 		})
@@ -356,6 +379,60 @@ func TestQuoteRepository_GetByID_NarrowsToTheQuotesOwnBranch(t *testing.T) {
 	// Same account, wrong branch. Nothing in the database refuses this on its own.
 	if _, err := read(otherBranchID); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("GetByID() from another branch = %v, want ErrNotFound", err)
+	}
+}
+
+// Every method taking the quote id a request supplied carries the branch, not just the first read:
+// a caller that skipped the read would otherwise reach another branch's quote through the version
+// or the status write.
+func TestQuoteRepository_BranchScopesTheVersionReadAndTheStatusWrite(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Quote branch scope writes")
+	branchID := branchOf(t, db, accountID)
+	otherBranchID := seedExtraBranch(t, db, accountID, "Sucursal Sur")
+	productID := seedProduct(t, db, accountID, "Cemento Portland 50kg")
+	priceCleanup(t, db, productID)
+	quoteID, versionID, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+
+	repo := NewQuoteRepository()
+	tenant := domain.Tenant{AccountID: accountID, Role: domain.UserRoleAdmin}
+
+	var version *domain.QuoteVersion
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		var err error
+		version, err = repo.GetCurrentVersion(ctx, q, accountID, branchID, quoteID)
+		return err
+	}); err != nil {
+		t.Fatalf("GetCurrentVersion() in its own branch = %v, want no error", err)
+	}
+	if version.ID != versionID {
+		t.Errorf("read version %v, want %v", version.ID, versionID)
+	}
+
+	err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		_, readErr := repo.GetCurrentVersion(ctx, q, accountID, otherBranchID, quoteID)
+		return readErr
+	})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("GetCurrentVersion() from another branch = %v, want ErrNotFound", err)
+	}
+
+	err = db.InTenantTx(ctx, tenant, func(q Querier) error {
+		_, updateErr := repo.UpdateStatus(ctx, q, accountID, otherBranchID, quoteID,
+			domain.QuoteStatusDraft, domain.QuoteStatusQuoted)
+		return updateErr
+	})
+	if !errors.Is(err, domain.ErrConflict) {
+		t.Errorf("UpdateStatus() from another branch = %v, want ErrConflict", err)
+	}
+	var status string
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT current_status FROM quote WHERE id = $1`, quoteID).Scan(&status); err != nil {
+		t.Fatalf("read the quote back: %v", err)
+	}
+	if status != string(domain.QuoteStatusDraft) {
+		t.Errorf("status = %q, want DRAFT: the wrong branch moved the quote", status)
 	}
 }
 
