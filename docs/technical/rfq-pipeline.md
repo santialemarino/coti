@@ -174,15 +174,24 @@ deletes `product_price` when a product is withdrawn.
 - **No model is involved, not even to suggest an amount.** The arithmetic is deterministic and it
   is the backend's.
 
-The status write carries the status the caller read (`current_status = $3` in its predicate), which
-is what makes the transition atomic: two callers who both read `DRAFT` cannot both write `QUOTED`
-and append a history row each, the second recording a previous status the quote had already left.
+The status write carries the status the caller read in its own predicate, which is what makes the
+transition atomic: two callers who both read `DRAFT` cannot both write `QUOTED` and append a history
+row each, the second recording a previous status the quote had already left. The branch is in that
+predicate too, and in the version read — a quote id arrives from the request, and row level security
+guards only the account boundary.
 
 ## Line order is the client's order
 
 `quote_item` has no ordinal column, so the order rows come back in is the order they were inserted.
 `CreateItems` carries a `position` in its JSON payload and orders by it: `jsonb_to_recordset`
 promises no order of its own, and `WITH ORDINALITY` is rejected alongside a column definition list.
+
+Reading them back leans on the same thing. `ListItems` orders by `created_at`, and one batch shares
+a single value of it, so that clause separates lines added later from the original ones and leaves
+the batch itself to the order it was written in. Valorization updates every line, which rewrites
+those rows — measured at 200 lines, the order survives it, but nothing in Postgres promises that.
+An ordinal column is the fix if the order ever has to be guaranteed rather than observed, and
+editing lines will want one anyway.
 The alignment that matters for correctness — which decision belongs to which line — is done in
 memory before the insert, so this is about what the seller reads, not about matching.
 
