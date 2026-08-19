@@ -7,7 +7,7 @@ import (
 )
 
 // PricedQuoteResponse is returned by POST /v1/quotes/{quoteId}/accept-materials. Money and
-// quantities are decimal strings, and a line the branch has no price for keeps them null.
+// quantities are decimal strings; a line with nothing to price keeps all three of them null.
 type PricedQuoteResponse struct {
 	Quote   QuoteResponse        `json:"quote"`
 	Version QuoteVersionResponse `json:"version"`

@@ -120,20 +120,30 @@ func (r *ProductPriceRepository) GetByCodes(
 	return products, rows.Err()
 }
 
-// GetCurrentByProductIDs loads the price in force at one branch for each product asked for,
-// keyed by product id. A product the branch has never priced, or whose only period has ended, is
-// absent from the map rather than present at zero.
+// GetCurrentByProductIDs loads the price in force at one branch for each product asked for, keyed
+// by product id. A product is absent from the map rather than present at zero when the branch has
+// never priced it, when its only period has ended, and when it is no longer active or no longer
+// carried by the branch — a withdrawn product has no price at that branch either.
 func (r *ProductPriceRepository) GetCurrentByProductIDs(
 	ctx context.Context, q Querier, accountID, branchID uuid.UUID, productIDs []uuid.UUID,
 ) (map[uuid.UUID]domain.BranchPrice, error) {
 	rows, err := q.Query(ctx,
-		`SELECT DISTINCT ON (product_id) product_id, price, min_price
-		 FROM product_price
-		 WHERE account_id = $1
-		   AND branch_id = $2
-		   AND product_id = ANY($3)
-		   AND `+priceInForce+`
-		 ORDER BY product_id, valid_from DESC`,
+		`SELECT DISTINCT ON (p.id) p.id, pp.price, pp.min_price
+		 FROM product p
+		 JOIN branch_product bp
+		   ON bp.account_id = $1
+		  AND bp.branch_id = $2
+		  AND bp.product_id = p.id
+		  AND bp.is_active = TRUE
+		 JOIN product_price pp
+		   ON pp.account_id = $1
+		  AND pp.branch_id = $2
+		  AND pp.product_id = p.id
+		  AND `+priceInForce+`
+		 WHERE p.account_id = $1
+		   AND p.id = ANY($3)
+		   AND p.is_active = TRUE
+		 ORDER BY p.id, pp.valid_from DESC`,
 		accountID, branchID, productIDs)
 	if err != nil {
 		return nil, err

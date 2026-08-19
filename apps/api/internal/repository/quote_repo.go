@@ -85,14 +85,15 @@ func (r *QuoteRepository) UpdateCurrentVersion(
 // had already left. A statement that matches no row is that conflict — inside a transaction that
 // has already read the quote, it cannot be an absent one.
 func (r *QuoteRepository) UpdateStatus(
-	ctx context.Context, q Querier, accountID, quoteID uuid.UUID, from, to domain.QuoteStatus,
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID,
+	from, to domain.QuoteStatus,
 ) (*domain.Quote, error) {
 	quote, err := scanQuote(q.QueryRow(ctx,
 		`UPDATE quote
-		 SET current_status = $4
-		 WHERE account_id = $1 AND id = $2 AND current_status = $3
+		 SET current_status = $5
+		 WHERE account_id = $1 AND branch_id = $2 AND id = $3 AND current_status = $4
 		 RETURNING `+quoteColumns,
-		accountID, quoteID, from, to))
+		accountID, branchID, quoteID, from, to))
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil, domain.ErrConflict
 	}
@@ -100,16 +101,18 @@ func (r *QuoteRepository) UpdateStatus(
 }
 
 // GetCurrentVersion loads the version the quote points at. Returns domain.ErrNotFound when the
-// quote is absent or points at nothing.
+// quote is absent, sits in another branch, or points at nothing. The branch is in the predicate
+// because quoteID reaches this from a request, and row level security guards only the account.
 func (r *QuoteRepository) GetCurrentVersion(
-	ctx context.Context, q Querier, accountID, quoteID uuid.UUID,
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID,
 ) (*domain.QuoteVersion, error) {
 	return scanQuoteVersion(q.QueryRow(ctx,
 		`SELECT `+quoteVersionColumns+`
 		 FROM quote_version
 		 WHERE account_id = $1
-		   AND id = (SELECT current_version_id FROM quote WHERE account_id = $1 AND id = $2)`,
-		accountID, quoteID))
+		   AND id = (SELECT current_version_id FROM quote
+		             WHERE account_id = $1 AND branch_id = $2 AND id = $3)`,
+		accountID, branchID, quoteID))
 }
 
 // CreateVersion inserts a quote version.
@@ -236,8 +239,9 @@ func (r *QuoteRepository) CreateItems(
 }
 
 // ApplyPricing freezes every line's valuation in one statement, keyed by line id. It writes the
-// empty ones too, so the count check covers the whole version: the join on quote_version is what
-// refuses another account's version, and only the row count proves the join matched.
+// empty ones too, so the count check covers the whole version: the account predicate on the join
+// and the one on the line each refuse another tenant's version on their own, and the row count is
+// what turns either refusal into an error rather than a statement that quietly matched nothing.
 func (r *QuoteRepository) ApplyPricing(
 	ctx context.Context, q Querier, accountID, versionID uuid.UUID,
 	pricings []domain.QuoteItemPricing,

@@ -30,7 +30,7 @@ func NewQuoteHandler(quotes QuoteService) *QuoteHandler {
 // AcceptMaterials prices a draft quote's materials and moves it to QUOTED.
 //
 //	@Summary		Accept a quote's materials
-//	@Description	Freezes each line's unit price and discount floor from the prices in force at the quote's branch, sums the version total, and moves the quote to QUOTED for review. A line with no matched product, or one the branch has no price in force for, stays in the quote with an empty valuation and adds nothing to the total. The version is not frozen: the seller still edits it.
+//	@Description	Freezes each line's unit price and discount floor from the prices in force at the quote's branch, sums the version total, and moves the quote to QUOTED for review. A line with no matched product, or one whose product the branch cannot price, stays in the quote with an empty valuation and adds nothing to the total. The version is not frozen: the seller still edits it.
 //	@Tags			quotes
 //	@Produce		json
 //	@Security		BearerAuth

@@ -15,16 +15,16 @@ type quoteValuation struct {
 	pricings []domain.QuoteItemPricing
 	items    []domain.QuoteItem
 	total    decimal.Decimal
-	// unpricedProducts carries one product per line that matched a product the branch has no
-	// price in force for. Those lines stay empty, so the gap has to be reported rather than
-	// left for the seller to notice.
+	// unpricedProducts carries one product per line whose product the branch cannot price — never
+	// priced, the period ended, deactivated, or no longer carried there. Those lines stay empty,
+	// so the gap has to be reported rather than left for the seller to notice.
 	unpricedProducts []uuid.UUID
 }
 
 // valueQuoteItems freezes each line's unit price and floor from the branch's prices in force and
-// sums the version total. A line with no product, or whose product the branch has not priced,
-// keeps all three values empty: it stays in the quote and contributes nothing, because dropping
-// it and valuing it at zero are both ways of misreporting what the client asked for.
+// sums the version total. A line with no product, or whose product the branch cannot price, keeps
+// all three values empty: it stays in the quote and contributes nothing, because dropping it and
+// valuing it at zero are both ways of misreporting what the client asked for.
 func valueQuoteItems(
 	items []domain.QuoteItem, prices map[uuid.UUID]domain.BranchPrice,
 ) (quoteValuation, error) {
@@ -70,7 +70,7 @@ func valueQuoteItems(
 }
 
 // priceFor returns the price in force for a line's product. The second result is false for a line
-// with no product and for one whose product the branch has no open price period for.
+// with no product, and for one whose product the branch cannot price.
 func priceFor(
 	item domain.QuoteItem, prices map[uuid.UUID]domain.BranchPrice,
 ) (domain.BranchPrice, bool) {

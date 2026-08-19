@@ -15,8 +15,8 @@ import (
 // quoteRepository is the quote persistence surface the lifecycle needs.
 type quoteRepository interface {
 	GetByID(ctx context.Context, q repository.Querier, accountID, branchID, id uuid.UUID) (*domain.Quote, error)
-	UpdateStatus(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID, from, to domain.QuoteStatus) (*domain.Quote, error)
-	GetCurrentVersion(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID) (*domain.QuoteVersion, error)
+	UpdateStatus(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID, from, to domain.QuoteStatus) (*domain.Quote, error)
+	GetCurrentVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.QuoteVersion, error)
 	UpdateVersionTotal(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, total decimal.Decimal) (*domain.QuoteVersion, error)
 	ListItems(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID) ([]domain.QuoteItem, error)
 	ApplyPricing(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, pricings []domain.QuoteItemPricing) error
@@ -62,6 +62,7 @@ func (s *QuoteService) AcceptMaterials(
 	}
 
 	var priced domain.PricedQuote
+	var unpricedProducts []uuid.UUID
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		quote, err := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
 		if err != nil {
@@ -71,7 +72,8 @@ func (s *QuoteService) AcceptMaterials(
 			return err
 		}
 
-		version, err := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, quote.ID)
+		version, err := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, quote.BranchID,
+			quote.ID)
 		if err != nil {
 			return err
 		}
@@ -91,14 +93,7 @@ func (s *QuoteService) AcceptMaterials(
 		if err != nil {
 			return err
 		}
-		if len(valuation.unpricedProducts) > 0 {
-			s.log.WarnContext(ctx, "quote priced with lines the branch has no price in force for",
-				slog.String("quote_id", quote.ID.String()),
-				slog.String("branch_id", quote.BranchID.String()),
-				slog.Int("lines", len(valuation.unpricedProducts)),
-				slog.Any("product_ids", valuation.unpricedProducts))
-		}
-
+		unpricedProducts = valuation.unpricedProducts
 		if err := s.quotes.ApplyPricing(ctx, q, tenant.AccountID, version.ID,
 			valuation.pricings); err != nil {
 			return err
@@ -112,8 +107,8 @@ func (s *QuoteService) AcceptMaterials(
 		// The version stays unfrozen. QUOTED and a frozen version are correlated but different
 		// things: the seller still edits the draft, and freezing belongs to sending it.
 		previousStatus := quote.CurrentStatus
-		quote, err = s.quotes.UpdateStatus(ctx, q, tenant.AccountID, quote.ID, previousStatus,
-			domain.QuoteStatusQuoted)
+		quote, err = s.quotes.UpdateStatus(ctx, q, tenant.AccountID, quote.BranchID, quote.ID,
+			previousStatus, domain.QuoteStatusQuoted)
 		if err != nil {
 			// The status moved between the read and the write. Same refusal as the check above,
 			// caught one statement later, so it reads the same to whoever clicked.
@@ -132,6 +127,15 @@ func (s *QuoteService) AcceptMaterials(
 	})
 	if err != nil {
 		return nil, err
+	}
+	// Reported after the commit, not inside it: a warning about a quote whose transaction rolled
+	// back would describe a valuation that never happened.
+	if len(unpricedProducts) > 0 {
+		s.log.WarnContext(ctx, "quote priced with lines the branch cannot price",
+			slog.String("quote_id", priced.Quote.ID.String()),
+			slog.String("branch_id", priced.Quote.BranchID.String()),
+			slog.Int("lines", len(unpricedProducts)),
+			slog.Any("product_ids", unpricedProducts))
 	}
 	return &priced, nil
 }
