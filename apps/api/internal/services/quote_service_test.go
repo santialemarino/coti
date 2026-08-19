@@ -321,6 +321,9 @@ func TestQuoteService_AcceptMaterials_PricesEveryLineInOneQuery(t *testing.T) {
 	if got := len(f.quotes.appliedPricings[0]); got != len(items) {
 		t.Errorf("wrote %d pricings, want %d — one per line", got, len(items))
 	}
+	if len(f.quotes.writtenTotals) != 1 {
+		t.Fatalf("total writes = %d, want 1", len(f.quotes.writtenTotals))
+	}
 	// 1×10 + 2×20 + 4×10, by hand; the flagged line contributes nothing.
 	if got := f.quotes.writtenTotals[0]; !got.Equal(decimal.RequireFromString("90.00")) {
 		t.Errorf("total = %s, want 90.00", got)
@@ -470,7 +473,10 @@ func TestQuoteService_AcceptMaterials_ScopesTheReadToTheCallersAccountAndBranch(
 		t.Errorf("version read scoped to branches %v, want [%v]", f.quotes.versionBranches,
 			f.branchID)
 	}
-	if len(f.quotes.statusUpdates) != 1 || f.quotes.statusUpdates[0].branchID != f.branchID {
+	if len(f.quotes.statusUpdates) != 1 {
+		t.Fatalf("status writes = %d, want 1", len(f.quotes.statusUpdates))
+	}
+	if f.quotes.statusUpdates[0].branchID != f.branchID {
 		t.Errorf("status write scoped to branch %v, want %v",
 			f.quotes.statusUpdates[0].branchID, f.branchID)
 	}
