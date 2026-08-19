@@ -150,13 +150,16 @@ Both keep all three values null, stay in the quote, and add nothing to the total
 
 - **A line with no product** (`match_status = NO_MATCH`) has nothing to price. Dropping it and
   pricing it at zero are both ways of misreporting what the client asked for.
-- **A line whose product the branch has no price in force for** — never priced, or the last period
-  ended. One product nobody has priced does not block the seller from quoting the other nineteen
-  lines, so the transition goes through and the service logs a warning naming the products. The
-  cost is that a quote can reach `QUOTED` with a gap in it, which the seller has to see on screen.
+- **A line whose product the branch cannot price** — never priced there, the last period ended, the
+  product was deactivated, or the branch no longer carries it. One such product does not block the
+  seller from quoting the other nineteen lines, so the transition goes through and the service logs
+  a warning naming the products. The cost is that a quote can reach `QUOTED` with a gap in it, which
+  the seller has to see on screen.
 
-"In force" is one definition, shared by every query that needs it: the newest period that has
-started and has not ended.
+"In force" is one definition, shared by every query that reads a current price: the newest period
+that has started and has not ended, on a product that is active and that the branch still carries.
+A price row outliving the product it belongs to is why the last two conditions are there — nothing
+deletes `product_price` when a product is withdrawn.
 
 ### What this transition does not do
 
