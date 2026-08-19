@@ -15,8 +15,8 @@ import (
 )
 
 // These tests exercise the SQL the valorization runs: what "the price in force" selects, and the
-// two guards a fake cannot stand in for — the account-scoped join on the pricing write, and the
-// conditional status update that makes the transition atomic.
+// guards a fake cannot stand in for — the account and branch predicates on the pricing write and
+// the status update, and the conditional update that makes the transition atomic.
 
 // seedQuoteChain writes an order and a DRAFT quote with one unpriced line, and takes the whole
 // chain away afterwards, children before parents.
@@ -180,8 +180,9 @@ func TestProductPriceRepository_GetCurrentByProductIDs_ReadsOnlyThePeriodInForce
 	}
 }
 
-// The guard PR #82 found the absence of twice: a foreign key resolves across accounts, so only a
-// join filtered by the account and a count of what it matched refuses another tenant's version.
+// The guard PR #82 found the absence of twice: a foreign key resolves across accounts, so a
+// statement has to filter by the account itself and count what it matched, or it writes into
+// another tenant's version or reports success having written nothing.
 func TestQuoteRepository_ApplyPricing_RefusesAnotherAccountsVersion(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()
@@ -221,10 +222,13 @@ func TestQuoteRepository_ApplyPricing_RefusesAnotherAccountsVersion(t *testing.T
 	}
 }
 
-// Row level security refuses another account's version before the join is reached, so inside a
-// tenant transaction the explicit predicate cannot be told apart from the policy. Running the same
-// statement on the owner pool, which is RLS-exempt, leaves the predicate as the only guard.
-func TestQuoteRepository_ApplyPricing_JoinRefusesWithoutRowLevelSecurity(t *testing.T) {
+// Row level security refuses another account's version before either application predicate is
+// reached, so inside a tenant transaction the two cannot be told apart. Running the same statement
+// on the owner pool, which is RLS-exempt, leaves the application predicates as the only guard.
+// Which of the two refuses is deliberately not pinned: the join and the line predicate each do it
+// alone, so removing either one keeps this green. What is pinned is that the statement refuses
+// without the database's help.
+func TestQuoteRepository_ApplyPricing_RefusesWithoutRowLevelSecurity(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()
 	victimAccount := seedAccount(t, db, "Pricing victim no RLS")

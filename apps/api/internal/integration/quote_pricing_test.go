@@ -503,3 +503,86 @@ func TestQuotePricing_TotalsTheRoundedSubtotalsNotTheRoundedSum(t *testing.T) {
 		t.Errorf("stored total = %s, want 11.26", stored)
 	}
 }
+
+// The two stages composed, which every test above stubs past by seeding the draft in SQL: the real
+// pipeline writes the quote through CreateItems, and the route prices what it actually wrote. A
+// fixture that matched the pipeline's output only by hand would go stale the moment either moved.
+func TestQuotePricing_PricesTheDraftThePipelineWrote(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "Quote pricing composed")
+	channelID := e.seedIntakeChannel(t, accountID, branchID)
+	seller := e.seedUser(t, accountID, domain.UserRoleSeller)
+	e.assignBranch(t, accountID, seller, branchID)
+
+	// One material the catalog carries and prices, one it does not.
+	cement := e.seedProduct(t, accountID, "Cemento Portland 50kg", "bolsa de cemento")
+	e.stock(t, accountID, branchID, cement)
+	e.embedOn(t, cement, 0, 0.95)
+	floor := "1000.00"
+	e.openPricePeriod(t, accountID, branchID, cement, "1200.50", &floor)
+	axes := map[string]int{"10 bolsas de cemento": 0, "membrana liquida": 2}
+
+	unit := "bolsa"
+	draft, err := e.pipeline(t, stagedExtractor{lines: []domain.ExtractedRFQLine{
+		{
+			RequestedDescription: "10 bolsas de cemento",
+			Quantity:             decimal.RequireFromString("10"),
+			Unit:                 &unit,
+			Source:               domain.QuantitySourceExplicit,
+			QuantityRationale:    "el cliente pidió 10 bolsas",
+		},
+		{
+			RequestedDescription: "membrana liquida",
+			Quantity:             decimal.Zero,
+			Source:               domain.QuantitySourceUnresolved,
+			QuantityRationale:    "no indicó cuánta membrana",
+		},
+	}}, axes).CreateTextDraft(context.Background(),
+		domain.Tenant{AccountID: accountID, BranchID: branchID, UserID: seller.ID,
+			Role: domain.UserRoleSeller},
+		domain.TextRFQDraftInput{
+			ChannelID: channelID, RawText: "10 bolsas de cemento y membrana liquida",
+		})
+	if err != nil {
+		t.Fatalf("CreateTextDraft() = %v, want no error", err)
+	}
+	e.dropDraft(t, draft.RFQ.ID)
+	if draft.Quote == nil || draft.Version == nil {
+		t.Fatalf("draft = %+v, want a quote and its version", draft)
+	}
+	// The stage before this one leaves the version at zero, which is what makes the assertion
+	// below a change rather than a coincidence.
+	if !draft.Version.Total.IsZero() {
+		t.Fatalf("draft total = %s, want 0 before the materials are accepted", draft.Version.Total)
+	}
+
+	body := e.acceptMaterials(t, draft.Quote.ID, e.tokenFor(t, seller), branchID.String())
+
+	// 10 × 1200.50, by hand. The unresolved line matched nothing and adds nothing.
+	if body.Version.Total != "12005.00" {
+		t.Fatalf("total = %q, want 12005.00", body.Version.Total)
+	}
+	if body.Quote.CurrentStatus != string(domain.QuoteStatusQuoted) {
+		t.Errorf("status = %q, want QUOTED", body.Quote.CurrentStatus)
+	}
+	if len(body.Items) != 2 {
+		t.Fatalf("returned %d lines, want the 2 the pipeline wrote", len(body.Items))
+	}
+
+	lines := e.storedLines(t, draft.Version.ID)
+	if len(lines) != 2 {
+		t.Fatalf("stored %d lines, want 2", len(lines))
+	}
+	// storedLines orders by description, so the cement line is the second of the two here.
+	priced, flagged := lines[1], lines[0]
+	if priced.description != "10 bolsas de cemento" {
+		priced, flagged = flagged, priced
+	}
+	assertStored(t, "cement unit price", priced.unitPrice, "1200.50")
+	assertStored(t, "cement floor", priced.minPrice, "1000.00")
+	assertStored(t, "cement subtotal", priced.subtotal, "12005.00")
+	if flagged.unitPrice.Valid || flagged.minPrice.Valid || flagged.subtotal.Valid {
+		t.Errorf("the unmatched line = (%v, %v, %v), want all three null", flagged.unitPrice,
+			flagged.minPrice, flagged.subtotal)
+	}
+}
