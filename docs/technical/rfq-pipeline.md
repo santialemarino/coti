@@ -5,20 +5,24 @@ one `quote` in `DRAFT`, its first unfrozen `quote_version`, and one `quote_item`
 out, each line carrying the product it matched, how confident that is, and why its quantity is what
 it is.
 
+That draft carries no prices. The seller accepting its materials is a second transition, and it is
+what freezes them — the last section here.
+
 The AI provider layer is in [ai-providers.md](ai-providers.md), the search and matching behind the
 product decision in [catalog.md](catalog.md). This document is the flow that consumes both.
 
 ## Endpoints
 
-| Method | Path                        | What it does                                                         |
-| ------ | --------------------------- | -------------------------------------------------------------------- |
-| `POST` | `/v1/rfqs/text-drafts`      | Runs an order the seller pasted or typed through the pipeline        |
-| `GET`  | `/v1/channels`              | The active intake channels of the selected branch                    |
-| `POST` | `/v1/dev/whatsapp/messages` | Simulates one inbound WhatsApp message. Not registered in production |
+| Method | Path                               | What it does                                                         |
+| ------ | ---------------------------------- | -------------------------------------------------------------------- |
+| `POST` | `/v1/rfqs/text-drafts`             | Runs an order the seller pasted or typed through the pipeline        |
+| `GET`  | `/v1/channels`                     | The active intake channels of the selected branch                    |
+| `POST` | `/v1/dev/whatsapp/messages`        | Simulates one inbound WhatsApp message. Not registered in production |
+| `POST` | `/v1/quotes/{id}/accept-materials` | Prices the draft's lines and moves the quote to `QUOTED`             |
 
-The two that reach a model share **their own rate-limit allowance**, `RATE_LIMIT_AI_MAX` — the global one would let a single seller spend 300 generations a minute, and this is the first surface in the product billed per call.
+The two that reach a model share **their own rate-limit allowance**, `RATE_LIMIT_AI_MAX` — the global one would let a single seller spend 300 generations a minute, and this is the first surface in the product billed per call. Valorization reaches no provider and spends nothing, so it stays on the global allowance.
 
-All three are branch-scoped and read the branch from `X-Branch-Id`. `channel_id` is required on a
+All four are branch-scoped and read the branch from `X-Branch-Id`. `channel_id` is required on a
 text draft, which is why the channel listing exists: `rfq.channel_id` is `NOT NULL`, and a caller
 has to name the route the order arrived through rather than have one guessed for it.
 
@@ -113,6 +117,64 @@ The same holds for a set of decisions whose length does not match the lines: pai
 another line's product is a wrong match nothing downstream could notice, so the whole set is
 discarded rather than indexed into.
 
+## Accepting the materials is what prices the quote
+
+The draft the pipeline above produces carries no prices, and that is deliberate. Two transitions,
+not one:
+
+| Transition               | What happens                                                                                    |
+| ------------------------ | ----------------------------------------------------------------------------------------------- |
+| `RECEIVED` → `GENERATED` | The quote is born at `DRAFT` with version 1 and one line per material. No prices                |
+| `DRAFT` → `QUOTED`       | The seller accepts the materials; each line freezes its price and floor and the total is summed |
+
+The route is named for the seller's action rather than the calculation behind it, because the state
+machine's trigger for this transition is "Aceptar materiales" — the pricing is what that causes,
+not what the seller asks for.
+
+**Each line freezes two values, and freezes them together.** `quote_item.unit_price_snapshot` is
+the price in force at the quote's branch; `quote_item.min_price_snapshot` is the floor a discount
+may not cross. They are captured as a pair because the discount evaluator reads only frozen values:
+re-evaluating one version with the same lines always gives the same total, whatever the account has
+done to its price list since. `quote_item.subtotal` is quantity × the frozen unit price, rounded to
+two decimals.
+
+**A null floor means no floor, never a floor of zero.** `product_price.min_price` is nullable and
+most accounts never set one. Read as zero, a later discount could take the line to nothing.
+
+**`quote_version.total` is Σ subtotals − Σ discounts.** The promotion sweep that produces the
+second term is US-38, so today it is zero — part of the formula rather than missing from it.
+
+### The two lines that stay unvalued
+
+Both keep all three values null, stay in the quote, and add nothing to the total:
+
+- **A line with no product** (`match_status = NO_MATCH`) has nothing to price. Dropping it and
+  pricing it at zero are both ways of misreporting what the client asked for.
+- **A line whose product the branch has no price in force for** — never priced, or the last period
+  ended. One product nobody has priced does not block the seller from quoting the other nineteen
+  lines, so the transition goes through and the service logs a warning naming the products. The
+  cost is that a quote can reach `QUOTED` with a gap in it, which the seller has to see on screen.
+
+"In force" is one definition, shared by every query that needs it: the newest period that has
+started and has not ended.
+
+### What this transition does not do
+
+- **It does not freeze the version.** `is_immutable` stays `false`. `QUOTED` and a frozen version
+  are correlated but different things — the seller still edits the draft, and freezing belongs to
+  sending it.
+- **It does not touch `rfq.status`,** which only has `RECEIVED` and `GENERATED`.
+- **It does not price a second time.** Only an unarchived quote at `DRAFT` may be valued; anything
+  else answers `409` with `QUOTE_NOT_DRAFT`, or `QUOTE_ARCHIVED` on an archived one. Re-pricing an
+  already-valued version is an explicit act of the seller's, not the side effect of a repeated
+  request — a double-clicked button must not quietly re-value a quote at today's prices.
+- **No model is involved, not even to suggest an amount.** The arithmetic is deterministic and it
+  is the backend's.
+
+The status write carries the status the caller read (`current_status = $3` in its predicate), which
+is what makes the transition atomic: two callers who both read `DRAFT` cannot both write `QUOTED`
+and append a history row each, the second recording a previous status the quote had already left.
+
 ## Line order is the client's order
 
 `quote_item` has no ordinal column, so the order rows come back in is the order they were inserted.
@@ -150,14 +212,15 @@ platform's cron rather than on demand.
 
 ## Where the code lives
 
-| Piece                       | File                                              |
-| --------------------------- | ------------------------------------------------- |
-| Ports and types             | `internal/domain/rfq.go`                          |
-| Prompt and forced schema    | `internal/ai/rfq_extractor.go`                    |
-| The flow and its invariants | `internal/services/rfq_service.go`                |
-| Channel discovery           | `internal/services/channel_service.go`            |
-| SQL                         | `internal/repository/{rfq,quote,channel}_repo.go` |
-| Routes and DTOs             | `internal/delivery/http/{handler,dto}/rfq_*.go`   |
+| Piece                       | File                                                    |
+| --------------------------- | ------------------------------------------------------- |
+| Ports and types             | `internal/domain/rfq.go`                                |
+| Prompt and forced schema    | `internal/ai/rfq_extractor.go`                          |
+| The flow and its invariants | `internal/services/rfq_service.go`                      |
+| Valorization                | `internal/services/quote_{service,helpers}.go`          |
+| Channel discovery           | `internal/services/channel_service.go`                  |
+| SQL                         | `internal/repository/{rfq,quote,channel}_repo.go`       |
+| Routes and DTOs             | `internal/delivery/http/{handler,dto}/{rfq,quote}_*.go` |
 
 `RFQExtractor` is a **feature port**: its adapter owns the prompt and the schema and reaches the
 model through `StructuredGenerator`, so it names no provider and works behind whichever one is
