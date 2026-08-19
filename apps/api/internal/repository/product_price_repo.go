@@ -121,9 +121,7 @@ func (r *ProductPriceRepository) GetByCodes(
 }
 
 // GetCurrentByProductIDs loads the price in force at one branch for each product asked for, keyed
-// by product id. A product is absent from the map rather than present at zero when the branch has
-// never priced it, when its only period has ended, and when it is no longer active or no longer
-// carried by the branch — a withdrawn product has no price at that branch either.
+// by product id. A product the branch cannot sell is absent from the map rather than priced at zero.
 func (r *ProductPriceRepository) GetCurrentByProductIDs(
 	ctx context.Context, q Querier, accountID, branchID uuid.UUID, productIDs []uuid.UUID,
 ) (map[uuid.UUID]domain.BranchPrice, error) {

@@ -79,11 +79,8 @@ func (r *QuoteRepository) UpdateCurrentVersion(
 		accountID, quoteID, versionID))
 }
 
-// UpdateStatus moves the quote's derived status, and only from the status the caller read. The
-// guard is what makes a transition atomic: two callers who both read DRAFT would otherwise both
-// write QUOTED and append a status change each, the second recording a previous status the quote
-// had already left. A statement that matches no row is that conflict — inside a transaction that
-// has already read the quote, it cannot be an absent one.
+// UpdateStatus moves the quote's derived status, and only from the status the caller read. Matching
+// no row is a conflict rather than an absence: the transition is atomic because of that predicate.
 func (r *QuoteRepository) UpdateStatus(
 	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID,
 	from, to domain.QuoteStatus,
@@ -144,10 +141,8 @@ func (r *QuoteRepository) UpdateVersionTotal(
 		accountID, versionID, total))
 }
 
-// ListItems loads a version's lines in the order they were inserted, which is the order the
-// client listed the materials in. quote_item carries no ordinal column, and one batch shares a
-// single created_at, so this orders lines added later after the original ones and leaves the
-// batch itself to the order it was written in.
+// ListItems loads a version's lines. quote_item carries no ordinal column and one batch shares a
+// single created_at, so this separates batches and leaves each one in the order it was written.
 func (r *QuoteRepository) ListItems(
 	ctx context.Context, q Querier, accountID, versionID uuid.UUID,
 ) ([]domain.QuoteItem, error) {
@@ -238,10 +233,8 @@ func (r *QuoteRepository) CreateItems(
 	return created, nil
 }
 
-// ApplyPricing freezes every line's valuation in one statement, keyed by line id. It writes the
-// empty ones too, so the count check covers the whole version: the account predicate on the join
-// and the one on the line each refuse another tenant's version on their own, and the row count is
-// what turns either refusal into an error rather than a statement that quietly matched nothing.
+// ApplyPricing freezes every line's valuation in one statement, keyed by line id, the empty ones
+// included. The row count is what turns a predicate that matched nothing into an error.
 func (r *QuoteRepository) ApplyPricing(
 	ctx context.Context, q Querier, accountID, versionID uuid.UUID,
 	pricings []domain.QuoteItemPricing,

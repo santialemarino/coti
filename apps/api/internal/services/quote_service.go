@@ -47,13 +47,8 @@ func NewQuoteService(
 	return &QuoteService{db: db, quotes: quotes, prices: prices, log: log}
 }
 
-// AcceptMaterials values a draft quote and moves it to QUOTED for human review: each line freezes
-// the price and floor in force at its branch, the version total is summed, and the transition is
-// recorded. Returns domain.ErrConflict unless the quote is an unarchived DRAFT.
-//
-// The valuation is frozen rather than derived on read, which is what makes re-evaluating one
-// version deterministic: the discount engine sees the prices as they were when the seller
-// accepted, whatever the branch has done to its price list since.
+// AcceptMaterials values a draft quote and moves it to QUOTED for human review. Returns
+// domain.ErrConflict unless the quote is an unarchived DRAFT. See docs/technical/rfq-pipeline.md.
 func (s *QuoteService) AcceptMaterials(
 	ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID,
 ) (*domain.PricedQuote, error) {
@@ -140,11 +135,8 @@ func (s *QuoteService) AcceptMaterials(
 	return &priced, nil
 }
 
-// requireMaterialsPendingAcceptance is the state×intention check this transition is validated
-// against before anything is written. Only an unarchived DRAFT may be valued: archiving blocks
-// every action at any point in the lifecycle, and a quote already valued is not re-valued as a
-// side effect of a repeated request — re-pricing one is an explicit act of the seller's. Both
-// refusals share a status, so each carries the code that tells them apart.
+// requireMaterialsPendingAcceptance is the state×intention check, run before anything is written.
+// The two refusals share a status, so each carries the code that tells a screen them apart.
 func requireMaterialsPendingAcceptance(quote domain.Quote) error {
 	if quote.ArchivedAt != nil {
 		return domain.WithCode(domain.CodeQuoteArchived, domain.ErrConflict)

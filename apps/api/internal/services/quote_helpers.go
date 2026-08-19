@@ -21,10 +21,8 @@ type quoteValuation struct {
 	unpricedProducts []uuid.UUID
 }
 
-// valueQuoteItems freezes each line's unit price and floor from the branch's prices in force and
-// sums the version total. A line with no product, or whose product the branch cannot price, keeps
-// all three values empty: it stays in the quote and contributes nothing, because dropping it and
-// valuing it at zero are both ways of misreporting what the client asked for.
+// valueQuoteItems freezes each line's unit price and floor and sums the version total. A line the
+// branch cannot price keeps all three empty: it stays in the quote and contributes nothing.
 func valueQuoteItems(
 	items []domain.QuoteItem, prices map[uuid.UUID]domain.BranchPrice,
 ) (quoteValuation, error) {
