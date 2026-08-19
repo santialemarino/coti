@@ -461,6 +461,17 @@ definitions:
       valid_to:
         type: string
     type: object
+  dto.PricedQuoteResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.QuoteItemResponse'
+        type: array
+      quote:
+        $ref: '#/definitions/dto.QuoteResponse'
+      version:
+        $ref: '#/definitions/dto.QuoteVersionResponse'
+    type: object
   dto.ProductListResponse:
     properties:
       items:
@@ -2486,6 +2497,57 @@ paths:
       summary: Confirm an email address
       tags:
       - auth
+  /v1/quotes/{quoteId}/accept-materials:
+    post:
+      description: 'Freezes each line''s unit price and discount floor from the prices
+        in force at the quote''s branch, sums the version total, and moves the quote
+        to QUOTED for review. A line with no matched product, or one the branch has
+        no price in force for, stays in the quote with an empty valuation and adds
+        nothing to the total. The version is not frozen: the seller still edits it.'
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.PricedQuoteResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_NOT_DRAFT once the materials were accepted, QUOTE_ARCHIVED
+            on an archived quote
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch, or a total NUMERIC(14,2) cannot hold
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Accept a quote's materials
+      tags:
+      - quotes
   /v1/rfqs/text-drafts:
     post:
       consumes:

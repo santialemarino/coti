@@ -1,0 +1,152 @@
+package services
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+
+	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
+
+	"github.com/santialemarino/coti/apps/api/internal/domain"
+	"github.com/santialemarino/coti/apps/api/internal/repository"
+)
+
+// quoteRepository is the quote persistence surface the lifecycle needs.
+type quoteRepository interface {
+	GetByID(ctx context.Context, q repository.Querier, accountID, branchID, id uuid.UUID) (*domain.Quote, error)
+	UpdateStatus(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID, from, to domain.QuoteStatus) (*domain.Quote, error)
+	GetCurrentVersion(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID) (*domain.QuoteVersion, error)
+	UpdateVersionTotal(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, total decimal.Decimal) (*domain.QuoteVersion, error)
+	ListItems(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID) ([]domain.QuoteItem, error)
+	ApplyPricing(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, pricings []domain.QuoteItemPricing) error
+	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID, previousStatus *domain.QuoteStatus, newStatus domain.QuoteStatus, userID *uuid.UUID) (*domain.QuoteStatusChange, error)
+}
+
+// branchPriceReader is the price-in-force surface valuation needs. One call carries every
+// product on the quote: a lookup per line is the query-in-a-loop this exists to avoid.
+type branchPriceReader interface {
+	GetCurrentByProductIDs(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, productIDs []uuid.UUID) (map[uuid.UUID]domain.BranchPrice, error)
+}
+
+// QuoteService owns the quote lifecycle from the seller's review of the generated materials on.
+type QuoteService struct {
+	db     tenantTxRunner
+	quotes quoteRepository
+	prices branchPriceReader
+	log    *slog.Logger
+}
+
+// NewQuoteService builds a QuoteService.
+func NewQuoteService(
+	db tenantTxRunner, quotes quoteRepository, prices branchPriceReader, log *slog.Logger,
+) *QuoteService {
+	if log == nil {
+		log = slog.Default()
+	}
+	return &QuoteService{db: db, quotes: quotes, prices: prices, log: log}
+}
+
+// AcceptMaterials values a draft quote and moves it to QUOTED for human review: each line freezes
+// the price and floor in force at its branch, the version total is summed, and the transition is
+// recorded. Returns domain.ErrConflict unless the quote is an unarchived DRAFT.
+//
+// The valuation is frozen rather than derived on read, which is what makes re-evaluating one
+// version deterministic: the discount engine sees the prices as they were when the seller
+// accepted, whatever the branch has done to its price list since.
+func (s *QuoteService) AcceptMaterials(
+	ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID,
+) (*domain.PricedQuote, error) {
+	if err := requireBranch(tenant, "a quote's prices"); err != nil {
+		return nil, err
+	}
+
+	var priced domain.PricedQuote
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, err := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if err != nil {
+			return err
+		}
+		if err := requireMaterialsPendingAcceptance(*quote); err != nil {
+			return err
+		}
+
+		version, err := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, quote.ID)
+		if err != nil {
+			return err
+		}
+		items, err := s.quotes.ListItems(ctx, q, tenant.AccountID, version.ID)
+		if err != nil {
+			return err
+		}
+
+		// The quote's own branch, not the caller's selection: the price a line freezes belongs to
+		// the branch the order arrived at. GetByID has already proved the two are the same.
+		prices, err := s.prices.GetCurrentByProductIDs(ctx, q, tenant.AccountID, quote.BranchID,
+			quoteItemProductIDs(items))
+		if err != nil {
+			return err
+		}
+		valuation, err := valueQuoteItems(items, prices)
+		if err != nil {
+			return err
+		}
+		if len(valuation.unpricedProducts) > 0 {
+			s.log.WarnContext(ctx, "quote priced with lines the branch has no price in force for",
+				slog.String("quote_id", quote.ID.String()),
+				slog.String("branch_id", quote.BranchID.String()),
+				slog.Int("lines", len(valuation.unpricedProducts)),
+				slog.Any("product_ids", valuation.unpricedProducts))
+		}
+
+		if err := s.quotes.ApplyPricing(ctx, q, tenant.AccountID, version.ID,
+			valuation.pricings); err != nil {
+			return err
+		}
+		version, err = s.quotes.UpdateVersionTotal(ctx, q, tenant.AccountID, version.ID,
+			valuation.total)
+		if err != nil {
+			return err
+		}
+
+		// The version stays unfrozen. QUOTED and a frozen version are correlated but different
+		// things: the seller still edits the draft, and freezing belongs to sending it.
+		previousStatus := quote.CurrentStatus
+		quote, err = s.quotes.UpdateStatus(ctx, q, tenant.AccountID, quote.ID, previousStatus,
+			domain.QuoteStatusQuoted)
+		if err != nil {
+			// The status moved between the read and the write. Same refusal as the check above,
+			// caught one statement later, so it reads the same to whoever clicked.
+			if errors.Is(err, domain.ErrConflict) {
+				return domain.WithCode(domain.CodeQuoteNotDraft, err)
+			}
+			return err
+		}
+		if _, err := s.quotes.AppendStatusChange(ctx, q, tenant.AccountID, quote.ID,
+			&previousStatus, domain.QuoteStatusQuoted, &tenant.UserID); err != nil {
+			return err
+		}
+
+		priced = domain.PricedQuote{Quote: *quote, Version: *version, Items: valuation.items}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &priced, nil
+}
+
+// requireMaterialsPendingAcceptance is the state×intention check this transition is validated
+// against before anything is written. Only an unarchived DRAFT may be valued: archiving blocks
+// every action at any point in the lifecycle, and a quote already valued is not re-valued as a
+// side effect of a repeated request — re-pricing one is an explicit act of the seller's. Both
+// refusals share a status, so each carries the code that tells them apart.
+func requireMaterialsPendingAcceptance(quote domain.Quote) error {
+	if quote.ArchivedAt != nil {
+		return domain.WithCode(domain.CodeQuoteArchived, domain.ErrConflict)
+	}
+	if quote.CurrentStatus != domain.QuoteStatusDraft {
+		return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrConflict)
+	}
+	return nil
+}

@@ -122,6 +122,7 @@ func run() error {
 	rfqExtractor := ai.NewRFQExtractor(providers.Generator, cfg.RFQ.MaxItems)
 	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo, channelRepo, rfqExtractor,
 		catalogMatchService, log, cfg.RFQ)
+	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, log)
 
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
@@ -135,6 +136,7 @@ func run() error {
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			RFQ:           handler.NewRFQHandler(rfqService),
+			Quote:         handler.NewQuoteHandler(quoteService),
 			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
 			CatalogImport: handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
 			Account:       handler.NewAccountHandler(accountService),

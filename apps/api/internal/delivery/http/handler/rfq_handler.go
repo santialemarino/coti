@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
@@ -142,47 +141,4 @@ func toRFQResponse(rfq domain.RFQ) dto.RFQResponse {
 		ClientLabel: rfq.ClientLabel, ReceivedAt: rfq.ReceivedAt, CreatedAt: rfq.CreatedAt,
 		UpdatedAt: rfq.UpdatedAt,
 	}
-}
-
-func toQuoteResponse(quote domain.Quote) dto.QuoteResponse {
-	return dto.QuoteResponse{
-		ID: quote.ID, BranchID: quote.BranchID, ClientID: quote.ClientID, RFQID: quote.RFQID,
-		SellerID: quote.SellerID, CurrentVersionID: quote.CurrentVersionID,
-		CurrentStatus: string(quote.CurrentStatus), ExpiresAt: quote.ExpiresAt,
-		ArchivedAt: quote.ArchivedAt, NeedsFollowup: quote.NeedsFollowup,
-		FollowupFlaggedAt: quote.FollowupFlaggedAt, CreatedAt: quote.CreatedAt,
-		UpdatedAt: quote.UpdatedAt,
-	}
-}
-
-func toQuoteVersionResponse(version domain.QuoteVersion) dto.QuoteVersionResponse {
-	return dto.QuoteVersionResponse{
-		ID: version.ID, QuoteID: version.QuoteID, AuthorID: version.AuthorID,
-		VersionNumber: version.VersionNumber, Total: version.Total.StringFixed(domain.MoneyScale),
-		IsImmutable: version.IsImmutable, Comment: version.Comment, CreatedAt: version.CreatedAt,
-	}
-}
-
-func toQuoteItemResponse(item domain.QuoteItem) dto.QuoteItemResponse {
-	return dto.QuoteItemResponse{
-		ID: item.ID, VersionID: item.VersionID, ProductID: item.ProductID,
-		RequestedDescription: item.RequestedDescription,
-		Quantity:             item.Quantity.StringFixed(domain.MoneyScale),
-		Unit:                 item.Unit,
-		UnitPriceSnapshot:    amountString(item.UnitPriceSnapshot),
-		MinPriceSnapshot:     amountString(item.MinPriceSnapshot),
-		Subtotal:             amountString(item.Subtotal),
-		ConfidenceScore:      confidenceString(item.ConfidenceScore),
-		MatchStatus:          string(item.MatchStatus),
-		QuantityRationale:    item.QuantityRationale,
-		CreatedAt:            item.CreatedAt,
-	}
-}
-
-func confidenceString(confidence decimal.NullDecimal) *string {
-	if !confidence.Valid {
-		return nil
-	}
-	value := confidence.Decimal.StringFixed(4)
-	return &value
 }

@@ -15,6 +15,11 @@ import (
 const productPriceColumns = `id, account_id, branch_id, product_id, user_id, price, currency,
 	min_price, valid_from, valid_to, created_at`
 
+// priceInForce is the one definition of the price that applies right now: a period that has
+// started and has not ended. Every query that reads a current price uses this rather than
+// spelling the dates out again, so the definition cannot drift between them.
+const priceInForce = `valid_from <= now() AND (valid_to IS NULL OR valid_to > now())`
+
 // ProductPriceRepository owns persistence for product_price.
 type ProductPriceRepository struct{}
 
@@ -45,8 +50,7 @@ func (r *ProductPriceRepository) ListCurrentForExport(
 		   WHERE account_id = $1
 		     AND branch_id = $2
 		     AND product_id = p.id
-		     AND valid_from <= now()
-		     AND (valid_to IS NULL OR valid_to > now())
+		     AND `+priceInForce+`
 		   ORDER BY valid_from DESC
 		   LIMIT 1
 		 ) pp ON TRUE
@@ -91,8 +95,7 @@ func (r *ProductPriceRepository) GetByCodes(
 		   WHERE account_id = $1
 		     AND branch_id = $2
 		     AND product_id = p.id
-		     AND valid_from <= now()
-		     AND (valid_to IS NULL OR valid_to > now())
+		     AND `+priceInForce+`
 		   ORDER BY valid_from DESC
 		   LIMIT 1
 		 ) pp ON TRUE
@@ -115,6 +118,37 @@ func (r *ProductPriceRepository) GetByCodes(
 		products[product.Code] = product
 	}
 	return products, rows.Err()
+}
+
+// GetCurrentByProductIDs loads the price in force at one branch for each product asked for,
+// keyed by product id. A product the branch has never priced, or whose only period has ended, is
+// absent from the map rather than present at zero.
+func (r *ProductPriceRepository) GetCurrentByProductIDs(
+	ctx context.Context, q Querier, accountID, branchID uuid.UUID, productIDs []uuid.UUID,
+) (map[uuid.UUID]domain.BranchPrice, error) {
+	rows, err := q.Query(ctx,
+		`SELECT DISTINCT ON (product_id) product_id, price, min_price
+		 FROM product_price
+		 WHERE account_id = $1
+		   AND branch_id = $2
+		   AND product_id = ANY($3)
+		   AND `+priceInForce+`
+		 ORDER BY product_id, valid_from DESC`,
+		accountID, branchID, productIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	prices := make(map[uuid.UUID]domain.BranchPrice, len(productIDs))
+	for rows.Next() {
+		var price domain.BranchPrice
+		if err := rows.Scan(&price.ProductID, &price.Price, &price.MinPrice); err != nil {
+			return nil, err
+		}
+		prices[price.ProductID] = price
+	}
+	return prices, rows.Err()
 }
 
 // ApplyImport closes current prices and inserts the replacement versions in bulk.
