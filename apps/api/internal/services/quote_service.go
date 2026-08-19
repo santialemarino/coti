@@ -136,7 +136,7 @@ func (s *QuoteService) AcceptMaterials(
 }
 
 // requireMaterialsPendingAcceptance is the state×intention check, run before anything is written.
-// The two refusals share a status, so each carries the code that tells a screen them apart.
+// The two refusals share a status, so each carries the code that tells them apart.
 func requireMaterialsPendingAcceptance(quote domain.Quote) error {
 	if quote.ArchivedAt != nil {
 		return domain.WithCode(domain.CodeQuoteArchived, domain.ErrConflict)
