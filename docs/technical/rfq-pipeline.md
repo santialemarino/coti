@@ -126,22 +126,25 @@ do about it. So the candidates the matcher weighed are kept, as `quote_item_alte
 `origin = 'AI'` and `type = 'PRODUCT'`, and they come back attached to the line on both the draft
 and the priced response.
 
-| Line status | What it offers                              | Why                                                             |
-| ----------- | ------------------------------------------- | --------------------------------------------------------------- |
-| `MATCHED`   | Nothing                                     | The line is decided; there is nothing to choose between         |
-| `AMBIGUOUS` | Every candidate except the one it points at | It kept the leader, so the offers are the products it might be  |
-| `NO_MATCH`  | Every candidate that scored above zero      | It points at nothing, so the closest near miss is the first one |
+| Line status | What it offers                      | Why                                                             |
+| ----------- | ----------------------------------- | --------------------------------------------------------------- |
+| `MATCHED`   | Nothing                             | The line is decided; there is nothing to choose between         |
+| `AMBIGUOUS` | Every candidate but the one it kept | It kept the leader, so the offers are the products it might be  |
+| `NO_MATCH`  | Every candidate                     | It points at nothing, so the closest near miss is the first one |
+
+**A candidate that scored zero is dropped from both**, which is the one exception to that table.
 
 **`rank` is the candidate's place in the matcher's ranking, not a renumbering.** An `AMBIGUOUS`
-line's offers therefore start at two: rank one is the product on the line. `confidence_score` is
-what that candidate scored, on `quote_item.confidence_score`'s own scale, so a 59% near miss reads
-differently from a 12% long shot. Neither figure exists anywhere else on the row — `created_at` is
-the transaction's timestamp, shared by every row of one insert — which is why the table carries
-both columns.
+line's offers therefore start at two: rank one is the product on the line. Ranks can also skip,
+because the candidates are ordered by the fused rank rather than by score, so a dropped zero can
+sit between two offers. `confidence_score` is what the candidate scored, on
+`quote_item.confidence_score`'s own scale, so a 59% near miss reads differently from a 12% long
+shot. Neither figure exists anywhere else on the row — `created_at` is the transaction's timestamp,
+shared by every row of one insert — which is why the table carries both columns.
 
-**A candidate that scored zero is not persisted.** The search's top-K is wider than a small catalog,
-so it returns products that carry no similarity to the line at all; offering them would bury the
-near miss under everything the account sells.
+A zero means no similarity at all: the search reached the product because the top-K is wider than
+the catalog, or because it shares a word with the line. Offering those would bury the near miss
+under everything the account sells.
 
 **`price_snapshot` stays empty.** Nothing is priced when matching runs, and the price a seller would
 freeze is the one in force when they choose. Freezing prices belongs to valorization.
@@ -159,13 +162,14 @@ carries no id: left unset, every line would insert the all-zeros uuid.
 The candidates are written in the same transaction as the lines, so a draft never exists with lines
 flagged and the candidates they were flagged against missing.
 
-## The marks are frozen with the version
+## The marks belong to the version
 
 `quote_item` rows belong to one `quote_version`, and `quote_item_alternative` rows belong to one
-`quote_item`. A seller who resolves a flagged line produces a **new** version with its own lines, so
-the previous version keeps the marks it had and the candidates behind them. That is what makes the
+`quote_item`. A later version therefore has lines of its own, and resolving a flagged line in it
+leaves the earlier version's marks and candidates exactly as they were. That is what makes the
 report auditable, and it is also the metric: how many lines arrived unmatched in version one, and
-how many had to be fixed by hand.
+how many had to be fixed by hand. `uq_quote_version_draft` allows one unfrozen version per quote,
+so a second version means the first was frozen.
 
 ## Accepting the materials is what prices the quote
 

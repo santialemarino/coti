@@ -1124,37 +1124,75 @@ func TestRFQService_CreateTextDraft_FailsTheDraftWhenCandidatesCannotBeWritten(t
 }
 
 func TestRFQService_CreateTextDraft_OffersNoCandidateThatScoredNothing(t *testing.T) {
-	h := newRFQHarness([]domain.ExtractedRFQLine{
-		explicitLine("membrana rara", "2", "rollo", "pidió 2"),
-	})
 	nearMiss := uuid.MustParse("c1111111-1111-4111-8111-111111111111")
-	h.matcher.matches[0] = domain.LineMatch{
-		MatchStatus: domain.ItemMatchStatusNoMatch,
-		Confidence:  decimal.RequireFromString("0.5500"),
-		// What a catalog smaller than the top-K returns: one near miss, then products the search
-		// reached without them resembling the line at all.
-		Candidates: []domain.ScoredCandidate{
-			scoredCandidate(nearMiss, "Membrana asfáltica 4mm", "0.5500"),
-			scoredCandidate(uuid.New(), "Cemento Portland 50kg", "0"),
-			scoredCandidate(uuid.New(), "Cal hidratada 25kg", "0"),
+	leader := uuid.MustParse("c2222222-2222-4222-8222-222222222222")
+	// What a catalog smaller than the top-K returns: the offers that resemble the line, then
+	// products the search reached without them resembling it at all.
+	orthogonal := []domain.ScoredCandidate{
+		scoredCandidate(uuid.New(), "Cemento Portland 50kg", "0"),
+		scoredCandidate(uuid.New(), "Cal hidratada 25kg", "0"),
+	}
+	cases := []struct {
+		name      string
+		match     domain.LineMatch
+		wantOffer uuid.UUID
+		wantRank  int
+	}{
+		{
+			name: "a line nothing matched offers its near miss alone",
+			match: domain.LineMatch{
+				MatchStatus: domain.ItemMatchStatusNoMatch,
+				Confidence:  decimal.RequireFromString("0.5500"),
+				Candidates: append([]domain.ScoredCandidate{
+					scoredCandidate(nearMiss, "Membrana asfáltica 4mm", "0.5500"),
+				}, orthogonal...),
+			},
+			wantOffer: nearMiss,
+			wantRank:  1,
+		},
+		{
+			// The same rule on an AMBIGUOUS line, which the table in rfq-pipeline.md calls the
+			// one exception to "every candidate but the one it kept".
+			name: "an ambiguous line offers neither the leader nor a zero",
+			match: domain.LineMatch{
+				ProductID:   &leader,
+				MatchStatus: domain.ItemMatchStatusAmbiguous,
+				Confidence:  decimal.RequireFromString("0.8200"),
+				Candidates: append([]domain.ScoredCandidate{
+					scoredCandidate(leader, "Cemento Portland 50kg", "0.8200"),
+					scoredCandidate(nearMiss, "Cemento Avellaneda 50kg", "0.8000"),
+				}, orthogonal...),
+			},
+			wantOffer: nearMiss,
+			wantRank:  2,
 		},
 	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newRFQHarness([]domain.ExtractedRFQLine{
+				explicitLine("membrana rara", "2", "rollo", "pidió 2"),
+			})
+			h.matcher.matches[0] = tc.match
 
-	draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
-		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "membrana rara"})
-	if err != nil {
-		t.Fatalf("CreateTextDraft returned %v", err)
-	}
+			draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+				domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "membrana rara"})
+			if err != nil {
+				t.Fatalf("CreateTextDraft returned %v", err)
+			}
 
-	offered := draft.Alternatives[draft.Items[0].ID]
-	if len(offered) != 1 {
-		t.Fatalf("offered %d candidates, want the near miss alone: a candidate at zero scored no "+
-			"similarity and would bury the one the seller is looking for", len(offered))
-	}
-	if offered[0].ProductID == nil || *offered[0].ProductID != nearMiss {
-		t.Errorf("offer = %v, want the near miss %v", offered[0].ProductID, nearMiss)
-	}
-	if offered[0].Rank != 1 {
-		t.Errorf("offer rank = %d, want 1", offered[0].Rank)
+			offered := draft.Alternatives[draft.Items[0].ID]
+			if len(offered) != 1 {
+				t.Fatalf("offered %d candidates, want one: a candidate at zero scored no "+
+					"similarity and would bury the one the seller is looking for", len(offered))
+			}
+			if offered[0].ProductID == nil || *offered[0].ProductID != tc.wantOffer {
+				t.Errorf("offer = %v, want %v", offered[0].ProductID, tc.wantOffer)
+			}
+			// The rank is the candidate's own place in the matcher's ranking, so dropping a zero
+			// does not renumber what survives.
+			if offered[0].Rank != tc.wantRank {
+				t.Errorf("offer rank = %d, want %d", offered[0].Rank, tc.wantRank)
+			}
+		})
 	}
 }
