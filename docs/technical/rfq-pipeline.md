@@ -9,7 +9,9 @@ That draft carries no prices. The seller accepting its materials is a second tra
 what freezes them — the last section here.
 
 The AI provider layer is in [ai-providers.md](ai-providers.md), the search and matching behind the
-product decision in [catalog.md](catalog.md). This document is the flow that consumes both.
+product decision in [catalog.md](catalog.md). This document is the flow that consumes both. The
+files an order arrives with are stored beside it and are not read here — see
+[file-storage.md](file-storage.md).
 
 ## Endpoints
 

@@ -33,10 +33,14 @@ const (
 	CodeQuoteArchived    ErrorCode = "QUOTE_ARCHIVED"
 	CodeQuoteNotDraft    ErrorCode = "QUOTE_NOT_DRAFT"
 	CodeLinkExpired      ErrorCode = "LINK_EXPIRED"
+	// CodeUnsupportedFileType sits beside CodeFileTooLarge: both refuse an upload, and a client
+	// offering a different file needs to know which rule it broke.
+	CodeUnsupportedFileType ErrorCode = "UNSUPPORTED_FILE_TYPE"
 )
 
-// The two the delivery layer raises on its own, before any service is reached, so CodeOf never
-// returns them.
+// The two an upload is refused with. The delivery layer raises both on its own, before any
+// service is reached; CodeFileTooLarge also answers ErrTooLarge, so the same refusal reads the
+// same whether the transport or a service caught it.
 const (
 	CodeInvalidBody  ErrorCode = "INVALID_BODY"
 	CodeFileTooLarge ErrorCode = "FILE_TOO_LARGE"
@@ -66,6 +70,8 @@ func CodeOf(err error) ErrorCode {
 	}
 
 	switch {
+	case errors.Is(err, ErrTooLarge):
+		return CodeFileTooLarge
 	case errors.Is(err, ErrNotFound):
 		return CodeNotFound
 	case errors.Is(err, ErrImmutable):

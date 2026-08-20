@@ -29,6 +29,7 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/ratelimit"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 	"github.com/santialemarino/coti/apps/api/internal/services"
+	storageprovider "github.com/santialemarino/coti/apps/api/internal/storage/provider"
 )
 
 const testJWTSecret = "0123456789abcdef0123456789abcdef"
@@ -104,7 +105,17 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 			MaxTextCharacters: 20000, MaxItems: 200, PipelineTimeout: 25 * time.Second,
 		},
 		Branch: config.BranchConfig{DefaultExpiryDays: 7},
-		Web:    config.WebConfig{BackofficeURL: "https://backoffice.test"},
+		// The local adapter, over a directory this test owns: uploads, links and expiry are
+		// exercised for real rather than against a double.
+		Storage: config.StorageConfig{
+			Provider:        config.StorageProviderLocal,
+			Dir:             t.TempDir(),
+			APIBaseURL:      "http://api.test",
+			SigningSecret:   testJWTSecret,
+			MaxFileSize:     10 * 1024 * 1024,
+			SignedURLExpiry: 15 * time.Minute,
+		},
+		Web: config.WebConfig{BackofficeURL: "https://backoffice.test"},
 		// Off for the suite at large, so an unrelated test cannot trip an allowance. The two
 		// that exercise it build their own env.
 		RateLimit: config.RateLimitConfig{Enabled: false},
@@ -159,6 +170,13 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 		repository.NewProductPriceRepository(), quiet)
 	channelService := services.NewChannelService(db, channelRepo)
 
+	objectStorage, err := storageprovider.Bind(cfg.Storage, quiet)
+	if err != nil {
+		t.Fatalf("storage Bind() = %v, want no error", err)
+	}
+	rfqAttachmentService := services.NewRFQAttachmentService(db,
+		repository.NewRFQAttachmentRepository(), objectStorage.Storage, cfg.Storage, nil)
+
 	limiter := ratelimit.NewMemory(nil)
 	mailTargetLimiter := handler.NewMailTargetLimiter(limiter, handler.MailTargetLimitOptions{
 		Limit:   cfg.RateLimit.MailPerAddress,
@@ -178,6 +196,8 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			RFQ:           handler.NewRFQHandler(rfqService),
+			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
+			File:          handler.NewFileHandler(objectStorage.Local),
 			Quote:         handler.NewQuoteHandler(quoteService),
 			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
 				branchRepo, channelRepo, userRepo, authService, verificationService, quiet,

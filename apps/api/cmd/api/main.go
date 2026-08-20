@@ -76,6 +76,7 @@ func run() error {
 	productPriceRepo := repository.NewProductPriceRepository()
 	catalogImportRepo := repository.NewCatalogImportRepository()
 	rfqRepo := repository.NewRFQRepository()
+	rfqAttachmentRepo := repository.NewRFQAttachmentRepository()
 	quoteRepo := repository.NewQuoteRepository()
 	accountRepo := repository.NewAccountRepository()
 	channelRepo := repository.NewChannelRepository()
@@ -130,6 +131,8 @@ func run() error {
 	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo, channelRepo, rfqExtractor,
 		catalogMatchService, log, cfg.RFQ)
 	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, log)
+	rfqAttachmentService := services.NewRFQAttachmentService(db, rfqAttachmentRepo,
+		objectStorage.Storage, cfg.Storage, nil)
 
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
@@ -143,6 +146,7 @@ func run() error {
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			RFQ:           handler.NewRFQHandler(rfqService),
+			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
 			Quote:         handler.NewQuoteHandler(quoteService),
 			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
 			CatalogImport: handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),

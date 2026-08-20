@@ -47,3 +47,20 @@ type RFQResponse struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
+
+// RFQAttachmentResponse is one stored file on an RFQ, returned by the attachment routes. The
+// link expires — expires_at says when — so it is fetched again rather than stored by a client.
+type RFQAttachmentResponse struct {
+	ID               uuid.UUID `json:"id"`
+	RFQID            uuid.UUID `json:"rfq_id"`
+	Type             string    `json:"type"`
+	ProcessingStatus string    `json:"processing_status"`
+	URL              string    `json:"url"`
+	ExpiresAt        time.Time `json:"expires_at"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
+// RFQAttachmentListResponse is returned by GET /v1/rfqs/{rfqId}/attachments.
+type RFQAttachmentListResponse struct {
+	Attachments []RFQAttachmentResponse `json:"attachments"`
+}
