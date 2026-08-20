@@ -126,6 +126,14 @@ Three settings there are not what they look like:
 Objects are stored private and reached only through presigned links, which is the only ACL
 arrangement worth having: the alternative Spaces offers is `public-read`.
 
+All three are pinned by tests, because presigning reaches no network and the resulting URL is
+where each would go wrong silently. A link for `accounts/…/plan.pdf` comes out as
+`https://coti-attachments.nyc3.digitaloceanspaces.com/accounts/…/plan.pdf` with an
+`X-Amz-Credential` scope of `…/us-east-1/s3/aws4_request`. Drop the endpoint and the SDK addresses
+`s3.us-east-1.amazonaws.com` instead — the adapter speaks the S3 protocol, and it is the endpoint,
+not the library, that decides whose bucket it is. The credentials are static and the AWS
+shared-config loader is deliberately not a dependency, so no ambient `AWS_*` key can sign a link.
+
 ## In development
 
 `local` needs nothing. Objects land in `STORAGE_LOCAL_DIR` (`./.storage`, gitignored) and the
