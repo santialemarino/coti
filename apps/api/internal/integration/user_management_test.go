@@ -151,10 +151,12 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 	// than at startup — which is the behaviour the routes are meant to have with none.
 	catalogSearchService := services.NewCatalogSearchService(db, productRepo,
 		ai.DisabledEmbedder{}, cfg.Catalog)
-	rfqService := services.NewRFQService(db, repository.NewRFQRepository(),
-		repository.NewQuoteRepository(), channelRepo,
+	quoteRepo := repository.NewQuoteRepository()
+	rfqService := services.NewRFQService(db, repository.NewRFQRepository(), quoteRepo, channelRepo,
 		ai.NewRFQExtractor(ai.DisabledGenerator{}, cfg.RFQ.MaxItems),
 		services.NewCatalogMatchService(catalogSearchService, cfg.Catalog), quiet, cfg.RFQ)
+	quoteService := services.NewQuoteService(db, quoteRepo,
+		repository.NewProductPriceRepository(), quiet)
 	channelService := services.NewChannelService(db, channelRepo)
 
 	limiter := ratelimit.NewMemory(nil)
@@ -176,6 +178,7 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			RFQ:           handler.NewRFQHandler(rfqService),
+			Quote:         handler.NewQuoteHandler(quoteService),
 			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
 				branchRepo, channelRepo, userRepo, authService, verificationService, quiet,
 				cfg.Auth, cfg.Branch)),

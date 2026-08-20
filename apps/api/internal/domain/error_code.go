@@ -30,6 +30,8 @@ const (
 	CodeSelfRoleChange   ErrorCode = "SELF_ROLE_CHANGE"
 	CodePasswordPolicy   ErrorCode = "PASSWORD_POLICY"
 	CodeInvalidLink      ErrorCode = "INVALID_LINK"
+	CodeQuoteArchived    ErrorCode = "QUOTE_ARCHIVED"
+	CodeQuoteNotDraft    ErrorCode = "QUOTE_NOT_DRAFT"
 )
 
 // The two the delivery layer raises on its own, before any service is reached, so CodeOf never

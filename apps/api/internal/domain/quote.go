@@ -102,6 +102,16 @@ type NewQuoteItem struct {
 	QuantityRationale    *string
 }
 
+// QuoteItemPricing is one line's frozen valuation, written when the seller accepts the
+// materials. All three are null together: a line with no product, or whose product the branch
+// has no price in force for, keeps its valuation empty rather than valued at zero.
+type QuoteItemPricing struct {
+	ItemID            uuid.UUID
+	UnitPriceSnapshot decimal.NullDecimal
+	MinPriceSnapshot  decimal.NullDecimal
+	Subtotal          decimal.NullDecimal
+}
+
 // QuoteStatusChange records a quote lifecycle transition.
 type QuoteStatusChange struct {
 	ID             uuid.UUID
@@ -112,4 +122,12 @@ type QuoteStatusChange struct {
 	UserID         *uuid.UUID
 	ChangedAt      time.Time
 	CreatedAt      time.Time
+}
+
+// PricedQuote is the result of the DRAFT to QUOTED transition: the quote at its new status, the
+// version whose total was just summed, and the lines carrying the prices that were frozen.
+type PricedQuote struct {
+	Quote   Quote
+	Version QuoteVersion
+	Items   []QuoteItem
 }

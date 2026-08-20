@@ -38,6 +38,19 @@ func NewQuoteRepository() *QuoteRepository {
 	return &QuoteRepository{}
 }
 
+// GetByID loads one quote, scoped to the account and to the branch it belongs to. Filtering the
+// branch is load-bearing: row level security guards the account boundary only, so a branch taken
+// from a request and left out of the predicate would read another branch of the caller's account.
+func (r *QuoteRepository) GetByID(
+	ctx context.Context, q Querier, accountID, branchID, id uuid.UUID,
+) (*domain.Quote, error) {
+	return scanQuote(q.QueryRow(ctx,
+		`SELECT `+quoteColumns+`
+		 FROM quote
+		 WHERE account_id = $1 AND branch_id = $2 AND id = $3`,
+		accountID, branchID, id))
+}
+
 // Create inserts a quote shell.
 func (r *QuoteRepository) Create(
 	ctx context.Context, q Querier, accountID uuid.UUID, in domain.NewQuote,
@@ -66,6 +79,39 @@ func (r *QuoteRepository) UpdateCurrentVersion(
 		accountID, quoteID, versionID))
 }
 
+// UpdateStatus moves the quote's derived status, and only from the status the caller read. Matching
+// no row is a conflict rather than an absence: the transition is atomic because of that predicate.
+func (r *QuoteRepository) UpdateStatus(
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID,
+	from, to domain.QuoteStatus,
+) (*domain.Quote, error) {
+	quote, err := scanQuote(q.QueryRow(ctx,
+		`UPDATE quote
+		 SET current_status = $5
+		 WHERE account_id = $1 AND branch_id = $2 AND id = $3 AND current_status = $4
+		 RETURNING `+quoteColumns,
+		accountID, branchID, quoteID, from, to))
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil, domain.ErrConflict
+	}
+	return quote, err
+}
+
+// GetCurrentVersion loads the version the quote points at. Returns domain.ErrNotFound when the
+// quote is absent, sits in another branch, or points at nothing. The branch is in the predicate
+// because quoteID reaches this from a request, and row level security guards only the account.
+func (r *QuoteRepository) GetCurrentVersion(
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID,
+) (*domain.QuoteVersion, error) {
+	return scanQuoteVersion(q.QueryRow(ctx,
+		`SELECT `+quoteVersionColumns+`
+		 FROM quote_version
+		 WHERE account_id = $1
+		   AND id = (SELECT current_version_id FROM quote
+		             WHERE account_id = $1 AND branch_id = $2 AND id = $3)`,
+		accountID, branchID, quoteID))
+}
+
 // CreateVersion inserts a quote version.
 func (r *QuoteRepository) CreateVersion(
 	ctx context.Context, q Querier, accountID uuid.UUID, in domain.NewQuoteVersion,
@@ -81,6 +127,45 @@ func (r *QuoteRepository) CreateVersion(
 		return nil, domain.ErrConflict
 	}
 	return version, err
+}
+
+// UpdateVersionTotal writes the version's total.
+func (r *QuoteRepository) UpdateVersionTotal(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID, total decimal.Decimal,
+) (*domain.QuoteVersion, error) {
+	return scanQuoteVersion(q.QueryRow(ctx,
+		`UPDATE quote_version
+		 SET total = $3
+		 WHERE account_id = $1 AND id = $2
+		 RETURNING `+quoteVersionColumns,
+		accountID, versionID, total))
+}
+
+// ListItems loads a version's lines. quote_item carries no ordinal column and one batch shares a
+// single created_at, so this separates batches and leaves each one in the order it was written.
+func (r *QuoteRepository) ListItems(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID,
+) ([]domain.QuoteItem, error) {
+	rows, err := q.Query(ctx,
+		`SELECT `+quoteItemColumns+`
+		 FROM quote_item
+		 WHERE account_id = $1 AND version_id = $2
+		 ORDER BY created_at`,
+		accountID, versionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []domain.QuoteItem
+	for rows.Next() {
+		item, scanErr := scanQuoteItemRow(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		items = append(items, *item)
+	}
+	return items, rows.Err()
 }
 
 // CreateItems inserts a quote version's line items in one statement, in the order given — the
@@ -148,6 +233,46 @@ func (r *QuoteRepository) CreateItems(
 	return created, nil
 }
 
+// ApplyPricing freezes every line's valuation in one statement, keyed by line id, the empty ones
+// included. The row count is what turns a predicate that matched nothing into an error.
+func (r *QuoteRepository) ApplyPricing(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID,
+	pricings []domain.QuoteItemPricing,
+) error {
+	payload, err := json.Marshal(quoteItemPricingPayloads(pricings))
+	if err != nil {
+		return err
+	}
+
+	tag, err := q.Exec(ctx,
+		`WITH incoming AS (
+		   SELECT *
+		   FROM jsonb_to_recordset($3::jsonb) AS x(
+		     item_id uuid,
+		     unit_price_snapshot numeric,
+		     min_price_snapshot numeric,
+		     subtotal numeric
+		   )
+		 )
+		 UPDATE quote_item item
+		 SET unit_price_snapshot = incoming.unit_price_snapshot,
+		     min_price_snapshot = incoming.min_price_snapshot,
+		     subtotal = incoming.subtotal
+		 FROM incoming
+		 JOIN quote_version version ON version.account_id = $1 AND version.id = $2
+		 WHERE item.account_id = $1
+		   AND item.version_id = version.id
+		   AND item.id = incoming.item_id`,
+		accountID, versionID, payload)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != int64(len(pricings)) {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 // AppendStatusChange records a quote lifecycle transition.
 func (r *QuoteRepository) AppendStatusChange(
 	ctx context.Context, q Querier, accountID, quoteID uuid.UUID, previousStatus *domain.QuoteStatus,
@@ -176,6 +301,13 @@ type quoteItemPayload struct {
 	QuantityRationale    *string    `json:"quantity_rationale"`
 }
 
+type quoteItemPricingPayload struct {
+	ItemID            uuid.UUID `json:"item_id"`
+	UnitPriceSnapshot *string   `json:"unit_price_snapshot"`
+	MinPriceSnapshot  *string   `json:"min_price_snapshot"`
+	Subtotal          *string   `json:"subtotal"`
+}
+
 func quoteItemPayloads(items []domain.NewQuoteItem) []quoteItemPayload {
 	payloads := make([]quoteItemPayload, 0, len(items))
 	for i, item := range items {
@@ -191,6 +323,19 @@ func quoteItemPayloads(items []domain.NewQuoteItem) []quoteItemPayload {
 			ConfidenceScore:      nullDecimalString(item.ConfidenceScore),
 			MatchStatus:          string(item.MatchStatus),
 			QuantityRationale:    item.QuantityRationale,
+		})
+	}
+	return payloads
+}
+
+func quoteItemPricingPayloads(pricings []domain.QuoteItemPricing) []quoteItemPricingPayload {
+	payloads := make([]quoteItemPricingPayload, 0, len(pricings))
+	for _, pricing := range pricings {
+		payloads = append(payloads, quoteItemPricingPayload{
+			ItemID:            pricing.ItemID,
+			UnitPriceSnapshot: nullDecimalString(pricing.UnitPriceSnapshot),
+			MinPriceSnapshot:  nullDecimalString(pricing.MinPriceSnapshot),
+			Subtotal:          nullDecimalString(pricing.Subtotal),
 		})
 	}
 	return payloads

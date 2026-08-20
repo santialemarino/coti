@@ -31,6 +31,7 @@ type Handlers struct {
 	Product       *handler.ProductHandler
 	BranchCatalog *handler.BranchCatalogHandler
 	RFQ           *handler.RFQHandler
+	Quote         *handler.QuoteHandler
 	Account       *handler.AccountHandler
 	Prices        *handler.ProductPriceHandler
 	CatalogImport *handler.CatalogImportHandler
@@ -123,6 +124,12 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	ai := limit("ai", cfg.RateLimit.AI)
 	authed.POST("/rfqs/text-drafts", ai, h.RFQ.CreateTextDraft)
 	authed.GET("/channels", h.Channel.List)
+
+	// Accepting the materials is what prices the quote, so the route names the seller's action
+	// rather than the calculation behind it. It reaches no provider, so it needs no allowance of
+	// its own beyond the global one.
+	quotes := authed.Group("/quotes")
+	quotes.POST("/:quoteId/accept-materials", h.Quote.AcceptMaterials)
 
 	if !cfg.IsProduction() {
 		authed.POST("/dev/whatsapp/messages", ai, h.RFQ.CreateWhatsAppMockDraft)

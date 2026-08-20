@@ -211,7 +211,26 @@ apps/api/
   Break the behaviour with an edit that still builds (invert a condition, widen a comparison). Beware the mutation the database absorbs: dropping an `ORDER BY` leaves
   the test green, because Postgres happens to return input order anyway. **Invert the clause instead**
   (`ORDER BY x DESC`) — that proves the assertion reads the order, and the honest claim afterwards is
-  that the test pins the behaviour, not the clause.
+  that the test pins the behaviour, not the clause. Inverting it is still not enough on its own: if
+  the fixture leaves only **one** row where the clause chooses, there is nothing to order and the
+  inversion is absorbed too. Seed the ambiguity the clause exists to resolve.
+- **A mutation that makes the SQL fail is not a proof either, and it does not announce itself.**
+  Neutering a predicate as `$1 IS NOT NULL` leaves that parameter with no other use, so Postgres
+  cannot infer its type and the query errors: the route answers 500, the test goes red, and nothing
+  about the assertion was exercised. Keep every parameter in a real comparison
+  (`(account_id = $1 OR TRUE)`) and **read the failure message, not the colour** — "want ErrNotFound,
+  got nil" is a proof, "status = 500" is a broken query.
+- **Two guards that each refuse on their own pin neither one.** Remove either predicate of a pair
+  like `version.account_id = $1` and `item.account_id = $1` and the suite stays green, because the
+  survivor still refuses. That is what defence in depth costs: the test pins the **refusal**, and the
+  redundancy is a deliberate choice no test can defend. Say so rather than claiming both are covered.
+- **A guard the database also enforces can only be proved with the database's guard off.** Row level
+  security refuses another account's row before an application predicate is reached, so inside
+  `InTenantTx` the two are indistinguishable. Run the same repository call on the owner pool
+  (`AdminTx`), which is RLS-exempt, and the application predicate is the only thing left to refuse.
+- **Mutate a throwaway copy of the module, not the working tree.** `cp -R` the module into a scratch
+  directory and mutate there: a killed run then cannot leave mutated source on disk, and there is no
+  restore step to forget or to chain behind a test command that died.
 - **Mutate each field when a constructor maps sibling settings onto sibling fields.** Three
   same-typed values read from three sibling config keys is the copy-paste bug the compiler cannot
   see: swapping two of them builds, vets clean, and silently changes every decision downstream. One
