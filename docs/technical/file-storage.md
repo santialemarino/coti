@@ -84,6 +84,33 @@ takes the stored content type rather than guessing a better one, and `Content-Di
 attachment`, so it downloads rather than renders in place. `Cache-Control: private, no-store`
 keeps a shared cache from holding a body past the deadline the signature exists to enforce.
 
+## What uses it: RFQ attachments
+
+`POST /v1/rfqs/{rfqId}/attachments` stores one file against an order and records the reference;
+`GET /v1/rfqs/{rfqId}/attachments` returns each stored file with a freshly signed link. Both are
+authenticated and both require an active branch.
+
+Three things happen in that order, and the order is the point:
+
+1. **The file is refused before anything is stored.** Its content type must be one of the closed
+   set in `domain.AttachmentFormatFor` — the same set the `attachment_type` enum names — and its
+   size must be within `STORAGE_MAX_FILE_SIZE_BYTES`. The transport caps the body first, so an
+   oversized upload is refused while it is still arriving rather than after it is buffered.
+2. **The object is stored, and only then is the row written.** A failed write leaves an
+   unreferenced object, which is invisible; the reverse order would leave a row whose link a
+   screen renders with nothing behind it.
+3. **The insert proves the order is the caller's.** `rfq_attachment.rfq_id` arrives from the
+   request and its foreign key would accept another account's row, so the insert carries an
+   `EXISTS` over `rfq` filtered by account **and branch**. Row level security guards the account
+   boundary and nothing inside it, so the branch half has no second net.
+
+The stored extension comes from the accepted format, never from the client's filename, so what
+a file is called cannot decide what the object is called. `file_url` holds the **key**, not a
+URL: every link expires and the reference must not.
+
+**Nothing here reads the file.** Turning an attachment into text is the multi-format engine's
+job; this layer stores bytes and hands back links, and every row starts at `PENDING`.
+
 ## Configuration
 
 In `apps/api/.env.example`, defaults in `internal/config`:
