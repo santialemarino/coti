@@ -49,6 +49,11 @@ services:
       - MAIL_SMTP_HOST=mailpit
       - MAIL_SMTP_PORT=1025
       - MAIL_SMTP_STARTTLS=false
+      # The local storage adapter writes inside the container, so without a volume every
+      # uploaded file is lost on the next rebuild.
+      - STORAGE_LOCAL_DIR=/var/lib/coti/storage
+    volumes:
+      - api_storage:/var/lib/coti/storage
 
   backoffice:
     container_name: coti-backoffice
@@ -80,6 +85,7 @@ services:
 
 volumes:
   postgres_data:
+  api_storage:
 
 networks:
   default:

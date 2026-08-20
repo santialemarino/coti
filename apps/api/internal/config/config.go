@@ -18,6 +18,10 @@ import (
 // minJWTSecretLength is the floor for AUTH_JWT_SECRET. HMAC-SHA256 keys shorter
 // than the digest add no security.
 const minJWTSecretLength = 32
+
+// minSigningSecretLength is the floor for STORAGE_SIGNING_SECRET, which signs storage links
+// with the same construction and so needs the same key width.
+const minSigningSecretLength = 32
 const defaultCatalogImportMaxBytes = 5 * 1024 * 1024
 const defaultPriceImportMaxBytes = 5 * 1024 * 1024
 
@@ -35,6 +39,14 @@ type MailProvider string
 const (
 	MailProviderConsole MailProvider = "console"
 	MailProviderSMTP    MailProvider = "smtp"
+)
+
+// StorageProvider selects the adapter behind the domain.ObjectStorage port.
+type StorageProvider string
+
+const (
+	StorageProviderLocal  StorageProvider = "local"
+	StorageProviderSpaces StorageProvider = "spaces"
 )
 
 // AIProvider selects the adapter behind one of the domain AI ports.
@@ -416,8 +428,14 @@ type CatalogConfig struct {
 	MatchLexicalConfidencePercent int
 }
 
-// StorageConfig holds the object storage settings and file limits.
+// StorageConfig holds the object storage settings and file limits. The bucket coordinates are
+// read whichever provider is selected and demanded only under spaces, so a checkout with no
+// object store still boots.
 type StorageConfig struct {
+	Provider        StorageProvider
+	Dir             string
+	APIBaseURL      string
+	SigningSecret   string
 	Endpoint        string
 	Region          string
 	Bucket          string
@@ -425,6 +443,96 @@ type StorageConfig struct {
 	SecretKey       string
 	MaxFileSize     int64
 	SignedURLExpiry time.Duration
+}
+
+// LocalSettings is what the local adapter is handed: where the objects live and what signs the
+// links to them, and none of the bucket credentials.
+type LocalSettings struct {
+	Dir           string
+	APIBaseURL    string
+	SigningSecret string
+}
+
+// SpacesSettings is what the Spaces adapter is handed: one bucket's coordinates and nothing
+// else, so no other adapter's settings can reach a provider SDK.
+type SpacesSettings struct {
+	Endpoint  string
+	Region    string
+	Bucket    string
+	AccessKey string
+	SecretKey string
+}
+
+// Local returns the settings the local adapter needs.
+func (s StorageConfig) Local() LocalSettings {
+	return LocalSettings{Dir: s.Dir, APIBaseURL: s.APIBaseURL, SigningSecret: s.SigningSecret}
+}
+
+// Spaces returns the settings the Spaces adapter needs.
+func (s StorageConfig) Spaces() SpacesSettings {
+	return SpacesSettings{
+		Endpoint:  s.Endpoint,
+		Region:    s.Region,
+		Bucket:    s.Bucket,
+		AccessKey: s.AccessKey,
+		SecretKey: s.SecretKey,
+	}
+}
+
+// problems reports everything wrong with the storage settings, naming the key at fault. The
+// requirements are collected per provider: the bucket a deployment does not use cannot hold
+// back the one it does.
+func (s StorageConfig) problems() []string {
+	var problems []string
+	if s.MaxFileSize <= 0 {
+		problems = append(problems, "STORAGE_MAX_FILE_SIZE_BYTES must be greater than zero")
+	}
+	if s.SignedURLExpiry <= 0 {
+		problems = append(problems, "STORAGE_SIGNED_URL_EXPIRY_MINUTES must be greater than zero")
+	}
+
+	switch s.Provider {
+	case StorageProviderLocal:
+		if s.Dir == "" {
+			problems = append(problems, "STORAGE_LOCAL_DIR is required when STORAGE_PROVIDER is "+
+				string(StorageProviderLocal))
+		}
+		// The secret is what stops a link being forged, so a short one is worse than a missing
+		// provider: it makes every object reachable by anyone who can guess a key.
+		if len(s.SigningSecret) < minSigningSecretLength {
+			problems = append(problems, fmt.Sprintf(
+				"STORAGE_SIGNING_SECRET must be at least %d characters when STORAGE_PROVIDER is %s",
+				minSigningSecretLength, StorageProviderLocal))
+		}
+		if u, err := url.Parse(s.APIBaseURL); err != nil || u.Scheme == "" || u.Host == "" {
+			problems = append(problems, fmt.Sprintf("STORAGE_LOCAL_API_BASE_URL must be an "+
+				"absolute URL with a scheme and host, got %q", s.APIBaseURL))
+		}
+	case StorageProviderSpaces:
+		required := []struct{ key, value string }{
+			{"STORAGE_ENDPOINT", s.Endpoint},
+			{"STORAGE_REGION", s.Region},
+			{"STORAGE_BUCKET", s.Bucket},
+			{"STORAGE_ACCESS_KEY", s.AccessKey},
+			{"STORAGE_SECRET_KEY", s.SecretKey},
+		}
+		for _, r := range required {
+			if r.value == "" {
+				problems = append(problems, r.key+" is required when STORAGE_PROVIDER is "+
+					string(StorageProviderSpaces))
+			}
+		}
+		if s.Endpoint != "" {
+			if u, err := url.Parse(s.Endpoint); err != nil || u.Scheme == "" || u.Host == "" {
+				problems = append(problems, fmt.Sprintf("STORAGE_ENDPOINT must be an absolute "+
+					"URL with a scheme and host, got %q", s.Endpoint))
+			}
+		}
+	default:
+		problems = append(problems, fmt.Sprintf("STORAGE_PROVIDER must be %q or %q, got %q",
+			StorageProviderLocal, StorageProviderSpaces, s.Provider))
+	}
+	return problems
 }
 
 // Load resolves the configuration from the environment, applying defaults for everything
@@ -527,6 +635,10 @@ func Load() (*Config, error) {
 			MatchLexicalConfidencePercent: getInt("CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT", 75, &problems),
 		},
 		Storage: StorageConfig{
+			Provider:        StorageProvider(getString("STORAGE_PROVIDER", string(StorageProviderLocal))),
+			Dir:             getString("STORAGE_LOCAL_DIR", "./.storage"),
+			APIBaseURL:      getString("STORAGE_LOCAL_API_BASE_URL", "http://localhost:8000"),
+			SigningSecret:   getString("STORAGE_SIGNING_SECRET", ""),
 			Endpoint:        getString("STORAGE_ENDPOINT", ""),
 			Region:          getString("STORAGE_REGION", ""),
 			Bucket:          getString("STORAGE_BUCKET", ""),
@@ -606,14 +718,6 @@ func Load() (*Config, error) {
 		problems = append(problems, "AUTH_REQUIRE_VERIFIED_EMAIL needs a mail provider that "+
 			"delivers: the console transport only writes to the log")
 	}
-	if cfg.Storage.MaxFileSize <= 0 {
-		problems = append(problems, "STORAGE_MAX_FILE_SIZE_BYTES must be greater than zero")
-	}
-
-	if cfg.Storage.SignedURLExpiry <= 0 {
-		problems = append(problems, "STORAGE_SIGNED_URL_EXPIRY_MINUTES must be greater than zero")
-	}
-
 	// The console transport reaches nothing, so it needs no sender of its own; a real one
 	// cannot start without the address and credentials it authenticates with.
 	switch cfg.Mail.Provider {
@@ -647,6 +751,7 @@ func Load() (*Config, error) {
 	}
 
 	problems = append(problems, cfg.AI.problems()...)
+	problems = append(problems, cfg.Storage.problems()...)
 
 	// A base URL missing its scheme or host yields recovery links that go nowhere, and the
 	// only symptom is a user reporting that the mail does not work.

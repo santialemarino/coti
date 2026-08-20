@@ -49,6 +49,10 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"PRICE_IMPORT_MAX_BYTES",
 		"JOB_TIMEOUT_MINUTES",
 		"RFQ_MAX_TEXT_CHARACTERS", "RFQ_MAX_ITEMS", "RFQ_PIPELINE_TIMEOUT_SECONDS",
+		"STORAGE_PROVIDER", "STORAGE_LOCAL_DIR", "STORAGE_LOCAL_API_BASE_URL",
+		"STORAGE_SIGNING_SECRET", "STORAGE_ENDPOINT", "STORAGE_REGION", "STORAGE_BUCKET",
+		"STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY",
+		"STORAGE_MAX_FILE_SIZE_BYTES", "STORAGE_SIGNED_URL_EXPIRY_MINUTES",
 	}
 	for _, k := range known {
 		t.Setenv(k, "")
@@ -63,6 +67,9 @@ func minimalEnv() map[string]string {
 		"DATABASE_URL":       "postgres://app@localhost:5432/coti",
 		"DATABASE_ADMIN_URL": "postgres://owner@localhost:5432/coti",
 		"AUTH_JWT_SECRET":    validSecret,
+		// The default storage provider signs its own links, so its secret is as required as
+		// the token one.
+		"STORAGE_SIGNING_SECRET": validSecret,
 	}
 }
 
@@ -851,5 +858,214 @@ func TestAIConfig_NarrowsWhatEachAdapterSees(t *testing.T) {
 		if got != cfg.Retry {
 			t.Errorf("%s().Retry = %+v, want the shared policy %+v", name, got, cfg.Retry)
 		}
+	}
+}
+
+func spacesEnv() map[string]string {
+	env := minimalEnv()
+	env["STORAGE_PROVIDER"] = "spaces"
+	env["STORAGE_ENDPOINT"] = "https://nyc3.digitaloceanspaces.com"
+	env["STORAGE_REGION"] = "us-east-1"
+	env["STORAGE_BUCKET"] = "coti-attachments"
+	env["STORAGE_ACCESS_KEY"] = "spaces-access-key"
+	env["STORAGE_SECRET_KEY"] = "spaces-secret-key"
+	return env
+}
+
+// The default provider keeps files on the filesystem, so a checkout with no bucket — which is
+// every checkout today — has to boot.
+func TestLoad_StorageArrivesLocalAndNeedsNoBucket(t *testing.T) {
+	setEnv(t, minimalEnv())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.Storage.Provider != StorageProviderLocal {
+		t.Errorf("Storage.Provider = %q, want %q", cfg.Storage.Provider, StorageProviderLocal)
+	}
+	if cfg.Storage.Bucket != "" || cfg.Storage.AccessKey != "" || cfg.Storage.SecretKey != "" {
+		t.Errorf("Storage = %+v, want no bucket credentials", cfg.Storage)
+	}
+	// Pinned exactly rather than as a relationship: .env.example and docs/technical quote these.
+	if cfg.Storage.MaxFileSize != 10*1024*1024 {
+		t.Errorf("Storage.MaxFileSize = %d, want %d", cfg.Storage.MaxFileSize, 10*1024*1024)
+	}
+	if cfg.Storage.SignedURLExpiry != 15*time.Minute {
+		t.Errorf("Storage.SignedURLExpiry = %v, want 15m", cfg.Storage.SignedURLExpiry)
+	}
+	if cfg.Storage.Dir != "./.storage" {
+		t.Errorf("Storage.Dir = %q, want %q", cfg.Storage.Dir, "./.storage")
+	}
+	if cfg.Storage.APIBaseURL != "http://localhost:8000" {
+		t.Errorf("Storage.APIBaseURL = %q, want %q", cfg.Storage.APIBaseURL, "http://localhost:8000")
+	}
+}
+
+// Every key set to a value only it could produce: with the defaults in place both halves of a
+// swapped pair still read correctly, so a defaults test cannot see the mistake at all.
+func TestLoad_StorageKeysLandOnTheirOwnFields(t *testing.T) {
+	env := spacesEnv()
+	env["STORAGE_LOCAL_DIR"] = "/var/lib/coti-objects"
+	env["STORAGE_LOCAL_API_BASE_URL"] = "https://api.example.test"
+	env["STORAGE_SIGNING_SECRET"] = "0123456789abcdef0123456789abcdefX"
+	env["STORAGE_MAX_FILE_SIZE_BYTES"] = "4242"
+	env["STORAGE_SIGNED_URL_EXPIRY_MINUTES"] = "7"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	cases := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{"Provider", string(cfg.Storage.Provider), "spaces"},
+		{"Dir", cfg.Storage.Dir, "/var/lib/coti-objects"},
+		{"APIBaseURL", cfg.Storage.APIBaseURL, "https://api.example.test"},
+		{"SigningSecret", cfg.Storage.SigningSecret, "0123456789abcdef0123456789abcdefX"},
+		{"Endpoint", cfg.Storage.Endpoint, "https://nyc3.digitaloceanspaces.com"},
+		{"Region", cfg.Storage.Region, "us-east-1"},
+		{"Bucket", cfg.Storage.Bucket, "coti-attachments"},
+		{"AccessKey", cfg.Storage.AccessKey, "spaces-access-key"},
+		{"SecretKey", cfg.Storage.SecretKey, "spaces-secret-key"},
+	}
+	for _, tc := range cases {
+		if tc.got != tc.want {
+			t.Errorf("Storage.%s = %q, want %q", tc.name, tc.got, tc.want)
+		}
+	}
+	if cfg.Storage.MaxFileSize != 4242 {
+		t.Errorf("Storage.MaxFileSize = %d, want 4242", cfg.Storage.MaxFileSize)
+	}
+	if cfg.Storage.SignedURLExpiry != 7*time.Minute {
+		t.Errorf("Storage.SignedURLExpiry = %v, want 7m", cfg.Storage.SignedURLExpiry)
+	}
+}
+
+func TestLoad_SpacesProviderLoadsWithEveryCredentialPresent(t *testing.T) {
+	setEnv(t, spacesEnv())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.Storage.Provider != StorageProviderSpaces {
+		t.Errorf("Storage.Provider = %q, want %q", cfg.Storage.Provider, StorageProviderSpaces)
+	}
+}
+
+func TestLoad_SpacesProviderReportsEveryMissingKeyTogether(t *testing.T) {
+	missing := []string{"STORAGE_ENDPOINT", "STORAGE_REGION", "STORAGE_BUCKET",
+		"STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY"}
+	env := spacesEnv()
+	for _, key := range missing {
+		delete(env, key)
+	}
+	setEnv(t, env)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() = nil error, want an error")
+	}
+	for _, want := range missing {
+		if !strings.Contains(err.Error(), want+" is required when STORAGE_PROVIDER is spaces") {
+			t.Errorf("Load() error is missing %q; got:\n%s", want, err.Error())
+		}
+	}
+}
+
+func TestLoad_LocalProviderDemandsASigningSecretLongEnoughToSign(t *testing.T) {
+	env := minimalEnv()
+	env["STORAGE_SIGNING_SECRET"] = "short"
+	setEnv(t, env)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() = nil error, want an error")
+	}
+	if !strings.Contains(err.Error(), "STORAGE_SIGNING_SECRET must be at least 32 characters") {
+		t.Errorf("Load() error does not name STORAGE_SIGNING_SECRET; got:\n%s", err.Error())
+	}
+}
+
+func TestLoad_StorageRejectsUnusableSettings(t *testing.T) {
+	cases := []struct {
+		name string
+		env  func() map[string]string
+		want string
+	}{
+		{"unknown provider", func() map[string]string {
+			env := minimalEnv()
+			env["STORAGE_PROVIDER"] = "gcs"
+			return env
+		}, `STORAGE_PROVIDER must be "local" or "spaces", got "gcs"`},
+		{"local base url with no host", func() map[string]string {
+			env := minimalEnv()
+			env["STORAGE_LOCAL_API_BASE_URL"] = "localhost:8000"
+			return env
+		}, "STORAGE_LOCAL_API_BASE_URL must be an absolute URL"},
+		{"spaces endpoint with no scheme", func() map[string]string {
+			env := spacesEnv()
+			env["STORAGE_ENDPOINT"] = "nyc3.digitaloceanspaces.com"
+			return env
+		}, "STORAGE_ENDPOINT must be an absolute URL"},
+		{"no maximum file size", func() map[string]string {
+			env := minimalEnv()
+			env["STORAGE_MAX_FILE_SIZE_BYTES"] = "0"
+			return env
+		}, "STORAGE_MAX_FILE_SIZE_BYTES must be greater than zero"},
+		{"no link lifetime", func() map[string]string {
+			env := minimalEnv()
+			env["STORAGE_SIGNED_URL_EXPIRY_MINUTES"] = "0"
+			return env
+		}, "STORAGE_SIGNED_URL_EXPIRY_MINUTES must be greater than zero"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setEnv(t, tc.env())
+
+			_, err := Load()
+			if err == nil {
+				t.Fatal("Load() = nil error, want an error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("Load() error is missing %q; got:\n%s", tc.want, err.Error())
+			}
+		})
+	}
+}
+
+func TestStorageConfig_NarrowsWhatEachAdapterSees(t *testing.T) {
+	t.Parallel()
+
+	cfg := StorageConfig{
+		Provider:      StorageProviderSpaces,
+		Dir:           "/var/lib/coti-objects",
+		APIBaseURL:    "https://api.example.test",
+		SigningSecret: "storage-signing-secret",
+		Endpoint:      "https://nyc3.digitaloceanspaces.com",
+		Region:        "us-east-1",
+		Bucket:        "coti-attachments",
+		AccessKey:     "spaces-access-key",
+		SecretKey:     "spaces-secret-key",
+	}
+
+	local := cfg.Local()
+	if local.Dir != cfg.Dir || local.APIBaseURL != cfg.APIBaseURL || local.SigningSecret != cfg.SigningSecret {
+		t.Fatalf("Local() = %+v, want the filesystem settings", local)
+	}
+	if strings.Contains(fmt.Sprintf("%+v", local), "spaces-secret-key") {
+		t.Fatal("Local() carries the bucket credentials, which that adapter must not hold")
+	}
+
+	spaces := cfg.Spaces()
+	if spaces.Bucket != cfg.Bucket || spaces.Region != cfg.Region || spaces.SecretKey != cfg.SecretKey {
+		t.Fatalf("Spaces() = %+v, want the bucket settings", spaces)
+	}
+	if strings.Contains(fmt.Sprintf("%+v", spaces), "storage-signing-secret") {
+		t.Fatal("Spaces() carries the link signing secret, which that adapter must not hold")
 	}
 }
