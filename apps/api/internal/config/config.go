@@ -19,7 +19,7 @@ import (
 // than the digest add no security.
 const minJWTSecretLength = 32
 
-// minSigningSecretLength is the floor for STORAGE_SIGNING_SECRET, which signs storage links
+// minSigningSecretLength is the floor for STORAGE_LOCAL_SIGNING_SECRET, which signs storage links
 // with the same construction and so needs the same key width.
 const minSigningSecretLength = 32
 const defaultCatalogImportMaxBytes = 5 * 1024 * 1024
@@ -501,7 +501,7 @@ func (s StorageConfig) problems() []string {
 		// provider: it makes every object reachable by anyone who can guess a key.
 		if len(s.SigningSecret) < minSigningSecretLength {
 			problems = append(problems, fmt.Sprintf(
-				"STORAGE_SIGNING_SECRET must be at least %d characters when STORAGE_PROVIDER is %s",
+				"STORAGE_LOCAL_SIGNING_SECRET must be at least %d characters when STORAGE_PROVIDER is %s",
 				minSigningSecretLength, StorageProviderLocal))
 		}
 		if u, err := url.Parse(s.APIBaseURL); err != nil || u.Scheme == "" || u.Host == "" {
@@ -638,7 +638,7 @@ func Load() (*Config, error) {
 			Provider:        StorageProvider(getString("STORAGE_PROVIDER", string(StorageProviderLocal))),
 			Dir:             getString("STORAGE_LOCAL_DIR", "./.storage"),
 			APIBaseURL:      getString("STORAGE_LOCAL_API_BASE_URL", "http://localhost:8000"),
-			SigningSecret:   getString("STORAGE_SIGNING_SECRET", ""),
+			SigningSecret:   getString("STORAGE_LOCAL_SIGNING_SECRET", ""),
 			Endpoint:        getString("STORAGE_ENDPOINT", ""),
 			Region:          getString("STORAGE_REGION", ""),
 			Bucket:          getString("STORAGE_BUCKET", ""),

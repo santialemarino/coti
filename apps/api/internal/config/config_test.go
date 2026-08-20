@@ -50,7 +50,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"JOB_TIMEOUT_MINUTES",
 		"RFQ_MAX_TEXT_CHARACTERS", "RFQ_MAX_ITEMS", "RFQ_PIPELINE_TIMEOUT_SECONDS",
 		"STORAGE_PROVIDER", "STORAGE_LOCAL_DIR", "STORAGE_LOCAL_API_BASE_URL",
-		"STORAGE_SIGNING_SECRET", "STORAGE_ENDPOINT", "STORAGE_REGION", "STORAGE_BUCKET",
+		"STORAGE_LOCAL_SIGNING_SECRET", "STORAGE_ENDPOINT", "STORAGE_REGION", "STORAGE_BUCKET",
 		"STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY",
 		"STORAGE_MAX_FILE_SIZE_BYTES", "STORAGE_SIGNED_URL_EXPIRY_MINUTES",
 	}
@@ -69,7 +69,7 @@ func minimalEnv() map[string]string {
 		"AUTH_JWT_SECRET":    validSecret,
 		// The default storage provider signs its own links, so its secret is as required as
 		// the token one.
-		"STORAGE_SIGNING_SECRET": validSecret,
+		"STORAGE_LOCAL_SIGNING_SECRET": validSecret,
 	}
 }
 
@@ -908,7 +908,7 @@ func TestLoad_StorageKeysLandOnTheirOwnFields(t *testing.T) {
 	env := spacesEnv()
 	env["STORAGE_LOCAL_DIR"] = "/var/lib/coti-objects"
 	env["STORAGE_LOCAL_API_BASE_URL"] = "https://api.example.test"
-	env["STORAGE_SIGNING_SECRET"] = "0123456789abcdef0123456789abcdefX"
+	env["STORAGE_LOCAL_SIGNING_SECRET"] = "0123456789abcdef0123456789abcdefX"
 	env["STORAGE_MAX_FILE_SIZE_BYTES"] = "4242"
 	env["STORAGE_SIGNED_URL_EXPIRY_MINUTES"] = "7"
 	setEnv(t, env)
@@ -961,7 +961,7 @@ func TestLoad_SpacesProviderLoadsWithEveryCredentialPresent(t *testing.T) {
 // own must not be demanded from a deployment that never uses it.
 func TestLoad_SpacesProviderNeedsNoLinkSigningSecret(t *testing.T) {
 	env := spacesEnv()
-	delete(env, "STORAGE_SIGNING_SECRET")
+	delete(env, "STORAGE_LOCAL_SIGNING_SECRET")
 	setEnv(t, env)
 
 	cfg, err := Load()
@@ -995,15 +995,15 @@ func TestLoad_SpacesProviderReportsEveryMissingKeyTogether(t *testing.T) {
 
 func TestLoad_LocalProviderDemandsASigningSecretLongEnoughToSign(t *testing.T) {
 	env := minimalEnv()
-	env["STORAGE_SIGNING_SECRET"] = "short"
+	env["STORAGE_LOCAL_SIGNING_SECRET"] = "short"
 	setEnv(t, env)
 
 	_, err := Load()
 	if err == nil {
 		t.Fatal("Load() = nil error, want an error")
 	}
-	if !strings.Contains(err.Error(), "STORAGE_SIGNING_SECRET must be at least 32 characters") {
-		t.Errorf("Load() error does not name STORAGE_SIGNING_SECRET; got:\n%s", err.Error())
+	if !strings.Contains(err.Error(), "STORAGE_LOCAL_SIGNING_SECRET must be at least 32 characters") {
+		t.Errorf("Load() error does not name STORAGE_LOCAL_SIGNING_SECRET; got:\n%s", err.Error())
 	}
 }
 

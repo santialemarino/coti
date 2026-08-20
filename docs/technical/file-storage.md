@@ -65,7 +65,7 @@ never carries the bytes on the way out.
 ?expires=<unix seconds>&signature=<base64url HMAC-SHA256>
 ```
 
-The signature covers the key and the deadline together, over `STORAGE_SIGNING_SECRET`. Neither
+The signature covers the key and the deadline together, over `STORAGE_LOCAL_SIGNING_SECRET`. Neither
 can be moved without invalidating the other: pushing `expires` further out, or pointing the same
 signature at another account's key, both fail the comparison. Verification is stateless — no
 table, no lookup — and the deadline is the first instant that no longer serves, not the last one
@@ -95,7 +95,7 @@ In `apps/api/.env.example`, defaults in `internal/config`:
 | `STORAGE_SIGNED_URL_EXPIRY_MINUTES` | how long a link serves; defaults to 15                              |
 | `STORAGE_LOCAL_DIR`                 | where objects live; required when the provider is `local`           |
 | `STORAGE_LOCAL_API_BASE_URL`        | where signed links point — this API's own address, not a frontend's |
-| `STORAGE_SIGNING_SECRET`            | signs local links; at least 32 characters, required under `local`   |
+| `STORAGE_LOCAL_SIGNING_SECRET`      | signs local links; at least 32 characters, required under `local`   |
 | `STORAGE_ENDPOINT`                  | required when the provider is `spaces`; carries no bucket name      |
 | `STORAGE_REGION`                    | required when the provider is `spaces`                              |
 | `STORAGE_BUCKET`                    | required when the provider is `spaces`                              |
