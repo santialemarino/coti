@@ -1,6 +1,8 @@
 package domain
 
 import (
+	"io"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -64,12 +66,14 @@ func AttachmentFormatFor(contentType string) (AttachmentFormat, bool) {
 }
 
 // AcceptedAttachmentContentTypes lists every accepted content type, for an error a client can
-// act on rather than a bare refusal.
+// act on rather than a bare refusal. Sorted, because map order would reword the same refusal on
+// every request.
 func AcceptedAttachmentContentTypes() []string {
 	types := make([]string, 0, len(attachmentFormats))
 	for contentType := range attachmentFormats {
 		types = append(types, contentType)
 	}
+	slices.Sort(types)
 	return types
 }
 
@@ -95,6 +99,14 @@ type NewRFQAttachment struct {
 	RFQID      uuid.UUID
 	Type       AttachmentType
 	StorageKey string
+}
+
+// AttachmentUpload is one file offered for an RFQ. Size is what the transport reported, so it
+// is checked before a single byte reaches storage.
+type AttachmentUpload struct {
+	ContentType string
+	Size        int64
+	Content     io.Reader
 }
 
 // AttachmentLink is one attachment paired with a link that serves it until the link expires.

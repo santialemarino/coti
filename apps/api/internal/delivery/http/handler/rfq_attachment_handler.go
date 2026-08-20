@@ -9,13 +9,12 @@ import (
 
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
-	"github.com/santialemarino/coti/apps/api/internal/services"
 )
 
 // RFQAttachmentService is the attachment surface the handler needs.
 type RFQAttachmentService interface {
 	List(ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID) ([]domain.AttachmentLink, error)
-	Upload(ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID, file services.UploadFile) (*domain.AttachmentLink, error)
+	Upload(ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID, file domain.AttachmentUpload) (*domain.AttachmentLink, error)
 }
 
 // RFQAttachmentHandler serves the files an RFQ arrived with.
@@ -93,7 +92,7 @@ func (h *RFQAttachmentHandler) Upload(c *gin.Context) {
 	}
 	defer file.Close()
 
-	link, err := h.attachments.Upload(c.Request.Context(), tenant, rfqID, services.UploadFile{
+	link, err := h.attachments.Upload(c.Request.Context(), tenant, rfqID, domain.AttachmentUpload{
 		ContentType: header.Header.Get("Content-Type"),
 		Size:        header.Size,
 		Content:     file,

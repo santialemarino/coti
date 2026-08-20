@@ -36,7 +36,7 @@ func TestRFQAttachmentService_AcceptedFormat_MapsEachAcceptedTypeToItsStoredKind
 	for _, tc := range cases {
 		t.Run(tc.contentType, func(t *testing.T) {
 			t.Parallel()
-			format, err := service.acceptedFormat(UploadFile{ContentType: tc.contentType, Size: 10})
+			format, err := service.acceptedFormat(domain.AttachmentUpload{ContentType: tc.contentType, Size: 10})
 			if err != nil {
 				t.Fatalf("acceptedFormat(%q) = %v, want no error", tc.contentType, err)
 			}
@@ -59,7 +59,7 @@ func TestRFQAttachmentService_AcceptedFormat_RefusesATypeOutsideTheSet(t *testin
 	for _, contentType := range []string{
 		"text/html", "application/javascript", "image/svg+xml", "application/octet-stream", "",
 	} {
-		_, err := service.acceptedFormat(UploadFile{ContentType: contentType, Size: 10})
+		_, err := service.acceptedFormat(domain.AttachmentUpload{ContentType: contentType, Size: 10})
 		if !errors.Is(err, domain.ErrInvalidInput) {
 			t.Errorf("acceptedFormat(%q) = %v, want ErrInvalidInput", contentType, err)
 		}
@@ -84,7 +84,7 @@ func TestRFQAttachmentService_AcceptedFormat_RefusesBySize(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := service.acceptedFormat(UploadFile{ContentType: "application/pdf", Size: tc.size})
+			_, err := service.acceptedFormat(domain.AttachmentUpload{ContentType: "application/pdf", Size: tc.size})
 			if !errors.Is(err, domain.ErrInvalidInput) {
 				t.Fatalf("acceptedFormat(size=%d) = %v, want ErrInvalidInput", tc.size, err)
 			}
@@ -92,7 +92,7 @@ func TestRFQAttachmentService_AcceptedFormat_RefusesBySize(t *testing.T) {
 	}
 
 	// The limit itself is accepted: it is a maximum, not a value to stay under.
-	if _, err := service.acceptedFormat(UploadFile{ContentType: "application/pdf", Size: 100}); err != nil {
+	if _, err := service.acceptedFormat(domain.AttachmentUpload{ContentType: "application/pdf", Size: 100}); err != nil {
 		t.Errorf("acceptedFormat(size=100) = %v, want the limit itself to be accepted", err)
 	}
 }
@@ -101,13 +101,13 @@ func TestRFQAttachmentService_AcceptedFormat_ReportsSizeAndTypeWithDifferentCode
 	t.Parallel()
 	service := attachmentService(100)
 
-	_, tooBig := service.acceptedFormat(UploadFile{ContentType: "application/pdf", Size: 101})
+	_, tooBig := service.acceptedFormat(domain.AttachmentUpload{ContentType: "application/pdf", Size: 101})
 	if got := domain.CodeOf(tooBig); got != domain.CodeFileTooLarge {
 		t.Errorf("oversized code = %q, want FILE_TOO_LARGE", got)
 	}
 	// Size is checked first, so a file that is both too big and the wrong type reports the size:
 	// telling someone their unsupported file is also too large helps nobody.
-	_, wrongType := service.acceptedFormat(UploadFile{ContentType: "text/html", Size: 10})
+	_, wrongType := service.acceptedFormat(domain.AttachmentUpload{ContentType: "text/html", Size: 10})
 	if got := domain.CodeOf(wrongType); got != domain.CodeUnsupportedFileType {
 		t.Errorf("unsupported code = %q, want UNSUPPORTED_FILE_TYPE", got)
 	}

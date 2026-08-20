@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"fmt"
-	"io"
 	"mime"
 	"path"
 	"strings"
@@ -42,14 +41,6 @@ func NewRFQAttachmentService(
 	return &RFQAttachmentService{db: db, attachments: attachments, storage: storage, cfg: cfg, now: now}
 }
 
-// UploadFile is one file offered for an RFQ. Size is what the transport reported, so it is
-// checked before a single byte reaches storage.
-type UploadFile struct {
-	ContentType string
-	Size        int64
-	Content     io.Reader
-}
-
 // List returns the RFQ's attachments, each with a link that serves it until the link expires.
 func (s *RFQAttachmentService) List(
 	ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID,
@@ -86,7 +77,7 @@ func (s *RFQAttachmentService) List(
 // file is not addressable from another. Returns domain.ErrNotFound when the RFQ is not this
 // caller's.
 func (s *RFQAttachmentService) Upload(
-	ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID, file UploadFile,
+	ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID, file domain.AttachmentUpload,
 ) (*domain.AttachmentLink, error) {
 	if err := requireBranch(tenant, "an RFQ's attachments"); err != nil {
 		return nil, err
@@ -131,7 +122,7 @@ func (s *RFQAttachmentService) Upload(
 
 // acceptedFormat refuses a file whose type is not accepted or whose size is over the limit,
 // before any of it is stored.
-func (s *RFQAttachmentService) acceptedFormat(file UploadFile) (domain.AttachmentFormat, error) {
+func (s *RFQAttachmentService) acceptedFormat(file domain.AttachmentUpload) (domain.AttachmentFormat, error) {
 	if file.Size <= 0 {
 		return domain.AttachmentFormat{}, fmt.Errorf("%w: the file is empty", domain.ErrInvalidInput)
 	}
@@ -158,15 +149,14 @@ func (s *RFQAttachmentService) linkFor(
 		return domain.AttachmentLink{}, fmt.Errorf("%w: attachment %s has no stored file",
 			domain.ErrNotFound, attachment.ID)
 	}
+	// Read before signing, so the deadline reported is never later than the one signed into
+	// the link: a client refreshing early costs nothing, one refreshing late gets a 403.
+	expiresAt := s.now().Add(s.cfg.SignedURLExpiry)
 	url, err := s.storage.GenerateSignedURL(ctx, *attachment.StorageKey, s.cfg.SignedURLExpiry)
 	if err != nil {
 		return domain.AttachmentLink{}, err
 	}
-	return domain.AttachmentLink{
-		Attachment: attachment,
-		URL:        url,
-		ExpiresAt:  s.now().Add(s.cfg.SignedURLExpiry),
-	}, nil
+	return domain.AttachmentLink{Attachment: attachment, URL: url, ExpiresAt: expiresAt}, nil
 }
 
 // attachmentKey puts the account at the front of the object key, so tenant isolation is visible

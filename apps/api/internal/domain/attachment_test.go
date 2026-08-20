@@ -1,6 +1,9 @@
 package domain
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestAttachmentFormatFor_AcceptsOnlyTheClosedSet(t *testing.T) {
 	t.Parallel()
@@ -36,10 +39,15 @@ func TestAttachmentFormatFor_EveryFormatIsUsable(t *testing.T) {
 	}
 }
 
-func TestAcceptedAttachmentContentTypes_ListsEveryFormat(t *testing.T) {
+func TestAcceptedAttachmentContentTypes_ListsEveryFormatInAStableOrder(t *testing.T) {
 	t.Parallel()
 
-	if got, want := len(AcceptedAttachmentContentTypes()), len(attachmentFormats); got != want {
+	listed := AcceptedAttachmentContentTypes()
+	if got, want := len(listed), len(attachmentFormats); got != want {
 		t.Fatalf("listed %d content types, want %d", got, want)
+	}
+	// The refusal quotes this list, and map order would reword it on every request.
+	if !slices.IsSorted(listed) {
+		t.Errorf("listed = %v, want it sorted", listed)
 	}
 }

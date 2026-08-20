@@ -51,20 +51,6 @@ func (r *RFQAttachmentRepository) ListByRFQ(
 	return attachments, rows.Err()
 }
 
-// GetByID loads one attachment. Returns domain.ErrNotFound when it belongs to another account,
-// to another branch, or does not exist — which under row level security are indistinguishable.
-func (r *RFQAttachmentRepository) GetByID(
-	ctx context.Context, q Querier, accountID, branchID, id uuid.UUID,
-) (*domain.RFQAttachment, error) {
-	return scanRFQAttachment(q.QueryRow(ctx,
-		`SELECT a.id, a.account_id, a.rfq_id, a.type, a.file_url, a.extracted_text,
-		        a.processing_status, a.created_at, a.processed_at
-		 FROM rfq_attachment a
-		 JOIN rfq r ON r.id = a.rfq_id
-		 WHERE a.account_id = $1 AND r.account_id = $1 AND r.branch_id = $2 AND a.id = $3`,
-		accountID, branchID, id))
-}
-
 // Create records a stored file against an RFQ. The RFQ id arrives from the request, and its
 // foreign key would accept another account's or another branch's row, so the insert proves
 // both before it writes. Returns domain.ErrNotFound when it cannot.
