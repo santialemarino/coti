@@ -191,13 +191,15 @@ func (s *ChannelService) sealConfig(
 	if err != nil || config == nil {
 		return nil, err
 	}
-	// Every type that takes a configuration requires a credential in it, so reaching here with no
-	// key means the credential would be stored in the clear.
-	if !s.sealer.Enabled() {
-		return nil, fmt.Errorf("%w: CHANNEL_CONFIG_ENCRYPTION_KEY is unset, so a channel "+
-			"credential cannot be stored", domain.ErrNotConfigured)
-	}
-	if err := config.MapSecrets(s.sealer.Seal); err != nil {
+	// Refused on the credential itself rather than on the config holding one, so the rule stays
+	// true of a shape whose credentials are all optional.
+	if err := config.MapSecrets(func(plaintext string) (string, error) {
+		if !s.sealer.Enabled() {
+			return "", fmt.Errorf("%w: CHANNEL_CONFIG_ENCRYPTION_KEY is unset, so a channel "+
+				"credential cannot be stored", domain.ErrNotConfigured)
+		}
+		return s.sealer.Seal(plaintext)
+	}); err != nil {
 		return nil, err
 	}
 	return json.Marshal(config)
