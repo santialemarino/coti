@@ -116,4 +116,6 @@ type TextRFQDraft struct {
 	Quote   *Quote
 	Version *QuoteVersion
 	Items   []QuoteItem
+	// Alternatives are the candidates each flagged line was decided from, keyed by line id.
+	Alternatives map[uuid.UUID][]QuoteItemAlternative
 }
