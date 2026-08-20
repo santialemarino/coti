@@ -48,7 +48,7 @@ func NewFileHandler(source SignedObjectSource) *FileHandler {
 //	@Success		200			{file}		binary
 //	@Failure		403			{object}	dto.ErrorResponse
 //	@Failure		404			{object}	dto.ErrorResponse
-//	@Router			/files/{key} [get]
+//	@Router			/v1/files/{key} [get]
 func (h *FileHandler) Get(c *gin.Context) {
 	// Gin's wildcard keeps the leading separator; a stored key has none.
 	key := strings.TrimPrefix(c.Param("key"), "/")

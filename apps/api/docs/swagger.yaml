@@ -949,44 +949,6 @@ info:
   title: Coti API
   version: "1.0"
 paths:
-  /files/{key}:
-    get:
-      description: 'Serves a stored file to the holder of an unexpired signed link.
-        No session: the signature is the authorization.'
-      parameters:
-      - description: Object key
-        in: path
-        name: key
-        required: true
-        type: string
-      - description: Deadline, in unix seconds
-        in: query
-        name: expires
-        required: true
-        type: integer
-      - description: Signature covering the key and the deadline
-        in: query
-        name: signature
-        required: true
-        type: string
-      produces:
-      - application/octet-stream
-      responses:
-        "200":
-          description: OK
-          schema:
-            type: file
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/dto.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/dto.ErrorResponse'
-      summary: Download a signed object
-      tags:
-      - files
   /health:
     get:
       description: Checks no dependency, so a failing database does not restart the
@@ -1400,6 +1362,44 @@ paths:
       summary: Simulate an inbound WhatsApp message
       tags:
       - development
+  /v1/files/{key}:
+    get:
+      description: 'Serves a stored file to the holder of an unexpired signed link.
+        No session: the signature is the authorization.'
+      parameters:
+      - description: Object key
+        in: path
+        name: key
+        required: true
+        type: string
+      - description: Deadline, in unix seconds
+        in: query
+        name: expires
+        required: true
+        type: integer
+      - description: Signature covering the key and the deadline
+        in: query
+        name: signature
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Download a signed object
+      tags:
+      - files
   /v1/me:
     get:
       description: Returns the caller's identity and branch reach, so the frontend
