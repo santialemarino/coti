@@ -47,9 +47,10 @@ type quoteStatusUpdate struct {
 // fakeQuoteRepo records what the service asked of persistence, so a test can assert on the
 // writes without a database.
 type fakeQuoteRepo struct {
-	quote   *domain.Quote
-	version *domain.QuoteVersion
-	items   []domain.QuoteItem
+	quote        *domain.Quote
+	version      *domain.QuoteVersion
+	items        []domain.QuoteItem
+	alternatives map[uuid.UUID][]domain.QuoteItemAlternative
 
 	updateStatusErr error
 	applyPricingErr error
@@ -57,6 +58,7 @@ type fakeQuoteRepo struct {
 	branchesAskedFor []uuid.UUID
 	versionBranches  []uuid.UUID
 	listedVersionIDs []uuid.UUID
+	alternativeReads [][]uuid.UUID
 	pricedVersionIDs []uuid.UUID
 	appliedPricings  [][]domain.QuoteItemPricing
 	writtenTotals    []decimal.Decimal
@@ -120,6 +122,19 @@ func (f *fakeQuoteRepo) ListItems(
 	items := make([]domain.QuoteItem, len(f.items))
 	copy(items, f.items)
 	return items, nil
+}
+
+func (f *fakeQuoteRepo) ListAlternativesByItemIDs(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, itemIDs []uuid.UUID,
+) (map[uuid.UUID][]domain.QuoteItemAlternative, error) {
+	f.alternativeReads = append(f.alternativeReads, itemIDs)
+	byItem := make(map[uuid.UUID][]domain.QuoteItemAlternative, len(f.alternatives))
+	for _, itemID := range itemIDs {
+		if offered, ok := f.alternatives[itemID]; ok {
+			byItem[itemID] = offered
+		}
+	}
+	return byItem, nil
 }
 
 func (f *fakeQuoteRepo) ApplyPricing(
@@ -539,5 +554,102 @@ func TestQuoteService_AcceptMaterials_QuotesAtZeroWhenNoLineCanBePriced(t *testi
 	// No product on any line, so there is no unpriced product to report either.
 	if f.prices.calls != 1 || len(f.prices.askedFor[0]) != 0 {
 		t.Errorf("price lookup asked for %v, want one call for no products", f.prices.askedFor)
+	}
+}
+
+func TestQuoteService_AcceptMaterials_NamesTheLinesTheBranchCannotPrice(t *testing.T) {
+	t.Parallel()
+	priced, unpriceable := uuid.New(), uuid.New()
+	// Three lines, three reasons a valuation can be empty: one priced, one whose product the
+	// branch has no price in force for, and one that matched nothing at all.
+	pricedItem := pricedLine(priced, "3")
+	unpriceableItem := pricedLine(unpriceable, "5")
+	flagged := flaggedLine("2")
+	f := newQuoteFixture([]domain.QuoteItem{pricedItem, unpriceableItem, flagged},
+		map[uuid.UUID]domain.BranchPrice{priced: branchPrice(priced, "80.00", nil)})
+
+	result, err := f.service.AcceptMaterials(context.Background(), f.tenant, f.quoteID)
+	if err != nil {
+		t.Fatalf("AcceptMaterials() = %v, want no error", err)
+	}
+
+	// Only the matched-but-unpriceable line is named. A line with no product is already flagged
+	// NO_MATCH, so reporting it again would say the same thing twice; the priced one is fine.
+	if len(result.UnpricedItemIDs) != 1 {
+		t.Fatalf("named %v, want the one line the branch cannot price", result.UnpricedItemIDs)
+	}
+	if result.UnpricedItemIDs[0] != unpriceableItem.ID {
+		t.Errorf("named line %v, want %v", result.UnpricedItemIDs[0], unpriceableItem.ID)
+	}
+	// It is neither NO_MATCH nor AMBIGUOUS: the catalog decided it, and the gap is elsewhere.
+	if result.Items[1].MatchStatus != domain.ItemMatchStatusMatched {
+		t.Errorf("unpriceable line status = %q, want MATCHED: match_status answers a different "+
+			"question", result.Items[1].MatchStatus)
+	}
+	if result.Items[1].Subtotal.Valid {
+		t.Errorf("unpriceable line subtotal = %v, want none", result.Items[1].Subtotal)
+	}
+	// 3 × 80.00, by hand: neither empty line contributes.
+	if !result.Version.Total.Equal(decimal.RequireFromString("240.00")) {
+		t.Errorf("total = %s, want 240.00", result.Version.Total)
+	}
+}
+
+func TestQuoteService_AcceptMaterials_NamesNoLineWhenEveryPriceIsInForce(t *testing.T) {
+	t.Parallel()
+	product := uuid.New()
+	f := newQuoteFixture([]domain.QuoteItem{pricedLine(product, "1"), flaggedLine("2")},
+		map[uuid.UUID]domain.BranchPrice{product: branchPrice(product, "10.00", nil)})
+
+	result, err := f.service.AcceptMaterials(context.Background(), f.tenant, f.quoteID)
+	if err != nil {
+		t.Fatalf("AcceptMaterials() = %v, want no error", err)
+	}
+	if len(result.UnpricedItemIDs) != 0 {
+		t.Errorf("named %v, want none: a line with no product is not a pricing gap",
+			result.UnpricedItemIDs)
+	}
+}
+
+func TestQuoteService_AcceptMaterials_CarriesTheFlaggedLinesCandidates(t *testing.T) {
+	t.Parallel()
+	product, candidate := uuid.New(), uuid.New()
+	flagged := flaggedLine("2")
+	name := "Membrana asfáltica 4mm"
+	f := newQuoteFixture([]domain.QuoteItem{pricedLine(product, "1"), flagged},
+		map[uuid.UUID]domain.BranchPrice{product: branchPrice(product, "10.00", nil)})
+	f.quotes.alternatives = map[uuid.UUID][]domain.QuoteItemAlternative{
+		flagged.ID: {{
+			ID: uuid.New(), QuoteItemID: flagged.ID, ProductID: &candidate,
+			Type:   domain.QuoteItemAlternativeTypeProduct,
+			Origin: domain.QuoteItemAlternativeOriginAI, Rank: 1,
+			ConfidenceScore: decimal.NewNullDecimal(decimal.RequireFromString("0.5500")),
+			CanonicalName:   &name,
+		}},
+	}
+
+	result, err := f.service.AcceptMaterials(context.Background(), f.tenant, f.quoteID)
+	if err != nil {
+		t.Fatalf("AcceptMaterials() = %v, want no error", err)
+	}
+
+	// Valuation does not change which line is flagged, so the seller reviews the prices and the
+	// choices on one screen rather than fetching the candidates separately.
+	offered := result.Alternatives[flagged.ID]
+	if len(offered) != 1 {
+		t.Fatalf("flagged line offers %d candidates, want the one that was considered",
+			len(offered))
+	}
+	if offered[0].CanonicalName == nil || *offered[0].CanonicalName != name {
+		t.Errorf("offer name = %v, want %q: a bare id is barely better than a bare flag",
+			offered[0].CanonicalName, name)
+	}
+	// One read for every line, not one per line.
+	if len(f.quotes.alternativeReads) != 1 {
+		t.Fatalf("read candidates %d times, want once for the whole version",
+			len(f.quotes.alternativeReads))
+	}
+	if got := len(f.quotes.alternativeReads[0]); got != 2 {
+		t.Errorf("asked for %d lines, want both of them", got)
 	}
 }

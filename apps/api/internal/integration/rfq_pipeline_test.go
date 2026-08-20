@@ -70,6 +70,11 @@ func (e *env) seedIntakeChannel(t *testing.T, accountID, branchID uuid.UUID) uui
 func (e *env) dropDraft(t *testing.T, rfqID uuid.UUID) {
 	t.Helper()
 	t.Cleanup(func() {
+		// The candidates go first: a foreign key on quote_item_alternative points at the lines.
+		e.mustCleanup(t, `DELETE FROM quote_item_alternative WHERE quote_item_id IN (
+		  SELECT i.id FROM quote_item i
+		  JOIN quote_version v ON v.id = i.version_id
+		  JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`, rfqID)
 		e.mustCleanup(t, `DELETE FROM quote_item WHERE version_id IN (
 		  SELECT v.id FROM quote_version v JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`,
 			rfqID)

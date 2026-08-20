@@ -189,11 +189,15 @@ type quoteStatusChangeCall struct {
 }
 
 type fakeQuoteDrafts struct {
-	created        []domain.NewQuote
-	currentVersion []uuid.UUID
-	versions       []domain.NewQuoteVersion
-	itemBatches    [][]domain.NewQuoteItem
-	statusChanges  []quoteStatusChangeCall
+	created            []domain.NewQuote
+	currentVersion     []uuid.UUID
+	versions           []domain.NewQuoteVersion
+	itemBatches        [][]domain.NewQuoteItem
+	alternativeBatches [][]domain.NewQuoteItemAlternative
+	alternativeReads   [][]uuid.UUID
+	storedAlternatives []domain.QuoteItemAlternative
+	alternativesErr    error
+	statusChanges      []quoteStatusChangeCall
 }
 
 func (f *fakeQuoteDrafts) Create(
@@ -240,13 +244,50 @@ func (f *fakeQuoteDrafts) CreateItems(
 	created := make([]domain.QuoteItem, 0, len(items))
 	for i, item := range items {
 		created = append(created, domain.QuoteItem{
-			ID: uuid.New(), AccountID: accountID, VersionID: versionID, ProductID: item.ProductID,
+			ID: item.ID, AccountID: accountID, VersionID: versionID, ProductID: item.ProductID,
 			RequestedDescription: item.RequestedDescription, Quantity: item.Quantity,
 			Unit: item.Unit, ConfidenceScore: item.ConfidenceScore, MatchStatus: item.MatchStatus,
 			QuantityRationale: item.QuantityRationale, CreatedAt: fixedNow.AddDate(0, 0, i),
 		})
 	}
 	return created, nil
+}
+
+func (f *fakeQuoteDrafts) CreateAlternatives(
+	_ context.Context, _ repository.Querier, accountID uuid.UUID,
+	alternatives []domain.NewQuoteItemAlternative,
+) error {
+	f.alternativeBatches = append(f.alternativeBatches, alternatives)
+	if f.alternativesErr != nil {
+		return f.alternativesErr
+	}
+	for _, alternative := range alternatives {
+		f.storedAlternatives = append(f.storedAlternatives, domain.QuoteItemAlternative{
+			ID: uuid.New(), AccountID: accountID, QuoteItemID: alternative.QuoteItemID,
+			ProductID: alternative.ProductID, ComboID: alternative.ComboID,
+			Type: alternative.Type, Origin: alternative.Origin, Rank: alternative.Rank,
+			ConfidenceScore: alternative.ConfidenceScore, PriceSnapshot: alternative.PriceSnapshot,
+		})
+	}
+	return nil
+}
+
+func (f *fakeQuoteDrafts) ListAlternativesByItemIDs(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, itemIDs []uuid.UUID,
+) (map[uuid.UUID][]domain.QuoteItemAlternative, error) {
+	f.alternativeReads = append(f.alternativeReads, itemIDs)
+	asked := make(map[uuid.UUID]struct{}, len(itemIDs))
+	for _, itemID := range itemIDs {
+		asked[itemID] = struct{}{}
+	}
+	byItem := make(map[uuid.UUID][]domain.QuoteItemAlternative)
+	for _, alternative := range f.storedAlternatives {
+		if _, ok := asked[alternative.QuoteItemID]; !ok {
+			continue
+		}
+		byItem[alternative.QuoteItemID] = append(byItem[alternative.QuoteItemID], alternative)
+	}
+	return byItem, nil
 }
 
 func (f *fakeQuoteDrafts) AppendStatusChange(
@@ -553,6 +594,10 @@ func TestRFQService_CreateTextDraft_FlagsEveryLineWhenMatchingCannotAnswer(t *te
 				if item.ConfidenceScore.Valid {
 					t.Errorf("line %d carries confidence %v, want null", i, item.ConfidenceScore)
 				}
+			}
+			if len(h.quotes.alternativeBatches) != 0 {
+				t.Errorf("wrote candidates %v, want none: nothing was considered",
+					h.quotes.alternativeBatches)
 			}
 		})
 	}
@@ -880,5 +925,236 @@ func TestRFQService_CreateTextDraft_PersistsTheDraftAfterThePipelineRunsOutOfTim
 	if draft.Items[0].MatchStatus != domain.ItemMatchStatusNoMatch {
 		t.Errorf("line status %q, want NO_MATCH: matching never answered",
 			draft.Items[0].MatchStatus)
+	}
+}
+
+// scoredCandidate stages one offer the matcher weighed. Distance is what confidenceOf reads, but
+// these tests stage the confidence directly: what a candidate scored is the matcher's own test.
+func scoredCandidate(productID uuid.UUID, name, confidence string) domain.ScoredCandidate {
+	return domain.ScoredCandidate{
+		CatalogCandidate: domain.CatalogCandidate{ProductID: productID, CanonicalName: name},
+		Confidence:       decimal.RequireFromString(confidence),
+	}
+}
+
+func TestRFQService_CreateTextDraft_OffersTheCandidatesOfEveryFlaggedLine(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("cemento", "10", "bolsa", "pidió 10"),
+		explicitLine("membrana rara", "2", "rollo", "pidió 2"),
+	})
+	leader := uuid.MustParse("b1111111-1111-4111-8111-111111111111")
+	runnerUp := uuid.MustParse("b2222222-2222-4222-8222-222222222222")
+	third := uuid.MustParse("b3333333-3333-4333-8333-333333333333")
+	nearMiss := uuid.MustParse("b4444444-4444-4444-8444-444444444444")
+	longShot := uuid.MustParse("b5555555-5555-4555-8555-555555555555")
+	h.matcher.matches = []domain.LineMatch{
+		{
+			ProductID:   &leader,
+			MatchStatus: domain.ItemMatchStatusAmbiguous,
+			Confidence:  decimal.RequireFromString("0.8200"),
+			Candidates: []domain.ScoredCandidate{
+				scoredCandidate(leader, "Cemento Loma Negra 50kg", "0.8200"),
+				scoredCandidate(runnerUp, "Cemento Avellaneda 50kg", "0.8000"),
+				scoredCandidate(third, "Cemento Holcim 50kg", "0.7100"),
+			},
+		},
+		{
+			MatchStatus: domain.ItemMatchStatusNoMatch,
+			Confidence:  decimal.RequireFromString("0.5500"),
+			Candidates: []domain.ScoredCandidate{
+				scoredCandidate(nearMiss, "Membrana asfáltica 4mm", "0.5500"),
+				scoredCandidate(longShot, "Membrana geotextil", "0.3100"),
+			},
+		},
+	}
+
+	draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "cemento y membrana rara"})
+	if err != nil {
+		t.Fatalf("CreateTextDraft returned %v", err)
+	}
+
+	if len(h.quotes.alternativeBatches) != 1 {
+		t.Fatalf("wrote %d candidate batches, want 1 alongside the lines",
+			len(h.quotes.alternativeBatches))
+	}
+	// Every candidate is written in the same statement, and the lines' candidates never travel in
+	// separate round trips: four rows, not one query per flagged line.
+	if got := len(h.quotes.alternativeBatches[0]); got != 4 {
+		t.Fatalf("wrote %d candidates, want 4: the leader is on its line already", got)
+	}
+	// One transaction for the order, one for the draft. The candidates ride the draft's.
+	if len(h.db.scopes) != 2 {
+		t.Errorf("opened %d transactions, want 2: the candidates are part of the draft",
+			len(h.db.scopes))
+	}
+
+	if len(draft.Items) != 2 {
+		t.Fatalf("persisted %d lines, want both", len(draft.Items))
+	}
+	ambiguous, noMatch := draft.Items[0], draft.Items[1]
+
+	// The AMBIGUOUS line keeps the leader and offers the two it might have been instead. Rank is
+	// the matcher's own ranking, so its offers start at two.
+	offered := draft.Alternatives[ambiguous.ID]
+	if len(offered) != 2 {
+		t.Fatalf("ambiguous line offers %d candidates, want the two it is not", len(offered))
+	}
+	wantAmbiguous := []struct {
+		productID  uuid.UUID
+		rank       int
+		confidence string
+	}{{runnerUp, 2, "0.8000"}, {third, 3, "0.7100"}}
+	for i, want := range wantAmbiguous {
+		got := offered[i]
+		if got.ProductID == nil || *got.ProductID != want.productID {
+			t.Errorf("offer %d product = %v, want %v", i, got.ProductID, want.productID)
+		}
+		if got.Rank != want.rank {
+			t.Errorf("offer %d rank = %d, want %d", i, got.Rank, want.rank)
+		}
+		if !got.ConfidenceScore.Valid ||
+			!got.ConfidenceScore.Decimal.Equal(decimal.RequireFromString(want.confidence)) {
+			t.Errorf("offer %d confidence = %v, want %s", i, got.ConfidenceScore, want.confidence)
+		}
+		if got.Type != domain.QuoteItemAlternativeTypeProduct {
+			t.Errorf("offer %d type = %q, want PRODUCT", i, got.Type)
+		}
+		if got.Origin != domain.QuoteItemAlternativeOriginAI {
+			t.Errorf("offer %d origin = %q, want AI", i, got.Origin)
+		}
+		// Nothing has been priced when matching runs, and a zero would read as free.
+		if got.PriceSnapshot.Valid {
+			t.Errorf("offer %d carries price %v, want none", i, got.PriceSnapshot)
+		}
+	}
+	if offered[0].ProductID != nil && ambiguous.ProductID != nil &&
+		*offered[0].ProductID == *ambiguous.ProductID {
+		t.Error("the leading candidate is offered as an alternative to itself")
+	}
+
+	// The NO_MATCH line points at nothing, so every candidate is on offer — the near miss included,
+	// which is the one thing that tells the seller how close the catalog came.
+	rejected := draft.Alternatives[noMatch.ID]
+	if len(rejected) != 2 {
+		t.Fatalf("no-match line offers %d candidates, want both rejected ones", len(rejected))
+	}
+	if rejected[0].ProductID == nil || *rejected[0].ProductID != nearMiss || rejected[0].Rank != 1 {
+		t.Errorf("closest offer = %+v, want %v at rank 1", rejected[0], nearMiss)
+	}
+	if rejected[1].ProductID == nil || *rejected[1].ProductID != longShot || rejected[1].Rank != 2 {
+		t.Errorf("second offer = %+v, want %v at rank 2", rejected[1], longShot)
+	}
+
+	// Each line's offers name that line and no other. Pairing them by insert order would rest on
+	// an order Postgres does not promise, and a line offering another line's products is a wrong
+	// answer nothing downstream could notice.
+	for itemID, alternatives := range draft.Alternatives {
+		for _, alternative := range alternatives {
+			if alternative.QuoteItemID != itemID {
+				t.Errorf("line %v was handed an offer belonging to %v", itemID,
+					alternative.QuoteItemID)
+			}
+		}
+	}
+	for _, alternative := range draft.Alternatives[ambiguous.ID] {
+		if alternative.ProductID != nil &&
+			(*alternative.ProductID == nearMiss || *alternative.ProductID == longShot) {
+			t.Errorf("the cemento line was offered %v, which belongs to the membrana line",
+				*alternative.ProductID)
+		}
+	}
+}
+
+func TestRFQService_CreateTextDraft_OffersNothingOnADecidedLine(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("cemento", "10", "bolsa", "pidió 10"),
+	})
+	// The harness answers MATCHED, and a decided line had candidates too — the runner-up simply
+	// lost by enough that there is nothing to choose between.
+	h.matcher.matches[0].Candidates = []domain.ScoredCandidate{
+		scoredCandidate(testProductID, "Cemento Loma Negra 50kg", "0.9100"),
+		scoredCandidate(uuid.New(), "Cal hidratada 25kg", "0.4000"),
+	}
+
+	draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "10 bolsas de cemento"})
+	if err != nil {
+		t.Fatalf("CreateTextDraft returned %v", err)
+	}
+	if len(h.quotes.alternativeBatches) != 0 {
+		t.Errorf("wrote %v, want nothing: a decided line asks the seller to choose nothing",
+			h.quotes.alternativeBatches)
+	}
+	// And nothing is read back either: the round trip is skipped, not merely empty.
+	if len(h.quotes.alternativeReads) != 0 {
+		t.Errorf("read candidates %v times, want none", len(h.quotes.alternativeReads))
+	}
+	if len(draft.Alternatives) != 0 {
+		t.Errorf("draft offers %v, want none", draft.Alternatives)
+	}
+}
+
+func TestRFQService_CreateTextDraft_FailsTheDraftWhenCandidatesCannotBeWritten(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("cemento", "10", "bolsa", "pidió 10"),
+	})
+	h.matcher.matches[0] = domain.LineMatch{
+		MatchStatus: domain.ItemMatchStatusNoMatch,
+		Confidence:  decimal.RequireFromString("0.4000"),
+		Candidates: []domain.ScoredCandidate{
+			scoredCandidate(uuid.New(), "Cemento Loma Negra 50kg", "0.4000"),
+		},
+	}
+	// A line of another account would answer this way: the join matched no row, so the write is
+	// refused rather than landing a candidate in the wrong tenant.
+	h.quotes.alternativesErr = domain.ErrNotFound
+
+	_, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "10 bolsas de cemento"})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("CreateTextDraft returned %v, want ErrNotFound", err)
+	}
+	// The whole transition rolls back with it: a quote whose lines are flagged while the candidates
+	// they were flagged against are missing is the half-written draft the transaction prevents.
+	if len(h.rfqs.updatedStatus) != 0 {
+		t.Errorf("wrote RFQ statuses %v, want none: the draft never completed",
+			h.rfqs.updatedStatus)
+	}
+}
+
+func TestRFQService_CreateTextDraft_OffersNoCandidateThatScoredNothing(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("membrana rara", "2", "rollo", "pidió 2"),
+	})
+	nearMiss := uuid.MustParse("c1111111-1111-4111-8111-111111111111")
+	h.matcher.matches[0] = domain.LineMatch{
+		MatchStatus: domain.ItemMatchStatusNoMatch,
+		Confidence:  decimal.RequireFromString("0.5500"),
+		// What a catalog smaller than the top-K returns: one near miss, then products the search
+		// reached without them resembling the line at all.
+		Candidates: []domain.ScoredCandidate{
+			scoredCandidate(nearMiss, "Membrana asfáltica 4mm", "0.5500"),
+			scoredCandidate(uuid.New(), "Cemento Portland 50kg", "0"),
+			scoredCandidate(uuid.New(), "Cal hidratada 25kg", "0"),
+		},
+	}
+
+	draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "membrana rara"})
+	if err != nil {
+		t.Fatalf("CreateTextDraft returned %v", err)
+	}
+
+	offered := draft.Alternatives[draft.Items[0].ID]
+	if len(offered) != 1 {
+		t.Fatalf("offered %d candidates, want the near miss alone: a candidate at zero scored no "+
+			"similarity and would bury the one the seller is looking for", len(offered))
+	}
+	if offered[0].ProductID == nil || *offered[0].ProductID != nearMiss {
+		t.Errorf("offer = %v, want the near miss %v", offered[0].ProductID, nearMiss)
+	}
+	if offered[0].Rank != 1 {
+		t.Errorf("offer rank = %d, want 1", offered[0].Rank)
 	}
 }

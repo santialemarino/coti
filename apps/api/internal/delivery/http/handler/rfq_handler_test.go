@@ -93,3 +93,81 @@ func TestToTextRFQDraftResponse_MapsEveryLineAsADecimalString(t *testing.T) {
 		t.Errorf("match status = %q, want NO_MATCH", flagged.MatchStatus)
 	}
 }
+
+func TestToTextRFQDraftResponse_LeavesThePricingQuestionOpenAndCarriesTheCandidates(t *testing.T) {
+	flagged := domain.QuoteItem{
+		ID: uuid.New(), RequestedDescription: "membrana rara",
+		Quantity: decimal.RequireFromString("2"), MatchStatus: domain.ItemMatchStatusNoMatch,
+	}
+	candidate := uuid.New()
+	name := "Membrana asfáltica 4mm"
+	code := "MEM-4"
+	response := toTextRFQDraftResponse(domain.TextRFQDraft{
+		RFQ:     domain.RFQ{ID: uuid.New(), Status: domain.RFQStatusGenerated},
+		Quote:   &domain.Quote{ID: uuid.New(), CurrentStatus: domain.QuoteStatusDraft},
+		Version: &domain.QuoteVersion{ID: uuid.New(), VersionNumber: 1, Total: decimal.Zero},
+		Items:   []domain.QuoteItem{flagged},
+		Alternatives: map[uuid.UUID][]domain.QuoteItemAlternative{
+			flagged.ID: {{
+				ID: uuid.New(), QuoteItemID: flagged.ID, ProductID: &candidate,
+				Type:   domain.QuoteItemAlternativeTypeProduct,
+				Origin: domain.QuoteItemAlternativeOriginAI, Rank: 1,
+				ConfidenceScore: decimal.NewNullDecimal(decimal.RequireFromString("0.5500")),
+				Code:            &code, CanonicalName: &name,
+			}},
+		},
+	})
+
+	if len(response.Items) != 1 {
+		t.Fatalf("items = %d, want 1", len(response.Items))
+	}
+	item := response.Items[0]
+	// Nothing on a draft has been valued, so whether the branch can price this line is unanswered.
+	// A false here would tell the seller the line is fine when nobody has looked.
+	if item.PricingUnavailable != nil {
+		t.Errorf("pricing_unavailable = %v, want null on a draft", *item.PricingUnavailable)
+	}
+	if len(item.Alternatives) != 1 {
+		t.Fatalf("alternatives = %d, want the candidate the line was decided against",
+			len(item.Alternatives))
+	}
+	offer := item.Alternatives[0]
+	if offer.CanonicalName == nil || *offer.CanonicalName != name {
+		t.Errorf("offer name = %v, want %q", offer.CanonicalName, name)
+	}
+	if offer.Code == nil || *offer.Code != code {
+		t.Errorf("offer code = %v, want %q", offer.Code, code)
+	}
+	if offer.Rank != 1 {
+		t.Errorf("offer rank = %d, want 1", offer.Rank)
+	}
+	// Confidence is a decimal string at the column's scale, never a JSON number.
+	if offer.ConfidenceScore == nil || *offer.ConfidenceScore != "0.5500" {
+		t.Errorf("offer confidence = %v, want %q", offer.ConfidenceScore, "0.5500")
+	}
+	if offer.PriceSnapshot != nil {
+		t.Errorf("offer price = %v, want null", *offer.PriceSnapshot)
+	}
+	if offer.Origin != string(domain.QuoteItemAlternativeOriginAI) {
+		t.Errorf("offer origin = %q, want AI", offer.Origin)
+	}
+}
+
+func TestToQuoteItemResponse_AnswersThePricingQuestionOnceValued(t *testing.T) {
+	product := uuid.New()
+	unpriceable := domain.QuoteItem{
+		ID: uuid.New(), ProductID: &product, RequestedDescription: "2 rollos de membrana",
+		Quantity: decimal.RequireFromString("2"), MatchStatus: domain.ItemMatchStatusMatched,
+	}
+	gap := true
+	response := toQuoteItemResponse(unpriceable, nil, &gap)
+
+	if response.PricingUnavailable == nil || !*response.PricingUnavailable {
+		t.Errorf("pricing_unavailable = %v, want true: the branch has no price for this product",
+			response.PricingUnavailable)
+	}
+	// A list field is an empty array rather than a null, so a client never has to handle both.
+	if response.Alternatives == nil || len(response.Alternatives) != 0 {
+		t.Errorf("alternatives = %#v, want an empty array", response.Alternatives)
+	}
+}
