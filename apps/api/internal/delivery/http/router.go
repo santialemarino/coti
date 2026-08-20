@@ -37,6 +37,7 @@ type Handlers struct {
 	Product       *handler.ProductHandler
 	BranchCatalog *handler.BranchCatalogHandler
 	RFQ           *handler.RFQHandler
+	RFQAttachment *handler.RFQAttachmentHandler
 	Quote         *handler.QuoteHandler
 	Account       *handler.AccountHandler
 	Prices        *handler.ProductPriceHandler
@@ -140,6 +141,9 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	// so it gets its own allowance instead of sharing the global one.
 	ai := limit("ai", cfg.RateLimit.AI)
 	authed.POST("/rfqs/text-drafts", ai, h.RFQ.CreateTextDraft)
+	rfqs := authed.Group("/rfqs")
+	rfqs.GET("/:rfqId/attachments", h.RFQAttachment.List)
+	rfqs.POST("/:rfqId/attachments", h.RFQAttachment.Upload)
 	authed.GET("/channels", h.Channel.List)
 
 	// Accepting the materials is what prices the quote, so the route names the seller's action

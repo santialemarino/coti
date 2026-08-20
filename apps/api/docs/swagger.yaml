@@ -636,6 +636,30 @@ definitions:
       version_number:
         type: integer
     type: object
+  dto.RFQAttachmentListResponse:
+    properties:
+      attachments:
+        items:
+          $ref: '#/definitions/dto.RFQAttachmentResponse'
+        type: array
+    type: object
+  dto.RFQAttachmentResponse:
+    properties:
+      created_at:
+        type: string
+      expires_at:
+        type: string
+      id:
+        type: string
+      processing_status:
+        type: string
+      rfq_id:
+        type: string
+      type:
+        type: string
+      url:
+        type: string
+    type: object
   dto.RFQResponse:
     properties:
       branch_id:
@@ -2586,6 +2610,99 @@ paths:
       summary: Accept a quote's materials
       tags:
       - quotes
+  /v1/rfqs/{rfqId}/attachments:
+    get:
+      description: Returns each stored file with a freshly signed link. The link expires,
+        so it is read from here rather than kept.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: RFQ id
+        in: path
+        name: rfqId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.RFQAttachmentListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such RFQ in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List an RFQ's attachments
+      tags:
+      - rfq
+    post:
+      consumes:
+      - multipart/form-data
+      description: Stores one file for the RFQ and records the reference. The file
+        is refused for its type or its size before any of it is stored, and the object
+        key leads with the account.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: RFQ id
+        in: path
+        name: rfqId
+        required: true
+        type: string
+      - description: The file to store
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.RFQAttachmentResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such RFQ in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "413":
+          description: FILE_TOO_LARGE
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: UNSUPPORTED_FILE_TYPE, or no active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Upload an RFQ attachment
+      tags:
+      - rfq
   /v1/rfqs/text-drafts:
     post:
       consumes:
