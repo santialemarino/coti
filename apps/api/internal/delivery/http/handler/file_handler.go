@@ -35,9 +35,8 @@ func NewFileHandler(source SignedObjectSource) *FileHandler {
 	return &FileHandler{source: source}
 }
 
-// Get streams one object to whoever holds an unexpired signed link. It resolves no session on
-// purpose: the signature is the authorization, which is what lets a client open a quote
-// document from a link without an account.
+// Get streams one object to whoever holds an unexpired signed link. It resolves no session:
+// the signature is the authorization, which is what lets a client open a document without one.
 //
 //	@Summary		Download a signed object
 //	@Description	Serves a stored file to the holder of an unexpired signed link. No session: the signature is the authorization.
@@ -74,5 +73,11 @@ func (h *FileHandler) Get(c *gin.Context) {
 	if contentType == "" {
 		contentType = defaultObjectContentType
 	}
+	// These bytes came from a client and are served from the API's own origin, so a stored
+	// document must never run as one: nosniff pins the type, attachment stops the browser
+	// rendering it in place, and no-store keeps a shared cache from outliving the deadline.
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("Content-Disposition", "attachment")
+	c.Header("Cache-Control", "private, no-store")
 	c.DataFromReader(http.StatusOK, object.Size, contentType, object.Body, nil)
 }

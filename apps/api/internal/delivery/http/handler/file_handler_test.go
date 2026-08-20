@@ -93,6 +93,28 @@ func TestFileHandler_Get_ServesAValidLink(t *testing.T) {
 	}
 }
 
+// The bytes are a client's and the origin is the API's own, so an uploaded document that
+// happened to be HTML must not be able to run as a page on it.
+func TestFileHandler_Get_ServesClientBytesAsInertAndUncached(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	source := storedFile{signer: fixedSigner(now), contentType: "text/html"}
+
+	recorder := serveFile(t, source, signedLink(t, source.signer, fileTestKey, now.Add(time.Minute)))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", recorder.Code, recorder.Body.String())
+	}
+	for header, want := range map[string]string{
+		"X-Content-Type-Options": "nosniff",
+		"Content-Disposition":    "attachment",
+		"Cache-Control":          "private, no-store",
+	} {
+		if got := recorder.Header().Get(header); got != want {
+			t.Errorf("%s = %q, want %q", header, got, want)
+		}
+	}
+}
+
 func TestFileHandler_Get_StopsServingOnceTheLinkExpires(t *testing.T) {
 	issuedAt := time.Unix(1_700_000_000, 0)
 	expiresAt := issuedAt.Add(15 * time.Minute)
