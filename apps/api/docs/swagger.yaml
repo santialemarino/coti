@@ -559,8 +559,44 @@ definitions:
       updated_at:
         type: string
     type: object
+  dto.QuoteItemAlternativeResponse:
+    properties:
+      approved_by_seller:
+        type: boolean
+      canonical_name:
+        type: string
+      chosen_by_client:
+        type: boolean
+      code:
+        type: string
+      combo_id:
+        type: string
+      confidence_score:
+        type: string
+      id:
+        type: string
+      origin:
+        type: string
+      price_snapshot:
+        type: string
+      product_id:
+        type: string
+      rank:
+        type: integer
+      type:
+        type: string
+      unit:
+        type: string
+    type: object
   dto.QuoteItemResponse:
     properties:
+      alternatives:
+        description: |-
+          Alternatives are the candidates a flagged line was decided from, best first. A decided line
+          carries none: there is nothing for the seller to choose between.
+        items:
+          $ref: '#/definitions/dto.QuoteItemAlternativeResponse'
+        type: array
       confidence_score:
         type: string
       created_at:
@@ -571,6 +607,11 @@ definitions:
         type: string
       min_price_snapshot:
         type: string
+      pricing_unavailable:
+        description: |-
+          PricingUnavailable names a line that matched a product the branch cannot price. It is null
+          until the materials are accepted, because until then no line has been priced at all.
+        type: boolean
       product_id:
         type: string
       quantity:
@@ -2565,7 +2606,9 @@ paths:
         in force at the quote''s branch, sums the version total, and moves the quote
         to QUOTED for review. A line with no matched product, or one whose product
         the branch cannot price, stays in the quote with an empty valuation and adds
-        nothing to the total. The version is not frozen: the seller still edits it.'
+        nothing to the total; the second is named by pricing_unavailable, which every
+        line answers once valued. The version is not frozen: the seller still edits
+        it.'
       parameters:
       - description: Active branch
         in: header
@@ -2709,8 +2752,9 @@ paths:
       consumes:
       - application/json
       description: Persists the original text before reading it, then returns a quote
-        DRAFT with one line per material, each carrying its catalog match and confidence.
-        It does not price or send the quote.
+        DRAFT with one line per material, each carrying its catalog match, its confidence,
+        and the candidates a flagged line was decided against. It does not price or
+        send the quote, so pricing_unavailable is null on every line.
       parameters:
       - description: Active branch
         in: header

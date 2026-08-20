@@ -2415,7 +2415,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Freezes each line's unit price and discount floor from the prices in force at the quote's branch, sums the version total, and moves the quote to QUOTED for review. A line with no matched product, or one whose product the branch cannot price, stays in the quote with an empty valuation and adds nothing to the total. The version is not frozen: the seller still edits it.",
+                "description": "Freezes each line's unit price and discount floor from the prices in force at the quote's branch, sums the version total, and moves the quote to QUOTED for review. A line with no matched product, or one whose product the branch cannot price, stays in the quote with an empty valuation and adds nothing to the total; the second is named by pricing_unavailable, which every line answers once valued. The version is not frozen: the seller still edits it.",
                 "produces": [
                     "application/json"
                 ],
@@ -2486,7 +2486,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Persists the original text before reading it, then returns a quote DRAFT with one line per material, each carrying its catalog match and confidence. It does not price or send the quote.",
+                "description": "Persists the original text before reading it, then returns a quote DRAFT with one line per material, each carrying its catalog match, its confidence, and the candidates a flagged line was decided against. It does not price or send the quote, so pricing_unavailable is null on every line.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3884,9 +3884,60 @@
                 }
             }
         },
+        "dto.QuoteItemAlternativeResponse": {
+            "type": "object",
+            "properties": {
+                "approved_by_seller": {
+                    "type": "boolean"
+                },
+                "canonical_name": {
+                    "type": "string"
+                },
+                "chosen_by_client": {
+                    "type": "boolean"
+                },
+                "code": {
+                    "type": "string"
+                },
+                "combo_id": {
+                    "type": "string"
+                },
+                "confidence_score": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "origin": {
+                    "type": "string"
+                },
+                "price_snapshot": {
+                    "type": "string"
+                },
+                "product_id": {
+                    "type": "string"
+                },
+                "rank": {
+                    "type": "integer"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "unit": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.QuoteItemResponse": {
             "type": "object",
             "properties": {
+                "alternatives": {
+                    "description": "Alternatives are the candidates a flagged line was decided from, best first. A decided line\ncarries none: there is nothing for the seller to choose between.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.QuoteItemAlternativeResponse"
+                    }
+                },
                 "confidence_score": {
                     "type": "string"
                 },
@@ -3901,6 +3952,10 @@
                 },
                 "min_price_snapshot": {
                     "type": "string"
+                },
+                "pricing_unavailable": {
+                    "description": "PricingUnavailable names a line that matched a product the branch cannot price. It is null\nuntil the materials are accepted, because until then no line has been priced at all.",
+                    "type": "boolean"
                 },
                 "product_id": {
                     "type": "string"

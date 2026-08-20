@@ -29,7 +29,7 @@ func NewRFQHandler(rfqs RFQService) *RFQHandler {
 // CreateTextDraft creates a quote draft from plain RFQ text.
 //
 //	@Summary		Create an RFQ text draft
-//	@Description	Persists the original text before reading it, then returns a quote DRAFT with one line per material, each carrying its catalog match and confidence. It does not price or send the quote.
+//	@Description	Persists the original text before reading it, then returns a quote DRAFT with one line per material, each carrying its catalog match, its confidence, and the candidates a flagged line was decided against. It does not price or send the quote, so pricing_unavailable is null on every line.
 //	@Tags			rfq
 //	@Accept			json
 //	@Produce		json
@@ -114,7 +114,9 @@ func (h *RFQHandler) CreateWhatsAppMockDraft(c *gin.Context) {
 func toTextRFQDraftResponse(draft domain.TextRFQDraft) dto.TextRFQDraftResponse {
 	items := make([]dto.QuoteItemResponse, 0, len(draft.Items))
 	for _, item := range draft.Items {
-		items = append(items, toQuoteItemResponse(item))
+		// No line has been valued yet, so whether the branch can price one is unanswered rather
+		// than false.
+		items = append(items, toQuoteItemResponse(item, draft.Alternatives[item.ID], nil))
 	}
 	var quote *dto.QuoteResponse
 	if draft.Quote != nil {
