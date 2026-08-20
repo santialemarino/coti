@@ -5,6 +5,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -58,6 +59,9 @@ func seedQuoteChain(
 	}
 
 	t.Cleanup(func() {
+		mustCleanup(t, db.CrossAccount(),
+			`DELETE FROM quote_item_alternative WHERE quote_item_id IN
+			 (SELECT id FROM quote_item WHERE version_id = $1)`, versionID)
 		mustCleanup(t, db.CrossAccount(), `DELETE FROM quote_item WHERE version_id = $1`, versionID)
 		mustCleanup(t, db.CrossAccount(),
 			`UPDATE quote SET current_version_id = NULL WHERE id = $1`, quoteID)
@@ -442,4 +446,301 @@ func TestQuoteRepository_BranchScopesTheVersionReadAndTheStatusWrite(t *testing.
 
 func ptrTime(at time.Time) *time.Time {
 	return &at
+}
+
+// seedUnmatchedLine adds a second, unmatched line to a version, so a candidate read has more than
+// one line to hand offers to and a crossed pairing is visible. product_id is null, which is what
+// NO_MATCH means.
+func seedUnmatchedLine(t *testing.T, db *DB, accountID, versionID uuid.UUID) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	if _, err := db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO quote_item (id, account_id, version_id, requested_description,
+		                         quantity, match_status)
+		 VALUES ($1, $2, $3, 'membrana', 2, 'NO_MATCH')`,
+		id, accountID, versionID); err != nil {
+		t.Fatalf("seed extra quote_item: %v", err)
+	}
+	// The chain's own cleanup takes this line and its candidates with it: it deletes by version.
+	return id
+}
+
+func newAlternative(
+	itemID, productID uuid.UUID, rank int, confidence string,
+) domain.NewQuoteItemAlternative {
+	return domain.NewQuoteItemAlternative{
+		QuoteItemID:     itemID,
+		ProductID:       &productID,
+		Type:            domain.QuoteItemAlternativeTypeProduct,
+		Origin:          domain.QuoteItemAlternativeOriginAI,
+		Rank:            rank,
+		ConfidenceScore: decimal.NewNullDecimal(decimal.RequireFromString(confidence)),
+	}
+}
+
+func TestQuoteRepository_ListAlternativesByItemIDs_RanksEachLinesOffersBestFirst(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Candidate ranking")
+	branchID := branchOf(t, db, accountID)
+	// Seeded before the chain: t.Cleanup runs last-registered-first, so a candidate product
+	// registered after it would be deleted while a candidate row still points at it.
+	second := seedProduct(t, db, accountID, "Cemento Avellaneda 50kg")
+	third := seedProduct(t, db, accountID, "Cemento Holcim 50kg")
+	nearMiss := seedProduct(t, db, accountID, "Membrana asfáltica 4mm")
+	longShot := seedProduct(t, db, accountID, "Membrana geotextil")
+	lineProduct := seedProduct(t, db, accountID, "Cemento Portland 50kg")
+	for _, id := range []uuid.UUID{second, third, nearMiss, longShot, lineProduct} {
+		priceCleanup(t, db, id)
+	}
+	_, versionID, cementItem := seedQuoteChain(t, db, accountID, branchID, lineProduct)
+	membraneItem := seedUnmatchedLine(t, db, accountID, versionID)
+
+	repo := NewQuoteRepository()
+	tenant := domain.Tenant{AccountID: accountID, Role: domain.UserRoleAdmin}
+	// Written out of rank order on purpose: without the ORDER BY the rows come back the way they
+	// went in, and a test seeded in rank order could not tell the difference.
+	insertOrder := []domain.NewQuoteItemAlternative{
+		newAlternative(cementItem, third, 3, "0.7100"),
+		newAlternative(membraneItem, longShot, 2, "0.3100"),
+		newAlternative(cementItem, second, 2, "0.8000"),
+		newAlternative(membraneItem, nearMiss, 1, "0.5500"),
+	}
+
+	var byItem map[uuid.UUID][]domain.QuoteItemAlternative
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		if err := repo.CreateAlternatives(ctx, q, accountID, insertOrder); err != nil {
+			return err
+		}
+		var readErr error
+		byItem, readErr = repo.ListAlternativesByItemIDs(ctx, q, accountID,
+			[]uuid.UUID{cementItem, membraneItem})
+		return readErr
+	}); err != nil {
+		t.Fatalf("write and read candidates: %v", err)
+	}
+
+	if len(byItem) != 2 {
+		t.Fatalf("read offers for %d lines, want 2", len(byItem))
+	}
+	cementOffers := byItem[cementItem]
+	if len(cementOffers) != 2 {
+		t.Fatalf("cemento line offers %d, want 2", len(cementOffers))
+	}
+	if cementOffers[0].Rank != 2 || cementOffers[1].Rank != 3 {
+		t.Errorf("cemento ranks = %d, %d; want 2 then 3", cementOffers[0].Rank,
+			cementOffers[1].Rank)
+	}
+	if cementOffers[0].ProductID == nil || *cementOffers[0].ProductID != second {
+		t.Errorf("cemento best offer = %v, want %v", cementOffers[0].ProductID, second)
+	}
+	// The join is what makes an offer readable: a bare product id tells the seller nothing.
+	if cementOffers[0].CanonicalName == nil ||
+		*cementOffers[0].CanonicalName != "Cemento Avellaneda 50kg" {
+		t.Errorf("cemento best offer name = %v, want the catalog's",
+			cementOffers[0].CanonicalName)
+	}
+	if !cementOffers[0].ConfidenceScore.Valid ||
+		!cementOffers[0].ConfidenceScore.Decimal.Equal(decimal.RequireFromString("0.8000")) {
+		t.Errorf("cemento best offer confidence = %v, want 0.8000",
+			cementOffers[0].ConfidenceScore)
+	}
+	if cementOffers[0].Origin != domain.QuoteItemAlternativeOriginAI ||
+		cementOffers[0].Type != domain.QuoteItemAlternativeTypeProduct {
+		t.Errorf("cemento best offer = (%q, %q), want (PRODUCT, AI)", cementOffers[0].Type,
+			cementOffers[0].Origin)
+	}
+	// This ticket freezes no prices: valorization owns those.
+	if cementOffers[0].PriceSnapshot.Valid {
+		t.Errorf("offer carries price %v, want none", cementOffers[0].PriceSnapshot)
+	}
+
+	membraneOffers := byItem[membraneItem]
+	if len(membraneOffers) != 2 {
+		t.Fatalf("membrana line offers %d, want 2", len(membraneOffers))
+	}
+	if membraneOffers[0].ProductID == nil || *membraneOffers[0].ProductID != nearMiss {
+		t.Errorf("membrana best offer = %v, want %v", membraneOffers[0].ProductID, nearMiss)
+	}
+	// Each line's offers name that line, so a crossed pairing shows up here rather than as a
+	// wrong product on a seller's screen.
+	for itemID, offers := range byItem {
+		for _, offer := range offers {
+			if offer.QuoteItemID != itemID {
+				t.Errorf("line %v was handed an offer belonging to %v", itemID, offer.QuoteItemID)
+			}
+		}
+	}
+}
+
+func TestQuoteRepository_ListAlternativesByItemIDs_AsksForNothingWithNoLines(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Candidate empty read")
+
+	repo := NewQuoteRepository()
+	var byItem map[uuid.UUID][]domain.QuoteItemAlternative
+	if err := db.InTenantTx(ctx,
+		domain.Tenant{AccountID: accountID, Role: domain.UserRoleAdmin},
+		func(q Querier) error {
+			var readErr error
+			byItem, readErr = repo.ListAlternativesByItemIDs(ctx, q, accountID, nil)
+			return readErr
+		}); err != nil {
+		t.Fatalf("ListAlternativesByItemIDs() = %v, want no error", err)
+	}
+	if byItem == nil || len(byItem) != 0 {
+		t.Errorf("read %v, want an empty map rather than nil", byItem)
+	}
+}
+
+func TestQuoteRepository_CreateAlternatives_RefusesAnotherAccountsLine(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	victimAccount := seedAccount(t, db, "Candidate victim")
+	intruderAccount := seedAccount(t, db, "Candidate intruder")
+	victimBranch := branchOf(t, db, victimAccount)
+	victimProduct := seedProduct(t, db, victimAccount, "Cemento Portland 50kg")
+	intruderProduct := seedProduct(t, db, intruderAccount, "Cemento del intruso")
+	priceCleanup(t, db, victimProduct)
+	priceCleanup(t, db, intruderProduct)
+	_, _, victimItem := seedQuoteChain(t, db, victimAccount, victimBranch, victimProduct)
+
+	repo := NewQuoteRepository()
+	// The intruder names a real line of another account and its own account id. The foreign key
+	// would accept it, and the row would land in this tenant pointing at somebody else's quote.
+	err := db.InTenantTx(ctx,
+		domain.Tenant{AccountID: intruderAccount, Role: domain.UserRoleAdmin},
+		func(q Querier) error {
+			return repo.CreateAlternatives(ctx, q, intruderAccount,
+				[]domain.NewQuoteItemAlternative{
+					newAlternative(victimItem, intruderProduct, 1, "0.9000"),
+				})
+		})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("CreateAlternatives() across accounts = %v, want ErrNotFound", err)
+	}
+
+	var written int
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT count(*) FROM quote_item_alternative WHERE quote_item_id = $1`,
+		victimItem).Scan(&written); err != nil {
+		t.Fatalf("count the victim's candidates: %v", err)
+	}
+	if written != 0 {
+		t.Errorf("the victim's line carries %d offers, want none", written)
+	}
+}
+
+// Row level security refuses another account's line before the application predicate is reached,
+// so inside a tenant transaction the two cannot be told apart. Running the same statement on the
+// owner pool, which is RLS-exempt, leaves the join as the only guard.
+func TestQuoteRepository_CreateAlternatives_RefusesWithoutRowLevelSecurity(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	victimAccount := seedAccount(t, db, "Candidate victim no RLS")
+	intruderAccount := seedAccount(t, db, "Candidate intruder no RLS")
+	victimBranch := branchOf(t, db, victimAccount)
+	victimProduct := seedProduct(t, db, victimAccount, "Cemento Portland 50kg")
+	intruderProduct := seedProduct(t, db, intruderAccount, "Cemento del intruso")
+	priceCleanup(t, db, victimProduct)
+	priceCleanup(t, db, intruderProduct)
+	_, _, victimItem := seedQuoteChain(t, db, victimAccount, victimBranch, victimProduct)
+
+	repo := NewQuoteRepository()
+	tx, err := db.AdminTx(ctx)
+	if err != nil {
+		t.Fatalf("AdminTx() = %v, want no error", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if err := repo.CreateAlternatives(ctx, tx, intruderAccount,
+		[]domain.NewQuoteItemAlternative{
+			newAlternative(victimItem, intruderProduct, 1, "0.9000"),
+		}); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("CreateAlternatives() on the owner pool = %v, want ErrNotFound", err)
+	}
+}
+
+// Same shape for the read: with row level security off, the account predicate is the only thing
+// that can keep another tenant's offers out of the answer.
+func TestQuoteRepository_ListAlternativesByItemIDs_ReadsNothingOfAnotherAccountWithoutRLS(
+	t *testing.T,
+) {
+	db := testDB(t)
+	ctx := context.Background()
+	victimAccount := seedAccount(t, db, "Candidate read victim")
+	intruderAccount := seedAccount(t, db, "Candidate read intruder")
+	victimBranch := branchOf(t, db, victimAccount)
+	candidate := seedProduct(t, db, victimAccount, "Cemento Avellaneda 50kg")
+	victimProduct := seedProduct(t, db, victimAccount, "Cemento Portland 50kg")
+	priceCleanup(t, db, candidate)
+	priceCleanup(t, db, victimProduct)
+	_, _, victimItem := seedQuoteChain(t, db, victimAccount, victimBranch, victimProduct)
+
+	repo := NewQuoteRepository()
+	if err := db.InTenantTx(ctx,
+		domain.Tenant{AccountID: victimAccount, Role: domain.UserRoleAdmin},
+		func(q Querier) error {
+			return repo.CreateAlternatives(ctx, q, victimAccount,
+				[]domain.NewQuoteItemAlternative{
+					newAlternative(victimItem, candidate, 1, "0.8000"),
+				})
+		}); err != nil {
+		t.Fatalf("seed the victim's candidate: %v", err)
+	}
+
+	tx, err := db.AdminTx(ctx)
+	if err != nil {
+		t.Fatalf("AdminTx() = %v, want no error", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	byItem, err := repo.ListAlternativesByItemIDs(ctx, tx, intruderAccount,
+		[]uuid.UUID{victimItem})
+	if err != nil {
+		t.Fatalf("ListAlternativesByItemIDs() = %v, want no error", err)
+	}
+	if len(byItem) != 0 {
+		t.Errorf("the intruder read %v, want nothing", byItem)
+	}
+}
+
+// Left unset, every line would insert the all-zeros uuid: a one-line order writes it as a real
+// primary key, and the next order to do the same collides with it.
+func TestQuoteRepository_CreateItems_RefusesALineWithNoID(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Line without an id")
+	branchID := branchOf(t, db, accountID)
+	productID := seedProduct(t, db, accountID, "Cemento Portland 50kg")
+	priceCleanup(t, db, productID)
+	_, versionID, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+
+	repo := NewQuoteRepository()
+	err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID, Role: domain.UserRoleAdmin},
+		func(q Querier) error {
+			_, createErr := repo.CreateItems(ctx, q, accountID, versionID,
+				[]domain.NewQuoteItem{{
+					RequestedDescription: "cemento",
+					Quantity:             decimal.RequireFromString("1"),
+					MatchStatus:          domain.ItemMatchStatusNoMatch,
+				}})
+			return createErr
+		})
+	if err == nil {
+		t.Fatal("CreateItems() with no line id = nil, want the refusal")
+	}
+	if !strings.Contains(err.Error(), "carries no id") {
+		t.Errorf("error = %q, does not say the line carries no id", err)
+	}
+
+	var written int
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT count(*) FROM quote_item WHERE id = $1`, uuid.Nil).Scan(&written); err != nil {
+		t.Fatalf("count the all-zeros line: %v", err)
+	}
+	if written != 0 {
+		t.Errorf("the all-zeros uuid is a real quote_item key %d times over", written)
+	}
 }

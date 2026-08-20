@@ -125,7 +125,7 @@ func (e *env) synonym(t *testing.T, accountID, productID uuid.UUID, term string)
 	}
 }
 
-func nameOf(candidates []domain.CatalogCandidate) []string {
+func nameOf(candidates []domain.ScoredCandidate) []string {
 	names := make([]string, len(candidates))
 	for i, c := range candidates {
 		names[i] = c.CanonicalName

@@ -30,7 +30,7 @@ func NewQuoteHandler(quotes QuoteService) *QuoteHandler {
 // AcceptMaterials prices a draft quote's materials and moves it to QUOTED.
 //
 //	@Summary		Accept a quote's materials
-//	@Description	Freezes each line's unit price and discount floor from the prices in force at the quote's branch, sums the version total, and moves the quote to QUOTED for review. A line with no matched product, or one whose product the branch cannot price, stays in the quote with an empty valuation and adds nothing to the total. The version is not frozen: the seller still edits it.
+//	@Description	Freezes each line's unit price and discount floor from the prices in force at the quote's branch, sums the version total, and moves the quote to QUOTED for review. A line with no matched product, or one whose product the branch cannot price, stays in the quote with an empty valuation and adds nothing to the total; the second is named by pricing_unavailable, which every line answers once valued. The version is not frozen: the seller still edits it.
 //	@Tags			quotes
 //	@Produce		json
 //	@Security		BearerAuth
@@ -62,9 +62,16 @@ func (h *QuoteHandler) AcceptMaterials(c *gin.Context) {
 }
 
 func toPricedQuoteResponse(priced domain.PricedQuote) dto.PricedQuoteResponse {
+	unpriced := make(map[uuid.UUID]struct{}, len(priced.UnpricedItemIDs))
+	for _, itemID := range priced.UnpricedItemIDs {
+		unpriced[itemID] = struct{}{}
+	}
 	items := make([]dto.QuoteItemResponse, 0, len(priced.Items))
 	for _, item := range priced.Items {
-		items = append(items, toQuoteItemResponse(item))
+		// Valuation has run, so the gap is answered either way rather than left null: true names a
+		// line the branch cannot price, false a line that was priced or had nothing to price.
+		_, gap := unpriced[item.ID]
+		items = append(items, toQuoteItemResponse(item, priced.Alternatives[item.ID], &gap))
 	}
 	return dto.PricedQuoteResponse{
 		Quote:   toQuoteResponse(priced.Quote),
@@ -92,7 +99,11 @@ func toQuoteVersionResponse(version domain.QuoteVersion) dto.QuoteVersionRespons
 	}
 }
 
-func toQuoteItemResponse(item domain.QuoteItem) dto.QuoteItemResponse {
+// toQuoteItemResponse maps one line. pricingUnavailable is nil where nothing has been valued yet,
+// which is a different answer from a line the branch can price.
+func toQuoteItemResponse(
+	item domain.QuoteItem, alternatives []domain.QuoteItemAlternative, pricingUnavailable *bool,
+) dto.QuoteItemResponse {
 	return dto.QuoteItemResponse{
 		ID: item.ID, VersionID: item.VersionID, ProductID: item.ProductID,
 		RequestedDescription: item.RequestedDescription,
@@ -103,9 +114,35 @@ func toQuoteItemResponse(item domain.QuoteItem) dto.QuoteItemResponse {
 		Subtotal:             amountString(item.Subtotal),
 		ConfidenceScore:      confidenceString(item.ConfidenceScore),
 		MatchStatus:          string(item.MatchStatus),
+		Alternatives:         toQuoteItemAlternativeResponses(alternatives),
+		PricingUnavailable:   pricingUnavailable,
 		QuantityRationale:    item.QuantityRationale,
 		CreatedAt:            item.CreatedAt,
 	}
+}
+
+func toQuoteItemAlternativeResponses(
+	alternatives []domain.QuoteItemAlternative,
+) []dto.QuoteItemAlternativeResponse {
+	responses := make([]dto.QuoteItemAlternativeResponse, 0, len(alternatives))
+	for _, alternative := range alternatives {
+		responses = append(responses, dto.QuoteItemAlternativeResponse{
+			ID:               alternative.ID,
+			ProductID:        alternative.ProductID,
+			ComboID:          alternative.ComboID,
+			Type:             string(alternative.Type),
+			Origin:           string(alternative.Origin),
+			Rank:             alternative.Rank,
+			ConfidenceScore:  confidenceString(alternative.ConfidenceScore),
+			PriceSnapshot:    amountString(alternative.PriceSnapshot),
+			ApprovedBySeller: alternative.ApprovedBySeller,
+			ChosenByClient:   alternative.ChosenByClient,
+			Code:             alternative.Code,
+			CanonicalName:    alternative.CanonicalName,
+			Unit:             alternative.Unit,
+		})
+	}
+	return responses
 }
 
 func confidenceString(confidence decimal.NullDecimal) *string {

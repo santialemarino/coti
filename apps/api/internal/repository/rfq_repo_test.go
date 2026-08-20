@@ -119,6 +119,7 @@ func TestQuoteRepository_CreateItemsKeepsOrderAndScale(t *testing.T) {
 	lines := make([]domain.NewQuoteItem, 5)
 	for i := range lines {
 		lines[i] = domain.NewQuoteItem{
+			ID:                   uuid.New(),
 			RequestedDescription: fmt.Sprintf("material %d", i),
 			Quantity:             decimal.RequireFromString(fmt.Sprintf("%d.25", i+1)),
 			MatchStatus:          domain.ItemMatchStatusNoMatch,
@@ -214,6 +215,7 @@ func TestQuoteRepository_CreateItemsRefusesAnotherAccountsVersion(t *testing.T) 
 		func(q Querier) error {
 			_, createErr := repo.CreateItems(ctx, q, accountB, versionA.ID,
 				[]domain.NewQuoteItem{{
+					ID:                   uuid.New(),
 					RequestedDescription: "cemento",
 					Quantity:             decimal.RequireFromString("1"),
 					MatchStatus:          domain.ItemMatchStatusNoMatch,

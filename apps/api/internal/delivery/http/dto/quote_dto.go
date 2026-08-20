@@ -56,6 +56,31 @@ type QuoteItemResponse struct {
 	Subtotal             *string    `json:"subtotal"`
 	ConfidenceScore      *string    `json:"confidence_score"`
 	MatchStatus          string     `json:"match_status"`
-	QuantityRationale    *string    `json:"quantity_rationale"`
-	CreatedAt            time.Time  `json:"created_at"`
+	// Alternatives are the candidates a flagged line was decided from, best first. A decided line
+	// carries none: there is nothing for the seller to choose between.
+	Alternatives []QuoteItemAlternativeResponse `json:"alternatives"`
+	// PricingUnavailable names a line that matched a product the branch cannot price. It is null
+	// until the materials are accepted, because until then no line has been priced at all.
+	PricingUnavailable *bool     `json:"pricing_unavailable"`
+	QuantityRationale  *string   `json:"quantity_rationale"`
+	CreatedAt          time.Time `json:"created_at"`
+}
+
+// QuoteItemAlternativeResponse is one candidate offered for a flagged line. rank is its place in
+// the matcher's ranking, so a line that kept the leading candidate offers none at rank one. The
+// catalog identity is read as it stands now rather than frozen with the line.
+type QuoteItemAlternativeResponse struct {
+	ID               uuid.UUID  `json:"id"`
+	ProductID        *uuid.UUID `json:"product_id"`
+	ComboID          *uuid.UUID `json:"combo_id"`
+	Type             string     `json:"type"`
+	Origin           string     `json:"origin"`
+	Rank             int        `json:"rank"`
+	ConfidenceScore  *string    `json:"confidence_score"`
+	PriceSnapshot    *string    `json:"price_snapshot"`
+	ApprovedBySeller bool       `json:"approved_by_seller"`
+	ChosenByClient   bool       `json:"chosen_by_client"`
+	Code             *string    `json:"code"`
+	CanonicalName    *string    `json:"canonical_name"`
+	Unit             *string    `json:"unit"`
 }

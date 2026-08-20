@@ -75,29 +75,29 @@ func (s *CatalogMatchService) Match(
 
 // decide reads the leading candidate and the one behind it, and turns the pair into a status.
 func (s *CatalogMatchService) decide(candidates []domain.CatalogCandidate) domain.LineMatch {
-	if len(candidates) == 0 {
+	scored := s.scoreAll(candidates)
+	if len(scored) == 0 {
 		return domain.LineMatch{
 			MatchStatus: domain.ItemMatchStatusNoMatch,
 			Confidence:  decimal.Zero,
-			Candidates:  candidates,
+			Candidates:  scored,
 		}
 	}
 
-	leader := candidates[0]
-	confidence := s.confidenceOf(leader)
-	if confidence.LessThan(s.minConfidence) {
+	leader := scored[0]
+	if leader.Confidence.LessThan(s.minConfidence) {
 		return domain.LineMatch{
 			MatchStatus: domain.ItemMatchStatusNoMatch,
-			Confidence:  confidence,
-			Candidates:  candidates,
+			Confidence:  leader.Confidence,
+			Candidates:  scored,
 		}
 	}
 
 	status := domain.ItemMatchStatusMatched
-	if len(candidates) > 1 {
+	if len(scored) > 1 {
 		// Negative when the two halves disagree about which product this is — the runner-up is
 		// the closer vector and the leader only won on the fused rank. That is an ambiguous line.
-		margin := confidence.Sub(s.confidenceOf(candidates[1]))
+		margin := leader.Confidence.Sub(scored[1].Confidence)
 		if margin.LessThan(s.ambiguityMargin) {
 			status = domain.ItemMatchStatusAmbiguous
 		}
@@ -106,9 +106,25 @@ func (s *CatalogMatchService) decide(candidates []domain.CatalogCandidate) domai
 	return domain.LineMatch{
 		ProductID:   &productID,
 		MatchStatus: status,
-		Confidence:  confidence,
-		Candidates:  candidates,
+		Confidence:  leader.Confidence,
+		Candidates:  scored,
 	}
+}
+
+// scoreAll reads every candidate at its confidence, keeping the search's order. Scoring the whole
+// set rather than the leading pair is what lets a flagged line show what each offer was worth.
+func (s *CatalogMatchService) scoreAll(candidates []domain.CatalogCandidate) []domain.ScoredCandidate {
+	if len(candidates) == 0 {
+		return nil
+	}
+	scored := make([]domain.ScoredCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		scored = append(scored, domain.ScoredCandidate{
+			CatalogCandidate: candidate,
+			Confidence:       s.confidenceOf(candidate),
+		})
+	}
+	return scored
 }
 
 // confidenceOf scores one candidate on 0..1. Rounding here rather than on the way to the

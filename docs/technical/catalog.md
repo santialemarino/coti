@@ -290,8 +290,11 @@ rather than searching the catalog from scratch; `match_status` is what says it i
 `NO_MATCH` clears the product, which is the shape the domain asks for: **a line nothing matched is
 flagged and stays in the quote, never dropped.**
 
-Every line comes back, in the order it went in, and the candidates ride along with it — the seller
-picks another from them, and the unmatched-items report shows what was considered.
+Every line comes back, in the order it went in, and the candidates ride along with it — **each one
+carrying the confidence the matcher read it at**, not only the leader's. The seller picks another
+from them, and the unmatched-items report shows what was considered and what each option was worth.
+Which of them are persisted, and how, is in
+[rfq-pipeline.md](rfq-pipeline.md#what-a-flagged-line-offers).
 
 ### Calibration
 

@@ -28,5 +28,13 @@ type LineMatch struct {
 	Confidence decimal.Decimal
 	// Candidates are the search's offers, best first, kept so the seller can pick another and
 	// the unmatched-items report can show what was considered.
-	Candidates []CatalogCandidate
+	Candidates []ScoredCandidate
+}
+
+// ScoredCandidate is one offer the matcher weighed, carrying the confidence it read the candidate
+// at. The search supplies the evidence and the matcher turns it into this figure, so a line can
+// show what each candidate was worth rather than only what the leader scored.
+type ScoredCandidate struct {
+	CatalogCandidate
+	Confidence decimal.Decimal
 }

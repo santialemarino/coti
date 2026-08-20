@@ -489,6 +489,10 @@ CREATE TABLE quote_item_alternative (
   combo_id           UUID,
   type               quote_item_alternative_type NOT NULL,
   origin             quote_item_alternative_origin NOT NULL,
+  -- The candidate's own place in the matcher's ranking, best first; nothing else on the row
+  -- records it. confidence_score is what it scored, on quote_item.confidence_score's scale.
+  rank               SMALLINT NOT NULL,
+  confidence_score   NUMERIC(5,4),
   price_snapshot     NUMERIC(14,2),
   approved_by_seller BOOLEAN NOT NULL DEFAULT FALSE,
   chosen_by_client   BOOLEAN NOT NULL DEFAULT FALSE,
@@ -870,6 +874,7 @@ CREATE INDEX idx_quote_expires ON quote(expires_at) WHERE expires_at IS NOT NULL
 CREATE INDEX idx_quote_needs_followup ON quote(needs_followup) WHERE needs_followup = TRUE;
 CREATE INDEX idx_quote_version_quote ON quote_version(quote_id);
 CREATE INDEX idx_quote_item_version ON quote_item(version_id);
+CREATE INDEX idx_quote_item_alternative_account_item ON quote_item_alternative(account_id, quote_item_id);
 CREATE INDEX idx_product_family_id ON product(family_id);
 CREATE INDEX idx_product_subgroup_id ON product(subgroup_id);
 CREATE INDEX idx_product_subgroup_family_id ON product_subgroup(family_id);

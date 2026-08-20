@@ -90,6 +90,10 @@ type QuoteItem struct {
 
 // NewQuoteItem is the input for creating a quote item.
 type NewQuoteItem struct {
+	// ID is chosen by the caller so a line's candidates can name it before either is written.
+	// Deriving that from the insert's row order instead would rest on an order Postgres does not
+	// promise, and a line offering another line's candidates is a wrong answer nothing catches.
+	ID                   uuid.UUID
 	ProductID            *uuid.UUID
 	RequestedDescription string
 	Quantity             decimal.Decimal
@@ -100,6 +104,60 @@ type NewQuoteItem struct {
 	ConfidenceScore      decimal.NullDecimal
 	MatchStatus          ItemMatchStatus
 	QuantityRationale    *string
+}
+
+// QuoteItemAlternativeType is what an alternative offers in place of a line's product.
+type QuoteItemAlternativeType string
+
+const (
+	QuoteItemAlternativeTypeProduct QuoteItemAlternativeType = "PRODUCT"
+	QuoteItemAlternativeTypeCombo   QuoteItemAlternativeType = "COMBO"
+)
+
+// QuoteItemAlternativeOrigin is who offered an alternative.
+type QuoteItemAlternativeOrigin string
+
+const (
+	QuoteItemAlternativeOriginAI     QuoteItemAlternativeOrigin = "AI"
+	QuoteItemAlternativeOriginSeller QuoteItemAlternativeOrigin = "SELLER"
+)
+
+// QuoteItemAlternative is one candidate offered for a quote line, carrying the catalog identity a
+// seller needs to tell it apart. Code, CanonicalName and Unit are read from the catalog as it
+// stands and are not frozen with the line, the same as the product the line itself matched.
+type QuoteItemAlternative struct {
+	ID               uuid.UUID
+	AccountID        uuid.UUID
+	QuoteItemID      uuid.UUID
+	ProductID        *uuid.UUID
+	ComboID          *uuid.UUID
+	Type             QuoteItemAlternativeType
+	Origin           QuoteItemAlternativeOrigin
+	Rank             int
+	ConfidenceScore  decimal.NullDecimal
+	PriceSnapshot    decimal.NullDecimal
+	ApprovedBySeller bool
+	ChosenByClient   bool
+	Code             *string
+	CanonicalName    *string
+	Unit             *string
+	CreatedAt        time.Time
+}
+
+// NewQuoteItemAlternative is the input for creating a quote item alternative.
+type NewQuoteItemAlternative struct {
+	QuoteItemID uuid.UUID
+	ProductID   *uuid.UUID
+	ComboID     *uuid.UUID
+	Type        QuoteItemAlternativeType
+	Origin      QuoteItemAlternativeOrigin
+	// Rank is the candidate's own place in the matcher's ranking, so a line that kept the leading
+	// candidate has no row at one. Nothing else records it: created_at is shared across an insert.
+	Rank            int
+	ConfidenceScore decimal.NullDecimal
+	// PriceSnapshot stays empty on an AI candidate: nothing has been priced when matching runs,
+	// and the price a seller would freeze is the one in force when they choose it.
+	PriceSnapshot decimal.NullDecimal
 }
 
 // QuoteItemPricing is one line's frozen valuation, written when the seller accepts the
@@ -130,4 +188,10 @@ type PricedQuote struct {
 	Quote   Quote
 	Version QuoteVersion
 	Items   []QuoteItem
+	// UnpricedItemIDs are the lines that matched a product the branch cannot price. They are
+	// neither NO_MATCH nor AMBIGUOUS — the catalog decided them — yet they reach QUOTED with an
+	// empty valuation, so the seller has to be shown the gap rather than left to infer it.
+	UnpricedItemIDs []uuid.UUID
+	// Alternatives are the candidates each flagged line was decided from, keyed by line id.
+	Alternatives map[uuid.UUID][]QuoteItemAlternative
 }

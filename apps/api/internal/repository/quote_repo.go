@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -25,6 +26,14 @@ const quoteItemColumns = `id, account_id, version_id, product_id, requested_desc
 
 const quoteStatusChangeColumns = `id, account_id, quote_id, previous_status, new_status,
 	user_id, changed_at, created_at`
+
+// The catalog identity trails the row's own columns: it is joined from product, which a combo
+// alternative points at with nothing, so all three come back empty there.
+const quoteItemAlternativeColumns = `alternative.id, alternative.account_id,
+	alternative.quote_item_id, alternative.product_id, alternative.combo_id, alternative.type,
+	alternative.origin, alternative.rank, alternative.confidence_score,
+	alternative.price_snapshot, alternative.approved_by_seller, alternative.chosen_by_client,
+	alternative.created_at, product.code, product.canonical_name, product.unit`
 
 const quoteRFQIndex = "uq_quote_rfq"
 const quoteVersionIndex = "uq_quote_version"
@@ -173,6 +182,13 @@ func (r *QuoteRepository) ListItems(
 func (r *QuoteRepository) CreateItems(
 	ctx context.Context, q Querier, accountID, versionID uuid.UUID, items []domain.NewQuoteItem,
 ) ([]domain.QuoteItem, error) {
+	// The caller names each line so its candidates can reference it. Left unset, every line would
+	// insert the all-zeros uuid: the first order writes it as a real key and the next one collides.
+	for i, item := range items {
+		if item.ID == uuid.Nil {
+			return nil, fmt.Errorf("quote item %d carries no id", i)
+		}
+	}
 	payload, err := json.Marshal(quoteItemPayloads(items))
 	if err != nil {
 		return nil, err
@@ -182,6 +198,7 @@ func (r *QuoteRepository) CreateItems(
 		`WITH incoming AS (
 		   SELECT *
 		   FROM jsonb_to_recordset($3::jsonb) AS x(
+		     id uuid,
 		     product_id uuid,
 		     requested_description text,
 		     quantity numeric,
@@ -196,11 +213,11 @@ func (r *QuoteRepository) CreateItems(
 		   )
 		 )
 		 INSERT INTO quote_item (
-		   account_id, version_id, product_id, requested_description, quantity, unit,
+		   id, account_id, version_id, product_id, requested_description, quantity, unit,
 		   unit_price_snapshot, min_price_snapshot, subtotal, confidence_score,
 		   match_status, quantity_rationale
 		 )
-		 SELECT $1, version.id, incoming.product_id, incoming.requested_description,
+		 SELECT incoming.id, $1, version.id, incoming.product_id, incoming.requested_description,
 		        incoming.quantity, incoming.unit, incoming.unit_price_snapshot,
 		        incoming.min_price_snapshot, incoming.subtotal, incoming.confidence_score,
 		        incoming.match_status::item_match_status, incoming.quantity_rationale
@@ -273,6 +290,94 @@ func (r *QuoteRepository) ApplyPricing(
 	return nil
 }
 
+// ListAlternativesByItemIDs loads the candidates offered for the given lines, keyed by line and
+// ranked best first. The catalog identity is joined rather than frozen, so a product renamed since
+// the match reads under its current name — the same as the product the line itself matched.
+func (r *QuoteRepository) ListAlternativesByItemIDs(
+	ctx context.Context, q Querier, accountID uuid.UUID, itemIDs []uuid.UUID,
+) (map[uuid.UUID][]domain.QuoteItemAlternative, error) {
+	byItem := make(map[uuid.UUID][]domain.QuoteItemAlternative, len(itemIDs))
+	if len(itemIDs) == 0 {
+		return byItem, nil
+	}
+
+	rows, err := q.Query(ctx,
+		`SELECT `+quoteItemAlternativeColumns+`
+		 FROM quote_item_alternative alternative
+		 LEFT JOIN product ON product.account_id = alternative.account_id
+		                  AND product.id = alternative.product_id
+		 WHERE alternative.account_id = $1 AND alternative.quote_item_id = ANY($2)
+		 ORDER BY alternative.rank`,
+		accountID, itemIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var alternative domain.QuoteItemAlternative
+		if scanErr := rows.Scan(&alternative.ID, &alternative.AccountID, &alternative.QuoteItemID,
+			&alternative.ProductID, &alternative.ComboID, &alternative.Type, &alternative.Origin,
+			&alternative.Rank, &alternative.ConfidenceScore, &alternative.PriceSnapshot,
+			&alternative.ApprovedBySeller, &alternative.ChosenByClient, &alternative.CreatedAt,
+			&alternative.Code, &alternative.CanonicalName, &alternative.Unit,
+		); scanErr != nil {
+			return nil, scanErr
+		}
+		byItem[alternative.QuoteItemID] = append(byItem[alternative.QuoteItemID], alternative)
+	}
+	return byItem, rows.Err()
+}
+
+// CreateAlternatives inserts the candidates offered for a version's lines in one statement. The
+// row count is what turns a line of another account into an error: its foreign key would accept
+// one, and the row would land in this tenant pointing at somebody else's quote.
+func (r *QuoteRepository) CreateAlternatives(
+	ctx context.Context, q Querier, accountID uuid.UUID,
+	alternatives []domain.NewQuoteItemAlternative,
+) error {
+	if len(alternatives) == 0 {
+		return nil
+	}
+	payload, err := json.Marshal(quoteItemAlternativePayloads(alternatives))
+	if err != nil {
+		return err
+	}
+
+	tag, err := q.Exec(ctx,
+		`WITH incoming AS (
+		   SELECT *
+		   FROM jsonb_to_recordset($2::jsonb) AS x(
+		     quote_item_id uuid,
+		     product_id uuid,
+		     combo_id uuid,
+		     type text,
+		     origin text,
+		     rank int,
+		     confidence_score numeric,
+		     price_snapshot numeric
+		   )
+		 )
+		 INSERT INTO quote_item_alternative (
+		   account_id, quote_item_id, product_id, combo_id, type, origin, rank,
+		   confidence_score, price_snapshot
+		 )
+		 SELECT $1, item.id, incoming.product_id, incoming.combo_id,
+		        incoming.type::quote_item_alternative_type,
+		        incoming.origin::quote_item_alternative_origin,
+		        incoming.rank, incoming.confidence_score, incoming.price_snapshot
+		 FROM incoming
+		 JOIN quote_item item ON item.account_id = $1 AND item.id = incoming.quote_item_id`,
+		accountID, payload)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != int64(len(alternatives)) {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 // AppendStatusChange records a quote lifecycle transition.
 func (r *QuoteRepository) AppendStatusChange(
 	ctx context.Context, q Querier, accountID, quoteID uuid.UUID, previousStatus *domain.QuoteStatus,
@@ -289,6 +394,7 @@ type quoteItemPayload struct {
 	// Position rides the payload because the caller's order is the client's order, and
 	// jsonb_to_recordset promises none of its own.
 	Position             int        `json:"position"`
+	ID                   uuid.UUID  `json:"id"`
 	ProductID            *uuid.UUID `json:"product_id"`
 	RequestedDescription string     `json:"requested_description"`
 	Quantity             string     `json:"quantity"`
@@ -308,11 +414,23 @@ type quoteItemPricingPayload struct {
 	Subtotal          *string   `json:"subtotal"`
 }
 
+type quoteItemAlternativePayload struct {
+	QuoteItemID     uuid.UUID  `json:"quote_item_id"`
+	ProductID       *uuid.UUID `json:"product_id"`
+	ComboID         *uuid.UUID `json:"combo_id"`
+	Type            string     `json:"type"`
+	Origin          string     `json:"origin"`
+	Rank            int        `json:"rank"`
+	ConfidenceScore *string    `json:"confidence_score"`
+	PriceSnapshot   *string    `json:"price_snapshot"`
+}
+
 func quoteItemPayloads(items []domain.NewQuoteItem) []quoteItemPayload {
 	payloads := make([]quoteItemPayload, 0, len(items))
 	for i, item := range items {
 		payloads = append(payloads, quoteItemPayload{
 			Position:             i,
+			ID:                   item.ID,
 			ProductID:            item.ProductID,
 			RequestedDescription: item.RequestedDescription,
 			Quantity:             item.Quantity.String(),
@@ -336,6 +454,25 @@ func quoteItemPricingPayloads(pricings []domain.QuoteItemPricing) []quoteItemPri
 			UnitPriceSnapshot: nullDecimalString(pricing.UnitPriceSnapshot),
 			MinPriceSnapshot:  nullDecimalString(pricing.MinPriceSnapshot),
 			Subtotal:          nullDecimalString(pricing.Subtotal),
+		})
+	}
+	return payloads
+}
+
+func quoteItemAlternativePayloads(
+	alternatives []domain.NewQuoteItemAlternative,
+) []quoteItemAlternativePayload {
+	payloads := make([]quoteItemAlternativePayload, 0, len(alternatives))
+	for _, alternative := range alternatives {
+		payloads = append(payloads, quoteItemAlternativePayload{
+			QuoteItemID:     alternative.QuoteItemID,
+			ProductID:       alternative.ProductID,
+			ComboID:         alternative.ComboID,
+			Type:            string(alternative.Type),
+			Origin:          string(alternative.Origin),
+			Rank:            alternative.Rank,
+			ConfidenceScore: nullDecimalString(alternative.ConfidenceScore),
+			PriceSnapshot:   nullDecimalString(alternative.PriceSnapshot),
 		})
 	}
 	return payloads
