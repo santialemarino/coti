@@ -38,8 +38,9 @@ const (
 	CodeUnsupportedFileType ErrorCode = "UNSUPPORTED_FILE_TYPE"
 )
 
-// The two the delivery layer raises on its own, before any service is reached, so CodeOf never
-// returns them.
+// The two an upload is refused with. The delivery layer raises both on its own, before any
+// service is reached; CodeFileTooLarge also answers ErrTooLarge, so the same refusal reads the
+// same whether the transport or a service caught it.
 const (
 	CodeInvalidBody  ErrorCode = "INVALID_BODY"
 	CodeFileTooLarge ErrorCode = "FILE_TOO_LARGE"
