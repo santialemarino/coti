@@ -25,7 +25,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/santialemarino/coti/apps/api/internal/ai"
-	"github.com/santialemarino/coti/apps/api/internal/ai/provider"
+	aiprovider "github.com/santialemarino/coti/apps/api/internal/ai/provider"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
@@ -34,6 +34,7 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/ratelimit"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 	"github.com/santialemarino/coti/apps/api/internal/services"
+	storageprovider "github.com/santialemarino/coti/apps/api/internal/storage/provider"
 )
 
 func main() {
@@ -92,11 +93,17 @@ func run() error {
 		return err
 	}
 
-	providers, err := provider.Bind(cfg.AI, log)
+	providers, err := aiprovider.Bind(cfg.AI, log)
 	if err != nil {
 		return err
 	}
 	providers.Describe(log)
+
+	objectStorage, err := storageprovider.Bind(cfg.Storage, log)
+	if err != nil {
+		return err
+	}
+	objectStorage.Describe(log)
 
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
 	authService := services.NewAuthService(db, userRepo, branchRepo, refreshTokenRepo, tokenService, cfg.Auth, nil)
@@ -140,6 +147,7 @@ func run() error {
 			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
 			CatalogImport: handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
 			Account:       handler.NewAccountHandler(accountService),
+			File:          fileHandler(objectStorage),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
 		deliveryhttp.RateLimit{Limiter: limiter, Identify: identifyForRateLimit(tokenService)},
@@ -221,4 +229,13 @@ func parseLevel(raw string) slog.Level {
 	default:
 		return slog.LevelInfo
 	}
+}
+
+// fileHandler serves the links the local adapter signs. A bucket signs and serves its own, so
+// there is nothing to mount beside one and the route stays absent.
+func fileHandler(set storageprovider.Set) *handler.FileHandler {
+	if set.Local == nil {
+		return nil
+	}
+	return handler.NewFileHandler(set.Local)
 }
