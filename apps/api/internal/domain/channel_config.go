@@ -47,9 +47,8 @@ type EmailChannelConfig struct {
 }
 
 // ParseChannelConfig decodes and validates the settings a channel of this type accepts. An absent
-// or empty object is no configuration at all, which every type accepts: a channel exists before
-// its credentials do. An unknown field is refused rather than stored — a free-form object where
-// credentials live is a dump nobody can reason about later.
+// or empty object is no configuration at all, which every type accepts, and an unknown field is
+// refused rather than stored — this is where credentials live.
 func ParseChannelConfig(channelType ChannelType, raw []byte) (ChannelConfig, error) {
 	if isEmptyChannelConfig(raw) {
 		return nil, nil

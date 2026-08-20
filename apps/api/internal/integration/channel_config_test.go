@@ -158,6 +158,10 @@ func TestChannels_CredentialsAreSealedAndNeverReturned(t *testing.T) {
 						t.Errorf("GET %s returned the sealed %s envelope", path, field)
 					}
 				}
+				if !strings.Contains(rec.Body.String(), `"is_configured":true`) {
+					t.Errorf("GET %s = %s, want the presence indicator on the channel", path,
+						rec.Body)
+				}
 			}
 		})
 	}

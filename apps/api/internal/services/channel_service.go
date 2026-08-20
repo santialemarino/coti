@@ -125,6 +125,9 @@ func (s *ChannelService) UpdateChannel(
 		return nil, err
 	}
 	in.Identifier = domain.NormalizeChannelIdentifier(in.Identifier)
+	// Read outside the transaction: sealing writes back into in.Config, so a closure that ran a
+	// second time would otherwise seal an envelope it had already sealed.
+	requested := in.Config
 
 	var channel *domain.Channel
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
@@ -140,7 +143,6 @@ func (s *ChannelService) UpdateChannel(
 				return err
 			}
 		}
-		requested := in.Config
 		sealed, sealErr := s.sealConfig(current.Type, requested)
 		if sealErr != nil {
 			return sealErr

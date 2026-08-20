@@ -38,15 +38,14 @@ type ListChannelsQuery struct {
 type CreateChannelRequest struct {
 	Type       string          `json:"type" binding:"required,oneof=WHATSAPP EMAIL WEBAPP MANUAL_ENTRY"`
 	Identifier *string         `json:"identifier" binding:"omitempty,max=255"`
-	Config     json.RawMessage `json:"config"`
+	Config     json.RawMessage `json:"config" swaggertype:"object"`
 }
 
-// UpdateChannelRequest is the body for PUT /v1/channels/:channelId. The type cannot change,
-// because the shape of the configuration depends on it. is_active omitted leaves the flag alone,
-// and config omitted leaves the stored settings alone — an explicit null removes them, since the
-// API returns no credential for a form to send back.
+// UpdateChannelRequest is the body for PUT /v1/channels/:channelId. The type cannot change, because
+// the shape of the configuration depends on it. is_active and config omitted leave what is stored
+// alone; an explicit null config removes it, since no response returns one to send back.
 type UpdateChannelRequest struct {
 	Identifier *string         `json:"identifier" binding:"omitempty,max=255"`
 	IsActive   *bool           `json:"is_active"`
-	Config     json.RawMessage `json:"config"`
+	Config     json.RawMessage `json:"config" swaggertype:"object"`
 }

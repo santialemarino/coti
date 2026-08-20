@@ -918,8 +918,6 @@ func getString(key, fallback string) string {
 	return fallback
 }
 
-// getCIDRs reads a comma-separated list of networks. Single addresses are accepted and
-// widened to a /32 or /128, because "the proxy is at 10.0.0.4" is how an operator thinks.
 // getBase64Key decodes a base64 key of an exact byte width. An unset key yields nil, which the
 // capability behind it reads as "not configured"; a malformed one is a startup problem, so a typo
 // cannot quietly turn encryption off. The value is never echoed back — it is the key.
@@ -941,6 +939,8 @@ func getBase64Key(key string, length int, problems *[]string) []byte {
 	return decoded
 }
 
+// getCIDRs reads a comma-separated list of networks. Single addresses are accepted and
+// widened to a /32 or /128, because "the proxy is at 10.0.0.4" is how an operator thinks.
 func getCIDRs(key string, problems *[]string) []*net.IPNet {
 	raw := strings.TrimSpace(os.Getenv(key))
 	if raw == "" {

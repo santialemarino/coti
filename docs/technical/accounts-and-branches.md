@@ -144,6 +144,11 @@ field is absent, and removes it on an explicit `null`. Absent cannot mean "remov
 every other field on the route: the API returns no credential, so a form has nothing to send back
 and editing an identifier would otherwise discard a token silently.
 
+**The identifier does not get that exemption**, because a response does return it: `PUT` replaces
+it, so **omitting it clears it** — the same rule as `address` on a branch and the logo on an
+account. That matters more here than there, since `resolveWhatsAppChannel` uses it to tell one of a
+branch's numbers from another, so a form editing a channel sends the identifier back every time.
+
 ### Credentials are encrypted at rest, and never come back out
 
 Every credential field is sealed with **AES-256-GCM** under `CHANNEL_CONFIG_ENCRYPTION_KEY` before

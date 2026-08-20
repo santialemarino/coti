@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -18,8 +19,8 @@ const (
 	ChannelTypeManualEntry ChannelType = "MANUAL_ENTRY"
 )
 
-// ChannelTypes are the intake routes a branch may open, in the order a listing reads best.
-var ChannelTypes = []ChannelType{
+// channelTypes are the intake routes a branch may open, in the order a listing reads best.
+var channelTypes = []ChannelType{
 	ChannelTypeWhatsApp, ChannelTypeEmail, ChannelTypeWebApp, ChannelTypeManualEntry,
 }
 
@@ -39,18 +40,17 @@ type Channel struct {
 	UpdatedAt    time.Time
 }
 
-// NewChannel is an intake route an administrator opens on the selected branch. Config is the JSON
-// as it will be stored, credentials already sealed, and nil when the channel is not configured.
+// NewChannel is an intake route an administrator opens on the selected branch. Config is stored
+// verbatim, so the service validates it and seals its credentials before the repository sees it.
 type NewChannel struct {
 	Type       ChannelType
 	Identifier *string
 	Config     []byte
 }
 
-// ChannelUpdate is the editable surface of a channel; the type is not part of it, because the
-// shape of the configuration depends on it. Config nil leaves the stored settings alone and
-// ClearConfig removes them: the API never returns a credential, so a form cannot send one back
-// and an absent config must not mean "delete it".
+// ChannelUpdate is the editable surface of a channel; the type is not, because the shape of the
+// configuration depends on it. Config nil leaves the stored settings alone and ClearConfig removes
+// them — an absent config cannot mean "delete it" when no response ever returned one.
 type ChannelUpdate struct {
 	Identifier  *string
 	IsActive    *bool
@@ -60,12 +60,7 @@ type ChannelUpdate struct {
 
 // IsValidChannelType reports whether t is one of the four intake routes.
 func IsValidChannelType(t ChannelType) bool {
-	for _, known := range ChannelTypes {
-		if t == known {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(channelTypes, t)
 }
 
 // NormalizeChannelIdentifier turns a blank identifier into an absent one. An empty string is not

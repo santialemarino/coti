@@ -15,8 +15,8 @@ import (
 // KeyLength is the key width AES-256 takes, in bytes.
 const KeyLength = 32
 
-// envelopePrefix tags the key generation a value was sealed under, so a later rotation can tell
-// one from the next instead of guessing.
+// envelopePrefix tags the key generation a value was sealed under, so a later rotation can tell one
+// generation from the next.
 const envelopePrefix = "v1."
 
 // ErrNoKey is returned by a sealer built without a key: sealing is refused rather than skipped,

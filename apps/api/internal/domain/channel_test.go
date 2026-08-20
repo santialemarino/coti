@@ -77,7 +77,7 @@ func TestValidateChannelIdentifier(t *testing.T) {
 func TestIsValidChannelType(t *testing.T) {
 	t.Parallel()
 
-	for _, channelType := range ChannelTypes {
+	for _, channelType := range channelTypes {
 		if !IsValidChannelType(channelType) {
 			t.Errorf("IsValidChannelType(%s) = false, want true", channelType)
 		}
@@ -96,12 +96,12 @@ func TestChannelTypesMatchTheDatabaseEnum(t *testing.T) {
 	// from Postgres rather than at the boundary that was supposed to catch it.
 	want := []string{"WHATSAPP", "EMAIL", "WEBAPP", "MANUAL_ENTRY"}
 
-	if len(ChannelTypes) != len(want) {
-		t.Fatalf("ChannelTypes = %v, want the enum's %v", ChannelTypes, want)
+	if len(channelTypes) != len(want) {
+		t.Fatalf("channelTypes = %v, want the enum's %v", channelTypes, want)
 	}
 	for i, label := range want {
-		if string(ChannelTypes[i]) != label {
-			t.Errorf("ChannelTypes[%d] = %q, want %q", i, ChannelTypes[i], label)
+		if string(channelTypes[i]) != label {
+			t.Errorf("channelTypes[%d] = %q, want %q", i, channelTypes[i], label)
 		}
 	}
 }

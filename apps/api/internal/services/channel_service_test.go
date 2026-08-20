@@ -354,6 +354,9 @@ func TestChannelService_UpdateChannel_ConfigAbsentKeepsItAndNullClearsIt(t *test
 			if store.updated == nil {
 				t.Fatal("UpdateChannel() never reached the repository")
 			}
+			if store.updatedID != testChannelID {
+				t.Errorf("updated channel = %v, want %v", store.updatedID, testChannelID)
+			}
 			if store.updated.ClearConfig != test.wantClear {
 				t.Errorf("ClearConfig = %v, want %v", store.updated.ClearConfig, test.wantClear)
 			}

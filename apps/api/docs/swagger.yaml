@@ -276,6 +276,21 @@ definitions:
     - name
     type: object
   dto.CreateChannelRequest:
+    properties:
+      config:
+        type: object
+      identifier:
+        maxLength: 255
+        type: string
+      type:
+        enum:
+        - WHATSAPP
+        - EMAIL
+        - WEBAPP
+        - MANUAL_ENTRY
+        type: string
+    required:
+    - type
     type: object
   dto.CreateProductRequest:
     properties:
@@ -922,6 +937,14 @@ definitions:
     - name
     type: object
   dto.UpdateChannelRequest:
+    properties:
+      config:
+        type: object
+      identifier:
+        maxLength: 255
+        type: string
+      is_active:
+        type: boolean
     type: object
   dto.UpdateProductRequest:
     properties:

@@ -32,6 +32,26 @@ func seedChannel(
 	return id
 }
 
+// seedChannelWithIdentifier is seedChannel for the tests that need to choose the identifier,
+// including choosing none.
+func seedChannelWithIdentifier(
+	t *testing.T, db *DB, accountID, branchID uuid.UUID, channelType domain.ChannelType,
+	identifier *string,
+) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	if _, err := db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO channel (id, account_id, branch_id, type, identifier)
+		 VALUES ($1, $2, $3, $4, $5)`,
+		id, accountID, branchID, channelType, identifier); err != nil {
+		t.Fatalf("seed channel: %v", err)
+	}
+	t.Cleanup(func() {
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM channel WHERE id = $1`, id)
+	})
+	return id
+}
+
 func TestChannelRepository_ActiveReadsStayInsideAccountAndBranch(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()
@@ -229,11 +249,9 @@ func TestChannelRepository_WritesStayInsideAccountAndBranch(t *testing.T) {
 	}
 }
 
-// The account predicate cannot be pinned by another account's row: that row is in another branch
-// too, so the branch predicate refuses it first and either guard alone keeps the suite green. What
-// isolates it is a row carrying THIS branch with ANOTHER account — the two foreign keys are
-// independent, so nothing in the schema stops one existing, and only the account predicate refuses
-// it. Run on the owner pool, which is RLS-exempt, or the policy answers before any of them.
+// Another account's row is in another branch too, so the branch predicate refuses it first and
+// either guard alone keeps the suite green. Only a row carrying THIS branch with ANOTHER account
+// isolates the account predicate, and only the owner pool gets past RLS to reach it.
 func TestChannelRepository_AccountPredicateRefusesAMismatchedRow(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()
@@ -431,6 +449,41 @@ func TestChannelRepository_CreateReportsBothUniquenessRules(t *testing.T) {
 	if err := create(t, withoutIdentifier); !errors.Is(err, domain.ErrConflict) {
 		t.Errorf("Create() with a second identifier-less channel = %v, want %v", err,
 			domain.ErrConflict)
+	}
+}
+
+// Update answers the same two uniqueness rules Create does, which is easy to miss: taking a
+// sibling's identifier trips the composite constraint, and clearing one when the branch already
+// holds an identifier-less channel of that type trips the partial index.
+func TestChannelRepository_UpdateReportsBothUniquenessRules(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Channel update uniqueness")
+	branchID := branchOf(t, db, accountID)
+	repo := NewChannelRepository()
+	tenant := domain.Tenant{AccountID: accountID, BranchID: branchID}
+	taken := "+5491100000002"
+	moving := seedChannel(t, db, accountID, branchID, domain.ChannelTypeWhatsApp, true)
+	seedChannelWithIdentifier(t, db, accountID, branchID, domain.ChannelTypeWhatsApp, &taken)
+	seedChannelWithIdentifier(t, db, accountID, branchID, domain.ChannelTypeWhatsApp, nil)
+
+	for _, test := range []struct {
+		name       string
+		identifier *string
+	}{
+		{name: "a sibling's identifier", identifier: &taken},
+		{name: "no identifier when one already has none", identifier: nil},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+				_, updateErr := repo.Update(ctx, q, accountID, branchID, moving,
+					domain.ChannelUpdate{Identifier: test.identifier})
+				return updateErr
+			})
+			if !errors.Is(err, domain.ErrConflict) {
+				t.Errorf("Update() = %v, want %v", err, domain.ErrConflict)
+			}
+		})
 	}
 }
 

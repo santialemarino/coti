@@ -15,7 +15,7 @@ const validEmailConfig = `{"mailbox":"pedidos@corralon.test","smtp_host":"smtp.c
 func TestParseChannelConfig_AbsentConfigIsValidForEveryType(t *testing.T) {
 	t.Parallel()
 
-	for _, channelType := range ChannelTypes {
+	for _, channelType := range channelTypes {
 		for _, raw := range []string{"", "  ", "null", "{}", "{ }"} {
 			config, err := ParseChannelConfig(channelType, []byte(raw))
 			if err != nil {

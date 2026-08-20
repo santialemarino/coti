@@ -3731,7 +3731,28 @@ const docTemplate = `{
             }
         },
         "dto.CreateChannelRequest": {
-            "type": "object"
+            "type": "object",
+            "required": [
+                "type"
+            ],
+            "properties": {
+                "config": {
+                    "type": "object"
+                },
+                "identifier": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "WHATSAPP",
+                        "EMAIL",
+                        "WEBAPP",
+                        "MANUAL_ENTRY"
+                    ]
+                }
+            }
         },
         "dto.CreateProductRequest": {
             "type": "object",
@@ -4670,7 +4691,19 @@ const docTemplate = `{
             }
         },
         "dto.UpdateChannelRequest": {
-            "type": "object"
+            "type": "object",
+            "properties": {
+                "config": {
+                    "type": "object"
+                },
+                "identifier": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "is_active": {
+                    "type": "boolean"
+                }
+            }
         },
         "dto.UpdateProductRequest": {
             "type": "object",
