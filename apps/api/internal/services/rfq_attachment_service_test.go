@@ -76,17 +76,20 @@ func TestRFQAttachmentService_AcceptedFormat_RefusesBySize(t *testing.T) {
 	cases := []struct {
 		name string
 		size int64
+		want error
 	}{
-		{"over the limit", 101},
-		{"empty", 0},
-		{"negative", -1},
+		// Over the limit is 413 and empty is 422: one is a payload the server will not take,
+		// the other is a request that makes no sense, and a client acts on them differently.
+		{"over the limit", 101, domain.ErrTooLarge},
+		{"empty", 0, domain.ErrInvalidInput},
+		{"negative", -1, domain.ErrInvalidInput},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := service.acceptedFormat(domain.AttachmentUpload{ContentType: "application/pdf", Size: tc.size})
-			if !errors.Is(err, domain.ErrInvalidInput) {
-				t.Fatalf("acceptedFormat(size=%d) = %v, want ErrInvalidInput", tc.size, err)
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("acceptedFormat(size=%d) = %v, want %v", tc.size, err, tc.want)
 			}
 		})
 	}

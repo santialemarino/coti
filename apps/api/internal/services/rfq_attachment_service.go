@@ -127,9 +127,9 @@ func (s *RFQAttachmentService) acceptedFormat(file domain.AttachmentUpload) (dom
 		return domain.AttachmentFormat{}, fmt.Errorf("%w: the file is empty", domain.ErrInvalidInput)
 	}
 	if file.Size > s.cfg.MaxFileSize {
-		return domain.AttachmentFormat{}, domain.WithCode(domain.CodeFileTooLarge, fmt.Errorf(
+		return domain.AttachmentFormat{}, fmt.Errorf(
 			"%w: the file is %d bytes and the limit is %d",
-			domain.ErrInvalidInput, file.Size, s.cfg.MaxFileSize))
+			domain.ErrTooLarge, file.Size, s.cfg.MaxFileSize)
 	}
 	format, ok := domain.AttachmentFormatFor(file.ContentType)
 	if !ok {

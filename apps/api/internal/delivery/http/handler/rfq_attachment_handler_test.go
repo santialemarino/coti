@@ -2,8 +2,13 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/gin-gonic/gin"
 
 	"github.com/google/uuid"
 
@@ -50,5 +55,29 @@ func TestToAttachmentResponse_CarriesTheLinkAndItsDeadline(t *testing.T) {
 	}
 	if !got.ExpiresAt.Equal(expiresAt) {
 		t.Errorf("expires_at = %s, want %s", got.ExpiresAt, expiresAt)
+	}
+}
+
+// The transport refuses an oversized body with 413 and the service refuses an oversized file
+// with the same status: one refusal, one status, whichever layer caught it.
+func TestRespond_TooLargeAnswersTheSameStatusAsTheTransport(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	Respond(c, fmt.Errorf("%w: the file is 200 bytes and the limit is 100", domain.ErrTooLarge))
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413", rec.Code)
+	}
+	var body struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode %s: %v", rec.Body, err)
+	}
+	if body.Code != string(domain.CodeFileTooLarge) {
+		t.Errorf("code = %q, want %q", body.Code, domain.CodeFileTooLarge)
 	}
 }

@@ -69,6 +69,8 @@ func CodeOf(err error) ErrorCode {
 	}
 
 	switch {
+	case errors.Is(err, ErrTooLarge):
+		return CodeFileTooLarge
 	case errors.Is(err, ErrNotFound):
 		return CodeNotFound
 	case errors.Is(err, ErrImmutable):

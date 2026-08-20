@@ -24,6 +24,8 @@ func Respond(c *gin.Context, err error) {
 		c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "not found", Code: code})
 	case errors.Is(err, domain.ErrConflict):
 		c.JSON(http.StatusConflict, dto.ErrorResponse{Error: "conflict", Code: code})
+	case errors.Is(err, domain.ErrTooLarge):
+		c.JSON(http.StatusRequestEntityTooLarge, dto.ErrorResponse{Error: err.Error(), Code: code})
 	case errors.Is(err, domain.ErrInvalidInput):
 		c.JSON(http.StatusUnprocessableEntity, dto.ErrorResponse{Error: err.Error(), Code: code})
 	case errors.Is(err, domain.ErrUnauthenticated):

@@ -34,6 +34,11 @@ var (
 	// password already matched, and the caller cannot act on it without being told.
 	ErrEmailNotVerified = errors.New("email not verified")
 
+	// ErrTooLarge is returned when an upload is over the configured size. Its own sentinel
+	// because the status is 413, and the transport refuses the same thing the same way: one
+	// refusal must not answer 413 from one layer and 422 from the next.
+	ErrTooLarge = errors.New("payload too large")
+
 	// ErrRateLimited is returned when a caller has spent its request allowance.
 	ErrRateLimited = errors.New("too many requests")
 
