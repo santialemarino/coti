@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -16,7 +17,8 @@ import (
 var _ domain.ObjectStorage = (*FakeStorage)(nil)
 
 // FakeStorage is an in-memory ObjectStorage. It lives in a test file on purpose: an adapter
-// that accepts an upload and stores it nowhere durable must not be reachable from a binary.
+// that accepts an upload and stores it nowhere durable must not be reachable from a binary. It
+// enforces the same key rules as the real ones, so a test cannot pass on a key they would refuse.
 type FakeStorage struct {
 	mu      sync.RWMutex
 	objects map[string]domain.StoredObject
@@ -34,6 +36,9 @@ func NewFakeStorage() *FakeStorage {
 // Upload keeps the bytes and the content type in memory.
 func (s *FakeStorage) Upload(ctx context.Context, key, contentType string, content io.Reader) error {
 	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := validateKey(key); err != nil {
 		return err
 	}
 	data, err := io.ReadAll(content)
@@ -54,6 +59,9 @@ func (s *FakeStorage) Download(ctx context.Context, key string) (*domain.StoredO
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if err := validateKey(key); err != nil {
+		return nil, err
+	}
 	s.mu.RLock()
 	object, ok := s.objects[key]
 	data := s.bodies[key]
@@ -69,6 +77,9 @@ func (s *FakeStorage) Download(ctx context.Context, key string) (*domain.StoredO
 // GenerateSignedURL returns a link shaped like a real one, which nothing serves.
 func (s *FakeStorage) GenerateSignedURL(ctx context.Context, key string, expiresIn time.Duration) (string, error) {
 	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if err := validateKey(key); err != nil {
 		return "", err
 	}
 	s.mu.RLock()
@@ -126,5 +137,19 @@ func TestFakeStorage_GenerateSignedURL_MissingObjectIsNotFound(t *testing.T) {
 
 	if _, err := storage.GenerateSignedURL(context.Background(), "missing.pdf", time.Minute); !isNotFound(err) {
 		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
+
+// A double that accepted what the real adapters refuse would let a service test pass on a key
+// that fails the moment it reaches either of them.
+func TestFakeStorage_RefusesTheSameKeysAsTheRealAdapters(t *testing.T) {
+	t.Parallel()
+	storage := NewFakeStorage()
+	ctx := context.Background()
+
+	for _, tc := range badKeys() {
+		if err := storage.Upload(ctx, tc.key, "text/plain", strings.NewReader("x")); !errors.Is(err, domain.ErrInvalidInput) {
+			t.Errorf("Upload(%q) = %v, want ErrInvalidInput", tc.key, err)
+		}
 	}
 }
