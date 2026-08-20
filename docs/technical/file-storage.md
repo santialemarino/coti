@@ -37,6 +37,10 @@ The account goes at the front of the key, so isolation is visible in the object'
 accounts/<account_id>/rfqs/<rfq_id>/<object_id>.<ext>
 ```
 
+One key cannot be a prefix of another on the local adapter: a filesystem cannot hold both a file
+at `a/b` and a directory at `a/b/c`, where a bucket holds both happily. Keys ending in an object
+id sidestep it, which is what the layout above does.
+
 The local adapter refuses two different things, and they are not the same check. A key that is
 not already canonical — absolute, or carrying `.`, `..`, a doubled or trailing separator — is
 refused because a bucket stores `a/./b` verbatim where a filesystem resolves it, and the two
@@ -65,6 +69,14 @@ Both refusals answer 403. Only the error code separates them: `LINK_EXPIRED` for
 has passed, `INVALID_LINK` for a signature that never covered the request. That distinction is
 safe to make — whoever holds an expired link already held a valid one — and it is what lets a
 client offer a fresh link for the one case where that helps.
+
+### What the route sends back
+
+The bytes are a client's and the origin is the API's own, so a served object must never be able
+to run as a page on it. Every response carries `X-Content-Type-Options: nosniff`, so the browser
+takes the stored content type rather than guessing a better one, and `Content-Disposition:
+attachment`, so it downloads rather than renders in place. `Cache-Control: private, no-store`
+keeps a shared cache from holding a body past the deadline the signature exists to enforce.
 
 ## Configuration
 
