@@ -9,9 +9,7 @@ import (
 )
 
 // validateKey enforces the key rules every adapter shares, so an object stored through one is
-// reachable through the other. Both refusals are separate checks and neither covers the other:
-// a non-canonical key means a bucket and a filesystem disagree about where the object lives,
-// and a climbing key is what path.Clean leaves exactly as it found it.
+// reachable through the other. docs/technical/file-storage.md says why each rule is here.
 func validateKey(key string) error {
 	if key == "" {
 		return fmt.Errorf("%w: storage key is empty", domain.ErrInvalidInput)
@@ -23,7 +21,7 @@ func validateKey(key string) error {
 		return fmt.Errorf("%w: storage key is not a canonical relative path: %s",
 			domain.ErrInvalidInput, key)
 	}
-	if key == ".." || strings.HasPrefix(key, "../") {
+	if key == "." || key == ".." || strings.HasPrefix(key, "../") {
 		return fmt.Errorf("%w: storage key escapes the base directory: %s",
 			domain.ErrInvalidInput, key)
 	}

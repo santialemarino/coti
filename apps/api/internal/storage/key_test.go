@@ -19,6 +19,7 @@ func badKeys() []struct {
 		name string
 		key  string
 	}{
+		{"the base directory itself", "."},
 		{"climbing", "../escaped.txt"},
 		{"climbing through a prefix", "accounts/a/../../../escaped.txt"},
 		{"absolute", "/etc/passwd"},
