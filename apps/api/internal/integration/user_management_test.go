@@ -35,11 +35,10 @@ import (
 const testJWTSecret = "0123456789abcdef0123456789abcdef"
 
 type env struct {
-	router  *gin.Engine
-	db      *repository.DB
-	tokens  *services.TokenService
-	mail    *captureMailer
-	storage domain.ObjectStorage
+	router *gin.Engine
+	db     *repository.DB
+	tokens *services.TokenService
+	mail   *captureMailer
 }
 
 // captureMailer stands in for the transport so a test can read the link that was mailed.
@@ -207,7 +206,7 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
 		deliveryhttp.RateLimit{Limiter: limiter})
 
-	return &env{router: router, db: db, tokens: tokenService, mail: mailer, storage: objectStorage.Storage}
+	return &env{router: router, db: db, tokens: tokenService, mail: mailer}
 }
 
 // mustCleanup runs a teardown delete on the owner pool and fails the test when it cannot. A

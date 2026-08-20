@@ -91,8 +91,8 @@ func (s *RFQAttachmentService) Upload(
 
 	attachmentID := uuid.New()
 	key := attachmentKey(tenant.AccountID, rfqID, attachmentID, format.Extension)
-	// Stored before the row exists, so a failed write leaves no reference pointing at nothing.
-	// The reverse order would leave a link a screen renders and no object behind it.
+	// The object first, the row second: a failed insert then leaves an unreferenced object,
+	// which is invisible, where the reverse leaves a link a screen renders with nothing behind it.
 	if err := s.storage.Upload(ctx, key, file.ContentType, file.Content); err != nil {
 		return nil, err
 	}
