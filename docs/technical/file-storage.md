@@ -31,7 +31,8 @@ may not itself end in `.meta`.
 
 ## Keys are canonical, relative, and account-first
 
-The account goes at the front of the key, so isolation is visible in the object's own path:
+The account goes at the front of the key, so isolation is visible in the object's own path. The
+layout is the caller's contract — the adapters enforce the shape of a key, not what it names:
 
 ```
 accounts/<account_id>/rfqs/<rfq_id>/<object_id>.<ext>
