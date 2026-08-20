@@ -33,6 +33,9 @@ const (
 	CodeQuoteArchived    ErrorCode = "QUOTE_ARCHIVED"
 	CodeQuoteNotDraft    ErrorCode = "QUOTE_NOT_DRAFT"
 	CodeLinkExpired      ErrorCode = "LINK_EXPIRED"
+	// CodeUnsupportedFileType sits beside CodeFileTooLarge: both refuse an upload, and a client
+	// offering a different file needs to know which rule it broke.
+	CodeUnsupportedFileType ErrorCode = "UNSUPPORTED_FILE_TYPE"
 )
 
 // The two the delivery layer raises on its own, before any service is reached, so CodeOf never
