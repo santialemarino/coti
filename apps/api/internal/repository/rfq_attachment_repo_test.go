@@ -98,6 +98,49 @@ func TestRFQAttachmentRepository_Create_RefusesAnotherBranchOfTheSameAccount(t *
 	}
 }
 
+// Two attachments written inside one transaction share created_at to the microsecond, so the id
+// tiebreak is the only thing deciding their order. With one row there is nothing to order and
+// the clause could be deleted unnoticed.
+func TestRFQAttachmentRepository_ListByRFQ_OrdersOldestFirstAndBreaksTiesById(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Attachment ordering")
+	branchID := branchOf(t, db, accountID)
+	rfqID := seedRFQFor(t, db, accountID, branchID)
+
+	first, second := newAttachment(rfqID), newAttachment(rfqID)
+	// Written smaller-id first or not, the clause decides: sort the pair so the expectation is
+	// the id order rather than the insertion order.
+	if second.ID.String() < first.ID.String() {
+		first, second = second, first
+	}
+
+	tenant := domain.Tenant{AccountID: accountID, BranchID: branchID, Role: domain.UserRoleAdmin}
+	repo := NewRFQAttachmentRepository()
+	var listed []domain.RFQAttachment
+	err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		// Inserted larger id first, so insertion order and the expected order disagree.
+		if _, createErr := repo.Create(ctx, q, accountID, branchID, second); createErr != nil {
+			return createErr
+		}
+		if _, createErr := repo.Create(ctx, q, accountID, branchID, first); createErr != nil {
+			return createErr
+		}
+		var listErr error
+		listed, listErr = repo.ListByRFQ(ctx, q, accountID, branchID, rfqID)
+		return listErr
+	})
+	if err != nil {
+		t.Fatalf("list = %v, want no error", err)
+	}
+	if len(listed) != 2 {
+		t.Fatalf("listed %d attachments, want 2", len(listed))
+	}
+	if listed[0].ID != first.ID || listed[1].ID != second.ID {
+		t.Fatalf("order = %v, %v; want %v, %v", listed[0].ID, listed[1].ID, first.ID, second.ID)
+	}
+}
+
 // The happy path, so the refusals above are known to be refusing something that otherwise works.
 func TestRFQAttachmentRepository_CreateThenList_RoundTripsOneAttachment(t *testing.T) {
 	db := testDB(t)
