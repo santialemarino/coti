@@ -957,6 +957,22 @@ func TestLoad_SpacesProviderLoadsWithEveryCredentialPresent(t *testing.T) {
 	}
 }
 
+// The mirror of the local case: a bucket signs its own links, so the key that signs the API's
+// own must not be demanded from a deployment that never uses it.
+func TestLoad_SpacesProviderNeedsNoLinkSigningSecret(t *testing.T) {
+	env := spacesEnv()
+	delete(env, "STORAGE_SIGNING_SECRET")
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.Storage.SigningSecret != "" {
+		t.Errorf("Storage.SigningSecret = %q, want empty", cfg.Storage.SigningSecret)
+	}
+}
+
 func TestLoad_SpacesProviderReportsEveryMissingKeyTogether(t *testing.T) {
 	missing := []string{"STORAGE_ENDPOINT", "STORAGE_REGION", "STORAGE_BUCKET",
 		"STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY"}
