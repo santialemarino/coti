@@ -2,8 +2,8 @@
 
 What happens between a client's informal message and a quote a seller can review. One text goes in;
 one `quote` in `DRAFT`, its first unfrozen `quote_version`, and one `quote_item` per material come
-out, each line carrying the product it matched, how confident that is, and why its quantity is what
-it is.
+out, each line carrying the product it matched, how confident that is, why its quantity is what it
+is, and — when the line needs the seller's eye — the candidates it was decided against.
 
 That draft carries no prices. The seller accepting its materials is a second transition, and it is
 what freezes them — the last section here.
@@ -119,6 +119,54 @@ The same holds for a set of decisions whose length does not match the lines: pai
 another line's product is a wrong match nothing downstream could notice, so the whole set is
 discarded rather than indexed into.
 
+## What a flagged line offers
+
+A `match_status` and a number tell the seller a line needs their eye. They do not tell them what to
+do about it. So the candidates the matcher weighed are kept, as `quote_item_alternative` rows with
+`origin = 'AI'` and `type = 'PRODUCT'`, and they come back attached to the line on both the draft
+and the priced response.
+
+| Line status | What it offers                              | Why                                                             |
+| ----------- | ------------------------------------------- | --------------------------------------------------------------- |
+| `MATCHED`   | Nothing                                     | The line is decided; there is nothing to choose between         |
+| `AMBIGUOUS` | Every candidate except the one it points at | It kept the leader, so the offers are the products it might be  |
+| `NO_MATCH`  | Every candidate that scored above zero      | It points at nothing, so the closest near miss is the first one |
+
+**`rank` is the candidate's place in the matcher's ranking, not a renumbering.** An `AMBIGUOUS`
+line's offers therefore start at two: rank one is the product on the line. `confidence_score` is
+what that candidate scored, on `quote_item.confidence_score`'s own scale, so a 59% near miss reads
+differently from a 12% long shot. Neither figure exists anywhere else on the row — `created_at` is
+the transaction's timestamp, shared by every row of one insert — which is why the table carries
+both columns.
+
+**A candidate that scored zero is not persisted.** The search's top-K is wider than a small catalog,
+so it returns products that carry no similarity to the line at all; offering them would bury the
+near miss under everything the account sells.
+
+**`price_snapshot` stays empty.** Nothing is priced when matching runs, and the price a seller would
+freeze is the one in force when they choose. Freezing prices belongs to valorization.
+
+**The catalog identity is joined, not frozen.** `code`, `canonical_name` and `unit` are read from
+`product` as it stands, the same as the product the line itself matched — a bare id would be barely
+better than a bare flag.
+
+**Each line names its own candidates before either is written.** The service chooses the
+`quote_item.id`, so a candidate references the line directly. Deriving the pairing from the insert's
+row order would rest on an order Postgres does not promise, and a line offering another line's
+products is a wrong answer nothing downstream could notice. `CreateItems` refuses a line that
+carries no id: left unset, every line would insert the all-zeros uuid.
+
+The candidates are written in the same transaction as the lines, so a draft never exists with lines
+flagged and the candidates they were flagged against missing.
+
+## The marks are frozen with the version
+
+`quote_item` rows belong to one `quote_version`, and `quote_item_alternative` rows belong to one
+`quote_item`. A seller who resolves a flagged line produces a **new** version with its own lines, so
+the previous version keeps the marks it had and the candidates behind them. That is what makes the
+report auditable, and it is also the metric: how many lines arrived unmatched in version one, and
+how many had to be fixed by hand.
+
 ## Accepting the materials is what prices the quote
 
 The draft the pipeline above produces carries no prices, and that is deliberate. Two transitions,
@@ -155,8 +203,15 @@ Both keep all three values null, stay in the quote, and add nothing to the total
 - **A line whose product the branch cannot price** — never priced there, the last period ended, the
   product was deactivated, or the branch no longer carries it. One such product does not block the
   seller from quoting the other nineteen lines, so the transition goes through and the service logs
-  a warning naming the products. The cost is that a quote can reach `QUOTED` with a gap in it, which
-  the seller has to see on screen.
+  a warning naming the products. A quote can therefore reach `QUOTED` with a gap in it, so the
+  response names those lines: **`pricing_unavailable`**.
+
+`pricing_unavailable` is a signal of its own rather than a fourth `match_status`, because it answers
+a different question. The catalog decided such a line correctly — it stays `MATCHED` — and a line
+can be matched and unpriceable at once, which one column cannot hold. It is **null until the
+materials are accepted**: on a draft nothing has been valued, and `false` there would say the line
+is fine when nobody has looked. A line with no product is already flagged `NO_MATCH` and is not
+reported again.
 
 "In force" is one definition, shared by every query that reads a current price: the newest period
 that has started and has not ended, on a product that is active and that the branch still carries.
@@ -226,15 +281,16 @@ platform's cron rather than on demand.
 
 ## Where the code lives
 
-| Piece                       | File                                                    |
-| --------------------------- | ------------------------------------------------------- |
-| Ports and types             | `internal/domain/rfq.go`                                |
-| Prompt and forced schema    | `internal/ai/rfq_extractor.go`                          |
-| The flow and its invariants | `internal/services/rfq_service.go`                      |
-| Valorization                | `internal/services/quote_{service,helpers}.go`          |
-| Channel discovery           | `internal/services/channel_service.go`                  |
-| SQL                         | `internal/repository/{rfq,quote,channel}_repo.go`       |
-| Routes and DTOs             | `internal/delivery/http/{handler,dto}/{rfq,quote}_*.go` |
+| Piece                       | File                                                         |
+| --------------------------- | ------------------------------------------------------------ |
+| Ports and types             | `internal/domain/rfq.go`                                     |
+| Prompt and forced schema    | `internal/ai/rfq_extractor.go`                               |
+| The flow and its invariants | `internal/services/rfq_service.go`                           |
+| Valorization                | `internal/services/quote_{service,helpers}.go`               |
+| Channel discovery           | `internal/services/channel_service.go`                       |
+| Candidates per line         | `internal/services/rfq_service.go` (`alternativesFromMatch`) |
+| SQL                         | `internal/repository/{rfq,quote,channel}_repo.go`            |
+| Routes and DTOs             | `internal/delivery/http/{handler,dto}/{rfq,quote}_*.go`      |
 
 `RFQExtractor` is a **feature port**: its adapter owns the prompt and the schema and reaches the
 model through `StructuredGenerator`, so it names no provider and works behind whichever one is
