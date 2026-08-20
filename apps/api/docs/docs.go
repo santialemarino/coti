@@ -2569,7 +2569,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Returns each stored file with a freshly signed link. The link expires, so it is read from here rather than kept.",
+                "description": "Returns each stored file with a freshly signed link. The link expires, so it is read from here rather than kept. An RFQ that does not exist, or belongs elsewhere, answers an empty list rather than 404.",
                 "produces": [
                     "application/json"
                 ],
@@ -2600,14 +2600,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/dto.RFQAttachmentListResponse"
                         }
                     },
-                    "401": {
-                        "description": "Unauthorized",
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
                     },
-                    "404": {
-                        "description": "No such RFQ in the selected branch",
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }

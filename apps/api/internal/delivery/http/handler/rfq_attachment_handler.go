@@ -28,18 +28,19 @@ func NewRFQAttachmentHandler(attachments RFQAttachmentService, maxBytes int64) *
 	return &RFQAttachmentHandler{attachments: attachments, maxBytes: maxBytes}
 }
 
-// List returns the RFQ's attachments, each with a link that serves it until it expires.
+// List returns the RFQ's attachments, each with a link that serves it until it expires. An RFQ
+// that is not this caller's answers an empty list, which is what it looks like from here.
 //
 //	@Summary		List an RFQ's attachments
-//	@Description	Returns each stored file with a freshly signed link. The link expires, so it is read from here rather than kept.
+//	@Description	Returns each stored file with a freshly signed link. The link expires, so it is read from here rather than kept. An RFQ that does not exist, or belongs elsewhere, answers an empty list rather than 404.
 //	@Tags			rfq
 //	@Produce		json
 //	@Security		BearerAuth
 //	@Param			X-Branch-Id	header		string	true	"Active branch"
 //	@Param			rfqId		path		string	true	"RFQ id"
 //	@Success		200			{object}	dto.RFQAttachmentListResponse
+//	@Failure		400			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
-//	@Failure		404			{object}	dto.ErrorResponse	"No such RFQ in the selected branch"
 //	@Failure		422			{object}	dto.ErrorResponse	"No active branch"
 //	@Router			/v1/rfqs/{rfqId}/attachments [get]
 func (h *RFQAttachmentHandler) List(c *gin.Context) {
