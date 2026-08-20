@@ -27,6 +27,8 @@ type quoteDraftRepository interface {
 	UpdateCurrentVersion(ctx context.Context, q repository.Querier, accountID, quoteID, versionID uuid.UUID) (*domain.Quote, error)
 	CreateVersion(ctx context.Context, q repository.Querier, accountID uuid.UUID, in domain.NewQuoteVersion) (*domain.QuoteVersion, error)
 	CreateItems(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, items []domain.NewQuoteItem) ([]domain.QuoteItem, error)
+	CreateAlternatives(ctx context.Context, q repository.Querier, accountID uuid.UUID, alternatives []domain.NewQuoteItemAlternative) error
+	ListAlternativesByItemIDs(ctx context.Context, q repository.Querier, accountID uuid.UUID, itemIDs []uuid.UUID) (map[uuid.UUID][]domain.QuoteItemAlternative, error)
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID, previousStatus *domain.QuoteStatus, newStatus domain.QuoteStatus, userID *uuid.UUID) (*domain.QuoteStatusChange, error)
 }
 
@@ -140,7 +142,7 @@ func (s *RFQService) createTextDraft(
 		return nil, err
 	}
 
-	items, err := s.readMaterials(ctx, tenant, in.RawText)
+	items, alternatives, err := s.readMaterials(ctx, tenant, in.RawText)
 	if err != nil {
 		return nil, err
 	}
@@ -150,45 +152,45 @@ func (s *RFQService) createTextDraft(
 		s.log.InfoContext(ctx, "rfq produced no materials", slog.String("rfq_id", rfq.ID.String()))
 		return &domain.TextRFQDraft{RFQ: *rfq}, nil
 	}
-	return s.persistGeneratedDraft(ctx, tenant, rfq, sellerID, items)
+	return s.persistGeneratedDraft(ctx, tenant, rfq, sellerID, items, alternatives)
 }
 
 // readMaterials runs the two provider stages under one deadline. The caller's context is left
 // alone, so the writes that follow survive a pipeline that ran out of time.
 func (s *RFQService) readMaterials(
 	ctx context.Context, tenant domain.Tenant, raw string,
-) ([]domain.NewQuoteItem, error) {
+) ([]domain.NewQuoteItem, []domain.NewQuoteItemAlternative, error) {
 	pipelineCtx, cancel := context.WithTimeout(ctx, s.cfg.PipelineTimeout)
 	defer cancel()
 
 	lines, err := s.extractor.Extract(pipelineCtx, raw)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// Matching runs one query per line, so an order that came back as a catalog would turn one
 	// request into hundreds of them. Stated in the prompt, enforced here.
 	if len(lines) > s.cfg.MaxItems {
-		return nil, fmt.Errorf("%w: the order lists more than %d materials, which is a catalog "+
-			"rather than a message", domain.ErrInvalidInput, s.cfg.MaxItems)
+		return nil, nil, fmt.Errorf("%w: the order lists more than %d materials, which is a "+
+			"catalog rather than a message", domain.ErrInvalidInput, s.cfg.MaxItems)
 	}
 	items, err := newQuoteItemsFromRFQLines(lines)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(items) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
-	s.applyMatches(pipelineCtx, tenant, items)
-	return items, nil
+	return items, s.applyMatches(pipelineCtx, tenant, items), nil
 }
 
-// applyMatches writes each line's catalog decision onto it. A matcher that cannot answer leaves
-// every line flagged rather than costing the extraction what the client asked for.
+// applyMatches writes each line's catalog decision onto it and returns the candidates the flagged
+// lines were decided from. A matcher that cannot answer leaves every line flagged rather than
+// costing the extraction what the client asked for.
 func (s *RFQService) applyMatches(
 	ctx context.Context, tenant domain.Tenant, items []domain.NewQuoteItem,
-) {
+) []domain.NewQuoteItemAlternative {
 	if s.matcher == nil {
-		return
+		return nil
 	}
 	descriptions := make([]string, len(items))
 	for i, item := range items {
@@ -198,20 +200,23 @@ func (s *RFQService) applyMatches(
 	if err != nil {
 		s.log.WarnContext(ctx, "catalog matching did not run; every line stays flagged",
 			slog.Any("error", err), slog.Int("lines", len(items)))
-		return
+		return nil
 	}
 	// Pairing a line with another line's decision is a wrong product nothing downstream could
 	// notice, so a broken alignment leaves every line flagged rather than indexing into it.
 	if len(matches) != len(items) {
 		s.log.ErrorContext(ctx, "catalog matching returned a different number of decisions",
 			slog.Int("decisions", len(matches)), slog.Int("lines", len(items)))
-		return
+		return nil
 	}
+	var alternatives []domain.NewQuoteItemAlternative
 	for i, match := range matches {
 		items[i].ProductID = match.ProductID
 		items[i].MatchStatus = match.MatchStatus
 		items[i].ConfidenceScore = decimal.NewNullDecimal(match.Confidence)
+		alternatives = append(alternatives, alternativesFromMatch(items[i].ID, match)...)
 	}
+	return alternatives
 }
 
 func (s *RFQService) persistReceivedRFQ(
@@ -245,7 +250,7 @@ func (s *RFQService) persistReceivedRFQ(
 // its first unfrozen version, its lines, and both status histories.
 func (s *RFQService) persistGeneratedDraft(
 	ctx context.Context, tenant domain.Tenant, rfq *domain.RFQ, sellerID *uuid.UUID,
-	items []domain.NewQuoteItem,
+	items []domain.NewQuoteItem, alternatives []domain.NewQuoteItemAlternative,
 ) (*domain.TextRFQDraft, error) {
 	var draft domain.TextRFQDraft
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
@@ -279,6 +284,11 @@ func (s *RFQService) persistGeneratedDraft(
 		if createItemsErr != nil {
 			return createItemsErr
 		}
+		candidates, candidatesErr := s.persistAlternatives(ctx, q, tenant.AccountID, createdItems,
+			alternatives)
+		if candidatesErr != nil {
+			return candidatesErr
+		}
 
 		quote, updateQuoteErr := s.quotes.UpdateCurrentVersion(ctx, q, tenant.AccountID,
 			quote.ID, version.ID)
@@ -303,10 +313,11 @@ func (s *RFQService) persistGeneratedDraft(
 		}
 
 		draft = domain.TextRFQDraft{
-			RFQ:     *generated,
-			Quote:   quote,
-			Version: version,
-			Items:   createdItems,
+			RFQ:          *generated,
+			Quote:        quote,
+			Version:      version,
+			Items:        createdItems,
+			Alternatives: candidates,
 		}
 		return nil
 	})
@@ -314,6 +325,22 @@ func (s *RFQService) persistGeneratedDraft(
 		return nil, err
 	}
 	return &draft, nil
+}
+
+// persistAlternatives writes the flagged lines' candidates and reads them back with the catalog
+// identity a seller needs to tell them apart, which the insert cannot return: RETURNING sees only
+// the row it wrote, and the product's name is a join away.
+func (s *RFQService) persistAlternatives(
+	ctx context.Context, q repository.Querier, accountID uuid.UUID, items []domain.QuoteItem,
+	alternatives []domain.NewQuoteItemAlternative,
+) (map[uuid.UUID][]domain.QuoteItemAlternative, error) {
+	if len(alternatives) == 0 {
+		return nil, nil
+	}
+	if err := s.quotes.CreateAlternatives(ctx, q, accountID, alternatives); err != nil {
+		return nil, err
+	}
+	return s.quotes.ListAlternativesByItemIDs(ctx, q, accountID, quoteItemIDs(items))
 }
 
 func (s *RFQService) getActiveChannel(
@@ -448,6 +475,7 @@ func newQuoteItemsFromRFQLines(lines []domain.ExtractedRFQLine) ([]domain.NewQuo
 		}
 
 		items = append(items, domain.NewQuoteItem{
+			ID:                   uuid.New(),
 			RequestedDescription: description,
 			Quantity:             line.Quantity,
 			Unit:                 unit,
@@ -456,6 +484,40 @@ func newQuoteItemsFromRFQLines(lines []domain.ExtractedRFQLine) ([]domain.NewQuo
 		})
 	}
 	return items, nil
+}
+
+// alternativesFromMatch keeps the candidates the line does not already point at, so an AMBIGUOUS
+// line offers the products it might have been and a NO_MATCH one offers what came closest. A
+// decided line offers none: there is nothing for the seller to choose between. Rank is the
+// candidate's place in the matcher's ranking, so an AMBIGUOUS line's offers start at two.
+func alternativesFromMatch(
+	itemID uuid.UUID, match domain.LineMatch,
+) []domain.NewQuoteItemAlternative {
+	if match.MatchStatus == domain.ItemMatchStatusMatched {
+		return nil
+	}
+	alternatives := make([]domain.NewQuoteItemAlternative, 0, len(match.Candidates))
+	for i, candidate := range match.Candidates {
+		if match.ProductID != nil && *match.ProductID == candidate.ProductID {
+			continue
+		}
+		// A candidate at zero scored no similarity at all: the search reached it because the top-K
+		// is wider than the catalog, not because it resembles the line. Offering it would bury the
+		// near miss the seller is looking for under everything the account sells.
+		if candidate.Confidence.IsZero() {
+			continue
+		}
+		productID := candidate.ProductID
+		alternatives = append(alternatives, domain.NewQuoteItemAlternative{
+			QuoteItemID:     itemID,
+			ProductID:       &productID,
+			Type:            domain.QuoteItemAlternativeTypeProduct,
+			Origin:          domain.QuoteItemAlternativeOriginAI,
+			Rank:            i + 1,
+			ConfidenceScore: decimal.NewNullDecimal(candidate.Confidence),
+		})
+	}
+	return alternatives
 }
 
 // validateQuantitySource refuses a line that contradicts itself: a source outside the closed set,

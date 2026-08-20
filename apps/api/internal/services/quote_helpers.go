@@ -19,6 +19,9 @@ type quoteValuation struct {
 	// priced, the period ended, deactivated, or no longer carried there. Those lines stay empty,
 	// so the gap has to be reported rather than left for the seller to notice.
 	unpricedProducts []uuid.UUID
+	// unpricedItems names the same lines by line. The log wants the product, so somebody can go
+	// price it; the seller wants the line, so they can see which one of theirs has the gap.
+	unpricedItems []uuid.UUID
 }
 
 // valueQuoteItems freezes each line's unit price and floor and sums the version total. A line with
@@ -47,6 +50,7 @@ func valueQuoteItems(
 			subtotals = subtotals.Add(subtotal)
 		} else if item.ProductID != nil {
 			valuation.unpricedProducts = append(valuation.unpricedProducts, *item.ProductID)
+			valuation.unpricedItems = append(valuation.unpricedItems, item.ID)
 		}
 
 		item.UnitPriceSnapshot = pricing.UnitPriceSnapshot
@@ -77,6 +81,15 @@ func priceFor(
 	}
 	price, ok := prices[*item.ProductID]
 	return price, ok
+}
+
+// quoteItemIDs collects a version's line ids, so their candidates are read in one query.
+func quoteItemIDs(items []domain.QuoteItem) []uuid.UUID {
+	itemIDs := make([]uuid.UUID, 0, len(items))
+	for _, item := range items {
+		itemIDs = append(itemIDs, item.ID)
+	}
+	return itemIDs
 }
 
 // quoteItemProductIDs collects the products a version's lines matched, skipping the flagged lines

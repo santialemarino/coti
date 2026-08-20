@@ -19,6 +19,7 @@ type quoteRepository interface {
 	GetCurrentVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.QuoteVersion, error)
 	UpdateVersionTotal(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, total decimal.Decimal) (*domain.QuoteVersion, error)
 	ListItems(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID) ([]domain.QuoteItem, error)
+	ListAlternativesByItemIDs(ctx context.Context, q repository.Querier, accountID uuid.UUID, itemIDs []uuid.UUID) (map[uuid.UUID][]domain.QuoteItemAlternative, error)
 	ApplyPricing(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, pricings []domain.QuoteItemPricing) error
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID, previousStatus *domain.QuoteStatus, newStatus domain.QuoteStatus, userID *uuid.UUID) (*domain.QuoteStatusChange, error)
 }
@@ -76,6 +77,13 @@ func (s *QuoteService) AcceptMaterials(
 		if err != nil {
 			return err
 		}
+		// The candidates ride back with the lines: valuation does not change which line is
+		// flagged, and the seller reviews the gaps and the choices on one screen.
+		candidates, err := s.quotes.ListAlternativesByItemIDs(ctx, q, tenant.AccountID,
+			quoteItemIDs(items))
+		if err != nil {
+			return err
+		}
 
 		// The quote's own branch, not the caller's selection: the price a line freezes belongs to
 		// the branch the order arrived at. GetByID has already proved the two are the same.
@@ -117,7 +125,13 @@ func (s *QuoteService) AcceptMaterials(
 			return err
 		}
 
-		priced = domain.PricedQuote{Quote: *quote, Version: *version, Items: valuation.items}
+		priced = domain.PricedQuote{
+			Quote:           *quote,
+			Version:         *version,
+			Items:           valuation.items,
+			UnpricedItemIDs: valuation.unpricedItems,
+			Alternatives:    candidates,
+		}
 		return nil
 	})
 	if err != nil {
