@@ -41,12 +41,17 @@ One key cannot be a prefix of another on the local adapter: a filesystem cannot 
 at `a/b` and a directory at `a/b/c`, where a bucket holds both happily. Keys ending in an object
 id sidestep it, which is what the layout above does.
 
-The local adapter refuses two different things, and they are not the same check. A key that is
-not already canonical — absolute, or carrying `.`, `..`, a doubled or trailing separator — is
-refused because a bucket stores `a/./b` verbatim where a filesystem resolves it, and the two
-adapters would then disagree about where an object lives. Separately, a key that climbs out of
-the base directory is refused, because `path.Clean` leaves a leading `../` exactly where it
-found it.
+The key rules belong to the port, not to one adapter: **both** refuse the same keys, so an object
+stored through one is reachable through the other. A key that is not already canonical — absolute,
+or carrying `.`, `..`, a doubled or trailing separator — is refused because a bucket stores
+`a/./b` verbatim where a filesystem resolves it, and the two would then disagree about where an
+object lives. A key that climbs out of the base directory is refused separately, because
+`path.Clean` leaves a leading `../` exactly where it found it. Empty keys and keys ending in
+`.meta` are refused for the reasons above.
+
+On top of that, the local adapter checks the **resolved** path landed inside its base directory
+rather than trusting the key rules to have covered it. Nothing reaches that check today, so no
+test pins it; it is there because `filepath.Join` is platform-dependent and the key rules are not.
 
 ## What a signed link is, per adapter
 
