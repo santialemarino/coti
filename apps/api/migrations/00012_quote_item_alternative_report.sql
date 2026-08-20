@@ -4,8 +4,8 @@
 
 -- +goose Up
 
--- Best first, from one. The matcher's candidates arrive ranked and nothing else on the row
--- records that: created_at is the transaction's timestamp, shared by every row of one insert.
+-- The candidate's own place in the matcher's ranking, best first. Nothing else on the row records
+-- it: created_at is the transaction's timestamp, shared by every row of one insert.
 ALTER TABLE quote_item_alternative ADD COLUMN rank SMALLINT NOT NULL DEFAULT 1;
 ALTER TABLE quote_item_alternative ALTER COLUMN rank DROP DEFAULT;
 

@@ -151,8 +151,8 @@ type NewQuoteItemAlternative struct {
 	ComboID     *uuid.UUID
 	Type        QuoteItemAlternativeType
 	Origin      QuoteItemAlternativeOrigin
-	// Rank is the matcher's order, best first from one. Nothing else on the row records it:
-	// created_at is the transaction's timestamp, shared by every row of one insert.
+	// Rank is the candidate's own place in the matcher's ranking, so a line that kept the leading
+	// candidate has no row at one. Nothing else records it: created_at is shared across an insert.
 	Rank            int
 	ConfidenceScore decimal.NullDecimal
 	// PriceSnapshot stays empty on an AI candidate: nothing has been priced when matching runs,

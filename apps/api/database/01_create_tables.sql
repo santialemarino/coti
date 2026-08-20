@@ -489,8 +489,8 @@ CREATE TABLE quote_item_alternative (
   combo_id           UUID,
   type               quote_item_alternative_type NOT NULL,
   origin             quote_item_alternative_origin NOT NULL,
-  -- Best first, from one. The matcher ranks its candidates and nothing else on the row records
-  -- that order; confidence_score is what each one scored, on quote_item.confidence_score's scale.
+  -- The candidate's own place in the matcher's ranking, best first; nothing else on the row
+  -- records it. confidence_score is what it scored, on quote_item.confidence_score's scale.
   rank               SMALLINT NOT NULL,
   confidence_score   NUMERIC(5,4),
   price_snapshot     NUMERIC(14,2),

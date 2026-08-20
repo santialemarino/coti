@@ -74,7 +74,7 @@ func (e *env) freezeVersion(t *testing.T, versionID uuid.UUID) {
 // second version of the same quote, with the line matched and no candidate left on it.
 func (e *env) seedResolvedNextVersion(
 	t *testing.T, accountID, quoteID, productID uuid.UUID, description string,
-) uuid.UUID {
+) {
 	t.Helper()
 	ctx := context.Background()
 	versionID := uuid.New()
@@ -94,7 +94,6 @@ func (e *env) seedResolvedNextVersion(
 		e.mustCleanup(t, `DELETE FROM quote_item WHERE version_id = $1`, versionID)
 		e.mustCleanup(t, `DELETE FROM quote_version WHERE id = $1`, versionID)
 	})
-	return versionID
 }
 
 // ambiguousDraft runs the real pipeline over a catalog staged so one line is AMBIGUOUS between two
@@ -173,6 +172,22 @@ func (e *env) ambiguousDraft(
 		t.Fatalf("lines = %+v, want both descriptions back", draft.Items)
 	}
 	return staged
+}
+
+// lineProduct is the product a line ended up pointing at, which is what decides who is on offer.
+func lineProduct(t *testing.T, items []domain.QuoteItem, itemID uuid.UUID) uuid.UUID {
+	t.Helper()
+	for _, item := range items {
+		if item.ID != itemID {
+			continue
+		}
+		if item.ProductID == nil {
+			t.Fatalf("line %v points at no product", itemID)
+		}
+		return *item.ProductID
+	}
+	t.Fatalf("line %v is not among the draft's lines", itemID)
+	return uuid.Nil
 }
 
 // The ticket's third criterion, against real SQL and the real search: an ambiguous line offers the
@@ -277,22 +292,6 @@ func TestUnmatchedItems_OffersTheCandidatesOfEveryFlaggedLine(t *testing.T) {
 	}
 }
 
-// lineProduct is the product a line ended up pointing at, which is what decides who is on offer.
-func lineProduct(t *testing.T, items []domain.QuoteItem, itemID uuid.UUID) uuid.UUID {
-	t.Helper()
-	for _, item := range items {
-		if item.ID != itemID {
-			continue
-		}
-		if item.ProductID == nil {
-			t.Fatalf("line %v points at no product", itemID)
-		}
-		return *item.ProductID
-	}
-	t.Fatalf("line %v is not among the draft's lines", itemID)
-	return uuid.Nil
-}
-
 // The ticket's fifth criterion: version one keeps the marks it had, and the candidates behind
 // them, after version two resolves the line.
 func TestUnmatchedItems_AFrozenVersionKeepsItsMarks(t *testing.T) {
@@ -326,6 +325,17 @@ func TestUnmatchedItems_AFrozenVersionKeepsItsMarks(t *testing.T) {
 		return err
 	}); err != nil {
 		t.Fatalf("read version one back: %v", err)
+	}
+
+	// The premise the rest of this rests on: version one really is frozen. uq_quote_version_draft
+	// allows one unfrozen version per quote, so version two could not exist otherwise.
+	var frozen bool
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT is_immutable FROM quote_version WHERE id = $1`, firstVersion).Scan(&frozen); err != nil {
+		t.Fatalf("read version one's immutability: %v", err)
+	}
+	if !frozen {
+		t.Fatal("version one is not frozen, so this proves nothing about a frozen one")
 	}
 
 	// Two lines, not three: version two's resolved line belongs to version two.
@@ -367,7 +377,9 @@ func TestUnmatchedItems_AnotherAccountReachesNoCandidate(t *testing.T) {
 	repo := repository.NewQuoteRepository()
 	itemIDs := []uuid.UUID{staged.cementItem, staged.strayItem}
 	// Real line ids, the wrong caller. A tenant-scoped id arriving from anywhere proves nothing
-	// about who owns the row it names.
+	// about who owns the row it names. What this pins is the refusal: inside a tenant transaction
+	// row level security answers first, so the application predicate on its own is pinned in
+	// TestQuoteRepository_ListAlternativesByItemIDs_ReadsNothingOfAnotherAccountWithoutRLS.
 	var offers map[uuid.UUID][]domain.QuoteItemAlternative
 	if err := e.db.InTenantTx(context.Background(),
 		domain.Tenant{AccountID: otherAccountID, UserID: intruder.ID, Role: domain.UserRoleAdmin},

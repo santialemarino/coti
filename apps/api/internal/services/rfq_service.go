@@ -486,10 +486,8 @@ func newQuoteItemsFromRFQLines(lines []domain.ExtractedRFQLine) ([]domain.NewQuo
 	return items, nil
 }
 
-// alternativesFromMatch keeps the candidates the line does not already point at, so an AMBIGUOUS
-// line offers the products it might have been and a NO_MATCH one offers what came closest. A
-// decided line offers none: there is nothing for the seller to choose between. Rank is the
-// candidate's place in the matcher's ranking, so an AMBIGUOUS line's offers start at two.
+// alternativesFromMatch keeps the candidates the line does not already point at, ranked as the
+// matcher ranked them. See docs/technical/rfq-pipeline.md for which status offers what.
 func alternativesFromMatch(
 	itemID uuid.UUID, match domain.LineMatch,
 ) []domain.NewQuoteItemAlternative {
