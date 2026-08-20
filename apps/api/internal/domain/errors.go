@@ -47,6 +47,11 @@ var (
 	// carrying on with a proposal it never got.
 	ErrAIUnavailable = errors.New("ai provider unavailable")
 
+	// ErrNotConfigured is returned when a request needs a capability this deployment never
+	// configured — storing a channel credential with no encryption key set. Its own sentinel
+	// because nothing about the request can be changed to make it succeed.
+	ErrNotConfigured = errors.New("capability not configured")
+
 	// ErrNoTenantContext is a programming error, not a client one: a request-scoped query
 	// without tenant context silently returns nothing under row level security.
 	ErrNoTenantContext = errors.New("no tenant context")

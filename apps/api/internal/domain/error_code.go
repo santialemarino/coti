@@ -19,6 +19,7 @@ const (
 	CodeEmailNotVerified ErrorCode = "EMAIL_NOT_VERIFIED"
 	CodeRateLimited      ErrorCode = "RATE_LIMITED"
 	CodeAIUnavailable    ErrorCode = "AI_UNAVAILABLE"
+	CodeNotConfigured    ErrorCode = "NOT_CONFIGURED"
 	CodeInternal         ErrorCode = "INTERNAL"
 )
 
@@ -36,6 +37,11 @@ const (
 	// CodeUnsupportedFileType sits beside CodeFileTooLarge: both refuse an upload, and a client
 	// offering a different file needs to know which rule it broke.
 	CodeUnsupportedFileType ErrorCode = "UNSUPPORTED_FILE_TYPE"
+	// The three a channel write is refused with. A form editing one channel can answer all three
+	// on the same 422, and the field it has to point the administrator at differs per code.
+	CodeChannelConfigShape ErrorCode = "CHANNEL_CONFIG_SHAPE"
+	CodeChannelIdentifier  ErrorCode = "CHANNEL_IDENTIFIER"
+	CodeManualEntryChannel ErrorCode = "MANUAL_ENTRY_CHANNEL"
 )
 
 // The two an upload is refused with. The delivery layer raises both on its own, before any
@@ -92,6 +98,8 @@ func CodeOf(err error) ErrorCode {
 		return CodeRateLimited
 	case errors.Is(err, ErrAIUnavailable):
 		return CodeAIUnavailable
+	case errors.Is(err, ErrNotConfigured):
+		return CodeNotConfigured
 	default:
 		return CodeInternal
 	}

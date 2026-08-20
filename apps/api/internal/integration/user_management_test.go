@@ -28,11 +28,16 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/ratelimit"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
+	"github.com/santialemarino/coti/apps/api/internal/secrets"
 	"github.com/santialemarino/coti/apps/api/internal/services"
 	storageprovider "github.com/santialemarino/coti/apps/api/internal/storage/provider"
 )
 
 const testJWTSecret = "0123456789abcdef0123456789abcdef"
+
+// testChannelKey is 32 bytes, so the channel sealer is enabled for the suite; the one test that
+// needs a deployment with no key clears it through newEnv's mutator.
+var testChannelKey = []byte(testJWTSecret)
 
 type env struct {
 	router *gin.Engine
@@ -104,7 +109,8 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 		RFQ: config.RFQConfig{
 			MaxTextCharacters: 20000, MaxItems: 200, PipelineTimeout: 25 * time.Second,
 		},
-		Branch: config.BranchConfig{DefaultExpiryDays: 7},
+		Branch:  config.BranchConfig{DefaultExpiryDays: 7},
+		Channel: config.ChannelConfig{EncryptionKey: testChannelKey},
 		// The local adapter, over a directory this test owns: uploads, links and expiry are
 		// exercised for real rather than against a double.
 		Storage: config.StorageConfig{
@@ -168,7 +174,11 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 		services.NewCatalogMatchService(catalogSearchService, cfg.Catalog), quiet, cfg.RFQ)
 	quoteService := services.NewQuoteService(db, quoteRepo,
 		repository.NewProductPriceRepository(), quiet)
-	channelService := services.NewChannelService(db, channelRepo)
+	channelSealer, err := secrets.NewAESGCM(cfg.Channel.EncryptionKey)
+	if err != nil {
+		t.Fatalf("NewAESGCM() = %v, want no error", err)
+	}
+	channelService := services.NewChannelService(db, channelRepo, channelSealer)
 
 	objectStorage, err := storageprovider.Bind(cfg.Storage, quiet)
 	if err != nil {

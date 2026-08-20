@@ -33,6 +33,7 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/mail"
 	"github.com/santialemarino/coti/apps/api/internal/ratelimit"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
+	"github.com/santialemarino/coti/apps/api/internal/secrets"
 	"github.com/santialemarino/coti/apps/api/internal/services"
 	storageprovider "github.com/santialemarino/coti/apps/api/internal/storage/provider"
 )
@@ -106,6 +107,14 @@ func run() error {
 	}
 	objectStorage.Describe(log)
 
+	channelSealer, err := secrets.NewAESGCM(cfg.Channel.EncryptionKey)
+	if err != nil {
+		return err
+	}
+	if !channelSealer.Enabled() {
+		log.Warn("channel credentials cannot be stored: CHANNEL_CONFIG_ENCRYPTION_KEY is unset")
+	}
+
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
 	authService := services.NewAuthService(db, userRepo, branchRepo, refreshTokenRepo, tokenService, cfg.Auth, nil)
 	mailService := services.NewMailService(db, mailer, notificationRepo, accountRepo, nil)
@@ -123,7 +132,7 @@ func run() error {
 		productPriceRepo, nil)
 	productPriceImportService := services.NewProductPriceImportService(db, productPriceRepo, nil)
 	catalogImportService := services.NewCatalogImportService(db, catalogImportRepo, nil)
-	channelService := services.NewChannelService(db, channelRepo)
+	channelService := services.NewChannelService(db, channelRepo, channelSealer)
 	catalogSearchService := services.NewCatalogSearchService(db, productRepo, providers.Embedder,
 		cfg.Catalog)
 	catalogMatchService := services.NewCatalogMatchService(catalogSearchService, cfg.Catalog)
