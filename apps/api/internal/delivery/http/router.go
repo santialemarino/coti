@@ -4,6 +4,7 @@ package http
 
 import (
 	"log/slog"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	swaggerfiles "github.com/swaggo/files"
@@ -12,11 +13,16 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/middleware"
+	"github.com/santialemarino/coti/apps/api/internal/storage"
 
 	// The generated spec registers itself on import. It is regenerated from the handler
 	// annotations by `pnpm docs:api`, and CI fails if the committed copy is stale.
 	_ "github.com/santialemarino/coti/apps/api/docs"
 )
+
+// apiPrefix is where every versioned route is mounted. The storage adapter builds links
+// against the same prefix, so it is read rather than repeated.
+const apiPrefix = "/v1"
 
 // Handlers carries every handler the router mounts, so adding a feature is one field
 // here instead of a new router parameter.
@@ -35,6 +41,9 @@ type Handlers struct {
 	Account       *handler.AccountHandler
 	Prices        *handler.ProductPriceHandler
 	CatalogImport *handler.CatalogImportHandler
+	// File is nil unless the local storage adapter is bound: a bucket serves its own links,
+	// and a route that answered for one would be serving objects the API does not hold.
+	File *handler.FileHandler
 }
 
 // Auth carries what the authentication middleware needs to resolve a tenant.
@@ -83,9 +92,17 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	// The global allowance sits ahead of Authenticate, so a flood is refused before it costs
 	// a query. Authenticate resolves a tenant when a token is present without rejecting an
 	// anonymous request — RequireTenant does that.
-	v1 := r.Group("/v1",
+	v1 := r.Group(apiPrefix,
 		limit("global", cfg.RateLimit.Global),
 		middleware.Authenticate(auth.Verifier, auth.Resolver))
+
+	// No tenant middleware, deliberately: the signature on the link is the whole
+	// authorization, which is what lets a client open a document without an account. The
+	// account it may reach is inside the signed key. It stays under the global allowance,
+	// because an unauthenticated route that streams files is otherwise free bandwidth.
+	if h.File != nil {
+		v1.GET(strings.TrimPrefix(storage.LinkPath, apiPrefix)+"/*key", h.File.Get)
+	}
 
 	// Works without a session; each route resolves its own scope.
 	public := v1.Group("/public")
