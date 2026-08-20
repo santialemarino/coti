@@ -48,6 +48,9 @@ func NewSpacesStorage(settings config.SpacesSettings) *SpacesStorage {
 
 // Upload stores the object privately, tagged with the content type it must be served as.
 func (s *SpacesStorage) Upload(ctx context.Context, key, contentType string, content io.Reader) error {
+	if err := validateKey(key); err != nil {
+		return err
+	}
 	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(s.bucket),
 		Key:         aws.String(key),
@@ -63,6 +66,9 @@ func (s *SpacesStorage) Upload(ctx context.Context, key, contentType string, con
 
 // Download opens the object and reports the content type it was stored with.
 func (s *SpacesStorage) Download(ctx context.Context, key string) (*domain.StoredObject, error) {
+	if err := validateKey(key); err != nil {
+		return nil, err
+	}
 	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(key),
@@ -83,6 +89,9 @@ func (s *SpacesStorage) Download(ctx context.Context, key string) (*domain.Store
 
 // GenerateSignedURL returns a presigned link the bucket serves until expiresIn has passed.
 func (s *SpacesStorage) GenerateSignedURL(ctx context.Context, key string, expiresIn time.Duration) (string, error) {
+	if err := validateKey(key); err != nil {
+		return "", err
+	}
 	if expiresIn <= 0 {
 		return "", fmt.Errorf("%w: link lifetime must be greater than zero", domain.ErrInvalidInput)
 	}

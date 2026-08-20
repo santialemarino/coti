@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -58,14 +57,14 @@ func (s *LocalStorage) Upload(ctx context.Context, key, contentType string, cont
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	path, err := s.objectPath(key)
+	target, err := s.objectPath(key)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), dirMode); err != nil {
+	if err := os.MkdirAll(filepath.Dir(target), dirMode); err != nil {
 		return fmt.Errorf("create storage directory: %w", err)
 	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, objectMode)
+	file, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, objectMode)
 	if err != nil {
 		return fmt.Errorf("create object: %w", err)
 	}
@@ -77,7 +76,7 @@ func (s *LocalStorage) Upload(ctx context.Context, key, contentType string, cont
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("write object: %w", err)
 	}
-	if err := os.WriteFile(path+metaSuffix, []byte(contentType), objectMode); err != nil {
+	if err := os.WriteFile(target+metaSuffix, []byte(contentType), objectMode); err != nil {
 		return fmt.Errorf("write object metadata: %w", err)
 	}
 	return nil
@@ -88,11 +87,11 @@ func (s *LocalStorage) Download(ctx context.Context, key string) (*domain.Stored
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	path, err := s.objectPath(key)
+	target, err := s.objectPath(key)
 	if err != nil {
 		return nil, err
 	}
-	file, err := os.Open(path)
+	file, err := os.Open(target)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf("%w: object %s", domain.ErrNotFound, key)
@@ -104,7 +103,7 @@ func (s *LocalStorage) Download(ctx context.Context, key string) (*domain.Stored
 		file.Close()
 		return nil, fmt.Errorf("stat object: %w", err)
 	}
-	contentType, err := os.ReadFile(path + metaSuffix)
+	contentType, err := os.ReadFile(target + metaSuffix)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		file.Close()
 		return nil, fmt.Errorf("read object metadata: %w", err)
@@ -125,11 +124,11 @@ func (s *LocalStorage) GenerateSignedURL(ctx context.Context, key string, expire
 	if expiresIn <= 0 {
 		return "", fmt.Errorf("%w: link lifetime must be greater than zero", domain.ErrInvalidInput)
 	}
-	path, err := s.objectPath(key)
+	target, err := s.objectPath(key)
 	if err != nil {
 		return "", err
 	}
-	if _, err := os.Stat(path); err != nil {
+	if _, err := os.Stat(target); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return "", fmt.Errorf("%w: object %s", domain.ErrNotFound, key)
 		}
@@ -151,20 +150,11 @@ func (s *LocalStorage) Verify(key string, expiresAt time.Time, signature string)
 	return s.signer.Verify(key, expiresAt, signature)
 }
 
-// objectPath maps a storage key onto a path inside baseDir. Two things are refused, and they
-// are different: a key that is not already canonical, because a bucket stores "a/./b" verbatim
-// where a filesystem resolves it and the adapters would then disagree about where an object
-// lives; and a key that climbs out of baseDir, which path.Clean leaves untouched.
+// objectPath maps a validated storage key onto a path inside baseDir, checking against the
+// resolved path that it landed there rather than trusting the key rules to have covered it.
 func (s *LocalStorage) objectPath(key string) (string, error) {
-	if key == "" {
-		return "", fmt.Errorf("%w: storage key is empty", domain.ErrInvalidInput)
-	}
-	if strings.HasSuffix(key, metaSuffix) {
-		return "", fmt.Errorf("%w: storage key may not end in %s", domain.ErrInvalidInput, metaSuffix)
-	}
-	if path.IsAbs(key) || path.Clean(key) != key {
-		return "", fmt.Errorf("%w: storage key is not a canonical relative path: %s",
-			domain.ErrInvalidInput, key)
+	if err := validateKey(key); err != nil {
+		return "", err
 	}
 	joined := filepath.Join(s.baseDir, filepath.FromSlash(key))
 	relative, err := filepath.Rel(s.baseDir, joined)

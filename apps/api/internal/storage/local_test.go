@@ -137,21 +137,7 @@ func TestLocalStorage_Download_MissingObjectIsNotFound(t *testing.T) {
 func TestLocalStorage_RefusesKeysThatLeaveTheBaseDirectory(t *testing.T) {
 	t.Parallel()
 	storage := newTestLocalStorage(t, testSigner(t, time.Unix(1_700_000_000, 0)))
-	cases := []struct {
-		name string
-		key  string
-	}{
-		{"climbing", "../escaped.txt"},
-		{"climbing through a prefix", "accounts/a/../../../escaped.txt"},
-		{"absolute", "/etc/passwd"},
-		{"leading slash", "/accounts/a/rfqs/b/plan.pdf"},
-		{"dot segment", "accounts/a/./rfqs/b/plan.pdf"},
-		{"doubled separator", "accounts/a//rfqs/b/plan.pdf"},
-		{"trailing separator", "accounts/a/rfqs/b/"},
-		{"empty", ""},
-		{"metadata sidecar", "accounts/a/rfqs/b/plan.pdf" + metaSuffix},
-	}
-	for _, tc := range cases {
+	for _, tc := range badKeys() {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			err := storage.Upload(context.Background(), tc.key, "text/plain", strings.NewReader("x"))
