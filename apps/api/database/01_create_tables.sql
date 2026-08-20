@@ -863,6 +863,7 @@ CREATE INDEX idx_branch_combo_branch ON branch_combo(branch_id) WHERE is_active 
 CREATE INDEX idx_client_account ON client(account_id);
 CREATE INDEX idx_rfq_branch_status ON rfq(branch_id, status);
 CREATE INDEX idx_rfq_attachment_pending ON rfq_attachment(processing_status) WHERE processing_status IN ('PENDING', 'PROCESSING');
+CREATE INDEX idx_rfq_attachment_account_rfq ON rfq_attachment(account_id, rfq_id);
 
 CREATE INDEX idx_quote_branch_status ON quote(branch_id, current_status);
 CREATE INDEX idx_quote_expires ON quote(expires_at) WHERE expires_at IS NOT NULL AND archived_at IS NULL;
