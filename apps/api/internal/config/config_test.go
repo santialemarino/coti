@@ -25,6 +25,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"AUTH_REQUIRE_VERIFIED_EMAIL",
 		"RATE_LIMIT_ENABLED", "RATE_LIMIT_WINDOW_SECONDS", "RATE_LIMIT_GLOBAL_MAX",
 		"RATE_LIMIT_CREDENTIALS_MAX", "RATE_LIMIT_SIGNUP_MAX", "RATE_LIMIT_MAIL_MAX",
+		"RATE_LIMIT_AI_MAX",
 		"RATE_LIMIT_MAIL_PER_ADDRESS_MAX", "RATE_LIMIT_TRUSTED_PROXY_HOPS",
 		"RATE_LIMIT_TRUSTED_PROXY_CIDRS",
 		"MAIL_PROVIDER", "MAIL_FROM_ADDRESS", "MAIL_FROM_NAME",
@@ -42,8 +43,17 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"CATALOG_SEARCH_TOP_K", "CATALOG_SEARCH_OVER_FETCH_FACTOR",
 		"CATALOG_SEARCH_MAX_FETCH", "CATALOG_SEARCH_IVFFLAT_PROBES", "CATALOG_SEARCH_RRF_K",
 		"CATALOG_EMBEDDING_BATCH_SIZE",
+		"CATALOG_MATCH_MIN_CONFIDENCE_PERCENT", "CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT",
+		"CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT",
 		"CATALOG_IMPORT_MAX_BYTES",
 		"PRICE_IMPORT_MAX_BYTES",
+		"JOB_TIMEOUT_MINUTES",
+		"RFQ_MAX_TEXT_CHARACTERS", "RFQ_MAX_ITEMS", "RFQ_PIPELINE_TIMEOUT_SECONDS",
+		"STORAGE_PROVIDER", "STORAGE_LOCAL_DIR", "STORAGE_LOCAL_API_BASE_URL",
+		"STORAGE_LOCAL_SIGNING_SECRET", "STORAGE_ENDPOINT", "STORAGE_REGION", "STORAGE_BUCKET",
+		"STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY",
+		"STORAGE_MAX_FILE_SIZE_BYTES", "STORAGE_SIGNED_URL_EXPIRY_MINUTES",
+		"CHANNEL_CONFIG_ENCRYPTION_KEY",
 	}
 	for _, k := range known {
 		t.Setenv(k, "")
@@ -58,6 +68,9 @@ func minimalEnv() map[string]string {
 		"DATABASE_URL":       "postgres://app@localhost:5432/coti",
 		"DATABASE_ADMIN_URL": "postgres://owner@localhost:5432/coti",
 		"AUTH_JWT_SECRET":    validSecret,
+		// The default storage provider signs its own links, so its secret is as required as
+		// the token one.
+		"STORAGE_LOCAL_SIGNING_SECRET": validSecret,
 	}
 }
 
@@ -90,6 +103,23 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.CatalogImport.MaxBytes != defaultCatalogImportMaxBytes {
 		t.Errorf("CatalogImport.MaxBytes = %d, want %d", cfg.CatalogImport.MaxBytes, defaultCatalogImportMaxBytes)
 	}
+	// Pinned exactly rather than as a relationship: .env.example and docs/technical quote these
+	// three numbers, and a drifting default would leave them describing a different product.
+	if cfg.RFQ.MaxTextCharacters != 20000 {
+		t.Errorf("RFQ.MaxTextCharacters = %d, want 20000", cfg.RFQ.MaxTextCharacters)
+	}
+	if cfg.RFQ.MaxItems != 200 {
+		t.Errorf("RFQ.MaxItems = %d, want 200", cfg.RFQ.MaxItems)
+	}
+	if cfg.RFQ.PipelineTimeout != 25*time.Second {
+		t.Errorf("RFQ.PipelineTimeout = %v, want 25s", cfg.RFQ.PipelineTimeout)
+	}
+	// The pipeline has to answer inside the response budget, or its reply is cut off mid-write
+	// and the client reads a broken connection instead of a model that ran out of time.
+	if cfg.RFQ.PipelineTimeout >= cfg.Server.WriteTimeout {
+		t.Errorf("RFQ.PipelineTimeout = %v, want it below Server.WriteTimeout %v",
+			cfg.RFQ.PipelineTimeout, cfg.Server.WriteTimeout)
+	}
 	if cfg.Mail.Provider != MailProviderConsole {
 		t.Errorf("Mail.Provider = %q, want %q", cfg.Mail.Provider, MailProviderConsole)
 	}
@@ -104,6 +134,9 @@ func TestLoad_Defaults(t *testing.T) {
 	// The requirement has to arrive off, or a fresh environment locks everyone out.
 	if cfg.Auth.RequireVerifiedEmail {
 		t.Error("Auth.RequireVerifiedEmail = true, want false by default")
+	}
+	if cfg.RateLimit.AI != 10 {
+		t.Errorf("RateLimit.AI = %d, want 10", cfg.RateLimit.AI)
 	}
 	if !cfg.RateLimit.Enabled {
 		t.Error("RateLimit.Enabled = false, want true by default")
@@ -136,12 +169,66 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Catalog.EmbeddingBatchSize != 200 {
 		t.Errorf("Catalog.EmbeddingBatchSize = %d, want 200", cfg.Catalog.EmbeddingBatchSize)
 	}
+	// Pinned exactly, because .env.example and the catalog documentation both quote these three
+	// and nothing else would notice them drifting apart.
+	for _, tc := range []struct {
+		name string
+		got  int
+		want int
+	}{
+		{"Catalog.MatchMinConfidencePercent", cfg.Catalog.MatchMinConfidencePercent, 60},
+		{"Catalog.MatchAmbiguityMarginPercent", cfg.Catalog.MatchAmbiguityMarginPercent, 5},
+		{"Catalog.MatchLexicalConfidencePercent", cfg.Catalog.MatchLexicalConfidencePercent, 75},
+	} {
+		if tc.got != tc.want {
+			t.Errorf("%s = %d, want %d", tc.name, tc.got, tc.want)
+		}
+	}
+	// A trade term loaded as a synonym has to resolve to its product out of the box, and the
+	// lexical half is the only half that reaches an unembedded row.
+	if cfg.Catalog.MatchLexicalConfidencePercent < cfg.Catalog.MatchMinConfidencePercent {
+		t.Errorf("Catalog.MatchLexicalConfidencePercent = %d, want at least the floor of %d",
+			cfg.Catalog.MatchLexicalConfidencePercent, cfg.Catalog.MatchMinConfidencePercent)
+	}
+	// At zero every leading candidate is decided, whatever sits behind it.
+	if cfg.Catalog.MatchAmbiguityMarginPercent < 1 {
+		t.Errorf("Catalog.MatchAmbiguityMarginPercent = %d, want a margin by default",
+			cfg.Catalog.MatchAmbiguityMarginPercent)
+	}
+	if cfg.Job.Timeout != 30*time.Minute {
+		t.Errorf("Job.Timeout = %v, want 30m", cfg.Job.Timeout)
+	}
 	if cfg.IsProduction() {
 		t.Error("IsProduction() = true, want false")
 	}
 }
 
 // The suffix on a duration key carries its unit, so the env file holds plain numbers.
+// TestLoad_RFQKeysLandOnTheirOwnFields reads three distinct values, because three sibling keys
+// mapped onto three sibling fields is the copy-paste the compiler cannot see: swapping two of them
+// builds, vets clean, and every default pin still passes.
+func TestLoad_RFQKeysLandOnTheirOwnFields(t *testing.T) {
+	env := minimalEnv()
+	env["RFQ_MAX_TEXT_CHARACTERS"] = "1234"
+	env["RFQ_MAX_ITEMS"] = "77"
+	env["RFQ_PIPELINE_TIMEOUT_SECONDS"] = "9"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.RFQ.MaxTextCharacters != 1234 {
+		t.Errorf("RFQ.MaxTextCharacters = %d, want 1234", cfg.RFQ.MaxTextCharacters)
+	}
+	if cfg.RFQ.MaxItems != 77 {
+		t.Errorf("RFQ.MaxItems = %d, want 77", cfg.RFQ.MaxItems)
+	}
+	if cfg.RFQ.PipelineTimeout != 9*time.Second {
+		t.Errorf("RFQ.PipelineTimeout = %v, want 9s", cfg.RFQ.PipelineTimeout)
+	}
+}
+
 func TestLoad_DurationUnitsComeFromKeySuffix(t *testing.T) {
 	env := minimalEnv()
 	env["AUTH_ACCESS_TTL_MINUTES"] = "5"
@@ -282,6 +369,45 @@ func TestLoad_Invalid(t *testing.T) {
 			wantSub: "AUTH_PASSWORD_RESET_TTL_MINUTES must be greater than zero",
 		},
 		{
+			// A run bounded at nothing holds its lock until the process is killed, and every
+			// later firing then does nothing while it waits.
+			name:    "a scheduled run bounded at nothing",
+			mutate:  func(e map[string]string) { e["JOB_TIMEOUT_MINUTES"] = "0" },
+			wantSub: "JOB_TIMEOUT_MINUTES must be greater than zero",
+		},
+		{
+			// An allowance above the global one can never bite, so it reads as a cost bound that
+			// is not there.
+			name:    "an AI allowance wider than the global one",
+			mutate:  func(e map[string]string) { e["RATE_LIMIT_AI_MAX"] = "301" },
+			wantSub: "RATE_LIMIT_AI_MAX (301) exceeds RATE_LIMIT_GLOBAL_MAX",
+		},
+		{
+			name:    "an order bounded at nothing",
+			mutate:  func(e map[string]string) { e["RFQ_MAX_TEXT_CHARACTERS"] = "0" },
+			wantSub: "RFQ_MAX_TEXT_CHARACTERS must be greater than zero",
+		},
+		{
+			name:    "no line allowed per order",
+			mutate:  func(e map[string]string) { e["RFQ_MAX_ITEMS"] = "0" },
+			wantSub: "RFQ_MAX_ITEMS must be greater than zero",
+		},
+		{
+			name:    "a pipeline bounded at nothing",
+			mutate:  func(e map[string]string) { e["RFQ_PIPELINE_TIMEOUT_SECONDS"] = "0" },
+			wantSub: "RFQ_PIPELINE_TIMEOUT_SECONDS must be greater than zero",
+		},
+		{
+			// Allowed to outlast the response budget, the pipeline's answer is cut off while it
+			// is being written, which reaches the client as a broken connection.
+			name: "a pipeline allowed to outlast the response budget",
+			mutate: func(e map[string]string) {
+				e["RFQ_PIPELINE_TIMEOUT_SECONDS"] = "30"
+				e["SERVER_WRITE_TIMEOUT_SECONDS"] = "30"
+			},
+			wantSub: "must be below SERVER_WRITE_TIMEOUT_SECONDS",
+		},
+		{
 			name:    "catalog import size of zero",
 			mutate:  func(e map[string]string) { e["CATALOG_IMPORT_MAX_BYTES"] = "0" },
 			wantSub: "CATALOG_IMPORT_MAX_BYTES must be greater than zero",
@@ -289,7 +415,14 @@ func TestLoad_Invalid(t *testing.T) {
 		{
 			name:    "no search results asked for",
 			mutate:  func(e map[string]string) { e["CATALOG_SEARCH_TOP_K"] = "0" },
-			wantSub: "CATALOG_SEARCH_TOP_K must be at least 1",
+			wantSub: "CATALOG_SEARCH_TOP_K must be at least 2",
+		},
+		{
+			// One candidate never has a runner-up, so matching could never call a line
+			// ambiguous and every line above the floor would read as decided.
+			name:    "a single search result, leaving matching no runner-up",
+			mutate:  func(e map[string]string) { e["CATALOG_SEARCH_TOP_K"] = "1" },
+			wantSub: "CATALOG_SEARCH_TOP_K must be at least 2",
 		},
 		{
 			// Below one the search would ask the database for fewer rows than the caller wants.
@@ -311,6 +444,25 @@ func TestLoad_Invalid(t *testing.T) {
 			name:    "an embedding batch of nothing",
 			mutate:  func(e map[string]string) { e["CATALOG_EMBEDDING_BATCH_SIZE"] = "0" },
 			wantSub: "CATALOG_EMBEDDING_BATCH_SIZE must be at least 1",
+		},
+		{
+			// The similarity these are compared against never exceeds 1, so a threshold past
+			// 100 would flag every line NO_MATCH with nothing in the logs to say why.
+			name:    "a confidence floor no candidate could reach",
+			mutate:  func(e map[string]string) { e["CATALOG_MATCH_MIN_CONFIDENCE_PERCENT"] = "101" },
+			wantSub: "CATALOG_MATCH_MIN_CONFIDENCE_PERCENT must be between 0 and 100",
+		},
+		{
+			name:    "a negative ambiguity margin",
+			mutate:  func(e map[string]string) { e["CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT"] = "-1" },
+			wantSub: "CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT must be between 0 and 100",
+		},
+		{
+			name: "a lexical confidence off the scale",
+			mutate: func(e map[string]string) {
+				e["CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT"] = "140"
+			},
+			wantSub: "CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT must be between 0 and 100",
 		},
 	}
 
@@ -707,5 +859,295 @@ func TestAIConfig_NarrowsWhatEachAdapterSees(t *testing.T) {
 		if got != cfg.Retry {
 			t.Errorf("%s().Retry = %+v, want the shared policy %+v", name, got, cfg.Retry)
 		}
+	}
+}
+
+func spacesEnv() map[string]string {
+	env := minimalEnv()
+	env["STORAGE_PROVIDER"] = "spaces"
+	env["STORAGE_ENDPOINT"] = "https://nyc3.digitaloceanspaces.com"
+	env["STORAGE_REGION"] = "us-east-1"
+	env["STORAGE_BUCKET"] = "coti-attachments"
+	env["STORAGE_ACCESS_KEY"] = "spaces-access-key"
+	env["STORAGE_SECRET_KEY"] = "spaces-secret-key"
+	return env
+}
+
+// The default provider keeps files on the filesystem, so a checkout with no bucket — which is
+// every checkout today — has to boot.
+func TestLoad_StorageArrivesLocalAndNeedsNoBucket(t *testing.T) {
+	setEnv(t, minimalEnv())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.Storage.Provider != StorageProviderLocal {
+		t.Errorf("Storage.Provider = %q, want %q", cfg.Storage.Provider, StorageProviderLocal)
+	}
+	if cfg.Storage.Bucket != "" || cfg.Storage.AccessKey != "" || cfg.Storage.SecretKey != "" {
+		t.Errorf("Storage = %+v, want no bucket credentials", cfg.Storage)
+	}
+	// Pinned exactly rather than as a relationship: .env.example and docs/technical quote these.
+	if cfg.Storage.MaxFileSize != 10*1024*1024 {
+		t.Errorf("Storage.MaxFileSize = %d, want %d", cfg.Storage.MaxFileSize, 10*1024*1024)
+	}
+	if cfg.Storage.SignedURLExpiry != 15*time.Minute {
+		t.Errorf("Storage.SignedURLExpiry = %v, want 15m", cfg.Storage.SignedURLExpiry)
+	}
+	if cfg.Storage.Dir != "./.storage" {
+		t.Errorf("Storage.Dir = %q, want %q", cfg.Storage.Dir, "./.storage")
+	}
+	if cfg.Storage.APIBaseURL != "http://localhost:8000" {
+		t.Errorf("Storage.APIBaseURL = %q, want %q", cfg.Storage.APIBaseURL, "http://localhost:8000")
+	}
+}
+
+// Every key set to a value only it could produce: with the defaults in place both halves of a
+// swapped pair still read correctly, so a defaults test cannot see the mistake at all.
+func TestLoad_StorageKeysLandOnTheirOwnFields(t *testing.T) {
+	env := spacesEnv()
+	env["STORAGE_LOCAL_DIR"] = "/var/lib/coti-objects"
+	env["STORAGE_LOCAL_API_BASE_URL"] = "https://api.example.test"
+	env["STORAGE_LOCAL_SIGNING_SECRET"] = "0123456789abcdef0123456789abcdefX"
+	env["STORAGE_MAX_FILE_SIZE_BYTES"] = "4242"
+	env["STORAGE_SIGNED_URL_EXPIRY_MINUTES"] = "7"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	cases := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{"Provider", string(cfg.Storage.Provider), "spaces"},
+		{"Dir", cfg.Storage.Dir, "/var/lib/coti-objects"},
+		{"APIBaseURL", cfg.Storage.APIBaseURL, "https://api.example.test"},
+		{"SigningSecret", cfg.Storage.SigningSecret, "0123456789abcdef0123456789abcdefX"},
+		{"Endpoint", cfg.Storage.Endpoint, "https://nyc3.digitaloceanspaces.com"},
+		{"Region", cfg.Storage.Region, "us-east-1"},
+		{"Bucket", cfg.Storage.Bucket, "coti-attachments"},
+		{"AccessKey", cfg.Storage.AccessKey, "spaces-access-key"},
+		{"SecretKey", cfg.Storage.SecretKey, "spaces-secret-key"},
+	}
+	for _, tc := range cases {
+		if tc.got != tc.want {
+			t.Errorf("Storage.%s = %q, want %q", tc.name, tc.got, tc.want)
+		}
+	}
+	if cfg.Storage.MaxFileSize != 4242 {
+		t.Errorf("Storage.MaxFileSize = %d, want 4242", cfg.Storage.MaxFileSize)
+	}
+	if cfg.Storage.SignedURLExpiry != 7*time.Minute {
+		t.Errorf("Storage.SignedURLExpiry = %v, want 7m", cfg.Storage.SignedURLExpiry)
+	}
+}
+
+func TestLoad_SpacesProviderLoadsWithEveryCredentialPresent(t *testing.T) {
+	setEnv(t, spacesEnv())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.Storage.Provider != StorageProviderSpaces {
+		t.Errorf("Storage.Provider = %q, want %q", cfg.Storage.Provider, StorageProviderSpaces)
+	}
+}
+
+// The mirror of the local case: a bucket signs its own links, so the key that signs the API's
+// own must not be demanded from a deployment that never uses it.
+func TestLoad_SpacesProviderNeedsNoLinkSigningSecret(t *testing.T) {
+	env := spacesEnv()
+	delete(env, "STORAGE_LOCAL_SIGNING_SECRET")
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.Storage.SigningSecret != "" {
+		t.Errorf("Storage.SigningSecret = %q, want empty", cfg.Storage.SigningSecret)
+	}
+}
+
+func TestLoad_SpacesProviderReportsEveryMissingKeyTogether(t *testing.T) {
+	missing := []string{"STORAGE_ENDPOINT", "STORAGE_REGION", "STORAGE_BUCKET",
+		"STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY"}
+	env := spacesEnv()
+	for _, key := range missing {
+		delete(env, key)
+	}
+	setEnv(t, env)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() = nil error, want an error")
+	}
+	for _, want := range missing {
+		if !strings.Contains(err.Error(), want+" is required when STORAGE_PROVIDER is spaces") {
+			t.Errorf("Load() error is missing %q; got:\n%s", want, err.Error())
+		}
+	}
+}
+
+func TestLoad_LocalProviderDemandsASigningSecretLongEnoughToSign(t *testing.T) {
+	env := minimalEnv()
+	env["STORAGE_LOCAL_SIGNING_SECRET"] = "short"
+	setEnv(t, env)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() = nil error, want an error")
+	}
+	if !strings.Contains(err.Error(), "STORAGE_LOCAL_SIGNING_SECRET must be at least 32 characters") {
+		t.Errorf("Load() error does not name STORAGE_LOCAL_SIGNING_SECRET; got:\n%s", err.Error())
+	}
+}
+
+func TestLoad_StorageRejectsUnusableSettings(t *testing.T) {
+	cases := []struct {
+		name string
+		env  func() map[string]string
+		want string
+	}{
+		{"unknown provider", func() map[string]string {
+			env := minimalEnv()
+			env["STORAGE_PROVIDER"] = "gcs"
+			return env
+		}, `STORAGE_PROVIDER must be "local" or "spaces", got "gcs"`},
+		{"local base url with no host", func() map[string]string {
+			env := minimalEnv()
+			env["STORAGE_LOCAL_API_BASE_URL"] = "localhost:8000"
+			return env
+		}, "STORAGE_LOCAL_API_BASE_URL must be an absolute URL"},
+		{"spaces endpoint with no scheme", func() map[string]string {
+			env := spacesEnv()
+			env["STORAGE_ENDPOINT"] = "nyc3.digitaloceanspaces.com"
+			return env
+		}, "STORAGE_ENDPOINT must be an absolute URL"},
+		{"no maximum file size", func() map[string]string {
+			env := minimalEnv()
+			env["STORAGE_MAX_FILE_SIZE_BYTES"] = "0"
+			return env
+		}, "STORAGE_MAX_FILE_SIZE_BYTES must be greater than zero"},
+		{"no link lifetime", func() map[string]string {
+			env := minimalEnv()
+			env["STORAGE_SIGNED_URL_EXPIRY_MINUTES"] = "0"
+			return env
+		}, "STORAGE_SIGNED_URL_EXPIRY_MINUTES must be greater than zero"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setEnv(t, tc.env())
+
+			_, err := Load()
+			if err == nil {
+				t.Fatal("Load() = nil error, want an error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("Load() error is missing %q; got:\n%s", tc.want, err.Error())
+			}
+		})
+	}
+}
+
+func TestStorageConfig_NarrowsWhatEachAdapterSees(t *testing.T) {
+	t.Parallel()
+
+	cfg := StorageConfig{
+		Provider:      StorageProviderSpaces,
+		Dir:           "/var/lib/coti-objects",
+		APIBaseURL:    "https://api.example.test",
+		SigningSecret: "storage-signing-secret",
+		Endpoint:      "https://nyc3.digitaloceanspaces.com",
+		Region:        "us-east-1",
+		Bucket:        "coti-attachments",
+		AccessKey:     "spaces-access-key",
+		SecretKey:     "spaces-secret-key",
+	}
+
+	local := cfg.Local()
+	if local.Dir != cfg.Dir || local.APIBaseURL != cfg.APIBaseURL || local.SigningSecret != cfg.SigningSecret {
+		t.Fatalf("Local() = %+v, want the filesystem settings", local)
+	}
+	if strings.Contains(fmt.Sprintf("%+v", local), "spaces-secret-key") {
+		t.Fatal("Local() carries the bucket credentials, which that adapter must not hold")
+	}
+
+	spaces := cfg.Spaces()
+	if spaces.Bucket != cfg.Bucket || spaces.Region != cfg.Region || spaces.SecretKey != cfg.SecretKey {
+		t.Fatalf("Spaces() = %+v, want the bucket settings", spaces)
+	}
+	if strings.Contains(fmt.Sprintf("%+v", spaces), "storage-signing-secret") {
+		t.Fatal("Spaces() carries the link signing secret, which that adapter must not hold")
+	}
+}
+
+func TestLoad_ChannelEncryptionKeyIsOptionalAndDecoded(t *testing.T) {
+	setEnv(t, minimalEnv())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.Channel.EncryptionKey != nil {
+		t.Errorf("Channel.EncryptionKey = %v, want nil: a checkout with no key has to boot",
+			cfg.Channel.EncryptionKey)
+	}
+
+	env := minimalEnv()
+	// 32 bytes, base64 of "0123456789abcdef0123456789abcdef".
+	env["CHANNEL_CONFIG_ENCRYPTION_KEY"] = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+	setEnv(t, env)
+
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if string(cfg.Channel.EncryptionKey) != validSecret {
+		t.Errorf("Channel.EncryptionKey = %q, want %q decoded", cfg.Channel.EncryptionKey,
+			validSecret)
+	}
+	if len(cfg.Channel.EncryptionKey) != channelKeyLength {
+		t.Errorf("Channel.EncryptionKey is %d bytes, want %d", len(cfg.Channel.EncryptionKey),
+			channelKeyLength)
+	}
+}
+
+// A malformed key is a startup problem rather than a silent fallback to no encryption, and the
+// message never quotes the value: it is the key.
+func TestLoad_ChannelEncryptionKeyRejectsAnUnusableValue(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{name: "not base64", value: "not base64 at all!",
+			want: "CHANNEL_CONFIG_ENCRYPTION_KEY must be base64-encoded"},
+		{name: "too short", value: "c2hvcnQ=",
+			want: "CHANNEL_CONFIG_ENCRYPTION_KEY must decode to 32 bytes, got 5"},
+		{name: "too long", value: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWZmZg==",
+			want: "CHANNEL_CONFIG_ENCRYPTION_KEY must decode to 32 bytes, got 34"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			env := minimalEnv()
+			env["CHANNEL_CONFIG_ENCRYPTION_KEY"] = test.value
+			setEnv(t, env)
+
+			_, err := Load()
+			if err == nil {
+				t.Fatal("Load() = nil, want an error")
+			}
+			if !strings.Contains(err.Error(), test.want) {
+				t.Errorf("Load() = %q, want it to mention %q", err, test.want)
+			}
+			if strings.Contains(err.Error(), test.value) {
+				t.Errorf("Load() = %q, want the key value left out of the message", err)
+			}
+		})
 	}
 }

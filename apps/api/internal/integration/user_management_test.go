@@ -21,16 +21,23 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/santialemarino/coti/apps/api/internal/ai"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/ratelimit"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
+	"github.com/santialemarino/coti/apps/api/internal/secrets"
 	"github.com/santialemarino/coti/apps/api/internal/services"
+	storageprovider "github.com/santialemarino/coti/apps/api/internal/storage/provider"
 )
 
 const testJWTSecret = "0123456789abcdef0123456789abcdef"
+
+// testChannelKey is 32 bytes, so the channel sealer is enabled for the suite; the one test that
+// needs a deployment with no key clears it through newEnv's mutator.
+var testChannelKey = []byte(testJWTSecret)
 
 type env struct {
 	router *gin.Engine
@@ -99,8 +106,22 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 			VerificationTTL:   48 * time.Hour,
 		},
 		Catalog: config.CatalogConfig{DefaultPageSize: 50, MaxPageSize: 200},
+		RFQ: config.RFQConfig{
+			MaxTextCharacters: 20000, MaxItems: 200, PipelineTimeout: 25 * time.Second,
+		},
 		Branch:  config.BranchConfig{DefaultExpiryDays: 7},
-		Web:     config.WebConfig{BackofficeURL: "https://backoffice.test"},
+		Channel: config.ChannelConfig{EncryptionKey: testChannelKey},
+		// The local adapter, over a directory this test owns: uploads, links and expiry are
+		// exercised for real rather than against a double.
+		Storage: config.StorageConfig{
+			Provider:        config.StorageProviderLocal,
+			Dir:             t.TempDir(),
+			APIBaseURL:      "http://api.test",
+			SigningSecret:   testJWTSecret,
+			MaxFileSize:     10 * 1024 * 1024,
+			SignedURLExpiry: 15 * time.Minute,
+		},
+		Web: config.WebConfig{BackofficeURL: "https://backoffice.test"},
 		// Off for the suite at large, so an unrelated test cannot trip an allowance. The two
 		// that exercise it build their own env.
 		RateLimit: config.RateLimitConfig{Enabled: false},
@@ -145,6 +166,28 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 		repository.NewBranchProductRepository(), repository.NewProductPriceRepository(), nil)
 	onboardingRepo := repository.NewOnboardingRepository()
 	onboardingService := services.NewOnboardingService(db, onboardingRepo)
+	// No provider is bound here, so the pipeline refuses on the call that needed a model rather
+	// than at startup — which is the behaviour the routes are meant to have with none.
+	catalogSearchService := services.NewCatalogSearchService(db, productRepo,
+		ai.DisabledEmbedder{}, cfg.Catalog)
+	quoteRepo := repository.NewQuoteRepository()
+	rfqService := services.NewRFQService(db, repository.NewRFQRepository(), quoteRepo, channelRepo,
+		ai.NewRFQExtractor(ai.DisabledGenerator{}, cfg.RFQ.MaxItems),
+		services.NewCatalogMatchService(catalogSearchService, cfg.Catalog), quiet, cfg.RFQ)
+	quoteService := services.NewQuoteService(db, quoteRepo,
+		repository.NewProductPriceRepository(), quiet)
+	channelSealer, err := secrets.NewAESGCM(cfg.Channel.EncryptionKey)
+	if err != nil {
+		t.Fatalf("NewAESGCM() = %v, want no error", err)
+	}
+	channelService := services.NewChannelService(db, channelRepo, channelSealer)
+
+	objectStorage, err := storageprovider.Bind(cfg.Storage, quiet)
+	if err != nil {
+		t.Fatalf("storage Bind() = %v, want no error", err)
+	}
+	rfqAttachmentService := services.NewRFQAttachmentService(db,
+		repository.NewRFQAttachmentRepository(), objectStorage.Storage, cfg.Storage, nil)
 
 	limiter := ratelimit.NewMemory(nil)
 	mailTargetLimiter := handler.NewMailTargetLimiter(limiter, handler.MailTargetLimitOptions{
@@ -161,8 +204,13 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 			Verification:  handler.NewVerificationHandler(verificationService, mailTargetLimiter),
 			User:          handler.NewUserHandler(userService),
 			Branch:        handler.NewBranchHandler(services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)),
+			Channel:       handler.NewChannelHandler(channelService),
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
+			RFQ:           handler.NewRFQHandler(rfqService),
+			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
+			File:          handler.NewFileHandler(objectStorage.Local),
+			Quote:         handler.NewQuoteHandler(quoteService),
 			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
 				branchRepo, channelRepo, userRepo, onboardingRepo, authService, verificationService, quiet,
 				cfg.Auth, cfg.Branch)),

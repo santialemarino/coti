@@ -24,6 +24,8 @@ func Respond(c *gin.Context, err error) {
 		c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "not found", Code: code})
 	case errors.Is(err, domain.ErrConflict):
 		c.JSON(http.StatusConflict, dto.ErrorResponse{Error: "conflict", Code: code})
+	case errors.Is(err, domain.ErrTooLarge):
+		c.JSON(http.StatusRequestEntityTooLarge, dto.ErrorResponse{Error: err.Error(), Code: code})
 	case errors.Is(err, domain.ErrInvalidInput):
 		c.JSON(http.StatusUnprocessableEntity, dto.ErrorResponse{Error: err.Error(), Code: code})
 	case errors.Is(err, domain.ErrUnauthenticated):
@@ -39,6 +41,12 @@ func Respond(c *gin.Context, err error) {
 		c.JSON(http.StatusForbidden, dto.ErrorResponse{Error: "forbidden", Code: code})
 	case errors.Is(err, domain.ErrImmutable):
 		c.JSON(http.StatusConflict, dto.ErrorResponse{Error: "target is immutable", Code: code})
+	case errors.Is(err, domain.ErrNotConfigured):
+		// Attached as well: which setting is missing is an operator's problem, not the caller's,
+		// and naming it in the response would describe the deployment to anyone who asked.
+		_ = c.Error(err)
+		c.JSON(http.StatusServiceUnavailable,
+			dto.ErrorResponse{Error: "capability not configured", Code: code})
 	case errors.Is(err, domain.ErrAIUnavailable):
 		// Attached as well: which provider failed, and why, belongs in the log and not in the
 		// response. The caller only needs to know the proposal is not coming.

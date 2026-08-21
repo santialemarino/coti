@@ -152,6 +152,20 @@ The middle row is the one worth naming: a malformed schema, a wrong model or a b
 fault, and reporting it as an outage would point monitoring at a healthy provider and invite a
 client to retry a request that can never succeed.
 
+## Feature ports sit on top
+
+A feature port is the domain's vocabulary for something the engine does, and its adapter owns the
+prompt and the schema while reaching the model through `StructuredGenerator`. It never talks to a
+provider SDK, so it works behind whichever one is bound and its tests need no provider at all.
+
+`domain.RFQExtractor` is the first of them: `ai.NewRFQExtractor` builds the extraction prompt and its
+forced schema, and `cmd/api` hands it the bound generator. See
+[rfq-pipeline.md](rfq-pipeline.md) for what it asks for and why.
+
+One thing to know before writing a schema for one: **structured outputs do not enforce
+`minLength`, `maxLength`, `minItems` or `maxItems`**. Length and size are the service's to check, and
+stating them in the schema would read as a guarantee nothing makes.
+
 ## What this layer does not decide
 
 The invariants stay above the ports, in the services:

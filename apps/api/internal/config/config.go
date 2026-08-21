@@ -4,6 +4,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net"
@@ -18,6 +19,14 @@ import (
 // minJWTSecretLength is the floor for AUTH_JWT_SECRET. HMAC-SHA256 keys shorter
 // than the digest add no security.
 const minJWTSecretLength = 32
+
+// minSigningSecretLength is the floor for STORAGE_LOCAL_SIGNING_SECRET, which signs storage links
+// with the same construction and so needs the same key width.
+const minSigningSecretLength = 32
+
+// channelKeyLength is the width of CHANNEL_CONFIG_ENCRYPTION_KEY once decoded. AES-256 takes
+// exactly this many bytes.
+const channelKeyLength = 32
 const defaultCatalogImportMaxBytes = 5 * 1024 * 1024
 const defaultPriceImportMaxBytes = 5 * 1024 * 1024
 
@@ -35,6 +44,14 @@ type MailProvider string
 const (
 	MailProviderConsole MailProvider = "console"
 	MailProviderSMTP    MailProvider = "smtp"
+)
+
+// StorageProvider selects the adapter behind the domain.ObjectStorage port.
+type StorageProvider string
+
+const (
+	StorageProviderLocal  StorageProvider = "local"
+	StorageProviderSpaces StorageProvider = "spaces"
 )
 
 // AIProvider selects the adapter behind one of the domain AI ports.
@@ -60,10 +77,22 @@ type Config struct {
 	AI            AIConfig
 	Web           WebConfig
 	Catalog       CatalogConfig
+	RFQ           RFQConfig
 	RateLimit     RateLimitConfig
 	Branch        BranchConfig
+	Job           JobConfig
 	CatalogImport SpreadsheetImportConfig
 	PriceImport   SpreadsheetImportConfig
+	Storage       StorageConfig
+	Channel       ChannelConfig
+}
+
+// ChannelConfig holds what protects an intake channel's stored credentials.
+type ChannelConfig struct {
+	// EncryptionKey seals the credential fields of channel.config. Absent, the API still boots
+	// and still serves channels — storing a credential is the one thing refused, so a deployment
+	// that never set a key cannot end up keeping a provider token in the clear.
+	EncryptionKey []byte
 }
 
 // RateLimitConfig holds the request allowances, all of them settings rather than literals.
@@ -75,6 +104,9 @@ type RateLimitConfig struct {
 	Credentials int
 	Signup      int
 	Mail        int
+	// AI bounds the routes billed per call by a provider, the way Mail bounds the ones whose
+	// effect is a message. The global allowance is far too wide for a route that costs money.
+	AI int
 	// MailPerAddress is counted by target address instead of by caller, so it bounds what one
 	// mailbox receives however many callers ask for it.
 	MailPerAddress int
@@ -355,6 +387,28 @@ type BranchConfig struct {
 	DefaultExpiryDays int
 }
 
+// JobConfig holds the settings for the scheduled-job runner. How often a job runs is not here: it
+// is the deployment platform's schedule, one component per job.
+type JobConfig struct {
+	// Timeout bounds one run. Without it a job wedged on a slow query holds its lock until the
+	// process is killed, and every later firing does nothing while it waits.
+	Timeout time.Duration
+}
+
+// RFQConfig bounds one run of the RFQ text pipeline.
+type RFQConfig struct {
+	// MaxTextCharacters caps the order the extractor is asked to read. rfq.raw_text is unbounded,
+	// so without this a pasted document would be sent to the model whole.
+	MaxTextCharacters int
+	// MaxItems caps the lines one order may produce. Matching runs a query per line, so a
+	// spreadsheet pasted as text would turn one request into hundreds of them.
+	MaxItems int
+	// PipelineTimeout bounds the whole extract-and-match pass. The AI timeouts are per attempt,
+	// so a retrying chain outruns the response budget; this makes the route answer 503 instead
+	// of having its response cut off mid-write.
+	PipelineTimeout time.Duration
+}
+
 // CatalogConfig holds the catalog listing limits and the knobs behind the hybrid search. The
 // listing cap is what stops a client from asking for the whole catalog in one response.
 type CatalogConfig struct {
@@ -377,6 +431,122 @@ type CatalogConfig struct {
 	SearchRRFK int
 	// EmbeddingBatchSize is how many products the backfill loads and writes back per round.
 	EmbeddingBatchSize int
+	// MatchMinConfidencePercent is the similarity a line's leading candidate clears to be a
+	// match at all. Below it the line is flagged NO_MATCH and keeps no product.
+	MatchMinConfidencePercent int
+	// MatchAmbiguityMarginPercent is how far the leading candidate sits above the runner-up
+	// before the line counts as decided. Two cements a point apart are a choice, not a match.
+	MatchAmbiguityMarginPercent int
+	// MatchLexicalConfidencePercent is what a candidate only the lexical half scored is worth.
+	// A synonym hit carries no cosine similarity to read, and it is evidence rather than none.
+	MatchLexicalConfidencePercent int
+}
+
+// StorageConfig holds the object storage settings and file limits. The bucket coordinates are
+// read whichever provider is selected and demanded only under spaces, so a checkout with no
+// object store still boots.
+type StorageConfig struct {
+	Provider        StorageProvider
+	Dir             string
+	APIBaseURL      string
+	SigningSecret   string
+	Endpoint        string
+	Region          string
+	Bucket          string
+	AccessKey       string
+	SecretKey       string
+	MaxFileSize     int64
+	SignedURLExpiry time.Duration
+}
+
+// LocalSettings is what the local adapter is handed: where the objects live and what signs the
+// links to them, and none of the bucket credentials.
+type LocalSettings struct {
+	Dir           string
+	APIBaseURL    string
+	SigningSecret string
+}
+
+// SpacesSettings is what the Spaces adapter is handed: one bucket's coordinates and nothing
+// else, so no other adapter's settings can reach a provider SDK.
+type SpacesSettings struct {
+	Endpoint  string
+	Region    string
+	Bucket    string
+	AccessKey string
+	SecretKey string
+}
+
+// Local returns the settings the local adapter needs.
+func (s StorageConfig) Local() LocalSettings {
+	return LocalSettings{Dir: s.Dir, APIBaseURL: s.APIBaseURL, SigningSecret: s.SigningSecret}
+}
+
+// Spaces returns the settings the Spaces adapter needs.
+func (s StorageConfig) Spaces() SpacesSettings {
+	return SpacesSettings{
+		Endpoint:  s.Endpoint,
+		Region:    s.Region,
+		Bucket:    s.Bucket,
+		AccessKey: s.AccessKey,
+		SecretKey: s.SecretKey,
+	}
+}
+
+// problems reports everything wrong with the storage settings, naming the key at fault. The
+// requirements are collected per provider: the bucket a deployment does not use cannot hold
+// back the one it does.
+func (s StorageConfig) problems() []string {
+	var problems []string
+	if s.MaxFileSize <= 0 {
+		problems = append(problems, "STORAGE_MAX_FILE_SIZE_BYTES must be greater than zero")
+	}
+	if s.SignedURLExpiry <= 0 {
+		problems = append(problems, "STORAGE_SIGNED_URL_EXPIRY_MINUTES must be greater than zero")
+	}
+
+	switch s.Provider {
+	case StorageProviderLocal:
+		if s.Dir == "" {
+			problems = append(problems, "STORAGE_LOCAL_DIR is required when STORAGE_PROVIDER is "+
+				string(StorageProviderLocal))
+		}
+		// The secret is what stops a link being forged, so a short one is worse than a missing
+		// provider: it makes every object reachable by anyone who can guess a key.
+		if len(s.SigningSecret) < minSigningSecretLength {
+			problems = append(problems, fmt.Sprintf(
+				"STORAGE_LOCAL_SIGNING_SECRET must be at least %d characters when STORAGE_PROVIDER is %s",
+				minSigningSecretLength, StorageProviderLocal))
+		}
+		if u, err := url.Parse(s.APIBaseURL); err != nil || u.Scheme == "" || u.Host == "" {
+			problems = append(problems, fmt.Sprintf("STORAGE_LOCAL_API_BASE_URL must be an "+
+				"absolute URL with a scheme and host, got %q", s.APIBaseURL))
+		}
+	case StorageProviderSpaces:
+		required := []struct{ key, value string }{
+			{"STORAGE_ENDPOINT", s.Endpoint},
+			{"STORAGE_REGION", s.Region},
+			{"STORAGE_BUCKET", s.Bucket},
+			{"STORAGE_ACCESS_KEY", s.AccessKey},
+			{"STORAGE_SECRET_KEY", s.SecretKey},
+		}
+		for _, r := range required {
+			if r.value == "" {
+				problems = append(problems, r.key+" is required when STORAGE_PROVIDER is "+
+					string(StorageProviderSpaces))
+			}
+		}
+		if s.Endpoint != "" {
+			if u, err := url.Parse(s.Endpoint); err != nil || u.Scheme == "" || u.Host == "" {
+				problems = append(problems, fmt.Sprintf("STORAGE_ENDPOINT must be an absolute "+
+					"URL with a scheme and host, got %q", s.Endpoint))
+			}
+		}
+	default:
+		problems = append(problems, fmt.Sprintf("STORAGE_PROVIDER must be %q or %q, got %q",
+			StorageProviderLocal, StorageProviderSpaces, s.Provider))
+	}
+	return problems
 }
 
 // Load resolves the configuration from the environment, applying defaults for everything
@@ -466,14 +636,30 @@ func Load() (*Config, error) {
 			BackofficeURL: getString("WEB_BACKOFFICE_URL", "http://localhost:3000"),
 		},
 		Catalog: CatalogConfig{
-			DefaultPageSize:       getInt("CATALOG_DEFAULT_PAGE_SIZE", 50, &problems),
-			MaxPageSize:           getInt("CATALOG_MAX_PAGE_SIZE", 200, &problems),
-			SearchTopK:            getInt("CATALOG_SEARCH_TOP_K", 10, &problems),
-			SearchOverFetchFactor: getInt("CATALOG_SEARCH_OVER_FETCH_FACTOR", 4, &problems),
-			SearchMaxFetch:        getInt("CATALOG_SEARCH_MAX_FETCH", 2000, &problems),
-			SearchProbes:          getInt("CATALOG_SEARCH_IVFFLAT_PROBES", 10, &problems),
-			SearchRRFK:            getInt("CATALOG_SEARCH_RRF_K", 60, &problems),
-			EmbeddingBatchSize:    getInt("CATALOG_EMBEDDING_BATCH_SIZE", 200, &problems),
+			DefaultPageSize:               getInt("CATALOG_DEFAULT_PAGE_SIZE", 50, &problems),
+			MaxPageSize:                   getInt("CATALOG_MAX_PAGE_SIZE", 200, &problems),
+			SearchTopK:                    getInt("CATALOG_SEARCH_TOP_K", 10, &problems),
+			SearchOverFetchFactor:         getInt("CATALOG_SEARCH_OVER_FETCH_FACTOR", 4, &problems),
+			SearchMaxFetch:                getInt("CATALOG_SEARCH_MAX_FETCH", 2000, &problems),
+			SearchProbes:                  getInt("CATALOG_SEARCH_IVFFLAT_PROBES", 10, &problems),
+			SearchRRFK:                    getInt("CATALOG_SEARCH_RRF_K", 60, &problems),
+			EmbeddingBatchSize:            getInt("CATALOG_EMBEDDING_BATCH_SIZE", 200, &problems),
+			MatchMinConfidencePercent:     getInt("CATALOG_MATCH_MIN_CONFIDENCE_PERCENT", 60, &problems),
+			MatchAmbiguityMarginPercent:   getInt("CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT", 5, &problems),
+			MatchLexicalConfidencePercent: getInt("CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT", 75, &problems),
+		},
+		Storage: StorageConfig{
+			Provider:        StorageProvider(getString("STORAGE_PROVIDER", string(StorageProviderLocal))),
+			Dir:             getString("STORAGE_LOCAL_DIR", "./.storage"),
+			APIBaseURL:      getString("STORAGE_LOCAL_API_BASE_URL", "http://localhost:8000"),
+			SigningSecret:   getString("STORAGE_LOCAL_SIGNING_SECRET", ""),
+			Endpoint:        getString("STORAGE_ENDPOINT", ""),
+			Region:          getString("STORAGE_REGION", ""),
+			Bucket:          getString("STORAGE_BUCKET", ""),
+			AccessKey:       getString("STORAGE_ACCESS_KEY", ""),
+			SecretKey:       getString("STORAGE_SECRET_KEY", ""),
+			MaxFileSize:     int64(getInt("STORAGE_MAX_FILE_SIZE_BYTES", 10*1024*1024, &problems)),
+			SignedURLExpiry: getDuration("STORAGE_SIGNED_URL_EXPIRY_MINUTES", 15*time.Minute, &problems),
 		},
 		RateLimit: RateLimitConfig{
 			Enabled:          getBool("RATE_LIMIT_ENABLED", true, &problems),
@@ -482,9 +668,18 @@ func Load() (*Config, error) {
 			Credentials:      getInt("RATE_LIMIT_CREDENTIALS_MAX", 10, &problems),
 			Signup:           getInt("RATE_LIMIT_SIGNUP_MAX", 5, &problems),
 			Mail:             getInt("RATE_LIMIT_MAIL_MAX", 5, &problems),
+			AI:               getInt("RATE_LIMIT_AI_MAX", 10, &problems),
 			MailPerAddress:   getInt("RATE_LIMIT_MAIL_PER_ADDRESS_MAX", 3, &problems),
 			TrustedProxyHops: getInt("RATE_LIMIT_TRUSTED_PROXY_HOPS", 0, &problems),
 			TrustedProxies:   getCIDRs("RATE_LIMIT_TRUSTED_PROXY_CIDRS", &problems),
+		},
+		RFQ: RFQConfig{
+			MaxTextCharacters: getInt("RFQ_MAX_TEXT_CHARACTERS", 20000, &problems),
+			MaxItems:          getInt("RFQ_MAX_ITEMS", 200, &problems),
+			PipelineTimeout:   getDuration("RFQ_PIPELINE_TIMEOUT_SECONDS", 25*time.Second, &problems),
+		},
+		Job: JobConfig{
+			Timeout: getDuration("JOB_TIMEOUT_MINUTES", 30*time.Minute, &problems),
 		},
 		Branch: BranchConfig{
 			DefaultExpiryDays: getInt("BRANCH_DEFAULT_EXPIRY_DAYS", 7, &problems),
@@ -494,6 +689,9 @@ func Load() (*Config, error) {
 		},
 		PriceImport: SpreadsheetImportConfig{
 			MaxBytes: int64(getInt("PRICE_IMPORT_MAX_BYTES", defaultPriceImportMaxBytes, &problems)),
+		},
+		Channel: ChannelConfig{
+			EncryptionKey: getBase64Key("CHANNEL_CONFIG_ENCRYPTION_KEY", channelKeyLength, &problems),
 		},
 	}
 
@@ -537,7 +735,6 @@ func Load() (*Config, error) {
 		problems = append(problems, "AUTH_REQUIRE_VERIFIED_EMAIL needs a mail provider that "+
 			"delivers: the console transport only writes to the log")
 	}
-
 	// The console transport reaches nothing, so it needs no sender of its own; a real one
 	// cannot start without the address and credentials it authenticates with.
 	switch cfg.Mail.Provider {
@@ -571,6 +768,7 @@ func Load() (*Config, error) {
 	}
 
 	problems = append(problems, cfg.AI.problems()...)
+	problems = append(problems, cfg.Storage.problems()...)
 
 	// A base URL missing its scheme or host yields recovery links that go nowhere, and the
 	// only symptom is a user reporting that the mail does not work.
@@ -593,7 +791,9 @@ func Load() (*Config, error) {
 		value int
 		floor int
 	}{
-		{"CATALOG_SEARCH_TOP_K", cfg.Catalog.SearchTopK, 1},
+		// Two, not one: a single candidate leaves matching with no runner-up, so every line
+		// above the confidence floor would read as decided and AMBIGUOUS could never happen.
+		{"CATALOG_SEARCH_TOP_K", cfg.Catalog.SearchTopK, 2},
 		// Below 1 the search would ask for fewer rows than the caller wants, which is the
 		// shortfall the factor exists to prevent.
 		{"CATALOG_SEARCH_OVER_FETCH_FACTOR", cfg.Catalog.SearchOverFetchFactor, 1},
@@ -608,6 +808,41 @@ func Load() (*Config, error) {
 				f.key, f.floor, f.value))
 		}
 	}
+	// A run bounded at nothing would hold its lock until the process is killed, and every later
+	// firing would do nothing while it waited.
+	if cfg.Job.Timeout <= 0 {
+		problems = append(problems, "JOB_TIMEOUT_MINUTES must be greater than zero")
+	}
+	if cfg.RFQ.MaxTextCharacters <= 0 {
+		problems = append(problems, "RFQ_MAX_TEXT_CHARACTERS must be greater than zero")
+	}
+	if cfg.RFQ.MaxItems <= 0 {
+		problems = append(problems, "RFQ_MAX_ITEMS must be greater than zero")
+	}
+	if cfg.RFQ.PipelineTimeout <= 0 {
+		problems = append(problems, "RFQ_PIPELINE_TIMEOUT_SECONDS must be greater than zero")
+	} else if cfg.RFQ.PipelineTimeout >= cfg.Server.WriteTimeout {
+		// A pipeline allowed to outlast the response budget has its answer cut off mid-write,
+		// which the client reads as a broken connection rather than as a model that timed out.
+		problems = append(problems, fmt.Sprintf(
+			"RFQ_PIPELINE_TIMEOUT_SECONDS (%s) must be below SERVER_WRITE_TIMEOUT_SECONDS (%s)",
+			cfg.RFQ.PipelineTimeout, cfg.Server.WriteTimeout))
+	}
+
+	catalogPercents := []struct {
+		key   string
+		value int
+	}{
+		{"CATALOG_MATCH_MIN_CONFIDENCE_PERCENT", cfg.Catalog.MatchMinConfidencePercent},
+		{"CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT", cfg.Catalog.MatchAmbiguityMarginPercent},
+		{"CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT", cfg.Catalog.MatchLexicalConfidencePercent},
+	}
+	for _, p := range catalogPercents {
+		if p.value < 0 || p.value > 100 {
+			problems = append(problems, fmt.Sprintf("%s must be between 0 and 100, got %d",
+				p.key, p.value))
+		}
+	}
 
 	if cfg.RateLimit.Enabled {
 		if cfg.RateLimit.Window <= 0 {
@@ -620,6 +855,7 @@ func Load() (*Config, error) {
 			{"RATE_LIMIT_CREDENTIALS_MAX", cfg.RateLimit.Credentials},
 			{"RATE_LIMIT_SIGNUP_MAX", cfg.RateLimit.Signup},
 			{"RATE_LIMIT_MAIL_MAX", cfg.RateLimit.Mail},
+			{"RATE_LIMIT_AI_MAX", cfg.RateLimit.AI},
 		}
 		if cfg.RateLimit.Global < 1 {
 			problems = append(problems, "RATE_LIMIT_GLOBAL_MAX must be at least 1")
@@ -680,6 +916,27 @@ func getString(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// getBase64Key decodes a base64 key of an exact byte width. An unset key yields nil, which the
+// capability behind it reads as "not configured"; a malformed one is a startup problem, so a typo
+// cannot quietly turn encryption off. The value is never echoed back — it is the key.
+func getBase64Key(key string, length int, problems *[]string) []byte {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return nil
+	}
+	decoded, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		*problems = append(*problems, key+" must be base64-encoded")
+		return nil
+	}
+	if len(decoded) != length {
+		*problems = append(*problems, fmt.Sprintf("%s must decode to %d bytes, got %d",
+			key, length, len(decoded)))
+		return nil
+	}
+	return decoded
 }
 
 // getCIDRs reads a comma-separated list of networks. Single addresses are accepted and

@@ -39,6 +39,15 @@ type NewProductPrice struct {
 	ValidFrom time.Time
 }
 
+// BranchPrice is a product's price in force at one branch. MinPrice is null when nobody set a
+// floor, which is the common case: absent means the discount engine has no floor to respect on
+// that line, never a floor of zero.
+type BranchPrice struct {
+	ProductID uuid.UUID
+	Price     decimal.Decimal     // NUMERIC(14,2).
+	MinPrice  decimal.NullDecimal // NUMERIC(14,2); null means no floor.
+}
+
 // ProductPriceLookup is a catalog product with its price currently in force for a branch.
 type ProductPriceLookup struct {
 	ProductID       uuid.UUID

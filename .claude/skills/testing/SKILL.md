@@ -50,9 +50,12 @@ go test -run TestQuoteService_Create ./internal/services   # one test
 go test -race ./...                             # detect data races
 go test -cover ./...                            # coverage summary
 # Integration tests. Both roles are required: the restricted one is what the app
-# uses, the owner one seeds fixtures past row level security.
-TEST_DATABASE_URL=postgres://coti_app:coti_app@localhost:5432/coti?sslmode=disable \
-TEST_DATABASE_ADMIN_URL=postgres://coti:coti@localhost:5432/coti?sslmode=disable \
+# uses, the owner one seeds fixtures past row level security. Address the database as
+# 127.0.0.1, never localhost: that name resolves to ::1 first, the container publishes
+# on IPv4 only, and pgx then hangs on the v6 address until ConnectTimeout — which reads
+# as a random test failing on "ping: context deadline exceeded" at exactly 5.00s.
+TEST_DATABASE_URL=postgres://coti_app:coti_app@127.0.0.1:5432/coti?sslmode=disable \
+TEST_DATABASE_ADMIN_URL=postgres://coti:coti@127.0.0.1:5432/coti?sslmode=disable \
   go test -tags=integration ./...
 
 # From repo root
@@ -206,6 +209,40 @@ apps/api/
   the stated reason, restore it. A test written after the fix can pass on the surrounding code and
   pin nothing. Watch the command actually run, too: a `cd` that fails inside an `&&` chain
   short-circuits the rest, and a check that never executed reads exactly like one that passed.
+  **A removal that stops the package compiling is not a proof either** — deleting a check can orphan
+  an import, and `[build failed]` looks like a red test while proving nothing about the assertion.
+  Break the behaviour with an edit that still builds (invert a condition, widen a comparison). Beware the mutation the database absorbs: dropping an `ORDER BY` leaves
+  the test green, because Postgres happens to return input order anyway. **Invert the clause instead**
+  (`ORDER BY x DESC`) — that proves the assertion reads the order, and the honest claim afterwards is
+  that the test pins the behaviour, not the clause. Inverting it is still not enough on its own: if
+  the fixture leaves only **one** row where the clause chooses, there is nothing to order and the
+  inversion is absorbed too. Seed the ambiguity the clause exists to resolve.
+- **A mutation that makes the SQL fail is not a proof either, and it does not announce itself.**
+  Neutering a predicate as `$1 IS NOT NULL` leaves that parameter with no other use, so Postgres
+  cannot infer its type and the query errors: the route answers 500, the test goes red, and nothing
+  about the assertion was exercised. Keep every parameter in a real comparison
+  (`(account_id = $1 OR TRUE)`) and **read the failure message, not the colour** — "want ErrNotFound,
+  got nil" is a proof, "status = 500" is a broken query.
+- **Two guards that each refuse on their own pin neither one.** Remove either predicate of a pair
+  like `version.account_id = $1` and `item.account_id = $1` and the suite stays green, because the
+  survivor still refuses. That is what defence in depth costs: the test pins the **refusal**, and the
+  redundancy is a deliberate choice no test can defend. Say so rather than claiming both are covered.
+- **A guard the database also enforces can only be proved with the database's guard off.** Row level
+  security refuses another account's row before an application predicate is reached, so inside
+  `InTenantTx` the two are indistinguishable. Run the same repository call on the owner pool
+  (`AdminTx`), which is RLS-exempt, and the application predicate is the only thing left to refuse.
+- **Mutate a throwaway copy of the module, not the working tree.** `cp -R` the module into a scratch
+  directory and mutate there: a killed run then cannot leave mutated source on disk, and there is no
+  restore step to forget or to chain behind a test command that died.
+- **Mutate each field when a constructor maps sibling settings onto sibling fields.** Three
+  same-typed values read from three sibling config keys is the copy-paste bug the compiler cannot
+  see: swapping two of them builds, vets clean, and silently changes every decision downstream. One
+  mutation per field is what proves the wiring, and asserting only a _relationship_ between defaults
+  (rather than each exact value) lets the same drift through a second way — pin the values too, since
+  `.env.example` and the docs quote them. **A defaults test cannot catch the swap at all**, whichever way it
+  asserts: with every key cleared, both fields fall back to their own default and read correctly.
+  Proving the wiring needs a second test that sets each key to a **distinct** value and checks each
+  field for its own.
 - **Compute expected values by hand.** Assert against manually derived numbers;
   never call the function under test (or its formula) a second time to produce
   the "expected" value — that only proves the code equals itself.
@@ -238,7 +275,7 @@ most privilege and it gets tests like any other. Conventions:
 
 ```bash
 pnpm test:scripts    # from repo root; DB-backed tests skip without TEST_DATABASE_ADMIN_URL
-TEST_DATABASE_ADMIN_URL=postgres://coti:coti@localhost:5433/coti?sslmode=disable pnpm test:scripts
+TEST_DATABASE_ADMIN_URL=postgres://coti:coti@127.0.0.1:5433/coti?sslmode=disable pnpm test:scripts
 ```
 
 `.github/workflows/ci.scripts.yml` watches `scripts/**`, `package.json` and `pnpm-lock.yaml`.

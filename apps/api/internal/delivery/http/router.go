@@ -4,6 +4,7 @@ package http
 
 import (
 	"log/slog"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	swaggerfiles "github.com/swaggo/files"
@@ -12,11 +13,16 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/middleware"
+	"github.com/santialemarino/coti/apps/api/internal/storage"
 
 	// The generated spec registers itself on import. It is regenerated from the handler
 	// annotations by `pnpm docs:api`, and CI fails if the committed copy is stale.
 	_ "github.com/santialemarino/coti/apps/api/docs"
 )
+
+// apiPrefix is where every versioned route is mounted. The storage adapter builds links
+// against the same prefix, so it is read rather than repeated.
+const apiPrefix = "/v1"
 
 // Handlers carries every handler the router mounts, so adding a feature is one field
 // here instead of a new router parameter.
@@ -27,12 +33,19 @@ type Handlers struct {
 	Verification  *handler.VerificationHandler
 	User          *handler.UserHandler
 	Branch        *handler.BranchHandler
+	Channel       *handler.ChannelHandler
 	Product       *handler.ProductHandler
 	BranchCatalog *handler.BranchCatalogHandler
+	RFQ           *handler.RFQHandler
+	RFQAttachment *handler.RFQAttachmentHandler
+	Quote         *handler.QuoteHandler
 	Account       *handler.AccountHandler
 	Prices        *handler.ProductPriceHandler
 	CatalogImport *handler.CatalogImportHandler
 	Onboarding    *handler.OnboardingHandler
+	// File is nil unless the local storage adapter is bound: a bucket serves its own links,
+	// and a route that answered for one would be serving objects the API does not hold.
+	File *handler.FileHandler
 }
 
 // Auth carries what the authentication middleware needs to resolve a tenant.
@@ -81,9 +94,17 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	// The global allowance sits ahead of Authenticate, so a flood is refused before it costs
 	// a query. Authenticate resolves a tenant when a token is present without rejecting an
 	// anonymous request — RequireTenant does that.
-	v1 := r.Group("/v1",
+	v1 := r.Group(apiPrefix,
 		limit("global", cfg.RateLimit.Global),
 		middleware.Authenticate(auth.Verifier, auth.Resolver))
+
+	// No tenant middleware, deliberately: the signature on the link is the whole
+	// authorization, which is what lets a client open a document without an account. The
+	// account it may reach is inside the signed key. It stays under the global allowance,
+	// because an unauthenticated route that streams files is otherwise free bandwidth.
+	if h.File != nil {
+		v1.GET(strings.TrimPrefix(storage.LinkPath, apiPrefix)+"/*key", h.File.Get)
+	}
 
 	// Works without a session; each route resolves its own scope.
 	public := v1.Group("/public")
@@ -116,6 +137,33 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 
 	// The frontend reads its own identity here instead of decoding the access token.
 	authed.GET("/me", h.User.Me)
+
+	// The first surface billed per call: reading one order costs a generation and an embedding,
+	// so it gets its own allowance instead of sharing the global one.
+	ai := limit("ai", cfg.RateLimit.AI)
+	authed.POST("/rfqs/text-drafts", ai, h.RFQ.CreateTextDraft)
+	rfqs := authed.Group("/rfqs")
+	rfqs.GET("/:rfqId/attachments", h.RFQAttachment.List)
+	rfqs.POST("/:rfqId/attachments", h.RFQAttachment.Upload)
+
+	// Reading is not admin-only: a text draft has to name the channel its order arrived through,
+	// so any seller needs the list. Configuring one, credentials included, is admin-only.
+	channels := authed.Group("/channels")
+	channels.GET("", h.Channel.List)
+	channelAdmin := channels.Group("", middleware.RequireAdmin())
+	channelAdmin.POST("", h.Channel.Create)
+	channelAdmin.PUT("/:channelId", h.Channel.Update)
+	channelAdmin.DELETE("/:channelId", h.Channel.Delete)
+
+	// Accepting the materials is what prices the quote, so the route names the seller's action
+	// rather than the calculation behind it. It reaches no provider, so it needs no allowance of
+	// its own beyond the global one.
+	quotes := authed.Group("/quotes")
+	quotes.POST("/:quoteId/accept-materials", h.Quote.AcceptMaterials)
+
+	if !cfg.IsProduction() {
+		authed.POST("/dev/whatsapp/messages", ai, h.RFQ.CreateWhatsAppMockDraft)
+	}
 
 	account := authed.Group("/account")
 	account.GET("", h.Account.Get)

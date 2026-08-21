@@ -76,6 +76,8 @@ CREATE TYPE send_tracking_status AS ENUM ('PENDING', 'SENT', 'DELIVERED', 'VIEWE
 CREATE TYPE handler_seller_decision AS ENUM ('APPROVED_AS_IS', 'EDITED', 'REJECTED', 'MANUAL_OVERRIDE');
 CREATE TYPE notification_status AS ENUM ('PENDING', 'SENT', 'FAILED');
 
+CREATE TYPE job_run_status AS ENUM ('RUNNING', 'SUCCEEDED', 'FAILED');
+
 -- What a single-use link entitles its bearer to do without a session.
 CREATE TYPE auth_token_type AS ENUM ('PASSWORD_RESET', 'EMAIL_VERIFICATION');
 
@@ -513,6 +515,10 @@ CREATE TABLE quote_item_alternative (
   combo_id           UUID,
   type               quote_item_alternative_type NOT NULL,
   origin             quote_item_alternative_origin NOT NULL,
+  -- The candidate's own place in the matcher's ranking, best first; nothing else on the row
+  -- records it. confidence_score is what it scored, on quote_item.confidence_score's scale.
+  rank               SMALLINT NOT NULL,
+  confidence_score   NUMERIC(5,4),
   price_snapshot     NUMERIC(14,2),
   approved_by_seller BOOLEAN NOT NULL DEFAULT FALSE,
   chosen_by_client   BOOLEAN NOT NULL DEFAULT FALSE,
@@ -712,6 +718,24 @@ CREATE TABLE notification (
 );
 
 -- =============================================================================
+-- SCHEDULED JOBS
+-- =============================================================================
+
+-- What each scheduled run swept and changed. No account_id: a job runs as the owner across every
+-- account, so one run is one row for all of them, and a per-account column would be a list.
+CREATE TABLE job_run (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_name    VARCHAR(64) NOT NULL,
+  status      job_run_status NOT NULL DEFAULT 'RUNNING',
+  scanned     INTEGER NOT NULL DEFAULT 0,
+  changed     INTEGER NOT NULL DEFAULT 0,
+  error       TEXT,
+  started_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  finished_at TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- =============================================================================
 -- FOREIGN KEYS
 -- (at the end, to resolve the circular quote <-> quote_version dependency)
 -- =============================================================================
@@ -873,12 +897,14 @@ CREATE INDEX idx_branch_combo_branch ON branch_combo(branch_id) WHERE is_active 
 CREATE INDEX idx_client_account ON client(account_id);
 CREATE INDEX idx_rfq_branch_status ON rfq(branch_id, status);
 CREATE INDEX idx_rfq_attachment_pending ON rfq_attachment(processing_status) WHERE processing_status IN ('PENDING', 'PROCESSING');
+CREATE INDEX idx_rfq_attachment_account_rfq ON rfq_attachment(account_id, rfq_id);
 
 CREATE INDEX idx_quote_branch_status ON quote(branch_id, current_status);
 CREATE INDEX idx_quote_expires ON quote(expires_at) WHERE expires_at IS NOT NULL AND archived_at IS NULL;
 CREATE INDEX idx_quote_needs_followup ON quote(needs_followup) WHERE needs_followup = TRUE;
 CREATE INDEX idx_quote_version_quote ON quote_version(quote_id);
 CREATE INDEX idx_quote_item_version ON quote_item(version_id);
+CREATE INDEX idx_quote_item_alternative_account_item ON quote_item_alternative(account_id, quote_item_id);
 CREATE INDEX idx_product_family_id ON product(family_id);
 CREATE INDEX idx_product_subgroup_id ON product(subgroup_id);
 CREATE INDEX idx_product_subgroup_family_id ON product_subgroup(family_id);
@@ -902,6 +928,10 @@ CREATE UNIQUE INDEX uq_product_price_open_period
   ON product_price (branch_id, product_id) WHERE valid_to IS NULL;
 CREATE UNIQUE INDEX uq_message_batch_open ON message_batch(quote_id) WHERE status = 'OPEN';
 CREATE UNIQUE INDEX uq_message_batch_processing ON message_batch(quote_id) WHERE status = 'PROCESSING';
+
+-- "Which run changed this row?" is answered by the row's own timestamp falling inside a run's
+-- window, so the history is read newest-first per job.
+CREATE INDEX idx_job_run_name_started ON job_run(job_name, started_at DESC);
 
 -- =============================================================================
 -- updated_at TRIGGERS (only tables that mutate in place)
@@ -968,6 +998,10 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE O
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO coti_app;
 
 REVOKE INSERT, UPDATE, DELETE ON product_family, product_subgroup FROM coti_app;
+
+-- The grant above reaches every table, and job_run is an audit trail no request has any reason to
+-- read, let alone rewrite. Only the owner the scheduled jobs run as touches it.
+REVOKE ALL ON job_run FROM coti_app;
 
 -- account matches on its own id; everything else on its account_id column.
 ALTER TABLE account ENABLE ROW LEVEL SECURITY;

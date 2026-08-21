@@ -29,7 +29,7 @@ Request flow: **handler → service → repository → DB**.
 - **internal/ratelimit/** — The counters behind the rate-limit middleware, which consumes them through its own `Limiter` interface. In-memory today; a shared store swaps in behind the same interface once there is more than one instance.
 - **internal/config/** — Env loading (`godotenv` is loaded in `main`) + defaults; the one place for every configurable threshold (match cutoffs, top-K, timeouts, default expiry days).
 - **internal/utils/** — Generic, entity-agnostic helpers reused across features.
-- **cmd/** — One directory per binary, each a composition root: read config, open the pools, take the AI adapters from `internal/ai/provider`, inject repos + adapters into services, and do the binary's job. **A binary with no cross-account job opens `repository.NewTenantDB`, not `NewDB`** — the restricted pool alone, on a type that has no `CrossAccount` or `AdminTx`, so the boundary is checked by the compiler. `cmd/api` builds the router and serves HTTP; `cmd/catalog-embed` vectorizes one account's catalog. No business logic in either. **A job too long for a request budget is a command, not a route** — embedding a whole catalog outruns `SERVER_WRITE_TIMEOUT_SECONDS` several times over.
+- **cmd/** — One directory per binary, each a composition root: read config, open the pools, take the AI adapters from `internal/ai/provider`, inject repos + adapters into services, and do the binary's job. **A binary with no cross-account job opens `repository.NewTenantDB`, not `NewDB`** — the restricted pool alone, on a type that has no `CrossAccount` or `AdminTx`, so the boundary is checked by the compiler. `cmd/api` builds the router and serves HTTP; `cmd/catalog-embed` vectorizes one account's catalog; `cmd/scheduled-job` runs one unit of scheduled work and exits, with the deployment platform owning the schedule so a frequency is never compiled in. No business logic in any of them. **A job too long for a request budget is a command, not a route** — embedding a whole catalog outruns `SERVER_WRITE_TIMEOUT_SECONDS` several times over.
 
 Do not put business logic in handlers or SQL strings in services. Do not let HTTP types (request/response bodies) leak into domain or repositories.
 
@@ -60,6 +60,8 @@ Repositories accept the `Querier` — the read/write surface shared by `*pgxpool
 ### Cross-account access is explicit and rare
 
 Three operations legitimately span accounts, and they use `db.CrossAccount()` (the owner pool, which bypasses RLS): the follow-up cron, login by email (the account is unknown until the user is found), and resolving a `quote_send.public_token` for the public webapp. The token flow resolves the account there and then continues through `InTenantTx` — it does not keep querying on the owner pool. **Any other use is a cross-tenant leak.**
+
+`DB.AdminConn` is a third door onto the owner pool, and it exists for one reason: a Postgres advisory lock is **session-scoped**, so a scheduled job that took one through the pool would leave it on whichever connection served that call and release it on whichever served the next. It holds a single connection for the length of the run instead.
 
 ```go
 // internal/repository/querier.go
@@ -290,14 +292,16 @@ Coti is a **human-in-the-loop copilot**. Two pipelines touch external models: th
   }
   ```
 
-  **Feature ports sit on top of those, never beside them.** `RFQExtractor` and `ChangeRequestHandler` are the domain's vocabulary for what the engine does; their adapters own the prompt and the schema and reach the model through `StructuredGenerator`. A feature adapter never talks to a provider SDK directly.
+  **Feature ports sit on top of those, never beside them.** `RFQExtractor` and `ChangeRequestHandler` are the domain's vocabulary for what the engine does; their adapters own the prompt and the schema and reach the model through `StructuredGenerator`. A feature adapter never talks to a provider SDK directly. Because it names no provider, its adapter lives in the **`internal/ai` package root** beside the shared policy, not in a per-provider subpackage — `internal/ai/rfq_extractor.go` is the shape.
+
+  Two rules follow from the forced schema itself. **Structured outputs do not enforce `minLength`, `maxLength`, `minItems` or `maxItems`** — a schema stating one reads as a guarantee nothing makes, so length and size are checked in the service and the schema carries neither. And **a threshold named in a prompt is guidance, not a limit**: state it so the model aims under it, then enforce it where invariants live. `RFQ_MAX_ITEMS` appears in the extraction prompt and is checked in the service, which is what makes it real.
 
 - **Adapters** implement the ports in **`internal/ai/`**, one subpackage per provider (`anthropic`, `openai`). Prompt assembly, SDK calls and response parsing live in the subpackage; **the policy every provider shares lives in the package root** — `Retry`, the usage log, the `Disabled*` stand-ins, `RetryableStatus`, `RetryAfter`, `Fail`. Do not reimplement retry or status classification per adapter: that is one decision, and a copy per provider is a copy to keep in sync.
 - **Which adapter answers is decided in `internal/ai/provider`, once.** It sits above the adapters, so every binary that needs a model makes the same choices from the same settings; a `switch` copied into a second command is a second place to edit when a provider is added. Adding one is a new subpackage plus a `case` there.
 - **An adapter is handed only its own settings.** `config.AIConfig` exposes `Anthropic()`, `Embeddings()` and `Transcription()`, each carrying one provider's key, model, timeout and the shared retry policy. Passing the whole config would put every provider's credential in every adapter, one `%+v` away from a log.
 - **The adapter says which of its failures are transient; the shared loop only reads the mark.** `ai.Retryable` / `ai.RetryableAfter` for a rate limit, a provider fault, a dropped connection or an answer that missed the schema; `ai.Rejected` for a request the provider would not serve — a bad schema, model or key, or a safety refusal. Then `ai.Fail` decides what the caller sees: `Rejected` and a cancelled caller stay as they are, everything else becomes `domain.ErrAIUnavailable`. **A fault of ours must never surface as a provider outage**, or a client is invited to retry something that cannot succeed.
 - **Every capability defaults to `disabled`**, and the stand-in refuses with `ErrAIUnavailable`. A checkout with no keys has to boot; the failure belongs on the call that needed a model, not on startup. A stub that answers with invented data is the one thing this layer exists to prevent.
-- **Each external call is bounded per attempt, and the chain is not.** `AI_*_TIMEOUT_SECONDS` caps one attempt, so the worst case is that times `AI_MAX_ATTEMPTS` plus the backoff — which outruns `SERVER_WRITE_TIMEOUT_SECONDS`. An AI call does not belong inline in a request handler on that budget.
+- **Each external call is bounded per attempt, and the chain is not.** `AI_*_TIMEOUT_SECONDS` caps one attempt, so the worst case is that times `AI_MAX_ATTEMPTS` plus the backoff — which outruns `SERVER_WRITE_TIMEOUT_SECONDS`. An AI call does not belong inline in a request handler on that budget. A route that waits for one anyway bounds the whole pipeline itself, below the write budget, and config refuses a value at or above it — otherwise the server severs the response mid-write and the client reads a broken connection rather than a model that ran out of time. **That deadline covers the provider calls only.** The writes that follow run on the request's own context: sharing one would throw away an extraction already paid for, at the last step.
 - The **service depends on the interface**, so swapping providers is a one-line change in `internal/ai/provider`. It never imports `internal/ai`.
 
 See `docs/technical/ai-providers.md` for the whole layer, including what a retry costs and where the vector codec is registered, and `docs/technical/catalog.md` for what is done with the vectors.
@@ -374,7 +378,7 @@ logging in checks nothing, so a policy tightened later cannot lock out an accoun
 
 ## `quote.current_status` — backend-exclusive derived cache
 
-The visible lifecycle is **split across two entities** — `rfq.status` (`RECEIVED`, `GENERATED`) and `quote.current_status` (`QUOTED`, `SENT`, `CHANGE_REQUESTED`, `ACCEPTED`, `REJECTED`) — not one status field. `quote.current_status` is a **derived cache written exclusively by the backend**: recompute it and append a `quote_status_change` row **in the same transaction** on every transition. A human or the AI **never** sets it directly. `rfq → quote` is 1-to-1 (enforced by `UNIQUE(rfq_id)`); never create a second quote for an RFQ. `archived_at` and `needs_followup` are orthogonal flags, not states.
+The visible lifecycle is **split across two entities** — `rfq.status` (`RECEIVED`, `GENERATED`) and `quote.current_status` (`QUOTED`, `SENT`, `CHANGE_REQUESTED`, `ACCEPTED`, `REJECTED`) — not one status field. `quote.current_status` is a **derived cache written exclusively by the backend**: recompute it and append a `quote_status_change` row **in the same transaction** on every transition. **The status write carries the status the caller read in its own predicate** (`SET current_status = <new> WHERE ... AND current_status = <read>`), and a statement matching no row is the conflict: two callers who both read `DRAFT` would otherwise both write `QUOTED` and append a history row each, the second recording a previous status the quote had already left. A read-then-write with no guard is not a transition, it is a race with a history table attached. A human or the AI **never** sets it directly. `rfq → quote` is 1-to-1 (enforced by `UNIQUE(rfq_id)`); never create a second quote for an RFQ. `archived_at` and `needs_followup` are orthogonal flags, not states.
 
 ## Where to create files
 
@@ -404,8 +408,10 @@ apps/api/
 ├── cmd/
 │   ├── api/
 │   │   └── main.go                     # composition root: config, pgxpool, adapters, router
-│   └── catalog-embed/
-│       └── main.go                     # offline job: vectorize one account's catalog
+│   ├── catalog-embed/
+│   │   └── main.go                     # offline job: vectorize one account's catalog
+│   └── scheduled-job/
+│       └── main.go                     # one scheduled sweep, invoked by the platform's cron
 ├── internal/
 │   ├── config/                         # env loading + defaults; all thresholds (top-K, cutoffs, timeouts)
 │   ├── domain/                         # entities, value objects, enums, errors, AI port interfaces

@@ -510,6 +510,448 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/channels": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns active intake channels for the branch selected through X-Branch-Id. With include_inactive an administrator also gets the closed ones, which is for administering them rather than taking an order through one. No response carries a channel credential; is_configured reports only that one is stored.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "channels"
+                ],
+                "summary": "List intake channels",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Include closed channels (administrators only)",
+                        "name": "include_inactive",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ChannelListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Opens a channel on the branch selected through X-Branch-Id. config is validated against type and its credentials are encrypted before they are stored; a shape that does not match the type is refused here rather than when the first message arrives.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "channels"
+                ],
+                "summary": "Create an intake channel",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Channel",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateChannelRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ChannelResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "The branch already holds that channel",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "No encryption key configured",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/channels/{channelId}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Replaces the identifier and, when sent, the whole configuration. config omitted leaves the stored settings alone; an explicit null removes them. The type cannot change, because the shape of the configuration depends on it.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "channels"
+                ],
+                "summary": "Update an intake channel",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Channel id",
+                        "name": "channelId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Channel",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateChannelRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ChannelResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "The branch already holds that channel",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "No encryption key configured",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deactivates the channel so the orders that arrived through it stay explainable. Refuses to close the branch's manual-entry channel, which a counter or phone order has no other route to point at.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "channels"
+                ],
+                "summary": "Close an intake channel",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Channel id",
+                        "name": "channelId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/dev/whatsapp/messages": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Development-only intake that resolves an active WhatsApp channel and creates the same seller-reviewable RFQ draft as the production text flow.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "development"
+                ],
+                "summary": "Simulate an inbound WhatsApp message",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Inbound WhatsApp message",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateWhatsAppMockRFQDraftRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.TextRFQDraftResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No active WhatsApp channel",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Ambiguous channel, or an answer the model could not shape",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit spent; retry_after_seconds says when",
+                        "schema": {
+                            "$ref": "#/definitions/dto.RateLimitResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "No language model is bound, or it could not answer",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/files/{key}": {
+            "get": {
+                "description": "Serves a stored file to the holder of an unexpired signed link. No session: the signature is the authorization.",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Download a signed object",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Object key",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Deadline, in unix seconds",
+                        "name": "expires",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Signature covering the key and the deadline",
+                        "name": "signature",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/me": {
             "get": {
                 "security": [
@@ -2420,6 +2862,291 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/quotes/{quoteId}/accept-materials": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Freezes each line's unit price and discount floor from the prices in force at the quote's branch, sums the version total, and moves the quote to QUOTED for review. A line with no matched product, or one whose product the branch cannot price, stays in the quote with an empty valuation and adds nothing to the total; the second is named by pricing_unavailable, which every line answers once valued. The version is not frozen: the seller still edits it.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Accept a quote's materials",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.PricedQuoteResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_NOT_DRAFT once the materials were accepted, QUOTE_ARCHIVED on an archived quote",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch, or a total NUMERIC(14,2) cannot hold",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/rfqs/text-drafts": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Persists the original text before reading it, then returns a quote DRAFT with one line per material, each carrying its catalog match, its confidence, and the candidates a flagged line was decided against. It does not price or send the quote, so pricing_unavailable is null on every line.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rfq"
+                ],
+                "summary": "Create an RFQ text draft",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "RFQ text to process",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateTextRFQDraftRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.TextRFQDraftResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch, or an answer the model could not shape",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit spent; retry_after_seconds says when",
+                        "schema": {
+                            "$ref": "#/definitions/dto.RateLimitResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "No language model is bound, or it could not answer",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/rfqs/{rfqId}/attachments": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns each stored file with a freshly signed link. The link expires, so it is read from here rather than kept. An RFQ that does not exist, or belongs elsewhere, answers an empty list rather than 404.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rfq"
+                ],
+                "summary": "List an RFQ's attachments",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFQ id",
+                        "name": "rfqId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.RFQAttachmentListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Stores one file for the RFQ and records the reference. The file is refused for its type or its size before any of it is stored, and the object key leads with the account.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rfq"
+                ],
+                "summary": "Upload an RFQ attachment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFQ id",
+                        "name": "rfqId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "The file to store",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.RFQAttachmentResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such RFQ in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "FILE_TOO_LARGE",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "UNSUPPORTED_FILE_TYPE, or no active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/users": {
             "get": {
                 "security": [
@@ -3075,6 +3802,46 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ChannelListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ChannelResponse"
+                    }
+                }
+            }
+        },
+        "dto.ChannelResponse": {
+            "type": "object",
+            "properties": {
+                "branch_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "identifier": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "is_configured": {
+                    "type": "boolean"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.ConfirmCatalogImportRequest": {
             "type": "object",
             "required": [
@@ -3157,6 +3924,30 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.CreateChannelRequest": {
+            "type": "object",
+            "required": [
+                "type"
+            ],
+            "properties": {
+                "config": {
+                    "type": "object"
+                },
+                "identifier": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "WHATSAPP",
+                        "EMAIL",
+                        "WEBAPP",
+                        "MANUAL_ENTRY"
+                    ]
+                }
+            }
+        },
         "dto.CreateProductRequest": {
             "type": "object",
             "required": [
@@ -3186,6 +3977,33 @@ const docTemplate = `{
                 "unit": {
                     "type": "string",
                     "maxLength": 64
+                }
+            }
+        },
+        "dto.CreateTextRFQDraftRequest": {
+            "type": "object",
+            "required": [
+                "channel_id",
+                "raw_text"
+            ],
+            "properties": {
+                "channel_id": {
+                    "type": "string"
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "client_label": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "raw_text": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "work_type": {
+                    "type": "string",
+                    "maxLength": 255
                 }
             }
         },
@@ -3224,6 +4042,31 @@ const docTemplate = `{
                         "ADMIN",
                         "SELLER"
                     ]
+                }
+            }
+        },
+        "dto.CreateWhatsAppMockRFQDraftRequest": {
+            "type": "object",
+            "required": [
+                "from",
+                "text"
+            ],
+            "properties": {
+                "channel_id": {
+                    "type": "string"
+                },
+                "from": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "minLength": 1
+                },
+                "profile_name": {
+                    "type": "string",
+                    "maxLength": 160
+                },
+                "text": {
+                    "type": "string",
+                    "minLength": 1
                 }
             }
         },
@@ -3396,6 +4239,23 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.PricedQuoteResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.QuoteItemResponse"
+                    }
+                },
+                "quote": {
+                    "$ref": "#/definitions/dto.QuoteResponse"
+                },
+                "version": {
+                    "$ref": "#/definitions/dto.QuoteVersionResponse"
+                }
+            }
+        },
         "dto.ProductListResponse": {
             "type": "object",
             "properties": {
@@ -3524,6 +4384,253 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.QuoteItemAlternativeResponse": {
+            "type": "object",
+            "properties": {
+                "approved_by_seller": {
+                    "type": "boolean"
+                },
+                "canonical_name": {
+                    "type": "string"
+                },
+                "chosen_by_client": {
+                    "type": "boolean"
+                },
+                "code": {
+                    "type": "string"
+                },
+                "combo_id": {
+                    "type": "string"
+                },
+                "confidence_score": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "origin": {
+                    "type": "string"
+                },
+                "price_snapshot": {
+                    "type": "string"
+                },
+                "product_id": {
+                    "type": "string"
+                },
+                "rank": {
+                    "type": "integer"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "unit": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.QuoteItemResponse": {
+            "type": "object",
+            "properties": {
+                "alternatives": {
+                    "description": "Alternatives are the candidates a flagged line was decided from, best first. A decided line\ncarries none: there is nothing for the seller to choose between.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.QuoteItemAlternativeResponse"
+                    }
+                },
+                "confidence_score": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "match_status": {
+                    "type": "string"
+                },
+                "min_price_snapshot": {
+                    "type": "string"
+                },
+                "pricing_unavailable": {
+                    "description": "PricingUnavailable names a line that matched a product the branch cannot price. It is null\nuntil the materials are accepted, because until then no line has been priced at all.",
+                    "type": "boolean"
+                },
+                "product_id": {
+                    "type": "string"
+                },
+                "quantity": {
+                    "type": "string"
+                },
+                "quantity_rationale": {
+                    "type": "string"
+                },
+                "requested_description": {
+                    "type": "string"
+                },
+                "subtotal": {
+                    "type": "string"
+                },
+                "unit": {
+                    "type": "string"
+                },
+                "unit_price_snapshot": {
+                    "type": "string"
+                },
+                "version_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.QuoteResponse": {
+            "type": "object",
+            "properties": {
+                "archived_at": {
+                    "type": "string"
+                },
+                "branch_id": {
+                    "type": "string"
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "current_status": {
+                    "type": "string"
+                },
+                "current_version_id": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "followup_flagged_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "needs_followup": {
+                    "type": "boolean"
+                },
+                "rfq_id": {
+                    "type": "string"
+                },
+                "seller_id": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.QuoteVersionResponse": {
+            "type": "object",
+            "properties": {
+                "author_id": {
+                    "type": "string"
+                },
+                "comment": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_immutable": {
+                    "type": "boolean"
+                },
+                "quote_id": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "string"
+                },
+                "version_number": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.RFQAttachmentListResponse": {
+            "type": "object",
+            "properties": {
+                "attachments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.RFQAttachmentResponse"
+                    }
+                }
+            }
+        },
+        "dto.RFQAttachmentResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "processing_status": {
+                    "type": "string"
+                },
+                "rfq_id": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.RFQResponse": {
+            "type": "object",
+            "properties": {
+                "branch_id": {
+                    "type": "string"
+                },
+                "channel_id": {
+                    "type": "string"
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "client_label": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "raw_text": {
+                    "type": "string"
+                },
+                "received_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "work_type": {
                     "type": "string"
                 }
             }
@@ -3748,6 +4855,26 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.TextRFQDraftResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.QuoteItemResponse"
+                    }
+                },
+                "quote": {
+                    "$ref": "#/definitions/dto.QuoteResponse"
+                },
+                "rfq": {
+                    "$ref": "#/definitions/dto.RFQResponse"
+                },
+                "version": {
+                    "$ref": "#/definitions/dto.QuoteVersionResponse"
+                }
+            }
+        },
         "dto.TokenResponse": {
             "type": "object",
             "properties": {
@@ -3818,6 +4945,21 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 255,
                     "minLength": 1
+                }
+            }
+        },
+        "dto.UpdateChannelRequest": {
+            "type": "object",
+            "properties": {
+                "config": {
+                    "type": "object"
+                },
+                "identifier": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "is_active": {
+                    "type": "boolean"
                 }
             }
         },

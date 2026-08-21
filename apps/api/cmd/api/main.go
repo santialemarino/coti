@@ -24,7 +24,8 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"github.com/santialemarino/coti/apps/api/internal/ai/provider"
+	"github.com/santialemarino/coti/apps/api/internal/ai"
+	aiprovider "github.com/santialemarino/coti/apps/api/internal/ai/provider"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
@@ -32,7 +33,9 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/mail"
 	"github.com/santialemarino/coti/apps/api/internal/ratelimit"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
+	"github.com/santialemarino/coti/apps/api/internal/secrets"
 	"github.com/santialemarino/coti/apps/api/internal/services"
+	storageprovider "github.com/santialemarino/coti/apps/api/internal/storage/provider"
 )
 
 func main() {
@@ -73,6 +76,9 @@ func run() error {
 	branchProductRepo := repository.NewBranchProductRepository()
 	productPriceRepo := repository.NewProductPriceRepository()
 	catalogImportRepo := repository.NewCatalogImportRepository()
+	rfqRepo := repository.NewRFQRepository()
+	rfqAttachmentRepo := repository.NewRFQAttachmentRepository()
+	quoteRepo := repository.NewQuoteRepository()
 	accountRepo := repository.NewAccountRepository()
 	onboardingRepo := repository.NewOnboardingRepository()
 	channelRepo := repository.NewChannelRepository()
@@ -90,11 +96,25 @@ func run() error {
 		return err
 	}
 
-	providers, err := provider.Bind(cfg.AI, log)
+	providers, err := aiprovider.Bind(cfg.AI, log)
 	if err != nil {
 		return err
 	}
 	providers.Describe(log)
+
+	objectStorage, err := storageprovider.Bind(cfg.Storage, log)
+	if err != nil {
+		return err
+	}
+	objectStorage.Describe(log)
+
+	channelSealer, err := secrets.NewAESGCM(cfg.Channel.EncryptionKey)
+	if err != nil {
+		return err
+	}
+	if !channelSealer.Enabled() {
+		log.Warn("channel credentials cannot be stored: CHANNEL_CONFIG_ENCRYPTION_KEY is unset")
+	}
 
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
 	authService := services.NewAuthService(db, userRepo, branchRepo, refreshTokenRepo, tokenService, cfg.Auth, nil)
@@ -114,6 +134,16 @@ func run() error {
 		productPriceRepo, nil)
 	productPriceImportService := services.NewProductPriceImportService(db, productPriceRepo, nil)
 	catalogImportService := services.NewCatalogImportService(db, catalogImportRepo, nil)
+	channelService := services.NewChannelService(db, channelRepo, channelSealer)
+	catalogSearchService := services.NewCatalogSearchService(db, productRepo, providers.Embedder,
+		cfg.Catalog)
+	catalogMatchService := services.NewCatalogMatchService(catalogSearchService, cfg.Catalog)
+	rfqExtractor := ai.NewRFQExtractor(providers.Generator, cfg.RFQ.MaxItems)
+	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo, channelRepo, rfqExtractor,
+		catalogMatchService, log, cfg.RFQ)
+	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, log)
+	rfqAttachmentService := services.NewRFQAttachmentService(db, rfqAttachmentRepo,
+		objectStorage.Storage, cfg.Storage, nil)
 
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
@@ -123,12 +153,17 @@ func run() error {
 			Verification:  handler.NewVerificationHandler(verificationService, mailTargetLimiter),
 			User:          handler.NewUserHandler(userService),
 			Branch:        handler.NewBranchHandler(branchService),
+			Channel:       handler.NewChannelHandler(channelService),
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
+			RFQ:           handler.NewRFQHandler(rfqService),
+			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
+			Quote:         handler.NewQuoteHandler(quoteService),
 			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
 			CatalogImport: handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
 			Account:       handler.NewAccountHandler(accountService),
 			Onboarding:    handler.NewOnboardingHandler(onboardingService),
+			File:          fileHandler(objectStorage),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
 		deliveryhttp.RateLimit{Limiter: limiter, Identify: identifyForRateLimit(tokenService)},
@@ -210,4 +245,13 @@ func parseLevel(raw string) slog.Level {
 	default:
 		return slog.LevelInfo
 	}
+}
+
+// fileHandler serves the links the local adapter signs. A bucket signs and serves its own, so
+// there is nothing to mount beside one and the route stays absent.
+func fileHandler(set storageprovider.Set) *handler.FileHandler {
+	if set.Local == nil {
+		return nil
+	}
+	return handler.NewFileHandler(set.Local)
 }

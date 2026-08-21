@@ -69,7 +69,7 @@ func run() error {
 	// Which model produced these vectors is the one fact a later --refresh-all decision needs.
 	providers.Describe(log)
 
-	db, err := repository.NewDB(ctx, cfg.Database)
+	db, err := repository.NewTenantDB(ctx, cfg.Database)
 	if err != nil {
 		return err
 	}
