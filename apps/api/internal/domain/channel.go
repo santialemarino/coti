@@ -95,12 +95,15 @@ func ValidateChannelIdentifier(channelType ChannelType, identifier *string, conf
 		}
 	}
 	// A mailbox has one unambiguous format and a malformed one guarantees the connector fails. A
-	// phone number does not, so WHATSAPP's identifier is left to the provider to reject.
+	// phone number does not, so WHATSAPP's identifier is left to the provider to reject. The bare
+	// address only: uniqueness is on this column verbatim, so "Pedidos <a@b>" beside "a@b" would
+	// be two channels on one mailbox.
 	if channelType == ChannelTypeEmail && identifier != nil {
-		if _, err := mail.ParseAddress(*identifier); err != nil {
+		parsed, err := mail.ParseAddress(*identifier)
+		if err != nil || parsed.Address != *identifier {
 			return WithCode(CodeChannelIdentifier, fmt.Errorf(
-				"%w: an EMAIL channel's identifier is its mailbox, so it must be an email address",
-				ErrInvalidInput))
+				"%w: an EMAIL channel's identifier is its mailbox, so it must be a bare email "+
+					"address", ErrInvalidInput))
 		}
 	}
 	return nil

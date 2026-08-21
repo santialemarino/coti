@@ -70,6 +70,10 @@ func TestValidateChannelIdentifier(t *testing.T) {
 			identifier: &number, wantRefused: true},
 		{name: "email whose identifier is a bare local part", channelType: ChannelTypeEmail,
 			identifier: ptrTo("pedidos"), wantRefused: true},
+		{name: "email dressed up with a display name", channelType: ChannelTypeEmail,
+			identifier: ptrTo("Pedidos <pedidos@corralon.test>"), wantRefused: true},
+		{name: "email wrapped in angle brackets", channelType: ChannelTypeEmail,
+			identifier: ptrTo("<pedidos@corralon.test>"), wantRefused: true},
 		{name: "whatsapp keeps a number the provider will judge",
 			channelType: ChannelTypeWhatsApp, identifier: ptrTo("1155667788")},
 	} {
