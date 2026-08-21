@@ -50,9 +50,12 @@ go test -run TestQuoteService_Create ./internal/services   # one test
 go test -race ./...                             # detect data races
 go test -cover ./...                            # coverage summary
 # Integration tests. Both roles are required: the restricted one is what the app
-# uses, the owner one seeds fixtures past row level security.
-TEST_DATABASE_URL=postgres://coti_app:coti_app@localhost:5432/coti?sslmode=disable \
-TEST_DATABASE_ADMIN_URL=postgres://coti:coti@localhost:5432/coti?sslmode=disable \
+# uses, the owner one seeds fixtures past row level security. Address the database as
+# 127.0.0.1, never localhost: that name resolves to ::1 first, the container publishes
+# on IPv4 only, and pgx then hangs on the v6 address until ConnectTimeout — which reads
+# as a random test failing on "ping: context deadline exceeded" at exactly 5.00s.
+TEST_DATABASE_URL=postgres://coti_app:coti_app@127.0.0.1:5432/coti?sslmode=disable \
+TEST_DATABASE_ADMIN_URL=postgres://coti:coti@127.0.0.1:5432/coti?sslmode=disable \
   go test -tags=integration ./...
 
 # From repo root
@@ -272,7 +275,7 @@ most privilege and it gets tests like any other. Conventions:
 
 ```bash
 pnpm test:scripts    # from repo root; DB-backed tests skip without TEST_DATABASE_ADMIN_URL
-TEST_DATABASE_ADMIN_URL=postgres://coti:coti@localhost:5433/coti?sslmode=disable pnpm test:scripts
+TEST_DATABASE_ADMIN_URL=postgres://coti:coti@127.0.0.1:5433/coti?sslmode=disable pnpm test:scripts
 ```
 
 `.github/workflows/ci.scripts.yml` watches `scripts/**`, `package.json` and `pnpm-lock.yaml`.
