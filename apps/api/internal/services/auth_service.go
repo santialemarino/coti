@@ -122,11 +122,6 @@ func (s *AuthService) Login(ctx context.Context, in domain.Credentials) (*domain
 	if !user.IsUsable() {
 		return nil, domain.ErrUnauthenticated
 	}
-	// Reachable only once the password matched, so saying why leaks nothing the caller
-	// does not already know — and they cannot act on it without being told.
-	if s.cfg.RequireVerifiedEmail && user.EmailVerifiedAt == nil {
-		return nil, domain.ErrEmailNotVerified
-	}
 
 	pair, err := s.issuePair(ctx, user.AppUser, uuid.New(), in.RememberMe, func(q repository.Querier) error {
 		return s.users.RegisterSuccessfulLogin(ctx, q, user.AccountID, user.ID)
@@ -298,6 +293,7 @@ func (s *AuthService) ResolveTenant(
 		AccountID:        user.AccountID,
 		UserID:           user.ID,
 		Role:             user.Role,
+		EmailVerified:    user.EmailVerifiedAt != nil,
 		BranchID:         requestedBranch,
 		AllowedBranchIDs: allowedBranches,
 	}, nil

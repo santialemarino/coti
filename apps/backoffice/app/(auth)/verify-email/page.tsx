@@ -2,9 +2,10 @@ import Link from 'next/link';
 import { CircleCheckIcon, CircleXIcon, MailCheckIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { Card, Hint, InlineLink, StatusScreen } from '@repo/ui/components';
+import { Card, Hint, InlineLink, Separator, StatusScreen } from '@repo/ui/components';
 import { ConfirmEmailForm } from '@/app/(auth)/verify-email/_components/confirm-email-form';
 import { ResendVerificationForm } from '@/app/(auth)/verify-email/_components/resend-verification-form';
+import { ChangeEmailForm } from '@/components/change-email-form';
 import { ROUTES } from '@/config/routes';
 import { getSession } from '@/lib/auth/session';
 import { apiErrorMessage } from '@/lib/i18n/api-error';
@@ -82,6 +83,19 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
       <div className="flex flex-col px-6 gap-y-4">
         <Hint>{registered ? t('resend.hintKnown') : t('resend.hint')}</Hint>
         <ResendVerificationForm address={registered ? session.email : undefined} />
+        {/*
+         * The other half of this screen, and it needs the session: correcting a typo would
+         * otherwise go through user administration, which stays closed until the address the
+         * caller cannot read is confirmed.
+         */}
+        {registered && (
+          <>
+            <Separator />
+            <p className="text-paragraph-sm-medium text-foreground">{t('change.title')}</p>
+            <Hint>{t('change.hint')}</Hint>
+            <ChangeEmailForm variant="outline" />
+          </>
+        )}
         <InlineLink asChild tone="muted" className="self-center">
           <Link href={registered ? ROUTES.home : ROUTES.login}>
             {registered ? t('continue') : t('backToLogin')}

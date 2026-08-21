@@ -31,8 +31,8 @@ func Respond(c *gin.Context, err error) {
 	case errors.Is(err, domain.ErrUnauthenticated):
 		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Error: "invalid credentials", Code: code})
 	case errors.Is(err, domain.ErrEmailNotVerified):
-		// Told plainly on purpose: it is only reachable once the password matched, and the
-		// caller cannot get past it without knowing what to do.
+		// Told plainly on purpose: it is only reachable with a live session, and the caller
+		// cannot get past it without knowing what to do.
 		c.JSON(http.StatusForbidden, dto.ErrorResponse{Error: "email not verified", Code: code})
 	case errors.Is(err, domain.ErrLocked):
 		c.JSON(http.StatusTooManyRequests,

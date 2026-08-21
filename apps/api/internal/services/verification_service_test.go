@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +23,10 @@ type fakeVerificationUsers struct {
 	accountIsActive bool
 	getByEmailErr   error
 	markedVerified  []uuid.UUID
+	updateEmailErr  error
+	// hashMovesTo replaces the stored hash after the read, standing in for a concurrent
+	// credential write landing inside the bcrypt window.
+	hashMovesTo string
 }
 
 func (f *fakeVerificationUsers) subject() *domain.AuthSubject {
@@ -35,7 +40,11 @@ func (f *fakeVerificationUsers) GetAuthSubjectByID(
 	if f.user == nil {
 		return nil, domain.ErrNotFound
 	}
-	return f.subject(), nil
+	subject := f.subject()
+	if f.hashMovesTo != "" {
+		f.user.PasswordHash = f.hashMovesTo
+	}
+	return subject, nil
 }
 
 func (f *fakeVerificationUsers) GetAuthSubjectByEmailCrossAccount(
@@ -45,6 +54,26 @@ func (f *fakeVerificationUsers) GetAuthSubjectByEmailCrossAccount(
 		return nil, f.getByEmailErr
 	}
 	return f.subject(), nil
+}
+
+/*
+ * UpdateEmail stands in for the write: it drops the confirmation the way the SQL does, and it
+ * matches no row when the hash it was handed is not the stored one, which is how the real
+ * predicate reports a password that moved under it.
+ */
+func (f *fakeVerificationUsers) UpdateEmail(
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID, email, currentHash string,
+) (*domain.AppUser, error) {
+	if f.updateEmailErr != nil {
+		return nil, f.updateEmailErr
+	}
+	if f.user.PasswordHash != currentHash {
+		return nil, domain.ErrNotFound
+	}
+	f.user.Email = email
+	f.user.EmailVerifiedAt = nil
+	updated := *f.user
+	return &updated, nil
 }
 
 func (f *fakeVerificationUsers) MarkEmailVerified(
@@ -244,5 +273,166 @@ func TestVerificationService_Resend_RetiresThePreviousLink(t *testing.T) {
 	}
 	if len(f.mail.sent) != 1 {
 		t.Fatalf("sent %d mails, want 1", len(f.mail.sent))
+	}
+}
+
+const testNewAddress = "ana.nueva@corralon.test"
+
+func TestVerificationService_ChangeOwnEmail_WritesTheAddressAndMailsTheNewOne(t *testing.T) {
+	t.Parallel()
+	user := passwordUser(t)
+	verifiedAt := fixedNow.Add(-time.Hour)
+	user.EmailVerifiedAt = &verifiedAt
+	f := newVerificationFixture(t, user)
+
+	if err := f.svc.ChangeOwnEmail(context.Background(), testTenant(),
+		testCurrentPassword, "  Ana.Nueva@Corralon.TEST "); err != nil {
+		t.Fatalf("ChangeOwnEmail: %v", err)
+	}
+	// Folded and trimmed before the write, so the address stored is the one the global unique
+	// index compares.
+	if f.users.user.Email != testNewAddress {
+		t.Fatalf("stored address = %q, want %q", f.users.user.Email, testNewAddress)
+	}
+	if f.users.user.EmailVerifiedAt != nil {
+		t.Fatal("the confirmation survived a change of address")
+	}
+	if len(f.tokens.created) != 1 || f.tokens.created[0].Type != domain.AuthTokenTypeEmailVerification {
+		t.Fatalf("minted %v, want one email-verification link", f.tokens.created)
+	}
+	// Two messages: the link to the new address, and the warning to the one it left.
+	if len(f.mail.sent) != 2 {
+		t.Fatalf("sent %d mails, want 2", len(f.mail.sent))
+	}
+	if got := f.mail.sent[1].To; got != testNewAddress {
+		t.Fatalf("the link went to %q, want the new address %q", got, testNewAddress)
+	}
+}
+
+// The old mailbox is the only place a takeover shows up, since the account itself is now
+// reachable only by whoever holds the new address.
+func TestVerificationService_ChangeOwnEmail_WarnsTheAddressItLeft(t *testing.T) {
+	t.Parallel()
+	user := passwordUser(t)
+	previous := user.Email
+	f := newVerificationFixture(t, user)
+
+	if err := f.svc.ChangeOwnEmail(context.Background(), testTenant(),
+		testCurrentPassword, testNewAddress); err != nil {
+		t.Fatalf("ChangeOwnEmail: %v", err)
+	}
+	warning := f.mail.sent[0]
+	if warning.To != previous {
+		t.Fatalf("the warning went to %q, want the previous address %q", warning.To, previous)
+	}
+	if warning.Event != domain.NotificationEventEmailChanged {
+		t.Fatalf("warning event = %q, want %q", warning.Event, domain.NotificationEventEmailChanged)
+	}
+	// It has to name the address that replaced it, or the reader cannot tell whose change it was.
+	if !strings.Contains(strings.Join(warning.Paragraphs, " "), testNewAddress) {
+		t.Fatalf("the warning does not name the new address: %v", warning.Paragraphs)
+	}
+	if warning.ActionURL != "" {
+		t.Fatal("the warning carries a link, so a stranger's mailbox was handed one")
+	}
+}
+
+// A recovery link already sitting in the old mailbox would let whoever reads it take the
+// account back, so changing the address retires it.
+func TestVerificationService_ChangeOwnEmail_RetiresOutstandingRecoveryLinks(t *testing.T) {
+	t.Parallel()
+	f := newVerificationFixture(t, passwordUser(t))
+
+	if err := f.svc.ChangeOwnEmail(context.Background(), testTenant(),
+		testCurrentPassword, testNewAddress); err != nil {
+		t.Fatalf("ChangeOwnEmail: %v", err)
+	}
+	var retiredResets int
+	for _, link := range f.tokens.invalidated {
+		if link.tokenType == domain.AuthTokenTypePasswordReset && link.userID == testUserID {
+			retiredResets++
+		}
+	}
+	if retiredResets != 1 {
+		t.Fatalf("retired %d recovery links for the caller, want 1 (all: %v)",
+			retiredResets, f.tokens.invalidated)
+	}
+}
+
+func TestVerificationService_ChangeOwnEmail_RefusesAWrongPassword(t *testing.T) {
+	t.Parallel()
+	user := passwordUser(t)
+	previous := user.Email
+	f := newVerificationFixture(t, user)
+
+	err := f.svc.ChangeOwnEmail(context.Background(), testTenant(), "no-es-la-clave", testNewAddress)
+	if !errors.Is(err, domain.ErrUnauthenticated) {
+		t.Fatalf("ChangeOwnEmail with a wrong password = %v, want ErrUnauthenticated", err)
+	}
+	if f.users.user.Email != previous {
+		t.Fatal("a wrong password moved the address anyway")
+	}
+	if len(f.mail.sent) != 0 {
+		t.Fatal("a wrong password still mailed somebody")
+	}
+}
+
+// Answered as a taken address rather than as its own rule, so the response cannot be used to
+// find out whether a stranger holds one.
+func TestVerificationService_ChangeOwnEmail_TheCallersOwnAddressIsAConflict(t *testing.T) {
+	t.Parallel()
+	user := passwordUser(t)
+	f := newVerificationFixture(t, user)
+
+	err := f.svc.ChangeOwnEmail(context.Background(), testTenant(), testCurrentPassword,
+		strings.ToUpper(user.Email))
+	if !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("ChangeOwnEmail to the caller's own address = %v, want ErrConflict", err)
+	}
+	if got := domain.CodeOf(err); got != domain.CodeEmailTaken {
+		t.Fatalf("code = %q, want %q", got, domain.CodeEmailTaken)
+	}
+	if len(f.mail.sent) != 0 {
+		t.Fatal("an address that did not change still mailed a link")
+	}
+}
+
+/*
+ * A recovery link redeemed inside the bcrypt window moves the password, and the address change
+ * must not be spendable on the one it just replaced — otherwise whoever held the old password
+ * gets the recovery mailbox, which is worse than what they lost.
+ */
+func TestVerificationService_ChangeOwnEmail_RefusesAPasswordThatMovedMeanwhile(t *testing.T) {
+	t.Parallel()
+	user := passwordUser(t)
+	previous := user.Email
+	f := newVerificationFixture(t, user)
+	// Read, then rotated: the compare passes and the write no longer matches.
+	f.users.hashMovesTo = "$2a$10$otro-hash-que-nadie-comparo"
+
+	err := f.svc.ChangeOwnEmail(context.Background(), testTenant(), testCurrentPassword, testNewAddress)
+	if !errors.Is(err, domain.ErrUnauthenticated) {
+		t.Fatalf("ChangeOwnEmail with a rotated password = %v, want ErrUnauthenticated", err)
+	}
+	if f.users.user.Email != previous {
+		t.Fatal("the address moved on a password that was no longer the account's")
+	}
+	if len(f.mail.sent) != 0 {
+		t.Fatal("a refused change still mailed somebody")
+	}
+}
+
+// The write is what has to fail the request; the two mails are best-effort and come after it.
+func TestVerificationService_ChangeOwnEmail_AConflictingAddressMailsNobody(t *testing.T) {
+	t.Parallel()
+	f := newVerificationFixture(t, passwordUser(t))
+	f.users.updateEmailErr = domain.WithCode(domain.CodeEmailTaken, domain.ErrConflict)
+
+	err := f.svc.ChangeOwnEmail(context.Background(), testTenant(), testCurrentPassword, testNewAddress)
+	if !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("ChangeOwnEmail onto a taken address = %v, want ErrConflict", err)
+	}
+	if len(f.mail.sent) != 0 {
+		t.Fatal("a refused change still mailed somebody")
 	}
 }
