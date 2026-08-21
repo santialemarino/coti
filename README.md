@@ -102,6 +102,27 @@ docker compose up -d mailpit   # included in pnpm dev:docker
 | `pnpm db:create-migration <name>` | Scaffold a new migration                    |
 | `pnpm db:vector-index`            | Build the catalog's vector index            |
 | `pnpm docs:api`                   | Regenerate the OpenAPI spec from handlers   |
+| `pnpm test:rfq`                   | Run the RFQ engine unit suite verbosely     |
+| `pnpm test:rfq:response`          | Print one representative RFQ JSON response  |
+
+### RFQ engine tests
+
+The fast RFQ suite uses fixed AI doubles and needs no credentials or database:
+
+```bash
+pnpm test:rfq
+pnpm test:rfq:response
+```
+
+The integration suite exercises real PostgreSQL, pgvector, tenant isolation, hybrid matching,
+draft persistence, and quote valuation. Both database roles are required; without them the tests
+skip themselves and print the reason.
+
+```bash
+TEST_DATABASE_URL=postgres://coti_app:coti_app@127.0.0.1:5432/coti?sslmode=disable \
+TEST_DATABASE_ADMIN_URL=postgres://coti:coti@127.0.0.1:5432/coti?sslmode=disable \
+  pnpm test:rfq:integration
+```
 
 ## API specification
 

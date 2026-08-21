@@ -12,6 +12,9 @@
     "check": "go build ./... && go vet ./...",
     "check-types": "go build ./...",
     "test": "go test ./...",
+    "test:rfq": "go test -v -count=1 -run \"Test(RFQExtractor|RFQExtractionSchema|RFQService_CreateTextDraft|RFQService_CreateWhatsAppMockDraft|CatalogMatchService|QuoteService_AcceptMaterials|RFQHandler_CreateTextDraft|ToTextRFQDraftResponse)\" ./internal/ai ./internal/services ./internal/delivery/http/handler",
+    "test:rfq:integration": "go test -v -count=1 -tags=integration -run \"Test(CatalogMatch|RFQPipeline|RFQTextDraftRoute|WhatsAppMockRoute|UnmatchedItems|QuotePricing)\" ./internal/integration",
+    "test:rfq:response": "go test -v -count=1 -run \"^TestRFQHandler_CreateTextDraft_ReturnsAReviewableDraft$\" ./internal/delivery/http/handler",
     "docs": "go tool swag init --generalInfo main.go --dir cmd/api,internal/delivery/http --output docs --parseInternal",
     "docs:check": "pnpm run docs && test -z \"$(git status --porcelain -- docs)\""
   }
