@@ -218,6 +218,9 @@ this exists to rescue stays shut in.
 
 - **The current password is the proof of identity**, compared outside the transaction the way
   `change-password` does it. A wrong one is a 401.
+- **And the write carries that password's hash in its own predicate**, so a recovery link redeemed
+  inside the ~100ms bcrypt window cannot have its change undone by the password it replaced —
+  matching no row answers 401. `change-password` closes the same window the same way.
 - **It does not end the caller's sessions**, unlike a password change. The credential has not
   moved, so revoking would deny an attacker nothing they could not redo by logging in with the
   password they already used to reach this route — and it would sign the caller out of their other
@@ -227,13 +230,16 @@ this exists to rescue stays shut in.
   covered: a `PASSWORD_RESET` token already mailed to the old address stays redeemable, and after
   the write that mailbox belongs to somebody else.
 - **The old address is told.** A silent change is how a takeover goes unnoticed, and the previous
-  mailbox is the only place it can surface, so it receives a `EMAIL_CHANGED` notification naming
-  the address that replaced it. It carries no link. A failed delivery does not fail the change —
-  the address has already moved and there is nothing to undo.
+  mailbox is the only place it can surface, so it receives an `EMAIL_CHANGED` notification naming
+  the address that replaced it. It carries no link, and it is sent **before** the confirmation link
+  — that one can be asked for again from the confirmation screen and this one cannot. A failed
+  delivery does not fail the change: the address has already moved and there is nothing to undo.
 - **A conflict is a 409 with `EMAIL_TAKEN`, the caller's own address included.** The remedy is the
   same either way, and answering differently would report whether a stranger holds the address.
 - It carries the **`mail` allowance**: it sends to an address the caller names, which is the
-  surface `forgot-password` and `resend-verification` are bounded on for the same reason.
+  surface `forgot-password` and `resend-verification` are bounded on for the same reason. It is
+  also the only route that sends **two** messages, so it can spend twice the per-attempt
+  `MAIL_SMTP_TIMEOUT_SECONDS` of the write budget.
 
 ## Rate limits
 
