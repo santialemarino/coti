@@ -176,6 +176,12 @@ The stack is **react-hook-form + zod** with the shared `Form` primitives from
 - **A disabled submit button stops a second click, not a second submit.** Enter still reaches the
   form, so a handler behind a write that must happen once refuses to re-enter while one is in
   flight.
+- **Wizard actions have one responsive contract.** On narrow screens, stack navigation controls at
+  full width with Back above the primary action; from `sm` onwards, place Back at the start and the
+  primary action at the end at their intrinsic widths. A skip/defer action is secondary and keeps
+  its own wording and position — it never replaces the primary Continue action, because identical
+  placement promises identical navigation. Put this behavior in the shared step footer or its props,
+  never in one step's markup.
 
 ### Validation messages
 

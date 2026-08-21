@@ -1,43 +1,62 @@
 'use client';
 
-import { useRef, useState, useTransition } from 'react';
-import { DownloadIcon, FileSpreadsheetIcon, UploadCloudIcon } from 'lucide-react';
+import { useEffect, useState, useTransition } from 'react';
+import { CheckCircle2Icon, DownloadIcon, FileSpreadsheetIcon, UploadCloudIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { Button, Callout, PendingButton } from '@repo/ui/components';
+import {
+  Badge,
+  Button,
+  Callout,
+  Card,
+  PendingButton,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@repo/ui/components';
 import {
   confirmCatalogImport,
   downloadCatalogTemplate,
   previewCatalogImport,
   type CatalogImportPreview,
 } from '@/app/(protected)/_actions/catalog-import';
+import { FileDropzone } from '@/components/file-dropzone';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Branch } from '@/lib/api/branches';
 import { useFormatters } from '@/lib/i18n/formatters';
 
 interface CatalogUploadProps {
   branch: Branch;
-  onPreview: (preview: CatalogImportPreview) => void;
+  formId?: string;
+  submitPlacement?: 'inline' | 'external';
+  onBusyChange?: (busy: boolean) => void;
+  onPreview: (preview: CatalogImportPreview) => void | Promise<void>;
 }
 
-export function CatalogUpload({ branch, onPreview }: CatalogUploadProps) {
+export function CatalogUpload({
+  branch,
+  formId,
+  submitPlacement = 'inline',
+  onBusyChange,
+  onPreview,
+}: CatalogUploadProps) {
   const t = useTranslations('catalogImport');
   const message = useApiErrorMessage('catalogImport');
-  const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [previewing, startPreview] = useTransition();
   const [downloading, startDownload] = useTransition();
   const busy = previewing || downloading;
 
+  useEffect(() => onBusyChange?.(busy), [busy, onBusyChange]);
+  useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
+
   function choose(next: File | undefined) {
     setError(null);
     setFile(next ?? null);
-  }
-
-  function onDrop(event: React.DragEvent<HTMLDivElement>) {
-    event.preventDefault();
-    choose(event.dataTransfer.files[0]);
   }
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -55,7 +74,7 @@ export function CatalogUpload({ branch, onPreview }: CatalogUploadProps) {
         setError(message(result.error));
         return;
       }
-      onPreview(result.preview);
+      await onPreview(result.preview);
     });
   }
 
@@ -89,47 +108,40 @@ export function CatalogUpload({ branch, onPreview }: CatalogUploadProps) {
         ))}
       </div>
 
-      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-y-4">
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".xlsx,.csv"
-          className="sr-only"
-          onChange={(event) => choose(event.target.files?.[0])}
-        />
-        <div
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={onDrop}
-          className="flex flex-col min-h-56 items-center justify-center px-6 py-8 gap-y-4 bg-card border-2 border-dashed border-strong rounded-1.5xl"
-        >
-          <span className="flex size-12 items-center justify-center bg-accent rounded-full text-accent-foreground">
-            {file ? (
-              <FileSpreadsheetIcon aria-hidden="true" className="size-6" />
-            ) : (
-              <UploadCloudIcon aria-hidden="true" className="size-6" />
-            )}
-          </span>
-          <div className="flex flex-col items-center gap-y-1 text-center">
-            <p className="text-paragraph-medium">{file ? file.name : t('dropzone.title')}</p>
-            <p className="text-paragraph-sm text-foreground-muted">
-              {file
-                ? t('dropzone.selected', { size: Math.max(1, Math.round(file.size / 1024)) })
-                : t('dropzone.hint')}
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={busy}
-            onClick={() => inputRef.current?.click()}
-          >
-            {file ? t('dropzone.replace') : t('dropzone.choose')}
-          </Button>
-        </div>
+      <form id={formId} onSubmit={onSubmit} noValidate className="flex flex-col gap-y-4">
+        <FileDropzone accept=".xlsx,.csv" disabled={busy} onFile={choose} className="min-h-56">
+          {({ dragging, openFileDialog }) => (
+            <>
+              <span
+                data-dragging={dragging}
+                className="flex size-12 items-center justify-center bg-accent rounded-full text-accent-foreground transition-[scale,translate] duration-200 ease-out-soft data-[dragging=true]:scale-110 data-[dragging=true]:-translate-y-1"
+              >
+                {file ? (
+                  <FileSpreadsheetIcon aria-hidden="true" className="size-6" />
+                ) : (
+                  <UploadCloudIcon aria-hidden="true" className="size-6" />
+                )}
+              </span>
+              <div className="flex flex-col items-center gap-y-1 text-center">
+                <p className="break-all text-paragraph-medium">
+                  {dragging ? t('dropzone.release') : file ? file.name : t('dropzone.title')}
+                </p>
+                <p className="text-paragraph-sm text-foreground-muted">
+                  {file
+                    ? t('dropzone.selected', { size: Math.max(1, Math.round(file.size / 1024)) })
+                    : t('dropzone.hint')}
+                </p>
+              </div>
+              <Button type="button" variant="outline" disabled={busy} onClick={openFileDialog}>
+                {file ? t('dropzone.replace') : t('dropzone.choose')}
+              </Button>
+            </>
+          )}
+        </FileDropzone>
 
         {error ? <Callout tone="danger">{error}</Callout> : null}
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
           <PendingButton
             type="button"
             variant="outline"
@@ -141,14 +153,16 @@ export function CatalogUpload({ branch, onPreview }: CatalogUploadProps) {
             <DownloadIcon aria-hidden="true" />
             {t('template.download')}
           </PendingButton>
-          <PendingButton
-            type="submit"
-            disabled={busy || !file}
-            pending={previewing}
-            pendingLabel={t('previewing')}
-          >
-            {t('review')}
-          </PendingButton>
+          {submitPlacement === 'inline' ? (
+            <PendingButton
+              type="submit"
+              disabled={busy || !file}
+              pending={previewing}
+              pendingLabel={t('previewing')}
+            >
+              {t('continue')}
+            </PendingButton>
+          ) : null}
         </div>
       </form>
     </div>
@@ -193,44 +207,52 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
       ) : null}
       {error ? <Callout tone="danger">{error}</Callout> : null}
 
-      <div className="overflow-x-auto border rounded-lg">
-        <table className="w-full border-collapse text-paragraph-sm">
-          <thead className="bg-muted">
+      <div className="overflow-hidden border rounded-1.5xl shadow-e1">
+        <Table>
+          <TableHeader>
             <tr>
-              <th className="px-3 py-2 text-left">{t('table.row')}</th>
-              <th className="px-3 py-2 text-left">{t('table.code')}</th>
-              <th className="px-3 py-2 text-left">{t('table.product')}</th>
-              <th className="px-3 py-2 text-left">{t('table.family')}</th>
-              <th className="px-3 py-2 text-left">{t('table.price')}</th>
-              <th className="px-3 py-2 text-left">{t('table.result')}</th>
+              <TableHead>{t('table.row')}</TableHead>
+              <TableHead>{t('table.code')}</TableHead>
+              <TableHead>{t('table.product')}</TableHead>
+              <TableHead>{t('table.family')}</TableHead>
+              <TableHead>{t('table.price')}</TableHead>
+              <TableHead>{t('table.result')}</TableHead>
             </tr>
-          </thead>
-          <tbody>
+          </TableHeader>
+          <TableBody>
             {preview.rows.map((row) => (
-              <tr key={`${row.rowNumber}-${row.code}`} className="border-t">
-                <td className="px-3 py-2">{row.rowNumber}</td>
-                <td className="px-3 py-2 text-paragraph-sm-medium">{row.code || '—'}</td>
-                <td className="px-3 py-2">{row.name || '—'}</td>
-                <td className="px-3 py-2">{row.family || '—'}</td>
-                <td className="px-3 py-2">{row.price ? fmt.currency(row.price) : '—'}</td>
-                <td className="px-3 py-2">
+              <TableRow
+                key={`${row.rowNumber}-${row.code}`}
+                className={
+                  row.errors.length > 0 ? 'bg-danger-subtle hover:bg-danger-subtle' : undefined
+                }
+              >
+                <TableCell>{row.rowNumber}</TableCell>
+                <TableCell className="text-paragraph-sm-medium">{row.code || '—'}</TableCell>
+                <TableCell>{row.name || '—'}</TableCell>
+                <TableCell>{row.family || '—'}</TableCell>
+                <TableCell>{row.price ? fmt.currency(row.price) : '—'}</TableCell>
+                <TableCell>
                   {row.errors.length === 0 ? (
-                    <span className="text-success-foreground">{t('valid')}</span>
+                    <Badge tone="success">
+                      <CheckCircle2Icon aria-hidden="true" />
+                      {t('valid')}
+                    </Badge>
                   ) : (
-                    <ul className="flex flex-col gap-y-1 text-danger-foreground">
+                    <ul className="flex flex-col gap-y-1 text-paragraph-xs-medium text-danger-foreground">
                       {row.errors.map((rowError) => (
                         <li key={rowError}>{t(`rowErrors.${rowError}`)}</li>
                       ))}
                     </ul>
                   )}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
-      <div className="flex items-center justify-between gap-x-3">
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Button type="button" variant="outline" disabled={confirming} onClick={onBack}>
           {t('chooseAnother')}
         </Button>
@@ -283,7 +305,7 @@ interface SummaryProps {
 
 function Summary({ label, value, tone }: SummaryProps) {
   return (
-    <div className="flex flex-col p-4 gap-y-1 bg-card border rounded-lg">
+    <Card className="p-4 gap-y-1 rounded-lg shadow-e1">
       <span
         className={
           tone === 'success'
@@ -296,7 +318,7 @@ function Summary({ label, value, tone }: SummaryProps) {
         {value}
       </span>
       <span className="text-paragraph-xs text-foreground-muted">{label}</span>
-    </div>
+    </Card>
   );
 }
 

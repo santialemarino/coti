@@ -8,6 +8,7 @@ import { useTranslations } from 'next-intl';
 import { useForm, useWatch } from 'react-hook-form';
 
 import {
+  Card,
   Form,
   FormControl,
   FormDescription,
@@ -50,7 +51,7 @@ export function BrandStep({ account, formId, onSubmit }: BrandStepProps) {
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
       <div className="flex flex-col gap-y-6">
-        <div className="flex flex-col p-5 gap-y-2 bg-muted border rounded-lg">
+        <Card className="p-5 gap-y-2 bg-muted rounded-lg shadow-e1">
           <p className="text-paragraph-xs-medium text-foreground-subtle uppercase">
             {t('accountSummary')}
           </p>
@@ -58,7 +59,7 @@ export function BrandStep({ account, formId, onSubmit }: BrandStepProps) {
           <p className="text-paragraph-sm text-foreground-muted">
             {[account.legalName, account.taxId].filter(Boolean).join(' · ') || t('noLegalData')}
           </p>
-        </div>
+        </Card>
 
         <LogoDropzone onPreviewChange={setLogoPreviewUrl} />
 
@@ -83,7 +84,7 @@ export function BrandStep({ account, formId, onSubmit }: BrandStepProps) {
                       type="color"
                       aria-label={t('brandColor.pickerLabel')}
                       value={pickerColor}
-                      className="size-9 shrink-0 p-1 bg-input border border-border rounded-lg outline-none shadow-e1 transition-[border-color,box-shadow,scale] duration-200 ease-out-soft hover:border-strong active:scale-[0.98] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45"
+                      className="size-9 shrink-0 p-1 bg-input border border-border rounded-lg outline-none shadow-e1 transition-[border-color,box-shadow,scale] duration-200 ease-out-soft hover:border-strong active:scale-[0.98] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45 [&::-moz-color-swatch]:border-0 [&::-moz-color-swatch]:rounded-md [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch]:rounded-md [&::-webkit-color-swatch-wrapper]:p-0"
                       onInput={(event) =>
                         field.onChange(event.currentTarget.value.slice(1).toUpperCase())
                       }
@@ -99,7 +100,7 @@ export function BrandStep({ account, formId, onSubmit }: BrandStepProps) {
         </Form>
       </div>
 
-      <aside className="flex flex-col p-5 gap-y-5 bg-card border rounded-1.5xl shadow-e2">
+      <Card className="self-start p-5 gap-y-5">
         <p className="text-paragraph-xs-medium text-foreground-subtle uppercase">{t('preview')}</p>
         <div className="overflow-hidden border rounded-lg">
           <div
@@ -126,10 +127,9 @@ export function BrandStep({ account, formId, onSubmit }: BrandStepProps) {
               <p className="text-heading-6">{account.name}</p>
               <p className="text-paragraph-xs text-foreground-muted">{t('quotePreview')}</p>
             </div>
-            <div className="h-16 bg-muted rounded-lg" />
           </div>
         </div>
-      </aside>
+      </Card>
     </div>
   );
 }

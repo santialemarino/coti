@@ -29,10 +29,10 @@ export function OnboardingProgress({ current, resolved }: OnboardingProgressProp
                 data-state={state}
                 className={
                   state === 'current'
-                    ? 'block h-1.5 w-full bg-primary rounded-full'
+                    ? 'block h-1.5 w-full bg-primary border border-primary rounded-full transition-[background-color,border-color,box-shadow] duration-300 ease-in-out-soft'
                     : state === 'completed'
-                      ? 'block h-1.5 w-full bg-primary-active rounded-full'
-                      : 'block h-1.5 w-full bg-muted border rounded-full'
+                      ? 'block h-1.5 w-full bg-primary-active border border-primary-active rounded-full transition-[background-color,border-color,box-shadow] duration-300 ease-in-out-soft'
+                      : 'block h-1.5 w-full bg-background border border-border rounded-full shadow-e1 transition-[background-color,border-color,box-shadow] duration-300 ease-in-out-soft'
                 }
               />
               <span className="sr-only">

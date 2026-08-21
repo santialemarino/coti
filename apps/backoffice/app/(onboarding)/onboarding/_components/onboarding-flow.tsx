@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -10,9 +10,18 @@ import {
   StoreIcon,
   UsersIcon,
 } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useTranslations } from 'next-intl';
 
-import { Button, Callout, ConfirmDialog, PendingButton } from '@repo/ui/components';
+import {
+  Button,
+  Callout,
+  Card,
+  ConfirmDialog,
+  PendingButton,
+  StatusScreen,
+} from '@repo/ui/components';
+import { MOTION } from '@repo/ui/lib';
 import { BranchStep } from '@/app/(onboarding)/onboarding/_components/branch-step';
 import { BrandStep } from '@/app/(onboarding)/onboarding/_components/brand-step';
 import { OnboardingProgress } from '@/app/(onboarding)/onboarding/_components/onboarding-progress';
@@ -41,6 +50,7 @@ import type { AccountUser } from '@/lib/api/users';
 
 const BRAND_FORM_ID = 'onboarding-brand-form';
 const BRANCH_FORM_ID = 'onboarding-branch-form';
+const CATALOG_UPLOAD_FORM_ID = 'onboarding-catalog-upload-form';
 
 interface OnboardingFlowProps {
   onboarding: Onboarding;
@@ -61,7 +71,9 @@ export function OnboardingFlow({
 }: OnboardingFlowProps) {
   const router = useRouter();
   const t = useTranslations('onboarding');
+  const tCatalog = useTranslations('catalogImport');
   const message = useApiErrorMessage('onboarding');
+  const reduced = useReducedMotion();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const firstRender = useRef(true);
   const [status, setStatus] = useState(onboarding.status);
@@ -70,20 +82,12 @@ export function OnboardingFlow({
   );
   const [resolved, setResolved] = useState(onboarding.steps);
   const [preview, setPreview] = useState<CatalogImportPreview | null>(null);
-  const [catalogResult, setCatalogResult] = useState<{ imported: number; skipped: number } | null>(
-    null,
-  );
+  const [catalogBusy, setCatalogBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dismissOpen, setDismissOpen] = useState(false);
   const [pending, startTransition] = useTransition();
-
-  useEffect(() => {
-    if (firstRender.current) {
-      firstRender.current = false;
-      return;
-    }
-    headingRef.current?.focus();
-  }, [step]);
+  const currentStepRef = useRef(step);
+  currentStepRef.current = step;
 
   function move(next: OnboardingStepKey) {
     setError(null);
@@ -132,12 +136,11 @@ export function OnboardingFlow({
     });
   }
 
-  function previewCatalog(nextPreview: CatalogImportPreview) {
-    run(async () => {
-      if (await resolveStep('CATALOG_UPLOAD', 'COMPLETED', 'CATALOG_REVIEW')) {
-        setPreview(nextPreview);
-      }
-    });
+  async function previewCatalog(nextPreview: CatalogImportPreview) {
+    setError(null);
+    if (await resolveStep('CATALOG_UPLOAD', 'COMPLETED', 'CATALOG_REVIEW')) {
+      setPreview(nextPreview);
+    }
   }
 
   function skipCatalog() {
@@ -191,7 +194,7 @@ export function OnboardingFlow({
   if (status === 'DISMISSED') {
     return (
       <main className="flex min-h-screen items-center justify-center px-6 py-12">
-        <section className="flex w-full max-w-xl flex-col items-center p-8 gap-y-6 bg-card border rounded-1.5xl shadow-e2 text-center">
+        <Card className="max-w-xl items-center p-8 gap-y-6 text-center">
           <span className="flex size-12 items-center justify-center bg-accent rounded-full text-accent-foreground">
             <StoreIcon aria-hidden="true" className="size-6" />
           </span>
@@ -212,7 +215,7 @@ export function OnboardingFlow({
               {t('dismissed.resume')}
             </PendingButton>
           </div>
-        </section>
+        </Card>
       </main>
     );
   }
@@ -239,19 +242,38 @@ export function OnboardingFlow({
 
       <OnboardingProgress current={step} resolved={resolved} />
 
-      <section className="animate-rise-in flex flex-1 flex-col p-6 gap-y-7 bg-card border rounded-1.5xl shadow-e2 sm:p-9">
-        <header className="flex flex-col gap-y-2">
-          <h1 ref={headingRef} tabIndex={-1} className="text-heading-2 outline-none">
-            {t(`${screen}.title`)}
-          </h1>
-          <p className="max-w-3xl text-paragraph text-foreground-muted">
-            {t(`${screen}.description`)}
-          </p>
-        </header>
+      <Card className="animate-rise-in flex-1 p-5 gap-y-0 sm:p-9">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={step}
+            className="flex min-h-full flex-1 flex-col gap-y-7"
+            initial={{ opacity: 0, x: reduced ? 0 : 12 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: reduced ? 0 : -12 }}
+            transition={{ duration: reduced ? 0 : MOTION.slow }}
+            onAnimationComplete={() => {
+              if (currentStepRef.current !== step) return;
+              if (firstRender.current) {
+                firstRender.current = false;
+                return;
+              }
+              headingRef.current?.focus();
+            }}
+          >
+            <header className="flex flex-col gap-y-2">
+              <h1 ref={headingRef} tabIndex={-1} className="text-heading-2 outline-none">
+                {t(`${screen}.title`)}
+              </h1>
+              <p className="max-w-3xl text-paragraph text-foreground-muted">
+                {t(`${screen}.description`)}
+              </p>
+            </header>
 
-        {error ? <Callout tone="danger">{error}</Callout> : null}
-        {renderStep()}
-      </section>
+            {error ? <Callout tone="danger">{error}</Callout> : null}
+            {renderStep()}
+          </motion.div>
+        </AnimatePresence>
+      </Card>
 
       <ConfirmDialog
         open={dismissOpen}
@@ -277,7 +299,10 @@ export function OnboardingFlow({
           <>
             <div className="grid gap-3 md:grid-cols-2">
               {(['brand', 'branch', 'catalog', 'team'] as const).map((item) => (
-                <div key={item} className="flex items-start p-4 gap-x-3 bg-muted border rounded-lg">
+                <Card
+                  key={item}
+                  className="flex-row items-start p-4 gap-y-0 gap-x-3 bg-muted rounded-lg shadow-e1"
+                >
                   <CheckCircle2Icon
                     aria-hidden="true"
                     className="mt-0.5 size-5 shrink-0 text-primary"
@@ -290,7 +315,7 @@ export function OnboardingFlow({
                       {t(`welcome.checklist.${item}.description`)}
                     </p>
                   </div>
-                </div>
+                </Card>
               ))}
             </div>
             <Footer
@@ -331,14 +356,25 @@ export function OnboardingFlow({
       case 'CATALOG_UPLOAD':
         return (
           <>
-            <CatalogUpload branch={branch} onPreview={previewCatalog} />
+            <CatalogUpload
+              branch={branch}
+              formId={CATALOG_UPLOAD_FORM_ID}
+              submitPlacement="external"
+              onBusyChange={setCatalogBusy}
+              onPreview={previewCatalog}
+            />
             <Footer
+              form={CATALOG_UPLOAD_FORM_ID}
               pending={pending}
-              primary={t('catalog.later')}
-              pendingLabel={t('saving')}
-              primaryVariant="outline"
+              disabled={pending || catalogBusy}
+              primary={t('continue')}
+              primaryPending={catalogBusy}
+              pendingLabel={tCatalog('previewing')}
+              secondary={t('catalog.later')}
+              secondaryPending={pending}
+              secondaryPendingLabel={t('saving')}
               back={() => move('FIRST_BRANCH')}
-              onPrimary={skipCatalog}
+              onSecondary={skipCatalog}
             />
           </>
         );
@@ -347,8 +383,7 @@ export function OnboardingFlow({
           <CatalogReview
             preview={preview}
             onBack={() => move('CATALOG_UPLOAD')}
-            onConfirmed={(imported, skipped) => {
-              setCatalogResult({ imported, skipped });
+            onConfirmed={() => {
               run(async () => void (await resolveStep('CATALOG_REVIEW', 'COMPLETED', 'TEAM')));
             }}
           />
@@ -365,9 +400,6 @@ export function OnboardingFlow({
       case 'TEAM':
         return (
           <>
-            {catalogResult ? (
-              <Callout tone="success">{t('team.catalogImported', catalogResult)}</Callout>
-            ) : null}
             <TeamStep
               branches={branches}
               currentUserId={currentUserId}
@@ -378,22 +410,26 @@ export function OnboardingFlow({
               pending={pending}
               primary={t('team.finish')}
               pendingLabel={t('saving')}
-              skip={t('skipStep')}
               back={() => move('CATALOG_UPLOAD')}
               onPrimary={() => finishTeam('COMPLETED')}
-              onSkip={() => finishTeam('SKIPPED')}
             />
           </>
         );
       case 'COMPLETE':
         return (
-          <div className="flex flex-1 flex-col items-center justify-center py-8 gap-y-8 text-center">
+          <div className="flex flex-1 flex-col gap-y-8">
+            <StatusScreen
+              icon={CheckCircle2Icon}
+              tone="success"
+              title={t('complete.readyTitle')}
+              description={t('complete.readyDescription')}
+            />
             <div className="grid w-full max-w-3xl gap-4 sm:grid-cols-3">
               <ReadyItem icon={PaletteIcon} text={t('complete.items.brand')} />
               <ReadyItem icon={StoreIcon} text={t('complete.items.branch')} />
               <ReadyItem icon={FileSpreadsheetIcon} text={t('complete.items.catalog')} />
             </div>
-            <Button asChild size="lg">
+            <Button asChild size="lg" className="mt-auto w-full sm:ml-auto sm:w-auto">
               <Link href={ROUTES.home}>{t('complete.action')}</Link>
             </Button>
           </div>
@@ -407,52 +443,78 @@ export function OnboardingFlow({
 interface FooterProps {
   form?: string;
   pending: boolean;
-  primary: string;
-  pendingLabel: string;
+  disabled?: boolean;
+  primary?: string;
+  primaryPending?: boolean;
+  pendingLabel?: string;
   primaryVariant?: 'default' | 'outline';
   back?: () => void;
-  skip?: string;
+  secondary?: string;
+  secondaryPending?: boolean;
+  secondaryPendingLabel?: string;
   onPrimary?: () => void;
-  onSkip?: () => void;
+  onSecondary?: () => void;
 }
 
 function Footer({
   form,
   pending,
+  disabled = pending,
   primary,
+  primaryPending = pending,
   pendingLabel,
   primaryVariant = 'default',
   back,
-  skip,
+  secondary,
+  secondaryPending = pending,
+  secondaryPendingLabel,
   onPrimary,
-  onSkip,
+  onSecondary,
 }: FooterProps) {
   const t = useTranslations('onboarding');
   return (
-    <footer className="flex flex-wrap items-center justify-between pt-2 gap-3 border-t">
-      <div>
+    <footer className="mt-auto flex flex-col items-stretch pt-5 gap-3 sm:flex-row sm:items-center sm:justify-between sm:pt-7">
+      <div className="contents sm:block">
         {back ? (
-          <Button type="button" variant="outline" disabled={pending} onClick={back}>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full sm:w-auto"
+            disabled={disabled}
+            onClick={back}
+          >
             {t('back')}
           </Button>
         ) : null}
       </div>
-      <div className="flex items-center gap-x-2">
-        {skip && onSkip ? (
-          <Button type="button" variant="ghost" disabled={pending} onClick={onSkip}>
-            {skip}
-          </Button>
+      <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+        {secondary && secondaryPendingLabel && onSecondary ? (
+          <PendingButton
+            type="button"
+            variant="ghost"
+            className="w-full sm:w-auto"
+            disabled={disabled}
+            pending={secondaryPending}
+            pendingLabel={secondaryPendingLabel}
+            onClick={onSecondary}
+          >
+            {secondary}
+          </PendingButton>
         ) : null}
-        <PendingButton
-          type={form ? 'submit' : 'button'}
-          form={form}
-          variant={primaryVariant}
-          pending={pending}
-          pendingLabel={pendingLabel}
-          onClick={form ? undefined : onPrimary}
-        >
-          {primary}
-        </PendingButton>
+        {primary && pendingLabel ? (
+          <PendingButton
+            type={form ? 'submit' : 'button'}
+            form={form}
+            variant={primaryVariant}
+            className="w-full sm:w-auto"
+            disabled={disabled}
+            pending={primaryPending}
+            pendingLabel={pendingLabel}
+            onClick={form ? undefined : onPrimary}
+          >
+            {primary}
+          </PendingButton>
+        ) : null}
       </div>
     </footer>
   );
@@ -460,10 +522,10 @@ function Footer({
 
 function ReadyItem({ icon: Icon, text }: { icon: typeof UsersIcon; text: string }) {
   return (
-    <div className="flex min-h-36 flex-col items-center justify-center p-6 gap-y-4 bg-muted border rounded-1.5xl">
+    <Card className="min-h-36 items-center justify-center p-6 gap-y-4 bg-muted shadow-e1">
       <Icon aria-hidden="true" className="size-8 text-primary" />
       <span className="text-heading-6">{text}</span>
-    </div>
+    </Card>
   );
 }
 

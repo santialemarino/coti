@@ -127,12 +127,13 @@ export async function confirmCatalogImport(
   preview: CatalogImportPreview,
 ): Promise<CatalogConfirmResult> {
   try {
+    const reviewedRows = preview.rows.filter((row) => row.errors.length === 0);
     const raw = await apiRequest<ConfirmCatalogImportRaw>({
       path: '/v1/products/import/confirm',
       method: 'POST',
       branchId: preview.branchId,
       body: {
-        rows: preview.rows.map((row) => ({
+        rows: reviewedRows.map((row) => ({
           code: row.code,
           name: row.name,
           description: row.description,
@@ -144,7 +145,11 @@ export async function confirmCatalogImport(
         })),
       },
     });
-    return { ok: true, importedRows: raw.imported_rows, skippedRows: raw.skipped_rows };
+    return {
+      ok: true,
+      importedRows: raw.imported_rows,
+      skippedRows: preview.invalidRows + raw.skipped_rows,
+    };
   } catch (error) {
     return { ok: false, error: errorCodeOf(error) };
   }

@@ -620,6 +620,7 @@
     "dropzone": {
       "title": "Arrastrá tu archivo hasta acá",
       "hint": "Formato .xlsx o .csv.",
+      "release": "Soltá el archivo para cargarlo",
       "selected": "Archivo seleccionado: {size, number} KB",
       "choose": "Elegir archivo",
       "replace": "Cambiar archivo"
@@ -627,7 +628,7 @@
     "fileRequired": "Elegí un archivo para continuar.",
     "template": { "download": "Descargar plantilla", "downloading": "Preparando…" },
     "previewing": "Procesando…",
-    "review": "Revisar productos",
+    "continue": "Continuar",
     "summary": {
       "total": "Filas leídas",
       "valid": "Listas para importar",
@@ -749,6 +750,7 @@
         "description": "Arrastrá una imagen para probar cómo se vería. Por ahora la vista previa queda sólo en este navegador y no se guarda.",
         "drop": "Arrastrá el logo hasta acá",
         "hint": "PNG, JPG o SVG. Sólo vista previa local.",
+        "release": "Soltá la imagen para usarla",
         "choose": "Elegir imagen",
         "replace": "Cambiar imagen",
         "remove": "Quitar imagen",
@@ -779,7 +781,6 @@
       "passwordNotice": "Esto crea un usuario real, no envía una invitación. Vas a tener que compartirle la contraseña inicial por un canal seguro.",
       "add": "Agregar integrante",
       "created": "Creamos a «{name}». Ya puede ingresar con la contraseña inicial.",
-      "catalogImported": "Importamos {imported, plural, one {# producto} other {# productos}} y omitimos {skipped, plural, one {# fila} other {# filas}}.",
       "finish": "Finalizar configuración",
       "empty": {
         "title": "Todavía no agregaste integrantes",
@@ -789,6 +790,8 @@
     "complete": {
       "title": "Tu cuenta está lista",
       "description": "Todo lo que hayas dejado pendiente sigue disponible en Configuración.",
+      "readyTitle": "Configuración completada",
+      "readyDescription": "Ya podés empezar a trabajar con tu cuenta.",
       "action": "Ir al inicio",
       "items": {
         "brand": "Marca revisada",
