@@ -93,7 +93,7 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
             <Separator />
             <p className="text-paragraph-sm-medium text-foreground">{t('change.title')}</p>
             <Hint>{t('change.hint')}</Hint>
-            <ChangeEmailForm />
+            <ChangeEmailForm variant="outline" />
           </>
         )}
         <InlineLink asChild tone="muted" className="self-center">
