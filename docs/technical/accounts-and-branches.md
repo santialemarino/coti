@@ -97,7 +97,10 @@ and uniqueness is `(branch_id, type, identifier)`. A unique constraint does not 
 Both answer **409**.
 
 `WEBAPP` and `MANUAL_ENTRY` are one per branch, so an identifier on either is refused with
-`CHANNEL_IDENTIFIER`. `WHATSAPP` and `EMAIL` may carry one or go without — the partial index allows
+`CHANNEL_IDENTIFIER`. An `EMAIL` identifier must parse as an address, because for a mail channel it
+_is_ the mailbox and a malformed one guarantees the connector fails; a `WHATSAPP` number is left
+alone, since there is no one format to hold it to and the provider will reject what it does not
+like. `WHATSAPP` and `EMAIL` may carry one or go without — the partial index allows
 one of each without, which is what every channel created before this route looks like. A blank
 identifier is normalized to absent: an empty string is not NULL and would slip past that index.
 
@@ -131,6 +134,10 @@ channel carries only what sends from its mailbox. `smtp_starttls` is declared ra
 the way `MAIL_SMTP_STARTTLS` is: a server that stops advertising STARTTLS fails the send instead of
 quietly downgrading to plaintext. A readable field is bounded at 255 bytes and a credential at 4096;
 the check runs on the plaintext, before sealing, and nothing revalidates a stored config.
+
+Validation of the shape and of the identifier both run before the credentials are sealed, so a
+malformed request is answered as a malformed request even on a deployment that could not have stored
+it anyway.
 
 The two rules meet in the other direction too: **a channel that holds a configuration holds its
 identifier**, since credentials belong to one number or one mailbox. That is checked against what the

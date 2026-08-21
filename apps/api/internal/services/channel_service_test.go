@@ -537,3 +537,40 @@ func TestChannelService_UpdateChannel_KeepingAConfigKeepsTheIdentifierRequired(t
 		})
 	}
 }
+
+// With no key configured, a request that is also malformed gets the refusal it can act on: the
+// shape and the identifier are the caller's to fix, a missing key is the deployment's.
+func TestChannelService_CreateChannel_ClientErrorsOutrankAMissingKey(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		in       domain.NewChannel
+		wantCode domain.ErrorCode
+	}{
+		{name: "shape", wantCode: domain.CodeChannelConfigShape,
+			in: domain.NewChannel{Type: domain.ChannelTypeEmail,
+				Identifier: ptr("pedidos@corralon.test"),
+				Config:     []byte(whatsAppConfigJSON)}},
+		{name: "identifier", wantCode: domain.CodeChannelIdentifier,
+			in: domain.NewChannel{Type: domain.ChannelTypeWhatsApp,
+				Config: []byte(whatsAppConfigJSON)}},
+		{name: "nothing wrong but the key", wantCode: domain.CodeNotConfigured,
+			in: domain.NewChannel{Type: domain.ChannelTypeWhatsApp,
+				Identifier: ptr("+5491100000000"),
+				Config:     []byte(whatsAppConfigJSON)}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db := &fakeDB{}
+			store := &fakeChannelStore{}
+			service := NewChannelService(db, store, testSealer(t, false))
+
+			_, err := service.CreateChannel(context.Background(), branchTenant(), test.in)
+			if domain.CodeOf(err) != test.wantCode {
+				t.Fatalf("CreateChannel() = %v (%v), want %v", err, domain.CodeOf(err),
+					test.wantCode)
+			}
+			if store.created != nil {
+				t.Error("CreateChannel() wrote a channel the validation refused")
+			}
+		})
+	}
+}

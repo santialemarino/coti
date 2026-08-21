@@ -96,14 +96,16 @@ func (s *ChannelService) CreateChannel(
 		return nil, fmt.Errorf("%w: unknown channel type %q", domain.ErrInvalidInput, in.Type)
 	}
 	in.Identifier = domain.NormalizeChannelIdentifier(in.Identifier)
-	config, err := s.sealConfig(in.Type, in.Config)
+	config, err := domain.ParseChannelConfig(in.Type, in.Config)
 	if err != nil {
 		return nil, err
 	}
 	if err := domain.ValidateChannelIdentifier(in.Type, in.Identifier, config != nil); err != nil {
 		return nil, err
 	}
-	in.Config = config
+	if in.Config, err = s.seal(config); err != nil {
+		return nil, err
+	}
 
 	var channel *domain.Channel
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
@@ -140,20 +142,23 @@ func (s *ChannelService) UpdateChannel(
 				return err
 			}
 		}
-		sealed, sealErr := s.sealConfig(current.Type, requested)
-		if sealErr != nil {
-			return sealErr
+		config, parseErr := domain.ParseChannelConfig(current.Type, requested)
+		if parseErr != nil {
+			return parseErr
 		}
 		// An absent config leaves the stored one alone; an explicit null or empty object is how a
 		// caller removes it, and the two arrive here as nil and as "null".
-		in.Config = sealed
-		in.ClearConfig = sealed == nil && requested != nil
+		in.ClearConfig = config == nil && requested != nil
 		// Validated against what the channel will hold, not what the request sent: dropping the
 		// identifier off a channel whose stored configuration stays would orphan its credentials.
-		configured := sealed != nil || (current.IsConfigured && !in.ClearConfig)
+		configured := config != nil || (current.IsConfigured && !in.ClearConfig)
 		if err := domain.ValidateChannelIdentifier(current.Type, in.Identifier,
 			configured); err != nil {
 			return err
+		}
+		var sealErr error
+		if in.Config, sealErr = s.seal(config); sealErr != nil {
+			return sealErr
 		}
 
 		var updateErr error
@@ -186,14 +191,11 @@ func (s *ChannelService) DeactivateChannel(
 	})
 }
 
-// sealConfig validates the requested settings against the channel type and returns them with every
-// credential encrypted, or nil when the request carried none.
-func (s *ChannelService) sealConfig(
-	channelType domain.ChannelType, raw []byte,
-) ([]byte, error) {
-	config, err := domain.ParseChannelConfig(channelType, raw)
-	if err != nil || config == nil {
-		return nil, err
+// seal returns the settings as they will be stored, every credential encrypted, or nil when there
+// are none to store.
+func (s *ChannelService) seal(config domain.ChannelConfig) ([]byte, error) {
+	if config == nil {
+		return nil, nil
 	}
 	// Refused on the credential itself rather than on the config holding one, so the rule stays
 	// true of a shape whose credentials are all optional.

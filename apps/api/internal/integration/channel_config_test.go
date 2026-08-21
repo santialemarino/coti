@@ -91,24 +91,28 @@ func TestChannels_CredentialsAreSealedAndNeverReturned(t *testing.T) {
 	for _, test := range []struct {
 		name        string
 		channelType string
+		identifier  string
 		config      map[string]any
 		clear       []string
 		sealed      []string
 	}{
 		{
-			name: "whatsapp", channelType: "WHATSAPP", config: whatsAppConfig(),
+			name: "whatsapp", channelType: "WHATSAPP", identifier: "+5491100000000",
+			config: whatsAppConfig(),
 			clear:  []string{"phone_number_id", "business_account_id"},
 			sealed: []string{"access_token", "webhook_verify_token"},
 		},
 		{
-			name: "email", channelType: "EMAIL", config: emailConfig(),
+			// An address, not a uuid: for a mail channel the identifier IS the mailbox.
+			name: "email", channelType: "EMAIL", identifier: "pedidos@corralon.test",
+			config: emailConfig(),
 			clear:  []string{"smtp_host", "smtp_username"},
 			sealed: []string{"smtp_password"},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			channelID, created := e.createChannel(t, token, branchID.String(), map[string]any{
-				"type": test.channelType, "identifier": uuid.NewString(), "config": test.config,
+				"type": test.channelType, "identifier": test.identifier, "config": test.config,
 			})
 
 			if created["is_configured"] != true {

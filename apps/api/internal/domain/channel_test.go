@@ -66,6 +66,12 @@ func TestValidateChannelIdentifier(t *testing.T) {
 			configured: true, wantRefused: true},
 		{name: "configured email with no mailbox", channelType: ChannelTypeEmail,
 			configured: true, wantRefused: true},
+		{name: "email whose identifier is not an address", channelType: ChannelTypeEmail,
+			identifier: &number, wantRefused: true},
+		{name: "email whose identifier is a bare local part", channelType: ChannelTypeEmail,
+			identifier: ptrTo("pedidos"), wantRefused: true},
+		{name: "whatsapp keeps a number the provider will judge",
+			channelType: ChannelTypeWhatsApp, identifier: ptrTo("1155667788")},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			err := ValidateChannelIdentifier(test.channelType, test.identifier, test.configured)
@@ -116,3 +122,5 @@ func TestChannelTypesMatchTheDatabaseEnum(t *testing.T) {
 		}
 	}
 }
+
+func ptrTo(s string) *string { return &s }

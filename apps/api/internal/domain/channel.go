@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"net/mail"
 	"slices"
 	"strings"
 	"time"
@@ -91,6 +92,15 @@ func ValidateChannelIdentifier(channelType ChannelType, identifier *string, conf
 			return WithCode(CodeChannelIdentifier, fmt.Errorf(
 				"%w: a configured %s channel needs its identifier, which is what its credentials "+
 					"belong to", ErrInvalidInput, channelType))
+		}
+	}
+	// A mailbox has one unambiguous format and a malformed one guarantees the connector fails. A
+	// phone number does not, so WHATSAPP's identifier is left to the provider to reject.
+	if channelType == ChannelTypeEmail && identifier != nil {
+		if _, err := mail.ParseAddress(*identifier); err != nil {
+			return WithCode(CodeChannelIdentifier, fmt.Errorf(
+				"%w: an EMAIL channel's identifier is its mailbox, so it must be an email address",
+				ErrInvalidInput))
 		}
 	}
 	return nil
