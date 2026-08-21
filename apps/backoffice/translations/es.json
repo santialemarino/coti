@@ -74,7 +74,7 @@
     "FORBIDDEN": "No tenés permiso para hacer esto.",
     "IMMUTABLE": "Eso ya no se puede modificar.",
     "ACCOUNT_LOCKED": "Demasiados intentos fallidos. Esperá unos minutos antes de volver a probar.",
-    "EMAIL_NOT_VERIFIED": "Tenés que confirmar tu dirección de correo antes de entrar. Buscá el mensaje que te mandamos al registrarte.",
+    "EMAIL_NOT_VERIFIED": "Tenés que confirmar tu dirección de correo para usar Coti. Buscá el mensaje que te mandamos y abrí el enlace.",
     "RATE_LIMITED": "Demasiados intentos. Esperá unos minutos.",
     "FILE_TOO_LARGE": "El archivo es demasiado grande.",
     "EMAIL_TAKEN": "Ya hay una cuenta registrada con esa dirección.",
@@ -111,6 +111,10 @@
     "changePassword": {
       "title": "Cambiar contraseña",
       "description": "Cambiá tu contraseña presentando la actual."
+    },
+    "emailSettings": {
+      "title": "Correo",
+      "description": "Cambiá la dirección de correo de tu usuario."
     },
     "accountSettings": {
       "title": "Cuenta",
@@ -310,6 +314,29 @@
         "INTERNAL": "No pudimos cambiar la contraseña. Intentá de nuevo."
       }
     },
+    "changeEmail": {
+      "title": "Cambiar tu correo",
+      "description": "Ahora usás {email}. Para cambiarla necesitás ingresar tu contraseña actual. La dirección nueva queda sin confirmar hasta que abras el enlace que te mandemos.",
+      "newEmail": {
+        "label": "Correo electrónico nuevo",
+        "placeholder": "Ingresá tu dirección de correo",
+        "required": "Ingresá tu dirección de correo."
+      },
+      "currentPassword": {
+        "label": "Contraseña actual",
+        "placeholder": "Ingresá tu contraseña actual",
+        "required": "Ingresá tu contraseña actual."
+      },
+      "submit": "Cambiar mi correo",
+      "submitting": "Cambiando…",
+      "done": "Cambiamos tu correo a {email}. Te mandamos el enlace para confirmarla.",
+      "errors": {
+        "UNAUTHENTICATED": "La contraseña actual no es correcta.",
+        "EMAIL_TAKEN": "Esa dirección ya está en uso. Probá con otra.",
+        "CONFLICT": "Esa dirección ya está en uso. Probá con otra.",
+        "INTERNAL": "No pudimos cambiar tu correo. Intentá de nuevo."
+      }
+    },
     "verifyEmail": {
       "title": "Confirmar tu correo",
       "alreadyTitle": "Tu correo ya está confirmado",
@@ -339,6 +366,10 @@
           "INVALID_BODY": "Ingresá una dirección de correo válida.",
           "INTERNAL": "No pudimos enviar el enlace. Intentá de nuevo."
         }
+      },
+      "change": {
+        "title": "¿Escribiste mal tu dirección?",
+        "hint": "Cambiala y te mandamos el enlace a la dirección nueva."
       },
       "errors": {
         "INTERNAL": "No pudimos confirmar tu dirección. Intentá de nuevo."
@@ -372,6 +403,7 @@
     "title": "Configuración",
     "nav": {
       "password": "Contraseña",
+      "email": "Correo",
       "account": "Cuenta",
       "branches": "Sucursales",
       "users": "Usuarios",
@@ -626,7 +658,10 @@
       "replace": "Cambiar archivo"
     },
     "fileRequired": "Elegí un archivo para continuar.",
-    "template": { "download": "Descargar plantilla", "downloading": "Preparando…" },
+    "template": {
+      "download": "Descargar plantilla",
+      "downloading": "Preparando…"
+    },
     "previewing": "Procesando…",
     "continue": "Continuar",
     "summary": {
@@ -691,7 +726,10 @@
         "TEAM": "Equipo",
         "COMPLETE": "Cuenta lista"
       },
-      "statuses": { "COMPLETED": "Listo", "SKIPPED": "Omitido" }
+      "statuses": {
+        "COMPLETED": "Listo",
+        "SKIPPED": "Omitido"
+      }
     },
     "skipAll": {
       "action": "Omitir Configuración",

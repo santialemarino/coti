@@ -7,6 +7,7 @@ vi.mock('@/app/(auth)/verify-email/_components/confirm-email-form', () => ({
 vi.mock('@/app/(auth)/verify-email/_components/resend-verification-form', () => ({
   ResendVerificationForm: vi.fn(() => null),
 }));
+vi.mock('@/components/change-email-form', () => ({ ChangeEmailForm: vi.fn(() => null) }));
 vi.mock('@/lib/auth/session', () => ({ getSession: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getTranslations: vi.fn() }));
 
@@ -14,6 +15,7 @@ const { ConfirmEmailForm } =
   await import('@/app/(auth)/verify-email/_components/confirm-email-form');
 const { ResendVerificationForm } =
   await import('@/app/(auth)/verify-email/_components/resend-verification-form');
+const { ChangeEmailForm } = await import('@/components/change-email-form');
 const { getSession } = await import('@/lib/auth/session');
 const { getTranslations } = await import('next-intl/server');
 const { default: VerifyEmailPage } = await import('@/app/(auth)/verify-email/page');
@@ -140,5 +142,34 @@ describe('with no token', () => {
 
     expect(ResendVerificationForm).not.toHaveBeenCalled();
     expect(ConfirmEmailForm).not.toHaveBeenCalled();
+  });
+
+  /*
+   * The correction is the other half of the escape hatch, and it needs the session: the route it
+   * posts to authenticates, so offering the form to a caller who followed a broken link would be
+   * a button that cannot work.
+   */
+  it('offers the correction to a caller who has a session and no confirmation', async () => {
+    vi.mocked(getSession).mockResolvedValue(session(false));
+
+    await renderPage({});
+
+    expect(ChangeEmailForm).toHaveBeenCalled();
+  });
+
+  it('offers no correction without a session', async () => {
+    vi.mocked(getSession).mockResolvedValue(null);
+
+    await renderPage({});
+
+    expect(ChangeEmailForm).not.toHaveBeenCalled();
+  });
+
+  it('offers no correction once the address is confirmed', async () => {
+    vi.mocked(getSession).mockResolvedValue(session(true));
+
+    await renderPage({});
+
+    expect(ChangeEmailForm).not.toHaveBeenCalled();
   });
 });
