@@ -103,7 +103,9 @@ _is_ the mailbox: a malformed one guarantees the connector fails, and a display-
 the column verbatim. A `WHATSAPP` number is left alone — there is no one format to hold it to, and
 the provider will reject what it does not like. `WHATSAPP` and `EMAIL` may carry one or go without — the partial index allows
 one of each without, which is what every channel created before this route looks like. A blank
-identifier is normalized to absent: an empty string is not NULL and would slip past that index.
+identifier is normalized to absent: an empty string is not NULL and would slip past that index. A
+control character anywhere in it is refused — trimming only reaches the ends, and an embedded newline
+is not part of any number or mailbox.
 
 **The identifier is never duplicated inside `config`.** It is a column, channel uniqueness rests on
 it, and a second copy is a second thing to keep in step.

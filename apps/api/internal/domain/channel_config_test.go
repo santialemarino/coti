@@ -68,6 +68,13 @@ func TestParseChannelConfig_ShapePerType(t *testing.T) {
 		{name: "email with an out-of-range port", channelType: ChannelTypeEmail,
 			raw:     `{"smtp_host":"h","smtp_port":65536,"smtp_username":"u","smtp_password":"p"}`,
 			wantErr: "smtp_port must be between 1 and 65535"},
+		{name: "email with a port that is not a number", channelType: ChannelTypeEmail,
+			raw:     `{"smtp_host":"h","smtp_port":"587","smtp_username":"u","smtp_password":"p"}`,
+			wantErr: "smtp_port must be a int, got string"},
+		{name: "whatsapp with a credential that is not a string",
+			channelType: ChannelTypeWhatsApp,
+			raw:         `{"phone_number_id":"1","access_token":["t"]}`,
+			wantErr:     "access_token must be a string, got array"},
 		{name: "email without a password", channelType: ChannelTypeEmail,
 			raw:     `{"smtp_host":"h","smtp_port":587,"smtp_username":"u"}`,
 			wantErr: "smtp_password is required"},
@@ -80,7 +87,11 @@ func TestParseChannelConfig_ShapePerType(t *testing.T) {
 		{name: "unknown type", channelType: ChannelType("TELEGRAM"),
 			raw: `{"a":"b"}`, wantErr: `unknown channel type "TELEGRAM"`},
 		{name: "not an object", channelType: ChannelTypeWhatsApp,
-			raw: `"a string"`, wantErr: "cannot unmarshal"},
+			raw: `"a string"`, wantErr: "must be an object of the fields this channel type accepts"},
+		{name: "an array", channelType: ChannelTypeWhatsApp,
+			raw: `["a"]`, wantErr: "must be an object of the fields this channel type accepts"},
+		{name: "a number", channelType: ChannelTypeEmail,
+			raw: `7`, wantErr: "must be an object of the fields this channel type accepts"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			config, err := ParseChannelConfig(test.channelType, []byte(test.raw))
@@ -279,4 +290,29 @@ func fieldsOf(t *testing.T, config ChannelConfig) map[string]string {
 		}
 	}
 	return fields
+}
+
+// The whole-value message names no Go type, and no message ever echoes a credential's contents: a
+// string mismatch is described as "string", never quoted.
+func TestParseChannelConfig_ErrorsNameNoInternalTypeAndNoSecret(t *testing.T) {
+	t.Parallel()
+
+	for _, raw := range []string{
+		`"EAAG-super-secret"`,
+		`{"phone_number_id":"1","access_token":["EAAG-super-secret"]}`,
+		`{"phone_number_id":"1","access_token":{"v":"EAAG-super-secret"}}`,
+	} {
+		_, err := ParseChannelConfig(ChannelTypeWhatsApp, []byte(raw))
+		if err == nil {
+			t.Fatalf("ParseChannelConfig(%s) = nil, want an error", raw)
+		}
+		if strings.Contains(err.Error(), "EAAG-super-secret") {
+			t.Errorf("ParseChannelConfig(%s) = %q, want the credential left out", raw, err)
+		}
+		for _, leak := range []string{"domain.", "WhatsAppChannelConfig", "EmailChannelConfig"} {
+			if strings.Contains(err.Error(), leak) {
+				t.Errorf("ParseChannelConfig(%s) = %q, want %q left out", raw, err, leak)
+			}
+		}
+	}
 }

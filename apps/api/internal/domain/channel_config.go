@@ -3,6 +3,7 @@ package domain
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -131,10 +132,22 @@ func isEmptyChannelConfig(raw []byte) bool {
 func decodeChannelConfig(raw []byte, out any) error {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(out); err != nil {
-		return channelConfigError("%s", strings.TrimPrefix(err.Error(), "json: "))
+	err := decoder.Decode(out)
+	if err == nil {
+		return nil
 	}
-	return nil
+	// Rewritten rather than passed through: encoding/json names the Go type it missed, which tells
+	// a caller nothing and puts an internal name in a response.
+	var typeErr *json.UnmarshalTypeError
+	if errors.As(err, &typeErr) {
+		if typeErr.Field == "" {
+			return channelConfigError("must be an object of the fields this channel type "+
+				"accepts, got %s", typeErr.Value)
+		}
+		return channelConfigError("%s must be a %s, got %s", typeErr.Field, typeErr.Type,
+			typeErr.Value)
+	}
+	return channelConfigError("%s", strings.TrimPrefix(err.Error(), "json: "))
 }
 
 // mapChannelSecrets maps every credential before writing any of them: one that failed halfway

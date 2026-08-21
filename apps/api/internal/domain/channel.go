@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 )
@@ -93,6 +94,12 @@ func ValidateChannelIdentifier(channelType ChannelType, identifier *string, conf
 				"%w: a configured %s channel needs its identifier, which is what its credentials "+
 					"belong to", ErrInvalidInput, channelType))
 		}
+	}
+	// A control character is never part of a number or a mailbox, and trimming only reaches the
+	// ends, so an embedded newline would otherwise be stored as part of the identifier.
+	if identifier != nil && strings.ContainsFunc(*identifier, unicode.IsControl) {
+		return WithCode(CodeChannelIdentifier, fmt.Errorf(
+			"%w: a channel identifier carries no control characters", ErrInvalidInput))
 	}
 	// A mailbox has one unambiguous format and a malformed one guarantees the connector fails. A
 	// phone number does not, so WHATSAPP's identifier is left to the provider to reject. The bare
