@@ -15,9 +15,12 @@ Everything it creates lands in one transaction:
 1. the `account`,
 2. its first `branch`,
 3. that branch's `MANUAL_ENTRY` channel,
-4. the administrator, with the password hashed.
+4. the administrator, with the password hashed,
+5. the account's resumable onboarding record.
 
 The response carries a token pair, so the caller has a session without a second round trip.
+Onboarding starts after email verification rather than extending this transaction into a longer
+registration wizard. See [onboarding.md](onboarding.md).
 
 **The administrator's address must be free across every account**, because login resolves a
 user by email alone and an address therefore has to identify exactly one row.

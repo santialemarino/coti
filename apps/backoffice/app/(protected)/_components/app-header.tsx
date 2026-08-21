@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { KeyRoundIcon, LogOutIcon } from 'lucide-react';
+import { KeyRoundIcon, LogOutIcon, SettingsIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 import {
@@ -20,6 +20,7 @@ import { ROUTES } from '@/config/routes';
 import { getBranches } from '@/lib/api/branches';
 import { getActiveBranchId } from '@/lib/auth/branch';
 import type { SessionUser } from '@/lib/auth/session';
+import { ADMIN_ROLE } from '@/lib/constants/auth';
 
 interface AppHeaderProps {
   session: SessionUser;
@@ -76,6 +77,14 @@ export async function AppHeader({ session }: AppHeaderProps) {
           <DropdownMenuContent className="min-w-52">
             <DropdownMenuLabel>{t(`roles.${session.role}`)}</DropdownMenuLabel>
             <DropdownMenuSeparator />
+            {session.role === ADMIN_ROLE ? (
+              <DropdownMenuItem asChild>
+                <Link href={ROUTES.accountSettings}>
+                  <SettingsIcon aria-hidden="true" />
+                  {t('nav.settings')}
+                </Link>
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuItem asChild>
               <Link href={ROUTES.changePassword}>
                 <KeyRoundIcon aria-hidden="true" />

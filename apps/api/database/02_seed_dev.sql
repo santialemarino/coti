@@ -11,6 +11,12 @@ INSERT INTO account (id, name, legal_name, tax_id, brand_color) VALUES
    'Corralón San Martín S.R.L.', '30-71234567-9', '#C2410C')
 ON CONFLICT (id) DO NOTHING;
 
+-- The long-lived development account predates onboarding and must never block an existing
+-- developer session. New registrations start IN_PROGRESS through AccountService instead.
+INSERT INTO account_onboarding (account_id, status, current_step) VALUES
+  ('a0000000-0000-4000-8000-000000000001', 'DISMISSED', 'WELCOME')
+ON CONFLICT (account_id) DO NOTHING;
+
 INSERT INTO branch (id, account_id, name, address, default_expiry_days) VALUES
   ('b0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001',
    'Villa Bosch', 'Av. Márquez 1520, Villa Bosch', 7),

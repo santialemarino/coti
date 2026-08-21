@@ -37,6 +37,9 @@ CREATE TYPE quote_status AS ENUM (
 
 CREATE TYPE user_role AS ENUM ('ADMIN', 'SELLER');
 
+CREATE TYPE onboarding_status AS ENUM ('IN_PROGRESS', 'COMPLETED', 'DISMISSED');
+CREATE TYPE onboarding_step_status AS ENUM ('COMPLETED', 'SKIPPED');
+
 -- Unmatched items are flagged, never discarded.
 CREATE TYPE item_match_status AS ENUM ('MATCHED', 'AMBIGUOUS', 'NO_MATCH');
 
@@ -114,6 +117,29 @@ CREATE TABLE account (
   is_active       BOOLEAN NOT NULL DEFAULT TRUE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE account_onboarding (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id     UUID NOT NULL,
+  flow_version   INTEGER NOT NULL DEFAULT 1 CHECK (flow_version > 0),
+  status         onboarding_status NOT NULL DEFAULT 'IN_PROGRESS',
+  current_step   VARCHAR(64) NOT NULL DEFAULT 'WELCOME',
+  completed_at   TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_account_onboarding_account UNIQUE (account_id)
+);
+
+CREATE TABLE onboarding_step_progress (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id     UUID NOT NULL,
+  onboarding_id  UUID NOT NULL,
+  step_key       VARCHAR(64) NOT NULL,
+  status         onboarding_step_status NOT NULL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_onboarding_step UNIQUE (onboarding_id, step_key)
 );
 
 CREATE TABLE branch (
@@ -715,6 +741,9 @@ CREATE TABLE job_run (
 -- =============================================================================
 
 ALTER TABLE branch ADD CONSTRAINT fk_branch_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE account_onboarding ADD CONSTRAINT fk_account_onboarding_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE onboarding_step_progress ADD CONSTRAINT fk_onboarding_step_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE onboarding_step_progress ADD CONSTRAINT fk_onboarding_step_onboarding FOREIGN KEY (onboarding_id) REFERENCES account_onboarding(id);
 ALTER TABLE app_user ADD CONSTRAINT fk_app_user_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE user_branch ADD CONSTRAINT fk_user_branch_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE user_branch ADD CONSTRAINT fk_user_branch_user FOREIGN KEY (user_id) REFERENCES app_user(id);
@@ -838,6 +867,7 @@ ALTER TABLE notification ADD CONSTRAINT fk_notification_quote FOREIGN KEY (quote
 -- CREATE INDEX idx_product_embedding ON product USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 CREATE INDEX idx_branch_account ON branch(account_id);
+CREATE INDEX idx_onboarding_step_account ON onboarding_step_progress(account_id);
 CREATE INDEX idx_app_user_account ON app_user(account_id);
 -- Login resolves a user by email alone, so an address identifies exactly one of them across
 -- every account. Functional, so case-insensitivity does not depend on the service lowercasing
@@ -909,6 +939,8 @@ CREATE INDEX idx_job_run_name_started ON job_run(job_name, started_at DESC);
 
 CREATE TRIGGER trg_account_updated        BEFORE UPDATE ON account        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_branch_updated         BEFORE UPDATE ON branch         FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_account_onboarding_updated BEFORE UPDATE ON account_onboarding FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_onboarding_step_updated BEFORE UPDATE ON onboarding_step_progress FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_app_user_updated       BEFORE UPDATE ON app_user       FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 -- product is the exception: updated_at says a person changed the row, and it is what
 -- embedding_updated_at is compared against, so a vector written by the backfill must not bump it.
@@ -981,6 +1013,7 @@ DO $$
 DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY[
+    'account_onboarding', 'onboarding_step_progress',
     'branch', 'app_user', 'user_branch', 'refresh_token', 'auth_token',
     'product', 'branch_product', 'product_synonym', 'product_price', 'product_alternative',
     'combo', 'combo_item', 'branch_combo',

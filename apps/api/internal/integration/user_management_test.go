@@ -164,6 +164,8 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 		repository.NewProductSynonymRepository(), repository.NewProductAlternativeRepository(), cfg.Catalog)
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo,
 		repository.NewBranchProductRepository(), repository.NewProductPriceRepository(), nil)
+	onboardingRepo := repository.NewOnboardingRepository()
+	onboardingService := services.NewOnboardingService(db, onboardingRepo)
 	// No provider is bound here, so the pipeline refuses on the call that needed a model rather
 	// than at startup — which is the behaviour the routes are meant to have with none.
 	catalogSearchService := services.NewCatalogSearchService(db, productRepo,
@@ -210,8 +212,9 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 			File:          handler.NewFileHandler(objectStorage.Local),
 			Quote:         handler.NewQuoteHandler(quoteService),
 			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
-				branchRepo, channelRepo, userRepo, authService, verificationService, quiet,
+				branchRepo, channelRepo, userRepo, onboardingRepo, authService, verificationService, quiet,
 				cfg.Auth, cfg.Branch)),
+			Onboarding: handler.NewOnboardingHandler(onboardingService),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
 		deliveryhttp.RateLimit{Limiter: limiter})
@@ -249,6 +252,8 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 
 	t.Cleanup(func() {
 		for _, stmt := range []string{
+			`DELETE FROM onboarding_step_progress WHERE account_id = $1`,
+			`DELETE FROM account_onboarding WHERE account_id = $1`,
 			`DELETE FROM user_branch WHERE account_id = $1`,
 			`DELETE FROM auth_token WHERE account_id = $1`,
 			`DELETE FROM notification WHERE account_id = $1`,

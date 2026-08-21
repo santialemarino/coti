@@ -42,6 +42,7 @@ type Handlers struct {
 	Account       *handler.AccountHandler
 	Prices        *handler.ProductPriceHandler
 	CatalogImport *handler.CatalogImportHandler
+	Onboarding    *handler.OnboardingHandler
 	// File is nil unless the local storage adapter is bound: a bucket serves its own links,
 	// and a route that answered for one would be serving objects the API does not hold.
 	File *handler.FileHandler
@@ -167,6 +168,13 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	account := authed.Group("/account")
 	account.GET("", h.Account.Get)
 	account.PUT("", middleware.RequireAdmin(), h.Account.Update)
+
+	onboarding := authed.Group("/onboarding", middleware.RequireAdmin())
+	onboarding.GET("", h.Onboarding.Get)
+	onboarding.PUT("", h.Onboarding.SaveProgress)
+	onboarding.POST("/complete", h.Onboarding.Complete)
+	onboarding.POST("/dismiss", h.Onboarding.Dismiss)
+	onboarding.POST("/resume", h.Onboarding.Resume)
 
 	// The branch switcher needs the list before it can send X-Branch-Id, so reading is not
 	// admin-only: the repository already narrows a seller to their assignments. Writing is.

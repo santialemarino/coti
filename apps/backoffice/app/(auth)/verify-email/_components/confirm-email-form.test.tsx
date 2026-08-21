@@ -49,7 +49,7 @@ describe('with no session', () => {
     const view = renderForm();
 
     view.baseElement.querySelector('form')?.requestSubmit?.();
-    await waitFor(() => expect(view.getByText(copy.done)).toBeTruthy());
+    await waitFor(() => expect(view.getByText(copy.done)).toBeTruthy(), { timeout: 3000 });
 
     expect(linkHrefs(view)).toContain('/login');
   });

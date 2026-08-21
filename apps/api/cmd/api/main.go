@@ -80,6 +80,7 @@ func run() error {
 	rfqAttachmentRepo := repository.NewRFQAttachmentRepository()
 	quoteRepo := repository.NewQuoteRepository()
 	accountRepo := repository.NewAccountRepository()
+	onboardingRepo := repository.NewOnboardingRepository()
 	channelRepo := repository.NewChannelRepository()
 	authTokenRepo := repository.NewAuthTokenRepository()
 	notificationRepo := repository.NewNotificationRepository()
@@ -125,7 +126,8 @@ func run() error {
 	userService := services.NewUserService(db, userRepo, userBranchRepo, branchRepo, cfg.Auth)
 	branchService := services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)
 	accountService := services.NewAccountService(db, accountRepo, branchRepo, channelRepo,
-		userRepo, authService, verificationService, log, cfg.Auth, cfg.Branch)
+		userRepo, onboardingRepo, authService, verificationService, log, cfg.Auth, cfg.Branch)
+	onboardingService := services.NewOnboardingService(db, onboardingRepo)
 	productService := services.NewProductService(db, productRepo, productSynonymRepo,
 		productAlternativeRepo, cfg.Catalog)
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo, branchProductRepo,
@@ -160,6 +162,7 @@ func run() error {
 			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
 			CatalogImport: handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
 			Account:       handler.NewAccountHandler(accountService),
+			Onboarding:    handler.NewOnboardingHandler(onboardingService),
 			File:          fileHandler(objectStorage),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
