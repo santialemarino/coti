@@ -16,6 +16,7 @@ session, gates its routes and renews the token is in
 | `POST`   | `/v1/public/auth/verify-email`        | no (the link is the credential)          |
 | `POST`   | `/v1/public/auth/resend-verification` | no                                       |
 | `POST`   | `/v1/auth/logout`                     | yes                                      |
+| `POST`   | `/v1/auth/change-email`               | yes                                      |
 | `POST`   | `/v1/auth/change-password`            | yes                                      |
 | `GET`    | `/v1/branches`                        | yes                                      |
 | `GET`    | `/v1/users`                           | yes, admin                               |
@@ -160,10 +161,11 @@ Registration mails a single-use confirmation link and records the send; confirmi
 differs only in the token type, the lifetime (`AUTH_EMAIL_VERIFICATION_TTL_HOURS`, 48) and
 the route the link lands on.
 
-- **Requiring it to log in is a flag that starts off** (`AUTH_REQUIRE_VERIFIED_EMAIL`).
-  `config.Load` **refuses to turn it on while `MAIL_PROVIDER` is `console`**: a transport that
-  only writes to a log cannot deliver the link anyone would need, so enforcing it would lock
-  every user out of the environment. Under `smtp` the flag is free to be turned on — see
+- **Requiring it is a flag that starts off** (`AUTH_REQUIRE_VERIFIED_EMAIL`). `config.Load`
+  **refuses to turn it on while `MAIL_PROVIDER` is `console`**: a transport that only writes to a
+  log cannot deliver the link anyone would need, so enforcing it would lock every user out of the
+  environment. That is also why `false` is the default rather than a soft start — under `console`
+  it is the only value that boots. Under `smtp` the flag is free to be turned on — see
   [Outbound email](./outbound-email.md).
 - **An admin-created user is verified on creation, in the same transaction.** No path mails
   them a link — only public registration does — so without this they would carry a null
@@ -174,26 +176,29 @@ the route the link lands on.
   nothing. Mailing a link instead would make a mistyped address a permanent lockout rather than
   a recoverable one that surfaces at password recovery.
 - **Changing the address drops the confirmation.** The stamp proved one mailbox reachable and
-  says nothing about the next, so `UserRepository.Update` nulls `email_verified_at` whenever the
-  address actually changes — compared folded, like the unique index, so a change of case alone
-  is not a change. Without it an account could be pointed at a mailbox nobody proved while still
-  reading as verified, which is the one thing this flag exists to prevent. A user whose address
-  was corrected asks for a new link from `/verify-email`; the address is registered and
-  unconfirmed, so the resend genuinely sends.
+  says nothing about the next, so both write paths null `email_verified_at`: `UserRepository.Update`
+  whenever an admin edit actually changes the address — compared folded, like the unique index, so
+  a change of case alone is not a change — and `UpdateEmail` unconditionally, because the
+  self-service route below refuses an address that is not a change before it gets there. Without
+  this an account could be pointed at a mailbox nobody proved while still reading as verified,
+  which is the one thing this flag exists to prevent.
 - **`GET /v1/me` reports `email_verified`**, which is what lets a screen tell "confirm your
   address" from "already done" instead of guessing.
-- **Enforced at login only** — not on refresh, not on tenant resolution. Registration hands out a
-  session on purpose, so the new admin can reach the screen that explains the mail. It bites
-  because registration issues a **non-remembered** pair: the session dies within
-  `AUTH_REFRESH_TTL_HOURS` (12h) and the next login is refused until the address is confirmed.
-  **This is the shape today, and it is agreed to change.** Refusing at the door leaves someone who
-  mistyped their address at signup with no way back once that window closes. The agreed model
-  enforces on **use** instead — authenticate normally, then reach nothing but your own identity,
-  logout and a correction of your own address until you confirm. Not built yet.
-- **When it is on, the caller is told why** — a 403 naming the reason, unlike every other
-  rejection here. That is safe because it is only reachable _after_ the password matched:
-  the check sits below the credential comparison, so it can never answer for someone who
-  does not already hold the password.
+- **Enforced on use, not at the door.** Login does not look at the flag: issuing a session is not
+  using the product, and refusing at the door left whoever mistyped their address at signup with a
+  session that expired and no screen to correct it from. Instead the flag rides `Tenant`, and
+  `RequireVerifiedEmail` guards the authenticated group — see
+  [Middleware order](#middleware-order) for what stays open.
+- **Refresh does not look at it either.** Without renewal the session dies inside
+  `AUTH_REFRESH_TTL_HOURS` and the lock-in returns through another door, so a renewed token is
+  simply another unconfirmed one: the closed routes refuse it exactly as they refused its
+  predecessor.
+- **Confirming restores everything with no further step.** `ResolveTenant` reads the column on
+  every request, so the write the link performs is the whole of it: no epoch bump, no token
+  revocation, and the very next call with the same bearer is allowed through.
+- **The caller is told why** — a 403 naming the reason, unlike every other rejection here. That is
+  safe because it is only reachable with a live session: whoever sees it already authenticated, and
+  they cannot get past it without being told what to do.
 - **Confirming an already-verified address succeeds.** A user clicking the link twice has no
   way to tell the two clicks apart, so the second is not an error and does not move the
   timestamp.
@@ -205,19 +210,44 @@ is only prevented by _requiring_ verification, or by expiring unverified registr
 needs the scheduled-job runtime. The transport that requirement waited on now exists, so closing
 it is the configuration change the flow was built for.
 
+### Changing your own address
+
+`POST /v1/auth/change-email` is what makes the requirement survivable: without it, correcting a
+typo would go through user administration, which is on the closed side of the gate, and the person
+this exists to rescue stays shut in.
+
+- **The current password is the proof of identity**, compared outside the transaction the way
+  `change-password` does it. A wrong one is a 401.
+- **It does not end the caller's sessions**, unlike a password change. The credential has not
+  moved, so revoking would deny an attacker nothing they could not redo by logging in with the
+  password they already used to reach this route — and it would sign the caller out of their other
+  devices in the middle of fixing a typo. The account is behind the 403 wall again either way,
+  since the change drops the confirmation.
+- **It retires any outstanding recovery link**, which is the one thing revocation would have
+  covered: a `PASSWORD_RESET` token already mailed to the old address stays redeemable, and after
+  the write that mailbox belongs to somebody else.
+- **The old address is told.** A silent change is how a takeover goes unnoticed, and the previous
+  mailbox is the only place it can surface, so it receives a `EMAIL_CHANGED` notification naming
+  the address that replaced it. It carries no link. A failed delivery does not fail the change —
+  the address has already moved and there is nothing to undo.
+- **A conflict is a 409 with `EMAIL_TAKEN`, the caller's own address included.** The remedy is the
+  same either way, and answering differently would report whether a stranger holds the address.
+- It carries the **`mail` allowance**: it sends to an address the caller names, which is the
+  surface `forgot-password` and `resend-verification` are bounded on for the same reason.
+
 ## Rate limits
 
 A global allowance over all of `/v1`, plus tighter ones on the surfaces a stranger can use to
 flood the database or someone's mailbox, and on the ones a **provider bills per call**. It sits
 **ahead of `Authenticate`**, so a flood is refused before it costs a query.
 
-| Scope         | Setting                      | Routes                                            |
-| ------------- | ---------------------------- | ------------------------------------------------- |
-| `global`      | `RATE_LIMIT_GLOBAL_MAX`      | all of `/v1`                                      |
-| `credentials` | `RATE_LIMIT_CREDENTIALS_MAX` | login, reset-password, verify-email               |
-| `signup`      | `RATE_LIMIT_SIGNUP_MAX`      | public account registration                       |
-| `mail`        | `RATE_LIMIT_MAIL_MAX`        | forgot-password, resend-verification, admin reset |
-| `ai`          | `RATE_LIMIT_AI_MAX`          | the RFQ text draft and the development intake     |
+| Scope         | Setting                      | Routes                                                          |
+| ------------- | ---------------------------- | --------------------------------------------------------------- |
+| `global`      | `RATE_LIMIT_GLOBAL_MAX`      | all of `/v1`                                                    |
+| `credentials` | `RATE_LIMIT_CREDENTIALS_MAX` | login, reset-password, verify-email                             |
+| `signup`      | `RATE_LIMIT_SIGNUP_MAX`      | public account registration                                     |
+| `mail`        | `RATE_LIMIT_MAIL_MAX`        | forgot-password, resend-verification, change-email, admin reset |
+| `ai`          | `RATE_LIMIT_AI_MAX`          | the RFQ text draft and the development intake                   |
 
 Refresh is deliberately left on the global allowance alone: the backoffice renews on a
 schedule the user does not control, and a tighter limit there would log people out.
@@ -233,6 +263,12 @@ what a mailbox receives: a sender coming from many addresses stays inside its ow
 each of them while one victim's inbox fills up. So `forgot-password` and `resend-verification`
 carry a second counter keyed on the **target address**, and both have to pass before anything
 is sent.
+
+`change-email` deliberately carries only the caller-keyed one. Its per-address cap would have to
+answer with the same 202-and-send-nothing the two public routes use, and this route reports whether
+the write happened — so a silent refusal would tell the caller their address changed when it did
+not. What bounds it instead is that a change writes the address to the caller's own row: reaching
+the same mailbox twice means moving away from it and back, which costs two caller allowances.
 
 | Setting                           | Key                    | Reach                             |
 | --------------------------------- | ---------------------- | --------------------------------- |
@@ -290,7 +326,23 @@ caller probing the API how its allowances are laid out.
    unauthenticated rather than being rejected, so a public route can still see who is calling
    when they happen to be logged in.
 2. `RequireTenant` guards the authenticated group and returns 401 when there is no tenant.
-3. `RequireAdmin` goes after `RequireTenant` on admin routes.
+3. `RequireVerifiedEmail` goes next, and answers **403** with `EMAIL_NOT_VERIFIED` when
+   `AUTH_REQUIRE_VERIFIED_EMAIL` is on and the caller's address is unconfirmed. It takes the
+   setting rather than being mounted conditionally, so the route tree is one shape whichever way
+   the flag is set.
+4. `RequireAdmin` goes after those on admin routes.
+
+**Three routes sit above the confirmed-address gate**, because they are the only way out of being
+unconfirmed and closing them is what would trap someone:
+
+| Route                        | Why it stays open                            |
+| ---------------------------- | -------------------------------------------- |
+| `GET /v1/me`                 | the screen has to know whose address it is   |
+| `POST /v1/auth/logout`       | ending a session is never worth blocking     |
+| `POST /v1/auth/change-email` | correcting the address is the way out itself |
+
+Everything else under `/v1` that resolves a tenant is closed. The exception is the signed file
+link, which carries its whole authorization in the URL and resolves no tenant at all.
 
 ## User administration
 

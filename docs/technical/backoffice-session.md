@@ -93,6 +93,13 @@ which the API's `AUTH_REFRESH_REUSE_GRACE_SECONDS` window absorbs.
 is not a duplicate of the proxy's check — the proxy knows only that a token exists and has
 not expired, while this asks the API whether the session is still good.
 
+**The confirmed-address check lives here too, and it goes first.** The proxy cannot make this
+decision at all: it reads the token and never calls the API, so it has no way to know whether an
+address is confirmed. Order matters within the layout as well — the onboarding read that follows is
+itself a closed route, and it does not catch, so asking it before the address would answer 403 and
+throw out of the layout, handing the caller an error boundary where the confirmation screen
+belonged. Registration creates an admin with an unconfirmed address, so that is the common path.
+
 It redirects to **`/session-ended`**, a route handler, rather than straight to the login screen.
 A layout cannot write cookies, so redirecting with the dead cookies still set would have
 the proxy bounce the caller back to a page that rejects them, forever. The route handler
@@ -215,9 +222,26 @@ common way to reach it is already logged in. **That session is also what tells t
 states apart** — signed in means they just registered and the mail is on its way, signed out means
 the link they followed is broken. Both offer the resend form.
 
-Login maps the API's 403 to its own message, which is the one rejection here that says why. It
-is only reachable once the password matched, so it tells the caller nothing they could not
-already establish — and they cannot get past it without being told.
+**A caller with a session is also offered the correction**, below the resend form: this is where
+the protected layout sends an unconfirmed caller, so it is where the way out has to be. It needs
+the session because the route behind it authenticates, and it is deliberately not offered once the
+address is confirmed — `/settings/email` is where that belongs.
+
+## Changing your own address
+
+`ChangeEmailForm` is one component on two surfaces: the confirmation screen above, and
+`/settings/email` for a caller who already confirmed. Both post through the same server action in
+`lib/auth/change-email.ts`, which is in `lib/` rather than beside a page precisely because neither
+surface owns it — and because the escape hatch must not depend on a module under `(protected)`.
+
+- **It opens no session.** The API answers 204 and revokes nothing, so unlike `change-password`
+  there is no pair to persist.
+- **It refreshes the route instead.** The address it just wrote is confirmed nowhere, so where the
+  caller belongs has changed: from settings the protected layout now bounces them to the
+  confirmation screen, and on that screen the re-render names the new address. Without the refresh
+  they would sit looking at the address they replaced.
+- **A 401 is disambiguated the way `change-password` does it** — the route answers it for a wrong
+  current password and for a bearer the API no longer honours, and only re-asking tells them apart.
 
 ## `?next=` is resolved, not string-matched
 
