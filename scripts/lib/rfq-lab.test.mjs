@@ -1,0 +1,86 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { describe, it } from 'node:test';
+
+import {
+  listReports,
+  loadCustomCases,
+  RFQ_TEST_TYPES,
+  saveCustomCase,
+  validateCustomCase,
+} from './rfq-lab.mjs';
+
+describe('rfq-lab.mjs', () => {
+  it('publishes AI and deterministic test surfaces explicitly', () => {
+    assert.equal(
+      RFQ_TEST_TYPES.some((entry) => entry.uses_ai),
+      true,
+    );
+    assert.equal(
+      RFQ_TEST_TYPES.some((entry) => !entry.uses_ai),
+      true,
+    );
+    assert.equal(
+      RFQ_TEST_TYPES.filter((entry) => entry.uses_ai).every((entry) => entry.providers.length > 0),
+      true,
+    );
+  });
+
+  it('builds observable expectations for a custom WhatsApp case', () => {
+    const entry = validateCustomCase({
+      name: 'Pedido cemento',
+      message: 'Necesito 10 bolsas de cemento',
+      item_count: 1,
+      first_description_contains: 'cemento',
+      first_quantity: '10',
+      first_match_status: 'MATCHED',
+    });
+
+    assert.match(entry.id, /^custom-pedido-cemento-/);
+    assert.deepEqual(entry.expected.items, [
+      {
+        description_contains: 'cemento',
+        quantity: '10.00',
+        match_status: 'MATCHED',
+        rationale_present: true,
+      },
+    ]);
+  });
+
+  it('refuses invalid custom expectations', () => {
+    assert.throws(
+      () => validateCustomCase({ name: 'Bad', message: 'abc', item_count: 51 }),
+      /item_count/,
+    );
+    assert.throws(
+      () =>
+        validateCustomCase({
+          name: 'Bad quantity',
+          message: 'cemento',
+          first_quantity: 'ten',
+        }),
+      /first_quantity/,
+    );
+  });
+
+  it('persists custom cases and indexes valid reports', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'coti-rfq-lab-'));
+    const saved = saveCustomCase(directory, {
+      name: 'Arena',
+      message: 'Necesito 2 m3 de arena',
+    });
+    fs.writeFileSync(
+      path.join(directory, 'run.json'),
+      JSON.stringify({
+        started_at: '2026-08-21T20:00:00.000Z',
+        summary: { total: 1, passed: 1, failed: 0 },
+        results: [{}],
+      }),
+    );
+
+    assert.equal(loadCustomCases(directory)[0].id, saved.id);
+    assert.deepEqual(listReports(directory)[0].summary, { total: 1, passed: 1, failed: 0 });
+  });
+});

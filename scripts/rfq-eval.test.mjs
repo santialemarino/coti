@@ -4,7 +4,14 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { evaluateDraft, evaluatePricing, parseArgs, validateCases } from './rfq-eval.mjs';
+import {
+  createTraceRecorder,
+  evaluateDraft,
+  evaluateDraftChecks,
+  evaluatePricing,
+  parseArgs,
+  validateCases,
+} from './rfq-eval.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -91,9 +98,10 @@ describe('rfq-eval.mjs', () => {
 
   it('parses flags and prints help without contacting the API', () => {
     assert.deepEqual(
-      parseArgs(['--price', '--verbose', '--branch', 'branch-id', '--case', 'explicit']),
+      parseArgs(['--price', '--trace', '--verbose', '--branch', 'branch-id', '--case', 'explicit']),
       {
         price: true,
+        trace: true,
         verbose: true,
         branchID: 'branch-id',
         caseID: 'explicit',
@@ -106,5 +114,31 @@ describe('rfq-eval.mjs', () => {
     });
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Usage: pnpm eval:rfq/);
+  });
+
+  it('identifies the pipeline stage responsible for a failed assertion', () => {
+    const checks = evaluateDraftChecks(
+      { item_count: 1, items: [{ quantity: '10.00', match_status: 'MATCHED' }] },
+      201,
+      { items: [{ quantity: '5.00', match_status: 'NO_MATCH' }] },
+    );
+
+    assert.deepEqual(
+      checks.map((check) => check.stage),
+      ['ai_extraction', 'catalog_matching'],
+    );
+  });
+
+  it('records running and completed trace events without requiring terminal output', () => {
+    const lines = [];
+    const trace = createTraceRecorder({ enabled: true, write: (line) => lines.push(line) });
+    const finish = trace.start('ai_extraction', 'AI extraction', 'Waiting');
+    finish('FAILED', 'Provider timeout', { request_id: 'request-123' });
+
+    assert.equal(trace.events.length, 1);
+    assert.equal(trace.events[0].status, 'FAILED');
+    assert.equal(trace.events[0].request_id, 'request-123');
+    assert.match(lines.join('\n'), /RUN/);
+    assert.match(lines.join('\n'), /FAIL/);
   });
 });

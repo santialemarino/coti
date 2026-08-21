@@ -323,3 +323,34 @@ draft. `pnpm report:rfq` rebuilds the HTML from the latest JSON without contacti
 The runner reads its connection settings from `RFQ_EVAL_*` variables and has defaults for the
 development seed. A bearer token can be supplied as `RFQ_EVAL_TOKEN`; otherwise it logs in with
 `RFQ_EVAL_EMAIL` and `RFQ_EVAL_PASSWORD`. Run `pnpm eval:rfq --help` for the full option list.
+
+### Live trace and debugging
+
+`pnpm debug:rfq` runs the complete live suite with `--trace` against the development API on port
+`8001`; `pnpm debug:rfq:case` limits it to `explicit-quantity` for breakpoint work. The trace
+separates API readiness, authentication, WhatsApp ingestion, RFQ persistence, model extraction,
+catalog matching, draft persistence, deterministic pricing, and expected-response assertions. A
+failed assertion is assigned to the stage whose observable contract diverged. Each HTTP response
+stores its `X-Request-Id`, so the report can be correlated with the API request log.
+
+`pnpm serve:rfq` serves an interactive QA Lab at http://localhost:4173 using only the Node standard
+library. Its fixed registry exposes unit surfaces for extraction, RFQ orchestration, matching,
+pricing and the HTTP contract; a PostgreSQL-backed integration surface; and live WhatsApp custom
+or suite evaluations. The browser can select only those registered commands and same-origin POSTs
+are enforced, so the local server is not an arbitrary command runner.
+
+Custom WhatsApp cases are validated and stored under ignored `.artifacts/rfq-eval/` data. They can
+declare expected RFQ/quote status, line count, first-line description, quantity, unit and match
+status. A live run displays its providers and requires an explicit confirmation before the server
+starts it. Deterministic surfaces state that they consume no provider. The Lab polls each run for
+stdout/stderr, status and its eventual detailed report link. `/latest` opens the newest report,
+whose **Trazabilidad** tab shows setup and case events, durations, failure details and request ids.
+Serving, browsing or rebuilding a report never contacts an AI provider.
+
+The committed VS Code launch configuration provides **RFQ START HERE: API + ALL TESTS** for the
+complete dashboard and **RFQ DEBUG: API + ONE CASE** for focused breakpoint work. Their test-only
+child configurations are hidden because they require an API that is already running. After the Go
+extension is installed, reload the VS Code window once so its debug adapter is registered. Each
+compound starts the API under Delve and runs the evaluator after its health endpoint becomes
+available, allowing Go breakpoints inside extraction, matching, and persistence while the client
+timeline remains visible.

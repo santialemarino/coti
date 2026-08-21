@@ -91,20 +91,23 @@ docker compose up -d mailpit   # included in pnpm dev:docker
 
 ## Common scripts
 
-| Command                           | What it does                                 |
-| --------------------------------- | -------------------------------------------- |
-| `pnpm dev`                        | Build `@repo/ui`, then run all apps (Turbo)  |
-| `pnpm build`                      | Build all apps and packages                  |
-| `pnpm lint`                       | Lint all workspaces                          |
-| `pnpm check`                      | Type-check the API and web apps              |
-| `pnpm dev:docker`                 | Bring up the full stack via docker-compose   |
-| `pnpm db:migrate`                 | Apply Go (goose) migrations                  |
-| `pnpm db:create-migration <name>` | Scaffold a new migration                     |
-| `pnpm db:vector-index`            | Build the catalog's vector index             |
-| `pnpm docs:api`                   | Regenerate the OpenAPI spec from handlers    |
-| `pnpm test:rfq`                   | Run the RFQ engine unit suite verbosely      |
-| `pnpm test:rfq:response`          | Print one representative RFQ JSON response   |
-| `pnpm eval:rfq`                   | Evaluate live RFQs through the WhatsApp mock |
+| Command                           | What it does                                  |
+| --------------------------------- | --------------------------------------------- |
+| `pnpm dev`                        | Build `@repo/ui`, then run all apps (Turbo)   |
+| `pnpm build`                      | Build all apps and packages                   |
+| `pnpm lint`                       | Lint all workspaces                           |
+| `pnpm check`                      | Type-check the API and web apps               |
+| `pnpm dev:docker`                 | Bring up the full stack via docker-compose    |
+| `pnpm db:migrate`                 | Apply Go (goose) migrations                   |
+| `pnpm db:create-migration <name>` | Scaffold a new migration                      |
+| `pnpm db:vector-index`            | Build the catalog's vector index              |
+| `pnpm docs:api`                   | Regenerate the OpenAPI spec from handlers     |
+| `pnpm test:rfq`                   | Run the RFQ engine unit suite verbosely       |
+| `pnpm test:rfq:response`          | Print one representative RFQ JSON response    |
+| `pnpm eval:rfq`                   | Evaluate live RFQs through the WhatsApp mock  |
+| `pnpm debug:rfq`                  | Trace the complete live RFQ suite             |
+| `pnpm debug:rfq:case`             | Trace one live RFQ case stage by stage        |
+| `pnpm serve:rfq`                  | Serve the interactive RFQ QA Lab on port 4173 |
 
 ### RFQ engine tests
 
@@ -135,6 +138,9 @@ pnpm db:seed
 pnpm eval:rfq
 pnpm eval:rfq --verbose
 pnpm report:rfq
+pnpm debug:rfq
+pnpm debug:rfq:case
+pnpm serve:rfq
 ```
 
 Use `pnpm eval:rfq --case explicit-quantity` to repeat one scenario, or `--help` for API URL,
@@ -142,6 +148,27 @@ branch, channel, cases, report, and pricing options. The
 default cases live in `scripts/fixtures/rfq-eval-cases.json`; add a case there when a model failure
 is reproducible and has an observable expected result. `pnpm report:rfq` rebuilds the dashboard
 from the latest JSON without calling either AI provider again.
+
+`pnpm debug:rfq` waits for the development API on port `8001`, runs every versioned case, and
+prints a colored timeline for API health, authentication, RFQ reception, AI extraction, catalog
+matching, draft persistence, pricing, and contract assertions. `pnpm debug:rfq:case` limits the
+same run to `explicit-quantity` for focused breakpoint work. Every HTTP step carries a request id
+that also appears in the API log. The same timeline is stored in the JSON report and exposed by the
+dashboard's **Trazabilidad** tab. Start `pnpm serve:rfq` and open http://localhost:4173 for the QA
+Lab. From there a developer can select a deterministic component test, run the database-backed
+pipeline, create a custom WhatsApp case with observable expectations, or launch a live evaluation.
+Live runs show an explicit Anthropic/OpenAI consumption warning and require confirmation. The Lab
+streams command output, keeps recent reports, and links to each detailed trace; `/latest` opens the
+newest one directly. The server uses Node's standard library and does not require Python.
+
+After installing or updating the Go extension, reload the VS Code window once. Then select **RFQ
+START HERE: API + ALL TESTS** under **Run and Debug** to generate the complete dashboard. Use **RFQ
+DEBUG: API + ONE CASE** for focused breakpoint work. Both start the Go API under Delve on port
+`8001`; their test-only child configurations are hidden because they require an API that is already
+running. Breakpoints in
+`apps/api/internal/services/rfq_service.go`, `apps/api/internal/ai/rfq_extractor.go`, and
+`apps/api/internal/services/catalog_match_service.go` stop the request inside the corresponding
+pipeline stage.
 
 ## API specification
 

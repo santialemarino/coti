@@ -113,6 +113,17 @@ export function renderRFQDashboard(report, definitions = []) {
     pre { max-height: 560px; overflow: auto; margin: 0; padding: 16px; border-radius: 6px; background: var(--code); color: var(--code-text); font: 12px/1.55 "Cascadia Code", "SFMono-Regular", Consolas, monospace; tab-size: 2; white-space: pre; }
     .http-block + .http-block { margin-top: 18px; }
     .http-status { display: inline-block; padding: 3px 6px; border-radius: 3px; background: var(--warning-soft); color: var(--warning); font-size: 11px; font-weight: 800; }
+    .trace-group { margin: 0 0 10px; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+    .trace-group:not(:first-child) { margin-top: 22px; }
+    .trace-row { display: grid; min-height: 72px; grid-template-columns: 18px minmax(0, 1fr) auto; padding: 10px 0; gap: 12px; border-bottom: 1px solid var(--line); }
+    .trace-marker { width: 12px; height: 12px; margin-top: 3px; border: 3px solid var(--muted); border-radius: 50%; background: var(--surface); }
+    .trace-marker.PASSED { border-color: var(--pass); background: var(--pass-soft); }
+    .trace-marker.FAILED { border-color: var(--fail); background: var(--fail-soft); }
+    .trace-marker.SKIPPED { border-color: var(--warning); background: var(--warning-soft); }
+    .trace-label { font-size: 13px; font-weight: 750; }
+    .trace-detail { margin-top: 5px; overflow-wrap: anywhere; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .trace-request { margin-top: 5px; color: var(--accent); font: 11px/1.4 "Cascadia Code", Consolas, monospace; }
+    .trace-time { color: var(--muted); font-size: 11px; white-space: nowrap; }
     @media (max-width: 900px) {
       .summary { grid-template-columns: repeat(2, 1fr); }
       .metric:nth-child(2) { border-right: 0; }
@@ -172,6 +183,7 @@ export function renderRFQDashboard(report, definitions = []) {
         <div class="failure-box" id="failure-box"><h3>Validaciones que fallaron</h3><ul id="failure-list"></ul></div>
         <div class="tabs" role="tablist">
           <button class="tab" role="tab" data-tab="overview" aria-selected="true">Resumen</button>
+          <button class="tab" role="tab" data-tab="trace" aria-selected="false">Trazabilidad</button>
           <button class="tab" role="tab" data-tab="expected" aria-selected="false">Qué se valida</button>
           <button class="tab" role="tab" data-tab="response" aria-selected="false">Respuesta</button>
           <button class="tab" role="tab" data-tab="code" aria-selected="false">Código del caso</button>
@@ -180,6 +192,7 @@ export function renderRFQDashboard(report, definitions = []) {
           <div class="section"><h3>Mensaje recibido por WhatsApp</h3><p class="message" id="case-message"></p></div>
           <div class="section"><h3>Ítems extraídos</h3><div id="items-view"></div></div>
         </section>
+        <section class="panel" data-panel="trace"><div id="trace-view"></div></section>
         <section class="panel" data-panel="expected"><div class="code-label"><span>Expectativas declaradas</span></div><pre id="expected-code"></pre></section>
         <section class="panel" data-panel="response"><div id="response-view"></div></section>
         <section class="panel" data-panel="code"><div class="code-label"><span id="source-path"></span><span>JSON</span></div><pre id="case-code"></pre></section>
@@ -275,12 +288,58 @@ export function renderRFQDashboard(report, definitions = []) {
       name.textContent = title;
       const status = document.createElement('span');
       status.className = 'http-status';
-      status.textContent = response ? 'HTTP ' + response.status : 'No ejecutado';
+      status.textContent = response ? 'HTTP ' + response.status + (response.request_id ? ' · ' + response.request_id : '') : 'No ejecutado';
       label.append(name, status);
       const code = document.createElement('pre');
       code.textContent = formatJSON(response?.body ?? null);
       block.append(label, code);
       return block;
+    }
+
+    function appendTraceGroup(root, title, events) {
+      if (!events.length) return;
+      const heading = document.createElement('h3');
+      heading.className = 'trace-group';
+      heading.textContent = title;
+      root.append(heading);
+      events.forEach(event => {
+        const row = document.createElement('div');
+        row.className = 'trace-row';
+        const marker = document.createElement('span');
+        marker.className = 'trace-marker ' + event.status;
+        const content = document.createElement('div');
+        const label = document.createElement('div');
+        label.className = 'trace-label';
+        label.textContent = event.label;
+        const detail = document.createElement('div');
+        detail.className = 'trace-detail';
+        detail.textContent = event.detail || event.stage;
+        content.append(label, detail);
+        if (event.request_id) {
+          const request = document.createElement('div');
+          request.className = 'trace-request';
+          request.textContent = 'request_id: ' + event.request_id;
+          content.append(request);
+        }
+        const duration = document.createElement('div');
+        duration.className = 'trace-time';
+        duration.textContent = event.duration_ms ? event.duration_ms + ' ms' : event.status;
+        row.append(marker, content, duration);
+        root.append(row);
+      });
+    }
+
+    function renderTrace(result) {
+      const root = $('#trace-view');
+      root.replaceChildren();
+      appendTraceGroup(root, 'Preparación', report.setup_trace || []);
+      appendTraceGroup(root, 'Ejecución del caso', result.trace || []);
+      if (!(report.setup_trace || []).length && !(result.trace || []).length) {
+        const empty = document.createElement('div');
+        empty.className = 'empty';
+        empty.textContent = 'Este reporte se generó sin --trace. Ejecutá pnpm debug:rfq para ver cada etapa.';
+        root.append(empty);
+      }
     }
 
     function renderDetail() {
@@ -299,6 +358,7 @@ export function renderRFQDashboard(report, definitions = []) {
       $('#case-quote').textContent = result.pricing?.body?.quote?.current_status ?? result.draft?.body?.quote?.current_status ?? 'Sin cotización';
       $('#case-message').textContent = result.message;
       renderItems(items);
+      renderTrace(result);
 
       const failureBox = $('#failure-box');
       const failureList = $('#failure-list');

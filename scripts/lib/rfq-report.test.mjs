@@ -23,6 +23,17 @@ const report = {
       passed: true,
       duration_ms: 1200,
       failures: [],
+      failure_stage: null,
+      trace: [
+        {
+          stage: 'whatsapp_endpoint',
+          label: 'POST /v1/dev/whatsapp/messages',
+          status: 'PASSED',
+          duration_ms: 1100,
+          detail: 'HTTP 201',
+          request_id: 'request-123',
+        },
+      ],
       draft: {
         status: 201,
         body: {
@@ -51,6 +62,8 @@ describe('rfq-report.mjs', () => {
     assert.match(html, /Reporte QA del motor RFQ/);
     assert.match(html, /Qué se valida/);
     assert.match(html, /Respuesta/);
+    assert.match(html, /Trazabilidad/);
+    assert.match(html, /request_id/);
     assert.match(html, /Código del caso/);
     assert.doesNotMatch(html, /10 bolsas de cemento/);
     const encoded = html.match(/atob\('([^']+)'\)/)?.[1];
