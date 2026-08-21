@@ -75,6 +75,13 @@ func (f *fakePasswordUsers) BumpSessionEpoch(context.Context, repository.Querier
 	return f.user.SessionEpoch + f.epochBumped, nil
 }
 
+// invalidatedLink records which kind of outstanding link was retired for whom, because an
+// address change retires a type the caller did not ask about.
+type invalidatedLink struct {
+	userID    uuid.UUID
+	tokenType domain.AuthTokenType
+}
+
 type fakeAuthTokens struct {
 	stored       *domain.AuthToken
 	created      []domain.AuthToken
@@ -106,13 +113,6 @@ func (f *fakeAuthTokens) Consume(_ context.Context, _ repository.Querier, _, id 
 	}
 	f.consumed = append(f.consumed, id)
 	return nil
-}
-
-// invalidatedLink records which kind of outstanding link was retired for whom, because an
-// address change retires a type the caller did not ask about.
-type invalidatedLink struct {
-	userID    uuid.UUID
-	tokenType domain.AuthTokenType
 }
 
 func (f *fakeAuthTokens) InvalidateActive(

@@ -748,10 +748,12 @@ func TestRefresh_DeactivatedAccountIsRefused(t *testing.T) {
 	}
 }
 
-// Issuing a session is not using the product: the requirement is charged on the closed routes,
-// so an unconfirmed address always gets in and always reaches the screen that explains the mail.
-// Refusing here is what left whoever mistyped their address at signup with no way back.
-func TestLogin_UnverifiedEmailIsNotRefusedEvenWithTheRequirementOn(t *testing.T) {
+/*
+ * Issuing a session is not using the product: the requirement is charged on the closed routes, so
+ * an unconfirmed address always gets in and reaches the screen that explains the mail. Refusing
+ * here is what left whoever mistyped their address at signup with no way back.
+ */
+func TestLogin_TheVerifiedAddressRequirementDoesNotReachLogin(t *testing.T) {
 	for _, requirement := range []bool{false, true} {
 		h := newHarness(t, activeUser(t))
 		h.svc.cfg.RequireVerifiedEmail = requirement
@@ -761,6 +763,15 @@ func TestLogin_UnverifiedEmailIsNotRefusedEvenWithTheRequirementOn(t *testing.T)
 		}); err != nil {
 			t.Fatalf("Login() unverified with the requirement %v = %v, want no error",
 				requirement, err)
+		}
+
+		// And a wrong password answers the same either way, so the flag cannot be read off login.
+		_, err := h.svc.Login(context.Background(), domain.Credentials{
+			Email: "vendedor@corralon.test", Password: "not-the-password",
+		})
+		if !errors.Is(err, domain.ErrUnauthenticated) {
+			t.Fatalf("Login() with a wrong password and the requirement %v = %v, want %v",
+				requirement, err, domain.ErrUnauthenticated)
 		}
 	}
 }
