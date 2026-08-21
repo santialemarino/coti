@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { writeRFQDashboard } from './lib/rfq-report.mjs';
+
 const ROOT = process.cwd();
 const DEFAULT_CASES = path.join(ROOT, 'scripts', 'fixtures', 'rfq-eval-cases.json');
 const DEFAULT_API_URL = 'http://127.0.0.1:8000';
@@ -301,6 +303,7 @@ async function runCase(entry, cfg, token) {
       id: entry.id,
       description: entry.description,
       message: entry.message,
+      definition: entry,
       passed: failures.length === 0,
       duration_ms: Math.round(performance.now() - started),
       failures,
@@ -312,6 +315,7 @@ async function runCase(entry, cfg, token) {
       id: entry.id,
       description: entry.description,
       message: entry.message,
+      definition: entry,
       passed: false,
       duration_ms: Math.round(performance.now() - started),
       failures: [error instanceof Error ? error.message : String(error)],
@@ -369,9 +373,12 @@ async function main() {
   };
   fs.mkdirSync(path.dirname(cfg.reportPath), { recursive: true });
   fs.writeFileSync(cfg.reportPath, `${JSON.stringify(report, null, 2)}\n`);
+  const dashboardPath = cfg.reportPath.replace(/\.json$/i, '') + '.html';
+  writeRFQDashboard(report, cases, dashboardPath);
 
   console.log(`\nSummary: ${passed}/${results.length} passed`);
   console.log(`Report: ${path.relative(ROOT, cfg.reportPath)}`);
+  console.log(`Dashboard: ${path.relative(ROOT, dashboardPath)}`);
   if (passed !== results.length) process.exitCode = 1;
 }
 

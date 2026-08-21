@@ -1,7 +1,7 @@
 [
   {
     "id": "explicit-quantity",
-    "description": "One catalog material with an explicit quantity and unit",
+    "description": "Un material del catálogo con cantidad y unidad explícitas",
     "message": "Necesito 10 bolsas de cemento Loma Negra.",
     "price_after_draft": true,
     "expected": {
@@ -24,7 +24,7 @@
   },
   {
     "id": "derived-packaging",
-    "description": "A quantity derived from packaging data stated by the client",
+    "description": "Una cantidad derivada de los datos de empaque informados por el cliente",
     "message": "Necesito 3 pallets de cemento; cada pallet trae 50 bolsas.",
     "expected": {
       "rfq_status": "GENERATED",
@@ -42,7 +42,7 @@
   },
   {
     "id": "multiple-materials",
-    "description": "Several materials keep their order, quantities, and units",
+    "description": "Varios materiales conservan su orden, cantidades y unidades",
     "message": "Mandame 2 m3 de arena fina y 500 ladrillos huecos del 12.",
     "expected": {
       "rfq_status": "GENERATED",
@@ -65,7 +65,7 @@
   },
   {
     "id": "unresolved-quantity",
-    "description": "A missing quantity is kept as an unresolved zero-value line",
+    "description": "Una cantidad faltante se conserva como línea sin resolver",
     "message": "Necesito membrana asfaltica para el techo.",
     "expected": {
       "rfq_status": "GENERATED",
@@ -82,7 +82,7 @@
   },
   {
     "id": "informal-abbreviations",
-    "description": "Informal WhatsApp spelling still produces separate lines",
+    "description": "Un mensaje informal de WhatsApp mantiene los materiales separados",
     "message": "che mandame 8 bol de portland y 15 hierros del 8",
     "expected": {
       "rfq_status": "GENERATED",
@@ -104,7 +104,7 @@
   },
   {
     "id": "catalog-no-match",
-    "description": "An unknown material is kept and flagged for seller review",
+    "description": "Un material desconocido se conserva y marca para revisión",
     "message": "Necesito 2 rollos de aislante aeroespacial XZ-99.",
     "expected": {
       "rfq_status": "GENERATED",
@@ -123,7 +123,7 @@
   },
   {
     "id": "no-materials",
-    "description": "A non-order is stored without inventing a quote",
+    "description": "Un mensaje que no es un pedido se guarda sin inventar una cotización",
     "message": "Hola, me pasas la direccion y el horario de hoy?",
     "expected": {
       "rfq_status": "RECEIVED",

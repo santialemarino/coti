@@ -313,9 +313,12 @@ CI repeatable while still proving that a mocked WhatsApp message reaches a revie
 `pnpm eval:rfq` is the opt-in model evaluation. It logs into a running development API, posts the
 cases from `scripts/fixtures/rfq-eval-cases.json` to `/v1/dev/whatsapp/messages`, and compares only
 observable contract fields: RFQ and quote status, line count, quantities, units, rationales, match
-status, and pricing when requested. It prints one `PASS` or `FAIL` per case and stores the complete
-request results under the ignored `.artifacts/rfq-eval/` directory. `--verbose` also prints every
-response; `--price` runs the deterministic material-acceptance transition after every draft.
+status, and pricing when requested. It prints one `PASS` or `FAIL` per case and stores both the
+machine-readable JSON and a self-contained interactive HTML dashboard under the ignored
+`.artifacts/rfq-eval/` directory. The dashboard exposes the case description, declared
+expectations, source definition, extracted lines, and complete HTTP responses. `--verbose` also
+prints every response; `--price` runs the deterministic material-acceptance transition after every
+draft. `pnpm report:rfq` rebuilds the HTML from the latest JSON without contacting a provider.
 
 The runner reads its connection settings from `RFQ_EVAL_*` variables and has defaults for the
 development seed. A bearer token can be supplied as `RFQ_EVAL_TOKEN`; otherwise it logs in with

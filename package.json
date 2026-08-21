@@ -29,6 +29,7 @@
     "test:rfq:integration": "pnpm --filter api run test:rfq:integration",
     "test:rfq:response": "pnpm --filter api run test:rfq:response",
     "eval:rfq": "node scripts/rfq-eval.mjs",
+    "report:rfq": "node scripts/rfq-report.mjs",
     "test:web": "turbo run test --filter=backoffice --filter=webapp --filter=@repo/ui",
     "clean": "pnpm --recursive exec rm -rf node_modules .next dist",
     "install:all": "pnpm install",

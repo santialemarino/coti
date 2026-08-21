@@ -128,18 +128,20 @@ TEST_DATABASE_ADMIN_URL=postgres://coti:coti@127.0.0.1:5432/coti?sslmode=disable
 The live evaluation runner is separate from the deterministic test gate. With the development
 seed loaded and the API running with Anthropic and OpenAI enabled, it logs in as the seeded admin,
 sends the versioned cases through `POST /v1/dev/whatsapp/messages`, prints each result, and writes
-the full responses under `.artifacts/rfq-eval/`:
+the full responses as JSON plus an interactive HTML dashboard under `.artifacts/rfq-eval/`:
 
 ```bash
 pnpm db:seed
 pnpm eval:rfq
 pnpm eval:rfq --verbose
+pnpm report:rfq
 ```
 
 Use `pnpm eval:rfq --case explicit-quantity` to repeat one scenario, or `--help` for API URL,
 branch, channel, cases, report, and pricing options. The
 default cases live in `scripts/fixtures/rfq-eval-cases.json`; add a case there when a model failure
-is reproducible and has an observable expected result.
+is reproducible and has an observable expected result. `pnpm report:rfq` rebuilds the dashboard
+from the latest JSON without calling either AI provider again.
 
 ## API specification
 
