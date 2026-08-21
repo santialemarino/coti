@@ -24,6 +24,9 @@ type fakeVerificationUsers struct {
 	getByEmailErr   error
 	markedVerified  []uuid.UUID
 	updateEmailErr  error
+	// hashMovesTo replaces the stored hash after the read, standing in for a concurrent
+	// credential write landing inside the bcrypt window.
+	hashMovesTo string
 }
 
 func (f *fakeVerificationUsers) subject() *domain.AuthSubject {
@@ -37,7 +40,11 @@ func (f *fakeVerificationUsers) GetAuthSubjectByID(
 	if f.user == nil {
 		return nil, domain.ErrNotFound
 	}
-	return f.subject(), nil
+	subject := f.subject()
+	if f.hashMovesTo != "" {
+		f.user.PasswordHash = f.hashMovesTo
+	}
+	return subject, nil
 }
 
 func (f *fakeVerificationUsers) GetAuthSubjectByEmailCrossAccount(
@@ -49,12 +56,19 @@ func (f *fakeVerificationUsers) GetAuthSubjectByEmailCrossAccount(
 	return f.subject(), nil
 }
 
-// UpdateEmail stands in for the write, which drops the confirmation the same way the SQL does.
+/*
+ * UpdateEmail stands in for the write: it drops the confirmation the way the SQL does, and it
+ * matches no row when the hash it was handed is not the stored one, which is how the real
+ * predicate reports a password that moved under it.
+ */
 func (f *fakeVerificationUsers) UpdateEmail(
-	_ context.Context, _ repository.Querier, _, _ uuid.UUID, email string,
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID, email, currentHash string,
 ) (*domain.AppUser, error) {
 	if f.updateEmailErr != nil {
 		return nil, f.updateEmailErr
+	}
+	if f.user.PasswordHash != currentHash {
+		return nil, domain.ErrNotFound
 	}
 	f.user.Email = email
 	f.user.EmailVerifiedAt = nil
@@ -380,6 +394,31 @@ func TestVerificationService_ChangeOwnEmail_TheCallersOwnAddressIsAConflict(t *t
 	}
 	if len(f.mail.sent) != 0 {
 		t.Fatal("an address that did not change still mailed a link")
+	}
+}
+
+/*
+ * A recovery link redeemed inside the bcrypt window moves the password, and the address change
+ * must not be spendable on the one it just replaced — otherwise whoever held the old password
+ * gets the recovery mailbox, which is worse than what they lost.
+ */
+func TestVerificationService_ChangeOwnEmail_RefusesAPasswordThatMovedMeanwhile(t *testing.T) {
+	t.Parallel()
+	user := passwordUser(t)
+	previous := user.Email
+	f := newVerificationFixture(t, user)
+	// Read, then rotated: the compare passes and the write no longer matches.
+	f.users.hashMovesTo = "$2a$10$otro-hash-que-nadie-comparo"
+
+	err := f.svc.ChangeOwnEmail(context.Background(), testTenant(), testCurrentPassword, testNewAddress)
+	if !errors.Is(err, domain.ErrUnauthenticated) {
+		t.Fatalf("ChangeOwnEmail with a rotated password = %v, want ErrUnauthenticated", err)
+	}
+	if f.users.user.Email != previous {
+		t.Fatal("the address moved on a password that was no longer the account's")
+	}
+	if len(f.mail.sent) != 0 {
+		t.Fatal("a refused change still mailed somebody")
 	}
 }
 

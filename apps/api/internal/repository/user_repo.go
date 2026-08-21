@@ -148,19 +148,18 @@ func (r *UserRepository) Update(
 	return user, err
 }
 
-// UpdateEmail replaces one user's address and nothing else, for the self-service correction.
-// The confirmation goes unconditionally, unlike Update's: the service refuses an address that
-// is not actually a change, so reaching here means the stamp no longer proves anything.
-// Returns domain.ErrConflict when the address is already in use.
+// UpdateEmail replaces one user's address, and only if their hash still matches the one the
+// caller verified, so a password moved meanwhile cannot be spent on this. Returns
+// domain.ErrConflict when the address is taken, domain.ErrNotFound when the hash moved.
 func (r *UserRepository) UpdateEmail(
-	ctx context.Context, q Querier, accountID, id uuid.UUID, email string,
+	ctx context.Context, q Querier, accountID, id uuid.UUID, email, currentHash string,
 ) (*domain.AppUser, error) {
 	user, err := scanUser(q.QueryRow(ctx,
 		`UPDATE app_user
 		 SET email = $3::text, email_verified_at = NULL
-		 WHERE account_id = $1 AND id = $2
+		 WHERE account_id = $1 AND id = $2 AND password_hash = $4
 		 RETURNING `+userColumns,
-		accountID, id, email))
+		accountID, id, email, currentHash))
 	if isEmailTaken(err) {
 		return nil, domain.WithCode(domain.CodeEmailTaken, domain.ErrConflict)
 	}

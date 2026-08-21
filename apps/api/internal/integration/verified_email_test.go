@@ -195,10 +195,27 @@ func TestVerifiedEmail_WithTheRequirementOffNothingIsClosed(t *testing.T) {
 }
 
 /*
+ * The gate sits ahead of RequireAdmin, so an unconfirmed seller on an admin route is told the
+ * actionable thing rather than that they are the wrong role. Both answer 403; only the code says
+ * which, and "ask an admin" would be the wrong screen for someone who has to confirm an address.
+ */
+func TestVerifiedEmail_TheGateAnswersBeforeTheRoleCheck(t *testing.T) {
+	e := requiringVerifiedEmail(t)
+	_, token, _ := e.unconfirmedCaller(t, domain.UserRoleSeller)
+
+	rec := e.do(t, request{method: http.MethodGet, path: "/v1/users", token: token})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("GET /v1/users as an unconfirmed seller = %d, want 403; body = %s", rec.Code, rec.Body)
+	}
+	if got := errorCode(t, rec); got != string(domain.CodeEmailNotVerified) {
+		t.Fatalf("code = %q, want %q: the role check answered first", got, domain.CodeEmailNotVerified)
+	}
+}
+
+/*
  * Read off the router rather than listed by hand, so a route added to the wrong group later fails
- * here instead of quietly staying reachable — or quietly closing an exemption. Every authenticated
- * route is either one of the three or refuses an unconfirmed caller; a handler that answers 404 or
- * 422 has still passed the middleware, so anything but 403 counts as reached.
+ * here instead of quietly staying reachable. It only guards that direction — the three exemptions
+ * are skipped, and TheExemptRoutesStayOpen is what would catch one of them being closed.
  */
 func TestVerifiedEmail_EveryAuthenticatedRouteIsClosedExceptTheThree(t *testing.T) {
 	e := requiringVerifiedEmail(t)
@@ -221,13 +238,11 @@ func TestVerifiedEmail_EveryAuthenticatedRouteIsClosedExceptTheThree(t *testing.
 			path := placeholderFreePath(route.Path)
 			rec := e.do(t, request{method: route.Method, path: path, token: token})
 			if rec.Code != http.StatusForbidden {
-				t.Errorf("%s unconfirmed = %d, want 403: the route is not behind the requirement",
+				t.Fatalf("%s unconfirmed = %d, want 403: the route is not behind the requirement",
 					name, rec.Code)
 			}
-			if rec.Code == http.StatusForbidden {
-				if got := errorCode(t, rec); got != string(domain.CodeEmailNotVerified) {
-					t.Errorf("%s refused with code %q, want %q", name, got, domain.CodeEmailNotVerified)
-				}
+			if got := errorCode(t, rec); got != string(domain.CodeEmailNotVerified) {
+				t.Errorf("%s refused with code %q, want %q", name, got, domain.CodeEmailNotVerified)
 			}
 		})
 	}

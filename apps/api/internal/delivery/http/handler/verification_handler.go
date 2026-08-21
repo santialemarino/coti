@@ -86,8 +86,7 @@ func (h *VerificationHandler) Resend(c *gin.Context) {
 	c.Status(http.StatusAccepted)
 }
 
-// ChangeEmail replaces the caller's own address. Returns 204, or 401 when the current password
-// is wrong.
+// ChangeEmail replaces the caller's own address. Returns 204, or 401 on a wrong password.
 //
 //	@Summary		Change your own email address
 //	@Description	Requires the current password. Drops the confirmation, mails the new address a link, and retires any outstanding recovery link sent to the old one. Exempt from the confirmed-address requirement, so a mistyped address at signup is still correctable.
@@ -113,8 +112,8 @@ func (h *VerificationHandler) ChangeEmail(c *gin.Context) {
 		return
 	}
 
-	err := h.verification.ChangeOwnEmail(c.Request.Context(), tenant, body.CurrentPassword, body.NewEmail)
-	if err != nil {
+	if err := h.verification.ChangeOwnEmail(c.Request.Context(), tenant,
+		body.CurrentPassword, body.NewEmail); err != nil {
 		Respond(c, err)
 		return
 	}

@@ -133,13 +133,12 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	// reads nothing under row level security.
 	authed := v1.Group("", middleware.RequireTenant())
 
-	// The three routes an unconfirmed address does not close, because they are the only way
-	// out of that state: read who you are, end the session, and correct the address. Closing
-	// them would trap whoever mistyped theirs at signup, which is what this group exists to
-	// prevent. Changing it mails the new address, so it carries the mail allowance.
+	// The three an unconfirmed address does not close, because they are the only way out of
+	// that state: closing them would trap whoever mistyped theirs at signup.
 	authed.POST("/auth/logout", h.Auth.Logout)
 	// The frontend reads its own identity here instead of decoding the access token.
 	authed.GET("/me", h.User.Me)
+	// On the mail allowance: it sends to an address the caller names.
 	authed.POST("/auth/change-email", mail, h.Verification.ChangeEmail)
 
 	// Using the product needs a confirmed address. Everything below is closed until then.

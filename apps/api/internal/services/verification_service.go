@@ -18,7 +18,7 @@ import (
 type verificationUserRepository interface {
 	GetAuthSubjectByID(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) (*domain.AuthSubject, error)
 	GetAuthSubjectByEmailCrossAccount(ctx context.Context, q repository.Querier, email string) (*domain.AuthSubject, error)
-	UpdateEmail(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, email string) (*domain.AppUser, error)
+	UpdateEmail(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, email, currentHash string) (*domain.AppUser, error)
 	MarkEmailVerified(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) error
 }
 
@@ -135,8 +135,7 @@ func (s *VerificationService) Confirm(ctx context.Context, rawToken string) erro
 
 // ChangeOwnEmail replaces the caller's own address once their current password checks out. The
 // change drops the confirmation and mails the new address a link, so the account closes again
-// until that one is redeemed. It is exempt from the requirement it re-imposes: closing it would
-// leave whoever mistyped their address at signup with no way to correct it.
+// until that one is redeemed.
 func (s *VerificationService) ChangeOwnEmail(
 	ctx context.Context, tenant domain.Tenant, currentPassword, newEmail string,
 ) error {
@@ -166,8 +165,9 @@ func (s *VerificationService) ChangeOwnEmail(
 	}
 
 	var updated *domain.AppUser
-	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		u, updateErr := s.users.UpdateEmail(ctx, q, tenant.AccountID, tenant.UserID, email)
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		u, updateErr := s.users.UpdateEmail(ctx, q, tenant.AccountID, tenant.UserID, email,
+			user.PasswordHash)
 		if updateErr != nil {
 			return updateErr
 		}
@@ -176,10 +176,18 @@ func (s *VerificationService) ChangeOwnEmail(
 		// is not the account's any more.
 		return s.links.tokens.InvalidateActive(ctx, q, tenant.AccountID, tenant.UserID,
 			domain.AuthTokenTypePasswordReset)
-	}); err != nil {
+	})
+	// The write carries the hash this call verified, so no row means the credential moved inside
+	// the bcrypt window and the password just compared is no longer the account's.
+	if errors.Is(err, domain.ErrNotFound) {
+		return domain.ErrUnauthenticated
+	}
+	if err != nil {
 		return err
 	}
 
+	// The warning goes first, and ahead of an error that would return: the link can be asked for
+	// again from the confirmation screen, and this message cannot.
 	s.notifyPreviousAddress(ctx, user.AppUser, updated.Email)
 	return s.Send(ctx, *updated)
 }

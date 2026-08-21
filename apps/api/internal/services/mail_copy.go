@@ -17,10 +17,10 @@ const (
 	emailVerificationHeading = "Confirmá tu dirección de correo"
 	emailVerificationAction  = "Confirmar mi correo"
 
-	emailChangedSubject = "Cambiaron la dirección de tu cuenta"
-	emailChangedHeading = "Cambiaron la dirección de tu cuenta"
-	// This mail is the only warning the old mailbox gets, so it says what to do about it.
-	emailChangedWarning = "Si no fuiste vos, escribinos y comunicate con el administrador de tu corralón: quien hizo el cambio tenía tu contraseña."
+	emailChangedSubject = "Cambió la dirección de tu cuenta"
+	emailChangedHeading = "Cambió la dirección de tu cuenta"
+	// The old mailbox gets no other warning, so it says what the change implies and who to tell.
+	emailChangedWarning = "Si no fuiste vos, quien lo hizo tenía tu contraseña: avisale al administrador de tu corralón para que revise el acceso a la cuenta."
 )
 
 // passwordResetIntro greets the user by name and states what the link is for.
