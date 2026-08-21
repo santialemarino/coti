@@ -61,6 +61,12 @@ func TestToTextRFQDraftResponse_MapsEveryLineAsADecimalString(t *testing.T) {
 	}
 
 	matched := response.Items[0]
+	if matched.RequestedDescription != "10 bolsas de cemento" {
+		t.Errorf("description = %q, want the client's words", matched.RequestedDescription)
+	}
+	if matched.Unit == nil || *matched.Unit != "bolsa" {
+		t.Errorf("unit = %v, want %q", matched.Unit, "bolsa")
+	}
 	// A JSON number would lose NUMERIC precision on the round trip, so quantities travel as strings.
 	if matched.Quantity != "10.00" {
 		t.Errorf("quantity = %q, want %q", matched.Quantity, "10.00")
@@ -91,6 +97,9 @@ func TestToTextRFQDraftResponse_MapsEveryLineAsADecimalString(t *testing.T) {
 	}
 	if flagged.MatchStatus != string(domain.ItemMatchStatusNoMatch) {
 		t.Errorf("match status = %q, want NO_MATCH", flagged.MatchStatus)
+	}
+	if flagged.Quantity != "0.00" {
+		t.Errorf("quantity = %q on an unresolved line, want %q", flagged.Quantity, "0.00")
 	}
 }
 
