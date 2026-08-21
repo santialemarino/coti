@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
@@ -70,6 +71,35 @@ func Authenticate(verifier AccessVerifier, resolver TenantResolver) gin.HandlerF
 		}
 
 		SetTenant(c, tenant)
+		c.Next()
+	}
+}
+
+// RequireVerifiedEmail aborts with 403 and CodeEmailNotVerified unless the caller has
+// confirmed their address. Mount it after RequireTenant, on every route except the three an
+// unconfirmed caller needs to stop being one: their own identity, logout, and correcting
+// their own address. Issuing a session is not using the product, so login does not check it.
+//
+// It takes the setting rather than being mounted conditionally, so the route tree is the same
+// shape whether the requirement is on or off.
+func RequireVerifiedEmail(enabled bool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !enabled {
+			c.Next()
+			return
+		}
+		tenant, ok := TenantFrom(c)
+		if !ok {
+			abortUnauthenticated(c)
+			return
+		}
+		if !tenant.EmailVerified {
+			c.AbortWithStatusJSON(http.StatusForbidden, dto.ErrorResponse{
+				Error: "email not verified",
+				Code:  string(domain.CodeEmailNotVerified),
+			})
+			return
+		}
 		c.Next()
 	}
 }

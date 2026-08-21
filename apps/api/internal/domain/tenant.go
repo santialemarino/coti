@@ -23,7 +23,10 @@ type Tenant struct {
 	AccountID uuid.UUID
 	UserID    uuid.UUID
 	Role      UserRole
-	BranchID  uuid.UUID
+	// EmailVerified is false until the caller proved the address they registered with. The
+	// closed routes refuse on it; identity, logout and the address change do not.
+	EmailVerified bool
+	BranchID      uuid.UUID
 	// AllowedBranchIDs confines a seller who selected no branch to the ones they are
 	// assigned. Nil for an admin, who reaches the whole account.
 	AllowedBranchIDs []uuid.UUID
