@@ -283,8 +283,9 @@ func (e *env) seedUser(t *testing.T, accountID uuid.UUID, role domain.UserRole) 
 	if _, err := e.db.CrossAccount().Exec(context.Background(),
 		`INSERT INTO app_user (id, account_id, name, email, password_hash, role, session_epoch,
 		                       email_verified_at)
-		 VALUES ($1, $2, $3, $4, 'x', $5, $6, now())`,
-		user.ID, user.AccountID, user.Name, user.Email, user.Role, user.SessionEpoch); err != nil {
+		 VALUES ($1, $2, $3, $4, 'x', $5, $6, $7)`,
+		user.ID, user.AccountID, user.Name, user.Email, user.Role, user.SessionEpoch,
+		user.EmailVerifiedAt); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
 	return user
