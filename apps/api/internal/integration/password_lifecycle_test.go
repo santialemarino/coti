@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -36,13 +37,16 @@ func (e *env) seedUserWithPassword(t *testing.T, accountID uuid.UUID, role domai
 		t.Fatalf("hash seed password: %v", err)
 	}
 	id := uuid.New()
+	verifiedAt := time.Now()
 	user := domain.AppUser{
 		ID: id, AccountID: accountID, Name: "Titular", Email: id.String() + "@test.local",
 		PasswordHash: string(hash), Role: role, IsActive: true, SessionEpoch: 1,
+		EmailVerifiedAt: &verifiedAt,
 	}
 	if _, err := e.db.CrossAccount().Exec(context.Background(),
-		`INSERT INTO app_user (id, account_id, name, email, password_hash, role, session_epoch)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		`INSERT INTO app_user (id, account_id, name, email, password_hash, role, session_epoch,
+		                       email_verified_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, now())`,
 		user.ID, user.AccountID, user.Name, user.Email, user.PasswordHash, user.Role,
 		user.SessionEpoch); err != nil {
 		t.Fatalf("seed user with password: %v", err)

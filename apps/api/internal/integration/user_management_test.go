@@ -269,20 +269,35 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 	return accountID, branchID
 }
 
+// seedUser creates a user whose address is already confirmed, which is what every test that is
+// not about the requirement needs: with it switched on, an unconfirmed seed would answer 403 on
+// every closed route in that environment. unverifyAddress is how a test opts into the other state.
 func (e *env) seedUser(t *testing.T, accountID uuid.UUID, role domain.UserRole) domain.AppUser {
 	t.Helper()
 	id := uuid.New()
+	verifiedAt := time.Now()
 	user := domain.AppUser{
 		ID: id, AccountID: accountID, Name: "Seed", Email: id.String() + "@test.local",
-		Role: role, IsActive: true, SessionEpoch: 1,
+		Role: role, IsActive: true, SessionEpoch: 1, EmailVerifiedAt: &verifiedAt,
 	}
 	if _, err := e.db.CrossAccount().Exec(context.Background(),
-		`INSERT INTO app_user (id, account_id, name, email, password_hash, role, session_epoch)
-		 VALUES ($1, $2, $3, $4, 'x', $5, $6)`,
+		`INSERT INTO app_user (id, account_id, name, email, password_hash, role, session_epoch,
+		                       email_verified_at)
+		 VALUES ($1, $2, $3, $4, 'x', $5, $6, now())`,
 		user.ID, user.AccountID, user.Name, user.Email, user.Role, user.SessionEpoch); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
 	return user
+}
+
+// unverifyAddress drops the confirmation, for the tests whose subject is what an unconfirmed
+// caller can and cannot reach.
+func (e *env) unverifyAddress(t *testing.T, userID uuid.UUID) {
+	t.Helper()
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`UPDATE app_user SET email_verified_at = NULL WHERE id = $1`, userID); err != nil {
+		t.Fatalf("drop the confirmation: %v", err)
+	}
 }
 
 func (e *env) tokenFor(t *testing.T, user domain.AppUser) string {
@@ -404,16 +419,18 @@ func TestMe_ReportsWhetherTheAddressIsVerified(t *testing.T) {
 		return me.EmailVerified
 	}
 
+	if !verified(t) {
+		t.Fatal("a confirmed address reports email_verified false, want true")
+	}
+
+	e.unverifyAddress(t, admin.ID)
 	if verified(t) {
-		t.Fatal("a seeded user reports email_verified true, want false")
+		t.Fatal("an unconfirmed address reports email_verified true, want false")
 	}
 
 	if _, err := e.db.CrossAccount().Exec(context.Background(),
 		`UPDATE app_user SET email_verified_at = now() WHERE id = $1`, admin.ID); err != nil {
 		t.Fatalf("stamp verification: %v", err)
-	}
-	if !verified(t) {
-		t.Fatal("a confirmed address reports email_verified false, want true")
 	}
 
 	// Changing the address through the real endpoint has to drop it again.
