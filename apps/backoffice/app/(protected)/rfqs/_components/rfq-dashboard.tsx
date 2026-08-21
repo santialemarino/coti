@@ -1,21 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ComponentProps } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArchiveIcon,
-  AudioLinesIcon,
+  ClipboardListIcon,
   EyeIcon,
-  FileSpreadsheetIcon,
-  FileTextIcon,
-  ImageIcon,
   InboxIcon,
   LinkIcon,
   MailIcon,
   MessageCircleIcon,
   MoreHorizontalIcon,
-  PackageSearchIcon,
   PencilIcon,
   PlusIcon,
   RefreshCcwIcon,
@@ -43,9 +39,7 @@ import {
   DropdownMenuTrigger,
   Pagination,
   SearchInput,
-  Skeleton,
   SortableTableHead,
-  StatusScreen,
   Table,
   TableBody,
   TableCaption,
@@ -57,7 +51,6 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from '@repo/ui/components';
-import { cn } from '@repo/ui/lib';
 import { CreateRfqDialog } from '@/app/(protected)/rfqs/_components/create-rfq-dialog';
 import {
   hasQuoteTotal,
@@ -66,7 +59,6 @@ import {
 } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
 import { ROUTES } from '@/config/routes';
 import {
-  fetchRfqs,
   QUOTE_GENERATION_MS,
   type RfqChannel,
   type RfqPriority,
@@ -78,15 +70,7 @@ import { useFormatters } from '@/lib/i18n/formatters';
 const PAGE_SIZE = 10;
 const COLUMN_COUNT = 11;
 
-const CHANNELS: readonly RfqChannel[] = [
-  'whatsapp',
-  'email',
-  'audio',
-  'photo',
-  'pdf',
-  'excel',
-  'link',
-];
+const CHANNELS: readonly RfqChannel[] = ['whatsapp', 'email', 'webapp', 'manual_entry'];
 
 const PRIORITIES: readonly RfqPriority[] = ['high', 'normal', 'low'];
 
@@ -105,11 +89,8 @@ const PRIORITY_TONE: Record<RfqPriority, ComponentProps<typeof Badge>['tone']> =
 const CHANNEL_ICON: Record<RfqChannel, typeof MailIcon> = {
   whatsapp: MessageCircleIcon,
   email: MailIcon,
-  audio: AudioLinesIcon,
-  photo: ImageIcon,
-  pdf: FileTextIcon,
-  excel: FileSpreadsheetIcon,
-  link: LinkIcon,
+  webapp: LinkIcon,
+  manual_entry: ClipboardListIcon,
 };
 
 type SortKey =
@@ -154,34 +135,6 @@ function compareRfqs(a: RfqRecord, b: RfqRecord, key: SortKey, order: SortOrder)
       result = a[key].localeCompare(b[key], 'es', { sensitivity: 'base' });
   }
   return result * direction;
-}
-
-function TableSkeleton({ rows }: { rows: number }) {
-  return (
-    <div className="flex flex-col border-t border-border">
-      {Array.from({ length: rows }, (_, index) => (
-        <div
-          key={index}
-          className={cn(
-            'flex items-center gap-x-6 px-6 py-3.5',
-            index > 0 && 'border-t border-border',
-          )}
-        >
-          <Skeleton className="size-4 rounded-sm" />
-          <Skeleton className="h-4 w-28" />
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="h-4 w-20" />
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="h-4 w-28" />
-          <Skeleton className="h-4 w-16" />
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="ml-auto h-5 w-16 rounded-full" />
-          <Skeleton className="h-5 w-20 rounded-full" />
-          <Skeleton className="size-8 rounded-md" />
-        </div>
-      ))}
-    </div>
-  );
 }
 
 function PriorityBadge({ priority }: { priority: RfqPriority }) {
@@ -239,15 +192,24 @@ function RowMenu({ rfq, onChangeStatus, onArchive }: RowMenuProps) {
   );
 }
 
-export function RfqDashboard() {
+export function RfqDashboard({
+  initialRecords,
+  activeBranchId,
+}: {
+  initialRecords: RfqRecord[];
+  activeBranchId: string | null;
+}) {
   const t = useTranslations('rfqs');
   const tCommon = useTranslations('common');
   const fmt = useFormatters();
   const router = useRouter();
 
-  const [records, setRecords] = useState<RfqRecord[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [records, setRecords] = useState<RfqRecord[]>(initialRecords);
+
+  /* Sync local state when the server re-fetches (e.g. after a new RFQ is created). */
+  useEffect(() => {
+    setRecords(initialRecords);
+  }, [initialRecords]);
 
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<RfqStatus | 'all'>('all');
@@ -260,23 +222,6 @@ export function RfqDashboard() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(false);
-    try {
-      const data = await fetchRfqs();
-      setRecords(data);
-    } catch {
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   // Any criterion change starts over at the first page, or a stale page number would point nowhere.
   useEffect(() => {
@@ -292,8 +237,8 @@ export function RfqDashboard() {
     sortOrder,
   ]);
 
-  const branches = useMemo(() => unique(records?.map((rfq) => rfq.branch) ?? []), [records]);
-  const sellers = useMemo(() => unique(records?.map((rfq) => rfq.seller) ?? []), [records]);
+  const branches = useMemo(() => unique(records.map((rfq) => rfq.branch)), [records]);
+  const sellers = useMemo(() => unique(records.map((rfq) => rfq.seller)), [records]);
 
   /*
    * Everything except the status tab. The tab counts recount within the active criteria — a seller
@@ -450,33 +395,13 @@ export function RfqDashboard() {
   const pageAllSelected = pageItems.length > 0 && pageItems.every((rfq) => selected.has(rfq.id));
   const pageSomeSelected = pageItems.some((rfq) => selected.has(rfq.id)) && !pageAllSelected;
 
-  if (error) {
-    return (
-      <Card className="gap-y-0 overflow-hidden py-0">
-        <StatusScreen
-          icon={PackageSearchIcon}
-          tone="danger"
-          title={t('list.error.title')}
-          description={t('list.error.description')}
-        >
-          <Button onClick={load}>
-            <RefreshCcwIcon aria-hidden="true" />
-            {t('list.error.retry')}
-          </Button>
-        </StatusScreen>
-      </Card>
-    );
-  }
-
   return (
     <>
       <Card className="gap-y-0 overflow-hidden py-0">
         <CardHeader className="flex-row items-center justify-between py-6">
           <CardTitle className="text-heading-3">{t('list.title')}</CardTitle>
           <div className="flex items-center gap-x-3">
-            {records ? (
-              <Badge tone="neutral">{t('list.resultsTotal', { total: records.length })}</Badge>
-            ) : null}
+            <Badge tone="neutral">{t('list.resultsTotal', { total: records.length })}</Badge>
             <Button onClick={() => setCreateOpen(true)}>
               <PlusIcon aria-hidden="true" />
               {t('list.create')}
@@ -588,173 +513,166 @@ export function RfqDashboard() {
           </div>
         ) : null}
 
-        {loading ? (
-          <TableSkeleton rows={8} />
-        ) : (
-          <Table className="[&_th]:h-12 [&_th]:px-4 [&_th:has([role=checkbox])]:pr-0 [&_td]:px-4 [&_td]:py-3.5 [&_td:last-child]:border-l [&_td:last-child]:border-border [&_td:last-child]:pl-6">
-            <TableCaption className="sr-only">{t('list.caption')}</TableCaption>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10">
-                  <Checkbox
-                    checked={pageSomeSelected ? 'indeterminate' : pageAllSelected}
-                    onCheckedChange={togglePageSelection}
-                    aria-label={t('list.selectAll')}
-                    disabled={pageItems.length === 0}
-                  />
-                </TableHead>
-                <SortableTableHead
-                  label={t('list.columns.id')}
-                  column="id"
-                  sortBy={sortBy}
-                  sortOrder={sortOrder}
-                  onSort={handleSort}
-                  className="w-48"
+        <Table className="[&_th]:h-12 [&_th]:px-4 [&_th:has([role=checkbox])]:pr-0 [&_td]:px-4 [&_td]:py-3.5 [&_td:last-child]:border-l [&_td:last-child]:border-border [&_td:last-child]:pl-6">
+          <TableCaption className="sr-only">{t('list.caption')}</TableCaption>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={pageSomeSelected ? 'indeterminate' : pageAllSelected}
+                  onCheckedChange={togglePageSelection}
+                  aria-label={t('list.selectAll')}
+                  disabled={pageItems.length === 0}
                 />
-                <SortableTableHead
-                  label={t('list.columns.date')}
-                  column="createdAt"
-                  sortBy={sortBy}
-                  sortOrder={sortOrder}
-                  onSort={handleSort}
-                />
-                <SortableTableHead
-                  label={t('list.columns.channel')}
-                  column="channel"
-                  sortBy={sortBy}
-                  sortOrder={sortOrder}
-                  onSort={handleSort}
-                />
-                <SortableTableHead
-                  label={t('list.columns.seller')}
-                  column="seller"
-                  sortBy={sortBy}
-                  sortOrder={sortOrder}
-                  onSort={handleSort}
-                />
-                <SortableTableHead
-                  label={t('list.columns.branch')}
-                  column="branch"
-                  sortBy={sortBy}
-                  sortOrder={sortOrder}
-                  onSort={handleSort}
-                />
-                <SortableTableHead
-                  label={t('list.columns.items')}
-                  column="itemCount"
-                  sortBy={sortBy}
-                  sortOrder={sortOrder}
-                  onSort={handleSort}
-                />
-                <SortableTableHead
-                  label={t('list.columns.total')}
-                  column="total"
-                  sortBy={sortBy}
-                  sortOrder={sortOrder}
-                  onSort={handleSort}
-                  className="text-right"
-                />
-                <SortableTableHead
-                  label={t('list.columns.priority')}
-                  column="priority"
-                  sortBy={sortBy}
-                  sortOrder={sortOrder}
-                  onSort={handleSort}
-                />
-                <SortableTableHead
-                  label={t('list.columns.status')}
-                  column="status"
-                  sortBy={sortBy}
-                  sortOrder={sortOrder}
-                  onSort={handleSort}
-                />
-                <TableHead className="border-l border-border pl-6 text-right">
-                  {t('list.columns.actions')}
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableEmptyRow
-                  colSpan={COLUMN_COUNT}
-                  icon={hasCriteria ? SearchXIcon : InboxIcon}
-                  title={t(hasCriteria ? 'list.noResults.title' : 'list.empty.title')}
-                  description={t(
-                    hasCriteria ? 'list.noResults.description' : 'list.empty.description',
-                  )}
-                />
-              ) : (
-                pageItems.map((rfq) => {
-                  const ChannelIcon = CHANNEL_ICON[rfq.channel];
-                  return (
-                    <TableRow
-                      key={rfq.id}
-                      data-state={selected.has(rfq.id) ? 'selected' : undefined}
-                    >
-                      <TableCell>
-                        <Checkbox
-                          checked={selected.has(rfq.id)}
-                          onCheckedChange={() => toggleSelected(rfq.id)}
-                          aria-label={t('list.selectRow', { id: rfq.id })}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <button
-                          type="button"
-                          onClick={() => router.push(ROUTES.rfqsDetail(rfq.id))}
-                          className="group/order w-full text-left outline-none"
-                        >
-                          <span className="block truncate text-paragraph-sm-medium text-foreground transition-colors duration-150 ease-out-soft group-focus-visible/order:text-primary group-hover/order:text-primary">
-                            #{rfq.id}
-                          </span>
-                          <span className="block truncate text-paragraph-mini text-foreground-muted">
-                            {rfq.client}
-                          </span>
-                        </button>
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">{fmt.date(rfq.createdAt)}</TableCell>
-                      <TableCell>
-                        <span className="inline-flex items-center gap-x-2 whitespace-nowrap text-foreground-subtle">
-                          <ChannelIcon aria-hidden="true" className="size-4" />
-                          {t(`channels.${rfq.channel}`)}
+              </TableHead>
+              <SortableTableHead
+                label={t('list.columns.id')}
+                column="id"
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+                className="w-48"
+              />
+              <SortableTableHead
+                label={t('list.columns.date')}
+                column="createdAt"
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+              />
+              <SortableTableHead
+                label={t('list.columns.channel')}
+                column="channel"
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+              />
+              <SortableTableHead
+                label={t('list.columns.seller')}
+                column="seller"
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+              />
+              <SortableTableHead
+                label={t('list.columns.branch')}
+                column="branch"
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+              />
+              <SortableTableHead
+                label={t('list.columns.items')}
+                column="itemCount"
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+              />
+              <SortableTableHead
+                label={t('list.columns.total')}
+                column="total"
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+                className="text-right"
+              />
+              <SortableTableHead
+                label={t('list.columns.priority')}
+                column="priority"
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+              />
+              <SortableTableHead
+                label={t('list.columns.status')}
+                column="status"
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+              />
+              <TableHead className="border-l border-border pl-6 text-right">
+                {t('list.columns.actions')}
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.length === 0 ? (
+              <TableEmptyRow
+                colSpan={COLUMN_COUNT}
+                icon={hasCriteria ? SearchXIcon : InboxIcon}
+                title={t(hasCriteria ? 'list.noResults.title' : 'list.empty.title')}
+                description={t(
+                  hasCriteria ? 'list.noResults.description' : 'list.empty.description',
+                )}
+              />
+            ) : (
+              pageItems.map((rfq) => {
+                const ChannelIcon = CHANNEL_ICON[rfq.channel];
+                return (
+                  <TableRow key={rfq.id} data-state={selected.has(rfq.id) ? 'selected' : undefined}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selected.has(rfq.id)}
+                        onCheckedChange={() => toggleSelected(rfq.id)}
+                        aria-label={t('list.selectRow', { id: rfq.id })}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <button
+                        type="button"
+                        onClick={() => router.push(ROUTES.rfqsDetail(rfq.id))}
+                        className="group/order w-full text-left outline-none"
+                      >
+                        <span className="block truncate text-paragraph-sm-medium text-foreground transition-colors duration-150 ease-out-soft group-focus-visible/order:text-primary group-hover/order:text-primary">
+                          #{rfq.id}
                         </span>
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">{rfq.seller}</TableCell>
-                      <TableCell className="whitespace-nowrap">{rfq.branch}</TableCell>
-                      <TableCell>{t('list.items', { count: rfq.itemCount })}</TableCell>
-                      <TableCell className="whitespace-nowrap text-right tabular-nums">
-                        {hasQuoteTotal(rfq.status) && rfq.total != null ? (
-                          fmt.currency(rfq.total)
-                        ) : (
-                          <span className="text-foreground-subtle" aria-hidden="true">
-                            -
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <PriorityBadge priority={rfq.priority} />
-                      </TableCell>
-                      <TableCell>
-                        <RfqStatusBadge
-                          status={rfq.status}
-                          processing={rfq.processing}
-                          archived={rfq.archived}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-end">
-                          <RowMenu rfq={rfq} onChangeStatus={updateStatus} onArchive={archiveOne} />
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        )}
+                        <span className="block truncate text-paragraph-mini text-foreground-muted">
+                          {rfq.client}
+                        </span>
+                      </button>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">{fmt.date(rfq.createdAt)}</TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center gap-x-2 whitespace-nowrap text-foreground-subtle">
+                        <ChannelIcon aria-hidden="true" className="size-4" />
+                        {t(`channels.${rfq.channel}`)}
+                      </span>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">{rfq.seller}</TableCell>
+                    <TableCell className="whitespace-nowrap">{rfq.branch}</TableCell>
+                    <TableCell>{t('list.items', { count: rfq.itemCount })}</TableCell>
+                    <TableCell className="whitespace-nowrap text-right tabular-nums">
+                      {hasQuoteTotal(rfq.status) && rfq.total != null ? (
+                        fmt.currency(rfq.total)
+                      ) : (
+                        <span className="text-foreground-subtle" aria-hidden="true">
+                          -
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <PriorityBadge priority={rfq.priority} />
+                    </TableCell>
+                    <TableCell>
+                      <RfqStatusBadge
+                        status={rfq.status}
+                        processing={rfq.processing}
+                        archived={rfq.archived}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end">
+                        <RowMenu rfq={rfq} onChangeStatus={updateStatus} onArchive={archiveOne} />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
 
-        {!loading && filtered.length > 0 ? (
+        {filtered.length > 0 ? (
           <div className="flex flex-col items-center justify-between gap-y-3 border-t border-border px-6 py-4 sm:flex-row">
             <p className="text-paragraph-xs text-foreground-muted">
               {t('list.results', {
@@ -776,7 +694,12 @@ export function RfqDashboard() {
           </div>
         ) : null}
       </Card>
-      <CreateRfqDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <CreateRfqDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={() => router.refresh()}
+        activeBranchId={activeBranchId}
+      />
     </>
   );
 }

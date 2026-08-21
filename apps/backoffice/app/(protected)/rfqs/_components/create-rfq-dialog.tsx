@@ -18,6 +18,8 @@ import { RfqManualView } from '@/app/(protected)/rfqs/_components/rfq-manual-vie
 interface CreateRfqDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onCreated: () => void;
+  activeBranchId: string | null;
 }
 
 type Step = 'choose' | 'import' | 'manual';
@@ -27,10 +29,14 @@ const OPTION_CLASSES =
 
 /*
  * The "crear pedido" flow: first pick how the order is built (AI import or manual catalog pick),
- * then that step's form runs inside the same dialog. The RFQ domain has no backend endpoints yet,
- * so both steps simulate their latency the way the RFQ list mocks its data.
+ * then that step's form runs inside the same dialog.
  */
-export function CreateRfqDialog({ open, onOpenChange }: CreateRfqDialogProps) {
+export function CreateRfqDialog({
+  open,
+  onOpenChange,
+  onCreated,
+  activeBranchId,
+}: CreateRfqDialogProps) {
   const t = useTranslations('rfqs.create');
   const [step, setStep] = useState<Step>('choose');
 
@@ -84,7 +90,12 @@ export function CreateRfqDialog({ open, onOpenChange }: CreateRfqDialogProps) {
         ) : null}
 
         {step === 'manual' ? (
-          <RfqManualView onBack={() => setStep('choose')} onClose={() => onOpenChange(false)} />
+          <RfqManualView
+            onBack={() => setStep('choose')}
+            onClose={() => onOpenChange(false)}
+            onCreated={onCreated}
+            activeBranchId={activeBranchId}
+          />
         ) : null}
       </DialogContent>
     </Dialog>

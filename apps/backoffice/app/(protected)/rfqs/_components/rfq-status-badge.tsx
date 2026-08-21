@@ -10,6 +10,7 @@ import type { RfqStatus } from '@/lib/api/rfqs';
 export const STATUS_ORDER: readonly RfqStatus[] = [
   'RECEIVED',
   'GENERATED',
+  'DRAFT',
   'QUOTED',
   'SENT',
   'CHANGE_REQUESTED',
@@ -26,6 +27,7 @@ export const STATUS_ORDER: readonly RfqStatus[] = [
 export const STATUS_COLOUR: Record<RfqStatus, string> = {
   RECEIVED: '',
   GENERATED: 'text-status-generated',
+  DRAFT: 'text-status-draft',
   QUOTED: 'text-status-quoted',
   SENT: 'text-status-sent',
   CHANGE_REQUESTED: 'text-status-change-requested',

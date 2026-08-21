@@ -96,6 +96,8 @@
 
   --status-archived-base: oklch(0.6764 0 89.88); /* #979797 */
 
+  --status-draft-base: oklch(0.64 0.01 250); /* muted blue-grey */
+
   /* Semantic tokens — what components actually consume. */
   --radius: 0.625rem;
 

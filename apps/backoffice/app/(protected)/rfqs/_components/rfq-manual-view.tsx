@@ -1,35 +1,38 @@
 'use client';
 
-import { useEffect, useMemo, useState, useTransition } from 'react';
-import { PlusIcon, XIcon } from 'lucide-react';
+import { useEffect, useState, useTransition } from 'react';
+import { AlertCircleIcon, PlusIcon, XIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import { Button, DialogFooter, Input, PendingButton, SearchInput } from '@repo/ui/components';
 import { searchCatalog, type CatalogProduct } from '@/lib/api/catalog';
+import { createRfq } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
 
 interface RfqManualViewProps {
   onBack: () => void;
   onClose: () => void;
+  onCreated: () => void;
+  activeBranchId: string | null;
 }
 
 interface LineItem {
   product: CatalogProduct;
-  quantity: number;
+  quantity: string;
 }
 
-function toQuantity(value: string): number {
+function toQuantity(value: string): string {
   const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  if (!Number.isFinite(parsed) || parsed <= 0) return '1';
+  return String(parsed);
 }
 
 /*
- * The "cargar manualmente" step: the seller types the client, searches the catalog and builds the
- * order line by line. The catalog is a mock module (see lib/api/catalog.ts); the create action is
- * simulated with a latency the same way the RFQ list mocks its data.
+ * The "cargar manualmente" step: the seller optionally names the client, searches the catalog and
+ * builds the order line by line. Submitting calls POST /v1/rfqs.
  */
-export function RfqManualView({ onBack, onClose }: RfqManualViewProps) {
+export function RfqManualView({ onBack, onClose, onCreated, activeBranchId }: RfqManualViewProps) {
   const t = useTranslations('rfqs.create.manual');
   const tToast = useTranslations('rfqs.create.toast');
   const fmt = useFormatters();
@@ -57,29 +60,25 @@ export function RfqManualView({ onBack, onClose }: RfqManualViewProps) {
     };
   }, [query]);
 
-  const subtotal = useMemo(
-    () =>
-      items
-        .reduce((sum, { product, quantity }) => sum + Number(product.price) * quantity, 0)
-        .toFixed(2),
-    [items],
-  );
-
   function addProduct(product: CatalogProduct) {
     setItems((current) => {
       const existing = current.find((item) => item.product.id === product.id);
       if (existing) {
         return current.map((item) =>
-          item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item,
+          item.product.id === product.id
+            ? { ...item, quantity: toQuantity(String(Number(item.quantity) + 1)) }
+            : item,
         );
       }
-      return [...current, { product, quantity: 1 }];
+      return [...current, { product, quantity: '1' }];
     });
   }
 
-  function setQuantity(productId: string, quantity: number) {
+  function setQuantity(productId: string, value: string) {
     setItems((current) =>
-      current.map((item) => (item.product.id === productId ? { ...item, quantity } : item)),
+      current.map((item) =>
+        item.product.id === productId ? { ...item, quantity: toQuantity(value) } : item,
+      ),
     );
   }
 
@@ -88,13 +87,28 @@ export function RfqManualView({ onBack, onClose }: RfqManualViewProps) {
   }
 
   function onSubmit() {
-    if (!client.trim() || items.length === 0) return;
+    if (items.length === 0) return;
     startSubmit(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 600));
-      toast.success(tToast('created', { client: client.trim() }));
-      onClose();
+      try {
+        await createRfq({
+          client_label: client.trim() || null,
+          items: items.map((item) => ({
+            product_id: item.product.id,
+            requested_description: item.product.name,
+            quantity: item.quantity,
+            unit: item.product.unit,
+          })),
+        });
+        toast.success(tToast('created'));
+        onCreated();
+        onClose();
+      } catch {
+        toast.error(tToast('error'));
+      }
     });
   }
+
+  const disabled = items.length === 0 || !activeBranchId;
 
   return (
     <form
@@ -105,6 +119,13 @@ export function RfqManualView({ onBack, onClose }: RfqManualViewProps) {
       noValidate
       className="flex flex-col gap-y-5"
     >
+      {activeBranchId ? null : (
+        <div className="flex items-center gap-x-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-paragraph-sm text-amber-800">
+          <AlertCircleIcon aria-hidden="true" className="shrink-0 size-4" />
+          {t('noBranch')}
+        </div>
+      )}
+
       <div className="flex flex-col gap-y-4">
         <div className="flex flex-col gap-y-1">
           <label htmlFor="rfq-manual-client" className="text-paragraph-sm-medium">
@@ -150,7 +171,8 @@ export function RfqManualView({ onBack, onClose }: RfqManualViewProps) {
                       {product.name}
                     </p>
                     <p className="truncate text-paragraph-mini text-foreground-subtle">
-                      {product.code} · {product.unit} · {fmt.currency(product.price)}
+                      {product.code} · {product.unit}
+                      {product.price ? <> · {fmt.currency(product.price)}</> : null}
                     </p>
                   </div>
                   <Button
@@ -187,7 +209,13 @@ export function RfqManualView({ onBack, onClose }: RfqManualViewProps) {
                       {product.name}
                     </p>
                     <p className="text-paragraph-mini text-foreground-subtle">
-                      {fmt.currency(product.price)} {t('each')}
+                      {product.price ? (
+                        <>
+                          {fmt.currency(product.price)} {t('each')}
+                        </>
+                      ) : (
+                        t('each')
+                      )}
                     </p>
                   </div>
                   <Input
@@ -196,12 +224,16 @@ export function RfqManualView({ onBack, onClose }: RfqManualViewProps) {
                     min={1}
                     aria-label={t('quantityLabel', { name: product.name })}
                     value={quantity}
-                    onChange={(event) => setQuantity(product.id, toQuantity(event.target.value))}
+                    onFocus={(event) => event.target.select()}
+                    onChange={(event) => setQuantity(product.id, event.target.value)}
+                    onBlur={(event) => {
+                      const normalized = toQuantity(event.target.value);
+                      if (normalized !== event.target.value) {
+                        setQuantity(product.id, normalized);
+                      }
+                    }}
                     containerClassName="w-20 flex-none"
                   />
-                  <p className="shrink-0 text-right text-paragraph-sm tabular-nums text-foreground">
-                    {fmt.currency((Number(product.price) * quantity).toFixed(2))}
-                  </p>
                   <Button
                     type="button"
                     variant="ghost"
@@ -215,13 +247,6 @@ export function RfqManualView({ onBack, onClose }: RfqManualViewProps) {
               ))}
             </ul>
           )}
-
-          <div className="flex items-center justify-between border-t border-border pt-3">
-            <p className="text-paragraph-sm-medium text-foreground">{t('subtotal')}</p>
-            <p className="text-paragraph-sm-medium tabular-nums text-foreground">
-              {fmt.currency(subtotal)}
-            </p>
-          </div>
         </section>
       </div>
 
@@ -231,7 +256,7 @@ export function RfqManualView({ onBack, onClose }: RfqManualViewProps) {
         </Button>
         <PendingButton
           type="submit"
-          disabled={!client.trim() || items.length === 0}
+          disabled={disabled}
           pending={submitting}
           pendingLabel={t('creating')}
         >

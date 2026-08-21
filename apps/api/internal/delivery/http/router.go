@@ -27,6 +27,7 @@ type Handlers struct {
 	Verification  *handler.VerificationHandler
 	User          *handler.UserHandler
 	Branch        *handler.BranchHandler
+	Rfq           *handler.RfqHandler
 	Product       *handler.ProductHandler
 	BranchCatalog *handler.BranchCatalogHandler
 	Account       *handler.AccountHandler
@@ -128,6 +129,11 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	branchAdmin.POST("", h.Branch.Create)
 	branchAdmin.PUT("/:branchId", h.Branch.Update)
 	branchAdmin.DELETE("/:branchId", h.Branch.Delete)
+
+	// Manual RFQ intake is branch-scoped: it lands on the branch carried by X-Branch-Id
+	// and its channel of type MANUAL_ENTRY.
+	authed.GET("/rfqs", h.Rfq.List)
+	authed.POST("/rfqs", h.Rfq.Create)
 
 	admin := authed.Group("", middleware.RequireAdmin())
 	admin.GET("/product-prices/export", h.Prices.Export)

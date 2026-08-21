@@ -383,6 +383,7 @@
     "status": {
       "RECEIVED": "Recibido",
       "GENERATED": "Generado",
+      "DRAFT": "Borrador",
       "QUOTED": "Cotizado",
       "SENT": "Enviado",
       "CHANGE_REQUESTED": "Cambio solicitado",
@@ -402,11 +403,8 @@
     "channels": {
       "whatsapp": "WhatsApp",
       "email": "Email",
-      "audio": "Audio",
-      "photo": "Foto",
-      "pdf": "PDF",
-      "excel": "Excel",
-      "link": "Enlace"
+      "webapp": "Web",
+      "manual_entry": "Carga manual"
     },
     "list": {
       "title": "Pedidos",
@@ -509,13 +507,15 @@
         "quantityLabel": "Cantidad de {name}",
         "remove": "Quitar {name}",
         "subtotal": "Subtotal",
+        "noBranch": "Seleccioná una sucursal en el selector del encabezado para crear un pedido.",
         "back": "Volver",
         "creating": "Creando pedido…",
         "submit": "Crear pedido"
       },
       "toast": {
-        "imported": "La IA procesó “{filename}” y generó el pedido.",
-        "created": "El pedido de {client} se creó correctamente."
+        "imported": "La IA procesó \u201c{filename}\u201d y generó el pedido.",
+        "created": "El pedido se creó correctamente.",
+        "error": "No se pudo crear el pedido. Intentá de nuevo."
       }
     },
     "sidebar": {

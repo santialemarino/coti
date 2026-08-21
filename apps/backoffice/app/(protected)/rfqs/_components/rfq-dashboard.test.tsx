@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -6,7 +6,9 @@ import { RfqDashboard } from '@/app/(protected)/rfqs/_components/rfq-dashboard';
 import type { RfqRecord } from '@/lib/api/rfqs';
 import messages from '@/translations/es.json';
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 // The create dialog pulls in the import/manual views; it is not what these tests exercise.
 vi.mock('@/app/(protected)/rfqs/_components/create-rfq-dialog', () => ({
@@ -14,11 +16,9 @@ vi.mock('@/app/(protected)/rfqs/_components/create-rfq-dialog', () => ({
 }));
 // QUOTE_GENERATION_MS shortened so the generation step lands without fake timers.
 vi.mock('@/lib/api/rfqs', () => ({
-  fetchRfqs: vi.fn(),
   QUOTE_GENERATION_MS: 50,
 }));
 
-const { fetchRfqs } = await import('@/lib/api/rfqs');
 const { toast } = await import('sonner');
 
 const copy = messages.rfqs;
@@ -52,7 +52,7 @@ const RFQS: RfqRecord[] = [
     id: '2003',
     client: 'Obra C',
     createdAt: '2026-08-05T08:00:00.000Z',
-    channel: 'audio',
+    channel: 'manual_entry',
     seller: 'Juan Pérez',
     branch: 'Centro',
     itemCount: 4,
@@ -64,7 +64,7 @@ const RFQS: RfqRecord[] = [
     id: '2004',
     client: 'Techos D',
     createdAt: '2026-08-05T07:00:00.000Z',
-    channel: 'pdf',
+    channel: 'manual_entry',
     seller: 'Juan Pérez',
     branch: 'Norte',
     itemCount: 5,
@@ -75,7 +75,7 @@ const RFQS: RfqRecord[] = [
     id: '2005',
     client: 'Pinturas E',
     createdAt: '2026-08-04T06:00:00.000Z',
-    channel: 'photo',
+    channel: 'webapp',
     seller: 'María López',
     branch: 'Centro',
     itemCount: 6,
@@ -84,14 +84,17 @@ const RFQS: RfqRecord[] = [
   },
 ];
 
-function renderDashboard() {
+function renderDashboard(records: RfqRecord[] = RFQS) {
   return render(
     <NextIntlClientProvider
       locale="es"
       messages={messages}
       timeZone="America/Argentina/Buenos_Aires"
     >
-      <RfqDashboard />
+      <RfqDashboard
+        initialRecords={records}
+        activeBranchId="b0000000-0000-4000-8000-000000000001"
+      />
     </NextIntlClientProvider>,
   );
 }
@@ -110,19 +113,13 @@ function rowOf(view: ReturnType<typeof render>, id: string) {
   return within(row);
 }
 
-async function loaded(view: ReturnType<typeof render>) {
-  await waitFor(() => expect(view.getByText('#2001')).toBeTruthy());
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(fetchRfqs).mockResolvedValue(RFQS);
 });
 
 describe('RfqDashboard status tab counts', () => {
-  it('counts the whole list when no filter is active', async () => {
+  it('counts the whole list when no filter is active', () => {
     const view = renderDashboard();
-    await loaded(view);
 
     expect(tabCount(view, copy.status.QUOTED)).toBe(2);
     expect(tabCount(view, copy.status.SENT)).toBe(1);
@@ -134,16 +131,15 @@ describe('RfqDashboard status tab counts', () => {
   // too instead of leaving stale global numbers next to the filtered rows.
   it('recounts within the active filters instead of staying global', async () => {
     const view = renderDashboard();
-    await loaded(view);
 
     fireEvent.click(view.getByRole('combobox', { name: copy.list.filters.seller }));
-    const maria = await waitFor(() =>
+    const maria = await vi.waitFor(() =>
       view.getAllByRole('option').find((option) => option.textContent === 'María López'),
     );
     if (!maria) throw new Error('María López option never appeared');
     fireEvent.click(maria);
 
-    await waitFor(() => expect(tabCount(view, copy.status.QUOTED)).toBe(1));
+    await vi.waitFor(() => expect(tabCount(view, copy.status.QUOTED)).toBe(1));
     expect(tabCount(view, copy.status.SENT)).toBe(1);
     expect(tabCount(view, copy.status.RECEIVED)).toBe(0);
     expect(tabCount(view, copy.status.GENERATED)).toBe(1);
@@ -152,26 +148,24 @@ describe('RfqDashboard status tab counts', () => {
 
   it('combines the status tab with the other filters', async () => {
     const view = renderDashboard();
-    await loaded(view);
 
     fireEvent.click(view.getByRole('combobox', { name: copy.list.filters.seller }));
-    const maria = await waitFor(() =>
+    const maria = await vi.waitFor(() =>
       view.getAllByRole('option').find((option) => option.textContent === 'María López'),
     );
     if (!maria) throw new Error('María López option never appeared');
     fireEvent.click(maria);
-    await waitFor(() => expect(tabCount(view, copy.status.QUOTED)).toBe(1));
+    await vi.waitFor(() => expect(tabCount(view, copy.status.QUOTED)).toBe(1));
 
     fireEvent.click(within(view.getByLabelText(copy.list.tabs)).getByText(copy.status.QUOTED));
-    await waitFor(() => expect(view.queryByText('#2002')).toBeNull());
+    await vi.waitFor(() => expect(view.queryByText('#2002')).toBeNull());
     expect(view.getByText('#2001')).toBeTruthy();
   });
 });
 
 describe('RfqDashboard totals column', () => {
-  it('shows a dash until the quote exists and the amount once it does', async () => {
+  it('shows a dash until the quote exists and the amount once it does', () => {
     const view = renderDashboard();
-    await loaded(view);
 
     expect(rowOf(view, '2004').getByText('-')).toBeTruthy();
     expect(rowOf(view, '2001').getByText('$ 100,00')).toBeTruthy();
@@ -182,7 +176,6 @@ describe('RfqDashboard totals column', () => {
 describe('RfqDashboard marking a pedido as QUOTED', () => {
   it('runs the generation spinner and then lands on the pill', async () => {
     const view = renderDashboard();
-    await loaded(view);
 
     fireEvent.pointerDown(
       rowOf(view, '2005').getByRole('button', { name: copy.list.actions.more }),
@@ -190,16 +183,18 @@ describe('RfqDashboard marking a pedido as QUOTED', () => {
         button: 0,
       },
     );
-    const changeStatus = await waitFor(() =>
+    const changeStatus = await vi.waitFor(() =>
       view.getByRole('menuitem', { name: copy.list.actions.changeStatus }),
     );
     fireEvent.click(changeStatus);
-    const quoted = await waitFor(() => view.getByRole('menuitem', { name: copy.status.QUOTED }));
+    const quoted = await vi.waitFor(() => view.getByRole('menuitem', { name: copy.status.QUOTED }));
     fireEvent.click(quoted);
 
-    await waitFor(() => expect(rowOf(view, '2005').getByText(copy.processing.quote)).toBeTruthy());
+    await vi.waitFor(() =>
+      expect(rowOf(view, '2005').getByText(copy.processing.quote)).toBeTruthy(),
+    );
 
-    await waitFor(() => expect(rowOf(view, '2005').getByText(copy.status.QUOTED)).toBeTruthy(), {
+    await vi.waitFor(() => expect(rowOf(view, '2005').getByText(copy.status.QUOTED)).toBeTruthy(), {
       timeout: 3000,
     });
     expect(toast.success).toHaveBeenCalledWith(

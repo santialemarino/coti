@@ -143,6 +143,8 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 		repository.NewProductSynonymRepository(), repository.NewProductAlternativeRepository(), cfg.Catalog)
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo,
 		repository.NewBranchProductRepository(), repository.NewProductPriceRepository(), nil)
+	rfqRepo := repository.NewRfqRepository()
+	rfqService := services.NewRfqService(db, rfqRepo, nil)
 
 	limiter := ratelimit.NewMemory(nil)
 	mailTargetLimiter := handler.NewMailTargetLimiter(limiter, handler.MailTargetLimitOptions{
@@ -159,6 +161,7 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 			Verification:  handler.NewVerificationHandler(verificationService, mailTargetLimiter),
 			User:          handler.NewUserHandler(userService),
 			Branch:        handler.NewBranchHandler(services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)),
+			Rfq:           handler.NewRfqHandler(rfqService),
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
@@ -205,6 +208,10 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 			`DELETE FROM auth_token WHERE account_id = $1`,
 			`DELETE FROM notification WHERE account_id = $1`,
 			`DELETE FROM refresh_token WHERE account_id = $1`,
+			`DELETE FROM quote_item WHERE quote_id IN (SELECT id FROM quote WHERE account_id = $1)`,
+			`DELETE FROM quote_version WHERE quote_id IN (SELECT id FROM quote WHERE account_id = $1)`,
+			`DELETE FROM quote WHERE account_id = $1`,
+			`DELETE FROM rfq WHERE account_id = $1`,
 			`DELETE FROM app_user WHERE account_id = $1`,
 			`DELETE FROM channel WHERE account_id = $1`,
 			`DELETE FROM branch WHERE account_id = $1`,

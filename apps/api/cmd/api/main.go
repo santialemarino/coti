@@ -72,6 +72,7 @@ func run() error {
 	branchProductRepo := repository.NewBranchProductRepository()
 	productPriceRepo := repository.NewProductPriceRepository()
 	catalogImportRepo := repository.NewCatalogImportRepository()
+	rfqRepo := repository.NewRfqRepository()
 	accountRepo := repository.NewAccountRepository()
 	channelRepo := repository.NewChannelRepository()
 	authTokenRepo := repository.NewAuthTokenRepository()
@@ -103,6 +104,7 @@ func run() error {
 		productAlternativeRepo, cfg.Catalog)
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo, branchProductRepo,
 		productPriceRepo, nil)
+	rfqService := services.NewRfqService(db, rfqRepo, nil)
 	productPriceImportService := services.NewProductPriceImportService(db, productPriceRepo, nil)
 	catalogImportService := services.NewCatalogImportService(db, catalogImportRepo, nil)
 
@@ -114,6 +116,7 @@ func run() error {
 			Verification:  handler.NewVerificationHandler(verificationService, mailTargetLimiter),
 			User:          handler.NewUserHandler(userService),
 			Branch:        handler.NewBranchHandler(branchService),
+			Rfq:           handler.NewRfqHandler(rfqService),
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),

@@ -60,6 +60,7 @@
   --color-status-quoted: var(--status-quoted-base);
   --color-status-sent: var(--status-sent-base);
   --color-status-archived: var(--status-archived-base);
+  --color-status-draft: var(--status-draft-base);
 
   /* Brand ramp — reach for a semantic token first; these are for brand surfaces only. */
   --color-brand-50: var(--brand-50);

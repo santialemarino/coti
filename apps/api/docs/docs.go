@@ -2226,6 +2226,76 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/rfqs": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Records a counter or phone order. The RFQ is born GENERATED and its quote DRAFT in one transaction; typed lines become the quote's first version. Needs an active branch in X-Branch-Id.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rfqs"
+                ],
+                "summary": "Create a manual RFQ",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Manual RFQ",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateRfqRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateRfqResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Branch has no manual-entry channel, or an item names a product outside the account",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch, no raw_text and no items, or a quantity NUMERIC(14,2) cannot hold",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/users": {
             "get": {
                 "security": [
@@ -2995,6 +3065,61 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.CreateRfqItemRequest": {
+            "type": "object",
+            "required": [
+                "quantity",
+                "requested_description"
+            ],
+            "properties": {
+                "product_id": {
+                    "type": "string"
+                },
+                "quantity": {
+                    "type": "string"
+                },
+                "requested_description": {
+                    "type": "string",
+                    "maxLength": 512,
+                    "minLength": 1
+                },
+                "unit": {
+                    "type": "string",
+                    "maxLength": 64
+                }
+            }
+        },
+        "dto.CreateRfqRequest": {
+            "type": "object",
+            "properties": {
+                "client_label": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.CreateRfqItemRequest"
+                    }
+                },
+                "raw_text": {
+                    "type": "string"
+                },
+                "work_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.CreateRfqResponse": {
+            "type": "object",
+            "properties": {
+                "quote": {
+                    "$ref": "#/definitions/dto.QuoteResponse"
+                },
+                "rfq": {
+                    "$ref": "#/definitions/dto.RfqResponse"
+                }
+            }
+        },
         "dto.CreateUserRequest": {
             "type": "object",
             "required": [
@@ -3311,6 +3436,35 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.QuoteResponse": {
+            "type": "object",
+            "properties": {
+                "branch_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "current_status": {
+                    "type": "string"
+                },
+                "current_version_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "rfq_id": {
+                    "type": "string"
+                },
+                "seller_id": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.RateLimitResponse": {
             "type": "object",
             "properties": {
@@ -3362,6 +3516,38 @@ const docTemplate = `{
                     "minLength": 8
                 },
                 "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.RfqResponse": {
+            "type": "object",
+            "properties": {
+                "branch_id": {
+                    "type": "string"
+                },
+                "channel_id": {
+                    "type": "string"
+                },
+                "client_label": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "raw_text": {
+                    "type": "string"
+                },
+                "received_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "work_type": {
                     "type": "string"
                 }
             }

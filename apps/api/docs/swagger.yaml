@@ -272,6 +272,43 @@ definitions:
     - canonical_name
     - family_id
     type: object
+  dto.CreateRfqItemRequest:
+    properties:
+      product_id:
+        type: string
+      quantity:
+        type: string
+      requested_description:
+        maxLength: 512
+        minLength: 1
+        type: string
+      unit:
+        maxLength: 64
+        type: string
+    required:
+    - quantity
+    - requested_description
+    type: object
+  dto.CreateRfqRequest:
+    properties:
+      client_label:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/dto.CreateRfqItemRequest'
+        type: array
+      raw_text:
+        type: string
+      work_type:
+        type: string
+    type: object
+  dto.CreateRfqResponse:
+    properties:
+      quote:
+        $ref: '#/definitions/dto.QuoteResponse'
+      rfq:
+        $ref: '#/definitions/dto.RfqResponse'
+    type: object
   dto.CreateUserRequest:
     properties:
       branch_ids:
@@ -487,6 +524,25 @@ definitions:
       updated_at:
         type: string
     type: object
+  dto.QuoteResponse:
+    properties:
+      branch_id:
+        type: string
+      created_at:
+        type: string
+      current_status:
+        type: string
+      current_version_id:
+        type: string
+      id:
+        type: string
+      rfq_id:
+        type: string
+      seller_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
   dto.RateLimitResponse:
     properties:
       code:
@@ -524,6 +580,27 @@ definitions:
     required:
     - new_password
     - token
+    type: object
+  dto.RfqResponse:
+    properties:
+      branch_id:
+        type: string
+      channel_id:
+        type: string
+      client_label:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      raw_text:
+        type: string
+      received_at:
+        type: string
+      status:
+        type: string
+      work_type:
+        type: string
     type: object
   dto.SetAvailabilityRequest:
     properties:
@@ -2222,6 +2299,55 @@ paths:
       summary: Confirm an email address
       tags:
       - auth
+  /v1/rfqs:
+    post:
+      consumes:
+      - application/json
+      description: Records a counter or phone order. The RFQ is born GENERATED and
+        its quote DRAFT in one transaction; typed lines become the quote's first version.
+        Needs an active branch in X-Branch-Id.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Manual RFQ
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateRfqRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.CreateRfqResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Branch has no manual-entry channel, or an item names a product
+            outside the account
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch, no raw_text and no items, or a quantity NUMERIC(14,2)
+            cannot hold
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a manual RFQ
+      tags:
+      - rfqs
   /v1/users:
     get:
       description: Admin only. Ordered by name, deactivated users included so they
