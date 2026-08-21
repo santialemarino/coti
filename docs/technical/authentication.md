@@ -183,10 +183,13 @@ the route the link lands on.
 - **`GET /v1/me` reports `email_verified`**, which is what lets a screen tell "confirm your
   address" from "already done" instead of guessing.
 - **Enforced at login only** — not on refresh, not on tenant resolution. Registration hands out a
-  session on purpose, so the new admin can reach the screen that explains the mail; checking on
-  every request would make signup hand over a session that can do nothing. It still bites:
-  registration issues a **non-remembered** pair, so the session dies within
+  session on purpose, so the new admin can reach the screen that explains the mail. It bites
+  because registration issues a **non-remembered** pair: the session dies within
   `AUTH_REFRESH_TTL_HOURS` (12h) and the next login is refused until the address is confirmed.
+  **This is the shape today, and it is agreed to change.** Refusing at the door leaves someone who
+  mistyped their address at signup with no way back once that window closes. The agreed model
+  enforces on **use** instead — authenticate normally, then reach nothing but your own identity,
+  logout and a correction of your own address until you confirm. Not built yet.
 - **When it is on, the caller is told why** — a 403 naming the reason, unlike every other
   rejection here. That is safe because it is only reachable _after_ the password matched:
   the check sits below the credential comparison, so it can never answer for someone who
@@ -205,8 +208,8 @@ it is the configuration change the flow was built for.
 ## Rate limits
 
 A global allowance over all of `/v1`, plus tighter ones on the surfaces a stranger can use to
-flood the database or someone's mailbox. It sits **ahead of `Authenticate`**, so a flood is
-refused before it costs a query.
+flood the database or someone's mailbox, and on the ones a **provider bills per call**. It sits
+**ahead of `Authenticate`**, so a flood is refused before it costs a query.
 
 | Scope         | Setting                      | Routes                                            |
 | ------------- | ---------------------------- | ------------------------------------------------- |
@@ -214,9 +217,14 @@ refused before it costs a query.
 | `credentials` | `RATE_LIMIT_CREDENTIALS_MAX` | login, reset-password, verify-email               |
 | `signup`      | `RATE_LIMIT_SIGNUP_MAX`      | public account registration                       |
 | `mail`        | `RATE_LIMIT_MAIL_MAX`        | forgot-password, resend-verification, admin reset |
+| `ai`          | `RATE_LIMIT_AI_MAX`          | the RFQ text draft and the development intake     |
 
 Refresh is deliberately left on the global allowance alone: the backoffice renews on a
 schedule the user does not control, and a tighter limit there would log people out.
+
+`ai` is the odd one out: it guards spend rather than load. The routes behind it each cost a
+generation and an embedding, and the global allowance would let one authenticated seller run 300
+of them a minute. Startup refuses a value above `RATE_LIMIT_GLOBAL_MAX`, which could never bite.
 
 ### A second counter, keyed on the mailbox
 

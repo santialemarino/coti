@@ -44,6 +44,8 @@ func (e *env) dropAccountByAdminEmail(t *testing.T, email string) {
 			return
 		}
 		for _, stmt := range []string{
+			`DELETE FROM onboarding_step_progress WHERE account_id = $1`,
+			`DELETE FROM account_onboarding WHERE account_id = $1`,
 			`DELETE FROM refresh_token WHERE account_id = $1`,
 			`DELETE FROM auth_token WHERE account_id = $1`,
 			`DELETE FROM notification WHERE account_id = $1`,
@@ -104,6 +106,17 @@ func TestSignup_CreatesAccountBranchChannelAndAdmin(t *testing.T) {
 	}
 	if channels != 1 {
 		t.Errorf("manual-entry channels = %d, want exactly 1", channels)
+	}
+
+	var onboardingStatus, onboardingStep string
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT status, current_step FROM account_onboarding WHERE account_id = $1`,
+		body.Account.ID,
+	).Scan(&onboardingStatus, &onboardingStep); err != nil {
+		t.Fatalf("read onboarding: %v", err)
+	}
+	if onboardingStatus != "IN_PROGRESS" || onboardingStep != "WELCOME" {
+		t.Errorf("onboarding = %s/%s, want IN_PROGRESS/WELCOME", onboardingStatus, onboardingStep)
 	}
 
 	// The session the signup returned must actually reach the account it created.

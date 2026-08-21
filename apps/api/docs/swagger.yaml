@@ -194,6 +194,32 @@ definitions:
     - current_password
     - new_password
     type: object
+  dto.ChannelListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ChannelResponse'
+        type: array
+    type: object
+  dto.ChannelResponse:
+    properties:
+      branch_id:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      identifier:
+        type: string
+      is_active:
+        type: boolean
+      is_configured:
+        type: boolean
+      type:
+        type: string
+      updated_at:
+        type: string
+    type: object
   dto.ConfirmCatalogImportRequest:
     properties:
       rows:
@@ -249,6 +275,23 @@ definitions:
     required:
     - name
     type: object
+  dto.CreateChannelRequest:
+    properties:
+      config:
+        type: object
+      identifier:
+        maxLength: 255
+        type: string
+      type:
+        enum:
+        - WHATSAPP
+        - EMAIL
+        - WEBAPP
+        - MANUAL_ENTRY
+        type: string
+    required:
+    - type
+    type: object
   dto.CreateProductRequest:
     properties:
       canonical_name:
@@ -272,6 +315,7 @@ definitions:
     - canonical_name
     - family_id
     type: object
+<<<<<<< HEAD
   dto.CreateRfqItemRequest:
     properties:
       product_id:
@@ -308,6 +352,26 @@ definitions:
         $ref: '#/definitions/dto.QuoteResponse'
       rfq:
         $ref: '#/definitions/dto.RfqResponse'
+=======
+  dto.CreateTextRFQDraftRequest:
+    properties:
+      channel_id:
+        type: string
+      client_id:
+        type: string
+      client_label:
+        maxLength: 255
+        type: string
+      raw_text:
+        minLength: 1
+        type: string
+      work_type:
+        maxLength: 255
+        type: string
+    required:
+    - channel_id
+    - raw_text
+>>>>>>> origin/dev
     type: object
   dto.CreateUserRequest:
     properties:
@@ -336,6 +400,24 @@ definitions:
     - name
     - password
     - role
+    type: object
+  dto.CreateWhatsAppMockRFQDraftRequest:
+    properties:
+      channel_id:
+        type: string
+      from:
+        maxLength: 64
+        minLength: 1
+        type: string
+      profile_name:
+        maxLength: 160
+        type: string
+      text:
+        minLength: 1
+        type: string
+    required:
+    - from
+    - text
     type: object
   dto.ErrorResponse:
     properties:
@@ -405,6 +487,21 @@ definitions:
       role:
         type: string
     type: object
+  dto.OnboardingResponse:
+    properties:
+      completed_at:
+        type: string
+      current_step:
+        type: string
+      flow_version:
+        type: integer
+      status:
+        type: string
+      steps:
+        additionalProperties:
+          type: string
+        type: object
+    type: object
   dto.PriceListResponse:
     properties:
       items:
@@ -436,6 +533,17 @@ definitions:
         type: string
       valid_to:
         type: string
+    type: object
+  dto.PricedQuoteResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.QuoteItemResponse'
+        type: array
+      quote:
+        $ref: '#/definitions/dto.QuoteResponse'
+      version:
+        $ref: '#/definitions/dto.QuoteVersionResponse'
     type: object
   dto.ProductListResponse:
     properties:
@@ -524,18 +632,110 @@ definitions:
       updated_at:
         type: string
     type: object
+<<<<<<< HEAD
   dto.QuoteResponse:
     properties:
       branch_id:
         type: string
+=======
+  dto.QuoteItemAlternativeResponse:
+    properties:
+      approved_by_seller:
+        type: boolean
+      canonical_name:
+        type: string
+      chosen_by_client:
+        type: boolean
+      code:
+        type: string
+      combo_id:
+        type: string
+      confidence_score:
+        type: string
+      id:
+        type: string
+      origin:
+        type: string
+      price_snapshot:
+        type: string
+      product_id:
+        type: string
+      rank:
+        type: integer
+      type:
+        type: string
+      unit:
+        type: string
+    type: object
+  dto.QuoteItemResponse:
+    properties:
+      alternatives:
+        description: |-
+          Alternatives are the candidates a flagged line was decided from, best first. A decided line
+          carries none: there is nothing for the seller to choose between.
+        items:
+          $ref: '#/definitions/dto.QuoteItemAlternativeResponse'
+        type: array
+      confidence_score:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      match_status:
+        type: string
+      min_price_snapshot:
+        type: string
+      pricing_unavailable:
+        description: |-
+          PricingUnavailable names a line that matched a product the branch cannot price. It is null
+          until the materials are accepted, because until then no line has been priced at all.
+        type: boolean
+      product_id:
+        type: string
+      quantity:
+        type: string
+      quantity_rationale:
+        type: string
+      requested_description:
+        type: string
+      subtotal:
+        type: string
+      unit:
+        type: string
+      unit_price_snapshot:
+        type: string
+      version_id:
+        type: string
+    type: object
+  dto.QuoteResponse:
+    properties:
+      archived_at:
+        type: string
+      branch_id:
+        type: string
+      client_id:
+        type: string
+>>>>>>> origin/dev
       created_at:
         type: string
       current_status:
         type: string
       current_version_id:
         type: string
+<<<<<<< HEAD
       id:
         type: string
+=======
+      expires_at:
+        type: string
+      followup_flagged_at:
+        type: string
+      id:
+        type: string
+      needs_followup:
+        type: boolean
+>>>>>>> origin/dev
       rfq_id:
         type: string
       seller_id:
@@ -543,6 +743,77 @@ definitions:
       updated_at:
         type: string
     type: object
+<<<<<<< HEAD
+=======
+  dto.QuoteVersionResponse:
+    properties:
+      author_id:
+        type: string
+      comment:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      is_immutable:
+        type: boolean
+      quote_id:
+        type: string
+      total:
+        type: string
+      version_number:
+        type: integer
+    type: object
+  dto.RFQAttachmentListResponse:
+    properties:
+      attachments:
+        items:
+          $ref: '#/definitions/dto.RFQAttachmentResponse'
+        type: array
+    type: object
+  dto.RFQAttachmentResponse:
+    properties:
+      created_at:
+        type: string
+      expires_at:
+        type: string
+      id:
+        type: string
+      processing_status:
+        type: string
+      rfq_id:
+        type: string
+      type:
+        type: string
+      url:
+        type: string
+    type: object
+  dto.RFQResponse:
+    properties:
+      branch_id:
+        type: string
+      channel_id:
+        type: string
+      client_id:
+        type: string
+      client_label:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      raw_text:
+        type: string
+      received_at:
+        type: string
+      status:
+        type: string
+      updated_at:
+        type: string
+      work_type:
+        type: string
+    type: object
+>>>>>>> origin/dev
   dto.RateLimitResponse:
     properties:
       code:
@@ -581,6 +852,7 @@ definitions:
     - new_password
     - token
     type: object
+<<<<<<< HEAD
   dto.RfqResponse:
     properties:
       branch_id:
@@ -601,6 +873,39 @@ definitions:
         type: string
       work_type:
         type: string
+=======
+  dto.SaveOnboardingProgressRequest:
+    properties:
+      current_step:
+        enum:
+        - WELCOME
+        - BRAND
+        - FIRST_BRANCH
+        - CATALOG_UPLOAD
+        - CATALOG_REVIEW
+        - TEAM
+        - COMPLETE
+        type: string
+      step:
+        enum:
+        - WELCOME
+        - BRAND
+        - FIRST_BRANCH
+        - CATALOG_UPLOAD
+        - CATALOG_REVIEW
+        - TEAM
+        - COMPLETE
+        type: string
+      step_status:
+        enum:
+        - COMPLETED
+        - SKIPPED
+        type: string
+    required:
+    - current_step
+    - step
+    - step_status
+>>>>>>> origin/dev
     type: object
   dto.SetAvailabilityRequest:
     properties:
@@ -688,6 +993,19 @@ definitions:
       term:
         type: string
     type: object
+  dto.TextRFQDraftResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.QuoteItemResponse'
+        type: array
+      quote:
+        $ref: '#/definitions/dto.QuoteResponse'
+      rfq:
+        $ref: '#/definitions/dto.RFQResponse'
+      version:
+        $ref: '#/definitions/dto.QuoteVersionResponse'
+    type: object
   dto.TokenResponse:
     properties:
       access_expires_at:
@@ -741,6 +1059,16 @@ definitions:
     required:
     - default_expiry_days
     - name
+    type: object
+  dto.UpdateChannelRequest:
+    properties:
+      config:
+        type: object
+      identifier:
+        maxLength: 255
+        type: string
+      is_active:
+        type: boolean
     type: object
   dto.UpdateProductRequest:
     properties:
@@ -1164,6 +1492,308 @@ paths:
       summary: Update a branch
       tags:
       - branches
+  /v1/channels:
+    get:
+      description: Returns active intake channels for the branch selected through
+        X-Branch-Id. With include_inactive an administrator also gets the closed ones,
+        which is for administering them rather than taking an order through one. No
+        response carries a channel credential; is_configured reports only that one
+        is stored.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Include closed channels (administrators only)
+        in: query
+        name: include_inactive
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ChannelListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List intake channels
+      tags:
+      - channels
+    post:
+      consumes:
+      - application/json
+      description: Opens a channel on the branch selected through X-Branch-Id. config
+        is validated against type and its credentials are encrypted before they are
+        stored; a shape that does not match the type is refused here rather than when
+        the first message arrives.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Channel
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateChannelRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ChannelResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: The branch already holds that channel
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: No encryption key configured
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create an intake channel
+      tags:
+      - channels
+  /v1/channels/{channelId}:
+    delete:
+      description: Deactivates the channel so the orders that arrived through it stay
+        explainable. Refuses to close the branch's manual-entry channel, which a counter
+        or phone order has no other route to point at.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Channel id
+        in: path
+        name: channelId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Close an intake channel
+      tags:
+      - channels
+    put:
+      consumes:
+      - application/json
+      description: Replaces the identifier and, when sent, the whole configuration.
+        config omitted leaves the stored settings alone; an explicit null removes
+        them. The type cannot change, because the shape of the configuration depends
+        on it.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Channel id
+        in: path
+        name: channelId
+        required: true
+        type: string
+      - description: Channel
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateChannelRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ChannelResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: The branch already holds that channel
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: No encryption key configured
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update an intake channel
+      tags:
+      - channels
+  /v1/dev/whatsapp/messages:
+    post:
+      consumes:
+      - application/json
+      description: Development-only intake that resolves an active WhatsApp channel
+        and creates the same seller-reviewable RFQ draft as the production text flow.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Inbound WhatsApp message
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateWhatsAppMockRFQDraftRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.TextRFQDraftResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No active WhatsApp channel
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Ambiguous channel, or an answer the model could not shape
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: Rate limit spent; retry_after_seconds says when
+          schema:
+            $ref: '#/definitions/dto.RateLimitResponse'
+        "503":
+          description: No language model is bound, or it could not answer
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Simulate an inbound WhatsApp message
+      tags:
+      - development
+  /v1/files/{key}:
+    get:
+      description: 'Serves a stored file to the holder of an unexpired signed link.
+        No session: the signature is the authorization.'
+      parameters:
+      - description: Object key
+        in: path
+        name: key
+        required: true
+        type: string
+      - description: Deadline, in unix seconds
+        in: query
+        name: expires
+        required: true
+        type: integer
+      - description: Signature covering the key and the deadline
+        in: query
+        name: signature
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Download a signed object
+      tags:
+      - files
   /v1/me:
     get:
       description: Returns the caller's identity and branch reach, so the frontend
@@ -1188,6 +1818,128 @@ paths:
       summary: Get the current user
       tags:
       - users
+  /v1/onboarding:
+    get:
+      description: Returns the current flow version, resume step, and resolved steps
+        for the account.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.OnboardingResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get onboarding progress
+      tags:
+      - onboarding
+    put:
+      consumes:
+      - application/json
+      description: Records a completed or skipped step and the stable step key to
+        resume from.
+      parameters:
+      - description: Progress
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SaveOnboardingProgressRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.OnboardingResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Save onboarding progress
+      tags:
+      - onboarding
+  /v1/onboarding/complete:
+    post:
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Complete onboarding
+      tags:
+      - onboarding
+  /v1/onboarding/dismiss:
+    post:
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Dismiss onboarding
+      tags:
+      - onboarding
+  /v1/onboarding/resume:
+    post:
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Resume onboarding
+      tags:
+      - onboarding
   /v1/product-prices/export:
     get:
       description: Returns an XLSX pre-filled with the prices in force for the active
@@ -2299,6 +3051,7 @@ paths:
       summary: Confirm an email address
       tags:
       - auth
+<<<<<<< HEAD
   /v1/rfqs:
     post:
       consumes:
@@ -2306,12 +3059,24 @@ paths:
       description: Records a counter or phone order. The RFQ is born GENERATED and
         its quote DRAFT in one transaction; typed lines become the quote's first version.
         Needs an active branch in X-Branch-Id.
+=======
+  /v1/quotes/{quoteId}/accept-materials:
+    post:
+      description: 'Freezes each line''s unit price and discount floor from the prices
+        in force at the quote''s branch, sums the version total, and moves the quote
+        to QUOTED for review. A line with no matched product, or one whose product
+        the branch cannot price, stays in the quote with an empty valuation and adds
+        nothing to the total; the second is named by pricing_unavailable, which every
+        line answers once valued. The version is not frozen: the seller still edits
+        it.'
+>>>>>>> origin/dev
       parameters:
       - description: Active branch
         in: header
         name: X-Branch-Id
         required: true
         type: string
+<<<<<<< HEAD
       - description: Manual RFQ
         in: body
         name: request
@@ -2325,6 +3090,20 @@ paths:
           description: Created
           schema:
             $ref: '#/definitions/dto.CreateRfqResponse'
+=======
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.PricedQuoteResponse'
+>>>>>>> origin/dev
         "400":
           description: Bad Request
           schema:
@@ -2334,6 +3113,7 @@ paths:
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "404":
+<<<<<<< HEAD
           description: Branch has no manual-entry channel, or an item names a product
             outside the account
           schema:
@@ -2341,13 +3121,177 @@ paths:
         "422":
           description: No active branch, no raw_text and no items, or a quantity NUMERIC(14,2)
             cannot hold
+=======
+          description: No such quote in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_NOT_DRAFT once the materials were accepted, QUOTE_ARCHIVED
+            on an archived quote
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch, or a total NUMERIC(14,2) cannot hold
+>>>>>>> origin/dev
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
+<<<<<<< HEAD
       summary: Create a manual RFQ
       tags:
       - rfqs
+=======
+      summary: Accept a quote's materials
+      tags:
+      - quotes
+  /v1/rfqs/{rfqId}/attachments:
+    get:
+      description: Returns each stored file with a freshly signed link. The link expires,
+        so it is read from here rather than kept. An RFQ that does not exist, or belongs
+        elsewhere, answers an empty list rather than 404.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: RFQ id
+        in: path
+        name: rfqId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.RFQAttachmentListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List an RFQ's attachments
+      tags:
+      - rfq
+    post:
+      consumes:
+      - multipart/form-data
+      description: Stores one file for the RFQ and records the reference. The file
+        is refused for its type or its size before any of it is stored, and the object
+        key leads with the account.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: RFQ id
+        in: path
+        name: rfqId
+        required: true
+        type: string
+      - description: The file to store
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.RFQAttachmentResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such RFQ in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "413":
+          description: FILE_TOO_LARGE
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: UNSUPPORTED_FILE_TYPE, or no active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Upload an RFQ attachment
+      tags:
+      - rfq
+  /v1/rfqs/text-drafts:
+    post:
+      consumes:
+      - application/json
+      description: Persists the original text before reading it, then returns a quote
+        DRAFT with one line per material, each carrying its catalog match, its confidence,
+        and the candidates a flagged line was decided against. It does not price or
+        send the quote, so pricing_unavailable is null on every line.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: RFQ text to process
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateTextRFQDraftRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.TextRFQDraftResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch, or an answer the model could not shape
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: Rate limit spent; retry_after_seconds says when
+          schema:
+            $ref: '#/definitions/dto.RateLimitResponse'
+        "503":
+          description: No language model is bound, or it could not answer
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create an RFQ text draft
+      tags:
+      - rfq
+>>>>>>> origin/dev
   /v1/users:
     get:
       description: Admin only. Ordered by name, deactivated users included so they

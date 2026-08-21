@@ -8,6 +8,7 @@ import (
 	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	pgxvector "github.com/pgvector/pgvector-go/pgx"
 
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
@@ -17,37 +18,66 @@ import (
 // is_local = true so it cannot leak to whoever borrows the connection next.
 const tenantGUC = "app.current_account_id"
 
-// DB owns both connection pools: app is the restricted, RLS-subject role that carries
-// every request-scoped query; admin is the owner role, which bypasses RLS.
+// TenantDB is the restricted, RLS-subject pool on its own. A process that never legitimately
+// crosses accounts opens this instead of DB, and then holds no RLS-exempt connection at all —
+// the boundary is the type rather than a rule nobody can check.
+type TenantDB struct {
+	app *pgxpool.Pool
+}
+
+// NewTenantDB opens only the restricted pool and verifies it answers before returning.
+func NewTenantDB(ctx context.Context, cfg config.DatabaseConfig) (*TenantDB, error) {
+	app, err := openPool(ctx, cfg, cfg.URL)
+	if err != nil {
+		return nil, fmt.Errorf("app pool: %w", err)
+	}
+	return &TenantDB{app: app}, nil
+}
+
+// Close releases the pool.
+func (db *TenantDB) Close() {
+	db.app.Close()
+}
+
+// Ping verifies the pool still answers.
+func (db *TenantDB) Ping(ctx context.Context) error {
+	if err := db.app.Ping(ctx); err != nil {
+		return fmt.Errorf("app pool: %w", err)
+	}
+	return nil
+}
+
+// DB adds the owner pool, which bypasses RLS, to the restricted one every request-scoped query
+// runs on. Only a process with a legitimate cross-account job opens it.
 type DB struct {
-	app   *pgxpool.Pool
+	*TenantDB
 	admin *pgxpool.Pool
 }
 
 // NewDB opens both pools and verifies each one answers before returning.
 func NewDB(ctx context.Context, cfg config.DatabaseConfig) (*DB, error) {
-	app, err := openPool(ctx, cfg, cfg.URL)
+	tenant, err := NewTenantDB(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("app pool: %w", err)
+		return nil, err
 	}
 	admin, err := openPool(ctx, cfg, cfg.AdminURL)
 	if err != nil {
-		app.Close()
+		tenant.Close()
 		return nil, fmt.Errorf("admin pool: %w", err)
 	}
-	return &DB{app: app, admin: admin}, nil
+	return &DB{TenantDB: tenant, admin: admin}, nil
 }
 
 // Close releases both pools.
 func (db *DB) Close() {
-	db.app.Close()
+	db.TenantDB.Close()
 	db.admin.Close()
 }
 
 // Ping verifies both pools still answer. Used by the readiness probe.
 func (db *DB) Ping(ctx context.Context) error {
-	if err := db.app.Ping(ctx); err != nil {
-		return fmt.Errorf("app pool: %w", err)
+	if err := db.TenantDB.Ping(ctx); err != nil {
+		return err
 	}
 	if err := db.admin.Ping(ctx); err != nil {
 		return fmt.Errorf("admin pool: %w", err)
@@ -60,7 +90,7 @@ func (db *DB) Ping(ctx context.Context) error {
 //
 // It has to be a transaction: the GUC is transaction-scoped, so a bare pool query would
 // run outside it, match no policy, and silently read zero rows.
-func (db *DB) InTenantTx(ctx context.Context, tenant domain.Tenant, fn func(Querier) error) error {
+func (db *TenantDB) InTenantTx(ctx context.Context, tenant domain.Tenant, fn func(Querier) error) error {
 	if tenant.AccountID == uuid.Nil {
 		return domain.ErrNoTenantContext
 	}
@@ -102,6 +132,20 @@ func (db *DB) AdminTx(ctx context.Context) (pgx.Tx, error) {
 	return db.admin.Begin(ctx)
 }
 
+// AdminConn holds one owner connection for the life of fn.
+//
+// A scheduled job needs this rather than the pool: an advisory lock lives on the connection that
+// took it, so taken through a pool it would be held by whichever connection served that one call
+// and released — or not — by whichever served the next.
+func (db *DB) AdminConn(ctx context.Context, fn func(Querier) error) error {
+	conn, err := db.admin.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Release()
+	return fn(conn)
+}
+
 func openPool(ctx context.Context, cfg config.DatabaseConfig, url string) (*pgxpool.Pool, error) {
 	poolCfg, err := pgxpool.ParseConfig(url)
 	if err != nil {
@@ -113,11 +157,12 @@ func openPool(ctx context.Context, cfg config.DatabaseConfig, url string) (*pgxp
 	poolCfg.MaxConnIdleTime = cfg.MaxConnIdleTime
 	poolCfg.ConnConfig.ConnectTimeout = cfg.ConnectTimeout
 
-	// The decimal codec has to be registered per connection, not once in main: the pool
-	// opens connections on its own schedule, replacements for dead ones included.
-	poolCfg.AfterConnect = func(_ context.Context, conn *pgx.Conn) error {
+	// Both codecs have to be registered per connection, not once in main: the pool opens
+	// connections on its own schedule, replacements for dead ones included. The vector one
+	// looks its type up in the database, so it costs a query per connection.
+	poolCfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		pgxdecimal.Register(conn.TypeMap())
-		return nil
+		return pgxvector.RegisterTypes(ctx, conn)
 	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)

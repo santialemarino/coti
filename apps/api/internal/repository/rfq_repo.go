@@ -12,20 +12,65 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
-// RfqRepository owns persistence for rfq and for the quote a manual entry
-// materializes, which only exist together.
-type RfqRepository struct{}
+const rfqColumns = `id, account_id, branch_id, client_id, channel_id, raw_text, status, work_type,
+	received_at, created_at, updated_at, client_label`
 
-// NewRfqRepository builds an RfqRepository.
-func NewRfqRepository() *RfqRepository {
-	return &RfqRepository{}
+const rfqStatusChangeColumns = `id, account_id, rfq_id, previous_status, new_status, user_id,
+	changed_at, created_at`
+
+// RFQRepository owns persistence for RFQs, their status history, and the quote a
+// manual entry materializes.
+type RFQRepository struct{}
+
+// NewRFQRepository builds an RFQRepository.
+func NewRFQRepository() *RFQRepository {
+	return &RFQRepository{}
 }
 
-// ListByTenant returns the RFQ list the Backoffice dashboard consumes: one row per
-// rfq, joined with quote, branch, seller, the current version's total, and the
-// item count. The count is a correlated subquery so no second query touches the
-// connection while the first one is open (pgx transactions are single-connection).
-func (r *RfqRepository) ListByTenant(
+// Create inserts an RFQ source record.
+func (r *RFQRepository) Create(
+	ctx context.Context, q Querier, accountID uuid.UUID, in domain.NewRFQ,
+) (*domain.RFQ, error) {
+	if in.Status == "" {
+		in.Status = domain.RFQStatusReceived
+	}
+	return scanRFQ(q.QueryRow(ctx,
+		`INSERT INTO rfq (account_id, branch_id, client_id, channel_id, raw_text, status,
+		                  work_type, client_label)
+		 SELECT $1, $2, $3, $4, $5, $6, $7, $8
+		 WHERE $3::uuid IS NULL
+		    OR EXISTS (SELECT 1 FROM client WHERE account_id = $1 AND id = $3::uuid)
+		 RETURNING `+rfqColumns,
+		accountID, in.BranchID, in.ClientID, in.ChannelID, in.RawText, in.Status, in.WorkType,
+		in.ClientLabel))
+}
+
+// UpdateStatus writes the RFQ status cache and returns the stored row.
+func (r *RFQRepository) UpdateStatus(
+	ctx context.Context, q Querier, accountID, id uuid.UUID, status domain.RFQStatus,
+) (*domain.RFQ, error) {
+	return scanRFQ(q.QueryRow(ctx,
+		`UPDATE rfq
+		 SET status = $3
+		 WHERE account_id = $1 AND id = $2
+		 RETURNING `+rfqColumns,
+		accountID, id, status))
+}
+
+// AppendStatusChange records an RFQ lifecycle transition.
+func (r *RFQRepository) AppendStatusChange(
+	ctx context.Context, q Querier, accountID, rfqID uuid.UUID, previousStatus *domain.RFQStatus,
+	newStatus domain.RFQStatus, userID *uuid.UUID,
+) (*domain.RFQStatusChange, error) {
+	return scanRFQStatusChange(q.QueryRow(ctx,
+		`INSERT INTO rfq_status_change (account_id, rfq_id, previous_status, new_status, user_id)
+		 VALUES ($1, $2, $3, $4, $5)
+		 RETURNING `+rfqStatusChangeColumns,
+		accountID, rfqID, previousStatus, newStatus, userID))
+}
+
+// ListByTenant returns the RFQ list the Backoffice dashboard consumes.
+func (r *RFQRepository) ListByTenant(
 	ctx context.Context, q Querier, tenant domain.Tenant,
 ) ([]domain.RfqListItem, error) {
 	rows, err := q.Query(ctx,
@@ -82,10 +127,8 @@ func (r *RfqRepository) ListByTenant(
 	return items, rows.Err()
 }
 
-// GetManualEntryChannelID returns the branch's manual-entry channel, the one a
-// counter, phone or unintegrated-messaging order arrives through. Every branch is
-// created with exactly one.
-func (r *RfqRepository) GetManualEntryChannelID(
+// GetManualEntryChannelID returns the branch's manual-entry channel.
+func (r *RFQRepository) GetManualEntryChannelID(
 	ctx context.Context, q Querier, accountID, branchID uuid.UUID,
 ) (uuid.UUID, error) {
 	var id uuid.UUID
@@ -106,10 +149,8 @@ func (r *RfqRepository) GetManualEntryChannelID(
 	return id, nil
 }
 
-// CountProductsInAccount reports how many of the given ids are catalog products of the
-// account. A foreign id is indistinguishable from a missing one, which is what lets a
-// typed line that names it fail closed.
-func (r *RfqRepository) CountProductsInAccount(
+// CountProductsInAccount reports how many of the given ids are catalog products of the account.
+func (r *RFQRepository) CountProductsInAccount(
 	ctx context.Context, q Querier, accountID uuid.UUID, productIDs []uuid.UUID,
 ) (int, error) {
 	var count int
@@ -125,11 +166,8 @@ func (r *RfqRepository) CountProductsInAccount(
 	return count, nil
 }
 
-// CreateManualEntry persists a manual RFQ and everything a manual order needs in one
-// transaction: the RFQ born GENERATED, the quote born DRAFT, version v1, the typed
-// lines, and both status-change history rows. A line that names a catalog product is
-// MATCHED; a free-text line is NO_MATCH and keeps its NULL product_id.
-func (r *RfqRepository) CreateManualEntry(
+// CreateManualEntry persists a manual RFQ and everything it needs in one transaction.
+func (r *RFQRepository) CreateManualEntry(
 	ctx context.Context, q Querier, tenant domain.Tenant, channelID uuid.UUID,
 	in domain.NewRfq, now time.Time,
 ) (*domain.RfqCreation, error) {
@@ -163,7 +201,7 @@ func (r *RfqRepository) CreateManualEntry(
 	}
 	creation.Quote.AccountID = tenant.AccountID
 	creation.Quote.BranchID = tenant.BranchID
-	creation.Quote.RfqID = creation.Rfq.ID
+	creation.Quote.RFQID = creation.Rfq.ID
 	creation.Quote.SellerID = &tenant.UserID
 	creation.Quote.CurrentStatus = domain.QuoteStatusDraft
 
@@ -213,9 +251,6 @@ func (r *RfqRepository) CreateManualEntry(
 	return &creation, nil
 }
 
-// insertManualItems writes the typed lines in one round trip. product_id arrives as a
-// text array where an empty entry means no product, mirroring how the catalog import
-// passes nullable ids.
 func insertManualItems(
 	ctx context.Context, q Querier, accountID, versionID uuid.UUID, items []domain.NewRfqItem,
 ) error {
@@ -244,4 +279,31 @@ func insertManualItems(
 		 FROM unnest($3::text[], $4::text[], $5::text[], $6::text[]) AS t(p, d, qty, u)`,
 		accountID, versionID, products, descriptions, quantities, units)
 	return err
+}
+
+func scanRFQ(row pgx.Row) (*domain.RFQ, error) {
+	var rfq domain.RFQ
+	err := row.Scan(&rfq.ID, &rfq.AccountID, &rfq.BranchID, &rfq.ClientID, &rfq.ChannelID,
+		&rfq.RawText, &rfq.Status, &rfq.WorkType, &rfq.ReceivedAt, &rfq.CreatedAt,
+		&rfq.UpdatedAt, &rfq.ClientLabel)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &rfq, nil
+}
+
+func scanRFQStatusChange(row pgx.Row) (*domain.RFQStatusChange, error) {
+	var change domain.RFQStatusChange
+	err := row.Scan(&change.ID, &change.AccountID, &change.RFQID, &change.PreviousStatus,
+		&change.NewStatus, &change.UserID, &change.ChangedAt, &change.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &change, nil
 }

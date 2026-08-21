@@ -7,8 +7,7 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// QuoteStatus is the lifecycle state a quote carries once it exists. DRAFT is the
-// state while the RFQ is GENERATED: materials matched, no accepted prices yet.
+// QuoteStatus is the lifecycle state a quote carries once it exists.
 type QuoteStatus string
 
 const (
@@ -20,26 +19,16 @@ const (
 	QuoteStatusRejected        QuoteStatus = "REJECTED"
 )
 
-// ItemMatchStatus is the catalog-match outcome for a quote line. NO_MATCH lines are
-// flagged (product_id NULL), never discarded.
-type ItemMatchStatus string
-
-const (
-	ItemMatchStatusMatched   ItemMatchStatus = "MATCHED"
-	ItemMatchStatusAmbiguous ItemMatchStatus = "AMBIGUOUS"
-	ItemMatchStatusNoMatch   ItemMatchStatus = "NO_MATCH"
-)
-
-// Quote is the review-ready answer to an RFQ. One RFQ has exactly one quote; the
-// quote is born when the RFQ reaches GENERATED. current_status is a backend-exclusive
-// derived cache, recomputed on each transition, never set by a human or the AI.
+// Quote is the seller-facing quote created from one RFQ. current_status is a
+// backend-exclusive derived cache, recomputed on each transition, never set by a
+// human or the AI.
 type Quote struct {
 	ID                uuid.UUID
 	AccountID         uuid.UUID
 	BranchID          uuid.UUID
 	ClientID          *uuid.UUID
-	RfqID             uuid.UUID
-	SellerID          *uuid.UUID // null until someone claims the RFQ from the inbox.
+	RFQID             uuid.UUID
+	SellerID          *uuid.UUID
 	CurrentVersionID  *uuid.UUID
 	CurrentStatus     QuoteStatus
 	ExpiresAt         *time.Time
@@ -50,10 +39,21 @@ type Quote struct {
 	UpdatedAt         time.Time
 }
 
-// QuoteVersion is an immutable snapshot of a quote. total = Σ item subtotals −
+// NewQuote is the input for creating a quote shell.
+type NewQuote struct {
+	BranchID      uuid.UUID
+	ClientID      *uuid.UUID
+	RFQID         uuid.UUID
+	SellerID      *uuid.UUID
+	CurrentStatus QuoteStatus
+	ExpiresAt     *time.Time
+}
+
+// QuoteVersion is one reviewable snapshot of a quote. total = Σ item subtotals −
 // Σ discounts. Append-only: it has no updated_at.
 type QuoteVersion struct {
 	ID            uuid.UUID
+	AccountID     uuid.UUID
 	QuoteID       uuid.UUID
 	AuthorID      *uuid.UUID
 	VersionNumber int
@@ -63,20 +63,127 @@ type QuoteVersion struct {
 	CreatedAt     time.Time
 }
 
-// QuoteItem is one line of a quote version. The item does not carry its discount; a
-// discount is its own entity. price snapshots are NULL until the pricing step runs.
+// NewQuoteVersion is the input for creating a quote version.
+type NewQuoteVersion struct {
+	QuoteID       uuid.UUID
+	AuthorID      *uuid.UUID
+	VersionNumber int
+	Total         decimal.Decimal
+	IsImmutable   bool
+	Comment       *string
+}
+
+// QuoteItem is one material line inside a quote version. The item does not carry
+// its discount; a discount is its own entity. price snapshots are NULL until the
+// pricing step runs.
 type QuoteItem struct {
 	ID                   uuid.UUID
+	AccountID            uuid.UUID
 	VersionID            uuid.UUID
-	ProductID            *uuid.UUID // NULL on a NO_MATCH line.
+	ProductID            *uuid.UUID
 	RequestedDescription string
 	Quantity             decimal.Decimal // NUMERIC(14,2).
 	Unit                 *string
 	UnitPriceSnapshot    decimal.NullDecimal // NUMERIC(14,2).
 	MinPriceSnapshot     decimal.NullDecimal // discount-engine floor, snapshotted.
 	Subtotal             decimal.NullDecimal // NUMERIC(14,2).
-	ConfidenceScore      *float64            // NUMERIC(5,4), 0..1.
+	ConfidenceScore      decimal.NullDecimal
 	MatchStatus          ItemMatchStatus
 	QuantityRationale    *string
 	CreatedAt            time.Time
+}
+
+// NewQuoteItem is the input for creating a quote item.
+type NewQuoteItem struct {
+	// ID is chosen by the caller so a line's candidates can name it before either is written.
+	ID                   uuid.UUID
+	ProductID            *uuid.UUID
+	RequestedDescription string
+	Quantity             decimal.Decimal
+	Unit                 *string
+	UnitPriceSnapshot    decimal.NullDecimal
+	MinPriceSnapshot     decimal.NullDecimal
+	Subtotal             decimal.NullDecimal
+	ConfidenceScore      decimal.NullDecimal
+	MatchStatus          ItemMatchStatus
+	QuantityRationale    *string
+}
+
+// QuoteItemAlternativeType is what an alternative offers in place of a line's product.
+type QuoteItemAlternativeType string
+
+const (
+	QuoteItemAlternativeTypeProduct QuoteItemAlternativeType = "PRODUCT"
+	QuoteItemAlternativeTypeCombo   QuoteItemAlternativeType = "COMBO"
+)
+
+// QuoteItemAlternativeOrigin is who offered an alternative.
+type QuoteItemAlternativeOrigin string
+
+const (
+	QuoteItemAlternativeOriginAI     QuoteItemAlternativeOrigin = "AI"
+	QuoteItemAlternativeOriginSeller QuoteItemAlternativeOrigin = "SELLER"
+)
+
+// QuoteItemAlternative is one candidate offered for a quote line, carrying the catalog identity a
+// seller needs to tell it apart.
+type QuoteItemAlternative struct {
+	ID               uuid.UUID
+	AccountID        uuid.UUID
+	QuoteItemID      uuid.UUID
+	ProductID        *uuid.UUID
+	ComboID          *uuid.UUID
+	Type             QuoteItemAlternativeType
+	Origin           QuoteItemAlternativeOrigin
+	Rank             int
+	ConfidenceScore  decimal.NullDecimal
+	PriceSnapshot    decimal.NullDecimal
+	ApprovedBySeller bool
+	ChosenByClient   bool
+	Code             *string
+	CanonicalName    *string
+	Unit             *string
+	CreatedAt        time.Time
+}
+
+// NewQuoteItemAlternative is the input for creating a quote item alternative.
+type NewQuoteItemAlternative struct {
+	QuoteItemID     uuid.UUID
+	ProductID       *uuid.UUID
+	ComboID         *uuid.UUID
+	Type            QuoteItemAlternativeType
+	Origin          QuoteItemAlternativeOrigin
+	Rank            int
+	ConfidenceScore decimal.NullDecimal
+	PriceSnapshot   decimal.NullDecimal
+}
+
+// QuoteItemPricing is one line's frozen valuation, written when the seller accepts the
+// materials.
+type QuoteItemPricing struct {
+	ItemID            uuid.UUID
+	UnitPriceSnapshot decimal.NullDecimal
+	MinPriceSnapshot  decimal.NullDecimal
+	Subtotal          decimal.NullDecimal
+}
+
+// QuoteStatusChange records a quote lifecycle transition.
+type QuoteStatusChange struct {
+	ID             uuid.UUID
+	AccountID      uuid.UUID
+	QuoteID        uuid.UUID
+	PreviousStatus *QuoteStatus
+	NewStatus      QuoteStatus
+	UserID         *uuid.UUID
+	ChangedAt      time.Time
+	CreatedAt      time.Time
+}
+
+// PricedQuote is the result of the DRAFT to QUOTED transition.
+type PricedQuote struct {
+	Quote           Quote
+	Version         QuoteVersion
+	Items           []QuoteItem
+	UnpricedItemIDs []uuid.UUID
+	Alternatives    map[uuid.UUID][]QuoteItemAlternative
 }

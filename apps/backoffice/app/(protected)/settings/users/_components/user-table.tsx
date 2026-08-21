@@ -22,7 +22,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@repo/ui/components';
-import { UserFormDialog } from '@/app/(protected)/settings/users/_components/user-form-dialog';
 import {
   createUser,
   deactivateUser,
@@ -32,6 +31,7 @@ import {
   type UserResult,
 } from '@/app/(protected)/settings/users/actions';
 import type { UserFormMode, UserValues } from '@/app/(protected)/settings/users/form-schema';
+import { UserFormDialog } from '@/components/user-form-dialog';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Branch } from '@/lib/api/branches';
 import type { AccountUser } from '@/lib/api/users';

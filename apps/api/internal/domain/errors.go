@@ -34,8 +34,23 @@ var (
 	// password already matched, and the caller cannot act on it without being told.
 	ErrEmailNotVerified = errors.New("email not verified")
 
+	// ErrTooLarge is returned when an upload is over the configured size. Its own sentinel
+	// because the status is 413, and the transport refuses the same thing the same way: one
+	// refusal must not answer 413 from one layer and 422 from the next.
+	ErrTooLarge = errors.New("payload too large")
+
 	// ErrRateLimited is returned when a caller has spent its request allowance.
 	ErrRateLimited = errors.New("too many requests")
+
+	// ErrAIUnavailable is returned when an AI provider could not answer — no provider is bound,
+	// it refused, or it kept failing. The caller handles it like any other refusal instead of
+	// carrying on with a proposal it never got.
+	ErrAIUnavailable = errors.New("ai provider unavailable")
+
+	// ErrNotConfigured is returned when a request needs a capability this deployment never
+	// configured — storing a channel credential with no encryption key set. Its own sentinel
+	// because nothing about the request can be changed to make it succeed.
+	ErrNotConfigured = errors.New("capability not configured")
 
 	// ErrNoTenantContext is a programming error, not a client one: a request-scoped query
 	// without tenant context silently returns nothing under row level security.

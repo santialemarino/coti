@@ -76,9 +76,9 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Apply migrations
         env:
-          DATABASE_ADMIN_URL: postgres://coti:coti@localhost:5432/coti?sslmode=disable
+          DATABASE_ADMIN_URL: postgres://coti:coti@127.0.0.1:5432/coti?sslmode=disable
         run: node scripts/goose.mjs up
       - name: Tests
         env:
-          TEST_DATABASE_ADMIN_URL: postgres://coti:coti@localhost:5432/coti?sslmode=disable
+          TEST_DATABASE_ADMIN_URL: postgres://coti:coti@127.0.0.1:5432/coti?sslmode=disable
         run: pnpm test:scripts

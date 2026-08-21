@@ -18,6 +18,8 @@ const (
 	CodeLocked           ErrorCode = "ACCOUNT_LOCKED"
 	CodeEmailNotVerified ErrorCode = "EMAIL_NOT_VERIFIED"
 	CodeRateLimited      ErrorCode = "RATE_LIMITED"
+	CodeAIUnavailable    ErrorCode = "AI_UNAVAILABLE"
+	CodeNotConfigured    ErrorCode = "NOT_CONFIGURED"
 	CodeInternal         ErrorCode = "INTERNAL"
 )
 
@@ -29,10 +31,22 @@ const (
 	CodeSelfRoleChange   ErrorCode = "SELF_ROLE_CHANGE"
 	CodePasswordPolicy   ErrorCode = "PASSWORD_POLICY"
 	CodeInvalidLink      ErrorCode = "INVALID_LINK"
+	CodeQuoteArchived    ErrorCode = "QUOTE_ARCHIVED"
+	CodeQuoteNotDraft    ErrorCode = "QUOTE_NOT_DRAFT"
+	CodeLinkExpired      ErrorCode = "LINK_EXPIRED"
+	// CodeUnsupportedFileType sits beside CodeFileTooLarge: both refuse an upload, and a client
+	// offering a different file needs to know which rule it broke.
+	CodeUnsupportedFileType ErrorCode = "UNSUPPORTED_FILE_TYPE"
+	// The three a channel write is refused with. A form editing one channel can answer all three
+	// on the same 422, and the field it has to point the administrator at differs per code.
+	CodeChannelConfigShape ErrorCode = "CHANNEL_CONFIG_SHAPE"
+	CodeChannelIdentifier  ErrorCode = "CHANNEL_IDENTIFIER"
+	CodeManualEntryChannel ErrorCode = "MANUAL_ENTRY_CHANNEL"
 )
 
-// The two the delivery layer raises on its own, before any service is reached, so CodeOf never
-// returns them.
+// The two an upload is refused with. The delivery layer raises both on its own, before any
+// service is reached; CodeFileTooLarge also answers ErrTooLarge, so the same refusal reads the
+// same whether the transport or a service caught it.
 const (
 	CodeInvalidBody  ErrorCode = "INVALID_BODY"
 	CodeFileTooLarge ErrorCode = "FILE_TOO_LARGE"
@@ -62,6 +76,8 @@ func CodeOf(err error) ErrorCode {
 	}
 
 	switch {
+	case errors.Is(err, ErrTooLarge):
+		return CodeFileTooLarge
 	case errors.Is(err, ErrNotFound):
 		return CodeNotFound
 	case errors.Is(err, ErrImmutable):
@@ -80,6 +96,10 @@ func CodeOf(err error) ErrorCode {
 		return CodeForbidden
 	case errors.Is(err, ErrRateLimited):
 		return CodeRateLimited
+	case errors.Is(err, ErrAIUnavailable):
+		return CodeAIUnavailable
+	case errors.Is(err, ErrNotConfigured):
+		return CodeNotConfigured
 	default:
 		return CodeInternal
 	}

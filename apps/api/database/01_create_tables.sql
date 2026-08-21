@@ -9,6 +9,13 @@
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
+-- The lexical half of the catalog search reads this configuration. Informal RFQ text drops
+-- accents constantly, so "hormigon" has to reach "hormigón"; the stock spanish one keeps them.
+CREATE TEXT SEARCH CONFIGURATION spanish_unaccent (COPY = spanish);
+ALTER TEXT SEARCH CONFIGURATION spanish_unaccent
+  ALTER MAPPING FOR hword, hword_part, word WITH unaccent, spanish_stem;
 
 -- =============================================================================
 -- ENUMS
@@ -29,6 +36,9 @@ CREATE TYPE quote_status AS ENUM (
 );
 
 CREATE TYPE user_role AS ENUM ('ADMIN', 'SELLER');
+
+CREATE TYPE onboarding_status AS ENUM ('IN_PROGRESS', 'COMPLETED', 'DISMISSED');
+CREATE TYPE onboarding_step_status AS ENUM ('COMPLETED', 'SKIPPED');
 
 -- Unmatched items are flagged, never discarded.
 CREATE TYPE item_match_status AS ENUM ('MATCHED', 'AMBIGUOUS', 'NO_MATCH');
@@ -65,6 +75,8 @@ CREATE TYPE send_tracking_status AS ENUM ('PENDING', 'SENT', 'DELIVERED', 'VIEWE
 
 CREATE TYPE handler_seller_decision AS ENUM ('APPROVED_AS_IS', 'EDITED', 'REJECTED', 'MANUAL_OVERRIDE');
 CREATE TYPE notification_status AS ENUM ('PENDING', 'SENT', 'FAILED');
+
+CREATE TYPE job_run_status AS ENUM ('RUNNING', 'SUCCEEDED', 'FAILED');
 
 -- What a single-use link entitles its bearer to do without a session.
 CREATE TYPE auth_token_type AS ENUM ('PASSWORD_RESET', 'EMAIL_VERIFICATION');
@@ -105,6 +117,29 @@ CREATE TABLE account (
   is_active       BOOLEAN NOT NULL DEFAULT TRUE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE account_onboarding (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id     UUID NOT NULL,
+  flow_version   INTEGER NOT NULL DEFAULT 1 CHECK (flow_version > 0),
+  status         onboarding_status NOT NULL DEFAULT 'IN_PROGRESS',
+  current_step   VARCHAR(64) NOT NULL DEFAULT 'WELCOME',
+  completed_at   TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_account_onboarding_account UNIQUE (account_id)
+);
+
+CREATE TABLE onboarding_step_progress (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id     UUID NOT NULL,
+  onboarding_id  UUID NOT NULL,
+  step_key       VARCHAR(64) NOT NULL,
+  status         onboarding_step_status NOT NULL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_onboarding_step UNIQUE (onboarding_id, step_key)
 );
 
 CREATE TABLE branch (
@@ -213,6 +248,13 @@ CREATE TABLE product (
   family_id      UUID,
   subgroup_id    UUID,
   embedding      VECTOR(1536),
+  -- Older than updated_at means the row was edited after it was embedded, which is how the
+  -- backfill knows what to re-embed without re-embedding the whole catalog.
+  embedding_updated_at TIMESTAMPTZ,
+  search_document TSVECTOR
+    GENERATED ALWAYS AS (
+      to_tsvector('spanish_unaccent'::regconfig, canonical_name || ' ' || coalesce(description, ''))
+    ) STORED,
   is_active      BOOLEAN NOT NULL DEFAULT TRUE,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -237,6 +279,8 @@ CREATE TABLE product_synonym (
   product_id UUID NOT NULL,
   term       VARCHAR(255) NOT NULL,
   source     product_synonym_source NOT NULL DEFAULT 'MANUAL',
+  search_document TSVECTOR
+    GENERATED ALWAYS AS (to_tsvector('spanish_unaccent'::regconfig, term)) STORED,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -471,6 +515,10 @@ CREATE TABLE quote_item_alternative (
   combo_id           UUID,
   type               quote_item_alternative_type NOT NULL,
   origin             quote_item_alternative_origin NOT NULL,
+  -- The candidate's own place in the matcher's ranking, best first; nothing else on the row
+  -- records it. confidence_score is what it scored, on quote_item.confidence_score's scale.
+  rank               SMALLINT NOT NULL,
+  confidence_score   NUMERIC(5,4),
   price_snapshot     NUMERIC(14,2),
   approved_by_seller BOOLEAN NOT NULL DEFAULT FALSE,
   chosen_by_client   BOOLEAN NOT NULL DEFAULT FALSE,
@@ -670,11 +718,32 @@ CREATE TABLE notification (
 );
 
 -- =============================================================================
+-- SCHEDULED JOBS
+-- =============================================================================
+
+-- What each scheduled run swept and changed. No account_id: a job runs as the owner across every
+-- account, so one run is one row for all of them, and a per-account column would be a list.
+CREATE TABLE job_run (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_name    VARCHAR(64) NOT NULL,
+  status      job_run_status NOT NULL DEFAULT 'RUNNING',
+  scanned     INTEGER NOT NULL DEFAULT 0,
+  changed     INTEGER NOT NULL DEFAULT 0,
+  error       TEXT,
+  started_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  finished_at TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- =============================================================================
 -- FOREIGN KEYS
 -- (at the end, to resolve the circular quote <-> quote_version dependency)
 -- =============================================================================
 
 ALTER TABLE branch ADD CONSTRAINT fk_branch_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE account_onboarding ADD CONSTRAINT fk_account_onboarding_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE onboarding_step_progress ADD CONSTRAINT fk_onboarding_step_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE onboarding_step_progress ADD CONSTRAINT fk_onboarding_step_onboarding FOREIGN KEY (onboarding_id) REFERENCES account_onboarding(id);
 ALTER TABLE app_user ADD CONSTRAINT fk_app_user_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE user_branch ADD CONSTRAINT fk_user_branch_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE user_branch ADD CONSTRAINT fk_user_branch_user FOREIGN KEY (user_id) REFERENCES app_user(id);
@@ -792,11 +861,13 @@ ALTER TABLE notification ADD CONSTRAINT fk_notification_quote FOREIGN KEY (quote
 -- INDEXES
 -- =============================================================================
 
--- The vector index is created AFTER the catalog loads: built on an empty table it is
--- suboptimal. Commented out on purpose.
+-- The vector index is created AFTER the catalog loads and is embedded: built on an empty table
+-- it is degenerate. Commented out on purpose — `pnpm db:vector-index` creates it, sizing lists
+-- to the number of embedded rows.
 -- CREATE INDEX idx_product_embedding ON product USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 CREATE INDEX idx_branch_account ON branch(account_id);
+CREATE INDEX idx_onboarding_step_account ON onboarding_step_progress(account_id);
 CREATE INDEX idx_app_user_account ON app_user(account_id);
 -- Login resolves a user by email alone, so an address identifies exactly one of them across
 -- every account. Functional, so case-insensitivity does not depend on the service lowercasing
@@ -812,6 +883,9 @@ CREATE INDEX idx_product_account ON product(account_id);
 -- Partial because code is nullable.
 CREATE UNIQUE INDEX uq_product_account_code ON product (account_id, code) WHERE code IS NOT NULL;
 CREATE INDEX idx_branch_product_branch ON branch_product(branch_id) WHERE is_active = TRUE;
+-- The lexical half of the hybrid search: one document per product, one per synonym term.
+CREATE INDEX idx_product_search_document ON product USING GIN (search_document);
+CREATE INDEX idx_product_synonym_search_document ON product_synonym USING GIN (search_document);
 CREATE INDEX idx_product_synonym_product ON product_synonym(product_id);
 -- One term per product, case-insensitively: "Portland" and "portland" are the same term to
 -- a matcher. It is also the ON CONFLICT target the insert names.
@@ -823,12 +897,14 @@ CREATE INDEX idx_branch_combo_branch ON branch_combo(branch_id) WHERE is_active 
 CREATE INDEX idx_client_account ON client(account_id);
 CREATE INDEX idx_rfq_branch_status ON rfq(branch_id, status);
 CREATE INDEX idx_rfq_attachment_pending ON rfq_attachment(processing_status) WHERE processing_status IN ('PENDING', 'PROCESSING');
+CREATE INDEX idx_rfq_attachment_account_rfq ON rfq_attachment(account_id, rfq_id);
 
 CREATE INDEX idx_quote_branch_status ON quote(branch_id, current_status);
 CREATE INDEX idx_quote_expires ON quote(expires_at) WHERE expires_at IS NOT NULL AND archived_at IS NULL;
 CREATE INDEX idx_quote_needs_followup ON quote(needs_followup) WHERE needs_followup = TRUE;
 CREATE INDEX idx_quote_version_quote ON quote_version(quote_id);
 CREATE INDEX idx_quote_item_version ON quote_item(version_id);
+CREATE INDEX idx_quote_item_alternative_account_item ON quote_item_alternative(account_id, quote_item_id);
 CREATE INDEX idx_product_family_id ON product(family_id);
 CREATE INDEX idx_product_subgroup_id ON product(subgroup_id);
 CREATE INDEX idx_product_subgroup_family_id ON product_subgroup(family_id);
@@ -853,14 +929,32 @@ CREATE UNIQUE INDEX uq_product_price_open_period
 CREATE UNIQUE INDEX uq_message_batch_open ON message_batch(quote_id) WHERE status = 'OPEN';
 CREATE UNIQUE INDEX uq_message_batch_processing ON message_batch(quote_id) WHERE status = 'PROCESSING';
 
+-- "Which run changed this row?" is answered by the row's own timestamp falling inside a run's
+-- window, so the history is read newest-first per job.
+CREATE INDEX idx_job_run_name_started ON job_run(job_name, started_at DESC);
+
 -- =============================================================================
 -- updated_at TRIGGERS (only tables that mutate in place)
 -- =============================================================================
 
 CREATE TRIGGER trg_account_updated        BEFORE UPDATE ON account        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_branch_updated         BEFORE UPDATE ON branch         FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_account_onboarding_updated BEFORE UPDATE ON account_onboarding FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_onboarding_step_updated BEFORE UPDATE ON onboarding_step_progress FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_app_user_updated       BEFORE UPDATE ON app_user       FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER trg_product_updated        BEFORE UPDATE ON product        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+-- product is the exception: updated_at says a person changed the row, and it is what
+-- embedding_updated_at is compared against, so a vector written by the backfill must not bump it.
+CREATE TRIGGER trg_product_updated        BEFORE UPDATE ON product        FOR EACH ROW
+  WHEN (
+    OLD.code IS DISTINCT FROM NEW.code
+    OR OLD.canonical_name IS DISTINCT FROM NEW.canonical_name
+    OR OLD.description IS DISTINCT FROM NEW.description
+    OR OLD.unit IS DISTINCT FROM NEW.unit
+    OR OLD.family_id IS DISTINCT FROM NEW.family_id
+    OR OLD.subgroup_id IS DISTINCT FROM NEW.subgroup_id
+    OR OLD.is_active IS DISTINCT FROM NEW.is_active
+  )
+  EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_branch_product_updated BEFORE UPDATE ON branch_product FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_combo_updated          BEFORE UPDATE ON combo          FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_branch_combo_updated   BEFORE UPDATE ON branch_combo   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -905,6 +999,10 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO co
 
 REVOKE INSERT, UPDATE, DELETE ON product_family, product_subgroup FROM coti_app;
 
+-- The grant above reaches every table, and job_run is an audit trail no request has any reason to
+-- read, let alone rewrite. Only the owner the scheduled jobs run as touches it.
+REVOKE ALL ON job_run FROM coti_app;
+
 -- account matches on its own id; everything else on its account_id column.
 ALTER TABLE account ENABLE ROW LEVEL SECURITY;
 CREATE POLICY account_isolation ON account
@@ -915,6 +1013,7 @@ DO $$
 DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY[
+    'account_onboarding', 'onboarding_step_progress',
     'branch', 'app_user', 'user_branch', 'refresh_token', 'auth_token',
     'product', 'branch_product', 'product_synonym', 'product_price', 'product_alternative',
     'combo', 'combo_item', 'branch_combo',

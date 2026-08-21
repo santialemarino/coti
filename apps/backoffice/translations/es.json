@@ -21,7 +21,8 @@
       "orders": "Pedidos",
       "clients": "Clientes",
       "reports": "Reportes",
-      "administration": "Administración"
+      "administration": "Administración",
+      "settings": "Configuración"
     },
     "roles": {
       "ADMIN": "Administrador",
@@ -151,6 +152,14 @@
     "priceSettings": {
       "title": "Precios",
       "description": "Actualización revisada de precios por sucursal."
+    },
+    "catalogSettings": {
+      "title": "Catálogo",
+      "description": "Carga inicial y actualización del catálogo de productos."
+    },
+    "onboarding": {
+      "title": "Configuración inicial",
+      "description": "Prepará la cuenta para crear las primeras cotizaciones."
     },
     "verifyEmail": {
       "title": "Confirmar tu correo",
@@ -366,7 +375,9 @@
     "title": "Coti",
     "signedInAs": "Sesión iniciada como {role}.",
     "links": {
-      "prices": "Precios"
+      "prices": "Precios",
+      "catalog": "Catálogo",
+      "onboarding": "Configuración inicial"
     }
   },
   "quotes": {
@@ -554,7 +565,9 @@
       "account": "Cuenta",
       "branches": "Sucursales",
       "users": "Usuarios",
-      "prices": "Precios"
+      "catalog": "Catálogo",
+      "prices": "Precios",
+      "onboarding": "Configuración inicial"
     }
   },
   "branches": {
@@ -771,6 +784,217 @@
       "NOT_FOUND": "Ese usuario ya no existe. Actualizá el listado.",
       "INVALID_INPUT": "Revisá los datos del usuario e intentá de nuevo.",
       "INTERNAL": "No pudimos guardar el usuario. Intentá de nuevo."
+    }
+  },
+  "catalogImport": {
+    "title": "Catálogo",
+    "description": "Cargá productos y precios desde una planilla. Primero revisás el contenido y recién después confirmás la importación.",
+    "noBranch": {
+      "title": "Elegí una sucursal",
+      "description": "Seleccioná una sucursal desde el encabezado para cargar el catálogo y sus precios iniciales."
+    },
+    "steps": {
+      "download": {
+        "title": "Descargá la plantilla",
+        "description": "Usá las columnas y formatos esperados."
+      },
+      "complete": {
+        "title": "Completá tus productos",
+        "description": "Incluí códigos, nombres, rubros y precios."
+      },
+      "upload": {
+        "title": "Subí y revisá",
+        "description": "Nada se importa hasta tu confirmación."
+      }
+    },
+    "dropzone": {
+      "title": "Arrastrá tu archivo hasta acá",
+      "hint": "Formato .xlsx o .csv.",
+      "release": "Soltá el archivo para cargarlo",
+      "selected": "Archivo seleccionado: {size, number} KB",
+      "choose": "Elegir archivo",
+      "replace": "Cambiar archivo"
+    },
+    "fileRequired": "Elegí un archivo para continuar.",
+    "template": { "download": "Descargar plantilla", "downloading": "Preparando…" },
+    "previewing": "Procesando…",
+    "continue": "Continuar",
+    "summary": {
+      "total": "Filas leídas",
+      "valid": "Listas para importar",
+      "invalid": "Con errores"
+    },
+    "invalidRowsSkipped": "Al confirmar se omitirán {count, plural, one {# fila con errores} other {# filas con errores}}.",
+    "table": {
+      "row": "Fila",
+      "code": "Código",
+      "product": "Producto",
+      "family": "Rubro",
+      "price": "Precio",
+      "result": "Validación"
+    },
+    "valid": "Lista para importar",
+    "chooseAnother": "Elegir otro archivo",
+    "confirm": "Importar {count, plural, one {# producto} other {# productos}}",
+    "confirming": "Importando…",
+    "noValidRows": "Corregí la planilla: no hay filas válidas para importar.",
+    "success": "Importamos {imported, plural, one {# producto} other {# productos}}. Omitimos {skipped, plural, one {# fila} other {# filas}}.",
+    "errors": {
+      "INVALID_BODY": "Seleccioná un archivo válido con el formato indicado.",
+      "INVALID_INPUT": "Revisá el archivo y volvé a intentarlo.",
+      "FILE_TOO_LARGE": "El archivo supera el tamaño permitido.",
+      "INTERNAL": "No pudimos procesar el catálogo. Intentá de nuevo."
+    },
+    "rowErrors": {
+      "missing_code": "El código es obligatorio.",
+      "code_too_long": "El código es demasiado largo.",
+      "duplicate_code": "El código está repetido en el archivo.",
+      "existing_code": "El código ya existe en el catálogo.",
+      "description_too_long": "La descripción es demasiado larga.",
+      "missing_name": "El nombre es obligatorio.",
+      "name_too_long": "El nombre es demasiado largo.",
+      "missing_unit": "La unidad es obligatoria.",
+      "unit_too_long": "La unidad es demasiado larga.",
+      "missing_family": "El rubro es obligatorio.",
+      "invalid_family": "El rubro no es válido.",
+      "invalid_subgroup": "El subgrupo no corresponde al rubro.",
+      "invalid_price": "El precio debe ser mayor a cero y tener hasta 2 decimales.",
+      "invalid_min_price": "El precio mínimo debe ser mayor a cero y tener hasta 2 decimales.",
+      "min_price_above_price": "El precio mínimo no puede superar el precio de venta."
+    }
+  },
+  "onboarding": {
+    "continue": "Continuar",
+    "back": "Atrás",
+    "skipStep": "Hacer más tarde",
+    "saving": "Guardando…",
+    "progress": {
+      "label": "Progreso de la configuración inicial",
+      "current": "En curso",
+      "pending": "Pendiente",
+      "steps": {
+        "WELCOME": "Bienvenida",
+        "BRAND": "Marca",
+        "FIRST_BRANCH": "Sucursal",
+        "CATALOG_UPLOAD": "Carga",
+        "CATALOG_REVIEW": "Revisión",
+        "TEAM": "Equipo",
+        "COMPLETE": "Cuenta lista"
+      },
+      "statuses": { "COMPLETED": "Listo", "SKIPPED": "Omitido" }
+    },
+    "skipAll": {
+      "action": "Omitir Configuración",
+      "title": "Omitir la Configuración Inicial",
+      "description": "Vas a ingresar al sistema con lo que ya está cargado. Podés completar la cuenta, importar el catálogo inicial y agregar usuarios más tarde desde Configuración.",
+      "confirm": "Omitir por ahora",
+      "dismissing": "Omitiendo…",
+      "cancel": "Seguir configurando"
+    },
+    "dismissed": {
+      "title": "La configuración inicial está omitida",
+      "description": "Podés usar el backoffice normalmente o retomar el recorrido desde donde lo dejaste.",
+      "home": "Ir al inicio",
+      "resume": "Retomar configuración",
+      "resuming": "Retomando…"
+    },
+    "welcome": {
+      "title": "Preparemos tu Corralón para Cotizar",
+      "description": "En solo unos minutos, completá tu información y cargá el catálogo de la sucursal. Cada cambio se guarda al avanzar.",
+      "start": "Empezar",
+      "checklist": {
+        "brand": {
+          "title": "Personalizá la Marca",
+          "description": "Color y logo."
+        },
+        "branch": {
+          "title": "Revisá la Sucursal",
+          "description": "Dirección y vencimiento de cotizaciones."
+        },
+        "catalog": {
+          "title": "Cargá el Catálogo",
+          "description": "Importación masiva de productos."
+        },
+        "team": {
+          "title": "Sumá al Equipo",
+          "description": "Creá usuarios que trabajen con vos."
+        }
+      }
+    },
+    "brand": {
+      "title": "Dale Identidad a tus Cotizaciones",
+      "description": "Configurá la presentación de tu marca.",
+      "accountSummary": "Datos ya registrados",
+      "noLegalData": "Sin razón social ni CUIT cargados",
+      "preview": "Vista previa",
+      "quotePreview": "Encabezado de una cotización",
+      "brandColor": {
+        "label": "Color de la marca",
+        "placeholder": "C2410C",
+        "pickerLabel": "Elegir color de marca",
+        "hint": "Usamos este color en detalles de las cotizaciones.",
+        "invalid": "Ingresá un color hexadecimal válido."
+      },
+      "logo": {
+        "title": "Logo",
+        "description": "Arrastrá una imagen para probar cómo se vería. Por ahora la vista previa queda sólo en este navegador y no se guarda.",
+        "drop": "Arrastrá el logo hasta acá",
+        "hint": "PNG, JPG o SVG. Sólo vista previa local.",
+        "release": "Soltá la imagen para usarla",
+        "choose": "Elegir imagen",
+        "replace": "Cambiar imagen",
+        "remove": "Quitar imagen",
+        "invalid": "Elegí una imagen PNG, JPG o SVG.",
+        "invalidType": "Elegí una imagen PNG, JPG o SVG.",
+        "previewAlt": "Vista previa local del logo",
+        "localOnly": "Esta imagen no se va a subir ni guardar."
+      }
+    },
+    "branch": {
+      "title": "Registrá tu Sucursal",
+      "description": "La sucursal se creó junto con la cuenta. Verificá la dirección y definí el plazo habitual de tus cotizaciones.",
+      "expiryHint": "Cantidad de días que una cotización queda vigente por defecto."
+    },
+    "catalog": {
+      "title": "Cargá tu Catálogo",
+      "description": "Completá el archivo con los datos correspondientes a los productos disponibles en la sucursal.",
+      "later": "Cargar más tarde"
+    },
+    "review": {
+      "title": "Revisá Productos y Precios",
+      "description": "Confirmá las filas válidas. Las filas con errores se muestran y quedan fuera de la importación.",
+      "returnToUpload": "Volver a cargar el archivo"
+    },
+    "team": {
+      "title": "Sumá a quienes van a Cotizar",
+      "description": "Elegí rol, sucursales y una contraseña inicial.",
+      "passwordNotice": "Esto crea un usuario real, no envía una invitación. Vas a tener que compartirle la contraseña inicial por un canal seguro.",
+      "add": "Agregar integrante",
+      "created": "Creamos a «{name}». Ya puede ingresar con la contraseña inicial.",
+      "finish": "Finalizar configuración",
+      "empty": {
+        "title": "Todavía no agregaste integrantes",
+        "description": "Podés hacerlo ahora o continuar y administrarlos más adelante desde Configuración."
+      }
+    },
+    "complete": {
+      "title": "Tu cuenta está lista",
+      "description": "Todo lo que hayas dejado pendiente sigue disponible en Configuración.",
+      "readyTitle": "Configuración completada",
+      "readyDescription": "Ya podés empezar a trabajar con tu cuenta.",
+      "action": "Ir al inicio",
+      "items": {
+        "brand": "Marca revisada",
+        "branch": "Sucursal configurada",
+        "catalog": "Catálogo disponible"
+      }
+    },
+    "errors": {
+      "INVALID_BODY": "Revisá los datos e intentá de nuevo.",
+      "INVALID_INPUT": "No pudimos guardar ese paso.",
+      "NOT_FOUND": "No encontramos la configuración inicial de esta cuenta.",
+      "EMAIL_TAKEN": "Ya existe un usuario con ese correo.",
+      "INTERNAL": "No pudimos guardar el avance. Intentá de nuevo."
     }
   },
   "priceImport": {

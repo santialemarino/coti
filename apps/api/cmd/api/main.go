@@ -24,6 +24,8 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"github.com/santialemarino/coti/apps/api/internal/ai"
+	aiprovider "github.com/santialemarino/coti/apps/api/internal/ai/provider"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
@@ -31,7 +33,9 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/mail"
 	"github.com/santialemarino/coti/apps/api/internal/ratelimit"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
+	"github.com/santialemarino/coti/apps/api/internal/secrets"
 	"github.com/santialemarino/coti/apps/api/internal/services"
+	storageprovider "github.com/santialemarino/coti/apps/api/internal/storage/provider"
 )
 
 func main() {
@@ -72,8 +76,11 @@ func run() error {
 	branchProductRepo := repository.NewBranchProductRepository()
 	productPriceRepo := repository.NewProductPriceRepository()
 	catalogImportRepo := repository.NewCatalogImportRepository()
-	rfqRepo := repository.NewRfqRepository()
+	rfqRepo := repository.NewRFQRepository()
+	rfqAttachmentRepo := repository.NewRFQAttachmentRepository()
+	quoteRepo := repository.NewQuoteRepository()
 	accountRepo := repository.NewAccountRepository()
+	onboardingRepo := repository.NewOnboardingRepository()
 	channelRepo := repository.NewChannelRepository()
 	authTokenRepo := repository.NewAuthTokenRepository()
 	notificationRepo := repository.NewNotificationRepository()
@@ -89,6 +96,26 @@ func run() error {
 		return err
 	}
 
+	providers, err := aiprovider.Bind(cfg.AI, log)
+	if err != nil {
+		return err
+	}
+	providers.Describe(log)
+
+	objectStorage, err := storageprovider.Bind(cfg.Storage, log)
+	if err != nil {
+		return err
+	}
+	objectStorage.Describe(log)
+
+	channelSealer, err := secrets.NewAESGCM(cfg.Channel.EncryptionKey)
+	if err != nil {
+		return err
+	}
+	if !channelSealer.Enabled() {
+		log.Warn("channel credentials cannot be stored: CHANNEL_CONFIG_ENCRYPTION_KEY is unset")
+	}
+
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
 	authService := services.NewAuthService(db, userRepo, branchRepo, refreshTokenRepo, tokenService, cfg.Auth, nil)
 	mailService := services.NewMailService(db, mailer, notificationRepo, accountRepo, nil)
@@ -99,14 +126,24 @@ func run() error {
 	userService := services.NewUserService(db, userRepo, userBranchRepo, branchRepo, cfg.Auth)
 	branchService := services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)
 	accountService := services.NewAccountService(db, accountRepo, branchRepo, channelRepo,
-		userRepo, authService, verificationService, log, cfg.Auth, cfg.Branch)
+		userRepo, onboardingRepo, authService, verificationService, log, cfg.Auth, cfg.Branch)
+	onboardingService := services.NewOnboardingService(db, onboardingRepo)
 	productService := services.NewProductService(db, productRepo, productSynonymRepo,
 		productAlternativeRepo, cfg.Catalog)
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo, branchProductRepo,
 		productPriceRepo, nil)
-	rfqService := services.NewRfqService(db, rfqRepo, nil)
 	productPriceImportService := services.NewProductPriceImportService(db, productPriceRepo, nil)
 	catalogImportService := services.NewCatalogImportService(db, catalogImportRepo, nil)
+	channelService := services.NewChannelService(db, channelRepo, channelSealer)
+	catalogSearchService := services.NewCatalogSearchService(db, productRepo, providers.Embedder,
+		cfg.Catalog)
+	catalogMatchService := services.NewCatalogMatchService(catalogSearchService, cfg.Catalog)
+	rfqExtractor := ai.NewRFQExtractor(providers.Generator, cfg.RFQ.MaxItems)
+	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo, channelRepo, rfqExtractor,
+		catalogMatchService, log, cfg.RFQ)
+	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, log)
+	rfqAttachmentService := services.NewRFQAttachmentService(db, rfqAttachmentRepo,
+		objectStorage.Storage, cfg.Storage, nil)
 
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
@@ -117,11 +154,17 @@ func run() error {
 			User:          handler.NewUserHandler(userService),
 			Branch:        handler.NewBranchHandler(branchService),
 			Rfq:           handler.NewRfqHandler(rfqService),
+			Channel:       handler.NewChannelHandler(channelService),
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
+			RFQ:           handler.NewRFQHandler(rfqService),
+			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
+			Quote:         handler.NewQuoteHandler(quoteService),
 			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
 			CatalogImport: handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
 			Account:       handler.NewAccountHandler(accountService),
+			Onboarding:    handler.NewOnboardingHandler(onboardingService),
+			File:          fileHandler(objectStorage),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
 		deliveryhttp.RateLimit{Limiter: limiter, Identify: identifyForRateLimit(tokenService)},
@@ -155,8 +198,6 @@ func run() error {
 	return server.Shutdown(shutdownCtx)
 }
 
-// identifyForRateLimit reads a caller id out of a bearer so two users cannot spend each
-// other's allowance. Signature only: the session check is ResolveTenant's job.
 func identifyForRateLimit(tokens *services.TokenService) func(string) (string, bool) {
 	return func(raw string) (string, bool) {
 		claims, err := tokens.ParseAccessToken(raw)
@@ -167,8 +208,6 @@ func identifyForRateLimit(tokens *services.TokenService) func(string) (string, b
 	}
 }
 
-// newMailer binds the domain.Mailer port to the transport configuration selected, and is the
-// only place a provider is chosen. config.Load rejects a provider with no adapter.
 func newMailer(cfg *config.Config, log *slog.Logger) (domain.Mailer, error) {
 	switch cfg.Mail.Provider {
 	case config.MailProviderConsole:
@@ -182,8 +221,6 @@ func newMailer(cfg *config.Config, log *slog.Logger) (domain.Mailer, error) {
 	}
 }
 
-// newLogger returns a JSON logger in production and a text one in development, where
-// a human reads it directly.
 func newLogger(cfg *config.Config) *slog.Logger {
 	opts := &slog.HandlerOptions{Level: parseLevel(cfg.LogLevel)}
 	if cfg.IsProduction() {
@@ -203,4 +240,11 @@ func parseLevel(raw string) slog.Level {
 	default:
 		return slog.LevelInfo
 	}
+}
+
+func fileHandler(set storageprovider.Set) *handler.FileHandler {
+	if set.Local == nil {
+		return nil
+	}
+	return handler.NewFileHandler(set.Local)
 }

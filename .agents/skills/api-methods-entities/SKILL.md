@@ -75,6 +75,24 @@ rows, err := q.Query(ctx,
 
 Never SELECT-then-INSERT/UPDATE by hand. Use `INSERT ... ON CONFLICT (...)` — but only against a **real unique constraint** from the schema (e.g. `uq_app_user_email` on `(account_id, email)`, `uq_client_tag` on `(client_id, tag_id)`, `uq_quote_version` on `(quote_id, version_number)`). Bulk writes use a multi-row `INSERT` or `pgx.Batch`, never a per-row `Exec` loop. Details and examples in `api-layering`.
 
+### A parent and its children are paired by a caller-chosen id, never by row order
+
+`RETURNING` on an `INSERT ... SELECT` can only name columns of the table it wrote — reference the
+source subquery and Postgres answers `missing FROM-clause entry`. So there is no way to learn which
+payload row produced which generated key, and pairing children to parents by the order the rows came
+back would rest on an order Postgres does not promise.
+
+**The caller chooses the parent's `id` instead**, and the children reference it before either is
+written (`domain.NewQuoteItem.ID`, `domain.NewRFQAttachment.ID`). Two rules come with that: the
+insert names `id` in its column list, and the repository **refuses a zero id** — left unset every row
+inserts the all-zeros uuid, which the first write stores as a real key and the next one collides
+with. Row order may still be relied on for what a human reads; never for which row is which.
+
+**A display field that has to be joined cannot be returned either.** When children carry identity
+from another table (a product's name beside a candidate), write them and then read them back through
+the batch reader in the same transaction, rather than growing a second code path that assembles the
+response from what was sent.
+
 ### The service commits, not the repository
 
 Repositories run on the `Querier` handed in (pool or tx) and never commit. Multi-step writes are wrapped in a service-level transaction. See the transaction rules in `api-layering`.

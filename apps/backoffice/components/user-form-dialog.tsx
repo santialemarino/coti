@@ -130,7 +130,11 @@ export function UserFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && !pending && onOpenChange(false)}>
-      <DialogContent className="sm:max-w-md" closeOnClickOutside={!pending}>
+      <DialogContent
+        className="sm:max-w-lg [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        closeOnClickOutside={!pending}
+        showCloseButton={false}
+      >
         <DialogHeader>
           <DialogTitle>{t(`${shown.mode}.title`)}</DialogTitle>
           <DialogDescription>{t(`${shown.mode}.description`)}</DialogDescription>

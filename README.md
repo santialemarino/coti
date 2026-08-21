@@ -100,6 +100,7 @@ docker compose up -d mailpit   # included in pnpm dev:docker
 | `pnpm dev:docker`                 | Bring up the full stack via docker-compose  |
 | `pnpm db:migrate`                 | Apply Go (goose) migrations                 |
 | `pnpm db:create-migration <name>` | Scaffold a new migration                    |
+| `pnpm db:vector-index`            | Build the catalog's vector index            |
 | `pnpm docs:api`                   | Regenerate the OpenAPI spec from handlers   |
 
 ## API specification
@@ -125,6 +126,41 @@ Closing or reopening a corralón is an operational script rather than an endpoin
 `pnpm db:account:activate --account <uuid>` restores it.
 
 See [docs/technical/database.md](docs/technical/database.md).
+
+## AI providers
+
+Three ports in `apps/api/internal/domain` — schema-forced generation, embeddings and
+transcription — with adapters under `apps/api/internal/ai/`, one subpackage per provider, bound
+in `apps/api/internal/ai/provider` and nowhere else. Each capability is selected on its own (no
+provider covers all three) and each arrives disabled, so a checkout with no keys still boots and
+the engine refuses the calls that needed a model. Turning one on makes its key required at
+startup.
+
+See [docs/technical/ai-providers.md](docs/technical/ai-providers.md).
+
+## The RFQ pipeline
+
+`POST /v1/rfqs/text-drafts` turns one informal order into a quote a seller can review: the text is
+stored first, then read into materials with a forced schema, then matched against the branch's
+catalog, then written as a `DRAFT` quote with one line per material. A material the message gives no
+defensible quantity for comes back on the schema's escape value and is still written to the quote —
+flagged for the seller, never dropped. `GET /v1/channels` lists the branch's intake routes, and a
+development-only route simulates an inbound WhatsApp message through the same pipeline.
+
+See [docs/technical/rfq-pipeline.md](docs/technical/rfq-pipeline.md).
+
+## File storage
+
+One port in `apps/api/internal/domain` — upload, download, signed link — with adapters under
+`apps/api/internal/storage/`, bound in `apps/api/internal/storage/provider` and nowhere else.
+`STORAGE_PROVIDER` selects one: `local` keeps objects on the filesystem and serves them through
+the API's own signed-link route, `spaces` stores them in an S3-compatible bucket that signs and
+serves its own. `local` is the default and it genuinely works, so a checkout with no bucket
+still stores, signs, serves and expires a file; selecting `spaces` makes its five credentials
+required at startup. Object keys are canonical, relative paths and both adapters refuse anything
+else, so an object stored through one stays reachable through the other.
+
+See [docs/technical/file-storage.md](docs/technical/file-storage.md).
 
 ## Design system
 

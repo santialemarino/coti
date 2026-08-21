@@ -22,6 +22,9 @@ coverage
 *.test
 *.out
 
+# Local object storage — what the local storage adapter writes
+apps/api/.storage/
+
 # Environment and secrets
 .env
 .env.local

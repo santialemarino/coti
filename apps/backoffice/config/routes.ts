@@ -11,10 +11,12 @@ export const ROUTES = {
   forgotPassword: '/forgot-password',
   resetPassword: '/reset-password',
   verifyEmail: '/verify-email',
+  onboarding: '/onboarding',
   sessionEnded: '/session-ended',
   changePassword: '/settings/password',
   accountSettings: '/settings/account',
   priceSettings: '/settings/prices',
+  catalogSettings: '/settings/catalog',
   branchSettings: '/settings/branches',
   userSettings: '/settings/users',
 } as const;

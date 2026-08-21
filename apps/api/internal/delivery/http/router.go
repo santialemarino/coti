@@ -4,6 +4,7 @@ package http
 
 import (
 	"log/slog"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	swaggerfiles "github.com/swaggo/files"
@@ -12,14 +13,17 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/middleware"
+	"github.com/santialemarino/coti/apps/api/internal/storage"
 
 	// The generated spec registers itself on import. It is regenerated from the handler
 	// annotations by `pnpm docs:api`, and CI fails if the committed copy is stale.
 	_ "github.com/santialemarino/coti/apps/api/docs"
 )
 
-// Handlers carries every handler the router mounts, so adding a feature is one field
-// here instead of a new router parameter.
+// apiPrefix is where every versioned route is mounted.
+const apiPrefix = "/v1"
+
+// Handlers carries every handler the router mounts.
 type Handlers struct {
 	Health        *handler.HealthHandler
 	Auth          *handler.AuthHandler
@@ -28,11 +32,18 @@ type Handlers struct {
 	User          *handler.UserHandler
 	Branch        *handler.BranchHandler
 	Rfq           *handler.RfqHandler
+	Channel       *handler.ChannelHandler
 	Product       *handler.ProductHandler
 	BranchCatalog *handler.BranchCatalogHandler
+	RFQ           *handler.RFQHandler
+	RFQAttachment *handler.RFQAttachmentHandler
+	Quote         *handler.QuoteHandler
 	Account       *handler.AccountHandler
 	Prices        *handler.ProductPriceHandler
 	CatalogImport *handler.CatalogImportHandler
+	Onboarding    *handler.OnboardingHandler
+	// File is nil unless the local storage adapter is bound.
+	File *handler.FileHandler
 }
 
 // Auth carries what the authentication middleware needs to resolve a tenant.
@@ -56,12 +67,9 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	r := gin.New()
 	r.Use(middleware.RequestID(), middleware.Logger(log), middleware.Recovery(log))
 
-	// Probes stay outside /v1 and outside auth: an orchestrator has no credentials.
 	r.GET("/health", h.Health.Live)
 	r.GET("/ready", h.Health.Ready)
 
-	// The spec describes an internal API: publishing it would hand an unauthenticated
-	// reader the whole surface for no benefit.
 	if !cfg.IsProduction() {
 		r.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
 	}
@@ -78,51 +86,65 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 		})
 	}
 
-	// The global allowance sits ahead of Authenticate, so a flood is refused before it costs
-	// a query. Authenticate resolves a tenant when a token is present without rejecting an
-	// anonymous request — RequireTenant does that.
-	v1 := r.Group("/v1",
+	v1 := r.Group(apiPrefix,
 		limit("global", cfg.RateLimit.Global),
 		middleware.Authenticate(auth.Verifier, auth.Resolver))
 
-	// Works without a session; each route resolves its own scope.
+	if h.File != nil {
+		v1.GET(strings.TrimPrefix(storage.LinkPath, apiPrefix)+"/*key", h.File.Get)
+	}
+
 	public := v1.Group("/public")
-	// Each of these gets the same allowance in its own bucket rather than sharing one: a
-	// caller who mistypes their password ten times should still be able to confirm an
-	// address, and the routes are only alike in accepting a credential.
 	mail := limit("mail", cfg.RateLimit.Mail)
 
 	public.POST("/auth/login", limit("login", cfg.RateLimit.Credentials), h.Auth.Login)
-	// Refresh is left on the global allowance alone: the backoffice renews on a schedule the
-	// user does not control, and a tighter limit would log people out.
 	public.POST("/auth/refresh", h.Auth.Refresh)
 
-	// Recovery is public by necessity: someone who cannot log in is the only caller.
 	public.POST("/auth/forgot-password", mail, h.Password.Forgot)
 	public.POST("/auth/reset-password", limit("reset", cfg.RateLimit.Credentials), h.Password.Reset)
 
 	public.POST("/auth/verify-email", limit("verify", cfg.RateLimit.Credentials), h.Verification.Confirm)
 	public.POST("/auth/resend-verification", mail, h.Verification.Resend)
 
-	// Registration is the one write with no account yet, so it cannot sit behind a tenant,
-	// which is exactly why it carries the tightest allowance: it creates rows for anyone.
 	public.POST("/accounts", limit("signup", cfg.RateLimit.Signup), h.Account.Register)
 
-	// Everything else needs a resolved tenant: a request-scoped query without an account
-	// reads nothing under row level security.
 	authed := v1.Group("", middleware.RequireTenant())
 	authed.POST("/auth/logout", h.Auth.Logout)
 	authed.POST("/auth/change-password", h.Password.Change)
 
-	// The frontend reads its own identity here instead of decoding the access token.
 	authed.GET("/me", h.User.Me)
+
+	ai := limit("ai", cfg.RateLimit.AI)
+	authed.POST("/rfqs/text-drafts", ai, h.RFQ.CreateTextDraft)
+	rfqs := authed.Group("/rfqs")
+	rfqs.GET("/:rfqId/attachments", h.RFQAttachment.List)
+	rfqs.POST("/:rfqId/attachments", h.RFQAttachment.Upload)
+
+	channels := authed.Group("/channels")
+	channels.GET("", h.Channel.List)
+	channelAdmin := channels.Group("", middleware.RequireAdmin())
+	channelAdmin.POST("", h.Channel.Create)
+	channelAdmin.PUT("/:channelId", h.Channel.Update)
+	channelAdmin.DELETE("/:channelId", h.Channel.Delete)
+
+	quotes := authed.Group("/quotes")
+	quotes.POST("/:quoteId/accept-materials", h.Quote.AcceptMaterials)
+
+	if !cfg.IsProduction() {
+		authed.POST("/dev/whatsapp/messages", ai, h.RFQ.CreateWhatsAppMockDraft)
+	}
 
 	account := authed.Group("/account")
 	account.GET("", h.Account.Get)
 	account.PUT("", middleware.RequireAdmin(), h.Account.Update)
 
-	// The branch switcher needs the list before it can send X-Branch-Id, so reading is not
-	// admin-only: the repository already narrows a seller to their assignments. Writing is.
+	onboarding := authed.Group("/onboarding", middleware.RequireAdmin())
+	onboarding.GET("", h.Onboarding.Get)
+	onboarding.PUT("", h.Onboarding.SaveProgress)
+	onboarding.POST("/complete", h.Onboarding.Complete)
+	onboarding.POST("/dismiss", h.Onboarding.Dismiss)
+	onboarding.POST("/resume", h.Onboarding.Resume)
+
 	branches := authed.Group("/branches")
 	branches.GET("", h.Branch.List)
 	branchAdmin := branches.Group("", middleware.RequireAdmin())
@@ -130,8 +152,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	branchAdmin.PUT("/:branchId", h.Branch.Update)
 	branchAdmin.DELETE("/:branchId", h.Branch.Delete)
 
-	// Manual RFQ intake is branch-scoped: it lands on the branch carried by X-Branch-Id
-	// and its channel of type MANUAL_ENTRY.
+	// Manual RFQ intake.
 	authed.GET("/rfqs", h.Rfq.List)
 	authed.POST("/rfqs", h.Rfq.Create)
 
@@ -143,8 +164,6 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	admin.POST("/products/import/preview", h.CatalogImport.Preview)
 	admin.POST("/products/import/confirm", h.CatalogImport.Confirm)
 
-	// User administration is the one admin-only group. RequireAdmin runs after RequireTenant,
-	// which is what put the role on the context.
 	users := authed.Group("/users", middleware.RequireAdmin())
 	users.GET("", h.User.List)
 	users.POST("", h.User.Create)
@@ -153,8 +172,6 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	users.DELETE("/:userId", h.User.Delete)
 	users.POST("/:userId/password-reset", mail, h.Password.AdminReset)
 
-	// The catalog itself is account-scoped, so those routes need no active branch. The
-	// per-branch ones below take it from the X-Branch-Id header the middleware validated.
 	products := authed.Group("/products")
 	products.GET("", h.Product.List)
 	products.POST("", h.Product.Create)
