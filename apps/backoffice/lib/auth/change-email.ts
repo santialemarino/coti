@@ -21,10 +21,9 @@ const FIELD_FOR: Partial<Record<ApiErrorCode, ChangeEmailField>> = {
 };
 
 /*
- * The session outlives the change, unlike a password's: the address moves and the confirmation
- * goes with it, so no pair is re-issued and the caller keeps the token that gets them to the
- * screen explaining the new mail. Which is the whole point — the route is reachable while
- * unconfirmed precisely so a mistyped address is recoverable.
+ * The session outlives the change, unlike a password's: no pair is re-issued, so the caller keeps
+ * the token that gets them to the screen explaining the new mail — which is the whole point of the
+ * route being reachable while unconfirmed.
  */
 export async function changeEmail(values: ChangeEmailValues): Promise<ChangeEmailResult> {
   // The form validated this already, so a failure here means the request did not come from it.

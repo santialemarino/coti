@@ -47,13 +47,10 @@ export function ChangeEmailForm() {
   async function onSubmit(values: ChangeEmailValues) {
     const result = await changeEmail(values);
     if (result.done) {
-      toast.success(t('done', { email: values.newEmail }));
+      toast.success(t('done'));
       form.reset(EMPTY_VALUES);
-      /*
-       * The address is confirmed nowhere now, so where this caller belongs has changed: the
-       * refresh is what lets the protected layout send them to the screen that explains the new
-       * mail, and re-renders that screen against the new address when they are already on it.
-       */
+      // The address is confirmed nowhere now, so where this caller belongs has changed: only a
+      // re-render asks the protected layout again, and it names the new address.
       router.refresh();
       return;
     }

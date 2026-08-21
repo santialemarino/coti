@@ -70,11 +70,9 @@ describe('ProtectedLayout', () => {
   });
 
   /*
-   * Order is the whole point, and getting it wrong is silent: GET /v1/onboarding is itself closed
-   * until the address is confirmed, and the read does not catch — so asking it first answers 403,
-   * throws out of the layout, and the caller gets an error boundary where the confirmation screen
-   * belonged. Registration creates an admin with an unconfirmed address, so that is the common
-   * path, not an edge of one.
+   * Order is the whole point and getting it wrong is silent: the onboarding read is itself closed
+   * until the address is confirmed and does not catch, so asking it first throws out of the layout
+   * where the confirmation screen belonged. Registration makes that the common path, not an edge.
    */
   it('sends an unconfirmed admin to confirm without reading the onboarding state', async () => {
     vi.mocked(getSession).mockResolvedValue(session(false));

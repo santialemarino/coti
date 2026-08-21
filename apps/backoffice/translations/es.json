@@ -316,7 +316,7 @@
     },
     "changeEmail": {
       "title": "Cambiar tu correo",
-      "description": "Ahora usás {email}. Para cambiarla necesitás ingresar tu contraseña actual. La dirección nueva queda sin confirmar hasta que abras el enlace que te mandemos.",
+      "description": "Ahora usás {email}. Para cambiar tu dirección necesitás ingresar tu contraseña actual, y la nueva queda sin confirmar hasta que abras el enlace que te enviamos.",
       "newEmail": {
         "label": "Correo electrónico nuevo",
         "placeholder": "Ingresá tu dirección de correo",
@@ -329,11 +329,9 @@
       },
       "submit": "Cambiar mi correo",
       "submitting": "Cambiando…",
-      "done": "Cambiamos tu correo a {email}. Te mandamos el enlace para confirmarla.",
+      "done": "Te mandamos el enlace para confirmar tu dirección nueva.",
       "errors": {
         "UNAUTHENTICATED": "La contraseña actual no es correcta.",
-        "EMAIL_TAKEN": "Esa dirección ya está en uso. Probá con otra.",
-        "CONFLICT": "Esa dirección ya está en uso. Probá con otra.",
         "INTERNAL": "No pudimos cambiar tu correo. Intentá de nuevo."
       }
     },

@@ -15,6 +15,7 @@ const { changeEmail } = await import('@/lib/auth/change-email');
 const { toast } = await import('sonner');
 
 const copy = messages.auth.changeEmail;
+const shared = messages.errors;
 const NEW_EMAIL = 'ana.nueva@corralonsanmartin.test';
 
 // The real catalog, so a renamed or missing key fails here rather than rendering its own name.
@@ -56,7 +57,7 @@ describe('ChangeEmailForm', () => {
    * nowhere, so the protected layout's answer changed and only a re-render asks it again. Without
    * this the caller stays on a screen naming the address they replaced.
    */
-  it('confirms with the new address and re-renders the tree', async () => {
+  it('confirms the change and re-renders the tree', async () => {
     vi.mocked(changeEmail).mockResolvedValue({ done: true });
     const { container, submit } = renderForm();
     fill(container);
@@ -64,7 +65,7 @@ describe('ChangeEmailForm', () => {
     fireEvent.click(submit);
 
     await waitFor(() => expect(refresh).toHaveBeenCalled());
-    expect(toast.success).toHaveBeenCalledWith(expect.stringContaining(NEW_EMAIL));
+    expect(toast.success).toHaveBeenCalledWith(copy.done);
   });
 
   // A password must not sit in the DOM once it has been spent.
@@ -88,7 +89,8 @@ describe('ChangeEmailForm', () => {
 
     fireEvent.click(submit);
 
-    await waitFor(() => expect(isMessageShown(container, copy.errors.EMAIL_TAKEN)).toBe(true));
+    // Inherited from the shared catalog: this form has nothing truer to say about a taken address.
+    await waitFor(() => expect(isMessageShown(container, shared.EMAIL_TAKEN)).toBe(true));
     expect(refresh).not.toHaveBeenCalled();
   });
 

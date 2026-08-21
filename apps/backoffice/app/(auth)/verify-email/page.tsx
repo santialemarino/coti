@@ -84,19 +84,16 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
         <Hint>{registered ? t('resend.hintKnown') : t('resend.hint')}</Hint>
         <ResendVerificationForm address={registered ? session.email : undefined} />
         {/*
-         * Correcting the address is the other half of this screen, and only a session can offer
-         * it: the route it posts to is the one thing an unconfirmed caller reaches, and without
-         * it a typo at signup would have to go through user administration, which is closed
-         * until the address they cannot read is confirmed.
+         * The other half of this screen, and it needs the session: correcting a typo would
+         * otherwise go through user administration, which stays closed until the address the
+         * caller cannot read is confirmed.
          */}
         {registered && (
           <>
             <Separator />
-            <div className="flex flex-col gap-y-4">
-              <p className="text-paragraph-sm-medium text-foreground">{t('change.title')}</p>
-              <Hint>{t('change.hint')}</Hint>
-              <ChangeEmailForm />
-            </div>
+            <p className="text-paragraph-sm-medium text-foreground">{t('change.title')}</p>
+            <Hint>{t('change.hint')}</Hint>
+            <ChangeEmailForm />
           </>
         )}
         <InlineLink asChild tone="muted" className="self-center">

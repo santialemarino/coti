@@ -11,11 +11,8 @@ import { ADMIN_ROLE } from '@/lib/constants/auth';
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
   if (!session) redirect(ROUTES.sessionEnded);
-  /*
-   * Ahead of the onboarding read, which is itself a closed route: registration creates an admin
-   * with an unconfirmed address, so asking it first would answer 403 and throw out of the layout
-   * instead of sending them to confirm. Confirming the address is the earlier step anyway.
-   */
+  // Ahead of the onboarding read, which is itself a closed route and does not catch: asking it
+  // first would answer 403 and throw, where the confirmation screen belonged.
   if (!session.emailVerified) redirect(ROUTES.verifyEmail);
   if (session.role === ADMIN_ROLE) {
     const onboarding = await getOnboarding();
