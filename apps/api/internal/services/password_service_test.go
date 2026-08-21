@@ -79,7 +79,7 @@ type fakeAuthTokens struct {
 	stored       *domain.AuthToken
 	created      []domain.AuthToken
 	consumed     []uuid.UUID
-	invalidated  []uuid.UUID
+	invalidated  []invalidatedLink
 	consumeErr   error
 	getByHashErr error
 }
@@ -108,10 +108,17 @@ func (f *fakeAuthTokens) Consume(_ context.Context, _ repository.Querier, _, id 
 	return nil
 }
 
+// invalidatedLink records which kind of outstanding link was retired for whom, because an
+// address change retires a type the caller did not ask about.
+type invalidatedLink struct {
+	userID    uuid.UUID
+	tokenType domain.AuthTokenType
+}
+
 func (f *fakeAuthTokens) InvalidateActive(
-	_ context.Context, _ repository.Querier, _, userID uuid.UUID, _ domain.AuthTokenType,
+	_ context.Context, _ repository.Querier, _, userID uuid.UUID, tokenType domain.AuthTokenType,
 ) error {
-	f.invalidated = append(f.invalidated, userID)
+	f.invalidated = append(f.invalidated, invalidatedLink{userID: userID, tokenType: tokenType})
 	return nil
 }
 
