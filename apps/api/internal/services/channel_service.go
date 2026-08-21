@@ -127,8 +127,8 @@ func (s *ChannelService) UpdateChannel(
 		return nil, err
 	}
 	in.Identifier = domain.NormalizeChannelIdentifier(in.Identifier)
-	// Read outside the transaction: sealing writes back into in.Config, so a closure that ran a
-	// second time would otherwise seal an envelope it had already sealed.
+	// Read outside the transaction: in.Config is overwritten with the sealed form, so a closure
+	// that ran a second time would parse an envelope instead of the request.
 	requested := in.Config
 
 	var channel *domain.Channel
