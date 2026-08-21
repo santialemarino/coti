@@ -9,8 +9,8 @@ import (
 
 const validWhatsAppConfig = `{"phone_number_id":"1234567890","access_token":"EAAG-token"}`
 
-const validEmailConfig = `{"mailbox":"pedidos@corralon.test","smtp_host":"smtp.corralon.test",` +
-	`"smtp_port":587,"smtp_username":"pedidos","smtp_password":"s3cret","smtp_starttls":true}`
+const validEmailConfig = `{"smtp_host":"smtp.corralon.test","smtp_port":587,` +
+	`"smtp_username":"pedidos","smtp_password":"s3cret","smtp_starttls":true}`
 
 func TestParseChannelConfig_AbsentConfigIsValidForEveryType(t *testing.T) {
 	t.Parallel()
@@ -53,24 +53,23 @@ func TestParseChannelConfig_ShapePerType(t *testing.T) {
 			raw:     `{"phone_number_id":"1","access_token":"t","identifier":"+5491100000000"}`,
 			wantErr: `unknown field "identifier"`},
 		{name: "whatsapp with an email shape", channelType: ChannelTypeWhatsApp,
-			raw: validEmailConfig, wantErr: `unknown field "mailbox"`},
+			raw: validEmailConfig, wantErr: `unknown field "smtp_host"`},
 		{name: "email minimal", channelType: ChannelTypeEmail, raw: validEmailConfig},
-		{name: "email without a mailbox", channelType: ChannelTypeEmail,
-			raw:     `{"smtp_host":"h","smtp_port":587,"smtp_username":"u","smtp_password":"p"}`,
-			wantErr: "mailbox is required"},
-		{name: "email with a malformed mailbox", channelType: ChannelTypeEmail,
-			raw: `{"mailbox":"not-an-address","smtp_host":"h","smtp_port":587,
-				"smtp_username":"u","smtp_password":"p"}`,
-			wantErr: "mailbox must be an email address"},
+		{name: "email with the mailbox inside", channelType: ChannelTypeEmail,
+			raw: `{"mailbox":"a@b.test","smtp_host":"h","smtp_port":587,"smtp_username":"u",
+				"smtp_password":"p"}`,
+			wantErr: `unknown field "mailbox"`},
+		{name: "email without a host", channelType: ChannelTypeEmail,
+			raw:     `{"smtp_port":587,"smtp_username":"u","smtp_password":"p"}`,
+			wantErr: "smtp_host is required"},
 		{name: "email without a port", channelType: ChannelTypeEmail,
-			raw:     `{"mailbox":"a@b.test","smtp_host":"h","smtp_username":"u","smtp_password":"p"}`,
+			raw:     `{"smtp_host":"h","smtp_username":"u","smtp_password":"p"}`,
 			wantErr: "smtp_port must be between 1 and 65535"},
 		{name: "email with an out-of-range port", channelType: ChannelTypeEmail,
-			raw: `{"mailbox":"a@b.test","smtp_host":"h","smtp_port":65536,
-				"smtp_username":"u","smtp_password":"p"}`,
+			raw:     `{"smtp_host":"h","smtp_port":65536,"smtp_username":"u","smtp_password":"p"}`,
 			wantErr: "smtp_port must be between 1 and 65535"},
 		{name: "email without a password", channelType: ChannelTypeEmail,
-			raw:     `{"mailbox":"a@b.test","smtp_host":"h","smtp_port":587,"smtp_username":"u"}`,
+			raw:     `{"smtp_host":"h","smtp_port":587,"smtp_username":"u"}`,
 			wantErr: "smtp_password is required"},
 		{name: "email with a whatsapp shape", channelType: ChannelTypeEmail,
 			raw: validWhatsAppConfig, wantErr: `unknown field "phone_number_id"`},
@@ -134,7 +133,7 @@ func TestParseChannelConfig_BoundsEveryField(t *testing.T) {
 				strings.Repeat("v", 4097) + `"}`,
 			wantErr: "webhook_verify_token must be at most 4096 bytes"},
 		{name: "smtp host", channelType: ChannelTypeEmail,
-			raw: `{"mailbox":"a@b.test","smtp_host":"` + strings.Repeat("h", 256) +
+			raw: `{"smtp_host":"` + strings.Repeat("h", 256) +
 				`","smtp_port":587,"smtp_username":"u","smtp_password":"p"}`,
 			wantErr: "smtp_host must be at most 255 bytes"},
 	} {
@@ -170,7 +169,7 @@ func TestChannelConfig_MapSecretsCoversEveryCredential(t *testing.T) {
 		{
 			name: "email", channelType: ChannelTypeEmail, raw: validEmailConfig,
 			wantSealed: []string{"smtp_password"},
-			wantClear:  []string{"mailbox", "smtp_host", "smtp_username"},
+			wantClear:  []string{"smtp_host", "smtp_username"},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

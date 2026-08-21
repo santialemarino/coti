@@ -96,11 +96,11 @@ func (s *ChannelService) CreateChannel(
 		return nil, fmt.Errorf("%w: unknown channel type %q", domain.ErrInvalidInput, in.Type)
 	}
 	in.Identifier = domain.NormalizeChannelIdentifier(in.Identifier)
-	if err := domain.ValidateChannelIdentifier(in.Type, in.Identifier); err != nil {
-		return nil, err
-	}
 	config, err := s.sealConfig(in.Type, in.Config)
 	if err != nil {
+		return nil, err
+	}
+	if err := domain.ValidateChannelIdentifier(in.Type, in.Identifier, config != nil); err != nil {
 		return nil, err
 	}
 	in.Config = config
@@ -135,9 +135,6 @@ func (s *ChannelService) UpdateChannel(
 		if getErr != nil {
 			return getErr
 		}
-		if err := domain.ValidateChannelIdentifier(current.Type, in.Identifier); err != nil {
-			return err
-		}
 		if in.IsActive != nil && !*in.IsActive {
 			if err := assertChannelClosable(current); err != nil {
 				return err
@@ -151,6 +148,13 @@ func (s *ChannelService) UpdateChannel(
 		// caller removes it, and the two arrive here as nil and as "null".
 		in.Config = sealed
 		in.ClearConfig = sealed == nil && requested != nil
+		// Validated against what the channel will hold, not what the request sent: dropping the
+		// identifier off a channel whose stored configuration stays would orphan its credentials.
+		configured := sealed != nil || (current.IsConfigured && !in.ClearConfig)
+		if err := domain.ValidateChannelIdentifier(current.Type, in.Identifier,
+			configured); err != nil {
+			return err
+		}
 
 		var updateErr error
 		channel, updateErr = s.channels.Update(ctx, q, tenant.AccountID, tenant.BranchID,

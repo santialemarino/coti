@@ -179,8 +179,9 @@ func TestChannelService_CreateChannel_SealsEveryCredential(t *testing.T) {
 	service := NewChannelService(db, store, sealer)
 
 	channel, err := service.CreateChannel(context.Background(), branchTenant(), domain.NewChannel{
-		Type:   domain.ChannelTypeWhatsApp,
-		Config: []byte(whatsAppConfigJSON),
+		Type:       domain.ChannelTypeWhatsApp,
+		Identifier: ptr("+5491100000000"),
+		Config:     []byte(whatsAppConfigJSON),
 	})
 	if err != nil {
 		t.Fatalf("CreateChannel() = %v, want no error", err)
@@ -217,8 +218,9 @@ func TestChannelService_CreateChannel_RefusesCredentialsWithNoKey(t *testing.T) 
 	service := NewChannelService(db, store, testSealer(t, false))
 
 	_, err := service.CreateChannel(context.Background(), branchTenant(), domain.NewChannel{
-		Type:   domain.ChannelTypeWhatsApp,
-		Config: []byte(whatsAppConfigJSON),
+		Type:       domain.ChannelTypeWhatsApp,
+		Identifier: ptr("+5491100000000"),
+		Config:     []byte(whatsAppConfigJSON),
 	})
 	if !errors.Is(err, domain.ErrNotConfigured) {
 		t.Fatalf("CreateChannel() = %v, want %v", err, domain.ErrNotConfigured)
@@ -258,7 +260,8 @@ func TestChannelService_CreateChannel_RefusesAShapeThatDoesNotMatchTheType(t *te
 		{
 			name: "config of the wrong type",
 			in: domain.NewChannel{Type: domain.ChannelTypeEmail,
-				Config: []byte(whatsAppConfigJSON)},
+				Identifier: ptr("pedidos@corralon.test"),
+				Config:     []byte(whatsAppConfigJSON)},
 			wantCode:    domain.CodeChannelConfigShape,
 			wantMessage: `unknown field "phone_number_id"`,
 		},
@@ -275,6 +278,13 @@ func TestChannelService_CreateChannel_RefusesAShapeThatDoesNotMatchTheType(t *te
 				Identifier: ptr("mostrador")},
 			wantCode:    domain.CodeChannelIdentifier,
 			wantMessage: "carries no identifier",
+		},
+		{
+			name: "a configuration with no identifier to belong to",
+			in: domain.NewChannel{Type: domain.ChannelTypeWhatsApp,
+				Config: []byte(whatsAppConfigJSON)},
+			wantCode:    domain.CodeChannelIdentifier,
+			wantMessage: "needs its identifier",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -345,10 +355,11 @@ func TestChannelService_UpdateChannel_ConfigAbsentKeepsItAndNullClearsIt(t *test
 			store := &fakeChannelStore{current: &domain.Channel{
 				ID: testChannelID, Type: domain.ChannelTypeWhatsApp, IsConfigured: true,
 			}}
+			identifier := ptr("+5491100000000")
 			service := NewChannelService(db, store, testSealer(t, true))
 
 			if _, err := service.UpdateChannel(context.Background(), branchTenant(), testChannelID,
-				domain.ChannelUpdate{Config: test.config}); err != nil {
+				domain.ChannelUpdate{Identifier: identifier, Config: test.config}); err != nil {
 				t.Fatalf("UpdateChannel() = %v, want no error", err)
 			}
 			if store.updated == nil {
@@ -378,7 +389,8 @@ func TestChannelService_UpdateChannel_ValidatesAgainstTheStoredType(t *testing.T
 	service := NewChannelService(db, store, testSealer(t, true))
 
 	_, err := service.UpdateChannel(context.Background(), branchTenant(), testChannelID,
-		domain.ChannelUpdate{Config: []byte(whatsAppConfigJSON)})
+		domain.ChannelUpdate{Identifier: ptr("pedidos@corralon.test"),
+			Config: []byte(whatsAppConfigJSON)})
 	if domain.CodeOf(err) != domain.CodeChannelConfigShape {
 		t.Fatalf("UpdateChannel() = %v (%v), want %v", err, domain.CodeOf(err),
 			domain.CodeChannelConfigShape)
@@ -478,6 +490,49 @@ func TestChannelService_WritesRequireSelectedBranch(t *testing.T) {
 			}
 			if len(db.scopes) != 0 {
 				t.Errorf("tenant scopes = %v, want none without a selected branch", db.scopes)
+			}
+		})
+	}
+}
+
+// Dropping the identifier off a channel whose configuration stays would leave credentials with no
+// number or mailbox to belong to, and PUT clears an omitted identifier — so the rule is checked
+// against what the channel will hold, not against what the request sent.
+func TestChannelService_UpdateChannel_KeepingAConfigKeepsTheIdentifierRequired(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		update      domain.ChannelUpdate
+		wantRefused bool
+	}{
+		{name: "identifier dropped, stored config kept", update: domain.ChannelUpdate{},
+			wantRefused: true},
+		{name: "identifier dropped and the config cleared alongside it",
+			update: domain.ChannelUpdate{Config: []byte("null")}},
+		{name: "identifier kept", update: domain.ChannelUpdate{
+			Identifier: ptr("+5491100000000")}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db := &fakeDB{}
+			store := &fakeChannelStore{current: &domain.Channel{
+				ID: testChannelID, Type: domain.ChannelTypeWhatsApp, IsConfigured: true,
+				Identifier: ptr("+5491100000000"),
+			}}
+			service := NewChannelService(db, store, testSealer(t, true))
+
+			_, err := service.UpdateChannel(context.Background(), branchTenant(), testChannelID,
+				test.update)
+			if !test.wantRefused {
+				if err != nil {
+					t.Fatalf("UpdateChannel() = %v, want no error", err)
+				}
+				return
+			}
+			if domain.CodeOf(err) != domain.CodeChannelIdentifier {
+				t.Fatalf("UpdateChannel() = %v (%v), want %v", err, domain.CodeOf(err),
+					domain.CodeChannelIdentifier)
+			}
+			if store.updated != nil {
+				t.Error("UpdateChannel() orphaned a stored configuration's credentials")
 			}
 		})
 	}

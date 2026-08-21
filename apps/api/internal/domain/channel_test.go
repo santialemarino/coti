@@ -40,24 +40,35 @@ func TestValidateChannelIdentifier(t *testing.T) {
 	t.Parallel()
 	number := "+5491100000000"
 
+	mailbox := "pedidos@corralon.test"
+
 	for _, test := range []struct {
 		name        string
 		channelType ChannelType
 		identifier  *string
+		configured  bool
 		wantRefused bool
 	}{
 		{name: "whatsapp with a number", channelType: ChannelTypeWhatsApp, identifier: &number},
 		{name: "whatsapp without one", channelType: ChannelTypeWhatsApp},
-		{name: "email with a mailbox", channelType: ChannelTypeEmail, identifier: &number},
+		{name: "email with a mailbox", channelType: ChannelTypeEmail, identifier: &mailbox},
 		{name: "webapp without one", channelType: ChannelTypeWebApp},
 		{name: "manual entry without one", channelType: ChannelTypeManualEntry},
+		{name: "configured whatsapp with its number", channelType: ChannelTypeWhatsApp,
+			identifier: &number, configured: true},
+		{name: "configured email with its mailbox", channelType: ChannelTypeEmail,
+			identifier: &mailbox, configured: true},
 		{name: "webapp with one", channelType: ChannelTypeWebApp, identifier: &number,
 			wantRefused: true},
 		{name: "manual entry with one", channelType: ChannelTypeManualEntry, identifier: &number,
 			wantRefused: true},
+		{name: "configured whatsapp with no number", channelType: ChannelTypeWhatsApp,
+			configured: true, wantRefused: true},
+		{name: "configured email with no mailbox", channelType: ChannelTypeEmail,
+			configured: true, wantRefused: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			err := ValidateChannelIdentifier(test.channelType, test.identifier)
+			err := ValidateChannelIdentifier(test.channelType, test.identifier, test.configured)
 			if !test.wantRefused {
 				if err != nil {
 					t.Fatalf("ValidateChannelIdentifier() = %v, want no error", err)

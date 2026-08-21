@@ -91,8 +91,8 @@ The type cannot change, because the shape of the configuration depends on it.
 ### The identifier is a column, and stays one
 
 A branch may hold more than one channel of the same type — two WhatsApp numbers, two mailboxes — so
-`channel.identifier` carries the number or the mailbox and uniqueness is `(branch_id, type,
-identifier)`. A unique constraint does not compare NULLs, so a partial index
+`channel.identifier` carries the number or the mailbox — **it is the only place either is written** —
+and uniqueness is `(branch_id, type, identifier)`. A unique constraint does not compare NULLs, so a partial index
 (`uq_channel_branch_type_no_identifier`) holds the identifier-less case to one per type per branch.
 Both answer **409**.
 
@@ -117,7 +117,6 @@ becomes a dump nobody can reason about. The shapes are Go structs in
 | `WHATSAPP`     | `business_account_id`  | no         | no       |
 | `WHATSAPP`     | `access_token`         | **yes**    | yes      |
 | `WHATSAPP`     | `webhook_verify_token` | **yes**    | no       |
-| `EMAIL`        | `mailbox`              | no         | yes      |
 | `EMAIL`        | `smtp_host`            | no         | yes      |
 | `EMAIL`        | `smtp_port`            | no         | yes      |
 | `EMAIL`        | `smtp_username`        | no         | yes      |
@@ -126,11 +125,17 @@ becomes a dump nobody can reason about. The shapes are Go structs in
 | `WEBAPP`       | —                      |            |          |
 | `MANUAL_ENTRY` | —                      |            |          |
 
-The WhatsApp fields are the provider's own references for the number, not the number. `smtp_starttls`
-is declared rather than negotiated, the way `MAIL_SMTP_STARTTLS` is: a server that stops advertising
-STARTTLS fails the send instead of quietly downgrading to plaintext. A readable field is bounded at
-255 bytes and a credential at 4096; the check runs on the plaintext, before sealing, and nothing
-revalidates a stored config.
+**Neither shape names the endpoint the credentials are for**, because that is the identifier column:
+the WhatsApp fields are the provider's own references for the number, not the number, and a mail
+channel carries only what sends from its mailbox. `smtp_starttls` is declared rather than negotiated,
+the way `MAIL_SMTP_STARTTLS` is: a server that stops advertising STARTTLS fails the send instead of
+quietly downgrading to plaintext. A readable field is bounded at 255 bytes and a credential at 4096;
+the check runs on the plaintext, before sealing, and nothing revalidates a stored config.
+
+The two rules meet in the other direction too: **a channel that holds a configuration holds its
+identifier**, since credentials belong to one number or one mailbox. That is checked against what the
+channel will end up holding, not against what the request sent — otherwise a `PUT` that omits the
+identifier while the stored configuration stays would leave those credentials pointing at nothing.
 
 **An absent configuration is valid for every type.** A channel exists before its credentials do, and
 absent, `null` and `{}` all mean the same thing — stored as SQL `NULL`. So "is this channel

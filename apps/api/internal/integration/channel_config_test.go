@@ -27,11 +27,12 @@ func whatsAppConfig() map[string]any {
 	}
 }
 
+// emailConfig is what a mail channel stores: only what sends from it. The mailbox is the channel's
+// identifier, not a field in here.
 func emailConfig() map[string]any {
 	return map[string]any{
-		"mailbox": "pedidos@corralon.test", "smtp_host": "smtp.corralon.test",
-		"smtp_port": 587, "smtp_username": "pedidos", "smtp_password": "casilla-secreta",
-		"smtp_starttls": true,
+		"smtp_host": "smtp.corralon.test", "smtp_port": 587, "smtp_username": "pedidos",
+		"smtp_password": "casilla-secreta", "smtp_starttls": true,
 	}
 }
 
@@ -101,7 +102,7 @@ func TestChannels_CredentialsAreSealedAndNeverReturned(t *testing.T) {
 		},
 		{
 			name: "email", channelType: "EMAIL", config: emailConfig(),
-			clear:  []string{"mailbox", "smtp_host", "smtp_username"},
+			clear:  []string{"smtp_host", "smtp_username"},
 			sealed: []string{"smtp_password"},
 		},
 	} {
@@ -208,24 +209,36 @@ func TestChannels_RefusesAConfigThatDoesNotMatchTheType(t *testing.T) {
 		wantCode string
 	}{
 		{name: "email shape on a messaging channel", wantCode: "CHANNEL_CONFIG_SHAPE",
-			body: map[string]any{"type": "WHATSAPP", "config": emailConfig()}},
+			body: map[string]any{"type": "WHATSAPP", "identifier": "+5491100000000",
+				"config": emailConfig()}},
 		{name: "messaging shape on a mail channel", wantCode: "CHANNEL_CONFIG_SHAPE",
-			body: map[string]any{"type": "EMAIL", "config": whatsAppConfig()}},
+			body: map[string]any{"type": "EMAIL", "identifier": "pedidos@corralon.test",
+				"config": whatsAppConfig()}},
 		{name: "a config on the public link", wantCode: "CHANNEL_CONFIG_SHAPE",
 			body: map[string]any{"type": "WEBAPP", "config": whatsAppConfig()}},
 		{name: "a field nobody declared", wantCode: "CHANNEL_CONFIG_SHAPE",
-			body: map[string]any{"type": "WHATSAPP", "config": map[string]any{
-				"phone_number_id": "1", "access_token": "t", "extra": "x"}}},
+			body: map[string]any{"type": "WHATSAPP", "identifier": "+5491100000000",
+				"config": map[string]any{
+					"phone_number_id": "1", "access_token": "t", "extra": "x"}}},
 		{name: "the identifier smuggled into the config", wantCode: "CHANNEL_CONFIG_SHAPE",
-			body: map[string]any{"type": "WHATSAPP", "config": map[string]any{
-				"phone_number_id": "1", "access_token": "t", "identifier": "+5491100000000"}}},
+			body: map[string]any{"type": "WHATSAPP", "identifier": "+5491100000000",
+				"config": map[string]any{
+					"phone_number_id": "1", "access_token": "t",
+					"identifier": "+5491100000000"}}},
+		{name: "the mailbox smuggled into the config", wantCode: "CHANNEL_CONFIG_SHAPE",
+			body: map[string]any{"type": "EMAIL", "identifier": "pedidos@corralon.test",
+				"config": map[string]any{
+					"mailbox": "pedidos@corralon.test", "smtp_host": "h", "smtp_port": 587,
+					"smtp_username": "u", "smtp_password": "p"}}},
 		{name: "credentials missing", wantCode: "CHANNEL_CONFIG_SHAPE",
-			body: map[string]any{"type": "WHATSAPP", "config": map[string]any{
-				"phone_number_id": "1"}}},
+			body: map[string]any{"type": "WHATSAPP", "identifier": "+5491100000000",
+				"config": map[string]any{"phone_number_id": "1"}}},
 		{name: "an identifier on the public link", wantCode: "CHANNEL_IDENTIFIER",
 			body: map[string]any{"type": "WEBAPP", "identifier": "https://corralon.test"}},
 		{name: "an identifier on manual entry", wantCode: "CHANNEL_IDENTIFIER",
 			body: map[string]any{"type": "MANUAL_ENTRY", "identifier": "mostrador"}},
+		{name: "a configuration with no identifier to belong to", wantCode: "CHANNEL_IDENTIFIER",
+			body: map[string]any{"type": "WHATSAPP", "config": whatsAppConfig()}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			rec := e.do(t, request{method: http.MethodPost, path: "/v1/channels",

@@ -76,15 +76,21 @@ func NormalizeChannelIdentifier(identifier *string) *string {
 	return &trimmed
 }
 
-// ValidateChannelIdentifier refuses an identifier on a type a branch may hold only one of. WEBAPP
-// and MANUAL_ENTRY are those two: there is one public link and one manual-entry route per branch,
-// and the partial unique index behind them counts on the column staying NULL.
-func ValidateChannelIdentifier(channelType ChannelType, identifier *string) error {
+// ValidateChannelIdentifier holds both rules the identifier column carries: WEBAPP and MANUAL_ENTRY
+// are one per branch, so the partial unique index behind them needs the column NULL; and a
+// configured channel needs one, because credentials belong to the number or the mailbox it names.
+func ValidateChannelIdentifier(channelType ChannelType, identifier *string, configured bool) error {
 	switch channelType {
 	case ChannelTypeWebApp, ChannelTypeManualEntry:
 		if identifier != nil {
 			return WithCode(CodeChannelIdentifier, fmt.Errorf(
 				"%w: a %s channel carries no identifier", ErrInvalidInput, channelType))
+		}
+	default:
+		if configured && identifier == nil {
+			return WithCode(CodeChannelIdentifier, fmt.Errorf(
+				"%w: a configured %s channel needs its identifier, which is what its credentials "+
+					"belong to", ErrInvalidInput, channelType))
 		}
 	}
 	return nil

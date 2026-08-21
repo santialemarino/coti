@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"net/mail"
 	"strings"
 )
 
@@ -33,10 +32,10 @@ type WhatsAppChannelConfig struct {
 	WebhookVerifyToken string `json:"webhook_verify_token,omitempty"`
 }
 
-// EmailChannelConfig is what an EMAIL channel stores: the mailbox orders arrive at, and the
-// credentials that send from it.
+// EmailChannelConfig is what an EMAIL channel stores: the credentials that send from its mailbox.
+// The mailbox itself is channel.identifier and is not repeated here — channel uniqueness rests on
+// that column.
 type EmailChannelConfig struct {
-	Mailbox      string `json:"mailbox"`
 	SMTPHost     string `json:"smtp_host"`
 	SMTPPort     int    `json:"smtp_port"`
 	SMTPUsername string `json:"smtp_username"`
@@ -104,12 +103,6 @@ func (c *EmailChannelConfig) MapSecrets(fn func(string) (string, error)) error {
 }
 
 func (c *EmailChannelConfig) validate() error {
-	if err := requireChannelField("mailbox", c.Mailbox, maxChannelFieldLength); err != nil {
-		return err
-	}
-	if _, err := mail.ParseAddress(c.Mailbox); err != nil {
-		return channelConfigError("mailbox must be an email address")
-	}
 	if err := requireChannelField("smtp_host", c.SMTPHost, maxChannelFieldLength); err != nil {
 		return err
 	}
