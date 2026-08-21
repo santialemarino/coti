@@ -26,7 +26,9 @@ The two that reach a model share **their own rate-limit allowance**, `RATE_LIMIT
 
 All four are branch-scoped and read the branch from `X-Branch-Id`. `channel_id` is required on a
 text draft, which is why the channel listing exists: `rfq.channel_id` is `NOT NULL`, and a caller
-has to name the route the order arrived through rather than have one guessed for it.
+has to name the route the order arrived through rather than have one guessed for it. How a channel
+is configured, and where its provider credentials live, is in
+[accounts-and-branches.md](accounts-and-branches.md#channels).
 
 The development route resolves the branch's WhatsApp channel and then calls the same service method
 the production route does. It is a different way in, not a second pipeline — a copy would drift from

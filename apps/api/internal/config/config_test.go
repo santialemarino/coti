@@ -53,6 +53,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"STORAGE_LOCAL_SIGNING_SECRET", "STORAGE_ENDPOINT", "STORAGE_REGION", "STORAGE_BUCKET",
 		"STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY",
 		"STORAGE_MAX_FILE_SIZE_BYTES", "STORAGE_SIGNED_URL_EXPIRY_MINUTES",
+		"CHANNEL_CONFIG_ENCRYPTION_KEY",
 	}
 	for _, k := range known {
 		t.Setenv(k, "")
@@ -1083,5 +1084,70 @@ func TestStorageConfig_NarrowsWhatEachAdapterSees(t *testing.T) {
 	}
 	if strings.Contains(fmt.Sprintf("%+v", spaces), "storage-signing-secret") {
 		t.Fatal("Spaces() carries the link signing secret, which that adapter must not hold")
+	}
+}
+
+func TestLoad_ChannelEncryptionKeyIsOptionalAndDecoded(t *testing.T) {
+	setEnv(t, minimalEnv())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.Channel.EncryptionKey != nil {
+		t.Errorf("Channel.EncryptionKey = %v, want nil: a checkout with no key has to boot",
+			cfg.Channel.EncryptionKey)
+	}
+
+	env := minimalEnv()
+	// 32 bytes, base64 of "0123456789abcdef0123456789abcdef".
+	env["CHANNEL_CONFIG_ENCRYPTION_KEY"] = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+	setEnv(t, env)
+
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if string(cfg.Channel.EncryptionKey) != validSecret {
+		t.Errorf("Channel.EncryptionKey = %q, want %q decoded", cfg.Channel.EncryptionKey,
+			validSecret)
+	}
+	if len(cfg.Channel.EncryptionKey) != channelKeyLength {
+		t.Errorf("Channel.EncryptionKey is %d bytes, want %d", len(cfg.Channel.EncryptionKey),
+			channelKeyLength)
+	}
+}
+
+// A malformed key is a startup problem rather than a silent fallback to no encryption, and the
+// message never quotes the value: it is the key.
+func TestLoad_ChannelEncryptionKeyRejectsAnUnusableValue(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{name: "not base64", value: "not base64 at all!",
+			want: "CHANNEL_CONFIG_ENCRYPTION_KEY must be base64-encoded"},
+		{name: "too short", value: "c2hvcnQ=",
+			want: "CHANNEL_CONFIG_ENCRYPTION_KEY must decode to 32 bytes, got 5"},
+		{name: "too long", value: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWZmZg==",
+			want: "CHANNEL_CONFIG_ENCRYPTION_KEY must decode to 32 bytes, got 34"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			env := minimalEnv()
+			env["CHANNEL_CONFIG_ENCRYPTION_KEY"] = test.value
+			setEnv(t, env)
+
+			_, err := Load()
+			if err == nil {
+				t.Fatal("Load() = nil, want an error")
+			}
+			if !strings.Contains(err.Error(), test.want) {
+				t.Errorf("Load() = %q, want it to mention %q", err, test.want)
+			}
+			if strings.Contains(err.Error(), test.value) {
+				t.Errorf("Load() = %q, want the key value left out of the message", err)
+			}
+		})
 	}
 }

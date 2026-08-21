@@ -213,6 +213,8 @@ definitions:
         type: string
       is_active:
         type: boolean
+      is_configured:
+        type: boolean
       type:
         type: string
       updated_at:
@@ -272,6 +274,23 @@ definitions:
         type: string
     required:
     - name
+    type: object
+  dto.CreateChannelRequest:
+    properties:
+      config:
+        type: object
+      identifier:
+        maxLength: 255
+        type: string
+      type:
+        enum:
+        - WHATSAPP
+        - EMAIL
+        - WEBAPP
+        - MANUAL_ENTRY
+        type: string
+    required:
+    - type
     type: object
   dto.CreateProductRequest:
     properties:
@@ -917,6 +936,16 @@ definitions:
     - default_expiry_days
     - name
     type: object
+  dto.UpdateChannelRequest:
+    properties:
+      config:
+        type: object
+      identifier:
+        maxLength: 255
+        type: string
+      is_active:
+        type: boolean
+    type: object
   dto.UpdateProductRequest:
     properties:
       canonical_name:
@@ -1342,13 +1371,20 @@ paths:
   /v1/channels:
     get:
       description: Returns active intake channels for the branch selected through
-        X-Branch-Id.
+        X-Branch-Id. With include_inactive an administrator also gets the closed ones,
+        which is for administering them rather than taking an order through one. No
+        response carries a channel credential; is_configured reports only that one
+        is stored.
       parameters:
       - description: Active branch
         in: header
         name: X-Branch-Id
         required: true
         type: string
+      - description: Include closed channels (administrators only)
+        in: query
+        name: include_inactive
+        type: boolean
       produces:
       - application/json
       responses:
@@ -1364,6 +1400,10 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
         "422":
           description: No active branch
           schema:
@@ -1371,6 +1411,171 @@ paths:
       security:
       - BearerAuth: []
       summary: List intake channels
+      tags:
+      - channels
+    post:
+      consumes:
+      - application/json
+      description: Opens a channel on the branch selected through X-Branch-Id. config
+        is validated against type and its credentials are encrypted before they are
+        stored; a shape that does not match the type is refused here rather than when
+        the first message arrives.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Channel
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateChannelRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ChannelResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: The branch already holds that channel
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: No encryption key configured
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create an intake channel
+      tags:
+      - channels
+  /v1/channels/{channelId}:
+    delete:
+      description: Deactivates the channel so the orders that arrived through it stay
+        explainable. Refuses to close the branch's manual-entry channel, which a counter
+        or phone order has no other route to point at.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Channel id
+        in: path
+        name: channelId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Close an intake channel
+      tags:
+      - channels
+    put:
+      consumes:
+      - application/json
+      description: Replaces the identifier and, when sent, the whole configuration.
+        config omitted leaves the stored settings alone; an explicit null removes
+        them. The type cannot change, because the shape of the configuration depends
+        on it.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Channel id
+        in: path
+        name: channelId
+        required: true
+        type: string
+      - description: Channel
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateChannelRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ChannelResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: The branch already holds that channel
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: No encryption key configured
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update an intake channel
       tags:
       - channels
   /v1/dev/whatsapp/messages:

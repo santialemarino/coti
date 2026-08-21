@@ -144,7 +144,15 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	rfqs := authed.Group("/rfqs")
 	rfqs.GET("/:rfqId/attachments", h.RFQAttachment.List)
 	rfqs.POST("/:rfqId/attachments", h.RFQAttachment.Upload)
-	authed.GET("/channels", h.Channel.List)
+
+	// Reading is not admin-only: a text draft has to name the channel its order arrived through,
+	// so any seller needs the list. Configuring one, credentials included, is admin-only.
+	channels := authed.Group("/channels")
+	channels.GET("", h.Channel.List)
+	channelAdmin := channels.Group("", middleware.RequireAdmin())
+	channelAdmin.POST("", h.Channel.Create)
+	channelAdmin.PUT("/:channelId", h.Channel.Update)
+	channelAdmin.DELETE("/:channelId", h.Channel.Delete)
 
 	// Accepting the materials is what prices the quote, so the route names the seller's action
 	// rather than the calculation behind it. It reaches no provider, so it needs no allowance of

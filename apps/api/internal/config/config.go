@@ -4,6 +4,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net"
@@ -22,6 +23,10 @@ const minJWTSecretLength = 32
 // minSigningSecretLength is the floor for STORAGE_LOCAL_SIGNING_SECRET, which signs storage links
 // with the same construction and so needs the same key width.
 const minSigningSecretLength = 32
+
+// channelKeyLength is the width of CHANNEL_CONFIG_ENCRYPTION_KEY once decoded. AES-256 takes
+// exactly this many bytes.
+const channelKeyLength = 32
 const defaultCatalogImportMaxBytes = 5 * 1024 * 1024
 const defaultPriceImportMaxBytes = 5 * 1024 * 1024
 
@@ -79,6 +84,15 @@ type Config struct {
 	CatalogImport SpreadsheetImportConfig
 	PriceImport   SpreadsheetImportConfig
 	Storage       StorageConfig
+	Channel       ChannelConfig
+}
+
+// ChannelConfig holds what protects an intake channel's stored credentials.
+type ChannelConfig struct {
+	// EncryptionKey seals the credential fields of channel.config. Absent, the API still boots
+	// and still serves channels — storing a credential is the one thing refused, so a deployment
+	// that never set a key cannot end up keeping a provider token in the clear.
+	EncryptionKey []byte
 }
 
 // RateLimitConfig holds the request allowances, all of them settings rather than literals.
@@ -676,6 +690,9 @@ func Load() (*Config, error) {
 		PriceImport: SpreadsheetImportConfig{
 			MaxBytes: int64(getInt("PRICE_IMPORT_MAX_BYTES", defaultPriceImportMaxBytes, &problems)),
 		},
+		Channel: ChannelConfig{
+			EncryptionKey: getBase64Key("CHANNEL_CONFIG_ENCRYPTION_KEY", channelKeyLength, &problems),
+		},
 	}
 
 	if cfg.Database.URL == "" {
@@ -899,6 +916,27 @@ func getString(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// getBase64Key decodes a base64 key of an exact byte width. An unset key yields nil, which the
+// capability behind it reads as "not configured"; a malformed one is a startup problem, so a typo
+// cannot quietly turn encryption off. The value is never echoed back — it is the key.
+func getBase64Key(key string, length int, problems *[]string) []byte {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return nil
+	}
+	decoded, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		*problems = append(*problems, key+" must be base64-encoded")
+		return nil
+	}
+	if len(decoded) != length {
+		*problems = append(*problems, fmt.Sprintf("%s must decode to %d bytes, got %d",
+			key, length, len(decoded)))
+		return nil
+	}
+	return decoded
 }
 
 // getCIDRs reads a comma-separated list of networks. Single addresses are accepted and
