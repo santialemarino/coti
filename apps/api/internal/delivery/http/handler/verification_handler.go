@@ -7,12 +7,14 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
+	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
 // VerificationService is the address-confirmation surface the handler needs.
 type VerificationService interface {
 	Confirm(ctx context.Context, rawToken string) error
 	Resend(ctx context.Context, email string) error
+	ChangeOwnEmail(ctx context.Context, tenant domain.Tenant, currentPassword, newEmail string) error
 }
 
 // VerificationHandler serves address confirmation.
@@ -82,4 +84,38 @@ func (h *VerificationHandler) Resend(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusAccepted)
+}
+
+// ChangeEmail replaces the caller's own address. Returns 204, or 401 on a wrong password.
+//
+//	@Summary		Change your own email address
+//	@Description	Requires the current password. Drops the confirmation, mails the new address a link, and retires any outstanding recovery link sent to the old one. Exempt from the confirmed-address requirement, so a mistyped address at signup is still correctable.
+//	@Tags			auth
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			body	body	dto.ChangeEmailRequest	true	"New address and the current password"
+//	@Success		204		"Address changed"
+//	@Failure		400		{object}	dto.ErrorResponse
+//	@Failure		401		{object}	dto.ErrorResponse
+//	@Failure		409		{object}	dto.ErrorResponse	"The address is already in use, the caller's own included"
+//	@Router			/v1/auth/change-email [post]
+func (h *VerificationHandler) ChangeEmail(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+
+	var body dto.ChangeEmailRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+
+	if err := h.verification.ChangeOwnEmail(c.Request.Context(), tenant,
+		body.CurrentPassword, body.NewEmail); err != nil {
+		Respond(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }

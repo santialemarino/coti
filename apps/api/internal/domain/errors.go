@@ -29,9 +29,9 @@ var (
 	// client needs to tell "wrong credentials" from "stop retrying".
 	ErrLocked = errors.New("account locked")
 
-	// ErrEmailNotVerified is returned when a caller's credentials are right but the address
-	// is unconfirmed. Safe to surface, and it has to be: it is only reachable once the
-	// password already matched, and the caller cannot act on it without being told.
+	// ErrEmailNotVerified is returned when an authenticated caller reaches a closed route
+	// with an unconfirmed address. Safe to surface, and it has to be: it is only reachable
+	// with a live session, and the caller cannot act on it without being told.
 	ErrEmailNotVerified = errors.New("email not verified")
 
 	// ErrTooLarge is returned when an upload is over the configured size. Its own sentinel

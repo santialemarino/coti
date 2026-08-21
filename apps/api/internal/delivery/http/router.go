@@ -109,43 +109,58 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	public.POST("/accounts", limit("signup", cfg.RateLimit.Signup), h.Account.Register)
 
 	authed := v1.Group("", middleware.RequireTenant())
-	authed.POST("/auth/logout", h.Auth.Logout)
-	authed.POST("/auth/change-password", h.Password.Change)
 
+	// The three an unconfirmed address does not close, because they are the only way out of
+	// that state: closing them would trap whoever mistyped theirs at signup.
+	authed.POST("/auth/logout", h.Auth.Logout)
+	// The frontend reads its own identity here instead of decoding the access token.
 	authed.GET("/me", h.User.Me)
+	// On the mail allowance: it sends to an address the caller names.
+	authed.POST("/auth/change-email", mail, h.Verification.ChangeEmail)
+
+	// Using the product needs a confirmed address. Everything below is closed until then.
+	verified := authed.Group("", middleware.RequireVerifiedEmail(cfg.Auth.RequireVerifiedEmail))
+	verified.POST("/auth/change-password", h.Password.Change)
 
 	ai := limit("ai", cfg.RateLimit.AI)
-	authed.POST("/rfqs/text-drafts", ai, h.RFQ.CreateTextDraft)
-	rfqs := authed.Group("/rfqs")
+	verified.POST("/rfqs/text-drafts", ai, h.RFQ.CreateTextDraft)
+	rfqs := verified.Group("/rfqs")
 	rfqs.GET("/:rfqId/attachments", h.RFQAttachment.List)
 	rfqs.POST("/:rfqId/attachments", h.RFQAttachment.Upload)
 
-	channels := authed.Group("/channels")
+	// Reading is not admin-only: a text draft has to name the channel its order arrived through,
+	// so any seller needs the list. Configuring one, credentials included, is admin-only.
+	channels := verified.Group("/channels")
 	channels.GET("", h.Channel.List)
 	channelAdmin := channels.Group("", middleware.RequireAdmin())
 	channelAdmin.POST("", h.Channel.Create)
 	channelAdmin.PUT("/:channelId", h.Channel.Update)
 	channelAdmin.DELETE("/:channelId", h.Channel.Delete)
 
-	quotes := authed.Group("/quotes")
+	// Accepting the materials is what prices the quote, so the route names the seller's action
+	// rather than the calculation behind it. It reaches no provider, so it needs no allowance of
+	// its own beyond the global one.
+	quotes := verified.Group("/quotes")
 	quotes.POST("/:quoteId/accept-materials", h.Quote.AcceptMaterials)
 
 	if !cfg.IsProduction() {
-		authed.POST("/dev/whatsapp/messages", ai, h.RFQ.CreateWhatsAppMockDraft)
+		verified.POST("/dev/whatsapp/messages", ai, h.RFQ.CreateWhatsAppMockDraft)
 	}
 
-	account := authed.Group("/account")
+	account := verified.Group("/account")
 	account.GET("", h.Account.Get)
 	account.PUT("", middleware.RequireAdmin(), h.Account.Update)
 
-	onboarding := authed.Group("/onboarding", middleware.RequireAdmin())
+	onboarding := verified.Group("/onboarding", middleware.RequireAdmin())
 	onboarding.GET("", h.Onboarding.Get)
 	onboarding.PUT("", h.Onboarding.SaveProgress)
 	onboarding.POST("/complete", h.Onboarding.Complete)
 	onboarding.POST("/dismiss", h.Onboarding.Dismiss)
 	onboarding.POST("/resume", h.Onboarding.Resume)
 
-	branches := authed.Group("/branches")
+	// The branch switcher needs the list before it can send X-Branch-Id, so reading is not
+	// admin-only: the repository already narrows a seller to their assignments. Writing is.
+	branches := verified.Group("/branches")
 	branches.GET("", h.Branch.List)
 	branchAdmin := branches.Group("", middleware.RequireAdmin())
 	branchAdmin.POST("", h.Branch.Create)
@@ -156,7 +171,9 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	authed.GET("/rfqs", h.Rfq.List)
 	authed.POST("/rfqs", h.Rfq.Create)
 
-	admin := authed.Group("", middleware.RequireAdmin())
+	// User administration is the one admin-only group. RequireAdmin runs after RequireTenant,
+	// which is what put the role on the context.
+	admin := verified.Group("", middleware.RequireAdmin())
 	admin.GET("/product-prices/export", h.Prices.Export)
 	admin.POST("/product-prices/import/preview", h.Prices.PreviewImport)
 	admin.POST("/product-prices/import/confirm", h.Prices.ConfirmImport)
@@ -164,7 +181,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	admin.POST("/products/import/preview", h.CatalogImport.Preview)
 	admin.POST("/products/import/confirm", h.CatalogImport.Confirm)
 
-	users := authed.Group("/users", middleware.RequireAdmin())
+	users := verified.Group("/users", middleware.RequireAdmin())
 	users.GET("", h.User.List)
 	users.POST("", h.User.Create)
 	users.GET("/:userId", h.User.Get)
@@ -172,7 +189,9 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	users.DELETE("/:userId", h.User.Delete)
 	users.POST("/:userId/password-reset", mail, h.Password.AdminReset)
 
-	products := authed.Group("/products")
+	// The catalog itself is account-scoped, so those routes need no active branch. The
+	// per-branch ones below take it from the X-Branch-Id header the middleware validated.
+	products := verified.Group("/products")
 	products.GET("", h.Product.List)
 	products.POST("", h.Product.Create)
 	products.GET("/:productId", h.Product.Get)

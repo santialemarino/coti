@@ -538,6 +538,36 @@ func TestResolveTenant(t *testing.T) {
 	}
 }
 
+// The middleware refuses on the tenant and never re-reads the row, so a flag left off it is a
+// requirement nothing enforces.
+func TestResolveTenant_CarriesWhetherTheAddressIsConfirmed(t *testing.T) {
+	verifiedAt := fixedNow.Add(-time.Hour)
+	cases := []struct {
+		name       string
+		verifiedAt *time.Time
+		want       bool
+	}{
+		{"unconfirmed", nil, false},
+		{"confirmed", &verifiedAt, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			user := activeUser(t)
+			user.EmailVerifiedAt = tc.verifiedAt
+			h := newHarness(t, user)
+
+			tenant, err := h.svc.ResolveTenant(context.Background(), claimsFor(3), uuid.Nil)
+			if err != nil {
+				t.Fatalf("ResolveTenant() = %v, want no error", err)
+			}
+			if tenant.EmailVerified != tc.want {
+				t.Errorf("tenant.EmailVerified = %v, want %v", tenant.EmailVerified, tc.want)
+			}
+		})
+	}
+}
+
 func TestResolveTenant_UnknownUser(t *testing.T) {
 	h := newHarness(t, nil)
 
@@ -718,56 +748,30 @@ func TestRefresh_DeactivatedAccountIsRefused(t *testing.T) {
 	}
 }
 
-// Enforcement starts off, so an unverified user has to operate normally until it is on.
-func TestLogin_UnverifiedEmailOnlyBlocksWhenRequired(t *testing.T) {
-	t.Run("requirement off", func(t *testing.T) {
+/*
+ * Issuing a session is not using the product: the requirement is charged on the closed routes, so
+ * an unconfirmed address always gets in and reaches the screen that explains the mail. Refusing
+ * here is what left whoever mistyped their address at signup with no way back.
+ */
+func TestLogin_TheVerifiedAddressRequirementDoesNotReachLogin(t *testing.T) {
+	for _, requirement := range []bool{false, true} {
 		h := newHarness(t, activeUser(t))
+		h.svc.cfg.RequireVerifiedEmail = requirement
+
 		if _, err := h.svc.Login(context.Background(), domain.Credentials{
 			Email: "vendedor@corralon.test", Password: testPassword,
 		}); err != nil {
-			t.Fatalf("Login() unverified with the requirement off = %v, want no error", err)
+			t.Fatalf("Login() unverified with the requirement %v = %v, want no error",
+				requirement, err)
 		}
-	})
 
-	t.Run("requirement on", func(t *testing.T) {
-		h := newHarness(t, activeUser(t))
-		h.svc.cfg.RequireVerifiedEmail = true
-
+		// And a wrong password answers the same either way, so the flag cannot be read off login.
 		_, err := h.svc.Login(context.Background(), domain.Credentials{
-			Email: "vendedor@corralon.test", Password: testPassword,
+			Email: "vendedor@corralon.test", Password: "not-the-password",
 		})
-		if !errors.Is(err, domain.ErrEmailNotVerified) {
-			t.Fatalf("Login() unverified with the requirement on = %v, want %v",
-				err, domain.ErrEmailNotVerified)
+		if !errors.Is(err, domain.ErrUnauthenticated) {
+			t.Fatalf("Login() with a wrong password and the requirement %v = %v, want %v",
+				requirement, err, domain.ErrUnauthenticated)
 		}
-	})
-
-	t.Run("requirement on, address verified", func(t *testing.T) {
-		user := activeUser(t)
-		verifiedAt := fixedNow.Add(-time.Hour)
-		user.EmailVerifiedAt = &verifiedAt
-		h := newHarness(t, user)
-		h.svc.cfg.RequireVerifiedEmail = true
-
-		if _, err := h.svc.Login(context.Background(), domain.Credentials{
-			Email: "vendedor@corralon.test", Password: testPassword,
-		}); err != nil {
-			t.Fatalf("Login() verified with the requirement on = %v, want no error", err)
-		}
-	})
-}
-
-// A wrong password must still answer the same with the requirement on, or the distinct
-// message becomes an oracle for which addresses are registered.
-func TestLogin_UnverifiedEmailNeverLeaksBeforeThePasswordMatches(t *testing.T) {
-	h := newHarness(t, activeUser(t))
-	h.svc.cfg.RequireVerifiedEmail = true
-
-	_, err := h.svc.Login(context.Background(), domain.Credentials{
-		Email: "vendedor@corralon.test", Password: "not-the-password",
-	})
-	if !errors.Is(err, domain.ErrUnauthenticated) {
-		t.Fatalf("Login() with a wrong password = %v, want %v: the verification state must "+
-			"not be reachable without the password", err, domain.ErrUnauthenticated)
 	}
 }

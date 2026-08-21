@@ -210,6 +210,98 @@ func TestUserRepository_UpdateClearsVerificationOnlyWhenTheAddressChanges(t *tes
 	})
 }
 
+/*
+ * The hash in the predicate is what keeps a password moved inside the bcrypt window from being
+ * spent on an address change. Only the real SQL can be asked about it: a fake repository proves
+ * the service's mapping and nothing about the clause.
+ */
+func TestUserRepository_UpdateEmailRefusesAHashThatMoved(t *testing.T) {
+	db := testDB(t)
+	repo := NewUserRepository()
+	ctx := context.Background()
+
+	accountID := seedAccount(t, db, "Corralón")
+	userID := seedUser(t, db, accountID, "SELLER")
+	tenant := domain.Tenant{AccountID: accountID}
+
+	var storedHash, before string
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT password_hash, email FROM app_user WHERE id = $1`,
+		userID).Scan(&storedHash, &before); err != nil {
+		t.Fatalf("read the seeded user: %v", err)
+	}
+
+	changeTo := func(t *testing.T, email, hash string) error {
+		t.Helper()
+		return db.InTenantTx(ctx, tenant, func(q Querier) error {
+			_, updErr := repo.UpdateEmail(ctx, q, accountID, userID, email, hash)
+			return updErr
+		})
+	}
+	currentEmail := func(t *testing.T) string {
+		t.Helper()
+		var email string
+		if err := db.CrossAccount().QueryRow(ctx,
+			`SELECT email FROM app_user WHERE id = $1`, userID).Scan(&email); err != nil {
+			t.Fatalf("read email: %v", err)
+		}
+		return email
+	}
+
+	t.Run("a stale hash matches no row", func(t *testing.T) {
+		err := changeTo(t, "otra+"+uuid.NewString()+"@corralon.test", storedHash+"-rotado")
+		if !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("UpdateEmail with a stale hash = %v, want %v", err, domain.ErrNotFound)
+		}
+		if got := currentEmail(t); got != before {
+			t.Errorf("the address moved to %q on a stale hash", got)
+		}
+	})
+
+	t.Run("the current hash writes and drops the confirmation", func(t *testing.T) {
+		if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+			return repo.MarkEmailVerified(ctx, q, accountID, userID)
+		}); err != nil {
+			t.Fatalf("MarkEmailVerified() = %v, want no error", err)
+		}
+
+		after := "otra+" + uuid.NewString() + "@corralon.test"
+		if err := changeTo(t, after, storedHash); err != nil {
+			t.Fatalf("UpdateEmail() = %v, want no error", err)
+		}
+		if got := currentEmail(t); got != after {
+			t.Errorf("email = %q, want %q", got, after)
+		}
+		var verifiedAt *time.Time
+		if err := db.CrossAccount().QueryRow(ctx,
+			`SELECT email_verified_at FROM app_user WHERE id = $1`, userID).Scan(&verifiedAt); err != nil {
+			t.Fatalf("read email_verified_at: %v", err)
+		}
+		if verifiedAt != nil {
+			t.Errorf("email_verified_at = %v after the address changed, want null", verifiedAt)
+		}
+	})
+
+	// The global index is what login depends on, so it has to refuse here too.
+	t.Run("an address another user holds is a conflict", func(t *testing.T) {
+		otherAccount := seedAccount(t, db, "Corralón Vecino")
+		otherUser := seedUser(t, db, otherAccount, "SELLER")
+		var taken string
+		if err := db.CrossAccount().QueryRow(ctx,
+			`SELECT email FROM app_user WHERE id = $1`, otherUser).Scan(&taken); err != nil {
+			t.Fatalf("read the other address: %v", err)
+		}
+
+		err := changeTo(t, taken, storedHash)
+		if !errors.Is(err, domain.ErrConflict) {
+			t.Fatalf("UpdateEmail onto a taken address = %v, want %v", err, domain.ErrConflict)
+		}
+		if got := domain.CodeOf(err); got != domain.CodeEmailTaken {
+			t.Errorf("code = %q, want %q", got, domain.CodeEmailTaken)
+		}
+	})
+}
+
 // Deactivating bumps nothing on its own — the service pairs it with the epoch bump. This
 // asserts the two repository writes a deactivation is built from.
 func TestUserRepository_DeactivateAndEpochBump(t *testing.T) {
