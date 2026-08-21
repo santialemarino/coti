@@ -91,19 +91,20 @@ docker compose up -d mailpit   # included in pnpm dev:docker
 
 ## Common scripts
 
-| Command                           | What it does                                |
-| --------------------------------- | ------------------------------------------- |
-| `pnpm dev`                        | Build `@repo/ui`, then run all apps (Turbo) |
-| `pnpm build`                      | Build all apps and packages                 |
-| `pnpm lint`                       | Lint all workspaces                         |
-| `pnpm check`                      | Type-check the API and web apps             |
-| `pnpm dev:docker`                 | Bring up the full stack via docker-compose  |
-| `pnpm db:migrate`                 | Apply Go (goose) migrations                 |
-| `pnpm db:create-migration <name>` | Scaffold a new migration                    |
-| `pnpm db:vector-index`            | Build the catalog's vector index            |
-| `pnpm docs:api`                   | Regenerate the OpenAPI spec from handlers   |
-| `pnpm test:rfq`                   | Run the RFQ engine unit suite verbosely     |
-| `pnpm test:rfq:response`          | Print one representative RFQ JSON response  |
+| Command                           | What it does                                 |
+| --------------------------------- | -------------------------------------------- |
+| `pnpm dev`                        | Build `@repo/ui`, then run all apps (Turbo)  |
+| `pnpm build`                      | Build all apps and packages                  |
+| `pnpm lint`                       | Lint all workspaces                          |
+| `pnpm check`                      | Type-check the API and web apps              |
+| `pnpm dev:docker`                 | Bring up the full stack via docker-compose   |
+| `pnpm db:migrate`                 | Apply Go (goose) migrations                  |
+| `pnpm db:create-migration <name>` | Scaffold a new migration                     |
+| `pnpm db:vector-index`            | Build the catalog's vector index             |
+| `pnpm docs:api`                   | Regenerate the OpenAPI spec from handlers    |
+| `pnpm test:rfq`                   | Run the RFQ engine unit suite verbosely      |
+| `pnpm test:rfq:response`          | Print one representative RFQ JSON response   |
+| `pnpm eval:rfq`                   | Evaluate live RFQs through the WhatsApp mock |
 
 ### RFQ engine tests
 
@@ -123,6 +124,22 @@ TEST_DATABASE_URL=postgres://coti_app:coti_app@127.0.0.1:5432/coti?sslmode=disab
 TEST_DATABASE_ADMIN_URL=postgres://coti:coti@127.0.0.1:5432/coti?sslmode=disable \
   pnpm test:rfq:integration
 ```
+
+The live evaluation runner is separate from the deterministic test gate. With the development
+seed loaded and the API running with Anthropic and OpenAI enabled, it logs in as the seeded admin,
+sends the versioned cases through `POST /v1/dev/whatsapp/messages`, prints each result, and writes
+the full responses under `.artifacts/rfq-eval/`:
+
+```bash
+pnpm db:seed
+pnpm eval:rfq
+pnpm eval:rfq --verbose
+```
+
+Use `pnpm eval:rfq --case explicit-quantity` to repeat one scenario, or `--help` for API URL,
+branch, channel, cases, report, and pricing options. The
+default cases live in `scripts/fixtures/rfq-eval-cases.json`; add a case there when a model failure
+is reproducible and has an observable expected result.
 
 ## API specification
 

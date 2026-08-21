@@ -302,3 +302,21 @@ platform's cron rather than on demand.
 model through `StructuredGenerator`, so it names no provider and works behind whichever one is
 bound. The schema carries no `minLength`, `maxLength` or `maxItems` — structured outputs do not
 enforce those, and stating them would read as a guarantee the service is the one making.
+
+## QA surfaces
+
+The automated RFQ suites never call a live model. `pnpm test:rfq` uses fixed provider doubles for
+fast service and handler checks; `pnpm test:rfq:integration` uses the same deterministic answers
+over the real router, PostgreSQL, pgvector search, tenant context, and quote persistence. This keeps
+CI repeatable while still proving that a mocked WhatsApp message reaches a reviewable `DRAFT`.
+
+`pnpm eval:rfq` is the opt-in model evaluation. It logs into a running development API, posts the
+cases from `scripts/fixtures/rfq-eval-cases.json` to `/v1/dev/whatsapp/messages`, and compares only
+observable contract fields: RFQ and quote status, line count, quantities, units, rationales, match
+status, and pricing when requested. It prints one `PASS` or `FAIL` per case and stores the complete
+request results under the ignored `.artifacts/rfq-eval/` directory. `--verbose` also prints every
+response; `--price` runs the deterministic material-acceptance transition after every draft.
+
+The runner reads its connection settings from `RFQ_EVAL_*` variables and has defaults for the
+development seed. A bearer token can be supplied as `RFQ_EVAL_TOKEN`; otherwise it logs in with
+`RFQ_EVAL_EMAIL` and `RFQ_EVAL_PASSWORD`. Run `pnpm eval:rfq --help` for the full option list.

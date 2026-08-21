@@ -15,6 +15,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/config"
+	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 	"github.com/santialemarino/coti/apps/api/internal/services"
@@ -443,6 +444,72 @@ func TestChannelsRoute_ListsOnlyTheSelectedBranch(t *testing.T) {
 	}
 	if body.Items[0].BranchID != branchID {
 		t.Errorf("branch = %v, want %v", body.Items[0].BranchID, branchID)
+	}
+}
+
+func TestWhatsAppMockRoute_CreatesAReviewableDraftThroughTheRealRouter(t *testing.T) {
+	message := "10 bolsas de cemento Loma Negra"
+	unit := "bolsas"
+	rationale := "el cliente pidio 10 bolsas"
+	e := newEnvWithRFQProviders(t, rfqTestProviders{
+		extractor: stagedExtractor{lines: []domain.ExtractedRFQLine{{
+			RequestedDescription: message,
+			Quantity:             decimal.RequireFromString("10"),
+			Unit:                 &unit,
+			Source:               domain.QuantitySourceExplicit,
+			QuantityRationale:    rationale,
+		}}},
+		embedder: axisEmbedder{axes: map[string]int{message: 0}},
+	}, func(cfg *config.Config) { cfg.Catalog = matchConfig() })
+	accountID, branchID := e.seedAccount(t, "WhatsApp mock intake")
+	channelID := e.seedIntakeChannel(t, accountID, branchID)
+	seller := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	cement := e.seedProduct(t, accountID, "Cemento Loma Negra 50kg", "cemento portland")
+	e.stock(t, accountID, branchID, cement)
+	e.embedOn(t, cement, 0, 0.95)
+
+	rec := e.do(t, request{
+		method: http.MethodPost, path: "/v1/dev/whatsapp/messages",
+		token: e.tokenFor(t, seller), branch: branchID.String(),
+		body: map[string]any{
+			"from": "+5491122334455", "profile_name": "Obras Norte", "text": message,
+		},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body)
+	}
+
+	var body dto.TextRFQDraftResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response %s: %v", rec.Body, err)
+	}
+	e.dropDraft(t, body.RFQ.ID)
+
+	if body.RFQ.ChannelID != channelID || body.RFQ.Status != string(domain.RFQStatusGenerated) {
+		t.Errorf("rfq = %+v, want generated on WhatsApp channel %s", body.RFQ, channelID)
+	}
+	if body.RFQ.RawText == nil || *body.RFQ.RawText != message || body.RFQ.ClientLabel == nil ||
+		*body.RFQ.ClientLabel != "Obras Norte (+5491122334455)" {
+		t.Errorf("rfq source = raw %v label %v, want the inbound message and sender",
+			body.RFQ.RawText, body.RFQ.ClientLabel)
+	}
+	if body.Quote == nil || body.Quote.RFQID != body.RFQ.ID ||
+		body.Quote.CurrentStatus != string(domain.QuoteStatusDraft) || body.Quote.SellerID != nil {
+		t.Fatalf("quote = %+v, want an unassigned DRAFT for the RFQ", body.Quote)
+	}
+	if body.Version == nil || body.Version.QuoteID != body.Quote.ID || body.Version.AuthorID != nil ||
+		body.Version.VersionNumber != 1 || body.Version.Total != "0.00" {
+		t.Fatalf("version = %+v, want the unpriced initial version", body.Version)
+	}
+	if len(body.Items) != 1 {
+		t.Fatalf("items = %d, want one", len(body.Items))
+	}
+	item := body.Items[0]
+	if item.VersionID != body.Version.ID || item.ProductID == nil || *item.ProductID != cement ||
+		item.RequestedDescription != message || item.Quantity != "10.00" || item.Unit == nil ||
+		*item.Unit != unit || item.MatchStatus != string(domain.ItemMatchStatusMatched) ||
+		item.QuantityRationale == nil || *item.QuantityRationale != rationale {
+		t.Errorf("item = %+v, want the matched cement line with its extraction evidence", item)
 	}
 }
 
