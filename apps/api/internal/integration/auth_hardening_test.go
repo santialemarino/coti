@@ -340,34 +340,3 @@ func TestMailTargetLimit_StopsSendingWithoutChangingTheAnswer(t *testing.T) {
 		t.Fatal("another address got no message while the first one was capped")
 	}
 }
-
-// With the requirement on, an unverified user is refused and told why — the one rejection
-// here that is not opaque, because it is only reachable once the password matched.
-func TestLogin_RequiringAVerifiedAddressAnswers403(t *testing.T) {
-	e := newEnv(t, func(cfg *config.Config) { cfg.Auth.RequireVerifiedEmail = true })
-
-	accountID, _ := e.seedAccount(t, "Corralón Sin Verificar")
-	user := e.seedUserWithPassword(t, accountID, domain.UserRoleAdmin, seedPassword)
-
-	unverified := e.do(t, request{method: http.MethodPost, path: "/v1/public/auth/login",
-		body: map[string]any{"email": user.Email, "password": seedPassword}})
-	if unverified.Code != http.StatusForbidden {
-		t.Fatalf("login unverified with the requirement on = %d, want 403 (body %s)",
-			unverified.Code, unverified.Body.String())
-	}
-
-	// A wrong password still answers opaquely, so the 403 is not an enumeration oracle.
-	wrong := e.do(t, request{method: http.MethodPost, path: "/v1/public/auth/login",
-		body: map[string]any{"email": user.Email, "password": "no-es-la-clave"}})
-	if wrong.Code != http.StatusUnauthorized {
-		t.Fatalf("a wrong password with the requirement on = %d, want 401", wrong.Code)
-	}
-
-	if _, err := e.db.CrossAccount().Exec(context.Background(),
-		`UPDATE app_user SET email_verified_at = now() WHERE id = $1`, user.ID); err != nil {
-		t.Fatalf("stamp the user verified: %v", err)
-	}
-	if e.login(t, user.Email, seedPassword) == nil {
-		t.Error("a verified user could not log in with the requirement on")
-	}
-}

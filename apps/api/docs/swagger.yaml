@@ -181,6 +181,18 @@ definitions:
       unit:
         type: string
     type: object
+  dto.ChangeEmailRequest:
+    properties:
+      current_password:
+        maxLength: 128
+        type: string
+      new_email:
+        maxLength: 255
+        type: string
+    required:
+    - current_password
+    - new_email
+    type: object
   dto.ChangePasswordRequest:
     properties:
       current_password:
@@ -1189,6 +1201,43 @@ paths:
       summary: Update the current account
       tags:
       - accounts
+  /v1/auth/change-email:
+    post:
+      consumes:
+      - application/json
+      description: Requires the current password. Drops the confirmation, mails the
+        new address a link, and retires any outstanding recovery link sent to the
+        old one. Exempt from the confirmed-address requirement, so a mistyped address
+        at signup is still correctable.
+      parameters:
+      - description: New address and the current password
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ChangeEmailRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Address changed
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: The address is already in use, the caller's own included
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Change your own email address
+      tags:
+      - auth
   /v1/auth/change-password:
     post:
       consumes:

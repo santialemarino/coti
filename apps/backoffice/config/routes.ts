@@ -9,6 +9,7 @@ export const ROUTES = {
   onboarding: '/onboarding',
   sessionEnded: '/session-ended',
   changePassword: '/settings/password',
+  emailSettings: '/settings/email',
   accountSettings: '/settings/account',
   priceSettings: '/settings/prices',
   catalogSettings: '/settings/catalog',

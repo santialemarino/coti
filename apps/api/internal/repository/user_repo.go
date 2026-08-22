@@ -148,6 +148,24 @@ func (r *UserRepository) Update(
 	return user, err
 }
 
+// UpdateEmail replaces one user's address, and only if their hash still matches the one the
+// caller verified, so a password moved meanwhile cannot be spent on this. Returns
+// domain.ErrConflict when the address is taken, domain.ErrNotFound when the hash moved.
+func (r *UserRepository) UpdateEmail(
+	ctx context.Context, q Querier, accountID, id uuid.UUID, email, currentHash string,
+) (*domain.AppUser, error) {
+	user, err := scanUser(q.QueryRow(ctx,
+		`UPDATE app_user
+		 SET email = $3::text, email_verified_at = NULL
+		 WHERE account_id = $1 AND id = $2 AND password_hash = $4
+		 RETURNING `+userColumns,
+		accountID, id, email, currentHash))
+	if isEmailTaken(err) {
+		return nil, domain.WithCode(domain.CodeEmailTaken, domain.ErrConflict)
+	}
+	return user, err
+}
+
 // UpdatePassword replaces the stored hash. Returns domain.ErrNotFound if the user is not in
 // the account.
 func (r *UserRepository) UpdatePassword(
