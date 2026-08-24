@@ -78,7 +78,12 @@ describe('rfq-serve.mjs', () => {
         return run;
       },
     };
-    const server = createRFQReportServer(directory, { root: process.cwd(), runManager });
+    const preflightManager = readyPreflightManager();
+    const server = createRFQReportServer(directory, {
+      root: process.cwd(),
+      runManager,
+      preflightManager,
+    });
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
     const address = server.address();
     assert.equal(typeof address, 'object');
@@ -116,4 +121,72 @@ describe('rfq-serve.mjs', () => {
       );
     }
   });
+
+  it('publishes readiness and blocks a run that fails preflight', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'coti-rfq-preflight-'));
+    let starts = 0;
+    const blocked = {
+      ready: false,
+      checked_at: '2026-08-24T12:00:00.000Z',
+      checks: [
+        {
+          id: 'database',
+          label: 'PostgreSQL accesible',
+          status: 'BLOCKED',
+          detail: 'No connection',
+        },
+      ],
+    };
+    const preflightManager = {
+      all: async () => ({ pipeline_integration: blocked, live_suite: blocked }),
+      forType: async () => blocked,
+    };
+    const runManager = {
+      get: () => null,
+      start: () => {
+        starts += 1;
+        return {};
+      },
+    };
+    const server = createRFQReportServer(directory, {
+      root: process.cwd(),
+      runManager,
+      preflightManager,
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    assert.equal(typeof address, 'object');
+    const base = `http://127.0.0.1:${address.port}`;
+    try {
+      const stateResponse = await fetch(`${base}/api/state`);
+      const state = await stateResponse.json();
+      assert.equal(state.preflights.pipeline_integration.ready, false);
+      assert.equal(state.api_online, false);
+
+      const response = await fetch(`${base}/api/runs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: base },
+        body: JSON.stringify({ type_id: 'pipeline_integration' }),
+      });
+      assert.equal(response.status, 409);
+      assert.match((await response.json()).error, /PostgreSQL accesible/);
+      assert.equal(starts, 0);
+    } finally {
+      await new Promise((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
 });
+
+function readyPreflightManager() {
+  const ready = {
+    ready: true,
+    checked_at: '2026-08-24T12:00:00.000Z',
+    checks: [{ id: 'api', label: 'API RFQ disponible', status: 'READY', detail: 'Ready' }],
+  };
+  return {
+    all: async () => ({ live_suite: ready, live_custom: ready }),
+    forType: async () => ready,
+  };
+}

@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { PassThrough } from 'node:stream';
 import { describe, it } from 'node:test';
 
 import {
+  buildRunSpec,
+  createRunManager,
   listReports,
   loadCustomCases,
   RFQ_TEST_TYPES,
@@ -26,6 +30,65 @@ describe('rfq-lab.mjs', () => {
       RFQ_TEST_TYPES.filter((entry) => entry.uses_ai).every((entry) => entry.providers.length > 0),
       true,
     );
+  });
+
+  it('runs the full integration contract through the canonical package script', () => {
+    const type = RFQ_TEST_TYPES.find((entry) => entry.id === 'pipeline_integration');
+    const spec = buildRunSpec(type, null, {
+      root: process.cwd(),
+      directory: path.join(process.cwd(), '.artifacts', 'rfq-eval'),
+      runID: 'run-1',
+      localEnv: {},
+    });
+
+    assert.equal(spec.args.at(-1), 'test:rfq:integration');
+    assert.match(spec.env.GOFLAGS, /(?:^|\s)-json(?:\s|$)/);
+    assert.equal(spec.output_format, 'go-test-json');
+  });
+
+  it('keeps structured results while a Go test run is being streamed', async () => {
+    let child;
+    const spawnProcess = () => {
+      child = new EventEmitter();
+      child.stdout = new PassThrough();
+      child.stderr = new PassThrough();
+      return child;
+    };
+    const manager = createRunManager({
+      root: process.cwd(),
+      directory: fs.mkdtempSync(path.join(os.tmpdir(), 'coti-rfq-runs-')),
+      spawnProcess,
+    });
+    const run = manager.start('extractor_unit');
+    const event = (value) => child.stdout.write(`${JSON.stringify(value)}\n`);
+
+    event({ Action: 'run', Package: 'example/ai', Test: 'TestRFQExtractor' });
+    event({
+      Action: 'output',
+      Package: 'example/ai',
+      Test: 'TestRFQExtractor',
+      Output: 'validated schema\n',
+    });
+    event({
+      Action: 'pass',
+      Package: 'example/ai',
+      Test: 'TestRFQExtractor',
+      Elapsed: 0.01,
+    });
+    child.stdout.end();
+    child.emit('close', 0);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(run.status, 'PASSED');
+    assert.deepEqual(run.summary, {
+      total: 1,
+      passed: 1,
+      failed: 0,
+      skipped: 0,
+      running: 0,
+    });
+    assert.equal(run.tests[0].status, 'PASSED');
+    assert.deepEqual(run.tests[0].output, ['validated schema']);
   });
 
   it('builds observable expectations for a custom WhatsApp case', () => {

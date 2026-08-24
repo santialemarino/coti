@@ -11,6 +11,7 @@ import {
   RFQ_TEST_TYPES,
   saveCustomCase,
 } from './lib/rfq-lab.mjs';
+import { createPreflightManager } from './lib/rfq-preflight.mjs';
 
 const ROOT = process.cwd();
 const DEFAULT_DIRECTORY = path.join(ROOT, '.artifacts', 'rfq-eval');
@@ -44,6 +45,8 @@ export function createRFQReportServer(directory, options = {}) {
   const resolvedDirectory = path.resolve(directory);
   const root = path.resolve(options.root ?? ROOT);
   const runManager = options.runManager ?? createRunManager({ root, directory: resolvedDirectory });
+  const preflightManager =
+    options.preflightManager ?? createPreflightManager({ root, types: RFQ_TEST_TYPES });
 
   return http.createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', 'http://localhost');
@@ -57,11 +60,15 @@ export function createRFQReportServer(directory, options = {}) {
         return;
       }
       if (request.method === 'GET' && url.pathname === '/api/state') {
+        const preflights = await preflightManager.all({
+          force: url.searchParams.get('refresh') === '1',
+        });
         sendJSON(response, 200, {
           types: RFQ_TEST_TYPES,
           cases: loadCustomCases(resolvedDirectory),
           reports: listReports(resolvedDirectory),
-          api_online: await apiOnline(),
+          api_online: isCheckReady(preflights.live_suite, 'api'),
+          preflights,
         });
         return;
       }
@@ -78,6 +85,15 @@ export function createRFQReportServer(directory, options = {}) {
         if (!type) throw new HTTPError(400, 'Unknown test type');
         if (type.uses_ai && body.confirm_ai !== true) {
           throw new HTTPError(409, 'AI consumption must be confirmed before this run');
+        }
+        const preflight = await preflightManager.forType(type.id, { force: true });
+        if (!preflight?.ready) {
+          const blocked =
+            preflight?.checks
+              .filter((check) => check.status === 'BLOCKED')
+              .map((check) => check.label)
+              .join(', ') || 'unknown requirement';
+          throw new HTTPError(409, `Preflight blocked: ${blocked}`);
         }
         const run = runManager.start(type.id, body.case_id ?? null);
         sendJSON(response, 201, run);
@@ -171,16 +187,8 @@ function requireSameOrigin(request) {
   }
 }
 
-async function apiOnline() {
-  try {
-    const baseURL = (process.env.RFQ_EVAL_API_URL ?? 'http://127.0.0.1:8001').replace(/\/$/, '');
-    const response = await fetch(`${baseURL}/health`, {
-      signal: AbortSignal.timeout(700),
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
+function isCheckReady(preflight, checkID) {
+  return preflight?.checks.some((check) => check.id === checkID && check.status === 'READY');
 }
 
 function usage() {

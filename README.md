@@ -158,8 +158,13 @@ dashboard's **Trazabilidad** tab. Start `pnpm serve:rfq` and open http://localho
 Lab. From there a developer can select a deterministic component test, run the database-backed
 pipeline, create a custom WhatsApp case with observable expectations, or launch a live evaluation.
 Live runs show an explicit Anthropic/OpenAI consumption warning and require confirmation. The Lab
-streams command output, keeps recent reports, and links to each detailed trace; `/latest` opens the
-newest one directly. The server uses Node's standard library and does not require Python.
+checks the selected surface's tools, source files, database, pgvector, API, test variables, and AI
+credentials before enabling execution; it reports only credential presence, never secret values.
+Go output is parsed from `go test -json` into expandable results with description, duration,
+source code, and program output. The integration button delegates to the canonical
+`pnpm test:rfq:integration` script, so the Lab and terminal exercise the same suite. It also keeps
+recent reports and links to each detailed trace; `/latest` opens the newest one directly. The
+server uses Node's standard library and does not require Python.
 
 After installing or updating the Go extension, reload the VS Code window once. Then select **RFQ
 START HERE: API + ALL TESTS** under **Run and Debug** to generate the complete dashboard. Use **RFQ

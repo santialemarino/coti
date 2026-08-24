@@ -3,6 +3,9 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { createGoTestCollector } from './go-test-events.mjs';
+import { packageManagerInvocation } from './process-command.mjs';
+
 const CUSTOM_CASES_FILE = 'custom-cases.json';
 const RUN_LOG_LIMIT = 2_000;
 
@@ -106,7 +109,12 @@ export const RFQ_TEST_TYPES = [
     requires_api: false,
     requires_database: true,
     accepts_case: false,
-    source_files: ['apps/api/internal/integration/rfq_pipeline_test.go'],
+    source_files: [
+      'apps/api/internal/integration/catalog_match_test.go',
+      'apps/api/internal/integration/rfq_pipeline_test.go',
+      'apps/api/internal/integration/unmatched_items_test.go',
+      'apps/api/internal/integration/quote_pricing_test.go',
+    ],
   },
 ];
 
@@ -222,7 +230,10 @@ export function createRunManager({ root, directory, spawnProcess = spawn }) {
       if (type.accepts_case && !selectedCase) throw new Error('A saved custom case is required');
 
       const id = randomUUID();
-      const spec = commandFor(type, selectedCase, { root, directory, runID: id, localEnv });
+      const spec = buildRunSpec(type, selectedCase, { root, directory, runID: id, localEnv });
+      const collector = spec.output_format
+        ? createGoTestCollector({ root, sourceFiles: spec.source_files })
+        : null;
       const run = {
         id,
         type_id: type.id,
@@ -233,6 +244,8 @@ export function createRunManager({ root, directory, spawnProcess = spawn }) {
         started_at: new Date().toISOString(),
         finished_at: null,
         logs: [],
+        tests: [],
+        summary: { total: 0, passed: 0, failed: 0, skipped: 0, running: 0 },
         report_url: null,
       };
       runs.set(id, run);
@@ -243,7 +256,15 @@ export function createRunManager({ root, directory, spawnProcess = spawn }) {
         shell: false,
         windowsHide: true,
       });
-      appendOutput(child.stdout, 'stdout', run);
+      appendOutput(child.stdout, 'stdout', run, (line) => {
+        if (!collector) return false;
+        const event = collector.accept(line);
+        if (!event) return false;
+        run.tests = collector.snapshot();
+        run.summary = collector.summary();
+        if (event.Output?.trimEnd()) pushLog(run, 'stdout', event.Output.trimEnd());
+        return true;
+      });
       appendOutput(child.stderr, 'stderr', run);
       child.on('error', (error) => {
         pushLog(run, 'stderr', error.message);
@@ -252,6 +273,11 @@ export function createRunManager({ root, directory, spawnProcess = spawn }) {
         run.exit_code = code ?? 1;
         run.status = code === 0 ? 'PASSED' : 'FAILED';
         run.finished_at = new Date().toISOString();
+        if (collector) {
+          collector.finish(code ?? 1);
+          run.tests = collector.snapshot();
+          run.summary = collector.summary();
+        }
         if (spec.reportPath && fs.existsSync(spec.reportPath.replace(/\.json$/i, '.html'))) {
           run.report_url = `/reports/${path.basename(spec.reportPath).replace(/\.json$/i, '.html')}`;
         }
@@ -261,7 +287,7 @@ export function createRunManager({ root, directory, spawnProcess = spawn }) {
   };
 }
 
-function commandFor(type, selectedCase, { root, directory, runID, localEnv }) {
+export function buildRunSpec(type, selectedCase, { root, directory, runID, localEnv }) {
   const apiDir = path.join(root, 'apps', 'api');
   const env = {
     ...process.env,
@@ -271,9 +297,11 @@ function commandFor(type, selectedCase, { root, directory, runID, localEnv }) {
   };
   const goTest = (args) => ({
     command: 'go',
-    args: ['test', '-v', '-count=1', ...args],
+    args: ['test', '-json', '-v', '-count=1', ...args],
     cwd: apiDir,
     env,
+    output_format: 'go-test-json',
+    source_files: type.source_files,
   });
 
   switch (type.id) {
@@ -291,13 +319,16 @@ function commandFor(type, selectedCase, { root, directory, runID, localEnv }) {
         '^Test(RFQHandler|ToTextRFQDraftResponse)',
         './internal/delivery/http/handler',
       ]);
-    case 'pipeline_integration':
-      return goTest([
-        '-tags=integration',
-        '-run',
-        '^Test(RFQPipeline|RFQTextDraftRoute|WhatsAppMockRoute)',
-        './internal/integration',
-      ]);
+    case 'pipeline_integration': {
+      const packageManager = packageManagerInvocation(['test:rfq:integration']);
+      return {
+        ...packageManager,
+        cwd: root,
+        env: { ...env, GOFLAGS: withGoJSONFlag(env.GOFLAGS) },
+        output_format: 'go-test-json',
+        source_files: type.source_files,
+      };
+    }
     case 'live_suite':
       return liveCommand(root, directory, runID, null, env);
     case 'live_custom':
@@ -328,7 +359,7 @@ function liveCommand(root, directory, runID, selectedCase, env) {
   return { command: process.execPath, args, cwd: root, env, reportPath };
 }
 
-function appendOutput(stream, channel, run) {
+function appendOutput(stream, channel, run, handleLine = null) {
   if (!stream) return;
   let pending = '';
   stream.setEncoding('utf8');
@@ -336,10 +367,12 @@ function appendOutput(stream, channel, run) {
     pending += chunk;
     const lines = pending.split(/\r?\n/);
     pending = lines.pop() ?? '';
-    for (const line of lines) pushLog(run, channel, line);
+    for (const line of lines) {
+      if (!handleLine?.(line)) pushLog(run, channel, line);
+    }
   });
   stream.on('end', () => {
-    if (pending) pushLog(run, channel, pending);
+    if (pending && !handleLine?.(pending)) pushLog(run, channel, pending);
   });
 }
 
@@ -368,6 +401,11 @@ function readEnvFile(file) {
 
 function ipv4DatabaseURL(value) {
   return typeof value === 'string' ? value.replace('localhost', '127.0.0.1') : value;
+}
+
+function withGoJSONFlag(value) {
+  const flags = typeof value === 'string' ? value.trim() : '';
+  return /(?:^|\s)-json(?:\s|$)/.test(flags) ? flags : `${flags} -json`.trim();
 }
 
 function requiredString(value, field, max) {

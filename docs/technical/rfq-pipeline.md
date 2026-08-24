@@ -339,11 +339,19 @@ pricing and the HTTP contract; a PostgreSQL-backed integration surface; and live
 or suite evaluations. The browser can select only those registered commands and same-origin POSTs
 are enforced, so the local server is not an arbitrary command runner.
 
+Before a run, the server performs a surface-specific preflight and rejects blocked requests. Unit
+surfaces require Go and their registered source files. The integration surface additionally
+requires pnpm, both test database URLs, a reachable PostgreSQL instance, and the pgvector
+migration; its button invokes `pnpm test:rfq:integration` directly. Live surfaces require a healthy
+API, PostgreSQL, pgvector, and both provider keys. Key values never leave the server.
+
 Custom WhatsApp cases are validated and stored under ignored `.artifacts/rfq-eval/` data. They can
 declare expected RFQ/quote status, line count, first-line description, quantity, unit and match
 status. A live run displays its providers and requires an explicit confirmation before the server
 starts it. Deterministic surfaces state that they consume no provider. The Lab polls each run for
-stdout/stderr, status and its eventual detailed report link. `/latest` opens the newest report,
+stdout/stderr, status and its eventual detailed report link. Deterministic Go runs use
+`go test -json`, which the Lab converts into expandable rows with a human-readable description,
+status, duration, related test function, and captured output. `/latest` opens the newest report,
 whose **Trazabilidad** tab shows setup and case events, durations, failure details and request ids.
 Serving, browsing or rebuilding a report never contacts an AI provider.
 
