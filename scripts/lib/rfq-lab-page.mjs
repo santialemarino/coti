@@ -98,9 +98,14 @@ export function renderRFQLab() {
     .check-field { display: flex; min-height: 40px; align-items: center; gap: 9px; }
     .check-field input { width: 16px; height: 16px; accent-color: var(--accent); }
     .form-actions { display: flex; justify-content: flex-end; margin-top: 16px; gap: 10px; }
-    .run-controls { display: grid; grid-template-columns: minmax(220px, 1fr) auto; align-items: end; gap: 14px; }
-    .saved-case { display: none; }
-    .saved-case.visible { display: grid; }
+    .run-controls { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)) auto; align-items: end; gap: 14px; }
+    .saved-case-control { display: none; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
+    .saved-case-control.visible { display: grid; }
+    .button.danger { border-color: color-mix(in srgb, var(--fail) 45%, var(--line)); color: var(--fail); }
+    .button.danger:hover { background: var(--fail-soft); }
+    .branch-field { display: none; }
+    .branch-field.visible { display: grid; }
+    .field-help { color: var(--muted); font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
     .run-status { display: none; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 14px; }
     .run-status.visible { display: flex; }
     .status-label { font-size: 12px; font-weight: 800; }
@@ -220,7 +225,8 @@ export function renderRFQLab() {
         <section class="section">
           <div class="section-title"><h3>Ejecución</h3><span id="run-help"></span></div>
           <div class="run-controls">
-            <div class="field saved-case" id="saved-case-field"><label for="saved-case">Caso guardado</label><select id="saved-case"></select></div>
+            <div class="saved-case-control" id="saved-case-control"><div class="field"><label for="saved-case">Caso guardado</label><select id="saved-case"></select></div><button class="button danger" id="delete-case" type="button">Eliminar caso</button></div>
+            <div class="field branch-field" id="branch-field"><label for="branch-select">Sucursal</label><select id="branch-select"></select><span class="field-help" id="branch-help"></span></div>
             <button class="button primary" id="run-main" type="button">Ejecutar test</button>
           </div>
         </section>
@@ -243,8 +249,9 @@ export function renderRFQLab() {
   </dialog>
   <div class="toast" id="toast" role="status"></div>
   <script>
-    let state = { types: [], cases: [], reports: [], api_online: false, preflights: {} };
+    let state = { types: [], cases: [], reports: [], api_online: false, preflights: {}, branches: [], default_branch_id: null, branches_error: null };
     let selectedType = null;
+    let selectedBranchID = null;
     let activeRun = null;
     let pollTimer = null;
     const $ = selector => document.querySelector(selector);
@@ -257,8 +264,12 @@ export function renderRFQLab() {
     }
 
     async function loadState(force = false) {
+      const previousBranchID = selectedBranchID;
       state = await request(force ? '/api/state?refresh=1' : '/api/state');
       selectedType = state.types.find(type => type.id === selectedType?.id) || state.types[0];
+      selectedBranchID = state.branches.some(branch => branch.id === previousBranchID)
+        ? previousBranchID
+        : state.default_branch_id;
       render();
     }
 
@@ -281,6 +292,7 @@ export function renderRFQLab() {
       renderSelection();
       renderPreflight();
       renderCases();
+      renderBranches();
       renderReports();
       $('#api-dot').classList.toggle('online', state.api_online);
       $('#api-label').textContent = state.api_online ? 'API RFQ disponible' : 'API RFQ sin conexión';
@@ -343,7 +355,8 @@ export function renderRFQLab() {
         source.append(line);
       });
       $('#case-builder').classList.toggle('visible', selectedType.accepts_case);
-      $('#saved-case-field').classList.toggle('visible', selectedType.accepts_case);
+      $('#saved-case-control').classList.toggle('visible', selectedType.accepts_case);
+      $('#branch-field').classList.toggle('visible', selectedType.uses_ai);
       const preflight = selectedPreflight();
       $('#run-help').textContent = preflight && !preflight.ready
         ? 'Hay requisitos pendientes'
@@ -404,6 +417,7 @@ export function renderRFQLab() {
         option.value = '';
         option.textContent = 'Creá y guardá un caso primero';
         select.append(option);
+        $('#delete-case').disabled = true;
         return;
       }
       state.cases.forEach(testCase => {
@@ -413,6 +427,36 @@ export function renderRFQLab() {
         select.append(option);
       });
       if (state.cases.some(testCase => testCase.id === current)) select.value = current;
+      $('#delete-case').disabled = activeRun?.status === 'RUNNING';
+    }
+
+    function renderBranches() {
+      const select = $('#branch-select');
+      select.replaceChildren();
+      if (state.branches.length === 0) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = state.branches_error || 'No hay sucursales activas disponibles';
+        select.append(option);
+        select.disabled = true;
+        $('#branch-help').textContent = state.branches_error || 'Verificá el usuario y la API local.';
+        selectedBranchID = null;
+        setRunning(activeRun?.status === 'RUNNING');
+        return;
+      }
+      state.branches.forEach(branch => {
+        const option = document.createElement('option');
+        option.value = branch.id;
+        option.textContent = branch.name + ' · ' + branch.id;
+        select.append(option);
+      });
+      select.disabled = false;
+      if (!state.branches.some(branch => branch.id === selectedBranchID)) {
+        selectedBranchID = state.default_branch_id || state.branches[0].id;
+      }
+      select.value = selectedBranchID;
+      $('#branch-help').textContent = 'La corrida y sus persistencias quedarán asociadas a esta sucursal.';
+      setRunning(activeRun?.status === 'RUNNING');
     }
 
     function renderReports() {
@@ -467,6 +511,27 @@ export function renderRFQLab() {
       }
     }
 
+    async function deleteSelectedCase() {
+      if (activeRun?.status === 'RUNNING') return;
+      const caseID = $('#saved-case').value;
+      const selectedCase = state.cases.find(entry => entry.id === caseID);
+      if (!selectedCase) {
+        showToast('Seleccioná un caso para eliminar.');
+        return;
+      }
+      if (!confirm('¿Eliminar el caso "' + selectedCase.description + '"? Los reportes existentes se conservarán.')) return;
+      const button = $('#delete-case');
+      button.disabled = true;
+      try {
+        await request('/api/cases/' + encodeURIComponent(caseID), { method: 'DELETE' });
+        await loadState();
+        showToast('Caso eliminado.');
+      } catch (error) {
+        showToast(error.message);
+        button.disabled = false;
+      }
+    }
+
     function requestRun() {
       if (activeRun?.status === 'RUNNING') return;
       if (!selectedPreflight()?.ready) {
@@ -477,8 +542,13 @@ export function renderRFQLab() {
         showToast('Guardá y seleccioná un caso antes de ejecutar.');
         return;
       }
+      if (selectedType.uses_ai && !selectedBranchID) {
+        showToast('Seleccioná una sucursal activa antes de ejecutar.');
+        return;
+      }
       if (selectedType.uses_ai) {
-        $('#dialog-description').textContent = selectedType.label + ' realizará llamadas reales a ' + selectedType.providers.join(' y ') + '.';
+        const branch = state.branches.find(entry => entry.id === selectedBranchID);
+        $('#dialog-description').textContent = selectedType.label + ' realizará llamadas reales a ' + selectedType.providers.join(' y ') + ' para la sucursal ' + branch.name + '.';
         $('#dialog-cost').textContent = selectedType.id === 'live_suite'
           ? 'La suite tiene siete casos: normalmente consume una generación de Anthropic y un batch de embeddings de OpenAI por caso con materiales.'
           : 'Este caso normalmente consume una generación de Anthropic y un batch de embeddings de OpenAI si se extraen materiales.';
@@ -497,6 +567,7 @@ export function renderRFQLab() {
           body: JSON.stringify({
             type_id: selectedType.id,
             case_id: selectedType.accepts_case ? $('#saved-case').value : null,
+            branch_id: selectedType.uses_ai ? selectedBranchID : null,
             confirm_ai: confirmAI,
           }),
         });
@@ -532,7 +603,8 @@ export function renderRFQLab() {
       $('#run-status').classList.add('visible');
       const label = $('#status-label');
       label.className = 'status-label ' + activeRun.status;
-      label.textContent = activeRun.type_label + ' · ' + statusText(activeRun.status);
+      const branch = state.branches.find(entry => entry.id === activeRun.branch_id);
+      label.textContent = activeRun.type_label + (branch ? ' · ' + branch.name : '') + ' · ' + statusText(activeRun.status);
       const report = $('#run-report');
       report.hidden = !activeRun.report_url;
       if (activeRun.report_url) report.href = activeRun.report_url;
@@ -643,8 +715,10 @@ export function renderRFQLab() {
 
     function setRunning(running) {
       const blocked = !selectedPreflight()?.ready;
-      $('#run-main').disabled = running || blocked;
-      $('#run-top').disabled = running || blocked;
+      const missingBranch = selectedType?.uses_ai && !selectedBranchID;
+      $('#run-main').disabled = running || blocked || missingBranch;
+      $('#run-top').disabled = running || blocked || missingBranch;
+      $('#delete-case').disabled = running || state.cases.length === 0;
       $('#run-main').textContent = running ? 'Ejecutando…' : 'Ejecutar test';
       $('#run-top').textContent = running ? 'Ejecutando…' : 'Ejecutar test';
     }
@@ -659,6 +733,11 @@ export function renderRFQLab() {
     }
 
     $('#case-form').addEventListener('submit', saveCase);
+    $('#delete-case').addEventListener('click', deleteSelectedCase);
+    $('#branch-select').addEventListener('change', event => {
+      selectedBranchID = event.currentTarget.value || null;
+      setRunning(activeRun?.status === 'RUNNING');
+    });
     $('#run-main').addEventListener('click', requestRun);
     $('#run-top').addEventListener('click', requestRun);
     $('#refresh-preflight').addEventListener('click', refreshPreflight);

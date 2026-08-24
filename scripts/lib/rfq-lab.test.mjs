@@ -9,6 +9,7 @@ import { describe, it } from 'node:test';
 import {
   buildRunSpec,
   createRunManager,
+  deleteCustomCase,
   listReports,
   loadCustomCases,
   RFQ_TEST_TYPES,
@@ -17,6 +18,7 @@ import {
 } from './rfq-lab.mjs';
 
 describe('rfq-lab.mjs', () => {
+  const branchID = 'b0000000-0000-4000-8000-000000000001';
   it('publishes AI and deterministic test surfaces explicitly', () => {
     assert.equal(
       RFQ_TEST_TYPES.some((entry) => entry.uses_ai),
@@ -44,6 +46,21 @@ describe('rfq-lab.mjs', () => {
     assert.equal(spec.args.at(-1), 'test:rfq:integration');
     assert.match(spec.env.GOFLAGS, /(?:^|\s)-json(?:\s|$)/);
     assert.equal(spec.output_format, 'go-test-json');
+  });
+
+  it('passes the selected branch to a live evaluation', () => {
+    const type = RFQ_TEST_TYPES.find((entry) => entry.id === 'live_suite');
+    const spec = buildRunSpec(type, null, {
+      root: process.cwd(),
+      directory: fs.mkdtempSync(path.join(os.tmpdir(), 'coti-rfq-live-')),
+      runID: 'run-live',
+      localEnv: {},
+      branchID,
+    });
+
+    const branchFlag = spec.args.indexOf('--branch');
+    assert.notEqual(branchFlag, -1);
+    assert.equal(spec.args[branchFlag + 1], branchID);
   });
 
   it('keeps structured results while a Go test run is being streamed', async () => {
@@ -145,5 +162,18 @@ describe('rfq-lab.mjs', () => {
 
     assert.equal(loadCustomCases(directory)[0].id, saved.id);
     assert.deepEqual(listReports(directory)[0].summary, { total: 1, passed: 1, failed: 0 });
+  });
+
+  it('deletes only the selected custom case', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'coti-rfq-delete-'));
+    const first = saveCustomCase(directory, { name: 'Arena', message: 'Necesito arena' });
+    const second = saveCustomCase(directory, { name: 'Cemento', message: 'Necesito cemento' });
+
+    assert.equal(deleteCustomCase(directory, first.id)?.id, first.id);
+    assert.deepEqual(
+      loadCustomCases(directory).map((entry) => entry.id),
+      [second.id],
+    );
+    assert.equal(deleteCustomCase(directory, first.id), null);
   });
 });

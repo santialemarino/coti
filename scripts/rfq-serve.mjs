@@ -3,9 +3,11 @@ import http from 'node:http';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { createRFQBranchManager } from './lib/rfq-branches.mjs';
 import { renderRFQLab } from './lib/rfq-lab-page.mjs';
 import {
   createRunManager,
+  deleteCustomCase,
   listReports,
   loadCustomCases,
   RFQ_TEST_TYPES,
@@ -47,6 +49,7 @@ export function createRFQReportServer(directory, options = {}) {
   const runManager = options.runManager ?? createRunManager({ root, directory: resolvedDirectory });
   const preflightManager =
     options.preflightManager ?? createPreflightManager({ root, types: RFQ_TEST_TYPES });
+  const branchManager = options.branchManager ?? createRFQBranchManager({ root });
 
   return http.createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', 'http://localhost');
@@ -63,12 +66,20 @@ export function createRFQReportServer(directory, options = {}) {
         const preflights = await preflightManager.all({
           force: url.searchParams.get('refresh') === '1',
         });
+        const branchState = await loadBranches(
+          branchManager,
+          isCheckReady(preflights.live_suite, 'api'),
+          url.searchParams.get('refresh') === '1',
+        );
         sendJSON(response, 200, {
           types: RFQ_TEST_TYPES,
           cases: loadCustomCases(resolvedDirectory),
           reports: listReports(resolvedDirectory),
           api_online: isCheckReady(preflights.live_suite, 'api'),
           preflights,
+          branches: branchState.items,
+          default_branch_id: branchState.default_branch_id,
+          branches_error: branchState.error,
         });
         return;
       }
@@ -76,6 +87,19 @@ export function createRFQReportServer(directory, options = {}) {
         requireSameOrigin(request);
         const entry = saveCustomCase(resolvedDirectory, await readJSON(request));
         sendJSON(response, 201, { case: entry });
+        return;
+      }
+      if (request.method === 'DELETE' && url.pathname.startsWith('/api/cases/')) {
+        requireSameOrigin(request);
+        const caseID = decodeURIComponent(url.pathname.slice('/api/cases/'.length));
+        if (!caseID || caseID.includes('/'))
+          throw new HTTPError(400, 'A valid case id is required');
+        if (runManager.isCaseRunning?.(caseID)) {
+          throw new HTTPError(409, 'A running case cannot be deleted');
+        }
+        const deleted = deleteCustomCase(resolvedDirectory, caseID);
+        if (!deleted) throw new HTTPError(404, 'Case not found');
+        sendJSON(response, 200, { deleted_case: deleted });
         return;
       }
       if (request.method === 'POST' && url.pathname === '/api/runs') {
@@ -95,7 +119,21 @@ export function createRFQReportServer(directory, options = {}) {
               .join(', ') || 'unknown requirement';
           throw new HTTPError(409, `Preflight blocked: ${blocked}`);
         }
-        const run = runManager.start(type.id, body.case_id ?? null);
+        let branchID = null;
+        if (type.uses_ai) {
+          branchID = requireBranchID(body.branch_id);
+          let branches;
+          try {
+            branches = await branchManager.list({ force: true });
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : 'unknown error';
+            throw new HTTPError(409, `Branches are unavailable: ${detail}`);
+          }
+          if (!branches.items.some((branch) => branch.id === branchID)) {
+            throw new HTTPError(409, 'Selected branch is not active or available to this user');
+          }
+        }
+        const run = runManager.start(type.id, body.case_id ?? null, { branchID });
         sendJSON(response, 201, run);
         return;
       }
@@ -124,6 +162,32 @@ export function createRFQReportServer(directory, options = {}) {
       });
     }
   });
+}
+
+async function loadBranches(branchManager, apiReady, force) {
+  if (!apiReady) {
+    return { items: [], default_branch_id: null, error: 'The RFQ API is not available' };
+  }
+  try {
+    const result = await branchManager.list({ force });
+    return { ...result, error: null };
+  } catch (error) {
+    return {
+      items: [],
+      default_branch_id: null,
+      error: error instanceof Error ? error.message : 'Branches could not be loaded',
+    };
+  }
+}
+
+function requireBranchID(value) {
+  if (
+    typeof value !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+  ) {
+    throw new HTTPError(400, 'An active branch must be selected for a live run');
+  }
+  return value;
 }
 
 class HTTPError extends Error {

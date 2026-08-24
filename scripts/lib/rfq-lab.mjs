@@ -189,6 +189,19 @@ export function saveCustomCase(directory, input) {
   return entry;
 }
 
+export function deleteCustomCase(directory, caseID) {
+  if (typeof caseID !== 'string' || caseID.length === 0) {
+    throw new Error('A case id is required');
+  }
+  const cases = loadCustomCases(directory);
+  const index = cases.findIndex((entry) => entry.id === caseID);
+  if (index === -1) return null;
+  const [deleted] = cases.splice(index, 1);
+  fs.mkdirSync(directory, { recursive: true });
+  fs.writeFileSync(path.join(directory, CUSTOM_CASES_FILE), `${JSON.stringify(cases, null, 2)}\n`);
+  return deleted;
+}
+
 export function listReports(directory) {
   if (!fs.existsSync(directory)) return [];
   return fs
@@ -222,7 +235,10 @@ export function createRunManager({ root, directory, spawnProcess = spawn }) {
     get(id) {
       return runs.get(id) ?? null;
     },
-    start(typeID, caseID) {
+    isCaseRunning(caseID) {
+      return [...runs.values()].some((run) => run.case_id === caseID && run.status === 'RUNNING');
+    },
+    start(typeID, caseID, { branchID } = {}) {
       const type = RFQ_TEST_TYPES.find((entry) => entry.id === typeID);
       if (!type) throw new Error(`Unknown test type: ${typeID}`);
       const customCases = loadCustomCases(directory);
@@ -230,7 +246,13 @@ export function createRunManager({ root, directory, spawnProcess = spawn }) {
       if (type.accepts_case && !selectedCase) throw new Error('A saved custom case is required');
 
       const id = randomUUID();
-      const spec = buildRunSpec(type, selectedCase, { root, directory, runID: id, localEnv });
+      const spec = buildRunSpec(type, selectedCase, {
+        root,
+        directory,
+        runID: id,
+        localEnv,
+        branchID,
+      });
       const collector = spec.output_format
         ? createGoTestCollector({ root, sourceFiles: spec.source_files })
         : null;
@@ -239,6 +261,7 @@ export function createRunManager({ root, directory, spawnProcess = spawn }) {
         type_id: type.id,
         type_label: type.label,
         case_id: selectedCase?.id ?? null,
+        branch_id: type.uses_ai ? (branchID ?? null) : null,
         status: 'RUNNING',
         exit_code: null,
         started_at: new Date().toISOString(),
@@ -287,7 +310,7 @@ export function createRunManager({ root, directory, spawnProcess = spawn }) {
   };
 }
 
-export function buildRunSpec(type, selectedCase, { root, directory, runID, localEnv }) {
+export function buildRunSpec(type, selectedCase, { root, directory, runID, localEnv, branchID }) {
   const apiDir = path.join(root, 'apps', 'api');
   const env = {
     ...process.env,
@@ -330,15 +353,15 @@ export function buildRunSpec(type, selectedCase, { root, directory, runID, local
       };
     }
     case 'live_suite':
-      return liveCommand(root, directory, runID, null, env);
+      return liveCommand(root, directory, runID, null, env, branchID);
     case 'live_custom':
-      return liveCommand(root, directory, runID, selectedCase, env);
+      return liveCommand(root, directory, runID, selectedCase, env, branchID);
     default:
       throw new Error(`No command is registered for ${type.id}`);
   }
 }
 
-function liveCommand(root, directory, runID, selectedCase, env) {
+function liveCommand(root, directory, runID, selectedCase, env, branchID) {
   fs.mkdirSync(directory, { recursive: true });
   const reportPath = path.join(directory, `lab-${runID}.json`);
   const args = [
@@ -351,6 +374,7 @@ function liveCommand(root, directory, runID, selectedCase, env) {
     '--report',
     reportPath,
   ];
+  if (branchID) args.push('--branch', branchID);
   if (selectedCase) {
     const casesPath = path.join(directory, `lab-${runID}-case.json`);
     fs.writeFileSync(casesPath, `${JSON.stringify([selectedCase], null, 2)}\n`);

@@ -347,8 +347,11 @@ API, PostgreSQL, pgvector, and both provider keys. Key values never leave the se
 
 Custom WhatsApp cases are validated and stored under ignored `.artifacts/rfq-eval/` data. They can
 declare expected RFQ/quote status, line count, first-line description, quantity, unit and match
-status. A live run displays its providers and requires an explicit confirmation before the server
-starts it. Deterministic surfaces state that they consume no provider. The Lab polls each run for
+status, and can be deleted without removing reports from previous runs. A live run selects one
+active branch loaded through the evaluator's authenticated user,
+displays its providers, and requires an explicit confirmation before the server starts it. The
+selected id is passed as `--branch` and recorded with the run. Deterministic surfaces state that
+they consume no provider. The Lab polls each run for
 stdout/stderr, status and its eventual detailed report link. Deterministic Go runs use
 `go test -json`, which the Lab converts into expandable rows with a human-readable description,
 status, duration, related test function, and captured output. `/latest` opens the newest report,

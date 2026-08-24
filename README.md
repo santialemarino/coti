@@ -157,9 +157,12 @@ that also appears in the API log. The same timeline is stored in the JSON report
 dashboard's **Trazabilidad** tab. Start `pnpm serve:rfq` and open http://localhost:4173 for the QA
 Lab. From there a developer can select a deterministic component test, run the database-backed
 pipeline, create a custom WhatsApp case with observable expectations, or launch a live evaluation.
+Custom cases can be removed from the Lab without deleting their existing evaluation reports.
 Live runs show an explicit Anthropic/OpenAI consumption warning and require confirmation. The Lab
 checks the selected surface's tools, source files, database, pgvector, API, test variables, and AI
 credentials before enabling execution; it reports only credential presence, never secret values.
+For a live run, the Lab loads the authenticated user's active branches from `GET /v1/branches` and
+passes the selected branch to the evaluator; deterministic tests keep their isolated test scope.
 Go output is parsed from `go test -json` into expandable results with description, duration,
 source code, and program output. The integration button delegates to the canonical
 `pnpm test:rfq:integration` script, so the Lab and terminal exercise the same suite. It also keeps
