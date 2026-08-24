@@ -46,6 +46,11 @@ type env struct {
 	mail   *captureMailer
 }
 
+type rfqTestProviders struct {
+	extractor domain.RFQExtractor
+	embedder  domain.Embedder
+}
+
 // captureMailer stands in for the transport so a test can read the link that was mailed.
 type captureMailer struct {
 	mu   sync.Mutex
@@ -80,10 +85,16 @@ func (m *captureMailer) last() (domain.EmailMessage, bool) {
 	return m.sent[len(m.sent)-1], true
 }
 
-// newEnv builds the real router over a real database. The variadic mutators let a test that
-// needs a different configuration — an allowance that bites, a requirement switched on — build
-// one without a second constructor.
+// newEnv builds the real router over a real database with external AI providers disabled.
 func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
+	t.Helper()
+	return newEnvWithRFQProviders(t, rfqTestProviders{}, mutate...)
+}
+
+// newEnvWithRFQProviders lets an RFQ integration stage deterministic provider answers.
+func newEnvWithRFQProviders(
+	t *testing.T, providers rfqTestProviders, mutate ...func(*config.Config),
+) *env {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
@@ -166,13 +177,19 @@ func newEnv(t *testing.T, mutate ...func(*config.Config)) *env {
 		repository.NewBranchProductRepository(), repository.NewProductPriceRepository(), nil)
 	onboardingRepo := repository.NewOnboardingRepository()
 	onboardingService := services.NewOnboardingService(db, onboardingRepo)
-	// No provider is bound here, so the pipeline refuses on the call that needed a model rather
-	// than at startup — which is the behaviour the routes are meant to have with none.
-	catalogSearchService := services.NewCatalogSearchService(db, productRepo,
-		ai.DisabledEmbedder{}, cfg.Catalog)
+	// Providers default to disabled; RFQ tests may inject deterministic doubles into this wiring.
+	embedder := providers.embedder
+	if embedder == nil {
+		embedder = ai.DisabledEmbedder{}
+	}
+	catalogSearchService := services.NewCatalogSearchService(db, productRepo, embedder, cfg.Catalog)
 	quoteRepo := repository.NewQuoteRepository()
+	extractor := providers.extractor
+	if extractor == nil {
+		extractor = ai.NewRFQExtractor(ai.DisabledGenerator{}, cfg.RFQ.MaxItems)
+	}
 	rfqService := services.NewRFQService(db, repository.NewRFQRepository(), quoteRepo, channelRepo,
-		ai.NewRFQExtractor(ai.DisabledGenerator{}, cfg.RFQ.MaxItems),
+		extractor,
 		services.NewCatalogMatchService(catalogSearchService, cfg.Catalog), quiet, cfg.RFQ)
 	quoteService := services.NewQuoteService(db, quoteRepo,
 		repository.NewProductPriceRepository(), quiet)

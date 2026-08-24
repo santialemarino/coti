@@ -302,3 +302,66 @@ platform's cron rather than on demand.
 model through `StructuredGenerator`, so it names no provider and works behind whichever one is
 bound. The schema carries no `minLength`, `maxLength` or `maxItems` — structured outputs do not
 enforce those, and stating them would read as a guarantee the service is the one making.
+
+## QA surfaces
+
+The automated RFQ suites never call a live model. `pnpm test:rfq` uses fixed provider doubles for
+fast service and handler checks; `pnpm test:rfq:integration` uses the same deterministic answers
+over the real router, PostgreSQL, pgvector search, tenant context, and quote persistence. This keeps
+CI repeatable while still proving that a mocked WhatsApp message reaches a reviewable `DRAFT`.
+
+`pnpm eval:rfq` is the opt-in model evaluation. It logs into a running development API, posts the
+cases from `scripts/fixtures/rfq-eval-cases.json` to `/v1/dev/whatsapp/messages`, and compares only
+observable contract fields: RFQ and quote status, line count, quantities, units, rationales, match
+status, and pricing when requested. It prints one `PASS` or `FAIL` per case and stores both the
+machine-readable JSON and a self-contained interactive HTML dashboard under the ignored
+`.artifacts/rfq-eval/` directory. The dashboard exposes the case description, declared
+expectations, source definition, extracted lines, and complete HTTP responses. `--verbose` also
+prints every response; `--price` runs the deterministic material-acceptance transition after every
+draft. `pnpm report:rfq` rebuilds the HTML from the latest JSON without contacting a provider.
+
+The runner reads its connection settings from `RFQ_EVAL_*` variables and has defaults for the
+development seed. A bearer token can be supplied as `RFQ_EVAL_TOKEN`; otherwise it logs in with
+`RFQ_EVAL_EMAIL` and `RFQ_EVAL_PASSWORD`. Run `pnpm eval:rfq --help` for the full option list.
+
+### Live trace and debugging
+
+`pnpm debug:rfq` runs the complete live suite with `--trace` against the development API on port
+`8001`; `pnpm debug:rfq:case` limits it to `explicit-quantity` for breakpoint work. The trace
+separates API readiness, authentication, WhatsApp ingestion, RFQ persistence, model extraction,
+catalog matching, draft persistence, deterministic pricing, and expected-response assertions. A
+failed assertion is assigned to the stage whose observable contract diverged. Each HTTP response
+stores its `X-Request-Id`, so the report can be correlated with the API request log.
+
+`pnpm serve:rfq` serves an interactive QA Lab at http://localhost:4173 using only the Node standard
+library. Its fixed registry exposes unit surfaces for extraction, RFQ orchestration, matching,
+pricing and the HTTP contract; a PostgreSQL-backed integration surface; and live WhatsApp custom
+or suite evaluations. The browser can select only those registered commands and same-origin POSTs
+are enforced, so the local server is not an arbitrary command runner.
+
+Before a run, the server performs a surface-specific preflight and rejects blocked requests. Unit
+surfaces require Go and their registered source files. The integration surface additionally
+requires pnpm, both test database URLs, a reachable PostgreSQL instance, and the pgvector
+migration; its button invokes `pnpm test:rfq:integration` directly. Live surfaces require a healthy
+API, PostgreSQL, pgvector, and both provider keys. Key values never leave the server.
+
+Custom WhatsApp cases are validated and stored under ignored `.artifacts/rfq-eval/` data. They can
+declare expected RFQ/quote status, line count, first-line description, quantity, unit and match
+status, and can be deleted without removing reports from previous runs. A live run selects one
+active branch loaded through the evaluator's authenticated user,
+displays its providers, and requires an explicit confirmation before the server starts it. The
+selected id is passed as `--branch` and recorded with the run. Deterministic surfaces state that
+they consume no provider. The Lab polls each run for
+stdout/stderr, status and its eventual detailed report link. Deterministic Go runs use
+`go test -json`, which the Lab converts into expandable rows with a human-readable description,
+status, duration, related test function, and captured output. `/latest` opens the newest report,
+whose **Trazabilidad** tab shows setup and case events, durations, failure details and request ids.
+Serving, browsing or rebuilding a report never contacts an AI provider.
+
+The committed VS Code launch configuration provides **RFQ START HERE: API + ALL TESTS** for the
+complete dashboard and **RFQ DEBUG: API + ONE CASE** for focused breakpoint work. Their test-only
+child configurations are hidden because they require an API that is already running. After the Go
+extension is installed, reload the VS Code window once so its debug adapter is registered. Each
+compound starts the API under Delve and runs the evaluator after its health endpoint becomes
+available, allowing Go breakpoints inside extraction, matching, and persistence while the client
+timeline remains visible.

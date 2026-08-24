@@ -56,3 +56,4 @@ docs/internal/
 # Local artifacts
 screenshots/
 .playwright-cli/
+.artifacts/

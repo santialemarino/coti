@@ -15,6 +15,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/config"
+	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 	"github.com/santialemarino/coti/apps/api/internal/services"
@@ -248,6 +249,126 @@ func TestRFQPipeline_PersistsTheMatchRealSearchDecided(t *testing.T) {
 	}
 }
 
+func TestRFQPipeline_PersistsDerivedQuantitiesAndDifferentUnitsForOneProduct(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "RFQ units")
+	channelID := e.seedIntakeChannel(t, accountID, branchID)
+	seller := e.seedUser(t, accountID, domain.UserRoleAdmin)
+
+	cement := e.seedProduct(t, accountID, "Cemento Portland 50kg", "bolsa de cemento")
+	e.stock(t, accountID, branchID, cement)
+	e.embedOn(t, cement, 0, 0.95)
+
+	bag := "bolsa"
+	pallet := "pallet"
+	lines := []domain.ExtractedRFQLine{
+		{
+			RequestedDescription: "10 bolsas de cemento",
+			Quantity:             decimal.RequireFromString("10"),
+			Unit:                 &bag,
+			Source:               domain.QuantitySourceExplicit,
+			QuantityRationale:    "el cliente pidió 10 bolsas",
+		},
+		{
+			RequestedDescription: "2 pallets de cemento",
+			Quantity:             decimal.RequireFromString("2"),
+			Unit:                 &pallet,
+			Source:               domain.QuantitySourceExplicit,
+			QuantityRationale:    "el cliente pidió 2 pallets",
+		},
+		{
+			RequestedDescription: "3 pallets de 50 bolsas de cemento",
+			Quantity:             decimal.RequireFromString("150"),
+			Unit:                 &bag,
+			Source:               domain.QuantitySourceDerived,
+			QuantityRationale:    "3 pallets de 50 bolsas son 150 bolsas",
+		},
+	}
+	axes := map[string]int{
+		"10 bolsas de cemento":              0,
+		"2 pallets de cemento":              0,
+		"3 pallets de 50 bolsas de cemento": 0,
+	}
+	draft, err := e.pipeline(t, stagedExtractor{lines: lines}, axes).CreateTextDraft(
+		context.Background(),
+		domain.Tenant{
+			AccountID: accountID,
+			BranchID:  branchID,
+			UserID:    seller.ID,
+			Role:      domain.UserRoleAdmin,
+		},
+		domain.TextRFQDraftInput{
+			ChannelID: channelID,
+			RawText:   "10 bolsas de cemento, 2 pallets de cemento y 3 pallets de 50 bolsas",
+		},
+	)
+	if err != nil {
+		t.Fatalf("CreateTextDraft() = %v, want no error", err)
+	}
+	e.dropDraft(t, draft.RFQ.ID)
+	if draft.Version == nil {
+		t.Fatal("draft carries no version")
+	}
+
+	rows, err := e.db.CrossAccount().Query(context.Background(),
+		`SELECT requested_description, quantity, unit, product_id, match_status, quantity_rationale
+		 FROM quote_item WHERE version_id = $1`, draft.Version.ID)
+	if err != nil {
+		t.Fatalf("read lines back: %v", err)
+	}
+	defer rows.Close()
+
+	type storedLine struct {
+		quantity  decimal.Decimal
+		unit      *string
+		productID *uuid.UUID
+		status    domain.ItemMatchStatus
+		rationale *string
+	}
+	stored := make(map[string]storedLine, len(lines))
+	for rows.Next() {
+		var description string
+		var line storedLine
+		if err := rows.Scan(&description, &line.quantity, &line.unit, &line.productID, &line.status,
+			&line.rationale); err != nil {
+			t.Fatalf("scan line: %v", err)
+		}
+		stored[description] = line
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("read lines: %v", err)
+	}
+	if len(stored) != len(lines) {
+		t.Fatalf("stored %d distinct lines, want %d", len(stored), len(lines))
+	}
+
+	for _, want := range lines {
+		got, ok := stored[want.RequestedDescription]
+		if !ok {
+			t.Errorf("line %q was discarded", want.RequestedDescription)
+			continue
+		}
+		if !got.quantity.Equal(want.Quantity) {
+			t.Errorf("line %q quantity = %s, want %s", want.RequestedDescription, got.quantity,
+				want.Quantity)
+		}
+		if got.unit == nil || want.Unit == nil || *got.unit != *want.Unit {
+			t.Errorf("line %q unit = %v, want %v", want.RequestedDescription, got.unit, want.Unit)
+		}
+		if got.productID == nil || *got.productID != cement {
+			t.Errorf("line %q product = %v, want cement %s", want.RequestedDescription,
+				got.productID, cement)
+		}
+		if got.status != domain.ItemMatchStatusMatched {
+			t.Errorf("line %q status = %q, want MATCHED", want.RequestedDescription, got.status)
+		}
+		if got.rationale == nil || *got.rationale != want.QuantityRationale {
+			t.Errorf("line %q rationale = %v, want %q", want.RequestedDescription, got.rationale,
+				want.QuantityRationale)
+		}
+	}
+}
+
 func TestRFQTextDraftRoute_KeepsTheOrderWhenNoModelIsBound(t *testing.T) {
 	e := newEnv(t)
 	accountID, branchID := e.seedAccount(t, "RFQ no model")
@@ -323,6 +444,72 @@ func TestChannelsRoute_ListsOnlyTheSelectedBranch(t *testing.T) {
 	}
 	if body.Items[0].BranchID != branchID {
 		t.Errorf("branch = %v, want %v", body.Items[0].BranchID, branchID)
+	}
+}
+
+func TestWhatsAppMockRoute_CreatesAReviewableDraftThroughTheRealRouter(t *testing.T) {
+	message := "10 bolsas de cemento Loma Negra"
+	unit := "bolsas"
+	rationale := "el cliente pidio 10 bolsas"
+	e := newEnvWithRFQProviders(t, rfqTestProviders{
+		extractor: stagedExtractor{lines: []domain.ExtractedRFQLine{{
+			RequestedDescription: message,
+			Quantity:             decimal.RequireFromString("10"),
+			Unit:                 &unit,
+			Source:               domain.QuantitySourceExplicit,
+			QuantityRationale:    rationale,
+		}}},
+		embedder: axisEmbedder{axes: map[string]int{message: 0}},
+	}, func(cfg *config.Config) { cfg.Catalog = matchConfig() })
+	accountID, branchID := e.seedAccount(t, "WhatsApp mock intake")
+	channelID := e.seedIntakeChannel(t, accountID, branchID)
+	seller := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	cement := e.seedProduct(t, accountID, "Cemento Loma Negra 50kg", "cemento portland")
+	e.stock(t, accountID, branchID, cement)
+	e.embedOn(t, cement, 0, 0.95)
+
+	rec := e.do(t, request{
+		method: http.MethodPost, path: "/v1/dev/whatsapp/messages",
+		token: e.tokenFor(t, seller), branch: branchID.String(),
+		body: map[string]any{
+			"from": "+5491122334455", "profile_name": "Obras Norte", "text": message,
+		},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body)
+	}
+
+	var body dto.TextRFQDraftResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response %s: %v", rec.Body, err)
+	}
+	e.dropDraft(t, body.RFQ.ID)
+
+	if body.RFQ.ChannelID != channelID || body.RFQ.Status != string(domain.RFQStatusGenerated) {
+		t.Errorf("rfq = %+v, want generated on WhatsApp channel %s", body.RFQ, channelID)
+	}
+	if body.RFQ.RawText == nil || *body.RFQ.RawText != message || body.RFQ.ClientLabel == nil ||
+		*body.RFQ.ClientLabel != "Obras Norte (+5491122334455)" {
+		t.Errorf("rfq source = raw %v label %v, want the inbound message and sender",
+			body.RFQ.RawText, body.RFQ.ClientLabel)
+	}
+	if body.Quote == nil || body.Quote.RFQID != body.RFQ.ID ||
+		body.Quote.CurrentStatus != string(domain.QuoteStatusDraft) || body.Quote.SellerID != nil {
+		t.Fatalf("quote = %+v, want an unassigned DRAFT for the RFQ", body.Quote)
+	}
+	if body.Version == nil || body.Version.QuoteID != body.Quote.ID || body.Version.AuthorID != nil ||
+		body.Version.VersionNumber != 1 || body.Version.Total != "0.00" {
+		t.Fatalf("version = %+v, want the unpriced initial version", body.Version)
+	}
+	if len(body.Items) != 1 {
+		t.Fatalf("items = %d, want one", len(body.Items))
+	}
+	item := body.Items[0]
+	if item.VersionID != body.Version.ID || item.ProductID == nil || *item.ProductID != cement ||
+		item.RequestedDescription != message || item.Quantity != "10.00" || item.Unit == nil ||
+		*item.Unit != unit || item.MatchStatus != string(domain.ItemMatchStatusMatched) ||
+		item.QuantityRationale == nil || *item.QuantityRationale != rationale {
+		t.Errorf("item = %+v, want the matched cement line with its extraction evidence", item)
 	}
 }
 
