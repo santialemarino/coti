@@ -437,8 +437,8 @@ type CatalogConfig struct {
 	// MatchAmbiguityMarginPercent is how far the leading candidate sits above the runner-up
 	// before the line counts as decided. Two cements a point apart are a choice, not a match.
 	MatchAmbiguityMarginPercent int
-	// MatchLexicalConfidencePercent is what a candidate only the lexical half scored is worth.
-	// A synonym hit carries no cosine similarity to read, and it is evidence rather than none.
+	// MatchLexicalConfidencePercent is the confidence floor for lexical evidence.
+	// It keeps exact vocabulary useful when semantic similarity alone is weak.
 	MatchLexicalConfidencePercent int
 }
 
