@@ -30,8 +30,7 @@ type CatalogMatchService struct {
 	// ambiguityMargin is how far the leading candidate sits above the runner-up before the line
 	// counts as decided rather than as a choice between two products.
 	ambiguityMargin decimal.Decimal
-	// lexicalConfidence is what a candidate only the lexical half scored is worth. A synonym hit
-	// carries no cosine similarity to read, and it is strong evidence rather than none.
+	// lexicalConfidence is the confidence floor for a candidate carrying lexical evidence.
 	lexicalConfidence decimal.Decimal
 }
 
@@ -131,16 +130,25 @@ func (s *CatalogMatchService) scoreAll(candidates []domain.CatalogCandidate) []d
 // database is what makes the persisted number the one the decision was taken on.
 func (s *CatalogMatchService) confidenceOf(candidate domain.CatalogCandidate) decimal.Decimal {
 	if candidate.Distance == nil {
-		return s.lexicalConfidence.Round(confidenceScale)
+		if candidate.LexicalScore != nil {
+			return s.lexicalConfidence.Round(confidenceScale)
+		}
+		return decimal.Zero
 	}
 	// A product stored with a zero-length vector comes back at NaN, which the decimal package
-	// refuses outright: no direction to compare is no evidence of similarity, not a crash.
+	// refuses outright. Lexical evidence remains valid even when its vector is unusable.
 	if math.IsNaN(*candidate.Distance) || math.IsInf(*candidate.Distance, 0) {
+		if candidate.LexicalScore != nil {
+			return s.lexicalConfidence.Round(confidenceScale)
+		}
 		return decimal.Zero
 	}
 	similarity := decimal.NewFromInt(1).Sub(decimal.NewFromFloat(*candidate.Distance))
-	return decimal.Min(decimal.Max(similarity, decimal.Zero), decimal.NewFromInt(1)).
-		Round(confidenceScale)
+	similarity = decimal.Min(decimal.Max(similarity, decimal.Zero), decimal.NewFromInt(1))
+	if candidate.LexicalScore != nil {
+		similarity = decimal.Max(similarity, s.lexicalConfidence)
+	}
+	return similarity.Round(confidenceScale)
 }
 
 // percentAsRatio turns a configured whole percentage into the 0..1 scale the scores live on.

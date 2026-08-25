@@ -287,6 +287,33 @@ func TestProductRepository_SearchCandidatesFindsATradeTermThroughASynonym(t *tes
 	}
 }
 
+// Extracted descriptions often keep a generic product word around the trade term. A synonym is
+// evidence when all its terms occur in the request, even if the request contains extra words.
+func TestProductRepository_SearchCandidatesFindsASynonymInsideALongerDescription(t *testing.T) {
+	db := testDB(t)
+	account := seedAccount(t, db, "Corralon Frases")
+	branch := branchOf(t, db, account)
+
+	product := seedCatalogProduct(t, db, account, "Placa de yeso estándar 12.5mm", "unidad")
+	writeEmbedding(t, db, account, product, alignedVector(0.52))
+	stockBranch(t, db, account, branch, product, true)
+	seedSynonym(t, db, account, product, "durlock")
+
+	candidates := searchCandidates(t, db, account, branch, "placas de durlock", 10)
+	if len(candidates) != 1 {
+		t.Fatalf("candidates for a longer description = %v, want the one product", nameOf(candidates))
+	}
+	if candidates[0].ProductID != product {
+		t.Errorf("candidate = %v, want %v", candidates[0].ProductID, product)
+	}
+	if candidates[0].LexicalScore == nil {
+		t.Error("the synonym inside the description carries no lexical evidence")
+	}
+	if candidates[0].Distance == nil {
+		t.Error("distance = nil, want the embedded product reached by both halves")
+	}
+}
+
 // Informal RFQ text drops accents, which the stock spanish configuration would treat as a
 // different word.
 func TestProductRepository_SearchCandidatesIgnoresAccents(t *testing.T) {
