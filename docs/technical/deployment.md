@@ -71,19 +71,33 @@ uses, and row level security is only a second net because the API connects as it
 **Provisioning `coti_app`'s password is a manual step and nothing does it for you.** The chain
 creates a `LOGIN` role with a null password, which cannot authenticate under `scram-sha-256`, so a
 database that skipped this step refuses the API loudly instead of accepting a password anyone can
-read in this repository. Once the cluster exists and the PRE_DEPLOY job has run:
+read in this repository.
+
+**Do it on the cluster before the first deploy, not after it.** `00001` guards the role with
+`IF NOT EXISTS`, so a role that is already there is left exactly as provisioned and still collects
+every grant the migration hands out:
 
 ```sql
-ALTER ROLE coti_app PASSWORD '<generated>';
+CREATE ROLE coti_app LOGIN PASSWORD '<generated>'
+  NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
 ```
 
-Then set `DATABASE_URL` to that role's connection string as a `SECRET`. **Do not put this into a
-deploy job.** `ALTER ROLE` is DDL, so a cluster running with `log_statement = 'ddl'` writes the
-plaintext password into a log the platform exposes — a loud refusal beats a self-healing secret in
-a log.
+Then set `DATABASE_URL` to that role's connection string as a `SECRET`. Provisioning afterwards
+works too — `ALTER ROLE coti_app PASSWORD '<generated>'` — but the deploy in between fails, because
+the API cannot start against a role it cannot authenticate as.
 
-The failure mode is legible: the API's `/ready` probe checks both pools, so an unprovisioned role
-shows up as a deploy whose health check never passes, not as a silent half-working app.
+**Either way, do not put it in a deploy job.** `ALTER ROLE` and `CREATE ROLE` are DDL, so a cluster
+running with `log_statement = 'ddl'` writes the plaintext password into a log the platform exposes —
+a loud refusal beats a self-healing secret in a log.
+
+The failure mode is legible, and it is louder than a failed probe: `repository.NewDB` pings each
+pool before returning, so an unprovisioned role makes the API **refuse to start**, with the reason
+in the first line of the log.
+
+```
+level=ERROR msg="startup failed" error="app pool: ping: failed to connect to `user=coti_app …`:
+failed SASL auth: FATAL: password authentication failed for user \"coti_app\" (SQLSTATE 28P01)"
+```
 
 ## Migrations run from a PRE_DEPLOY job
 
@@ -135,6 +149,10 @@ Every one of these is a `type: SECRET` entry in the spec with no committed value
 | `STORAGE_ACCESS_KEY`            | `STORAGE_PROVIDER=spaces`                                          | Spaces key                          |
 | `STORAGE_SECRET_KEY`            | `STORAGE_PROVIDER=spaces`                                          | Spaces secret                       |
 
+Two more are marked `SECRET` in the spec without being credentials, purely to keep a value out of a
+public file: `MAIL_FROM_ADDRESS`, which must be the Gmail address itself or Google rewrites the
+`From` header, and `RATE_LIMIT_TRUSTED_PROXY_CIDRS`, which is the platform's forwarding range.
+
 Three of them behave differently from the rest and it is worth knowing which:
 
 - **`AUTH_JWT_SECRET` is symmetric**, so anything holding it can mint a token for any account. The
@@ -147,24 +165,28 @@ Three of them behave differently from the rest and it is worth knowing which:
 
 Non-secret settings the deploy still has to get right: `ENV=production`, `NEXT_PUBLIC_API_URL`
 (scoped `RUN_AND_BUILD_TIME`), `WEB_BACKOFFICE_URL` (the base of the links the API mails, validated
-as an absolute URL), the three `AI_*_PROVIDER` selectors, `MAIL_PROVIDER` with its host and sender,
-and the rate-limit proxy pair. **`RATE_LIMIT_TRUSTED_PROXY_HOPS` and `RATE_LIMIT_TRUSTED_PROXY_CIDRS`
-are a startup error unless both are set**: hop counting is only spoof-resistant for a request that
-really transited the declared chain. The backoffice is one of those proxies — its calls are
-server-side, so without a hop declared every user in the product shares one rate-limit allowance.
+as an absolute URL), the three `AI_*_PROVIDER` selectors, `MAIL_PROVIDER` with its host, and the
+rate-limit proxy pair. **`RATE_LIMIT_TRUSTED_PROXY_HOPS` and `RATE_LIMIT_TRUSTED_PROXY_CIDRS` are a
+startup error unless both are set**, in either direction: hop counting is only spoof-resistant for a
+request that really transited the declared chain, and CIDRs with the hop count at 0 mean the header
+is never read. The backoffice is one of those proxies — its calls are server-side, so without a hop
+declared every user in the product shares one rate-limit allowance.
 
 The full list of keys, with defaults and what each bounds, is in the four `.env.example` files.
 
 ## First deploy, in order
 
 1. Create the **Managed Postgres** cluster (PG 16 or 17). Nothing else can be done first.
-2. Create the app from `.do/app.yaml`, filling in the database component's `cluster_name`, `db_name`
-   and `db_user`, and every `SECRET` value. `NEXT_PUBLIC_API_URL` is a placeholder at this point.
-3. The `migrate` PRE_DEPLOY job applies the chain as `doadmin`, creating `coti_app` among other
-   things.
-4. `ALTER ROLE coti_app PASSWORD '<generated>'` by hand, and set `DATABASE_URL` to match.
-5. Read the API component's public URL, set `NEXT_PUBLIC_API_URL` and `STORAGE_LOCAL_API_BASE_URL`
-   to it and `WEB_BACKOFFICE_URL` to the backoffice's, and redeploy so the frontends rebuild.
+2. `CREATE ROLE coti_app …` on it, as above. Doing this **before** anything deploys is what makes
+   the first deploy succeed rather than fail at the api component.
+3. Create the app from `.do/app.yaml`, filling in the database component's `cluster_name`, `db_name`
+   and `db_user`, and every `SECRET` value — both database URLs included. `NEXT_PUBLIC_API_URL`
+   is still a placeholder.
+4. The `migrate` PRE_DEPLOY job applies the chain as `doadmin`; the grants and RLS policies land on
+   the role from step 2, whose password it leaves alone.
+5. Read the app's URL, set `NEXT_PUBLIC_API_URL` to `<url>/api`, and redeploy so the frontends
+   rebuild around it. `STORAGE_LOCAL_API_BASE_URL` and `WEB_BACKOFFICE_URL` need no second pass —
+   they are bound to `${APP_URL}` and resolve at runtime.
 6. Register the first account, then embed its catalog — `/api/bin/catalog-embed --account <uuid>`
    from a console on the api component — and build the vector index once there are rows
    (`pnpm db:vector-index`, see [catalog.md](catalog.md)). It is deliberately not in the chain: on

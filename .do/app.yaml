@@ -48,8 +48,8 @@ services:
     http_port: 8000
     instance_count: 1
     instance_size_slug: apps-s-1vcpu-1gb
-    # /ready checks both pools, so an unprovisioned coti_app fails the deploy instead of serving
-    # half an app. /health answers whether the process is up and checks nothing.
+    # /ready checks both pools; /health answers whether the process is up and checks nothing. An
+    # unprovisioned coti_app never reaches either — the pools are pinged before startup returns.
     health_check:
       http_path: /ready
     envs:
