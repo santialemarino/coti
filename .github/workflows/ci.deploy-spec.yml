@@ -3,9 +3,8 @@ name: CI Deploy Spec
 run-name: 'CI Deploy Spec by @${{ github.actor }}'
 
 # .do/ is a top-level directory no other workflow watches, so without this one a change to the app
-# spec reaches dev with zero checks run. Everything here is local: `--schema-only` needs no
-# DigitalOcean account, and whether the app comes up on a real platform cannot be checked without
-# one — but whether its own settings let the API start can, and the second job does.
+# spec reaches dev with zero checks run. Both jobs are local: `--schema-only` needs no DigitalOcean
+# account, and neither does booting the API on what the spec declares.
 on:
   workflow_call:
   push:
@@ -92,10 +91,9 @@ jobs:
             exit 1
           fi
 
-  # config.Load() refuses several combinations the spec is free to declare — a capability switched
-  # on beside an empty SECRET is a deploy that never starts, and nothing else here would see it.
-  # So the API is booted on the spec's own settings, with only the credentials a deploy genuinely
-  # cannot avoid filled in.
+  # config.Load() refuses several combinations the spec is free to declare: a capability switched on
+  # beside an empty SECRET is a deploy that never starts, and a schema check cannot see it. So the
+  # API is booted on the spec's settings, with only the credentials a deploy cannot avoid filled.
   ci-deploy-spec-boots:
     runs-on: ubuntu-latest
     services:
