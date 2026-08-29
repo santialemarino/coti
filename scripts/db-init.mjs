@@ -1,6 +1,7 @@
 /**
- * Starts Postgres (docker-compose) and brings the schema to head with goose. Migrations are the
- * only thing that writes to a database; apps/api/database/ is a read reference, never applied.
+ * Starts Postgres (docker-compose), brings the schema to head with goose, gives the app role the
+ * password the chain leaves it without, and seeds. Migrations are the only thing that writes to a
+ * database; apps/api/database/ is a read reference, never applied.
  * Run from repo root: pnpm db:init
  */
 import { execSync } from 'child_process';

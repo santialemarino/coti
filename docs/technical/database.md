@@ -35,7 +35,7 @@ its siblings. The reference follows the physical schema, not taste.
 ## Bringing a database up
 
 ```bash
-pnpm db:init      # postgres + goose up + seed
+pnpm db:init      # postgres + goose up + the app role's password + seed
 pnpm db:migrate   # apply pending migrations
 pnpm db:seed      # the seed only (idempotent)
 pnpm db:reset     # drop the volume and rebuild
