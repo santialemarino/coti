@@ -142,11 +142,12 @@ services:
       - key: NEXT_PUBLIC_API_URL
         scope: RUN_AND_BUILD_TIME
         value: http://localhost:8000
-      # The backoffice proxies every call server-side, so without a hop declared the API sees one
-      # address for every user in the product and they share one allowance.
+      # The backoffice proxies every call server-side, so until a hop is declared here and on the
+      # API the two share one rate-limit allowance for every user. Both move together, and what
+      # each is worth depends on how many proxies the platform actually puts in front.
       - key: WEB_TRUSTED_PROXY_HOPS
         scope: RUN_TIME
-        value: '1'
+        value: '0'
 
   - name: webapp
     dockerfile_path: docker/webapp.Dockerfile

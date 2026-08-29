@@ -183,6 +183,8 @@ both are set**, in either direction: hop counting is only spoof-resistant for a 
 transited the declared chain, and CIDRs with the hop count at 0 mean the header is never read. The
 backoffice is one of those proxies — its calls are server-side, so until a hop is declared every
 user in the product shares one rate-limit allowance, which is the one switch worth flipping early.
+`WEB_TRUSTED_PROXY_HOPS` on the backoffice moves with it, and what each is worth depends on how many
+proxies the platform actually puts in front; the spec leaves both at the `.env.example` default.
 
 The full list of keys, with defaults and what each bounds, is in the four `.env.example` files.
 
