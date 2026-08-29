@@ -22,12 +22,15 @@ description: Where tests live, how to run them, and what to test in the Coti rep
   lint + `check-types` + test + build, and `ci.ui.yml` does the same for the design
   system; `ci.scripts.yml` covers `scripts/` and the root manifest; and `ci.skills.yml` covers the
   two skill trees, where its whole job is `diff -r` — the mirrors are byte-equal by contract and
-  nothing else could catch a teammate editing one side only.
-  Two workflows carry a **second job** that stands up PostgreSQL + pgvector and applies the
-  migration chain: the API's runs the integration suite, which guards tenant isolation, and
-  the scripts' runs the commands for real. Both gate merges rather than being a local-only
-  courtesy. Run them locally too before pushing anything that touches SQL or tenant scoping;
-  it is faster than waiting for CI to tell you.
+  nothing else could catch a teammate editing one side only. `ci.docker.yml` builds all three
+  images, asserts the api one carries every `cmd/` binary and applies the migration chain from
+  inside it, and boots each web one; `ci.deploy-spec.yml` validates the App Platform spec's schema
+  offline and refuses a `type: SECRET` entry that carries a value.
+  **Three workflows stand up PostgreSQL + pgvector and apply the migration chain**: the API's
+  second job runs the integration suite, which guards tenant isolation, the scripts' runs the
+  commands for real, and the docker one applies the chain from inside the image the deploy will
+  use. They gate merges rather than being a local-only courtesy. Run them locally too before
+  pushing anything that touches SQL or tenant scoping; it is faster than waiting for CI.
 - **Every workflow is path-filtered**, so a directory nothing watches gets no checks at all —
   a PR touching only it goes green having run nothing. Adding a top-level directory means
   adding or widening a workflow in the same change. Each workflow also lists **itself** in its

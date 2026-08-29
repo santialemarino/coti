@@ -1,0 +1,154 @@
+name: CI Deploy Spec
+
+run-name: 'CI Deploy Spec by @${{ github.actor }}'
+
+# .do/ is a top-level directory no other workflow watches, so without this one a change to the app
+# spec reaches dev with zero checks run. Both jobs are local: `--schema-only` needs no DigitalOcean
+# account, and neither does booting the API on what the spec declares.
+on:
+  workflow_call:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - '.do/**'
+      - 'docker/**'
+      - 'apps/api/internal/config/**'
+      - '.github/workflows/ci.deploy-spec.yml'
+  pull_request:
+    branches:
+      - main
+      - dev
+    paths:
+      - '.do/**'
+      - 'docker/**'
+      - 'apps/api/internal/config/**'
+      - '.github/workflows/ci.deploy-spec.yml'
+  workflow_dispatch:
+
+env:
+  DOCTL_VERSION: 1.167.0
+  SPEC: .do/app.yaml
+
+jobs:
+  ci-deploy-spec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install doctl
+        run: |
+          curl -fsSL \
+            "https://github.com/digitalocean/doctl/releases/download/v${DOCTL_VERSION}/doctl-${DOCTL_VERSION}-linux-amd64.tar.gz" \
+            | tar -xz -C "$RUNNER_TEMP" doctl
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: The spec matches the App Platform schema
+        run: doctl apps spec validate --schema-only "$SPEC" > /dev/null
+      # This repository is public, so the spec carries names and shapes and never a value. A habit
+      # is not a guarantee; this is.
+      - name: No SECRET carries a value
+        run: |
+          leaks=$(yq -r '
+            [.services[]?, .jobs[]?, .workers[]?]
+            | .[]
+            | .name as $component
+            | .envs[]? | select(.type == "SECRET" and has("value"))
+            | $component + "." + .key' "$SPEC")
+          if [ -n "$leaks" ]; then
+            echo "These entries are marked SECRET and still carry a value:"
+            echo "$leaks"
+            exit 1
+          fi
+      # All three Dockerfiles build with the repository root as their context, so a component
+      # pointed anywhere else fails at its first COPY — and a renamed Dockerfile only surfaces as a
+      # failed deploy.
+      - name: Every component builds the root with a Dockerfile that exists
+        run: |
+          yq -r '
+            [.services[]?, .jobs[]?, .workers[]?]
+            | .[]
+            | .name + " " + .source_dir + " " + .dockerfile_path' "$SPEC" > "$RUNNER_TEMP/components.txt"
+          while read -r name source_dir dockerfile; do
+            if [ "$source_dir" != '/' ]; then
+              echo "$name has source_dir $source_dir; every component builds the repository root."
+              exit 1
+            fi
+            if [ ! -f "$dockerfile" ]; then
+              echo "$name names $dockerfile, which does not exist."
+              exit 1
+            fi
+          done < "$RUNNER_TEMP/components.txt"
+      - name: Every ingress rule names a component the spec declares
+        run: |
+          missing=$(yq -r '
+            [.services[]?.name] as $components
+            | .ingress.rules[]?
+            | select(.component.name as $n | $components | contains([$n]) | not)
+            | .component.name' "$SPEC")
+          if [ -n "$missing" ]; then
+            echo "These ingress rules name components the spec does not declare:"
+            echo "$missing"
+            exit 1
+          fi
+
+  # config.Load() refuses several combinations the spec is free to declare: a capability switched on
+  # beside an empty SECRET is a deploy that never starts, and a schema check cannot see it. So the
+  # API is booted on the spec's settings, with only the credentials a deploy cannot avoid filled.
+  ci-deploy-spec-boots:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: coti
+          POSTGRES_PASSWORD: coti
+          POSTGRES_DB: coti
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: apps/api/go.sum
+      - name: Build the api image
+        run: docker build -f docker/api.Dockerfile -t coti-api:ci .
+      # Through the repo's own command rather than the image's copy of goose: what is asserted here
+      # is that the spec's settings let the API start, not what the image happens to carry.
+      - name: Bring the database to the state a first deploy leaves it in
+        env:
+          DATABASE_ADMIN_URL: postgres://coti:coti@127.0.0.1:5432/coti?sslmode=disable
+          PGPASSWORD: coti
+        run: |
+          node scripts/goose.mjs up
+          psql -h 127.0.0.1 -U coti -d coti -c "ALTER ROLE coti_app PASSWORD 'coti_app'"
+      - name: The API starts on the spec's own settings
+        run: |
+          DB=127.0.0.1:5432/coti?sslmode=disable
+          KEY=0123456789abcdef0123456789abcdef
+          yq -r '.services[] | select(.name == "api") | .envs[] | .key + "=" + (.value // "")' \
+            "$SPEC" > "$RUNNER_TEMP/raw.env"
+          sed -e "s|^DATABASE_ADMIN_URL=$|DATABASE_ADMIN_URL=postgres://coti:coti@$DB|" \
+              -e "s|^DATABASE_URL=$|DATABASE_URL=postgres://coti_app:coti_app@$DB|" \
+              -e "s|^AUTH_JWT_SECRET=$|AUTH_JWT_SECRET=$KEY|" \
+              -e "s|^STORAGE_LOCAL_SIGNING_SECRET=$|STORAGE_LOCAL_SIGNING_SECRET=$KEY|" \
+              -e 's|\${APP_URL}|https://coti.example|' \
+              "$RUNNER_TEMP/raw.env" > "$RUNNER_TEMP/api.env"
+          docker run -d --name api --network host \
+            --env-file "$RUNNER_TEMP/api.env" -e STORAGE_LOCAL_DIR=/var/lib/coti/storage \
+            coti-api:ci
+          for _ in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/ready) || code=000
+            if [ "$code" != '000' ]; then break; fi
+            sleep 2
+          done
+          docker logs api
+          if [ "$code" != '200' ]; then
+            echo "The API did not become ready on the spec's settings (last status $code)."
+            exit 1
+          fi
