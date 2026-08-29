@@ -156,9 +156,9 @@ spec's own settings to keep that true.
 | `STORAGE_ACCESS_KEY`            | `STORAGE_PROVIDER=spaces`                                          | Spaces key                          |
 | `STORAGE_SECRET_KEY`            | `STORAGE_PROVIDER=spaces`                                          | Spaces secret                       |
 
-Two more are marked `SECRET` in the spec without being credentials, purely to keep a value out of a
-public file: `MAIL_FROM_ADDRESS`, which must be the Gmail address itself or Google rewrites the
-`From` header, and `RATE_LIMIT_TRUSTED_PROXY_CIDRS`, which is the platform's forwarding range.
+Three more are marked `SECRET` in the spec without being credentials, purely to keep a value out of
+a public file: `MAIL_SMTP_HOST`, `MAIL_FROM_ADDRESS` — which must be the mailbox itself or Google
+rewrites the `From` header — and `RATE_LIMIT_TRUSTED_PROXY_CIDRS`, the platform's forwarding range.
 
 Three of them behave differently from the rest and it is worth knowing which:
 

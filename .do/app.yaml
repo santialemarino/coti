@@ -104,7 +104,7 @@ services:
         value: console
       - key: MAIL_SMTP_HOST
         scope: RUN_TIME
-        value: smtp.gmail.com
+        type: SECRET
       - key: MAIL_FROM_ADDRESS
         scope: RUN_TIME
         type: SECRET
@@ -117,8 +117,8 @@ services:
       - key: RATE_LIMIT_TRUSTED_PROXY_CIDRS
         scope: RUN_TIME
         type: SECRET
-      # Where the API's own signed storage links point, and where the mailed links land. Both are
-      # known only once the app has a URL, which is why the first deploy is followed by a second.
+      # Where the API's own signed storage links point, and where the mailed links land. Bound
+      # rather than written in, because unlike NEXT_PUBLIC_API_URL these are read at run time.
       - key: STORAGE_LOCAL_API_BASE_URL
         scope: RUN_TIME
         value: ${APP_URL}/api
