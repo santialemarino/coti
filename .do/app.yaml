@@ -85,9 +85,9 @@ services:
       - key: MAIL_SMTP_PASSWORD
         scope: RUN_TIME
         type: SECRET
-      # Every selector below is OFF, so the app boots once the four secrets above it are filled.
-      # Turning one on makes its own credential required at startup, which is why the committed
-      # spec does not: an empty SECRET plus an enabled capability is a deploy that never starts.
+      # Every selector below is OFF, so the app boots on the two database URLs, AUTH_JWT_SECRET and
+      # STORAGE_LOCAL_SIGNING_SECRET alone. Turning one on makes its own credential required at
+      # startup: an empty SECRET beside an enabled capability is a deploy that never starts.
       - key: AI_LLM_PROVIDER
         scope: RUN_TIME
         value: disabled
