@@ -1,0 +1,120 @@
+name: CI Docker
+
+run-name: 'CI Docker by @${{ github.actor }}'
+
+# Nothing else builds an image and no other workflow watches docker/, so without this one a PR
+# touching only a Dockerfile reaches dev with zero checks run. The paths are what the three images
+# copy, not only the directory they live in: an image breaks on a change to what it builds.
+on:
+  workflow_call:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'docker/**'
+      - '.dockerignore'
+      - 'apps/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
+      - '.github/workflows/ci.docker.yml'
+  pull_request:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'docker/**'
+      - '.dockerignore'
+      - 'apps/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
+      - '.github/workflows/ci.docker.yml'
+  workflow_dispatch:
+
+jobs:
+  # Both web images bake NEXT_PUBLIC_API_URL into the JS bundle at build time, so the build needs
+  # a value even though the deploy supplies the real one.
+  ci-docker-web:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: backoffice
+            port: 3000
+          - app: webapp
+            port: 3001
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          docker build \
+            -f docker/${{ matrix.app }}.Dockerfile \
+            --build-arg NEXT_PUBLIC_API_URL=http://localhost:8000 \
+            -t coti-${{ matrix.app }}:ci .
+      # An image that builds and cannot start is the failure this workflow exists to catch, so
+      # answering at all is the assertion — the status code depends on an API that is not here.
+      - name: The image serves
+        run: |
+          docker run -d --name ${{ matrix.app }} \
+            -p ${{ matrix.port }}:${{ matrix.port }} coti-${{ matrix.app }}:ci
+          for _ in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' \
+              http://127.0.0.1:${{ matrix.port }}/) || code=000
+            if [ "$code" != '000' ]; then break; fi
+            sleep 2
+          done
+          if [ "$code" = '000' ]; then
+            docker logs ${{ matrix.app }}
+            echo 'The ${{ matrix.app }} image never answered.'
+            exit 1
+          fi
+          echo "${{ matrix.app }} answered HTTP $code"
+
+  # The api image is the one the platform runs three ways — the API, the scheduled job, and the
+  # migration job — so it gets a Postgres and has to prove it can do the third.
+  ci-docker-api:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: coti
+          POSTGRES_PASSWORD: coti
+          POSTGRES_DB: coti
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: docker build -f docker/api.Dockerfile -t coti-api:ci .
+      # A missing binary deploys clean, and the component that needed it is the only thing that
+      # would ever discover it. What the image contains is a check, not a build artifact.
+      - name: The image carries every binary the platform runs
+        run: |
+          for bin in api catalog-embed goose scheduled-job; do
+            docker run --rm --entrypoint ls coti-api:ci "/api/bin/$bin" > /dev/null \
+              || { echo "The api image is missing /api/bin/$bin."; exit 1; }
+          done
+      # The PRE_DEPLOY job runs exactly this. Counting the applied rows is what catches a
+      # migrations directory the image copied only part of, which `up` alone reports as success.
+      - name: The image applies the migration chain
+        run: |
+          docker run --rm --network host coti-api:ci \
+            /api/bin/goose -dir /api/migrations \
+            postgres 'postgres://coti:coti@127.0.0.1:5432/coti?sslmode=disable' up
+          applied=$(PGPASSWORD=coti psql -h 127.0.0.1 -U coti -d coti -tAc \
+            'SELECT count(*) FROM goose_db_version WHERE version_id > 0')
+          on_disk=$(ls -1 apps/api/migrations/*.sql | wc -l)
+          if [ "$applied" -ne "$on_disk" ]; then
+            echo "The image applied $applied of the $on_disk migrations in the chain."
+            exit 1
+          fi

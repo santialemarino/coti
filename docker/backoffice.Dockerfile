@@ -13,6 +13,7 @@ COPY apps/backoffice/package.json ./apps/backoffice/
 COPY apps/webapp/package.json ./apps/webapp/
 COPY apps/api/package.json ./apps/api/
 COPY packages/ui/package.json ./packages/ui/
+COPY packages/vitest-config/package.json ./packages/vitest-config/
 COPY packages/eslint-config/package.json ./packages/eslint-config/
 COPY packages/typescript-config/package.json ./packages/typescript-config/
 RUN pnpm install --frozen-lockfile
@@ -23,8 +24,10 @@ ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/backoffice/node_modules ./apps/backoffice/node_modules
 COPY --from=deps /app/packages/ui/node_modules ./packages/ui/node_modules
+COPY --from=deps /app/packages/vitest-config/node_modules ./packages/vitest-config/node_modules
 COPY packages/typescript-config ./packages/typescript-config
 COPY packages/eslint-config ./packages/eslint-config
+COPY packages/vitest-config ./packages/vitest-config
 COPY packages/ui ./packages/ui
 COPY apps/backoffice ./apps/backoffice
 COPY package.json pnpm-workspace.yaml turbo.json ./
@@ -37,7 +40,6 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-RUN corepack enable
 COPY --from=builder /app/apps/backoffice/.next ./.next
 COPY --from=builder /app/apps/backoffice/public ./public
 COPY --from=builder /app/apps/backoffice/package.json ./
@@ -47,4 +49,6 @@ COPY --from=deps /app/apps/backoffice/node_modules ./node_modules
 COPY --from=builder /app/packages/ui /app/packages/ui
 EXPOSE 3000
 ENV PORT=3000
-CMD ["pnpm", "start"]
+# next directly, not through pnpm: the runner carries no workspace, and pnpm would try to
+# resolve one at start-up rather than serving.
+CMD ["node_modules/.bin/next", "start"]
