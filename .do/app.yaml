@@ -1,11 +1,6 @@
-# DigitalOcean App Platform spec for Coti. See docs/technical/deployment.md.
-#
-# This repository is PUBLIC, so this file carries names and shapes only: every credential is a
-# `type: SECRET` entry with no value, filled in the console before the first deploy, and the
-# database component's cluster is identified there too.
-#
-# Every component takes `source_dir: /`. All three Dockerfiles build with the repository root as
-# their build context, so a component pointed at apps/api fails at the first COPY.
+# DigitalOcean App Platform spec for Coti; the map is docs/technical/deployment.md. The repository
+# is PUBLIC, so this carries names and shapes only — every credential is a `type: SECRET` with no
+# value. Every component takes `source_dir: /`: all three Dockerfiles build the repository root.
 name: coti
 region: nyc
 
@@ -139,11 +134,8 @@ services:
     instance_count: 1
     instance_size_slug: apps-s-1vcpu-1gb
     envs:
-      # RUN_AND_BUILD_TIME is load-bearing: this is a build ARG baked into the JavaScript bundle,
-      # so scoped RUN_TIME the deployed frontend calls localhost:8000 from the visitor's browser
-      # with nothing failing server-side. It cannot be ${APP_URL}/api either — under a Dockerfile
-      # build App Platform resolves bindables at runtime only — so it is the app's real URL,
-      # written in after the first deploy has produced one.
+      # RUN_AND_BUILD_TIME is load-bearing: this is a build ARG baked into the bundle, and a
+      # bindable resolves at runtime only here. deployment.md has the round trip that forces.
       - key: NEXT_PUBLIC_API_URL
         scope: RUN_AND_BUILD_TIME
         value: http://localhost:8000
