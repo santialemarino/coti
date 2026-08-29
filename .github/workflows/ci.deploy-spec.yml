@@ -1,0 +1,90 @@
+name: CI Deploy Spec
+
+run-name: 'CI Deploy Spec by @${{ github.actor }}'
+
+# .do/ is a top-level directory no other workflow watches, so without this one a change to the app
+# spec reaches dev with zero checks run. Everything here is local: `--schema-only` needs no
+# DigitalOcean account, and correctness against a real app cannot be checked without one.
+on:
+  workflow_call:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - '.do/**'
+      - 'docker/**'
+      - '.github/workflows/ci.deploy-spec.yml'
+  pull_request:
+    branches:
+      - main
+      - dev
+    paths:
+      - '.do/**'
+      - 'docker/**'
+      - '.github/workflows/ci.deploy-spec.yml'
+  workflow_dispatch:
+
+env:
+  DOCTL_VERSION: 1.167.0
+  SPEC: .do/app.yaml
+
+jobs:
+  ci-deploy-spec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install doctl
+        run: |
+          curl -fsSL \
+            "https://github.com/digitalocean/doctl/releases/download/v${DOCTL_VERSION}/doctl-${DOCTL_VERSION}-linux-amd64.tar.gz" \
+            | tar -xz -C "$RUNNER_TEMP" doctl
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: The spec matches the App Platform schema
+        run: doctl apps spec validate --schema-only "$SPEC" > /dev/null
+      # This repository is public, so the spec carries names and shapes and never a value. A habit
+      # is not a guarantee; this is.
+      - name: No SECRET carries a value
+        run: |
+          leaks=$(yq -r '
+            [.services[]?, .jobs[]?, .workers[]?]
+            | .[]
+            | .name as $component
+            | .envs[]? | select(.type == "SECRET" and has("value"))
+            | $component + "." + .key' "$SPEC")
+          if [ -n "$leaks" ]; then
+            echo "These entries are marked SECRET and still carry a value:"
+            echo "$leaks"
+            exit 1
+          fi
+      # All three Dockerfiles build with the repository root as their context, so a component
+      # pointed anywhere else fails at its first COPY — and a renamed Dockerfile only surfaces as a
+      # failed deploy.
+      - name: Every component builds the root with a Dockerfile that exists
+        run: |
+          yq -r '
+            [.services[]?, .jobs[]?, .workers[]?]
+            | .[]
+            | .name + " " + .source_dir + " " + .dockerfile_path' "$SPEC" > "$RUNNER_TEMP/components.txt"
+          while read -r name source_dir dockerfile; do
+            if [ "$source_dir" != '/' ]; then
+              echo "$name has source_dir $source_dir; every component builds the repository root."
+              exit 1
+            fi
+            if [ ! -f "$dockerfile" ]; then
+              echo "$name names $dockerfile, which does not exist."
+              exit 1
+            fi
+          done < "$RUNNER_TEMP/components.txt"
+      - name: Every ingress rule names a component the spec declares
+        run: |
+          missing=$(yq -r '
+            [.services[]?.name] as $components
+            | .ingress.rules[]?
+            | select(.component.name as $n | $components | contains([$n]) | not)
+            | .component.name' "$SPEC")
+          if [ -n "$missing" ]; then
+            echo "These ingress rules name components the spec does not declare:"
+            echo "$missing"
+            exit 1
+          fi

@@ -201,5 +201,11 @@ copy. The api job goes further: it asserts the four binaries are in the image an
 migration chain **from inside it** against a real Postgres, which is the PRE_DEPLOY job's exact
 command. The web job boots each image and requires it to answer HTTP.
 
-So the image half of a deploy is continuously verified. The platform half — the app spec, the
-secrets, the ingress — is not, and cannot be without an app.
+`.github/workflows/ci.deploy-spec.yml` covers the spec itself: `doctl apps spec validate
+--schema-only`, which needs no account, plus the three things a schema check cannot see — that no
+`type: SECRET` entry carries a value, that every component builds `/` with a Dockerfile that
+exists, and that every ingress rule names a component the spec declares.
+
+So the image half of a deploy is continuously verified, and the spec is checked for the mistakes
+that are checkable offline. What remains unverified is the platform half — whether the app the spec
+describes actually comes up — and that cannot be checked without an app.
