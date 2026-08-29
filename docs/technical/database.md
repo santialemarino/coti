@@ -103,32 +103,6 @@ lifetime. `activate` is therefore the flag alone. The behavioural side is in
 
 **Never use the owner role for a request-scoped query.** It bypasses RLS.
 
-### The app role has no password until something sets one
-
-`00001` creates `coti_app` with **no `PASSWORD` clause at all**. A `LOGIN` role whose password is
-null cannot authenticate under `scram-sha-256`, so a database built by running the chain and
-nothing else refuses every connection as `coti_app` — loudly, at the first request, instead of
-accepting a password anyone can read in a public repository.
-
-Giving it one is a separate step, and it is deliberately not the chain's:
-
-- **Locally**, `pnpm db:init` does it after migrating, taking the role and password straight out of
-  `DATABASE_URL` so the two cannot drift. Running `pnpm db:migrate` alone against a brand-new
-  database leaves the API unable to connect; `pnpm db:init` is the command that finishes the job.
-- **In CI**, `ci.api.yml` sets the same published default before the integration suite, which is
-  the only job that connects as `coti_app`.
-- **In a deployment**, a person sets it once when the database is provisioned. Nothing does it for
-  you, and that is the point. It is not done from a deploy job either: `ALTER ROLE` is DDL, so a
-  managed Postgres running with `log_statement = 'ddl'` would write the password into a log the
-  platform exposes.
-
-The `IF NOT EXISTS` guard means an existing database is untouched — the role is already there with
-whatever password it was given, and re-running the chain never revisits it.
-
-`docker-compose.yml` overrides the dockerised API's `DATABASE_URL` to reach the `postgres` service
-by name, and that override carries the password literally. It matches what `.env.example` ships, so
-changing the local one means changing both.
-
 **A process with no cross-account job does not open it at all.** `repository.NewTenantDB` opens the
 restricted pool alone and returns a type carrying neither `CrossAccount` nor `AdminTx`, so the
 boundary is the compiler rather than a rule someone has to remember — `cmd/catalog-embed` runs that
@@ -149,6 +123,34 @@ The four legitimate owner cases:
    `quote_send.public_token` for the sessionless webapp. The correct pattern for the token:
    the owner resolves token → `account_id`, and the rest of the request continues on the
    restricted role with the GUC set.
+
+### The app role has no password until something sets one
+
+`00001` creates `coti_app` with **no `PASSWORD` clause at all**. A `LOGIN` role whose password is
+null cannot authenticate under `scram-sha-256`, so a database built by running the chain and
+nothing else refuses every connection as `coti_app` instead of accepting a password anyone can read
+in a public repository. The refusal is loud: `repository.NewDB` pings each pool before returning, so
+the API **fails to start** and says why, rather than booting and failing a request later.
+
+Giving it one is a separate step, and it is deliberately not the chain's:
+
+- **Locally**, `pnpm db:init` does it after migrating, taking the role and password straight out of
+  `DATABASE_URL` so the two cannot drift. Running `pnpm db:migrate` alone against a brand-new
+  database leaves the API unable to start; `pnpm db:init` is the command that finishes the job.
+- **In CI**, `ci.api.yml` sets the same published default before the integration suite, which is
+  the only job that connects as `coti_app`.
+- **In a deployment**, a person sets it once, and best **before the first migration runs**: the
+  `IF NOT EXISTS` guard leaves an already-provisioned role exactly as it is while it still collects
+  every grant. It is not done from a deploy job: `ALTER ROLE` and `CREATE ROLE` are DDL, so a
+  managed Postgres running with `log_statement = 'ddl'` would write the password into a log the
+  platform exposes.
+
+That same guard is why an existing database is untouched by this: the role is already there with
+whatever password it was given, and re-running the chain never revisits it.
+
+`docker-compose.yml` overrides the dockerised API's `DATABASE_URL` to reach the `postgres` service
+by name, and that override carries the password literally. It matches what `.env.example` ships, so
+changing the local one means changing both.
 
 ## Account isolation (RLS)
 
