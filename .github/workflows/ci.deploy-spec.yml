@@ -109,15 +109,23 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: apps/api/go.sum
       - name: Build the api image
         run: docker build -f docker/api.Dockerfile -t coti-api:ci .
+      # Through the repo's own command rather than the image's copy of goose: what is asserted here
+      # is that the spec's settings let the API start, not what the image happens to carry.
       - name: Bring the database to the state a first deploy leaves it in
         env:
+          DATABASE_ADMIN_URL: postgres://coti:coti@127.0.0.1:5432/coti?sslmode=disable
           PGPASSWORD: coti
         run: |
-          docker run --rm --network host coti-api:ci \
-            /api/bin/goose -dir /api/migrations \
-            postgres 'postgres://coti:coti@127.0.0.1:5432/coti?sslmode=disable' up
+          node scripts/goose.mjs up
           psql -h 127.0.0.1 -U coti -d coti -c "ALTER ROLE coti_app PASSWORD 'coti_app'"
       - name: The API starts on the spec's own settings
         run: |
