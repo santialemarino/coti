@@ -4,9 +4,10 @@ Nothing is deployed yet. This is the map of what a deploy needs, written so the 
 morning rather than a week. The target is **DigitalOcean**, chosen because the follow-up sweep
 needs a scheduled job the platform owns (see [scheduled-jobs.md](scheduled-jobs.md)).
 
-`.do/app.yaml` is the committed app spec. It carries the shape — components, ports, env var
-**names** — and no values: this repository is public, so every credential is a `type: SECRET` entry
-whose value is supplied in the console before the first deploy.
+`.do/app.yaml` is the committed app spec. This repository is public, so it carries the shape —
+components, ports, and the settings that are not credentials — while every credential is a
+`type: SECRET` entry with no value, filled in the console. Four of them are needed before the first
+deploy and the rest are not; see [Secrets the deploy has to supply](#secrets-the-deploy-has-to-supply).
 
 ## Three products, and they are not interchangeable
 
@@ -20,7 +21,7 @@ Spaces is not on the critical path: `STORAGE_PROVIDER` defaults to `local`, the 
 works, and the Spaces adapter exists but has never run against a real bucket. See
 [file-storage.md](file-storage.md).
 
-## Five components, one app
+## Six components, one app
 
 | Component       | Type                    | Dockerfile                     | Port |
 | --------------- | ----------------------- | ------------------------------ | ---- |
@@ -208,9 +209,9 @@ The full list of keys, with defaults and what each bounds, is in the four `.env.
 ## What CI already proves
 
 `.github/workflows/ci.docker.yml` builds all three images on every PR that touches them or what they
-copy. The api job goes further: it asserts the four binaries are in the image and applies the whole
-migration chain **from inside it** against a real Postgres, which is the PRE_DEPLOY job's exact
-command. The web job boots each image and requires it to answer HTTP.
+copy, and boots every one of them. The api job goes further: it asserts the four binaries are in the
+image and applies the whole migration chain **from inside it** against a real Postgres, which is the
+PRE_DEPLOY job's exact command.
 
 `.github/workflows/ci.deploy-spec.yml` covers the spec itself: `doctl apps spec validate
 --schema-only`, which needs no account, plus the three things a schema check cannot see — that no
