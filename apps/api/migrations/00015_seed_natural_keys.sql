@@ -3,49 +3,28 @@
 
 -- +goose Up
 
--- The rows already duplicated have to go before a unique index can exist. The oldest of each
--- group survives; client_tag points at tags that do not, so its links move first.
--- +goose StatementBegin
-WITH ranked AS (
-  SELECT id,
-         first_value(id) OVER (
-           PARTITION BY account_id, lower(name) ORDER BY created_at, id
-         ) AS keeper
-  FROM tag
-)
+-- The rows already duplicated have to go before a unique index can exist. One snapshot decides
+-- which of each group survives — the oldest — and the three statements below work from it.
+CREATE TEMP TABLE tag_survivor ON COMMIT DROP AS
+SELECT id,
+       first_value(id) OVER (PARTITION BY account_id, lower(name) ORDER BY created_at, id) AS keeper
+FROM tag;
+
+-- client_tag points at tags that are about to go, so its links move first: the ones whose client
+-- already carries the survivor would collide with uq_client_tag, and the rest are repointed.
 DELETE FROM client_tag ct
-USING ranked r
-WHERE ct.tag_id = r.id
-  AND r.id <> r.keeper
-  AND EXISTS (SELECT 1 FROM client_tag k WHERE k.client_id = ct.client_id AND k.tag_id = r.keeper);
--- +goose StatementEnd
+USING tag_survivor s
+WHERE ct.tag_id = s.id
+  AND s.id <> s.keeper
+  AND EXISTS (SELECT 1 FROM client_tag k WHERE k.client_id = ct.client_id AND k.tag_id = s.keeper);
 
--- +goose StatementBegin
-WITH ranked AS (
-  SELECT id,
-         first_value(id) OVER (
-           PARTITION BY account_id, lower(name) ORDER BY created_at, id
-         ) AS keeper
-  FROM tag
-)
 UPDATE client_tag ct
-SET tag_id = r.keeper
-FROM ranked r
-WHERE ct.tag_id = r.id AND r.id <> r.keeper;
--- +goose StatementEnd
+SET tag_id = s.keeper
+FROM tag_survivor s
+WHERE ct.tag_id = s.id AND s.id <> s.keeper;
 
--- +goose StatementBegin
-WITH ranked AS (
-  SELECT id,
-         first_value(id) OVER (
-           PARTITION BY account_id, lower(name) ORDER BY created_at, id
-         ) AS keeper
-  FROM tag
-)
-DELETE FROM tag t USING ranked r WHERE t.id = r.id AND r.id <> r.keeper;
--- +goose StatementEnd
+DELETE FROM tag t USING tag_survivor s WHERE t.id = s.id AND s.id <> s.keeper;
 
--- +goose StatementBegin
 DELETE FROM promotion_tier t
 USING (
   SELECT id, row_number() OVER (
@@ -54,9 +33,7 @@ USING (
   FROM promotion_tier
 ) d
 WHERE t.id = d.id AND d.n > 1;
--- +goose StatementEnd
 
--- +goose StatementBegin
 DELETE FROM promotion_condition_item t
 USING (
   SELECT id, row_number() OVER (
@@ -65,7 +42,6 @@ USING (
   FROM promotion_condition_item
 ) d
 WHERE t.id = d.id AND d.n > 1;
--- +goose StatementEnd
 
 -- Case-insensitively, the way app_user.email and product_synonym.term already are.
 CREATE UNIQUE INDEX uq_tag_account_name ON tag (account_id, lower(name));
