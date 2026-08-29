@@ -134,7 +134,9 @@ is a cross-account leak rather than a misconfiguration. Give the two roles genui
 
 ## Secrets the deploy has to supply
 
-Every one of these is a `type: SECRET` entry in the spec with no committed value.
+Each is a `type: SECRET` entry in the spec with no committed value, except the last two: nothing
+selects Spaces, so the spec declares neither them nor the three non-secret keys that come with them.
+Choosing `spaces` means adding all five.
 
 **Only the first four block a boot, and that is deliberate.** `config.Load()` refuses to start when
 a capability is switched on and its credential is empty, so the committed spec ships every optional
