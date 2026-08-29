@@ -78,7 +78,7 @@ jobs:
           echo "${{ matrix.app }} answered HTTP $code"
 
   # The api image is the one the platform runs three ways — the API, the scheduled job, and the
-  # migration job — so it gets a Postgres and has to prove it can do the third.
+  # migration job — so it gets a Postgres and has to prove it can migrate and then serve.
   ci-docker-api:
     runs-on: ubuntu-latest
     services:
