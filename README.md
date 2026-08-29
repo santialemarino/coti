@@ -34,6 +34,7 @@ packages/
   eslint-config      Shared ESLint flat configs (@repo/eslint-config)
   typescript-config  Shared tsconfig bases (@repo/typescript-config)
 docker/        Dockerfiles for each deployable
+.do/           DigitalOcean App Platform spec (names and shapes, never values)
 scripts/       DB init + goose migration helpers
 docs/          public/ and technical/ documentation
 ```
