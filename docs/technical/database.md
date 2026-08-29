@@ -1,6 +1,6 @@
 # Database
 
-PostgreSQL 16 + pgvector. The model is 37 tables with UUID v4 primary keys, native enums, and
+PostgreSQL 16 + pgvector. The model is 42 tables with UUID v4 primary keys, native enums, and
 money in `NUMERIC(14,2)`.
 
 ## What is the source and what is the reference
@@ -184,12 +184,18 @@ Whatever can be expressed in the schema is expressed in the schema:
 | `uq_product_price_open_period`           | one open price period per branch and product       |
 | `uq_app_user_email_global`               | an address identifies one user, case-insensitively |
 | `uq_auth_token_hash`                     | a recovery or verification link is unique          |
+| `uq_tag_account_name`                    | one tag name per account, case-insensitively       |
+| `uq_promotion_tier_from_quantity`        | one tier per promotion and starting quantity       |
+| `uq_promotion_condition_item_target`     | one condition row per promotion and target         |
 
 **A unique constraint does not compare NULLs**, so on a nullable column it lets every empty
 row escape. That is why the 1-to-1 needs the NOT NULL as well as the index:
 `uq_channel_branch_type_identifier` alone does not bound the identifier-less channels, which
-is where the partial index comes in. Pinning an invariant on a nullable column leaves only two
-ways out — a NOT NULL, or a partial index over the NULL case.
+is where the partial index comes in. Pinning an invariant on a nullable column has three ways
+out — a NOT NULL, a partial index over the NULL case, or `UNIQUE NULLS NOT DISTINCT`, which
+compares them as equal. The third is what `uq_promotion_condition_item_target` uses: a condition
+row names one target and leaves the other three key columns null, so an index that skipped them
+would bound nothing.
 
 **An index and a lock do different jobs, and one open price period needs both.**
 `uq_product_price_open_period` turns a second open row into an error, but an error is not what

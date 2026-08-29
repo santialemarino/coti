@@ -245,19 +245,19 @@ CREATE TABLE product (
   canonical_name VARCHAR(255) NOT NULL,
   description    VARCHAR(512),
   unit           VARCHAR(64),
+  embedding      VECTOR(1536),
+  is_active      BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   family_id      UUID,
   subgroup_id    UUID,
-  embedding      VECTOR(1536),
   -- Older than updated_at means the row was edited after it was embedded, which is how the
   -- backfill knows what to re-embed without re-embedding the whole catalog.
   embedding_updated_at TIMESTAMPTZ,
   search_document TSVECTOR
     GENERATED ALWAYS AS (
       to_tsvector('spanish_unaccent'::regconfig, canonical_name || ' ' || coalesce(description, ''))
-    ) STORED,
-  is_active      BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+    ) STORED
 );
 
 CREATE TABLE branch_product (
@@ -279,9 +279,9 @@ CREATE TABLE product_synonym (
   product_id UUID NOT NULL,
   term       VARCHAR(255) NOT NULL,
   source     product_synonym_source NOT NULL DEFAULT 'MANUAL',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   search_document TSVECTOR
-    GENERATED ALWAYS AS (to_tsvector('spanish_unaccent'::regconfig, term)) STORED,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    GENERATED ALWAYS AS (to_tsvector('spanish_unaccent'::regconfig, term)) STORED
 );
 
 -- Validity-versioned history: never updated in place.
@@ -515,14 +515,14 @@ CREATE TABLE quote_item_alternative (
   combo_id           UUID,
   type               quote_item_alternative_type NOT NULL,
   origin             quote_item_alternative_origin NOT NULL,
-  -- The candidate's own place in the matcher's ranking, best first; nothing else on the row
-  -- records it. confidence_score is what it scored, on quote_item.confidence_score's scale.
-  rank               SMALLINT NOT NULL,
-  confidence_score   NUMERIC(5,4),
   price_snapshot     NUMERIC(14,2),
   approved_by_seller BOOLEAN NOT NULL DEFAULT FALSE,
   chosen_by_client   BOOLEAN NOT NULL DEFAULT FALSE,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- The candidate's own place in the matcher's ranking, best first; nothing else on the row
+  -- records it. confidence_score is what it scored, on quote_item.confidence_score's scale.
+  rank               SMALLINT NOT NULL,
+  confidence_score   NUMERIC(5,4),
   CONSTRAINT ck_qia_target CHECK (product_id IS NOT NULL OR combo_id IS NOT NULL)
 );
 
@@ -636,13 +636,17 @@ CREATE TABLE promotion_condition_item (
   account_id   UUID NOT NULL,
   promotion_id UUID NOT NULL,
   product_id   UUID,
-  family_id    UUID,
-  subgroup_id  UUID,
   min_quantity NUMERIC(14,2),
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  family_id    UUID,
+  subgroup_id  UUID,
   CONSTRAINT ck_pci_target CHECK (
     product_id IS NOT NULL OR family_id IS NOT NULL OR subgroup_id IS NOT NULL
-  )
+  ),
+  -- Three of the four key columns are null on any given row, so nulls have to compare as equal
+  -- or the index bounds nothing. It is also the ON CONFLICT target the seed names.
+  CONSTRAINT uq_promotion_condition_item_target
+    UNIQUE NULLS NOT DISTINCT (promotion_id, product_id, family_id, subgroup_id)
 );
 
 CREATE TABLE promotion_tier (
@@ -652,7 +656,8 @@ CREATE TABLE promotion_tier (
   from_quantity NUMERIC(14,2) NOT NULL,
   to_quantity   NUMERIC(14,2),
   value         NUMERIC(14,2) NOT NULL,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_promotion_tier_from_quantity UNIQUE (promotion_id, from_quantity)
 );
 
 -- One application of a discount to a version. The amount is computed by the deterministic
@@ -753,10 +758,10 @@ ALTER TABLE refresh_token ADD CONSTRAINT fk_refresh_token_user FOREIGN KEY (user
 ALTER TABLE auth_token ADD CONSTRAINT fk_auth_token_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE auth_token ADD CONSTRAINT fk_auth_token_user FOREIGN KEY (user_id) REFERENCES app_user(id);
 
-ALTER TABLE product_subgroup ADD CONSTRAINT fk_product_subgroup_family FOREIGN KEY (family_id) REFERENCES product_family(id);
+ALTER TABLE product_subgroup ADD CONSTRAINT product_subgroup_family_id_fkey FOREIGN KEY (family_id) REFERENCES product_family(id) ON DELETE RESTRICT;
 ALTER TABLE product ADD CONSTRAINT fk_product_account FOREIGN KEY (account_id) REFERENCES account(id);
-ALTER TABLE product ADD CONSTRAINT fk_product_family FOREIGN KEY (family_id) REFERENCES product_family(id);
-ALTER TABLE product ADD CONSTRAINT fk_product_subgroup_family FOREIGN KEY (subgroup_id, family_id) REFERENCES product_subgroup(id, family_id);
+ALTER TABLE product ADD CONSTRAINT product_family_id_fkey FOREIGN KEY (family_id) REFERENCES product_family(id) ON DELETE RESTRICT;
+ALTER TABLE product ADD CONSTRAINT fk_product_subgroup_family FOREIGN KEY (subgroup_id, family_id) REFERENCES product_subgroup(id, family_id) ON DELETE RESTRICT;
 ALTER TABLE branch_product ADD CONSTRAINT fk_branch_product_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE branch_product ADD CONSTRAINT fk_branch_product_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
 ALTER TABLE branch_product ADD CONSTRAINT fk_branch_product_product FOREIGN KEY (product_id) REFERENCES product(id);
@@ -837,8 +842,8 @@ ALTER TABLE promotion ADD CONSTRAINT fk_promotion_branch FOREIGN KEY (branch_id)
 ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_promotion FOREIGN KEY (promotion_id) REFERENCES promotion(id);
 ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_product FOREIGN KEY (product_id) REFERENCES product(id);
-ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_family FOREIGN KEY (family_id) REFERENCES product_family(id);
-ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_subgroup FOREIGN KEY (subgroup_id) REFERENCES product_subgroup(id);
+ALTER TABLE promotion_condition_item ADD CONSTRAINT promotion_condition_item_family_id_fkey FOREIGN KEY (family_id) REFERENCES product_family(id) ON DELETE RESTRICT;
+ALTER TABLE promotion_condition_item ADD CONSTRAINT promotion_condition_item_subgroup_id_fkey FOREIGN KEY (subgroup_id) REFERENCES product_subgroup(id) ON DELETE RESTRICT;
 ALTER TABLE promotion_tier ADD CONSTRAINT fk_promotion_tier_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE promotion_tier ADD CONSTRAINT fk_promotion_tier_promotion FOREIGN KEY (promotion_id) REFERENCES promotion(id);
 ALTER TABLE quote_discount ADD CONSTRAINT fk_quote_discount_account FOREIGN KEY (account_id) REFERENCES account(id);
@@ -891,6 +896,8 @@ CREATE INDEX idx_product_synonym_product ON product_synonym(product_id);
 -- a matcher. It is also the ON CONFLICT target the insert names.
 CREATE UNIQUE INDEX uq_product_synonym_term
   ON product_synonym (account_id, product_id, lower(term));
+-- One tag name per account, case-insensitively, and the ON CONFLICT target the seed names.
+CREATE UNIQUE INDEX uq_tag_account_name ON tag (account_id, lower(name));
 CREATE INDEX idx_product_price_product ON product_price(product_id, branch_id);
 CREATE INDEX idx_branch_combo_branch ON branch_combo(branch_id) WHERE is_active = TRUE;
 
