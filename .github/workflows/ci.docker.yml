@@ -118,3 +118,32 @@ jobs:
             echo "The image applied $applied of the $on_disk migrations in the chain."
             exit 1
           fi
+      # The app role's password is provisioned by whoever owns the database, never by the chain, so
+      # set it here rather than depending on what a migration happens to leave it at.
+      - name: Set the app role's password
+        env:
+          PGPASSWORD: coti
+        run: psql -h 127.0.0.1 -U coti -d coti -c "ALTER ROLE coti_app PASSWORD 'coti_app'"
+      # The same assertion the web job makes, for the image that matters most: an image that builds
+      # and cannot start deploys clean. /ready is the probe App Platform uses, and it answers only
+      # once both pools do.
+      - name: The image serves
+        run: |
+          docker run -d --name api --network host \
+            -e ENV=production \
+            -e DATABASE_URL='postgres://coti_app:coti_app@127.0.0.1:5432/coti?sslmode=disable' \
+            -e DATABASE_ADMIN_URL='postgres://coti:coti@127.0.0.1:5432/coti?sslmode=disable' \
+            -e AUTH_JWT_SECRET=0123456789abcdef0123456789abcdef \
+            -e STORAGE_LOCAL_SIGNING_SECRET=0123456789abcdef0123456789abcdef \
+            -e STORAGE_LOCAL_DIR=/var/lib/coti/storage \
+            coti-api:ci
+          for _ in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/ready) || code=000
+            if [ "$code" != '000' ]; then break; fi
+            sleep 2
+          done
+          docker logs api
+          if [ "$code" != '200' ]; then
+            echo "The api image did not become ready (last status $code)."
+            exit 1
+          fi
