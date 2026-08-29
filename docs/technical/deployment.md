@@ -135,6 +135,13 @@ is a cross-account leak rather than a misconfiguration. Give the two roles genui
 
 Every one of these is a `type: SECRET` entry in the spec with no committed value.
 
+**Only the first four block a boot, and that is deliberate.** `config.Load()` refuses to start when
+a capability is switched on and its credential is empty, so the committed spec ships every optional
+one **off** — `AI_*_PROVIDER` at `disabled`, `MAIL_PROVIDER` at `console`,
+`RATE_LIMIT_TRUSTED_PROXY_HOPS` at `0`. Fill a secret, then turn its capability on; doing it the
+other way round produces a deploy that never starts, and `ci.deploy-spec.yml` boots the image on the
+spec's own settings to keep that true.
+
 | Key                             | Needed when                                                        | Shape                               |
 | ------------------------------- | ------------------------------------------------------------------ | ----------------------------------- |
 | `DATABASE_URL`                  | Always                                                             | `coti_app`'s URL, `sslmode=require` |
@@ -163,14 +170,16 @@ Three of them behave differently from the rest and it is worth knowing which:
 - **`STORAGE_LOCAL_SIGNING_SECRET` is a credential, not a convenience** — it is what stops a storage
   link being forged, so a deployment that shares it shares every stored file.
 
-Non-secret settings the deploy still has to get right: `ENV=production`, `NEXT_PUBLIC_API_URL`
-(scoped `RUN_AND_BUILD_TIME`), `WEB_BACKOFFICE_URL` (the base of the links the API mails, validated
-as an absolute URL), the three `AI_*_PROVIDER` selectors, `MAIL_PROVIDER` with its host, and the
-rate-limit proxy pair. **`RATE_LIMIT_TRUSTED_PROXY_HOPS` and `RATE_LIMIT_TRUSTED_PROXY_CIDRS` are a
-startup error unless both are set**, in either direction: hop counting is only spoof-resistant for a
-request that really transited the declared chain, and CIDRs with the hop count at 0 mean the header
-is never read. The backoffice is one of those proxies — its calls are server-side, so without a hop
-declared every user in the product shares one rate-limit allowance.
+The switches to flip once their secrets are in, none of which the first deploy needs:
+`AI_LLM_PROVIDER=anthropic`, `AI_EMBEDDINGS_PROVIDER` and `AI_TRANSCRIPTION_PROVIDER` to `openai`,
+`MAIL_PROVIDER=smtp` with `MAIL_FROM_ADDRESS` (which must be the mailbox itself or Google rewrites
+the `From` header), and `RATE_LIMIT_TRUSTED_PROXY_HOPS=1`.
+
+**`RATE_LIMIT_TRUSTED_PROXY_HOPS` and `RATE_LIMIT_TRUSTED_PROXY_CIDRS` are a startup error unless
+both are set**, in either direction: hop counting is only spoof-resistant for a request that really
+transited the declared chain, and CIDRs with the hop count at 0 mean the header is never read. The
+backoffice is one of those proxies — its calls are server-side, so until a hop is declared every
+user in the product shares one rate-limit allowance, which is the one switch worth flipping early.
 
 The full list of keys, with defaults and what each bounds, is in the four `.env.example` files.
 
@@ -180,18 +189,20 @@ The full list of keys, with defaults and what each bounds, is in the four `.env.
 2. `CREATE ROLE coti_app …` on it, as above. Doing this **before** anything deploys is what makes
    the first deploy succeed rather than fail at the api component.
 3. Create the app from `.do/app.yaml`, filling in the database component's `cluster_name`, `db_name`
-   and `db_user`, and every `SECRET` value — both database URLs included. `NEXT_PUBLIC_API_URL`
-   is still a placeholder.
+   and `db_user`, and the four secrets a boot needs: both database URLs, `AUTH_JWT_SECRET` and
+   `STORAGE_LOCAL_SIGNING_SECRET`. The rest can wait. `NEXT_PUBLIC_API_URL` is still a placeholder.
 4. The `migrate` PRE_DEPLOY job applies the chain as `doadmin`; the grants and RLS policies land on
    the role from step 2, whose password it leaves alone.
 5. Read the app's URL, set `NEXT_PUBLIC_API_URL` to `<url>/api`, and redeploy so the frontends
    rebuild around it. `STORAGE_LOCAL_API_BASE_URL` and `WEB_BACKOFFICE_URL` need no second pass —
    they are bound to `${APP_URL}` and resolve at runtime.
-6. Register the first account, then embed its catalog — `/api/bin/catalog-embed --account <uuid>`
+6. Fill the optional secrets and flip their switches: mail, then the two AI vendors, then the
+   rate-limit proxy pair. Each is a restart, not a rebuild.
+7. Register the first account, then embed its catalog — `/api/bin/catalog-embed --account <uuid>`
    from a console on the api component — and build the vector index once there are rows
    (`pnpm db:vector-index`, see [catalog.md](catalog.md)). It is deliberately not in the chain: on
    an empty table an ivfflat index is degenerate.
-7. Add the scheduled job's cron once there is a job registered to run; `cmd/scheduled-job --list` is
+8. Add the scheduled job's cron once there is a job registered to run; `cmd/scheduled-job --list` is
    empty until a feature registers one.
 
 ## What CI already proves
@@ -204,7 +215,10 @@ command. The web job boots each image and requires it to answer HTTP.
 `.github/workflows/ci.deploy-spec.yml` covers the spec itself: `doctl apps spec validate
 --schema-only`, which needs no account, plus the three things a schema check cannot see — that no
 `type: SECRET` entry carries a value, that every component builds `/` with a Dockerfile that
-exists, and that every ingress rule names a component the spec declares.
+exists, and that every ingress rule names a component the spec declares. Its second job **boots the
+api image on the spec's own settings**, with only those four secrets filled, and requires `/ready`.
+That is the one check that catches a capability switched on beside an empty credential, which is a
+deploy that never starts and looks like a valid spec until it is applied.
 
 So the image half of a deploy is continuously verified, and the spec is checked for the mistakes
 that are checkable offline. What remains unverified is the platform half — whether the app the spec

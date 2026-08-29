@@ -4,7 +4,8 @@ run-name: 'CI Deploy Spec by @${{ github.actor }}'
 
 # .do/ is a top-level directory no other workflow watches, so without this one a change to the app
 # spec reaches dev with zero checks run. Everything here is local: `--schema-only` needs no
-# DigitalOcean account, and correctness against a real app cannot be checked without one.
+# DigitalOcean account, and whether the app comes up on a real platform cannot be checked without
+# one — but whether its own settings let the API start can, and the second job does.
 on:
   workflow_call:
   push:
@@ -14,6 +15,7 @@ on:
     paths:
       - '.do/**'
       - 'docker/**'
+      - 'apps/api/internal/config/**'
       - '.github/workflows/ci.deploy-spec.yml'
   pull_request:
     branches:
@@ -22,6 +24,7 @@ on:
     paths:
       - '.do/**'
       - 'docker/**'
+      - 'apps/api/internal/config/**'
       - '.github/workflows/ci.deploy-spec.yml'
   workflow_dispatch:
 
@@ -86,5 +89,60 @@ jobs:
           if [ -n "$missing" ]; then
             echo "These ingress rules name components the spec does not declare:"
             echo "$missing"
+            exit 1
+          fi
+
+  # config.Load() refuses several combinations the spec is free to declare — a capability switched
+  # on beside an empty SECRET is a deploy that never starts, and nothing else here would see it.
+  # So the API is booted on the spec's own settings, with only the credentials a deploy genuinely
+  # cannot avoid filled in.
+  ci-deploy-spec-boots:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: coti
+          POSTGRES_PASSWORD: coti
+          POSTGRES_DB: coti
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the api image
+        run: docker build -f docker/api.Dockerfile -t coti-api:ci .
+      - name: Bring the database to the state a first deploy leaves it in
+        env:
+          PGPASSWORD: coti
+        run: |
+          docker run --rm --network host coti-api:ci \
+            /api/bin/goose -dir /api/migrations \
+            postgres 'postgres://coti:coti@127.0.0.1:5432/coti?sslmode=disable' up
+          psql -h 127.0.0.1 -U coti -d coti -c "ALTER ROLE coti_app PASSWORD 'coti_app'"
+      - name: The API starts on the spec's own settings
+        run: |
+          DB=127.0.0.1:5432/coti?sslmode=disable
+          KEY=0123456789abcdef0123456789abcdef
+          yq -r '.services[] | select(.name == "api") | .envs[] | .key + "=" + (.value // "")' \
+            "$SPEC" > "$RUNNER_TEMP/raw.env"
+          sed -e "s|^DATABASE_ADMIN_URL=$|DATABASE_ADMIN_URL=postgres://coti:coti@$DB|" \
+              -e "s|^DATABASE_URL=$|DATABASE_URL=postgres://coti_app:coti_app@$DB|" \
+              -e "s|^AUTH_JWT_SECRET=$|AUTH_JWT_SECRET=$KEY|" \
+              -e "s|^STORAGE_LOCAL_SIGNING_SECRET=$|STORAGE_LOCAL_SIGNING_SECRET=$KEY|" \
+              -e 's|\${APP_URL}|https://coti.example|' \
+              "$RUNNER_TEMP/raw.env" > "$RUNNER_TEMP/api.env"
+          docker run -d --name api --network host \
+            --env-file "$RUNNER_TEMP/api.env" -e STORAGE_LOCAL_DIR=/var/lib/coti/storage \
+            coti-api:ci
+          for _ in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/ready) || code=000
+            if [ "$code" != '000' ]; then break; fi
+            sleep 2
+          done
+          docker logs api
+          if [ "$code" != '200' ]; then
+            echo "The API did not become ready on the spec's settings (last status $code)."
             exit 1
           fi
