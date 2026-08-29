@@ -1,0 +1,183 @@
+# Deployment
+
+Nothing is deployed yet. This is the map of what a deploy needs, written so the first one is a
+morning rather than a week. The target is **DigitalOcean**, chosen because the follow-up sweep
+needs a scheduled job the platform owns (see [scheduled-jobs.md](scheduled-jobs.md)).
+
+`.do/app.yaml` is the committed app spec. It carries the shape — components, ports, env var
+**names** — and no values: this repository is public, so every credential is a `type: SECRET` entry
+whose value is supplied in the console before the first deploy.
+
+## Three products, and they are not interchangeable
+
+| Product              | What it is                                            | Needed?                                       |
+| -------------------- | ----------------------------------------------------- | --------------------------------------------- |
+| **App Platform**     | Compute. Runs the Docker images.                      | **Yes** — this is the hosting.                |
+| **Managed Postgres** | The database.                                         | **Yes**                                       |
+| **Spaces**           | S3-compatible object storage for RFQ attachment files | Only once `STORAGE_PROVIDER=spaces` is chosen |
+
+Spaces is not on the critical path: `STORAGE_PROVIDER` defaults to `local`, the local adapter
+works, and the Spaces adapter exists but has never run against a real bucket. See
+[file-storage.md](file-storage.md).
+
+## Five components, one app
+
+| Component       | Type                    | Dockerfile                     | Port |
+| --------------- | ----------------------- | ------------------------------ | ---- |
+| `api`           | Web Service             | `docker/api.Dockerfile`        | 8000 |
+| `backoffice`    | Web Service             | `docker/backoffice.Dockerfile` | 3000 |
+| `webapp`        | Web Service             | `docker/webapp.Dockerfile`     | 3001 |
+| `migrate`       | Job, `kind: PRE_DEPLOY` | `docker/api.Dockerfile`        | —    |
+| `scheduled-job` | Job, `kind: SCHEDULED`  | `docker/api.Dockerfile`        | —    |
+| the database    | Managed Postgres        | —                              | —    |
+
+**Every component takes `source_dir: /`.** All three Dockerfiles build with the repository root as
+their context — `docker-compose.yml` says `context: .`, and the web ones copy `pnpm-workspace.yaml`,
+`turbo.json` and `packages/` — so a component pointed at `apps/api` fails at the first `COPY`. This
+is the most likely first failure and it is the cheapest one to avoid.
+
+The api image carries **four** binaries and the migration chain: `/api/bin/api`,
+`/api/bin/scheduled-job`, `/api/bin/catalog-embed`, `/api/bin/goose`, and `/api/migrations`. That is
+why one Dockerfile serves three components.
+
+**Instance sizing.** The spec uses `apps-s-1vcpu-1gb` (1 shared vCPU, 1 GiB, $12/month). Nothing has
+been load-tested; it is the smallest size worth starting a Next.js server on, and the number the
+cost estimate is built from. Jobs are billed only for the time they run.
+
+## Managed Postgres
+
+**PostgreSQL 16 or 17, never 15.** The chain needs three extensions and `vector` is absent from
+PG15's Standard extension list, while `unaccent` and `pgcrypto` are listed for 14 through 18.
+`00001` creates `vector` and `pgcrypto`, `00009` creates `unaccent`.
+
+**The extension registers as `vector`, not `pgvector`** — `CREATE EXTENSION vector;` is what the
+migration runs, and asking for `pgvector` fails.
+
+**Managed Postgres forces TLS.** Every connection string needs `?sslmode=require`; the local ones
+use `sslmode=disable` and copying one up is a connection that never opens.
+
+### Two roles, and only one of them exists for you
+
+| Variable             | Role       | Where it comes from                       |
+| -------------------- | ---------- | ----------------------------------------- |
+| `DATABASE_ADMIN_URL` | `doadmin`  | The cluster's own owner, created with it. |
+| `DATABASE_URL`       | `coti_app` | Created by `00001` **with no password**.  |
+
+`doadmin` is the owner: migrations, the scheduled jobs, and the pre-auth lookups that legitimately
+cross accounts run as it. `coti_app` is the restricted `NOBYPASSRLS` role every request-scoped query
+uses, and row level security is only a second net because the API connects as it. See
+[database.md](database.md).
+
+**Provisioning `coti_app`'s password is a manual step and nothing does it for you.** The chain
+creates a `LOGIN` role with a null password, which cannot authenticate under `scram-sha-256`, so a
+database that skipped this step refuses the API loudly instead of accepting a password anyone can
+read in this repository. Once the cluster exists and the PRE_DEPLOY job has run:
+
+```sql
+ALTER ROLE coti_app PASSWORD '<generated>';
+```
+
+Then set `DATABASE_URL` to that role's connection string as a `SECRET`. **Do not put this into a
+deploy job.** `ALTER ROLE` is DDL, so a cluster running with `log_statement = 'ddl'` writes the
+plaintext password into a log the platform exposes — a loud refusal beats a self-healing secret in
+a log.
+
+The failure mode is legible: the API's `/ready` probe checks both pools, so an unprovisioned role
+shows up as a deploy whose health check never passes, not as a silent half-working app.
+
+## Migrations run from a PRE_DEPLOY job
+
+```
+run_command: /api/bin/goose -dir /api/migrations postgres "$DATABASE_ADMIN_URL" up
+```
+
+**Not on API startup.** Startup migration races across instances, and a bad migration takes the app
+down instead of failing the deploy. A `PRE_DEPLOY` job runs before the new containers take traffic,
+once, and a failure stops the rollout with the old version still serving.
+
+The job needs `DATABASE_ADMIN_URL` and nothing else. goose is pinned as a tool dependency in
+`apps/api/go.mod`, so the image's copy and the one `pnpm db:migrate` uses locally are the same
+version by construction.
+
+## Two gotchas that cost an afternoon
+
+**`NEXT_PUBLIC_API_URL` is baked into the JavaScript bundle.** It is a build `ARG` in both web
+Dockerfiles, so on App Platform it must be scoped **`RUN_AND_BUILD_TIME`**. Set as run-time only,
+the deployed frontends call `http://localhost:8000` from the visitor's browser and there is no
+server-side error to find.
+
+There is an ordering problem behind it: the frontends need the API's public URL at build time, and
+that URL does not exist until the app does. **`${APP_URL}` does not get you out of it** — under a
+Dockerfile build App Platform resolves bindable variables at runtime only, so a build-time
+`${APP_URL}/api` is baked in literally. The way through is the round trip: deploy with a
+placeholder, read the app's URL, set it, and redeploy so the frontends rebuild. Runtime-only
+settings can still use the bindable, and `STORAGE_LOCAL_API_BASE_URL` and `WEB_BACKOFFICE_URL` do.
+
+**`ENV=production` refuses to boot when `DATABASE_URL` equals `DATABASE_ADMIN_URL`.** `config.Load()`
+rejects it deliberately: the request pool running as the owner would bypass every RLS policy, which
+is a cross-account leak rather than a misconfiguration. Give the two roles genuinely different URLs.
+
+## Secrets the deploy has to supply
+
+Every one of these is a `type: SECRET` entry in the spec with no committed value.
+
+| Key                             | Needed when                                                        | Shape                               |
+| ------------------------------- | ------------------------------------------------------------------ | ----------------------------------- |
+| `DATABASE_URL`                  | Always                                                             | `coti_app`'s URL, `sslmode=require` |
+| `DATABASE_ADMIN_URL`            | Always                                                             | `doadmin`'s URL, `sslmode=require`  |
+| `AUTH_JWT_SECRET`               | Always                                                             | ≥ 32 characters                     |
+| `STORAGE_LOCAL_SIGNING_SECRET`  | While `STORAGE_PROVIDER=local`                                     | ≥ 32 characters                     |
+| `CHANNEL_CONFIG_ENCRYPTION_KEY` | To configure any intake channel                                    | 32 bytes of base64                  |
+| `AI_ANTHROPIC_API_KEY`          | `AI_LLM_PROVIDER=anthropic`                                        | Provider key                        |
+| `AI_OPENAI_API_KEY`             | `AI_EMBEDDINGS_PROVIDER` or `AI_TRANSCRIPTION_PROVIDER` = `openai` | Provider key                        |
+| `MAIL_SMTP_USERNAME`            | `MAIL_PROVIDER=smtp`                                               | The mailbox                         |
+| `MAIL_SMTP_PASSWORD`            | `MAIL_PROVIDER=smtp`                                               | A Google App Password               |
+| `STORAGE_ACCESS_KEY`            | `STORAGE_PROVIDER=spaces`                                          | Spaces key                          |
+| `STORAGE_SECRET_KEY`            | `STORAGE_PROVIDER=spaces`                                          | Spaces secret                       |
+
+Three of them behave differently from the rest and it is worth knowing which:
+
+- **`AUTH_JWT_SECRET` is symmetric**, so anything holding it can mint a token for any account. The
+  backoffice deliberately does not get it; it forwards the bearer and asks `GET /v1/me`.
+- **`CHANNEL_CONFIG_ENCRYPTION_KEY` is not a boot requirement.** Unset, the API runs and only
+  _storing_ a channel credential is refused with 503. Rotating it makes every already-sealed
+  credential unreadable, and nothing re-seals them.
+- **`STORAGE_LOCAL_SIGNING_SECRET` is a credential, not a convenience** — it is what stops a storage
+  link being forged, so a deployment that shares it shares every stored file.
+
+Non-secret settings the deploy still has to get right: `ENV=production`, `NEXT_PUBLIC_API_URL`
+(scoped `RUN_AND_BUILD_TIME`), `WEB_BACKOFFICE_URL` (the base of the links the API mails, validated
+as an absolute URL), the three `AI_*_PROVIDER` selectors, `MAIL_PROVIDER` with its host and sender,
+and the rate-limit proxy pair. **`RATE_LIMIT_TRUSTED_PROXY_HOPS` and `RATE_LIMIT_TRUSTED_PROXY_CIDRS`
+are a startup error unless both are set**: hop counting is only spoof-resistant for a request that
+really transited the declared chain. The backoffice is one of those proxies — its calls are
+server-side, so without a hop declared every user in the product shares one rate-limit allowance.
+
+The full list of keys, with defaults and what each bounds, is in the four `.env.example` files.
+
+## First deploy, in order
+
+1. Create the **Managed Postgres** cluster (PG 16 or 17). Nothing else can be done first.
+2. Create the app from `.do/app.yaml`, filling in the database component's `cluster_name`, `db_name`
+   and `db_user`, and every `SECRET` value. `NEXT_PUBLIC_API_URL` is a placeholder at this point.
+3. The `migrate` PRE_DEPLOY job applies the chain as `doadmin`, creating `coti_app` among other
+   things.
+4. `ALTER ROLE coti_app PASSWORD '<generated>'` by hand, and set `DATABASE_URL` to match.
+5. Read the API component's public URL, set `NEXT_PUBLIC_API_URL` and `STORAGE_LOCAL_API_BASE_URL`
+   to it and `WEB_BACKOFFICE_URL` to the backoffice's, and redeploy so the frontends rebuild.
+6. Register the first account, then embed its catalog — `/api/bin/catalog-embed --account <uuid>`
+   from a console on the api component — and build the vector index once there are rows
+   (`pnpm db:vector-index`, see [catalog.md](catalog.md)). It is deliberately not in the chain: on
+   an empty table an ivfflat index is degenerate.
+7. Add the scheduled job's cron once there is a job registered to run; `cmd/scheduled-job --list` is
+   empty until a feature registers one.
+
+## What CI already proves
+
+`.github/workflows/ci.docker.yml` builds all three images on every PR that touches them or what they
+copy. The api job goes further: it asserts the four binaries are in the image and applies the whole
+migration chain **from inside it** against a real Postgres, which is the PRE_DEPLOY job's exact
+command. The web job boots each image and requires it to answer HTTP.
+
+So the image half of a deploy is continuously verified. The platform half — the app spec, the
+secrets, the ingress — is not, and cannot be without an app.

@@ -1,0 +1,222 @@
+# DigitalOcean App Platform spec for Coti. See docs/technical/deployment.md.
+#
+# This repository is PUBLIC, so this file carries names and shapes only: every credential is a
+# `type: SECRET` entry with no value, filled in the console before the first deploy, and the
+# database component's cluster is identified there too.
+#
+# Every component takes `source_dir: /`. All three Dockerfiles build with the repository root as
+# their build context, so a component pointed at apps/api fails at the first COPY.
+name: coti
+region: nyc
+
+# One domain, three components behind it. The two application paths are the one thing to settle
+# before applying: `/q` stands in for the public quote link, whose shape is a product decision.
+ingress:
+  rules:
+    - match:
+        path:
+          prefix: /api
+      component:
+        name: api
+    - match:
+        path:
+          prefix: /q
+      component:
+        name: webapp
+    - match:
+        path:
+          prefix: /
+      component:
+        name: backoffice
+
+databases:
+  - name: coti-db
+    engine: PG
+    version: '16'
+    production: true
+    # cluster_name / db_name / db_user identify the Managed Postgres cluster and are set when it is
+    # created. PostgreSQL 16 or 17, never 15: `vector` is absent from PG15's Standard extensions.
+
+services:
+  - name: api
+    dockerfile_path: docker/api.Dockerfile
+    source_dir: /
+    github:
+      repo: santialemarino/coti
+      branch: main
+      deploy_on_push: true
+    http_port: 8000
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-1gb
+    # /ready checks both pools, so an unprovisioned coti_app fails the deploy instead of serving
+    # half an app. /health answers whether the process is up and checks nothing.
+    health_check:
+      http_path: /ready
+    envs:
+      - key: ENV
+        scope: RUN_TIME
+        value: production
+      - key: API_PORT
+        scope: RUN_TIME
+        value: '8000'
+      # The owner role, whose URL the platform can bind. Verify it carries sslmode=require and
+      # append it if not; Managed Postgres refuses a plaintext connection.
+      - key: DATABASE_ADMIN_URL
+        scope: RUN_TIME
+        type: SECRET
+      # coti_app, the NOBYPASSRLS role. config.Load() refuses to boot in production when this
+      # equals DATABASE_ADMIN_URL, because that would bypass every row level security policy.
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: AUTH_JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_LOCAL_SIGNING_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: CHANNEL_CONFIG_ENCRYPTION_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: AI_ANTHROPIC_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: AI_OPENAI_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: MAIL_SMTP_USERNAME
+        scope: RUN_TIME
+        type: SECRET
+      - key: MAIL_SMTP_PASSWORD
+        scope: RUN_TIME
+        type: SECRET
+      # Selectors and addresses. Every capability defaults to disabled, so a deploy that omits
+      # these boots and refuses the calls that needed a model rather than failing to start.
+      - key: AI_LLM_PROVIDER
+        scope: RUN_TIME
+        value: anthropic
+      - key: AI_EMBEDDINGS_PROVIDER
+        scope: RUN_TIME
+        value: openai
+      - key: AI_TRANSCRIPTION_PROVIDER
+        scope: RUN_TIME
+        value: openai
+      - key: MAIL_PROVIDER
+        scope: RUN_TIME
+        value: smtp
+      - key: MAIL_SMTP_HOST
+        scope: RUN_TIME
+        value: smtp.gmail.com
+      - key: MAIL_FROM_ADDRESS
+        scope: RUN_TIME
+        type: SECRET
+      # Both or neither: hop counting is spoof-resistant only for a request that really transited
+      # the declared chain, so config.Load() refuses one without the other. The CIDRs are the
+      # platform's own forwarding range and are not committed.
+      - key: RATE_LIMIT_TRUSTED_PROXY_HOPS
+        scope: RUN_TIME
+        value: '1'
+      - key: RATE_LIMIT_TRUSTED_PROXY_CIDRS
+        scope: RUN_TIME
+        type: SECRET
+      # Where the API's own signed storage links point, and where the mailed links land. Both are
+      # known only once the app has a URL, which is why the first deploy is followed by a second.
+      - key: STORAGE_LOCAL_API_BASE_URL
+        scope: RUN_TIME
+        value: ${APP_URL}/api
+      - key: WEB_BACKOFFICE_URL
+        scope: RUN_TIME
+        value: ${APP_URL}
+
+  - name: backoffice
+    dockerfile_path: docker/backoffice.Dockerfile
+    source_dir: /
+    github:
+      repo: santialemarino/coti
+      branch: main
+      deploy_on_push: true
+    http_port: 3000
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-1gb
+    envs:
+      # RUN_AND_BUILD_TIME is load-bearing: this is a build ARG baked into the JavaScript bundle,
+      # so scoped RUN_TIME the deployed frontend calls localhost:8000 from the visitor's browser
+      # with nothing failing server-side. It cannot be ${APP_URL}/api either — under a Dockerfile
+      # build App Platform resolves bindables at runtime only — so it is the app's real URL,
+      # written in after the first deploy has produced one.
+      - key: NEXT_PUBLIC_API_URL
+        scope: RUN_AND_BUILD_TIME
+        value: http://localhost:8000
+      # The backoffice proxies every call server-side, so without a hop declared the API sees one
+      # address for every user in the product and they share one allowance.
+      - key: WEB_TRUSTED_PROXY_HOPS
+        scope: RUN_TIME
+        value: '1'
+
+  - name: webapp
+    dockerfile_path: docker/webapp.Dockerfile
+    source_dir: /
+    github:
+      repo: santialemarino/coti
+      branch: main
+      deploy_on_push: true
+    http_port: 3001
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-1gb
+    envs:
+      # Same as the backoffice: a build ARG, so a literal the second deploy fills in.
+      - key: NEXT_PUBLIC_API_URL
+        scope: RUN_AND_BUILD_TIME
+        value: http://localhost:8000
+
+jobs:
+  # Migrations run here rather than on API startup: startup migration races across instances, and a
+  # bad migration takes the app down instead of failing the deploy. PRE_DEPLOY runs once, before the
+  # new containers take traffic, and a failure leaves the old version serving.
+  - name: migrate
+    kind: PRE_DEPLOY
+    dockerfile_path: docker/api.Dockerfile
+    source_dir: /
+    github:
+      repo: santialemarino/coti
+      branch: main
+      deploy_on_push: true
+    instance_size_slug: apps-s-1vcpu-1gb
+    run_command: /api/bin/goose -dir /api/migrations postgres "$DATABASE_ADMIN_URL" up
+    envs:
+      - key: DATABASE_ADMIN_URL
+        scope: RUN_TIME
+        type: SECRET
+
+  # How often a sweep runs is the platform's schedule, never a compiled-in frequency, and one
+  # component per task. `--job <name>` is added with the first registered job: the registry is
+  # empty until a feature adds one.
+  - name: scheduled-job
+    kind: SCHEDULED
+    schedule:
+      cron: '0 9 * * *'
+      time_zone: America/Argentina/Buenos_Aires
+    dockerfile_path: docker/api.Dockerfile
+    source_dir: /
+    github:
+      repo: santialemarino/coti
+      branch: main
+      deploy_on_push: true
+    instance_size_slug: apps-s-1vcpu-1gb
+    run_command: /api/bin/scheduled-job --list
+    envs:
+      - key: ENV
+        scope: RUN_TIME
+        value: production
+      - key: DATABASE_ADMIN_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: AUTH_JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_LOCAL_SIGNING_SECRET
+        scope: RUN_TIME
+        type: SECRET

@@ -251,6 +251,16 @@ first, so a cold start can't race it.
 
 See [docs/technical/design-system.md](docs/technical/design-system.md).
 
+## Deployment
+
+Nothing is deployed yet. The target is DigitalOcean App Platform — three Web Services from the
+three Dockerfiles, a `PRE_DEPLOY` job that applies the migration chain with goose, a `SCHEDULED`
+job for the sweeps, and Managed Postgres. `.do/app.yaml` is the committed app spec, carrying
+component shapes and env var names only: this repository is public, so every credential is a
+`type: SECRET` entry whose value is supplied at deploy time.
+
+See [docs/technical/deployment.md](docs/technical/deployment.md).
+
 ## Branching & commits
 
 GitFlow (simplified): `main` (production) ← `dev` (integration) ← ephemeral
