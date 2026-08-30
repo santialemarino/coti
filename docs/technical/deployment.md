@@ -267,10 +267,10 @@ The full list of keys, with defaults and what each bounds, is in the four `.env.
 1. Create the **Managed Postgres** cluster (PG 16 or 17). Nothing else can be done first.
 2. `CREATE ROLE coti_app …` on it, as above. Doing this **before** anything deploys is what makes
    the first deploy succeed rather than fail at the api component.
-3. **Merge `dev` into `main`** — repo-side, so any time before the app is created. Every component
-   carries `github.branch: main` with `deploy_on_push: true`, so the platform builds whatever `main`
-   holds: the spec you apply and the code that gets built come from different places, and between
-   releases `main` trails `dev`.
+3. **Merge `dev` into `main`** — repo-side, so any time before the app is created. All five
+   components built from the repository carry `github.branch: main` with `deploy_on_push: true`, so
+   the platform builds whatever `main` holds: the spec you apply and the code that gets built come
+   from different places, and between releases `main` trails `dev`.
 4. Create the app from `.do/app.yaml`, filling in the database component's `cluster_name`, `db_name`
    and `db_user`, and the four secrets a boot needs: both database URLs, `AUTH_JWT_SECRET` and
    `STORAGE_LOCAL_SIGNING_SECRET`. The rest can wait. `NEXT_PUBLIC_API_URL` is still a placeholder.
