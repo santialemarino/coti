@@ -4,8 +4,8 @@
 name: coti
 region: nyc
 
-# Path routing on one hostname is what works before a domain is attached, with `/q` the public
-# quote link. The webapp's own subdomain names a host, so that block lives in deployment.md.
+# Path routing stays here permanently: this file names no host. The webapp's own subdomain and its
+# authority rules live in deployment.md, applied to the app. `/q` is the public quote link.
 ingress:
   rules:
     - match:
