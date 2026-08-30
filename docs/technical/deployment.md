@@ -102,13 +102,16 @@ ingress:
         name: backoffice
 ```
 
-Every rule names the host it answers on, so which component serves a request never depends on rule
-order — the App Platform reference defines no order — and the default `*.ondigitalocean.app` URL
-matches nothing once this is applied. **`zone` is what makes DigitalOcean own the DNS**, and it
-needs the registrar's nameservers pointed at `ns1`/`ns2`/`ns3.digitalocean.com` first; keeping DNS
-elsewhere means a CNAME per hostname to the app's default domain, or App Platform's A records at an
-apex whose provider will not flatten one. A domain that already carries a CAA record has to
-authorise both `letsencrypt.org` and `pki.goog`, or the certificate is never issued.
+Every rule names the host it answers on, so **no rule order can route a `cotizacion.` request to
+the backoffice** — which is the point, because the App Platform reference defines no order. On the
+primary domain `/api` and `/` still overlap, the way they do in the committed spec. The default
+`*.ondigitalocean.app` URL matches no rule at all once this is applied.
+
+**`zone` is what makes DigitalOcean own the DNS**, and it needs the registrar's nameservers pointed
+at `ns1`/`ns2`/`ns3.digitalocean.com` first; keeping DNS elsewhere means a CNAME per hostname to the
+app's default domain, or App Platform's A records at an apex whose provider will not flatten one.
+A domain that already carries a CAA record has to authorise both `letsencrypt.org` and `pki.goog`,
+or the certificate is never issued.
 
 **The API keeps `/api` on the primary domain.** `${APP_URL}` resolves to whichever domain is
 `PRIMARY`, so `STORAGE_LOCAL_API_BASE_URL` and `WEB_BACKOFFICE_URL` follow the custom domain with
