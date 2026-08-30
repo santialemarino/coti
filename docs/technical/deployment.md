@@ -267,28 +267,32 @@ The full list of keys, with defaults and what each bounds, is in the four `.env.
 1. Create the **Managed Postgres** cluster (PG 16 or 17). Nothing else can be done first.
 2. `CREATE ROLE coti_app …` on it, as above. Doing this **before** anything deploys is what makes
    the first deploy succeed rather than fail at the api component.
-3. Create the app from `.do/app.yaml`, filling in the database component's `cluster_name`, `db_name`
+3. **Merge `dev` into `main`** — repo-side, so any time before the app is created. All five
+   components built from the repository carry `github.branch: main` with `deploy_on_push: true`, so
+   the platform builds whatever `main` holds: the spec you apply and the code that gets built come
+   from different places, and between releases `main` trails `dev`.
+4. Create the app from `.do/app.yaml`, filling in the database component's `cluster_name`, `db_name`
    and `db_user`, and the four secrets a boot needs: both database URLs, `AUTH_JWT_SECRET` and
    `STORAGE_LOCAL_SIGNING_SECRET`. The rest can wait. `NEXT_PUBLIC_API_URL` is still a placeholder.
-4. The `migrate` PRE_DEPLOY job applies the chain as `doadmin`; the grants and RLS policies land on
+5. The `migrate` PRE_DEPLOY job applies the chain as `doadmin`; the grants and RLS policies land on
    the role from step 2, whose password it leaves alone.
-5. Attach the domain, if there is one, and apply the two-hostname block from
+6. Attach the domain, if there is one, and apply the two-hostname block from
    [One domain, two hostnames](#one-domain-two-hostnames) **to the app, not to `.do/app.yaml`**.
    Before the next step, not after it: `NEXT_PUBLIC_API_URL` is baked into the bundle, so a domain
    attached afterwards leaves the frontends calling the platform URL until another rebuild.
-6. Read the app's URL — the primary domain, once one is attached — set `NEXT_PUBLIC_API_URL` to
+7. Read the app's URL — the primary domain, once one is attached — set `NEXT_PUBLIC_API_URL` to
    `<url>/api` **on both web components**, and redeploy so the frontends rebuild around it. Setting
    it on one leaves the other calling `http://localhost:8000` from the visitor's browser.
    `STORAGE_LOCAL_API_BASE_URL` and `WEB_BACKOFFICE_URL` need no second pass — they are bound to
    `${APP_URL}` and resolve at runtime.
-7. Fill the optional secrets and flip their switches: mail, then the two AI vendors, then the
+8. Fill the optional secrets and flip their switches: mail, then the two AI vendors, then the
    rate-limit proxy pair. Each is a restart, not a rebuild.
-8. Register the first account, then embed its catalog — `/api/bin/catalog-embed --account <uuid>`
+9. Register the first account, then embed its catalog — `/api/bin/catalog-embed --account <uuid>`
    from a console on the api component — and build the vector index once there are rows
    (`pnpm db:vector-index`, see [catalog.md](catalog.md)). It is deliberately not in the chain: on
    an empty table an ivfflat index is degenerate.
-9. Add the scheduled job's cron once there is a job registered to run; `cmd/scheduled-job --list` is
-   empty until a feature registers one.
+10. Add the scheduled job's cron once there is a job registered to run; `cmd/scheduled-job --list` is
+    empty until a feature registers one.
 
 ## What CI already proves
 
