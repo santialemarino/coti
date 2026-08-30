@@ -5,7 +5,7 @@ name: coti
 region: nyc
 
 # Path routing on one hostname is what works before a domain is attached, with `/q` the public
-# quote link. The settled shape gives the webapp its own subdomain; deployment.md has that block.
+# quote link. The webapp's own subdomain names a host, so that block lives in deployment.md.
 ingress:
   rules:
     - match:

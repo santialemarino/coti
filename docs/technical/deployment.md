@@ -5,9 +5,10 @@ morning rather than a week. The target is **DigitalOcean**, chosen because the f
 needs a scheduled job the platform owns (see [scheduled-jobs.md](scheduled-jobs.md)).
 
 `.do/app.yaml` is the committed app spec. This repository is public, so it carries the shape —
-components, ports, and the settings that are not credentials — while every credential is a
-`type: SECRET` entry with no value, filled in the console. Four of them are needed before the first
-deploy and the rest are not; see [Secrets the deploy has to supply](#secrets-the-deploy-has-to-supply).
+components, ports, and the settings that are neither credentials nor hostnames — while every
+credential is a `type: SECRET` entry with no value, filled in the console. Four of them are needed
+before the first deploy and the rest are not; see
+[Secrets the deploy has to supply](#secrets-the-deploy-has-to-supply).
 
 ## Three products, and they are not interchangeable
 
@@ -60,9 +61,12 @@ to the exact host that set them and never sends them to a sibling. The client op
 guarantees it rather than anything in the code. A path under one domain puts the two on one origin
 and turns the same separation into something the code has to keep getting right.
 
-**The committed spec routes by path**, because authority matching needs a hostname and there is no
-domain yet — a first deploy runs on the default `*.ondigitalocean.app` URL. Once the domain exists,
-this replaces the spec's `ingress` and adds a `domains` list beside it:
+**The committed spec routes by path, and stays that way.** It names no hostname — the repository is
+public and the spec it carries is names and shapes — and path rules are what a fresh
+`doctl apps create` needs. So a first deploy runs on the default `*.ondigitalocean.app` URL, a
+hostname that does not exist until the app does. Once a domain is attached, this is what the app's
+`ingress` becomes, applied through the control panel or `doctl apps update --spec` rather than
+committed; re-applying the committed file wholesale returns the app to path routing:
 
 ```yaml
 domains:
@@ -98,16 +102,19 @@ ingress:
         name: backoffice
 ```
 
-`zone` is what has DigitalOcean create the DNS records; without it they are yours to point at the
-two ingress IPs. Every rule names the host it answers on, so which component serves a request never
-depends on rule order — the App Platform reference defines no order — and the default
-`*.ondigitalocean.app` URL matches nothing once this is applied.
+Every rule names the host it answers on, so which component serves a request never depends on rule
+order — the App Platform reference defines no order — and the default `*.ondigitalocean.app` URL
+matches nothing once this is applied. **`zone` is what makes DigitalOcean own the DNS**, and it
+needs the registrar's nameservers pointed at `ns1`/`ns2`/`ns3.digitalocean.com` first; keeping DNS
+elsewhere means a CNAME per hostname to the app's default domain, or App Platform's A records at an
+apex whose provider will not flatten one. A domain that already carries a CAA record has to
+authorise both `letsencrypt.org` and `pki.goog`, or the certificate is never issued.
 
 **The API keeps `/api` on the primary domain.** `${APP_URL}` resolves to whichever domain is
-`PRIMARY`, so the two settings bound to it follow the custom domain with nothing to change — which
-is why `PRIMARY` belongs to the backoffice rather than the webapp. The API declares no CORS, so
-whatever the webapp needs from it is fetched from its own server, the way the backoffice already
-proxies every call.
+`PRIMARY`, so `STORAGE_LOCAL_API_BASE_URL` and `WEB_BACKOFFICE_URL` follow the custom domain with
+nothing to change — which is why `PRIMARY` belongs to the backoffice rather than the webapp. The
+API declares no CORS, so whatever the webapp needs from it is fetched from its own server, the way
+the backoffice already proxies every call.
 
 ## Managed Postgres
 
@@ -262,10 +269,10 @@ The full list of keys, with defaults and what each bounds, is in the four `.env.
    `STORAGE_LOCAL_SIGNING_SECRET`. The rest can wait. `NEXT_PUBLIC_API_URL` is still a placeholder.
 4. The `migrate` PRE_DEPLOY job applies the chain as `doadmin`; the grants and RLS policies land on
    the role from step 2, whose password it leaves alone.
-5. Attach the domain, if there is one, and swap the `ingress` block for the two-hostname block in
-   [One domain, two hostnames](#one-domain-two-hostnames). Before the next step, not after it:
-   `NEXT_PUBLIC_API_URL` is baked into the bundle, so a domain attached afterwards leaves the
-   frontends calling the platform URL until another rebuild.
+5. Attach the domain, if there is one, and apply the two-hostname block from
+   [One domain, two hostnames](#one-domain-two-hostnames) **to the app, not to `.do/app.yaml`**.
+   Before the next step, not after it: `NEXT_PUBLIC_API_URL` is baked into the bundle, so a domain
+   attached afterwards leaves the frontends calling the platform URL until another rebuild.
 6. Read the app's URL — the primary domain, once one is attached — set `NEXT_PUBLIC_API_URL` to
    `<url>/api`, and redeploy so the frontends rebuild around it. `STORAGE_LOCAL_API_BASE_URL` and
    `WEB_BACKOFFICE_URL` need no second pass — they are bound to `${APP_URL}` and resolve at runtime.
