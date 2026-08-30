@@ -103,11 +103,11 @@ two ingress IPs. Every rule names the host it answers on, so which component ser
 depends on rule order — the App Platform reference defines no order — and the default
 `*.ondigitalocean.app` URL matches nothing once this is applied.
 
-**The API keeps `/api` on the primary domain.** `${APP_URL}` is the app's primary domain, so
-`STORAGE_LOCAL_API_BASE_URL` and `WEB_BACKOFFICE_URL` resolve to the backoffice with nothing to
-change, which is why the backoffice takes `PRIMARY`. The API declares no CORS, so whatever the
-webapp needs from it is fetched from its own server, the way the backoffice already proxies every
-call.
+**The API keeps `/api` on the primary domain.** `${APP_URL}` resolves to whichever domain is
+`PRIMARY`, so the two settings bound to it follow the custom domain with nothing to change — which
+is why `PRIMARY` belongs to the backoffice rather than the webapp. The API declares no CORS, so
+whatever the webapp needs from it is fetched from its own server, the way the backoffice already
+proxies every call.
 
 ## Managed Postgres
 
