@@ -277,8 +277,10 @@ The full list of keys, with defaults and what each bounds, is in the four `.env.
    Before the next step, not after it: `NEXT_PUBLIC_API_URL` is baked into the bundle, so a domain
    attached afterwards leaves the frontends calling the platform URL until another rebuild.
 6. Read the app's URL — the primary domain, once one is attached — set `NEXT_PUBLIC_API_URL` to
-   `<url>/api`, and redeploy so the frontends rebuild around it. `STORAGE_LOCAL_API_BASE_URL` and
-   `WEB_BACKOFFICE_URL` need no second pass — they are bound to `${APP_URL}` and resolve at runtime.
+   `<url>/api` **on both web components**, and redeploy so the frontends rebuild around it. Setting
+   it on one leaves the other calling `http://localhost:8000` from the visitor's browser.
+   `STORAGE_LOCAL_API_BASE_URL` and `WEB_BACKOFFICE_URL` need no second pass — they are bound to
+   `${APP_URL}` and resolve at runtime.
 7. Fill the optional secrets and flip their switches: mail, then the two AI vendors, then the
    rate-limit proxy pair. Each is a restart, not a rebuild.
 8. Register the first account, then embed its catalog — `/api/bin/catalog-embed --account <uuid>`
