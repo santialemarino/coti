@@ -45,6 +45,70 @@ why one Dockerfile serves three components.
 been load-tested; it is the smallest size worth starting a Next.js server on, and the number the
 cost estimate is built from. Jobs are billed only for the time they run.
 
+## One domain, two hostnames
+
+The backoffice and the public quote link answer on separate hostnames: the backoffice on the
+primary domain, the webapp on `cotizacion.<domain>`. One registrar domain buys both: a subdomain
+costs nothing on top of it, DigitalOcean DNS hosting is free, App Platform offers two public ingress
+IPs free of charge, and a certificate is provisioned per hostname automatically. It stays one app
+and one bill.
+
+**The session cookies are the reason.** `coti_access_token`, `coti_refresh_token` and `coti_branch`
+are set with no `domain` attribute (`apps/backoffice/lib/auth/tokens.ts`), so a browser scopes them
+to the exact host that set them and never sends them to a sibling. The client opening a
+`quote_send.public_token` link therefore never carries a backoffice session, and the browser is what
+guarantees it rather than anything in the code. A path under one domain puts the two on one origin
+and turns the same separation into something the code has to keep getting right.
+
+**The committed spec routes by path**, because authority matching needs a hostname and there is no
+domain yet — a first deploy runs on the default `*.ondigitalocean.app` URL. Once the domain exists,
+this replaces the spec's `ingress` and adds a `domains` list beside it:
+
+```yaml
+domains:
+  - domain: example.com
+    type: PRIMARY
+    zone: example.com
+  - domain: cotizacion.example.com
+    type: ALIAS
+    zone: example.com
+
+ingress:
+  rules:
+    - match:
+        authority:
+          exact: cotizacion.example.com
+        path:
+          prefix: /
+      component:
+        name: webapp
+    - match:
+        authority:
+          exact: example.com
+        path:
+          prefix: /api
+      component:
+        name: api
+    - match:
+        authority:
+          exact: example.com
+        path:
+          prefix: /
+      component:
+        name: backoffice
+```
+
+`zone` is what has DigitalOcean create the DNS records; without it they are yours to point at the
+two ingress IPs. Every rule names the host it answers on, so which component serves a request never
+depends on rule order — the App Platform reference defines no order — and the default
+`*.ondigitalocean.app` URL matches nothing once this is applied.
+
+**The API keeps `/api` on the primary domain.** `${APP_URL}` is the app's primary domain, so
+`STORAGE_LOCAL_API_BASE_URL` and `WEB_BACKOFFICE_URL` resolve to the backoffice with nothing to
+change, which is why the backoffice takes `PRIMARY`. The API declares no CORS, so whatever the
+webapp needs from it is fetched from its own server, the way the backoffice already proxies every
+call.
+
 ## Managed Postgres
 
 **PostgreSQL 16 or 17, never 15.** The chain needs three extensions and `vector` is absent from
@@ -198,16 +262,20 @@ The full list of keys, with defaults and what each bounds, is in the four `.env.
    `STORAGE_LOCAL_SIGNING_SECRET`. The rest can wait. `NEXT_PUBLIC_API_URL` is still a placeholder.
 4. The `migrate` PRE_DEPLOY job applies the chain as `doadmin`; the grants and RLS policies land on
    the role from step 2, whose password it leaves alone.
-5. Read the app's URL, set `NEXT_PUBLIC_API_URL` to `<url>/api`, and redeploy so the frontends
-   rebuild around it. `STORAGE_LOCAL_API_BASE_URL` and `WEB_BACKOFFICE_URL` need no second pass —
-   they are bound to `${APP_URL}` and resolve at runtime.
-6. Fill the optional secrets and flip their switches: mail, then the two AI vendors, then the
+5. Attach the domain, if there is one, and swap the `ingress` block for the two-hostname block in
+   [One domain, two hostnames](#one-domain-two-hostnames). Before the next step, not after it:
+   `NEXT_PUBLIC_API_URL` is baked into the bundle, so a domain attached afterwards leaves the
+   frontends calling the platform URL until another rebuild.
+6. Read the app's URL — the primary domain, once one is attached — set `NEXT_PUBLIC_API_URL` to
+   `<url>/api`, and redeploy so the frontends rebuild around it. `STORAGE_LOCAL_API_BASE_URL` and
+   `WEB_BACKOFFICE_URL` need no second pass — they are bound to `${APP_URL}` and resolve at runtime.
+7. Fill the optional secrets and flip their switches: mail, then the two AI vendors, then the
    rate-limit proxy pair. Each is a restart, not a rebuild.
-7. Register the first account, then embed its catalog — `/api/bin/catalog-embed --account <uuid>`
+8. Register the first account, then embed its catalog — `/api/bin/catalog-embed --account <uuid>`
    from a console on the api component — and build the vector index once there are rows
    (`pnpm db:vector-index`, see [catalog.md](catalog.md)). It is deliberately not in the chain: on
    an empty table an ivfflat index is degenerate.
-8. Add the scheduled job's cron once there is a job registered to run; `cmd/scheduled-job --list` is
+9. Add the scheduled job's cron once there is a job registered to run; `cmd/scheduled-job --list` is
    empty until a feature registers one.
 
 ## What CI already proves

@@ -4,8 +4,8 @@
 name: coti
 region: nyc
 
-# One domain, three components behind it. The two application paths are the one thing to settle
-# before applying: `/q` stands in for the public quote link, whose shape is a product decision.
+# Path routing on one hostname is what works before a domain is attached, with `/q` the public
+# quote link. The settled shape gives the webapp its own subdomain; deployment.md has that block.
 ingress:
   rules:
     - match:
