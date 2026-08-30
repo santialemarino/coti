@@ -62,11 +62,11 @@ guarantees it rather than anything in the code. A path under one domain puts the
 and turns the same separation into something the code has to keep getting right.
 
 **The committed spec routes by path, and stays that way.** It names no hostname — the repository is
-public and the spec it carries is names and shapes — and path rules are what a fresh
-`doctl apps create` needs. So a first deploy runs on the default `*.ondigitalocean.app` URL, a
-hostname that does not exist until the app does. Once a domain is attached, this is what the app's
-`ingress` becomes, applied through the control panel or `doctl apps update --spec` rather than
-committed; re-applying the committed file wholesale returns the app to path routing:
+public — and path rules are what a fresh `doctl apps create` needs. So a first deploy runs on the
+default `*.ondigitalocean.app` URL, a hostname that does not exist until the app does. Once a domain
+is attached, the app's `ingress` becomes the block below, applied through the control panel or
+`doctl apps update --spec` and never committed — so re-applying `.do/app.yaml` wholesale puts the
+app back on path routing.
 
 ```yaml
 domains:
