@@ -59,13 +59,23 @@ type fakeRFQExtractor struct {
 
 func (f *fakeRFQExtractor) Extract(
 	_ context.Context, raw string,
-) ([]domain.ExtractedRFQLine, error) {
+) (*domain.RFQExtraction, error) {
 	f.calls++
 	f.raw = raw
 	if f.db != nil {
 		f.calledOutsideTx = f.db.activeTransactions == 0
 	}
-	return f.lines, f.err
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &domain.RFQExtraction{
+		Lines: f.lines,
+		Usage: domain.GenerationUsage{
+			Provider: "test-provider", Model: "test-model", InputTokens: 21, OutputTokens: 13,
+			CacheReadTokens: 8, CacheWriteTokens: 5,
+		},
+		PromptVersion: "test-prompt-v1", SchemaVersion: "test-schema-v1",
+	}, nil
 }
 
 type fakeCatalogMatcher struct {
@@ -200,6 +210,30 @@ type fakeQuoteDrafts struct {
 	statusChanges      []quoteStatusChangeCall
 }
 
+type fakeQuoteAIGenerations struct {
+	created []domain.NewQuoteAIGeneration
+	items   [][]domain.NewQuoteAIGenerationItem
+	err     error
+}
+
+func (f *fakeQuoteAIGenerations) Create(
+	_ context.Context, _ repository.Querier, accountID uuid.UUID,
+	in domain.NewQuoteAIGeneration, items []domain.NewQuoteAIGenerationItem,
+) (*domain.QuoteAIGeneration, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	f.created = append(f.created, in)
+	f.items = append(f.items, items)
+	return &domain.QuoteAIGeneration{
+		ID: uuid.New(), AccountID: accountID, QuoteID: in.QuoteID,
+		QuoteVersionID: in.QuoteVersionID, Provider: in.Provider, Model: in.Model,
+		PromptVersion: in.PromptVersion, SchemaVersion: in.SchemaVersion,
+		InputTokens: in.InputTokens, OutputTokens: in.OutputTokens,
+		CacheReadTokens: in.CacheReadTokens, CacheWriteTokens: in.CacheWriteTokens,
+	}, nil
+}
+
 func (f *fakeQuoteDrafts) Create(
 	_ context.Context, _ repository.Querier, accountID uuid.UUID, in domain.NewQuote,
 ) (*domain.Quote, error) {
@@ -304,13 +338,14 @@ func (f *fakeQuoteDrafts) AppendStatusChange(
 }
 
 type rfqHarness struct {
-	service   *RFQService
-	db        *fakeRFQDB
-	extractor *fakeRFQExtractor
-	matcher   *fakeCatalogMatcher
-	rfqs      *fakeRFQs
-	quotes    *fakeQuoteDrafts
-	channels  *fakeRFQChannels
+	service     *RFQService
+	db          *fakeRFQDB
+	extractor   *fakeRFQExtractor
+	matcher     *fakeCatalogMatcher
+	rfqs        *fakeRFQs
+	quotes      *fakeQuoteDrafts
+	generations *fakeQuoteAIGenerations
+	channels    *fakeRFQChannels
 }
 
 // newRFQHarness wires the service to fakes, with matching answering MATCHED for every line so a
@@ -327,12 +362,13 @@ func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 		}
 	}
 	h := &rfqHarness{
-		db:        db,
-		extractor: &fakeRFQExtractor{lines: lines, db: db},
-		matcher:   &fakeCatalogMatcher{matches: matches, db: db},
-		rfqs:      &fakeRFQs{},
-		quotes:    &fakeQuoteDrafts{},
-		channels:  &fakeRFQChannels{},
+		db:          db,
+		extractor:   &fakeRFQExtractor{lines: lines, db: db},
+		matcher:     &fakeCatalogMatcher{matches: matches, db: db},
+		rfqs:        &fakeRFQs{},
+		quotes:      &fakeQuoteDrafts{},
+		generations: &fakeQuoteAIGenerations{},
+		channels:    &fakeRFQChannels{},
 	}
 	channel := domain.Channel{
 		ID: testChannelID, AccountID: testAccountID, BranchID: testBranchID,
@@ -340,8 +376,8 @@ func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 	}
 	h.channels.channel = &channel
 	h.channels.channelsByType = []domain.Channel{channel}
-	h.service = NewRFQService(h.db, h.rfqs, h.quotes, h.channels, h.extractor, h.matcher, nil,
-		testRFQConfig())
+	h.service = NewRFQService(h.db, h.rfqs, h.quotes, h.generations, h.channels, h.extractor,
+		h.matcher, nil, testRFQConfig())
 	return h
 }
 
@@ -459,6 +495,33 @@ func TestRFQService_CreateTextDraft_PersistsGeneratedDraft(t *testing.T) {
 	}
 	if len(h.quotes.currentVersion) != 1 || h.quotes.currentVersion[0] != testVersionID {
 		t.Errorf("current version pointer %v, want the new version", h.quotes.currentVersion)
+	}
+	if len(h.generations.created) != 1 || len(h.generations.items) != 1 ||
+		len(h.generations.items[0]) != 1 {
+		t.Fatalf("AI generation writes = %v / %v, want one generation with one item",
+			h.generations.created, h.generations.items)
+	}
+	generation := h.generations.created[0]
+	if generation.QuoteID != testQuoteID || generation.QuoteVersionID != testVersionID {
+		t.Errorf("AI generation targets quote/version %s/%s, want %s/%s", generation.QuoteID,
+			generation.QuoteVersionID, testQuoteID, testVersionID)
+	}
+	if generation.Provider != "test-provider" || generation.Model != "test-model" ||
+		generation.PromptVersion != "test-prompt-v1" ||
+		generation.SchemaVersion != "test-schema-v1" {
+		t.Errorf("AI generation identity = %+v, want the extractor metadata", generation)
+	}
+	if generation.InputTokens != 21 || generation.OutputTokens != 13 ||
+		generation.CacheReadTokens != 8 || generation.CacheWriteTokens != 5 {
+		t.Errorf("AI generation usage = %+v, want 21/13/8/5", generation)
+	}
+	generatedItem := h.generations.items[0][0]
+	if generatedItem.Position != 0 ||
+		generatedItem.QuantitySource != domain.QuantitySourceExplicit ||
+		generatedItem.ProductID == nil || *generatedItem.ProductID != testProductID ||
+		generatedItem.MatchStatus != domain.ItemMatchStatusMatched ||
+		!generatedItem.ConfidenceScore.Decimal.Equal(decimal.RequireFromString("0.9100")) {
+		t.Errorf("AI generation item = %+v, want the original matched proposal", generatedItem)
 	}
 
 	if len(h.rfqs.updatedStatus) != 1 || h.rfqs.updatedStatus[0] != domain.RFQStatusGenerated {
@@ -1120,6 +1183,23 @@ func TestRFQService_CreateTextDraft_FailsTheDraftWhenCandidatesCannotBeWritten(t
 	if len(h.rfqs.updatedStatus) != 0 {
 		t.Errorf("wrote RFQ statuses %v, want none: the draft never completed",
 			h.rfqs.updatedStatus)
+	}
+}
+
+func TestRFQService_CreateTextDraft_FailsTheDraftWhenTheAIBaselineCannotBeWritten(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("cemento", "10", "bolsa", "pidió 10"),
+	})
+	h.generations.err = domain.ErrNotFound
+
+	_, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "10 bolsas de cemento"})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("CreateTextDraft returned %v, want ErrNotFound", err)
+	}
+	if len(h.rfqs.updatedStatus) != 0 || len(h.quotes.statusChanges) != 0 {
+		t.Errorf("completed status writes RFQ=%v quote=%v, want none when the baseline failed",
+			h.rfqs.updatedStatus, h.quotes.statusChanges)
 	}
 }
 

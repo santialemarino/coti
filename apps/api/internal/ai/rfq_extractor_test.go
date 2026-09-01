@@ -37,7 +37,9 @@ func (f *fakeGenerator) Generate(
 	if err := decoder.Decode(out); err != nil {
 		return nil, err
 	}
-	return &domain.GenerationUsage{}, nil
+	return &domain.GenerationUsage{
+		Provider: "test-provider", Model: "test-model", InputTokens: 12, OutputTokens: 7,
+	}, nil
 }
 
 func TestRFQExtractor_Extract_MapsEverySource(t *testing.T) {
@@ -51,16 +53,26 @@ func TestRFQExtractor_Extract_MapsEverySource(t *testing.T) {
 	]}`}
 	extractor := NewRFQExtractor(generator, 50)
 
-	lines, err := extractor.Extract(context.Background(), "10 bolsas de cemento, 3 pallets, arena")
+	extraction, err := extractor.Extract(context.Background(), "10 bolsas de cemento, 3 pallets, arena")
 	if err != nil {
 		t.Fatalf("Extract returned %v", err)
 	}
+	lines := extraction.Lines
 	if len(lines) != 3 {
 		t.Fatalf("read %d lines, want 3", len(lines))
 	}
 	// One call for the whole order: a call per line would pay for the instructions each time.
 	if generator.calls != 1 {
 		t.Errorf("generator called %d times, want once for the whole order", generator.calls)
+	}
+	if extraction.Usage.Provider != "test-provider" || extraction.Usage.Model != "test-model" {
+		t.Errorf("generation identity = %s/%s, want test-provider/test-model",
+			extraction.Usage.Provider, extraction.Usage.Model)
+	}
+	if extraction.PromptVersion != rfqExtractionPromptVersion ||
+		extraction.SchemaVersion != rfqExtractionSchemaVersion {
+		t.Errorf("extraction versions = %s/%s, want %s/%s", extraction.PromptVersion,
+			extraction.SchemaVersion, rfqExtractionPromptVersion, rfqExtractionSchemaVersion)
 	}
 
 	if lines[0].Source != domain.QuantitySourceExplicit {
@@ -109,10 +121,11 @@ func TestRFQExtractor_Extract_ZeroesAQuantitySentOnAnUnresolvedLine(t *testing.T
 	]}`}
 	extractor := NewRFQExtractor(generator, 50)
 
-	lines, err := extractor.Extract(context.Background(), "necesito cemento")
+	extraction, err := extractor.Extract(context.Background(), "necesito cemento")
 	if err != nil {
 		t.Fatalf("Extract returned %v", err)
 	}
+	lines := extraction.Lines
 	if !lines[0].Quantity.IsZero() {
 		t.Errorf("quantity %s survived an unresolved line, want zero", lines[0].Quantity)
 	}

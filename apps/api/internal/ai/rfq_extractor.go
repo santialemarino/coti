@@ -11,6 +11,11 @@ import (
 
 var _ domain.RFQExtractor = (*RFQExtractor)(nil)
 
+const (
+	rfqExtractionPromptVersion = "rfq-extraction-prompt-v1"
+	rfqExtractionSchemaVersion = "rfq-extraction-schema-v1"
+)
+
 // RFQExtractor reads the materials out of an informal order. It is provider-agnostic: the prompt
 // and the schema are its own, and whichever language model is bound answers them.
 type RFQExtractor struct {
@@ -26,14 +31,18 @@ func NewRFQExtractor(generator domain.StructuredGenerator, maxItems int) *RFQExt
 
 // Extract reads raw and returns one line per material the client asked for, in the order they
 // appear. A material whose quantity cannot be defended comes back UNRESOLVED rather than guessed.
-func (e *RFQExtractor) Extract(ctx context.Context, raw string) ([]domain.ExtractedRFQLine, error) {
+func (e *RFQExtractor) Extract(ctx context.Context, raw string) (*domain.RFQExtraction, error) {
 	var answer rfqExtractionAnswer
-	if _, err := e.generator.Generate(ctx, domain.GenerationRequest{
+	usage, err := e.generator.Generate(ctx, domain.GenerationRequest{
 		Instructions: e.instructions(),
 		Input:        []domain.Content{domain.TextContent(raw)},
 		Schema:       rfqExtractionSchema(),
-	}, &answer); err != nil {
+	}, &answer)
+	if err != nil {
 		return nil, err
+	}
+	if usage == nil {
+		return nil, fmt.Errorf("%w: RFQ extraction returned no generation usage", domain.ErrInvalidInput)
 	}
 	lines := make([]domain.ExtractedRFQLine, 0, len(answer.Items))
 	for i, item := range answer.Items {
@@ -50,7 +59,12 @@ func (e *RFQExtractor) Extract(ctx context.Context, raw string) ([]domain.Extrac
 			QuantityRationale:    item.QuantityRationale,
 		})
 	}
-	return lines, nil
+	return &domain.RFQExtraction{
+		Lines:         lines,
+		Usage:         *usage,
+		PromptVersion: rfqExtractionPromptVersion,
+		SchemaVersion: rfqExtractionSchemaVersion,
+	}, nil
 }
 
 // instructions is the stable half of the prompt, so a provider that caches a prefix pays full

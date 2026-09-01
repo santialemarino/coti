@@ -85,11 +85,20 @@ type ExtractedRFQLine struct {
 	QuantityRationale string
 }
 
+// RFQExtraction is one reproducible model answer and the metadata needed to compare it with
+// later prompt or model revisions.
+type RFQExtraction struct {
+	Lines         []ExtractedRFQLine
+	Usage         GenerationUsage
+	PromptVersion string
+	SchemaVersion string
+}
+
 // RFQExtractor turns informal RFQ text into the lines a quote draft is built from. It is a
 // feature port: its adapter owns the prompt and the schema and reaches the model through
 // StructuredGenerator, never a provider SDK.
 type RFQExtractor interface {
-	Extract(ctx context.Context, raw string) ([]ExtractedRFQLine, error)
+	Extract(ctx context.Context, raw string) (*RFQExtraction, error)
 }
 
 // TextRFQDraftInput is one plain-text order to run through the RFQ pipeline.
