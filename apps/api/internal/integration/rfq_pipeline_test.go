@@ -33,8 +33,14 @@ type stagedExtractor struct {
 
 func (s stagedExtractor) Extract(
 	_ context.Context, _ string,
-) ([]domain.ExtractedRFQLine, error) {
-	return s.lines, nil
+) (*domain.RFQExtraction, error) {
+	return &domain.RFQExtraction{
+		Lines: s.lines,
+		Usage: domain.GenerationUsage{
+			Provider: "integration-provider", Model: "integration-model",
+		},
+		PromptVersion: "integration-prompt-v1", SchemaVersion: "integration-schema-v1",
+	}, nil
 }
 
 func rfqConfig() config.RFQConfig {
@@ -48,7 +54,8 @@ func (e *env) pipeline(
 ) *services.RFQService {
 	t.Helper()
 	return services.NewRFQService(e.db, repository.NewRFQRepository(),
-		repository.NewQuoteRepository(), repository.NewChannelRepository(), extractor,
+		repository.NewQuoteRepository(), repository.NewQuoteAIGenerationRepository(),
+		repository.NewChannelRepository(), extractor,
 		e.matcher(t, matchConfig(), axes),
 		slog.New(slog.NewTextHandler(io.Discard, nil)), rfqConfig())
 }
@@ -71,12 +78,27 @@ func (e *env) seedIntakeChannel(t *testing.T, accountID, branchID uuid.UUID) uui
 func (e *env) dropDraft(t *testing.T, rfqID uuid.UUID) {
 	t.Helper()
 	t.Cleanup(func() {
+		e.mustCleanup(t, `DELETE FROM quote_quality_difference WHERE evaluation_id IN (
+		  SELECT evaluation.id FROM quote_quality_evaluation evaluation
+		  JOIN quote_ai_generation generation ON generation.id = evaluation.generation_id
+		  JOIN quote c ON c.id = generation.quote_id WHERE c.rfq_id = $1)`, rfqID)
+		e.mustCleanup(t, `DELETE FROM quote_quality_evaluation WHERE generation_id IN (
+		  SELECT generation.id FROM quote_ai_generation generation
+		  JOIN quote c ON c.id = generation.quote_id WHERE c.rfq_id = $1)`, rfqID)
+		e.mustCleanup(t, `DELETE FROM quote_ai_generation_item WHERE generation_id IN (
+		  SELECT generation.id FROM quote_ai_generation generation
+		  JOIN quote c ON c.id = generation.quote_id WHERE c.rfq_id = $1)`, rfqID)
+		e.mustCleanup(t, `DELETE FROM quote_ai_generation WHERE quote_id IN (
+		  SELECT id FROM quote WHERE rfq_id = $1)`, rfqID)
 		// The candidates go first: a foreign key on quote_item_alternative points at the lines.
 		e.mustCleanup(t, `DELETE FROM quote_item_alternative WHERE quote_item_id IN (
 		  SELECT i.id FROM quote_item i
 		  JOIN quote_version v ON v.id = i.version_id
 		  JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`, rfqID)
 		e.mustCleanup(t, `DELETE FROM quote_item WHERE version_id IN (
+		  SELECT v.id FROM quote_version v JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`,
+			rfqID)
+		e.mustCleanup(t, `DELETE FROM quote_send WHERE version_id IN (
 		  SELECT v.id FROM quote_version v JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`,
 			rfqID)
 		e.mustCleanup(t, `UPDATE quote SET current_version_id = NULL WHERE rfq_id = $1`, rfqID)
@@ -88,6 +110,83 @@ func (e *env) dropDraft(t *testing.T, rfqID uuid.UUID) {
 		e.mustCleanup(t, `DELETE FROM rfq_status_change WHERE rfq_id = $1`, rfqID)
 		e.mustCleanup(t, `DELETE FROM rfq WHERE id = $1`, rfqID)
 	})
+}
+
+func TestQuoteQualityHook_PersistsOneIdempotentLabelAfterTheVersionIsSent(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "Quote quality hook")
+	channelID := e.seedIntakeChannel(t, accountID, branchID)
+	seller := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	productID := e.seedPricedProduct(t, accountID, branchID, "Cemento Portland 50kg", "50", nil)
+	e.embedOn(t, productID, 0, 0.98)
+	unit := "bolsa"
+	tenant := domain.Tenant{
+		AccountID: accountID, BranchID: branchID, UserID: seller.ID, Role: domain.UserRoleAdmin,
+	}
+
+	draft, err := e.pipeline(t, stagedExtractor{lines: []domain.ExtractedRFQLine{{
+		RequestedDescription: "2 bolsas de cemento", Quantity: decimal.RequireFromString("2"),
+		Unit: &unit, Source: domain.QuantitySourceExplicit,
+		QuantityRationale: "el cliente pidió 2 bolsas",
+	}}}, map[string]int{"2 bolsas de cemento": 0}).CreateTextDraft(context.Background(), tenant,
+		domain.TextRFQDraftInput{ChannelID: channelID, RawText: "2 bolsas de cemento"})
+	if err != nil {
+		t.Fatalf("CreateTextDraft() = %v", err)
+	}
+	e.dropDraft(t, draft.RFQ.ID)
+
+	quoteRepo := repository.NewQuoteRepository()
+	quoteService := services.NewQuoteService(e.db, quoteRepo,
+		repository.NewProductPriceRepository(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if _, err := quoteService.AcceptMaterials(context.Background(), tenant, draft.Quote.ID); err != nil {
+		t.Fatalf("AcceptMaterials() = %v", err)
+	}
+	// The send feature does not exist yet. These writes are its future committed outcome, and the
+	// hook deliberately refuses to evaluate before the frozen version and durable send both exist.
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`UPDATE quote_version SET is_immutable = TRUE WHERE id = $1`, draft.Version.ID); err != nil {
+		t.Fatalf("freeze version as the future send flow would: %v", err)
+	}
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`UPDATE quote SET current_status = 'SENT' WHERE id = $1`, draft.Quote.ID); err != nil {
+		t.Fatalf("mark quote sent as the future send flow would: %v", err)
+	}
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO quote_send (account_id, version_id, channel_id, format, sent_at, tracking_status)
+		 VALUES ($1, $2, $3, 'MESSAGE', now(), 'SENT')`,
+		accountID, draft.Version.ID, channelID); err != nil {
+		t.Fatalf("record the completed send as the future send flow would: %v", err)
+	}
+
+	quality := services.NewQuoteQualityService(e.db, repository.NewQuoteQualityRepository())
+	first, err := quality.EvaluateFinalQuote(context.Background(), tenant, draft.Quote.ID,
+		draft.Version.ID)
+	if err != nil {
+		t.Fatalf("EvaluateFinalQuote() = %v", err)
+	}
+	second, err := quality.EvaluateFinalQuote(context.Background(), tenant, draft.Quote.ID,
+		draft.Version.ID)
+	if err != nil {
+		t.Fatalf("second EvaluateFinalQuote() = %v", err)
+	}
+	if !first.WholeQuoteCorrect || first.ID != second.ID {
+		t.Errorf("evaluations = %+v / %+v, want one idempotent correct label", first, second)
+	}
+
+	var evaluations, differences int
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT COUNT(*) FROM quote_quality_evaluation WHERE generation_id = $1`,
+		first.GenerationID).Scan(&evaluations); err != nil {
+		t.Fatalf("count evaluations: %v", err)
+	}
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT COUNT(*) FROM quote_quality_difference WHERE evaluation_id = $1`,
+		first.ID).Scan(&differences); err != nil {
+		t.Fatalf("count differences: %v", err)
+	}
+	if evaluations != 1 || differences != 0 {
+		t.Errorf("stored evaluations/differences = %d/%d, want 1/0", evaluations, differences)
+	}
 }
 
 func TestRFQPipeline_PersistsTheMatchRealSearchDecided(t *testing.T) {
@@ -179,6 +278,68 @@ func TestRFQPipeline_PersistsTheMatchRealSearchDecided(t *testing.T) {
 	}
 	if len(lines) != 2 {
 		t.Fatalf("stored %d lines, want 2", len(lines))
+	}
+
+	var provider, model, promptVersion, schemaVersion string
+	var inputTokens, outputTokens int
+	if err := e.db.CrossAccount().QueryRow(ctx,
+		`SELECT provider, model, prompt_version, schema_version, input_tokens, output_tokens
+		 FROM quote_ai_generation WHERE quote_version_id = $1`, draft.Version.ID,
+	).Scan(&provider, &model, &promptVersion, &schemaVersion, &inputTokens, &outputTokens); err != nil {
+		t.Fatalf("read AI generation back: %v", err)
+	}
+	if provider != "integration-provider" || model != "integration-model" ||
+		promptVersion != "integration-prompt-v1" || schemaVersion != "integration-schema-v1" {
+		t.Errorf("generation identity = %s/%s %s/%s, want the staged extractor identity",
+			provider, model, promptVersion, schemaVersion)
+	}
+	if inputTokens != 0 || outputTokens != 0 {
+		t.Errorf("generation tokens = %d/%d, want 0/0", inputTokens, outputTokens)
+	}
+
+	generationRows, err := e.db.CrossAccount().Query(ctx,
+		`SELECT position, requested_description, quantity, unit, quantity_source, product_id,
+		        match_status, confidence_score
+		 FROM quote_ai_generation_item item
+		 JOIN quote_ai_generation generation ON generation.id = item.generation_id
+		 WHERE generation.quote_version_id = $1 ORDER BY position`, draft.Version.ID)
+	if err != nil {
+		t.Fatalf("read AI generation items back: %v", err)
+	}
+	defer generationRows.Close()
+
+	var generated []stored
+	var sources []string
+	for generationRows.Next() {
+		var position int
+		var line stored
+		var source string
+		if err := generationRows.Scan(&position, &line.description, &line.quantity, &line.unit,
+			&source, &line.productID, &line.status, &line.confidence); err != nil {
+			t.Fatalf("scan AI generation item: %v", err)
+		}
+		if position != len(generated) {
+			t.Errorf("generation position = %d, want %d", position, len(generated))
+		}
+		generated = append(generated, line)
+		sources = append(sources, source)
+	}
+	if err := generationRows.Err(); err != nil {
+		t.Fatalf("read AI generation items: %v", err)
+	}
+	if len(generated) != 2 {
+		t.Fatalf("stored %d AI generation items, want 2", len(generated))
+	}
+	if generated[0].description != "10 bolsas de cemento" ||
+		sources[0] != string(domain.QuantitySourceExplicit) ||
+		generated[0].productID == nil || *generated[0].productID != cement {
+		t.Errorf("first AI generation item = %+v source %q, want the original cement proposal",
+			generated[0], sources[0])
+	}
+	if generated[1].description != "membrana liquida" ||
+		sources[1] != string(domain.QuantitySourceUnresolved) || generated[1].productID != nil {
+		t.Errorf("second AI generation item = %+v source %q, want the unresolved proposal",
+			generated[1], sources[1])
 	}
 
 	matched := lines[0]

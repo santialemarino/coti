@@ -173,6 +173,47 @@ report auditable, and it is also the metric: how many lines arrived unmatched in
 how many had to be fixed by hand. `uq_quote_version_draft` allows one unfrozen version per quote,
 so a second version means the first was frozen.
 
+## The original AI proposal is preserved separately
+
+The first commercial version stays editable because it is the seller's working draft. That makes
+it unsuitable as the baseline for measuring whether the proposal was correct: editing it would
+erase the evidence being compared.
+
+Every generated draft therefore writes an append-only `quote_ai_generation` in the same
+transaction as version 1. It records the provider, model, prompt version, forced-schema version,
+and token usage. Its `quote_ai_generation_item` rows copy the proposed description, quantity,
+unit, quantity source and rationale, selected product, match status, and score in client order.
+They do not reference the live `quote_item` row, so later item replacement or removal cannot alter
+or invalidate the baseline.
+
+The request role can only `SELECT` and `INSERT` these tables. It cannot update or delete them. A
+draft is not considered generated if this evidence cannot be written: the proposal, its editable
+version, and both status histories share one transaction.
+
+This is collection infrastructure, not yet a correctness percentage. A probability that the
+whole quote is correct requires enough proposal/outcome pairs to calibrate it.
+
+### Integration contract for the future send flow
+
+`QuoteQualityService.EvaluateFinalQuote` is the internal hook that closes one outcome. The future
+send service constructs it with `repository.NewQuoteQualityRepository()` and calls it after its
+send transaction has committed the version with `is_immutable = true` and a `quote_send` carrying
+`sent_at` plus a successful tracking state. It must pass the quote id and the exact version id the
+seller sent. The hook is idempotent, and the durable send row lets a failed attempt be retried even
+after the quote advances beyond `SENT`.
+
+There is deliberately no route or simulated delivery for this hook. Until sending exists, only
+the integration suite invokes it by staging the frozen version, status transition, and durable
+send record.
+
+The `whole-quote-v1` evaluator produces one strict binary label. It requires the same billable
+items — product, quantity, and unit, independent of order — every final line resolved to
+`MATCHED`, every line priced, each subtotal equal to quantity times unit price, and the version
+total equal to subtotals less unsuppressed discounts. Description and rationale edits are
+editorial and do not change the label. Every failed condition is appended to
+`quote_quality_difference`; changing these rules requires a new evaluator version rather than
+rewriting old labels.
+
 ## Accepting the materials is what prices the quote
 
 The draft the pipeline above produces carries no prices, and that is deliberate. Two transitions,

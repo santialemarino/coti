@@ -1,6 +1,6 @@
 # Database
 
-PostgreSQL 16 + pgvector. The model is 42 tables with UUID v4 primary keys, native enums, and
+PostgreSQL 16 + pgvector. The model is 46 tables with UUID v4 primary keys, native enums, and
 money in `NUMERIC(14,2)`.
 
 ## What is the source and what is the reference
