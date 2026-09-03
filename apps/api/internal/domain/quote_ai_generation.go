@@ -83,7 +83,7 @@ const (
 	QuoteQualityDifferenceInvalidTotal    QuoteQualityDifferenceKind = "INVALID_TOTAL"
 )
 
-// QuoteQualityEvaluation records the deterministic label used to calibrate future probabilities.
+// QuoteQualityEvaluation records the deterministic comparison that drives correction learning.
 type QuoteQualityEvaluation struct {
 	ID                  uuid.UUID
 	AccountID           uuid.UUID

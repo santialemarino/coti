@@ -184,13 +184,12 @@ jobs:
         scope: RUN_TIME
         type: SECRET
 
-  # How often a sweep runs is the platform's schedule, never a compiled-in frequency, and one
-  # component per task. `--job <name>` is added with the first registered job: the registry is
-  # empty until a feature adds one.
-  - name: scheduled-job
+  # Correction embeddings are attempted immediately after sending. This sweep only recovers the
+  # durable PENDING rows left by a provider outage; App Platform's minimum interval is 15 minutes.
+  - name: quote-correction-learning
     kind: SCHEDULED
     schedule:
-      cron: '0 9 * * *'
+      cron: '*/15 * * * *'
       time_zone: America/Argentina/Buenos_Aires
     dockerfile_path: docker/api.Dockerfile
     source_dir: /
@@ -199,7 +198,7 @@ jobs:
       branch: main
       deploy_on_push: true
     instance_size_slug: apps-s-1vcpu-1gb
-    run_command: /api/bin/scheduled-job --list
+    run_command: /api/bin/scheduled-job --job quote-correction-learning
     envs:
       - key: ENV
         scope: RUN_TIME
@@ -214,5 +213,11 @@ jobs:
         scope: RUN_TIME
         type: SECRET
       - key: STORAGE_LOCAL_SIGNING_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: AI_EMBEDDINGS_PROVIDER
+        scope: RUN_TIME
+        value: openai
+      - key: AI_OPENAI_API_KEY
         scope: RUN_TIME
         type: SECRET

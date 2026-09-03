@@ -122,7 +122,7 @@ func searchCandidates(
 	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID}, func(q Querier) error {
 		var err error
 		candidates, err = repo.SearchCandidates(ctx, q, accountID, branchID, text,
-			queryVector(), fetch)
+			queryVector(), fetch, 0.2)
 		return err
 	}); err != nil {
 		t.Fatalf("SearchCandidates() = %v, want no error", err)
@@ -177,6 +177,26 @@ func TestProductRepository_SetEmbeddingsStoresAVectorThatOrdersByDistance(t *tes
 		if math.Abs(*got.Distance-tc.want) > 1e-6 {
 			t.Errorf("%s distance = %v, want %v", tc.name, *got.Distance, tc.want)
 		}
+	}
+}
+
+func TestProductRepository_SearchCandidatesUsesAccountLocalCatalogCorrection(t *testing.T) {
+	db := testDB(t)
+	account := seedAccount(t, db, "Corralon Memoria")
+	branch := branchOf(t, db, account)
+	product := seedCatalogProduct(t, db, account, "Producto interno 42", "")
+	stockBranch(t, db, account, branch, product, true)
+	if _, err := db.CrossAccount().Exec(context.Background(), `INSERT INTO quote_correction_memory
+	  (account_id, kind, source_text, normalized_source, embedding, status, product_id,
+	   support_count)
+	 VALUES ($1, 'CATALOG', 'el coso gris', 'el coso gris', $2, 'READY', $3, 1)`,
+		account, queryVector(), product); err != nil {
+		t.Fatalf("seed correction memory: %v", err)
+	}
+
+	candidates := searchCandidates(t, db, account, branch, "words absent from catalog", 10)
+	if len(candidates) != 1 || candidates[0].ProductID != product {
+		t.Fatalf("candidates = %+v, want the seller-taught product", candidates)
 	}
 }
 
@@ -434,7 +454,7 @@ func TestProductRepository_SearchUsesTheVectorIndex(t *testing.T) {
 			return err
 		}
 		rows, err := q.Query(ctx, "EXPLAIN "+searchCandidatesQuery,
-			account, branch, "cemento", queryVector(), 10)
+			account, branch, "cemento", queryVector(), 10, 0.2)
 		if err != nil {
 			return err
 		}

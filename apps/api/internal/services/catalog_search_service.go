@@ -20,7 +20,8 @@ import (
 type catalogSearchRepository interface {
 	SetSearchProbes(ctx context.Context, q repository.Querier, probes int) error
 	SearchCandidates(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID,
-		text string, embedding pgvector.Vector, fetch int) ([]domain.CatalogCandidate, error)
+		text string, embedding pgvector.Vector, fetch int,
+		correctionMaxDistance float64) ([]domain.CatalogCandidate, error)
 }
 
 // CatalogSearchService resolves RFQ line text against the account's catalog, combining the
@@ -117,7 +118,7 @@ func (s *CatalogSearchService) candidatesFor(
 	previous := -1
 	for {
 		found, err := s.products.SearchCandidates(ctx, q, tenant.AccountID, tenant.BranchID,
-			text, vector, fetch)
+			text, vector, fetch, 1-float64(s.cfg.CorrectionSimilarityPercent)/100)
 		if err != nil {
 			return nil, err
 		}
@@ -163,6 +164,17 @@ func fuse(candidates []domain.CatalogCandidate, k int) {
 		candidates[i].Score = contribution(semantic[i], k) + contribution(lexical[i], k)
 	}
 	slices.SortStableFunc(candidates, func(a, b domain.CatalogCandidate) int {
+		if a.LearnedDistance != nil && b.LearnedDistance == nil {
+			return -1
+		}
+		if a.LearnedDistance == nil && b.LearnedDistance != nil {
+			return 1
+		}
+		if a.LearnedDistance != nil && b.LearnedDistance != nil {
+			if order := cmp.Compare(*a.LearnedDistance, *b.LearnedDistance); order != 0 {
+				return order
+			}
+		}
 		// b before a: the higher fused score is the better candidate.
 		if order := cmp.Compare(b.Score, a.Score); order != 0 {
 			return order

@@ -3,9 +3,8 @@
 // The deployment platform owns the schedule: one job component per task, each with its own cron
 // and its own --job argument, so the frequency is configuration rather than a value compiled in.
 //
-// It builds no mailer and no AI provider, and a job is handed a database handle and nothing else.
-// That is deliberate: a scheduled process updates state and cannot reach a client, because
-// nothing goes out without a seller deciding it should.
+// It builds no mailer. Correction learning may call the embedding provider, but a scheduled
+// process still cannot reach a client: nothing goes out without a seller deciding it should.
 //
 //	go run ./cmd/scheduled-job --list
 //	go run ./cmd/scheduled-job --job <name>
@@ -24,6 +23,7 @@ import (
 
 	"github.com/joho/godotenv"
 
+	aiprovider "github.com/santialemarino/coti/apps/api/internal/ai/provider"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 	"github.com/santialemarino/coti/apps/api/internal/services"
@@ -66,10 +66,16 @@ func run() error {
 		return err
 	}
 	defer db.Close()
+	providers, err := aiprovider.Bind(cfg.AI, log)
+	if err != nil {
+		return err
+	}
 
 	// Each of the four planned tasks — pending attachments, quote expiry, the follow-up sweep and
 	// closing message windows — registers itself here from its own feature's ticket.
-	jobs, err := services.NewJobService(db, repository.NewJobRunRepository(), log)
+	corrections := repository.NewQuoteCorrectionRepository()
+	jobs, err := services.NewJobService(db, repository.NewJobRunRepository(), log,
+		services.NewQuoteCorrectionJob(corrections, providers.Embedder, cfg.QuoteCorrection))
 	if err != nil {
 		return err
 	}

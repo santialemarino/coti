@@ -190,13 +190,25 @@ The request role can only `SELECT` and `INSERT` these tables. It cannot update o
 draft is not considered generated if this evidence cannot be written: the proposal, its editable
 version, and both status histories share one transaction.
 
-This is collection infrastructure, not yet a correctness percentage. A probability that the
-whole quote is correct requires enough proposal/outcome pairs to calibrate it.
+The comparison is not exposed as a confidence percentage. Relevant seller changes become
+account-local correction memories: item additions, removals, quantity and unit changes teach
+future extraction; corrected product selections teach catalog matching. Pricing, discounts,
+comments, and descriptions do not become learning evidence.
+
+Each memory starts as `PENDING` so the seller's correction is durable before an embedding provider
+is called. Successful vectorization changes it to `READY`; the `quote-correction-learning`
+scheduled job retries pending rows. Sending remains complete even when learning is temporarily
+unavailable. Retrieval is local to the account, uses a fixed 80 percent cosine-similarity floor,
+and retains at most 1,000 patterns per account with automatic low-value eviction.
+An eligible catalog memory outranks generic lexical and product-vector search, while the branch
+availability filter still applies. Two eligible memories pointing to different products produce
+`AMBIGUOUS`; seller evidence is never resolved by an arbitrary tie-break.
 
 ### Integration contract for the future send flow
 
 `QuoteQualityService.EvaluateFinalQuote` is the internal hook that closes one outcome. The future
-send service constructs it with `repository.NewQuoteQualityRepository()` and calls it after its
+send service constructs it with `repository.NewQuoteQualityRepository()`, enables
+`WithCorrectionLearning` using `QuoteCorrectionService`, and calls it after its
 send transaction has committed the version with `is_immutable = true` and a `quote_send` carrying
 `sent_at` plus a successful tracking state. It must pass the quote id and the exact version id the
 seller sent. The hook is idempotent, and the durable send row lets a failed attempt be retried even

@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pgvector/pgvector-go"
 	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/config"
@@ -20,6 +22,12 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 	"github.com/santialemarino/coti/apps/api/internal/services"
 )
+
+type failingCorrectionEmbedder struct{}
+
+func (failingCorrectionEmbedder) Embed(context.Context, []string) ([]pgvector.Vector, error) {
+	return nil, errors.New("staged provider outage")
+}
 
 // The pipeline composed the way the composition root composes it, minus the model: a staged
 // extractor stands in for the provider, and everything after it — matching, the real hybrid search
@@ -78,6 +86,12 @@ func (e *env) seedIntakeChannel(t *testing.T, accountID, branchID uuid.UUID) uui
 func (e *env) dropDraft(t *testing.T, rfqID uuid.UUID) {
 	t.Helper()
 	t.Cleanup(func() {
+		e.mustCleanup(t, `DELETE FROM quote_correction_memory_source WHERE evaluation_id IN (
+		  SELECT evaluation.id FROM quote_quality_evaluation evaluation
+		  JOIN quote_ai_generation generation ON generation.id = evaluation.generation_id
+		  JOIN quote c ON c.id = generation.quote_id WHERE c.rfq_id = $1)`, rfqID)
+		e.mustCleanup(t, `DELETE FROM quote_correction_memory WHERE account_id IN (
+		  SELECT account_id FROM rfq WHERE id = $1)`, rfqID)
 		e.mustCleanup(t, `DELETE FROM quote_quality_difference WHERE evaluation_id IN (
 		  SELECT evaluation.id FROM quote_quality_evaluation evaluation
 		  JOIN quote_ai_generation generation ON generation.id = evaluation.generation_id
@@ -138,6 +152,10 @@ func TestQuoteQualityHook_PersistsOneIdempotentLabelAfterTheVersionIsSent(t *tes
 	quoteRepo := repository.NewQuoteRepository()
 	quoteService := services.NewQuoteService(e.db, quoteRepo,
 		repository.NewProductPriceRepository(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`UPDATE quote_item SET quantity = 3 WHERE id = $1`, draft.Items[0].ID); err != nil {
+		t.Fatalf("apply seller quantity correction: %v", err)
+	}
 	if _, err := quoteService.AcceptMaterials(context.Background(), tenant, draft.Quote.ID); err != nil {
 		t.Fatalf("AcceptMaterials() = %v", err)
 	}
@@ -158,7 +176,14 @@ func TestQuoteQualityHook_PersistsOneIdempotentLabelAfterTheVersionIsSent(t *tes
 		t.Fatalf("record the completed send as the future send flow would: %v", err)
 	}
 
-	quality := services.NewQuoteQualityService(e.db, repository.NewQuoteQualityRepository())
+	correctionRepo := repository.NewQuoteCorrectionRepository()
+	corrections := services.NewQuoteCorrectionService(e.db, correctionRepo,
+		axisEmbedder{axes: map[string]int{"2 bolsas de cemento": 0}}, config.QuoteCorrectionConfig{
+			SimilarityPercent: 80, MaxPatternsPerAccount: 1000,
+			MaxInterpretationExamples: 3, ProcessingBatchSize: 100,
+		}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	quality := services.NewQuoteQualityService(e.db, repository.NewQuoteQualityRepository()).
+		WithCorrectionLearning(corrections)
 	first, err := quality.EvaluateFinalQuote(context.Background(), tenant, draft.Quote.ID,
 		draft.Version.ID)
 	if err != nil {
@@ -169,8 +194,8 @@ func TestQuoteQualityHook_PersistsOneIdempotentLabelAfterTheVersionIsSent(t *tes
 	if err != nil {
 		t.Fatalf("second EvaluateFinalQuote() = %v", err)
 	}
-	if !first.WholeQuoteCorrect || first.ID != second.ID {
-		t.Errorf("evaluations = %+v / %+v, want one idempotent correct label", first, second)
+	if first.WholeQuoteCorrect || first.ID != second.ID {
+		t.Errorf("evaluations = %+v / %+v, want one idempotent corrected label", first, second)
 	}
 
 	var evaluations, differences int
@@ -184,8 +209,78 @@ func TestQuoteQualityHook_PersistsOneIdempotentLabelAfterTheVersionIsSent(t *tes
 		first.ID).Scan(&differences); err != nil {
 		t.Fatalf("count differences: %v", err)
 	}
-	if evaluations != 1 || differences != 0 {
-		t.Errorf("stored evaluations/differences = %d/%d, want 1/0", evaluations, differences)
+	if evaluations != 1 || differences != 1 {
+		t.Errorf("stored evaluations/differences = %d/%d, want 1/1", evaluations, differences)
+	}
+	var memories, support int
+	var status string
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT count(*), max(support_count), max(status) FROM quote_correction_memory
+		 WHERE account_id = $1 AND kind = 'INTERPRETATION'`, accountID).
+		Scan(&memories, &support, &status); err != nil {
+		t.Fatalf("read learned correction: %v", err)
+	}
+	if memories != 1 || support != 1 || status != "READY" {
+		t.Errorf("learned memories/support/status = %d/%d/%s, want 1/1/READY",
+			memories, support, status)
+	}
+	var examples []domain.RFQInterpretationExample
+	if err := e.db.InTenantTx(context.Background(), tenant, func(q repository.Querier) error {
+		var findErr error
+		examples, findErr = correctionRepo.FindInterpretationExamples(context.Background(), q,
+			accountID, axisVector(0, 1), 0.2, 3)
+		return findErr
+	}); err != nil {
+		t.Fatalf("retrieve learned correction: %v", err)
+	}
+	if len(examples) != 1 || len(examples[0].CorrectedItems) != 1 ||
+		!examples[0].CorrectedItems[0].Quantity.Equal(decimal.NewFromInt(3)) {
+		t.Errorf("retrieved examples = %+v, want the seller-approved quantity", examples)
+	}
+	pendingID := uuid.New()
+	if _, err := e.db.CrossAccount().Exec(context.Background(), `INSERT INTO quote_correction_memory
+	  (id, account_id, kind, source_text, normalized_source, corrected_items)
+	 VALUES ($1, $2, 'INTERPRETATION', 'otro pedido', 'otro pedido', '[]'::jsonb)`,
+		pendingID, accountID); err != nil {
+		t.Fatalf("seed pending correction: %v", err)
+	}
+	job := services.NewQuoteCorrectionJob(correctionRepo,
+		axisEmbedder{axes: map[string]int{"otro pedido": 2}},
+		config.QuoteCorrectionConfig{ProcessingBatchSize: 100})
+	report, err := job.Run(context.Background(), e.db.CrossAccount())
+	if err != nil {
+		t.Fatalf("correction retry job: %v", err)
+	}
+	if report.Changed < 1 {
+		t.Errorf("correction retry changed %d rows, want at least the staged pending row", report.Changed)
+	}
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT status FROM quote_correction_memory WHERE id = $1`, pendingID).Scan(&status); err != nil {
+		t.Fatalf("read retried correction: %v", err)
+	}
+	if status != "READY" {
+		t.Errorf("retried correction status = %s, want READY", status)
+	}
+	failedID := uuid.New()
+	if _, err := e.db.CrossAccount().Exec(context.Background(), `INSERT INTO quote_correction_memory
+	  (id, account_id, kind, source_text, normalized_source, corrected_items)
+	 VALUES ($1, $2, 'INTERPRETATION', 'pedido durante corte', 'pedido durante corte', '[]'::jsonb)`,
+		failedID, accountID); err != nil {
+		t.Fatalf("seed failing pending correction: %v", err)
+	}
+	failingJob := services.NewQuoteCorrectionJob(correctionRepo, failingCorrectionEmbedder{},
+		config.QuoteCorrectionConfig{ProcessingBatchSize: 100})
+	if _, err := failingJob.Run(context.Background(), e.db.CrossAccount()); err == nil {
+		t.Fatal("correction retry job returned nil during provider outage")
+	}
+	var lastError *string
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT status, last_error FROM quote_correction_memory WHERE id = $1`, failedID).
+		Scan(&status, &lastError); err != nil {
+		t.Fatalf("read failed correction: %v", err)
+	}
+	if status != "PENDING" || lastError == nil {
+		t.Errorf("failed correction status/error = %s/%v, want PENDING with an error", status, lastError)
 	}
 }
 

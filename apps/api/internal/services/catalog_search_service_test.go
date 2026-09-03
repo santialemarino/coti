@@ -15,6 +15,19 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
 
+func TestFuse_PrioritizesSellerLearnedCandidates(t *testing.T) {
+	t.Parallel()
+	genericDistance, learnedDistance := 0.01, 0.19
+	candidates := []domain.CatalogCandidate{
+		{ProductID: uuid.New(), CanonicalName: "Generic", Distance: &genericDistance},
+		{ProductID: uuid.New(), CanonicalName: "Learned", LearnedDistance: &learnedDistance},
+	}
+	fuse(candidates, 60)
+	if candidates[0].CanonicalName != "Learned" {
+		t.Fatalf("leader = %q, want seller-learned candidate", candidates[0].CanonicalName)
+	}
+}
+
 // The search's decisions live in the service — how the two halves are ranked together, how wide
 // the fetch grows, and where the trim happens. The SQL behind them is covered by the integration
 // tests in internal/repository.
@@ -85,7 +98,7 @@ func (f *fakeSearch) SetSearchProbes(_ context.Context, _ repository.Querier, pr
 
 func (f *fakeSearch) SearchCandidates(
 	_ context.Context, _ repository.Querier, _, _ uuid.UUID,
-	text string, _ pgvector.Vector, fetch int,
+	text string, _ pgvector.Vector, fetch int, _ float64,
 ) ([]domain.CatalogCandidate, error) {
 	f.fetches = append(f.fetches, fetch)
 	f.searched = append(f.searched, text)

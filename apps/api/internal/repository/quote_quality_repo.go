@@ -111,6 +111,21 @@ func (r *QuoteQualityRepository) ListFinalItems(
 	return (&QuoteRepository{}).ListItems(ctx, q, accountID, versionID)
 }
 
+// GetRawRFQText loads the original written order behind one generation.
+func (r *QuoteQualityRepository) GetRawRFQText(ctx context.Context, q Querier,
+	accountID, generationID uuid.UUID) (string, error) {
+	var raw string
+	err := q.QueryRow(ctx, `SELECT COALESCE(NULLIF(btrim(rfq.raw_text), ''), '')
+	 FROM quote_ai_generation generation
+	 JOIN quote ON quote.account_id = $1 AND quote.id = generation.quote_id
+	 JOIN rfq ON rfq.account_id = $1 AND rfq.id = quote.rfq_id
+	 WHERE generation.account_id = $1 AND generation.id = $2`, accountID, generationID).Scan(&raw)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", domain.ErrNotFound
+	}
+	return raw, err
+}
+
 // CreateEvaluation appends one idempotent, versioned label and all of its explanations.
 func (r *QuoteQualityRepository) CreateEvaluation(
 	ctx context.Context, q Querier, accountID uuid.UUID, in domain.NewQuoteQualityEvaluation,

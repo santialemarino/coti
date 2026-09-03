@@ -12,6 +12,50 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
 
+func TestCorrectionPatterns_LearnsOnlyInterpretationAndCatalogCorrections(t *testing.T) {
+	t.Parallel()
+	generatedID, finalID := uuid.New(), uuid.New()
+	oldProduct, correctedProduct := uuid.New(), uuid.New()
+	unit := "bolsa"
+	proposed := []domain.QuoteAIGenerationItem{{
+		ID: generatedID, RequestedDescription: "cemento fuerte", ProductID: &oldProduct,
+		Quantity: decimal.NewFromInt(5), Unit: &unit,
+	}}
+	final := []domain.QuoteItem{{
+		ID: finalID, RequestedDescription: "cemento fuerte", ProductID: &correctedProduct,
+		Quantity: decimal.NewFromInt(10), Unit: &unit,
+	}}
+	productField, quantityField := "product_id", "quantity"
+	differences := []domain.NewQuoteQualityDifference{
+		{Kind: domain.QuoteQualityDifferenceFieldChanged, Field: &productField,
+			GenerationItemID: &generatedID, FinalQuoteItemID: &finalID},
+		{Kind: domain.QuoteQualityDifferenceFieldChanged, Field: &quantityField,
+			GenerationItemID: &generatedID, FinalQuoteItemID: &finalID},
+		{Kind: domain.QuoteQualityDifferenceInvalidTotal},
+	}
+
+	patterns := correctionPatterns("mandame 10 de cemento fuerte", proposed, final, differences)
+	if len(patterns) != 2 {
+		t.Fatalf("correctionPatterns() returned %d patterns, want interpretation and catalog", len(patterns))
+	}
+	if patterns[0].Kind != domain.QuoteCorrectionMemoryCatalog ||
+		patterns[0].ProductID == nil || *patterns[0].ProductID != correctedProduct {
+		t.Errorf("catalog pattern = %+v, want corrected product", patterns[0])
+	}
+	if patterns[1].Kind != domain.QuoteCorrectionMemoryInterpretation ||
+		len(patterns[1].CorrectedItems) != 1 ||
+		!patterns[1].CorrectedItems[0].Quantity.Equal(decimal.NewFromInt(10)) {
+		t.Errorf("interpretation pattern = %+v, want seller-approved quantity", patterns[1])
+	}
+}
+
+func TestCorrectionPatterns_SentAsProposedTeachesNothing(t *testing.T) {
+	t.Parallel()
+	if got := correctionPatterns("cemento", nil, nil, nil); len(got) != 0 {
+		t.Fatalf("correctionPatterns() returned %d patterns, want none", len(got))
+	}
+}
+
 func TestEvaluateWholeQuote_AcceptsEquivalentBillableContentAndValidMoney(t *testing.T) {
 	t.Parallel()
 	generationID, versionID := uuid.New(), uuid.New()

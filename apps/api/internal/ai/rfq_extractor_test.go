@@ -112,6 +112,23 @@ func TestRFQExtractor_Extract_MapsEverySource(t *testing.T) {
 	}
 }
 
+func TestRFQExtractor_ExtractWithExamples_KeepsExamplesSeparateFromNewOrder(t *testing.T) {
+	generator := &fakeGenerator{answer: `{"items":[]}`}
+	extractor := NewRFQExtractor(generator, 50)
+	_, err := extractor.ExtractWithExamples(context.Background(), "quiero cemento",
+		[]domain.RFQInterpretationExample{{SourceText: "dame diez bolsas", CorrectedItems: []domain.CorrectedQuoteLine{{RequestedDescription: "bolsas", Quantity: decimal.NewFromInt(10)}}}})
+	if err != nil {
+		t.Fatalf("ExtractWithExamples returned %v", err)
+	}
+	if len(generator.req.Input) != 2 {
+		t.Fatalf("input blocks = %d, want examples plus current order", len(generator.req.Input))
+	}
+	if !strings.Contains(generator.req.Input[0].Text, "dame diez bolsas") ||
+		!strings.Contains(generator.req.Input[1].Text, "quiero cemento") {
+		t.Errorf("input blocks did not separate examples from current order: %+v", generator.req.Input)
+	}
+}
+
 func TestRFQExtractor_Extract_ZeroesAQuantitySentOnAnUnresolvedLine(t *testing.T) {
 	// The model was told to send "0" here. When it sends a number anyway, the number is the one
 	// thing this layer exists to keep out of a quote.

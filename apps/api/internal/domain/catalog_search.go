@@ -26,6 +26,8 @@ type CatalogCandidate struct {
 	Distance *float64
 	// LexicalScore ranks the full-text match, and is nil when only the semantic half found it.
 	LexicalScore *float64
+	// LearnedDistance is cosine distance to a seller-approved phrase for this product.
+	LearnedDistance *float64
 	// Score is the fused rank the candidates are ordered by, best first.
 	Score float64
 }
