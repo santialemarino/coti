@@ -1,6 +1,6 @@
 # Scheduled jobs
 
-Four things the product needs are nobody's request: pending attachments have to be processed,
+Some things the product needs are nobody's request: pending attachments have to be processed,
 quotes have to expire, quotes with no movement have to be flagged for follow-up, and message
 windows have to close. None of them fits a request, and none of them belongs in the API process.
 
@@ -40,8 +40,9 @@ see [database.md](database.md).
 
 ## A job cannot contact anyone
 
-`Run` receives a database handle and nothing else. The command builds no mailer and no AI provider,
-so there is no handle for a job to send through even if one tried.
+`Run` receives a database handle and nothing that can contact a client. The command builds no
+mailer. A job may receive the embedding provider when its only external effect is materializing
+internal search data, as `quote-correction-learning` does.
 
 That is a product invariant rather than a convenience: **nothing reaches a client without a seller
 deciding it should.** A scheduled process updates state — it flags, it expires, it closes — and the
@@ -98,3 +99,9 @@ No request has any reason to read an audit trail, let alone rewrite one.
 | Variable              | Default | What for              |
 | --------------------- | ------- | --------------------- |
 | `JOB_TIMEOUT_MINUTES` | 30      | Bound on a single run |
+
+## Registered schedules
+
+| Job                         | DigitalOcean schedule | Purpose                                      |
+| --------------------------- | --------------------- | -------------------------------------------- |
+| `quote-correction-learning` | Every 15 minutes      | Retry durable correction memories in PENDING |

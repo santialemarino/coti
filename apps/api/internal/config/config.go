@@ -68,23 +68,24 @@ var aiEfforts = []string{"low", "medium", "high", "xhigh", "max"}
 
 // Config is the fully resolved runtime configuration.
 type Config struct {
-	Environment   Environment
-	LogLevel      string
-	Server        ServerConfig
-	Database      DatabaseConfig
-	Auth          AuthConfig
-	Mail          MailConfig
-	AI            AIConfig
-	Web           WebConfig
-	Catalog       CatalogConfig
-	RFQ           RFQConfig
-	RateLimit     RateLimitConfig
-	Branch        BranchConfig
-	Job           JobConfig
-	CatalogImport SpreadsheetImportConfig
-	PriceImport   SpreadsheetImportConfig
-	Storage       StorageConfig
-	Channel       ChannelConfig
+	Environment     Environment
+	LogLevel        string
+	Server          ServerConfig
+	Database        DatabaseConfig
+	Auth            AuthConfig
+	Mail            MailConfig
+	AI              AIConfig
+	Web             WebConfig
+	Catalog         CatalogConfig
+	RFQ             RFQConfig
+	QuoteCorrection QuoteCorrectionConfig
+	RateLimit       RateLimitConfig
+	Branch          BranchConfig
+	Job             JobConfig
+	CatalogImport   SpreadsheetImportConfig
+	PriceImport     SpreadsheetImportConfig
+	Storage         StorageConfig
+	Channel         ChannelConfig
 }
 
 // ChannelConfig holds what protects an intake channel's stored credentials.
@@ -409,6 +410,14 @@ type RFQConfig struct {
 	PipelineTimeout time.Duration
 }
 
+// QuoteCorrectionConfig bounds account-local correction learning.
+type QuoteCorrectionConfig struct {
+	SimilarityPercent         int
+	MaxPatternsPerAccount     int
+	MaxInterpretationExamples int
+	ProcessingBatchSize       int
+}
+
 // CatalogConfig holds the catalog listing limits and the knobs behind the hybrid search. The
 // listing cap is what stops a client from asking for the whole catalog in one response.
 type CatalogConfig struct {
@@ -440,6 +449,8 @@ type CatalogConfig struct {
 	// MatchLexicalConfidencePercent is the confidence floor for lexical evidence.
 	// It keeps exact vocabulary useful when semantic similarity alone is weak.
 	MatchLexicalConfidencePercent int
+	// CorrectionSimilarityPercent is the fixed semantic floor for seller-taught product choices.
+	CorrectionSimilarityPercent int
 }
 
 // StorageConfig holds the object storage settings and file limits. The bucket coordinates are
@@ -647,6 +658,7 @@ func Load() (*Config, error) {
 			MatchMinConfidencePercent:     getInt("CATALOG_MATCH_MIN_CONFIDENCE_PERCENT", 60, &problems),
 			MatchAmbiguityMarginPercent:   getInt("CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT", 5, &problems),
 			MatchLexicalConfidencePercent: getInt("CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT", 75, &problems),
+			CorrectionSimilarityPercent:   getInt("QUOTE_CORRECTION_SIMILARITY_PERCENT", 80, &problems),
 		},
 		Storage: StorageConfig{
 			Provider:        StorageProvider(getString("STORAGE_PROVIDER", string(StorageProviderLocal))),
@@ -677,6 +689,12 @@ func Load() (*Config, error) {
 			MaxTextCharacters: getInt("RFQ_MAX_TEXT_CHARACTERS", 20000, &problems),
 			MaxItems:          getInt("RFQ_MAX_ITEMS", 200, &problems),
 			PipelineTimeout:   getDuration("RFQ_PIPELINE_TIMEOUT_SECONDS", 25*time.Second, &problems),
+		},
+		QuoteCorrection: QuoteCorrectionConfig{
+			SimilarityPercent:         getInt("QUOTE_CORRECTION_SIMILARITY_PERCENT", 80, &problems),
+			MaxPatternsPerAccount:     getInt("QUOTE_CORRECTION_MAX_PATTERNS_PER_ACCOUNT", 1000, &problems),
+			MaxInterpretationExamples: getInt("QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES", 3, &problems),
+			ProcessingBatchSize:       getInt("QUOTE_CORRECTION_PROCESSING_BATCH_SIZE", 100, &problems),
 		},
 		Job: JobConfig{
 			Timeout: getDuration("JOB_TIMEOUT_MINUTES", 30*time.Minute, &problems),
@@ -828,6 +846,15 @@ func Load() (*Config, error) {
 			"RFQ_PIPELINE_TIMEOUT_SECONDS (%s) must be below SERVER_WRITE_TIMEOUT_SECONDS (%s)",
 			cfg.RFQ.PipelineTimeout, cfg.Server.WriteTimeout))
 	}
+	if cfg.QuoteCorrection.MaxPatternsPerAccount < 1 {
+		problems = append(problems, "QUOTE_CORRECTION_MAX_PATTERNS_PER_ACCOUNT must be greater than zero")
+	}
+	if cfg.QuoteCorrection.MaxInterpretationExamples < 1 {
+		problems = append(problems, "QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES must be greater than zero")
+	}
+	if cfg.QuoteCorrection.ProcessingBatchSize < 1 {
+		problems = append(problems, "QUOTE_CORRECTION_PROCESSING_BATCH_SIZE must be greater than zero")
+	}
 
 	catalogPercents := []struct {
 		key   string
@@ -836,12 +863,16 @@ func Load() (*Config, error) {
 		{"CATALOG_MATCH_MIN_CONFIDENCE_PERCENT", cfg.Catalog.MatchMinConfidencePercent},
 		{"CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT", cfg.Catalog.MatchAmbiguityMarginPercent},
 		{"CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT", cfg.Catalog.MatchLexicalConfidencePercent},
+		{"QUOTE_CORRECTION_SIMILARITY_PERCENT", cfg.QuoteCorrection.SimilarityPercent},
 	}
 	for _, p := range catalogPercents {
 		if p.value < 0 || p.value > 100 {
 			problems = append(problems, fmt.Sprintf("%s must be between 0 and 100, got %d",
 				p.key, p.value))
 		}
+	}
+	if cfg.QuoteCorrection.SimilarityPercent == 0 {
+		problems = append(problems, "QUOTE_CORRECTION_SIMILARITY_PERCENT must be greater than zero")
 	}
 
 	if cfg.RateLimit.Enabled {

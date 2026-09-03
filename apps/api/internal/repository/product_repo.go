@@ -232,6 +232,13 @@ const searchCandidatesQuery = `
 	    ORDER BY embedding <=> $4
 	    LIMIT $5
 	),
+	learned AS (
+	    SELECT product_id, min(embedding <=> $4) AS distance
+	    FROM quote_correction_memory
+	    WHERE account_id = $1 AND kind = 'CATALOG' AND status = 'READY'
+	      AND embedding <=> $4 <= $6
+	    GROUP BY product_id
+	),
 	lexical_hit AS (
 	    SELECT p.id AS product_id, ts_rank(p.search_document, ask.query)::float8 AS score
 	    FROM product p, ask
@@ -259,13 +266,17 @@ const searchCandidatesQuery = `
 	    SELECT id FROM semantic
 	    UNION
 	    SELECT product_id FROM lexical
+	    UNION
+	    SELECT product_id FROM learned
 	)
-	SELECT p.id, p.code, p.canonical_name, p.unit, semantic.distance, lexical.score
+	SELECT p.id, p.code, p.canonical_name, p.unit, semantic.distance, lexical.score,
+	       learned.distance
 	FROM candidate c
 	JOIN product p ON p.id = c.id AND p.account_id = $1
 	JOIN branch_product bp ON bp.product_id = p.id AND bp.account_id = $1
 	  AND bp.branch_id = $2 AND bp.is_active = TRUE
 	LEFT JOIN semantic ON semantic.id = p.id
+	LEFT JOIN learned ON learned.product_id = p.id
 	LEFT JOIN lexical ON lexical.product_id = p.id`
 
 // SearchCandidates returns the catalog items the branch carries that either half of the search
@@ -276,9 +287,10 @@ const searchCandidatesQuery = `
 // two halves together and trimming to the caller's K is the service's job.
 func (r *ProductRepository) SearchCandidates(
 	ctx context.Context, q Querier, accountID, branchID uuid.UUID,
-	text string, embedding pgvector.Vector, fetch int,
+	text string, embedding pgvector.Vector, fetch int, correctionMaxDistance float64,
 ) ([]domain.CatalogCandidate, error) {
-	rows, err := q.Query(ctx, searchCandidatesQuery, accountID, branchID, text, embedding, fetch)
+	rows, err := q.Query(ctx, searchCandidatesQuery, accountID, branchID, text, embedding, fetch,
+		correctionMaxDistance)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +300,7 @@ func (r *ProductRepository) SearchCandidates(
 	for rows.Next() {
 		var c domain.CatalogCandidate
 		if err := rows.Scan(&c.ProductID, &c.Code, &c.CanonicalName, &c.Unit,
-			&c.Distance, &c.LexicalScore); err != nil {
+			&c.Distance, &c.LexicalScore, &c.LearnedDistance); err != nil {
 			return nil, err
 		}
 		candidates = append(candidates, c)

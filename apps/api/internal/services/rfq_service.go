@@ -51,6 +51,16 @@ type catalogMatcher interface {
 	Match(ctx context.Context, tenant domain.Tenant, descriptions []string) ([]domain.LineMatch, error)
 }
 
+type interpretationMemoryFinder interface {
+	FindInterpretationExamples(ctx context.Context, tenant domain.Tenant,
+		raw string) ([]domain.RFQInterpretationExample, error)
+}
+
+type memoryAwareRFQExtractor interface {
+	ExtractWithExamples(ctx context.Context, raw string,
+		examples []domain.RFQInterpretationExample) (*domain.RFQExtraction, error)
+}
+
 // RFQService owns the text RFQ pipeline up to a seller-reviewable quote draft.
 type RFQService struct {
 	db          tenantTxRunner
@@ -60,8 +70,15 @@ type RFQService struct {
 	channels    rfqChannelReader
 	extractor   domain.RFQExtractor
 	matcher     catalogMatcher
+	memories    interpretationMemoryFinder
 	log         *slog.Logger
 	cfg         config.RFQConfig
+}
+
+// WithCorrectionMemory enables account-local interpretation examples.
+func (s *RFQService) WithCorrectionMemory(memories interpretationMemoryFinder) *RFQService {
+	s.memories = memories
+	return s
 }
 
 // NewRFQService builds an RFQService.
@@ -173,7 +190,21 @@ func (s *RFQService) readMaterials(
 	pipelineCtx, cancel := context.WithTimeout(ctx, s.cfg.PipelineTimeout)
 	defer cancel()
 
-	extraction, err := s.extractor.Extract(pipelineCtx, raw)
+	var examples []domain.RFQInterpretationExample
+	if s.memories != nil {
+		var memoryErr error
+		examples, memoryErr = s.memories.FindInterpretationExamples(pipelineCtx, tenant, raw)
+		if memoryErr != nil {
+			s.log.WarnContext(ctx, "interpretation memory unavailable", slog.Any("error", memoryErr))
+		}
+	}
+	var extraction *domain.RFQExtraction
+	var err error
+	if aware, ok := s.extractor.(memoryAwareRFQExtractor); ok && len(examples) > 0 {
+		extraction, err = aware.ExtractWithExamples(pipelineCtx, raw, examples)
+	} else {
+		extraction, err = s.extractor.Extract(pipelineCtx, raw)
+	}
 	if err != nil {
 		return nil, nil, nil, err
 	}

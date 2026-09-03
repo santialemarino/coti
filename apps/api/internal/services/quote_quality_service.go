@@ -36,10 +36,29 @@ type quoteQualityRepository interface {
 	) (*domain.QuoteQualityEvaluation, error)
 }
 
+type quoteCorrectionEvidenceReader interface {
+	GetRawRFQText(ctx context.Context, q repository.Querier, accountID,
+		generationID uuid.UUID) (string, error)
+}
+
+type quoteCorrectionRecorder interface {
+	Enqueue(ctx context.Context, q repository.Querier, accountID,
+		evaluationID uuid.UUID, patterns []domain.NewQuoteCorrectionMemory,
+	) ([]domain.QuoteCorrectionMemory, error)
+	Process(ctx context.Context, tenant domain.Tenant, memories []domain.QuoteCorrectionMemory)
+}
+
 // QuoteQualityService labels a frozen seller-approved quote against its original AI proposal.
 type QuoteQualityService struct {
-	db      tenantTxRunner
-	quality quoteQualityRepository
+	db          tenantTxRunner
+	quality     quoteQualityRepository
+	corrections quoteCorrectionRecorder
+}
+
+// WithCorrectionLearning enables durable account-local learning after final evaluation.
+func (s *QuoteQualityService) WithCorrectionLearning(corrections quoteCorrectionRecorder) *QuoteQualityService {
+	s.corrections = corrections
+	return s
 }
 
 // NewQuoteQualityService builds a QuoteQualityService.
@@ -65,6 +84,7 @@ func (s *QuoteQualityService) EvaluateFinalQuote(
 	}
 
 	var evaluation *domain.QuoteQualityEvaluation
+	var pending []domain.QuoteCorrectionMemory
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		generation, err := s.quality.GetGenerationByQuoteID(ctx, q, tenant.AccountID, quoteID)
 		if err != nil {
@@ -86,10 +106,29 @@ func (s *QuoteQualityService) EvaluateFinalQuote(
 
 		label, differences := evaluateWholeQuote(generation.ID, proposed, *final)
 		evaluation, err = s.quality.CreateEvaluation(ctx, q, tenant.AccountID, label, differences)
+		if err != nil || s.corrections == nil {
+			return err
+		}
+		evidence, ok := s.quality.(quoteCorrectionEvidenceReader)
+		if !ok {
+			return fmt.Errorf("%w: correction evidence persistence is not wired", domain.ErrInvalidInput)
+		}
+		raw := ""
+		if needsInterpretationMemory(differences) {
+			raw, err = evidence.GetRawRFQText(ctx, q, tenant.AccountID, generation.ID)
+			if err != nil {
+				return err
+			}
+		}
+		patterns := correctionPatterns(raw, proposed, final.Items, differences)
+		pending, err = s.corrections.Enqueue(ctx, q, tenant.AccountID, evaluation.ID, patterns)
 		return err
 	})
 	if err != nil {
 		return nil, err
+	}
+	if s.corrections != nil {
+		s.corrections.Process(ctx, tenant, pending)
 	}
 	return evaluation, nil
 }
@@ -262,4 +301,65 @@ func uuidStringPointer(id *uuid.UUID) *string {
 
 func stringPointer(value string) *string {
 	return &value
+}
+
+func correctionPatterns(raw string, proposed []domain.QuoteAIGenerationItem,
+	final []domain.QuoteItem, differences []domain.NewQuoteQualityDifference,
+) []domain.NewQuoteCorrectionMemory {
+	interpretationChanged := false
+	proposedByID := make(map[uuid.UUID]domain.QuoteAIGenerationItem, len(proposed))
+	finalByID := make(map[uuid.UUID]domain.QuoteItem, len(final))
+	for _, item := range proposed {
+		proposedByID[item.ID] = item
+	}
+	for _, item := range final {
+		finalByID[item.ID] = item
+	}
+	var patterns []domain.NewQuoteCorrectionMemory
+	for _, difference := range differences {
+		if difference.Kind == domain.QuoteQualityDifferenceItemAdded ||
+			difference.Kind == domain.QuoteQualityDifferenceItemRemoved ||
+			(difference.Kind == domain.QuoteQualityDifferenceFieldChanged && difference.Field != nil &&
+				(*difference.Field == "quantity" || *difference.Field == "unit")) {
+			interpretationChanged = true
+		}
+		if difference.Kind != domain.QuoteQualityDifferenceFieldChanged || difference.Field == nil ||
+			*difference.Field != "product_id" || difference.GenerationItemID == nil ||
+			difference.FinalQuoteItemID == nil {
+			continue
+		}
+		generated, generatedOK := proposedByID[*difference.GenerationItemID]
+		approved, approvedOK := finalByID[*difference.FinalQuoteItemID]
+		if !generatedOK || !approvedOK || approved.ProductID == nil {
+			continue
+		}
+		patterns = append(patterns, domain.NewQuoteCorrectionMemory{
+			Kind: domain.QuoteCorrectionMemoryCatalog, SourceText: generated.RequestedDescription,
+			ProductID: approved.ProductID, SourceKey: "catalog:" + generated.ID.String(),
+		})
+	}
+	if interpretationChanged && strings.TrimSpace(raw) != "" {
+		lines := make([]domain.CorrectedQuoteLine, 0, len(final))
+		for _, item := range final {
+			lines = append(lines, domain.CorrectedQuoteLine{RequestedDescription: item.RequestedDescription,
+				Quantity: item.Quantity, Unit: item.Unit})
+		}
+		patterns = append(patterns, domain.NewQuoteCorrectionMemory{
+			Kind: domain.QuoteCorrectionMemoryInterpretation, SourceText: raw,
+			CorrectedItems: lines, SourceKey: "interpretation",
+		})
+	}
+	return patterns
+}
+
+func needsInterpretationMemory(differences []domain.NewQuoteQualityDifference) bool {
+	for _, difference := range differences {
+		if difference.Kind == domain.QuoteQualityDifferenceItemAdded ||
+			difference.Kind == domain.QuoteQualityDifferenceItemRemoved ||
+			(difference.Kind == domain.QuoteQualityDifferenceFieldChanged &&
+				difference.Field != nil && (*difference.Field == "quantity" || *difference.Field == "unit")) {
+			return true
+		}
+	}
+	return false
 }

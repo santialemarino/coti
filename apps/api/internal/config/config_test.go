@@ -49,6 +49,8 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"PRICE_IMPORT_MAX_BYTES",
 		"JOB_TIMEOUT_MINUTES",
 		"RFQ_MAX_TEXT_CHARACTERS", "RFQ_MAX_ITEMS", "RFQ_PIPELINE_TIMEOUT_SECONDS",
+		"QUOTE_CORRECTION_SIMILARITY_PERCENT", "QUOTE_CORRECTION_MAX_PATTERNS_PER_ACCOUNT",
+		"QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES", "QUOTE_CORRECTION_PROCESSING_BATCH_SIZE",
 		"STORAGE_PROVIDER", "STORAGE_LOCAL_DIR", "STORAGE_LOCAL_API_BASE_URL",
 		"STORAGE_LOCAL_SIGNING_SECRET", "STORAGE_ENDPOINT", "STORAGE_REGION", "STORAGE_BUCKET",
 		"STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY",
@@ -113,6 +115,12 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.RFQ.PipelineTimeout != 25*time.Second {
 		t.Errorf("RFQ.PipelineTimeout = %v, want 25s", cfg.RFQ.PipelineTimeout)
+	}
+	if cfg.QuoteCorrection.SimilarityPercent != 80 ||
+		cfg.QuoteCorrection.MaxPatternsPerAccount != 1000 ||
+		cfg.QuoteCorrection.MaxInterpretationExamples != 3 ||
+		cfg.QuoteCorrection.ProcessingBatchSize != 100 {
+		t.Errorf("QuoteCorrection defaults = %+v, want 80/1000/3/100", cfg.QuoteCorrection)
 	}
 	// The pipeline has to answer inside the response budget, or its reply is cut off mid-write
 	// and the client reads a broken connection instead of a model that ran out of time.
@@ -226,6 +234,25 @@ func TestLoad_RFQKeysLandOnTheirOwnFields(t *testing.T) {
 	}
 	if cfg.RFQ.PipelineTimeout != 9*time.Second {
 		t.Errorf("RFQ.PipelineTimeout = %v, want 9s", cfg.RFQ.PipelineTimeout)
+	}
+}
+
+func TestLoad_QuoteCorrectionKeysLandOnTheirOwnFields(t *testing.T) {
+	env := minimalEnv()
+	env["QUOTE_CORRECTION_SIMILARITY_PERCENT"] = "81"
+	env["QUOTE_CORRECTION_MAX_PATTERNS_PER_ACCOUNT"] = "901"
+	env["QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES"] = "4"
+	env["QUOTE_CORRECTION_PROCESSING_BATCH_SIZE"] = "73"
+	setEnv(t, env)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.QuoteCorrection.SimilarityPercent != 81 ||
+		cfg.QuoteCorrection.MaxPatternsPerAccount != 901 ||
+		cfg.QuoteCorrection.MaxInterpretationExamples != 4 ||
+		cfg.QuoteCorrection.ProcessingBatchSize != 73 {
+		t.Errorf("QuoteCorrection = %+v, want 81/901/4/73", cfg.QuoteCorrection)
 	}
 }
 

@@ -24,14 +24,14 @@ works, and the Spaces adapter exists but has never run against a real bucket. Se
 
 ## Six components, one app
 
-| Component       | Type                    | Dockerfile                     | Port |
-| --------------- | ----------------------- | ------------------------------ | ---- |
-| `api`           | Web Service             | `docker/api.Dockerfile`        | 8000 |
-| `backoffice`    | Web Service             | `docker/backoffice.Dockerfile` | 3000 |
-| `webapp`        | Web Service             | `docker/webapp.Dockerfile`     | 3001 |
-| `migrate`       | Job, `kind: PRE_DEPLOY` | `docker/api.Dockerfile`        | —    |
-| `scheduled-job` | Job, `kind: SCHEDULED`  | `docker/api.Dockerfile`        | —    |
-| the database    | Managed Postgres        | —                              | —    |
+| Component                   | Type                    | Dockerfile                     | Port |
+| --------------------------- | ----------------------- | ------------------------------ | ---- |
+| `api`                       | Web Service             | `docker/api.Dockerfile`        | 8000 |
+| `backoffice`                | Web Service             | `docker/backoffice.Dockerfile` | 3000 |
+| `webapp`                    | Web Service             | `docker/webapp.Dockerfile`     | 3001 |
+| `migrate`                   | Job, `kind: PRE_DEPLOY` | `docker/api.Dockerfile`        | —    |
+| `quote-correction-learning` | Job, `kind: SCHEDULED`  | `docker/api.Dockerfile`        | —    |
+| the database                | Managed Postgres        | —                              | —    |
 
 **Every component takes `source_dir: /`.** All three Dockerfiles build with the repository root as
 their context — `docker-compose.yml` says `context: .`, and the web ones copy `pnpm-workspace.yaml`,
@@ -212,7 +212,8 @@ Each is a `type: SECRET` entry in the spec with no committed value, except the l
 selects Spaces, so the spec declares neither them nor the three non-secret keys that come with them.
 Choosing `spaces` means adding all five.
 
-**Only the first four block a boot, and that is deliberate.** `config.Load()` refuses to start when
+**The API needs the first four; the correction-learning job also needs the OpenAI key.**
+`config.Load()` refuses to start when
 a capability is switched on and its credential is empty, so the committed spec ships every optional
 one **off** — `AI_*_PROVIDER` at `disabled`, `MAIL_PROVIDER` at `console`,
 `RATE_LIMIT_TRUSTED_PROXY_HOPS` at `0`. Fill a secret, then turn its capability on; doing it the
@@ -272,8 +273,9 @@ The full list of keys, with defaults and what each bounds, is in the four `.env.
    the platform builds whatever `main` holds: the spec you apply and the code that gets built come
    from different places, and between releases `main` trails `dev`.
 4. Create the app from `.do/app.yaml`, filling in the database component's `cluster_name`, `db_name`
-   and `db_user`, and the four secrets a boot needs: both database URLs, `AUTH_JWT_SECRET` and
-   `STORAGE_LOCAL_SIGNING_SECRET`. The rest can wait. `NEXT_PUBLIC_API_URL` is still a placeholder.
+   and `db_user`, both database URLs, `AUTH_JWT_SECRET`, `STORAGE_LOCAL_SIGNING_SECRET`, and
+   `AI_OPENAI_API_KEY` for the scheduled correction retry. `NEXT_PUBLIC_API_URL` is still a
+   placeholder.
 5. The `migrate` PRE_DEPLOY job applies the chain as `doadmin`; the grants and RLS policies land on
    the role from step 2, whose password it leaves alone.
 6. Attach the domain, if there is one, and apply the two-hostname block from
@@ -291,8 +293,8 @@ The full list of keys, with defaults and what each bounds, is in the four `.env.
    from a console on the api component — and build the vector index once there are rows
    (`pnpm db:vector-index`, see [catalog.md](catalog.md)). It is deliberately not in the chain: on
    an empty table an ivfflat index is degenerate.
-10. Add the scheduled job's cron once there is a job registered to run; `cmd/scheduled-job --list` is
-    empty until a feature registers one.
+10. Confirm that `quote-correction-learning` runs every 15 minutes and that an empty run exits
+    successfully without calling the embedding provider.
 
 ## What CI already proves
 

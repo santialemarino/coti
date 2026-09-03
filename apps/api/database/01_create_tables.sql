@@ -603,6 +603,44 @@ CREATE TABLE quote_quality_difference (
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE quote_correction_memory (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id        UUID NOT NULL,
+  kind              VARCHAR(32) NOT NULL CHECK (kind IN ('INTERPRETATION', 'CATALOG')),
+  source_text       TEXT NOT NULL,
+  normalized_source TEXT NOT NULL,
+  embedding         VECTOR(1536),
+  status            VARCHAR(16) NOT NULL DEFAULT 'PENDING'
+                    CHECK (status IN ('PENDING', 'READY')),
+  corrected_items   JSONB,
+  product_id        UUID,
+  support_count     INTEGER NOT NULL DEFAULT 0 CHECK (support_count >= 0),
+  use_count         INTEGER NOT NULL DEFAULT 0 CHECK (use_count >= 0),
+  last_seen_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at      TIMESTAMPTZ,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_error        TEXT,
+  CONSTRAINT ck_quote_correction_memory_payload CHECK (
+    (kind = 'INTERPRETATION' AND corrected_items IS NOT NULL
+      AND jsonb_typeof(corrected_items) = 'array' AND product_id IS NULL)
+    OR
+    (kind = 'CATALOG' AND corrected_items IS NULL AND product_id IS NOT NULL)
+  ),
+  CONSTRAINT ck_quote_correction_memory_ready CHECK (
+    (status = 'PENDING' AND embedding IS NULL) OR
+    (status = 'READY' AND embedding IS NOT NULL AND last_error IS NULL)
+  )
+);
+
+CREATE TABLE quote_correction_memory_source (
+  account_id    UUID NOT NULL,
+  evaluation_id UUID NOT NULL,
+  memory_id     UUID NOT NULL,
+  source_key    VARCHAR(128) NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (evaluation_id, source_key)
+);
+
 CREATE TABLE quote_status_change (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id      UUID NOT NULL,
@@ -906,6 +944,11 @@ ALTER TABLE quote_quality_difference ADD CONSTRAINT fk_quote_quality_difference_
 ALTER TABLE quote_quality_difference ADD CONSTRAINT fk_quote_quality_difference_evaluation FOREIGN KEY (evaluation_id) REFERENCES quote_quality_evaluation(id);
 ALTER TABLE quote_quality_difference ADD CONSTRAINT fk_quote_quality_difference_generation_item FOREIGN KEY (generation_item_id) REFERENCES quote_ai_generation_item(id) ON DELETE SET NULL;
 ALTER TABLE quote_quality_difference ADD CONSTRAINT fk_quote_quality_difference_final_item FOREIGN KEY (final_quote_item_id) REFERENCES quote_item(id) ON DELETE SET NULL;
+ALTER TABLE quote_correction_memory ADD CONSTRAINT fk_quote_correction_memory_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE quote_correction_memory ADD CONSTRAINT fk_quote_correction_memory_product FOREIGN KEY (product_id) REFERENCES product(id) ON DELETE CASCADE;
+ALTER TABLE quote_correction_memory_source ADD CONSTRAINT fk_quote_correction_memory_source_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE quote_correction_memory_source ADD CONSTRAINT fk_quote_correction_memory_source_evaluation FOREIGN KEY (evaluation_id) REFERENCES quote_quality_evaluation(id) ON DELETE CASCADE;
+ALTER TABLE quote_correction_memory_source ADD CONSTRAINT fk_quote_correction_memory_source_memory FOREIGN KEY (memory_id) REFERENCES quote_correction_memory(id) ON DELETE CASCADE;
 ALTER TABLE quote_status_change ADD CONSTRAINT fk_quote_status_change_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE quote_status_change ADD CONSTRAINT fk_quote_status_change_quote FOREIGN KEY (quote_id) REFERENCES quote(id);
 ALTER TABLE quote_status_change ADD CONSTRAINT fk_quote_status_change_user FOREIGN KEY (user_id) REFERENCES app_user(id);
@@ -1006,6 +1049,11 @@ CREATE INDEX idx_quote_ai_generation_account_quote ON quote_ai_generation(accoun
 CREATE INDEX idx_quote_ai_generation_item_account_generation ON quote_ai_generation_item(account_id, generation_id);
 CREATE INDEX idx_quote_quality_evaluation_account_generation ON quote_quality_evaluation(account_id, generation_id);
 CREATE INDEX idx_quote_quality_difference_account_evaluation ON quote_quality_difference(account_id, evaluation_id);
+CREATE UNIQUE INDEX uq_quote_correction_catalog_pattern ON quote_correction_memory(account_id, normalized_source, product_id) WHERE kind = 'CATALOG';
+CREATE UNIQUE INDEX uq_quote_correction_interpretation_pattern ON quote_correction_memory(account_id, normalized_source) WHERE kind = 'INTERPRETATION';
+CREATE INDEX idx_quote_correction_memory_account_kind ON quote_correction_memory(account_id, kind);
+CREATE INDEX idx_quote_correction_memory_pending ON quote_correction_memory(created_at, id) WHERE status = 'PENDING';
+CREATE INDEX idx_quote_correction_memory_source_account ON quote_correction_memory_source(account_id, memory_id);
 CREATE INDEX idx_product_family_id ON product(family_id);
 CREATE INDEX idx_product_subgroup_id ON product(subgroup_id);
 CREATE INDEX idx_product_subgroup_family_id ON product_subgroup(family_id);
@@ -1126,7 +1174,8 @@ BEGIN
     'channel', 'rfq', 'rfq_attachment', 'rfq_status_change',
     'quote', 'quote_version', 'quote_item', 'quote_item_alternative',
     'quote_ai_generation', 'quote_ai_generation_item',
-    'quote_quality_evaluation', 'quote_quality_difference', 'quote_status_change',
+    'quote_quality_evaluation', 'quote_quality_difference',
+    'quote_correction_memory', 'quote_correction_memory_source', 'quote_status_change',
     'quote_send', 'client_action',
     'message_batch', 'quote_message',
     'promotion', 'promotion_condition_item', 'promotion_tier',

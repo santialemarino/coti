@@ -67,6 +67,27 @@ func hybrid(name string, distance, lexicalScore float64) domain.CatalogCandidate
 	}
 }
 
+func learned(name string, distance float64) domain.CatalogCandidate {
+	return domain.CatalogCandidate{ProductID: uuid.New(), CanonicalName: name,
+		LearnedDistance: &distance}
+}
+
+func TestCatalogMatchService_LocalMemoryOverridesGenericSearch(t *testing.T) {
+	t.Parallel()
+	local := learned("Seller choice", 0.19)
+	generic := semantic("Generic nearest", 0.01)
+	got := matchOne(t, []domain.CatalogCandidate{local, generic})
+	wantDecision(t, got, domain.ItemMatchStatusMatched, "0.8100", &local.ProductID)
+}
+
+func TestCatalogMatchService_ConflictingLocalMemoriesAreAmbiguous(t *testing.T) {
+	t.Parallel()
+	first := learned("First seller choice", 0.05)
+	second := learned("Second seller choice", 0.18)
+	got := matchOne(t, []domain.CatalogCandidate{first, second})
+	wantDecision(t, got, domain.ItemMatchStatusAmbiguous, "0.9500", &first.ProductID)
+}
+
 // matchOne runs one line through the service and returns its decision.
 func matchOne(t *testing.T, candidates []domain.CatalogCandidate) domain.LineMatch {
 	t.Helper()
