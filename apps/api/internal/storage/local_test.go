@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -69,6 +70,9 @@ func TestLocalStorage_Upload_RoundTripsBytesAndContentType(t *testing.T) {
 }
 
 func TestLocalStorage_Upload_WritesObjectsUnreadableByOtherUsers(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not expose POSIX owner-only permission bits")
+	}
 	t.Parallel()
 	storage := newTestLocalStorage(t, testSigner(t, time.Unix(1_700_000_000, 0)))
 	const key = "accounts/a/rfqs/b/invoice.pdf"

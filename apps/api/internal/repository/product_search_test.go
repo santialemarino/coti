@@ -122,7 +122,7 @@ func searchCandidates(
 	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID}, func(q Querier) error {
 		var err error
 		candidates, err = repo.SearchCandidates(ctx, q, accountID, branchID, text,
-			queryVector(), fetch)
+			queryVector(), fetch, 0.2)
 		return err
 	}); err != nil {
 		t.Fatalf("SearchCandidates() = %v, want no error", err)
@@ -177,6 +177,26 @@ func TestProductRepository_SetEmbeddingsStoresAVectorThatOrdersByDistance(t *tes
 		if math.Abs(*got.Distance-tc.want) > 1e-6 {
 			t.Errorf("%s distance = %v, want %v", tc.name, *got.Distance, tc.want)
 		}
+	}
+}
+
+func TestProductRepository_SearchCandidatesUsesAccountLocalCatalogCorrection(t *testing.T) {
+	db := testDB(t)
+	account := seedAccount(t, db, "Corralon Memoria")
+	branch := branchOf(t, db, account)
+	product := seedCatalogProduct(t, db, account, "Producto interno 42", "")
+	stockBranch(t, db, account, branch, product, true)
+	if _, err := db.CrossAccount().Exec(context.Background(), `INSERT INTO quote_correction_memory
+	  (account_id, kind, source_text, normalized_source, embedding, status, product_id,
+	   support_count)
+	 VALUES ($1, 'CATALOG', 'el coso gris', 'el coso gris', $2, 'READY', $3, 1)`,
+		account, queryVector(), product); err != nil {
+		t.Fatalf("seed correction memory: %v", err)
+	}
+
+	candidates := searchCandidates(t, db, account, branch, "words absent from catalog", 10)
+	if len(candidates) != 1 || candidates[0].ProductID != product {
+		t.Fatalf("candidates = %+v, want the seller-taught product", candidates)
 	}
 }
 
@@ -284,6 +304,33 @@ func TestProductRepository_SearchCandidatesFindsATradeTermThroughASynonym(t *tes
 	if candidates[0].Distance != nil {
 		t.Errorf("distance = %v, want nil: the product carries no embedding",
 			*candidates[0].Distance)
+	}
+}
+
+// Extracted descriptions often keep a generic product word around the trade term. A synonym is
+// evidence when all its terms occur in the request, even if the request contains extra words.
+func TestProductRepository_SearchCandidatesFindsASynonymInsideALongerDescription(t *testing.T) {
+	db := testDB(t)
+	account := seedAccount(t, db, "Corralon Frases")
+	branch := branchOf(t, db, account)
+
+	product := seedCatalogProduct(t, db, account, "Placa de yeso estándar 12.5mm", "unidad")
+	writeEmbedding(t, db, account, product, alignedVector(0.52))
+	stockBranch(t, db, account, branch, product, true)
+	seedSynonym(t, db, account, product, "durlock")
+
+	candidates := searchCandidates(t, db, account, branch, "placas de durlock", 10)
+	if len(candidates) != 1 {
+		t.Fatalf("candidates for a longer description = %v, want the one product", nameOf(candidates))
+	}
+	if candidates[0].ProductID != product {
+		t.Errorf("candidate = %v, want %v", candidates[0].ProductID, product)
+	}
+	if candidates[0].LexicalScore == nil {
+		t.Error("the synonym inside the description carries no lexical evidence")
+	}
+	if candidates[0].Distance == nil {
+		t.Error("distance = nil, want the embedded product reached by both halves")
 	}
 }
 
@@ -407,7 +454,7 @@ func TestProductRepository_SearchUsesTheVectorIndex(t *testing.T) {
 			return err
 		}
 		rows, err := q.Query(ctx, "EXPLAIN "+searchCandidatesQuery,
-			account, branch, "cemento", queryVector(), 10)
+			account, branch, "cemento", queryVector(), 10, 0.2)
 		if err != nil {
 			return err
 		}

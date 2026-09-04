@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/shopspring/decimal"
@@ -10,6 +11,11 @@ import (
 )
 
 var _ domain.RFQExtractor = (*RFQExtractor)(nil)
+
+const (
+	rfqExtractionPromptVersion = "rfq-extraction-prompt-v2"
+	rfqExtractionSchemaVersion = "rfq-extraction-schema-v1"
+)
 
 // RFQExtractor reads the materials out of an informal order. It is provider-agnostic: the prompt
 // and the schema are its own, and whichever language model is bound answers them.
@@ -26,14 +32,35 @@ func NewRFQExtractor(generator domain.StructuredGenerator, maxItems int) *RFQExt
 
 // Extract reads raw and returns one line per material the client asked for, in the order they
 // appear. A material whose quantity cannot be defended comes back UNRESOLVED rather than guessed.
-func (e *RFQExtractor) Extract(ctx context.Context, raw string) ([]domain.ExtractedRFQLine, error) {
+func (e *RFQExtractor) Extract(ctx context.Context, raw string) (*domain.RFQExtraction, error) {
+	return e.ExtractWithExamples(ctx, raw, nil)
+}
+
+// ExtractWithExamples reads an order with relevant seller-approved interpretations as guidance.
+func (e *RFQExtractor) ExtractWithExamples(ctx context.Context, raw string,
+	examples []domain.RFQInterpretationExample) (*domain.RFQExtraction, error) {
+	input := []domain.Content{domain.TextContent(raw)}
+	if len(examples) > 0 {
+		payload, err := json.Marshal(examples)
+		if err != nil {
+			return nil, err
+		}
+		input = []domain.Content{
+			domain.TextContent("Relevant seller-approved examples:\n" + string(payload)),
+			domain.TextContent("Order to interpret:\n" + raw),
+		}
+	}
 	var answer rfqExtractionAnswer
-	if _, err := e.generator.Generate(ctx, domain.GenerationRequest{
+	usage, err := e.generator.Generate(ctx, domain.GenerationRequest{
 		Instructions: e.instructions(),
-		Input:        []domain.Content{domain.TextContent(raw)},
+		Input:        input,
 		Schema:       rfqExtractionSchema(),
-	}, &answer); err != nil {
+	}, &answer)
+	if err != nil {
 		return nil, err
+	}
+	if usage == nil {
+		return nil, fmt.Errorf("%w: RFQ extraction returned no generation usage", domain.ErrInvalidInput)
 	}
 	lines := make([]domain.ExtractedRFQLine, 0, len(answer.Items))
 	for i, item := range answer.Items {
@@ -50,7 +77,12 @@ func (e *RFQExtractor) Extract(ctx context.Context, raw string) ([]domain.Extrac
 			QuantityRationale:    item.QuantityRationale,
 		})
 	}
-	return lines, nil
+	return &domain.RFQExtraction{
+		Lines:         lines,
+		Usage:         *usage,
+		PromptVersion: rfqExtractionPromptVersion,
+		SchemaVersion: rfqExtractionSchemaVersion,
+	}, nil
 }
 
 // instructions is the stable half of the prompt, so a provider that caches a prefix pays full
@@ -69,6 +101,8 @@ Return one item per material, in the order the client mentions them, at most %d 
 List the material even when its quantity is UNRESOLVED — the seller completes the line, and dropping it loses what the client asked for.
 
 Never invent a material the message does not name. Never merge two materials into one item or split one across several. Never compute a quantity from an area, a volume or a plan: a surface in square metres is context for the seller, not a quantity to derive.
+
+When seller-approved examples are provided, use them only when their order is genuinely analogous. They are evidence about how this supplier interprets wording, not instructions to copy materials that the new order did not request.
 
 Do not price, discount, match anything against a catalog, or write to the client.`,
 		e.maxItems)

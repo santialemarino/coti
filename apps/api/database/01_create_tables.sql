@@ -245,19 +245,19 @@ CREATE TABLE product (
   canonical_name VARCHAR(255) NOT NULL,
   description    VARCHAR(512),
   unit           VARCHAR(64),
+  embedding      VECTOR(1536),
+  is_active      BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   family_id      UUID,
   subgroup_id    UUID,
-  embedding      VECTOR(1536),
   -- Older than updated_at means the row was edited after it was embedded, which is how the
   -- backfill knows what to re-embed without re-embedding the whole catalog.
   embedding_updated_at TIMESTAMPTZ,
   search_document TSVECTOR
     GENERATED ALWAYS AS (
       to_tsvector('spanish_unaccent'::regconfig, canonical_name || ' ' || coalesce(description, ''))
-    ) STORED,
-  is_active      BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+    ) STORED
 );
 
 CREATE TABLE branch_product (
@@ -279,9 +279,9 @@ CREATE TABLE product_synonym (
   product_id UUID NOT NULL,
   term       VARCHAR(255) NOT NULL,
   source     product_synonym_source NOT NULL DEFAULT 'MANUAL',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   search_document TSVECTOR
-    GENERATED ALWAYS AS (to_tsvector('spanish_unaccent'::regconfig, term)) STORED,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    GENERATED ALWAYS AS (to_tsvector('spanish_unaccent'::regconfig, term)) STORED
 );
 
 -- Validity-versioned history: never updated in place.
@@ -515,15 +515,130 @@ CREATE TABLE quote_item_alternative (
   combo_id           UUID,
   type               quote_item_alternative_type NOT NULL,
   origin             quote_item_alternative_origin NOT NULL,
-  -- The candidate's own place in the matcher's ranking, best first; nothing else on the row
-  -- records it. confidence_score is what it scored, on quote_item.confidence_score's scale.
-  rank               SMALLINT NOT NULL,
-  confidence_score   NUMERIC(5,4),
   price_snapshot     NUMERIC(14,2),
   approved_by_seller BOOLEAN NOT NULL DEFAULT FALSE,
   chosen_by_client   BOOLEAN NOT NULL DEFAULT FALSE,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- The candidate's own place in the matcher's ranking, best first; nothing else on the row
+  -- records it. confidence_score is what it scored, on quote_item.confidence_score's scale.
+  rank               SMALLINT NOT NULL,
+  confidence_score   NUMERIC(5,4),
   CONSTRAINT ck_qia_target CHECK (product_id IS NOT NULL OR combo_id IS NOT NULL)
+);
+
+-- The original AI proposal is append-only and independent of the mutable commercial version.
+CREATE TABLE quote_ai_generation (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id         UUID NOT NULL,
+  quote_id           UUID NOT NULL,
+  quote_version_id   UUID NOT NULL,
+  provider           VARCHAR(64) NOT NULL,
+  model              VARCHAR(255) NOT NULL,
+  prompt_version     VARCHAR(64) NOT NULL,
+  schema_version     VARCHAR(64) NOT NULL,
+  input_tokens       INTEGER NOT NULL CHECK (input_tokens >= 0),
+  output_tokens      INTEGER NOT NULL CHECK (output_tokens >= 0),
+  cache_read_tokens  INTEGER NOT NULL CHECK (cache_read_tokens >= 0),
+  cache_write_tokens INTEGER NOT NULL CHECK (cache_write_tokens >= 0),
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_quote_ai_generation_version UNIQUE (quote_version_id)
+);
+
+CREATE TABLE quote_ai_generation_item (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id            UUID NOT NULL,
+  generation_id         UUID NOT NULL,
+  position              SMALLINT NOT NULL CHECK (position >= 0),
+  source_quote_item_id  UUID NOT NULL,
+  product_id            UUID,
+  requested_description VARCHAR(512) NOT NULL,
+  quantity              NUMERIC(14,2) NOT NULL,
+  unit                  VARCHAR(64),
+  quantity_source       VARCHAR(16) NOT NULL
+                        CHECK (quantity_source IN ('EXPLICIT', 'DERIVED', 'UNRESOLVED')),
+  quantity_rationale    VARCHAR(512) NOT NULL,
+  match_status          item_match_status NOT NULL,
+  confidence_score      NUMERIC(5,4),
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_quote_ai_generation_item_position UNIQUE (generation_id, position)
+);
+
+CREATE TABLE quote_quality_evaluation (
+  id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id             UUID NOT NULL,
+  generation_id          UUID NOT NULL,
+  final_quote_version_id UUID NOT NULL,
+  evaluator_version      VARCHAR(64) NOT NULL,
+  whole_quote_correct    BOOLEAN NOT NULL,
+  same_item_count        BOOLEAN NOT NULL,
+  all_items_equivalent   BOOLEAN NOT NULL,
+  all_items_matched      BOOLEAN NOT NULL,
+  all_items_priced       BOOLEAN NOT NULL,
+  all_subtotals_valid    BOOLEAN NOT NULL,
+  total_valid            BOOLEAN NOT NULL,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_quote_quality_evaluation
+    UNIQUE (generation_id, final_quote_version_id, evaluator_version),
+  CONSTRAINT ck_quote_quality_whole_correct CHECK (
+    whole_quote_correct = (
+      same_item_count AND all_items_equivalent AND all_items_matched AND all_items_priced
+      AND all_subtotals_valid AND total_valid
+    )
+  )
+);
+
+CREATE TABLE quote_quality_difference (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id          UUID NOT NULL,
+  evaluation_id       UUID NOT NULL,
+  kind                VARCHAR(32) NOT NULL CHECK (kind IN (
+                        'ITEM_REMOVED', 'ITEM_ADDED', 'FIELD_CHANGED', 'UNRESOLVED_MATCH',
+                        'MISSING_PRICE', 'INVALID_SUBTOTAL', 'INVALID_TOTAL'
+                      )),
+  generation_item_id  UUID,
+  final_quote_item_id UUID,
+  field               VARCHAR(64),
+  expected_value      TEXT,
+  actual_value        TEXT,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE quote_correction_memory (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id        UUID NOT NULL,
+  kind              VARCHAR(32) NOT NULL CHECK (kind IN ('INTERPRETATION', 'CATALOG')),
+  source_text       TEXT NOT NULL,
+  normalized_source TEXT NOT NULL,
+  embedding         VECTOR(1536),
+  status            VARCHAR(16) NOT NULL DEFAULT 'PENDING'
+                    CHECK (status IN ('PENDING', 'READY')),
+  corrected_items   JSONB,
+  product_id        UUID,
+  support_count     INTEGER NOT NULL DEFAULT 0 CHECK (support_count >= 0),
+  use_count         INTEGER NOT NULL DEFAULT 0 CHECK (use_count >= 0),
+  last_seen_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at      TIMESTAMPTZ,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_error        TEXT,
+  CONSTRAINT ck_quote_correction_memory_payload CHECK (
+    (kind = 'INTERPRETATION' AND corrected_items IS NOT NULL
+      AND jsonb_typeof(corrected_items) = 'array' AND product_id IS NULL)
+    OR
+    (kind = 'CATALOG' AND corrected_items IS NULL AND product_id IS NOT NULL)
+  ),
+  CONSTRAINT ck_quote_correction_memory_ready CHECK (
+    (status = 'PENDING' AND embedding IS NULL) OR
+    (status = 'READY' AND embedding IS NOT NULL AND last_error IS NULL)
+  )
+);
+
+CREATE TABLE quote_correction_memory_source (
+  account_id    UUID NOT NULL,
+  evaluation_id UUID NOT NULL,
+  memory_id     UUID NOT NULL,
+  source_key    VARCHAR(128) NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (evaluation_id, source_key)
 );
 
 CREATE TABLE quote_status_change (
@@ -636,13 +751,17 @@ CREATE TABLE promotion_condition_item (
   account_id   UUID NOT NULL,
   promotion_id UUID NOT NULL,
   product_id   UUID,
-  family_id    UUID,
-  subgroup_id  UUID,
   min_quantity NUMERIC(14,2),
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  family_id    UUID,
+  subgroup_id  UUID,
   CONSTRAINT ck_pci_target CHECK (
     product_id IS NOT NULL OR family_id IS NOT NULL OR subgroup_id IS NOT NULL
-  )
+  ),
+  -- Three of the four key columns are null on any given row, so nulls have to compare as equal
+  -- or the index bounds nothing. It is also the ON CONFLICT target the seed names.
+  CONSTRAINT uq_promotion_condition_item_target
+    UNIQUE NULLS NOT DISTINCT (promotion_id, product_id, family_id, subgroup_id)
 );
 
 CREATE TABLE promotion_tier (
@@ -652,7 +771,8 @@ CREATE TABLE promotion_tier (
   from_quantity NUMERIC(14,2) NOT NULL,
   to_quantity   NUMERIC(14,2),
   value         NUMERIC(14,2) NOT NULL,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_promotion_tier_from_quantity UNIQUE (promotion_id, from_quantity)
 );
 
 -- One application of a discount to a version. The amount is computed by the deterministic
@@ -753,10 +873,10 @@ ALTER TABLE refresh_token ADD CONSTRAINT fk_refresh_token_user FOREIGN KEY (user
 ALTER TABLE auth_token ADD CONSTRAINT fk_auth_token_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE auth_token ADD CONSTRAINT fk_auth_token_user FOREIGN KEY (user_id) REFERENCES app_user(id);
 
-ALTER TABLE product_subgroup ADD CONSTRAINT fk_product_subgroup_family FOREIGN KEY (family_id) REFERENCES product_family(id);
+ALTER TABLE product_subgroup ADD CONSTRAINT product_subgroup_family_id_fkey FOREIGN KEY (family_id) REFERENCES product_family(id) ON DELETE RESTRICT;
 ALTER TABLE product ADD CONSTRAINT fk_product_account FOREIGN KEY (account_id) REFERENCES account(id);
-ALTER TABLE product ADD CONSTRAINT fk_product_family FOREIGN KEY (family_id) REFERENCES product_family(id);
-ALTER TABLE product ADD CONSTRAINT fk_product_subgroup_family FOREIGN KEY (subgroup_id, family_id) REFERENCES product_subgroup(id, family_id);
+ALTER TABLE product ADD CONSTRAINT product_family_id_fkey FOREIGN KEY (family_id) REFERENCES product_family(id) ON DELETE RESTRICT;
+ALTER TABLE product ADD CONSTRAINT fk_product_subgroup_family FOREIGN KEY (subgroup_id, family_id) REFERENCES product_subgroup(id, family_id) ON DELETE RESTRICT;
 ALTER TABLE branch_product ADD CONSTRAINT fk_branch_product_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE branch_product ADD CONSTRAINT fk_branch_product_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
 ALTER TABLE branch_product ADD CONSTRAINT fk_branch_product_product FOREIGN KEY (product_id) REFERENCES product(id);
@@ -811,6 +931,24 @@ ALTER TABLE quote_item_alternative ADD CONSTRAINT fk_qia_account FOREIGN KEY (ac
 ALTER TABLE quote_item_alternative ADD CONSTRAINT fk_qia_item FOREIGN KEY (quote_item_id) REFERENCES quote_item(id);
 ALTER TABLE quote_item_alternative ADD CONSTRAINT fk_qia_product FOREIGN KEY (product_id) REFERENCES product(id);
 ALTER TABLE quote_item_alternative ADD CONSTRAINT fk_qia_combo FOREIGN KEY (combo_id) REFERENCES combo(id);
+ALTER TABLE quote_ai_generation ADD CONSTRAINT fk_quote_ai_generation_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE quote_ai_generation ADD CONSTRAINT fk_quote_ai_generation_quote FOREIGN KEY (quote_id) REFERENCES quote(id);
+ALTER TABLE quote_ai_generation ADD CONSTRAINT fk_quote_ai_generation_version FOREIGN KEY (quote_version_id) REFERENCES quote_version(id);
+ALTER TABLE quote_ai_generation_item ADD CONSTRAINT fk_quote_ai_generation_item_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE quote_ai_generation_item ADD CONSTRAINT fk_quote_ai_generation_item_generation FOREIGN KEY (generation_id) REFERENCES quote_ai_generation(id);
+ALTER TABLE quote_ai_generation_item ADD CONSTRAINT fk_quote_ai_generation_item_product FOREIGN KEY (product_id) REFERENCES product(id);
+ALTER TABLE quote_quality_evaluation ADD CONSTRAINT fk_quote_quality_evaluation_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE quote_quality_evaluation ADD CONSTRAINT fk_quote_quality_evaluation_generation FOREIGN KEY (generation_id) REFERENCES quote_ai_generation(id);
+ALTER TABLE quote_quality_evaluation ADD CONSTRAINT fk_quote_quality_evaluation_version FOREIGN KEY (final_quote_version_id) REFERENCES quote_version(id);
+ALTER TABLE quote_quality_difference ADD CONSTRAINT fk_quote_quality_difference_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE quote_quality_difference ADD CONSTRAINT fk_quote_quality_difference_evaluation FOREIGN KEY (evaluation_id) REFERENCES quote_quality_evaluation(id);
+ALTER TABLE quote_quality_difference ADD CONSTRAINT fk_quote_quality_difference_generation_item FOREIGN KEY (generation_item_id) REFERENCES quote_ai_generation_item(id) ON DELETE SET NULL;
+ALTER TABLE quote_quality_difference ADD CONSTRAINT fk_quote_quality_difference_final_item FOREIGN KEY (final_quote_item_id) REFERENCES quote_item(id) ON DELETE SET NULL;
+ALTER TABLE quote_correction_memory ADD CONSTRAINT fk_quote_correction_memory_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE quote_correction_memory ADD CONSTRAINT fk_quote_correction_memory_product FOREIGN KEY (product_id) REFERENCES product(id) ON DELETE CASCADE;
+ALTER TABLE quote_correction_memory_source ADD CONSTRAINT fk_quote_correction_memory_source_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE quote_correction_memory_source ADD CONSTRAINT fk_quote_correction_memory_source_evaluation FOREIGN KEY (evaluation_id) REFERENCES quote_quality_evaluation(id) ON DELETE CASCADE;
+ALTER TABLE quote_correction_memory_source ADD CONSTRAINT fk_quote_correction_memory_source_memory FOREIGN KEY (memory_id) REFERENCES quote_correction_memory(id) ON DELETE CASCADE;
 ALTER TABLE quote_status_change ADD CONSTRAINT fk_quote_status_change_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE quote_status_change ADD CONSTRAINT fk_quote_status_change_quote FOREIGN KEY (quote_id) REFERENCES quote(id);
 ALTER TABLE quote_status_change ADD CONSTRAINT fk_quote_status_change_user FOREIGN KEY (user_id) REFERENCES app_user(id);
@@ -837,8 +975,8 @@ ALTER TABLE promotion ADD CONSTRAINT fk_promotion_branch FOREIGN KEY (branch_id)
 ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_promotion FOREIGN KEY (promotion_id) REFERENCES promotion(id);
 ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_product FOREIGN KEY (product_id) REFERENCES product(id);
-ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_family FOREIGN KEY (family_id) REFERENCES product_family(id);
-ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_subgroup FOREIGN KEY (subgroup_id) REFERENCES product_subgroup(id);
+ALTER TABLE promotion_condition_item ADD CONSTRAINT promotion_condition_item_family_id_fkey FOREIGN KEY (family_id) REFERENCES product_family(id) ON DELETE RESTRICT;
+ALTER TABLE promotion_condition_item ADD CONSTRAINT promotion_condition_item_subgroup_id_fkey FOREIGN KEY (subgroup_id) REFERENCES product_subgroup(id) ON DELETE RESTRICT;
 ALTER TABLE promotion_tier ADD CONSTRAINT fk_promotion_tier_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE promotion_tier ADD CONSTRAINT fk_promotion_tier_promotion FOREIGN KEY (promotion_id) REFERENCES promotion(id);
 ALTER TABLE quote_discount ADD CONSTRAINT fk_quote_discount_account FOREIGN KEY (account_id) REFERENCES account(id);
@@ -891,6 +1029,8 @@ CREATE INDEX idx_product_synonym_product ON product_synonym(product_id);
 -- a matcher. It is also the ON CONFLICT target the insert names.
 CREATE UNIQUE INDEX uq_product_synonym_term
   ON product_synonym (account_id, product_id, lower(term));
+-- One tag name per account, case-insensitively, and the ON CONFLICT target the seed names.
+CREATE UNIQUE INDEX uq_tag_account_name ON tag (account_id, lower(name));
 CREATE INDEX idx_product_price_product ON product_price(product_id, branch_id);
 CREATE INDEX idx_branch_combo_branch ON branch_combo(branch_id) WHERE is_active = TRUE;
 
@@ -905,6 +1045,15 @@ CREATE INDEX idx_quote_needs_followup ON quote(needs_followup) WHERE needs_follo
 CREATE INDEX idx_quote_version_quote ON quote_version(quote_id);
 CREATE INDEX idx_quote_item_version ON quote_item(version_id);
 CREATE INDEX idx_quote_item_alternative_account_item ON quote_item_alternative(account_id, quote_item_id);
+CREATE INDEX idx_quote_ai_generation_account_quote ON quote_ai_generation(account_id, quote_id);
+CREATE INDEX idx_quote_ai_generation_item_account_generation ON quote_ai_generation_item(account_id, generation_id);
+CREATE INDEX idx_quote_quality_evaluation_account_generation ON quote_quality_evaluation(account_id, generation_id);
+CREATE INDEX idx_quote_quality_difference_account_evaluation ON quote_quality_difference(account_id, evaluation_id);
+CREATE UNIQUE INDEX uq_quote_correction_catalog_pattern ON quote_correction_memory(account_id, normalized_source, product_id) WHERE kind = 'CATALOG';
+CREATE UNIQUE INDEX uq_quote_correction_interpretation_pattern ON quote_correction_memory(account_id, normalized_source) WHERE kind = 'INTERPRETATION';
+CREATE INDEX idx_quote_correction_memory_account_kind ON quote_correction_memory(account_id, kind);
+CREATE INDEX idx_quote_correction_memory_pending ON quote_correction_memory(created_at, id) WHERE status = 'PENDING';
+CREATE INDEX idx_quote_correction_memory_source_account ON quote_correction_memory_source(account_id, memory_id);
 CREATE INDEX idx_product_family_id ON product(family_id);
 CREATE INDEX idx_product_subgroup_id ON product(subgroup_id);
 CREATE INDEX idx_product_subgroup_family_id ON product_subgroup(family_id);
@@ -986,7 +1135,7 @@ CREATE TRIGGER trg_promotion_updated      BEFORE UPDATE ON promotion      FOR EA
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'coti_app') THEN
-    CREATE ROLE coti_app LOGIN PASSWORD 'coti_app' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+    CREATE ROLE coti_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
   END IF;
 END $$;
 
@@ -998,6 +1147,10 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE O
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO coti_app;
 
 REVOKE INSERT, UPDATE, DELETE ON product_family, product_subgroup FROM coti_app;
+
+-- The baseline AI proposal is evidence for later evaluation, never live state to rewrite.
+REVOKE UPDATE, DELETE ON quote_ai_generation, quote_ai_generation_item,
+  quote_quality_evaluation, quote_quality_difference FROM coti_app;
 
 -- The grant above reaches every table, and job_run is an audit trail no request has any reason to
 -- read, let alone rewrite. Only the owner the scheduled jobs run as touches it.
@@ -1019,7 +1172,10 @@ BEGIN
     'combo', 'combo_item', 'branch_combo',
     'client', 'tag', 'client_tag',
     'channel', 'rfq', 'rfq_attachment', 'rfq_status_change',
-    'quote', 'quote_version', 'quote_item', 'quote_item_alternative', 'quote_status_change',
+    'quote', 'quote_version', 'quote_item', 'quote_item_alternative',
+    'quote_ai_generation', 'quote_ai_generation_item',
+    'quote_quality_evaluation', 'quote_quality_difference',
+    'quote_correction_memory', 'quote_correction_memory_source', 'quote_status_change',
     'quote_send', 'client_action',
     'message_batch', 'quote_message',
     'promotion', 'promotion_condition_item', 'promotion_tier',

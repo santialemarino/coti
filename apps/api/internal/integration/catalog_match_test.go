@@ -172,6 +172,31 @@ func TestCatalogMatch_ResolvesATradeTermThroughASynonym(t *testing.T) {
 	}
 }
 
+// A real catalog product normally has an embedding, and extracted text normally contains more
+// than the synonym alone. The lexical evidence must survive both facts and carry the known trade
+// term over the confidence floor.
+func TestCatalogMatch_ResolvesASynonymInsideALongerDescriptionForAnEmbeddedProduct(t *testing.T) {
+	e := newEnv(t)
+	account, branch := e.seedAccount(t, "Corralon Sinonimo Embebido")
+
+	product := e.seedProduct(t, account, "Placa de yeso estándar 12.5mm", "unidad")
+	e.embed(t, product, 0.52)
+	e.stock(t, account, branch, product)
+	e.synonym(t, account, product, "durlock")
+
+	got := e.matchOne(t, matchConfig(), account, branch, "placas de durlock")
+
+	if got.MatchStatus != domain.ItemMatchStatusMatched {
+		t.Errorf("match status = %q, want MATCHED", got.MatchStatus)
+	}
+	if got.ProductID == nil || *got.ProductID != product {
+		t.Errorf("product = %v, want the plasterboard %v", got.ProductID, product)
+	}
+	if want := decimal.RequireFromString("0.75"); !got.Confidence.Equal(want) {
+		t.Errorf("confidence = %s, want lexical evidence preserved at %s", got.Confidence, want)
+	}
+}
+
 // A clear leader with nothing near it, scored off a distance the fixture fixes exactly.
 func TestCatalogMatch_MatchesAClearLeaderAtTheDistanceItWasSeededWith(t *testing.T) {
 	e := newEnv(t)

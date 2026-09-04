@@ -50,6 +50,13 @@ type quoteDraftRepository interface {
 	CreateSingleItem(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, in domain.QuoteItemCreate) (*domain.QuoteItem, error)
 }
 
+// quoteAIGenerationRepository stores the original proposal independently of its editable version.
+type quoteAIGenerationRepository interface {
+	Create(ctx context.Context, q repository.Querier, accountID uuid.UUID,
+		in domain.NewQuoteAIGeneration, items []domain.NewQuoteAIGenerationItem,
+	) (*domain.QuoteAIGeneration, error)
+}
+
 // rfqChannelReader is the channel validation surface the RFQ flow needs.
 type rfqChannelReader interface {
 	ListActiveByType(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, channelType domain.ChannelType) ([]domain.Channel, error)
@@ -61,23 +68,45 @@ type catalogMatcher interface {
 	Match(ctx context.Context, tenant domain.Tenant, descriptions []string) ([]domain.LineMatch, error)
 }
 
-// RFQService owns the text RFQ pipeline up to a seller-reviewable quote draft, and
-// the manual entry flow.
+// interpretationMemoryFinder retrieves account-local examples of how this supplier has read
+// previous orders, which the extractor can lean on to disambiguate its own readings.
+type interpretationMemoryFinder interface {
+	FindInterpretationExamples(ctx context.Context, tenant domain.Tenant,
+		raw string) ([]domain.RFQInterpretationExample, error)
+}
+
+// memoryAwareRFQExtractor is an extractor that can use interpretation examples when they exist.
+type memoryAwareRFQExtractor interface {
+	ExtractWithExamples(ctx context.Context, raw string,
+		examples []domain.RFQInterpretationExample) (*domain.RFQExtraction, error)
+}
+
+// RFQService owns the text RFQ pipeline up to a seller-reviewable quote draft, and the manual
+// entry flow.
 type RFQService struct {
-	db        tenantTxRunner
-	rfqs      rfqRepository
-	quotes    quoteDraftRepository
-	channels  rfqChannelReader
-	extractor domain.RFQExtractor
-	matcher   catalogMatcher
-	log       *slog.Logger
-	cfg       config.RFQConfig
-	now       func() time.Time
+	db          tenantTxRunner
+	rfqs        rfqRepository
+	quotes      quoteDraftRepository
+	generations quoteAIGenerationRepository
+	channels    rfqChannelReader
+	extractor   domain.RFQExtractor
+	matcher     catalogMatcher
+	memories    interpretationMemoryFinder
+	log         *slog.Logger
+	cfg         config.RFQConfig
+	now         func() time.Time
+}
+
+// WithCorrectionMemory enables account-local interpretation examples.
+func (s *RFQService) WithCorrectionMemory(memories interpretationMemoryFinder) *RFQService {
+	s.memories = memories
+	return s
 }
 
 // NewRFQService builds an RFQService.
 func NewRFQService(
 	db tenantTxRunner, rfqs rfqRepository, quotes quoteDraftRepository,
+	generations quoteAIGenerationRepository,
 	channels rfqChannelReader, extractor domain.RFQExtractor, matcher catalogMatcher,
 	log *slog.Logger, cfg config.RFQConfig,
 ) *RFQService {
@@ -85,8 +114,8 @@ func NewRFQService(
 		log = slog.Default()
 	}
 	return &RFQService{
-		db: db, rfqs: rfqs, quotes: quotes, channels: channels, extractor: extractor,
-		matcher: matcher, log: log, cfg: cfg, now: time.Now,
+		db: db, rfqs: rfqs, quotes: quotes, generations: generations, channels: channels,
+		extractor: extractor, matcher: matcher, log: log, cfg: cfg, now: time.Now,
 	}
 }
 
@@ -471,7 +500,7 @@ func (s *RFQService) createTextDraft(
 		return nil, err
 	}
 
-	items, alternatives, err := s.readMaterials(ctx, tenant, in.RawText)
+	extraction, items, alternatives, err := s.readMaterials(ctx, tenant, in.RawText)
 	if err != nil {
 		return nil, err
 	}
@@ -479,31 +508,51 @@ func (s *RFQService) createTextDraft(
 		s.log.InfoContext(ctx, "rfq produced no materials", slog.String("rfq_id", rfq.ID.String()))
 		return &domain.TextRFQDraft{RFQ: *rfq}, nil
 	}
-	return s.persistGeneratedDraft(ctx, tenant, rfq, sellerID, items, alternatives)
+	return s.persistGeneratedDraft(ctx, tenant, rfq, sellerID, extraction, items, alternatives)
 }
 
 func (s *RFQService) readMaterials(
 	ctx context.Context, tenant domain.Tenant, raw string,
-) ([]domain.NewQuoteItem, []domain.NewQuoteItemAlternative, error) {
+) (*domain.RFQExtraction, []domain.NewQuoteItem, []domain.NewQuoteItemAlternative, error) {
 	pipelineCtx, cancel := context.WithTimeout(ctx, s.cfg.PipelineTimeout)
 	defer cancel()
 
-	lines, err := s.extractor.Extract(pipelineCtx, raw)
-	if err != nil {
-		return nil, nil, err
+	var examples []domain.RFQInterpretationExample
+	if s.memories != nil {
+		var memoryErr error
+		examples, memoryErr = s.memories.FindInterpretationExamples(pipelineCtx, tenant, raw)
+		if memoryErr != nil {
+			s.log.WarnContext(ctx, "interpretation memory unavailable", slog.Any("error", memoryErr))
+		}
 	}
-	if len(lines) > s.cfg.MaxItems {
-		return nil, nil, fmt.Errorf("%w: the order lists more than %d materials, which is a "+
+	var extraction *domain.RFQExtraction
+	var err error
+	if aware, ok := s.extractor.(memoryAwareRFQExtractor); ok && len(examples) > 0 {
+		extraction, err = aware.ExtractWithExamples(pipelineCtx, raw, examples)
+	} else {
+		extraction, err = s.extractor.Extract(pipelineCtx, raw)
+	}
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if extraction == nil {
+		return nil, nil, nil, fmt.Errorf("%w: RFQ extraction returned no result",
+			domain.ErrInvalidInput)
+	}
+	// Matching runs one query per line, so an order that came back as a catalog would turn one
+	// request into hundreds of them. Stated in the prompt, enforced here.
+	if len(extraction.Lines) > s.cfg.MaxItems {
+		return nil, nil, nil, fmt.Errorf("%w: the order lists more than %d materials, which is a "+
 			"catalog rather than a message", domain.ErrInvalidInput, s.cfg.MaxItems)
 	}
-	items, err := newQuoteItemsFromRFQLines(lines)
+	items, err := newQuoteItemsFromRFQLines(extraction.Lines)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if len(items) == 0 {
-		return nil, nil, nil
+		return extraction, nil, nil, nil
 	}
-	return items, s.applyMatches(pipelineCtx, tenant, items), nil
+	return extraction, items, s.applyMatches(pipelineCtx, tenant, items), nil
 }
 
 func (s *RFQService) applyMatches(
@@ -566,7 +615,8 @@ func (s *RFQService) persistReceivedRFQ(
 
 func (s *RFQService) persistGeneratedDraft(
 	ctx context.Context, tenant domain.Tenant, rfq *domain.RFQ, sellerID *uuid.UUID,
-	items []domain.NewQuoteItem, alternatives []domain.NewQuoteItemAlternative,
+	extraction *domain.RFQExtraction, items []domain.NewQuoteItem,
+	alternatives []domain.NewQuoteItemAlternative,
 ) (*domain.TextRFQDraft, error) {
 	var draft domain.TextRFQDraft
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
@@ -602,6 +652,17 @@ func (s *RFQService) persistGeneratedDraft(
 			alternatives)
 		if candidatesErr != nil {
 			return candidatesErr
+		}
+		if s.generations == nil {
+			return fmt.Errorf("%w: AI generation persistence is not wired", domain.ErrInvalidInput)
+		}
+		generationItems, generationItemsErr := newQuoteAIGenerationItems(extraction.Lines, items)
+		if generationItemsErr != nil {
+			return generationItemsErr
+		}
+		if _, generationErr := s.generations.Create(ctx, q, tenant.AccountID,
+			newQuoteAIGeneration(quote.ID, version.ID, extraction), generationItems); generationErr != nil {
+			return generationErr
 		}
 
 		quote, updateQuoteErr := s.quotes.UpdateCurrentVersion(ctx, q, tenant.AccountID,
@@ -641,6 +702,41 @@ func (s *RFQService) persistGeneratedDraft(
 	return &draft, nil
 }
 
+func newQuoteAIGeneration(
+	quoteID, versionID uuid.UUID, extraction *domain.RFQExtraction,
+) domain.NewQuoteAIGeneration {
+	return domain.NewQuoteAIGeneration{
+		QuoteID: quoteID, QuoteVersionID: versionID,
+		Provider: extraction.Usage.Provider, Model: extraction.Usage.Model,
+		PromptVersion: extraction.PromptVersion, SchemaVersion: extraction.SchemaVersion,
+		InputTokens: extraction.Usage.InputTokens, OutputTokens: extraction.Usage.OutputTokens,
+		CacheReadTokens:  extraction.Usage.CacheReadTokens,
+		CacheWriteTokens: extraction.Usage.CacheWriteTokens,
+	}
+}
+
+func newQuoteAIGenerationItems(
+	lines []domain.ExtractedRFQLine, items []domain.NewQuoteItem,
+) ([]domain.NewQuoteAIGenerationItem, error) {
+	if len(lines) != len(items) {
+		return nil, fmt.Errorf("%w: extraction lines and quote items are not aligned",
+			domain.ErrInvalidInput)
+	}
+	snapshots := make([]domain.NewQuoteAIGenerationItem, 0, len(items))
+	for i, item := range items {
+		snapshots = append(snapshots, domain.NewQuoteAIGenerationItem{
+			Position: i, SourceQuoteItemID: item.ID, ProductID: item.ProductID,
+			RequestedDescription: item.RequestedDescription, Quantity: item.Quantity, Unit: item.Unit,
+			QuantitySource: lines[i].Source, QuantityRationale: *item.QuantityRationale,
+			MatchStatus: item.MatchStatus, ConfidenceScore: item.ConfidenceScore,
+		})
+	}
+	return snapshots, nil
+}
+
+// persistAlternatives writes the flagged lines' candidates and reads them back with the catalog
+// identity a seller needs to tell them apart, which the insert cannot return: RETURNING sees only
+// the row it wrote, and the product's name is a join away.
 func (s *RFQService) persistAlternatives(
 	ctx context.Context, q repository.Querier, accountID uuid.UUID, items []domain.QuoteItem,
 	alternatives []domain.NewQuoteItemAlternative,

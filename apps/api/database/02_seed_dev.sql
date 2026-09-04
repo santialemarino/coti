@@ -196,12 +196,12 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO promotion_condition_item (account_id, promotion_id, product_id, min_quantity) VALUES
   ('a0000000-0000-4000-8000-000000000001', 'e0000000-0000-4000-8000-000000000001',
    'd0000000-0000-4000-8000-000000000001', 10)
-ON CONFLICT DO NOTHING;
+ON CONFLICT (promotion_id, product_id, family_id, subgroup_id) DO NOTHING;
 
 INSERT INTO promotion_tier (account_id, promotion_id, from_quantity, to_quantity, value) VALUES
   ('a0000000-0000-4000-8000-000000000001', 'e0000000-0000-4000-8000-000000000001', 10, 49, 10),
   ('a0000000-0000-4000-8000-000000000001', 'e0000000-0000-4000-8000-000000000001', 50, NULL, 15)
-ON CONFLICT DO NOTHING;
+ON CONFLICT (promotion_id, from_quantity) DO NOTHING;
 
 INSERT INTO client (id, account_id, name, phone, origin_channel) VALUES
   ('f0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001',
@@ -215,7 +215,7 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO tag (account_id, name, color) VALUES
   ('a0000000-0000-4000-8000-000000000001', 'Recurrente', '#16A34A'),
   ('a0000000-0000-4000-8000-000000000001', 'Obra grande', '#2563EB')
-ON CONFLICT DO NOTHING;
+ON CONFLICT (account_id, lower(name)) DO NOTHING;
 
 -- Catalog combos: account-scoped, with per-branch availability. One is inactive at Moron so
 -- availability is not always TRUE, and the other has no row there at all — an absent row and

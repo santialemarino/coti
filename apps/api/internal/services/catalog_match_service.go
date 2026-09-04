@@ -30,8 +30,7 @@ type CatalogMatchService struct {
 	// ambiguityMargin is how far the leading candidate sits above the runner-up before the line
 	// counts as decided rather than as a choice between two products.
 	ambiguityMargin decimal.Decimal
-	// lexicalConfidence is what a candidate only the lexical half scored is worth. A synonym hit
-	// carries no cosine similarity to read, and it is strong evidence rather than none.
+	// lexicalConfidence is the confidence floor for a candidate carrying lexical evidence.
 	lexicalConfidence decimal.Decimal
 }
 
@@ -95,11 +94,15 @@ func (s *CatalogMatchService) decide(candidates []domain.CatalogCandidate) domai
 
 	status := domain.ItemMatchStatusMatched
 	if len(scored) > 1 {
-		// Negative when the two halves disagree about which product this is — the runner-up is
-		// the closer vector and the leader only won on the fused rank. That is an ambiguous line.
-		margin := leader.Confidence.Sub(scored[1].Confidence)
-		if margin.LessThan(s.ambiguityMargin) {
+		if leader.LearnedDistance != nil && scored[1].LearnedDistance != nil {
 			status = domain.ItemMatchStatusAmbiguous
+		} else if leader.LearnedDistance == nil {
+			// Negative when the two halves disagree about which product this is — the runner-up is
+			// the closer vector and the leader only won on the fused rank. That is an ambiguous line.
+			margin := leader.Confidence.Sub(scored[1].Confidence)
+			if margin.LessThan(s.ambiguityMargin) {
+				status = domain.ItemMatchStatusAmbiguous
+			}
 		}
 	}
 	productID := leader.ProductID
@@ -130,17 +133,30 @@ func (s *CatalogMatchService) scoreAll(candidates []domain.CatalogCandidate) []d
 // confidenceOf scores one candidate on 0..1. Rounding here rather than on the way to the
 // database is what makes the persisted number the one the decision was taken on.
 func (s *CatalogMatchService) confidenceOf(candidate domain.CatalogCandidate) decimal.Decimal {
-	if candidate.Distance == nil {
-		return s.lexicalConfidence.Round(confidenceScale)
+	distance := candidate.Distance
+	if candidate.LearnedDistance != nil {
+		distance = candidate.LearnedDistance
 	}
-	// A product stored with a zero-length vector comes back at NaN, which the decimal package
-	// refuses outright: no direction to compare is no evidence of similarity, not a crash.
-	if math.IsNaN(*candidate.Distance) || math.IsInf(*candidate.Distance, 0) {
+	if distance == nil {
+		if candidate.LexicalScore != nil {
+			return s.lexicalConfidence.Round(confidenceScale)
+		}
 		return decimal.Zero
 	}
-	similarity := decimal.NewFromInt(1).Sub(decimal.NewFromFloat(*candidate.Distance))
-	return decimal.Min(decimal.Max(similarity, decimal.Zero), decimal.NewFromInt(1)).
-		Round(confidenceScale)
+	// A product stored with a zero-length vector comes back at NaN, which the decimal package
+	// refuses outright. Lexical evidence remains valid even when its vector is unusable.
+	if math.IsNaN(*distance) || math.IsInf(*distance, 0) {
+		if candidate.LexicalScore != nil {
+			return s.lexicalConfidence.Round(confidenceScale)
+		}
+		return decimal.Zero
+	}
+	similarity := decimal.NewFromInt(1).Sub(decimal.NewFromFloat(*distance))
+	similarity = decimal.Min(decimal.Max(similarity, decimal.Zero), decimal.NewFromInt(1))
+	if candidate.LexicalScore != nil {
+		similarity = decimal.Max(similarity, s.lexicalConfidence)
+	}
+	return similarity.Round(confidenceScale)
 }
 
 // percentAsRatio turns a configured whole percentage into the 0..1 scale the scores live on.

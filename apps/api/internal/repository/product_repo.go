@@ -215,8 +215,15 @@ func (r *ProductRepository) SetSearchProbes(ctx context.Context, q Querier, prob
 // Kept as a const so the test that reads its execution plan measures this statement rather than
 // a copy of it.
 const searchCandidatesQuery = `
-	WITH ask AS (
-	    SELECT plainto_tsquery('spanish_unaccent'::regconfig, $3) AS ts
+	WITH ask_document AS (
+	    SELECT to_tsvector('spanish_unaccent'::regconfig, $3) AS document
+	),
+	ask AS (
+	    SELECT plainto_tsquery('spanish_unaccent'::regconfig, $3) AS query,
+	           document,
+	           to_tsquery('spanish_unaccent'::regconfig,
+	               array_to_string(tsvector_to_array(document), ' | ')) AS any_term_query
+	    FROM ask_document
 	),
 	semantic AS (
 	    SELECT id, embedding <=> $4 AS distance
@@ -225,20 +232,33 @@ const searchCandidatesQuery = `
 	    ORDER BY embedding <=> $4
 	    LIMIT $5
 	),
+	learned AS (
+	    SELECT product_id, min(embedding <=> $4) AS distance
+	    FROM quote_correction_memory
+	    WHERE account_id = $1 AND kind = 'CATALOG' AND status = 'READY'
+	      AND embedding <=> $4 <= $6
+	    GROUP BY product_id
+	),
+	lexical_hit AS (
+	    SELECT p.id AS product_id, ts_rank(p.search_document, ask.query)::float8 AS score
+	    FROM product p, ask
+	    WHERE p.account_id = $1 AND p.is_active = TRUE
+	      AND p.search_document @@ ask.query
+	    UNION ALL
+	    SELECT s.product_id,
+	           ts_rank(ask.document,
+	               plainto_tsquery('spanish_unaccent'::regconfig, s.term))::float8 AS score
+	    FROM product_synonym s
+	    JOIN product sp ON sp.id = s.product_id AND sp.account_id = $1 AND sp.is_active = TRUE
+	    CROSS JOIN ask
+	    WHERE s.account_id = $1
+	      AND s.search_document @@ ask.any_term_query
+	      AND ask.document @@ plainto_tsquery('spanish_unaccent'::regconfig, s.term)
+	),
 	lexical AS (
-	    SELECT d.product_id, max(ts_rank(d.document, ask.ts))::float8 AS score
-	    FROM (
-	        SELECT id AS product_id, search_document AS document
-	        FROM product
-	        WHERE account_id = $1 AND is_active = TRUE
-	        UNION ALL
-	        SELECT s.product_id, s.search_document
-	        FROM product_synonym s
-	        JOIN product sp ON sp.id = s.product_id AND sp.account_id = $1 AND sp.is_active = TRUE
-	        WHERE s.account_id = $1
-	    ) d, ask
-	    WHERE d.document @@ ask.ts
-	    GROUP BY d.product_id
+	    SELECT product_id, max(score)::float8 AS score
+	    FROM lexical_hit
+	    GROUP BY product_id
 	    ORDER BY score DESC
 	    LIMIT $5
 	),
@@ -246,13 +266,17 @@ const searchCandidatesQuery = `
 	    SELECT id FROM semantic
 	    UNION
 	    SELECT product_id FROM lexical
+	    UNION
+	    SELECT product_id FROM learned
 	)
-	SELECT p.id, p.code, p.canonical_name, p.unit, semantic.distance, lexical.score
+	SELECT p.id, p.code, p.canonical_name, p.unit, semantic.distance, lexical.score,
+	       learned.distance
 	FROM candidate c
 	JOIN product p ON p.id = c.id AND p.account_id = $1
 	JOIN branch_product bp ON bp.product_id = p.id AND bp.account_id = $1
 	  AND bp.branch_id = $2 AND bp.is_active = TRUE
 	LEFT JOIN semantic ON semantic.id = p.id
+	LEFT JOIN learned ON learned.product_id = p.id
 	LEFT JOIN lexical ON lexical.product_id = p.id`
 
 // SearchCandidates returns the catalog items the branch carries that either half of the search
@@ -263,9 +287,10 @@ const searchCandidatesQuery = `
 // two halves together and trimming to the caller's K is the service's job.
 func (r *ProductRepository) SearchCandidates(
 	ctx context.Context, q Querier, accountID, branchID uuid.UUID,
-	text string, embedding pgvector.Vector, fetch int,
+	text string, embedding pgvector.Vector, fetch int, correctionMaxDistance float64,
 ) ([]domain.CatalogCandidate, error) {
-	rows, err := q.Query(ctx, searchCandidatesQuery, accountID, branchID, text, embedding, fetch)
+	rows, err := q.Query(ctx, searchCandidatesQuery, accountID, branchID, text, embedding, fetch,
+		correctionMaxDistance)
 	if err != nil {
 		return nil, err
 	}
@@ -275,7 +300,7 @@ func (r *ProductRepository) SearchCandidates(
 	for rows.Next() {
 		var c domain.CatalogCandidate
 		if err := rows.Scan(&c.ProductID, &c.Code, &c.CanonicalName, &c.Unit,
-			&c.Distance, &c.LexicalScore); err != nil {
+			&c.Distance, &c.LexicalScore, &c.LearnedDistance); err != nil {
 			return nil, err
 		}
 		candidates = append(candidates, c)

@@ -31,6 +31,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+          cache-dependency-path: apps/api/go.sum
       - name: Download dependencies
         run: go mod download
       - name: Format check
@@ -90,6 +91,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+          cache-dependency-path: apps/api/go.sum
       - name: Download dependencies
         run: go mod download
       - name: Apply migrations
@@ -97,6 +99,12 @@ jobs:
         env:
           DATABASE_ADMIN_URL: postgres://coti:coti@127.0.0.1:5432/coti?sslmode=disable
         run: node scripts/goose.mjs up
+      # The chain creates the app role with no password, so nothing can connect as it until this
+      # runs. Here the value is a published default; a deployment provisions its own instead.
+      - name: Set the app role's password
+        env:
+          PGPASSWORD: coti
+        run: psql -h 127.0.0.1 -U coti -d coti -c "ALTER ROLE coti_app PASSWORD 'coti_app'"
       # Coverage is measured here rather than in the unit job because this run is a superset: a
       # build tag only adds files, so this compiles in both suites. The unit job alone would
       # report the repository package at zero, all of whose tests are tagged.

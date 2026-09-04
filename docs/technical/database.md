@@ -1,6 +1,6 @@
 # Database
 
-PostgreSQL 16 + pgvector. The model is 37 tables with UUID v4 primary keys, native enums, and
+PostgreSQL 16 + pgvector. The model is 46 tables with UUID v4 primary keys, native enums, and
 money in `NUMERIC(14,2)`.
 
 ## What is the source and what is the reference
@@ -35,7 +35,7 @@ its siblings. The reference follows the physical schema, not taste.
 ## Bringing a database up
 
 ```bash
-pnpm db:init      # postgres + goose up + seed
+pnpm db:init      # postgres + goose up + the app role's password + seed
 pnpm db:migrate   # apply pending migrations
 pnpm db:seed      # the seed only (idempotent)
 pnpm db:reset     # drop the volume and rebuild
@@ -124,6 +124,34 @@ The four legitimate owner cases:
    the owner resolves token → `account_id`, and the rest of the request continues on the
    restricted role with the GUC set.
 
+### The app role has no password until something sets one
+
+`00001` creates `coti_app` with **no `PASSWORD` clause at all**. A `LOGIN` role whose password is
+null cannot authenticate under `scram-sha-256`, so a database built by running the chain and
+nothing else refuses every connection as `coti_app` instead of accepting a password anyone can read
+in a public repository. The refusal is loud: `repository.NewDB` pings each pool before returning, so
+the API **fails to start** and says why, rather than booting and failing a request later.
+
+Giving it one is a separate step, and it is deliberately not the chain's:
+
+- **Locally**, `pnpm db:init` does it after migrating, taking the role and password straight out of
+  `DATABASE_URL` so the two cannot drift. Running `pnpm db:migrate` alone against a brand-new
+  database leaves the API unable to start; `pnpm db:init` is the command that finishes the job.
+- **In CI**, `ci.api.yml` sets the same published default before the integration suite, which is
+  the only job that connects as `coti_app`.
+- **In a deployment**, a person sets it once, and best **before the first migration runs**: the
+  `IF NOT EXISTS` guard leaves an already-provisioned role exactly as it is while it still collects
+  every grant. It is not done from a deploy job: `ALTER ROLE` and `CREATE ROLE` are DDL, so a
+  managed Postgres running with `log_statement = 'ddl'` would write the password into a log the
+  platform exposes.
+
+That same guard is why an existing database is untouched by this: the role is already there with
+whatever password it was given, and re-running the chain never revisits it.
+
+`docker-compose.yml` overrides the dockerised API's `DATABASE_URL` to reach the `postgres` service
+by name, and that override carries the password literally. It matches what `.env.example` ships, so
+changing the local one means changing both.
+
 ## Account isolation (RLS)
 
 Every tenant-scoped table carries `account_id` — child tables included — and a policy
@@ -184,12 +212,18 @@ Whatever can be expressed in the schema is expressed in the schema:
 | `uq_product_price_open_period`           | one open price period per branch and product       |
 | `uq_app_user_email_global`               | an address identifies one user, case-insensitively |
 | `uq_auth_token_hash`                     | a recovery or verification link is unique          |
+| `uq_tag_account_name`                    | one tag name per account, case-insensitively       |
+| `uq_promotion_tier_from_quantity`        | one tier per promotion and starting quantity       |
+| `uq_promotion_condition_item_target`     | one condition row per promotion and target         |
 
 **A unique constraint does not compare NULLs**, so on a nullable column it lets every empty
 row escape. That is why the 1-to-1 needs the NOT NULL as well as the index:
 `uq_channel_branch_type_identifier` alone does not bound the identifier-less channels, which
-is where the partial index comes in. Pinning an invariant on a nullable column leaves only two
-ways out — a NOT NULL, or a partial index over the NULL case.
+is where the partial index comes in. Pinning an invariant on a nullable column has three ways
+out — a NOT NULL, a partial index over the NULL case, or `UNIQUE NULLS NOT DISTINCT`, which
+compares them as equal. The third is what `uq_promotion_condition_item_target` uses: a condition
+row names one target and leaves the other three key columns null, so an index that skipped them
+would bound nothing.
 
 **An index and a lock do different jobs, and one open price period needs both.**
 `uq_product_price_open_period` turns a second open row into an error, but an error is not what

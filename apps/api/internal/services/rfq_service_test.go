@@ -105,7 +105,7 @@ func (f *fakeRfqRepoManual) CreateManualEntry(
 
 func manualHarness(repo *fakeRfqRepoManual) (*RFQService, *fakeDB) {
 	db := &fakeDB{}
-	svc := NewRFQService(db, repo, nil, nil, nil, nil, nil, config.RFQConfig{})
+	svc := NewRFQService(db, repo, nil, nil, nil, nil, nil, nil, config.RFQConfig{})
 	svc.now = func() time.Time { return fixedNow }
 	return svc, db
 }
@@ -315,13 +315,23 @@ type fakeRFQExtractor struct {
 
 func (f *fakeRFQExtractor) Extract(
 	_ context.Context, raw string,
-) ([]domain.ExtractedRFQLine, error) {
+) (*domain.RFQExtraction, error) {
 	f.calls++
 	f.raw = raw
 	if f.db != nil {
 		f.calledOutsideTx = f.db.activeTransactions == 0
 	}
-	return f.lines, f.err
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &domain.RFQExtraction{
+		Lines: f.lines,
+		Usage: domain.GenerationUsage{
+			Provider: "test-provider", Model: "test-model", InputTokens: 21, OutputTokens: 13,
+			CacheReadTokens: 8, CacheWriteTokens: 5,
+		},
+		PromptVersion: "test-prompt-v1", SchemaVersion: "test-schema-v1",
+	}, nil
 }
 
 type fakeCatalogMatcher struct {
@@ -494,6 +504,30 @@ type fakeQuoteDrafts struct {
 	currentVersionErr  error
 	itemsByVersionID   []domain.QuoteItem
 	itemsByVersionErr  error
+}
+
+type fakeQuoteAIGenerations struct {
+	created []domain.NewQuoteAIGeneration
+	items   [][]domain.NewQuoteAIGenerationItem
+	err     error
+}
+
+func (f *fakeQuoteAIGenerations) Create(
+	_ context.Context, _ repository.Querier, accountID uuid.UUID,
+	in domain.NewQuoteAIGeneration, items []domain.NewQuoteAIGenerationItem,
+) (*domain.QuoteAIGeneration, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	f.created = append(f.created, in)
+	f.items = append(f.items, items)
+	return &domain.QuoteAIGeneration{
+		ID: uuid.New(), AccountID: accountID, QuoteID: in.QuoteID,
+		QuoteVersionID: in.QuoteVersionID, Provider: in.Provider, Model: in.Model,
+		PromptVersion: in.PromptVersion, SchemaVersion: in.SchemaVersion,
+		InputTokens: in.InputTokens, OutputTokens: in.OutputTokens,
+		CacheReadTokens: in.CacheReadTokens, CacheWriteTokens: in.CacheWriteTokens,
+	}, nil
 }
 
 func (f *fakeQuoteDrafts) Create(
@@ -711,13 +745,14 @@ func (f *fakeQuoteDrafts) CreateSingleItem(
 }
 
 type rfqHarness struct {
-	service   *RFQService
-	db        *fakeRFQDB
-	extractor *fakeRFQExtractor
-	matcher   *fakeCatalogMatcher
-	rfqs      *fakeRFQs
-	quotes    *fakeQuoteDrafts
-	channels  *fakeRFQChannels
+	service     *RFQService
+	db          *fakeRFQDB
+	extractor   *fakeRFQExtractor
+	matcher     *fakeCatalogMatcher
+	rfqs        *fakeRFQs
+	quotes      *fakeQuoteDrafts
+	generations *fakeQuoteAIGenerations
+	channels    *fakeRFQChannels
 }
 
 func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
@@ -732,12 +767,13 @@ func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 		}
 	}
 	h := &rfqHarness{
-		db:        db,
-		extractor: &fakeRFQExtractor{lines: lines, db: db},
-		matcher:   &fakeCatalogMatcher{matches: matches, db: db},
-		rfqs:      &fakeRFQs{},
-		quotes:    &fakeQuoteDrafts{},
-		channels:  &fakeRFQChannels{},
+		db:          db,
+		extractor:   &fakeRFQExtractor{lines: lines, db: db},
+		matcher:     &fakeCatalogMatcher{matches: matches, db: db},
+		rfqs:        &fakeRFQs{},
+		quotes:      &fakeQuoteDrafts{},
+		generations: &fakeQuoteAIGenerations{},
+		channels:    &fakeRFQChannels{},
 	}
 	channel := domain.Channel{
 		ID: testChannelID, AccountID: testAccountID, BranchID: testBranchID,
@@ -745,8 +781,8 @@ func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 	}
 	h.channels.channel = &channel
 	h.channels.channelsByType = []domain.Channel{channel}
-	h.service = NewRFQService(h.db, h.rfqs, h.quotes, h.channels, h.extractor, h.matcher, nil,
-		testRFQConfig())
+	h.service = NewRFQService(h.db, h.rfqs, h.quotes, h.generations, h.channels, h.extractor,
+		h.matcher, nil, testRFQConfig())
 	return h
 }
 
@@ -765,6 +801,15 @@ func explicitLine(description, quantity, unit, rationale string) domain.Extracte
 		line.Unit = &unit
 	}
 	return line
+}
+
+// scoredCandidate stages one offer the matcher weighed. Distance is what confidenceOf reads, but
+// these tests stage the confidence directly: what a candidate scored is the matcher's own test.
+func scoredCandidate(productID uuid.UUID, name, confidence string) domain.ScoredCandidate {
+	return domain.ScoredCandidate{
+		CatalogCandidate: domain.CatalogCandidate{ProductID: productID, CanonicalName: name},
+		Confidence:       decimal.RequireFromString(confidence),
+	}
 }
 
 func TestRFQService_CreateTextDraft_PersistsGeneratedDraft(t *testing.T) {
@@ -861,6 +906,33 @@ func TestRFQService_CreateTextDraft_PersistsGeneratedDraft(t *testing.T) {
 	}
 	if len(h.quotes.currentVersion) != 1 || h.quotes.currentVersion[0] != testVersionID {
 		t.Errorf("current version pointer %v, want the new version", h.quotes.currentVersion)
+	}
+	if len(h.generations.created) != 1 || len(h.generations.items) != 1 ||
+		len(h.generations.items[0]) != 1 {
+		t.Fatalf("AI generation writes = %v / %v, want one generation with one item",
+			h.generations.created, h.generations.items)
+	}
+	generation := h.generations.created[0]
+	if generation.QuoteID != testQuoteID || generation.QuoteVersionID != testVersionID {
+		t.Errorf("AI generation targets quote/version %s/%s, want %s/%s", generation.QuoteID,
+			generation.QuoteVersionID, testQuoteID, testVersionID)
+	}
+	if generation.Provider != "test-provider" || generation.Model != "test-model" ||
+		generation.PromptVersion != "test-prompt-v1" ||
+		generation.SchemaVersion != "test-schema-v1" {
+		t.Errorf("AI generation identity = %+v, want the extractor metadata", generation)
+	}
+	if generation.InputTokens != 21 || generation.OutputTokens != 13 ||
+		generation.CacheReadTokens != 8 || generation.CacheWriteTokens != 5 {
+		t.Errorf("AI generation usage = %+v, want 21/13/8/5", generation)
+	}
+	generatedItem := h.generations.items[0][0]
+	if generatedItem.Position != 0 ||
+		generatedItem.QuantitySource != domain.QuantitySourceExplicit ||
+		generatedItem.ProductID == nil || *generatedItem.ProductID != testProductID ||
+		generatedItem.MatchStatus != domain.ItemMatchStatusMatched ||
+		!generatedItem.ConfidenceScore.Decimal.Equal(decimal.RequireFromString("0.9100")) {
+		t.Errorf("AI generation item = %+v, want the original matched proposal", generatedItem)
 	}
 
 	if len(h.rfqs.updatedStatus) != 1 || h.rfqs.updatedStatus[0] != domain.RFQStatusGenerated {
@@ -1076,6 +1148,23 @@ func TestRFQService_CreateTextDraft_RejectsAContradictoryLine(t *testing.T) {
 	}
 }
 
+func TestRFQService_CreateTextDraft_RejectsMoreLinesThanTheCap(t *testing.T) {
+	lines := make([]domain.ExtractedRFQLine, testRFQConfig().MaxItems+1)
+	for i := range lines {
+		lines[i] = explicitLine("cemento", "1", "bolsa", "pidió uno")
+	}
+	h := newRFQHarness(lines)
+
+	_, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "una lista larga"})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("CreateTextDraft returned %v, want ErrInvalidInput", err)
+	}
+	if len(h.quotes.created) != 0 {
+		t.Error("a quote was created from an order over the line cap")
+	}
+}
+
 func TestRFQService_CreateTextDraft_RejectsBadInput(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -1132,6 +1221,29 @@ func TestRFQService_CreateTextDraft_RejectsAnUnreachableChannelBeforeReading(t *
 	}
 	if h.extractor.calls != 0 {
 		t.Errorf("the extractor ran %d times for an unreachable channel", h.extractor.calls)
+	}
+}
+
+func TestRFQService_CreateTextDraft_PersistsTheDraftAfterThePipelineRunsOutOfTime(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("cemento", "10", "bolsa", "pidió 10"),
+	})
+	h.service.matcher = blockingMatcher{}
+	h.service.cfg.PipelineTimeout = 20 * time.Millisecond
+
+	draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "10 bolsas de cemento"})
+	if err != nil {
+		t.Fatalf("CreateTextDraft returned %v; the deadline bounds the model, not the writes", err)
+	}
+	// The extraction was already paid for. Persisting it on the deadline that just expired would
+	// throw it away at the last step.
+	if len(draft.Items) != 1 {
+		t.Fatalf("persisted %d lines, want the extraction kept", len(draft.Items))
+	}
+	if draft.Items[0].MatchStatus != domain.ItemMatchStatusNoMatch {
+		t.Errorf("line status %q, want NO_MATCH: matching never answered",
+			draft.Items[0].MatchStatus)
 	}
 }
 
@@ -1330,6 +1442,283 @@ func TestRFQService_GetDetail_QuoteNotFoundReturnsRfqWithoutQuote(t *testing.T) 
 	}
 	if detail.Items != nil {
 		t.Errorf("items = %v, want nil", detail.Items)
+	}
+}
+
+func TestRFQService_CreateTextDraft_FailsTheDraftWhenTheAIBaselineCannotBeWritten(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("cemento", "10", "bolsa", "pidió 10"),
+	})
+	h.generations.err = domain.ErrNotFound
+
+	_, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "10 bolsas de cemento"})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("CreateTextDraft returned %v, want ErrNotFound", err)
+	}
+	if len(h.rfqs.updatedStatus) != 0 || len(h.quotes.statusChanges) != 0 {
+		t.Errorf("completed status writes RFQ=%v quote=%v, want none when the baseline failed",
+			h.rfqs.updatedStatus, h.quotes.statusChanges)
+	}
+}
+
+func TestRFQService_CreateTextDraft_OffersNoCandidateThatScoredNothing(t *testing.T) {
+	nearMiss := uuid.MustParse("c1111111-1111-4111-8111-111111111111")
+	leader := uuid.MustParse("c2222222-2222-4222-8222-222222222222")
+	// What a catalog smaller than the top-K returns: the offers that resemble the line, then
+	// products the search reached without them resembling it at all.
+	orthogonal := []domain.ScoredCandidate{
+		scoredCandidate(uuid.New(), "Cemento Portland 50kg", "0"),
+		scoredCandidate(uuid.New(), "Cal hidratada 25kg", "0"),
+	}
+	cases := []struct {
+		name      string
+		match     domain.LineMatch
+		wantOffer uuid.UUID
+		wantRank  int
+	}{
+		{
+			name: "a line nothing matched offers its near miss alone",
+			match: domain.LineMatch{
+				MatchStatus: domain.ItemMatchStatusNoMatch,
+				Confidence:  decimal.RequireFromString("0.5500"),
+				Candidates: append([]domain.ScoredCandidate{
+					scoredCandidate(nearMiss, "Membrana asfáltica 4mm", "0.5500"),
+				}, orthogonal...),
+			},
+			wantOffer: nearMiss,
+			wantRank:  1,
+		},
+		{
+			// The same rule on an AMBIGUOUS line, which the table in rfq-pipeline.md calls the
+			// one exception to "every candidate but the one it kept".
+			name: "an ambiguous line offers neither the leader nor a zero",
+			match: domain.LineMatch{
+				ProductID:   &leader,
+				MatchStatus: domain.ItemMatchStatusAmbiguous,
+				Confidence:  decimal.RequireFromString("0.8200"),
+				Candidates: append([]domain.ScoredCandidate{
+					scoredCandidate(leader, "Cemento Portland 50kg", "0.8200"),
+					scoredCandidate(nearMiss, "Cemento Avellaneda 50kg", "0.8000"),
+				}, orthogonal...),
+			},
+			wantOffer: nearMiss,
+			wantRank:  2,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newRFQHarness([]domain.ExtractedRFQLine{
+				explicitLine("membrana rara", "2", "rollo", "pidió 2"),
+			})
+			h.matcher.matches[0] = tc.match
+
+			draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+				domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "membrana rara"})
+			if err != nil {
+				t.Fatalf("CreateTextDraft returned %v", err)
+			}
+
+			offered := draft.Alternatives[draft.Items[0].ID]
+			if len(offered) != 1 {
+				t.Fatalf("offered %d candidates, want one: a candidate at zero scored no "+
+					"similarity and would bury the one the seller is looking for", len(offered))
+			}
+			if offered[0].ProductID == nil || *offered[0].ProductID != tc.wantOffer {
+				t.Errorf("offer = %v, want %v", offered[0].ProductID, tc.wantOffer)
+			}
+			// The rank is the candidate's own place in the matcher's ranking, so dropping a zero
+			// does not renumber what survives.
+			if offered[0].Rank != tc.wantRank {
+				t.Errorf("offer rank = %d, want %d", offered[0].Rank, tc.wantRank)
+			}
+		})
+	}
+}
+
+func TestRFQService_CreateTextDraft_OffersTheCandidatesOfEveryFlaggedLine(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("cemento", "10", "bolsa", "pidió 10"),
+		explicitLine("membrana rara", "2", "rollo", "pidió 2"),
+	})
+	leader := uuid.MustParse("b1111111-1111-4111-8111-111111111111")
+	runnerUp := uuid.MustParse("b2222222-2222-4222-8222-222222222222")
+	third := uuid.MustParse("b3333333-3333-4333-8333-333333333333")
+	nearMiss := uuid.MustParse("b4444444-4444-4444-8444-444444444444")
+	longShot := uuid.MustParse("b5555555-5555-4555-8555-555555555555")
+	h.matcher.matches = []domain.LineMatch{
+		{
+			ProductID:   &leader,
+			MatchStatus: domain.ItemMatchStatusAmbiguous,
+			Confidence:  decimal.RequireFromString("0.8200"),
+			Candidates: []domain.ScoredCandidate{
+				scoredCandidate(leader, "Cemento Loma Negra 50kg", "0.8200"),
+				scoredCandidate(runnerUp, "Cemento Avellaneda 50kg", "0.8000"),
+				scoredCandidate(third, "Cemento Holcim 50kg", "0.7100"),
+			},
+		},
+		{
+			MatchStatus: domain.ItemMatchStatusNoMatch,
+			Confidence:  decimal.RequireFromString("0.5500"),
+			Candidates: []domain.ScoredCandidate{
+				scoredCandidate(nearMiss, "Membrana asfáltica 4mm", "0.5500"),
+				scoredCandidate(longShot, "Membrana geotextil", "0.3100"),
+			},
+		},
+	}
+
+	draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "cemento y membrana rara"})
+	if err != nil {
+		t.Fatalf("CreateTextDraft returned %v", err)
+	}
+
+	if len(h.quotes.alternativeBatches) != 1 {
+		t.Fatalf("wrote %d candidate batches, want 1 alongside the lines",
+			len(h.quotes.alternativeBatches))
+	}
+	// Every candidate is written in the same statement, and the lines' candidates never travel in
+	// separate round trips: four rows, not one query per flagged line.
+	if got := len(h.quotes.alternativeBatches[0]); got != 4 {
+		t.Fatalf("wrote %d candidates, want 4: the leader is on its line already", got)
+	}
+	// One transaction for the order, one for the draft. The candidates ride the draft's.
+	if len(h.db.scopes) != 2 {
+		t.Errorf("opened %d transactions, want 2: the candidates are part of the draft",
+			len(h.db.scopes))
+	}
+
+	if len(draft.Items) != 2 {
+		t.Fatalf("persisted %d lines, want both", len(draft.Items))
+	}
+	ambiguous, noMatch := draft.Items[0], draft.Items[1]
+
+	// The AMBIGUOUS line keeps the leader and offers the two it might have been instead. Rank is
+	// the matcher's own ranking, so its offers start at two.
+	offered := draft.Alternatives[ambiguous.ID]
+	if len(offered) != 2 {
+		t.Fatalf("ambiguous line offers %d candidates, want the two it is not", len(offered))
+	}
+	wantAmbiguous := []struct {
+		productID  uuid.UUID
+		rank       int
+		confidence string
+	}{{runnerUp, 2, "0.8000"}, {third, 3, "0.7100"}}
+	for i, want := range wantAmbiguous {
+		got := offered[i]
+		if got.ProductID == nil || *got.ProductID != want.productID {
+			t.Errorf("offer %d product = %v, want %v", i, got.ProductID, want.productID)
+		}
+		if got.Rank != want.rank {
+			t.Errorf("offer %d rank = %d, want %d", i, got.Rank, want.rank)
+		}
+		if !got.ConfidenceScore.Valid ||
+			!got.ConfidenceScore.Decimal.Equal(decimal.RequireFromString(want.confidence)) {
+			t.Errorf("offer %d confidence = %v, want %s", i, got.ConfidenceScore, want.confidence)
+		}
+		if got.Type != domain.QuoteItemAlternativeTypeProduct {
+			t.Errorf("offer %d type = %q, want PRODUCT", i, got.Type)
+		}
+		if got.Origin != domain.QuoteItemAlternativeOriginAI {
+			t.Errorf("offer %d origin = %q, want AI", i, got.Origin)
+		}
+		// Nothing has been priced when matching runs, and a zero would read as free.
+		if got.PriceSnapshot.Valid {
+			t.Errorf("offer %d carries price %v, want none", i, got.PriceSnapshot)
+		}
+	}
+	if offered[0].ProductID != nil && ambiguous.ProductID != nil &&
+		*offered[0].ProductID == *ambiguous.ProductID {
+		t.Error("the leading candidate is offered as an alternative to itself")
+	}
+
+	// The NO_MATCH line points at nothing, so every candidate is on offer — the near miss included,
+	// which is the one thing that tells the seller how close the catalog came.
+	rejected := draft.Alternatives[noMatch.ID]
+	if len(rejected) != 2 {
+		t.Fatalf("no-match line offers %d candidates, want both rejected ones", len(rejected))
+	}
+	if rejected[0].ProductID == nil || *rejected[0].ProductID != nearMiss || rejected[0].Rank != 1 {
+		t.Errorf("closest offer = %+v, want %v at rank 1", rejected[0], nearMiss)
+	}
+	if rejected[1].ProductID == nil || *rejected[1].ProductID != longShot || rejected[1].Rank != 2 {
+		t.Errorf("second offer = %+v, want %v at rank 2", rejected[1], longShot)
+	}
+
+	// Each line's offers name that line and no other. Pairing them by insert order would rest on
+	// an order Postgres does not promise, and a line offering another line's products is a wrong
+	// answer nothing downstream could notice.
+	for itemID, alternatives := range draft.Alternatives {
+		for _, alternative := range alternatives {
+			if alternative.QuoteItemID != itemID {
+				t.Errorf("line %v was handed an offer belonging to %v", itemID,
+					alternative.QuoteItemID)
+			}
+		}
+	}
+	for _, alternative := range draft.Alternatives[ambiguous.ID] {
+		if alternative.ProductID != nil &&
+			(*alternative.ProductID == nearMiss || *alternative.ProductID == longShot) {
+			t.Errorf("the cemento line was offered %v, which belongs to the membrana line",
+				*alternative.ProductID)
+		}
+	}
+}
+
+func TestRFQService_CreateTextDraft_OffersNothingOnADecidedLine(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("cemento", "10", "bolsa", "pidió 10"),
+	})
+	// The harness answers MATCHED, and a decided line had candidates too — the runner-up simply
+	// lost by enough that there is nothing to choose between.
+	h.matcher.matches[0].Candidates = []domain.ScoredCandidate{
+		scoredCandidate(testProductID, "Cemento Loma Negra 50kg", "0.9100"),
+		scoredCandidate(uuid.New(), "Cal hidratada 25kg", "0.4000"),
+	}
+
+	draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "10 bolsas de cemento"})
+	if err != nil {
+		t.Fatalf("CreateTextDraft returned %v", err)
+	}
+	if len(h.quotes.alternativeBatches) != 0 {
+		t.Errorf("wrote %v, want nothing: a decided line asks the seller to choose nothing",
+			h.quotes.alternativeBatches)
+	}
+	// And nothing is read back either: the round trip is skipped, not merely empty.
+	if len(h.quotes.alternativeReads) != 0 {
+		t.Errorf("read candidates %v times, want none", len(h.quotes.alternativeReads))
+	}
+	if len(draft.Alternatives) != 0 {
+		t.Errorf("draft offers %v, want none", draft.Alternatives)
+	}
+}
+
+func TestRFQService_CreateTextDraft_FailsTheDraftWhenCandidatesCannotBeWritten(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("cemento", "10", "bolsa", "pidió 10"),
+	})
+	h.matcher.matches[0] = domain.LineMatch{
+		MatchStatus: domain.ItemMatchStatusNoMatch,
+		Confidence:  decimal.RequireFromString("0.4000"),
+		Candidates: []domain.ScoredCandidate{
+			scoredCandidate(uuid.New(), "Cemento Loma Negra 50kg", "0.4000"),
+		},
+	}
+	// A line of another account would answer this way: the join matched no row, so the write is
+	// refused rather than landing a candidate in the wrong tenant.
+	h.quotes.alternativesErr = domain.ErrNotFound
+
+	_, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "10 bolsas de cemento"})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("CreateTextDraft returned %v, want ErrNotFound", err)
+	}
+	// The whole transition rolls back with it: a quote whose lines are flagged while the candidates
+	// they were flagged against are missing is the half-written draft the transaction prevents.
+	if len(h.rfqs.updatedStatus) != 0 {
+		t.Errorf("wrote RFQ statuses %v, want none: the draft never completed",
+			h.rfqs.updatedStatus)
 	}
 }
 

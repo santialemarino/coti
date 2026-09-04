@@ -173,6 +173,59 @@ report auditable, and it is also the metric: how many lines arrived unmatched in
 how many had to be fixed by hand. `uq_quote_version_draft` allows one unfrozen version per quote,
 so a second version means the first was frozen.
 
+## The original AI proposal is preserved separately
+
+The first commercial version stays editable because it is the seller's working draft. That makes
+it unsuitable as the baseline for measuring whether the proposal was correct: editing it would
+erase the evidence being compared.
+
+Every generated draft therefore writes an append-only `quote_ai_generation` in the same
+transaction as version 1. It records the provider, model, prompt version, forced-schema version,
+and token usage. Its `quote_ai_generation_item` rows copy the proposed description, quantity,
+unit, quantity source and rationale, selected product, match status, and score in client order.
+They do not reference the live `quote_item` row, so later item replacement or removal cannot alter
+or invalidate the baseline.
+
+The request role can only `SELECT` and `INSERT` these tables. It cannot update or delete them. A
+draft is not considered generated if this evidence cannot be written: the proposal, its editable
+version, and both status histories share one transaction.
+
+The comparison is not exposed as a confidence percentage. Relevant seller changes become
+account-local correction memories: item additions, removals, quantity and unit changes teach
+future extraction; corrected product selections teach catalog matching. Pricing, discounts,
+comments, and descriptions do not become learning evidence.
+
+Each memory starts as `PENDING` so the seller's correction is durable before an embedding provider
+is called. Successful vectorization changes it to `READY`; the `quote-correction-learning`
+scheduled job retries pending rows. Sending remains complete even when learning is temporarily
+unavailable. Retrieval is local to the account, uses a fixed 80 percent cosine-similarity floor,
+and retains at most 1,000 patterns per account with automatic low-value eviction.
+An eligible catalog memory outranks generic lexical and product-vector search, while the branch
+availability filter still applies. Two eligible memories pointing to different products produce
+`AMBIGUOUS`; seller evidence is never resolved by an arbitrary tie-break.
+
+### Integration contract for the future send flow
+
+`QuoteQualityService.EvaluateFinalQuote` is the internal hook that closes one outcome. The future
+send service constructs it with `repository.NewQuoteQualityRepository()`, enables
+`WithCorrectionLearning` using `QuoteCorrectionService`, and calls it after its
+send transaction has committed the version with `is_immutable = true` and a `quote_send` carrying
+`sent_at` plus a successful tracking state. It must pass the quote id and the exact version id the
+seller sent. The hook is idempotent, and the durable send row lets a failed attempt be retried even
+after the quote advances beyond `SENT`.
+
+There is deliberately no route or simulated delivery for this hook. Until sending exists, only
+the integration suite invokes it by staging the frozen version, status transition, and durable
+send record.
+
+The `whole-quote-v1` evaluator produces one strict binary label. It requires the same billable
+items — product, quantity, and unit, independent of order — every final line resolved to
+`MATCHED`, every line priced, each subtotal equal to quantity times unit price, and the version
+total equal to subtotals less unsuppressed discounts. Description and rationale edits are
+editorial and do not change the label. Every failed condition is appended to
+`quote_quality_difference`; changing these rules requires a new evaluator version rather than
+rewriting old labels.
+
 ## Accepting the materials is what prices the quote
 
 The draft the pipeline above produces carries no prices, and that is deliberate. Two transitions,
@@ -302,3 +355,66 @@ platform's cron rather than on demand.
 model through `StructuredGenerator`, so it names no provider and works behind whichever one is
 bound. The schema carries no `minLength`, `maxLength` or `maxItems` — structured outputs do not
 enforce those, and stating them would read as a guarantee the service is the one making.
+
+## QA surfaces
+
+The automated RFQ suites never call a live model. `pnpm test:rfq` uses fixed provider doubles for
+fast service and handler checks; `pnpm test:rfq:integration` uses the same deterministic answers
+over the real router, PostgreSQL, pgvector search, tenant context, and quote persistence. This keeps
+CI repeatable while still proving that a mocked WhatsApp message reaches a reviewable `DRAFT`.
+
+`pnpm eval:rfq` is the opt-in model evaluation. It logs into a running development API, posts the
+cases from `scripts/fixtures/rfq-eval-cases.json` to `/v1/dev/whatsapp/messages`, and compares only
+observable contract fields: RFQ and quote status, line count, quantities, units, rationales, match
+status, and pricing when requested. It prints one `PASS` or `FAIL` per case and stores both the
+machine-readable JSON and a self-contained interactive HTML dashboard under the ignored
+`.artifacts/rfq-eval/` directory. The dashboard exposes the case description, declared
+expectations, source definition, extracted lines, and complete HTTP responses. `--verbose` also
+prints every response; `--price` runs the deterministic material-acceptance transition after every
+draft. `pnpm report:rfq` rebuilds the HTML from the latest JSON without contacting a provider.
+
+The runner reads its connection settings from `RFQ_EVAL_*` variables and has defaults for the
+development seed. A bearer token can be supplied as `RFQ_EVAL_TOKEN`; otherwise it logs in with
+`RFQ_EVAL_EMAIL` and `RFQ_EVAL_PASSWORD`. Run `pnpm eval:rfq --help` for the full option list.
+
+### Live trace and debugging
+
+`pnpm debug:rfq` runs the complete live suite with `--trace` against the development API on port
+`8001`; `pnpm debug:rfq:case` limits it to `explicit-quantity` for breakpoint work. The trace
+separates API readiness, authentication, WhatsApp ingestion, RFQ persistence, model extraction,
+catalog matching, draft persistence, deterministic pricing, and expected-response assertions. A
+failed assertion is assigned to the stage whose observable contract diverged. Each HTTP response
+stores its `X-Request-Id`, so the report can be correlated with the API request log.
+
+`pnpm serve:rfq` serves an interactive QA Lab at http://localhost:4173 using only the Node standard
+library. Its fixed registry exposes unit surfaces for extraction, RFQ orchestration, matching,
+pricing and the HTTP contract; a PostgreSQL-backed integration surface; and live WhatsApp custom
+or suite evaluations. The browser can select only those registered commands and same-origin POSTs
+are enforced, so the local server is not an arbitrary command runner.
+
+Before a run, the server performs a surface-specific preflight and rejects blocked requests. Unit
+surfaces require Go and their registered source files. The integration surface additionally
+requires pnpm, both test database URLs, a reachable PostgreSQL instance, and the pgvector
+migration; its button invokes `pnpm test:rfq:integration` directly. Live surfaces require a healthy
+API, PostgreSQL, pgvector, and both provider keys. Key values never leave the server.
+
+Custom WhatsApp cases are validated and stored under ignored `.artifacts/rfq-eval/` data. They can
+declare expected RFQ/quote status, line count, first-line description, quantity, unit and match
+status, and can be deleted without removing reports from previous runs. A live run selects one
+active branch loaded through the evaluator's authenticated user,
+displays its providers, and requires an explicit confirmation before the server starts it. The
+selected id is passed as `--branch` and recorded with the run. Deterministic surfaces state that
+they consume no provider. The Lab polls each run for
+stdout/stderr, status and its eventual detailed report link. Deterministic Go runs use
+`go test -json`, which the Lab converts into expandable rows with a human-readable description,
+status, duration, related test function, and captured output. `/latest` opens the newest report,
+whose **Trazabilidad** tab shows setup and case events, durations, failure details and request ids.
+Serving, browsing or rebuilding a report never contacts an AI provider.
+
+The committed VS Code launch configuration provides **RFQ START HERE: API + ALL TESTS** for the
+complete dashboard and **RFQ DEBUG: API + ONE CASE** for focused breakpoint work. Their test-only
+child configurations are hidden because they require an API that is already running. After the Go
+extension is installed, reload the VS Code window once so its debug adapter is registered. Each
+compound starts the API under Delve and runs the evaluator after its health endpoint becomes
+available, allowing Go breakpoints inside extraction, matching, and persistence while the client
+timeline remains visible.

@@ -1,0 +1,92 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "RFQ API only: debug on port 8001",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/apps/api/cmd/api",
+      "cwd": "${workspaceFolder}/apps/api",
+      "envFile": "${workspaceFolder}/apps/api/.env",
+      "env": {
+        "API_PORT": "8001",
+        "ENV": "development",
+        "LOG_LEVEL": "debug",
+        "STORAGE_LOCAL_API_BASE_URL": "http://localhost:8001"
+      },
+      "presentation": {
+        "group": "rfq-advanced",
+        "order": 2
+      }
+    },
+    {
+      "name": "RFQ full suite only: requires API on port 8001",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/rfq-eval.mjs",
+      "args": ["--trace", "--api-url", "http://127.0.0.1:8001", "--wait-seconds", "20"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"],
+      "presentation": {
+        "hidden": true
+      }
+    },
+    {
+      "name": "RFQ single case only: requires API on port 8001",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/rfq-eval.mjs",
+      "args": [
+        "--trace",
+        "--case",
+        "explicit-quantity",
+        "--api-url",
+        "http://127.0.0.1:8001",
+        "--wait-seconds",
+        "20"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"],
+      "presentation": {
+        "hidden": true
+      }
+    },
+    {
+      "name": "RFQ reports: serve on port 4173",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/rfq-serve.mjs",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "RFQ START HERE: API + ALL TESTS",
+      "configurations": [
+        "RFQ API only: debug on port 8001",
+        "RFQ full suite only: requires API on port 8001"
+      ],
+      "stopAll": true,
+      "presentation": {
+        "group": "rfq",
+        "order": 1
+      }
+    },
+    {
+      "name": "RFQ DEBUG: API + ONE CASE",
+      "configurations": [
+        "RFQ API only: debug on port 8001",
+        "RFQ single case only: requires API on port 8001"
+      ],
+      "stopAll": true,
+      "presentation": {
+        "group": "rfq",
+        "order": 2
+      }
+    }
+  ]
+}

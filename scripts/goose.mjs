@@ -1,16 +1,16 @@
 /**
- * Wraps the goose CLI, pinned at GOOSE_VERSION via `go run`. Migrations run as the OWNER role
- * (DATABASE_ADMIN_URL), not the RLS-restricted app role, since they create and grant on tables.
- * Usage: node scripts/goose.mjs <up | down | status | create <name> sql>
+ * Wraps the goose CLI, pinned as a tool dependency in apps/api/go.mod. Migrations run as the
+ * OWNER role (DATABASE_ADMIN_URL), not the RLS-restricted app role, since they create and grant
+ * on tables. Usage: node scripts/goose.mjs <up | down | status | create <name> sql>
  */
 import { spawnSync } from 'child_process';
 import path from 'path';
 
 import { loadOwnerUrl } from './lib/owner-url.mjs';
 
-const GOOSE_VERSION = 'v3.27.1';
 const ROOT = process.cwd();
-const MIGRATIONS_DIR = path.join(ROOT, 'apps/api/migrations');
+const API_DIR = path.join(ROOT, 'apps/api');
+const MIGRATIONS_DIR = path.join(API_DIR, 'migrations');
 
 const args = process.argv.slice(2);
 if (args.length === 0) {
@@ -32,8 +32,8 @@ const isCreate = args[0] === 'create';
 const type = isCreate && !['sql', 'go'].includes(args.at(-1)) ? ['sql'] : [];
 
 const gooseArgs = [
-  'run',
-  `github.com/pressly/goose/v3/cmd/goose@${GOOSE_VERSION}`,
+  'tool',
+  'goose',
   '-dir',
   MIGRATIONS_DIR,
   ...flags,
@@ -43,5 +43,7 @@ const gooseArgs = [
   ...type,
 ];
 
-const result = spawnSync('go', gooseArgs, { stdio: 'inherit', cwd: ROOT });
+// `go tool` reads the pin from the module, so the command runs in apps/api. -dir is absolute
+// and unaffected.
+const result = spawnSync('go', gooseArgs, { stdio: 'inherit', cwd: API_DIR });
 process.exit(result.status ?? 1);

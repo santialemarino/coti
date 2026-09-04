@@ -198,8 +198,10 @@ are needed: the semantic half generalizes past wording the catalog never used, t
 carries the exact trade vocabulary that a vector model has no way to know.
 
 - **The lexical half** is Postgres full-text search over a `search_document` generated column —
-  on `product` it is the name plus the description, on `product_synonym` it is the term. Both
-  are `GIN` indexed. They read the `spanish_unaccent` text search configuration, a copy of
+  on `product` it is the name plus the description, on `product_synonym` it is the term. Both use
+  their `GIN` index. A synonym search first selects documents sharing any requested term, then
+  confirms that the complete synonym occurs inside the longer description. They read the
+  `spanish_unaccent` text search configuration, a copy of
   `spanish` with `unaccent` in front of the stemmer: informal request text drops accents
   constantly, and under the stock configuration "hormigon" would never reach "hormigón".
 - **The semantic half** orders `product.embedding` by cosine distance (`<=>`).
@@ -249,21 +251,21 @@ Reciprocal rank fusion answers "which candidate first", and its figure maxes at
 line under any threshold worth setting. Confidence is derived instead from figures that mean
 something on their own scale:
 
-- **Cosine similarity**, `1 - distance`, clamped to `0..1`. A candidate the vector half never
-  scored — a synonym hit on a product carrying no embedding — has no similarity to read and takes
-  `CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT` instead. It has to sit above the floor, or a trade
-  term loaded as a synonym could never resolve to its product.
+- **Cosine similarity**, `1 - distance`, clamped to `0..1`. A candidate carrying lexical evidence
+  takes `CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT` as its confidence floor, whether or not it also
+  carries an embedding. A stronger cosine similarity remains stronger. This keeps exact catalog
+  vocabulary useful in small catalogs where the semantic half can return every embedded product.
 - **The margin** over the runner-up, on the same scale. This is what separates a decided line from
   a choice: two cements at `0.91` and `0.90` are not a confident match.
 
 Two consequences of that shape are deliberate rather than oversights. **`ts_rank` never enters the
 score**, because it is not comparable across queries — it moves with term frequency and document
 length, so a flat configured worth is more honest than a number that looks precise and is not. Which
-means two candidates reached only by the lexical half tie at exactly that worth, and the line comes
-back `AMBIGUOUS` however much better one text match was. And **a candidate both halves found scores
-no higher than one the vector half found alone at the same distance**: the agreement between the
-halves already decided which candidate leads, and counting it again in the confidence would count it
-twice. Confidence measures the winner; the ranking measures the agreement.
+means two candidates carrying lexical evidence below the configured floor tie at exactly that
+worth, and the line comes back `AMBIGUOUS` however much better one text match was. A candidate both
+halves found takes the higher of its cosine similarity and the lexical floor: the lexical signal is
+not counted arithmetically on top of the vector, but neither is it erased because the product was
+already embedded. Confidence measures the winner; the ranking measures the agreement.
 
 The leading candidate is the one the **search** ranked first, never a re-ranking. Matching decides
 status; ranking is the search's, and the margin can therefore come out **negative** when the two
@@ -357,7 +359,7 @@ per scan by default, which recalls too little of the catalog to survive the bran
 | `CATALOG_EMBEDDING_BATCH_SIZE`             | 200     | Products the backfill reads and writes per round               |
 | `CATALOG_MATCH_MIN_CONFIDENCE_PERCENT`     | 60      | Similarity below which a line is flagged `NO_MATCH`            |
 | `CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT`   | 5       | Lead over the runner-up that makes a line `MATCHED`            |
-| `CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT` | 75      | Worth of a candidate only the lexical half scored              |
+| `CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT` | 75      | Confidence floor for a candidate with lexical evidence         |
 
 ## API specification
 

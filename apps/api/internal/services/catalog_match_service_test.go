@@ -59,6 +59,35 @@ func lexicalOnly(name string, score float64) domain.CatalogCandidate {
 	return domain.CatalogCandidate{ProductID: uuid.New(), CanonicalName: name, LexicalScore: &score}
 }
 
+// hybrid builds a candidate reached by both search halves.
+func hybrid(name string, distance, lexicalScore float64) domain.CatalogCandidate {
+	return domain.CatalogCandidate{
+		ProductID: uuid.New(), CanonicalName: name,
+		Distance: &distance, LexicalScore: &lexicalScore,
+	}
+}
+
+func learned(name string, distance float64) domain.CatalogCandidate {
+	return domain.CatalogCandidate{ProductID: uuid.New(), CanonicalName: name,
+		LearnedDistance: &distance}
+}
+
+func TestCatalogMatchService_LocalMemoryOverridesGenericSearch(t *testing.T) {
+	t.Parallel()
+	local := learned("Seller choice", 0.19)
+	generic := semantic("Generic nearest", 0.01)
+	got := matchOne(t, []domain.CatalogCandidate{local, generic})
+	wantDecision(t, got, domain.ItemMatchStatusMatched, "0.8100", &local.ProductID)
+}
+
+func TestCatalogMatchService_ConflictingLocalMemoriesAreAmbiguous(t *testing.T) {
+	t.Parallel()
+	first := learned("First seller choice", 0.05)
+	second := learned("Second seller choice", 0.18)
+	got := matchOne(t, []domain.CatalogCandidate{first, second})
+	wantDecision(t, got, domain.ItemMatchStatusAmbiguous, "0.9500", &first.ProductID)
+}
+
 // matchOne runs one line through the service and returns its decision.
 func matchOne(t *testing.T, candidates []domain.CatalogCandidate) domain.LineMatch {
 	t.Helper()
@@ -213,6 +242,39 @@ func TestCatalogMatchService_ScoresALexicalOnlyLeaderFromConfiguration(t *testin
 	got := matchOne(t, []domain.CatalogCandidate{leader})
 
 	wantDecision(t, got, domain.ItemMatchStatusMatched, "0.75", &leader.ProductID)
+}
+
+// Exact catalog vocabulary remains useful when the product is already embedded. Small catalogs
+// often return every embedded product, so treating lexical confidence only as a missing-vector
+// fallback would make the configured value unreachable precisely where it is most useful.
+func TestCatalogMatchService_PreservesLexicalEvidenceForAnEmbeddedProduct(t *testing.T) {
+	leader := hybrid("Placa de yeso estándar 12.5mm", 0.48, 0.06)
+	runnerUp := semantic("Placa cementicia 8mm", 0.60)
+
+	got := matchOne(t, []domain.CatalogCandidate{leader, runnerUp})
+
+	wantDecision(t, got, domain.ItemMatchStatusMatched, "0.75", &leader.ProductID)
+}
+
+// Lexical evidence is a floor, not a ceiling: a strong semantic match keeps the more informative
+// cosine confidence instead of being flattened to the configured lexical value.
+func TestCatalogMatchService_KeepsStrongerSemanticConfidenceOnAHybridCandidate(t *testing.T) {
+	leader := hybrid("Hierro nervado 8mm", 0.08, 0.06)
+
+	got := matchOne(t, []domain.CatalogCandidate{leader})
+
+	wantDecision(t, got, domain.ItemMatchStatusMatched, "0.92", &leader.ProductID)
+}
+
+// Sharing the same exact vocabulary is still ambiguous: preserving lexical evidence cannot turn
+// a tie between two products into an arbitrary match.
+func TestCatalogMatchService_FlagsTwoEmbeddedLexicalCandidatesAmbiguous(t *testing.T) {
+	leader := hybrid("Cemento Portland 50kg", 0.44, 0.06)
+	runnerUp := hybrid("Cemento Portland 25kg", 0.46, 0.05)
+
+	got := matchOne(t, []domain.CatalogCandidate{leader, runnerUp})
+
+	wantDecision(t, got, domain.ItemMatchStatusAmbiguous, "0.75", &leader.ProductID)
 }
 
 // Two products sharing a trade term both come back on the lexical half alone, at the same
