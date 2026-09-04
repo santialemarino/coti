@@ -75,6 +75,24 @@ rows, err := q.Query(ctx,
 
 Never SELECT-then-INSERT/UPDATE by hand. Use `INSERT ... ON CONFLICT (...)` — but only against a **real unique constraint** from the schema (e.g. `uq_app_user_email` on `(account_id, email)`, `uq_client_tag` on `(client_id, tag_id)`, `uq_quote_version` on `(quote_id, version_number)`). Bulk writes use a multi-row `INSERT` or `pgx.Batch`, never a per-row `Exec` loop. Details and examples in `api-layering`.
 
+### A parent and its children are paired by a caller-chosen id, never by row order
+
+`RETURNING` on an `INSERT ... SELECT` can only name columns of the table it wrote — reference the
+source subquery and Postgres answers `missing FROM-clause entry`. So there is no way to learn which
+payload row produced which generated key, and pairing children to parents by the order the rows came
+back would rest on an order Postgres does not promise.
+
+**The caller chooses the parent's `id` instead**, and the children reference it before either is
+written (`domain.NewQuoteItem.ID`, `domain.NewRFQAttachment.ID`). Two rules come with that: the
+insert names `id` in its column list, and the repository **refuses a zero id** — left unset every row
+inserts the all-zeros uuid, which the first write stores as a real key and the next one collides
+with. Row order may still be relied on for what a human reads; never for which row is which.
+
+**A display field that has to be joined cannot be returned either.** When children carry identity
+from another table (a product's name beside a candidate), write them and then read them back through
+the batch reader in the same transaction, rather than growing a second code path that assembles the
+response from what was sent.
+
 ### The service commits, not the repository
 
 Repositories run on the `Querier` handed in (pool or tx) and never commit. Multi-step writes are wrapped in a service-level transaction. See the transaction rules in `api-layering`.
@@ -301,7 +319,20 @@ Use **Go doc comments** (`//` block) **directly above** the definition. For an e
 - **DTOs:** one line naming role + route — `// CreateProductRequest is the body for POST /v1/products.`, `// UpdateProductRequest is the body for PATCH /v1/products/:id. Partial update; only provided fields are written.`, `// ProductResponse is returned by list, get, create, and update.`
 - **Domain structs / enums:** one line — `// Product is a catalog item owned by a branch...`, `// QuoteStatus is the lifecycle state a quote carries once it exists.`
 
-**Only the essential ones.** Exported symbols carry a doc comment (Go convention) — keep it to one line that says what the caller needs. Everything else has to earn its place: the bar is _would a competent reader get this wrong without it?_ Comment a non-obvious **why**, a constraint that looks arbitrary, or a footgun. No redundant comments (`// id is the id`), no narration inside function bodies, no comment that just restates the signature. Prefer one tight line over three; when in doubt, leave it out. Exceptions to the end-with-a-period rule: inline comments on the same line as code, and short noun-phrase section labels (e.g. `// --- RFQ ---`).
+**Only the essential ones.** Exported symbols carry a doc comment (Go convention) — keep it to **one line** that says what the caller needs. Everything else has to earn its place: the bar is _would a competent reader get this wrong without it?_ Comment a non-obvious **why**, a constraint that looks arbitrary, or a footgun.
+
+Concrete limits, because "be brief" is too loose to bind:
+
+- **One comment, one line.** Two if genuinely needed. A paragraph is not a comment — it is a `docs/technical/` section, and the comment points at it.
+- **Never narrate rejected alternatives** ("uses `NOT EXISTS` rather than `ON CONFLICT` because…"). That belongs in the PR or a closed decision. Code says what it does, not what it does not do.
+- **Never tell the bug's story** ("nobody noticed because the seed runs once").
+- **Never restate the signature and never narrate the steps.**
+- **Never describe how something used to be.** A versioned file reads as if it had always been this way.
+- **When in doubt, leave it out.** A reviewer asking "why?" is cheaper than a file nobody reads.
+
+The same bar applies to **SQL** — migrations, the reference schema, the seed — and to swaggo `@Description` blocks, where one line is the limit and changing one means regenerating `apps/api/docs/` in the same commit.
+
+Exceptions to the end-with-a-period rule: inline comments on the same line as code, and short noun-phrase section labels (e.g. `// --- RFQ ---`).
 
 ## Verifying
 

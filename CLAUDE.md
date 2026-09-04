@@ -35,14 +35,16 @@ Flow is one-directional: **decision (conversation / Notion) → `docs/internal/`
   is a local mirror. If they diverge, **Notion wins**.
 - **Work state (tickets)** — lives in Notion, not replicated here. A ticket points
   _to_ `docs/internal/`, not the other way around.
-- **Executable data model** — the goose migrations in `apps/api/migrations/`.
-  `docs/internal/data/schema.sql` is the design reference the migrations are built from.
+- **Executable data model** — the goose migrations in `apps/api/migrations/`, with
+  `apps/api/database/01_create_tables.sql` as the consolidated reference you read to know
+  the current shape. `docs/internal/data/schema.sql` no longer holds DDL: it keeps the
+  ES↔EN mapping and the pending DER changes, because the academic diagram is in Spanish.
 
 `docs/internal/` map: `product/` (what it is, scope, nomenclature, closed
 decisions), `domain/` (business rules: states, discount engine, AI pipeline,
 follow-up, ingest), `architecture/` (stack, layers, technical decisions),
-`data/` (`schema.sql`, physical-model notes, DER), `conventions/` (git, code,
-glossary). Start at `docs/internal/README.md` if unsure.
+`data/` (ES↔EN mapping and pending DER changes, physical-model notes, DER),
+`conventions/` (git, code, glossary). Start at `docs/internal/README.md` if unsure.
 
 ## Codex compatibility
 
@@ -98,14 +100,14 @@ Not style — hard rules. If a task asks you to violate one, stop and flag it.
 ## Architecture rules
 
 - **Layered Go API (ports & adapters).** Backend code lives under
-  `internal/{ai,config,delivery/http,domain,repository,services}`. Request flow is
+  `internal/{ai,config,delivery/http,domain,mail,ratelimit,repository,services}`. Request flow is
   `handler → service → repository → DB`. Services depend only on interfaces (ports)
   — the AI provider, repositories — never on concrete adapter packages. Adapter
   wiring lives only in `cmd/api/main.go`. See `api-layering`.
 - **English identifiers, native PG enums.** Tables/columns/types/functions/endpoints
-  are English (`account`, `branch`, `app_user`, `product`, `quote`, `rfq`, …); docs
-  are Spanish and cite identifiers in English. Enums are native PostgreSQL types with
-  **English UPPERCASE** values (labels are frontend i18n only).
+  are English (`account`, `branch`, `app_user`, `product`, `quote`, `rfq`, …). Enums
+  are native PostgreSQL types with **English UPPERCASE** values (labels are frontend
+  i18n only).
 - **Raw SQL, no ORM.** Persistence uses `database/sql` + `pgx`/`pgxpool`. SQL is always
   parameterized (`$1`), never string-built. Rows scanned explicitly into domain structs.
 - **UUID v4 PKs** (`gen_random_uuid()`), no autoincrement.
@@ -125,6 +127,15 @@ Not style — hard rules. If a task asks you to violate one, stop and flag it.
 - **Semantic catalog search via pgvector.** Matching uses `product.embedding`
   (`VECTOR(1536)`) with distance operators; `product_synonym` improves it; embedding
   generation lives behind the `internal/ai` provider. See `api-layering`.
+- **One design system, consumed by both web apps.** `packages/ui` (`@repo/ui`) owns the tokens, the
+  type scale, the motion vocabulary and every shared component; its `src/styles/index.css` is the
+  single Tailwind entry for the monorepo and each app's `globals.css` imports only that. Colour
+  reaches a component through a **semantic token** — never a hex, an oklch literal, or a raw Tailwind
+  palette ramp — and type through the scale (`text-heading-*`, `text-paragraph-*`), never a raw
+  `text-*`/`font-*` pair. The UI is **light-only**: there is no `.dark` block, so a `dark:` class can
+  never match. `@repo/ui` ships its CSS prebuilt, so **rebuild it after changing a component's
+  classNames** or the change silently does nothing. See `docs/technical/design-system.md` and the
+  **ux-motion** skill.
 - **Configurable thresholds.** Numeric values with operational meaning (limits,
   intervals, sizes, TTLs — e.g. quote expiry, default 7 days) are env-var-backed with
   defaults in `apps/api/internal/config` (backend) or app `lib/config.ts` (frontend).
@@ -144,8 +155,18 @@ Not style — hard rules. If a task asks you to violate one, stop and flag it.
 
 ## Conventions
 
-- **Docs Spanish, code English.** UI copy is Argentine Spanish via next-intl
-  (`es-AR`, single locale). Commits and PRs are in English.
+- **The whole codebase is English** — code, comments, SQL, `docs/technical/`,
+  `docs/public/`, READMEs, scripts, CI, commits and PRs. Two exceptions, and they are
+  different in kind: **UI copy is Argentine Spanish** via next-intl (`es-AR`, single
+  locale) because it _is_ the product, and **`docs/internal/` is Spanish** because it
+  is the academic material that syncs with Notion. Never mix two languages inside one
+  file or one generated document.
+- **Comments earn their place.** One line, two if genuinely needed; comment a
+  non-obvious _why_, a constraint that looks arbitrary, or a footgun. Go doc comments
+  on exported symbols stay (the language requires them) but stay to one line. Never
+  narrate rejected alternatives, tell a bug's story, restate the signature, or
+  describe how something used to be — a versioned file reads as if it had always been
+  this way. When in doubt, leave it out.
 - **Git:** GitFlow (simplified) — `main` (prod) ← `dev` (integration, default) ←
   ephemeral `feat/`, `fix/`, `enhancement/`, `refactor/`, `hotfix/` (kebab-case).
   Commits `type: imperative description`. See `commit` / `pr-format`.
@@ -174,5 +195,6 @@ Not style — hard rules. If a task asks you to violate one, stop and flag it.
 ## Tone
 
 Direct and technical, no filler. If an approach is wrong or something doesn't add up,
-say so and propose the fix — don't patch over a broken design. The team and all
-project docs are in Argentine Spanish; match that when writing docs or talking to the team.
+say so and propose the fix — don't patch over a broken design. The team speaks
+Argentine Spanish, so match that when talking to them; everything written into the
+repo is English (see Conventions).

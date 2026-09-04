@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -8,9 +9,8 @@ import (
 
 // AppUser is a seller or admin belonging to one account.
 //
-// SessionEpoch backs immediate logout: it is embedded in every access token, and
-// bumping it invalidates every outstanding token for the user without a blacklist.
-// LockedUntil closes out FailedAttempts — the counter alone cannot express a lockout.
+// SessionEpoch backs immediate logout: it rides in every access token, so bumping it
+// invalidates every outstanding one without a blacklist.
 type AppUser struct {
 	ID             uuid.UUID
 	AccountID      uuid.UUID
@@ -25,9 +25,62 @@ type AppUser struct {
 	LockedUntil    *time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	// Null until the user proves control of the address.
+	EmailVerifiedAt *time.Time
 }
 
 // IsLocked reports whether the account is inside a lockout window at the given time.
 func (u AppUser) IsLocked(now time.Time) bool {
 	return u.LockedUntil != nil && u.LockedUntil.After(now)
+}
+
+// AuthSubject is a user together with the state of the account that owns them, which is what
+// an authentication decision needs: the user row alone cannot say the corralón is closed.
+type AuthSubject struct {
+	AppUser
+	AccountIsActive bool
+}
+
+// IsUsable reports whether both the user and their account are active. Every point that
+// admits a caller asks this rather than AppUser.IsActive.
+func (s AuthSubject) IsUsable() bool {
+	return s.IsActive && s.AccountIsActive
+}
+
+// UserWithBranches is a user plus the branches they may operate on, which is the shape the
+// admin screens read and write.
+type UserWithBranches struct {
+	AppUser
+	BranchIDs []uuid.UUID
+}
+
+// NewUser is an admin-created user. The account comes from the tenant scope, never the
+// request, and Password is the plaintext the service hashes.
+type NewUser struct {
+	Name      string
+	Email     string
+	Password  string
+	Role      UserRole
+	BranchIDs []uuid.UUID
+}
+
+// UserUpdate replaces a user's editable fields. IsActive is nil to leave it alone, so an
+// edit form cannot silently revive a deactivated user.
+type UserUpdate struct {
+	Name      string
+	Email     string
+	Role      UserRole
+	BranchIDs []uuid.UUID
+	IsActive  *bool
+}
+
+// IsValid reports whether the role is one the schema's user_role enum holds.
+func (r UserRole) IsValid() bool {
+	return r == UserRoleAdmin || r == UserRoleSeller
+}
+
+// NormalizeEmail lowercases and trims an address. Every path that stores, looks up or counts
+// one spells it this way, because uq_app_user_email_global compares lower(email).
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
 }

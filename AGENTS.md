@@ -31,7 +31,7 @@ One-directional flow: **decision (conversation / Notion) → `docs/internal/` �
 
 - Product/architecture decisions: live source is Notion; `docs/internal/product/decisiones-cerradas.md` is a local mirror — **Notion wins** on divergence.
 - Work state (tickets): lives in Notion, not replicated here.
-- Executable data model: the goose migrations in `apps/api/migrations/`. `docs/internal/data/schema.sql` is the design reference they are built from.
+- Executable data model: the goose migrations in `apps/api/migrations/`, with `apps/api/database/01_create_tables.sql` as the consolidated reference for the current shape. `docs/internal/data/schema.sql` no longer holds DDL — it keeps the ES↔EN mapping and the pending DER changes.
 
 Map: `product/`, `domain/`, `architecture/`, `data/`, `conventions/`. Start at `docs/internal/README.md`.
 
@@ -85,7 +85,7 @@ Link and pulls acceptance criteria from it. See `pr-format`.
 
 - Use API skills for backend work: `api-layering` and `api-methods-entities`.
 - Use web skills for frontend work: `web-structure` and `web-components-pages` (both cover `apps/backoffice` and `apps/webapp`).
-- Layered Go API (ports & adapters): `internal/{ai,config,delivery/http,domain,repository,services}`. Services depend only on ports; adapter wiring only in `cmd/api/main.go`.
+- Layered Go API (ports & adapters): `internal/{ai,config,delivery/http,domain,mail,ratelimit,repository,services}`. Services depend only on ports; adapter wiring only in `cmd/api/main.go`.
 - English identifiers; native PostgreSQL enums with English UPPERCASE values (labels are frontend i18n).
 - Persistence is raw `database/sql` + `pgx` (no ORM); SQL always parameterized. UUID v4 PKs.
 - Money & quantities are `NUMERIC(14,2)` — decimal strings end to end, never float or int64 centavos.
@@ -95,14 +95,20 @@ Link and pulls acceptance criteria from it. See `pr-format`.
 - Semantic catalog search uses `product.embedding` (pgvector); embedding generation lives behind the `internal/ai` provider. The catalog is account-scoped; per-branch availability and stock live in `branch_product`.
 - Multi-tenancy is enforced twice: `account_id` on every tenant-scoped table plus Postgres RLS under a `NOBYPASSRLS` role.
 - API comments above function/type definitions end with periods.
-- Web code uses the `@repo/ui` design tokens; avoid raw typography classes when tokens exist.
+- One design system: `packages/ui` (`@repo/ui`) owns the tokens, type scale, motion vocabulary and shared components. Its `src/styles/index.css` is the single Tailwind entry for the monorepo; each app's `globals.css` imports only that.
+- Colour reaches a component through a semantic token — never a hex, an oklch literal, or a raw Tailwind palette ramp. Type goes through the scale (`text-heading-*`, `text-paragraph-*`), never a raw `text-*`/`font-*` pair.
+- The UI is light-only: there is no `.dark` block, so a `dark:` class can never match.
+- `@repo/ui` ships its CSS prebuilt — rebuild it after changing a component's classNames or the change silently does nothing.
+- Interaction states, motion, elevation and reduced motion are the `ux-motion` skill; the token reference is `docs/technical/design-system.md`.
 - Configurable thresholds are env-var-backed with defaults in `apps/api/internal/config` or app `lib/config.ts`. No hardcoded thresholds in business logic.
 - Duration env vars carry their unit in the key (`_SECONDS`/`_MINUTES`/`_HOURS`/`_DAYS`) so the value is a plain integer; a duration key without a suffix is a config error. Config validation reports every problem at once.
 - Migrations are the only executable path: a schema change ships a goose migration in `apps/api/migrations/` AND updates the consolidated reference schema under `apps/api/database/` in the same PR. `pnpm db:init` builds a fresh DB by running the migrations; the reference schema is read, never applied.
 
 ## Conventions & hard rules
 
-- Docs Spanish, code English. UI copy is Argentine Spanish via next-intl (`es-AR`, single locale). Commits/PRs in English. "MVP" is banned — it's "Release 1 — Piloto Comercial".
+- The whole codebase is English — code, comments, SQL, `docs/technical/`, `docs/public/`, READMEs, scripts, CI, commits and PRs. Two exceptions, different in kind: UI copy is Argentine Spanish via next-intl (`es-AR`, single locale) because it _is_ the product, and `docs/internal/` is Spanish because it is the academic material that syncs with Notion. Never mix two languages inside one file or one generated document.
+- Comments earn their place: one line, two if genuinely needed, for a non-obvious _why_, an arbitrary-looking constraint, or a footgun. Go doc comments on exported symbols stay but stay to one line. Never narrate rejected alternatives, tell a bug's story, restate the signature, or describe how something used to be. When in doubt, leave it out.
+- "MVP" is banned — it's "Release 1 — Piloto Comercial".
 - GitFlow: `main` ← `dev` (default) ← ephemeral `feat/`, `fix/`, `enhancement/`, `refactor/`, `hotfix/` (kebab-case). Commits `type: imperative description`.
 - Never `git add .`/`-A`; stage files individually by name.
 - Never stage `.claude/plans/`, `.claude/settings*.json`, `docs/internal/`, or stray temporary markdown.
@@ -126,4 +132,4 @@ Link and pulls acceptance criteria from it. See `pr-format`.
 3. Branch with the right prefix; commits in format; PR to `dev`; tests included.
 4. If a task contradicts a closed decision or an invariant, stop and flag it before coding.
 
-The team and all project docs are in Argentine Spanish; match that when writing docs or talking to the team.
+The team speaks Argentine Spanish, so match that when talking to them; everything written into the repo is English (see Conventions & hard rules).

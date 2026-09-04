@@ -1,0 +1,834 @@
+//go:build integration
+
+package integration
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"log/slog"
+	"net/http"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/pgvector/pgvector-go"
+	"github.com/shopspring/decimal"
+
+	"github.com/santialemarino/coti/apps/api/internal/config"
+	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
+	"github.com/santialemarino/coti/apps/api/internal/domain"
+	"github.com/santialemarino/coti/apps/api/internal/repository"
+	"github.com/santialemarino/coti/apps/api/internal/services"
+)
+
+type failingCorrectionEmbedder struct{}
+
+func (failingCorrectionEmbedder) Embed(context.Context, []string) ([]pgvector.Vector, error) {
+	return nil, errors.New("staged provider outage")
+}
+
+// The pipeline composed the way the composition root composes it, minus the model: a staged
+// extractor stands in for the provider, and everything after it — matching, the real hybrid search
+// over a seeded catalog, and every write — is the production path against real SQL.
+
+// stagedExtractor answers with lines the test wrote, so the pipeline can be driven without a
+// provider while everything below it stays real.
+type stagedExtractor struct {
+	lines []domain.ExtractedRFQLine
+}
+
+func (s stagedExtractor) Extract(
+	_ context.Context, _ string,
+) (*domain.RFQExtraction, error) {
+	return &domain.RFQExtraction{
+		Lines: s.lines,
+		Usage: domain.GenerationUsage{
+			Provider: "integration-provider", Model: "integration-model",
+		},
+		PromptVersion: "integration-prompt-v1", SchemaVersion: "integration-schema-v1",
+	}, nil
+}
+
+func rfqConfig() config.RFQConfig {
+	return config.RFQConfig{MaxTextCharacters: 20000, MaxItems: 200, PipelineTimeout: time.Minute}
+}
+
+// pipeline wires the RFQ service over the real repositories, the real matching stack, and the
+// extractor the test staged.
+func (e *env) pipeline(
+	t *testing.T, extractor domain.RFQExtractor, axes map[string]int,
+) *services.RFQService {
+	t.Helper()
+	return services.NewRFQService(e.db, repository.NewRFQRepository(),
+		repository.NewQuoteRepository(), repository.NewQuoteAIGenerationRepository(),
+		repository.NewChannelRepository(), extractor,
+		e.matcher(t, matchConfig(), axes),
+		slog.New(slog.NewTextHandler(io.Discard, nil)), rfqConfig())
+}
+
+// seedIntakeChannel opens a channel to receive an order on, and takes it away with the test.
+func (e *env) seedIntakeChannel(t *testing.T, accountID, branchID uuid.UUID) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO channel (id, account_id, branch_id, type, identifier, is_active)
+		 VALUES ($1, $2, $3, 'WHATSAPP', $4, TRUE)`,
+		id, accountID, branchID, uuid.NewString()); err != nil {
+		t.Fatalf("seed channel: %v", err)
+	}
+	t.Cleanup(func() { e.mustCleanup(t, `DELETE FROM channel WHERE id = $1`, id) })
+	return id
+}
+
+// dropDraft removes the whole chain an order produced, children before parents.
+func (e *env) dropDraft(t *testing.T, rfqID uuid.UUID) {
+	t.Helper()
+	t.Cleanup(func() {
+		e.mustCleanup(t, `DELETE FROM quote_correction_memory_source WHERE evaluation_id IN (
+		  SELECT evaluation.id FROM quote_quality_evaluation evaluation
+		  JOIN quote_ai_generation generation ON generation.id = evaluation.generation_id
+		  JOIN quote c ON c.id = generation.quote_id WHERE c.rfq_id = $1)`, rfqID)
+		e.mustCleanup(t, `DELETE FROM quote_correction_memory WHERE account_id IN (
+		  SELECT account_id FROM rfq WHERE id = $1)`, rfqID)
+		e.mustCleanup(t, `DELETE FROM quote_quality_difference WHERE evaluation_id IN (
+		  SELECT evaluation.id FROM quote_quality_evaluation evaluation
+		  JOIN quote_ai_generation generation ON generation.id = evaluation.generation_id
+		  JOIN quote c ON c.id = generation.quote_id WHERE c.rfq_id = $1)`, rfqID)
+		e.mustCleanup(t, `DELETE FROM quote_quality_evaluation WHERE generation_id IN (
+		  SELECT generation.id FROM quote_ai_generation generation
+		  JOIN quote c ON c.id = generation.quote_id WHERE c.rfq_id = $1)`, rfqID)
+		e.mustCleanup(t, `DELETE FROM quote_ai_generation_item WHERE generation_id IN (
+		  SELECT generation.id FROM quote_ai_generation generation
+		  JOIN quote c ON c.id = generation.quote_id WHERE c.rfq_id = $1)`, rfqID)
+		e.mustCleanup(t, `DELETE FROM quote_ai_generation WHERE quote_id IN (
+		  SELECT id FROM quote WHERE rfq_id = $1)`, rfqID)
+		// The candidates go first: a foreign key on quote_item_alternative points at the lines.
+		e.mustCleanup(t, `DELETE FROM quote_item_alternative WHERE quote_item_id IN (
+		  SELECT i.id FROM quote_item i
+		  JOIN quote_version v ON v.id = i.version_id
+		  JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`, rfqID)
+		e.mustCleanup(t, `DELETE FROM quote_item WHERE version_id IN (
+		  SELECT v.id FROM quote_version v JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`,
+			rfqID)
+		e.mustCleanup(t, `DELETE FROM quote_send WHERE version_id IN (
+		  SELECT v.id FROM quote_version v JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`,
+			rfqID)
+		e.mustCleanup(t, `UPDATE quote SET current_version_id = NULL WHERE rfq_id = $1`, rfqID)
+		e.mustCleanup(t, `DELETE FROM quote_version WHERE quote_id IN (
+		  SELECT id FROM quote WHERE rfq_id = $1)`, rfqID)
+		e.mustCleanup(t, `DELETE FROM quote_status_change WHERE quote_id IN (
+		  SELECT id FROM quote WHERE rfq_id = $1)`, rfqID)
+		e.mustCleanup(t, `DELETE FROM quote WHERE rfq_id = $1`, rfqID)
+		e.mustCleanup(t, `DELETE FROM rfq_status_change WHERE rfq_id = $1`, rfqID)
+		e.mustCleanup(t, `DELETE FROM rfq WHERE id = $1`, rfqID)
+	})
+}
+
+func TestQuoteQualityHook_PersistsOneIdempotentLabelAfterTheVersionIsSent(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "Quote quality hook")
+	channelID := e.seedIntakeChannel(t, accountID, branchID)
+	seller := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	productID := e.seedPricedProduct(t, accountID, branchID, "Cemento Portland 50kg", "50", nil)
+	e.embedOn(t, productID, 0, 0.98)
+	unit := "bolsa"
+	tenant := domain.Tenant{
+		AccountID: accountID, BranchID: branchID, UserID: seller.ID, Role: domain.UserRoleAdmin,
+	}
+
+	draft, err := e.pipeline(t, stagedExtractor{lines: []domain.ExtractedRFQLine{{
+		RequestedDescription: "2 bolsas de cemento", Quantity: decimal.RequireFromString("2"),
+		Unit: &unit, Source: domain.QuantitySourceExplicit,
+		QuantityRationale: "el cliente pidió 2 bolsas",
+	}}}, map[string]int{"2 bolsas de cemento": 0}).CreateTextDraft(context.Background(), tenant,
+		domain.TextRFQDraftInput{ChannelID: channelID, RawText: "2 bolsas de cemento"})
+	if err != nil {
+		t.Fatalf("CreateTextDraft() = %v", err)
+	}
+	e.dropDraft(t, draft.RFQ.ID)
+
+	quoteRepo := repository.NewQuoteRepository()
+	quoteService := services.NewQuoteService(e.db, quoteRepo,
+		repository.NewProductPriceRepository(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`UPDATE quote_item SET quantity = 3 WHERE id = $1`, draft.Items[0].ID); err != nil {
+		t.Fatalf("apply seller quantity correction: %v", err)
+	}
+	if _, err := quoteService.AcceptMaterials(context.Background(), tenant, draft.Quote.ID); err != nil {
+		t.Fatalf("AcceptMaterials() = %v", err)
+	}
+	// The send feature does not exist yet. These writes are its future committed outcome, and the
+	// hook deliberately refuses to evaluate before the frozen version and durable send both exist.
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`UPDATE quote_version SET is_immutable = TRUE WHERE id = $1`, draft.Version.ID); err != nil {
+		t.Fatalf("freeze version as the future send flow would: %v", err)
+	}
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`UPDATE quote SET current_status = 'SENT' WHERE id = $1`, draft.Quote.ID); err != nil {
+		t.Fatalf("mark quote sent as the future send flow would: %v", err)
+	}
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO quote_send (account_id, version_id, channel_id, format, sent_at, tracking_status)
+		 VALUES ($1, $2, $3, 'MESSAGE', now(), 'SENT')`,
+		accountID, draft.Version.ID, channelID); err != nil {
+		t.Fatalf("record the completed send as the future send flow would: %v", err)
+	}
+
+	correctionRepo := repository.NewQuoteCorrectionRepository()
+	corrections := services.NewQuoteCorrectionService(e.db, correctionRepo,
+		axisEmbedder{axes: map[string]int{"2 bolsas de cemento": 0}}, config.QuoteCorrectionConfig{
+			SimilarityPercent: 80, MaxPatternsPerAccount: 1000,
+			MaxInterpretationExamples: 3, ProcessingBatchSize: 100,
+		}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	quality := services.NewQuoteQualityService(e.db, repository.NewQuoteQualityRepository()).
+		WithCorrectionLearning(corrections)
+	first, err := quality.EvaluateFinalQuote(context.Background(), tenant, draft.Quote.ID,
+		draft.Version.ID)
+	if err != nil {
+		t.Fatalf("EvaluateFinalQuote() = %v", err)
+	}
+	second, err := quality.EvaluateFinalQuote(context.Background(), tenant, draft.Quote.ID,
+		draft.Version.ID)
+	if err != nil {
+		t.Fatalf("second EvaluateFinalQuote() = %v", err)
+	}
+	if first.WholeQuoteCorrect || first.ID != second.ID {
+		t.Errorf("evaluations = %+v / %+v, want one idempotent corrected label", first, second)
+	}
+
+	var evaluations, differences int
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT COUNT(*) FROM quote_quality_evaluation WHERE generation_id = $1`,
+		first.GenerationID).Scan(&evaluations); err != nil {
+		t.Fatalf("count evaluations: %v", err)
+	}
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT COUNT(*) FROM quote_quality_difference WHERE evaluation_id = $1`,
+		first.ID).Scan(&differences); err != nil {
+		t.Fatalf("count differences: %v", err)
+	}
+	if evaluations != 1 || differences != 1 {
+		t.Errorf("stored evaluations/differences = %d/%d, want 1/1", evaluations, differences)
+	}
+	var memories, support int
+	var status string
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT count(*), max(support_count), max(status) FROM quote_correction_memory
+		 WHERE account_id = $1 AND kind = 'INTERPRETATION'`, accountID).
+		Scan(&memories, &support, &status); err != nil {
+		t.Fatalf("read learned correction: %v", err)
+	}
+	if memories != 1 || support != 1 || status != "READY" {
+		t.Errorf("learned memories/support/status = %d/%d/%s, want 1/1/READY",
+			memories, support, status)
+	}
+	var examples []domain.RFQInterpretationExample
+	if err := e.db.InTenantTx(context.Background(), tenant, func(q repository.Querier) error {
+		var findErr error
+		examples, findErr = correctionRepo.FindInterpretationExamples(context.Background(), q,
+			accountID, axisVector(0, 1), 0.2, 3)
+		return findErr
+	}); err != nil {
+		t.Fatalf("retrieve learned correction: %v", err)
+	}
+	if len(examples) != 1 || len(examples[0].CorrectedItems) != 1 ||
+		!examples[0].CorrectedItems[0].Quantity.Equal(decimal.NewFromInt(3)) {
+		t.Errorf("retrieved examples = %+v, want the seller-approved quantity", examples)
+	}
+	pendingID := uuid.New()
+	if _, err := e.db.CrossAccount().Exec(context.Background(), `INSERT INTO quote_correction_memory
+	  (id, account_id, kind, source_text, normalized_source, corrected_items)
+	 VALUES ($1, $2, 'INTERPRETATION', 'otro pedido', 'otro pedido', '[]'::jsonb)`,
+		pendingID, accountID); err != nil {
+		t.Fatalf("seed pending correction: %v", err)
+	}
+	job := services.NewQuoteCorrectionJob(correctionRepo,
+		axisEmbedder{axes: map[string]int{"otro pedido": 2}},
+		config.QuoteCorrectionConfig{ProcessingBatchSize: 100})
+	report, err := job.Run(context.Background(), e.db.CrossAccount())
+	if err != nil {
+		t.Fatalf("correction retry job: %v", err)
+	}
+	if report.Changed < 1 {
+		t.Errorf("correction retry changed %d rows, want at least the staged pending row", report.Changed)
+	}
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT status FROM quote_correction_memory WHERE id = $1`, pendingID).Scan(&status); err != nil {
+		t.Fatalf("read retried correction: %v", err)
+	}
+	if status != "READY" {
+		t.Errorf("retried correction status = %s, want READY", status)
+	}
+	failedID := uuid.New()
+	if _, err := e.db.CrossAccount().Exec(context.Background(), `INSERT INTO quote_correction_memory
+	  (id, account_id, kind, source_text, normalized_source, corrected_items)
+	 VALUES ($1, $2, 'INTERPRETATION', 'pedido durante corte', 'pedido durante corte', '[]'::jsonb)`,
+		failedID, accountID); err != nil {
+		t.Fatalf("seed failing pending correction: %v", err)
+	}
+	failingJob := services.NewQuoteCorrectionJob(correctionRepo, failingCorrectionEmbedder{},
+		config.QuoteCorrectionConfig{ProcessingBatchSize: 100})
+	if _, err := failingJob.Run(context.Background(), e.db.CrossAccount()); err == nil {
+		t.Fatal("correction retry job returned nil during provider outage")
+	}
+	var lastError *string
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT status, last_error FROM quote_correction_memory WHERE id = $1`, failedID).
+		Scan(&status, &lastError); err != nil {
+		t.Fatalf("read failed correction: %v", err)
+	}
+	if status != "PENDING" || lastError == nil {
+		t.Errorf("failed correction status/error = %s/%v, want PENDING with an error", status, lastError)
+	}
+}
+
+func TestRFQPipeline_PersistsTheMatchRealSearchDecided(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "RFQ pipeline")
+	channelID := e.seedIntakeChannel(t, accountID, branchID)
+	seller := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	ctx := context.Background()
+
+	// Two lines on axes of their own, one product sitting on each. The cement product is a near
+	// perfect match; the sand one is far enough away to be rejected.
+	cement := e.seedProduct(t, accountID, "Cemento Portland 50kg", "bolsa de cemento")
+	// Deliberately named nothing like the second line: a shared word would let the lexical half
+	// offer it, and then whichever half won would decide the status instead of the arithmetic.
+	other := e.seedProduct(t, accountID, "Cal hidratada", "cal")
+	e.stock(t, accountID, branchID, cement)
+	e.stock(t, accountID, branchID, other)
+	e.embedOn(t, cement, 0, 0.95)
+	e.embedOn(t, other, 2, 0.20)
+	axes := map[string]int{"10 bolsas de cemento": 0, "membrana liquida": 2}
+
+	unit := "bolsa"
+	rationale := "el cliente pidió 10 bolsas"
+	unresolvedRationale := "no indicó cuánta membrana"
+	draft, err := e.pipeline(t, stagedExtractor{lines: []domain.ExtractedRFQLine{
+		{
+			RequestedDescription: "10 bolsas de cemento",
+			Quantity:             decimal.RequireFromString("10"),
+			Unit:                 &unit,
+			Source:               domain.QuantitySourceExplicit,
+			QuantityRationale:    rationale,
+		},
+		{
+			RequestedDescription: "membrana liquida",
+			Quantity:             decimal.Zero,
+			Source:               domain.QuantitySourceUnresolved,
+			QuantityRationale:    unresolvedRationale,
+		},
+	}}, axes).CreateTextDraft(ctx,
+		domain.Tenant{AccountID: accountID, BranchID: branchID, UserID: seller.ID,
+			Role: domain.UserRoleAdmin},
+		domain.TextRFQDraftInput{
+			ChannelID: channelID, RawText: "10 bolsas de cemento y membrana liquida",
+		})
+	if err != nil {
+		t.Fatalf("CreateTextDraft() = %v, want no error", err)
+	}
+	e.dropDraft(t, draft.RFQ.ID)
+
+	if draft.RFQ.Status != domain.RFQStatusGenerated {
+		t.Errorf("rfq status = %q, want GENERATED", draft.RFQ.Status)
+	}
+	if draft.Quote == nil || draft.Version == nil {
+		t.Fatalf("draft = %+v, want a quote and its version", draft)
+	}
+
+	// Read the rows back rather than trusting the returned structs: the point of this test is the
+	// SQL, and the ticket's criteria say persisted.
+	rows, err := e.db.CrossAccount().Query(ctx,
+		`SELECT requested_description, quantity, unit, product_id, confidence_score, match_status,
+		        quantity_rationale
+		 FROM quote_item WHERE version_id = $1 ORDER BY created_at, requested_description`,
+		draft.Version.ID)
+	if err != nil {
+		t.Fatalf("read lines back: %v", err)
+	}
+	defer rows.Close()
+
+	type stored struct {
+		description string
+		quantity    decimal.Decimal
+		unit        *string
+		productID   *uuid.UUID
+		confidence  decimal.NullDecimal
+		status      string
+		rationale   *string
+	}
+	var lines []stored
+	for rows.Next() {
+		var line stored
+		if err := rows.Scan(&line.description, &line.quantity, &line.unit, &line.productID,
+			&line.confidence, &line.status, &line.rationale); err != nil {
+			t.Fatalf("scan line: %v", err)
+		}
+		lines = append(lines, line)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("read lines: %v", err)
+	}
+	if len(lines) != 2 {
+		t.Fatalf("stored %d lines, want 2", len(lines))
+	}
+
+	var provider, model, promptVersion, schemaVersion string
+	var inputTokens, outputTokens int
+	if err := e.db.CrossAccount().QueryRow(ctx,
+		`SELECT provider, model, prompt_version, schema_version, input_tokens, output_tokens
+		 FROM quote_ai_generation WHERE quote_version_id = $1`, draft.Version.ID,
+	).Scan(&provider, &model, &promptVersion, &schemaVersion, &inputTokens, &outputTokens); err != nil {
+		t.Fatalf("read AI generation back: %v", err)
+	}
+	if provider != "integration-provider" || model != "integration-model" ||
+		promptVersion != "integration-prompt-v1" || schemaVersion != "integration-schema-v1" {
+		t.Errorf("generation identity = %s/%s %s/%s, want the staged extractor identity",
+			provider, model, promptVersion, schemaVersion)
+	}
+	if inputTokens != 0 || outputTokens != 0 {
+		t.Errorf("generation tokens = %d/%d, want 0/0", inputTokens, outputTokens)
+	}
+
+	generationRows, err := e.db.CrossAccount().Query(ctx,
+		`SELECT position, requested_description, quantity, unit, quantity_source, product_id,
+		        match_status, confidence_score
+		 FROM quote_ai_generation_item item
+		 JOIN quote_ai_generation generation ON generation.id = item.generation_id
+		 WHERE generation.quote_version_id = $1 ORDER BY position`, draft.Version.ID)
+	if err != nil {
+		t.Fatalf("read AI generation items back: %v", err)
+	}
+	defer generationRows.Close()
+
+	var generated []stored
+	var sources []string
+	for generationRows.Next() {
+		var position int
+		var line stored
+		var source string
+		if err := generationRows.Scan(&position, &line.description, &line.quantity, &line.unit,
+			&source, &line.productID, &line.status, &line.confidence); err != nil {
+			t.Fatalf("scan AI generation item: %v", err)
+		}
+		if position != len(generated) {
+			t.Errorf("generation position = %d, want %d", position, len(generated))
+		}
+		generated = append(generated, line)
+		sources = append(sources, source)
+	}
+	if err := generationRows.Err(); err != nil {
+		t.Fatalf("read AI generation items: %v", err)
+	}
+	if len(generated) != 2 {
+		t.Fatalf("stored %d AI generation items, want 2", len(generated))
+	}
+	if generated[0].description != "10 bolsas de cemento" ||
+		sources[0] != string(domain.QuantitySourceExplicit) ||
+		generated[0].productID == nil || *generated[0].productID != cement {
+		t.Errorf("first AI generation item = %+v source %q, want the original cement proposal",
+			generated[0], sources[0])
+	}
+	if generated[1].description != "membrana liquida" ||
+		sources[1] != string(domain.QuantitySourceUnresolved) || generated[1].productID != nil {
+		t.Errorf("second AI generation item = %+v source %q, want the unresolved proposal",
+			generated[1], sources[1])
+	}
+
+	matched := lines[0]
+	if matched.description != "10 bolsas de cemento" {
+		t.Fatalf("first line = %q, want the cement one", matched.description)
+	}
+	if matched.status != string(domain.ItemMatchStatusMatched) {
+		t.Errorf("cement status = %q, want MATCHED", matched.status)
+	}
+	if matched.productID == nil || *matched.productID != cement {
+		t.Errorf("cement product = %v, want %v", matched.productID, cement)
+	}
+	// The alignment is the similarity, so the stored score is arithmetic rather than a guess.
+	want := decimal.RequireFromString("0.9500")
+	if !matched.confidence.Valid || !matched.confidence.Decimal.Equal(want) {
+		t.Errorf("cement confidence = %v, want %s", matched.confidence, want)
+	}
+	if !matched.quantity.Equal(decimal.RequireFromString("10")) {
+		t.Errorf("cement quantity = %s, want 10", matched.quantity)
+	}
+	if matched.rationale == nil || *matched.rationale != rationale {
+		t.Errorf("cement rationale = %v, want %q", matched.rationale, rationale)
+	}
+
+	// The second line is flagged and kept: nothing came close enough, and the quantity was never
+	// given. It stays in the quote either way — that is the whole of US-07's premise.
+	flagged := lines[1]
+	if flagged.description != "membrana liquida" {
+		t.Fatalf("second line = %q, want the unresolved one", flagged.description)
+	}
+	if flagged.status != string(domain.ItemMatchStatusNoMatch) {
+		t.Errorf("sand status = %q, want NO_MATCH", flagged.status)
+	}
+	if flagged.productID != nil {
+		t.Errorf("sand product = %v, want none", flagged.productID)
+	}
+	if !flagged.quantity.IsZero() {
+		t.Errorf("sand quantity = %s, want zero", flagged.quantity)
+	}
+	// It kept the score of the candidate it rejected — 0.20 is the alignment the product was
+	// embedded at — which is what tells a near miss from a line nothing was offered for.
+	wantRejected := decimal.RequireFromString("0.2000")
+	if !flagged.confidence.Valid || !flagged.confidence.Decimal.Equal(wantRejected) {
+		t.Errorf("flagged confidence = %v, want the rejected candidate's %s", flagged.confidence,
+			wantRejected)
+	}
+
+	var versionNumber int
+	var immutable bool
+	var total decimal.Decimal
+	if err := e.db.CrossAccount().QueryRow(ctx,
+		`SELECT version_number, is_immutable, total FROM quote_version WHERE id = $1`,
+		draft.Version.ID).Scan(&versionNumber, &immutable, &total); err != nil {
+		t.Fatalf("read version back: %v", err)
+	}
+	if versionNumber != 1 || immutable || !total.IsZero() {
+		t.Errorf("version = (%d, immutable %v, total %s), want (1, false, 0)",
+			versionNumber, immutable, total)
+	}
+
+	var quoteStatus string
+	if err := e.db.CrossAccount().QueryRow(ctx,
+		`SELECT current_status FROM quote WHERE rfq_id = $1`, draft.RFQ.ID).Scan(&quoteStatus); err != nil {
+		t.Fatalf("read quote back: %v", err)
+	}
+	if quoteStatus != string(domain.QuoteStatusDraft) {
+		t.Errorf("quote status = %q, want DRAFT", quoteStatus)
+	}
+}
+
+func TestRFQPipeline_PersistsDerivedQuantitiesAndDifferentUnitsForOneProduct(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "RFQ units")
+	channelID := e.seedIntakeChannel(t, accountID, branchID)
+	seller := e.seedUser(t, accountID, domain.UserRoleAdmin)
+
+	cement := e.seedProduct(t, accountID, "Cemento Portland 50kg", "bolsa de cemento")
+	e.stock(t, accountID, branchID, cement)
+	e.embedOn(t, cement, 0, 0.95)
+
+	bag := "bolsa"
+	pallet := "pallet"
+	lines := []domain.ExtractedRFQLine{
+		{
+			RequestedDescription: "10 bolsas de cemento",
+			Quantity:             decimal.RequireFromString("10"),
+			Unit:                 &bag,
+			Source:               domain.QuantitySourceExplicit,
+			QuantityRationale:    "el cliente pidió 10 bolsas",
+		},
+		{
+			RequestedDescription: "2 pallets de cemento",
+			Quantity:             decimal.RequireFromString("2"),
+			Unit:                 &pallet,
+			Source:               domain.QuantitySourceExplicit,
+			QuantityRationale:    "el cliente pidió 2 pallets",
+		},
+		{
+			RequestedDescription: "3 pallets de 50 bolsas de cemento",
+			Quantity:             decimal.RequireFromString("150"),
+			Unit:                 &bag,
+			Source:               domain.QuantitySourceDerived,
+			QuantityRationale:    "3 pallets de 50 bolsas son 150 bolsas",
+		},
+	}
+	axes := map[string]int{
+		"10 bolsas de cemento":              0,
+		"2 pallets de cemento":              0,
+		"3 pallets de 50 bolsas de cemento": 0,
+	}
+	draft, err := e.pipeline(t, stagedExtractor{lines: lines}, axes).CreateTextDraft(
+		context.Background(),
+		domain.Tenant{
+			AccountID: accountID,
+			BranchID:  branchID,
+			UserID:    seller.ID,
+			Role:      domain.UserRoleAdmin,
+		},
+		domain.TextRFQDraftInput{
+			ChannelID: channelID,
+			RawText:   "10 bolsas de cemento, 2 pallets de cemento y 3 pallets de 50 bolsas",
+		},
+	)
+	if err != nil {
+		t.Fatalf("CreateTextDraft() = %v, want no error", err)
+	}
+	e.dropDraft(t, draft.RFQ.ID)
+	if draft.Version == nil {
+		t.Fatal("draft carries no version")
+	}
+
+	rows, err := e.db.CrossAccount().Query(context.Background(),
+		`SELECT requested_description, quantity, unit, product_id, match_status, quantity_rationale
+		 FROM quote_item WHERE version_id = $1`, draft.Version.ID)
+	if err != nil {
+		t.Fatalf("read lines back: %v", err)
+	}
+	defer rows.Close()
+
+	type storedLine struct {
+		quantity  decimal.Decimal
+		unit      *string
+		productID *uuid.UUID
+		status    domain.ItemMatchStatus
+		rationale *string
+	}
+	stored := make(map[string]storedLine, len(lines))
+	for rows.Next() {
+		var description string
+		var line storedLine
+		if err := rows.Scan(&description, &line.quantity, &line.unit, &line.productID, &line.status,
+			&line.rationale); err != nil {
+			t.Fatalf("scan line: %v", err)
+		}
+		stored[description] = line
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("read lines: %v", err)
+	}
+	if len(stored) != len(lines) {
+		t.Fatalf("stored %d distinct lines, want %d", len(stored), len(lines))
+	}
+
+	for _, want := range lines {
+		got, ok := stored[want.RequestedDescription]
+		if !ok {
+			t.Errorf("line %q was discarded", want.RequestedDescription)
+			continue
+		}
+		if !got.quantity.Equal(want.Quantity) {
+			t.Errorf("line %q quantity = %s, want %s", want.RequestedDescription, got.quantity,
+				want.Quantity)
+		}
+		if got.unit == nil || want.Unit == nil || *got.unit != *want.Unit {
+			t.Errorf("line %q unit = %v, want %v", want.RequestedDescription, got.unit, want.Unit)
+		}
+		if got.productID == nil || *got.productID != cement {
+			t.Errorf("line %q product = %v, want cement %s", want.RequestedDescription,
+				got.productID, cement)
+		}
+		if got.status != domain.ItemMatchStatusMatched {
+			t.Errorf("line %q status = %q, want MATCHED", want.RequestedDescription, got.status)
+		}
+		if got.rationale == nil || *got.rationale != want.QuantityRationale {
+			t.Errorf("line %q rationale = %v, want %q", want.RequestedDescription, got.rationale,
+				want.QuantityRationale)
+		}
+	}
+}
+
+func TestRFQTextDraftRoute_KeepsTheOrderWhenNoModelIsBound(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "RFQ no model")
+	channelID := e.seedIntakeChannel(t, accountID, branchID)
+	seller := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	order := "Necesito 10 bolsas de cemento " + uuid.NewString()
+
+	rec := e.do(t, request{
+		method: http.MethodPost, path: "/v1/rfqs/text-drafts",
+		token: e.tokenFor(t, seller), branch: branchID.String(),
+		body: map[string]any{"channel_id": channelID, "raw_text": order},
+	})
+
+	// The environment binds no language model, so the pipeline refuses on the call that needed
+	// one — an outage rather than the caller's mistake.
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusServiceUnavailable, rec.Body)
+	}
+	if code := errorCode(t, rec); code != string(domain.CodeAIUnavailable) {
+		t.Errorf("code = %q, want %q", code, domain.CodeAIUnavailable)
+	}
+
+	// And the order survived it. This is the guarantee the two transactions exist for: the client
+	// wrote something, and a model that could not read it must not lose it.
+	var rfqID uuid.UUID
+	var status string
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT id, status FROM rfq WHERE raw_text = $1`, order).Scan(&rfqID, &status); err != nil {
+		t.Fatalf("the order was not stored: %v", err)
+	}
+	e.dropDraft(t, rfqID)
+	if status != string(domain.RFQStatusReceived) {
+		t.Errorf("rfq status = %q, want RECEIVED", status)
+	}
+
+	var quotes int
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT count(*) FROM quote WHERE rfq_id = $1`, rfqID).Scan(&quotes); err != nil {
+		t.Fatalf("count quotes: %v", err)
+	}
+	if quotes != 0 {
+		t.Errorf("quotes = %d, want none: the order produced no materials", quotes)
+	}
+}
+
+func TestChannelsRoute_ListsOnlyTheSelectedBranch(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "Channel listing")
+	otherAccountID, otherBranchID := e.seedAccount(t, "Channel listing other")
+	mine := e.seedIntakeChannel(t, accountID, branchID)
+	e.seedIntakeChannel(t, otherAccountID, otherBranchID)
+	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
+
+	rec := e.do(t, request{
+		method: http.MethodGet, path: "/v1/channels",
+		token: e.tokenFor(t, admin), branch: branchID.String(),
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+
+	var body struct {
+		Items []struct {
+			ID       uuid.UUID `json:"id"`
+			BranchID uuid.UUID `json:"branch_id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body %s: %v", rec.Body, err)
+	}
+	if len(body.Items) != 1 || body.Items[0].ID != mine {
+		t.Fatalf("items = %+v, want only this branch's channel %v", body.Items, mine)
+	}
+	if body.Items[0].BranchID != branchID {
+		t.Errorf("branch = %v, want %v", body.Items[0].BranchID, branchID)
+	}
+}
+
+func TestWhatsAppMockRoute_CreatesAReviewableDraftThroughTheRealRouter(t *testing.T) {
+	message := "10 bolsas de cemento Loma Negra"
+	unit := "bolsas"
+	rationale := "el cliente pidio 10 bolsas"
+	e := newEnvWithRFQProviders(t, rfqTestProviders{
+		extractor: stagedExtractor{lines: []domain.ExtractedRFQLine{{
+			RequestedDescription: message,
+			Quantity:             decimal.RequireFromString("10"),
+			Unit:                 &unit,
+			Source:               domain.QuantitySourceExplicit,
+			QuantityRationale:    rationale,
+		}}},
+		embedder: axisEmbedder{axes: map[string]int{message: 0}},
+	}, func(cfg *config.Config) { cfg.Catalog = matchConfig() })
+	accountID, branchID := e.seedAccount(t, "WhatsApp mock intake")
+	channelID := e.seedIntakeChannel(t, accountID, branchID)
+	seller := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	cement := e.seedProduct(t, accountID, "Cemento Loma Negra 50kg", "cemento portland")
+	e.stock(t, accountID, branchID, cement)
+	e.embedOn(t, cement, 0, 0.95)
+
+	rec := e.do(t, request{
+		method: http.MethodPost, path: "/v1/dev/whatsapp/messages",
+		token: e.tokenFor(t, seller), branch: branchID.String(),
+		body: map[string]any{
+			"from": "+5491122334455", "profile_name": "Obras Norte", "text": message,
+		},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body)
+	}
+
+	var body dto.TextRFQDraftResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response %s: %v", rec.Body, err)
+	}
+	e.dropDraft(t, body.RFQ.ID)
+
+	if body.RFQ.ChannelID != channelID || body.RFQ.Status != string(domain.RFQStatusGenerated) {
+		t.Errorf("rfq = %+v, want generated on WhatsApp channel %s", body.RFQ, channelID)
+	}
+	if body.RFQ.RawText == nil || *body.RFQ.RawText != message || body.RFQ.ClientLabel == nil ||
+		*body.RFQ.ClientLabel != "Obras Norte (+5491122334455)" {
+		t.Errorf("rfq source = raw %v label %v, want the inbound message and sender",
+			body.RFQ.RawText, body.RFQ.ClientLabel)
+	}
+	if body.Quote == nil || body.Quote.RFQID != body.RFQ.ID ||
+		body.Quote.CurrentStatus != string(domain.QuoteStatusDraft) || body.Quote.SellerID != nil {
+		t.Fatalf("quote = %+v, want an unassigned DRAFT for the RFQ", body.Quote)
+	}
+	if body.Version == nil || body.Version.QuoteID != body.Quote.ID || body.Version.AuthorID != nil ||
+		body.Version.VersionNumber != 1 || body.Version.Total != "0.00" {
+		t.Fatalf("version = %+v, want the unpriced initial version", body.Version)
+	}
+	if len(body.Items) != 1 {
+		t.Fatalf("items = %d, want one", len(body.Items))
+	}
+	item := body.Items[0]
+	if item.VersionID != body.Version.ID || item.ProductID == nil || *item.ProductID != cement ||
+		item.RequestedDescription != message || item.Quantity != "10.00" || item.Unit == nil ||
+		*item.Unit != unit || item.MatchStatus != string(domain.ItemMatchStatusMatched) ||
+		item.QuantityRationale == nil || *item.QuantityRationale != rationale {
+		t.Errorf("item = %+v, want the matched cement line with its extraction evidence", item)
+	}
+}
+
+func TestWhatsAppMockRoute_IsAbsentInProduction(t *testing.T) {
+	e := newEnv(t, func(cfg *config.Config) { cfg.Environment = config.EnvironmentProduction })
+	accountID, branchID := e.seedAccount(t, "WhatsApp mock in production")
+	seller := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	channelID := e.seedIntakeChannel(t, accountID, branchID)
+
+	rec := e.do(t, request{
+		method: http.MethodPost, path: "/v1/dev/whatsapp/messages",
+		token: e.tokenFor(t, seller), branch: branchID.String(),
+		body: map[string]any{"channel_id": channelID, "from": "+5491122334455", "text": "cemento"},
+	})
+
+	// The route is registered on the environment, not guarded inside the handler: shipped to
+	// production it would let anyone post an order attributed to WhatsApp with no webhook behind it.
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d body %s, want 404: the development route reached a production router",
+			rec.Code, rec.Body)
+	}
+}
+
+func TestRFQTextDraftRoute_CarriesItsOwnAllowance(t *testing.T) {
+	// The route is billed per call by a provider, so it must not be sharing the global allowance:
+	// 300 a minute is a spend nobody authorised, and the global counter is what it would fall back
+	// to if the middleware were left off.
+	const allowance = 2
+	e := newEnv(t, func(cfg *config.Config) {
+		cfg.RateLimit = config.RateLimitConfig{
+			Enabled: true, Window: time.Minute, Global: 100, Credentials: 100, Signup: 100,
+			Mail: 100, MailPerAddress: 100, AI: allowance,
+		}
+	})
+	accountID, branchID := e.seedAccount(t, "RFQ allowance")
+	channelID := e.seedIntakeChannel(t, accountID, branchID)
+	seller := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	token := e.tokenFor(t, seller)
+
+	send := func() int {
+		order := "cemento " + uuid.NewString()
+		rec := e.do(t, request{
+			method: http.MethodPost, path: "/v1/rfqs/text-drafts",
+			token: token, branch: branchID.String(),
+			body: map[string]any{"channel_id": channelID, "raw_text": order},
+		})
+		var rfqID uuid.UUID
+		if err := e.db.CrossAccount().QueryRow(context.Background(),
+			`SELECT id FROM rfq WHERE raw_text = $1`, order).Scan(&rfqID); err == nil {
+			e.dropDraft(t, rfqID)
+		}
+		return rec.Code
+	}
+
+	// No model is bound, so a call that gets through answers 503 — which is still a call that
+	// reached the pipeline and would have been paid for.
+	for i := range allowance {
+		if code := send(); code != http.StatusServiceUnavailable {
+			t.Fatalf("call %d = %d, want %d inside the allowance", i+1, code,
+				http.StatusServiceUnavailable)
+		}
+	}
+	if code := send(); code != http.StatusTooManyRequests {
+		t.Errorf("call past the allowance = %d, want 429", code)
+	}
+}

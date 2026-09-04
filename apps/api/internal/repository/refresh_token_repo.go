@@ -21,11 +21,8 @@ func NewRefreshTokenRepository() *RefreshTokenRepository {
 	return &RefreshTokenRepository{}
 }
 
-// GetByHashCrossAccount finds a token by its hash across every account.
-//
-// Like login by email, a refresh presents no account context — the caller learns the
-// account *from* the token — so this runs on the owner pool. The hash is globally
-// unique, so there is no ambiguity to resolve.
+// GetByHashCrossAccount finds a token by its hash across every account. It runs on the
+// owner pool because the caller learns the account from the token, not before it.
 func (r *RefreshTokenRepository) GetByHashCrossAccount(ctx context.Context, q Querier, hash string) (*domain.RefreshToken, error) {
 	var t domain.RefreshToken
 	err := q.QueryRow(ctx,
@@ -74,6 +71,15 @@ func (r *RefreshTokenRepository) RevokeFamily(ctx context.Context, q Querier, ac
 		`UPDATE refresh_token SET revoked_at = now()
 		 WHERE account_id = $1 AND family_id = $2 AND revoked_at IS NULL`,
 		accountID, familyID)
+	return err
+}
+
+// RevokeAllForUser revokes every live token the user holds, across families.
+func (r *RefreshTokenRepository) RevokeAllForUser(ctx context.Context, q Querier, accountID, userID uuid.UUID) error {
+	_, err := q.Exec(ctx,
+		`UPDATE refresh_token SET revoked_at = now()
+		 WHERE account_id = $1 AND user_id = $2 AND revoked_at IS NULL`,
+		accountID, userID)
 	return err
 }
 

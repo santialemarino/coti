@@ -1,66 +1,166 @@
-:root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.129 0.042 264.695);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.208 0.042 265.755);
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.968 0.007 247.896);
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417);
-  --accent: oklch(0.968 0.007 247.896);
-  --accent-foreground: oklch(0.208 0.042 265.755);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.704 0.04 256.788);
-}
-
-.dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-}
-
+/* Tailwind theme: maps the design tokens in index.css onto Tailwind's namespaces. */
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
+  /* Surfaces */
   --color-background: var(--background);
+  --color-body-background: var(--body-background);
   --color-foreground: var(--foreground);
+  --color-foreground-muted: var(--foreground-muted);
+  --color-foreground-subtle: var(--foreground-subtle);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
+  --color-sunken: var(--sunken);
+  --color-backdrop: var(--backdrop);
+
+  /* Interactive */
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-active: var(--primary-active);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary-hover: var(--secondary-hover);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
+  --color-accent-strong: var(--accent-strong);
+
+  /* Lines and fields */
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-input: var(--input);
+  --color-input-readonly: var(--input-readonly);
   --color-ring: var(--ring);
+
+  /* Status */
+  --color-success: var(--success-base);
+  --color-success-subtle: var(--success-subtle);
+  --color-success-border: var(--success-border);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning-base);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-warning-border: var(--warning-border);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-danger: var(--danger-base);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-danger-border: var(--danger-border);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-destructive: var(--danger-base);
+  --color-destructive-subtle: var(--danger-subtle);
+  --color-destructive-border: var(--danger-border);
+  --color-destructive-foreground: var(--danger-foreground);
+
+  /* Brand ramp — reach for a semantic token first; these are for brand surfaces only. */
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-brand-800: var(--brand-800);
+  --color-brand-900: var(--brand-900);
+  --color-brand-950: var(--brand-950);
+
+  /* Fonts — the next/font variables are set on <html> by each app's root layout. */
+  --font-sans:
+    var(--font-inter), 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display:
+    var(--font-poppins), 'Poppins', var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+
+  /* Radius — --radius (10px) is the control baseline; cards step up from it. */
+  --radius-mini: 0.125rem; /* 2px */
+  --radius-sm: calc(var(--radius) - 4px); /* 6px */
+  --radius-md: calc(var(--radius) - 2px); /* 8px */
+  --radius-lg: var(--radius); /* 10px */
+  --radius-xl: 0.75rem; /* 12px */
+  --radius-1\.5xl: 0.875rem; /* 14px */
+  --radius-2xl: 1rem; /* 16px */
+
+  /* Elevation — tinted with the brand ink, so a shadow reads as depth and not as dirt. */
+  --shadow-e1: 0 1px 2px 0 oklch(0.272 0.043 259.8 / 0.06);
+  --shadow-e2:
+    0 1px 3px 0 oklch(0.272 0.043 259.8 / 0.07), 0 1px 2px -1px oklch(0.272 0.043 259.8 / 0.05);
+  --shadow-e3:
+    0 6px 16px -4px oklch(0.272 0.043 259.8 / 0.12), 0 2px 6px -2px oklch(0.272 0.043 259.8 / 0.07);
+  --shadow-e4:
+    0 16px 40px -10px oklch(0.272 0.043 259.8 / 0.18),
+    0 6px 16px -8px oklch(0.272 0.043 259.8 / 0.1);
+
+  /*
+   * Easing — one accelerating-out curve for entrances, one symmetric curve for state changes, and one
+   * that overshoots its target and settles back, for something arriving into place.
+   */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-out-back: cubic-bezier(0.34, 1.6, 0.64, 1);
+
+  /* Animations. Keyframes live in index.css; see the motion section there. */
+  --animate-focus-bump: focus-bump 300ms var(--ease-in-out-soft);
+  --animate-focus-bump-soft: focus-bump-soft 300ms var(--ease-in-out-soft);
+  --animate-focus-bump-subtle: focus-bump-subtle 300ms var(--ease-in-out-soft);
+  /* Timed so the whole status entrance lands together, with no ring still fading after the copy. */
+  --animate-status-pop: status-pop 460ms var(--ease-out-back) both;
+  --animate-status-halo: status-halo 640ms var(--ease-out-soft) both;
+  --animate-rise-in: rise-in 380ms var(--ease-out-soft) both;
+
+  /* Widths */
+  --max-width-auth-card: 25rem; /* 400px */
+
+  /* Typography — paragraph scale (Inter, inherited from <html>).
+     Headings are @utility classes in index.css because they also carry the display family.
+     Every token below must also be listed in the cn() font-size group (src/lib/utils.ts). */
+  --text-paragraph: 1rem; /* 16px */
+  --text-paragraph--line-height: 1.5;
+  --text-paragraph--font-weight: 400;
+
+  --text-paragraph-medium: 1rem;
+  --text-paragraph-medium--line-height: 1.5;
+  --text-paragraph-medium--font-weight: 500;
+
+  --text-paragraph-semibold: 1rem;
+  --text-paragraph-semibold--line-height: 1.5;
+  --text-paragraph-semibold--font-weight: 600;
+
+  --text-paragraph-sm: 0.875rem; /* 14px */
+  --text-paragraph-sm--line-height: 1.5;
+  --text-paragraph-sm--font-weight: 400;
+
+  --text-paragraph-sm-medium: 0.875rem;
+  --text-paragraph-sm-medium--line-height: 1.5;
+  --text-paragraph-sm-medium--font-weight: 500;
+
+  --text-paragraph-sm-semibold: 0.875rem;
+  --text-paragraph-sm-semibold--line-height: 1.5;
+  --text-paragraph-sm-semibold--font-weight: 600;
+
+  --text-paragraph-xs: 0.75rem; /* 12px */
+  --text-paragraph-xs--line-height: 1.5;
+  --text-paragraph-xs--font-weight: 400;
+
+  --text-paragraph-xs-medium: 0.75rem;
+  --text-paragraph-xs-medium--line-height: 1.5;
+  --text-paragraph-xs-medium--font-weight: 500;
+
+  --text-paragraph-xs-semibold: 0.75rem;
+  --text-paragraph-xs-semibold--line-height: 1.5;
+  --text-paragraph-xs-semibold--font-weight: 600;
+
+  --text-paragraph-mini: 0.6875rem; /* 11px */
+  --text-paragraph-mini--line-height: 1.45;
+  --text-paragraph-mini--font-weight: 400;
+
+  --text-paragraph-mini-medium: 0.6875rem;
+  --text-paragraph-mini-medium--line-height: 1.45;
+  --text-paragraph-mini-medium--font-weight: 500;
+
+  --text-paragraph-mini-semibold: 0.6875rem;
+  --text-paragraph-mini-semibold--line-height: 1.45;
+  --text-paragraph-mini-semibold--font-weight: 600;
 }

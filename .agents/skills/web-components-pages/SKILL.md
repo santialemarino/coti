@@ -6,8 +6,10 @@ description: How to create a component or a page in Coti's Next.js apps (backoff
 # Web components and pages (Coti frontend)
 
 > **Load `web-structure` first** — it decides which app you are in and where each
-> kind of file goes. This skill covers _how_ to build the page/component once
-> placement is decided. Coti has two apps: **backoffice** (authenticated, port
+> kind of file goes, and **`ux-motion` alongside this one** whenever the change is
+> visual — it owns interaction states, motion, elevation and reduced motion, which
+> this skill points at but does not restate. This skill covers _how_ to build the
+> page/component once placement is decided. Coti has two apps: **backoffice** (authenticated, port
 > 3000, uses `(auth)`/`(protected)` route groups) and **webapp** (public, port
 > 3001, no auth, no route groups). Product language is Argentine Spanish; i18n
 > runs on **next-intl** (single locale `es-AR`, no routing) — see "Copy, i18n,
@@ -57,59 +59,188 @@ composes components. Put UI and interactivity in components.
 
 ## Reuse and componentization
 
-Coti's design system is **nascent** — today `@repo/ui` ships only `Button`. So
-these are the operating principles, not a catalog of existing parts:
+`@repo/ui` is a real design system now — check it before writing markup. The
+catalogue:
 
-- **Reuse-first, in search order.** Before building anything, look in this order:
-  (1) the page's `_components/`, (2) the app's `components/`, (3) `@repo/ui`. Reuse
-  or restyle-through-props what exists before adding new. When you do add
-  something genuinely shared, extend via the base component's props / CVA variants
-  — don't fork a component to change one style.
-- **A control used in two apps is one shared component.** If both the backoffice
-  and the webapp render the same thing (a logo, a form field set, an empty state),
-  it lives in `@repo/ui`, built once. If it's one app only, it lives in that app's
-  `components/`.
-- **Componentize repeated structure.** Structure that repeats — an RFQ list row, a
-  quote line-item row, a page header (title + meta), a section card — is ONE
-  component rendered by mapping data, never copy-pasted markup. Sibling sections
-  that share a shape become section components that a thin page composes.
-- **Consistency beats local cleverness.** The same control means the same thing,
-  in the same place and order, across pages and across both apps (e.g. don't flip
-  primary/secondary CTA order between the backoffice quote view and the public
-  quote view).
-- **Button as a link.** Use `<Button asChild>` wrapping a `<Link>`/`<a>` rather
-  than a hand-rolled styled anchor, so it keeps the variant, ring, and states.
-- **When a new shared primitive is needed** (Dialog, Input, Card, Badge, Form
-  primitives, table, etc.), add it to `@repo/ui` via shadcn (both apps'
-  `components.json` are configured, `iconLibrary: lucide`, base color slate) and
-  export it — do not generate the same primitive separately into each app.
+| Group    | Components                                                                                                                                                         |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Controls | `Button` `PendingButton` `Badge` `Input` `SearchInput` `Textarea` `Label` `Checkbox` `RadioGroup` `Switch` `ToggleGroup` `Combobox` `Pagination` `RowActionButton` |
+| Surfaces | `Card` `Separator` `Table` `Skeleton` `Spinner` `Progress` `Avatar` `Hint` `Callout`                                                                               |
+| Overlays | `Dialog` `Sheet` `Popover` `DropdownMenu` `Tooltip` `Collapsible` `Command` `ConfirmDialog`                                                                        |
+| Patterns | `StatusScreen` `Stepper` `EmptyState` `TableEmptyRow` `SortableTableHead` `InlineLink` `DropdownChevron`                                                           |
+| Forms    | `Form` `FormField` `FormItem` `FormLabel` `FormControl` `FormDescription` `FormMessage` `FormRootMessage`                                                          |
+
+- **Reuse-first, in search order.** Look in this order: (1) the page's
+  `_components/`, (2) the app's `components/`, (3) `@repo/ui`. Restyle through the
+  props and CVA variants a component already exposes — don't fork it to change one
+  style, and don't rebuild something the table above already names.
+- **Use the props before reaching for `className`.** `Button` has `variant`/`size`,
+  `Badge` has `tone`/`size`/`dot`, `Card` has `interactive`, `Label` and `FormItem`
+  have `required`, `Input` has `startIcon`/`endIcon`/`prefix`/`suffix`, `Dialog` has
+  `closeOnClickOutside`, `PendingButton` has `pending`/`pendingLabel`. Passing raw
+  classes where a prop exists is how two call
+  sites end up looking different.
+- **One dropdown: `Combobox`.** Radix `Select` is deliberately absent from the
+  design system because it has no exit animation. Never add it back.
+- **A control used in both apps is one shared component** in `@repo/ui`, exported
+  from `src/components/index.ts`. One app only → that app's `components/`. Never
+  reach across apps.
+- **A domain enum maps to a tone in the app, not in `@repo/ui`.** The design system
+  ships `tone="success" | "warning" | "danger" | …`; the surface that owns the quote
+  status or the match confidence decides which one it is.
+- **Componentize repeated structure.** An RFQ list row, a quote line-item row, a
+  page header, a section card — ONE component rendered by mapping data, never
+  copy-pasted markup. Sibling sections that share a shape become section components
+  a thin page composes.
+- **Consistency beats local cleverness.** The same control means the same thing, in
+  the same place and order, across pages and across both apps.
+- **Button as a link.** `<Button asChild>` wrapping a `<Link>`/`<a>`, so it keeps
+  the variant, ring and states. Same for `InlineLink asChild` — that is why it takes
+  `asChild` at all, so the design system needs no framework dependency.
+- **Adding a new shared primitive:** hand-write it in `packages/ui/src/components`
+  against the tokens and export it. A `shadcn add` is a starting point at best — its
+  output uses raw palette colours and `dark:` variants, both of which are wrong here,
+  so adapt it rather than committing it as generated. Then rebuild `@repo/ui`.
 
 ## Forms and inputs
 
-The form stack is **react-hook-form + zod** (to be added to the app when the first
-form lands). Never wire a bare `<input>` to ad-hoc `useState`. The first forms
-are the backoffice **login** and the webapp **public RFQ submission** — since both
-apps need the same field UX, build the shared Form primitives
-(`Form`/`FormField`/`FormItem`/`FormLabel`/`FormControl`/`FormMessage`) in
-`@repo/ui` and consume them from both apps.
+The stack is **react-hook-form + zod** with the shared `Form` primitives from
+`@repo/ui`. Never wire a bare `<input>` to ad-hoc `useState`.
 
-- **Colocate the schema.** The zod schema lives in `form-schema.ts` next to the
-  page (`app/(auth)/login/form-schema.ts`, `app/rfq/form-schema.ts`). Reuse shared
-  validators (e.g. an email regex, common error messages) rather than re-deriving
-  per form.
-- **`noValidate` on every `<form>`.** The browser's native validation bubbles are
-  ugly and English — suppress them so the inline `FormMessage` is the single
-  source of validation feedback.
-- **Errors reveal without layout shift.** The field message animates height
-  open/closed and reserves no space when absent, so showing/clearing an error
-  never snaps the layout. Don't hand-roll an error `<p>` or pad fixed space for one.
-- **Required marker is a prop, not markup.** Mark required fields through the
-  label's `required` prop, so every asterisk matches — never hand-write a per-label
-  `<span>`.
-- **Surface server-side field errors inline.** When the API rejects a specific
-  field (e.g. a 409 "email already registered", an invalid RFQ line), map it onto
-  the field with `form.setError(name, …)` so it reads like a validation error —
-  same place, same animation — instead of only a toast.
+- **A field is** `FormField` → `FormItem` → `FormLabel` + `FormControl` (wrapping
+  the input) + optional `FormDescription` + `FormMessage`. `FormControl` stamps the
+  id, `aria-invalid`, `aria-describedby` and `aria-required` onto whatever it wraps,
+  which is what makes the error styling and the screen-reader wiring automatic.
+- **Colocate the schema** in `form-schema.ts` next to the page, as a factory taking
+  the two translators (`loginSchema({ field, shared })`) so every message is a catalog
+  key the form resolves. Build it from the shared validators in `lib/forms/validators.ts`
+  — `requiredText`, `optionalText`, `emailAddress`, `currentSecret`, `newPassword`,
+  `passwordConfirmation` — and add to that module rather than re-deriving a rule per form.
+- **Every `useForm` spreads `FORM_VALIDATION`** from `lib/forms/options.ts`, so when a
+  message appears is one decision for the whole app, not nine.
+- **`noValidate` on every `<form>`.** The browser's native bubbles are untranslated
+  and ugly; the inline `FormMessage` is the single source of validation feedback. A
+  `minLength`/`pattern` attribute is dead weight next to it — the schema is the rule.
+  `maxLength` stays, because stopping the keystroke is kinder than reporting it after.
+- **Required marker is a prop.** `<FormLabel required>` or `required` on `FormItem`
+  — never a hand-written asterisk `<span>`.
+- **Errors reveal without layout shift** — `FormMessage` and `FormRootMessage`
+  animate height and collapse to zero footprint. Don't hand-roll an error `<p>` or
+  reserve fixed space for one.
+- **A form-level rejection is `FormRootMessage`** fed by `form.setError('root', …)` — for a
+  failure that belongs to no single field, like a rate limit or an unreachable API. **A rejection
+  the caller can act on goes on the field they will edit**, even when the API deliberately does not
+  say which one was wrong: a refused login sits on the password, because a root error only clears
+  on the next submit and would otherwise outlive the attempt it belongs to.
+- **Surface a server-side field error inline** with `form.setError(name, …)`, so an address
+  the API already holds reads like a validation error in the same place with the same animation,
+  instead of only a toast. The action names the field and the resolver names the sentence — see
+  "Errors across the boundary".
+- **A password input is `PasswordField`**, never a bare `Input type="password"`: it owns the cap,
+  the reveal toggle, the autocomplete hint and the meter, so eight fields across five forms cannot
+  drift apart. `meter` goes on the field where a password is **chosen** and never on its
+  confirmation or on a login, where the caller is presenting one they already have. The meter marks
+  what is missing in red only once that field has actually been rejected — keyed on the field's own
+  error, not on the form's submit count, which a wizard step would trip on arrival.
+- **Pass the accessible names the design system can't own:** `passwordToggleLabel`
+  on a password `Input`, `clearLabel` on a `SearchInput`. They live under
+  `common.form.*`.
+- **Pending state is the submit button, and it is `PendingButton`** — not a hand-rolled ternary:
+  `<PendingButton type="submit" pending={form.formState.isSubmitting} pendingLabel={t('submitting')}>`.
+  It disables itself, sets `aria-busy`, shows the spinner, and animates the width change the two
+  labels cause — which plain CSS cannot do at all, because `width: auto` is not transitionable.
+- **`Button` defaults to `type="button"`.** A submit opts in with `type="submit"`, so a button added
+  to a form can never submit it by accident. `asChild` passes `type` through untouched.
+- **One `useTransition` per action, never one shared between several.** A shared transition only
+  reports that _something_ is running, so a screen with export / preview / confirm buttons lights
+  all three at once. **A flag naming the running action does not fix it:** a form `action` already
+  runs inside a transition, and a state update made there does not commit until that transition
+  ends, so the flag arrives after the spinner is gone. Give each action its own hook and disable on
+  the union when they are mutually exclusive.
+- **A form spanning steps is one `useForm`, it validates per step, and its step follows the error.**
+  Advancing is a **submit of that step**: give the form a resolver that validates the current step's
+  schema (the step read from a ref, since the resolver runs outside a render) and advance from
+  `form.handleSubmit`. Never gate with `form.trigger` — it raises errors without marking the form
+  submitted, and react-hook-form only re-checks a field on change once it is, so every message
+  raised that way stands there while the caller types the value that answers it. **Track submission
+  per step**, though: `isSubmitted` is a property of the whole form, so once one step has advanced
+  the next one starts reporting errors on the first character typed into it. A ref the resolver
+  reads — set on submit, cleared on every step change — keeps a step quiet until the caller has
+  tried to leave it. Validating the
+  whole object instead of the step is the other half of the trap: it marks fields nobody has
+  reached. The last step validates everything, because a field two steps back can still have been
+  emptied on the way through. When the server rejects a field, move to that field's step _and_
+  `setError`: nothing ties a wizard's position to the form's state, so a message off screen reads as
+  a button that did nothing. Keep the field-to-step map in one module and pin every field of the
+  schema to a step with a test.
+- **A disabled submit button stops a second click, not a second submit.** Enter still reaches the
+  form, so a handler behind a write that must happen once refuses to re-enter while one is in
+  flight.
+- **Wizard actions have one responsive contract.** On narrow screens, stack navigation controls at
+  full width with Back above the primary action; from `sm` onwards, place Back at the start and the
+  primary action at the end at their intrinsic widths. A skip/defer action is secondary and keeps
+  its own wording and position — it never replaces the primary Continue action, because identical
+  placement promises identical navigation. Put this behavior in the shared step footer or its props,
+  never in one step's markup.
+
+### Validation messages
+
+One rejection, one message, naming what is actually wrong:
+
+- **Empty is not malformed.** Presence is checked before format, and the two carry different
+  messages — `Ingresá tu correo electrónico.` then `Ingresá una dirección de correo válida.`.
+  Chained zod checks all run and produce two issues for one field, so short-circuit with `.pipe()`
+  (`min(1, required).pipe(z.email(invalid).max(…))`) and guard a cross-field refinement on the
+  field being present, or a blank confirmation reports both "obligatorio" and "no coinciden".
+- **A message about the field lives in the flow's catalog; a message every form shares lives in
+  `common.form.errors`.** "Ingresá el nombre del corralón." is the field's; `tooLong`,
+  `invalidEmail`, `passwordTooShort`, `passwordTooLong` and `passwordMismatch` are shared, and
+  interpolate their numbers (`Máximo {max} caracteres.`) so a constant is never retyped as copy.
+- **A rule the interface shows, the API enforces.** A requirement list the caller can read is a
+  promise; if only the form checks it, an admin-created or API-created password walks straight past
+  it. Mirror the constants in one module per side and let the API answer 422 when they drift.
+- **Mirror the API's limits, maximums included.** A cap the column or the binding tag enforces is
+  refused inline instead of becoming a 400 with nothing to point at. A field the API only compares
+  (a current password) carries no floor — a rule that grew later must not lock out an account that
+  predates it.
+- **Never say the same thing twice on one field.** A `FormDescription` repeating the message the
+  error will show is a defect; the hint keeps only what the error does not say.
+- **One tone.** A required message is an instruction in Argentine Spanish naming the field
+  (`Ingresá…`, `Elegí…`, `Repetí…`); a format message states the rule. Match the neighbours.
+
+## Feedback: toast, callout, or field message
+
+Three different things — using the wrong one is a common drift:
+
+- **`toast`** (sonner, mounted once in the root layout) — a transient confirmation of
+  something the user just did. "Se actualizaron 128 productos."
+- **`Callout`** — a standing message about the content on screen. "Hay 2 ítems sin
+  match en el catálogo."
+- **`FormMessage` / `FormRootMessage`** — a field's or a form's rejection. Never a
+  toast for a validation error; it belongs next to the input.
+
+### What a confirmation has to say
+
+**Short is not the goal; informative is.** A confirmation stripped to its verb —
+_"Creamos la sucursal."_, _"Guardamos los cambios."_ — is the drift to avoid, and it is
+easy to arrive at by trimming toward the house voice. Two things earn their place:
+
+- **Name the record it changed.** A toast appears while the caller may already be looking
+  somewhere else, so "we saved it" has to say _what_: `Guardamos los cambios de «{name}».`
+  The handler almost always has the entity in scope — pass it as an ICU arg rather than
+  writing a second, vaguer string.
+- **State the consequence they would otherwise have to guess**, when the verb does not
+  imply it: that the other sessions closed, that the admin has to pass the password on
+  themselves, that the thing can be undone. Skip it when the action already says it.
+
+The counterweight is length, not brevity for its own sake: a toast dismisses itself, so
+**measure the rendered string** — up to ~100 characters reads comfortably, past ~110 it
+cannot be finished. When both a dialog and its toast could carry the consequence, the
+toast keeps the half the caller acts on and drops what the dialog already said.
+
+Note this does **not** conflict with "never say the same thing twice on one field" under
+"Validation messages" — that governs a hint against its own error, both on screen at once.
+It is not a licence to strip a confirmation of what it confirms.
 
 ## Icons
 
@@ -196,33 +327,49 @@ Example: `flex flex-col min-h-screen items-center justify-center px-6 gap-y-8 bg
 
 ## Typography, rounding, and design tokens
 
-The theme lives in `packages/ui/src/styles/theme.css` and defines **color tokens
-(oklch) and a radius only** — there is **no custom typography token scale yet**.
-Be accurate about that; don't reference type tokens that don't exist.
+The token layer is `packages/ui/src/styles/index.css` (the tokens themselves) and
+`theme.css` (the `@theme inline` block mapping them onto Tailwind namespaces). Full
+reference, including how the ramp was derived and every contrast figure:
+[docs/technical/design-system.md](../../../docs/technical/design-system.md).
 
-- **Colors — always tokens, never raw values.** Use the semantic tokens:
-  `bg-background`/`text-foreground`, `bg-card`/`text-card-foreground`,
-  `bg-primary`/`text-primary-foreground`, `bg-secondary`, `bg-muted`/`text-muted-foreground`,
-  `bg-accent`, `bg-destructive`, `border`, `border-input`, `ring`/`focus-visible:ring-ring`.
-  Never inline a hex/oklch value, and **never reach for a raw Tailwind palette
-  color** (`slate-*`, `gray-*`, `zinc-*`) even though the shadcn base color is
-  slate — the tokens abstract it and carry dark mode (`.dark` class,
-  `@custom-variant dark`).
-- **Rounding — never fully square unless intentional.** `--radius` is 0.625rem
-  with the scale `rounded-sm`/`rounded-md`/`rounded-lg` (from `@theme` in
-  `theme.css`). Buttons/inputs use `rounded-md` (see `Button`); cards and grouped
-  surfaces/callouts round too — audit every box you add.
-- **Type — no scale yet, so keep it consistent and centralized.** Today, use
-  Tailwind's standard text utilities (the home pages' `text-3xl font-bold` is the
-  current baseline). Do not scatter one-off sizes ad hoc. When the product needs a
-  real type scale, **define semantic text tokens in `packages/ui/src/styles/theme.css`**
-  (via `@theme`) and consume them as tokens across both apps, rather than sprinkling
-  raw `text-sm`/`font-*` everywhere. Note: `cn()` (`@repo/ui/lib`) is a vanilla
-  `twMerge(clsx())` with no custom class-group config — if you add overlapping
-  custom text tokens, name them so they don't collide (or extend `cn()` with a
-  tailwind-merge config); don't rely on the merger to dedupe unknown tokens.
-- **Variants via CVA.** Extend a component's CVA variants (as `Button` does) —
-  don't fork the component to add a look.
+- **Colours — always semantic tokens, never raw values.** `bg-background`/`text-foreground`,
+  `bg-card`, `bg-popover`, `bg-sunken`, `text-foreground-muted`/`text-foreground-subtle`,
+  `bg-primary`/`text-primary-foreground` (+ `primary-hover`/`primary-active`),
+  `bg-secondary`(+`-hover`), `bg-muted`/`text-muted-foreground`,
+  `bg-accent`/`bg-accent-strong`/`text-accent-foreground`, `border`/`border-strong`,
+  `bg-input`/`bg-input-readonly`, `ring`, `bg-backdrop`. Never inline a hex or oklch
+  value, and **never reach for a raw Tailwind palette colour** (`slate-*`, `blue-*`,
+  `sky-*`) — no Tailwind ramp matches Coti's azure, and the tokens are the only place
+  the mapping lives.
+- **`brand-50`…`brand-950` exist, but reach for a semantic token first.** Use a ramp step
+  only for a deliberately brand-coloured surface (a gradient, a brand tile). `primary`
+  is `brand-600`; the ink `foreground` is `brand-950`.
+- **Status tones come in four steps** — `success`/`warning`/`danger`, each with `-subtle`
+  (tinted surface), `-border`, the base (`bg-success`, fills and icons) and `-foreground`
+  (text). `destructive-*` aliases `danger-*`. Use `-foreground` for copy: `-base` is
+  tuned for fills and does not carry text contrast. **Mapping a domain enum to a tone is
+  the app's job** — `@repo/ui` ships tones, the app that owns the enum picks one.
+- **Light-only.** There is no `.dark` block and no `dark:` variant. Never write a `dark:`
+  class; it cannot match.
+- **Type — use the scale, never a raw size/weight pair.** Headings are
+  `text-heading-1`…`-6` (40/32/24/20/18/16px) and carry the display face themselves.
+  Paragraphs are `text-paragraph{,-medium,-semibold}` and the same for `-sm` (14px),
+  `-xs` (12px), `-mini` (11px). Replace `text-sm font-medium` with
+  `text-paragraph-sm-medium`, and **never add a `font-*` weight next to a scale token** —
+  the token already encodes it. Adding a scale token means also registering it in `cn()`'s
+  tailwind-merge `font-size` group (`packages/ui/src/lib/utils.ts`), or two scale classes
+  on one element will both survive and the loser will win on source order.
+- **Elevation is a token.** `shadow-e1` (control hairline) → `shadow-e2` (resting card) →
+  `shadow-e3` (dropdown, popover, hover-lifted card) → `shadow-e4` (dialog, sheet).
+  Don't hand-roll a `shadow-[...]`.
+- **Rounding — never fully square unless intentional.** `--radius` is 10px. Controls
+  (buttons, inputs, selects) use `rounded-lg`; cards use `rounded-1.5xl` (14px); badges
+  and pills `rounded-full`. Grouped surfaces and callouts round too — audit every box.
+- **Motion durations and easings are tokens.** `duration-150/200/300/500` and
+  `ease-out-soft`/`ease-in-out-soft` in classes; `MOTION`/`EASE` from `@repo/ui/lib` for
+  `motion/react`. Never hardcode a duration.
+- **Variants via CVA.** Extend a component's CVA variants — don't fork the component to
+  add a look.
 
 ## API boundary and naming conventions
 
@@ -321,6 +468,40 @@ await authenticatedFetch('/v1/quotes', {
 });
 ```
 
+### Errors across the boundary
+
+The API answers a refusal with a **stable `code`** beside the status (`docs/technical/api-specification.md`,
+"The error envelope"). The code is the contract; the envelope's `error` prose is English, kept for
+the log, and never reaches a screen. The status alone is not enough — one route answers 422 for the
+password policy and another for the account's last active branch — so nothing branches on it.
+
+- **`lib/api/client.ts` reads the code into `ApiError`**, narrowed against `API_ERROR_CODES` in
+  `lib/api/errors.ts`. A code this app cannot word falls back to the one the status implies, which
+  is also what covers the aborts the API writes before a handler is reached. The client mints two
+  codes the API cannot answer: `UNREACHABLE`, for a request that never arrived, and
+  `SESSION_EXPIRED`, for a session a re-check confirmed is over.
+- **An action returns the code — never a sentence, never a key of its own.** `errorCodeOf(error)`
+  is the whole mapping. Where a refusal belongs on a field, the action says _which_ field with a
+  `Partial<Record<ApiErrorCode, …>>` map: placement is the action's business, wording is not.
+- **One resolver turns a code into a sentence.** `useApiErrorMessage(namespace)` in a client
+  component, `apiErrorMessage(await getTranslations(), namespace, code)` in a server one. Bind the
+  flow's namespace once and pass the code straight through. **A ladder of `code === …` in a screen
+  is the thing the codes exist to delete.**
+- **The catalog is the only place wording is decided.** `errors.<CODE>` words every code once; a
+  flow that says one differently repeats it under its own `<flow>.errors.<CODE>`. The namespace is
+  walked back a segment at a time, so `users.passwordReset` inherits `users` and then the shared
+  catalog — which is how one action words a code the rest of its flow shares. Override only where
+  the shared sentence is wrong, never to restate it.
+- **Every code carries an entry**, or next-intl renders the key. `lib/api/errors.test.ts` pins
+  that, and `lib/i18n/api-error.test.ts` pins that no override names a code the wire cannot
+  produce — a typo there falls through silently and the screen keeps working while saying the
+  wrong thing.
+- **A refusal the screen cannot act on is still a real answer.** A 429 says wait, a 400 says the
+  body was refused; neither is "Ocurrió un error inesperado". Letting a status fall through to the
+  generic sentence is a defect, not a default.
+- **`common.form.errors` is a different catalog** — the schema's, keyed by rejection (`tooLong`,
+  `invalidEmail`) rather than by API code. No API code is ever resolved against it.
+
 ## Copy, i18n, and formatting
 
 All UI copy and all number/currency/date formatting go through **next-intl**
@@ -362,26 +543,62 @@ reintroducing negotiation in `i18n/request.ts`; nothing at the call sites change
 
 ### Placeholder wording (Argentine Spanish) — the copy you author in the catalog
 
-Descriptive action phrases, by input type:
+**A placeholder is always an instruction, never an example.** One rule for every
+field in the product, so two styles can never sit in one card — an example
+(`tu@correo.com`) beside an instruction (`Ingresá tu contraseña`) is the specific
+drift this rule exists to stop. By input type:
 
-- **Text inputs:** `"Ingresá el/la ..."` (e.g. `"Ingresá el nombre del producto"`).
-- **Search inputs:** `"Buscá ..."` (e.g. `"Buscá productos..."`, `"Buscá cotizaciones..."`).
-- **Select inputs:** `"Seleccioná un/una ..."` (e.g. `"Seleccioná una sucursal"`).
-- **Number inputs:** `"Ingresá ..."` (e.g. `"Ingresá la cantidad"`).
+- **Text inputs:** `"Ingresá el/la ..."` (`"Ingresá el nombre del producto"`).
+- **Search inputs:** `"Buscá ..."` (`"Buscá productos..."`).
+- **Select / `Combobox`:** `"Seleccioná un/una ..."` (`"Seleccioná una sucursal"`).
+- **Number inputs:** `"Ingresá ..."` (`"Ingresá la cantidad"`).
+- **A value the caller invents:** `"Elegí ..."` (`"Elegí una contraseña"`); its
+  confirmation, `"Repetí ..."`.
 - **Optional/notes:** `"Notas opcionales..."`.
 
-Only use examples (`"ej.: 25kg"`) when the field needs domain knowledge the user
-might not have. Never use examples for standard fields like names or amounts.
+**When the _shape_ matters, the example moves to the hint line** — a CUIT, an
+image URL, a hex colour, a unit. The caller has to see the form the value takes,
+and a greyed-out example in the box vanishes on the first keystroke, exactly when
+they still need it. So the `FormDescription` carries it (`"Son 11 dígitos, con
+guiones o sin ellos: 30-70123456-8."`) and the placeholder stays an instruction.
+A field whose shape is obvious — an email, a person's name, an amount — gets no
+hint at all.
 
-### Fields with defaults
+**A field with a default names it on the hint line**, interpolated from the same
+source the default comes from (`"Por defecto {count} días."`), never retyped into
+the string. The placeholder is still the instruction: an input pre-filled-looking
+with a number reads as a value already chosen.
 
-When a field has a default value:
+**The hint never repeats the error.** Both are visible at once — see "Validation
+messages": the hint keeps only what the message does not say.
 
-- **Placeholder:** the default value itself (`placeholder="50"`) — shows what will
-  be used if left empty. Don't use "Ingresá ..." for these.
-- **Hint below input:** a "por defecto" line with the value interpolated (never
-  hardcode the default in the string). Both placeholder and hint refer to the same
-  default from the same source.
+### Calls to action and links
+
+- **A CTA is plain text plus a short link, never one long link.** The prompt is a
+  muted `<p>` and only the words you act on are the `InlineLink` inside it:
+  _¿Todavía no tenés cuenta?_ then _Registrá tu corralón_. A link wrapping the
+  whole sentence is what a screen reader announces as the link's name, and it
+  leaves the eye nothing to aim at. The linked words must read alone too —
+  `"Iniciá sesión"`, never `"acá"`.
+- **Link tone is decided by this rule, not per screen.** `InlineLink` ships
+  `tone="brand"` (default), `"muted"` and `"danger"`:
+  - **brand** on a **terminal** screen, where the link _is_ the next action —
+    a sent recovery mail, a completed reset, a confirmed address, an expired
+    link's `"Pedir un enlace nuevo"`.
+  - **brand** for a **form screen's primary alternative**, when it offers more
+    than one — login's `"Registrá tu corralón"`: someone without an account has
+    nowhere else to go from that screen.
+  - **muted** for every other alternative beside a form — login's
+    `"¿Olvidaste tu contraseña?"`, signup's `"Iniciá sesión"`, a resend footer's
+    `"Volver a iniciar sesión"`.
+  - **brand** for an inline action on the value beside it — `settings/account`'s
+    `"Verla"`, which opens the logo the caller just pasted. It acts on the field
+    rather than offering a way off the screen, so the alternative cases above do
+    not reach it.
+  - **danger** only for a destructive action worded as a link; an error's link
+    is not danger-toned.
+- **A screen has one loud link at most.** Two brand-toned links in one footer is
+  the same defect as two primary buttons.
 
 ## Comments
 
@@ -409,5 +626,7 @@ When a field has a default value:
 
 - **`web-structure`** — file placement across both apps and the app-vs-`@repo/ui`
   promotion rule (read it first).
+- **`ux-motion`** — interaction states, the motion vocabulary, elevation, reduced
+  motion. Load it with this skill for any visual change.
 - **`agent-workflow`** — branch/ticket flow.
 - **`commit`** / **`pr-format`** — commit and PR conventions.

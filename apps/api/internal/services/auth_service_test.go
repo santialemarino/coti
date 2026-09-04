@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -34,6 +35,7 @@ func testAuthConfig() config.AuthConfig {
 		RefreshReuseGrace:  30 * time.Second,
 		MaxFailedAttempts:  5,
 		LockoutDuration:    15 * time.Minute,
+		PasswordMinLength:  8,
 	}
 }
 
@@ -59,26 +61,30 @@ func (f *fakeDB) CrossAccount() repository.Querier { return nil }
 
 type fakeUsers struct {
 	user            *domain.AppUser
+	accountIsActive bool
 	getByEmailErr   error
 	failedAttempts  int
 	successRecorded bool
 	epochBumped     bool
 }
 
-func (f *fakeUsers) GetByID(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (*domain.AppUser, error) {
+func (f *fakeUsers) subject() *domain.AuthSubject {
+	copied := *f.user
+	return &domain.AuthSubject{AppUser: copied, AccountIsActive: f.accountIsActive}
+}
+
+func (f *fakeUsers) GetAuthSubjectByID(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (*domain.AuthSubject, error) {
 	if f.user == nil {
 		return nil, domain.ErrNotFound
 	}
-	copied := *f.user
-	return &copied, nil
+	return f.subject(), nil
 }
 
-func (f *fakeUsers) GetByEmailCrossAccount(context.Context, repository.Querier, string) (*domain.AppUser, error) {
+func (f *fakeUsers) GetAuthSubjectByEmailCrossAccount(context.Context, repository.Querier, string) (*domain.AuthSubject, error) {
 	if f.getByEmailErr != nil {
 		return nil, f.getByEmailErr
 	}
-	copied := *f.user
-	return &copied, nil
+	return f.subject(), nil
 }
 
 func (f *fakeUsers) RegisterFailedAttempt(context.Context, repository.Querier, uuid.UUID, uuid.UUID, int, time.Duration) (int, error) {
@@ -135,11 +141,21 @@ func (f *fakeTokens) RevokeFamily(_ context.Context, _ repository.Querier, _ uui
 type fakeBranches struct {
 	accessible bool
 	calls      int
+	assigned   []uuid.UUID
+	listCalls  int
 }
 
 func (f *fakeBranches) IsAccessibleBy(_ context.Context, _ repository.Querier, _, _, _ uuid.UUID, _ bool) (bool, error) {
 	f.calls++
 	return f.accessible, nil
+}
+
+func (f *fakeBranches) ListIDsForUser(_ context.Context, _ repository.Querier, _, _ uuid.UUID, _ bool) ([]uuid.UUID, error) {
+	f.listCalls++
+	if f.assigned == nil {
+		return []uuid.UUID{}, nil
+	}
+	return f.assigned, nil
 }
 
 type harness struct {
@@ -154,7 +170,7 @@ func newHarness(t *testing.T, user *domain.AppUser) *harness {
 	t.Helper()
 	cfg := testAuthConfig()
 	db := &fakeDB{}
-	users := &fakeUsers{user: user}
+	users := &fakeUsers{user: user, accountIsActive: true}
 	branches := &fakeBranches{accessible: true}
 	tokens := &fakeTokens{}
 	now := func() time.Time { return fixedNow }
@@ -522,6 +538,36 @@ func TestResolveTenant(t *testing.T) {
 	}
 }
 
+// The middleware refuses on the tenant and never re-reads the row, so a flag left off it is a
+// requirement nothing enforces.
+func TestResolveTenant_CarriesWhetherTheAddressIsConfirmed(t *testing.T) {
+	verifiedAt := fixedNow.Add(-time.Hour)
+	cases := []struct {
+		name       string
+		verifiedAt *time.Time
+		want       bool
+	}{
+		{"unconfirmed", nil, false},
+		{"confirmed", &verifiedAt, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			user := activeUser(t)
+			user.EmailVerifiedAt = tc.verifiedAt
+			h := newHarness(t, user)
+
+			tenant, err := h.svc.ResolveTenant(context.Background(), claimsFor(3), uuid.Nil)
+			if err != nil {
+				t.Fatalf("ResolveTenant() = %v, want no error", err)
+			}
+			if tenant.EmailVerified != tc.want {
+				t.Errorf("tenant.EmailVerified = %v, want %v", tenant.EmailVerified, tc.want)
+			}
+		})
+	}
+}
+
 func TestResolveTenant_UnknownUser(t *testing.T) {
 	h := newHarness(t, nil)
 
@@ -531,7 +577,8 @@ func TestResolveTenant_UnknownUser(t *testing.T) {
 	}
 }
 
-// No branch requested means account-wide, and the access check must not even run.
+// No branch requested carries no branch, and the per-branch access check must not run —
+// there is nothing to check.
 func TestResolveTenant_NoBranchRequestedSkipsTheCheck(t *testing.T) {
 	h := newHarness(t, activeUser(t))
 
@@ -544,6 +591,62 @@ func TestResolveTenant_NoBranchRequestedSkipsTheCheck(t *testing.T) {
 	}
 	if h.branches.calls != 0 {
 		t.Errorf("branch check ran %d times with no branch requested, want 0", h.branches.calls)
+	}
+}
+
+// Omitting X-Branch-Id must not widen a seller's reach: their scope becomes the branches
+// they are assigned, so the account-wide read stays an admin capability.
+func TestResolveTenant_SellerWithoutBranchIsConfinedToAssignments(t *testing.T) {
+	h := newHarness(t, activeUser(t))
+	assigned := []uuid.UUID{uuid.New(), uuid.New()}
+	h.branches.assigned = assigned
+
+	tenant, err := h.svc.ResolveTenant(context.Background(), claimsFor(3), uuid.Nil)
+	if err != nil {
+		t.Fatalf("ResolveTenant() = %v, want no error", err)
+	}
+	if h.branches.listCalls != 1 {
+		t.Errorf("assignment lookup ran %d times, want 1", h.branches.listCalls)
+	}
+	if !reflect.DeepEqual(tenant.BranchFilter(), assigned) {
+		t.Errorf("BranchFilter() = %v, want %v", tenant.BranchFilter(), assigned)
+	}
+}
+
+// A seller assigned nowhere reads nothing. The empty set must survive into the tenant: a nil
+// one would read the whole account.
+func TestResolveTenant_SellerWithNoAssignmentsReadsNothing(t *testing.T) {
+	h := newHarness(t, activeUser(t))
+	h.branches.assigned = []uuid.UUID{}
+
+	tenant, err := h.svc.ResolveTenant(context.Background(), claimsFor(3), uuid.Nil)
+	if err != nil {
+		t.Fatalf("ResolveTenant() = %v, want no error", err)
+	}
+	filter := tenant.BranchFilter()
+	if filter == nil {
+		t.Fatal("BranchFilter() = nil, want an empty set — nil reads every branch")
+	}
+	if len(filter) != 0 {
+		t.Errorf("BranchFilter() = %v, want an empty set", filter)
+	}
+}
+
+// An admin reaches the whole account, so no assignment lookup is worth its round trip.
+func TestResolveTenant_AdminWithoutBranchStaysAccountWide(t *testing.T) {
+	admin := activeUser(t)
+	admin.Role = domain.UserRoleAdmin
+	h := newHarness(t, admin)
+
+	tenant, err := h.svc.ResolveTenant(context.Background(), claimsFor(3), uuid.Nil)
+	if err != nil {
+		t.Fatalf("ResolveTenant() = %v, want no error", err)
+	}
+	if h.branches.listCalls != 0 {
+		t.Errorf("assignment lookup ran %d times for an admin, want 0", h.branches.listCalls)
+	}
+	if tenant.BranchFilter() != nil {
+		t.Errorf("BranchFilter() = %v, want nil (every branch)", tenant.BranchFilter())
 	}
 }
 
@@ -584,5 +687,91 @@ func TestResolveTenant_StaleSessionBeatsTheBranchCheck(t *testing.T) {
 	_, err := h.svc.ResolveTenant(context.Background(), claimsFor(2), uuid.New())
 	if !errors.Is(err, domain.ErrUnauthenticated) {
 		t.Errorf("ResolveTenant() = %v, want %v", err, domain.ErrUnauthenticated)
+	}
+}
+
+// account.is_active was decorative before this: the three points that admit a caller all
+// read the user row, which cannot say whether the corralón behind it is still open.
+
+func TestLogin_DeactivatedAccountIsRefusedLikeBadCredentials(t *testing.T) {
+	h := newHarness(t, activeUser(t))
+	h.users.accountIsActive = false
+
+	_, err := h.svc.Login(context.Background(), domain.Credentials{
+		Email: "vendedor@corralon.test", Password: testPassword,
+	})
+	if !errors.Is(err, domain.ErrUnauthenticated) {
+		t.Fatalf("Login() with a deactivated account = %v, want %v: the answer must not "+
+			"differ from a wrong password", err, domain.ErrUnauthenticated)
+	}
+}
+
+// The AC that matters most: a token already in someone's hands has to stop working, not
+// merely stop being issued.
+func TestResolveTenant_DeactivatedAccountInvalidatesALiveToken(t *testing.T) {
+	user := activeUser(t)
+	h := newHarness(t, user)
+	claims := domain.AccessClaims{
+		UserID: user.ID, AccountID: user.AccountID, Role: user.Role, SessionEpoch: user.SessionEpoch,
+	}
+
+	if _, err := h.svc.ResolveTenant(context.Background(), claims, uuid.Nil); err != nil {
+		t.Fatalf("ResolveTenant() with a live account = %v, want no error", err)
+	}
+
+	h.users.accountIsActive = false
+	_, err := h.svc.ResolveTenant(context.Background(), claims, uuid.Nil)
+	if !errors.Is(err, domain.ErrUnauthenticated) {
+		t.Fatalf("ResolveTenant() after the account was deactivated = %v, want %v: the token "+
+			"the user already holds has to stop resolving", err, domain.ErrUnauthenticated)
+	}
+
+	// Reactivating gives the access back with no other step, which is the last AC.
+	h.users.accountIsActive = true
+	if _, err := h.svc.ResolveTenant(context.Background(), claims, uuid.Nil); err != nil {
+		t.Fatalf("ResolveTenant() after reactivation = %v, want no error", err)
+	}
+}
+
+func TestRefresh_DeactivatedAccountIsRefused(t *testing.T) {
+	user := activeUser(t)
+	h := newHarness(t, user)
+	h.tokens.stored = &domain.RefreshToken{
+		ID: uuid.New(), AccountID: user.AccountID, UserID: user.ID, FamilyID: uuid.New(),
+		TokenHash: hashToken("raw"), ExpiresAt: fixedNow.Add(time.Hour), CreatedAt: fixedNow,
+	}
+	h.users.accountIsActive = false
+
+	_, err := h.svc.Refresh(context.Background(), "raw")
+	if !errors.Is(err, domain.ErrUnauthenticated) {
+		t.Fatalf("Refresh() with a deactivated account = %v, want %v", err, domain.ErrUnauthenticated)
+	}
+}
+
+/*
+ * Issuing a session is not using the product: the requirement is charged on the closed routes, so
+ * an unconfirmed address always gets in and reaches the screen that explains the mail. Refusing
+ * here is what left whoever mistyped their address at signup with no way back.
+ */
+func TestLogin_TheVerifiedAddressRequirementDoesNotReachLogin(t *testing.T) {
+	for _, requirement := range []bool{false, true} {
+		h := newHarness(t, activeUser(t))
+		h.svc.cfg.RequireVerifiedEmail = requirement
+
+		if _, err := h.svc.Login(context.Background(), domain.Credentials{
+			Email: "vendedor@corralon.test", Password: testPassword,
+		}); err != nil {
+			t.Fatalf("Login() unverified with the requirement %v = %v, want no error",
+				requirement, err)
+		}
+
+		// And a wrong password answers the same either way, so the flag cannot be read off login.
+		_, err := h.svc.Login(context.Background(), domain.Credentials{
+			Email: "vendedor@corralon.test", Password: "not-the-password",
+		})
+		if !errors.Is(err, domain.ErrUnauthenticated) {
+			t.Fatalf("Login() with a wrong password and the requirement %v = %v, want %v",
+				requirement, err, domain.ErrUnauthenticated)
+		}
 	}
 }

@@ -1,38 +1,16 @@
 /**
- * Wraps the goose CLI, pinned at GOOSE_VERSION via `go run`. Migrations run as the OWNER role
- * (DATABASE_ADMIN_URL), not the RLS-restricted app role, since they create and grant on tables.
- * Usage: node scripts/goose.mjs <up | down | status | create <name> sql>
+ * Wraps the goose CLI, pinned as a tool dependency in apps/api/go.mod. Migrations run as the
+ * OWNER role (DATABASE_ADMIN_URL), not the RLS-restricted app role, since they create and grant
+ * on tables. Usage: node scripts/goose.mjs <up | down | status | create <name> sql>
  */
 import { spawnSync } from 'child_process';
-import fs from 'fs';
 import path from 'path';
 
-const GOOSE_VERSION = 'v3.27.1';
+import { loadOwnerUrl } from './lib/owner-url.mjs';
+
 const ROOT = process.cwd();
-const ENV_FILE = path.join(ROOT, 'apps/api/.env');
-const MIGRATIONS_DIR = path.join(ROOT, 'apps/api/migrations');
-
-const KEY = 'DATABASE_ADMIN_URL';
-
-function loadOwnerUrl() {
-  if (process.env[KEY]) return process.env[KEY];
-  if (!fs.existsSync(ENV_FILE)) {
-    console.error(`${KEY} not set and ${ENV_FILE} not found.`);
-    process.exit(1);
-  }
-  const line = fs
-    .readFileSync(ENV_FILE, 'utf8')
-    .split('\n')
-    .find((l) => l.startsWith(`${KEY}=`));
-  if (!line) {
-    console.error(`${KEY} not found in ${ENV_FILE}.`);
-    process.exit(1);
-  }
-  return line
-    .slice(`${KEY}=`.length)
-    .trim()
-    .replace(/^["']|["']$/g, '');
-}
+const API_DIR = path.join(ROOT, 'apps/api');
+const MIGRATIONS_DIR = path.join(API_DIR, 'migrations');
 
 const args = process.argv.slice(2);
 if (args.length === 0) {
@@ -47,16 +25,25 @@ const dbUrl = loadOwnerUrl();
 // ones already in the directory.
 const flags = args[0] === 'create' ? ['-s'] : [];
 
+// Every migration here is plain SQL. goose defaults `create` to a Go migration, which
+// compiles into the binary instead of living in the chain the way the rest do, so the
+// type is appended unless the caller named one.
+const isCreate = args[0] === 'create';
+const type = isCreate && !['sql', 'go'].includes(args.at(-1)) ? ['sql'] : [];
+
 const gooseArgs = [
-  'run',
-  `github.com/pressly/goose/v3/cmd/goose@${GOOSE_VERSION}`,
+  'tool',
+  'goose',
   '-dir',
   MIGRATIONS_DIR,
   ...flags,
   'postgres',
   dbUrl,
   ...args,
+  ...type,
 ];
 
-const result = spawnSync('go', gooseArgs, { stdio: 'inherit', cwd: ROOT });
+// `go tool` reads the pin from the module, so the command runs in apps/api. -dir is absolute
+// and unaffected.
+const result = spawnSync('go', gooseArgs, { stdio: 'inherit', cwd: API_DIR });
 process.exit(result.status ?? 1);

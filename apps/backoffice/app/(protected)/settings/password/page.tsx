@@ -1,0 +1,20 @@
+import { getTranslations } from 'next-intl/server';
+
+import { ChangePasswordForm } from '@/app/(protected)/settings/password/_components/change-password-form';
+import { generatePageMetadata } from '@/lib/utils/page';
+
+export const generateMetadata = () => generatePageMetadata('changePassword');
+
+export default async function ChangePasswordPage() {
+  const t = await getTranslations('auth.changePassword');
+
+  return (
+    <main className="flex flex-col max-w-xl gap-y-6">
+      <header className="flex flex-col gap-y-2">
+        <h1 className="text-heading-2">{t('title')}</h1>
+        <p className="text-paragraph text-foreground-muted">{t('description')}</p>
+      </header>
+      <ChangePasswordForm />
+    </main>
+  );
+}

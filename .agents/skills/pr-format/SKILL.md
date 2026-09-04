@@ -209,11 +209,11 @@ https://www.notion.so/coti/Semantic-catalog-search-abc123
 
 Adds semantic search over the product catalog so vendors can find `product` rows by meaning, not just exact text. Products carry an OpenAI embedding; a new endpoint runs a vector similarity query scoped to the tenant.
 
-**Backend — new endpoint and service (`internal/delivery/http/product_handler.go`, `internal/services/product_service.go`, `internal/repository/product_repository.go`):**
-- `GET /quotes/catalog/search?q=...` embeds the query, runs a `product.embedding <=> $1` similarity search filtered by `account_id` / `branch_id`, and returns the top matches.
+**Backend — new endpoint and service (`internal/delivery/http/handler/product_handler.go`, `internal/services/product_service.go`, `internal/repository/product_repo.go`):**
+- `GET /v1/products/search?q=...` embeds the query, runs a `product.embedding <=> $1` similarity search filtered by `account_id` / `branch_id`, and returns the top matches.
 - Repository uses parameterized SQL only; the service owns the transaction and passes the tenant scope from the authenticated context.
 
-**Backoffice — search UI (`apps/backoffice/app/catalog/...`):**
+**Backoffice — search UI (`apps/backoffice/app/(protected)/catalog/...`):**
 - New search box wired to the endpoint, mapping the API's snake_case response to camelCase at the data boundary.
 
 **Env vars:**

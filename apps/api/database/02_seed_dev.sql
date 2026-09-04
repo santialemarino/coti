@@ -1,15 +1,21 @@
--- Coti — datos de desarrollo. Idempotente: se puede correr varias veces.
+-- Coti — development data. Idempotent: safe to run more than once.
 --
--- Corre como owner, así que RLS no aplica. NO usar en producción.
--- Un corralón con dos sucursales: alcanza para ejercitar el catálogo de cuenta
--- con disponibilidad y precio por sucursal.
+-- Runs as the owner, so RLS does not apply. NOT for production. One corralon with two
+-- branches, enough to exercise the account catalog with per-branch availability and price.
+-- The data itself stays in Spanish: it is what the pilot's screens actually show.
 
--- Contraseña de los dos usuarios: coti1234 (bcrypt, cost 10). Solo para desarrollo.
+-- Password for both users: coti1234 (bcrypt, cost 10). Development only.
 
 INSERT INTO account (id, name, legal_name, tax_id, brand_color) VALUES
   ('a0000000-0000-4000-8000-000000000001', 'Corralón San Martín',
    'Corralón San Martín S.R.L.', '30-71234567-9', '#C2410C')
 ON CONFLICT (id) DO NOTHING;
+
+-- The long-lived development account predates onboarding and must never block an existing
+-- developer session. New registrations start IN_PROGRESS through AccountService instead.
+INSERT INTO account_onboarding (account_id, status, current_step) VALUES
+  ('a0000000-0000-4000-8000-000000000001', 'DISMISSED', 'WELCOME')
+ON CONFLICT (account_id) DO NOTHING;
 
 INSERT INTO branch (id, account_id, name, address, default_expiry_days) VALUES
   ('b0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001',
@@ -18,13 +24,15 @@ INSERT INTO branch (id, account_id, name, address, default_expiry_days) VALUES
    'Morón', 'Rivadavia 18400, Morón', 5)
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO app_user (id, account_id, name, email, password_hash, role) VALUES
+-- Verified on insert, so a developer who turns AUTH_REQUIRE_VERIFIED_EMAIL on is not locked out
+-- of the only account they have: nothing would ever mail these two a confirmation link.
+INSERT INTO app_user (id, account_id, name, email, password_hash, role, email_verified_at) VALUES
   ('c0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001',
    'Admin Dev', 'admin@corralonsanmartin.test',
-   '$2a$10$S3vHxTMC/Pp5KLw4YAlyeOBduPSvE1Dh0D8ho0VNzjBXWrTjb.fJ2', 'ADMIN'),
+   '$2a$10$S3vHxTMC/Pp5KLw4YAlyeOBduPSvE1Dh0D8ho0VNzjBXWrTjb.fJ2', 'ADMIN', now()),
   ('c0000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001',
    'Vendedor Dev', 'vendedor@corralonsanmartin.test',
-   '$2a$10$S3vHxTMC/Pp5KLw4YAlyeOBduPSvE1Dh0D8ho0VNzjBXWrTjb.fJ2', 'SELLER')
+   '$2a$10$S3vHxTMC/Pp5KLw4YAlyeOBduPSvE1Dh0D8ho0VNzjBXWrTjb.fJ2', 'SELLER', now())
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO user_branch (account_id, user_id, branch_id) VALUES
@@ -33,17 +41,23 @@ INSERT INTO user_branch (account_id, user_id, branch_id) VALUES
   ('a0000000-0000-4000-8000-000000000001', 'c0000000-0000-4000-8000-000000000002', 'b0000000-0000-4000-8000-000000000001')
 ON CONFLICT (user_id, branch_id) DO NOTHING;
 
--- Un canal por tipo en la sucursal principal; mostrador también en Morón.
+-- One channel per type at the main branch, plus manual entry at the second one, which every
+-- branch needs to originate a counter order.
+--
+-- identifier stays NULL on all of them: the seed cannot invent a real WhatsApp number or
+-- mailbox, and inventing one would diverge from already-migrated databases where those rows
+-- exist without an identifier. The ON CONFLICT therefore targets the partial index, which is
+-- what holds uniqueness up while the identifier is absent.
 INSERT INTO channel (account_id, branch_id, type) VALUES
   ('a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001', 'WHATSAPP'),
   ('a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001', 'EMAIL'),
   ('a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001', 'WEBAPP'),
-  ('a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001', 'COUNTER'),
-  ('a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000002', 'COUNTER')
-ON CONFLICT (branch_id, type) DO NOTHING;
+  ('a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001', 'MANUAL_ENTRY'),
+  ('a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000002', 'MANUAL_ENTRY')
+ON CONFLICT (branch_id, type) WHERE identifier IS NULL DO NOTHING;
 
--- Catálogo de cuenta. embedding queda NULL: lo puebla el pipeline de IA.
-INSERT INTO product (id, account_id, code, canonical_name, description, unit, category) VALUES
+-- Account catalog. embedding stays NULL: the AI pipeline populates it.
+WITH products (id, account_id, code, canonical_name, description, unit, legacy_category) AS (VALUES
   ('d0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', 'CEM-LN-50', 'Cemento Loma Negra 50 kg', 'Cemento portland normal CPN40', 'bolsa', 'Cementos'),
   ('d0000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001', 'CEM-AVE-50', 'Cemento Avellaneda 50 kg', 'Cemento portland compuesto CPC40', 'bolsa', 'Cementos'),
   ('d0000000-0000-4000-8000-000000000003', 'a0000000-0000-4000-8000-000000000001', 'CAL-HID-25', 'Cal hidratada 25 kg', 'Cal hidratada para revoques', 'bolsa', 'Cales'),
@@ -64,28 +78,56 @@ INSERT INTO product (id, account_id, code, canonical_name, description, unit, ca
   ('d0000000-0000-4000-8000-000000000018', 'a0000000-0000-4000-8000-000000000001', 'CAN-TER-20', 'Caño termofusión 20 mm x 4 m', 'Caño para agua caliente', 'unidad', 'Sanitarios'),
   ('d0000000-0000-4000-8000-000000000019', 'a0000000-0000-4000-8000-000000000001', 'LAT-4-PIN', 'Látex interior 4 L', 'Pintura látex mate blanco', 'lata', 'Pinturas'),
   ('d0000000-0000-4000-8000-000000000020', 'a0000000-0000-4000-8000-000000000001', 'HID-20', 'Hidrófugo 20 kg', 'Aditivo hidrófugo para mezclas', 'balde', 'Impermeabilizantes')
+)
+INSERT INTO product (id, account_id, code, canonical_name, description, unit, family_id, subgroup_id)
+SELECT p.id::uuid, p.account_id::uuid, p.code, p.canonical_name, p.description, p.unit,
+       f.id, s.id
+FROM products p
+JOIN product_family f ON f.name = CASE
+  WHEN p.legacy_category = 'Chapas' THEN 'CHAPAS Y PERFILES'
+  WHEN p.legacy_category = 'Construcción en seco' THEN 'DURLOCK'
+  WHEN p.legacy_category IN ('Adhesivos', 'Revestimientos') THEN 'CERAMICAS Y PORCELANATOS'
+  WHEN p.legacy_category = 'Sanitarios' THEN 'AGUA Y CLOACAS'
+  ELSE 'MATERIALES DE CONSTRUCCION'
+END
+LEFT JOIN product_subgroup s ON s.family_id = f.id AND s.name = CASE
+  WHEN p.legacy_category IN ('Cementos', 'Cales') THEN 'BOLSAS'
+  WHEN p.legacy_category = 'Áridos' THEN 'ARIDOS'
+  WHEN p.legacy_category = 'Mampostería' THEN 'LADRILLOS'
+  WHEN p.legacy_category = 'Hierros' AND p.code LIKE 'MAL-%' THEN 'MALLAS'
+  WHEN p.legacy_category = 'Hierros' THEN 'HIERROS'
+  WHEN p.legacy_category = 'Chapas' THEN 'CHAPAS'
+  WHEN p.legacy_category = 'Impermeabilizantes' AND p.code = 'MEM-4MM' THEN 'PINTURAS ASFALTICAS'
+  WHEN p.legacy_category = 'Impermeabilizantes' THEN 'ADITIVOS'
+  WHEN p.legacy_category = 'Construcción en seco' AND p.code LIKE 'PLAC-%' THEN 'PLACAS DE DURLOCK'
+  WHEN p.legacy_category = 'Construcción en seco' THEN 'PERFILES PARA DURLOCK'
+  WHEN p.legacy_category = 'Adhesivos' THEN 'PASTINAS Y PEGAMENTOS'
+  WHEN p.legacy_category = 'Revestimientos' THEN 'CERAMICAS'
+  WHEN p.legacy_category = 'Sanitarios' AND p.code = 'CAN-PVC-110' THEN 'CLOACAS'
+  WHEN p.legacy_category = 'Sanitarios' THEN 'AGUA'
+END
 ON CONFLICT (id) DO NOTHING;
 
--- Sinónimos coloquiales: lo que realmente escribe un cliente por WhatsApp.
+-- Colloquial synonyms: what a client actually types on WhatsApp.
 INSERT INTO product_synonym (account_id, product_id, term, source) VALUES
-  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', 'portland', 'seed'),
-  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', 'loma negra', 'seed'),
-  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', 'bolsa de cemento', 'seed'),
-  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000006', 'hueco del 12', 'seed'),
-  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000008', 'hierro del 8', 'seed'),
-  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000009', 'hierro del 10', 'seed'),
-  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000013', 'durlock', 'seed'),
-  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000011', 'chapa acanalada', 'seed')
-ON CONFLICT DO NOTHING;
+  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', 'portland', 'IMPORTED'),
+  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', 'loma negra', 'IMPORTED'),
+  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', 'bolsa de cemento', 'IMPORTED'),
+  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000006', 'hueco del 12', 'IMPORTED'),
+  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000008', 'hierro del 8', 'IMPORTED'),
+  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000009', 'hierro del 10', 'IMPORTED'),
+  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000013', 'durlock', 'IMPORTED'),
+  ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000011', 'chapa acanalada', 'IMPORTED')
+ON CONFLICT (account_id, product_id, lower(term)) DO NOTHING;
 
--- Alternativas para el motor de recomendaciones.
+-- Alternatives for the recommendation engine.
 INSERT INTO product_alternative (account_id, base_product_id, alternative_product_id, type) VALUES
   ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000002', 'ECONOMY'),
   ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000002', 'd0000000-0000-4000-8000-000000000001', 'PREMIUM'),
   ('a0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000006', 'd0000000-0000-4000-8000-000000000007', 'EQUIVALENT')
 ON CONFLICT (base_product_id, alternative_product_id) DO NOTHING;
 
--- Disponibilidad por sucursal: Villa Bosch tiene todo, Morón un subconjunto.
+-- Per-branch availability: Villa Bosch carries everything, Moron a subset.
 INSERT INTO branch_product (account_id, branch_id, product_id, stock)
 SELECT 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001', id, 250
 FROM product WHERE account_id = 'a0000000-0000-4000-8000-000000000001'
@@ -95,10 +137,11 @@ INSERT INTO branch_product (account_id, branch_id, product_id, stock)
 SELECT 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000002', id, 60
 FROM product
 WHERE account_id = 'a0000000-0000-4000-8000-000000000001'
-  AND category IN ('Cementos', 'Cales', 'Áridos', 'Mampostería', 'Hierros')
+  AND code IN ('CEM-LN-50', 'CEM-AVE-50', 'CAL-HID-25', 'AREN-M3', 'PIED-M3',
+               'LAD-HUE-12', 'LAD-COM', 'HIE-8', 'HIE-10', 'MAL-Q188')
 ON CONFLICT (branch_id, product_id) DO NOTHING;
 
--- Precio vigente por sucursal. Morón un 4% arriba.
+-- The price in force per branch. Moron runs 4% higher.
 INSERT INTO product_price (account_id, branch_id, product_id, price, min_price, valid_from)
 SELECT bp.account_id, bp.branch_id, bp.product_id,
        v.price,
@@ -141,32 +184,263 @@ WHERE pp.branch_id = 'b0000000-0000-4000-8000-000000000001'
     SELECT 1 FROM product_price x
     WHERE x.product_id = pp.product_id AND x.branch_id = 'b0000000-0000-4000-8000-000000000002');
 
--- Promos: una por cantidad escalonada, una sobre el total.
-INSERT INTO promotion (id, account_id, branch_id, condition_type, action_type, action_value, priority, description) VALUES
+-- Promotions: one quantity-tiered, one on the total.
+INSERT INTO promotion (id, account_id, branch_id, name, condition_type, action_type, action_value, priority, description) VALUES
   ('e0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', NULL,
-   'QUANTITY_TIERED', 'PERCENTAGE', 0, 10, 'Cemento por cantidad'),
+   'Cemento por cantidad', 'QUANTITY_TIERED', 'PERCENTAGE', 0, 10,
+   'Descuento escalonado sobre el cemento según la cantidad de bolsas'),
   ('e0000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001', NULL,
-   'ON_TOTAL', 'PERCENTAGE', 5, 1, '5% en compras sobre $500.000')
+   'Compra grande', 'ON_TOTAL', 'PERCENTAGE', 5, 1, '5% en compras sobre $500.000')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO promotion_condition_item (account_id, promotion_id, product_id, min_quantity) VALUES
   ('a0000000-0000-4000-8000-000000000001', 'e0000000-0000-4000-8000-000000000001',
    'd0000000-0000-4000-8000-000000000001', 10)
-ON CONFLICT DO NOTHING;
+ON CONFLICT (promotion_id, product_id, family_id, subgroup_id) DO NOTHING;
 
 INSERT INTO promotion_tier (account_id, promotion_id, from_quantity, to_quantity, value) VALUES
   ('a0000000-0000-4000-8000-000000000001', 'e0000000-0000-4000-8000-000000000001', 10, 49, 10),
   ('a0000000-0000-4000-8000-000000000001', 'e0000000-0000-4000-8000-000000000001', 50, NULL, 15)
-ON CONFLICT DO NOTHING;
+ON CONFLICT (promotion_id, from_quantity) DO NOTHING;
 
 INSERT INTO client (id, account_id, name, phone, origin_channel) VALUES
   ('f0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001',
    'Juan Pérez', '+5491155550001', 'WHATSAPP'),
   ('f0000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001',
-   'Constructora del Oeste', '+5491155550002', 'EMAIL')
+   'Constructora del Oeste', '+5491155550002', 'EMAIL'),
+  ('f0000000-0000-4000-8000-000000000003', 'a0000000-0000-4000-8000-000000000001',
+   'Roberto Gómez', '+5491155550003', 'WALK_IN')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO tag (account_id, name, color) VALUES
   ('a0000000-0000-4000-8000-000000000001', 'Recurrente', '#16A34A'),
   ('a0000000-0000-4000-8000-000000000001', 'Obra grande', '#2563EB')
-ON CONFLICT DO NOTHING;
+ON CONFLICT (account_id, lower(name)) DO NOTHING;
+
+-- Catalog combos: account-scoped, with per-branch availability. One is inactive at Moron so
+-- availability is not always TRUE, and the other has no row there at all — an absent row and
+-- is_active = FALSE are different cases.
+INSERT INTO combo (id, account_id, name, description) VALUES
+  ('70000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001',
+   'Combo contrapiso 20 m2', 'Cemento, arena, piedra y malla para 20 m2 de contrapiso'),
+  ('70000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001',
+   'Combo revoque 30 m2', 'Cal, cemento y arena para revoque grueso de 30 m2')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO combo_item (id, account_id, combo_id, product_id, quantity) VALUES
+  ('80000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', 8),
+  ('80000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000004', 2),
+  ('80000000-0000-4000-8000-000000000003', 'a0000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000005', 3),
+  ('80000000-0000-4000-8000-000000000004', 'a0000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000010', 4),
+  ('80000000-0000-4000-8000-000000000005', 'a0000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000002', 'd0000000-0000-4000-8000-000000000003', 6),
+  ('80000000-0000-4000-8000-000000000006', 'a0000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000002', 'd0000000-0000-4000-8000-000000000001', 3),
+  ('80000000-0000-4000-8000-000000000007', 'a0000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000002', 'd0000000-0000-4000-8000-000000000004', 1.5)
+ON CONFLICT (id) DO NOTHING;
+
+-- The conflict target is the natural key, not the id: the migration that creates
+-- branch_combo populates it from combo with fresh ids, so after a down and an up the seed's
+-- ids no longer exist and ON CONFLICT (id) would let the row through into uq_branch_combo.
+INSERT INTO branch_combo (id, account_id, branch_id, combo_id, is_active) VALUES
+  ('90000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000001', TRUE),
+  ('90000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000002', '70000000-0000-4000-8000-000000000001', FALSE),
+  ('90000000-0000-4000-8000-000000000003', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000002', TRUE)
+ON CONFLICT (branch_id, combo_id) DO NOTHING;
+
+-- =============================================================================
+-- RFQS AND QUOTES
+-- =============================================================================
+--
+-- Quotes across several states, so the seller inbox has something to show before the AI
+-- pipeline exists. No service writes them — they are SQL like the rest of the seed — so the
+-- invariants a service would enforce are written out by hand here:
+--
+--   * `quote_version.total` = Sum of subtotals - Sum of discounts. With no discounts seeded
+--     it is the sum of subtotals, and unmatched items do not add (their subtotal is NULL).
+--   * One non-frozen version per quote (`uq_quote_version_draft`). Sent implies the version
+--     that went out is frozen; a change request opens a non-frozen v2.
+--   * `current_status` is set explicitly and every transition leaves its row in
+--     `quote_status_change`, with `previous_status` NULL on the first.
+--   * Prices follow the branch, and `min_price_snapshot` is 88% of the price, matching the
+--     price seed above.
+--
+-- `channel_id` is resolved by subquery rather than a fixed UUID: channels are inserted with
+-- no explicit id, so an already-seeded database has different ones than a fresh database.
+--
+-- Deliberately not seeded: applied discounts, messages, and most client actions.
+
+INSERT INTO rfq (id, account_id, branch_id, client_id, client_label, channel_id, raw_text, status, work_type, received_at) VALUES
+  ('10000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001',
+   'f0000000-0000-4000-8000-000000000001', NULL,
+   (SELECT id FROM channel WHERE branch_id = 'b0000000-0000-4000-8000-000000000001' AND type = 'WHATSAPP' AND identifier IS NULL),
+   'hola, necesito 50 bolsas de portland, 1000 huecos del 12 y 10 hierros del 8 para una losa. me pasás precio?',
+   'GENERATED', 'Losa', now() - interval '3 hours'),
+  ('10000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001',
+   'f0000000-0000-4000-8000-000000000002', NULL,
+   (SELECT id FROM channel WHERE branch_id = 'b0000000-0000-4000-8000-000000000001' AND type = 'EMAIL' AND identifier IS NULL),
+   'Buenos días, adjunto el pedido de la obra de Ramos Mejía: 6 m3 de arena fina, 8 m3 de piedra 6-20, 12 mallas Q188 y algo para impermeabilizar el contrapiso.',
+   'GENERATED', 'Contrapiso', now() - interval '2 days'),
+  ('10000000-0000-4000-8000-000000000003', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001',
+   'f0000000-0000-4000-8000-000000000002', NULL,
+   (SELECT id FROM channel WHERE branch_id = 'b0000000-0000-4000-8000-000000000001' AND type = 'WEBAPP' AND identifier IS NULL),
+   '40 placas de yeso de 12,5 y 60 montantes de 70 para un tabique.',
+   'GENERATED', 'Construcción en seco', now() - interval '5 days'),
+  ('10000000-0000-4000-8000-000000000004', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001',
+   'f0000000-0000-4000-8000-000000000001', NULL,
+   (SELECT id FROM channel WHERE branch_id = 'b0000000-0000-4000-8000-000000000001' AND type = 'WHATSAPP' AND identifier IS NULL),
+   'necesito 30 bolsas de cemento y 20 de cal para revoque',
+   'GENERATED', 'Revoque', now() - interval '8 days'),
+  ('10000000-0000-4000-8000-000000000005', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000002',
+   NULL, NULL,
+   (SELECT id FROM channel WHERE branch_id = 'b0000000-0000-4000-8000-000000000002' AND type = 'MANUAL_ENTRY' AND identifier IS NULL),
+   'Mostrador: 10 bolsas de cemento y 500 ladrillos huecos del 12. Cliente sin datos, retira mañana.',
+   'GENERATED', NULL, now() - interval '40 minutes'),
+  -- Counter sale with a label: no client record, but the seller noted who it is for. With
+  -- the Moron one, the seed shows both legal cases of manual entry without a client.
+  ('10000000-0000-4000-8000-000000000006', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001',
+   NULL, 'Sr. Almada (mostrador)',
+   (SELECT id FROM channel WHERE branch_id = 'b0000000-0000-4000-8000-000000000001' AND type = 'MANUAL_ENTRY' AND identifier IS NULL),
+   'Mostrador: 3 rollos de membrana de 4 mm y 2 baldes de hidrófugo. Pasa a buscar el jueves.',
+   'GENERATED', 'Impermeabilización', now() - interval '90 minutes')
+ON CONFLICT (id) DO NOTHING;
+
+-- Fills the label when it is blank. ON CONFLICT DO NOTHING never rewrites an existing row,
+-- so a down and an up — which drops the column and returns it empty — would otherwise lose
+-- it. Only NULLs are filled, so a local edit is never overwritten.
+UPDATE rfq SET client_label = 'Sr. Almada (mostrador)'
+WHERE id = '10000000-0000-4000-8000-000000000006' AND client_label IS NULL;
+
+INSERT INTO rfq_status_change (id, account_id, rfq_id, previous_status, new_status, user_id, changed_at) VALUES
+  ('50000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'RECEIVED', 'GENERATED', NULL, now() - interval '3 hours'),
+  ('50000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000002', 'RECEIVED', 'GENERATED', NULL, now() - interval '2 days'),
+  ('50000000-0000-4000-8000-000000000003', 'a0000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000003', 'RECEIVED', 'GENERATED', NULL, now() - interval '5 days'),
+  ('50000000-0000-4000-8000-000000000004', 'a0000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000004', 'RECEIVED', 'GENERATED', NULL, now() - interval '8 days'),
+  ('50000000-0000-4000-8000-000000000005', 'a0000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000005', 'RECEIVED', 'GENERATED', 'c0000000-0000-4000-8000-000000000001', now() - interval '40 minutes'),
+  ('50000000-0000-4000-8000-000000000006', 'a0000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000006', 'RECEIVED', 'GENERATED', 'c0000000-0000-4000-8000-000000000002', now() - interval '90 minutes')
+ON CONFLICT (id) DO NOTHING;
+
+-- current_version_id starts NULL and is filled in below: quote and quote_version reference
+-- each other, so no insertion order satisfies both keys at once.
+INSERT INTO quote (id, account_id, branch_id, client_id, rfq_id, seller_id, current_status, expires_at, created_at) VALUES
+  ('20000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001',
+   'f0000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', NULL, 'DRAFT', NULL, now() - interval '3 hours'),
+  ('20000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001',
+   'f0000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000002', 'c0000000-0000-4000-8000-000000000002', 'QUOTED', now() + interval '5 days', now() - interval '2 days'),
+  ('20000000-0000-4000-8000-000000000003', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001',
+   'f0000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000003', 'c0000000-0000-4000-8000-000000000002', 'SENT', now() + interval '2 days', now() - interval '5 days'),
+  ('20000000-0000-4000-8000-000000000004', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001',
+   'f0000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000004', 'c0000000-0000-4000-8000-000000000002', 'CHANGE_REQUESTED', now() - interval '1 day', now() - interval '8 days'),
+  ('20000000-0000-4000-8000-000000000005', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000002',
+   NULL, '10000000-0000-4000-8000-000000000005', 'c0000000-0000-4000-8000-000000000001', 'DRAFT', NULL, now() - interval '40 minutes'),
+  ('20000000-0000-4000-8000-000000000006', 'a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001',
+   NULL, '10000000-0000-4000-8000-000000000006', 'c0000000-0000-4000-8000-000000000002', 'ACCEPTED', now() + interval '6 days', now() - interval '90 minutes')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO quote_version (id, account_id, quote_id, author_id, version_number, total, is_immutable, comment, created_at) VALUES
+  ('30000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', NULL, 1, 1373000.00, FALSE, NULL, now() - interval '3 hours'),
+  ('30000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000002', 'c0000000-0000-4000-8000-000000000002', 1, 1288000.00, FALSE, 'Falta definir el impermeabilizante con el cliente', now() - interval '2 days'),
+  ('30000000-0000-4000-8000-000000000003', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000003', 'c0000000-0000-4000-8000-000000000002', 1, 964000.00, TRUE, NULL, now() - interval '5 days'),
+  ('30000000-0000-4000-8000-000000000004', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000004', 'c0000000-0000-4000-8000-000000000002', 1, 369000.00, TRUE, NULL, now() - interval '8 days'),
+  ('30000000-0000-4000-8000-000000000005', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000004', 'c0000000-0000-4000-8000-000000000002', 2, 539600.00, FALSE, 'El cliente sumó 10 bolsas de cemento y pidió hidrófugo', now() - interval '1 day'),
+  ('30000000-0000-4000-8000-000000000006', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000005', 'c0000000-0000-4000-8000-000000000001', 1, 504400.00, FALSE, NULL, now() - interval '40 minutes'),
+  ('30000000-0000-4000-8000-000000000007', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000006', 'c0000000-0000-4000-8000-000000000002', 1, 178800.00, TRUE, NULL, now() - interval '90 minutes')
+ON CONFLICT (id) DO NOTHING;
+
+UPDATE quote SET current_version_id = v.version_id
+FROM (VALUES
+  ('20000000-0000-4000-8000-000000000001'::uuid, '30000000-0000-4000-8000-000000000001'::uuid),
+  ('20000000-0000-4000-8000-000000000002'::uuid, '30000000-0000-4000-8000-000000000002'::uuid),
+  ('20000000-0000-4000-8000-000000000003'::uuid, '30000000-0000-4000-8000-000000000003'::uuid),
+  ('20000000-0000-4000-8000-000000000004'::uuid, '30000000-0000-4000-8000-000000000005'::uuid),
+  ('20000000-0000-4000-8000-000000000005'::uuid, '30000000-0000-4000-8000-000000000006'::uuid),
+  ('20000000-0000-4000-8000-000000000006'::uuid, '30000000-0000-4000-8000-000000000007'::uuid)
+) AS v(quote_id, version_id)
+WHERE quote.id = v.quote_id AND quote.current_version_id IS NULL;
+
+-- The unmatched item carries a NULL product_id, price and subtotal with match_status
+-- NO_MATCH: flagged, never discarded.
+INSERT INTO quote_item (id, account_id, version_id, product_id, requested_description, quantity, unit, unit_price_snapshot, min_price_snapshot, subtotal, confidence_score, match_status) VALUES
+  ('40000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', '50 bolsas de portland', 50, 'bolsa', 9500.00, 8360.00, 475000.00, 0.9600, 'MATCHED'),
+  ('40000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000006', '1000 huecos del 12', 1000, 'unidad', 780.00, 686.40, 780000.00, 0.9400, 'MATCHED'),
+  ('40000000-0000-4000-8000-000000000003', 'a0000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000008', '10 hierros del 8', 10, 'barra', 11800.00, 10384.00, 118000.00, 0.9800, 'MATCHED'),
+
+  ('40000000-0000-4000-8000-000000000004', 'a0000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000002', 'd0000000-0000-4000-8000-000000000004', '6 m3 de arena fina', 6, 'm3', 32000.00, 28160.00, 192000.00, 0.9100, 'MATCHED'),
+  ('40000000-0000-4000-8000-000000000005', 'a0000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000002', 'd0000000-0000-4000-8000-000000000005', '8 m3 de piedra 6-20', 8, 'm3', 41000.00, 36080.00, 328000.00, 0.9300, 'MATCHED'),
+  ('40000000-0000-4000-8000-000000000006', 'a0000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000002', 'd0000000-0000-4000-8000-000000000010', '12 mallas Q188', 12, 'panel', 64000.00, 56320.00, 768000.00, 0.9700, 'MATCHED'),
+  ('40000000-0000-4000-8000-000000000007', 'a0000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000002', NULL, 'algo para impermeabilizar el contrapiso', 1, NULL, NULL, NULL, NULL, NULL, 'NO_MATCH'),
+
+  ('40000000-0000-4000-8000-000000000008', 'a0000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000003', 'd0000000-0000-4000-8000-000000000013', '40 placas de yeso de 12,5', 40, 'placa', 13900.00, 12232.00, 556000.00, 0.9500, 'MATCHED'),
+  ('40000000-0000-4000-8000-000000000009', 'a0000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000003', 'd0000000-0000-4000-8000-000000000014', '60 montantes de 70', 60, 'unidad', 6800.00, 5984.00, 408000.00, 0.9200, 'MATCHED'),
+
+  ('40000000-0000-4000-8000-000000000010', 'a0000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000004', 'd0000000-0000-4000-8000-000000000001', '30 bolsas de cemento', 30, 'bolsa', 9500.00, 8360.00, 285000.00, 0.9600, 'MATCHED'),
+  ('40000000-0000-4000-8000-000000000011', 'a0000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000004', 'd0000000-0000-4000-8000-000000000003', '20 de cal', 20, 'bolsa', 4200.00, 3696.00, 84000.00, 0.9000, 'MATCHED'),
+
+  ('40000000-0000-4000-8000-000000000012', 'a0000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000005', 'd0000000-0000-4000-8000-000000000001', '40 bolsas de cemento', 40, 'bolsa', 9500.00, 8360.00, 380000.00, 0.9600, 'MATCHED'),
+  ('40000000-0000-4000-8000-000000000013', 'a0000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000005', 'd0000000-0000-4000-8000-000000000003', '20 de cal', 20, 'bolsa', 4200.00, 3696.00, 84000.00, 0.9000, 'MATCHED'),
+  ('40000000-0000-4000-8000-000000000014', 'a0000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000005', 'd0000000-0000-4000-8000-000000000020', 'hidrófugo', 4, 'balde', 18900.00, 16632.00, 75600.00, 0.8900, 'MATCHED'),
+
+  ('40000000-0000-4000-8000-000000000015', 'a0000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000006', 'd0000000-0000-4000-8000-000000000001', '10 bolsas de cemento', 10, 'bolsa', 9880.00, 8694.40, 98800.00, 1.0000, 'MATCHED'),
+  ('40000000-0000-4000-8000-000000000016', 'a0000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000006', 'd0000000-0000-4000-8000-000000000006', '500 ladrillos huecos del 12', 500, 'unidad', 811.20, 713.86, 405600.00, 1.0000, 'MATCHED'),
+
+  ('40000000-0000-4000-8000-000000000017', 'a0000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000007', 'd0000000-0000-4000-8000-000000000012', '3 rollos de membrana de 4 mm', 3, 'rollo', 47000.00, 41360.00, 141000.00, 1.0000, 'MATCHED'),
+  ('40000000-0000-4000-8000-000000000018', 'a0000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000007', 'd0000000-0000-4000-8000-000000000020', '2 baldes de hidrófugo', 2, 'balde', 18900.00, 16632.00, 37800.00, 1.0000, 'MATCHED')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO quote_status_change (id, account_id, quote_id, previous_status, new_status, user_id, changed_at) VALUES
+  ('50000000-0000-4000-8000-000000000011', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', NULL, 'DRAFT', NULL, now() - interval '3 hours'),
+
+  ('50000000-0000-4000-8000-000000000012', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000002', NULL, 'DRAFT', NULL, now() - interval '2 days'),
+  ('50000000-0000-4000-8000-000000000013', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000002', 'DRAFT', 'QUOTED', 'c0000000-0000-4000-8000-000000000002', now() - interval '2 days' + interval '20 minutes'),
+
+  ('50000000-0000-4000-8000-000000000014', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000003', NULL, 'DRAFT', NULL, now() - interval '5 days'),
+  ('50000000-0000-4000-8000-000000000015', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000003', 'DRAFT', 'QUOTED', 'c0000000-0000-4000-8000-000000000002', now() - interval '5 days' + interval '35 minutes'),
+  ('50000000-0000-4000-8000-000000000016', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000003', 'QUOTED', 'SENT', 'c0000000-0000-4000-8000-000000000002', now() - interval '5 days' + interval '1 hour'),
+
+  ('50000000-0000-4000-8000-000000000017', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000004', NULL, 'DRAFT', NULL, now() - interval '8 days'),
+  ('50000000-0000-4000-8000-000000000018', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000004', 'DRAFT', 'QUOTED', 'c0000000-0000-4000-8000-000000000002', now() - interval '8 days' + interval '15 minutes'),
+  ('50000000-0000-4000-8000-000000000019', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000004', 'QUOTED', 'SENT', 'c0000000-0000-4000-8000-000000000002', now() - interval '7 days'),
+  ('50000000-0000-4000-8000-00000000001a', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000004', 'SENT', 'CHANGE_REQUESTED', NULL, now() - interval '1 day'),
+
+  ('50000000-0000-4000-8000-00000000001b', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000005', NULL, 'DRAFT', 'c0000000-0000-4000-8000-000000000001', now() - interval '40 minutes'),
+
+  ('50000000-0000-4000-8000-00000000001c', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000006', NULL, 'DRAFT', 'c0000000-0000-4000-8000-000000000002', now() - interval '90 minutes'),
+  ('50000000-0000-4000-8000-00000000001d', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000006', 'DRAFT', 'QUOTED', 'c0000000-0000-4000-8000-000000000002', now() - interval '85 minutes'),
+  ('50000000-0000-4000-8000-00000000001e', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000006', 'QUOTED', 'SENT', 'c0000000-0000-4000-8000-000000000002', now() - interval '80 minutes'),
+  ('50000000-0000-4000-8000-00000000001f', 'a0000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000006', 'SENT', 'ACCEPTED', 'c0000000-0000-4000-8000-000000000002', now() - interval '70 minutes')
+ON CONFLICT (id) DO NOTHING;
+
+-- A send hangs off the version, not the quote: the link is issued per send and per channel.
+--
+-- An in-person handover also gets a send row, on the branch's manual-entry channel and with
+-- format PDF. It is the only way `sent_at` can answer when the client got the quote, and the
+-- only thing the client's action can hang off. This does not contradict "manual entry is not
+-- an outbound channel": that rule forbids defaulting the return channel to the entry channel
+-- and says nobody receives a *message* by manual entry. A handover is neither. The phone
+-- order is where the rule does bite — it arrives as manual entry and goes out by WhatsApp or
+-- email, so the return channel is chosen explicitly.
+INSERT INTO quote_send (id, account_id, version_id, channel_id, public_token, format, sent_at, expires_at, tracking_status)
+SELECT v.id, v.account_id, v.version_id, v.channel_id, v.public_token, v.format, v.sent_at, v.expires_at, v.tracking_status
+FROM (VALUES
+  ('60000000-0000-4000-8000-000000000001'::uuid, 'a0000000-0000-4000-8000-000000000001'::uuid, '30000000-0000-4000-8000-000000000003'::uuid,
+   (SELECT id FROM channel WHERE branch_id = 'b0000000-0000-4000-8000-000000000001' AND type = 'WEBAPP' AND identifier IS NULL),
+   'seed-token-sent-0000000000000001', 'WEBAPP_LINK'::send_format, now() - interval '5 days' + interval '1 hour', now() + interval '2 days', 'VIEWED'::send_tracking_status),
+  ('60000000-0000-4000-8000-000000000002'::uuid, 'a0000000-0000-4000-8000-000000000001'::uuid, '30000000-0000-4000-8000-000000000004'::uuid,
+   (SELECT id FROM channel WHERE branch_id = 'b0000000-0000-4000-8000-000000000001' AND type = 'WHATSAPP' AND identifier IS NULL),
+   'seed-token-change-000000000002', 'MESSAGE'::send_format, now() - interval '7 days', now() - interval '1 day', 'DELIVERED'::send_tracking_status),
+  ('60000000-0000-4000-8000-000000000003'::uuid, 'a0000000-0000-4000-8000-000000000001'::uuid, '30000000-0000-4000-8000-000000000007'::uuid,
+   (SELECT id FROM channel WHERE branch_id = 'b0000000-0000-4000-8000-000000000001' AND type = 'MANUAL_ENTRY' AND identifier IS NULL),
+   NULL, 'PDF'::send_format, now() - interval '80 minutes', now() + interval '6 days', 'DELIVERED'::send_tracking_status)
+) AS v(id, account_id, version_id, channel_id, public_token, format, sent_at, expires_at, tracking_status)
+ON CONFLICT (id) DO NOTHING;
+
+-- The client actions behind the two states the seller does not drive: the change request on
+-- the quote sent by WhatsApp, and the acceptance at the counter. The seller records the
+-- counter acceptance, but the action is the client's, so it is a client_action tied to the
+-- send it came from.
+INSERT INTO client_action (id, account_id, version_id, quote_send_id, type, comment, created_at) VALUES
+  ('ca000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001',
+   '30000000-0000-4000-8000-000000000004', '60000000-0000-4000-8000-000000000002',
+   'REQUEST_CHANGE', 'Sumar 10 bolsas de cemento y agregar hidrófugo', now() - interval '1 day'),
+  ('ca000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001',
+   '30000000-0000-4000-8000-000000000007', '60000000-0000-4000-8000-000000000003',
+   'ACCEPT', 'Aceptada en el mostrador, se la lleva impresa', now() - interval '70 minutes')
+ON CONFLICT (id) DO NOTHING;

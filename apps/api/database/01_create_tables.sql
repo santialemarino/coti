@@ -1,16 +1,21 @@
--- Coti — esquema consolidado de referencia.
+-- Coti — consolidated reference schema.
 --
--- Se LEE, no se aplica: la fuente ejecutable son las migraciones goose de
--- apps/api/migrations/, y `pnpm db:init` construye una base nueva corriéndolas.
--- Este archivo tiene que reflejar el resultado de esa cadena; cuando divergen se
--- regenera contra una base migrada.
+-- This file is READ, never applied: the executable source is the goose chain in
+-- apps/api/migrations/, and `pnpm db:init` builds a fresh database by running it. This file
+-- has to reflect the result of that chain.
 --
--- Es lo que se lee para saber la forma actual del modelo: la lista de columnas de
--- un SELECT, el orden de scan y los campos del struct de dominio tienen que
--- coincidir con lo que está acá.
+-- It is what you consult to know the current shape of the model: a SELECT column list, a
+-- scan order and a domain struct's fields all have to agree with what is here.
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
+-- The lexical half of the catalog search reads this configuration. Informal RFQ text drops
+-- accents constantly, so "hormigon" has to reach "hormigón"; the stock spanish one keeps them.
+CREATE TEXT SEARCH CONFIGURATION spanish_unaccent (COPY = spanish);
+ALTER TEXT SEARCH CONFIGURATION spanish_unaccent
+  ALTER MAPPING FOR hword, hword_part, word WITH unaccent, spanish_stem;
 
 -- =============================================================================
 -- ENUMS
@@ -18,10 +23,9 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TYPE rfq_status AS ENUM ('RECEIVED', 'GENERATED');
 
--- DRAFT: la cotización existe con materiales matcheados pero sin precios
--- aceptados. Es el estado mientras el RFQ está en GENERATED, y lo que permite
--- que la matriz estado×intención se evalúe con un solo input.
--- "Archivado" no es estado: es el flag ortogonal quote.archived_at.
+-- DRAFT: the quote exists with matched materials but no accepted prices. It is the state
+-- while the RFQ is GENERATED, and what lets the state x intention matrix evaluate on one
+-- input. "Archived" is not a state: it is the orthogonal quote.archived_at flag.
 CREATE TYPE quote_status AS ENUM (
   'DRAFT',
   'QUOTED',
@@ -33,23 +37,36 @@ CREATE TYPE quote_status AS ENUM (
 
 CREATE TYPE user_role AS ENUM ('ADMIN', 'SELLER');
 
--- El sistema nunca descarta ítems sin match: los flaggea.
+CREATE TYPE onboarding_status AS ENUM ('IN_PROGRESS', 'COMPLETED', 'DISMISSED');
+CREATE TYPE onboarding_step_status AS ENUM ('COMPLETED', 'SKIPPED');
+
+-- Unmatched items are flagged, never discarded.
 CREATE TYPE item_match_status AS ENUM ('MATCHED', 'AMBIGUOUS', 'NO_MATCH');
 
 CREATE TYPE product_alternative_type AS ENUM ('EQUIVALENT', 'PREMIUM', 'ECONOMY');
+
+-- Where a synonym came from: a person loaded it, the matching pipeline proposed it, or it
+-- arrived with a bulk load (which is where the seed rows land).
+CREATE TYPE product_synonym_source AS ENUM ('MANUAL', 'LEARNED', 'IMPORTED');
+
 CREATE TYPE quote_item_alternative_type AS ENUM ('PRODUCT', 'COMBO');
 CREATE TYPE quote_item_alternative_origin AS ENUM ('AI', 'SELLER');
 
 CREATE TYPE client_action_type AS ENUM ('ACCEPT', 'REJECT', 'REQUEST_CHANGE', 'COMMENT');
 
--- Motor de descuentos. ITEM_SET cubre varias líneas (la entidad de catálogo
--- combo es otra cosa). La vigencia es eje ortogonal, no un tipo.
+-- Discount engine. ITEM_SET covers several lines; the catalog combo is a different entity.
+-- Validity is an orthogonal axis, not a type.
 CREATE TYPE promotion_condition_type AS ENUM ('PER_ITEM', 'QUANTITY_TIERED', 'ITEM_SET', 'ON_TOTAL');
 CREATE TYPE promotion_action_type AS ENUM ('PERCENTAGE', 'FIXED_AMOUNT', 'SPECIAL_PRICE');
 CREATE TYPE discount_scope AS ENUM ('ITEM', 'ITEM_SET', 'TOTAL');
 CREATE TYPE discount_origin AS ENUM ('AUTOMATIC', 'AI_ADAPTATION', 'MANUAL_SELLER');
 
-CREATE TYPE channel_type AS ENUM ('WHATSAPP', 'EMAIL', 'WEBAPP', 'COUNTER', 'PHONE');
+-- channel_type is the mechanism a request arrived by, not where the client stood:
+-- MANUAL_ENTRY covers the counter, the phone and any channel we do not integrate, because
+-- in all of them the seller types the order in. client_origin answers a different question —
+-- where the client came from — and is its own type for that reason.
+CREATE TYPE channel_type AS ENUM ('WHATSAPP', 'EMAIL', 'WEBAPP', 'MANUAL_ENTRY');
+CREATE TYPE client_origin AS ENUM ('WHATSAPP', 'EMAIL', 'WEBAPP', 'PHONE', 'WALK_IN');
 CREATE TYPE attachment_type AS ENUM ('IMAGE', 'PDF', 'SPREADSHEET', 'AUDIO', 'TEXT');
 CREATE TYPE attachment_processing_status AS ENUM ('PENDING', 'PROCESSING', 'DONE', 'FAILED');
 
@@ -59,12 +76,17 @@ CREATE TYPE send_tracking_status AS ENUM ('PENDING', 'SENT', 'DELIVERED', 'VIEWE
 CREATE TYPE handler_seller_decision AS ENUM ('APPROVED_AS_IS', 'EDITED', 'REJECTED', 'MANUAL_OVERRIDE');
 CREATE TYPE notification_status AS ENUM ('PENDING', 'SENT', 'FAILED');
 
--- Motor conversacional. El vendedor y el sistema son contexto, no trigger.
+CREATE TYPE job_run_status AS ENUM ('RUNNING', 'SUCCEEDED', 'FAILED');
+
+-- What a single-use link entitles its bearer to do without a session.
+CREATE TYPE auth_token_type AS ENUM ('PASSWORD_RESET', 'EMAIL_VERIFICATION');
+
+-- Conversational engine. The seller and the system are context, not a trigger.
 CREATE TYPE message_author_type AS ENUM ('CLIENT', 'SELLER', 'SYSTEM');
 CREATE TYPE message_batch_status AS ENUM ('OPEN', 'CLOSED', 'PROCESSING', 'PROCESSED', 'FAILED');
 
 -- =============================================================================
--- FUNCIONES
+-- FUNCTIONS
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION set_updated_at() RETURNS TRIGGER AS $$
@@ -74,15 +96,15 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Resuelve la cuenta del request desde la GUC por transacción. current_setting
--- con el segundo argumento en true devuelve NULL si nunca se seteó, así que una
--- sesión sin contexto no matchea ninguna fila: falla cerrado.
+-- Resolves the request's account from the per-transaction GUC. current_setting with its
+-- second argument true returns NULL when unset, so a session with no context matches no
+-- row: it fails closed.
 CREATE OR REPLACE FUNCTION app_current_account_id() RETURNS UUID
   LANGUAGE sql STABLE
   AS $$ SELECT NULLIF(current_setting('app.current_account_id', true), '')::uuid $$;
 
 -- =============================================================================
--- IDENTIDAD / TENANT
+-- IDENTITY / TENANT
 -- =============================================================================
 
 CREATE TABLE account (
@@ -97,6 +119,29 @@ CREATE TABLE account (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE account_onboarding (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id     UUID NOT NULL,
+  flow_version   INTEGER NOT NULL DEFAULT 1 CHECK (flow_version > 0),
+  status         onboarding_status NOT NULL DEFAULT 'IN_PROGRESS',
+  current_step   VARCHAR(64) NOT NULL DEFAULT 'WELCOME',
+  completed_at   TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_account_onboarding_account UNIQUE (account_id)
+);
+
+CREATE TABLE onboarding_step_progress (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id     UUID NOT NULL,
+  onboarding_id  UUID NOT NULL,
+  step_key       VARCHAR(64) NOT NULL,
+  status         onboarding_step_status NOT NULL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_onboarding_step UNIQUE (onboarding_id, step_key)
+);
+
 CREATE TABLE branch (
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id          UUID NOT NULL,
@@ -108,23 +153,23 @@ CREATE TABLE branch (
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- session_epoch invalida todos los access tokens vigentes al incrementarse
--- (logout inmediato sin lista negra). locked_until cierra el lockout por
--- intentos fallidos.
+-- Bumping session_epoch invalidates every outstanding access token, which is immediate
+-- logout without a blacklist. locked_until closes out the failed-attempt counter.
 CREATE TABLE app_user (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  account_id      UUID NOT NULL,
-  name            VARCHAR(255) NOT NULL,
-  email           VARCHAR(255) NOT NULL,
-  password_hash   VARCHAR(255) NOT NULL,
-  role            user_role NOT NULL,
-  is_active       BOOLEAN NOT NULL DEFAULT TRUE,
-  session_epoch   INTEGER NOT NULL DEFAULT 1,
-  last_login_at   TIMESTAMPTZ,
-  failed_attempts INTEGER NOT NULL DEFAULT 0,
-  locked_until    TIMESTAMPTZ,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id        UUID NOT NULL,
+  name              VARCHAR(255) NOT NULL,
+  email             VARCHAR(255) NOT NULL,
+  password_hash     VARCHAR(255) NOT NULL,
+  role              user_role NOT NULL,
+  is_active         BOOLEAN NOT NULL DEFAULT TRUE,
+  session_epoch     INTEGER NOT NULL DEFAULT 1,
+  last_login_at     TIMESTAMPTZ,
+  failed_attempts   INTEGER NOT NULL DEFAULT 0,
+  locked_until      TIMESTAMPTZ,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  email_verified_at TIMESTAMPTZ,
   CONSTRAINT uq_app_user_email UNIQUE (account_id, email)
 );
 
@@ -137,10 +182,9 @@ CREATE TABLE user_branch (
   CONSTRAINT uq_user_branch UNIQUE (user_id, branch_id)
 );
 
--- Refresh tokens de un solo uso, rotativos por familia. Se guarda solo el
--- SHA-256: el valor crudo es de alta entropía, no hace falta un hash lento.
--- Re-presentar un token consumido más allá de la ventana de gracia revoca toda
--- la familia (robo).
+-- Single-use refresh tokens, rotated per family. Only the SHA-256 is stored: the raw value
+-- is high-entropy, so a slow hash is unnecessary. Replaying a consumed token past the grace
+-- window revokes the whole family as theft.
 CREATE TABLE refresh_token (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id  UUID NOT NULL,
@@ -154,13 +198,46 @@ CREATE TABLE refresh_token (
   CONSTRAINT uq_refresh_token_hash UNIQUE (token_hash)
 );
 
+-- Single-use tokens a user presents instead of a session: the password-recovery link and the
+-- address-verification link. consumed_at is what makes them single use, and the row survives
+-- its use so a replay is a rejection rather than a miss.
+CREATE TABLE auth_token (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id  UUID NOT NULL,
+  user_id     UUID NOT NULL,
+  type        auth_token_type NOT NULL,
+  token_hash  CHAR(64) NOT NULL,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_auth_token_hash UNIQUE (token_hash)
+);
+
 -- =============================================================================
--- CATÁLOGO
+-- CATALOG
 -- =============================================================================
 
--- El catálogo es de la cuenta: un producto es una fila por cuenta, con un solo
--- embedding y un solo juego de sinónimos y alternativas. Qué sucursal lo tiene y
--- con qué stock vive en branch_product; el precio en product_price.
+CREATE TABLE product_family (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       VARCHAR(255) NOT NULL UNIQUE,
+  sort_order INTEGER NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE product_subgroup (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  family_id  UUID NOT NULL,
+  name       VARCHAR(255) NOT NULL,
+  sort_order INTEGER NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_product_subgroup_family_name UNIQUE (family_id, name),
+  CONSTRAINT uq_product_subgroup_family_order UNIQUE (family_id, sort_order),
+  CONSTRAINT uq_product_subgroup_id_family UNIQUE (id, family_id)
+);
+
+-- The catalog belongs to the account: one product row, one embedding, one set of synonyms
+-- and alternatives per account. Which branch carries it and with how much stock lives in
+-- branch_product; the price in product_price.
 CREATE TABLE product (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id     UUID NOT NULL,
@@ -168,11 +245,19 @@ CREATE TABLE product (
   canonical_name VARCHAR(255) NOT NULL,
   description    VARCHAR(512),
   unit           VARCHAR(64),
-  category       VARCHAR(255),
   embedding      VECTOR(1536),
   is_active      BOOLEAN NOT NULL DEFAULT TRUE,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  family_id      UUID,
+  subgroup_id    UUID,
+  -- Older than updated_at means the row was edited after it was embedded, which is how the
+  -- backfill knows what to re-embed without re-embedding the whole catalog.
+  embedding_updated_at TIMESTAMPTZ,
+  search_document TSVECTOR
+    GENERATED ALWAYS AS (
+      to_tsvector('spanish_unaccent'::regconfig, canonical_name || ' ' || coalesce(description, ''))
+    ) STORED
 );
 
 CREATE TABLE branch_product (
@@ -187,17 +272,19 @@ CREATE TABLE branch_product (
   CONSTRAINT uq_branch_product UNIQUE (branch_id, product_id)
 );
 
--- Términos coloquiales que mejoran el matching léxico (mitigación de R06).
+-- Colloquial trade terms that improve lexical catalog matching.
 CREATE TABLE product_synonym (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id UUID NOT NULL,
   product_id UUID NOT NULL,
   term       VARCHAR(255) NOT NULL,
-  source     VARCHAR(64) NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  source     product_synonym_source NOT NULL DEFAULT 'MANUAL',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  search_document TSVECTOR
+    GENERATED ALWAYS AS (to_tsvector('spanish_unaccent'::regconfig, term)) STORED
 );
 
--- Historial por vigencia: no se updatea in-place.
+-- Validity-versioned history: never updated in place.
 CREATE TABLE product_price (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id UUID NOT NULL,
@@ -206,7 +293,6 @@ CREATE TABLE product_price (
   user_id    UUID,
   price      NUMERIC(14,2) NOT NULL,
   currency   VARCHAR(8) NOT NULL DEFAULT 'ARS',
-  conditions VARCHAR(255),
   min_price  NUMERIC(14,2),
   valid_from TIMESTAMPTZ NOT NULL,
   valid_to   TIMESTAMPTZ,
@@ -223,11 +309,13 @@ CREATE TABLE product_alternative (
   CONSTRAINT uq_product_alternative UNIQUE (base_product_id, alternative_product_id)
 );
 
--- Producto compuesto que se vende como unidad. Distinto del tipo de promo ITEM_SET.
+-- A composite product sold as one unit. Different from the ITEM_SET promotion type.
+-- Account-scoped like the product: per-branch availability lives in branch_combo. It has no
+-- price of its own — that derives from its items, already priced per branch — and no stock,
+-- which derives from its components.
 CREATE TABLE combo (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id  UUID NOT NULL,
-  branch_id   UUID NOT NULL,
   name        VARCHAR(255) NOT NULL,
   description VARCHAR(512),
   is_active   BOOLEAN NOT NULL DEFAULT TRUE,
@@ -244,19 +332,32 @@ CREATE TABLE combo_item (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- The combo's commercial availability per branch, mirroring branch_product. No price and no
+-- stock: both derive from the items.
+CREATE TABLE branch_combo (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id UUID NOT NULL,
+  branch_id  UUID NOT NULL,
+  combo_id   UUID NOT NULL,
+  is_active  BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_branch_combo UNIQUE (branch_id, combo_id)
+);
+
 -- =============================================================================
--- CLIENTES
+-- CLIENTS
 -- =============================================================================
 
--- Contacto nullable: mostrador sin datos está permitido, se enriquece
--- just-in-time. No se bloquea la creación por falta de contacto.
+-- Contact details are nullable: a counter sale with none is allowed and enriched later.
+-- Missing contact never blocks creation.
 CREATE TABLE client (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id     UUID NOT NULL,
   name           VARCHAR(255),
   phone          VARCHAR(64),
   email          VARCHAR(255),
-  origin_channel channel_type,
+  origin_channel client_origin,
   notes          VARCHAR(512),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -280,9 +381,12 @@ CREATE TABLE client_tag (
 );
 
 -- =============================================================================
--- CANALES / INGESTA
+-- CHANNELS / INTAKE
 -- =============================================================================
 
+-- identifier is which instance of the channel this is: the WhatsApp number, the mailbox. It
+-- stays NULL on channels a branch can only have one of, and for those the partial index is
+-- what holds uniqueness up, since the composite constraint does not compare NULLs.
 CREATE TABLE channel (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id UUID NOT NULL,
@@ -292,11 +396,12 @@ CREATE TABLE channel (
   is_active  BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT uq_channel_branch_type UNIQUE (branch_id, type)
+  identifier VARCHAR(255),
+  CONSTRAINT uq_channel_branch_type_identifier UNIQUE (branch_id, type, identifier)
 );
 
--- Lo que pidió el cliente. Entidad separada de quote: el stepper de la UI es una
--- proyección sobre ambas, no una tercera entidad.
+-- What the client asked for. Separate from quote: the UI stepper is a projection over both,
+-- not a third entity.
 CREATE TABLE rfq (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id  UUID NOT NULL,
@@ -308,11 +413,14 @@ CREATE TABLE rfq (
   work_type   VARCHAR(255),
   received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Who the order is for when there is no client record: on manual entry the seller notes a
+  -- loose name and client_id stays NULL. It describes this order, not a person to match.
+  client_label VARCHAR(255)
 );
 
--- El input original se persiste antes de procesarlo: una cotización siempre
--- tiene que poder reconstruirse desde su origen. Los archivos viven en Spaces.
+-- The original input is persisted before it is processed: a quote must always be
+-- reconstructible from its source. The files live in object storage.
 CREATE TABLE rfq_attachment (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id        UUID NOT NULL,
@@ -321,7 +429,8 @@ CREATE TABLE rfq_attachment (
   file_url          VARCHAR(512),
   extracted_text    TEXT,
   processing_status attachment_processing_status NOT NULL DEFAULT 'PENDING',
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  processed_at      TIMESTAMPTZ
 );
 
 CREATE TABLE rfq_status_change (
@@ -336,21 +445,20 @@ CREATE TABLE rfq_status_change (
 );
 
 -- =============================================================================
--- COTIZACIONES
+-- QUOTES
 -- =============================================================================
 
--- Un RFQ tiene UNA sola cotización (uq_quote_rfq lo blinda). Reabrir desde
--- ACCEPTED/REJECTED reactiva la misma cotización, nunca duplica.
--- seller_id es nullable: un RFQ que entra por WhatsApp no tiene vendedor hasta
--- que alguien lo toma del inbox.
--- current_status no tiene default: se setea explícito en cada transición, junto
--- al insert en quote_status_change. Nunca lo edita un humano ni la IA.
+-- One RFQ has exactly one quote (uq_quote_rfq enforces it). Reopening from
+-- ACCEPTED/REJECTED reactivates the same quote, never a duplicate. seller_id is nullable
+-- until someone claims the RFQ from the inbox. current_status has no default: it is set
+-- explicitly on each transition alongside the quote_status_change insert, never by a human
+-- or the AI.
 CREATE TABLE quote (
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id          UUID NOT NULL,
   branch_id           UUID NOT NULL,
   client_id           UUID,
-  rfq_id              UUID,
+  rfq_id              UUID NOT NULL,
   seller_id           UUID,
   current_version_id  UUID,
   current_status      quote_status NOT NULL,
@@ -363,7 +471,7 @@ CREATE TABLE quote (
   CONSTRAINT uq_quote_rfq UNIQUE (rfq_id)
 );
 
--- Snapshot de la cotización. Inmutable una vez congelada.
+-- A snapshot of the quote. Immutable once frozen.
 CREATE TABLE quote_version (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id     UUID NOT NULL,
@@ -377,11 +485,10 @@ CREATE TABLE quote_version (
   CONSTRAINT uq_quote_version UNIQUE (quote_id, version_number)
 );
 
--- El ítem NO contiene el descuento: el descuento es entidad propia.
--- min_price_snapshot es el piso que usa el motor de descuentos. Se snapshotea
--- junto al precio para que re-barrer la misma versión dé siempre el mismo total.
--- Las filas de una versión no congelada se editan in-place; el service rechaza
--- cualquier mutación cuya versión padre tenga is_immutable = true.
+-- The item does NOT carry its discount: a discount is its own entity. min_price_snapshot is
+-- the discount engine's floor, snapshotted alongside the price so re-sweeping a version is
+-- deterministic. Rows on a non-frozen version are edited in place; the service rejects any
+-- mutation whose parent version has is_immutable = true.
 CREATE TABLE quote_item (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id            UUID NOT NULL,
@@ -399,7 +506,7 @@ CREATE TABLE quote_item (
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- El cliente nunca elige sobre alternativas que el vendedor no aprobó.
+-- The client never chooses among alternatives the seller did not approve.
 CREATE TABLE quote_item_alternative (
   id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id         UUID NOT NULL,
@@ -412,7 +519,126 @@ CREATE TABLE quote_item_alternative (
   approved_by_seller BOOLEAN NOT NULL DEFAULT FALSE,
   chosen_by_client   BOOLEAN NOT NULL DEFAULT FALSE,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- The candidate's own place in the matcher's ranking, best first; nothing else on the row
+  -- records it. confidence_score is what it scored, on quote_item.confidence_score's scale.
+  rank               SMALLINT NOT NULL,
+  confidence_score   NUMERIC(5,4),
   CONSTRAINT ck_qia_target CHECK (product_id IS NOT NULL OR combo_id IS NOT NULL)
+);
+
+-- The original AI proposal is append-only and independent of the mutable commercial version.
+CREATE TABLE quote_ai_generation (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id         UUID NOT NULL,
+  quote_id           UUID NOT NULL,
+  quote_version_id   UUID NOT NULL,
+  provider           VARCHAR(64) NOT NULL,
+  model              VARCHAR(255) NOT NULL,
+  prompt_version     VARCHAR(64) NOT NULL,
+  schema_version     VARCHAR(64) NOT NULL,
+  input_tokens       INTEGER NOT NULL CHECK (input_tokens >= 0),
+  output_tokens      INTEGER NOT NULL CHECK (output_tokens >= 0),
+  cache_read_tokens  INTEGER NOT NULL CHECK (cache_read_tokens >= 0),
+  cache_write_tokens INTEGER NOT NULL CHECK (cache_write_tokens >= 0),
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_quote_ai_generation_version UNIQUE (quote_version_id)
+);
+
+CREATE TABLE quote_ai_generation_item (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id            UUID NOT NULL,
+  generation_id         UUID NOT NULL,
+  position              SMALLINT NOT NULL CHECK (position >= 0),
+  source_quote_item_id  UUID NOT NULL,
+  product_id            UUID,
+  requested_description VARCHAR(512) NOT NULL,
+  quantity              NUMERIC(14,2) NOT NULL,
+  unit                  VARCHAR(64),
+  quantity_source       VARCHAR(16) NOT NULL
+                        CHECK (quantity_source IN ('EXPLICIT', 'DERIVED', 'UNRESOLVED')),
+  quantity_rationale    VARCHAR(512) NOT NULL,
+  match_status          item_match_status NOT NULL,
+  confidence_score      NUMERIC(5,4),
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_quote_ai_generation_item_position UNIQUE (generation_id, position)
+);
+
+CREATE TABLE quote_quality_evaluation (
+  id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id             UUID NOT NULL,
+  generation_id          UUID NOT NULL,
+  final_quote_version_id UUID NOT NULL,
+  evaluator_version      VARCHAR(64) NOT NULL,
+  whole_quote_correct    BOOLEAN NOT NULL,
+  same_item_count        BOOLEAN NOT NULL,
+  all_items_equivalent   BOOLEAN NOT NULL,
+  all_items_matched      BOOLEAN NOT NULL,
+  all_items_priced       BOOLEAN NOT NULL,
+  all_subtotals_valid    BOOLEAN NOT NULL,
+  total_valid            BOOLEAN NOT NULL,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_quote_quality_evaluation
+    UNIQUE (generation_id, final_quote_version_id, evaluator_version),
+  CONSTRAINT ck_quote_quality_whole_correct CHECK (
+    whole_quote_correct = (
+      same_item_count AND all_items_equivalent AND all_items_matched AND all_items_priced
+      AND all_subtotals_valid AND total_valid
+    )
+  )
+);
+
+CREATE TABLE quote_quality_difference (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id          UUID NOT NULL,
+  evaluation_id       UUID NOT NULL,
+  kind                VARCHAR(32) NOT NULL CHECK (kind IN (
+                        'ITEM_REMOVED', 'ITEM_ADDED', 'FIELD_CHANGED', 'UNRESOLVED_MATCH',
+                        'MISSING_PRICE', 'INVALID_SUBTOTAL', 'INVALID_TOTAL'
+                      )),
+  generation_item_id  UUID,
+  final_quote_item_id UUID,
+  field               VARCHAR(64),
+  expected_value      TEXT,
+  actual_value        TEXT,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE quote_correction_memory (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id        UUID NOT NULL,
+  kind              VARCHAR(32) NOT NULL CHECK (kind IN ('INTERPRETATION', 'CATALOG')),
+  source_text       TEXT NOT NULL,
+  normalized_source TEXT NOT NULL,
+  embedding         VECTOR(1536),
+  status            VARCHAR(16) NOT NULL DEFAULT 'PENDING'
+                    CHECK (status IN ('PENDING', 'READY')),
+  corrected_items   JSONB,
+  product_id        UUID,
+  support_count     INTEGER NOT NULL DEFAULT 0 CHECK (support_count >= 0),
+  use_count         INTEGER NOT NULL DEFAULT 0 CHECK (use_count >= 0),
+  last_seen_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at      TIMESTAMPTZ,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_error        TEXT,
+  CONSTRAINT ck_quote_correction_memory_payload CHECK (
+    (kind = 'INTERPRETATION' AND corrected_items IS NOT NULL
+      AND jsonb_typeof(corrected_items) = 'array' AND product_id IS NULL)
+    OR
+    (kind = 'CATALOG' AND corrected_items IS NULL AND product_id IS NOT NULL)
+  ),
+  CONSTRAINT ck_quote_correction_memory_ready CHECK (
+    (status = 'PENDING' AND embedding IS NULL) OR
+    (status = 'READY' AND embedding IS NOT NULL AND last_error IS NULL)
+  )
+);
+
+CREATE TABLE quote_correction_memory_source (
+  account_id    UUID NOT NULL,
+  evaluation_id UUID NOT NULL,
+  memory_id     UUID NOT NULL,
+  source_key    VARCHAR(128) NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (evaluation_id, source_key)
 );
 
 CREATE TABLE quote_status_change (
@@ -427,11 +653,11 @@ CREATE TABLE quote_status_change (
 );
 
 -- =============================================================================
--- ENVÍO / INTERACCIÓN DEL CLIENTE
+-- SENDING / CLIENT INTERACTION
 -- =============================================================================
 
--- El link se emite por envío/canal, no vive en quote. public_token es la única
--- clave de lookup de la webapp, así que es único.
+-- The link is issued per send and channel, not stored on quote. public_token is the
+-- webapp's only lookup key, so it is unique.
 CREATE TABLE quote_send (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id      UUID NOT NULL,
@@ -446,7 +672,7 @@ CREATE TABLE quote_send (
   CONSTRAINT uq_quote_send_public_token UNIQUE (public_token)
 );
 
--- Rechazar es acción explícita del cliente o del vendedor, nunca la infiere la IA.
+-- Rejection is an explicit client or seller action, never inferred by the AI.
 CREATE TABLE client_action (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id    UUID NOT NULL,
@@ -459,13 +685,13 @@ CREATE TABLE client_action (
 );
 
 -- =============================================================================
--- MOTOR CONVERSACIONAL
+-- CONVERSATIONAL ENGINE
 -- =============================================================================
 
--- La ventana y la cola. closes_at se recalcula en cada mensaje nuevo como
--- min(now + reset, opened_at + tope); un job cierra los vencidos. Los índices
--- únicos parciales garantizan una ventana abierta y un batch procesando por
--- cotización: los CLOSED esperan en FIFO por closed_at.
+-- The window and the queue. closes_at is recomputed on each new message as
+-- min(now + reset, opened_at + cap); a job closes the expired ones. The partial unique
+-- indexes guarantee one open window and one processing batch per quote; CLOSED ones wait
+-- FIFO by closed_at.
 CREATE TABLE message_batch (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id   UUID NOT NULL,
@@ -478,11 +704,10 @@ CREATE TABLE message_batch (
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Cada mensaje de la conversación de una cotización. author_type distingue
--- trigger (CLIENT) de contexto (SELLER, SYSTEM). client_action_id liga el
--- mensaje a la acción de la webapp que lo originó, para que un REQUEST_CHANGE
--- con comentario no quede representado dos veces.
--- batch_id se asigna al cerrar la ventana; el resto de la fila no se toca.
+-- One message in a quote's conversation. author_type separates the trigger (CLIENT) from
+-- context (SELLER, SYSTEM). client_action_id ties the message to the webapp action that
+-- produced it, so a REQUEST_CHANGE with a comment is not represented twice. batch_id is
+-- assigned when the window closes; nothing else on the row is touched.
 CREATE TABLE quote_message (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id       UUID NOT NULL,
@@ -498,11 +723,11 @@ CREATE TABLE quote_message (
 );
 
 -- =============================================================================
--- MOTOR DE DESCUENTOS
+-- DISCOUNT ENGINE
 -- =============================================================================
 
--- La regla reusable. Cuelga de account obligatorio + branch nullable
--- (null = toda la cuenta). Distinta de su aplicación (quote_discount).
+-- The reusable rule. Hangs off a mandatory account and a nullable branch (null = the whole
+-- account). Distinct from its application, which is quote_discount.
 CREATE TABLE promotion (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id     UUID NOT NULL,
@@ -517,7 +742,8 @@ CREATE TABLE promotion (
   priority       INTEGER NOT NULL DEFAULT 0,
   description    VARCHAR(512),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  name           VARCHAR(128) NOT NULL
 );
 
 CREATE TABLE promotion_condition_item (
@@ -525,10 +751,17 @@ CREATE TABLE promotion_condition_item (
   account_id   UUID NOT NULL,
   promotion_id UUID NOT NULL,
   product_id   UUID,
-  category     VARCHAR(255),
   min_quantity NUMERIC(14,2),
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT ck_pci_target CHECK (product_id IS NOT NULL OR category IS NOT NULL)
+  family_id    UUID,
+  subgroup_id  UUID,
+  CONSTRAINT ck_pci_target CHECK (
+    product_id IS NOT NULL OR family_id IS NOT NULL OR subgroup_id IS NOT NULL
+  ),
+  -- Three of the four key columns are null on any given row, so nulls have to compare as equal
+  -- or the index bounds nothing. It is also the ON CONFLICT target the seed names.
+  CONSTRAINT uq_promotion_condition_item_target
+    UNIQUE NULLS NOT DISTINCT (promotion_id, product_id, family_id, subgroup_id)
 );
 
 CREATE TABLE promotion_tier (
@@ -538,12 +771,13 @@ CREATE TABLE promotion_tier (
   from_quantity NUMERIC(14,2) NOT NULL,
   to_quantity   NUMERIC(14,2),
   value         NUMERIC(14,2) NOT NULL,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_promotion_tier_from_quantity UNIQUE (promotion_id, from_quantity)
 );
 
--- La aplicación de un descuento a una versión. El monto lo calcula el motor
--- determinístico, NUNCA la IA. suppressed_by_seller impide que el barrido lo
--- re-aplique; suprimir un AUTOMATIC es reversible, borrar un MANUAL_SELLER no.
+-- One application of a discount to a version. The amount is computed by the deterministic
+-- engine, NEVER by the AI. suppressed_by_seller stops the sweep re-applying it: suppressing
+-- an AUTOMATIC is reversible, deleting a MANUAL_SELLER is not.
 CREATE TABLE quote_discount (
   id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id           UUID NOT NULL,
@@ -568,14 +802,13 @@ CREATE TABLE quote_discount_item (
 );
 
 -- =============================================================================
--- REGISTRO DEL HANDLER (NIVEL 1) + NOTIFICACIONES
+-- HANDLER LOG (LEVEL 1) + NOTIFICATIONS
 -- =============================================================================
 
--- Registro de dos fases: la fila se inserta cuando el handler propone (user_id y
--- seller_decision nullable) y se completa cuando el vendedor decide. Si se
--- insertara solo al decidir, una propuesta que el vendedor nunca toca no
--- quedaría registrada, y ese es justo el caso que la métrica del Piloto necesita
--- contar.
+-- A two-phase record: the row is inserted when the handler proposes (user_id and
+-- seller_decision nullable) and completed when the seller decides. Inserting only on the
+-- decision would lose the proposals nobody ever touches, which is exactly what the pilot
+-- metric needs to count.
 CREATE TABLE handler_decision (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id        UUID NOT NULL,
@@ -600,23 +833,50 @@ CREATE TABLE notification (
   event      VARCHAR(128) NOT NULL,
   medium     VARCHAR(64) NOT NULL,
   status     notification_status NOT NULL DEFAULT 'PENDING',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  sent_at    TIMESTAMPTZ
+);
+
+-- =============================================================================
+-- SCHEDULED JOBS
+-- =============================================================================
+
+-- What each scheduled run swept and changed. No account_id: a job runs as the owner across every
+-- account, so one run is one row for all of them, and a per-account column would be a list.
+CREATE TABLE job_run (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_name    VARCHAR(64) NOT NULL,
+  status      job_run_status NOT NULL DEFAULT 'RUNNING',
+  scanned     INTEGER NOT NULL DEFAULT 0,
+  changed     INTEGER NOT NULL DEFAULT 0,
+  error       TEXT,
+  started_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  finished_at TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- =============================================================================
 -- FOREIGN KEYS
--- (al final, para resolver la dependencia circular quote <-> quote_version)
+-- (at the end, to resolve the circular quote <-> quote_version dependency)
 -- =============================================================================
 
 ALTER TABLE branch ADD CONSTRAINT fk_branch_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE account_onboarding ADD CONSTRAINT fk_account_onboarding_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE onboarding_step_progress ADD CONSTRAINT fk_onboarding_step_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE onboarding_step_progress ADD CONSTRAINT fk_onboarding_step_onboarding FOREIGN KEY (onboarding_id) REFERENCES account_onboarding(id);
 ALTER TABLE app_user ADD CONSTRAINT fk_app_user_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE user_branch ADD CONSTRAINT fk_user_branch_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE user_branch ADD CONSTRAINT fk_user_branch_user FOREIGN KEY (user_id) REFERENCES app_user(id);
 ALTER TABLE user_branch ADD CONSTRAINT fk_user_branch_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
 ALTER TABLE refresh_token ADD CONSTRAINT fk_refresh_token_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE refresh_token ADD CONSTRAINT fk_refresh_token_user FOREIGN KEY (user_id) REFERENCES app_user(id);
+ALTER TABLE auth_token ADD CONSTRAINT fk_auth_token_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE auth_token ADD CONSTRAINT fk_auth_token_user FOREIGN KEY (user_id) REFERENCES app_user(id);
 
+ALTER TABLE product_subgroup ADD CONSTRAINT product_subgroup_family_id_fkey FOREIGN KEY (family_id) REFERENCES product_family(id) ON DELETE RESTRICT;
 ALTER TABLE product ADD CONSTRAINT fk_product_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE product ADD CONSTRAINT product_family_id_fkey FOREIGN KEY (family_id) REFERENCES product_family(id) ON DELETE RESTRICT;
+ALTER TABLE product ADD CONSTRAINT fk_product_subgroup_family FOREIGN KEY (subgroup_id, family_id) REFERENCES product_subgroup(id, family_id) ON DELETE RESTRICT;
 ALTER TABLE branch_product ADD CONSTRAINT fk_branch_product_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE branch_product ADD CONSTRAINT fk_branch_product_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
 ALTER TABLE branch_product ADD CONSTRAINT fk_branch_product_product FOREIGN KEY (product_id) REFERENCES product(id);
@@ -630,10 +890,12 @@ ALTER TABLE product_alternative ADD CONSTRAINT fk_product_alt_account FOREIGN KE
 ALTER TABLE product_alternative ADD CONSTRAINT fk_product_alt_base FOREIGN KEY (base_product_id) REFERENCES product(id);
 ALTER TABLE product_alternative ADD CONSTRAINT fk_product_alt_alt FOREIGN KEY (alternative_product_id) REFERENCES product(id);
 ALTER TABLE combo ADD CONSTRAINT fk_combo_account FOREIGN KEY (account_id) REFERENCES account(id);
-ALTER TABLE combo ADD CONSTRAINT fk_combo_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
 ALTER TABLE combo_item ADD CONSTRAINT fk_combo_item_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE combo_item ADD CONSTRAINT fk_combo_item_combo FOREIGN KEY (combo_id) REFERENCES combo(id);
 ALTER TABLE combo_item ADD CONSTRAINT fk_combo_item_product FOREIGN KEY (product_id) REFERENCES product(id);
+ALTER TABLE branch_combo ADD CONSTRAINT fk_branch_combo_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE branch_combo ADD CONSTRAINT fk_branch_combo_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
+ALTER TABLE branch_combo ADD CONSTRAINT fk_branch_combo_combo FOREIGN KEY (combo_id) REFERENCES combo(id);
 
 ALTER TABLE client ADD CONSTRAINT fk_client_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE tag ADD CONSTRAINT fk_tag_account FOREIGN KEY (account_id) REFERENCES account(id);
@@ -669,6 +931,24 @@ ALTER TABLE quote_item_alternative ADD CONSTRAINT fk_qia_account FOREIGN KEY (ac
 ALTER TABLE quote_item_alternative ADD CONSTRAINT fk_qia_item FOREIGN KEY (quote_item_id) REFERENCES quote_item(id);
 ALTER TABLE quote_item_alternative ADD CONSTRAINT fk_qia_product FOREIGN KEY (product_id) REFERENCES product(id);
 ALTER TABLE quote_item_alternative ADD CONSTRAINT fk_qia_combo FOREIGN KEY (combo_id) REFERENCES combo(id);
+ALTER TABLE quote_ai_generation ADD CONSTRAINT fk_quote_ai_generation_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE quote_ai_generation ADD CONSTRAINT fk_quote_ai_generation_quote FOREIGN KEY (quote_id) REFERENCES quote(id);
+ALTER TABLE quote_ai_generation ADD CONSTRAINT fk_quote_ai_generation_version FOREIGN KEY (quote_version_id) REFERENCES quote_version(id);
+ALTER TABLE quote_ai_generation_item ADD CONSTRAINT fk_quote_ai_generation_item_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE quote_ai_generation_item ADD CONSTRAINT fk_quote_ai_generation_item_generation FOREIGN KEY (generation_id) REFERENCES quote_ai_generation(id);
+ALTER TABLE quote_ai_generation_item ADD CONSTRAINT fk_quote_ai_generation_item_product FOREIGN KEY (product_id) REFERENCES product(id);
+ALTER TABLE quote_quality_evaluation ADD CONSTRAINT fk_quote_quality_evaluation_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE quote_quality_evaluation ADD CONSTRAINT fk_quote_quality_evaluation_generation FOREIGN KEY (generation_id) REFERENCES quote_ai_generation(id);
+ALTER TABLE quote_quality_evaluation ADD CONSTRAINT fk_quote_quality_evaluation_version FOREIGN KEY (final_quote_version_id) REFERENCES quote_version(id);
+ALTER TABLE quote_quality_difference ADD CONSTRAINT fk_quote_quality_difference_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE quote_quality_difference ADD CONSTRAINT fk_quote_quality_difference_evaluation FOREIGN KEY (evaluation_id) REFERENCES quote_quality_evaluation(id);
+ALTER TABLE quote_quality_difference ADD CONSTRAINT fk_quote_quality_difference_generation_item FOREIGN KEY (generation_item_id) REFERENCES quote_ai_generation_item(id) ON DELETE SET NULL;
+ALTER TABLE quote_quality_difference ADD CONSTRAINT fk_quote_quality_difference_final_item FOREIGN KEY (final_quote_item_id) REFERENCES quote_item(id) ON DELETE SET NULL;
+ALTER TABLE quote_correction_memory ADD CONSTRAINT fk_quote_correction_memory_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE quote_correction_memory ADD CONSTRAINT fk_quote_correction_memory_product FOREIGN KEY (product_id) REFERENCES product(id) ON DELETE CASCADE;
+ALTER TABLE quote_correction_memory_source ADD CONSTRAINT fk_quote_correction_memory_source_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE quote_correction_memory_source ADD CONSTRAINT fk_quote_correction_memory_source_evaluation FOREIGN KEY (evaluation_id) REFERENCES quote_quality_evaluation(id) ON DELETE CASCADE;
+ALTER TABLE quote_correction_memory_source ADD CONSTRAINT fk_quote_correction_memory_source_memory FOREIGN KEY (memory_id) REFERENCES quote_correction_memory(id) ON DELETE CASCADE;
 ALTER TABLE quote_status_change ADD CONSTRAINT fk_quote_status_change_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE quote_status_change ADD CONSTRAINT fk_quote_status_change_quote FOREIGN KEY (quote_id) REFERENCES quote(id);
 ALTER TABLE quote_status_change ADD CONSTRAINT fk_quote_status_change_user FOREIGN KEY (user_id) REFERENCES app_user(id);
@@ -695,6 +975,8 @@ ALTER TABLE promotion ADD CONSTRAINT fk_promotion_branch FOREIGN KEY (branch_id)
 ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_promotion FOREIGN KEY (promotion_id) REFERENCES promotion(id);
 ALTER TABLE promotion_condition_item ADD CONSTRAINT fk_pci_product FOREIGN KEY (product_id) REFERENCES product(id);
+ALTER TABLE promotion_condition_item ADD CONSTRAINT promotion_condition_item_family_id_fkey FOREIGN KEY (family_id) REFERENCES product_family(id) ON DELETE RESTRICT;
+ALTER TABLE promotion_condition_item ADD CONSTRAINT promotion_condition_item_subgroup_id_fkey FOREIGN KEY (subgroup_id) REFERENCES product_subgroup(id) ON DELETE RESTRICT;
 ALTER TABLE promotion_tier ADD CONSTRAINT fk_promotion_tier_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE promotion_tier ADD CONSTRAINT fk_promotion_tier_promotion FOREIGN KEY (promotion_id) REFERENCES promotion(id);
 ALTER TABLE quote_discount ADD CONSTRAINT fk_quote_discount_account FOREIGN KEY (account_id) REFERENCES account(id);
@@ -714,57 +996,117 @@ ALTER TABLE notification ADD CONSTRAINT fk_notification_client FOREIGN KEY (clie
 ALTER TABLE notification ADD CONSTRAINT fk_notification_quote FOREIGN KEY (quote_id) REFERENCES quote(id);
 
 -- =============================================================================
--- ÍNDICES
+-- INDEXES
 -- =============================================================================
 
--- Índice vectorial: se crea DESPUÉS de cargar datos (con la tabla vacía queda
--- subóptimo). Va comentado a propósito.
+-- The vector index is created AFTER the catalog loads and is embedded: built on an empty table
+-- it is degenerate. Commented out on purpose — `pnpm db:vector-index` creates it, sizing lists
+-- to the number of embedded rows.
 -- CREATE INDEX idx_product_embedding ON product USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 CREATE INDEX idx_branch_account ON branch(account_id);
+CREATE INDEX idx_onboarding_step_account ON onboarding_step_progress(account_id);
 CREATE INDEX idx_app_user_account ON app_user(account_id);
+-- Login resolves a user by email alone, so an address identifies exactly one of them across
+-- every account. Functional, so case-insensitivity does not depend on the service lowercasing
+-- on write the way uq_app_user_email does.
+CREATE UNIQUE INDEX uq_app_user_email_global ON app_user (lower(email));
 CREATE INDEX idx_refresh_token_user ON refresh_token(user_id);
 CREATE INDEX idx_refresh_token_family ON refresh_token(family_id);
+-- Asking for a new link invalidates the outstanding ones, which is the only hot read.
+CREATE INDEX idx_auth_token_user_type ON auth_token(user_id, type) WHERE consumed_at IS NULL;
 
 CREATE INDEX idx_product_account ON product(account_id);
--- El código identifica de forma unívoca dentro de la cuenta (la carga de precios por
--- código necesita un único destino). Parcial porque code es nullable.
+-- A code identifies one row per account, so "update the price by code" has a single target.
+-- Partial because code is nullable.
 CREATE UNIQUE INDEX uq_product_account_code ON product (account_id, code) WHERE code IS NOT NULL;
 CREATE INDEX idx_branch_product_branch ON branch_product(branch_id) WHERE is_active = TRUE;
+-- The lexical half of the hybrid search: one document per product, one per synonym term.
+CREATE INDEX idx_product_search_document ON product USING GIN (search_document);
+CREATE INDEX idx_product_synonym_search_document ON product_synonym USING GIN (search_document);
 CREATE INDEX idx_product_synonym_product ON product_synonym(product_id);
+-- One term per product, case-insensitively: "Portland" and "portland" are the same term to
+-- a matcher. It is also the ON CONFLICT target the insert names.
+CREATE UNIQUE INDEX uq_product_synonym_term
+  ON product_synonym (account_id, product_id, lower(term));
+-- One tag name per account, case-insensitively, and the ON CONFLICT target the seed names.
+CREATE UNIQUE INDEX uq_tag_account_name ON tag (account_id, lower(name));
 CREATE INDEX idx_product_price_product ON product_price(product_id, branch_id);
-CREATE INDEX idx_combo_branch ON combo(branch_id);
+CREATE INDEX idx_branch_combo_branch ON branch_combo(branch_id) WHERE is_active = TRUE;
 
 CREATE INDEX idx_client_account ON client(account_id);
 CREATE INDEX idx_rfq_branch_status ON rfq(branch_id, status);
 CREATE INDEX idx_rfq_attachment_pending ON rfq_attachment(processing_status) WHERE processing_status IN ('PENDING', 'PROCESSING');
+CREATE INDEX idx_rfq_attachment_account_rfq ON rfq_attachment(account_id, rfq_id);
 
 CREATE INDEX idx_quote_branch_status ON quote(branch_id, current_status);
 CREATE INDEX idx_quote_expires ON quote(expires_at) WHERE expires_at IS NOT NULL AND archived_at IS NULL;
 CREATE INDEX idx_quote_needs_followup ON quote(needs_followup) WHERE needs_followup = TRUE;
 CREATE INDEX idx_quote_version_quote ON quote_version(quote_id);
 CREATE INDEX idx_quote_item_version ON quote_item(version_id);
+CREATE INDEX idx_quote_item_alternative_account_item ON quote_item_alternative(account_id, quote_item_id);
+CREATE INDEX idx_quote_ai_generation_account_quote ON quote_ai_generation(account_id, quote_id);
+CREATE INDEX idx_quote_ai_generation_item_account_generation ON quote_ai_generation_item(account_id, generation_id);
+CREATE INDEX idx_quote_quality_evaluation_account_generation ON quote_quality_evaluation(account_id, generation_id);
+CREATE INDEX idx_quote_quality_difference_account_evaluation ON quote_quality_difference(account_id, evaluation_id);
+CREATE UNIQUE INDEX uq_quote_correction_catalog_pattern ON quote_correction_memory(account_id, normalized_source, product_id) WHERE kind = 'CATALOG';
+CREATE UNIQUE INDEX uq_quote_correction_interpretation_pattern ON quote_correction_memory(account_id, normalized_source) WHERE kind = 'INTERPRETATION';
+CREATE INDEX idx_quote_correction_memory_account_kind ON quote_correction_memory(account_id, kind);
+CREATE INDEX idx_quote_correction_memory_pending ON quote_correction_memory(created_at, id) WHERE status = 'PENDING';
+CREATE INDEX idx_quote_correction_memory_source_account ON quote_correction_memory_source(account_id, memory_id);
+CREATE INDEX idx_product_family_id ON product(family_id);
+CREATE INDEX idx_product_subgroup_id ON product(subgroup_id);
+CREATE INDEX idx_product_subgroup_family_id ON product_subgroup(family_id);
 CREATE INDEX idx_quote_discount_version ON quote_discount(quote_version_id);
 CREATE INDEX idx_promotion_account ON promotion(account_id) WHERE is_active = TRUE;
 CREATE INDEX idx_quote_message_quote ON quote_message(quote_id, received_at);
 CREATE INDEX idx_message_batch_due ON message_batch(closes_at) WHERE status = 'OPEN';
 CREATE INDEX idx_message_batch_queue ON message_batch(quote_id, closed_at) WHERE status = 'CLOSED';
 
--- Invariantes de negocio expresadas en la base, no en la buena voluntad del código.
+-- Business invariants expressed in the database, not left to the good will of the code.
+-- uq_channel_branch_type_identifier does not compare NULLs, so without this index a branch
+-- could hold N identifier-less channels of one type — N manual-entry channels, say, with
+-- the rfq pointing at any of them.
+CREATE UNIQUE INDEX uq_channel_branch_type_no_identifier
+  ON channel (branch_id, type) WHERE identifier IS NULL;
 CREATE UNIQUE INDEX uq_quote_version_draft ON quote_version(quote_id) WHERE is_immutable = FALSE;
+-- One open price period per branch and product. The service also takes a FOR UPDATE on the
+-- parent product row, which is what lets two concurrent repricings both succeed; this index
+-- is the backstop that makes a missing lock loud instead of silently duplicating a period.
+CREATE UNIQUE INDEX uq_product_price_open_period
+  ON product_price (branch_id, product_id) WHERE valid_to IS NULL;
 CREATE UNIQUE INDEX uq_message_batch_open ON message_batch(quote_id) WHERE status = 'OPEN';
 CREATE UNIQUE INDEX uq_message_batch_processing ON message_batch(quote_id) WHERE status = 'PROCESSING';
 
+-- "Which run changed this row?" is answered by the row's own timestamp falling inside a run's
+-- window, so the history is read newest-first per job.
+CREATE INDEX idx_job_run_name_started ON job_run(job_name, started_at DESC);
+
 -- =============================================================================
--- TRIGGERS updated_at (solo tablas que mutan in-place)
+-- updated_at TRIGGERS (only tables that mutate in place)
 -- =============================================================================
 
 CREATE TRIGGER trg_account_updated        BEFORE UPDATE ON account        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_branch_updated         BEFORE UPDATE ON branch         FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_account_onboarding_updated BEFORE UPDATE ON account_onboarding FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_onboarding_step_updated BEFORE UPDATE ON onboarding_step_progress FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_app_user_updated       BEFORE UPDATE ON app_user       FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER trg_product_updated        BEFORE UPDATE ON product        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+-- product is the exception: updated_at says a person changed the row, and it is what
+-- embedding_updated_at is compared against, so a vector written by the backfill must not bump it.
+CREATE TRIGGER trg_product_updated        BEFORE UPDATE ON product        FOR EACH ROW
+  WHEN (
+    OLD.code IS DISTINCT FROM NEW.code
+    OR OLD.canonical_name IS DISTINCT FROM NEW.canonical_name
+    OR OLD.description IS DISTINCT FROM NEW.description
+    OR OLD.unit IS DISTINCT FROM NEW.unit
+    OR OLD.family_id IS DISTINCT FROM NEW.family_id
+    OR OLD.subgroup_id IS DISTINCT FROM NEW.subgroup_id
+    OR OLD.is_active IS DISTINCT FROM NEW.is_active
+  )
+  EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_branch_product_updated BEFORE UPDATE ON branch_product FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_combo_updated          BEFORE UPDATE ON combo          FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_branch_combo_updated   BEFORE UPDATE ON branch_combo   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_client_updated         BEFORE UPDATE ON client         FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_channel_updated        BEFORE UPDATE ON channel        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_rfq_updated            BEFORE UPDATE ON rfq            FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -772,30 +1114,28 @@ CREATE TRIGGER trg_quote_updated          BEFORE UPDATE ON quote          FOR EA
 CREATE TRIGGER trg_promotion_updated      BEFORE UPDATE ON promotion      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- =============================================================================
--- ROL RESTRINGIDO + RLS
+-- RESTRICTED ROLE + RLS
 -- =============================================================================
 --
--- Dos roles sostienen el aislamiento:
---   * el owner (este script, las migraciones, el cron de follow-up y los lookups
---     pre-auth) bypassea RLS porque es dueño de las tablas — es lo que necesitan
---     los jobs y las lecturas que legítimamente cruzan cuentas: login por email
---     (todavía no se sabe la cuenta) y resolución de quote_send.public_token
---     desde la webapp sin sesión;
---   * coti_app tiene DML pero NO es owner y es NOBYPASSRLS, así que toda conexión
---     de request queda sujeta a las políticas.
+-- Two roles hold the isolation up:
+--   * the owner (this script, the migrations, the follow-up cron and the pre-auth lookups)
+--     bypasses RLS because it owns the tables. That is what the jobs and the reads which
+--     legitimately cross accounts need: login by email, and resolving
+--     quote_send.public_token for the sessionless webapp;
+--   * coti_app has DML but is NOT the owner and is NOBYPASSRLS, so every request connection
+--     is subject to the policies.
 --
--- Cada transacción setea app.current_account_id con SET LOCAL, re-aplicado en
--- cada BEGIN porque el pool reutiliza conexiones. Sin GUC, la política no
--- matchea ninguna fila.
+-- Each transaction sets app.current_account_id, re-applied on every BEGIN because the pool
+-- reuses connections. With no GUC the policy matches no row.
 --
--- ENABLE y no FORCE es deliberado: FORCE también sujetaría al owner.
+-- ENABLE rather than FORCE is deliberate: FORCE would subject the owner too.
 --
--- Solo se enforcea la cuenta. El scoping por sucursal queda en la aplicación: un
--- admin lee legítimamente todas las sucursales de su cuenta.
+-- Only the account is enforced. Branch scoping stays in the application: an admin
+-- legitimately reads every branch of their own account.
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'coti_app') THEN
-    CREATE ROLE coti_app LOGIN PASSWORD 'coti_app' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+    CREATE ROLE coti_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
   END IF;
 END $$;
 
@@ -806,7 +1146,17 @@ GRANT EXECUTE ON FUNCTION app_current_account_id() TO coti_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO coti_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO coti_app;
 
--- account matchea por su propio id; el resto por su columna account_id.
+REVOKE INSERT, UPDATE, DELETE ON product_family, product_subgroup FROM coti_app;
+
+-- The baseline AI proposal is evidence for later evaluation, never live state to rewrite.
+REVOKE UPDATE, DELETE ON quote_ai_generation, quote_ai_generation_item,
+  quote_quality_evaluation, quote_quality_difference FROM coti_app;
+
+-- The grant above reaches every table, and job_run is an audit trail no request has any reason to
+-- read, let alone rewrite. Only the owner the scheduled jobs run as touches it.
+REVOKE ALL ON job_run FROM coti_app;
+
+-- account matches on its own id; everything else on its account_id column.
 ALTER TABLE account ENABLE ROW LEVEL SECURITY;
 CREATE POLICY account_isolation ON account
   USING (id = app_current_account_id())
@@ -816,12 +1166,16 @@ DO $$
 DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY[
-    'branch', 'app_user', 'user_branch', 'refresh_token',
+    'account_onboarding', 'onboarding_step_progress',
+    'branch', 'app_user', 'user_branch', 'refresh_token', 'auth_token',
     'product', 'branch_product', 'product_synonym', 'product_price', 'product_alternative',
-    'combo', 'combo_item',
+    'combo', 'combo_item', 'branch_combo',
     'client', 'tag', 'client_tag',
     'channel', 'rfq', 'rfq_attachment', 'rfq_status_change',
-    'quote', 'quote_version', 'quote_item', 'quote_item_alternative', 'quote_status_change',
+    'quote', 'quote_version', 'quote_item', 'quote_item_alternative',
+    'quote_ai_generation', 'quote_ai_generation_item',
+    'quote_quality_evaluation', 'quote_quality_difference',
+    'quote_correction_memory', 'quote_correction_memory_source', 'quote_status_change',
     'quote_send', 'client_action',
     'message_batch', 'quote_message',
     'promotion', 'promotion_condition_item', 'promotion_tier',
