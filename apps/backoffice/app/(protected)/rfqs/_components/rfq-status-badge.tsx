@@ -10,7 +10,6 @@ import type { RfqStatus } from '@/lib/api/rfqs';
 export const STATUS_ORDER: readonly RfqStatus[] = [
   'RECEIVED',
   'GENERATED',
-  'DRAFT',
   'QUOTED',
   'SENT',
   'CHANGE_REQUESTED',
@@ -27,7 +26,6 @@ export const STATUS_ORDER: readonly RfqStatus[] = [
 export const STATUS_COLOUR: Record<RfqStatus, string> = {
   RECEIVED: '',
   GENERATED: 'text-status-generated',
-  DRAFT: 'text-status-draft',
   QUOTED: 'text-status-quoted',
   SENT: 'text-status-sent',
   CHANGE_REQUESTED: 'text-status-change-requested',
@@ -64,12 +62,15 @@ export interface RfqStatusBadgeProps {
   processing?: boolean;
   // True for an archived pedido; shows the grey badge over the real status.
   archived?: boolean;
+  // Compact variant for sidebars and tight spaces.
+  size?: 'default' | 'sm';
 }
 
 export function RfqStatusBadge({
   status,
   processing = false,
   archived = false,
+  size = 'default',
 }: RfqStatusBadgeProps) {
   const t = useTranslations('rfqs');
 
@@ -77,7 +78,12 @@ export function RfqStatusBadge({
   // badge's height so the row never jumps while a state resolves to a spinner.
   if (processing || status === 'RECEIVED') {
     return (
-      <span className="inline-flex h-[22px] items-center gap-x-1.5 whitespace-nowrap text-paragraph-xs-medium text-foreground-muted">
+      <span
+        className={cn(
+          'inline-flex items-center gap-x-1.5 whitespace-nowrap text-foreground-muted',
+          size === 'sm' ? 'h-4 text-paragraph-mini-medium' : 'h-[22px] text-paragraph-xs-medium',
+        )}
+      >
         <Spinner size="xs" />
         {processing ? t('processing.quote') : t('processing.ingestion')}
       </span>
@@ -92,7 +98,8 @@ export function RfqStatusBadge({
   return (
     <span
       className={cn(
-        'relative inline-flex h-[22px] items-center justify-center whitespace-nowrap px-1.5',
+        'relative inline-flex items-center justify-center whitespace-nowrap',
+        size === 'sm' ? 'h-4 px-1.5' : 'h-[22px] px-1.5',
         archived ? ARCHIVED_COLOUR : STATUS_COLOUR[status],
       )}
     >
@@ -100,7 +107,12 @@ export function RfqStatusBadge({
         aria-hidden="true"
         className="absolute inset-x-0 -top-[4.55%] h-[109.09%] rounded-[3px] bg-current opacity-20"
       />
-      <span className="relative text-paragraph-xs-semibold">
+      <span
+        className={cn(
+          'relative',
+          size === 'sm' ? 'text-paragraph-mini-medium' : 'text-paragraph-xs-semibold',
+        )}
+      >
         {t(archived ? 'status.ARCHIVED' : `status.${status}`)}
       </span>
     </span>

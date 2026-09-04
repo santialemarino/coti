@@ -75,7 +75,9 @@ type NewQuoteVersion struct {
 
 // QuoteItem is one material line inside a quote version. The item does not carry
 // its discount; a discount is its own entity. price snapshots are NULL until the
-// pricing step runs.
+// pricing step runs. ProductCode, ProductName, and ProductUnit are populated only
+// when the item is loaded with a product JOIN (ListItemsWithProduct); bare
+// ListItems leaves them nil.
 type QuoteItem struct {
 	ID                   uuid.UUID
 	AccountID            uuid.UUID
@@ -90,6 +92,9 @@ type QuoteItem struct {
 	ConfidenceScore      decimal.NullDecimal
 	MatchStatus          ItemMatchStatus
 	QuantityRationale    *string
+	ProductCode          *string
+	ProductName          *string
+	ProductUnit          *string
 	CreatedAt            time.Time
 }
 
@@ -156,6 +161,34 @@ type NewQuoteItemAlternative struct {
 	Rank            int
 	ConfidenceScore decimal.NullDecimal
 	PriceSnapshot   decimal.NullDecimal
+}
+
+// QuoteItemUpdate is the mutable surface of a quote item. All fields are optional:
+// only present fields are written.
+type QuoteItemUpdate struct {
+	ProductID            *uuid.UUID
+	RequestedDescription *string
+	Quantity             *decimal.Decimal
+	Unit                 *string
+	UnitPriceSnapshot    *decimal.Decimal
+}
+
+// IsEditableStatus returns true when the quote status allows item mutations.
+func IsEditableStatus(status QuoteStatus) bool {
+	switch status {
+	case QuoteStatusDraft, QuoteStatusQuoted, QuoteStatusChangeRequested:
+		return true
+	default:
+		return false
+	}
+}
+
+// QuoteItemCreate is the input for adding a new line to a draft quote version.
+type QuoteItemCreate struct {
+	ProductID            *uuid.UUID
+	RequestedDescription string
+	Quantity             decimal.Decimal
+	Unit                 *string
 }
 
 // QuoteItemPricing is one line's frozen valuation, written when the seller accepts the

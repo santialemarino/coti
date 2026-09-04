@@ -159,6 +159,24 @@ func (f *fakeQuoteRepo) AppendStatusChange(
 	return &domain.QuoteStatusChange{QuoteID: quoteID, NewStatus: newStatus}, nil
 }
 
+func (f *fakeQuoteRepo) Archive(
+	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID,
+) (*domain.Quote, error) {
+	if f.quote == nil || f.quote.ArchivedAt != nil {
+		return nil, domain.ErrConflict
+	}
+	return f.quote, nil
+}
+
+func (f *fakeQuoteRepo) Unarchive(
+	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID,
+) (*domain.Quote, error) {
+	if f.quote == nil || f.quote.ArchivedAt == nil {
+		return nil, domain.ErrConflict
+	}
+	return f.quote, nil
+}
+
 type fakeBranchPrices struct {
 	prices   map[uuid.UUID]domain.BranchPrice
 	err      error
@@ -651,5 +669,166 @@ func TestQuoteService_AcceptMaterials_CarriesTheFlaggedLinesCandidates(t *testin
 	}
 	if got := len(f.quotes.alternativeReads[0]); got != 2 {
 		t.Errorf("asked for %d lines, want both of them", got)
+	}
+}
+
+// quoteFixtureAt builds a fixture around a quote in an arbitrary state, for the state-machine
+// surface (transition and archive) that does not care about the version or its lines.
+func quoteFixtureAt(quote *domain.Quote) quoteFixture {
+	accountID, branchID, sellerID := uuid.New(), uuid.New(), uuid.New()
+	db := &fakeQuoteDB{}
+	quotes := &fakeQuoteRepo{quote: quote, inTransaction: db}
+	service := NewQuoteService(db, quotes, &fakeBranchPrices{},
+		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return quoteFixture{
+		service: service,
+		db:      db,
+		quotes:  quotes,
+		tenant: domain.Tenant{
+			AccountID: accountID, BranchID: branchID, UserID: sellerID,
+			Role: domain.UserRoleSeller,
+		},
+		quoteID:  quote.ID,
+		branchID: branchID,
+	}
+}
+
+func TestQuoteService_Transition_MovesAlongAValidEdge(t *testing.T) {
+	t.Parallel()
+	quote := &domain.Quote{ID: uuid.New(), AccountID: uuid.New(), BranchID: uuid.New(),
+		CurrentStatus: domain.QuoteStatusQuoted}
+	f := quoteFixtureAt(quote)
+
+	moved, err := f.service.Transition(context.Background(), f.tenant, quote.ID, domain.QuoteStatusSent)
+	if err != nil {
+		t.Fatalf("Transition() = %v, want no error", err)
+	}
+	if moved.CurrentStatus != domain.QuoteStatusSent {
+		t.Errorf("status = %q, want SENT", moved.CurrentStatus)
+	}
+	if f.db.transactions != 1 {
+		t.Errorf("transactions = %d, want 1", f.db.transactions)
+	}
+	if len(f.quotes.statusUpdates) != 1 {
+		t.Fatalf("status updates = %d, want 1", len(f.quotes.statusUpdates))
+	}
+	update := f.quotes.statusUpdates[0]
+	if update.from != domain.QuoteStatusQuoted || update.to != domain.QuoteStatusSent {
+		t.Errorf("update = %q to %q, want QUOTED to SENT", update.from, update.to)
+	}
+	if len(f.quotes.statusChanges) != 1 {
+		t.Fatalf("status changes = %d, want 1", len(f.quotes.statusChanges))
+	}
+	change := f.quotes.statusChanges[0]
+	if change.previousStatus == nil || *change.previousStatus != domain.QuoteStatusQuoted {
+		t.Errorf("history previous = %v, want QUOTED", change.previousStatus)
+	}
+	if change.newStatus != domain.QuoteStatusSent {
+		t.Errorf("history new = %q, want SENT", change.newStatus)
+	}
+	if change.userID == nil || *change.userID != f.tenant.UserID {
+		t.Errorf("history user = %v, want the caller %v", change.userID, f.tenant.UserID)
+	}
+}
+
+func TestQuoteService_Transition_RefusesAnEdgeTheStateMachineDoesNotAllow(t *testing.T) {
+	t.Parallel()
+	quote := &domain.Quote{ID: uuid.New(), AccountID: uuid.New(), BranchID: uuid.New(),
+		CurrentStatus: domain.QuoteStatusQuoted}
+	f := quoteFixtureAt(quote)
+
+	_, err := f.service.Transition(context.Background(), f.tenant, quote.ID, domain.QuoteStatusAccepted)
+	if domain.CodeOf(err) != domain.CodeQuoteNotDraft {
+		t.Fatalf("Transition() error = %v, want QUOTE_NOT_DRAFT", err)
+	}
+	if len(f.quotes.statusUpdates) != 0 {
+		t.Errorf("status updates = %d, want none on a refused edge", len(f.quotes.statusUpdates))
+	}
+	if len(f.quotes.statusChanges) != 0 {
+		t.Errorf("status changes = %d, want none on a refused edge", len(f.quotes.statusChanges))
+	}
+}
+
+func TestQuoteService_Transition_RefusesAnArchivedQuote(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	quote := &domain.Quote{ID: uuid.New(), AccountID: uuid.New(), BranchID: uuid.New(),
+		CurrentStatus: domain.QuoteStatusSent, ArchivedAt: &now}
+	f := quoteFixtureAt(quote)
+
+	_, err := f.service.Transition(context.Background(), f.tenant, quote.ID, domain.QuoteStatusAccepted)
+	if domain.CodeOf(err) != domain.CodeQuoteArchived {
+		t.Fatalf("Transition() error = %v, want QUOTE_ARCHIVED", err)
+	}
+}
+
+func TestQuoteService_Archive_BoxesAwayAnActiveQuote(t *testing.T) {
+	t.Parallel()
+	quote := &domain.Quote{ID: uuid.New(), AccountID: uuid.New(), BranchID: uuid.New(),
+		CurrentStatus: domain.QuoteStatusSent}
+	f := quoteFixtureAt(quote)
+
+	archived, err := f.service.Archive(context.Background(), f.tenant, quote.ID)
+	if err != nil {
+		t.Fatalf("Archive() = %v, want no error", err)
+	}
+	if archived.ID != quote.ID {
+		t.Errorf("archived %v, want the same quote id %v", archived.ID, quote.ID)
+	}
+	if f.db.transactions != 1 {
+		t.Errorf("transactions = %d, want 1", f.db.transactions)
+	}
+	// Archive is a flag, not a transition: it never appends history.
+	if len(f.quotes.statusChanges) != 0 {
+		t.Errorf("status changes = %d, want none for archiving", len(f.quotes.statusChanges))
+	}
+}
+
+func TestQuoteService_Archive_RefusesAlreadyArchived(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	quote := &domain.Quote{ID: uuid.New(), AccountID: uuid.New(), BranchID: uuid.New(),
+		CurrentStatus: domain.QuoteStatusSent, ArchivedAt: &now}
+	f := quoteFixtureAt(quote)
+
+	_, err := f.service.Archive(context.Background(), f.tenant, quote.ID)
+	if domain.CodeOf(err) != domain.CodeQuoteArchived {
+		t.Fatalf("Archive() error = %v, want QUOTE_ARCHIVED", err)
+	}
+}
+
+func TestQuoteService_Archive_RefusesATerminalStatus(t *testing.T) {
+	t.Parallel()
+	for _, status := range []domain.QuoteStatus{
+		domain.QuoteStatusAccepted, domain.QuoteStatusRejected,
+	} {
+		status := status
+		t.Run(string(status), func(t *testing.T) {
+			t.Parallel()
+			quote := &domain.Quote{ID: uuid.New(), AccountID: uuid.New(), BranchID: uuid.New(),
+				CurrentStatus: status}
+			f := quoteFixtureAt(quote)
+
+			_, err := f.service.Archive(context.Background(), f.tenant, quote.ID)
+			if domain.CodeOf(err) != domain.CodeQuoteNotDraft {
+				t.Fatalf("Archive() error = %v, want QUOTE_NOT_DRAFT on %s", err, status)
+			}
+		})
+	}
+}
+
+func TestQuoteService_Unarchive_RestoresABoxedQuote(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	quote := &domain.Quote{ID: uuid.New(), AccountID: uuid.New(), BranchID: uuid.New(),
+		CurrentStatus: domain.QuoteStatusSent, ArchivedAt: &now}
+	f := quoteFixtureAt(quote)
+
+	restored, err := f.service.Unarchive(context.Background(), f.tenant, quote.ID)
+	if err != nil {
+		t.Fatalf("Unarchive() = %v, want no error", err)
+	}
+	if restored.ID != quote.ID {
+		t.Errorf("restored %v, want the same quote id %v", restored.ID, quote.ID)
 	}
 }

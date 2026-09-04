@@ -51,7 +51,9 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from '@repo/ui/components';
+import { cn } from '@repo/ui/lib';
 import { CreateRfqDialog } from '@/app/(protected)/rfqs/_components/create-rfq-dialog';
+import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import {
   hasQuoteTotal,
   RfqStatusBadge,
@@ -195,14 +197,17 @@ function RowMenu({ rfq, onChangeStatus, onArchive }: RowMenuProps) {
 export function RfqDashboard({
   initialRecords,
   activeBranchId,
+  activeRfqId,
 }: {
   initialRecords: RfqRecord[];
   activeBranchId: string | null;
+  activeRfqId?: string | null;
 }) {
   const t = useTranslations('rfqs');
   const tCommon = useTranslations('common');
   const fmt = useFormatters();
   const router = useRouter();
+  const { userName } = useRfqList();
 
   const [records, setRecords] = useState<RfqRecord[]>(initialRecords);
 
@@ -216,6 +221,8 @@ export function RfqDashboard({
   const [channelFilter, setChannelFilter] = useState<RfqChannel | 'all'>('all');
   const [branchFilter, setBranchFilter] = useState<string | 'all'>('all');
   const [sellerFilter, setSellerFilter] = useState<string | 'all'>('all');
+  // Sentinel value for "needs a seller" rows: seller is an empty string when unassigned.
+  const UNASSIGNED_SELLER = '__unassigned__';
   const [priorityFilter, setPriorityFilter] = useState<RfqPriority | 'all'>('all');
   const [sortBy, setSortBy] = useState<SortKey>('createdAt');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
@@ -251,7 +258,11 @@ export function RfqDashboard({
       .filter((rfq) => {
         if (channelFilter !== 'all' && rfq.channel !== channelFilter) return false;
         if (branchFilter !== 'all' && rfq.branch !== branchFilter) return false;
-        if (sellerFilter !== 'all' && rfq.seller !== sellerFilter) return false;
+        if (sellerFilter === UNASSIGNED_SELLER) {
+          if (rfq.seller.trim() !== '') return false;
+        } else if (sellerFilter !== 'all' && rfq.seller !== sellerFilter) {
+          return false;
+        }
         if (priorityFilter !== 'all' && rfq.priority !== priorityFilter) return false;
         if (needle) {
           const haystack = `${rfq.id} ${rfq.client} ${rfq.seller} ${rfq.branch}`.toLowerCase();
@@ -259,7 +270,13 @@ export function RfqDashboard({
         }
         return true;
       })
-      .sort((a, b) => compareRfqs(a, b, sortBy, sortOrder));
+      .sort((a, b) => {
+        // The inbox contract is follow-ups first; keep that as the primary key whatever
+        // other column the seller is sorting by.
+        const byFollowup = Number(b.needsFollowup) - Number(a.needsFollowup);
+        if (byFollowup !== 0) return byFollowup;
+        return compareRfqs(a, b, sortBy, sortOrder);
+      });
   }, [
     records,
     query,
@@ -397,6 +414,10 @@ export function RfqDashboard({
 
   return (
     <>
+      <div className="flex flex-col gap-y-1 pb-6">
+        <h1 className="text-heading-2">{t('greeting', { name: userName })}</h1>
+        <p className="text-paragraph-sm text-foreground-muted">{t('selectHint')}</p>
+      </div>
       <Card className="gap-y-0 overflow-hidden py-0">
         <CardHeader className="flex-row items-center justify-between py-6">
           <CardTitle className="text-heading-3">{t('list.title')}</CardTitle>
@@ -447,10 +468,15 @@ export function RfqDashboard({
             <Combobox
               options={[
                 { value: 'all', label: t('list.filters.allSeller') },
+                { value: UNASSIGNED_SELLER, label: t('list.filters.unassigned') },
                 ...sellers.map((seller) => ({ value: seller, label: seller })),
               ]}
               value={sellerFilter}
-              onValueChange={(value) => setSellerFilter(value === 'all' ? 'all' : value)}
+              onValueChange={(value) =>
+                setSellerFilter(
+                  value === 'all' ? 'all' : value === UNASSIGNED_SELLER ? UNASSIGNED_SELLER : value,
+                )
+              }
               placeholder={t('list.filters.seller')}
               aria-label={t('list.filters.seller')}
               className="min-w-36 flex-1"
@@ -609,7 +635,14 @@ export function RfqDashboard({
               pageItems.map((rfq) => {
                 const ChannelIcon = CHANNEL_ICON[rfq.channel];
                 return (
-                  <TableRow key={rfq.id} data-state={selected.has(rfq.id) ? 'selected' : undefined}>
+                  <TableRow
+                    key={rfq.id}
+                    data-state={selected.has(rfq.id) ? 'selected' : undefined}
+                    className={cn(
+                      rfq.id === activeRfqId && 'bg-accent',
+                      rfq.needsFollowup && 'bg-warning-subtle',
+                    )}
+                  >
                     <TableCell>
                       <Checkbox
                         checked={selected.has(rfq.id)}
@@ -638,7 +671,13 @@ export function RfqDashboard({
                         {t(`channels.${rfq.channel}`)}
                       </span>
                     </TableCell>
-                    <TableCell className="whitespace-nowrap">{rfq.seller}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {rfq.seller ? (
+                        rfq.seller
+                      ) : (
+                        <span className="text-foreground-subtle">{t('list.unassigned')}</span>
+                      )}
+                    </TableCell>
                     <TableCell className="whitespace-nowrap">{rfq.branch}</TableCell>
                     <TableCell>{t('list.items', { count: rfq.itemCount })}</TableCell>
                     <TableCell className="whitespace-nowrap text-right tabular-nums">

@@ -171,3 +171,110 @@ func TestToQuoteItemResponse_AnswersThePricingQuestionOnceValued(t *testing.T) {
 		t.Errorf("alternatives = %#v, want an empty array", response.Alternatives)
 	}
 }
+
+func TestToRfqDetailResponse_MapsAllFieldsFromDomainDetail(t *testing.T) {
+	rfqID := uuid.New()
+	itemID := uuid.New()
+	productID := uuid.New()
+	altProductID := uuid.New()
+	versionID := uuid.New()
+	quoteID := uuid.New()
+	clientLabel := "Obra Norte"
+	totalStr := "5000.00"
+
+	detail := domain.RfqDetail{
+		Rfq: domain.RfqListItem{
+			ID:          rfqID,
+			ClientLabel: &clientLabel,
+			Channel:     "whatsapp",
+			SellerName:  "Juan Pérez",
+			BranchName:  "Matriz",
+			ItemCount:   2,
+			Status:      string(domain.QuoteStatusDraft),
+			Total:       &totalStr,
+		},
+		Quote: &domain.Quote{
+			ID: quoteID, RFQID: rfqID, BranchID: uuid.New(),
+			CurrentStatus: domain.QuoteStatusDraft,
+		},
+		Version: &domain.QuoteVersion{
+			ID: versionID, QuoteID: quoteID, VersionNumber: 1,
+			Total: decimal.RequireFromString("5000.00"),
+		},
+		Items: []domain.QuoteItem{
+			{
+				ID: itemID, ProductID: &productID, VersionID: versionID,
+				RequestedDescription: "10 bolsas de cemento",
+				Quantity:             decimal.RequireFromString("10"),
+				MatchStatus:          domain.ItemMatchStatusMatched,
+			},
+		},
+		Alternatives: map[uuid.UUID][]domain.QuoteItemAlternative{
+			itemID: {{
+				ID: uuid.New(), QuoteItemID: itemID, ProductID: &altProductID,
+				Type:   domain.QuoteItemAlternativeTypeProduct,
+				Origin: domain.QuoteItemAlternativeOriginAI, Rank: 1,
+				ConfidenceScore: decimal.NewNullDecimal(decimal.RequireFromString("0.8500")),
+			}},
+		},
+	}
+
+	resp := toRfqDetailResponse(detail)
+
+	if resp.Rfq.ID != rfqID {
+		t.Errorf("rfq ID = %v, want %v", resp.Rfq.ID, rfqID)
+	}
+	if resp.Rfq.Client == nil || *resp.Rfq.Client != clientLabel {
+		t.Errorf("client = %v, want %q", resp.Rfq.Client, clientLabel)
+	}
+	if resp.Quote == nil || resp.Quote.ID != quoteID {
+		t.Errorf("quote = %v, want %v", resp.Quote, quoteID)
+	}
+	if resp.Version == nil || resp.Version.Total != "5000.00" {
+		t.Errorf("version total = %v, want %q", resp.Version, "5000.00")
+	}
+	if len(resp.Items) != 1 {
+		t.Fatalf("items = %d, want 1", len(resp.Items))
+	}
+	item := resp.Items[0]
+	if item.ID != itemID {
+		t.Errorf("item ID = %v, want %v", item.ID, itemID)
+	}
+	if item.Quantity != "10.00" {
+		t.Errorf("quantity = %q, want %q", item.Quantity, "10.00")
+	}
+	if len(item.Alternatives) != 1 {
+		t.Fatalf("alternatives = %d, want 1", len(item.Alternatives))
+	}
+	if resp.Alternatives == nil {
+		t.Fatal("top-level alternatives map is nil, want present")
+	}
+	alts := resp.Alternatives[itemID.String()]
+	if len(alts) != 1 {
+		t.Fatalf("alternatives[%s] = %d, want 1", itemID, len(alts))
+	}
+	if alts[0].Rank != 1 {
+		t.Errorf("alternative rank = %d, want 1", alts[0].Rank)
+	}
+}
+
+func TestToRfqDetailResponse_OmitsQuoteAndVersionWhenAbsent(t *testing.T) {
+	detail := domain.RfqDetail{
+		Rfq: domain.RfqListItem{ID: uuid.New(), Status: string(domain.RFQStatusReceived)},
+	}
+
+	resp := toRfqDetailResponse(detail)
+
+	if resp.Quote != nil {
+		t.Errorf("quote = %v, want nil", resp.Quote)
+	}
+	if resp.Version != nil {
+		t.Errorf("version = %v, want nil", resp.Version)
+	}
+	if resp.Items == nil || len(resp.Items) != 0 {
+		t.Errorf("items = %v, want empty array", resp.Items)
+	}
+	if resp.Alternatives == nil || len(resp.Alternatives) != 0 {
+		t.Errorf("alternatives = %v, want empty map", resp.Alternatives)
+	}
+}

@@ -88,16 +88,20 @@ type RfqCreation struct {
 // Backoffice list view. The display status merges rfq.status and quote.current_status
 // into a single timeline the UI can render.
 type RfqListItem struct {
-	ID          uuid.UUID
-	ClientLabel *string
-	CreatedAt   time.Time
-	Channel     string // lowercase channel_type: whatsapp, email, webapp, manual_entry.
-	SellerName  string
-	BranchName  string
-	ItemCount   int
-	Total       *string // decimal string from quote_version.total; NULL when no priced version.
-	Status      string // merged: rfq.status when no quote, otherwise quote.current_status.
-	ArchivedAt  *time.Time
+	ID            uuid.UUID
+	ClientID      *uuid.UUID
+	ClientLabel   *string // display name: ficha client name when set, else rfq.client_label.
+	CreatedAt     time.Time
+	Channel       string // lowercase channel_type: whatsapp, email, webapp, manual_entry.
+	SellerID      *uuid.UUID
+	SellerName    string
+	BranchID      uuid.UUID
+	BranchName    string
+	ItemCount     int
+	Total         *string // decimal string from quote_version.total; NULL when no priced version.
+	Status        string  // merged: rfq.status when no quote, otherwise quote.current_status.
+	ArchivedAt    *time.Time
+	NeedsFollowup bool
 }
 
 // RFQStatusChange records an RFQ lifecycle transition.
@@ -159,5 +163,15 @@ type TextRFQDraft struct {
 	Version *QuoteVersion
 	Items   []QuoteItem
 	// Alternatives are the candidates each flagged line was decided from, keyed by line id.
+	Alternatives map[uuid.UUID][]QuoteItemAlternative
+}
+
+// RfqDetail is the full detail view projection of one RFQ plus its associated
+// quote data, items, and alternatives. This is what the detail endpoint returns.
+type RfqDetail struct {
+	Rfq          RfqListItem
+	Quote        *Quote
+	Version      *QuoteVersion
+	Items        []QuoteItem
 	Alternatives map[uuid.UUID][]QuoteItemAlternative
 }

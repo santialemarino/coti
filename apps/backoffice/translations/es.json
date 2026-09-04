@@ -456,6 +456,7 @@
       "resultsTotal": "{total, plural, one {# pedido} other {# pedidos}}",
       "results": "Mostrando {from}–{to} de {total} pedidos",
       "items": "{count, plural, one {# ítem} other {# ítems}}",
+      "unassigned": "Sin asignar",
       "selectAll": "Seleccionar todos los pedidos de esta página",
       "selectRow": "Seleccionar el pedido {id}",
       "selected": "{count, plural, one {# pedido seleccionado} other {# pedidos seleccionados}}",
@@ -468,6 +469,7 @@
         "allBranch": "Sucursales",
         "allSeller": "Vendedores",
         "allPriority": "Prioridades",
+        "unassigned": "Sin vendedor",
         "clear": "Limpiar filtros"
       },
       "columns": {
@@ -564,9 +566,108 @@
       "noResults": "No encontramos pedidos que coincidan con la búsqueda."
     },
     "detail": {
-      "back": "Volver a pedidos",
-      "placeholderTitle": "Detalle del pedido {id}",
-      "placeholderDescription": "El detalle de la cotización y sus ítems se va a mostrar acá."
+      "title": "Detalle del pedido",
+      "backToList": "Volver al listado",
+      "notFound": "Pedido no encontrado",
+      "notFoundDescription": "No pudimos encontrar el pedido que buscás.",
+      "quoteStatus": "Estado de la cotización",
+      "expiresAt": "Vence el",
+      "timeline": {
+        "title": "Estado",
+        "current": "Estado actual",
+        "completed": "Completado",
+        "createdAt": "Fecha de creación",
+        "version": "Versión",
+        "total": "Total"
+      },
+      "confidence": {
+        "high": "Alta",
+        "medium": "Media",
+        "low": "Baja",
+        "none": "Sin datos"
+      },
+      "callouts": {
+        "accepted": {
+          "title": "Cotización aceptada",
+          "description": "El cliente aprobó esta cotización. El pedido está listo para procesar."
+        },
+        "rejected": {
+          "title": "Cotización rechazada",
+          "description": "El cliente rechazó esta cotización.",
+          "withReason": "El cliente rechazó esta cotización: {reason}"
+        },
+        "changeRequested": {
+          "title": "Cambio solicitado",
+          "description": "El cliente solicitó cambios en esta cotización. Revisá los ítems y actualizá la propuesta.",
+          "withReason": "El cliente solicitó cambios: {reason}"
+        },
+        "sent": {
+          "title": "Cotización enviada",
+          "description": "La cotización fue enviada al cliente. Vence el {date}."
+        }
+      },
+      "items": {
+        "title": "Ítems",
+        "empty": "Este pedido no tiene ítems.",
+        "add": "Agregar producto",
+        "delete": "Eliminar ítem",
+        "generate": "Generar cotización",
+        "generating": "Generando cotización…",
+        "select": "Seleccionar",
+        "searchProduct": "Buscar producto",
+        "searchProductPlaceholder": "Código o nombre del producto…",
+        "noResults": "No encontramos productos con esa búsqueda.",
+        "typeToSearch": "Escribí para buscar productos del catálogo.",
+        "columns": {
+          "description": "Descripción",
+          "product": "Producto",
+          "modifyProduct": "Reemplazar producto",
+          "quantity": "Cantidad",
+          "unit": "Unidad",
+          "unitPrice": "Precio unit.",
+          "subtotal": "Subtotal",
+          "matchStatus": "Estado",
+          "confidence": "Confianza",
+          "rationale": "Razón"
+        },
+        "total": "Total",
+        "matchStatus": {
+          "MATCHED": "Emparejado",
+          "AMBIGUOUS": "Ambiguo",
+          "NO_MATCH": "Sin emparejar"
+        },
+        "discounts": {
+          "title": "Descuentos y promociones",
+          "empty": "No hay descuentos aplicados.",
+          "adHoc": "Ad-hoc",
+          "suppressed": "Suprimido",
+          "suppress": "Suprimir descuento",
+          "restore": "Restaurar",
+          "remove": "Eliminar descuento",
+          "add": "Agregar descuento"
+        },
+        "toast": {
+          "updated": "Ítem actualizado",
+          "deleted": "Ítem eliminado",
+          "added": "Producto agregado",
+          "generated": "Cotización generada",
+          "error": "Ocurrió un error. Intentá de nuevo."
+        }
+      },
+      "diff": {
+        "title": "Cambios solicitados",
+        "originalTitle": "Cotización original",
+        "requestedTitle": "Cotización con cambios solicitados",
+        "reason": "Motivo del cliente",
+        "discountsTitle": "Descuentos aplicados",
+        "downloadOriginal": "Descargar pedido original",
+        "sendChanges": "Enviar",
+        "columns": {
+          "product": "Producto",
+          "quantity": "Cantidad",
+          "price": "Precio en el catálogo"
+        }
+      }
     }
   },
   "clients": {

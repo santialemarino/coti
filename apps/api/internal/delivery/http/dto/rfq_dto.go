@@ -44,16 +44,20 @@ type CreateRfqResponse struct {
 
 // RfqListItemResponse is one row of the RFQ list the Backoffice dashboard consumes.
 type RfqListItemResponse struct {
-	ID         uuid.UUID  `json:"id"`
-	Client     *string    `json:"client"`
-	CreatedAt  time.Time  `json:"created_at"`
-	Channel    string     `json:"channel"`
-	Seller     string     `json:"seller"`
-	Branch     string     `json:"branch"`
-	ItemCount  int        `json:"item_count"`
-	Total      *string    `json:"total"`
-	Status     string     `json:"status"`
-	ArchivedAt *time.Time `json:"archived_at"`
+	ID            uuid.UUID  `json:"id"`
+	ClientID      *uuid.UUID `json:"client_id"`
+	Client        *string    `json:"client"`
+	CreatedAt     time.Time  `json:"created_at"`
+	Channel       string     `json:"channel"`
+	SellerID      *uuid.UUID `json:"seller_id"`
+	Seller        string     `json:"seller"`
+	BranchID      uuid.UUID  `json:"branch_id"`
+	Branch        string     `json:"branch"`
+	ItemCount     int        `json:"item_count"`
+	Total         *string    `json:"total"`
+	Status        string     `json:"status"`
+	ArchivedAt    *time.Time `json:"archived_at"`
+	NeedsFollowup bool       `json:"needs_followup"`
 }
 
 // CreateTextRFQDraftRequest is the body for POST /v1/rfqs/text-drafts.
@@ -110,4 +114,32 @@ type RFQAttachmentResponse struct {
 // RFQAttachmentListResponse is returned by GET /v1/rfqs/{rfqId}/attachments.
 type RFQAttachmentListResponse struct {
 	Attachments []RFQAttachmentResponse `json:"attachments"`
+}
+
+// RfqDetailResponse is returned by GET /v1/rfqs/{rfqId}. It includes the RFQ
+// list item projection plus the full quote, version, items, and alternatives.
+type RfqDetailResponse struct {
+	Rfq          RfqListItemResponse                       `json:"rfq"`
+	Quote        *QuoteResponse                            `json:"quote"`
+	Version      *QuoteVersionResponse                     `json:"version"`
+	Items        []QuoteItemResponse                       `json:"items"`
+	Alternatives map[string][]QuoteItemAlternativeResponse `json:"alternatives"`
+}
+
+// UpdateQuoteItemRequest is the body for PATCH /v1/quotes/{quoteId}/items/{itemId}. All fields
+// are optional: only present fields are written.
+type UpdateQuoteItemRequest struct {
+	ProductID            *uuid.UUID `json:"product_id"`
+	RequestedDescription *string    `json:"requested_description" binding:"omitempty,max=512"`
+	Quantity             *string    `json:"quantity" binding:"omitempty,numeric"`
+	Unit                 *string    `json:"unit" binding:"omitempty,max=64"`
+	UnitPriceSnapshot    *string    `json:"unit_price_snapshot" binding:"omitempty,numeric"`
+}
+
+// AddQuoteItemRequest is the body for POST /v1/quotes/{quoteId}/items.
+type AddQuoteItemRequest struct {
+	ProductID            *uuid.UUID `json:"product_id"`
+	RequestedDescription string     `json:"requested_description" binding:"required,min=1,max=512"`
+	Quantity             string     `json:"quantity" binding:"required,numeric"`
+	Unit                 *string    `json:"unit" binding:"omitempty,max=64"`
 }

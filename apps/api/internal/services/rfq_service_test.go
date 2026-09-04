@@ -54,6 +54,12 @@ func (f *fakeRfqRepoManual) ListByTenant(
 	return f.listItems, nil
 }
 
+func (f *fakeRfqRepoManual) GetByRFQID(
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID,
+) (*domain.RfqListItem, error) {
+	return nil, errors.New("not implemented in manual fake")
+}
+
 func (f *fakeRfqRepoManual) GetManualEntryChannelID(
 	_ context.Context, _ repository.Querier, _, _ uuid.UUID,
 ) (uuid.UUID, error) {
@@ -393,6 +399,8 @@ type fakeRFQs struct {
 	created       []domain.NewRFQ
 	updatedStatus []domain.RFQStatus
 	statusChanges []rfqStatusChangeCall
+	rfqByID       *domain.RfqListItem
+	rfqByIDErr    error
 }
 
 func (f *fakeRFQs) Create(
@@ -435,6 +443,15 @@ func (f *fakeRFQs) ListByTenant(
 	return nil, errors.New("not implemented in pipeline fake")
 }
 
+func (f *fakeRFQs) GetByRFQID(
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID,
+) (*domain.RfqListItem, error) {
+	if f.rfqByIDErr != nil {
+		return nil, f.rfqByIDErr
+	}
+	return f.rfqByID, nil
+}
+
 func (f *fakeRFQs) GetManualEntryChannelID(
 	_ context.Context, _ repository.Querier, _, _ uuid.UUID,
 ) (uuid.UUID, error) {
@@ -471,6 +488,12 @@ type fakeQuoteDrafts struct {
 	storedAlternatives []domain.QuoteItemAlternative
 	alternativesErr    error
 	statusChanges      []quoteStatusChangeCall
+	quoteByID          *domain.Quote
+	quoteByIDErr       error
+	currentVersionData *domain.QuoteVersion
+	currentVersionErr  error
+	itemsByVersionID   []domain.QuoteItem
+	itemsByVersionErr  error
 }
 
 func (f *fakeQuoteDrafts) Create(
@@ -507,6 +530,12 @@ func (f *fakeQuoteDrafts) CreateVersion(
 		VersionNumber: in.VersionNumber, Total: in.Total, IsImmutable: in.IsImmutable,
 		Comment: in.Comment,
 	}, nil
+}
+
+func (f *fakeQuoteDrafts) UpdateVersionTotal(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, _ uuid.UUID, total decimal.Decimal,
+) (*domain.QuoteVersion, error) {
+	return &domain.QuoteVersion{ID: testVersionID, Total: total}, nil
 }
 
 func (f *fakeQuoteDrafts) CreateItems(
@@ -574,6 +603,111 @@ func (f *fakeQuoteDrafts) AppendStatusChange(
 		AccountID: accountID, QuoteID: quoteID, PreviousStatus: previousStatus,
 		NewStatus: newStatus, UserID: userID,
 	}, nil
+}
+
+func (f *fakeQuoteDrafts) GetByRFQID(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, _ uuid.UUID,
+) (*domain.Quote, error) {
+	if f.quoteByIDErr != nil {
+		return nil, f.quoteByIDErr
+	}
+	return f.quoteByID, nil
+}
+
+func (f *fakeQuoteDrafts) GetByID(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, _ uuid.UUID, _ uuid.UUID,
+) (*domain.Quote, error) {
+	if f.quoteByIDErr != nil {
+		return nil, f.quoteByIDErr
+	}
+	return f.quoteByID, nil
+}
+
+func (f *fakeQuoteDrafts) GetCurrentVersion(
+	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID,
+) (*domain.QuoteVersion, error) {
+	if f.currentVersionErr != nil {
+		return nil, f.currentVersionErr
+	}
+	return f.currentVersionData, nil
+}
+
+func (f *fakeQuoteDrafts) ListItems(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, _ uuid.UUID,
+) ([]domain.QuoteItem, error) {
+	if f.itemsByVersionErr != nil {
+		return nil, f.itemsByVersionErr
+	}
+	return f.itemsByVersionID, nil
+}
+
+func (f *fakeQuoteDrafts) ListItemsWithProduct(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, _ uuid.UUID,
+) ([]domain.QuoteItem, error) {
+	return f.ListItems(nil, nil, uuid.Nil, uuid.Nil)
+}
+
+func (f *fakeQuoteDrafts) GetItem(
+	_ context.Context, _ repository.Querier, accountID, versionID, itemID uuid.UUID,
+) (*domain.QuoteItem, error) {
+	for _, item := range f.itemsByVersionID {
+		if item.ID == itemID {
+			return &item, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+
+func (f *fakeQuoteDrafts) UpdateItem(
+	_ context.Context, _ repository.Querier, accountID, versionID, itemID uuid.UUID,
+	in domain.QuoteItemUpdate,
+) (*domain.QuoteItem, error) {
+	item, err := f.GetItem(nil, nil, accountID, versionID, itemID)
+	if err != nil {
+		return nil, err
+	}
+	if in.ProductID != nil {
+		item.ProductID = in.ProductID
+	}
+	if in.RequestedDescription != nil {
+		item.RequestedDescription = *in.RequestedDescription
+	}
+	if in.Quantity != nil {
+		item.Quantity = *in.Quantity
+	}
+	if in.Unit != nil {
+		item.Unit = in.Unit
+	}
+	return item, nil
+}
+
+func (f *fakeQuoteDrafts) DeleteItem(
+	_ context.Context, _ repository.Querier, accountID, versionID, itemID uuid.UUID,
+) error {
+	for i, item := range f.itemsByVersionID {
+		if item.ID == itemID {
+			f.itemsByVersionID = append(f.itemsByVersionID[:i], f.itemsByVersionID[i+1:]...)
+			return nil
+		}
+	}
+	return domain.ErrNotFound
+}
+
+func (f *fakeQuoteDrafts) CreateSingleItem(
+	_ context.Context, _ repository.Querier, accountID, versionID uuid.UUID,
+	in domain.QuoteItemCreate,
+) (*domain.QuoteItem, error) {
+	item := domain.QuoteItem{
+		ID: uuid.New(), AccountID: accountID, VersionID: versionID,
+		ProductID: in.ProductID, RequestedDescription: in.RequestedDescription,
+		Quantity: in.Quantity, Unit: in.Unit,
+		MatchStatus: domain.ItemMatchStatusNoMatch,
+	}
+	if in.ProductID != nil {
+		item.MatchStatus = domain.ItemMatchStatusMatched
+	}
+	f.itemsByVersionID = append(f.itemsByVersionID, item)
+	return &item, nil
 }
 
 type rfqHarness struct {
@@ -1087,5 +1221,171 @@ func TestRFQService_CreateWhatsAppMockDraft_RequiresASender(t *testing.T) {
 	}
 	if h.channels.listCalls != 0 {
 		t.Error("a channel was resolved for a message with no sender")
+	}
+}
+
+// ---------- GetDetail tests ----------
+
+func getDetailHarness() (*rfqHarness, *domain.RfqListItem, *domain.Quote, *domain.QuoteVersion, []domain.QuoteItem) {
+	h := newRFQHarness(nil)
+
+	rfqItem := &domain.RfqListItem{
+		ID:          testRFQID,
+		ClientLabel: strPtr("Obra Norte"),
+		Channel:     "whatsapp",
+		SellerName:  "Juan Pérez",
+		BranchName:  "Matriz",
+		ItemCount:   2,
+		Status:      string(domain.QuoteStatusDraft),
+	}
+	quote := &domain.Quote{
+		ID: testQuoteID, RFQID: testRFQID, BranchID: testBranchID,
+		CurrentStatus:    domain.QuoteStatusDraft,
+		CurrentVersionID: &testVersionID,
+	}
+	version := &domain.QuoteVersion{
+		ID: testVersionID, QuoteID: testQuoteID, VersionNumber: 1,
+		Total: decimal.RequireFromString("5000.00"),
+	}
+	items := []domain.QuoteItem{
+		{
+			ID: uuid.New(), VersionID: testVersionID,
+			RequestedDescription: "10 bolsas de cemento",
+			Quantity:             decimal.RequireFromString("10"),
+			MatchStatus:          domain.ItemMatchStatusMatched,
+		},
+		{
+			ID: uuid.New(), VersionID: testVersionID,
+			RequestedDescription: "2 rollos de membrana",
+			Quantity:             decimal.RequireFromString("2"),
+			MatchStatus:          domain.ItemMatchStatusNoMatch,
+		},
+	}
+
+	h.rfqs.rfqByID = rfqItem
+	h.quotes.quoteByID = quote
+	h.quotes.currentVersionData = version
+	h.quotes.itemsByVersionID = items
+
+	return h, rfqItem, quote, version, items
+}
+
+func TestRFQService_GetDetail_ReturnsFullDetailWhenAllDataExists(t *testing.T) {
+	h, rfqItem, quote, version, items := getDetailHarness()
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if err != nil {
+		t.Fatalf("GetDetail returned %v", err)
+	}
+	if detail == nil {
+		t.Fatal("GetDetail returned nil detail")
+	}
+	if detail.Rfq.ID != rfqItem.ID {
+		t.Errorf("rfq ID = %v, want %v", detail.Rfq.ID, rfqItem.ID)
+	}
+	if detail.Quote == nil || detail.Quote.ID != quote.ID {
+		t.Errorf("quote = %v, want %v", detail.Quote, quote)
+	}
+	if detail.Version == nil || detail.Version.ID != version.ID {
+		t.Errorf("version = %v, want %v", detail.Version, version)
+	}
+	if len(detail.Items) != len(items) {
+		t.Errorf("items = %d, want %d", len(detail.Items), len(items))
+	}
+	if len(h.db.scopes) != 1 || h.db.scopes[0] != testAccountID {
+		t.Errorf("transaction scoped to %v, want [%v]", h.db.scopes, testAccountID)
+	}
+}
+
+func TestRFQService_GetDetail_RfqNotFound(t *testing.T) {
+	h := newRFQHarness(nil)
+	h.rfqs.rfqByIDErr = domain.ErrNotFound
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("GetDetail returned %v, want ErrNotFound", err)
+	}
+	if detail != nil {
+		t.Errorf("detail = %v, want nil", detail)
+	}
+}
+
+func TestRFQService_GetDetail_QuoteNotFoundReturnsRfqWithoutQuote(t *testing.T) {
+	h := newRFQHarness(nil)
+	h.rfqs.rfqByID = &domain.RfqListItem{ID: testRFQID}
+	h.quotes.quoteByIDErr = domain.ErrNotFound
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if err != nil {
+		t.Fatalf("GetDetail returned %v", err)
+	}
+	if detail.Rfq.ID != testRFQID {
+		t.Errorf("rfq ID = %v, want %v", detail.Rfq.ID, testRFQID)
+	}
+	if detail.Quote != nil {
+		t.Errorf("quote = %v, want nil", detail.Quote)
+	}
+	if detail.Version != nil {
+		t.Errorf("version = %v, want nil", detail.Version)
+	}
+	if detail.Items != nil {
+		t.Errorf("items = %v, want nil", detail.Items)
+	}
+}
+
+func TestRFQService_GetDetail_VersionNotFoundGracefullySkipped(t *testing.T) {
+	h := newRFQHarness(nil)
+	h.rfqs.rfqByID = &domain.RfqListItem{ID: testRFQID}
+	quote := &domain.Quote{
+		ID: testQuoteID, RFQID: testRFQID, BranchID: testBranchID,
+		CurrentVersionID: &testVersionID,
+	}
+	h.quotes.quoteByID = quote
+	h.quotes.currentVersionErr = domain.ErrNotFound
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if err != nil {
+		t.Fatalf("GetDetail returned %v", err)
+	}
+	if detail.Quote == nil || detail.Quote.ID != quote.ID {
+		t.Errorf("quote = %v, want %v", detail.Quote, quote)
+	}
+	if detail.Version != nil {
+		t.Errorf("version = %v, want nil when GetCurrentVersion returns ErrNotFound", detail.Version)
+	}
+}
+
+func TestRFQService_GetDetail_QuoteRepositoryErrorIsPropagated(t *testing.T) {
+	h := newRFQHarness(nil)
+	h.rfqs.rfqByID = &domain.RfqListItem{ID: testRFQID}
+	h.quotes.quoteByIDErr = errors.New("database timeout")
+
+	_, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if err == nil || err.Error() != "database timeout" {
+		t.Fatalf("GetDetail returned %v, want database timeout", err)
+	}
+}
+
+func TestRFQService_GetDetail_QuoteWithoutVersionReturnsRfqAndQuoteOnly(t *testing.T) {
+	h := newRFQHarness(nil)
+	h.rfqs.rfqByID = &domain.RfqListItem{ID: testRFQID}
+	h.quotes.quoteByID = &domain.Quote{
+		ID: testQuoteID, RFQID: testRFQID, BranchID: testBranchID,
+		CurrentStatus:    domain.QuoteStatusDraft,
+		CurrentVersionID: nil,
+	}
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if err != nil {
+		t.Fatalf("GetDetail returned %v", err)
+	}
+	if detail.Quote == nil {
+		t.Fatal("quote is nil, want present")
+	}
+	if detail.Version != nil {
+		t.Errorf("version = %v, want nil when quote has no version", detail.Version)
+	}
+	if detail.Items != nil {
+		t.Errorf("items = %v, want nil when no version", detail.Items)
 	}
 }

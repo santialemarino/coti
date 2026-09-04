@@ -125,6 +125,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	ai := limit("ai", cfg.RateLimit.AI)
 	verified.POST("/rfqs/text-drafts", ai, h.RFQ.CreateTextDraft)
 	rfqs := verified.Group("/rfqs")
+	rfqs.GET("/:rfqId", h.Rfq.Get)
 	rfqs.GET("/:rfqId/attachments", h.RFQAttachment.List)
 	rfqs.POST("/:rfqId/attachments", h.RFQAttachment.Upload)
 
@@ -142,6 +143,12 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	// its own beyond the global one.
 	quotes := verified.Group("/quotes")
 	quotes.POST("/:quoteId/accept-materials", h.Quote.AcceptMaterials)
+	quotes.POST("/:quoteId/transition", h.Quote.Transition)
+	quotes.POST("/:quoteId/archive", h.Quote.Archive)
+	quotes.POST("/:quoteId/unarchive", h.Quote.Unarchive)
+	quotes.POST("/:quoteId/items", h.Rfq.AddItem)
+	quotes.PATCH("/:quoteId/items/:itemId", h.Rfq.UpdateItem)
+	quotes.DELETE("/:quoteId/items/:itemId", h.Rfq.DeleteItem)
 
 	if !cfg.IsProduction() {
 		verified.POST("/dev/whatsapp/messages", ai, h.RFQ.CreateWhatsAppMockDraft)

@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -22,6 +23,7 @@ type rfqRepository interface {
 	UpdateStatus(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, status domain.RFQStatus) (*domain.RFQ, error)
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID, previousStatus *domain.RFQStatus, newStatus domain.RFQStatus, userID *uuid.UUID) (*domain.RFQStatusChange, error)
 	ListByTenant(ctx context.Context, q repository.Querier, tenant domain.Tenant) ([]domain.RfqListItem, error)
+	GetByRFQID(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID) (*domain.RfqListItem, error)
 	GetManualEntryChannelID(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (uuid.UUID, error)
 	CountProductsInAccount(ctx context.Context, q repository.Querier, accountID uuid.UUID, productIDs []uuid.UUID) (int, error)
 	CreateManualEntry(ctx context.Context, q repository.Querier, tenant domain.Tenant, channelID uuid.UUID, in domain.NewRfq, now time.Time) (*domain.RfqCreation, error)
@@ -32,10 +34,20 @@ type quoteDraftRepository interface {
 	Create(ctx context.Context, q repository.Querier, accountID uuid.UUID, in domain.NewQuote) (*domain.Quote, error)
 	UpdateCurrentVersion(ctx context.Context, q repository.Querier, accountID, quoteID, versionID uuid.UUID) (*domain.Quote, error)
 	CreateVersion(ctx context.Context, q repository.Querier, accountID uuid.UUID, in domain.NewQuoteVersion) (*domain.QuoteVersion, error)
+	UpdateVersionTotal(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, total decimal.Decimal) (*domain.QuoteVersion, error)
 	CreateItems(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, items []domain.NewQuoteItem) ([]domain.QuoteItem, error)
 	CreateAlternatives(ctx context.Context, q repository.Querier, accountID uuid.UUID, alternatives []domain.NewQuoteItemAlternative) error
 	ListAlternativesByItemIDs(ctx context.Context, q repository.Querier, accountID uuid.UUID, itemIDs []uuid.UUID) (map[uuid.UUID][]domain.QuoteItemAlternative, error)
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID, previousStatus *domain.QuoteStatus, newStatus domain.QuoteStatus, userID *uuid.UUID) (*domain.QuoteStatusChange, error)
+	GetByRFQID(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID) (*domain.Quote, error)
+	GetByID(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
+	GetCurrentVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.QuoteVersion, error)
+	ListItems(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID) ([]domain.QuoteItem, error)
+	ListItemsWithProduct(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID) ([]domain.QuoteItem, error)
+	GetItem(ctx context.Context, q repository.Querier, accountID, versionID, itemID uuid.UUID) (*domain.QuoteItem, error)
+	UpdateItem(ctx context.Context, q repository.Querier, accountID, versionID, itemID uuid.UUID, in domain.QuoteItemUpdate) (*domain.QuoteItem, error)
+	DeleteItem(ctx context.Context, q repository.Querier, accountID, versionID, itemID uuid.UUID) error
+	CreateSingleItem(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, in domain.QuoteItemCreate) (*domain.QuoteItem, error)
 }
 
 // rfqChannelReader is the channel validation surface the RFQ flow needs.
@@ -91,6 +103,207 @@ func (s *RFQService) List(ctx context.Context, tenant domain.Tenant) ([]domain.R
 		return nil, err
 	}
 	return items, nil
+}
+
+// GetDetail returns the full detail of one RFQ including its quote, items, and alternatives.
+func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID) (*domain.RfqDetail, error) {
+	var detail *domain.RfqDetail
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		rfq, rfqErr := s.rfqs.GetByRFQID(ctx, q, tenant.AccountID, rfqID)
+		if rfqErr != nil {
+			return rfqErr
+		}
+
+		quote, quoteErr := s.quotes.GetByRFQID(ctx, q, tenant.AccountID, rfqID)
+		if quoteErr != nil && !errors.Is(quoteErr, domain.ErrNotFound) {
+			return quoteErr
+		}
+
+		detail = &domain.RfqDetail{
+			Rfq: *rfq,
+		}
+
+		if quote == nil {
+			return nil
+		}
+
+		detail.Quote = quote
+
+		if quote.CurrentVersionID != nil {
+			version, versionErr := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID,
+				tenant.BranchID, quote.ID)
+			if versionErr != nil && !errors.Is(versionErr, domain.ErrNotFound) {
+				return versionErr
+			}
+			if version != nil {
+				detail.Version = version
+
+				items, itemsErr := s.quotes.ListItemsWithProduct(ctx, q, tenant.AccountID, version.ID)
+				if itemsErr != nil {
+					return itemsErr
+				}
+				detail.Items = items
+
+				itemIDs := make([]uuid.UUID, 0, len(items))
+				for _, item := range items {
+					itemIDs = append(itemIDs, item.ID)
+				}
+				alternatives, altErr := s.quotes.ListAlternativesByItemIDs(ctx, q,
+					tenant.AccountID, itemIDs)
+				if altErr != nil {
+					return altErr
+				}
+				detail.Alternatives = alternatives
+			}
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return detail, nil
+}
+
+// UpdateItem patches a quote item. The version must be mutable and the item must belong to it.
+func (s *RFQService) UpdateItem(
+	ctx context.Context, tenant domain.Tenant, quoteID, itemID uuid.UUID, in domain.QuoteItemUpdate,
+) (*domain.QuoteItem, error) {
+	if err := requireBranch(tenant, "updating a quote item"); err != nil {
+		return nil, err
+	}
+	if in.Quantity != nil {
+		if in.Quantity.LessThanOrEqual(decimal.Zero) {
+			return nil, fmt.Errorf("%w: quantity must be greater than zero", domain.ErrInvalidInput)
+		}
+		if err := validateAmount(*in.Quantity, "quantity"); err != nil {
+			return nil, err
+		}
+	}
+	if in.UnitPriceSnapshot != nil {
+		if in.UnitPriceSnapshot.LessThan(decimal.Zero) {
+			return nil, fmt.Errorf("%w: unit_price_snapshot must be greater than or equal to zero",
+				domain.ErrInvalidInput)
+		}
+		if err := validateAmount(*in.UnitPriceSnapshot, "unit_price_snapshot"); err != nil {
+			return nil, err
+		}
+	}
+
+	var item *domain.QuoteItem
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, quoteErr := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if quoteErr != nil {
+			return quoteErr
+		}
+		if !domain.IsEditableStatus(quote.CurrentStatus) {
+			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+		}
+		if quote.CurrentVersionID == nil {
+			return domain.ErrNotFound
+		}
+		version, versionErr := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID,
+			tenant.BranchID, quote.ID)
+		if versionErr != nil {
+			return versionErr
+		}
+		var updateErr error
+		item, updateErr = s.quotes.UpdateItem(ctx, q, tenant.AccountID, version.ID, itemID, in)
+		if updateErr != nil {
+			return updateErr
+		}
+
+		// Recalculate subtotal and version total when price or quantity changed.
+		if in.UnitPriceSnapshot != nil || in.Quantity != nil {
+			if recalcErr := s.recalculateVersionTotal(ctx, q, tenant, version.ID); recalcErr != nil {
+				return recalcErr
+			}
+			// Reload item with updated snapshots.
+			item, updateErr = s.quotes.GetItem(ctx, q, tenant.AccountID, version.ID, itemID)
+			if updateErr != nil {
+				return updateErr
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return item, nil
+}
+
+// DeleteItem removes a quote item. The version must be mutable and the item must belong
+// to it.
+func (s *RFQService) DeleteItem(
+	ctx context.Context, tenant domain.Tenant, quoteID, itemID uuid.UUID,
+) error {
+	if err := requireBranch(tenant, "deleting a quote item"); err != nil {
+		return err
+	}
+	return s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, quoteErr := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if quoteErr != nil {
+			return quoteErr
+		}
+		if !domain.IsEditableStatus(quote.CurrentStatus) {
+			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+		}
+		if quote.CurrentVersionID == nil {
+			return domain.ErrNotFound
+		}
+		version, versionErr := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID,
+			tenant.BranchID, quote.ID)
+		if versionErr != nil {
+			return versionErr
+		}
+		if deleteErr := s.quotes.DeleteItem(ctx, q, tenant.AccountID, version.ID, itemID); deleteErr != nil {
+			return deleteErr
+		}
+		// Recalculate version total after deletion.
+		return s.recalculateVersionTotal(ctx, q, tenant, version.ID)
+	})
+}
+
+// AddItem appends one material line to a quote version.
+func (s *RFQService) AddItem(
+	ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID, in domain.QuoteItemCreate,
+) (*domain.QuoteItem, error) {
+	if err := requireBranch(tenant, "adding a quote item"); err != nil {
+		return nil, err
+	}
+	in.RequestedDescription = strings.TrimSpace(in.RequestedDescription)
+	if in.RequestedDescription == "" {
+		return nil, fmt.Errorf("%w: requested_description is required", domain.ErrInvalidInput)
+	}
+	if in.Quantity.LessThanOrEqual(decimal.Zero) {
+		return nil, fmt.Errorf("%w: quantity must be greater than zero", domain.ErrInvalidInput)
+	}
+	if err := validateAmount(in.Quantity, "quantity"); err != nil {
+		return nil, err
+	}
+
+	var item *domain.QuoteItem
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, quoteErr := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if quoteErr != nil {
+			return quoteErr
+		}
+		if !domain.IsEditableStatus(quote.CurrentStatus) {
+			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+		}
+		if quote.CurrentVersionID == nil {
+			return domain.ErrNotFound
+		}
+		version, versionErr := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID,
+			tenant.BranchID, quote.ID)
+		if versionErr != nil {
+			return versionErr
+		}
+		var createErr error
+		item, createErr = s.quotes.CreateSingleItem(ctx, q, tenant.AccountID, version.ID, in)
+		return createErr
+	}); err != nil {
+		return nil, err
+	}
+	return item, nil
 }
 
 // CreateManual records a counter, phone or otherwise unintegrated order.
@@ -639,4 +852,26 @@ func requireMaxRunes(value, field string, max int) error {
 		return fmt.Errorf("%w: %s cannot exceed %d characters", domain.ErrInvalidInput, field, max)
 	}
 	return nil
+}
+
+// recalculateVersionTotal recomputes a version's total from its items and discounts, then
+// persists it. Called after any item or price mutation.
+func (s *RFQService) recalculateVersionTotal(
+	ctx context.Context, q repository.Querier, tenant domain.Tenant, versionID uuid.UUID,
+) error {
+	items, err := s.quotes.ListItems(ctx, q, tenant.AccountID, versionID)
+	if err != nil {
+		return err
+	}
+	subtotals := decimal.Zero
+	for _, item := range items {
+		if item.Subtotal.Valid {
+			subtotals = subtotals.Add(item.Subtotal.Decimal)
+		}
+	}
+	// The discount sweep is US-38. When implemented, load quote_discount rows here.
+	discounts := decimal.Zero
+	total := subtotals.Sub(discounts).Round(domain.MoneyScale)
+	_, err = s.quotes.UpdateVersionTotal(ctx, q, tenant.AccountID, versionID, total)
+	return err
 }

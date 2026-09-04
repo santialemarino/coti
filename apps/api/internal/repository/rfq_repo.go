@@ -69,20 +69,27 @@ func (r *RFQRepository) AppendStatusChange(
 		accountID, rfqID, previousStatus, newStatus, userID))
 }
 
-// ListByTenant returns the RFQ list the Backoffice dashboard consumes.
-func (r *RFQRepository) ListByTenant(
-	ctx context.Context, q Querier, tenant domain.Tenant,
-) ([]domain.RfqListItem, error) {
-	rows, err := q.Query(ctx,
-		`SELECT r.id, r.client_label, r.created_at,
+// GetByRFQID returns a single RFQ scoped to the account, including its associated quote
+// data when present. This is the detail view backend.
+func (r *RFQRepository) GetByRFQID(
+	ctx context.Context, q Querier, accountID, rfqID uuid.UUID,
+) (*domain.RfqListItem, error) {
+	var item domain.RfqListItem
+	var total decimal.Decimal
+	err := q.QueryRow(ctx,
+		`SELECT r.id, r.client_id,
+		        COALESCE(cl.name, r.client_label), r.created_at,
 		        lower(c.type::text),
+		        q.seller_id,
 		        COALESCE(u.name, ''),
+		        r.branch_id,
 		        b.name,
 		        COALESCE(qt.total, 0),
-		        CASE WHEN r.status IS NOT NULL THEN r.status::text
+		        CASE WHEN q.id IS NULL THEN r.status::text
 		             ELSE q.current_status::text
 		        END,
 		        q.archived_at,
+		        COALESCE(q.needs_followup, FALSE),
 		        (SELECT count(*)
 		         FROM quote_item qi
 		         JOIN quote_version qv ON qv.id = qi.version_id AND qv.account_id = qi.account_id
@@ -90,13 +97,72 @@ func (r *RFQRepository) ListByTenant(
 		         WHERE qi.account_id = r.account_id AND q2.rfq_id = r.id)
 		 FROM rfq r
 		 JOIN branch b ON b.id = r.branch_id AND b.account_id = r.account_id
+		 LEFT JOIN client cl ON cl.id = r.client_id AND cl.account_id = r.account_id
+		 LEFT JOIN quote q ON q.rfq_id = r.id AND q.account_id = r.account_id
+		 LEFT JOIN channel c ON c.id = r.channel_id AND c.account_id = r.account_id
+		 LEFT JOIN app_user u ON u.id = q.seller_id AND u.account_id = r.account_id
+		 LEFT JOIN quote_version qt ON qt.id = q.current_version_id AND qt.account_id = r.account_id
+		 WHERE r.account_id = $1 AND r.id = $2`,
+		accountID, rfqID,
+	).Scan(
+		&item.ID, &item.ClientID,
+		&item.ClientLabel, &item.CreatedAt,
+		&item.Channel, &item.SellerID, &item.SellerName,
+		&item.BranchID, &item.BranchName,
+		&total, &item.Status, &item.ArchivedAt, &item.NeedsFollowup,
+		&item.ItemCount,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if total.IsZero() {
+		item.Total = nil
+	} else {
+		s := total.String()
+		item.Total = &s
+	}
+	return &item, nil
+}
+
+// ListByTenant returns the RFQ list the Backoffice dashboard consumes. Archived quotes are
+// hidden, needs_followup rows sort first, and the client display name falls back to
+// rfq.client_label when no ficha client is linked.
+func (r *RFQRepository) ListByTenant(
+	ctx context.Context, q Querier, tenant domain.Tenant,
+) ([]domain.RfqListItem, error) {
+	rows, err := q.Query(ctx,
+		`SELECT r.id, r.client_id,
+		        COALESCE(cl.name, r.client_label), r.created_at,
+		        lower(c.type::text),
+		        q.seller_id,
+		        COALESCE(u.name, ''),
+		        r.branch_id,
+		        b.name,
+		        COALESCE(qt.total, 0),
+		        CASE WHEN q.id IS NULL THEN r.status::text
+		             ELSE q.current_status::text
+		        END,
+		        q.archived_at,
+		        COALESCE(q.needs_followup, FALSE),
+		        (SELECT count(*)
+		         FROM quote_item qi
+		         JOIN quote_version qv ON qv.id = qi.version_id AND qv.account_id = qi.account_id
+		         JOIN quote q2 ON q2.id = qv.quote_id AND q2.account_id = qv.account_id
+		         WHERE qi.account_id = r.account_id AND q2.rfq_id = r.id)
+		 FROM rfq r
+		 JOIN branch b ON b.id = r.branch_id AND b.account_id = r.account_id
+		 LEFT JOIN client cl ON cl.id = r.client_id AND cl.account_id = r.account_id
 		 LEFT JOIN quote q ON q.rfq_id = r.id AND q.account_id = r.account_id
 		 LEFT JOIN channel c ON c.id = r.channel_id AND c.account_id = r.account_id
 		 LEFT JOIN app_user u ON u.id = q.seller_id AND u.account_id = r.account_id
 		 LEFT JOIN quote_version qt ON qt.id = q.current_version_id AND qt.account_id = r.account_id
 		 WHERE r.account_id = $1
 		   AND ($2::uuid = '00000000-0000-0000-0000-000000000000'::uuid OR r.branch_id = $2)
-		 ORDER BY r.created_at DESC`,
+		   AND (q.id IS NULL OR q.archived_at IS NULL)
+		 ORDER BY COALESCE(q.needs_followup, FALSE) DESC, r.created_at DESC`,
 		tenant.AccountID, tenant.BranchID,
 	)
 	if err != nil {
@@ -109,9 +175,11 @@ func (r *RFQRepository) ListByTenant(
 		var item domain.RfqListItem
 		var total decimal.Decimal
 		if err := rows.Scan(
-			&item.ID, &item.ClientLabel, &item.CreatedAt,
-			&item.Channel, &item.SellerName, &item.BranchName,
-			&total, &item.Status, &item.ArchivedAt,
+			&item.ID, &item.ClientID,
+			&item.ClientLabel, &item.CreatedAt,
+			&item.Channel, &item.SellerID, &item.SellerName,
+			&item.BranchID, &item.BranchName,
+			&total, &item.Status, &item.ArchivedAt, &item.NeedsFollowup,
 			&item.ItemCount,
 		); err != nil {
 			return nil, err
