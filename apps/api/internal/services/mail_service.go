@@ -16,6 +16,8 @@ import (
 type OutboundMail struct {
 	AccountID   uuid.UUID
 	UserID      *uuid.UUID
+	ClientID    *uuid.UUID
+	QuoteID     *uuid.UUID
 	Event       domain.NotificationEvent
 	To          string
 	ToName      string
@@ -76,6 +78,8 @@ func (s *MailService) Send(ctx context.Context, out OutboundMail) error {
 	record := domain.Notification{
 		AccountID: out.AccountID,
 		UserID:    out.UserID,
+		ClientID:  out.ClientID,
+		QuoteID:   out.QuoteID,
 		Event:     out.Event,
 		Medium:    domain.NotificationMediumEmail,
 		Status:    domain.NotificationStatusFailed,

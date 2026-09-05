@@ -128,6 +128,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	// Registration is the one write with no account yet, so it cannot sit behind a tenant,
 	// which is exactly why it carries the tightest allowance: it creates rows for anyone.
 	public.POST("/accounts", limit("signup", cfg.RateLimit.Signup), h.Account.Register)
+	public.GET("/quote-sends/:token", h.Quote.ResolvePublic)
 
 	// Everything else needs a resolved tenant: a request-scoped query without an account
 	// reads nothing under row level security.
@@ -167,6 +168,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	// its own beyond the global one.
 	quotes := verified.Group("/quotes")
 	quotes.POST("/:quoteId/accept-materials", h.Quote.AcceptMaterials)
+	quotes.POST("/:quoteId/sends", h.Quote.Send)
 
 	if !cfg.IsProduction() {
 		verified.POST("/dev/whatsapp/messages", ai, h.RFQ.CreateWhatsAppMockDraft)

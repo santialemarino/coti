@@ -71,11 +71,17 @@ func run() error {
 		return err
 	}
 
-	// Each of the four planned tasks — pending attachments, quote expiry, the follow-up sweep and
-	// closing message windows — registers itself here from its own feature's ticket.
+	// Each scheduled task registers here from its own feature's ticket.
 	corrections := repository.NewQuoteCorrectionRepository()
+	correctionService := services.NewQuoteCorrectionService(db, corrections, providers.Embedder,
+		cfg.QuoteCorrection, log)
+	quality := repository.NewQuoteQualityRepository()
+	qualityEvaluator := services.NewQuoteQualityService(db, quality).
+		WithCorrectionLearning(correctionService)
+	sends := repository.NewQuoteSendRepository()
 	jobs, err := services.NewJobService(db, repository.NewJobRunRepository(), log,
-		services.NewQuoteCorrectionJob(corrections, providers.Embedder, cfg.QuoteCorrection))
+		services.NewQuoteCorrectionJob(corrections, providers.Embedder, cfg.QuoteCorrection),
+		services.NewQuoteQualityJob(sends, qualityEvaluator, cfg.QuoteQuality))
 	if err != nil {
 		return err
 	}

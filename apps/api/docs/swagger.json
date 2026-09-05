@@ -2909,6 +2909,40 @@
                 }
             }
         },
+        "/v1/public/quote-sends/{token}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "public quote sends"
+                ],
+                "summary": "Resolve a public quote delivery token",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Public delivery token",
+                        "name": "token",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.PublicQuoteSendResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/quotes/{quoteId}/accept-materials": {
             "post": {
                 "security": [
@@ -2973,6 +3007,102 @@
                     },
                     "422": {
                         "description": "No active branch, or a total NUMERIC(14,2) cannot hold",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/{quoteId}/sends": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Freezes the current seller-approved version, always attempts WhatsApp with a public webapp link, optionally attempts email independently, and moves QUOTED to SENT when at least one selected channel succeeds.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Send a quote to its client",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Delivery operation UUID",
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Delivery destinations and validity",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteSendRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Idempotent replay",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteSendResponse"
+                        }
+                    },
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteSendResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Every selected channel failed",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -4452,6 +4582,51 @@
                 }
             }
         },
+        "dto.PublicQuoteSendResponse": {
+            "type": "object",
+            "properties": {
+                "expires_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.QuoteDeliveryResponse": {
+            "type": "object",
+            "properties": {
+                "channel": {
+                    "type": "string"
+                },
+                "destination": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "public_url": {
+                    "type": "string"
+                },
+                "sent_at": {
+                    "type": "string"
+                },
+                "tracking_status": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.QuoteEmailDeliveryRequest": {
+            "type": "object",
+            "required": [
+                "address"
+            ],
+            "properties": {
+                "address": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.QuoteItemAlternativeResponse": {
             "type": "object",
             "properties": {
@@ -4591,6 +4766,46 @@
                     "type": "string"
                 },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.QuoteSendRequest": {
+            "type": "object",
+            "required": [
+                "recipient_phone"
+            ],
+            "properties": {
+                "email_delivery": {
+                    "$ref": "#/definitions/dto.QuoteEmailDeliveryRequest"
+                },
+                "expiry_days": {
+                    "type": "integer"
+                },
+                "recipient_phone": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.QuoteSendResponse": {
+            "type": "object",
+            "properties": {
+                "current_status": {
+                    "type": "string"
+                },
+                "deliveries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.QuoteDeliveryResponse"
+                    }
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "quote_id": {
+                    "type": "string"
+                },
+                "version_id": {
                     "type": "string"
                 }
             }

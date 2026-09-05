@@ -338,6 +338,34 @@ This bounds the symptom. The wider answer is to move extraction off the request 
 own piece of work: there is no queue in the API today, and `cmd/scheduled-job` runs work on the
 platform's cron rather than on demand.
 
+## Client delivery
+
+`POST /v1/quotes/{quoteId}/sends` is the seller-owned transition from `QUOTED` to `SENT`.
+`Idempotency-Key` is a UUID. The body always names an E.164 WhatsApp destination, may add one
+email destination, and may override the branch validity with `expiry_days` from 1 through 365.
+The service freezes the current version and creates one `PENDING` `quote_send` per selected
+channel before calling a provider. WhatsApp and email run independently; at least one successful
+channel commits the transition and all selected outcomes are retained. Each channel receives its
+own opaque token and `/quotes/{token}` webapp URL.
+
+Provider calls happen outside business transactions. A PostgreSQL advisory lock serializes the
+same account, quote and idempotency key across API instances, while separate tenant transactions
+prepare and confirm the operation. A replay with the same payload returns the stored result; a
+different payload under the same key is a conflict. A new key is an explicit resend and opens a
+new validity window without changing older tokens.
+
+After the successful confirmation commits, `QuoteQualityEvaluator.EvaluateFinalQuote` compares
+the original AI proposal with the frozen version. Evaluation or embedding failures never change
+the delivery response. The `quote-quality-evaluation` scheduled job finds missing evaluations
+from durable successful sends; the existing `quote-correction-learning` job continues retrying
+pending embeddings.
+
+`GET /v1/public/quote-sends/{token}` first resolves only the owning account through the owner
+pool, then verifies the completed send under an RLS-scoped transaction. It exposes only `ACTIVE`
+or `EXPIRED` and the timestamp; quote content belongs to the public webapp feature. The current
+WhatsApp composition-root adapter is deliberately disabled until the Meta transport ticket lands,
+and the console mailer is never treated as a successful client delivery.
+
 ## Where the code lives
 
 | Piece                       | File                                                         |
@@ -350,6 +378,9 @@ platform's cron rather than on demand.
 | Candidates per line         | `internal/services/rfq_service.go` (`alternativesFromMatch`) |
 | SQL                         | `internal/repository/{rfq,quote,channel}_repo.go`            |
 | Routes and DTOs             | `internal/delivery/http/{handler,dto}/{rfq,quote}_*.go`      |
+| Client delivery             | `internal/services/quote_delivery_service.go`                |
+| Delivery persistence        | `internal/repository/quote_send_repo.go`                     |
+| Evaluation retry            | `internal/services/quote_quality_job.go`                     |
 
 `RFQExtractor` is a **feature port**: its adapter owns the prompt and the schema and reaches the
 model through `StructuredGenerator`, so it names no provider and works behind whichever one is

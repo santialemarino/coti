@@ -125,6 +125,9 @@ services:
       - key: WEB_BACKOFFICE_URL
         scope: RUN_TIME
         value: ${APP_URL}
+      - key: WEB_WEBAPP_URL
+        scope: RUN_TIME
+        value: ${APP_URL}
 
   - name: backoffice
     dockerfile_path: docker/backoffice.Dockerfile
@@ -199,6 +202,44 @@ jobs:
       deploy_on_push: true
     instance_size_slug: apps-s-1vcpu-1gb
     run_command: /api/bin/scheduled-job --job quote-correction-learning
+    envs:
+      - key: ENV
+        scope: RUN_TIME
+        value: production
+      - key: DATABASE_ADMIN_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: AUTH_JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_LOCAL_SIGNING_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: AI_EMBEDDINGS_PROVIDER
+        scope: RUN_TIME
+        value: openai
+      - key: AI_OPENAI_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+
+  # A send remains successful when its post-commit quality evaluation fails. This bounded sweep
+  # recovers those missing labels and then hands correction embeddings to their existing retry.
+  - name: quote-quality-evaluation
+    kind: SCHEDULED
+    schedule:
+      cron: '*/15 * * * *'
+      time_zone: America/Argentina/Buenos_Aires
+    dockerfile_path: docker/api.Dockerfile
+    source_dir: /
+    github:
+      repo: santialemarino/coti
+      branch: main
+      deploy_on_push: true
+    instance_size_slug: apps-s-1vcpu-1gb
+    run_command: /api/bin/scheduled-job --job quote-quality-evaluation
     envs:
       - key: ENV
         scope: RUN_TIME

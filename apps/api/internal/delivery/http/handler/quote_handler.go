@@ -17,14 +17,119 @@ type QuoteService interface {
 	AcceptMaterials(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.PricedQuote, error)
 }
 
+// QuoteDeliveryService is the send and public-token surface the handler needs.
+type QuoteDeliveryService interface {
+	Send(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID,
+		in domain.QuoteDeliveryInput) (*domain.QuoteDeliveryResult, error)
+	ResolvePublic(ctx context.Context, token string) (*domain.PublicQuoteSend, error)
+}
+
 // QuoteHandler serves the quote lifecycle endpoints.
 type QuoteHandler struct {
-	quotes QuoteService
+	quotes   QuoteService
+	delivery QuoteDeliveryService
 }
 
 // NewQuoteHandler builds a QuoteHandler.
-func NewQuoteHandler(quotes QuoteService) *QuoteHandler {
-	return &QuoteHandler{quotes: quotes}
+func NewQuoteHandler(quotes QuoteService, delivery QuoteDeliveryService) *QuoteHandler {
+	return &QuoteHandler{quotes: quotes, delivery: delivery}
+}
+
+// Send delivers a frozen quote through WhatsApp and, when requested, email.
+//
+//	@Summary		Send a quote to its client
+//	@Description	Freezes the current seller-approved version, always attempts WhatsApp with a public webapp link, optionally attempts email independently, and moves QUOTED to SENT when at least one selected channel succeeds.
+//	@Tags			quotes
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header		string				true	"Active branch"
+//	@Param			Idempotency-Key	header		string				true	"Delivery operation UUID"
+//	@Param			quoteId		path		string				true	"Quote id"
+//	@Param			request		body		dto.QuoteSendRequest	true	"Delivery destinations and validity"
+//	@Success		201			{object}	dto.QuoteSendResponse
+//	@Success		200			{object}	dto.QuoteSendResponse	"Idempotent replay"
+//	@Failure		400			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse
+//	@Failure		409			{object}	dto.ErrorResponse
+//	@Failure		422			{object}	dto.ErrorResponse
+//	@Failure		503			{object}	dto.ErrorResponse	"Every selected channel failed"
+//	@Router			/v1/quotes/{quoteId}/sends [post]
+func (h *QuoteHandler) Send(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	quoteID, ok := pathUUID(c, "quoteId")
+	if !ok {
+		return
+	}
+	key, err := uuid.Parse(c.GetHeader("Idempotency-Key"))
+	if err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	var request dto.QuoteSendRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	if h.delivery == nil {
+		Respond(c, domain.ErrNotConfigured)
+		return
+	}
+	var email *string
+	if request.EmailDelivery != nil {
+		email = &request.EmailDelivery.Address
+	}
+	result, err := h.delivery.Send(c.Request.Context(), tenant, quoteID,
+		domain.QuoteDeliveryInput{IdempotencyKey: key, Phone: request.RecipientPhone,
+			Email: email, ExpiryDays: request.ExpiryDays})
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	status := http.StatusCreated
+	if result.Replay {
+		status = http.StatusOK
+	}
+	c.JSON(status, toQuoteSendResponse(*result))
+}
+
+// ResolvePublic reports whether a completed delivery token is active or expired.
+//
+//	@Summary	Resolve a public quote delivery token
+//	@Tags		public quote sends
+//	@Produce	json
+//	@Param		token	path		string	true	"Public delivery token"
+//	@Success	200		{object}	dto.PublicQuoteSendResponse
+//	@Failure	404		{object}	dto.ErrorResponse
+//	@Router		/v1/public/quote-sends/{token} [get]
+func (h *QuoteHandler) ResolvePublic(c *gin.Context) {
+	if h.delivery == nil {
+		Respond(c, domain.ErrNotFound)
+		return
+	}
+	result, err := h.delivery.ResolvePublic(c.Request.Context(), c.Param("token"))
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, dto.PublicQuoteSendResponse{Status: result.Status,
+		ExpiresAt: result.ExpiresAt})
+}
+
+func toQuoteSendResponse(result domain.QuoteDeliveryResult) dto.QuoteSendResponse {
+	deliveries := make([]dto.QuoteDeliveryResponse, 0, len(result.Deliveries))
+	for _, delivery := range result.Deliveries {
+		deliveries = append(deliveries, dto.QuoteDeliveryResponse{ID: delivery.ID,
+			Channel: string(delivery.ChannelType), Destination: delivery.Destination,
+			TrackingStatus: string(delivery.TrackingStatus), PublicURL: delivery.PublicURL,
+			SentAt: delivery.SentAt})
+	}
+	return dto.QuoteSendResponse{QuoteID: result.QuoteID, VersionID: result.VersionID,
+		CurrentStatus: string(result.CurrentStatus), ExpiresAt: result.ExpiresAt,
+		Deliveries: deliveries}
 }
 
 // AcceptMaterials prices a draft quote's materials and moves it to QUOTED.
