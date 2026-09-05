@@ -47,12 +47,10 @@ function buildAlignedRows(original: DiffLineItem[], requested: DiffLineItem[]): 
 
 function DiffItemCell({
   item,
-  side,
   changeType,
   fmt,
 }: {
   item: DiffLineItem | null;
-  side: 'original' | 'requested';
   changeType: 'modified' | 'added' | 'removed' | null;
   fmt: ReturnType<typeof useFormatters>;
 }) {
@@ -190,15 +188,7 @@ function DiffPanel({
             {alignedRows.map((row, i) => {
               const item = row[side];
 
-              return (
-                <DiffItemCell
-                  key={i}
-                  item={item}
-                  side={side}
-                  changeType={row.changeType}
-                  fmt={fmt}
-                />
-              );
+              return <DiffItemCell key={i} item={item} changeType={row.changeType} fmt={fmt} />;
             })}
           </tbody>
         </table>

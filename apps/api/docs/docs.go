@@ -925,25 +925,25 @@ const docTemplate = `{
                         }
                     },
                     "404": {
-                        "description": "No active WhatsApp channel",
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
                     },
                     "422": {
-                        "description": "Ambiguous channel, or an answer the model could not shape",
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
                     },
                     "429": {
-                        "description": "Rate limit spent; retry_after_seconds says when",
+                        "description": "Too Many Requests",
                         "schema": {
                             "$ref": "#/definitions/dto.RateLimitResponse"
                         }
                     },
                     "503": {
-                        "description": "No language model is bound, or it could not answer",
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -2916,38 +2916,21 @@ const docTemplate = `{
                 }
             }
         },
-<<<<<<< HEAD
-        "/v1/rfqs": {
-=======
         "/v1/quotes/{quoteId}/accept-materials": {
->>>>>>> origin/dev
             "post": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-<<<<<<< HEAD
-                "description": "Records a counter or phone order. The RFQ is born GENERATED and its quote DRAFT in one transaction; typed lines become the quote's first version. Needs an active branch in X-Branch-Id.",
-                "consumes": [
-                    "application/json"
-                ],
-=======
                 "description": "Freezes each line's unit price and discount floor from the prices in force at the quote's branch, sums the version total, and moves the quote to QUOTED for review. A line with no matched product, or one whose product the branch cannot price, stays in the quote with an empty valuation and adds nothing to the total; the second is named by pricing_unavailable, which every line answers once valued. The version is not frozen: the seller still edits it.",
->>>>>>> origin/dev
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-<<<<<<< HEAD
-                    "rfqs"
-                ],
-                "summary": "Create a manual RFQ",
-=======
                     "quotes"
                 ],
                 "summary": "Accept a quote's materials",
->>>>>>> origin/dev
                 "parameters": [
                     {
                         "type": "string",
@@ -2957,22 +2940,6 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-<<<<<<< HEAD
-                        "description": "Manual RFQ",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.CreateRfqRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/dto.CreateRfqResponse"
-=======
                         "type": "string",
                         "description": "Quote id",
                         "name": "quoteId",
@@ -2985,7 +2952,6 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/dto.PricedQuoteResponse"
->>>>>>> origin/dev
                         }
                     },
                     "400": {
@@ -3001,9 +2967,6 @@ const docTemplate = `{
                         }
                     },
                     "404": {
-<<<<<<< HEAD
-                        "description": "Branch has no manual-entry channel, or an item names a product outside the account",
-=======
                         "description": "No such quote in the selected branch",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
@@ -3011,16 +2974,575 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "QUOTE_NOT_DRAFT once the materials were accepted, QUOTE_ARCHIVED on an archived quote",
->>>>>>> origin/dev
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
                     },
                     "422": {
-<<<<<<< HEAD
-                        "description": "No active branch, no raw_text and no items, or a quantity NUMERIC(14,2) cannot hold",
-=======
                         "description": "No active branch, or a total NUMERIC(14,2) cannot hold",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/{quoteId}/archive": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Sets the archived flag. Refuses an archived quote and a terminal one.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Archive a quote",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_ARCHIVED or a terminal status",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/{quoteId}/items": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Appends a new material line to a draft quote version.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rfqs"
+                ],
+                "summary": "Add a quote item",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFQ id",
+                        "name": "rfqId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New item data",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.AddQuoteItemRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteItemResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/{quoteId}/items/{itemId}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Removes a line from a draft quote version.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rfqs"
+                ],
+                "summary": "Delete a quote item",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFQ id",
+                        "name": "rfqId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Item id",
+                        "name": "itemId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.SuccessResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Patches a mutable field on a draft quote item.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rfqs"
+                ],
+                "summary": "Update a quote item",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFQ id",
+                        "name": "rfqId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Item id",
+                        "name": "itemId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to patch",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateQuoteItemRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteItemResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/{quoteId}/transition": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Moves the quote to the asked status, refusing a status its current one cannot\nreach or an archived quote. Records the move in the status history.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Transition a quote's status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Target status",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.TransitionQuoteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_NOT_DRAFT when the edge is not allowed, QUOTE_ARCHIVED on an archived quote",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch, or an unknown status",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/{quoteId}/unarchive": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Clears the archived flag.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Unarchive a quote",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote or not archived",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/rfqs": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the RFQ list scoped to the tenant and, when set, the active branch.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rfqs"
+                ],
+                "summary": "List RFQs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/dto.RfqListItemResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Records a counter or phone order.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rfqs"
+                ],
+                "summary": "Create a manual RFQ",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Manual RFQ",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateRfqRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateRfqResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -3035,7 +3557,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Persists the original text before reading it, then returns a quote DRAFT with one line per material, each carrying its catalog match, its confidence, and the candidates a flagged line was decided against. It does not price or send the quote, so pricing_unavailable is null on every line.",
+                "description": "Persists the original text before reading it, then returns a quote DRAFT with one line per material, each carrying its catalog match, its confidence, and the candidates a flagged line was decided against.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3084,19 +3606,65 @@ const docTemplate = `{
                         }
                     },
                     "422": {
-                        "description": "No active branch, or an answer the model could not shape",
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
                     },
                     "429": {
-                        "description": "Rate limit spent; retry_after_seconds says when",
+                        "description": "Too Many Requests",
                         "schema": {
                             "$ref": "#/definitions/dto.RateLimitResponse"
                         }
                     },
                     "503": {
-                        "description": "No language model is bound, or it could not answer",
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/rfqs/{rfqId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the RFQ header, associated quote, version, items, and alternatives.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rfqs"
+                ],
+                "summary": "Get RFQ detail",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "RFQ id",
+                        "name": "rfqId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.RfqDetailResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -3235,7 +3803,6 @@ const docTemplate = `{
                     },
                     "422": {
                         "description": "UNSUPPORTED_FILE_TYPE, or no active branch",
->>>>>>> origin/dev
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -3655,6 +4222,30 @@ const docTemplate = `{
                         "PREMIUM",
                         "ECONOMY"
                     ]
+                }
+            }
+        },
+        "dto.AddQuoteItemRequest": {
+            "type": "object",
+            "required": [
+                "quantity",
+                "requested_description"
+            ],
+            "properties": {
+                "product_id": {
+                    "type": "string"
+                },
+                "quantity": {
+                    "type": "string"
+                },
+                "requested_description": {
+                    "type": "string",
+                    "maxLength": 512,
+                    "minLength": 1
+                },
+                "unit": {
+                    "type": "string",
+                    "maxLength": 64
                 }
             }
         },
@@ -4093,7 +4684,6 @@ const docTemplate = `{
                 }
             }
         },
-<<<<<<< HEAD
         "dto.CreateRfqItemRequest": {
             "type": "object",
             "required": [
@@ -4146,7 +4736,9 @@ const docTemplate = `{
                 },
                 "rfq": {
                     "$ref": "#/definitions/dto.RfqResponse"
-=======
+                }
+            }
+        },
         "dto.CreateTextRFQDraftRequest": {
             "type": "object",
             "required": [
@@ -4171,7 +4763,6 @@ const docTemplate = `{
                 "work_type": {
                     "type": "string",
                     "maxLength": 255
->>>>>>> origin/dev
                 }
             }
         },
@@ -4556,14 +5147,6 @@ const docTemplate = `{
                 }
             }
         },
-<<<<<<< HEAD
-        "dto.QuoteResponse": {
-            "type": "object",
-            "properties": {
-                "branch_id": {
-                    "type": "string"
-                },
-=======
         "dto.QuoteItemAlternativeResponse": {
             "type": "object",
             "properties": {
@@ -4637,7 +5220,16 @@ const docTemplate = `{
                     "description": "PricingUnavailable names a line that matched a product the branch cannot price. It is null\nuntil the materials are accepted, because until then no line has been priced at all.",
                     "type": "boolean"
                 },
+                "product_code": {
+                    "type": "string"
+                },
                 "product_id": {
+                    "type": "string"
+                },
+                "product_name": {
+                    "type": "string"
+                },
+                "product_unit": {
                     "type": "string"
                 },
                 "quantity": {
@@ -4675,7 +5267,6 @@ const docTemplate = `{
                 "client_id": {
                     "type": "string"
                 },
->>>>>>> origin/dev
                 "created_at": {
                     "type": "string"
                 },
@@ -4685,11 +5276,6 @@ const docTemplate = `{
                 "current_version_id": {
                     "type": "string"
                 },
-<<<<<<< HEAD
-                "id": {
-                    "type": "string"
-                },
-=======
                 "expires_at": {
                     "type": "string"
                 },
@@ -4702,7 +5288,6 @@ const docTemplate = `{
                 "needs_followup": {
                     "type": "boolean"
                 },
->>>>>>> origin/dev
                 "rfq_id": {
                     "type": "string"
                 },
@@ -4714,8 +5299,6 @@ const docTemplate = `{
                 }
             }
         },
-<<<<<<< HEAD
-=======
         "dto.QuoteVersionResponse": {
             "type": "object",
             "properties": {
@@ -4820,7 +5403,6 @@ const docTemplate = `{
                 }
             }
         },
->>>>>>> origin/dev
         "dto.RateLimitResponse": {
             "type": "object",
             "properties": {
@@ -4876,7 +5458,82 @@ const docTemplate = `{
                 }
             }
         },
-<<<<<<< HEAD
+        "dto.RfqDetailResponse": {
+            "type": "object",
+            "properties": {
+                "alternatives": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/definitions/dto.QuoteItemAlternativeResponse"
+                        }
+                    }
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.QuoteItemResponse"
+                    }
+                },
+                "quote": {
+                    "$ref": "#/definitions/dto.QuoteResponse"
+                },
+                "rfq": {
+                    "$ref": "#/definitions/dto.RfqListItemResponse"
+                },
+                "version": {
+                    "$ref": "#/definitions/dto.QuoteVersionResponse"
+                }
+            }
+        },
+        "dto.RfqListItemResponse": {
+            "type": "object",
+            "properties": {
+                "archived_at": {
+                    "type": "string"
+                },
+                "branch": {
+                    "type": "string"
+                },
+                "branch_id": {
+                    "type": "string"
+                },
+                "channel": {
+                    "type": "string"
+                },
+                "client": {
+                    "type": "string"
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "item_count": {
+                    "type": "integer"
+                },
+                "needs_followup": {
+                    "type": "boolean"
+                },
+                "seller": {
+                    "type": "string"
+                },
+                "seller_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.RfqResponse": {
             "type": "object",
             "properties": {
@@ -4906,7 +5563,9 @@ const docTemplate = `{
                 },
                 "work_type": {
                     "type": "string"
-=======
+                }
+            }
+        },
         "dto.SaveOnboardingProgressRequest": {
             "type": "object",
             "required": [
@@ -4945,7 +5604,6 @@ const docTemplate = `{
                         "COMPLETED",
                         "SKIPPED"
                     ]
->>>>>>> origin/dev
                 }
             }
         },
@@ -5042,6 +5700,14 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.SuccessResponse": {
+            "type": "object",
+            "properties": {
+                "ok": {
+                    "type": "boolean"
+                }
+            }
+        },
         "dto.SynonymListResponse": {
             "type": "object",
             "properties": {
@@ -5107,6 +5773,17 @@ const docTemplate = `{
                 },
                 "user": {
                     "$ref": "#/definitions/dto.UserBrief"
+                }
+            }
+        },
+        "dto.TransitionQuoteRequest": {
+            "type": "object",
+            "required": [
+                "status"
+            ],
+            "properties": {
+                "status": {
+                    "type": "string"
                 }
             }
         },
@@ -5213,6 +5890,28 @@ const docTemplate = `{
                 "unit": {
                     "type": "string",
                     "maxLength": 64
+                }
+            }
+        },
+        "dto.UpdateQuoteItemRequest": {
+            "type": "object",
+            "properties": {
+                "product_id": {
+                    "type": "string"
+                },
+                "quantity": {
+                    "type": "string"
+                },
+                "requested_description": {
+                    "type": "string",
+                    "maxLength": 512
+                },
+                "unit": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "unit_price_snapshot": {
+                    "type": "string"
                 }
             }
         },

@@ -269,7 +269,7 @@ func (h *RfqHandler) DeleteItem(c *gin.Context) {
 //	@Accept			json
 //	@Produce		json
 //	@Security		BearerAuth
-//	@Param			X-Branch-Id	header		true						"Active branch"
+//	@Param			X-Branch-Id	header		string						true	"Active branch"
 //	@Param			rfqId		path		string						true	"RFQ id"
 //	@Param			quoteId		path		string						true	"Quote id"
 //	@Param			body		body		dto.AddQuoteItemRequest		true	"New item data"
