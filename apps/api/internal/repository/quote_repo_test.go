@@ -744,3 +744,154 @@ func TestQuoteRepository_CreateItems_RefusesALineWithNoID(t *testing.T) {
 		t.Errorf("the all-zeros uuid is a real quote_item key %d times over", written)
 	}
 }
+
+// ListItemsWithProduct joins product's catalog identity onto a version's lines. The projection is
+// table-prefixed because product shares the id and unit column names with quote_item; an
+// unqualified one makes the join ambiguous and the detail view reads no items at all.
+func TestQuoteRepository_ListItemsWithProduct_RoundTripsCatalogIdentity(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "List items with product")
+	branchID := branchOf(t, db, accountID)
+	productID := seedProduct(t, db, accountID, "Cemento Portland 50kg")
+	priceCleanup(t, db, productID)
+	_, versionID, itemID := seedQuoteChain(t, db, accountID, branchID, productID)
+
+	repo := NewQuoteRepository()
+	var items []domain.QuoteItem
+	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID, Role: domain.UserRoleAdmin},
+		func(q Querier) error {
+			var readErr error
+			items, readErr = repo.ListItemsWithProduct(ctx, q, accountID, versionID)
+			return readErr
+		}); err != nil {
+		t.Fatalf("ListItemsWithProduct: %v", err)
+	}
+
+	if len(items) != 1 {
+		t.Fatalf("items = %d, want 1", len(items))
+	}
+	item := items[0]
+	if item.ID != itemID {
+		t.Errorf("item ID = %v, want %v", item.ID, itemID)
+	}
+	if item.VersionID != versionID {
+		t.Errorf("item version = %v, want %v", item.VersionID, versionID)
+	}
+	if item.ProductID == nil || *item.ProductID != productID {
+		t.Errorf("item product = %v, want %v", item.ProductID, productID)
+	}
+	if item.RequestedDescription != "cemento" || !item.Quantity.Equal(decimal.RequireFromString("10")) {
+		t.Errorf("item line = (%q, %v), want (cemento, 10)", item.RequestedDescription, item.Quantity)
+	}
+	if item.MatchStatus != domain.ItemMatchStatusMatched {
+		t.Errorf("item match = %q, want MATCHED", item.MatchStatus)
+	}
+	// The seeded product carries a canonical name; the other two catalog fields stay null and the
+	// join must map that as null rather than an error.
+	if item.ProductName == nil || *item.ProductName != "Cemento Portland 50kg" {
+		t.Errorf("item product name = %v, want the catalog's", item.ProductName)
+	}
+}
+
+// CreateSingleItem appends a line to a mutable version. Its SELECT-form insert targets the product
+// and quantity parameters into a CASE, so they must carry explicit casts — without them the planner
+// cannot infer $3's data type and answers 42P08. This keeps that from regressing.
+func TestQuoteRepository_CreateSingleItem_AddsMatchedAndUnmatchedLines(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "CreateSingleItem")
+	branchID := branchOf(t, db, accountID)
+	productID := seedProduct(t, db, accountID, "Cemento Portland 50kg")
+	priceCleanup(t, db, productID)
+	_, versionID, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+
+	repo := NewQuoteRepository()
+	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID, Role: domain.UserRoleAdmin},
+		func(q Querier) error {
+			matched, matchErr := repo.CreateSingleItem(ctx, q, accountID, versionID,
+				domain.QuoteItemCreate{
+					ProductID:            &productID,
+					RequestedDescription: "cemento hidrófugo",
+					Quantity:             decimal.RequireFromString("2"),
+					Unit:                 strPtr("bolsa"),
+				})
+			if matchErr != nil {
+				return matchErr
+			}
+			if matched.MatchStatus != domain.ItemMatchStatusMatched {
+				t.Errorf("matched line match = %q, want MATCHED", matched.MatchStatus)
+			}
+
+			unmatched, noMatchErr := repo.CreateSingleItem(ctx, q, accountID, versionID,
+				domain.QuoteItemCreate{
+					RequestedDescription: "un material sin emparejar",
+					Quantity:             decimal.RequireFromString("3"),
+				})
+			if noMatchErr != nil {
+				return noMatchErr
+			}
+			if unmatched.ProductID != nil || unmatched.MatchStatus != domain.ItemMatchStatusNoMatch {
+				t.Errorf("unmatched line = (product %v, match %q), want (nil, NO_MATCH)",
+					unmatched.ProductID, unmatched.MatchStatus)
+			}
+			return nil
+		}); err != nil {
+		t.Fatalf("CreateSingleItem: %v", err)
+	}
+
+	var lines int
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT count(*) FROM quote_item WHERE version_id = $1`, versionID).Scan(&lines); err != nil {
+		t.Fatalf("count the appended lines: %v", err)
+	}
+	if lines != 3 {
+		t.Errorf("lines on the version = %d, want 3", lines)
+	}
+}
+
+// UpdateItem's UPDATE joins quote_item against quote_version. Its RETURNING must read the row
+// from the item table alone; the unqualified projection collides with the version's id and
+// account_id and answers 42702. Updating quantity exercises the join, the RETURNING, and the
+// subtotal recalculation together.
+func TestQuoteRepository_UpdateItem_ChangesQuantityAndSubtotal(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "UpdateItem")
+	branchID := branchOf(t, db, accountID)
+	productID := seedProduct(t, db, accountID, "Cemento Portland 50kg")
+	priceCleanup(t, db, productID)
+	_, versionID, itemID := seedQuoteChain(t, db, accountID, branchID, productID)
+
+	newQuantity := decimal.NewFromInt(12)
+	price := decimal.NewFromInt(18900)
+
+	repo := NewQuoteRepository()
+	var updated *domain.QuoteItem
+	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID, Role: domain.UserRoleAdmin},
+		func(q Querier) error {
+			var updateErr error
+			updated, updateErr = repo.UpdateItem(ctx, q, accountID, versionID, itemID,
+				domain.QuoteItemUpdate{
+					Quantity:          &newQuantity,
+					UnitPriceSnapshot: &price,
+				})
+			return updateErr
+		}); err != nil {
+		t.Fatalf("UpdateItem: %v", err)
+	}
+
+	if updated.ID != itemID {
+		t.Errorf("updated item id = %v, want %v", updated.ID, itemID)
+	}
+	if !updated.Quantity.Equal(newQuantity) {
+		t.Errorf("quantity = %v, want %v", updated.Quantity, newQuantity)
+	}
+	if !updated.UnitPriceSnapshot.Valid || !updated.UnitPriceSnapshot.Decimal.Equal(price) {
+		t.Errorf("unit price = %v, want %v", updated.UnitPriceSnapshot, price)
+	}
+	wantSubtotal := newQuantity.Mul(price)
+	if !updated.Subtotal.Valid || !updated.Subtotal.Decimal.Equal(wantSubtotal) {
+		t.Errorf("subtotal = %v, want quantity × price = %v", updated.Subtotal, wantSubtotal)
+	}
+}

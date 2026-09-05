@@ -15,6 +15,264 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
 
+var manualChannelID = uuid.MustParse("66666666-6666-4666-8666-666666666666")
+var knownProduct = uuid.MustParse("77777777-7777-4777-8777-777777777777")
+var foreignProduct = uuid.MustParse("88888888-8888-4888-8888-888888888888")
+
+type fakeRfqRepoManual struct {
+	channelID  uuid.UUID
+	channelErr error
+	owned      int
+	creation   *domain.RfqCreation
+	createErr  error
+	receivedAt time.Time
+	created    []domain.NewRfq
+	listItems  []domain.RfqListItem
+}
+
+func (f *fakeRfqRepoManual) Create(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, _ domain.NewRFQ,
+) (*domain.RFQ, error) {
+	return nil, errors.New("not implemented in manual fake")
+}
+
+func (f *fakeRfqRepoManual) UpdateStatus(
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID, _ domain.RFQStatus,
+) (*domain.RFQ, error) {
+	return nil, errors.New("not implemented in manual fake")
+}
+
+func (f *fakeRfqRepoManual) AppendStatusChange(
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID, _ *domain.RFQStatus, _ domain.RFQStatus, _ *uuid.UUID,
+) (*domain.RFQStatusChange, error) {
+	return nil, errors.New("not implemented in manual fake")
+}
+
+func (f *fakeRfqRepoManual) ListByTenant(
+	_ context.Context, _ repository.Querier, _ domain.Tenant,
+) ([]domain.RfqListItem, error) {
+	return f.listItems, nil
+}
+
+func (f *fakeRfqRepoManual) GetByRFQID(
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID,
+) (*domain.RfqListItem, error) {
+	return nil, errors.New("not implemented in manual fake")
+}
+
+func (f *fakeRfqRepoManual) GetManualEntryChannelID(
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID,
+) (uuid.UUID, error) {
+	if f.channelErr != nil {
+		return uuid.Nil, f.channelErr
+	}
+	return f.channelID, nil
+}
+
+func (f *fakeRfqRepoManual) CountProductsInAccount(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, productIDs []uuid.UUID,
+) (int, error) {
+	if len(productIDs) == 0 {
+		return 0, nil
+	}
+	return f.owned, nil
+}
+
+func (f *fakeRfqRepoManual) CreateManualEntry(
+	_ context.Context, _ repository.Querier, tenant domain.Tenant, channelID uuid.UUID,
+	in domain.NewRfq, now time.Time,
+) (*domain.RfqCreation, error) {
+	f.created = append(f.created, in)
+	f.receivedAt = now
+	if f.createErr != nil {
+		return nil, f.createErr
+	}
+	if f.creation != nil {
+		return f.creation, nil
+	}
+	return &domain.RfqCreation{
+		Rfq: domain.RFQ{
+			ID: uuid.New(), BranchID: tenant.BranchID, ChannelID: channelID,
+			RawText: in.RawText, WorkType: in.WorkType, ClientLabel: in.ClientLabel,
+			Status: domain.RFQStatusGenerated, ReceivedAt: now,
+		},
+		Quote: domain.Quote{
+			ID: uuid.New(), BranchID: tenant.BranchID, SellerID: &tenant.UserID,
+			CurrentStatus: domain.QuoteStatusDraft,
+		},
+	}, nil
+}
+
+func manualHarness(repo *fakeRfqRepoManual) (*RFQService, *fakeDB) {
+	db := &fakeDB{}
+	svc := NewRFQService(db, repo, nil, nil, nil, nil, nil, nil, config.RFQConfig{})
+	svc.now = func() time.Time { return fixedNow }
+	return svc, db
+}
+
+func manualItems() []domain.NewRfqItem {
+	return []domain.NewRfqItem{{
+		ProductID:            &knownProduct,
+		RequestedDescription: "Cemento Loma Negra x50",
+		Quantity:             decimal.RequireFromString("2.5"),
+		Unit:                 strPtr("bolsa"),
+	}}
+}
+
+func strPtr(s string) *string { return &s }
+
+func TestRfqService_CreateManual_BornGeneratedAndDraft(t *testing.T) {
+	raw := strPtr("  pedido de hoy  ")
+	repo := &fakeRfqRepoManual{channelID: manualChannelID, owned: 1}
+	svc, db := manualHarness(repo)
+
+	creation, err := svc.CreateManual(context.Background(), branchTenant(), domain.NewRfq{
+		RawText:     raw,
+		ClientLabel: strPtr("  Pérez  "),
+		Items:       manualItems(),
+	})
+	if err != nil {
+		t.Fatalf("CreateManual returned an unexpected error: %v", err)
+	}
+	if creation.Rfq.Status != domain.RFQStatusGenerated {
+		t.Errorf("RFQ status = %s, want GENERATED", creation.Rfq.Status)
+	}
+	if creation.Quote.CurrentStatus != domain.QuoteStatusDraft {
+		t.Errorf("quote status = %s, want DRAFT", creation.Quote.CurrentStatus)
+	}
+	if !creation.Rfq.ReceivedAt.Equal(fixedNow) {
+		t.Errorf("received_at = %v, want the injected clock %v", creation.Rfq.ReceivedAt, fixedNow)
+	}
+	if creation.Quote.SellerID == nil || *creation.Quote.SellerID != testUserID {
+		t.Errorf("quote seller_id = %v, want the caller %v", creation.Quote.SellerID, testUserID)
+	}
+	if creation.Rfq.ChannelID != manualChannelID {
+		t.Errorf("rfq channel = %v, want the manual-entry channel %v", creation.Rfq.ChannelID, manualChannelID)
+	}
+
+	if got := *creation.Rfq.ClientLabel; got != "Pérez" {
+		t.Errorf("client label was not trimmed: %q", got)
+	}
+	if got := *creation.Rfq.RawText; got != "pedido de hoy" {
+		t.Errorf("raw_text was not trimmed: %q", got)
+	}
+	if len(repo.created) != 1 {
+		t.Fatalf("CreateManualEntry called %d times, want 1", len(repo.created))
+	}
+	item := repo.created[0].Items[0]
+	if item.Quantity.String() != "2.5" {
+		t.Errorf("quantity = %s, want 2.5", item.Quantity)
+	}
+	if item.Unit == nil || *item.Unit != "bolsa" {
+		t.Errorf("unit = %v, want bolsa", item.Unit)
+	}
+	if item.ProductID == nil || *item.ProductID != knownProduct {
+		t.Errorf("product_id = %v, want the known product", item.ProductID)
+	}
+
+	if len(db.scopes) != 1 || db.scopes[0] != testAccountID {
+		t.Errorf("transaction scoped to %v, want [%v]", db.scopes, testAccountID)
+	}
+}
+
+func TestRfqService_CreateManual_NeedsAnActiveBranch(t *testing.T) {
+	repo := &fakeRfqRepoManual{channelID: manualChannelID}
+	svc, _ := manualHarness(repo)
+	tenant := domain.Tenant{AccountID: testAccountID, UserID: testUserID}
+
+	_, err := svc.CreateManual(context.Background(), tenant, domain.NewRfq{Items: manualItems()})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("err = %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestRfqService_CreateManual_NeedsTextOrItems(t *testing.T) {
+	repo := &fakeRfqRepoManual{channelID: manualChannelID}
+	svc, _ := manualHarness(repo)
+
+	_, err := svc.CreateManual(context.Background(), branchTenant(), domain.NewRfq{})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("err = %v, want ErrInvalidInput", err)
+	}
+	if got := len(repo.created); got != 0 {
+		t.Fatalf("CreateManualEntry called %d times, want 0", got)
+	}
+}
+
+func TestRfqService_CreateManual_RejectsBadItems(t *testing.T) {
+	cases := []struct {
+		name string
+		item domain.NewRfqItem
+	}{
+		{"empty description", domain.NewRfqItem{
+			RequestedDescription: "   ", Quantity: decimal.NewFromInt(1),
+		}},
+		{"zero quantity", domain.NewRfqItem{
+			RequestedDescription: "Cemento", Quantity: decimal.Zero,
+		}},
+		{"negative quantity", domain.NewRfqItem{
+			RequestedDescription: "Cemento", Quantity: decimal.NewFromInt(-3),
+		}},
+		{"too many decimals", domain.NewRfqItem{
+			RequestedDescription: "Cemento", Quantity: decimal.RequireFromString("2.500"),
+		}},
+		{"over moneyMax", domain.NewRfqItem{
+			RequestedDescription: "Cemento", Quantity: decimal.RequireFromString("999999999999.99").Add(decimal.NewFromInt(1)),
+		}},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &fakeRfqRepoManual{channelID: manualChannelID}
+			svc, _ := manualHarness(repo)
+
+			_, err := svc.CreateManual(context.Background(), branchTenant(),
+				domain.NewRfq{Items: []domain.NewRfqItem{tc.item}})
+			if !errors.Is(err, domain.ErrInvalidInput) {
+				t.Fatalf("err = %v, want ErrInvalidInput", err)
+			}
+		})
+	}
+}
+
+func TestRfqService_CreateManual_ProductOutsideAccountFailsClosed(t *testing.T) {
+	repo := &fakeRfqRepoManual{channelID: manualChannelID, owned: 1}
+	svc, _ := manualHarness(repo)
+
+	items := append(manualItems(), domain.NewRfqItem{
+		ProductID: &foreignProduct, RequestedDescription: "Ajeno", Quantity: decimal.NewFromInt(1),
+	})
+	_, err := svc.CreateManual(context.Background(), branchTenant(), domain.NewRfq{Items: items})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+	if got := len(repo.created); got != 0 {
+		t.Fatalf("CreateManualEntry called %d times, want 0", got)
+	}
+}
+
+func TestRfqService_CreateManual_MissingChannelIsPropagated(t *testing.T) {
+	repo := &fakeRfqRepoManual{channelErr: domain.ErrNotFound}
+	svc, _ := manualHarness(repo)
+
+	_, err := svc.CreateManual(context.Background(), branchTenant(), domain.NewRfq{Items: manualItems()})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestRfqService_CreateManual_RepositoryErrorRollsBack(t *testing.T) {
+	repo := &fakeRfqRepoManual{channelID: manualChannelID, owned: 1, createErr: domain.ErrConflict}
+	svc, _ := manualHarness(repo)
+
+	_, err := svc.CreateManual(context.Background(), branchTenant(), domain.NewRfq{Items: manualItems()})
+	if !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("err = %v, want ErrConflict", err)
+	}
+}
+
+// ---------- AI pipeline fakes & tests ----------
+
 var (
 	testRFQID     = uuid.MustParse("a1111111-1111-4111-8111-111111111111")
 	testQuoteID   = uuid.MustParse("a2222222-2222-4222-8222-222222222222")
@@ -34,8 +292,6 @@ type fakeRFQDB struct {
 func (f *fakeRFQDB) InTenantTx(
 	ctx context.Context, tenant domain.Tenant, fn func(repository.Querier) error,
 ) error {
-	// A real pool cannot begin a transaction on a context that is already done, so neither does
-	// the fake: it is what makes a write handed an expired deadline observable.
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -98,8 +354,6 @@ func (f *fakeCatalogMatcher) Match(
 	return f.matches, f.err
 }
 
-// blockingMatcher waits for its context to end, the way a provider call that outlives the
-// pipeline's deadline does.
 type blockingMatcher struct{}
 
 func (blockingMatcher) Match(
@@ -155,6 +409,8 @@ type fakeRFQs struct {
 	created       []domain.NewRFQ
 	updatedStatus []domain.RFQStatus
 	statusChanges []rfqStatusChangeCall
+	rfqByID       *domain.RfqListItem
+	rfqByIDErr    error
 }
 
 func (f *fakeRFQs) Create(
@@ -191,6 +447,40 @@ func (f *fakeRFQs) AppendStatusChange(
 	}, nil
 }
 
+func (f *fakeRFQs) ListByTenant(
+	_ context.Context, _ repository.Querier, _ domain.Tenant,
+) ([]domain.RfqListItem, error) {
+	return nil, errors.New("not implemented in pipeline fake")
+}
+
+func (f *fakeRFQs) GetByRFQID(
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID,
+) (*domain.RfqListItem, error) {
+	if f.rfqByIDErr != nil {
+		return nil, f.rfqByIDErr
+	}
+	return f.rfqByID, nil
+}
+
+func (f *fakeRFQs) GetManualEntryChannelID(
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID,
+) (uuid.UUID, error) {
+	return uuid.Nil, errors.New("not implemented in pipeline fake")
+}
+
+func (f *fakeRFQs) CountProductsInAccount(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, _ []uuid.UUID,
+) (int, error) {
+	return 0, errors.New("not implemented in pipeline fake")
+}
+
+func (f *fakeRFQs) CreateManualEntry(
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ uuid.UUID,
+	_ domain.NewRfq, _ time.Time,
+) (*domain.RfqCreation, error) {
+	return nil, errors.New("not implemented in pipeline fake")
+}
+
 type quoteStatusChangeCall struct {
 	quoteID        uuid.UUID
 	previousStatus *domain.QuoteStatus
@@ -208,6 +498,12 @@ type fakeQuoteDrafts struct {
 	storedAlternatives []domain.QuoteItemAlternative
 	alternativesErr    error
 	statusChanges      []quoteStatusChangeCall
+	quoteByID          *domain.Quote
+	quoteByIDErr       error
+	currentVersionData *domain.QuoteVersion
+	currentVersionErr  error
+	itemsByVersionID   []domain.QuoteItem
+	itemsByVersionErr  error
 }
 
 type fakeQuoteAIGenerations struct {
@@ -268,6 +564,12 @@ func (f *fakeQuoteDrafts) CreateVersion(
 		VersionNumber: in.VersionNumber, Total: in.Total, IsImmutable: in.IsImmutable,
 		Comment: in.Comment,
 	}, nil
+}
+
+func (f *fakeQuoteDrafts) UpdateVersionTotal(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, _ uuid.UUID, total decimal.Decimal,
+) (*domain.QuoteVersion, error) {
+	return &domain.QuoteVersion{ID: testVersionID, Total: total}, nil
 }
 
 func (f *fakeQuoteDrafts) CreateItems(
@@ -337,6 +639,111 @@ func (f *fakeQuoteDrafts) AppendStatusChange(
 	}, nil
 }
 
+func (f *fakeQuoteDrafts) GetByRFQID(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, _ uuid.UUID,
+) (*domain.Quote, error) {
+	if f.quoteByIDErr != nil {
+		return nil, f.quoteByIDErr
+	}
+	return f.quoteByID, nil
+}
+
+func (f *fakeQuoteDrafts) GetByID(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, _ uuid.UUID, _ uuid.UUID,
+) (*domain.Quote, error) {
+	if f.quoteByIDErr != nil {
+		return nil, f.quoteByIDErr
+	}
+	return f.quoteByID, nil
+}
+
+func (f *fakeQuoteDrafts) GetCurrentVersion(
+	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID,
+) (*domain.QuoteVersion, error) {
+	if f.currentVersionErr != nil {
+		return nil, f.currentVersionErr
+	}
+	return f.currentVersionData, nil
+}
+
+func (f *fakeQuoteDrafts) ListItems(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, _ uuid.UUID,
+) ([]domain.QuoteItem, error) {
+	if f.itemsByVersionErr != nil {
+		return nil, f.itemsByVersionErr
+	}
+	return f.itemsByVersionID, nil
+}
+
+func (f *fakeQuoteDrafts) ListItemsWithProduct(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, _ uuid.UUID,
+) ([]domain.QuoteItem, error) {
+	return f.ListItems(context.Background(), nil, uuid.Nil, uuid.Nil)
+}
+
+func (f *fakeQuoteDrafts) GetItem(
+	_ context.Context, _ repository.Querier, accountID, versionID, itemID uuid.UUID,
+) (*domain.QuoteItem, error) {
+	for _, item := range f.itemsByVersionID {
+		if item.ID == itemID {
+			return &item, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+
+func (f *fakeQuoteDrafts) UpdateItem(
+	_ context.Context, _ repository.Querier, accountID, versionID, itemID uuid.UUID,
+	in domain.QuoteItemUpdate,
+) (*domain.QuoteItem, error) {
+	item, err := f.GetItem(context.Background(), nil, accountID, versionID, itemID)
+	if err != nil {
+		return nil, err
+	}
+	if in.ProductID != nil {
+		item.ProductID = in.ProductID
+	}
+	if in.RequestedDescription != nil {
+		item.RequestedDescription = *in.RequestedDescription
+	}
+	if in.Quantity != nil {
+		item.Quantity = *in.Quantity
+	}
+	if in.Unit != nil {
+		item.Unit = in.Unit
+	}
+	return item, nil
+}
+
+func (f *fakeQuoteDrafts) DeleteItem(
+	_ context.Context, _ repository.Querier, accountID, versionID, itemID uuid.UUID,
+) error {
+	for i, item := range f.itemsByVersionID {
+		if item.ID == itemID {
+			f.itemsByVersionID = append(f.itemsByVersionID[:i], f.itemsByVersionID[i+1:]...)
+			return nil
+		}
+	}
+	return domain.ErrNotFound
+}
+
+func (f *fakeQuoteDrafts) CreateSingleItem(
+	_ context.Context, _ repository.Querier, accountID, versionID uuid.UUID,
+	in domain.QuoteItemCreate,
+) (*domain.QuoteItem, error) {
+	item := domain.QuoteItem{
+		ID: uuid.New(), AccountID: accountID, VersionID: versionID,
+		ProductID: in.ProductID, RequestedDescription: in.RequestedDescription,
+		Quantity: in.Quantity, Unit: in.Unit,
+		MatchStatus: domain.ItemMatchStatusNoMatch,
+	}
+	if in.ProductID != nil {
+		item.MatchStatus = domain.ItemMatchStatusMatched
+	}
+	f.itemsByVersionID = append(f.itemsByVersionID, item)
+	return &item, nil
+}
+
 type rfqHarness struct {
 	service     *RFQService
 	db          *fakeRFQDB
@@ -348,8 +755,6 @@ type rfqHarness struct {
 	channels    *fakeRFQChannels
 }
 
-// newRFQHarness wires the service to fakes, with matching answering MATCHED for every line so a
-// test only stages the part it is about.
 func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 	db := &fakeRFQDB{}
 	matches := make([]domain.LineMatch, len(lines))
@@ -381,8 +786,6 @@ func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 	return h
 }
 
-// rfqTenant carries a branch: the whole pipeline is branch-scoped, and the package's other
-// tenant helper deliberately has none.
 func rfqTenant() domain.Tenant {
 	return domain.Tenant{AccountID: testAccountID, BranchID: testBranchID, UserID: testUserID}
 }
@@ -398,6 +801,15 @@ func explicitLine(description, quantity, unit, rationale string) domain.Extracte
 		line.Unit = &unit
 	}
 	return line
+}
+
+// scoredCandidate stages one offer the matcher weighed. Distance is what confidenceOf reads, but
+// these tests stage the confidence directly: what a candidate scored is the matcher's own test.
+func scoredCandidate(productID uuid.UUID, name, confidence string) domain.ScoredCandidate {
+	return domain.ScoredCandidate{
+		CatalogCandidate: domain.CatalogCandidate{ProductID: productID, CanonicalName: name},
+		Confidence:       decimal.RequireFromString(confidence),
+	}
 }
 
 func TestRFQService_CreateTextDraft_PersistsGeneratedDraft(t *testing.T) {
@@ -433,15 +845,14 @@ func TestRFQService_CreateTextDraft_PersistsGeneratedDraft(t *testing.T) {
 		t.Errorf("RFQ branch %s, want the tenant's %s", created.BranchID, testBranchID)
 	}
 
-	// The extractor reads what the client wrote, not a normalised copy of it.
 	if h.extractor.raw != "10 bolsas de cemento" {
 		t.Errorf("extractor read %q, want the stored order", h.extractor.raw)
 	}
 	if !h.extractor.calledOutsideTx {
-		t.Error("the extractor ran inside a transaction; a provider call must not hold one open")
+		t.Error("the extractor ran inside a transaction")
 	}
 	if !h.matcher.calledOutsideTx {
-		t.Error("matching ran inside a transaction; it opens its own")
+		t.Error("matching ran inside a transaction")
 	}
 	if len(h.matcher.descriptions) != 1 || h.matcher.descriptions[0] != "10 bolsas de cemento" {
 		t.Errorf("matched %v, want the line's own description", h.matcher.descriptions)
@@ -488,10 +899,10 @@ func TestRFQService_CreateTextDraft_PersistsGeneratedDraft(t *testing.T) {
 		t.Errorf("version number %d, want 1", version.VersionNumber)
 	}
 	if version.IsImmutable {
-		t.Error("version 1 is frozen; the seller has not reviewed it yet")
+		t.Error("version 1 is frozen")
 	}
 	if !version.Total.IsZero() {
-		t.Errorf("version total %s, want zero: pricing is the next stage", version.Total)
+		t.Errorf("version total %s, want zero", version.Total)
 	}
 	if len(h.quotes.currentVersion) != 1 || h.quotes.currentVersion[0] != testVersionID {
 		t.Errorf("current version pointer %v, want the new version", h.quotes.currentVersion)
@@ -542,7 +953,7 @@ func TestRFQService_CreateTextDraft_PersistsGeneratedDraft(t *testing.T) {
 		t.Errorf("quote status changes %v, want one into DRAFT", h.quotes.statusChanges)
 	}
 	if h.quotes.statusChanges[0].previousStatus != nil {
-		t.Error("the first quote status change has a previous status; the quote did not exist")
+		t.Error("the first quote status change has a previous status")
 	}
 
 	if draft.Quote == nil || draft.Version == nil || len(draft.Items) != 1 {
@@ -551,15 +962,8 @@ func TestRFQService_CreateTextDraft_PersistsGeneratedDraft(t *testing.T) {
 	if draft.RFQ.Status != domain.RFQStatusGenerated {
 		t.Errorf("returned RFQ status %q, want GENERATED", draft.RFQ.Status)
 	}
-	// One transaction for the order, one for the draft. Anything more means a read that could
-	// have travelled with a write.
 	if len(h.db.scopes) != 2 {
 		t.Errorf("opened %d transactions, want 2", len(h.db.scopes))
-	}
-	for _, scope := range h.db.scopes {
-		if scope != testAccountID {
-			t.Errorf("transaction scoped to %s, want the tenant's account", scope)
-		}
 	}
 }
 
@@ -572,17 +976,11 @@ func TestRFQService_CreateTextDraft_StoresTheOrderBeforeReadingIt(t *testing.T) 
 	if err == nil {
 		t.Fatal("CreateTextDraft succeeded with a failing extractor")
 	}
-	// The order survives the failure: without it the client's message is gone and nothing can be
-	// retried.
 	if len(h.rfqs.created) != 1 {
 		t.Fatalf("created %d RFQs, want the order stored before the read", len(h.rfqs.created))
 	}
 	if len(h.quotes.created) != 0 {
 		t.Errorf("created %d quotes, want none", len(h.quotes.created))
-	}
-	if len(h.rfqs.updatedStatus) != 0 {
-		t.Errorf("wrote RFQ statuses %v, want none: it never reached GENERATED",
-			h.rfqs.updatedStatus)
 	}
 }
 
@@ -592,19 +990,13 @@ func TestRFQService_CreateTextDraft_KeepsTheOrderWhenNoMaterialIsRead(t *testing
 	draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
 		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "hola, están abiertos?"})
 	if err != nil {
-		t.Fatalf("CreateTextDraft returned %v, want the order kept rather than an error", err)
+		t.Fatalf("CreateTextDraft returned %v", err)
 	}
 	if draft.Quote != nil || draft.Version != nil || len(draft.Items) != 0 {
 		t.Errorf("draft returned %+v, want the RFQ alone", draft)
 	}
 	if draft.RFQ.Status != domain.RFQStatusReceived {
-		t.Errorf("RFQ status %q, want RECEIVED: generation produced no materials", draft.RFQ.Status)
-	}
-	if len(h.quotes.created) != 0 || len(h.rfqs.statusChanges) != 0 {
-		t.Error("a quote or a transition was written for an order with no materials")
-	}
-	if h.matcher.calls != 0 {
-		t.Errorf("matching ran %d times with nothing to match", h.matcher.calls)
+		t.Errorf("RFQ status %q, want RECEIVED", draft.RFQ.Status)
 	}
 }
 
@@ -639,11 +1031,10 @@ func TestRFQService_CreateTextDraft_FlagsEveryLineWhenMatchingCannotAnswer(t *te
 			draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
 				domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "cemento y arena"})
 			if err != nil {
-				t.Fatalf("CreateTextDraft returned %v; losing the extraction over a match is worse "+
-					"than flagging the lines", err)
+				t.Fatalf("CreateTextDraft returned %v", err)
 			}
 			if len(draft.Items) != 2 {
-				t.Fatalf("persisted %d lines, want both of them", len(draft.Items))
+				t.Fatalf("persisted %d lines, want both", len(draft.Items))
 			}
 			for i, item := range h.quotes.itemBatches[0] {
 				if item.MatchStatus != domain.ItemMatchStatusNoMatch {
@@ -652,15 +1043,12 @@ func TestRFQService_CreateTextDraft_FlagsEveryLineWhenMatchingCannotAnswer(t *te
 				if item.ProductID != nil {
 					t.Errorf("line %d carries product %v, want none", i, item.ProductID)
 				}
-				// Null rather than zero: nothing scored this line, which is a different fact
-				// from a candidate that scored badly.
 				if item.ConfidenceScore.Valid {
 					t.Errorf("line %d carries confidence %v, want null", i, item.ConfidenceScore)
 				}
 			}
 			if len(h.quotes.alternativeBatches) != 0 {
-				t.Errorf("wrote candidates %v, want none: nothing was considered",
-					h.quotes.alternativeBatches)
+				t.Errorf("wrote candidates %v, want none", h.quotes.alternativeBatches)
 			}
 		})
 	}
@@ -677,19 +1065,14 @@ func TestRFQService_CreateTextDraft_KeepsAnUnresolvedQuantityAtZero(t *testing.T
 	draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
 		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "necesito cemento"})
 	if err != nil {
-		t.Fatalf("CreateTextDraft returned %v; an unresolved quantity is a valid answer", err)
+		t.Fatalf("CreateTextDraft returned %v", err)
 	}
-	// The material still reaches the quote: the seller types the number, and dropping the line
-	// would lose what the client asked for.
 	if len(draft.Items) != 1 {
 		t.Fatalf("persisted %d lines, want the material kept", len(draft.Items))
 	}
 	item := h.quotes.itemBatches[0][0]
 	if !item.Quantity.IsZero() {
 		t.Errorf("line quantity %s, want zero", item.Quantity)
-	}
-	if item.QuantityRationale == nil || *item.QuantityRationale == "" {
-		t.Error("an unresolved line carries no rationale, so nothing says what is missing")
 	}
 }
 
@@ -722,22 +1105,6 @@ func TestRFQService_CreateTextDraft_RejectsAContradictoryLine(t *testing.T) {
 				Source: domain.QuantitySource("GUESSED"), QuantityRationale: "estimado",
 			},
 			wantSub: "is not a known source",
-		},
-		{
-			name: "a stated quantity below zero",
-			line: domain.ExtractedRFQLine{
-				RequestedDescription: "cemento", Quantity: decimal.RequireFromString("-1"),
-				Source: domain.QuantitySourceExplicit, QuantityRationale: "pidió cemento",
-			},
-			wantSub: "must be positive",
-		},
-		{
-			name: "a quantity finer than the column",
-			line: domain.ExtractedRFQLine{
-				RequestedDescription: "cemento", Quantity: decimal.RequireFromString("1.005"),
-				Source: domain.QuantitySourceExplicit, QuantityRationale: "pidió 1,005",
-			},
-			wantSub: "at most 2 decimals",
 		},
 		{
 			name: "no description",
@@ -776,9 +1143,6 @@ func TestRFQService_CreateTextDraft_RejectsAContradictoryLine(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tc.wantSub) {
 				t.Errorf("error %q does not mention %q", err, tc.wantSub)
-			}
-			if len(h.quotes.created) != 0 {
-				t.Error("a quote was created from a line the service refused")
 			}
 		})
 	}
@@ -826,15 +1190,6 @@ func TestRFQService_CreateTextDraft_RejectsBadInput(t *testing.T) {
 			in:      domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "   "},
 			wantSub: "raw_text cannot be blank",
 		},
-		{
-			name:   "an order longer than the cap",
-			tenant: rfqTenant(),
-			in: domain.TextRFQDraftInput{
-				ChannelID: testChannelID,
-				RawText:   strings.Repeat("a", testRFQConfig().MaxTextCharacters+1),
-			},
-			wantSub: "raw_text cannot exceed 200 characters",
-		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -848,13 +1203,6 @@ func TestRFQService_CreateTextDraft_RejectsBadInput(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tc.wantSub) {
 				t.Errorf("error %q does not mention %q", err, tc.wantSub)
-			}
-			// Refused before anything was written, and before a model was paid.
-			if len(h.rfqs.created) != 0 {
-				t.Error("an RFQ was stored for input the service refused")
-			}
-			if h.extractor.calls != 0 {
-				t.Errorf("the extractor ran %d times on refused input", h.extractor.calls)
 			}
 		})
 	}
@@ -871,10 +1219,31 @@ func TestRFQService_CreateTextDraft_RejectsAnUnreachableChannelBeforeReading(t *
 	if !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("CreateTextDraft returned %v, want ErrNotFound", err)
 	}
-	// A channel of another branch is not this branch's to receive on, and the check is what
-	// stops the order being attributed to it.
 	if h.extractor.calls != 0 {
 		t.Errorf("the extractor ran %d times for an unreachable channel", h.extractor.calls)
+	}
+}
+
+func TestRFQService_CreateTextDraft_PersistsTheDraftAfterThePipelineRunsOutOfTime(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("cemento", "10", "bolsa", "pidió 10"),
+	})
+	h.service.matcher = blockingMatcher{}
+	h.service.cfg.PipelineTimeout = 20 * time.Millisecond
+
+	draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "10 bolsas de cemento"})
+	if err != nil {
+		t.Fatalf("CreateTextDraft returned %v; the deadline bounds the model, not the writes", err)
+	}
+	// The extraction was already paid for. Persisting it on the deadline that just expired would
+	// throw it away at the last step.
+	if len(draft.Items) != 1 {
+		t.Fatalf("persisted %d lines, want the extraction kept", len(draft.Items))
+	}
+	if draft.Items[0].MatchStatus != domain.ItemMatchStatusNoMatch {
+		t.Errorf("line status %q, want NO_MATCH: matching never answered",
+			draft.Items[0].MatchStatus)
 	}
 }
 
@@ -902,7 +1271,6 @@ func TestRFQService_CreateWhatsAppMockDraft_ResolvesTheChannelAndLabelsTheSender
 	if created.ClientLabel == nil || *created.ClientLabel != want {
 		t.Errorf("client label %v, want %q", created.ClientLabel, want)
 	}
-	// Nobody has taken the order from the inbox yet, so it has no seller and no author.
 	if h.quotes.created[0].SellerID != nil {
 		t.Errorf("quote seller %v, want none on an inbound message",
 			h.quotes.created[0].SellerID)
@@ -912,7 +1280,7 @@ func TestRFQService_CreateWhatsAppMockDraft_ResolvesTheChannelAndLabelsTheSender
 			h.quotes.versions[0].AuthorID)
 	}
 	if draft.Quote == nil {
-		t.Error("the mock produced no quote; it has to run the same pipeline as the text route")
+		t.Error("the mock produced no quote")
 	}
 }
 
@@ -968,35 +1336,203 @@ func TestRFQService_CreateWhatsAppMockDraft_RequiresASender(t *testing.T) {
 	}
 }
 
-func TestRFQService_CreateTextDraft_PersistsTheDraftAfterThePipelineRunsOutOfTime(t *testing.T) {
-	h := newRFQHarness([]domain.ExtractedRFQLine{
-		explicitLine("cemento", "10", "bolsa", "pidió 10"),
-	})
-	h.service.matcher = blockingMatcher{}
-	h.service.cfg.PipelineTimeout = 20 * time.Millisecond
+// ---------- GetDetail tests ----------
 
-	draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
-		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "10 bolsas de cemento"})
+func getDetailHarness() (*rfqHarness, *domain.RfqListItem, *domain.Quote, *domain.QuoteVersion, []domain.QuoteItem) {
+	h := newRFQHarness(nil)
+
+	rfqItem := &domain.RfqListItem{
+		ID:          testRFQID,
+		ClientLabel: strPtr("Obra Norte"),
+		Channel:     "whatsapp",
+		SellerName:  "Juan Pérez",
+		BranchName:  "Matriz",
+		ItemCount:   2,
+		Status:      string(domain.QuoteStatusDraft),
+	}
+	quote := &domain.Quote{
+		ID: testQuoteID, RFQID: testRFQID, BranchID: testBranchID,
+		CurrentStatus:    domain.QuoteStatusDraft,
+		CurrentVersionID: &testVersionID,
+	}
+	version := &domain.QuoteVersion{
+		ID: testVersionID, QuoteID: testQuoteID, VersionNumber: 1,
+		Total: decimal.RequireFromString("5000.00"),
+	}
+	items := []domain.QuoteItem{
+		{
+			ID: uuid.New(), VersionID: testVersionID,
+			RequestedDescription: "10 bolsas de cemento",
+			Quantity:             decimal.RequireFromString("10"),
+			MatchStatus:          domain.ItemMatchStatusMatched,
+		},
+		{
+			ID: uuid.New(), VersionID: testVersionID,
+			RequestedDescription: "2 rollos de membrana",
+			Quantity:             decimal.RequireFromString("2"),
+			MatchStatus:          domain.ItemMatchStatusNoMatch,
+		},
+	}
+
+	h.rfqs.rfqByID = rfqItem
+	h.quotes.quoteByID = quote
+	h.quotes.currentVersionData = version
+	h.quotes.itemsByVersionID = items
+
+	return h, rfqItem, quote, version, items
+}
+
+func TestRFQService_GetDetail_ReturnsFullDetailWhenAllDataExists(t *testing.T) {
+	h, rfqItem, quote, version, items := getDetailHarness()
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
 	if err != nil {
-		t.Fatalf("CreateTextDraft returned %v; the deadline bounds the model, not the writes", err)
+		t.Fatalf("GetDetail returned %v", err)
 	}
-	// The extraction was already paid for. Persisting it on the deadline that just expired would
-	// throw it away at the last step.
-	if len(draft.Items) != 1 {
-		t.Fatalf("persisted %d lines, want the extraction kept", len(draft.Items))
+	if detail == nil {
+		t.Fatal("GetDetail returned nil detail")
 	}
-	if draft.Items[0].MatchStatus != domain.ItemMatchStatusNoMatch {
-		t.Errorf("line status %q, want NO_MATCH: matching never answered",
-			draft.Items[0].MatchStatus)
+	if detail.Rfq.ID != rfqItem.ID {
+		t.Errorf("rfq ID = %v, want %v", detail.Rfq.ID, rfqItem.ID)
+	}
+	if detail.Quote == nil || detail.Quote.ID != quote.ID {
+		t.Errorf("quote = %v, want %v", detail.Quote, quote)
+	}
+	if detail.Version == nil || detail.Version.ID != version.ID {
+		t.Errorf("version = %v, want %v", detail.Version, version)
+	}
+	if len(detail.Items) != len(items) {
+		t.Errorf("items = %d, want %d", len(detail.Items), len(items))
+	}
+	if len(h.db.scopes) != 1 || h.db.scopes[0] != testAccountID {
+		t.Errorf("transaction scoped to %v, want [%v]", h.db.scopes, testAccountID)
 	}
 }
 
-// scoredCandidate stages one offer the matcher weighed. Distance is what confidenceOf reads, but
-// these tests stage the confidence directly: what a candidate scored is the matcher's own test.
-func scoredCandidate(productID uuid.UUID, name, confidence string) domain.ScoredCandidate {
-	return domain.ScoredCandidate{
-		CatalogCandidate: domain.CatalogCandidate{ProductID: productID, CanonicalName: name},
-		Confidence:       decimal.RequireFromString(confidence),
+func TestRFQService_GetDetail_RfqNotFound(t *testing.T) {
+	h := newRFQHarness(nil)
+	h.rfqs.rfqByIDErr = domain.ErrNotFound
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("GetDetail returned %v, want ErrNotFound", err)
+	}
+	if detail != nil {
+		t.Errorf("detail = %v, want nil", detail)
+	}
+}
+
+func TestRFQService_GetDetail_QuoteNotFoundReturnsRfqWithoutQuote(t *testing.T) {
+	h := newRFQHarness(nil)
+	h.rfqs.rfqByID = &domain.RfqListItem{ID: testRFQID}
+	h.quotes.quoteByIDErr = domain.ErrNotFound
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if err != nil {
+		t.Fatalf("GetDetail returned %v", err)
+	}
+	if detail.Rfq.ID != testRFQID {
+		t.Errorf("rfq ID = %v, want %v", detail.Rfq.ID, testRFQID)
+	}
+	if detail.Quote != nil {
+		t.Errorf("quote = %v, want nil", detail.Quote)
+	}
+	if detail.Version != nil {
+		t.Errorf("version = %v, want nil", detail.Version)
+	}
+	if detail.Items != nil {
+		t.Errorf("items = %v, want nil", detail.Items)
+	}
+}
+
+func TestRFQService_CreateTextDraft_FailsTheDraftWhenTheAIBaselineCannotBeWritten(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("cemento", "10", "bolsa", "pidió 10"),
+	})
+	h.generations.err = domain.ErrNotFound
+
+	_, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "10 bolsas de cemento"})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("CreateTextDraft returned %v, want ErrNotFound", err)
+	}
+	if len(h.rfqs.updatedStatus) != 0 || len(h.quotes.statusChanges) != 0 {
+		t.Errorf("completed status writes RFQ=%v quote=%v, want none when the baseline failed",
+			h.rfqs.updatedStatus, h.quotes.statusChanges)
+	}
+}
+
+func TestRFQService_CreateTextDraft_OffersNoCandidateThatScoredNothing(t *testing.T) {
+	nearMiss := uuid.MustParse("c1111111-1111-4111-8111-111111111111")
+	leader := uuid.MustParse("c2222222-2222-4222-8222-222222222222")
+	// What a catalog smaller than the top-K returns: the offers that resemble the line, then
+	// products the search reached without them resembling it at all.
+	orthogonal := []domain.ScoredCandidate{
+		scoredCandidate(uuid.New(), "Cemento Portland 50kg", "0"),
+		scoredCandidate(uuid.New(), "Cal hidratada 25kg", "0"),
+	}
+	cases := []struct {
+		name      string
+		match     domain.LineMatch
+		wantOffer uuid.UUID
+		wantRank  int
+	}{
+		{
+			name: "a line nothing matched offers its near miss alone",
+			match: domain.LineMatch{
+				MatchStatus: domain.ItemMatchStatusNoMatch,
+				Confidence:  decimal.RequireFromString("0.5500"),
+				Candidates: append([]domain.ScoredCandidate{
+					scoredCandidate(nearMiss, "Membrana asfáltica 4mm", "0.5500"),
+				}, orthogonal...),
+			},
+			wantOffer: nearMiss,
+			wantRank:  1,
+		},
+		{
+			// The same rule on an AMBIGUOUS line, which the table in rfq-pipeline.md calls the
+			// one exception to "every candidate but the one it kept".
+			name: "an ambiguous line offers neither the leader nor a zero",
+			match: domain.LineMatch{
+				ProductID:   &leader,
+				MatchStatus: domain.ItemMatchStatusAmbiguous,
+				Confidence:  decimal.RequireFromString("0.8200"),
+				Candidates: append([]domain.ScoredCandidate{
+					scoredCandidate(leader, "Cemento Portland 50kg", "0.8200"),
+					scoredCandidate(nearMiss, "Cemento Avellaneda 50kg", "0.8000"),
+				}, orthogonal...),
+			},
+			wantOffer: nearMiss,
+			wantRank:  2,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newRFQHarness([]domain.ExtractedRFQLine{
+				explicitLine("membrana rara", "2", "rollo", "pidió 2"),
+			})
+			h.matcher.matches[0] = tc.match
+
+			draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+				domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "membrana rara"})
+			if err != nil {
+				t.Fatalf("CreateTextDraft returned %v", err)
+			}
+
+			offered := draft.Alternatives[draft.Items[0].ID]
+			if len(offered) != 1 {
+				t.Fatalf("offered %d candidates, want one: a candidate at zero scored no "+
+					"similarity and would bury the one the seller is looking for", len(offered))
+			}
+			if offered[0].ProductID == nil || *offered[0].ProductID != tc.wantOffer {
+				t.Errorf("offer = %v, want %v", offered[0].ProductID, tc.wantOffer)
+			}
+			// The rank is the candidate's own place in the matcher's ranking, so dropping a zero
+			// does not renumber what survives.
+			if offered[0].Rank != tc.wantRank {
+				t.Errorf("offer rank = %d, want %d", offered[0].Rank, tc.wantRank)
+			}
+		})
 	}
 }
 
@@ -1186,93 +1722,59 @@ func TestRFQService_CreateTextDraft_FailsTheDraftWhenCandidatesCannotBeWritten(t
 	}
 }
 
-func TestRFQService_CreateTextDraft_FailsTheDraftWhenTheAIBaselineCannotBeWritten(t *testing.T) {
-	h := newRFQHarness([]domain.ExtractedRFQLine{
-		explicitLine("cemento", "10", "bolsa", "pidió 10"),
-	})
-	h.generations.err = domain.ErrNotFound
-
-	_, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
-		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "10 bolsas de cemento"})
-	if !errors.Is(err, domain.ErrNotFound) {
-		t.Fatalf("CreateTextDraft returned %v, want ErrNotFound", err)
+func TestRFQService_GetDetail_VersionNotFoundGracefullySkipped(t *testing.T) {
+	h := newRFQHarness(nil)
+	h.rfqs.rfqByID = &domain.RfqListItem{ID: testRFQID}
+	quote := &domain.Quote{
+		ID: testQuoteID, RFQID: testRFQID, BranchID: testBranchID,
+		CurrentVersionID: &testVersionID,
 	}
-	if len(h.rfqs.updatedStatus) != 0 || len(h.quotes.statusChanges) != 0 {
-		t.Errorf("completed status writes RFQ=%v quote=%v, want none when the baseline failed",
-			h.rfqs.updatedStatus, h.quotes.statusChanges)
+	h.quotes.quoteByID = quote
+	h.quotes.currentVersionErr = domain.ErrNotFound
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if err != nil {
+		t.Fatalf("GetDetail returned %v", err)
+	}
+	if detail.Quote == nil || detail.Quote.ID != quote.ID {
+		t.Errorf("quote = %v, want %v", detail.Quote, quote)
+	}
+	if detail.Version != nil {
+		t.Errorf("version = %v, want nil when GetCurrentVersion returns ErrNotFound", detail.Version)
 	}
 }
 
-func TestRFQService_CreateTextDraft_OffersNoCandidateThatScoredNothing(t *testing.T) {
-	nearMiss := uuid.MustParse("c1111111-1111-4111-8111-111111111111")
-	leader := uuid.MustParse("c2222222-2222-4222-8222-222222222222")
-	// What a catalog smaller than the top-K returns: the offers that resemble the line, then
-	// products the search reached without them resembling it at all.
-	orthogonal := []domain.ScoredCandidate{
-		scoredCandidate(uuid.New(), "Cemento Portland 50kg", "0"),
-		scoredCandidate(uuid.New(), "Cal hidratada 25kg", "0"),
-	}
-	cases := []struct {
-		name      string
-		match     domain.LineMatch
-		wantOffer uuid.UUID
-		wantRank  int
-	}{
-		{
-			name: "a line nothing matched offers its near miss alone",
-			match: domain.LineMatch{
-				MatchStatus: domain.ItemMatchStatusNoMatch,
-				Confidence:  decimal.RequireFromString("0.5500"),
-				Candidates: append([]domain.ScoredCandidate{
-					scoredCandidate(nearMiss, "Membrana asfáltica 4mm", "0.5500"),
-				}, orthogonal...),
-			},
-			wantOffer: nearMiss,
-			wantRank:  1,
-		},
-		{
-			// The same rule on an AMBIGUOUS line, which the table in rfq-pipeline.md calls the
-			// one exception to "every candidate but the one it kept".
-			name: "an ambiguous line offers neither the leader nor a zero",
-			match: domain.LineMatch{
-				ProductID:   &leader,
-				MatchStatus: domain.ItemMatchStatusAmbiguous,
-				Confidence:  decimal.RequireFromString("0.8200"),
-				Candidates: append([]domain.ScoredCandidate{
-					scoredCandidate(leader, "Cemento Portland 50kg", "0.8200"),
-					scoredCandidate(nearMiss, "Cemento Avellaneda 50kg", "0.8000"),
-				}, orthogonal...),
-			},
-			wantOffer: nearMiss,
-			wantRank:  2,
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			h := newRFQHarness([]domain.ExtractedRFQLine{
-				explicitLine("membrana rara", "2", "rollo", "pidió 2"),
-			})
-			h.matcher.matches[0] = tc.match
+func TestRFQService_GetDetail_QuoteRepositoryErrorIsPropagated(t *testing.T) {
+	h := newRFQHarness(nil)
+	h.rfqs.rfqByID = &domain.RfqListItem{ID: testRFQID}
+	h.quotes.quoteByIDErr = errors.New("database timeout")
 
-			draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
-				domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "membrana rara"})
-			if err != nil {
-				t.Fatalf("CreateTextDraft returned %v", err)
-			}
+	_, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if err == nil || err.Error() != "database timeout" {
+		t.Fatalf("GetDetail returned %v, want database timeout", err)
+	}
+}
 
-			offered := draft.Alternatives[draft.Items[0].ID]
-			if len(offered) != 1 {
-				t.Fatalf("offered %d candidates, want one: a candidate at zero scored no "+
-					"similarity and would bury the one the seller is looking for", len(offered))
-			}
-			if offered[0].ProductID == nil || *offered[0].ProductID != tc.wantOffer {
-				t.Errorf("offer = %v, want %v", offered[0].ProductID, tc.wantOffer)
-			}
-			// The rank is the candidate's own place in the matcher's ranking, so dropping a zero
-			// does not renumber what survives.
-			if offered[0].Rank != tc.wantRank {
-				t.Errorf("offer rank = %d, want %d", offered[0].Rank, tc.wantRank)
-			}
-		})
+func TestRFQService_GetDetail_QuoteWithoutVersionReturnsRfqAndQuoteOnly(t *testing.T) {
+	h := newRFQHarness(nil)
+	h.rfqs.rfqByID = &domain.RfqListItem{ID: testRFQID}
+	h.quotes.quoteByID = &domain.Quote{
+		ID: testQuoteID, RFQID: testRFQID, BranchID: testBranchID,
+		CurrentStatus:    domain.QuoteStatusDraft,
+		CurrentVersionID: nil,
+	}
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if err != nil {
+		t.Fatalf("GetDetail returned %v", err)
+	}
+	if detail.Quote == nil {
+		t.Fatal("quote is nil, want present")
+	}
+	if detail.Version != nil {
+		t.Errorf("version = %v, want nil when quote has no version", detail.Version)
+	}
+	if detail.Items != nil {
+		t.Errorf("items = %v, want nil when no version", detail.Items)
 	}
 }

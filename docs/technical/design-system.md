@@ -109,9 +109,26 @@ Every `-foreground` clears WCAG AA on white, and white clears AA on `bg-danger`:
 `-base` values are tuned for fills and icons, not for text — `success-base` and
 `warning-base` do not carry text contrast. Use `-foreground` for copy.
 
+The RFQ lifecycle gets its own colours, `status-accepted`, `status-rejected`,
+`status-change-requested`, `status-generated`, `status-quoted`, `status-sent` and
+`status-archived` — a single `-base` value each, reproducing the exact status colours
+from the product (e.g. `status-sent-base` is `#0088FF`). `status-archived` is the
+neutral one: archivado is an orthogonal flag on a quote (see
+`docs/internal/domain/estados.md`), not a lifecycle state, so it shares no hue with the
+true statuses.
+
+The Backoffice status badge is the only consumer. Per the Figma spec it is a tinted
+chip, not a pill: the label is painted with `-base` and the backdrop tints the same
+colour at 20% opacity (`bg-current` + `opacity-20` on an absolutely positioned layer,
+with a 3px radius and the colour bleeding a hair above and below the box). There is no
+border and no solid fill. Because label and backdrop share one colour, the status
+families only need `-base` — do not reintroduce `-subtle`/`-border`/`-foreground` steps
+for them.
+
 **Mapping a domain enum to a tone is the app's job, not the design system's.** A quote
-status (`GENERATED`, `QUOTED`, `SENT`, …) maps to a `Badge` tone in the app that owns
-the enum; `@repo/ui` only ships the tones.
+status (`GENERATED`, `QUOTED`, `SENT`, …) maps to a `status-*` colour in the app that
+owns the enum — the Backoffice status badge is the single place that mapping lives;
+`@repo/ui` only ships the token colours.
 
 ### Light-only, on purpose
 

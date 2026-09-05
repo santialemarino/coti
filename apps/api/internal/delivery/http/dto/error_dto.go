@@ -24,3 +24,8 @@ type HealthResponse struct {
 	Status string `json:"status"`
 	Detail string `json:"detail,omitempty"`
 }
+
+// SuccessResponse is a minimal acknowledgement for void operations.
+type SuccessResponse struct {
+	OK bool `json:"ok"`
+}

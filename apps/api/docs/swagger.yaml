@@ -35,6 +35,23 @@ definitions:
     - alternative_product_id
     - type
     type: object
+  dto.AddQuoteItemRequest:
+    properties:
+      product_id:
+        type: string
+      quantity:
+        type: string
+      requested_description:
+        maxLength: 512
+        minLength: 1
+        type: string
+      unit:
+        maxLength: 64
+        type: string
+    required:
+    - quantity
+    - requested_description
+    type: object
   dto.AddSynonymRequest:
     properties:
       source:
@@ -326,6 +343,43 @@ definitions:
     required:
     - canonical_name
     - family_id
+    type: object
+  dto.CreateRfqItemRequest:
+    properties:
+      product_id:
+        type: string
+      quantity:
+        type: string
+      requested_description:
+        maxLength: 512
+        minLength: 1
+        type: string
+      unit:
+        maxLength: 64
+        type: string
+    required:
+    - quantity
+    - requested_description
+    type: object
+  dto.CreateRfqRequest:
+    properties:
+      client_label:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/dto.CreateRfqItemRequest'
+        type: array
+      raw_text:
+        type: string
+      work_type:
+        type: string
+    type: object
+  dto.CreateRfqResponse:
+    properties:
+      quote:
+        $ref: '#/definitions/dto.QuoteResponse'
+      rfq:
+        $ref: '#/definitions/dto.RfqResponse'
     type: object
   dto.CreateTextRFQDraftRequest:
     properties:
@@ -687,7 +741,13 @@ definitions:
           PricingUnavailable names a line that matched a product the branch cannot price. It is null
           until the materials are accepted, because until then no line has been priced at all.
         type: boolean
+      product_code:
+        type: string
       product_id:
+        type: string
+      product_name:
+        type: string
+      product_unit:
         type: string
       quantity:
         type: string
@@ -865,6 +925,77 @@ definitions:
     - new_password
     - token
     type: object
+  dto.RfqDetailResponse:
+    properties:
+      alternatives:
+        additionalProperties:
+          items:
+            $ref: '#/definitions/dto.QuoteItemAlternativeResponse'
+          type: array
+        type: object
+      items:
+        items:
+          $ref: '#/definitions/dto.QuoteItemResponse'
+        type: array
+      quote:
+        $ref: '#/definitions/dto.QuoteResponse'
+      rfq:
+        $ref: '#/definitions/dto.RfqListItemResponse'
+      version:
+        $ref: '#/definitions/dto.QuoteVersionResponse'
+    type: object
+  dto.RfqListItemResponse:
+    properties:
+      archived_at:
+        type: string
+      branch:
+        type: string
+      branch_id:
+        type: string
+      channel:
+        type: string
+      client:
+        type: string
+      client_id:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      item_count:
+        type: integer
+      needs_followup:
+        type: boolean
+      seller:
+        type: string
+      seller_id:
+        type: string
+      status:
+        type: string
+      total:
+        type: string
+    type: object
+  dto.RfqResponse:
+    properties:
+      branch_id:
+        type: string
+      channel_id:
+        type: string
+      client_label:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      raw_text:
+        type: string
+      received_at:
+        type: string
+      status:
+        type: string
+      work_type:
+        type: string
+    type: object
   dto.SaveOnboardingProgressRequest:
     properties:
       current_step:
@@ -963,6 +1094,11 @@ definitions:
       tokens:
         $ref: '#/definitions/dto.TokenResponse'
     type: object
+  dto.SuccessResponse:
+    properties:
+      ok:
+        type: boolean
+    type: object
   dto.SynonymListResponse:
     properties:
       items:
@@ -1006,6 +1142,13 @@ definitions:
         type: string
       user:
         $ref: '#/definitions/dto.UserBrief'
+    type: object
+  dto.TransitionQuoteRequest:
+    properties:
+      status:
+        type: string
+    required:
+    - status
     type: object
   dto.UpdateAccountRequest:
     properties:
@@ -1084,6 +1227,21 @@ definitions:
     required:
     - canonical_name
     - family_id
+    type: object
+  dto.UpdateQuoteItemRequest:
+    properties:
+      product_id:
+        type: string
+      quantity:
+        type: string
+      requested_description:
+        maxLength: 512
+        type: string
+      unit:
+        maxLength: 64
+        type: string
+      unit_price_snapshot:
+        type: string
     type: object
   dto.UpdateUserRequest:
     properties:
@@ -1763,19 +1921,19 @@ paths:
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "404":
-          description: No active WhatsApp channel
+          description: Not Found
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "422":
-          description: Ambiguous channel, or an answer the model could not shape
+          description: Unprocessable Entity
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "429":
-          description: Rate limit spent; retry_after_seconds says when
+          description: Too Many Requests
           schema:
             $ref: '#/definitions/dto.RateLimitResponse'
         "503":
-          description: No language model is bound, or it could not answer
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
@@ -3153,6 +3311,211 @@ paths:
       summary: Accept a quote's materials
       tags:
       - quotes
+  /v1/quotes/{quoteId}/archive:
+    post:
+      description: Sets the archived flag. Refuses an archived quote and a terminal
+        one.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_ARCHIVED or a terminal status
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Archive a quote
+      tags:
+      - quotes
+  /v1/quotes/{quoteId}/items:
+    post:
+      consumes:
+      - application/json
+      description: Appends a new material line to a draft quote version.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: RFQ id
+        in: path
+        name: rfqId
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: New item data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AddQuoteItemRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.QuoteItemResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Add a quote item
+      tags:
+      - rfqs
+  /v1/quotes/{quoteId}/items/{itemId}:
+    delete:
+      description: Removes a line from a draft quote version.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: RFQ id
+        in: path
+        name: rfqId
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Item id
+        in: path
+        name: itemId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a quote item
+      tags:
+      - rfqs
+    patch:
+      consumes:
+      - application/json
+      description: Patches a mutable field on a draft quote item.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: RFQ id
+        in: path
+        name: rfqId
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Item id
+        in: path
+        name: itemId
+        required: true
+        type: string
+      - description: Fields to patch
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateQuoteItemRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteItemResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a quote item
+      tags:
+      - rfqs
   /v1/quotes/{quoteId}/sends:
     post:
       consumes:
@@ -3218,6 +3581,201 @@ paths:
       summary: Send a quote to its client
       tags:
       - quotes
+  /v1/quotes/{quoteId}/transition:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Moves the quote to the asked status, refusing a status its current one cannot
+        reach or an archived quote. Records the move in the status history.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Target status
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.TransitionQuoteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_NOT_DRAFT when the edge is not allowed, QUOTE_ARCHIVED
+            on an archived quote
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch, or an unknown status
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Transition a quote's status
+      tags:
+      - quotes
+  /v1/quotes/{quoteId}/unarchive:
+    post:
+      description: Clears the archived flag.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote or not archived
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Unarchive a quote
+      tags:
+      - quotes
+  /v1/rfqs:
+    get:
+      description: Returns the RFQ list scoped to the tenant and, when set, the active
+        branch.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.RfqListItemResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List RFQs
+      tags:
+      - rfqs
+    post:
+      consumes:
+      - application/json
+      description: Records a counter or phone order.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Manual RFQ
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateRfqRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.CreateRfqResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a manual RFQ
+      tags:
+      - rfqs
+  /v1/rfqs/{rfqId}:
+    get:
+      description: Returns the RFQ header, associated quote, version, items, and alternatives.
+      parameters:
+      - description: RFQ id
+        in: path
+        name: rfqId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.RfqDetailResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get RFQ detail
+      tags:
+      - rfqs
   /v1/rfqs/{rfqId}/attachments:
     get:
       description: Returns each stored file with a freshly signed link. The link expires,
@@ -3318,8 +3876,7 @@ paths:
       - application/json
       description: Persists the original text before reading it, then returns a quote
         DRAFT with one line per material, each carrying its catalog match, its confidence,
-        and the candidates a flagged line was decided against. It does not price or
-        send the quote, so pricing_unavailable is null on every line.
+        and the candidates a flagged line was decided against.
       parameters:
       - description: Active branch
         in: header
@@ -3348,15 +3905,15 @@ paths:
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "422":
-          description: No active branch, or an answer the model could not shape
+          description: Unprocessable Entity
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "429":
-          description: Rate limit spent; retry_after_seconds says when
+          description: Too Many Requests
           schema:
             $ref: '#/definitions/dto.RateLimitResponse'
         "503":
-          description: No language model is bound, or it could not answer
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
       security:

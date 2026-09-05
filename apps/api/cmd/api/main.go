@@ -172,6 +172,7 @@ func run() error {
 			Verification:  handler.NewVerificationHandler(verificationService, mailTargetLimiter),
 			User:          handler.NewUserHandler(userService),
 			Branch:        handler.NewBranchHandler(branchService),
+			Rfq:           handler.NewRfqHandler(rfqService),
 			Channel:       handler.NewChannelHandler(channelService),
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
@@ -216,8 +217,6 @@ func run() error {
 	return server.Shutdown(shutdownCtx)
 }
 
-// identifyForRateLimit reads a caller id out of a bearer so two users cannot spend each
-// other's allowance. Signature only: the session check is ResolveTenant's job.
 func identifyForRateLimit(tokens *services.TokenService) func(string) (string, bool) {
 	return func(raw string) (string, bool) {
 		claims, err := tokens.ParseAccessToken(raw)
@@ -228,8 +227,6 @@ func identifyForRateLimit(tokens *services.TokenService) func(string) (string, b
 	}
 }
 
-// newMailer binds the domain.Mailer port to the transport configuration selected, and is the
-// only place a provider is chosen. config.Load rejects a provider with no adapter.
 func newMailer(cfg *config.Config, log *slog.Logger) (domain.Mailer, error) {
 	switch cfg.Mail.Provider {
 	case config.MailProviderConsole:
@@ -243,8 +240,6 @@ func newMailer(cfg *config.Config, log *slog.Logger) (domain.Mailer, error) {
 	}
 }
 
-// newLogger returns a JSON logger in production and a text one in development, where
-// a human reads it directly.
 func newLogger(cfg *config.Config) *slog.Logger {
 	opts := &slog.HandlerOptions{Level: parseLevel(cfg.LogLevel)}
 	if cfg.IsProduction() {
@@ -266,8 +261,6 @@ func parseLevel(raw string) slog.Level {
 	}
 }
 
-// fileHandler serves the links the local adapter signs. A bucket signs and serves its own, so
-// there is nothing to mount beside one and the route stays absent.
 func fileHandler(set storageprovider.Set) *handler.FileHandler {
 	if set.Local == nil {
 		return nil

@@ -1,6 +1,11 @@
 // Every link and redirect reads from here, so a route rename is one edit.
 export const ROUTES = {
   home: '/',
+  rfqs: '/rfqs',
+  rfqsDetail: (id: string) => `/rfqs/${id}`,
+  clients: '/clients',
+  reports: '/reports',
+  administration: '/administration',
   login: '/login',
   signup: '/signup',
   forgotPassword: '/forgot-password',

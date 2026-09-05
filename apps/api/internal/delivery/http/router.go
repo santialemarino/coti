@@ -20,12 +20,10 @@ import (
 	_ "github.com/santialemarino/coti/apps/api/docs"
 )
 
-// apiPrefix is where every versioned route is mounted. The storage adapter builds links
-// against the same prefix, so it is read rather than repeated.
+// apiPrefix is where every versioned route is mounted.
 const apiPrefix = "/v1"
 
-// Handlers carries every handler the router mounts, so adding a feature is one field
-// here instead of a new router parameter.
+// Handlers carries every handler the router mounts.
 type Handlers struct {
 	Health        *handler.HealthHandler
 	Auth          *handler.AuthHandler
@@ -33,6 +31,7 @@ type Handlers struct {
 	Verification  *handler.VerificationHandler
 	User          *handler.UserHandler
 	Branch        *handler.BranchHandler
+	Rfq           *handler.RfqHandler
 	Channel       *handler.ChannelHandler
 	Product       *handler.ProductHandler
 	BranchCatalog *handler.BranchCatalogHandler
@@ -43,8 +42,7 @@ type Handlers struct {
 	Prices        *handler.ProductPriceHandler
 	CatalogImport *handler.CatalogImportHandler
 	Onboarding    *handler.OnboardingHandler
-	// File is nil unless the local storage adapter is bound: a bucket serves its own links,
-	// and a route that answered for one would be serving objects the API does not hold.
+	// File is nil unless the local storage adapter is bound.
 	File *handler.FileHandler
 }
 
@@ -69,12 +67,9 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	r := gin.New()
 	r.Use(middleware.RequestID(), middleware.Logger(log), middleware.Recovery(log))
 
-	// Probes stay outside /v1 and outside auth: an orchestrator has no credentials.
 	r.GET("/health", h.Health.Live)
 	r.GET("/ready", h.Health.Ready)
 
-	// The spec describes an internal API: publishing it would hand an unauthenticated
-	// reader the whole surface for no benefit.
 	if !cfg.IsProduction() {
 		r.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
 	}
@@ -91,47 +86,29 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 		})
 	}
 
-	// The global allowance sits ahead of Authenticate, so a flood is refused before it costs
-	// a query. Authenticate resolves a tenant when a token is present without rejecting an
-	// anonymous request — RequireTenant does that.
 	v1 := r.Group(apiPrefix,
 		limit("global", cfg.RateLimit.Global),
 		middleware.Authenticate(auth.Verifier, auth.Resolver))
 
-	// No tenant middleware, deliberately: the signature on the link is the whole
-	// authorization, which is what lets a client open a document without an account. The
-	// account it may reach is inside the signed key. It stays under the global allowance,
-	// because an unauthenticated route that streams files is otherwise free bandwidth.
 	if h.File != nil {
 		v1.GET(strings.TrimPrefix(storage.LinkPath, apiPrefix)+"/*key", h.File.Get)
 	}
 
-	// Works without a session; each route resolves its own scope.
 	public := v1.Group("/public")
-	// Each of these gets the same allowance in its own bucket rather than sharing one: a
-	// caller who mistypes their password ten times should still be able to confirm an
-	// address, and the routes are only alike in accepting a credential.
 	mail := limit("mail", cfg.RateLimit.Mail)
 
 	public.POST("/auth/login", limit("login", cfg.RateLimit.Credentials), h.Auth.Login)
-	// Refresh is left on the global allowance alone: the backoffice renews on a schedule the
-	// user does not control, and a tighter limit would log people out.
 	public.POST("/auth/refresh", h.Auth.Refresh)
 
-	// Recovery is public by necessity: someone who cannot log in is the only caller.
 	public.POST("/auth/forgot-password", mail, h.Password.Forgot)
 	public.POST("/auth/reset-password", limit("reset", cfg.RateLimit.Credentials), h.Password.Reset)
 
 	public.POST("/auth/verify-email", limit("verify", cfg.RateLimit.Credentials), h.Verification.Confirm)
 	public.POST("/auth/resend-verification", mail, h.Verification.Resend)
 
-	// Registration is the one write with no account yet, so it cannot sit behind a tenant,
-	// which is exactly why it carries the tightest allowance: it creates rows for anyone.
 	public.POST("/accounts", limit("signup", cfg.RateLimit.Signup), h.Account.Register)
 	public.GET("/quote-sends/:token", h.Quote.ResolvePublic)
 
-	// Everything else needs a resolved tenant: a request-scoped query without an account
-	// reads nothing under row level security.
 	authed := v1.Group("", middleware.RequireTenant())
 
 	// The three an unconfirmed address does not close, because they are the only way out of
@@ -146,11 +123,10 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	verified := authed.Group("", middleware.RequireVerifiedEmail(cfg.Auth.RequireVerifiedEmail))
 	verified.POST("/auth/change-password", h.Password.Change)
 
-	// The first surface billed per call: reading one order costs a generation and an embedding,
-	// so it gets its own allowance instead of sharing the global one.
 	ai := limit("ai", cfg.RateLimit.AI)
 	verified.POST("/rfqs/text-drafts", ai, h.RFQ.CreateTextDraft)
 	rfqs := verified.Group("/rfqs")
+	rfqs.GET("/:rfqId", h.Rfq.Get)
 	rfqs.GET("/:rfqId/attachments", h.RFQAttachment.List)
 	rfqs.POST("/:rfqId/attachments", h.RFQAttachment.Upload)
 
@@ -169,6 +145,12 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	quotes := verified.Group("/quotes")
 	quotes.POST("/:quoteId/accept-materials", h.Quote.AcceptMaterials)
 	quotes.POST("/:quoteId/sends", h.Quote.Send)
+	quotes.POST("/:quoteId/transition", h.Quote.Transition)
+	quotes.POST("/:quoteId/archive", h.Quote.Archive)
+	quotes.POST("/:quoteId/unarchive", h.Quote.Unarchive)
+	quotes.POST("/:quoteId/items", h.Rfq.AddItem)
+	quotes.PATCH("/:quoteId/items/:itemId", h.Rfq.UpdateItem)
+	quotes.DELETE("/:quoteId/items/:itemId", h.Rfq.DeleteItem)
 
 	if !cfg.IsProduction() {
 		verified.POST("/dev/whatsapp/messages", ai, h.RFQ.CreateWhatsAppMockDraft)
@@ -194,6 +176,12 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	branchAdmin.PUT("/:branchId", h.Branch.Update)
 	branchAdmin.DELETE("/:branchId", h.Branch.Delete)
 
+	// Manual RFQ intake.
+	verified.GET("/rfqs", h.Rfq.List)
+	verified.POST("/rfqs", h.Rfq.Create)
+
+	// User administration is the one admin-only group. RequireAdmin runs after RequireTenant,
+	// which is what put the role on the context.
 	admin := verified.Group("", middleware.RequireAdmin())
 	admin.GET("/product-prices/export", h.Prices.Export)
 	admin.POST("/product-prices/import/preview", h.Prices.PreviewImport)
@@ -202,8 +190,6 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	admin.POST("/products/import/preview", h.CatalogImport.Preview)
 	admin.POST("/products/import/confirm", h.CatalogImport.Confirm)
 
-	// User administration is the one admin-only group. RequireAdmin runs after RequireTenant,
-	// which is what put the role on the context.
 	users := verified.Group("/users", middleware.RequireAdmin())
 	users.GET("", h.User.List)
 	users.POST("", h.User.Create)

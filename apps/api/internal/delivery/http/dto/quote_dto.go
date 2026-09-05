@@ -14,6 +14,12 @@ type PricedQuoteResponse struct {
 	Items   []QuoteItemResponse  `json:"items"`
 }
 
+// TransitionQuoteRequest is the body for POST /v1/quotes/{quoteId}/transition. status names the
+// seller-action edge to move to; it is validated against the state machine by the service.
+type TransitionQuoteRequest struct {
+	Status string `json:"status" binding:"required"`
+}
+
 // QuoteResponse represents the quote created from one RFQ.
 type QuoteResponse struct {
 	ID                uuid.UUID  `json:"id"`
@@ -48,6 +54,9 @@ type QuoteItemResponse struct {
 	ID                   uuid.UUID  `json:"id"`
 	VersionID            uuid.UUID  `json:"version_id"`
 	ProductID            *uuid.UUID `json:"product_id"`
+	ProductCode          *string    `json:"product_code"`
+	ProductName          *string    `json:"product_name"`
+	ProductUnit          *string    `json:"product_unit"`
 	RequestedDescription string     `json:"requested_description"`
 	Quantity             string     `json:"quantity"`
 	Unit                 *string    `json:"unit"`

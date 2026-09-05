@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -15,6 +16,9 @@ import (
 // QuoteService is the quote lifecycle surface the handler needs.
 type QuoteService interface {
 	AcceptMaterials(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.PricedQuote, error)
+	Transition(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID, to domain.QuoteStatus) (*domain.Quote, error)
+	Archive(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error)
+	Unarchive(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error)
 }
 
 // QuoteDeliveryService is the send and public-token surface the handler needs.
@@ -166,6 +170,129 @@ func (h *QuoteHandler) AcceptMaterials(c *gin.Context) {
 	c.JSON(http.StatusOK, toPricedQuoteResponse(*priced))
 }
 
+// Transition moves a quote along a seller-action edge of the state machine.
+//
+//	@Summary		Transition a quote's status
+//	@Description	Moves the quote to the asked status, refusing a status its current one cannot
+//	@Description	reach or an archived quote. Records the move in the status history.
+//	@Tags			quotes
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header		string						true	"Active branch"
+//	@Param			quoteId		path		string						true	"Quote id"
+//	@Param			body		body		dto.TransitionQuoteRequest	true	"Target status"
+//	@Success		200			{object}	dto.QuoteResponse
+//	@Failure		400			{object}	dto.ErrorResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse	"No such quote in the selected branch"
+//	@Failure		409			{object}	dto.ErrorResponse	"QUOTE_NOT_DRAFT when the edge is not allowed, QUOTE_ARCHIVED on an archived quote"
+//	@Failure		422			{object}	dto.ErrorResponse	"No active branch, or an unknown status"
+//	@Router			/v1/quotes/{quoteId}/transition [post]
+func (h *QuoteHandler) Transition(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	quoteID, ok := pathUUID(c, "quoteId")
+	if !ok {
+		return
+	}
+	var body dto.TransitionQuoteRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	to, err := parseQuoteStatus(body.Status)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+
+	quote, err := h.quotes.Transition(c.Request.Context(), tenant, quoteID, to)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toQuoteResponse(*quote))
+}
+
+// Archive boxes a quote away without changing its status.
+//
+//	@Summary		Archive a quote
+//	@Description	Sets the archived flag. Refuses an archived quote and a terminal one.
+//	@Tags			quotes
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header		string	true	"Active branch"
+//	@Param			quoteId		path		string	true	"Quote id"
+//	@Success		200			{object}	dto.QuoteResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse	"No such quote in the selected branch"
+//	@Failure		409			{object}	dto.ErrorResponse	"QUOTE_ARCHIVED or a terminal status"
+//	@Failure		422			{object}	dto.ErrorResponse	"No active branch"
+//	@Router			/v1/quotes/{quoteId}/archive [post]
+func (h *QuoteHandler) Archive(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	quoteID, ok := pathUUID(c, "quoteId")
+	if !ok {
+		return
+	}
+
+	quote, err := h.quotes.Archive(c.Request.Context(), tenant, quoteID)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toQuoteResponse(*quote))
+}
+
+// Unarchive brings a boxed-away quote back to the list.
+//
+//	@Summary		Unarchive a quote
+//	@Description	Clears the archived flag.
+//	@Tags			quotes
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header		string	true	"Active branch"
+//	@Param			quoteId		path		string	true	"Quote id"
+//	@Success		200			{object}	dto.QuoteResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse	"No such quote or not archived"
+//	@Failure		422			{object}	dto.ErrorResponse	"No active branch"
+//	@Router			/v1/quotes/{quoteId}/unarchive [post]
+func (h *QuoteHandler) Unarchive(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	quoteID, ok := pathUUID(c, "quoteId")
+	if !ok {
+		return
+	}
+
+	quote, err := h.quotes.Unarchive(c.Request.Context(), tenant, quoteID)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toQuoteResponse(*quote))
+}
+
+func parseQuoteStatus(raw string) (domain.QuoteStatus, error) {
+	switch domain.QuoteStatus(raw) {
+	case domain.QuoteStatusSent, domain.QuoteStatusAccepted, domain.QuoteStatusRejected,
+		domain.QuoteStatusChangeRequested:
+		return domain.QuoteStatus(raw), nil
+	default:
+		return "", fmt.Errorf("%w: %q is not a status a seller-action edge may move to",
+			domain.ErrInvalidInput, raw)
+	}
+}
+
 func toPricedQuoteResponse(priced domain.PricedQuote) dto.PricedQuoteResponse {
 	unpriced := make(map[uuid.UUID]struct{}, len(priced.UnpricedItemIDs))
 	for _, itemID := range priced.UnpricedItemIDs {
@@ -211,6 +338,8 @@ func toQuoteItemResponse(
 ) dto.QuoteItemResponse {
 	return dto.QuoteItemResponse{
 		ID: item.ID, VersionID: item.VersionID, ProductID: item.ProductID,
+		ProductCode: item.ProductCode, ProductName: item.ProductName,
+		ProductUnit:          item.ProductUnit,
 		RequestedDescription: item.RequestedDescription,
 		Quantity:             item.Quantity.StringFixed(domain.MoneyScale),
 		Unit:                 item.Unit,
