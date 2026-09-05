@@ -9,18 +9,19 @@ type ErrorCode string
 
 // What an error of each kind carries unless a call site tags something more specific.
 const (
-	CodeNotFound         ErrorCode = "NOT_FOUND"
-	CodeConflict         ErrorCode = "CONFLICT"
-	CodeInvalidInput     ErrorCode = "INVALID_INPUT"
-	CodeUnauthenticated  ErrorCode = "UNAUTHENTICATED"
-	CodeForbidden        ErrorCode = "FORBIDDEN"
-	CodeImmutable        ErrorCode = "IMMUTABLE"
-	CodeLocked           ErrorCode = "ACCOUNT_LOCKED"
-	CodeEmailNotVerified ErrorCode = "EMAIL_NOT_VERIFIED"
-	CodeRateLimited      ErrorCode = "RATE_LIMITED"
-	CodeAIUnavailable    ErrorCode = "AI_UNAVAILABLE"
-	CodeNotConfigured    ErrorCode = "NOT_CONFIGURED"
-	CodeInternal         ErrorCode = "INTERNAL"
+	CodeNotFound            ErrorCode = "NOT_FOUND"
+	CodeConflict            ErrorCode = "CONFLICT"
+	CodeInvalidInput        ErrorCode = "INVALID_INPUT"
+	CodeUnauthenticated     ErrorCode = "UNAUTHENTICATED"
+	CodeForbidden           ErrorCode = "FORBIDDEN"
+	CodeImmutable           ErrorCode = "IMMUTABLE"
+	CodeLocked              ErrorCode = "ACCOUNT_LOCKED"
+	CodeEmailNotVerified    ErrorCode = "EMAIL_NOT_VERIFIED"
+	CodeRateLimited         ErrorCode = "RATE_LIMITED"
+	CodeAIUnavailable       ErrorCode = "AI_UNAVAILABLE"
+	CodeNotConfigured       ErrorCode = "NOT_CONFIGURED"
+	CodeDeliveryUnavailable ErrorCode = "DELIVERY_UNAVAILABLE"
+	CodeInternal            ErrorCode = "INTERNAL"
 )
 
 // The refusals a screen has to tell apart from a sibling answering the same status.
@@ -39,9 +40,12 @@ const (
 	CodeUnsupportedFileType ErrorCode = "UNSUPPORTED_FILE_TYPE"
 	// The three a channel write is refused with. A form editing one channel can answer all three
 	// on the same 422, and the field it has to point the administrator at differs per code.
-	CodeChannelConfigShape ErrorCode = "CHANNEL_CONFIG_SHAPE"
-	CodeChannelIdentifier  ErrorCode = "CHANNEL_IDENTIFIER"
-	CodeManualEntryChannel ErrorCode = "MANUAL_ENTRY_CHANNEL"
+	CodeChannelConfigShape  ErrorCode = "CHANNEL_CONFIG_SHAPE"
+	CodeChannelIdentifier   ErrorCode = "CHANNEL_IDENTIFIER"
+	CodeManualEntryChannel  ErrorCode = "MANUAL_ENTRY_CHANNEL"
+	CodeQuoteNotSendable    ErrorCode = "QUOTE_NOT_SENDABLE"
+	CodeDeliveryChannel     ErrorCode = "DELIVERY_CHANNEL"
+	CodeIdempotencyMismatch ErrorCode = "IDEMPOTENCY_MISMATCH"
 )
 
 // The two an upload is refused with. The delivery layer raises both on its own, before any
@@ -100,6 +104,8 @@ func CodeOf(err error) ErrorCode {
 		return CodeAIUnavailable
 	case errors.Is(err, ErrNotConfigured):
 		return CodeNotConfigured
+	case errors.Is(err, ErrDeliveryUnavailable):
+		return CodeDeliveryUnavailable
 	default:
 		return CodeInternal
 	}

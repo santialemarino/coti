@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -65,6 +66,17 @@ func (r *QuoteRepository) GetByID(
 		 FROM quote
 		 WHERE account_id = $1 AND branch_id = $2 AND id = $3`,
 		accountID, branchID, id))
+}
+
+// GetByIDForUpdate locks one branch-scoped quote while a delivery operation is prepared.
+func (r *QuoteRepository) GetByIDForUpdate(
+	ctx context.Context, q Querier, accountID, branchID, id uuid.UUID,
+) (*domain.Quote, error) {
+	return scanQuote(q.QueryRow(ctx,
+		`SELECT `+quoteColumns+`
+		 FROM quote
+		 WHERE account_id = $1 AND branch_id = $2 AND id = $3
+		 FOR UPDATE`, accountID, branchID, id))
 }
 
 // GetByRFQID loads the quote associated with an RFQ, scoped to the account. Branch filtering
@@ -162,6 +174,39 @@ func (r *QuoteRepository) Unarchive(
 	return quote, err
 }
 
+// SetClient attaches the same account-scoped client used by the quote's RFQ.
+func (r *QuoteRepository) SetClient(
+	ctx context.Context, q Querier, accountID, branchID, quoteID, clientID uuid.UUID,
+) error {
+	tag, err := q.Exec(ctx, `UPDATE quote SET client_id = $4
+		WHERE account_id = $1 AND branch_id = $2 AND id = $3
+		  AND EXISTS (SELECT 1 FROM client WHERE account_id = $1 AND id = $4)`,
+		accountID, branchID, quoteID, clientID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+// SetExpiry stores the current public validity window on the quote.
+func (r *QuoteRepository) SetExpiry(
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID, expiresAt time.Time,
+) error {
+	tag, err := q.Exec(ctx, `UPDATE quote SET expires_at = $4
+		WHERE account_id = $1 AND branch_id = $2 AND id = $3`,
+		accountID, branchID, quoteID, expiresAt)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 // GetCurrentVersion loads the version the quote points at. Returns domain.ErrNotFound when the
 // quote is absent, sits in another branch, or points at nothing. The branch is in the predicate
 // because quoteID reaches this from a request, and row level security guards only the account.
@@ -175,6 +220,21 @@ func (r *QuoteRepository) GetCurrentVersion(
 		   AND id = (SELECT current_version_id FROM quote
 		             WHERE account_id = $1 AND branch_id = $2 AND id = $3)`,
 		accountID, branchID, quoteID))
+}
+
+// FreezeVersion makes the selected current version permanently immutable.
+func (r *QuoteRepository) FreezeVersion(
+	ctx context.Context, q Querier, accountID, branchID, quoteID, versionID uuid.UUID,
+) (*domain.QuoteVersion, error) {
+	return scanQuoteVersion(q.QueryRow(ctx, `UPDATE quote_version version
+		SET is_immutable = TRUE
+		FROM quote
+		WHERE version.account_id = $1 AND version.id = $4
+		  AND quote.account_id = $1 AND quote.branch_id = $2 AND quote.id = $3
+		  AND quote.current_version_id = $4 AND quote.archived_at IS NULL
+		RETURNING version.id, version.account_id, version.quote_id, version.author_id,
+		  version.version_number, version.total, version.is_immutable, version.comment,
+		  version.created_at`, accountID, branchID, quoteID, versionID))
 }
 
 // CreateVersion inserts a quote version.

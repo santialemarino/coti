@@ -57,6 +57,23 @@ func (r *RFQRepository) UpdateStatus(
 		accountID, id, status))
 }
 
+// SetClient attaches an account-scoped client to the quote's source RFQ.
+func (r *RFQRepository) SetClient(
+	ctx context.Context, q Querier, accountID, branchID, rfqID, clientID uuid.UUID,
+) error {
+	tag, err := q.Exec(ctx, `UPDATE rfq SET client_id = $4
+		WHERE account_id = $1 AND branch_id = $2 AND id = $3
+		  AND EXISTS (SELECT 1 FROM client WHERE account_id = $1 AND id = $4)`,
+		accountID, branchID, rfqID, clientID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 // AppendStatusChange records an RFQ lifecycle transition.
 func (r *RFQRepository) AppendStatusChange(
 	ctx context.Context, q Querier, accountID, rfqID uuid.UUID, previousStatus *domain.RFQStatus,

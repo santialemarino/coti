@@ -107,6 +107,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	public.POST("/auth/resend-verification", mail, h.Verification.Resend)
 
 	public.POST("/accounts", limit("signup", cfg.RateLimit.Signup), h.Account.Register)
+	public.GET("/quote-sends/:token", h.Quote.ResolvePublic)
 
 	authed := v1.Group("", middleware.RequireTenant())
 
@@ -143,6 +144,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	// its own beyond the global one.
 	quotes := verified.Group("/quotes")
 	quotes.POST("/:quoteId/accept-materials", h.Quote.AcceptMaterials)
+	quotes.POST("/:quoteId/sends", h.Quote.Send)
 	quotes.POST("/:quoteId/transition", h.Quote.Transition)
 	quotes.POST("/:quoteId/archive", h.Quote.Archive)
 	quotes.POST("/:quoteId/unarchive", h.Quote.Unarchive)
