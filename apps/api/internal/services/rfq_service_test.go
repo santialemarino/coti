@@ -678,7 +678,7 @@ func (f *fakeQuoteDrafts) ListItems(
 func (f *fakeQuoteDrafts) ListItemsWithProduct(
 	_ context.Context, _ repository.Querier, _ uuid.UUID, _ uuid.UUID,
 ) ([]domain.QuoteItem, error) {
-	return f.ListItems(nil, nil, uuid.Nil, uuid.Nil)
+	return f.ListItems(context.Background(), nil, uuid.Nil, uuid.Nil)
 }
 
 func (f *fakeQuoteDrafts) GetItem(
@@ -696,7 +696,7 @@ func (f *fakeQuoteDrafts) UpdateItem(
 	_ context.Context, _ repository.Querier, accountID, versionID, itemID uuid.UUID,
 	in domain.QuoteItemUpdate,
 ) (*domain.QuoteItem, error) {
-	item, err := f.GetItem(nil, nil, accountID, versionID, itemID)
+	item, err := f.GetItem(context.Background(), nil, accountID, versionID, itemID)
 	if err != nil {
 		return nil, err
 	}

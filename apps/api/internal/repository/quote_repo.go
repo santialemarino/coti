@@ -658,7 +658,6 @@ func (r *QuoteRepository) UpdateItem(
 	if in.UnitPriceSnapshot != nil {
 		setClauses = append(setClauses, fmt.Sprintf("unit_price_snapshot = $%d", argIdx))
 		args = append(args, decimal.NewNullDecimal(*in.UnitPriceSnapshot))
-		argIdx++
 	}
 
 	if len(setClauses) == 0 {

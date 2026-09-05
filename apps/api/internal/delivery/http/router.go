@@ -175,8 +175,8 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	branchAdmin.DELETE("/:branchId", h.Branch.Delete)
 
 	// Manual RFQ intake.
-	authed.GET("/rfqs", h.Rfq.List)
-	authed.POST("/rfqs", h.Rfq.Create)
+	verified.GET("/rfqs", h.Rfq.List)
+	verified.POST("/rfqs", h.Rfq.Create)
 
 	// User administration is the one admin-only group. RequireAdmin runs after RequireTenant,
 	// which is what put the role on the context.

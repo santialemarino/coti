@@ -163,12 +163,14 @@ func TestRfq_ListShowsItemsFromMultipleAccounts(t *testing.T) {
 	// Account A
 	accountA, branchA := e.seedAccount(t, "Corralón A")
 	userA := e.seedUser(t, accountA, domain.UserRoleSeller)
+	e.assignBranch(t, accountA, userA, branchA)
 	tokenA := e.tokenFor(t, userA)
 	_ = seedManualEntryChannel(t, e, accountA, branchA)
 
 	// Account B
 	accountB, branchB := e.seedAccount(t, "Corralón B")
 	userB := e.seedUser(t, accountB, domain.UserRoleSeller)
+	e.assignBranch(t, accountB, userB, branchB)
 	tokenB := e.tokenFor(t, userB)
 	_ = seedManualEntryChannel(t, e, accountB, branchB)
 
