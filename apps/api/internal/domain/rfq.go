@@ -37,6 +37,7 @@ type RFQ struct {
 	AccountID   uuid.UUID
 	BranchID    uuid.UUID
 	ClientID    *uuid.UUID
+	ClientLabel *string
 	ChannelID   uuid.UUID
 	RawText     *string
 	Status      RFQStatus
@@ -44,7 +45,6 @@ type RFQ struct {
 	ReceivedAt  time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
-	ClientLabel *string
 }
 
 // NewRFQ is the input for creating an RFQ source record.
@@ -56,6 +56,52 @@ type NewRFQ struct {
 	Status      RFQStatus
 	WorkType    *string
 	ClientLabel *string
+}
+
+// NewRfq is the input for a manual entry: free text, structured lines, or both. At
+// least one must be present, enforced by the service.
+type NewRfq struct {
+	RawText     *string
+	WorkType    *string
+	ClientLabel *string
+	Items       []NewRfqItem
+}
+
+// NewRfqItem is one structured line the seller typed. Quantity is a decimal carried
+// end to end; the price snapshots stay NULL until the pricing step runs.
+type NewRfqItem struct {
+	ProductID            *uuid.UUID // a catalog product the seller picked.
+	RequestedDescription string
+	Quantity             decimal.Decimal // NUMERIC(14,2), greater than zero.
+	Unit                 *string
+}
+
+// RfqCreation is what the manual-entry endpoint persists as one atomic unit: the RFQ
+// born GENERATED, its quote born DRAFT, and version v1 of the quote.
+type RfqCreation struct {
+	Rfq     RFQ
+	Quote   Quote
+	Version QuoteVersion
+}
+
+// RfqListItem is a denormalized projection of rfq + quote + branch + seller for the
+// Backoffice list view. The display status merges rfq.status and quote.current_status
+// into a single timeline the UI can render.
+type RfqListItem struct {
+	ID            uuid.UUID
+	ClientID      *uuid.UUID
+	ClientLabel   *string // display name: ficha client name when set, else rfq.client_label.
+	CreatedAt     time.Time
+	Channel       string // lowercase channel_type: whatsapp, email, webapp, manual_entry.
+	SellerID      *uuid.UUID
+	SellerName    string
+	BranchID      uuid.UUID
+	BranchName    string
+	ItemCount     int
+	Total         *string // decimal string from quote_version.total; NULL when no priced version.
+	Status        string  // merged: rfq.status when no quote, otherwise quote.current_status.
+	ArchivedAt    *time.Time
+	NeedsFollowup bool
 }
 
 // RFQStatusChange records an RFQ lifecycle transition.
@@ -126,5 +172,15 @@ type TextRFQDraft struct {
 	Version *QuoteVersion
 	Items   []QuoteItem
 	// Alternatives are the candidates each flagged line was decided from, keyed by line id.
+	Alternatives map[uuid.UUID][]QuoteItemAlternative
+}
+
+// RfqDetail is the full detail view projection of one RFQ plus its associated
+// quote data, items, and alternatives. This is what the detail endpoint returns.
+type RfqDetail struct {
+	Rfq          RfqListItem
+	Quote        *Quote
+	Version      *QuoteVersion
+	Items        []QuoteItem
 	Alternatives map[uuid.UUID][]QuoteItemAlternative
 }

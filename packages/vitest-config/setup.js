@@ -14,6 +14,15 @@ if (!globalThis.ResizeObserver) {
   };
 }
 
+/*
+ * jsdom implements no Element.scrollIntoView, and Radix menus and cmdk command lists call it the
+ * moment a dropdown or combobox opens — a component test that opens either dies without this. A
+ * no-op is enough: nothing under test asserts on a scroll position.
+ */
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}
+
 // Testing Library only auto-cleans when the runner exposes a global afterEach, and these
 // suites import their hooks explicitly. Without it a rendered tree survives into the next
 // test and a query matches the previous one's DOM.

@@ -2,8 +2,11 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -19,6 +22,11 @@ type rfqRepository interface {
 	Create(ctx context.Context, q repository.Querier, accountID uuid.UUID, in domain.NewRFQ) (*domain.RFQ, error)
 	UpdateStatus(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, status domain.RFQStatus) (*domain.RFQ, error)
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID, previousStatus *domain.RFQStatus, newStatus domain.RFQStatus, userID *uuid.UUID) (*domain.RFQStatusChange, error)
+	ListByTenant(ctx context.Context, q repository.Querier, tenant domain.Tenant) ([]domain.RfqListItem, error)
+	GetByRFQID(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID) (*domain.RfqListItem, error)
+	GetManualEntryChannelID(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (uuid.UUID, error)
+	CountProductsInAccount(ctx context.Context, q repository.Querier, accountID uuid.UUID, productIDs []uuid.UUID) (int, error)
+	CreateManualEntry(ctx context.Context, q repository.Querier, tenant domain.Tenant, channelID uuid.UUID, in domain.NewRfq, now time.Time) (*domain.RfqCreation, error)
 }
 
 // quoteDraftRepository is the quote persistence surface for creating draft versions.
@@ -26,10 +34,20 @@ type quoteDraftRepository interface {
 	Create(ctx context.Context, q repository.Querier, accountID uuid.UUID, in domain.NewQuote) (*domain.Quote, error)
 	UpdateCurrentVersion(ctx context.Context, q repository.Querier, accountID, quoteID, versionID uuid.UUID) (*domain.Quote, error)
 	CreateVersion(ctx context.Context, q repository.Querier, accountID uuid.UUID, in domain.NewQuoteVersion) (*domain.QuoteVersion, error)
+	UpdateVersionTotal(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, total decimal.Decimal) (*domain.QuoteVersion, error)
 	CreateItems(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, items []domain.NewQuoteItem) ([]domain.QuoteItem, error)
 	CreateAlternatives(ctx context.Context, q repository.Querier, accountID uuid.UUID, alternatives []domain.NewQuoteItemAlternative) error
 	ListAlternativesByItemIDs(ctx context.Context, q repository.Querier, accountID uuid.UUID, itemIDs []uuid.UUID) (map[uuid.UUID][]domain.QuoteItemAlternative, error)
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID, previousStatus *domain.QuoteStatus, newStatus domain.QuoteStatus, userID *uuid.UUID) (*domain.QuoteStatusChange, error)
+	GetByRFQID(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID) (*domain.Quote, error)
+	GetByID(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
+	GetCurrentVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.QuoteVersion, error)
+	ListItems(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID) ([]domain.QuoteItem, error)
+	ListItemsWithProduct(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID) ([]domain.QuoteItem, error)
+	GetItem(ctx context.Context, q repository.Querier, accountID, versionID, itemID uuid.UUID) (*domain.QuoteItem, error)
+	UpdateItem(ctx context.Context, q repository.Querier, accountID, versionID, itemID uuid.UUID, in domain.QuoteItemUpdate) (*domain.QuoteItem, error)
+	DeleteItem(ctx context.Context, q repository.Querier, accountID, versionID, itemID uuid.UUID) error
+	CreateSingleItem(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, in domain.QuoteItemCreate) (*domain.QuoteItem, error)
 }
 
 // quoteAIGenerationRepository stores the original proposal independently of its editable version.
@@ -45,23 +63,26 @@ type rfqChannelReader interface {
 	GetActiveByID(ctx context.Context, q repository.Querier, accountID, branchID, channelID uuid.UUID) (*domain.Channel, error)
 }
 
-// catalogMatcher is the matching surface the RFQ flow needs. Defined here, in the consumer, so a
-// test can stage decisions per line without a provider or a vectorized catalog.
+// catalogMatcher is the matching surface the RFQ flow needs.
 type catalogMatcher interface {
 	Match(ctx context.Context, tenant domain.Tenant, descriptions []string) ([]domain.LineMatch, error)
 }
 
+// interpretationMemoryFinder retrieves account-local examples of how this supplier has read
+// previous orders, which the extractor can lean on to disambiguate its own readings.
 type interpretationMemoryFinder interface {
 	FindInterpretationExamples(ctx context.Context, tenant domain.Tenant,
 		raw string) ([]domain.RFQInterpretationExample, error)
 }
 
+// memoryAwareRFQExtractor is an extractor that can use interpretation examples when they exist.
 type memoryAwareRFQExtractor interface {
 	ExtractWithExamples(ctx context.Context, raw string,
 		examples []domain.RFQInterpretationExample) (*domain.RFQExtraction, error)
 }
 
-// RFQService owns the text RFQ pipeline up to a seller-reviewable quote draft.
+// RFQService owns the text RFQ pipeline up to a seller-reviewable quote draft, and the manual
+// entry flow.
 type RFQService struct {
 	db          tenantTxRunner
 	rfqs        rfqRepository
@@ -73,6 +94,7 @@ type RFQService struct {
 	memories    interpretationMemoryFinder
 	log         *slog.Logger
 	cfg         config.RFQConfig
+	now         func() time.Time
 }
 
 // WithCorrectionMemory enables account-local interpretation examples.
@@ -93,10 +115,327 @@ func NewRFQService(
 	}
 	return &RFQService{
 		db: db, rfqs: rfqs, quotes: quotes, generations: generations, channels: channels,
-		extractor: extractor,
-		matcher:   matcher, log: log, cfg: cfg,
+		extractor: extractor, matcher: matcher, log: log, cfg: cfg, now: time.Now,
 	}
 }
+
+// ---------- Manual entry ----------
+
+// List returns the RFQ list for the caller's tenant scope.
+func (s *RFQService) List(ctx context.Context, tenant domain.Tenant) ([]domain.RfqListItem, error) {
+	var items []domain.RfqListItem
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		var err error
+		items, err = s.rfqs.ListByTenant(ctx, q, tenant)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+// GetDetail returns the full detail of one RFQ including its quote, items, and alternatives.
+func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID) (*domain.RfqDetail, error) {
+	var detail *domain.RfqDetail
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		rfq, rfqErr := s.rfqs.GetByRFQID(ctx, q, tenant.AccountID, rfqID)
+		if rfqErr != nil {
+			return rfqErr
+		}
+
+		quote, quoteErr := s.quotes.GetByRFQID(ctx, q, tenant.AccountID, rfqID)
+		if quoteErr != nil && !errors.Is(quoteErr, domain.ErrNotFound) {
+			return quoteErr
+		}
+
+		detail = &domain.RfqDetail{
+			Rfq: *rfq,
+		}
+
+		if quote == nil {
+			return nil
+		}
+
+		detail.Quote = quote
+
+		if quote.CurrentVersionID != nil {
+			version, versionErr := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID,
+				tenant.BranchID, quote.ID)
+			if versionErr != nil && !errors.Is(versionErr, domain.ErrNotFound) {
+				return versionErr
+			}
+			if version != nil {
+				detail.Version = version
+
+				items, itemsErr := s.quotes.ListItemsWithProduct(ctx, q, tenant.AccountID, version.ID)
+				if itemsErr != nil {
+					return itemsErr
+				}
+				detail.Items = items
+
+				itemIDs := make([]uuid.UUID, 0, len(items))
+				for _, item := range items {
+					itemIDs = append(itemIDs, item.ID)
+				}
+				alternatives, altErr := s.quotes.ListAlternativesByItemIDs(ctx, q,
+					tenant.AccountID, itemIDs)
+				if altErr != nil {
+					return altErr
+				}
+				detail.Alternatives = alternatives
+			}
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return detail, nil
+}
+
+// UpdateItem patches a quote item. The version must be mutable and the item must belong to it.
+func (s *RFQService) UpdateItem(
+	ctx context.Context, tenant domain.Tenant, quoteID, itemID uuid.UUID, in domain.QuoteItemUpdate,
+) (*domain.QuoteItem, error) {
+	if err := requireBranch(tenant, "updating a quote item"); err != nil {
+		return nil, err
+	}
+	if in.Quantity != nil {
+		if in.Quantity.LessThanOrEqual(decimal.Zero) {
+			return nil, fmt.Errorf("%w: quantity must be greater than zero", domain.ErrInvalidInput)
+		}
+		if err := validateAmount(*in.Quantity, "quantity"); err != nil {
+			return nil, err
+		}
+	}
+	if in.UnitPriceSnapshot != nil {
+		if in.UnitPriceSnapshot.LessThan(decimal.Zero) {
+			return nil, fmt.Errorf("%w: unit_price_snapshot must be greater than or equal to zero",
+				domain.ErrInvalidInput)
+		}
+		if err := validateAmount(*in.UnitPriceSnapshot, "unit_price_snapshot"); err != nil {
+			return nil, err
+		}
+	}
+
+	var item *domain.QuoteItem
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, quoteErr := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if quoteErr != nil {
+			return quoteErr
+		}
+		if !domain.IsEditableStatus(quote.CurrentStatus) {
+			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+		}
+		if quote.CurrentVersionID == nil {
+			return domain.ErrNotFound
+		}
+		version, versionErr := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID,
+			tenant.BranchID, quote.ID)
+		if versionErr != nil {
+			return versionErr
+		}
+		var updateErr error
+		item, updateErr = s.quotes.UpdateItem(ctx, q, tenant.AccountID, version.ID, itemID, in)
+		if updateErr != nil {
+			return updateErr
+		}
+
+		// Recalculate subtotal and version total when price or quantity changed.
+		if in.UnitPriceSnapshot != nil || in.Quantity != nil {
+			if recalcErr := s.recalculateVersionTotal(ctx, q, tenant, version.ID); recalcErr != nil {
+				return recalcErr
+			}
+			// Reload item with updated snapshots.
+			item, updateErr = s.quotes.GetItem(ctx, q, tenant.AccountID, version.ID, itemID)
+			if updateErr != nil {
+				return updateErr
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return item, nil
+}
+
+// DeleteItem removes a quote item. The version must be mutable and the item must belong
+// to it.
+func (s *RFQService) DeleteItem(
+	ctx context.Context, tenant domain.Tenant, quoteID, itemID uuid.UUID,
+) error {
+	if err := requireBranch(tenant, "deleting a quote item"); err != nil {
+		return err
+	}
+	return s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, quoteErr := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if quoteErr != nil {
+			return quoteErr
+		}
+		if !domain.IsEditableStatus(quote.CurrentStatus) {
+			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+		}
+		if quote.CurrentVersionID == nil {
+			return domain.ErrNotFound
+		}
+		version, versionErr := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID,
+			tenant.BranchID, quote.ID)
+		if versionErr != nil {
+			return versionErr
+		}
+		if deleteErr := s.quotes.DeleteItem(ctx, q, tenant.AccountID, version.ID, itemID); deleteErr != nil {
+			return deleteErr
+		}
+		// Recalculate version total after deletion.
+		return s.recalculateVersionTotal(ctx, q, tenant, version.ID)
+	})
+}
+
+// AddItem appends one material line to a quote version.
+func (s *RFQService) AddItem(
+	ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID, in domain.QuoteItemCreate,
+) (*domain.QuoteItem, error) {
+	if err := requireBranch(tenant, "adding a quote item"); err != nil {
+		return nil, err
+	}
+	in.RequestedDescription = strings.TrimSpace(in.RequestedDescription)
+	if in.RequestedDescription == "" {
+		return nil, fmt.Errorf("%w: requested_description is required", domain.ErrInvalidInput)
+	}
+	if in.Quantity.LessThanOrEqual(decimal.Zero) {
+		return nil, fmt.Errorf("%w: quantity must be greater than zero", domain.ErrInvalidInput)
+	}
+	if err := validateAmount(in.Quantity, "quantity"); err != nil {
+		return nil, err
+	}
+
+	var item *domain.QuoteItem
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, quoteErr := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if quoteErr != nil {
+			return quoteErr
+		}
+		if !domain.IsEditableStatus(quote.CurrentStatus) {
+			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+		}
+		if quote.CurrentVersionID == nil {
+			return domain.ErrNotFound
+		}
+		version, versionErr := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID,
+			tenant.BranchID, quote.ID)
+		if versionErr != nil {
+			return versionErr
+		}
+		var createErr error
+		item, createErr = s.quotes.CreateSingleItem(ctx, q, tenant.AccountID, version.ID, in)
+		return createErr
+	}); err != nil {
+		return nil, err
+	}
+	return item, nil
+}
+
+// CreateManual records a counter, phone or otherwise unintegrated order.
+func (s *RFQService) CreateManual(
+	ctx context.Context, tenant domain.Tenant, in domain.NewRfq,
+) (*domain.RfqCreation, error) {
+	if err := requireBranch(tenant, "a manual RFQ"); err != nil {
+		return nil, err
+	}
+	in, err := normalizeManualEntry(in)
+	if err != nil {
+		return nil, err
+	}
+
+	var creation *domain.RfqCreation
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		channelID, getErr := s.rfqs.GetManualEntryChannelID(ctx, q, tenant.AccountID, tenant.BranchID)
+		if getErr != nil {
+			return getErr
+		}
+		if assertErr := s.assertProductsInAccount(ctx, q, tenant.AccountID, in.Items); assertErr != nil {
+			return assertErr
+		}
+		now := time.Now()
+		if s.now != nil {
+			now = s.now()
+		}
+		var createErr error
+		creation, createErr = s.rfqs.CreateManualEntry(ctx, q, tenant, channelID, in, now)
+		return createErr
+	}); err != nil {
+		return nil, err
+	}
+	return creation, nil
+}
+
+func normalizeManualEntry(in domain.NewRfq) (domain.NewRfq, error) {
+	if in.RawText != nil {
+		trimmed := strings.TrimSpace(*in.RawText)
+		in.RawText = &trimmed
+	}
+	if in.WorkType != nil {
+		trimmed := strings.TrimSpace(*in.WorkType)
+		in.WorkType = &trimmed
+	}
+	if in.ClientLabel != nil {
+		trimmed := strings.TrimSpace(*in.ClientLabel)
+		in.ClientLabel = &trimmed
+	}
+	if len(in.Items) == 0 && (in.RawText == nil || *in.RawText == "") {
+		return domain.NewRfq{}, fmt.Errorf("%w: a manual entry needs raw_text or at least one item",
+			domain.ErrInvalidInput)
+	}
+	for i := range in.Items {
+		if err := normalizeManualItem(&in.Items[i], i+1); err != nil {
+			return domain.NewRfq{}, err
+		}
+	}
+	return in, nil
+}
+
+func normalizeManualItem(it *domain.NewRfqItem, index int) error {
+	it.RequestedDescription = strings.TrimSpace(it.RequestedDescription)
+	if it.RequestedDescription == "" {
+		return fmt.Errorf("%w: item %d needs a requested_description", domain.ErrInvalidInput, index)
+	}
+	if it.Unit != nil {
+		trimmed := strings.TrimSpace(*it.Unit)
+		if trimmed == "" {
+			it.Unit = nil
+		} else {
+			it.Unit = &trimmed
+		}
+	}
+	if it.Quantity.LessThanOrEqual(decimal.Zero) {
+		return fmt.Errorf("%w: item %d quantity must be greater than zero", domain.ErrInvalidInput, index)
+	}
+	return validateAmount(it.Quantity, fmt.Sprintf("item %d quantity", index))
+}
+
+func (s *RFQService) assertProductsInAccount(
+	ctx context.Context, q repository.Querier, accountID uuid.UUID, items []domain.NewRfqItem,
+) error {
+	ids := make([]uuid.UUID, 0, len(items))
+	for _, it := range items {
+		if it.ProductID != nil {
+			ids = append(ids, *it.ProductID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	owned, err := s.rfqs.CountProductsInAccount(ctx, q, accountID, ids)
+	if err != nil {
+		return err
+	}
+	if owned != len(ids) {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+// ---------- AI pipeline ----------
 
 // CreateTextDraft turns plain RFQ text into a quote DRAFT for seller review.
 func (s *RFQService) CreateTextDraft(
@@ -113,8 +452,7 @@ func (s *RFQService) CreateTextDraft(
 	return s.createTextDraft(ctx, tenant, normalized, &sellerID)
 }
 
-// CreateWhatsAppMockDraft simulates one inbound WhatsApp text message in development. It resolves
-// the branch's channel and then runs the production pipeline, rather than a copy that would drift.
+// CreateWhatsAppMockDraft simulates one inbound WhatsApp text message in development.
 func (s *RFQService) CreateWhatsAppMockDraft(
 	ctx context.Context, tenant domain.Tenant, in domain.WhatsAppMockRFQInput,
 ) (*domain.TextRFQDraft, error) {
@@ -141,20 +479,15 @@ func (s *RFQService) CreateWhatsAppMockDraft(
 	if err != nil {
 		return nil, err
 	}
-	// The sender is who the order is for, and there is no client record to point at: client_label
-	// describes this order rather than a person to match later.
 	clientLabel := from
 	if profileName != nil {
 		clientLabel = fmt.Sprintf("%s (%s)", *profileName, from)
 	}
-	// No seller: an order that arrives overnight has nobody assigned until it is taken from the
-	// inbox.
 	return s.createTextDraft(ctx, tenant, domain.TextRFQDraftInput{
 		ChannelID: channel.ID, ClientLabel: &clientLabel, RawText: raw,
 	}, nil)
 }
 
-// createTextDraft runs the pipeline: store the order, read it, match it, then persist the draft.
 func (s *RFQService) createTextDraft(
 	ctx context.Context, tenant domain.Tenant, in domain.TextRFQDraftInput, sellerID *uuid.UUID,
 ) (*domain.TextRFQDraft, error) {
@@ -162,8 +495,6 @@ func (s *RFQService) createTextDraft(
 		return nil, fmt.Errorf("%w: the RFQ pipeline is not fully wired", domain.ErrInvalidInput)
 	}
 
-	// Stored before anything reads it, in its own transaction, so a model that fails or times out
-	// leaves a recoverable order instead of losing what the client wrote.
 	rfq, err := s.persistReceivedRFQ(ctx, tenant, in)
 	if err != nil {
 		return nil, err
@@ -173,8 +504,6 @@ func (s *RFQService) createTextDraft(
 	if err != nil {
 		return nil, err
 	}
-	// Nothing the client wrote is a material, so the order never reached GENERATED. The text is
-	// kept and the seller decides what it was.
 	if len(items) == 0 {
 		s.log.InfoContext(ctx, "rfq produced no materials", slog.String("rfq_id", rfq.ID.String()))
 		return &domain.TextRFQDraft{RFQ: *rfq}, nil
@@ -182,8 +511,6 @@ func (s *RFQService) createTextDraft(
 	return s.persistGeneratedDraft(ctx, tenant, rfq, sellerID, extraction, items, alternatives)
 }
 
-// readMaterials runs the two provider stages under one deadline. The caller's context is left
-// alone, so the writes that follow survive a pipeline that ran out of time.
 func (s *RFQService) readMaterials(
 	ctx context.Context, tenant domain.Tenant, raw string,
 ) (*domain.RFQExtraction, []domain.NewQuoteItem, []domain.NewQuoteItemAlternative, error) {
@@ -228,9 +555,6 @@ func (s *RFQService) readMaterials(
 	return extraction, items, s.applyMatches(pipelineCtx, tenant, items), nil
 }
 
-// applyMatches writes each line's catalog decision onto it and returns the candidates the flagged
-// lines were decided from. A matcher that cannot answer leaves every line flagged rather than
-// costing the extraction what the client asked for.
 func (s *RFQService) applyMatches(
 	ctx context.Context, tenant domain.Tenant, items []domain.NewQuoteItem,
 ) []domain.NewQuoteItemAlternative {
@@ -247,8 +571,6 @@ func (s *RFQService) applyMatches(
 			slog.Any("error", err), slog.Int("lines", len(items)))
 		return nil
 	}
-	// Pairing a line with another line's decision is a wrong product nothing downstream could
-	// notice, so a broken alignment leaves every line flagged rather than indexing into it.
 	if len(matches) != len(items) {
 		s.log.ErrorContext(ctx, "catalog matching returned a different number of decisions",
 			slog.Int("decisions", len(matches)), slog.Int("lines", len(items)))
@@ -291,8 +613,6 @@ func (s *RFQService) persistReceivedRFQ(
 	return rfq, nil
 }
 
-// persistGeneratedDraft writes the whole RECEIVED to GENERATED transition as one unit: the quote,
-// its first unfrozen version, its lines, and both status histories.
 func (s *RFQService) persistGeneratedDraft(
 	ctx context.Context, tenant domain.Tenant, rfq *domain.RFQ, sellerID *uuid.UUID,
 	extraction *domain.RFQExtraction, items []domain.NewQuoteItem,
@@ -311,8 +631,6 @@ func (s *RFQService) persistGeneratedDraft(
 			return createQuoteErr
 		}
 
-		// Total stays zero and the version unfrozen: the prices are the next stage's, and a
-		// seller has to accept the materials before any of them are computed.
 		version, createVersionErr := s.quotes.CreateVersion(ctx, q, tenant.AccountID,
 			domain.NewQuoteVersion{
 				QuoteID:       quote.ID,
@@ -448,8 +766,6 @@ func (s *RFQService) getActiveChannel(
 	return channel, nil
 }
 
-// resolveWhatsAppChannel finds the branch's WhatsApp channel. A branch may have more than one
-// number, and guessing which one an order arrived on would route the answer to the wrong client.
 func (s *RFQService) resolveWhatsAppChannel(
 	ctx context.Context, tenant domain.Tenant, channelID *uuid.UUID,
 ) (*domain.Channel, error) {
@@ -518,8 +834,6 @@ func (s *RFQService) normalizeTextRFQDraftInput(
 	return in, nil
 }
 
-// requiredRFQText bounds the order before a model is asked to read it. rfq.raw_text is unbounded,
-// so the cap is the only thing between a pasted document and one very expensive call.
 func (s *RFQService) requiredRFQText(raw string) (string, error) {
 	text, err := requiredText(raw, "raw_text")
 	if err != nil {
@@ -531,9 +845,6 @@ func (s *RFQService) requiredRFQText(raw string) (string, error) {
 	return text, nil
 }
 
-// newQuoteItemsFromRFQLines validates what the model proposed and turns it into lines. Every line
-// starts NO_MATCH: the catalog decision is matching's to make, and a line nothing matches keeps
-// that value.
 func newQuoteItemsFromRFQLines(lines []domain.ExtractedRFQLine) ([]domain.NewQuoteItem, error) {
 	items := make([]domain.NewQuoteItem, 0, len(lines))
 	for i, line := range lines {
@@ -575,8 +886,6 @@ func newQuoteItemsFromRFQLines(lines []domain.ExtractedRFQLine) ([]domain.NewQuo
 	return items, nil
 }
 
-// alternativesFromMatch keeps the candidates the line does not already point at, ranked as the
-// matcher ranked them. See docs/technical/rfq-pipeline.md for which status offers what.
 func alternativesFromMatch(
 	itemID uuid.UUID, match domain.LineMatch,
 ) []domain.NewQuoteItemAlternative {
@@ -588,9 +897,6 @@ func alternativesFromMatch(
 		if match.ProductID != nil && *match.ProductID == candidate.ProductID {
 			continue
 		}
-		// A candidate at zero scored no similarity at all: the search reached it because the top-K
-		// is wider than the catalog, not because it resembles the line. Offering it would bury the
-		// near miss the seller is looking for under everything the account sells.
 		if candidate.Confidence.IsZero() {
 			continue
 		}
@@ -607,8 +913,6 @@ func alternativesFromMatch(
 	return alternatives
 }
 
-// validateQuantitySource refuses a line that contradicts itself: a source outside the closed set,
-// a stated quantity of zero, or an unresolved one carrying a number.
 func validateQuantitySource(line domain.ExtractedRFQLine, field string) error {
 	switch line.Source {
 	case domain.QuantitySourceExplicit, domain.QuantitySourceDerived:
@@ -644,4 +948,26 @@ func requireMaxRunes(value, field string, max int) error {
 		return fmt.Errorf("%w: %s cannot exceed %d characters", domain.ErrInvalidInput, field, max)
 	}
 	return nil
+}
+
+// recalculateVersionTotal recomputes a version's total from its items and discounts, then
+// persists it. Called after any item or price mutation.
+func (s *RFQService) recalculateVersionTotal(
+	ctx context.Context, q repository.Querier, tenant domain.Tenant, versionID uuid.UUID,
+) error {
+	items, err := s.quotes.ListItems(ctx, q, tenant.AccountID, versionID)
+	if err != nil {
+		return err
+	}
+	subtotals := decimal.Zero
+	for _, item := range items {
+		if item.Subtotal.Valid {
+			subtotals = subtotals.Add(item.Subtotal.Decimal)
+		}
+	}
+	// The discount sweep is US-38. When implemented, load quote_discount rows here.
+	discounts := decimal.Zero
+	total := subtotals.Sub(discounts).Round(domain.MoneyScale)
+	_, err = s.quotes.UpdateVersionTotal(ctx, q, tenant.AccountID, versionID, total)
+	return err
 }

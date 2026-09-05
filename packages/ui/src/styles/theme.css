@@ -52,6 +52,16 @@
   --color-destructive-border: var(--danger-border);
   --color-destructive-foreground: var(--danger-foreground);
 
+  /* RFQ status colours — reach for these instead of the generic success/warning/danger families. */
+  --color-status-accepted: var(--status-accepted-base);
+  --color-status-rejected: var(--status-rejected-base);
+  --color-status-change-requested: var(--status-change-requested-base);
+  --color-status-generated: var(--status-generated-base);
+  --color-status-quoted: var(--status-quoted-base);
+  --color-status-sent: var(--status-sent-base);
+  --color-status-archived: var(--status-archived-base);
+  --color-status-draft: var(--status-draft-base);
+
   /* Brand ramp — reach for a semantic token first; these are for brand surfaces only. */
   --color-brand-50: var(--brand-50);
   --color-brand-100: var(--brand-100);

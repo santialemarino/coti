@@ -19,7 +19,9 @@ const (
 	QuoteStatusRejected        QuoteStatus = "REJECTED"
 )
 
-// Quote is the seller-facing quote created from one RFQ.
+// Quote is the seller-facing quote created from one RFQ. current_status is a
+// backend-exclusive derived cache, recomputed on each transition, never set by a
+// human or the AI.
 type Quote struct {
 	ID                uuid.UUID
 	AccountID         uuid.UUID
@@ -47,15 +49,16 @@ type NewQuote struct {
 	ExpiresAt     *time.Time
 }
 
-// QuoteVersion is one reviewable snapshot of a quote.
+// QuoteVersion is one reviewable snapshot of a quote. total = Σ item subtotals −
+// Σ discounts. Append-only: it has no updated_at.
 type QuoteVersion struct {
 	ID            uuid.UUID
 	AccountID     uuid.UUID
 	QuoteID       uuid.UUID
 	AuthorID      *uuid.UUID
 	VersionNumber int
-	Total         decimal.Decimal
-	IsImmutable   bool
+	Total         decimal.Decimal // NUMERIC(14,2).
+	IsImmutable   bool            // draft = false; frozen = true.
 	Comment       *string
 	CreatedAt     time.Time
 }
@@ -70,29 +73,34 @@ type NewQuoteVersion struct {
 	Comment       *string
 }
 
-// QuoteItem is one material line inside a quote version.
+// QuoteItem is one material line inside a quote version. The item does not carry
+// its discount; a discount is its own entity. price snapshots are NULL until the
+// pricing step runs. ProductCode, ProductName, and ProductUnit are populated only
+// when the item is loaded with a product JOIN (ListItemsWithProduct); bare
+// ListItems leaves them nil.
 type QuoteItem struct {
 	ID                   uuid.UUID
 	AccountID            uuid.UUID
 	VersionID            uuid.UUID
 	ProductID            *uuid.UUID
 	RequestedDescription string
-	Quantity             decimal.Decimal
+	Quantity             decimal.Decimal // NUMERIC(14,2).
 	Unit                 *string
-	UnitPriceSnapshot    decimal.NullDecimal
-	MinPriceSnapshot     decimal.NullDecimal
-	Subtotal             decimal.NullDecimal
+	UnitPriceSnapshot    decimal.NullDecimal // NUMERIC(14,2).
+	MinPriceSnapshot     decimal.NullDecimal // discount-engine floor, snapshotted.
+	Subtotal             decimal.NullDecimal // NUMERIC(14,2).
 	ConfidenceScore      decimal.NullDecimal
 	MatchStatus          ItemMatchStatus
 	QuantityRationale    *string
+	ProductCode          *string
+	ProductName          *string
+	ProductUnit          *string
 	CreatedAt            time.Time
 }
 
 // NewQuoteItem is the input for creating a quote item.
 type NewQuoteItem struct {
 	// ID is chosen by the caller so a line's candidates can name it before either is written.
-	// Deriving that from the insert's row order instead would rest on an order Postgres does not
-	// promise, and a line offering another line's candidates is a wrong answer nothing catches.
 	ID                   uuid.UUID
 	ProductID            *uuid.UUID
 	RequestedDescription string
@@ -123,8 +131,7 @@ const (
 )
 
 // QuoteItemAlternative is one candidate offered for a quote line, carrying the catalog identity a
-// seller needs to tell it apart. Code, CanonicalName and Unit are read from the catalog as it
-// stands and are not frozen with the line, the same as the product the line itself matched.
+// seller needs to tell it apart.
 type QuoteItemAlternative struct {
 	ID               uuid.UUID
 	AccountID        uuid.UUID
@@ -146,23 +153,46 @@ type QuoteItemAlternative struct {
 
 // NewQuoteItemAlternative is the input for creating a quote item alternative.
 type NewQuoteItemAlternative struct {
-	QuoteItemID uuid.UUID
-	ProductID   *uuid.UUID
-	ComboID     *uuid.UUID
-	Type        QuoteItemAlternativeType
-	Origin      QuoteItemAlternativeOrigin
-	// Rank is the candidate's own place in the matcher's ranking, so a line that kept the leading
-	// candidate has no row at one. Nothing else records it: created_at is shared across an insert.
+	QuoteItemID     uuid.UUID
+	ProductID       *uuid.UUID
+	ComboID         *uuid.UUID
+	Type            QuoteItemAlternativeType
+	Origin          QuoteItemAlternativeOrigin
 	Rank            int
 	ConfidenceScore decimal.NullDecimal
-	// PriceSnapshot stays empty on an AI candidate: nothing has been priced when matching runs,
-	// and the price a seller would freeze is the one in force when they choose it.
-	PriceSnapshot decimal.NullDecimal
+	PriceSnapshot   decimal.NullDecimal
+}
+
+// QuoteItemUpdate is the mutable surface of a quote item. All fields are optional:
+// only present fields are written.
+type QuoteItemUpdate struct {
+	ProductID            *uuid.UUID
+	RequestedDescription *string
+	Quantity             *decimal.Decimal
+	Unit                 *string
+	UnitPriceSnapshot    *decimal.Decimal
+}
+
+// IsEditableStatus returns true when the quote status allows item mutations.
+func IsEditableStatus(status QuoteStatus) bool {
+	switch status {
+	case QuoteStatusDraft, QuoteStatusQuoted, QuoteStatusChangeRequested:
+		return true
+	default:
+		return false
+	}
+}
+
+// QuoteItemCreate is the input for adding a new line to a draft quote version.
+type QuoteItemCreate struct {
+	ProductID            *uuid.UUID
+	RequestedDescription string
+	Quantity             decimal.Decimal
+	Unit                 *string
 }
 
 // QuoteItemPricing is one line's frozen valuation, written when the seller accepts the
-// materials. All three are null together: a line with no product, or whose product the branch
-// has no price in force for, keeps its valuation empty rather than valued at zero.
+// materials.
 type QuoteItemPricing struct {
 	ItemID            uuid.UUID
 	UnitPriceSnapshot decimal.NullDecimal
@@ -182,16 +212,11 @@ type QuoteStatusChange struct {
 	CreatedAt      time.Time
 }
 
-// PricedQuote is the result of the DRAFT to QUOTED transition: the quote at its new status, the
-// version whose total was just summed, and the lines carrying the prices that were frozen.
+// PricedQuote is the result of the DRAFT to QUOTED transition.
 type PricedQuote struct {
-	Quote   Quote
-	Version QuoteVersion
-	Items   []QuoteItem
-	// UnpricedItemIDs are the lines that matched a product the branch cannot price. They are
-	// neither NO_MATCH nor AMBIGUOUS — the catalog decided them — yet they reach QUOTED with an
-	// empty valuation, so the seller has to be shown the gap rather than left to infer it.
+	Quote           Quote
+	Version         QuoteVersion
+	Items           []QuoteItem
 	UnpricedItemIDs []uuid.UUID
-	// Alternatives are the candidates each flagged line was decided from, keyed by line id.
-	Alternatives map[uuid.UUID][]QuoteItemAlternative
+	Alternatives    map[uuid.UUID][]QuoteItemAlternative
 }
