@@ -52,6 +52,9 @@ var (
 	// because nothing about the request can be changed to make it succeed.
 	ErrNotConfigured = errors.New("capability not configured")
 
+	// ErrDeliveryUnavailable is returned when every selected client delivery failed.
+	ErrDeliveryUnavailable = errors.New("delivery unavailable")
+
 	// ErrNoTenantContext is a programming error, not a client one: a request-scoped query
 	// without tenant context silently returns nothing under row level security.
 	ErrNoTenantContext = errors.New("no tenant context")

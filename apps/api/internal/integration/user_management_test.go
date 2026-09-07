@@ -132,7 +132,8 @@ func newEnvWithRFQProviders(
 			MaxFileSize:     10 * 1024 * 1024,
 			SignedURLExpiry: 15 * time.Minute,
 		},
-		Web: config.WebConfig{BackofficeURL: "https://backoffice.test"},
+		Web: config.WebConfig{BackofficeURL: "https://backoffice.test",
+			WebAppURL: "https://quotes.test"},
 		// Off for the suite at large, so an unrelated test cannot trip an allowance. The two
 		// that exercise it build their own env.
 		RateLimit: config.RateLimitConfig{Enabled: false},
@@ -228,7 +229,7 @@ func newEnvWithRFQProviders(
 			RFQ:           handler.NewRFQHandler(rfqService),
 			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
 			File:          handler.NewFileHandler(objectStorage.Local),
-			Quote:         handler.NewQuoteHandler(quoteService),
+			Quote:         handler.NewQuoteHandler(quoteService, nil),
 			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
 				branchRepo, channelRepo, userRepo, onboardingRepo, authService, verificationService, quiet,
 				cfg.Auth, cfg.Branch)),
@@ -317,6 +318,7 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 			`DELETE FROM user_branch WHERE account_id = $1`,
 			`DELETE FROM app_user WHERE account_id = $1`,
 			`DELETE FROM channel WHERE account_id = $1`,
+			`DELETE FROM client WHERE account_id = $1`,
 			`DELETE FROM branch WHERE account_id = $1`,
 			`DELETE FROM account WHERE id = $1`,
 		} {

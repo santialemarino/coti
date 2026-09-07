@@ -29,6 +29,7 @@ const minSigningSecretLength = 32
 const channelKeyLength = 32
 const defaultCatalogImportMaxBytes = 5 * 1024 * 1024
 const defaultPriceImportMaxBytes = 5 * 1024 * 1024
+const maxBranchExpiryDays = 365
 
 // Environment is the deployment environment the process runs in.
 type Environment string
@@ -79,6 +80,7 @@ type Config struct {
 	Catalog         CatalogConfig
 	RFQ             RFQConfig
 	QuoteCorrection QuoteCorrectionConfig
+	QuoteQuality    QuoteQualityConfig
 	RateLimit       RateLimitConfig
 	Branch          BranchConfig
 	Job             JobConfig
@@ -376,6 +378,7 @@ func (a AIConfig) problems() []string {
 // those routes, so it cannot derive them from its own address.
 type WebConfig struct {
 	BackofficeURL string
+	WebAppURL     string
 }
 
 // SpreadsheetImportConfig holds operational limits for spreadsheet imports.
@@ -416,6 +419,11 @@ type QuoteCorrectionConfig struct {
 	MaxPatternsPerAccount     int
 	MaxInterpretationExamples int
 	ProcessingBatchSize       int
+}
+
+// QuoteQualityConfig bounds the durable post-send evaluation retry.
+type QuoteQualityConfig struct {
+	ProcessingBatchSize int
 }
 
 // CatalogConfig holds the catalog listing limits and the knobs behind the hybrid search. The
@@ -645,6 +653,7 @@ func Load() (*Config, error) {
 		},
 		Web: WebConfig{
 			BackofficeURL: getString("WEB_BACKOFFICE_URL", "http://localhost:3000"),
+			WebAppURL:     getString("WEB_WEBAPP_URL", "http://localhost:3001"),
 		},
 		Catalog: CatalogConfig{
 			DefaultPageSize:               getInt("CATALOG_DEFAULT_PAGE_SIZE", 50, &problems),
@@ -696,6 +705,9 @@ func Load() (*Config, error) {
 			MaxInterpretationExamples: getInt("QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES", 3, &problems),
 			ProcessingBatchSize:       getInt("QUOTE_CORRECTION_PROCESSING_BATCH_SIZE", 100, &problems),
 		},
+		QuoteQuality: QuoteQualityConfig{
+			ProcessingBatchSize: getInt("QUOTE_QUALITY_PROCESSING_BATCH_SIZE", 100, &problems),
+		},
 		Job: JobConfig{
 			Timeout: getDuration("JOB_TIMEOUT_MINUTES", 30*time.Minute, &problems),
 		},
@@ -729,6 +741,8 @@ func Load() (*Config, error) {
 	}
 	if cfg.Branch.DefaultExpiryDays <= 0 {
 		problems = append(problems, "BRANCH_DEFAULT_EXPIRY_DAYS must be greater than zero")
+	} else if cfg.Branch.DefaultExpiryDays > maxBranchExpiryDays {
+		problems = append(problems, "BRANCH_DEFAULT_EXPIRY_DAYS must not exceed 365")
 	}
 	if cfg.CatalogImport.MaxBytes <= 0 {
 		problems = append(problems, "CATALOG_IMPORT_MAX_BYTES must be greater than zero")
@@ -795,6 +809,11 @@ func Load() (*Config, error) {
 			"WEB_BACKOFFICE_URL must be an absolute URL with a scheme and host, got %q",
 			cfg.Web.BackofficeURL))
 	}
+	if u, err := url.Parse(cfg.Web.WebAppURL); err != nil || u.Scheme == "" || u.Host == "" {
+		problems = append(problems, fmt.Sprintf(
+			"WEB_WEBAPP_URL must be an absolute URL with a scheme and host, got %q",
+			cfg.Web.WebAppURL))
+	}
 
 	if cfg.Catalog.DefaultPageSize < 1 {
 		problems = append(problems, fmt.Sprintf("CATALOG_DEFAULT_PAGE_SIZE must be at least 1, got %d",
@@ -854,6 +873,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.QuoteCorrection.ProcessingBatchSize < 1 {
 		problems = append(problems, "QUOTE_CORRECTION_PROCESSING_BATCH_SIZE must be greater than zero")
+	}
+	if cfg.QuoteQuality.ProcessingBatchSize < 1 {
+		problems = append(problems, "QUOTE_QUALITY_PROCESSING_BATCH_SIZE must be greater than zero")
 	}
 
 	catalogPercents := []struct {

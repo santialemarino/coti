@@ -47,6 +47,10 @@ func Respond(c *gin.Context, err error) {
 		_ = c.Error(err)
 		c.JSON(http.StatusServiceUnavailable,
 			dto.ErrorResponse{Error: "capability not configured", Code: code})
+	case errors.Is(err, domain.ErrDeliveryUnavailable):
+		_ = c.Error(err)
+		c.JSON(http.StatusServiceUnavailable,
+			dto.ErrorResponse{Error: "delivery unavailable", Code: code})
 	case errors.Is(err, domain.ErrAIUnavailable):
 		// Attached as well: which provider failed, and why, belongs in the log and not in the
 		// response. The caller only needs to know the proposal is not coming.

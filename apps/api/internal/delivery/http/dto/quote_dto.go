@@ -93,3 +93,41 @@ type QuoteItemAlternativeResponse struct {
 	CanonicalName    *string    `json:"canonical_name"`
 	Unit             *string    `json:"unit"`
 }
+
+// QuoteSendRequest selects the optional email copy and validity override. WhatsApp and the
+// public webapp link are always included by the backend.
+type QuoteSendRequest struct {
+	RecipientPhone string                     `json:"recipient_phone" binding:"required"`
+	EmailDelivery  *QuoteEmailDeliveryRequest `json:"email_delivery"`
+	ExpiryDays     *int                       `json:"expiry_days"`
+}
+
+// QuoteEmailDeliveryRequest is the optional independent email destination.
+type QuoteEmailDeliveryRequest struct {
+	Address string `json:"address" binding:"required"`
+}
+
+// QuoteSendResponse reports each independent channel outcome after the database commit.
+type QuoteSendResponse struct {
+	QuoteID       uuid.UUID               `json:"quote_id"`
+	VersionID     uuid.UUID               `json:"version_id"`
+	CurrentStatus string                  `json:"current_status"`
+	ExpiresAt     *time.Time              `json:"expires_at"`
+	Deliveries    []QuoteDeliveryResponse `json:"deliveries"`
+}
+
+// QuoteDeliveryResponse reports one channel-specific send.
+type QuoteDeliveryResponse struct {
+	ID             uuid.UUID  `json:"id"`
+	Channel        string     `json:"channel"`
+	Destination    string     `json:"destination"`
+	TrackingStatus string     `json:"tracking_status"`
+	PublicURL      string     `json:"public_url"`
+	SentAt         *time.Time `json:"sent_at"`
+}
+
+// PublicQuoteSendResponse is the minimal sessionless token state for the future webapp.
+type PublicQuoteSendResponse struct {
+	Status    string    `json:"status"`
+	ExpiresAt time.Time `json:"expires_at"`
+}

@@ -36,6 +36,7 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/secrets"
 	"github.com/santialemarino/coti/apps/api/internal/services"
 	storageprovider "github.com/santialemarino/coti/apps/api/internal/storage/provider"
+	"github.com/santialemarino/coti/apps/api/internal/whatsapp"
 )
 
 func main() {
@@ -82,6 +83,9 @@ func run() error {
 	quoteDiscountRepo := repository.NewQuoteDiscountRepository()
 	quoteAIGenerationRepo := repository.NewQuoteAIGenerationRepository()
 	quoteCorrectionRepo := repository.NewQuoteCorrectionRepository()
+	quoteQualityRepo := repository.NewQuoteQualityRepository()
+	quoteSendRepo := repository.NewQuoteSendRepository()
+	clientRepo := repository.NewClientRepository()
 	accountRepo := repository.NewAccountRepository()
 	onboardingRepo := repository.NewOnboardingRepository()
 	channelRepo := repository.NewChannelRepository()
@@ -122,6 +126,11 @@ func run() error {
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
 	authService := services.NewAuthService(db, userRepo, branchRepo, refreshTokenRepo, tokenService, cfg.Auth, nil)
 	mailService := services.NewMailService(db, mailer, notificationRepo, accountRepo, nil)
+	quoteMailService := mailService
+	if cfg.Mail.Provider == config.MailProviderConsole {
+		quoteMailService = services.NewMailService(db, mail.DisabledMailer{}, notificationRepo,
+			accountRepo, nil)
+	}
 	passwordService := services.NewPasswordService(db, userRepo, authTokenRepo, refreshTokenRepo,
 		mailService, authService, log, cfg.Auth, cfg.Web, nil)
 	verificationService := services.NewVerificationService(db, userRepo, authTokenRepo,
@@ -149,6 +158,11 @@ func run() error {
 		WithCorrectionMemory(quoteCorrectionService).
 		WithDiscounts(quoteDiscountRepo)
 	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, log)
+	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
+		WithCorrectionLearning(quoteCorrectionService)
+	quoteDeliveryService := services.NewQuoteDeliveryService(db, quoteSendRepo, quoteRepo, rfqRepo,
+		clientRepo, channelRepo, branchRepo, whatsapp.DisabledSender{}, quoteMailService,
+		quoteQualityService, cfg.Web.WebAppURL, nil, log)
 	rfqAttachmentService := services.NewRFQAttachmentService(db, rfqAttachmentRepo,
 		objectStorage.Storage, cfg.Storage, nil)
 
@@ -166,7 +180,7 @@ func run() error {
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			RFQ:           handler.NewRFQHandler(rfqService),
 			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
-			Quote:         handler.NewQuoteHandler(quoteService),
+			Quote:         handler.NewQuoteHandler(quoteService, quoteDeliveryService),
 			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
 			CatalogImport: handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
 			Account:       handler.NewAccountHandler(accountService),

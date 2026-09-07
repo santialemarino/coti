@@ -663,14 +663,25 @@ CREATE TABLE quote_send (
   account_id      UUID NOT NULL,
   version_id      UUID NOT NULL,
   channel_id      UUID NOT NULL,
+  idempotency_key UUID NOT NULL DEFAULT gen_random_uuid(),
+  destination     VARCHAR(255),
+  provider_reference VARCHAR(255),
   public_token    VARCHAR(255),
   format          send_format NOT NULL,
+  validity_days   INTEGER NOT NULL DEFAULT 7,
   sent_at         TIMESTAMPTZ,
   expires_at      TIMESTAMPTZ,
   tracking_status send_tracking_status NOT NULL DEFAULT 'PENDING',
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT uq_quote_send_public_token UNIQUE (public_token)
+  CONSTRAINT uq_quote_send_public_token UNIQUE (public_token),
+  CONSTRAINT ck_quote_send_validity_days CHECK (validity_days BETWEEN 1 AND 365),
+  CONSTRAINT uq_quote_send_idempotency_channel
+    UNIQUE (account_id, idempotency_key, channel_id)
 );
+
+CREATE UNIQUE INDEX uq_quote_send_channel_provider_reference
+  ON quote_send (channel_id, provider_reference)
+  WHERE provider_reference IS NOT NULL;
 
 -- Rejection is an explicit client or seller action, never inferred by the AI.
 CREATE TABLE client_action (
