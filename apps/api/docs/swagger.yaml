@@ -223,6 +223,29 @@ definitions:
     - current_password
     - new_password
     type: object
+  dto.ChangeRequestDiffResponse:
+    properties:
+      original:
+        $ref: '#/definitions/dto.ChangeRequestSideResponse'
+      reason:
+        type: string
+      requested:
+        $ref: '#/definitions/dto.ChangeRequestSideResponse'
+    type: object
+  dto.ChangeRequestSideResponse:
+    properties:
+      discounts:
+        items:
+          $ref: '#/definitions/dto.DiffDiscountLineResponse'
+        type: array
+      items:
+        items:
+          $ref: '#/definitions/dto.DiffLineItemResponse'
+        type: array
+      total:
+        description: decimal string, never float.
+        type: string
+    type: object
   dto.ChannelListResponse:
     properties:
       items:
@@ -320,6 +343,35 @@ definitions:
         type: string
     required:
     - type
+    type: object
+  dto.CreateDiscountRequest:
+    properties:
+      action_type:
+        enum:
+        - FIXED_AMOUNT
+        - PERCENTAGE
+        type: string
+      description:
+        maxLength: 512
+        minLength: 1
+        type: string
+      item_ids:
+        items:
+          type: string
+        type: array
+      scope:
+        enum:
+        - TOTAL
+        - ITEM
+        - ITEM_SET
+        type: string
+      value:
+        type: string
+    required:
+    - action_type
+    - description
+    - scope
+    - value
     type: object
   dto.CreateProductRequest:
     properties:
@@ -445,6 +497,30 @@ definitions:
     required:
     - from
     - text
+    type: object
+  dto.DiffDiscountLineResponse:
+    properties:
+      amount:
+        type: string
+      changed:
+        type: boolean
+      name:
+        type: string
+    type: object
+  dto.DiffLineItemResponse:
+    properties:
+      change_type:
+        type: string
+      changed:
+        type: boolean
+      description:
+        type: string
+      quantity:
+        type: string
+      unit:
+        type: string
+      unit_price:
+        type: string
     type: object
   dto.ErrorResponse:
     properties:
@@ -658,6 +734,39 @@ definitions:
         type: string
       updated_at:
         type: string
+    type: object
+  dto.QuoteDiscountResponse:
+    properties:
+      action_type:
+        type: string
+      action_value:
+        type: string
+      amount:
+        type: string
+      condition_type:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      item_ids:
+        items:
+          type: string
+        type: array
+      origin:
+        type: string
+      promotion_id:
+        type: string
+      promotion_name:
+        type: string
+      quote_version_id:
+        type: string
+      scope:
+        type: string
+      suppressed_by_seller:
+        type: boolean
     type: object
   dto.QuoteItemAlternativeResponse:
     properties:
@@ -878,6 +987,12 @@ definitions:
             $ref: '#/definitions/dto.QuoteItemAlternativeResponse'
           type: array
         type: object
+      changes_requested:
+        $ref: '#/definitions/dto.ChangeRequestDiffResponse'
+      discounts:
+        items:
+          $ref: '#/definitions/dto.QuoteDiscountResponse'
+        type: array
       items:
         items:
           $ref: '#/definitions/dto.QuoteItemResponse'
@@ -1147,6 +1262,32 @@ definitions:
         type: string
       is_active:
         type: boolean
+    type: object
+  dto.UpdateDiscountRequest:
+    properties:
+      action_type:
+        enum:
+        - FIXED_AMOUNT
+        - PERCENTAGE
+        type: string
+      description:
+        maxLength: 512
+        minLength: 1
+        type: string
+      item_ids:
+        items:
+          type: string
+        type: array
+      scope:
+        enum:
+        - TOTAL
+        - ITEM
+        - ITEM_SET
+        type: string
+      suppressed_by_seller:
+        type: boolean
+      value:
+        type: string
     type: object
   dto.UpdateProductRequest:
     properties:
@@ -3277,6 +3418,160 @@ paths:
       summary: Archive a quote
       tags:
       - quotes
+  /v1/quotes/{quoteId}/discounts:
+    post:
+      consumes:
+      - application/json
+      description: Applies a seller-typed discount — fixed amount or percentage, scoped
+        to the total, one item, or a set — and recomputes the total.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: New discount data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateDiscountRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.QuoteDiscountResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Add a discount
+      tags:
+      - rfqs
+  /v1/quotes/{quoteId}/discounts/{discountId}:
+    delete:
+      description: Removes one seller-typed discount application and recomputes the
+        total.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Discount id
+        in: path
+        name: discountId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a discount
+      tags:
+      - rfqs
+    patch:
+      consumes:
+      - application/json
+      description: Patches a discount's rule (value, action type, scope, covered items),
+        description, or suppressed flag.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Discount id
+        in: path
+        name: discountId
+        required: true
+        type: string
+      - description: Fields to patch
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateDiscountRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteDiscountResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a discount
+      tags:
+      - rfqs
   /v1/quotes/{quoteId}/items:
     post:
       consumes:

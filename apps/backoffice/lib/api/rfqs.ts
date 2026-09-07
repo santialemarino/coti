@@ -151,7 +151,8 @@ export interface QuoteItemAlternativeResponse {
   unit: string | null;
 }
 
-export type DiscountScope = 'ITEM' | 'ITEM_SET' | 'TOTAL';
+export type DiscountScope = 'TOTAL' | 'ITEM' | 'ITEM_SET';
+export type DiscountActionType = 'FIXED_AMOUNT' | 'PERCENTAGE';
 export type DiscountOrigin = 'AUTOMATIC' | 'AI_ADAPTATION' | 'MANUAL_SELLER';
 
 export interface QuoteDiscountResponse {
@@ -159,12 +160,40 @@ export interface QuoteDiscountResponse {
   quote_version_id: string;
   promotion_id: string | null;
   promotion_name: string | null;
-  condition_type: string | null;
+  condition_type: string;
   scope: DiscountScope;
   origin: DiscountOrigin;
   amount: string;
+  action_type: DiscountActionType;
+  // The raw rule the seller typed, null for engine-applied discounts; decimals are strings.
+  action_value: string | null;
+  // Lines an ITEM/ITEM_SET discount covers; empty for TOTAL and on post/patch responses.
+  item_ids: string[];
+  description: string | null;
   suppressed_by_seller: boolean;
   created_at: string;
+}
+
+/*
+ * Create/update body for a seller-typed discount, matching the backend DTOs. The backend computes
+ * the money amount from the rule (fixed ≤ scope base, percentage of the scope base) and recomputes
+ * the version total; item_ids are required for ITEM/ITEM_SET scopes.
+ */
+export interface CreateDiscountBody {
+  description: string;
+  action_type: DiscountActionType;
+  value: string;
+  scope: DiscountScope;
+  item_ids?: string[];
+}
+
+export interface UpdateDiscountBody {
+  description?: string;
+  action_type?: DiscountActionType;
+  value?: string;
+  scope?: DiscountScope;
+  item_ids?: string[];
+  suppressed_by_seller?: boolean;
 }
 
 export interface DiffLineItem {

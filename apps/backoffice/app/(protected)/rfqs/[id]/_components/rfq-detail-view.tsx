@@ -7,66 +7,16 @@ import { toast } from 'sonner';
 import { Callout, PendingButton } from '@repo/ui/components';
 import type { QuoteDiscountResponse, QuoteItemResponse, RfqDetailResponse } from '@/lib/api/rfqs';
 import { normalizeRfqStatus } from '@/lib/api/rfqs';
-import { generateQuote } from '@/lib/api/rfqs-client';
+import { fetchRfqDetail, generateQuote } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
 import { RfqChangeDiff } from './rfq-change-diff';
 import { RfqDetailHeader } from './rfq-detail-header';
 import { RfqItemsTable } from './rfq-items-table';
 import { RfqStatusTimeline } from './rfq-status-timeline';
+import { SendQuoteDialog } from './send-quote-dialog';
 
 interface RfqDetailViewProps {
   detail: RfqDetailResponse;
-}
-
-/*
- * Discounts are not persisted by the backend yet (US-38), so a real response carries none. To
- * exercise the discount summary + editing, surface a couple of example rows while the seller is
- * still composing (QUOTED / CHANGE_REQUESTED). Frozen states keep none: a sent quote's totals are
- * what were sent, and fabricating discounts there would contradict the version.total in the
- * timeline. Editing stays client-side for now.
- */
-const EXAMPLE_DISCOUNT_ROWS: Omit<QuoteDiscountResponse, 'amount'>[] = [
-  {
-    id: 'example-promo-qty',
-    quote_version_id: '',
-    promotion_id: 'e0000000-0000-4000-8000-000000000001',
-    promotion_name: 'Cemento por cantidad',
-    condition_type: 'QUANTITY_TIERED',
-    scope: 'ITEM',
-    origin: 'AUTOMATIC',
-    suppressed_by_seller: false,
-    created_at: '',
-  },
-  {
-    id: 'example-promo-total',
-    quote_version_id: '',
-    promotion_id: 'e0000000-0000-4000-8000-000000000002',
-    promotion_name: 'Compra grande',
-    condition_type: 'ON_TOTAL',
-    scope: 'TOTAL',
-    origin: 'AUTOMATIC',
-    suppressed_by_seller: false,
-    created_at: '',
-  },
-];
-
-function seedExampleDiscounts(detail: RfqDetailResponse): QuoteDiscountResponse[] {
-  if ((detail.discounts?.length ?? 0) > 0) return detail.discounts ?? [];
-
-  const status = detail.quote?.current_status ?? '';
-  const isComposing = status === 'QUOTED' || status === 'CHANGE_REQUESTED';
-  if (!isComposing) return [];
-
-  const total = Number(detail.version?.total ?? 0);
-  if (!Number.isFinite(total) || total <= 0) return [];
-
-  const quantityDiscount = Math.round(Math.min(total * 0.1, 200000) * 100) / 100;
-  const totalDiscount = Math.round(total * 0.05 * 100) / 100;
-
-  return [
-    { ...EXAMPLE_DISCOUNT_ROWS[0]!, amount: String(quantityDiscount) },
-    { ...EXAMPLE_DISCOUNT_ROWS[1]!, amount: String(totalDiscount) },
-  ];
 }
 
 export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
@@ -74,8 +24,8 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
   const fmt = useFormatters();
   const [detail, setDetail] = useState(initialDetail);
   const [items, setItems] = useState<QuoteItemResponse[]>(initialDetail.items);
-  const [discounts, setDiscounts] = useState<QuoteDiscountResponse[]>(() =>
-    seedExampleDiscounts(initialDetail),
+  const [discounts, setDiscounts] = useState<QuoteDiscountResponse[]>(
+    initialDetail.discounts ?? [],
   );
   const [generating, startGenerate] = useTransition();
 
@@ -85,13 +35,29 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
   // isDraft below stays raw so the generate button only surfaces while the quote is really DRAFT.
   const rfqStatus = normalizeRfqStatus(detail.rfq.status);
   const isDraft = quoteStatus === 'DRAFT';
+  // The send flow is one screen for every review-ready status: same modal, same mock handoff.
+  const canSendQuote = quoteStatus === 'QUOTED' || quoteStatus === 'CHANGE_REQUESTED';
+
+  /*
+   * Reconcile the screen against the backend after a mutation. The discount endpoints
+   * recompute the version total, so item subtotals, discounts and version.total all come
+   * back together and the timeline and summary cannot drift from what is persisted.
+   */
+  const refreshDetail = useCallback(async () => {
+    if (!quoteId) return;
+    try {
+      const fresh = await fetchRfqDetail(detail.rfq.id);
+      setDetail(fresh);
+      setItems(fresh.items);
+      setDiscounts(fresh.discounts ?? []);
+    } catch {
+      // The mutation itself succeeded; a failed refetch must not look like the write died.
+      toast.error(t('detail.items.toast.error'));
+    }
+  }, [detail.rfq.id, quoteId, t]);
 
   const handleItemsChange = useCallback((newItems: QuoteItemResponse[]) => {
     setItems(newItems);
-  }, []);
-
-  const handleDiscountsChange = useCallback((newDiscounts: QuoteDiscountResponse[]) => {
-    setDiscounts(newDiscounts);
   }, []);
 
   function handleGenerate() {
@@ -159,7 +125,7 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
             items={items}
             discounts={discounts}
             onItemsChange={handleItemsChange}
-            onDiscountsChange={handleDiscountsChange}
+            onRefresh={refreshDetail}
           />
         </>
       ) : (
@@ -169,20 +135,23 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
           items={items}
           discounts={discounts}
           onItemsChange={handleItemsChange}
-          onDiscountsChange={handleDiscountsChange}
+          onRefresh={refreshDetail}
         />
       )}
 
-      {isDraft && quoteId && (
+      {(isDraft || canSendQuote) && quoteId && (
         <div className="flex justify-end">
-          <PendingButton
-            type="button"
-            onClick={handleGenerate}
-            pending={generating}
-            pendingLabel={t('detail.items.generating')}
-          >
-            {t('detail.items.generate')}
-          </PendingButton>
+          {isDraft && (
+            <PendingButton
+              type="button"
+              onClick={handleGenerate}
+              pending={generating}
+              pendingLabel={t('detail.items.generating')}
+            >
+              {t('detail.items.generate')}
+            </PendingButton>
+          )}
+          {canSendQuote && <SendQuoteDialog detail={detail} />}
         </div>
       )}
     </div>

@@ -177,6 +177,25 @@ func (r *QuoteRepository) GetCurrentVersion(
 		accountID, branchID, quoteID))
 }
 
+// GetPreviousVersion loads the newest frozen version older than the given number for
+// a quote, which the change-request diff compares against the mutable draft. Returns
+// domain.ErrNotFound when no frozen predecessor exists.
+func (r *QuoteRepository) GetPreviousVersion(
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID, versionNumber int,
+) (*domain.QuoteVersion, error) {
+	return scanQuoteVersion(q.QueryRow(ctx,
+		`SELECT `+quoteVersionColumns+`
+		 FROM quote_version
+		 WHERE account_id = $1
+		   AND quote_id = (SELECT id FROM quote
+		                   WHERE account_id = $1 AND branch_id = $2 AND id = $3)
+		   AND version_number < $4
+		   AND is_immutable = TRUE
+		 ORDER BY version_number DESC
+		 LIMIT 1`,
+		accountID, branchID, quoteID, versionNumber))
+}
+
 // CreateVersion inserts a quote version.
 func (r *QuoteRepository) CreateVersion(
 	ctx context.Context, q Querier, accountID uuid.UUID, in domain.NewQuoteVersion,

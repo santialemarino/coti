@@ -149,6 +149,9 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	quotes.POST("/:quoteId/items", h.Rfq.AddItem)
 	quotes.PATCH("/:quoteId/items/:itemId", h.Rfq.UpdateItem)
 	quotes.DELETE("/:quoteId/items/:itemId", h.Rfq.DeleteItem)
+	quotes.POST("/:quoteId/discounts", h.Rfq.AddDiscount)
+	quotes.PATCH("/:quoteId/discounts/:discountId", h.Rfq.UpdateDiscount)
+	quotes.DELETE("/:quoteId/discounts/:discountId", h.Rfq.DeleteDiscount)
 
 	if !cfg.IsProduction() {
 		verified.POST("/dev/whatsapp/messages", ai, h.RFQ.CreateWhatsAppMockDraft)

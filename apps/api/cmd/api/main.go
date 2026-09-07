@@ -79,6 +79,7 @@ func run() error {
 	rfqRepo := repository.NewRFQRepository()
 	rfqAttachmentRepo := repository.NewRFQAttachmentRepository()
 	quoteRepo := repository.NewQuoteRepository()
+	quoteDiscountRepo := repository.NewQuoteDiscountRepository()
 	quoteAIGenerationRepo := repository.NewQuoteAIGenerationRepository()
 	quoteCorrectionRepo := repository.NewQuoteCorrectionRepository()
 	accountRepo := repository.NewAccountRepository()
@@ -145,7 +146,8 @@ func run() error {
 	rfqExtractor := ai.NewRFQExtractor(providers.Generator, cfg.RFQ.MaxItems)
 	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo, quoteAIGenerationRepo,
 		channelRepo, rfqExtractor, catalogMatchService, log, cfg.RFQ).
-		WithCorrectionMemory(quoteCorrectionService)
+		WithCorrectionMemory(quoteCorrectionService).
+		WithDiscounts(quoteDiscountRepo)
 	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, log)
 	rfqAttachmentService := services.NewRFQAttachmentService(db, rfqAttachmentRepo,
 		objectStorage.Storage, cfg.Storage, nil)
