@@ -51,6 +51,8 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"RFQ_MAX_TEXT_CHARACTERS", "RFQ_MAX_ITEMS", "RFQ_PIPELINE_TIMEOUT_SECONDS",
 		"QUOTE_CORRECTION_SIMILARITY_PERCENT", "QUOTE_CORRECTION_MAX_PATTERNS_PER_ACCOUNT",
 		"QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES", "QUOTE_CORRECTION_PROCESSING_BATCH_SIZE",
+		"QUOTE_LOGO_FETCH_TIMEOUT_SECONDS", "QUOTE_LOGO_MAX_SIZE_BYTES",
+		"QUOTE_LOGO_MAX_PIXELS", "QUOTE_LOGO_MAX_REDIRECTS",
 		"STORAGE_PROVIDER", "STORAGE_LOCAL_DIR", "STORAGE_LOCAL_API_BASE_URL",
 		"STORAGE_LOCAL_SIGNING_SECRET", "STORAGE_ENDPOINT", "STORAGE_REGION", "STORAGE_BUCKET",
 		"STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY",
@@ -92,6 +94,10 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.Database.MaxConns != 10 {
 		t.Errorf("Database.MaxConns = %d, want 10", cfg.Database.MaxConns)
+	}
+	if cfg.QuoteLogo.FetchTimeout != 3*time.Second || cfg.QuoteLogo.MaxSizeBytes != 2*1024*1024 ||
+		cfg.QuoteLogo.MaxPixels != 12_000_000 || cfg.QuoteLogo.MaxRedirects != 3 {
+		t.Errorf("QuoteLogo = %+v, want documented defaults", cfg.QuoteLogo)
 	}
 	if cfg.Auth.AccessTTL != 15*time.Minute {
 		t.Errorf("Auth.AccessTTL = %v, want 15m", cfg.Auth.AccessTTL)
@@ -253,6 +259,23 @@ func TestLoad_QuoteCorrectionKeysLandOnTheirOwnFields(t *testing.T) {
 		cfg.QuoteCorrection.MaxInterpretationExamples != 4 ||
 		cfg.QuoteCorrection.ProcessingBatchSize != 73 {
 		t.Errorf("QuoteCorrection = %+v, want 81/901/4/73", cfg.QuoteCorrection)
+	}
+}
+
+func TestLoad_QuoteLogoKeysLandOnTheirOwnFields(t *testing.T) {
+	env := minimalEnv()
+	env["QUOTE_LOGO_FETCH_TIMEOUT_SECONDS"] = "7"
+	env["QUOTE_LOGO_MAX_SIZE_BYTES"] = "123456"
+	env["QUOTE_LOGO_MAX_PIXELS"] = "7654321"
+	env["QUOTE_LOGO_MAX_REDIRECTS"] = "2"
+	setEnv(t, env)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.QuoteLogo.FetchTimeout != 7*time.Second || cfg.QuoteLogo.MaxSizeBytes != 123456 ||
+		cfg.QuoteLogo.MaxPixels != 7654321 || cfg.QuoteLogo.MaxRedirects != 2 {
+		t.Errorf("QuoteLogo = %+v, want 7s/123456/7654321/2", cfg.QuoteLogo)
 	}
 }
 

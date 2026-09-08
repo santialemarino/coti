@@ -71,6 +71,7 @@ func seedAccount(t *testing.T, db *DB, name string) uuid.UUID {
 
 	t.Cleanup(func() {
 		mustCleanup(t, db.CrossAccount(), `DELETE FROM branch WHERE account_id = $1`, accountID)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM quote_number_counter WHERE account_id = $1`, accountID)
 		mustCleanup(t, db.CrossAccount(), `DELETE FROM account WHERE id = $1`, accountID)
 	})
 	return accountID

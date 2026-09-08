@@ -26,11 +26,13 @@ import (
 
 	"github.com/santialemarino/coti/apps/api/internal/ai"
 	aiprovider "github.com/santialemarino/coti/apps/api/internal/ai/provider"
+	"github.com/santialemarino/coti/apps/api/internal/branding"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/mail"
+	quotePDF "github.com/santialemarino/coti/apps/api/internal/pdf"
 	"github.com/santialemarino/coti/apps/api/internal/ratelimit"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 	"github.com/santialemarino/coti/apps/api/internal/secrets"
@@ -85,6 +87,7 @@ func run() error {
 	quoteCorrectionRepo := repository.NewQuoteCorrectionRepository()
 	quoteQualityRepo := repository.NewQuoteQualityRepository()
 	quoteSendRepo := repository.NewQuoteSendRepository()
+	quoteRepresentationRepo := repository.NewQuoteRepresentationRepository()
 	clientRepo := repository.NewClientRepository()
 	accountRepo := repository.NewAccountRepository()
 	onboardingRepo := repository.NewOnboardingRepository()
@@ -160,9 +163,14 @@ func run() error {
 	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, log)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
 		WithCorrectionLearning(quoteCorrectionService)
+	quoteRepresentationService := services.NewQuoteRepresentationService(db,
+		quoteRepresentationRepo, quoteRepo, objectStorage.Storage,
+		branding.NewLogoLoader(cfg.QuoteLogo), quotePDF.NewQuoteRenderer(),
+		cfg.Storage.SignedURLExpiry, nil, log)
 	quoteDeliveryService := services.NewQuoteDeliveryService(db, quoteSendRepo, quoteRepo, rfqRepo,
 		clientRepo, channelRepo, branchRepo, whatsapp.DisabledSender{}, quoteMailService,
-		quoteQualityService, cfg.Web.WebAppURL, nil, log)
+		quoteQualityService, cfg.Web.WebAppURL, nil, log).
+		WithRepresentationService(quoteRepresentationService)
 	rfqAttachmentService := services.NewRFQAttachmentService(db, rfqAttachmentRepo,
 		objectStorage.Storage, cfg.Storage, nil)
 
@@ -180,7 +188,8 @@ func run() error {
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			RFQ:           handler.NewRFQHandler(rfqService),
 			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
-			Quote:         handler.NewQuoteHandler(quoteService, quoteDeliveryService),
+			Quote: handler.NewQuoteHandler(quoteService, quoteDeliveryService,
+				quoteRepresentationService),
 			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
 			CatalogImport: handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
 			Account:       handler.NewAccountHandler(accountService),

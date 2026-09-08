@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/google/uuid"
@@ -17,10 +18,14 @@ type quoteRepository interface {
 	GetByID(ctx context.Context, q repository.Querier, accountID, branchID, id uuid.UUID) (*domain.Quote, error)
 	UpdateStatus(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID, from, to domain.QuoteStatus) (*domain.Quote, error)
 	GetCurrentVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.QuoteVersion, error)
-	UpdateVersionTotal(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, total decimal.Decimal) (*domain.QuoteVersion, error)
+	UpdateVersionValuation(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
+		total decimal.Decimal, currency string) (*domain.QuoteVersion, error)
 	ListItems(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID) ([]domain.QuoteItem, error)
 	ListAlternativesByItemIDs(ctx context.Context, q repository.Querier, accountID uuid.UUID, itemIDs []uuid.UUID) (map[uuid.UUID][]domain.QuoteItemAlternative, error)
+	GetAlternative(ctx context.Context, q repository.Querier, accountID, versionID, itemID, alternativeID uuid.UUID) (*domain.QuoteItemAlternative, error)
 	ApplyPricing(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, pricings []domain.QuoteItemPricing) error
+	ApplyAlternativePricing(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, pricings []domain.QuoteItemAlternativePricing) error
+	UpdateAlternativeApproval(ctx context.Context, q repository.Querier, accountID, versionID, itemID, alternativeID uuid.UUID, approved bool) (*domain.QuoteItemAlternative, error)
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID, previousStatus *domain.QuoteStatus, newStatus domain.QuoteStatus, userID *uuid.UUID) (*domain.QuoteStatusChange, error)
 	Archive(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
 	Unarchive(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
@@ -90,7 +95,7 @@ func (s *QuoteService) AcceptMaterials(
 		// The quote's own branch, not the caller's selection: the price a line freezes belongs to
 		// the branch the order arrived at. GetByID has already proved the two are the same.
 		prices, err := s.prices.GetCurrentByProductIDs(ctx, q, tenant.AccountID, quote.BranchID,
-			quoteItemProductIDs(items))
+			quoteProductIDs(items, candidates))
 		if err != nil {
 			return err
 		}
@@ -103,8 +108,17 @@ func (s *QuoteService) AcceptMaterials(
 			valuation.pricings); err != nil {
 			return err
 		}
-		version, err = s.quotes.UpdateVersionTotal(ctx, q, tenant.AccountID, version.ID,
-			valuation.total)
+		alternativePricings, err := valueQuoteAlternatives(candidates, prices, valuation.currency)
+		if err != nil {
+			return err
+		}
+		if err := s.quotes.ApplyAlternativePricing(ctx, q, tenant.AccountID, version.ID,
+			alternativePricings); err != nil {
+			return err
+		}
+		applyAlternativePricing(candidates, alternativePricings)
+		version, err = s.quotes.UpdateVersionValuation(ctx, q, tenant.AccountID, version.ID,
+			valuation.total, valuation.currency)
 		if err != nil {
 			return err
 		}
@@ -149,6 +163,46 @@ func (s *QuoteService) AcceptMaterials(
 			slog.Any("product_ids", unpricedProducts))
 	}
 	return &priced, nil
+}
+
+// ApproveAlternative records a seller decision on a priced candidate of the current version.
+func (s *QuoteService) ApproveAlternative(
+	ctx context.Context, tenant domain.Tenant, quoteID, itemID, alternativeID uuid.UUID,
+	approved bool,
+) (*domain.QuoteItemAlternative, error) {
+	if err := requireBranch(tenant, "a quote alternative"); err != nil {
+		return nil, err
+	}
+	var result *domain.QuoteItemAlternative
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, err := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if err != nil {
+			return err
+		}
+		if quote.ArchivedAt != nil || quote.CurrentStatus != domain.QuoteStatusQuoted {
+			return domain.ErrConflict
+		}
+		version, err := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if err != nil {
+			return err
+		}
+		if version.IsImmutable {
+			return domain.ErrConflict
+		}
+		alternative, err := s.quotes.GetAlternative(ctx, q, tenant.AccountID, version.ID,
+			itemID, alternativeID)
+		if err != nil {
+			return err
+		}
+		if approved && (!alternative.PriceSnapshot.Valid || alternative.CanonicalName == nil) {
+			return fmt.Errorf("%w: an approved alternative needs a frozen price and catalog identity",
+				domain.ErrInvalidInput)
+		}
+		result, err = s.quotes.UpdateAlternativeApproval(ctx, q, tenant.AccountID, version.ID,
+			itemID, alternativeID, approved)
+		return err
+	})
+	return result, err
 }
 
 // requireMaterialsPendingAcceptance is the state×intention check, run before anything is written.

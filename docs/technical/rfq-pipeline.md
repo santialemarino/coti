@@ -344,7 +344,7 @@ platform's cron rather than on demand.
 `POST /v1/quotes/{quoteId}/sends` is the seller-owned transition from `QUOTED` to `SENT`.
 `Idempotency-Key` is a UUID. The body always names an E.164 WhatsApp destination, may add one
 email destination, and may override the branch validity with `expiry_days` from 1 through 365.
-The service freezes the current version and creates one `PENDING` `quote_send` per selected
+The service first ensures the immutable representation bundle, then creates one `PENDING` `quote_send` per selected
 channel before calling a provider. WhatsApp and email run independently; at least one successful
 channel commits the transition and all selected outcomes are retained. Each channel receives its
 own opaque token and `/quotes/{token}` webapp URL.
@@ -369,8 +369,9 @@ from durable successful sends; the existing `quote-correction-learning` job cont
 pending embeddings.
 
 `GET /v1/public/quote-sends/{token}` first resolves only the owning account through the owner
-pool, then verifies the completed send under an RLS-scoped transaction. It exposes only `ACTIVE`
-or `EXPIRED` and the timestamp; quote content belongs to the public webapp feature. The current
+pool, then verifies the completed send under an RLS-scoped transaction. Active tokens expose
+the frozen quote, message and a short-lived PDF URL; expired tokens expose only `EXPIRED`
+and `expires_at`. See [quote representations](quote-representations.md). The current
 WhatsApp composition-root adapter is deliberately disabled until the Meta transport ticket lands,
 and the console mailer is never treated as a successful client delivery.
 

@@ -25,6 +25,7 @@ const (
 type Quote struct {
 	ID                uuid.UUID
 	AccountID         uuid.UUID
+	Number            int64
 	BranchID          uuid.UUID
 	ClientID          *uuid.UUID
 	RFQID             uuid.UUID
@@ -57,8 +58,10 @@ type QuoteVersion struct {
 	QuoteID       uuid.UUID
 	AuthorID      *uuid.UUID
 	VersionNumber int
+	Currency      string
 	Total         decimal.Decimal // NUMERIC(14,2).
 	IsImmutable   bool            // draft = false; frozen = true.
+	FrozenAt      *time.Time
 	Comment       *string
 	CreatedAt     time.Time
 }
@@ -68,6 +71,7 @@ type NewQuoteVersion struct {
 	QuoteID       uuid.UUID
 	AuthorID      *uuid.UUID
 	VersionNumber int
+	Currency      string
 	Total         decimal.Decimal
 	IsImmutable   bool
 	Comment       *string
@@ -161,6 +165,12 @@ type NewQuoteItemAlternative struct {
 	Rank            int
 	ConfidenceScore decimal.NullDecimal
 	PriceSnapshot   decimal.NullDecimal
+}
+
+// QuoteItemAlternativePricing is the frozen catalog price for one offered product.
+type QuoteItemAlternativePricing struct {
+	AlternativeID uuid.UUID
+	PriceSnapshot decimal.NullDecimal
 }
 
 // QuoteItemUpdate is the mutable surface of a quote item. All fields are optional:

@@ -115,6 +115,18 @@ func (f *fakeQuoteRepo) UpdateVersionTotal(
 	return &updated, nil
 }
 
+func (f *fakeQuoteRepo) UpdateVersionValuation(
+	_ context.Context, _ repository.Querier, _, versionID uuid.UUID, total decimal.Decimal,
+	currency string,
+) (*domain.QuoteVersion, error) {
+	f.writtenTotals = append(f.writtenTotals, total)
+	updated := *f.version
+	updated.ID = versionID
+	updated.Total = total
+	updated.Currency = currency
+	return &updated, nil
+}
+
 func (f *fakeQuoteRepo) ListItems(
 	_ context.Context, _ repository.Querier, _, versionID uuid.UUID,
 ) ([]domain.QuoteItem, error) {
@@ -137,6 +149,18 @@ func (f *fakeQuoteRepo) ListAlternativesByItemIDs(
 	return byItem, nil
 }
 
+func (f *fakeQuoteRepo) GetAlternative(
+	_ context.Context, _ repository.Querier, _, _, itemID, alternativeID uuid.UUID,
+) (*domain.QuoteItemAlternative, error) {
+	for _, alternative := range f.alternatives[itemID] {
+		if alternative.ID == alternativeID {
+			copy := alternative
+			return &copy, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+
 func (f *fakeQuoteRepo) ApplyPricing(
 	_ context.Context, _ repository.Querier, _, versionID uuid.UUID,
 	pricings []domain.QuoteItemPricing,
@@ -147,6 +171,26 @@ func (f *fakeQuoteRepo) ApplyPricing(
 		f.writesInsideTx = append(f.writesInsideTx, f.inTransaction.activeTransactions > 0)
 	}
 	return f.applyPricingErr
+}
+
+func (f *fakeQuoteRepo) ApplyAlternativePricing(
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID,
+	_ []domain.QuoteItemAlternativePricing,
+) error {
+	return nil
+}
+
+func (f *fakeQuoteRepo) UpdateAlternativeApproval(
+	_ context.Context, _ repository.Querier, _, _, itemID, alternativeID uuid.UUID,
+	approved bool,
+) (*domain.QuoteItemAlternative, error) {
+	alternative, err := f.GetAlternative(context.Background(), nil, uuid.Nil, uuid.Nil,
+		itemID, alternativeID)
+	if err != nil {
+		return nil, err
+	}
+	alternative.ApprovedBySeller = approved
+	return alternative, nil
 }
 
 func (f *fakeQuoteRepo) AppendStatusChange(
@@ -635,7 +679,10 @@ func TestQuoteService_AcceptMaterials_CarriesTheFlaggedLinesCandidates(t *testin
 	flagged := flaggedLine("2")
 	name := "Membrana asfáltica 4mm"
 	f := newQuoteFixture([]domain.QuoteItem{pricedLine(product, "1"), flagged},
-		map[uuid.UUID]domain.BranchPrice{product: branchPrice(product, "10.00", nil)})
+		map[uuid.UUID]domain.BranchPrice{
+			product:   branchPrice(product, "10.00", nil),
+			candidate: branchPrice(candidate, "8.50", nil),
+		})
 	f.quotes.alternatives = map[uuid.UUID][]domain.QuoteItemAlternative{
 		flagged.ID: {{
 			ID: uuid.New(), QuoteItemID: flagged.ID, ProductID: &candidate,
@@ -661,6 +708,10 @@ func TestQuoteService_AcceptMaterials_CarriesTheFlaggedLinesCandidates(t *testin
 	if offered[0].CanonicalName == nil || *offered[0].CanonicalName != name {
 		t.Errorf("offer name = %v, want %q: a bare id is barely better than a bare flag",
 			offered[0].CanonicalName, name)
+	}
+	if !offered[0].PriceSnapshot.Valid ||
+		!offered[0].PriceSnapshot.Decimal.Equal(decimal.RequireFromString("8.50")) {
+		t.Errorf("offer price = %v, want frozen 8.50", offered[0].PriceSnapshot)
 	}
 	// One read for every line, not one per line.
 	if len(f.quotes.alternativeReads) != 1 {

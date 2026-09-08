@@ -3563,6 +3563,179 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/quotes/{quoteId}/items/{itemId}/alternatives/{alternativeId}": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Approve or withdraw a quote alternative",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Item id",
+                        "name": "itemId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Alternative id",
+                        "name": "alternativeId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Seller approval",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteAlternativeApprovalRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteItemAlternativeResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/{quoteId}/representations": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Validates and freezes the current QUOTED version, then returns its stored PDF and canonical content; SENT permits replay only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Generate the approved quote representations",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Existing bundle",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteRepresentationResponse"
+                        }
+                    },
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteRepresentationResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/quotes/{quoteId}/sends": {
             "post": {
                 "security": [
@@ -5315,6 +5488,12 @@ const docTemplate = `{
                 },
                 "error": {
                     "type": "string"
+                },
+                "issues": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -5626,8 +5805,28 @@ const docTemplate = `{
                 "expires_at": {
                     "type": "string"
                 },
+                "message": {
+                    "type": "string"
+                },
+                "pdf_url": {
+                    "type": "string"
+                },
+                "quote": {
+                    "$ref": "#/definitions/dto.QuoteRepresentationPayloadResponse"
+                },
                 "status": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.QuoteAlternativeApprovalRequest": {
+            "type": "object",
+            "required": [
+                "approved_by_seller"
+            ],
+            "properties": {
+                "approved_by_seller": {
+                    "type": "boolean"
                 }
             }
         },
@@ -5823,6 +6022,172 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.QuoteRepresentationAlternativeResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "unit": {
+                    "type": "string"
+                },
+                "unit_price": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.QuoteRepresentationBranchResponse": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.QuoteRepresentationCustomerResponse": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.QuoteRepresentationDiscountResponse": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.QuoteRepresentationItemResponse": {
+            "type": "object",
+            "properties": {
+                "alternatives": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.QuoteRepresentationAlternativeResponse"
+                    }
+                },
+                "product_code": {
+                    "type": "string"
+                },
+                "product_name": {
+                    "type": "string"
+                },
+                "quantity": {
+                    "type": "string"
+                },
+                "requested_description": {
+                    "type": "string"
+                },
+                "subtotal": {
+                    "type": "string"
+                },
+                "unit": {
+                    "type": "string"
+                },
+                "unit_price": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.QuoteRepresentationPayloadResponse": {
+            "type": "object",
+            "properties": {
+                "approved_at": {
+                    "type": "string"
+                },
+                "branch": {
+                    "$ref": "#/definitions/dto.QuoteRepresentationBranchResponse"
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "customer": {
+                    "$ref": "#/definitions/dto.QuoteRepresentationCustomerResponse"
+                },
+                "discounts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.QuoteRepresentationDiscountResponse"
+                    }
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.QuoteRepresentationItemResponse"
+                    }
+                },
+                "reference": {
+                    "type": "string"
+                },
+                "supplier": {
+                    "$ref": "#/definitions/dto.QuoteRepresentationSupplierResponse"
+                },
+                "total": {
+                    "type": "string"
+                },
+                "validity_note": {
+                    "type": "string"
+                },
+                "version_number": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.QuoteRepresentationResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "message_preview": {
+                    "type": "string"
+                },
+                "pdf_url": {
+                    "type": "string"
+                },
+                "quote": {
+                    "$ref": "#/definitions/dto.QuoteRepresentationPayloadResponse"
+                },
+                "quote_id": {
+                    "type": "string"
+                },
+                "representation_id": {
+                    "type": "string"
+                },
+                "version_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.QuoteRepresentationSupplierResponse": {
+            "type": "object",
+            "properties": {
+                "brand_color": {
+                    "type": "string"
+                },
+                "legal_name": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "tax_id": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.QuoteResponse": {
             "type": "object",
             "properties": {
@@ -5855,6 +6220,9 @@ const docTemplate = `{
                 },
                 "needs_followup": {
                     "type": "boolean"
+                },
+                "number": {
+                    "type": "integer"
                 },
                 "rfq_id": {
                     "type": "string"
@@ -5975,6 +6343,12 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "created_at": {
+                    "type": "string"
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "frozen_at": {
                     "type": "string"
                 },
                 "id": {

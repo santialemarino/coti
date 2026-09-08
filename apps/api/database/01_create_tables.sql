@@ -456,6 +456,7 @@ CREATE TABLE rfq_status_change (
 CREATE TABLE quote (
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id          UUID NOT NULL,
+  number              BIGINT NOT NULL,
   branch_id           UUID NOT NULL,
   client_id           UUID,
   rfq_id              UUID NOT NULL,
@@ -468,7 +469,15 @@ CREATE TABLE quote (
   followup_flagged_at TIMESTAMPTZ,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT uq_quote_rfq UNIQUE (rfq_id)
+  CONSTRAINT uq_quote_rfq UNIQUE (rfq_id),
+  CONSTRAINT uq_quote_account_number UNIQUE (account_id, number),
+  CONSTRAINT ck_quote_number CHECK (number > 0)
+);
+
+CREATE TABLE quote_number_counter (
+  account_id  UUID PRIMARY KEY,
+  last_number BIGINT NOT NULL CHECK (last_number > 0),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- A snapshot of the quote. Immutable once frozen.
@@ -478,11 +487,42 @@ CREATE TABLE quote_version (
   quote_id       UUID NOT NULL,
   author_id      UUID,
   version_number INTEGER NOT NULL,
+  currency       VARCHAR(8) NOT NULL DEFAULT 'ARS',
   total          NUMERIC(14,2) NOT NULL DEFAULT 0,
   is_immutable   BOOLEAN NOT NULL DEFAULT FALSE,
+  frozen_at      TIMESTAMPTZ,
   comment        VARCHAR(512),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT uq_quote_version UNIQUE (quote_id, version_number)
+  CONSTRAINT uq_quote_version UNIQUE (quote_id, version_number),
+  CONSTRAINT ck_quote_version_currency CHECK (currency ~ '^[A-Z]{3}$'),
+  CONSTRAINT ck_quote_version_frozen_at CHECK (
+    (is_immutable = TRUE AND frozen_at IS NOT NULL)
+    OR (is_immutable = FALSE AND frozen_at IS NULL)
+  )
+);
+
+CREATE TABLE quote_representation (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id         UUID NOT NULL,
+  branch_id          UUID NOT NULL,
+  quote_id           UUID NOT NULL,
+  version_id         UUID NOT NULL,
+  schema_version     SMALLINT NOT NULL DEFAULT 1,
+  payload            JSONB NOT NULL,
+  message            TEXT NOT NULL,
+  pdf_storage_key    TEXT NOT NULL,
+  pdf_content_type   VARCHAR(64) NOT NULL,
+  pdf_size_bytes     BIGINT NOT NULL,
+  pdf_sha256         CHAR(64) NOT NULL,
+  logo_fallback_used BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_quote_representation_version UNIQUE (account_id, version_id),
+  CONSTRAINT ck_quote_representation_schema CHECK (schema_version = 1),
+  CONSTRAINT ck_quote_representation_payload CHECK (jsonb_typeof(payload) = 'object'),
+  CONSTRAINT ck_quote_representation_message CHECK (length(message) > 0),
+  CONSTRAINT ck_quote_representation_pdf_type CHECK (pdf_content_type = 'application/pdf'),
+  CONSTRAINT ck_quote_representation_pdf_size CHECK (pdf_size_bytes > 0),
+  CONSTRAINT ck_quote_representation_pdf_sha256 CHECK (pdf_sha256 ~ '^[0-9a-f]{64}$')
 );
 
 -- The item does NOT carry its discount: a discount is its own entity. min_price_snapshot is
@@ -944,9 +984,16 @@ ALTER TABLE quote ADD CONSTRAINT fk_quote_client FOREIGN KEY (client_id) REFEREN
 ALTER TABLE quote ADD CONSTRAINT fk_quote_rfq FOREIGN KEY (rfq_id) REFERENCES rfq(id);
 ALTER TABLE quote ADD CONSTRAINT fk_quote_seller FOREIGN KEY (seller_id) REFERENCES app_user(id);
 ALTER TABLE quote ADD CONSTRAINT fk_quote_current_version FOREIGN KEY (current_version_id) REFERENCES quote_version(id);
+ALTER TABLE quote_number_counter ADD CONSTRAINT fk_quote_number_counter_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE quote_version ADD CONSTRAINT fk_quote_version_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE quote_version ADD CONSTRAINT fk_quote_version_quote FOREIGN KEY (quote_id) REFERENCES quote(id);
 ALTER TABLE quote_version ADD CONSTRAINT fk_quote_version_author FOREIGN KEY (author_id) REFERENCES app_user(id);
+ALTER TABLE quote_representation ADD CONSTRAINT fk_quote_representation_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE quote_representation ADD CONSTRAINT fk_quote_representation_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
+ALTER TABLE quote ADD CONSTRAINT uq_quote_tenant_branch_id UNIQUE (account_id, branch_id, id);
+ALTER TABLE quote_version ADD CONSTRAINT uq_quote_version_tenant_quote_id UNIQUE (account_id, quote_id, id);
+ALTER TABLE quote_representation ADD CONSTRAINT fk_quote_representation_quote FOREIGN KEY (account_id, branch_id, quote_id) REFERENCES quote(account_id, branch_id, id);
+ALTER TABLE quote_representation ADD CONSTRAINT fk_quote_representation_version FOREIGN KEY (account_id, quote_id, version_id) REFERENCES quote_version(account_id, quote_id, id);
 ALTER TABLE quote_item ADD CONSTRAINT fk_quote_item_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE quote_item ADD CONSTRAINT fk_quote_item_version FOREIGN KEY (version_id) REFERENCES quote_version(id);
 ALTER TABLE quote_item ADD CONSTRAINT fk_quote_item_product FOREIGN KEY (product_id) REFERENCES product(id);
@@ -1066,6 +1113,7 @@ CREATE INDEX idx_quote_branch_status ON quote(branch_id, current_status);
 CREATE INDEX idx_quote_expires ON quote(expires_at) WHERE expires_at IS NOT NULL AND archived_at IS NULL;
 CREATE INDEX idx_quote_needs_followup ON quote(needs_followup) WHERE needs_followup = TRUE;
 CREATE INDEX idx_quote_version_quote ON quote_version(quote_id);
+CREATE INDEX idx_quote_representation_quote ON quote_representation(account_id, branch_id, quote_id);
 CREATE INDEX idx_quote_item_version ON quote_item(version_id);
 CREATE INDEX idx_quote_item_alternative_account_item ON quote_item_alternative(account_id, quote_item_id);
 CREATE INDEX idx_quote_ai_generation_account_quote ON quote_ai_generation(account_id, quote_id);
@@ -1170,6 +1218,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE O
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO coti_app;
 
 REVOKE INSERT, UPDATE, DELETE ON product_family, product_subgroup FROM coti_app;
+REVOKE UPDATE, DELETE ON quote_representation FROM coti_app;
 
 -- The baseline AI proposal is evidence for later evaluation, never live state to rewrite.
 REVOKE UPDATE, DELETE ON quote_ai_generation, quote_ai_generation_item,
@@ -1195,7 +1244,8 @@ BEGIN
     'combo', 'combo_item', 'branch_combo',
     'client', 'tag', 'client_tag',
     'channel', 'rfq', 'rfq_attachment', 'rfq_status_change',
-    'quote', 'quote_version', 'quote_item', 'quote_item_alternative',
+    'quote', 'quote_number_counter', 'quote_version', 'quote_representation',
+    'quote_item', 'quote_item_alternative',
     'quote_ai_generation', 'quote_ai_generation_item',
     'quote_quality_evaluation', 'quote_quality_difference',
     'quote_correction_memory', 'quote_correction_memory_source', 'quote_status_change',

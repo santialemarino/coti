@@ -127,7 +127,7 @@ func (r *ProductPriceRepository) GetCurrentByProductIDs(
 	ctx context.Context, q Querier, accountID, branchID uuid.UUID, productIDs []uuid.UUID,
 ) (map[uuid.UUID]domain.BranchPrice, error) {
 	rows, err := q.Query(ctx,
-		`SELECT DISTINCT ON (p.id) p.id, pp.price, pp.min_price
+		`SELECT DISTINCT ON (p.id) p.id, pp.price, pp.min_price, pp.currency
 		 FROM product p
 		 JOIN branch_product bp
 		   ON bp.account_id = $1
@@ -152,7 +152,7 @@ func (r *ProductPriceRepository) GetCurrentByProductIDs(
 	prices := make(map[uuid.UUID]domain.BranchPrice, len(productIDs))
 	for rows.Next() {
 		var price domain.BranchPrice
-		if err := rows.Scan(&price.ProductID, &price.Price, &price.MinPrice); err != nil {
+		if err := rows.Scan(&price.ProductID, &price.Price, &price.MinPrice, &price.Currency); err != nil {
 			return nil, err
 		}
 		prices[price.ProductID] = price

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -16,6 +17,8 @@ import (
 // QuoteService is the quote lifecycle surface the handler needs.
 type QuoteService interface {
 	AcceptMaterials(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.PricedQuote, error)
+	ApproveAlternative(ctx context.Context, tenant domain.Tenant, quoteID, itemID,
+		alternativeID uuid.UUID, approved bool) (*domain.QuoteItemAlternative, error)
 	Transition(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID, to domain.QuoteStatus) (*domain.Quote, error)
 	Archive(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error)
 	Unarchive(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error)
@@ -25,18 +28,111 @@ type QuoteService interface {
 type QuoteDeliveryService interface {
 	Send(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID,
 		in domain.QuoteDeliveryInput) (*domain.QuoteDeliveryResult, error)
-	ResolvePublic(ctx context.Context, token string) (*domain.PublicQuoteSend, error)
+	ResolvePublic(ctx context.Context, token string) (*domain.PublicQuoteRepresentation, error)
+}
+
+// QuoteRepresentationService is the explicit seller-approved generation surface.
+type QuoteRepresentationService interface {
+	Ensure(ctx context.Context, tenant domain.Tenant,
+		quoteID uuid.UUID) (*domain.QuoteRepresentationResult, error)
 }
 
 // QuoteHandler serves the quote lifecycle endpoints.
 type QuoteHandler struct {
-	quotes   QuoteService
-	delivery QuoteDeliveryService
+	quotes          QuoteService
+	delivery        QuoteDeliveryService
+	representations QuoteRepresentationService
 }
 
 // NewQuoteHandler builds a QuoteHandler.
-func NewQuoteHandler(quotes QuoteService, delivery QuoteDeliveryService) *QuoteHandler {
-	return &QuoteHandler{quotes: quotes, delivery: delivery}
+func NewQuoteHandler(
+	quotes QuoteService, delivery QuoteDeliveryService, representations QuoteRepresentationService,
+) *QuoteHandler {
+	return &QuoteHandler{quotes: quotes, delivery: delivery, representations: representations}
+}
+
+// ApproveAlternative records whether one priced candidate may appear in client representations.
+//
+// @Summary Approve or withdraw a quote alternative
+// @Tags quotes
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param X-Branch-Id header string true "Active branch"
+// @Param quoteId path string true "Quote id"
+// @Param itemId path string true "Item id"
+// @Param alternativeId path string true "Alternative id"
+// @Param request body dto.QuoteAlternativeApprovalRequest true "Seller approval"
+// @Success 200 {object} dto.QuoteItemAlternativeResponse
+// @Failure 400,401,404,409,422 {object} dto.ErrorResponse
+// @Router /v1/quotes/{quoteId}/items/{itemId}/alternatives/{alternativeId} [patch]
+func (h *QuoteHandler) ApproveAlternative(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	quoteID, ok := pathUUID(c, "quoteId")
+	if !ok {
+		return
+	}
+	itemID, ok := pathUUID(c, "itemId")
+	if !ok {
+		return
+	}
+	alternativeID, ok := pathUUID(c, "alternativeId")
+	if !ok {
+		return
+	}
+	var request dto.QuoteAlternativeApprovalRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	alternative, err := h.quotes.ApproveAlternative(c.Request.Context(), tenant, quoteID,
+		itemID, alternativeID, *request.ApprovedBySeller)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toQuoteItemAlternativeResponse(*alternative))
+}
+
+// GenerateRepresentation freezes and returns the current quote's immutable output bundle.
+//
+// @Summary Generate the approved quote representations
+// @Description Validates and freezes the current QUOTED version, then returns its stored PDF and canonical content; SENT permits replay only.
+// @Tags quotes
+// @Produce json
+// @Security BearerAuth
+// @Param X-Branch-Id header string true "Active branch"
+// @Param quoteId path string true "Quote id"
+// @Success 201 {object} dto.QuoteRepresentationResponse
+// @Success 200 {object} dto.QuoteRepresentationResponse "Existing bundle"
+// @Failure 401,404,409,422,503 {object} dto.ErrorResponse
+// @Router /v1/quotes/{quoteId}/representations [post]
+func (h *QuoteHandler) GenerateRepresentation(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	quoteID, ok := pathUUID(c, "quoteId")
+	if !ok {
+		return
+	}
+	if h.representations == nil {
+		Respond(c, domain.ErrNotConfigured)
+		return
+	}
+	result, err := h.representations.Ensure(c.Request.Context(), tenant, quoteID)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	status := http.StatusCreated
+	if result.Replay {
+		status = http.StatusOK
+	}
+	c.JSON(status, toQuoteRepresentationResponse(*result))
 }
 
 // Send delivers a frozen quote through WhatsApp and, when requested, email.
@@ -119,8 +215,15 @@ func (h *QuoteHandler) ResolvePublic(c *gin.Context) {
 		Respond(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, dto.PublicQuoteSendResponse{Status: result.Status,
-		ExpiresAt: result.ExpiresAt})
+	response := dto.PublicQuoteSendResponse{Status: result.Status, ExpiresAt: result.ExpiresAt}
+	if result.Payload != nil {
+		mapped := toQuoteRepresentationPayloadResponse(*result.Payload)
+		response.Quote = &mapped
+	}
+	response.Message = result.Message
+	response.PDFURL = result.PDFURL
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, response)
 }
 
 func toQuoteSendResponse(result domain.QuoteDeliveryResult) dto.QuoteSendResponse {
@@ -134,6 +237,54 @@ func toQuoteSendResponse(result domain.QuoteDeliveryResult) dto.QuoteSendRespons
 	return dto.QuoteSendResponse{QuoteID: result.QuoteID, VersionID: result.VersionID,
 		CurrentStatus: string(result.CurrentStatus), ExpiresAt: result.ExpiresAt,
 		Deliveries: deliveries}
+}
+
+func toQuoteRepresentationResponse(
+	result domain.QuoteRepresentationResult,
+) dto.QuoteRepresentationResponse {
+	representation := result.Representation
+	preview := strings.ReplaceAll(representation.Message, domain.QuotePublicURLPlaceholder,
+		"[el enlace se genera al enviar]")
+	return dto.QuoteRepresentationResponse{ID: representation.ID, QuoteID: representation.QuoteID,
+		VersionID: representation.VersionID, CreatedAt: representation.CreatedAt,
+		Quote:          toQuoteRepresentationPayloadResponse(representation.Payload),
+		MessagePreview: preview, PDFURL: result.PDFURL}
+}
+
+func toQuoteRepresentationPayloadResponse(
+	payload domain.QuoteRepresentationPayload,
+) dto.QuoteRepresentationPayloadResponse {
+	items := make([]dto.QuoteRepresentationItemResponse, 0, len(payload.Items))
+	for _, item := range payload.Items {
+		alternatives := make([]dto.QuoteRepresentationAlternativeResponse, 0,
+			len(item.Alternatives))
+		for _, alternative := range item.Alternatives {
+			alternatives = append(alternatives, dto.QuoteRepresentationAlternativeResponse{
+				Code: alternative.Code, Name: alternative.Name, Unit: alternative.Unit,
+				UnitPrice: alternative.UnitPrice})
+		}
+		items = append(items, dto.QuoteRepresentationItemResponse{
+			RequestedDescription: item.RequestedDescription, ProductCode: item.ProductCode,
+			ProductName: item.ProductName, Quantity: item.Quantity, Unit: item.Unit,
+			UnitPrice: item.UnitPrice, Subtotal: item.Subtotal, Alternatives: alternatives})
+	}
+	discounts := make([]dto.QuoteRepresentationDiscountResponse, 0, len(payload.Discounts))
+	for _, discount := range payload.Discounts {
+		discounts = append(discounts, dto.QuoteRepresentationDiscountResponse{
+			Description: discount.Description, Amount: discount.Amount})
+	}
+	return dto.QuoteRepresentationPayloadResponse{
+		Reference: payload.Reference, VersionNumber: payload.VersionNumber,
+		ApprovedAt: payload.ApprovedAt, Currency: payload.Currency,
+		Supplier: dto.QuoteRepresentationSupplierResponse{Name: payload.Supplier.Name,
+			LegalName: payload.Supplier.LegalName, TaxID: payload.Supplier.TaxID,
+			BrandColor: payload.Supplier.BrandColor},
+		Branch: dto.QuoteRepresentationBranchResponse{Name: payload.Branch.Name,
+			Address: payload.Branch.Address},
+		Customer: dto.QuoteRepresentationCustomerResponse{Name: payload.Customer.Name},
+		Items:    items, Discounts: discounts, Total: payload.Total,
+		ValidityNote: payload.ValidityNote,
+	}
 }
 
 // AcceptMaterials prices a draft quote's materials and moves it to QUOTED.
@@ -314,7 +465,8 @@ func toPricedQuoteResponse(priced domain.PricedQuote) dto.PricedQuoteResponse {
 
 func toQuoteResponse(quote domain.Quote) dto.QuoteResponse {
 	return dto.QuoteResponse{
-		ID: quote.ID, BranchID: quote.BranchID, ClientID: quote.ClientID, RFQID: quote.RFQID,
+		ID: quote.ID, Number: quote.Number, BranchID: quote.BranchID, ClientID: quote.ClientID,
+		RFQID:    quote.RFQID,
 		SellerID: quote.SellerID, CurrentVersionID: quote.CurrentVersionID,
 		CurrentStatus: string(quote.CurrentStatus), ExpiresAt: quote.ExpiresAt,
 		ArchivedAt: quote.ArchivedAt, NeedsFollowup: quote.NeedsFollowup,
@@ -326,8 +478,22 @@ func toQuoteResponse(quote domain.Quote) dto.QuoteResponse {
 func toQuoteVersionResponse(version domain.QuoteVersion) dto.QuoteVersionResponse {
 	return dto.QuoteVersionResponse{
 		ID: version.ID, QuoteID: version.QuoteID, AuthorID: version.AuthorID,
-		VersionNumber: version.VersionNumber, Total: version.Total.StringFixed(domain.MoneyScale),
-		IsImmutable: version.IsImmutable, Comment: version.Comment, CreatedAt: version.CreatedAt,
+		VersionNumber: version.VersionNumber, Currency: version.Currency,
+		Total: version.Total.StringFixed(domain.MoneyScale), IsImmutable: version.IsImmutable,
+		FrozenAt: version.FrozenAt, Comment: version.Comment, CreatedAt: version.CreatedAt,
+	}
+}
+
+func toQuoteItemAlternativeResponse(
+	alternative domain.QuoteItemAlternative,
+) dto.QuoteItemAlternativeResponse {
+	return dto.QuoteItemAlternativeResponse{
+		ID: alternative.ID, ProductID: alternative.ProductID, ComboID: alternative.ComboID,
+		Type: string(alternative.Type), Origin: string(alternative.Origin), Rank: alternative.Rank,
+		ConfidenceScore:  amountString(alternative.ConfidenceScore),
+		PriceSnapshot:    amountString(alternative.PriceSnapshot),
+		ApprovedBySeller: alternative.ApprovedBySeller, ChosenByClient: alternative.ChosenByClient,
+		Code: alternative.Code, CanonicalName: alternative.CanonicalName, Unit: alternative.Unit,
 	}
 }
 

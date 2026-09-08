@@ -101,8 +101,8 @@ func (e *env) seedDraftQuote(
 		t.Fatalf("seed rfq: %v", err)
 	}
 	if _, err := e.db.CrossAccount().Exec(ctx,
-		`INSERT INTO quote (id, account_id, branch_id, rfq_id, seller_id, current_status)
-		 VALUES ($1, $2, $3, $4, $5, 'DRAFT')`,
+		`INSERT INTO quote (id, account_id, number, branch_id, rfq_id, seller_id, current_status)
+		 VALUES ($1::uuid, $2, (('x'||substr(replace($1::uuid::text,'-',''),1,15))::bit(60)::bigint), $3, $4, $5, 'DRAFT')`,
 		seeded.quoteID, accountID, branchID, seeded.rfqID, seller.ID); err != nil {
 		t.Fatalf("seed quote: %v", err)
 	}

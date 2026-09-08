@@ -368,6 +368,9 @@ func (s *RFQService) UpdateItem(
 			return versionErr
 		}
 		var updateErr error
+		if version.IsImmutable {
+			return domain.ErrImmutable
+		}
 		item, updateErr = s.quotes.UpdateItem(ctx, q, tenant.AccountID, version.ID, itemID, in)
 		if updateErr != nil {
 			return updateErr
@@ -415,6 +418,9 @@ func (s *RFQService) DeleteItem(
 		if versionErr != nil {
 			return versionErr
 		}
+		if version.IsImmutable {
+			return domain.ErrImmutable
+		}
 		if deleteErr := s.quotes.DeleteItem(ctx, q, tenant.AccountID, version.ID, itemID); deleteErr != nil {
 			return deleteErr
 		}
@@ -459,6 +465,9 @@ func (s *RFQService) AddItem(
 			return versionErr
 		}
 		var createErr error
+		if version.IsImmutable {
+			return domain.ErrImmutable
+		}
 		item, createErr = s.quotes.CreateSingleItem(ctx, q, tenant.AccountID, version.ID, in)
 		return createErr
 	}); err != nil {
@@ -983,6 +992,7 @@ func (s *RFQService) persistGeneratedDraft(
 				QuoteID:       quote.ID,
 				AuthorID:      sellerID,
 				VersionNumber: 1,
+				Currency:      domain.DefaultCurrency,
 				Total:         decimal.Zero,
 				IsImmutable:   false,
 			})
