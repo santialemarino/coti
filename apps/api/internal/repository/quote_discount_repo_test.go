@@ -178,7 +178,7 @@ func TestQuoteDiscountRepository_RefusesAFrozenVersion(t *testing.T) {
 		t.Fatalf("Create on a mutable version = %v, want no error", err)
 	}
 	if _, err := db.CrossAccount().Exec(ctx,
-		`UPDATE quote_version SET is_immutable = TRUE WHERE id = $1`, versionID); err != nil {
+		`UPDATE quote_version SET is_immutable = TRUE, frozen_at = now() WHERE id = $1`, versionID); err != nil {
 		t.Fatalf("freeze the version: %v", err)
 	}
 

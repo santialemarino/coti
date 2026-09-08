@@ -1030,7 +1030,7 @@ func TestQuoteRepository_GetPreviousVersion_UsesNewestFrozenPredecessor(t *testi
 	// is born as the draft — exactly the sequence the change-request flow follows.
 	draftID := uuid.New()
 	if _, err := db.CrossAccount().Exec(ctx,
-		`UPDATE quote_version SET is_immutable = TRUE WHERE id = $1`, versionID); err != nil {
+		`UPDATE quote_version SET is_immutable = TRUE, frozen_at = now() WHERE id = $1`, versionID); err != nil {
 		t.Fatalf("freeze v1: %v", err)
 	}
 	if _, err := db.CrossAccount().Exec(ctx,
@@ -1080,7 +1080,7 @@ func TestQuoteRepository_GetPreviousVersion_UsesNewestFrozenPredecessor(t *testi
 
 	// Once v2 is frozen too, asking from v3 answers v2: newest frozen below the number.
 	if _, err := db.CrossAccount().Exec(ctx,
-		`UPDATE quote_version SET is_immutable = TRUE WHERE id = $1`, draftID); err != nil {
+		`UPDATE quote_version SET is_immutable = TRUE, frozen_at = now() WHERE id = $1`, draftID); err != nil {
 		t.Fatalf("freeze draft: %v", err)
 	}
 
