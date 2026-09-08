@@ -116,6 +116,8 @@ func (e *env) dropDraft(t *testing.T, rfqID uuid.UUID) {
 		  SELECT v.id FROM quote_version v JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`,
 			rfqID)
 		e.mustCleanup(t, `UPDATE quote SET current_version_id = NULL WHERE rfq_id = $1`, rfqID)
+		e.mustCleanup(t, `DELETE FROM quote_representation WHERE quote_id IN (
+		  SELECT id FROM quote WHERE rfq_id = $1)`, rfqID)
 		e.mustCleanup(t, `DELETE FROM quote_version WHERE quote_id IN (
 		  SELECT id FROM quote WHERE rfq_id = $1)`, rfqID)
 		e.mustCleanup(t, `DELETE FROM quote_status_change WHERE quote_id IN (
@@ -162,7 +164,7 @@ func TestQuoteQualityHook_PersistsOneIdempotentLabelAfterTheVersionIsSent(t *tes
 	// The send feature does not exist yet. These writes are its future committed outcome, and the
 	// hook deliberately refuses to evaluate before the frozen version and durable send both exist.
 	if _, err := e.db.CrossAccount().Exec(context.Background(),
-		`UPDATE quote_version SET is_immutable = TRUE WHERE id = $1`, draft.Version.ID); err != nil {
+		`UPDATE quote_version SET is_immutable = TRUE, frozen_at = now() WHERE id = $1`, draft.Version.ID); err != nil {
 		t.Fatalf("freeze version as the future send flow would: %v", err)
 	}
 	if _, err := e.db.CrossAccount().Exec(context.Background(),

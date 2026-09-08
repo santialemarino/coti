@@ -27,7 +27,12 @@ func Respond(c *gin.Context, err error) {
 	case errors.Is(err, domain.ErrTooLarge):
 		c.JSON(http.StatusRequestEntityTooLarge, dto.ErrorResponse{Error: err.Error(), Code: code})
 	case errors.Is(err, domain.ErrInvalidInput):
-		c.JSON(http.StatusUnprocessableEntity, dto.ErrorResponse{Error: err.Error(), Code: code})
+		response := dto.ErrorResponse{Error: err.Error(), Code: code}
+		var validation *domain.QuoteRepresentationValidationError
+		if errors.As(err, &validation) {
+			response.Issues = validation.Issues
+		}
+		c.JSON(http.StatusUnprocessableEntity, response)
 	case errors.Is(err, domain.ErrUnauthenticated):
 		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Error: "invalid credentials", Code: code})
 	case errors.Is(err, domain.ErrEmailNotVerified):
@@ -51,6 +56,10 @@ func Respond(c *gin.Context, err error) {
 		_ = c.Error(err)
 		c.JSON(http.StatusServiceUnavailable,
 			dto.ErrorResponse{Error: "delivery unavailable", Code: code})
+	case errors.Is(err, domain.ErrRepresentationUnavailable):
+		_ = c.Error(err)
+		c.JSON(http.StatusServiceUnavailable,
+			dto.ErrorResponse{Error: "quote representation unavailable", Code: code})
 	case errors.Is(err, domain.ErrAIUnavailable):
 		// Attached as well: which provider failed, and why, belongs in the log and not in the
 		// response. The caller only needs to know the proposal is not coming.

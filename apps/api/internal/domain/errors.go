@@ -55,6 +55,9 @@ var (
 	// ErrDeliveryUnavailable is returned when every selected client delivery failed.
 	ErrDeliveryUnavailable = errors.New("delivery unavailable")
 
+	// ErrRepresentationUnavailable is returned when a PDF cannot be rendered or stored.
+	ErrRepresentationUnavailable = errors.New("quote representation unavailable")
+
 	// ErrNoTenantContext is a programming error, not a client one: a request-scoped query
 	// without tenant context silently returns nothing under row level security.
 	ErrNoTenantContext = errors.New("no tenant context")

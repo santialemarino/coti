@@ -276,11 +276,19 @@ func (r *RFQRepository) CreateManualEntry(
 	creation.Rfq.WorkType = in.WorkType
 
 	err = q.QueryRow(ctx,
-		`INSERT INTO quote (account_id, branch_id, rfq_id, seller_id, current_status)
-		 VALUES ($1, $2, $3, $4, 'DRAFT')
-		 RETURNING id, created_at, updated_at`,
+		`WITH allocated AS (
+		   INSERT INTO quote_number_counter (account_id, last_number)
+		   VALUES ($1, 1)
+		   ON CONFLICT (account_id) DO UPDATE
+		     SET last_number = quote_number_counter.last_number + 1, updated_at = now()
+		   RETURNING last_number
+		 )
+		 INSERT INTO quote (account_id, number, branch_id, rfq_id, seller_id, current_status)
+		 SELECT $1, allocated.last_number, $2, $3, $4, 'DRAFT' FROM allocated
+		 RETURNING id, number, created_at, updated_at`,
 		tenant.AccountID, tenant.BranchID, creation.Rfq.ID, tenant.UserID,
-	).Scan(&creation.Quote.ID, &creation.Quote.CreatedAt, &creation.Quote.UpdatedAt)
+	).Scan(&creation.Quote.ID, &creation.Quote.Number, &creation.Quote.CreatedAt,
+		&creation.Quote.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -302,6 +310,7 @@ func (r *RFQRepository) CreateManualEntry(
 	creation.Version.QuoteID = creation.Quote.ID
 	creation.Version.AuthorID = &tenant.UserID
 	creation.Version.VersionNumber = 1
+	creation.Version.Currency = domain.DefaultCurrency
 	creation.Version.Total = decimal.Zero
 
 	if _, err := q.Exec(ctx,

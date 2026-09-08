@@ -40,8 +40,8 @@ func seedQuoteChain(
 		{"rfq", `INSERT INTO rfq (id, account_id, branch_id, channel_id, status)
 		         VALUES ($1, $2, $3, $4, 'GENERATED')`,
 			[]any{rfqID, accountID, branchID, channelID}},
-		{"quote", `INSERT INTO quote (id, account_id, branch_id, rfq_id, current_status)
-		           VALUES ($1, $2, $3, $4, 'DRAFT')`,
+		{"quote", `INSERT INTO quote (id, account_id, number, branch_id, rfq_id, current_status)
+		           VALUES ($1::uuid, $2, (('x'||substr(replace($1::uuid::text,'-',''),1,15))::bit(60)::bigint), $3, $4, 'DRAFT')`,
 			[]any{quoteID, accountID, branchID, rfqID}},
 		{"quote_version", `INSERT INTO quote_version (id, account_id, quote_id, version_number)
 		                   VALUES ($1, $2, $3, 1)`,
@@ -73,6 +73,69 @@ func seedQuoteChain(
 		mustCleanup(t, db.CrossAccount(), `DELETE FROM channel WHERE id = $1`, channelID)
 	})
 	return quoteID, versionID, itemID
+}
+
+func TestQuoteRepository_Create_AllocatesAccountSequenceWithoutRollbackGaps(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Quote numbering "+uuid.NewString())
+	var branchID uuid.UUID
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT id FROM branch WHERE account_id = $1`, accountID).Scan(&branchID); err != nil {
+		t.Fatal(err)
+	}
+	channelID := uuid.New()
+	rfqIDs := []uuid.UUID{uuid.New(), uuid.New(), uuid.New()}
+	if _, err := db.CrossAccount().Exec(ctx, `INSERT INTO channel
+	  (id, account_id, branch_id, type, identifier) VALUES ($1, $2, $3, 'WHATSAPP', $4)`,
+		channelID, accountID, branchID, uuid.NewString()); err != nil {
+		t.Fatal(err)
+	}
+	for _, rfqID := range rfqIDs {
+		if _, err := db.CrossAccount().Exec(ctx, `INSERT INTO rfq
+		  (id, account_id, branch_id, channel_id, status) VALUES ($1, $2, $3, $4, 'GENERATED')`,
+			rfqID, accountID, branchID, channelID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() {
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM quote WHERE account_id = $1`, accountID)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM rfq WHERE account_id = $1`, accountID)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM channel WHERE id = $1`, channelID)
+	})
+
+	repo := NewQuoteRepository()
+	rollback := errors.New("force rollback")
+	err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID}, func(q Querier) error {
+		if _, err := repo.Create(ctx, q, accountID, domain.NewQuote{
+			BranchID: branchID, RFQID: rfqIDs[0], CurrentStatus: domain.QuoteStatusDraft,
+		}); err != nil {
+			return err
+		}
+		return rollback
+	})
+	if !errors.Is(err, rollback) {
+		t.Fatalf("rolled-back Create() = %v, want forced rollback", err)
+	}
+
+	numbers := make([]int64, 0, 2)
+	for _, rfqID := range rfqIDs[1:] {
+		err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID}, func(q Querier) error {
+			quote, err := repo.Create(ctx, q, accountID, domain.NewQuote{
+				BranchID: branchID, RFQID: rfqID, CurrentStatus: domain.QuoteStatusDraft,
+			})
+			if err == nil {
+				numbers = append(numbers, quote.Number)
+			}
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if numbers[0] != 1 || numbers[1] != 2 {
+		t.Fatalf("committed numbers = %v, want [1 2]", numbers)
+	}
 }
 
 // carryAtBranch makes the branch stock the product, which every current-price query requires: a

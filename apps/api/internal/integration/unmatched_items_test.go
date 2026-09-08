@@ -65,7 +65,7 @@ func (e *env) storedAlternatives(t *testing.T, versionID uuid.UUID) []storedAlte
 func (e *env) freezeVersion(t *testing.T, versionID uuid.UUID) {
 	t.Helper()
 	if _, err := e.db.CrossAccount().Exec(context.Background(),
-		`UPDATE quote_version SET is_immutable = TRUE WHERE id = $1`, versionID); err != nil {
+		`UPDATE quote_version SET is_immutable = TRUE, frozen_at = now() WHERE id = $1`, versionID); err != nil {
 		t.Fatalf("freeze the version: %v", err)
 	}
 }
