@@ -667,7 +667,10 @@ func decimalFromString(s string) (decimal.Decimal, error) {
 
 func toRfqDetailResponse(detail domain.RfqDetail) dto.RfqDetailResponse {
 	resp := dto.RfqDetailResponse{
-		Rfq: toListItemResponse(detail.Rfq),
+		Rfq:          toListItemResponse(detail.Rfq),
+		RFQHistory:   toRFQStatusChangeResponses(detail.RFQStatusChanges),
+		QuoteHistory: toQuoteStatusChangeResponses(detail.QuoteStatusChanges),
+		Deliveries:   toQuoteSendTrackingResponses(detail.Deliveries),
 	}
 
 	if detail.Quote != nil {
@@ -781,4 +784,55 @@ func parseUUIDList(in []string) ([]uuid.UUID, error) {
 		ids = append(ids, id)
 	}
 	return ids, nil
+}
+
+func toRFQStatusChangeResponses(
+	changes []domain.RFQStatusChange,
+) []dto.RFQStatusChangeResponse {
+	responses := make([]dto.RFQStatusChangeResponse, 0, len(changes))
+	for _, change := range changes {
+		var previous *string
+		if change.PreviousStatus != nil {
+			value := string(*change.PreviousStatus)
+			previous = &value
+		}
+		responses = append(responses, dto.RFQStatusChangeResponse{
+			ID: change.ID, RFQID: change.RFQID, PreviousStatus: previous,
+			NewStatus: string(change.NewStatus), UserID: change.UserID,
+			ChangedAt: change.ChangedAt, CreatedAt: change.CreatedAt,
+		})
+	}
+	return responses
+}
+
+func toQuoteStatusChangeResponses(
+	changes []domain.QuoteStatusChange,
+) []dto.QuoteStatusChangeResponse {
+	responses := make([]dto.QuoteStatusChangeResponse, 0, len(changes))
+	for _, change := range changes {
+		var previous *string
+		if change.PreviousStatus != nil {
+			value := string(*change.PreviousStatus)
+			previous = &value
+		}
+		responses = append(responses, dto.QuoteStatusChangeResponse{
+			ID: change.ID, QuoteID: change.QuoteID, PreviousStatus: previous,
+			NewStatus: string(change.NewStatus), UserID: change.UserID,
+			ChangedAt: change.ChangedAt, CreatedAt: change.CreatedAt,
+		})
+	}
+	return responses
+}
+
+func toQuoteSendTrackingResponses(sends []domain.QuoteSend) []dto.QuoteSendTrackingResponse {
+	responses := make([]dto.QuoteSendTrackingResponse, 0, len(sends))
+	for _, send := range sends {
+		responses = append(responses, dto.QuoteSendTrackingResponse{
+			ID: send.ID, VersionID: send.VersionID, Channel: string(send.ChannelType),
+			Destination: send.Destination, Format: string(send.Format),
+			TrackingStatus: string(send.TrackingStatus), SentAt: send.SentAt,
+			ExpiresAt: send.ExpiresAt, CreatedAt: send.CreatedAt,
+		})
+	}
+	return responses
 }

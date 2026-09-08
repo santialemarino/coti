@@ -114,6 +114,25 @@ func (r *QuoteSendRepository) CompleteBatch(ctx context.Context, q Querier, acco
 	return nil
 }
 
+// ListByQuote loads every delivery attempt for a branch-scoped quote.
+func (r *QuoteSendRepository) ListByQuote(
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID,
+) ([]domain.QuoteSend, error) {
+	rows, err := q.Query(ctx, `SELECT `+quoteSendColumns+`
+		FROM quote_send send
+		JOIN channel ON channel.account_id = send.account_id AND channel.id = send.channel_id
+		JOIN quote_version version ON version.account_id = send.account_id
+		  AND version.id = send.version_id
+		JOIN quote ON quote.account_id = send.account_id AND quote.id = version.quote_id
+		WHERE send.account_id = $1 AND quote.branch_id = $2 AND quote.id = $3
+		ORDER BY COALESCE(send.sent_at, send.created_at) DESC, send.created_at DESC, send.id`,
+		accountID, branchID, quoteID)
+	if err != nil {
+		return nil, err
+	}
+	return scanQuoteSends(rows)
+}
+
 // GetAccountIDByPublicToken performs only the scope-discovery lookup on the owner pool.
 func (r *QuoteSendRepository) GetAccountIDByPublicToken(ctx context.Context, q Querier,
 	token string) (uuid.UUID, error) {

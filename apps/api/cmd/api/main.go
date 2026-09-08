@@ -153,7 +153,7 @@ func run() error {
 	quoteCorrectionService := services.NewQuoteCorrectionService(db, quoteCorrectionRepo,
 		providers.Embedder, cfg.QuoteCorrection, log)
 	rfqExtractor := ai.NewRFQExtractor(providers.Generator, cfg.RFQ.MaxItems)
-	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo, quoteAIGenerationRepo,
+	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo, quoteSendRepo, quoteAIGenerationRepo,
 		channelRepo, rfqExtractor, catalogMatchService, log, cfg.RFQ).
 		WithCorrectionMemory(quoteCorrectionService).
 		WithDiscounts(quoteDiscountRepo)
