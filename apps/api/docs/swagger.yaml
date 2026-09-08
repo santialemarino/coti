@@ -928,6 +928,44 @@ definitions:
       version_id:
         type: string
     type: object
+  dto.QuoteSendTrackingResponse:
+    properties:
+      channel:
+        type: string
+      created_at:
+        type: string
+      destination:
+        type: string
+      expires_at:
+        type: string
+      format:
+        type: string
+      id:
+        type: string
+      sent_at:
+        type: string
+      tracking_status:
+        type: string
+      version_id:
+        type: string
+    type: object
+  dto.QuoteStatusChangeResponse:
+    properties:
+      changed_at:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      new_status:
+        type: string
+      previous_status:
+        type: string
+      quote_id:
+        type: string
+      user_id:
+        type: string
+    type: object
   dto.QuoteVersionResponse:
     properties:
       author_id:
@@ -996,6 +1034,23 @@ definitions:
       work_type:
         type: string
     type: object
+  dto.RFQStatusChangeResponse:
+    properties:
+      changed_at:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      new_status:
+        type: string
+      previous_status:
+        type: string
+      rfq_id:
+        type: string
+      user_id:
+        type: string
+    type: object
   dto.RateLimitResponse:
     properties:
       code:
@@ -1044,6 +1099,10 @@ definitions:
         type: object
       changes_requested:
         $ref: '#/definitions/dto.ChangeRequestDiffResponse'
+      deliveries:
+        items:
+          $ref: '#/definitions/dto.QuoteSendTrackingResponse'
+        type: array
       discounts:
         items:
           $ref: '#/definitions/dto.QuoteDiscountResponse'
@@ -1054,8 +1113,16 @@ definitions:
         type: array
       quote:
         $ref: '#/definitions/dto.QuoteResponse'
+      quote_status_history:
+        items:
+          $ref: '#/definitions/dto.QuoteStatusChangeResponse'
+        type: array
       rfq:
         $ref: '#/definitions/dto.RfqListItemResponse'
+      rfq_status_history:
+        items:
+          $ref: '#/definitions/dto.RFQStatusChangeResponse'
+        type: array
       version:
         $ref: '#/definitions/dto.QuoteVersionResponse'
     type: object

@@ -178,11 +178,14 @@ type TextRFQDraft struct {
 // RfqDetail is the full detail view projection of one RFQ plus its associated
 // quote data, items, and alternatives. This is what the detail endpoint returns.
 type RfqDetail struct {
-	Rfq          RfqListItem
-	Quote        *Quote
-	Version      *QuoteVersion
-	Items        []QuoteItem
-	Alternatives map[uuid.UUID][]QuoteItemAlternative
+	Rfq                RfqListItem
+	Quote              *Quote
+	Version            *QuoteVersion
+	Items              []QuoteItem
+	Alternatives       map[uuid.UUID][]QuoteItemAlternative
+	RFQStatusChanges   []RFQStatusChange
+	QuoteStatusChanges []QuoteStatusChange
+	Deliveries         []QuoteSend
 	// Discounts are the current version's discount applications; empty when the version
 	// has none or the discount surface is not wired.
 	Discounts []QuoteDiscount

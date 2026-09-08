@@ -5907,6 +5907,64 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.QuoteSendTrackingResponse": {
+            "type": "object",
+            "properties": {
+                "channel": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "destination": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "format": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "sent_at": {
+                    "type": "string"
+                },
+                "tracking_status": {
+                    "type": "string"
+                },
+                "version_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.QuoteStatusChangeResponse": {
+            "type": "object",
+            "properties": {
+                "changed_at": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "new_status": {
+                    "type": "string"
+                },
+                "previous_status": {
+                    "type": "string"
+                },
+                "quote_id": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.QuoteVersionResponse": {
             "type": "object",
             "properties": {
@@ -6011,6 +6069,32 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.RFQStatusChangeResponse": {
+            "type": "object",
+            "properties": {
+                "changed_at": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "new_status": {
+                    "type": "string"
+                },
+                "previous_status": {
+                    "type": "string"
+                },
+                "rfq_id": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.RateLimitResponse": {
             "type": "object",
             "properties": {
@@ -6081,6 +6165,12 @@ const docTemplate = `{
                 "changes_requested": {
                     "$ref": "#/definitions/dto.ChangeRequestDiffResponse"
                 },
+                "deliveries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.QuoteSendTrackingResponse"
+                    }
+                },
                 "discounts": {
                     "type": "array",
                     "items": {
@@ -6096,8 +6186,20 @@ const docTemplate = `{
                 "quote": {
                     "$ref": "#/definitions/dto.QuoteResponse"
                 },
+                "quote_status_history": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.QuoteStatusChangeResponse"
+                    }
+                },
                 "rfq": {
                     "$ref": "#/definitions/dto.RfqListItemResponse"
+                },
+                "rfq_status_history": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.RFQStatusChangeResponse"
+                    }
                 },
                 "version": {
                     "$ref": "#/definitions/dto.QuoteVersionResponse"

@@ -19,7 +19,10 @@ import {
   TableHeader,
   TableRow,
 } from '@repo/ui/components';
+import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
+import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { CatalogProduct } from '@/lib/api/catalog';
+import { errorCodeOf } from '@/lib/api/errors';
 import type { CreateDiscountBody, QuoteDiscountResponse, QuoteItemResponse } from '@/lib/api/rfqs';
 import {
   addDiscount,
@@ -104,8 +107,10 @@ export function RfqItemsTable({
   onDiscountsChange,
   onRefresh,
 }: RfqItemsTableProps) {
-  const t = useTranslations('rfqs');
   const fmt = useFormatters();
+  const t = useTranslations('rfqs');
+  const message = useApiErrorMessage('rfqs.detail.items');
+  const { activeBranchId } = useRfqList();
   const [searchOpen, setSearchOpen] = useState(false);
   const [editingQuantity, setEditingQuantity] = useState<Record<string, string>>({});
   const [editingPrice, setEditingPrice] = useState<Record<string, string>>({});
@@ -136,8 +141,15 @@ export function RfqItemsTable({
   );
   const grandTotal = itemsSubtotal - discountsTotal;
 
+  function requireActiveBranch(): boolean {
+    if (activeBranchId) return true;
+    toast.error(t('detail.items.toast.branchRequired'));
+    return false;
+  }
+
   async function handleDiscountSave(body: CreateDiscountBody) {
     if (!quoteId) return;
+    if (!requireActiveBranch()) return;
     try {
       if (editingDiscount) {
         await updateDiscount(quoteId, editingDiscount.id, body);
@@ -148,23 +160,26 @@ export function RfqItemsTable({
       }
       await onRefresh?.();
       setDiscountDialogOpen(false);
-    } catch {
-      toast.error(t('detail.items.toast.error'));
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
     }
   }
 
   function openAddDiscount() {
+    if (!requireActiveBranch()) return;
     setEditingDiscount(null);
     setDiscountDialogOpen(true);
   }
 
   function openEditDiscount(discount: QuoteDiscountResponse) {
+    if (!requireActiveBranch()) return;
     setEditingDiscount(discount);
     setDiscountDialogOpen(true);
   }
 
   async function handleToggleDiscount(discount: QuoteDiscountResponse) {
     if (!quoteId) return;
+    if (!requireActiveBranch()) return;
     try {
       const updated = await updateDiscount(quoteId, discount.id, {
         suppressed_by_seller: !discount.suppressed_by_seller,
@@ -176,21 +191,28 @@ export function RfqItemsTable({
           ? t('detail.items.discounts.toast.suppressed')
           : t('detail.items.discounts.toast.restored'),
       );
-    } catch {
-      toast.error(t('detail.items.toast.error'));
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
     }
   }
 
   async function handleDeleteDiscount(discount: QuoteDiscountResponse) {
     if (!quoteId) return;
+    if (!requireActiveBranch()) return;
     try {
       await deleteDiscount(quoteId, discount.id);
       onDiscountsChange?.(discounts.filter((d) => d.id !== discount.id));
       await onRefresh?.();
       toast.success(t('detail.items.discounts.toast.removed'));
-    } catch {
-      toast.error(t('detail.items.toast.error'));
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
     }
+  }
+
+  function openProductSearch(itemId?: string) {
+    if (!requireActiveBranch()) return;
+    setEditingProductItemId(itemId ?? null);
+    setSearchOpen(true);
   }
 
   async function handleQuantityBlur(itemId: string, currentQuantity: string) {
@@ -206,13 +228,21 @@ export function RfqItemsTable({
       });
       return;
     }
+    if (!requireActiveBranch()) {
+      setEditingQuantity((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+      return;
+    }
 
     try {
       const updated = await updateQuoteItem(quoteId, itemId, { quantity: normalized });
       onItemsChange(items.map((item) => (item.id === itemId ? updated : item)));
       toast.success(t('detail.items.toast.updated'));
-    } catch {
-      toast.error(t('detail.items.toast.error'));
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
     }
 
     setEditingQuantity((prev) => {
@@ -235,6 +265,14 @@ export function RfqItemsTable({
       });
       return;
     }
+    if (!requireActiveBranch()) {
+      setEditingPrice((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+      return;
+    }
 
     try {
       const updated = await updateQuoteItem(quoteId, itemId, {
@@ -242,8 +280,8 @@ export function RfqItemsTable({
       });
       onItemsChange(items.map((item) => (item.id === itemId ? updated : item)));
       toast.success(t('detail.items.toast.updated'));
-    } catch {
-      toast.error(t('detail.items.toast.error'));
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
     }
 
     setEditingPrice((prev) => {
@@ -255,17 +293,19 @@ export function RfqItemsTable({
 
   async function handleDelete(itemId: string) {
     if (!quoteId) return;
+    if (!requireActiveBranch()) return;
     try {
       await deleteQuoteItem(quoteId, itemId);
       onItemsChange(items.filter((item) => item.id !== itemId));
       toast.success(t('detail.items.toast.deleted'));
-    } catch {
-      toast.error(t('detail.items.toast.error'));
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
     }
   }
 
   async function handleAddProduct(product: CatalogProduct) {
     if (!quoteId) return;
+    if (!requireActiveBranch()) return;
     try {
       const created = await addQuoteItem(quoteId, {
         product_id: product.id,
@@ -275,13 +315,14 @@ export function RfqItemsTable({
       });
       onItemsChange([...items, created]);
       toast.success(t('detail.items.toast.added'));
-    } catch {
-      toast.error(t('detail.items.toast.error'));
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
     }
   }
 
   async function handleModifyProduct(product: CatalogProduct) {
     if (!quoteId || !editingProductItemId) return;
+    if (!requireActiveBranch()) return;
     const item = items.find((i) => i.id === editingProductItemId);
     if (!item) return;
     try {
@@ -292,8 +333,8 @@ export function RfqItemsTable({
       });
       onItemsChange(items.map((i) => (i.id === item.id ? updated : i)));
       toast.success(t('detail.items.toast.updated'));
-    } catch {
-      toast.error(t('detail.items.toast.error'));
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
     } finally {
       setEditingProductItemId(null);
     }
@@ -305,7 +346,7 @@ export function RfqItemsTable({
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle className="text-heading-5">{t('detail.items.title')}</CardTitle>
           {canEditProducts && (
-            <Button type="button" variant="outline" size="sm" onClick={() => setSearchOpen(true)}>
+            <Button type="button" variant="outline" size="sm" onClick={() => openProductSearch()}>
               <PlusIcon className="size-4" />
               {t('detail.items.add')}
             </Button>
@@ -332,7 +373,7 @@ export function RfqItemsTable({
             <span className="ml-2 text-paragraph-sm text-foreground-muted">({items.length})</span>
           </CardTitle>
           {canEditProducts && (
-            <Button type="button" variant="outline" size="sm" onClick={() => setSearchOpen(true)}>
+            <Button type="button" variant="outline" size="sm" onClick={() => openProductSearch()}>
               <PlusIcon className="size-4" />
               {t('detail.items.add')}
             </Button>
@@ -382,10 +423,7 @@ export function RfqItemsTable({
                         {canEditProducts ? (
                           <button
                             type="button"
-                            onClick={() => {
-                              setEditingProductItemId(item.id);
-                              setSearchOpen(true);
-                            }}
+                            onClick={() => openProductSearch(item.id)}
                             className="flex items-center gap-x-1 text-paragraph-sm text-foreground underline-offset-2 hover:underline"
                           >
                             {item.product_name}
@@ -410,10 +448,7 @@ export function RfqItemsTable({
                       canEditProducts ? (
                         <button
                           type="button"
-                          onClick={() => {
-                            setEditingProductItemId(item.id);
-                            setSearchOpen(true);
-                          }}
+                          onClick={() => openProductSearch(item.id)}
                           className="flex items-center gap-x-1 text-paragraph-xs text-foreground-muted underline-offset-2 hover:underline"
                         >
                           {item.product_id.slice(0, 8)}…

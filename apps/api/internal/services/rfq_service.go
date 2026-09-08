@@ -22,8 +22,9 @@ type rfqRepository interface {
 	Create(ctx context.Context, q repository.Querier, accountID uuid.UUID, in domain.NewRFQ) (*domain.RFQ, error)
 	UpdateStatus(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, status domain.RFQStatus) (*domain.RFQ, error)
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID, previousStatus *domain.RFQStatus, newStatus domain.RFQStatus, userID *uuid.UUID) (*domain.RFQStatusChange, error)
+	ListStatusChanges(ctx context.Context, q repository.Querier, accountID, branchID, rfqID uuid.UUID) ([]domain.RFQStatusChange, error)
 	ListByTenant(ctx context.Context, q repository.Querier, tenant domain.Tenant) ([]domain.RfqListItem, error)
-	GetByRFQID(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID) (*domain.RfqListItem, error)
+	GetByRFQID(ctx context.Context, q repository.Querier, tenant domain.Tenant, rfqID uuid.UUID) (*domain.RfqListItem, error)
 	GetManualEntryChannelID(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (uuid.UUID, error)
 	CountProductsInAccount(ctx context.Context, q repository.Querier, accountID uuid.UUID, productIDs []uuid.UUID) (int, error)
 	CreateManualEntry(ctx context.Context, q repository.Querier, tenant domain.Tenant, channelID uuid.UUID, in domain.NewRfq, now time.Time) (*domain.RfqCreation, error)
@@ -49,6 +50,12 @@ type quoteDraftRepository interface {
 	UpdateItem(ctx context.Context, q repository.Querier, accountID, versionID, itemID uuid.UUID, in domain.QuoteItemUpdate) (*domain.QuoteItem, error)
 	DeleteItem(ctx context.Context, q repository.Querier, accountID, versionID, itemID uuid.UUID) error
 	CreateSingleItem(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, in domain.QuoteItemCreate) (*domain.QuoteItem, error)
+	ListStatusChanges(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) ([]domain.QuoteStatusChange, error)
+}
+
+// quoteSendTracker is the delivery tracking surface the RFQ detail needs.
+type quoteSendTracker interface {
+	ListByQuote(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) ([]domain.QuoteSend, error)
 }
 
 // quoteDiscountRepository is the discount application persistence surface the RFQ flow needs.
@@ -103,6 +110,7 @@ type RFQService struct {
 	rfqs        rfqRepository
 	quotes      quoteDraftRepository
 	discounts   quoteDiscountRepository
+	sends       quoteSendTracker
 	generations quoteAIGenerationRepository
 	channels    rfqChannelReader
 	extractor   domain.RFQExtractor
@@ -129,7 +137,7 @@ func (s *RFQService) WithDiscounts(discounts quoteDiscountRepository) *RFQServic
 // NewRFQService builds an RFQService.
 func NewRFQService(
 	db tenantTxRunner, rfqs rfqRepository, quotes quoteDraftRepository,
-	generations quoteAIGenerationRepository,
+	sends quoteSendTracker, generations quoteAIGenerationRepository,
 	channels rfqChannelReader, extractor domain.RFQExtractor, matcher catalogMatcher,
 	log *slog.Logger, cfg config.RFQConfig,
 ) *RFQService {
@@ -137,7 +145,7 @@ func NewRFQService(
 		log = slog.Default()
 	}
 	return &RFQService{
-		db: db, rfqs: rfqs, quotes: quotes, generations: generations, channels: channels,
+		db: db, rfqs: rfqs, quotes: quotes, sends: sends, generations: generations, channels: channels,
 		extractor: extractor, matcher: matcher, log: log, cfg: cfg, now: time.Now,
 	}
 }
@@ -161,7 +169,7 @@ func (s *RFQService) List(ctx context.Context, tenant domain.Tenant) ([]domain.R
 func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID) (*domain.RfqDetail, error) {
 	var detail *domain.RfqDetail
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		rfq, rfqErr := s.rfqs.GetByRFQID(ctx, q, tenant.AccountID, rfqID)
+		rfq, rfqErr := s.rfqs.GetByRFQID(ctx, q, tenant, rfqID)
 		if rfqErr != nil {
 			return rfqErr
 		}
@@ -175,15 +183,38 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 			Rfq: *rfq,
 		}
 
+		rfqChanges, rfqChangesErr := s.rfqs.ListStatusChanges(ctx, q, tenant.AccountID,
+			rfq.BranchID, rfqID)
+		if rfqChangesErr != nil {
+			return rfqChangesErr
+		}
+		detail.RFQStatusChanges = rfqChanges
+
 		if quote == nil {
 			return nil
 		}
 
 		detail.Quote = quote
 
+		quoteChanges, quoteChangesErr := s.quotes.ListStatusChanges(ctx, q, tenant.AccountID,
+			quote.BranchID, quote.ID)
+		if quoteChangesErr != nil {
+			return quoteChangesErr
+		}
+		detail.QuoteStatusChanges = quoteChanges
+
+		if s.sends != nil {
+			deliveries, deliveryErr := s.sends.ListByQuote(ctx, q, tenant.AccountID,
+				quote.BranchID, quote.ID)
+			if deliveryErr != nil {
+				return deliveryErr
+			}
+			detail.Deliveries = deliveries
+		}
+
 		if quote.CurrentVersionID != nil {
 			version, versionErr := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID,
-				tenant.BranchID, quote.ID)
+				quote.BranchID, quote.ID)
 			if versionErr != nil && !errors.Is(versionErr, domain.ErrNotFound) {
 				return versionErr
 			}

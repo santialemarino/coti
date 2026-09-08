@@ -83,6 +83,9 @@ export interface RfqDetailResponse {
   version: QuoteVersionResponse | null;
   items: QuoteItemResponse[];
   alternatives: Record<string, QuoteItemAlternativeResponse[]>;
+  rfq_status_history: RfqStatusChangeResponse[];
+  quote_status_history: QuoteStatusChangeResponse[];
+  deliveries: QuoteSendTrackingResponse[];
   discounts?: QuoteDiscountResponse[];
   changes_requested?: ChangeRequestDiff;
 }
@@ -153,6 +156,39 @@ export interface QuoteItemAlternativeResponse {
 
 export type DiscountScope = 'TOTAL' | 'ITEM' | 'ITEM_SET';
 export type DiscountActionType = 'FIXED_AMOUNT' | 'PERCENTAGE';
+
+export interface RfqStatusChangeResponse {
+  id: string;
+  rfq_id: string;
+  previous_status: string | null;
+  new_status: string;
+  user_id: string | null;
+  changed_at: string;
+  created_at: string;
+}
+
+export interface QuoteStatusChangeResponse {
+  id: string;
+  quote_id: string;
+  previous_status: string | null;
+  new_status: string;
+  user_id: string | null;
+  changed_at: string;
+  created_at: string;
+}
+
+export interface QuoteSendTrackingResponse {
+  id: string;
+  version_id: string;
+  channel: string;
+  destination: string;
+  format: string;
+  tracking_status: string;
+  sent_at: string | null;
+  expires_at: string | null;
+  created_at: string;
+}
+
 export type DiscountOrigin = 'AUTOMATIC' | 'AI_ADAPTATION' | 'MANUAL_SELLER';
 
 export interface QuoteDiscountResponse {

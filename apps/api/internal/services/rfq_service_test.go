@@ -48,6 +48,12 @@ func (f *fakeRfqRepoManual) AppendStatusChange(
 	return nil, errors.New("not implemented in manual fake")
 }
 
+func (f *fakeRfqRepoManual) ListStatusChanges(
+	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID,
+) ([]domain.RFQStatusChange, error) {
+	return nil, errors.New("not implemented in manual fake")
+}
+
 func (f *fakeRfqRepoManual) ListByTenant(
 	_ context.Context, _ repository.Querier, _ domain.Tenant,
 ) ([]domain.RfqListItem, error) {
@@ -55,7 +61,7 @@ func (f *fakeRfqRepoManual) ListByTenant(
 }
 
 func (f *fakeRfqRepoManual) GetByRFQID(
-	_ context.Context, _ repository.Querier, _, _ uuid.UUID,
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ uuid.UUID,
 ) (*domain.RfqListItem, error) {
 	return nil, errors.New("not implemented in manual fake")
 }
@@ -105,7 +111,7 @@ func (f *fakeRfqRepoManual) CreateManualEntry(
 
 func manualHarness(repo *fakeRfqRepoManual) (*RFQService, *fakeDB) {
 	db := &fakeDB{}
-	svc := NewRFQService(db, repo, nil, nil, nil, nil, nil, nil, config.RFQConfig{})
+	svc := NewRFQService(db, repo, nil, nil, nil, nil, nil, nil, nil, config.RFQConfig{})
 	svc.now = func() time.Time { return fixedNow }
 	return svc, db
 }
@@ -406,11 +412,13 @@ type rfqStatusChangeCall struct {
 }
 
 type fakeRFQs struct {
-	created       []domain.NewRFQ
-	updatedStatus []domain.RFQStatus
-	statusChanges []rfqStatusChangeCall
-	rfqByID       *domain.RfqListItem
-	rfqByIDErr    error
+	created          []domain.NewRFQ
+	updatedStatus    []domain.RFQStatus
+	statusChanges    []rfqStatusChangeCall
+	statusHistory    []domain.RFQStatusChange
+	statusHistoryErr error
+	rfqByID          *domain.RfqListItem
+	rfqByIDErr       error
 }
 
 func (f *fakeRFQs) Create(
@@ -447,6 +455,15 @@ func (f *fakeRFQs) AppendStatusChange(
 	}, nil
 }
 
+func (f *fakeRFQs) ListStatusChanges(
+	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID,
+) ([]domain.RFQStatusChange, error) {
+	if f.statusHistoryErr != nil {
+		return nil, f.statusHistoryErr
+	}
+	return f.statusHistory, nil
+}
+
 func (f *fakeRFQs) ListByTenant(
 	_ context.Context, _ repository.Querier, _ domain.Tenant,
 ) ([]domain.RfqListItem, error) {
@@ -454,7 +471,7 @@ func (f *fakeRFQs) ListByTenant(
 }
 
 func (f *fakeRFQs) GetByRFQID(
-	_ context.Context, _ repository.Querier, _, _ uuid.UUID,
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ uuid.UUID,
 ) (*domain.RfqListItem, error) {
 	if f.rfqByIDErr != nil {
 		return nil, f.rfqByIDErr
@@ -489,26 +506,29 @@ type quoteStatusChangeCall struct {
 }
 
 type fakeQuoteDrafts struct {
-	created             []domain.NewQuote
-	currentVersion      []uuid.UUID
-	versions            []domain.NewQuoteVersion
-	itemBatches         [][]domain.NewQuoteItem
-	alternativeBatches  [][]domain.NewQuoteItemAlternative
-	alternativeReads    [][]uuid.UUID
-	storedAlternatives  []domain.QuoteItemAlternative
-	alternativesErr     error
-	statusChanges       []quoteStatusChangeCall
-	quoteByID           *domain.Quote
-	quoteByIDErr        error
-	currentVersionData  *domain.QuoteVersion
-	currentVersionErr   error
-	itemsByVersionID    []domain.QuoteItem
-	itemsByVersionErr   error
-	previousVersionData *domain.QuoteVersion
-	previousVersionErr  error
-	frozenItems         []domain.QuoteItem
-	getPreviousCalls    int
-	versionTotals       []decimal.Decimal
+	created                []domain.NewQuote
+	currentVersion         []uuid.UUID
+	versions               []domain.NewQuoteVersion
+	itemBatches            [][]domain.NewQuoteItem
+	alternativeBatches     [][]domain.NewQuoteItemAlternative
+	alternativeReads       [][]uuid.UUID
+	storedAlternatives     []domain.QuoteItemAlternative
+	alternativesErr        error
+	statusChanges          []quoteStatusChangeCall
+	quoteByID              *domain.Quote
+	quoteByIDErr           error
+	currentVersionData     *domain.QuoteVersion
+	currentVersionErr      error
+	currentVersionBranches []uuid.UUID
+	itemsByVersionID       []domain.QuoteItem
+	itemsByVersionErr      error
+	quoteStatusHistory     []domain.QuoteStatusChange
+	statusHistoryErr       error
+	previousVersionData    *domain.QuoteVersion
+	previousVersionErr     error
+	frozenItems            []domain.QuoteItem
+	getPreviousCalls       int
+	versionTotals          []decimal.Decimal
 }
 
 type fakeQuoteAIGenerations struct {
@@ -796,6 +816,15 @@ func (f *fakeQuoteDrafts) AppendStatusChange(
 	}, nil
 }
 
+func (f *fakeQuoteDrafts) ListStatusChanges(
+	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID,
+) ([]domain.QuoteStatusChange, error) {
+	if f.statusHistoryErr != nil {
+		return nil, f.statusHistoryErr
+	}
+	return f.quoteStatusHistory, nil
+}
+
 func (f *fakeQuoteDrafts) GetByRFQID(
 	_ context.Context, _ repository.Querier, _ uuid.UUID, _ uuid.UUID,
 ) (*domain.Quote, error) {
@@ -815,8 +844,9 @@ func (f *fakeQuoteDrafts) GetByID(
 }
 
 func (f *fakeQuoteDrafts) GetCurrentVersion(
-	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID,
+	_ context.Context, _ repository.Querier, _, branchID, _ uuid.UUID,
 ) (*domain.QuoteVersion, error) {
+	f.currentVersionBranches = append(f.currentVersionBranches, branchID)
 	if f.currentVersionErr != nil {
 		return nil, f.currentVersionErr
 	}
@@ -914,6 +944,22 @@ func (f *fakeQuoteDrafts) CreateSingleItem(
 	return &item, nil
 }
 
+type fakeQuoteSends struct {
+	deliveries []domain.QuoteSend
+	err        error
+	reads      []uuid.UUID
+}
+
+func (f *fakeQuoteSends) ListByQuote(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, _ uuid.UUID, quoteID uuid.UUID,
+) ([]domain.QuoteSend, error) {
+	f.reads = append(f.reads, quoteID)
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.deliveries, nil
+}
+
 type rfqHarness struct {
 	service     *RFQService
 	db          *fakeRFQDB
@@ -922,6 +968,7 @@ type rfqHarness struct {
 	rfqs        *fakeRFQs
 	quotes      *fakeQuoteDrafts
 	discounts   *fakeQuoteDiscounts
+	sends       *fakeQuoteSends
 	generations *fakeQuoteAIGenerations
 	channels    *fakeRFQChannels
 }
@@ -944,6 +991,7 @@ func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 		rfqs:        &fakeRFQs{},
 		quotes:      &fakeQuoteDrafts{},
 		discounts:   &fakeQuoteDiscounts{},
+		sends:       &fakeQuoteSends{},
 		generations: &fakeQuoteAIGenerations{},
 		channels:    &fakeRFQChannels{},
 	}
@@ -953,8 +1001,8 @@ func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 	}
 	h.channels.channel = &channel
 	h.channels.channelsByType = []domain.Channel{channel}
-	h.service = NewRFQService(h.db, h.rfqs, h.quotes, h.generations, h.channels, h.extractor,
-		h.matcher, nil, testRFQConfig()).WithDiscounts(h.discounts)
+	h.service = NewRFQService(h.db, h.rfqs, h.quotes, h.sends, h.generations, h.channels,
+		h.extractor, h.matcher, nil, testRFQConfig()).WithDiscounts(h.discounts)
 	return h
 }
 
@@ -1550,6 +1598,24 @@ func getDetailHarness() (*rfqHarness, *domain.RfqListItem, *domain.Quote, *domai
 	h.quotes.quoteByID = quote
 	h.quotes.currentVersionData = version
 	h.quotes.itemsByVersionID = items
+	h.rfqs.statusHistory = []domain.RFQStatusChange{{
+		ID: uuid.New(), RFQID: testRFQID, NewStatus: domain.RFQStatusGenerated,
+		ChangedAt: fixedNow.Add(-2 * time.Hour), CreatedAt: fixedNow.Add(-2 * time.Hour),
+	}}
+	previous := domain.QuoteStatusQuoted
+	h.quotes.quoteStatusHistory = []domain.QuoteStatusChange{{
+		ID: uuid.New(), QuoteID: testQuoteID, PreviousStatus: &previous,
+		NewStatus: domain.QuoteStatusSent, ChangedAt: fixedNow.Add(-time.Hour),
+		CreatedAt: fixedNow.Add(-time.Hour),
+	}}
+	sentAt := fixedNow.Add(-time.Hour)
+	expiresAt := fixedNow.AddDate(0, 0, 7)
+	h.sends.deliveries = []domain.QuoteSend{{
+		ID: uuid.New(), VersionID: testVersionID, ChannelType: domain.ChannelTypeWhatsApp,
+		Destination: "+5491155550101", Format: domain.SendFormatWebAppLink,
+		TrackingStatus: domain.SendTrackingStatusViewed, SentAt: &sentAt,
+		ExpiresAt: &expiresAt, CreatedAt: sentAt,
+	}}
 
 	return h, rfqItem, quote, version, items
 }
@@ -1576,8 +1642,51 @@ func TestRFQService_GetDetail_ReturnsFullDetailWhenAllDataExists(t *testing.T) {
 	if len(detail.Items) != len(items) {
 		t.Errorf("items = %d, want %d", len(detail.Items), len(items))
 	}
+	if len(h.quotes.currentVersionBranches) != 1 ||
+		h.quotes.currentVersionBranches[0] != quote.BranchID {
+		t.Errorf("current version branch = %v, want [%v]",
+			h.quotes.currentVersionBranches, quote.BranchID)
+	}
+	if len(detail.RFQStatusChanges) != 1 ||
+		detail.RFQStatusChanges[0].NewStatus != domain.RFQStatusGenerated {
+		t.Errorf("RFQ status history = %+v, want one GENERATED transition",
+			detail.RFQStatusChanges)
+	}
+	if len(detail.QuoteStatusChanges) != 1 ||
+		detail.QuoteStatusChanges[0].NewStatus != domain.QuoteStatusSent {
+		t.Errorf("quote status history = %+v, want one SENT transition",
+			detail.QuoteStatusChanges)
+	}
+	if len(detail.Deliveries) != 1 ||
+		detail.Deliveries[0].TrackingStatus != domain.SendTrackingStatusViewed {
+		t.Errorf("deliveries = %+v, want one viewed send", detail.Deliveries)
+	}
+	if len(h.sends.reads) != 1 || h.sends.reads[0] != quote.ID {
+		t.Errorf("delivery reads = %v, want [%v]", h.sends.reads, quote.ID)
+	}
 	if len(h.db.scopes) != 1 || h.db.scopes[0] != testAccountID {
 		t.Errorf("transaction scoped to %v, want [%v]", h.db.scopes, testAccountID)
+	}
+}
+
+func TestRFQService_GetDetail_LoadsQuoteVersionWhenTenantHasNoActiveBranch(t *testing.T) {
+	h, _, quote, version, items := getDetailHarness()
+	tenant := domain.Tenant{AccountID: testAccountID, UserID: testUserID}
+
+	detail, err := h.service.GetDetail(context.Background(), tenant, testRFQID)
+	if err != nil {
+		t.Fatalf("GetDetail returned %v", err)
+	}
+	if detail.Version == nil || detail.Version.ID != version.ID {
+		t.Fatalf("version = %v, want %v", detail.Version, version)
+	}
+	if len(detail.Items) != len(items) {
+		t.Errorf("items = %d, want %d", len(detail.Items), len(items))
+	}
+	if len(h.quotes.currentVersionBranches) != 1 ||
+		h.quotes.currentVersionBranches[0] != quote.BranchID {
+		t.Errorf("current version branch = %v, want [%v]",
+			h.quotes.currentVersionBranches, quote.BranchID)
 	}
 }
 

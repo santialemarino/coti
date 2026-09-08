@@ -18,13 +18,14 @@ files an order arrives with are stored beside it and are not read here — see
 | Method | Path                               | What it does                                                         |
 | ------ | ---------------------------------- | -------------------------------------------------------------------- |
 | `POST` | `/v1/rfqs/text-drafts`             | Runs an order the seller pasted or typed through the pipeline        |
+| `GET`  | `/v1/rfqs/{id}`                    | Returns the detail with quote state history and delivery tracking    |
 | `GET`  | `/v1/channels`                     | The active intake channels of the selected branch                    |
 | `POST` | `/v1/dev/whatsapp/messages`        | Simulates one inbound WhatsApp message. Not registered in production |
 | `POST` | `/v1/quotes/{id}/accept-materials` | Prices the draft's lines and moves the quote to `QUOTED`             |
 
 The two that reach a model share **their own rate-limit allowance**, `RATE_LIMIT_AI_MAX` — the global one would let a single seller spend 300 generations a minute, and this is the first surface in the product billed per call. Valorization reaches no provider and spends nothing, so it stays on the global allowance.
 
-All four are branch-scoped and read the branch from `X-Branch-Id`. `channel_id` is required on a
+All five are branch-scoped and read the branch from `X-Branch-Id`. `channel_id` is required on a
 text draft, which is why the channel listing exists: `rfq.channel_id` is `NOT NULL`, and a caller
 has to name the route the order arrived through rather than have one guessed for it. How a channel
 is configured, and where its provider credentials live, is in
@@ -353,6 +354,13 @@ same account, quote and idempotency key across API instances, while separate ten
 prepare and confirm the operation. A replay with the same payload returns the stored result; a
 different payload under the same key is a conflict. A new key is an explicit resend and opens a
 new validity window without changing older tokens.
+
+The seller-facing detail endpoint exposes the current view and the audit trail together:
+`rfq_status_history` comes from `rfq_status_change`, `quote_status_history` comes from
+`quote_status_change`, and `deliveries` lists the `quote_send` attempts for the quote. Delivery
+rows include the channel, destination, format, `tracking_status`, `sent_at`, `expires_at`, and
+`created_at`, including failed attempts so the backoffice can explain why a quote is still not
+visible to the client.
 
 After the successful confirmation commits, `QuoteQualityEvaluator.EvaluateFinalQuote` compares
 the original AI proposal with the frozen version. Evaluation or embedding failures never change

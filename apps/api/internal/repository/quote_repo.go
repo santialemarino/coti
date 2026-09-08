@@ -525,6 +525,34 @@ func (r *QuoteRepository) AppendStatusChange(
 		accountID, quoteID, previousStatus, newStatus, userID))
 }
 
+// ListStatusChanges loads the quote transition log, narrowed to the quote's branch.
+func (r *QuoteRepository) ListStatusChanges(
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID,
+) ([]domain.QuoteStatusChange, error) {
+	rows, err := q.Query(ctx,
+		`SELECT change.id, change.account_id, change.quote_id, change.previous_status,
+		        change.new_status, change.user_id, change.changed_at, change.created_at
+		 FROM quote_status_change change
+		 JOIN quote ON quote.account_id = change.account_id AND quote.id = change.quote_id
+		 WHERE change.account_id = $1 AND quote.branch_id = $2 AND change.quote_id = $3
+		 ORDER BY change.changed_at, change.created_at, change.id`,
+		accountID, branchID, quoteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	changes := make([]domain.QuoteStatusChange, 0)
+	for rows.Next() {
+		change, scanErr := scanQuoteStatusChange(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		changes = append(changes, *change)
+	}
+	return changes, rows.Err()
+}
+
 type quoteItemPayload struct {
 	// Position rides the payload because the caller's order is the client's order, and
 	// jsonb_to_recordset promises none of its own.

@@ -190,7 +190,8 @@ func newEnvWithRFQProviders(
 		extractor = ai.NewRFQExtractor(ai.DisabledGenerator{}, cfg.RFQ.MaxItems)
 	}
 	rfqService := services.NewRFQService(db, repository.NewRFQRepository(), quoteRepo,
-		repository.NewQuoteAIGenerationRepository(), channelRepo, extractor,
+		repository.NewQuoteSendRepository(), repository.NewQuoteAIGenerationRepository(),
+		channelRepo, extractor,
 		services.NewCatalogMatchService(catalogSearchService, cfg.Catalog), quiet, cfg.RFQ)
 	quoteService := services.NewQuoteService(db, quoteRepo,
 		repository.NewProductPriceRepository(), quiet)

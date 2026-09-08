@@ -352,6 +352,61 @@ func TestQuoteRepository_UpdateStatus_OnlyMovesFromTheStatusRead(t *testing.T) {
 	}
 }
 
+func TestQuoteRepository_ListStatusChanges_OrdersAndNarrowsToBranch(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Quote status history")
+	branchID := branchOf(t, db, accountID)
+	otherBranchID := seedExtraBranch(t, db, accountID, "Sucursal Sur")
+	productID := seedProduct(t, db, accountID, "Cemento Portland 50kg")
+	priceCleanup(t, db, productID)
+	quoteID, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+	otherQuoteID, _, _ := seedQuoteChain(t, db, accountID, otherBranchID, productID)
+	repo := NewQuoteRepository()
+
+	firstAt := time.Date(2026, time.September, 4, 9, 0, 0, 0, time.UTC)
+	secondAt := firstAt.Add(time.Hour)
+	if _, err := db.CrossAccount().Exec(ctx,
+		`INSERT INTO quote_status_change (account_id, quote_id, previous_status, new_status, changed_at)
+		 VALUES ($1, $2, 'DRAFT', 'QUOTED', $3),
+		        ($1, $2, NULL, 'DRAFT', $4),
+		        ($1, $5, NULL, 'DRAFT', $4)`,
+		accountID, quoteID, secondAt, firstAt, otherQuoteID); err != nil {
+		t.Fatalf("seed quote status history: %v", err)
+	}
+
+	var changes []domain.QuoteStatusChange
+	if err := db.InTenantTx(ctx,
+		domain.Tenant{AccountID: accountID, BranchID: branchID, Role: domain.UserRoleAdmin},
+		func(q Querier) error {
+			var readErr error
+			changes, readErr = repo.ListStatusChanges(ctx, q, accountID, branchID, quoteID)
+			return readErr
+		}); err != nil {
+		t.Fatalf("ListStatusChanges() = %v, want no error", err)
+	}
+	if len(changes) != 2 {
+		t.Fatalf("changes = %d, want 2 for the selected quote", len(changes))
+	}
+	if changes[0].NewStatus != domain.QuoteStatusDraft ||
+		changes[1].NewStatus != domain.QuoteStatusQuoted {
+		t.Errorf("changes = %+v, want chronological DRAFT then QUOTED", changes)
+	}
+
+	if err := db.InTenantTx(ctx,
+		domain.Tenant{AccountID: accountID, BranchID: otherBranchID, Role: domain.UserRoleAdmin},
+		func(q Querier) error {
+			var readErr error
+			changes, readErr = repo.ListStatusChanges(ctx, q, accountID, otherBranchID, quoteID)
+			return readErr
+		}); err != nil {
+		t.Fatalf("wrong-branch ListStatusChanges() = %v, want no error", err)
+	}
+	if len(changes) != 0 {
+		t.Errorf("wrong branch read %d changes, want none", len(changes))
+	}
+}
+
 // A quote is branch-scoped and row level security guards only the account boundary, so the branch
 // predicate is the only thing keeping one branch of an account out of another's quotes.
 func TestQuoteRepository_GetByID_NarrowsToTheQuotesOwnBranch(t *testing.T) {

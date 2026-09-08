@@ -125,8 +125,46 @@ type RfqDetailResponse struct {
 	Version          *QuoteVersionResponse                     `json:"version"`
 	Items            []QuoteItemResponse                       `json:"items"`
 	Alternatives     map[string][]QuoteItemAlternativeResponse `json:"alternatives"`
+	RFQHistory       []RFQStatusChangeResponse                 `json:"rfq_status_history"`
+	QuoteHistory     []QuoteStatusChangeResponse               `json:"quote_status_history"`
+	Deliveries       []QuoteSendTrackingResponse               `json:"deliveries"`
 	Discounts        []QuoteDiscountResponse                   `json:"discounts"`
 	ChangesRequested *ChangeRequestDiffResponse                `json:"changes_requested,omitempty"`
+}
+
+// RFQStatusChangeResponse is one recorded transition on the RFQ status cache.
+type RFQStatusChangeResponse struct {
+	ID             uuid.UUID  `json:"id"`
+	RFQID          uuid.UUID  `json:"rfq_id"`
+	PreviousStatus *string    `json:"previous_status"`
+	NewStatus      string     `json:"new_status"`
+	UserID         *uuid.UUID `json:"user_id"`
+	ChangedAt      time.Time  `json:"changed_at"`
+	CreatedAt      time.Time  `json:"created_at"`
+}
+
+// QuoteStatusChangeResponse is one recorded transition on quote.current_status.
+type QuoteStatusChangeResponse struct {
+	ID             uuid.UUID  `json:"id"`
+	QuoteID        uuid.UUID  `json:"quote_id"`
+	PreviousStatus *string    `json:"previous_status"`
+	NewStatus      string     `json:"new_status"`
+	UserID         *uuid.UUID `json:"user_id"`
+	ChangedAt      time.Time  `json:"changed_at"`
+	CreatedAt      time.Time  `json:"created_at"`
+}
+
+// QuoteSendTrackingResponse is one delivery attempt shown in the RFQ detail tracking panel.
+type QuoteSendTrackingResponse struct {
+	ID             uuid.UUID  `json:"id"`
+	VersionID      uuid.UUID  `json:"version_id"`
+	Channel        string     `json:"channel"`
+	Destination    string     `json:"destination"`
+	Format         string     `json:"format"`
+	TrackingStatus string     `json:"tracking_status"`
+	SentAt         *time.Time `json:"sent_at"`
+	ExpiresAt      *time.Time `json:"expires_at"`
+	CreatedAt      time.Time  `json:"created_at"`
 }
 
 // ChangeRequestDiffResponse is the frozen-vs-draft comparison the detail screen
