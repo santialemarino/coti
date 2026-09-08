@@ -389,6 +389,59 @@ func TestToRfqDetailResponse_MapsAllFieldsFromDomainDetail(t *testing.T) {
 	}
 }
 
+func TestToRfqDetailResponse_MapsTheChangeRequestDiff(t *testing.T) {
+	reason := "entrega el viernes"
+	price := "8500.00"
+	detail := domain.RfqDetail{
+		Rfq: domain.RfqListItem{ID: uuid.New(), Status: string(domain.QuoteStatusChangeRequested)},
+		ChangesRequested: &domain.ChangeRequestDiff{
+			Reason: &reason,
+			Original: domain.ChangeRequestSide{
+				Items: []domain.DiffLineItem{{
+					Description: "10 bolsas de cemento", Quantity: "10.00",
+					UnitPrice: &price,
+				}},
+				Discounts: []domain.DiffDiscountLine{{Name: "Descuento obra", Amount: "500.00"}},
+				Total:     decimal.RequireFromString("16000.00"),
+			},
+			Requested: domain.ChangeRequestSide{
+				Items: []domain.DiffLineItem{{
+					Description: "10 bolsas de cemento", Quantity: "12.00",
+					UnitPrice: &price, Changed: true, ChangeType: "modified",
+				}},
+				Discounts: []domain.DiffDiscountLine{{Name: "Descuento obra", Amount: "800.00", Changed: true}},
+				Total:     decimal.RequireFromString("17000.00"),
+			},
+		},
+	}
+
+	resp := toRfqDetailResponse(detail)
+
+	if resp.ChangesRequested == nil {
+		t.Fatal("changes_requested is nil, want the mapped diff")
+	}
+	if resp.ChangesRequested.Reason == nil || *resp.ChangesRequested.Reason != reason {
+		t.Errorf("reason = %v, want %q", resp.ChangesRequested.Reason, reason)
+	}
+	if resp.ChangesRequested.Original.Total != "16000.00" || resp.ChangesRequested.Requested.Total != "17000.00" {
+		t.Errorf("totals = original %q requested %q, want 16000.00 and 17000.00",
+			resp.ChangesRequested.Original.Total, resp.ChangesRequested.Requested.Total)
+	}
+	requested := resp.ChangesRequested.Requested.Items[0]
+	if !requested.Changed || requested.ChangeType == nil || *requested.ChangeType != "modified" {
+		t.Errorf("requested item = changed %v change_type %v, want true modified",
+			requested.Changed, requested.ChangeType)
+	}
+	original := resp.ChangesRequested.Original.Items[0]
+	if original.Changed || original.ChangeType != nil {
+		t.Errorf("original item = changed %v change_type %v, want neutral",
+			original.Changed, original.ChangeType)
+	}
+	if !resp.ChangesRequested.Requested.Discounts[0].Changed {
+		t.Error("requested discount not flagged")
+	}
+}
+
 func TestToRfqDetailResponse_OmitsQuoteAndVersionWhenAbsent(t *testing.T) {
 	detail := domain.RfqDetail{
 		Rfq: domain.RfqListItem{ID: uuid.New(), Status: string(domain.RFQStatusReceived)},

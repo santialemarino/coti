@@ -1,5 +1,11 @@
 import { ApiError, codeForStatus, knownErrorCode } from '@/lib/api/errors';
-import type { QuoteItemResponse, RfqDetailResponse } from '@/lib/api/rfqs';
+import type {
+  CreateDiscountBody,
+  QuoteDiscountResponse,
+  QuoteItemResponse,
+  RfqDetailResponse,
+  UpdateDiscountBody,
+} from '@/lib/api/rfqs';
 
 interface CreateRfqBody {
   client_label?: string | null;
@@ -213,4 +219,62 @@ export async function generateQuote(
     await throwOnError(response);
   }
   return response.json();
+}
+
+/*
+ * Add a seller-typed discount. The backend computes the amount from the rule (action_type + value +
+ * scope + item_ids) and recomputes the version total.
+ */
+export async function addDiscount(
+  quoteId: string,
+  body: CreateDiscountBody,
+): Promise<QuoteDiscountResponse> {
+  const response = await fetch(`/api/quotes/${quoteId}/discounts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    await throwOnError(response);
+  }
+  return response.json() as Promise<QuoteDiscountResponse>;
+}
+
+/*
+ * Patch a discount application. Only present fields are written; a suppression toggle leaves
+ * the amount alone.
+ */
+export async function updateDiscount(
+  quoteId: string,
+  discountId: string,
+  body: UpdateDiscountBody,
+): Promise<QuoteDiscountResponse> {
+  const response = await fetch(`/api/quotes/${quoteId}/discounts/${discountId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    await throwOnError(response);
+  }
+  return response.json() as Promise<QuoteDiscountResponse>;
+}
+
+/*
+ * Delete a MANUAL_SELLER discount for good. The backend refuses deleting an engine-applied
+ * discount; those are suppressed instead.
+ */
+export async function deleteDiscount(quoteId: string, discountId: string): Promise<void> {
+  const response = await fetch(`/api/quotes/${quoteId}/discounts/${discountId}`, {
+    method: 'DELETE',
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    await throwOnError(response);
+  }
 }

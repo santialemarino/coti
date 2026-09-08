@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { MinusIcon, PencilIcon, PercentIcon, PlusIcon, TrashIcon } from 'lucide-react';
+import { MinusIcon, PencilIcon, PlusIcon, TrashIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
@@ -11,10 +11,6 @@ import {
   Card,
   CardHeader,
   CardTitle,
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-  DropdownChevron,
   Input,
   Table,
   TableBody,
@@ -24,9 +20,17 @@ import {
   TableRow,
 } from '@repo/ui/components';
 import type { CatalogProduct } from '@/lib/api/catalog';
-import type { QuoteDiscountResponse, QuoteItemResponse } from '@/lib/api/rfqs';
-import { addQuoteItem, deleteQuoteItem, updateQuoteItem } from '@/lib/api/rfqs-client';
+import type { CreateDiscountBody, QuoteDiscountResponse, QuoteItemResponse } from '@/lib/api/rfqs';
+import {
+  addDiscount,
+  addQuoteItem,
+  deleteDiscount,
+  deleteQuoteItem,
+  updateDiscount,
+  updateQuoteItem,
+} from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
+import { DiscountDialog } from './discount-dialog';
 import { ProductSearchDialog } from './product-search-dialog';
 
 /*
@@ -48,6 +52,7 @@ interface RfqItemsTableProps {
   discounts: QuoteDiscountResponse[];
   onItemsChange: (items: QuoteItemResponse[]) => void;
   onDiscountsChange?: (discounts: QuoteDiscountResponse[]) => void;
+  onRefresh?: () => Promise<void>;
 }
 
 function toQuantity(value: string): string {
@@ -78,6 +83,18 @@ function confidenceLabel(score: string | null): string {
   return 'low';
 }
 
+// The raw rule a seller-typed discount carries, e.g. "10 %" or "$ 1.500,00"; null when the
+// row keeps no rule (engine-applied or pre-rule manual discounts).
+function discountRuleLabel(
+  discount: QuoteDiscountResponse,
+  fmt: ReturnType<typeof useFormatters>,
+): string | null {
+  if (discount.action_value == null) return null;
+  return discount.action_type === 'PERCENTAGE'
+    ? `${fmt.value(Number(discount.action_value))} %`
+    : fmt.currency(discount.action_value);
+}
+
 export function RfqItemsTable({
   quoteId,
   quoteStatus,
@@ -85,13 +102,15 @@ export function RfqItemsTable({
   discounts,
   onItemsChange,
   onDiscountsChange,
+  onRefresh,
 }: RfqItemsTableProps) {
   const t = useTranslations('rfqs');
   const fmt = useFormatters();
   const [searchOpen, setSearchOpen] = useState(false);
   const [editingQuantity, setEditingQuantity] = useState<Record<string, string>>({});
   const [editingPrice, setEditingPrice] = useState<Record<string, string>>({});
-  const [discountsOpen, setDiscountsOpen] = useState(false);
+  const [discountDialogOpen, setDiscountDialogOpen] = useState(false);
+  const [editingDiscount, setEditingDiscount] = useState<QuoteDiscountResponse | null>(null);
   const [editingProductItemId, setEditingProductItemId] = useState<string | null>(null);
 
   const hasQuote = !!quoteId;
@@ -116,6 +135,63 @@ export function RfqItemsTable({
     [discounts],
   );
   const grandTotal = itemsSubtotal - discountsTotal;
+
+  async function handleDiscountSave(body: CreateDiscountBody) {
+    if (!quoteId) return;
+    try {
+      if (editingDiscount) {
+        await updateDiscount(quoteId, editingDiscount.id, body);
+        toast.success(t('detail.items.discounts.toast.updated'));
+      } else {
+        await addDiscount(quoteId, body);
+        toast.success(t('detail.items.discounts.toast.added'));
+      }
+      await onRefresh?.();
+      setDiscountDialogOpen(false);
+    } catch {
+      toast.error(t('detail.items.toast.error'));
+    }
+  }
+
+  function openAddDiscount() {
+    setEditingDiscount(null);
+    setDiscountDialogOpen(true);
+  }
+
+  function openEditDiscount(discount: QuoteDiscountResponse) {
+    setEditingDiscount(discount);
+    setDiscountDialogOpen(true);
+  }
+
+  async function handleToggleDiscount(discount: QuoteDiscountResponse) {
+    if (!quoteId) return;
+    try {
+      const updated = await updateDiscount(quoteId, discount.id, {
+        suppressed_by_seller: !discount.suppressed_by_seller,
+      });
+      await onRefresh?.();
+      onDiscountsChange?.(discounts.map((d) => (d.id === updated.id ? updated : d)));
+      toast.success(
+        updated.suppressed_by_seller
+          ? t('detail.items.discounts.toast.suppressed')
+          : t('detail.items.discounts.toast.restored'),
+      );
+    } catch {
+      toast.error(t('detail.items.toast.error'));
+    }
+  }
+
+  async function handleDeleteDiscount(discount: QuoteDiscountResponse) {
+    if (!quoteId) return;
+    try {
+      await deleteDiscount(quoteId, discount.id);
+      onDiscountsChange?.(discounts.filter((d) => d.id !== discount.id));
+      await onRefresh?.();
+      toast.success(t('detail.items.discounts.toast.removed'));
+    } catch {
+      toast.error(t('detail.items.toast.error'));
+    }
+  }
 
   async function handleQuantityBlur(itemId: string, currentQuantity: string) {
     if (!quoteId) return;
@@ -221,39 +297,6 @@ export function RfqItemsTable({
     } finally {
       setEditingProductItemId(null);
     }
-  }
-
-  function handleToggleDiscount(discountId: string) {
-    if (!onDiscountsChange) return;
-    onDiscountsChange(
-      discounts.map((d) =>
-        d.id === discountId ? { ...d, suppressed_by_seller: !d.suppressed_by_seller } : d,
-      ),
-    );
-  }
-
-  function handleDeleteDiscount(discountId: string) {
-    if (!onDiscountsChange) return;
-    onDiscountsChange(discounts.filter((d) => d.id !== discountId));
-  }
-
-  function handleAddAdHocDiscount() {
-    if (!onDiscountsChange) return;
-    onDiscountsChange([
-      ...discounts,
-      {
-        id: crypto.randomUUID(),
-        quote_version_id: '',
-        promotion_id: null,
-        promotion_name: null,
-        condition_type: null,
-        scope: 'TOTAL',
-        origin: 'MANUAL_SELLER',
-        amount: '0',
-        suppressed_by_seller: false,
-        created_at: new Date().toISOString(),
-      },
-    ]);
   }
 
   if (items.length === 0) {
@@ -427,7 +470,8 @@ export function RfqItemsTable({
                   </TableCell>
                   {showPricing && (
                     <TableCell className="text-center tabular-nums text-paragraph-sm">
-                      {canEditPrices && item.unit_price_snapshot != null ? (
+                      {canEditPrices &&
+                      (item.unit_price_snapshot != null || item.match_status === 'NO_MATCH') ? (
                         <Input
                           type="number"
                           inputMode="decimal"
@@ -482,59 +526,31 @@ export function RfqItemsTable({
                 </TableRow>
               );
             })}
-
-            {showPricing && (
-              <TableRow className="bg-accent/50">
-                <TableCell colSpan={showConfidence ? 5 : 4} />
-                <TableCell
-                  colSpan={2}
-                  className="text-center text-paragraph-xs text-foreground-muted"
-                >
-                  {t('detail.items.total')}
-                  {hasDiscounts && (
-                    <span className="ml-1 text-foreground-subtle">
-                      (−{fmt.currency(String(discountsTotal))})
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell className="text-center text-paragraph-sm-semibold tabular-nums">
-                  {fmt.currency(String(grandTotal))}
-                </TableCell>
-                {(canEditProducts || canEditPrices) && <TableCell />}
-              </TableRow>
-            )}
           </TableBody>
         </Table>
 
         {showPricing && (
           <div className="border-t border-border px-4 py-3">
-            <Collapsible open={discountsOpen} onOpenChange={setDiscountsOpen}>
-              <CollapsibleTrigger asChild>
-                <button
-                  type="button"
-                  className="flex items-center gap-x-1.5 text-paragraph-xs font-medium text-foreground-muted hover:text-foreground transition-colors"
-                >
-                  <PercentIcon className="size-3" />
-                  {t('detail.items.discounts.title')}
-                  <span className="tabular-nums">
-                    {hasDiscounts ? `(−${fmt.currency(String(discountsTotal))})` : ''}
+            <div className="flex flex-col gap-y-1.5">
+              <div className="flex items-center justify-between text-paragraph-sm">
+                <span className="text-foreground-muted">{t('detail.items.summary.subtotal')}</span>
+                <span className="tabular-nums text-foreground">
+                  {fmt.currency(String(itemsSubtotal))}
+                </span>
+              </div>
+
+              {hasDiscounts && (
+                <>
+                  <span className="pt-1 text-paragraph-xs font-semibold text-foreground-muted">
+                    {t('detail.items.discounts.title')}
                   </span>
-                  <DropdownChevron open={discountsOpen} />
-                </button>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <div className="flex flex-col gap-y-1.5 pt-2">
-                  {discounts.length === 0 ? (
-                    <p className="text-paragraph-xs text-foreground-muted">
-                      {t('detail.items.discounts.empty')}
-                    </p>
-                  ) : (
-                    discounts.map((discount) => (
+                  <div className="flex flex-col gap-y-1">
+                    {discounts.map((discount) => (
                       <div
                         key={discount.id}
                         className="flex items-center justify-between gap-x-2 text-paragraph-xs"
                       >
-                        <div className="flex items-center gap-x-1.5 min-w-0">
+                        <div className="flex min-w-0 items-center gap-x-1.5">
                           <MinusIcon className="size-3 shrink-0 text-foreground-muted" />
                           <span
                             className={
@@ -549,65 +565,96 @@ export function RfqItemsTable({
                             tone={discount.suppressed_by_seller ? 'neutral' : 'success'}
                             size="sm"
                           >
-                            {discount.scope === 'TOTAL'
-                              ? 'Global'
-                              : discount.scope === 'ITEM'
-                                ? 'Por ítem'
-                                : 'Combo'}
+                            {t(`detail.items.discounts.scope.${discount.scope}`)}
                           </Badge>
+                          {discountRuleLabel(discount, fmt) && (
+                            <Badge tone="neutral" size="sm">
+                              {discountRuleLabel(discount, fmt)}
+                            </Badge>
+                          )}
                         </div>
-                        <div className="flex items-center gap-x-2 shrink-0">
+                        <div className="flex shrink-0 items-center gap-x-2">
                           <span className="tabular-nums text-foreground-muted">
                             −{fmt.currency(discount.amount)}
                           </span>
                           {canEditDiscounts && (
                             <>
-                              <button
-                                type="button"
-                                className="text-foreground-muted hover:text-foreground transition-colors"
-                                onClick={() => handleToggleDiscount(discount.id)}
-                                aria-label={
-                                  discount.suppressed_by_seller
-                                    ? t('detail.items.discounts.restore')
-                                    : t('detail.items.discounts.suppress')
-                                }
-                              >
-                                {discount.suppressed_by_seller ? (
-                                  <PlusIcon className="size-3" />
-                                ) : (
-                                  <MinusIcon className="size-3" />
-                                )}
-                              </button>
-                              <button
-                                type="button"
-                                className="text-foreground-muted hover:text-danger transition-colors"
-                                onClick={() => handleDeleteDiscount(discount.id)}
-                                aria-label={t('detail.items.discounts.remove')}
-                              >
-                                <TrashIcon className="size-3" />
-                              </button>
+                              {discount.origin === 'MANUAL_SELLER' && (
+                                <button
+                                  type="button"
+                                  className="text-foreground-muted transition-colors hover:text-foreground"
+                                  onClick={() => openEditDiscount(discount)}
+                                  aria-label={t('detail.items.discounts.edit')}
+                                >
+                                  <PencilIcon className="size-3" />
+                                </button>
+                              )}
+                              {discount.origin !== 'MANUAL_SELLER' && (
+                                <button
+                                  type="button"
+                                  className="text-foreground-muted transition-colors hover:text-foreground"
+                                  onClick={() => handleToggleDiscount(discount)}
+                                  aria-label={
+                                    discount.suppressed_by_seller
+                                      ? t('detail.items.discounts.restore')
+                                      : t('detail.items.discounts.suppress')
+                                  }
+                                >
+                                  {discount.suppressed_by_seller ? (
+                                    <PlusIcon className="size-3" />
+                                  ) : (
+                                    <MinusIcon className="size-3" />
+                                  )}
+                                </button>
+                              )}
+                              {discount.origin === 'MANUAL_SELLER' && (
+                                <button
+                                  type="button"
+                                  className="text-foreground-muted transition-colors hover:text-danger"
+                                  onClick={() => handleDeleteDiscount(discount)}
+                                  aria-label={t('detail.items.discounts.remove')}
+                                >
+                                  <TrashIcon className="size-3" />
+                                </button>
+                              )}
                             </>
                           )}
                         </div>
                       </div>
-                    ))
-                  )}
-                  {canEditDiscounts && (
-                    <button
-                      type="button"
-                      onClick={handleAddAdHocDiscount}
-                      className="mt-1 flex items-center gap-x-1.5 self-start text-paragraph-xs font-medium text-foreground-muted hover:text-foreground transition-colors"
-                    >
-                      <PlusIcon className="size-3" />
-                      {t('detail.items.discounts.add')}
-                    </button>
-                  )}
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <div className="mt-1 flex items-center justify-between border-t border-border pt-2">
+                <span className="text-paragraph-sm font-semibold text-foreground">
+                  {t('detail.items.total')}
+                </span>
+                <span className="text-paragraph-sm-semibold tabular-nums text-foreground">
+                  {fmt.currency(String(Math.max(grandTotal, 0)))}
+                </span>
+              </div>
+            </div>
+
+            {canEditDiscounts && (
+              <div className="mt-3 border-t border-border pt-3">
+                <Button type="button" variant="outline" size="sm" onClick={openAddDiscount}>
+                  <PlusIcon className="size-4" />
+                  {t('detail.items.discounts.add')}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </Card>
+
+      <DiscountDialog
+        open={discountDialogOpen}
+        onOpenChange={setDiscountDialogOpen}
+        initial={editingDiscount}
+        items={items}
+        onSave={handleDiscountSave}
+      />
 
       <ProductSearchDialog
         open={searchOpen}

@@ -1,9 +1,8 @@
 'use client';
 
-import { SendIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { Button, Card, CardHeader, CardTitle } from '@repo/ui/components';
+import { Card, CardHeader, CardTitle } from '@repo/ui/components';
 import type { ChangeRequestDiff, DiffDiscountLine, DiffLineItem } from '@/lib/api/rfqs';
 import { useFormatters } from '@/lib/i18n/formatters';
 
@@ -257,13 +256,6 @@ export function RfqChangeDiff({ diff }: RfqChangeDiffProps) {
           total={diff.requested.total}
           fmt={fmt}
         />
-      </div>
-
-      <div className="flex justify-center pt-2">
-        <Button type="button">
-          <SendIcon className="size-4" />
-          {t('detail.diff.sendChanges')}
-        </Button>
       </div>
     </div>
   );

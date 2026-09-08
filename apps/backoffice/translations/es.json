@@ -631,6 +631,10 @@
           "rationale": "Razón"
         },
         "total": "Total",
+        "summary": {
+          "subtotal": "Subtotal",
+          "discounts": "Descuentos"
+        },
         "matchStatus": {
           "MATCHED": "Emparejado",
           "AMBIGUOUS": "Ambiguo",
@@ -644,7 +648,34 @@
           "suppress": "Suprimir descuento",
           "restore": "Restaurar",
           "remove": "Eliminar descuento",
-          "add": "Agregar descuento"
+          "edit": "Editar descuento",
+          "add": "Agregar descuento",
+          "addTitle": "Agregar descuento",
+          "editTitle": "Editar descuento",
+          "nameLabel": "Nombre",
+          "namePlaceholder": "Ej.: Descuento por volumen…",
+          "amountLabel": "Monto",
+          "valueLabel": "Valor",
+          "typeLabel": "Tipo",
+          "fixedAmount": "Monto fijo",
+          "percentage": "Porcentaje",
+          "scopeLabel": "Alcance",
+          "itemsLabel": "Ítems incluidos",
+          "cancel": "Cancelar",
+          "save": "Guardar",
+          "saving": "Guardando…",
+          "scope": {
+            "TOTAL": "Global",
+            "ITEM": "Por ítem",
+            "ITEM_SET": "Por combo"
+          },
+          "toast": {
+            "added": "Descuento agregado",
+            "updated": "Descuento actualizado",
+            "removed": "Descuento eliminado",
+            "suppressed": "Descuento suprimido",
+            "restored": "Descuento restaurado"
+          }
         },
         "toast": {
           "updated": "Ítem actualizado",
@@ -654,6 +685,24 @@
           "error": "Ocurrió un error. Intentá de nuevo."
         }
       },
+      "send": {
+        "button": "Enviar cotización",
+        "title": "Enviar cotización",
+        "channelLabel": "Canal",
+        "whatsapp": "WhatsApp",
+        "email": "Email",
+        "messageLabel": "Mensaje",
+        "greeting": "¡Hola {client}!",
+        "noClient": "cliente",
+        "body": "Te compartimos la cotización {id}. El total es {total}.",
+        "closing": "Quedamos a disposición por cualquier consulta.",
+        "cancel": "Cancelar",
+        "send": "Enviar",
+        "sending": "Enviando…",
+        "toast": {
+          "comingSoon": "El envío estará disponible próximamente."
+        }
+      },
       "diff": {
         "title": "Cambios solicitados",
         "originalTitle": "Cotización original",
@@ -661,7 +710,6 @@
         "reason": "Motivo del cliente",
         "discountsTitle": "Descuentos aplicados",
         "downloadOriginal": "Descargar pedido original",
-        "sendChanges": "Enviar",
         "columns": {
           "product": "Producto",
           "quantity": "Cantidad",

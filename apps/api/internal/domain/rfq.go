@@ -183,4 +183,10 @@ type RfqDetail struct {
 	Version      *QuoteVersion
 	Items        []QuoteItem
 	Alternatives map[uuid.UUID][]QuoteItemAlternative
+	// Discounts are the current version's discount applications; empty when the version
+	// has none or the discount surface is not wired.
+	Discounts []QuoteDiscount
+	// ChangesRequested is the frozen-vs-draft comparison for a CHANGE_REQUESTED quote;
+	// nil until a frozen predecessor exists.
+	ChangesRequested *ChangeRequestDiff
 }
