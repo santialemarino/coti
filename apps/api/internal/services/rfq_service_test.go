@@ -48,6 +48,12 @@ func (f *fakeRfqRepoManual) AppendStatusChange(
 	return nil, errors.New("not implemented in manual fake")
 }
 
+func (f *fakeRfqRepoManual) ListStatusChanges(
+	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID,
+) ([]domain.RFQStatusChange, error) {
+	return nil, errors.New("not implemented in manual fake")
+}
+
 func (f *fakeRfqRepoManual) ListByTenant(
 	_ context.Context, _ repository.Querier, _ domain.Tenant,
 ) ([]domain.RfqListItem, error) {
@@ -55,7 +61,7 @@ func (f *fakeRfqRepoManual) ListByTenant(
 }
 
 func (f *fakeRfqRepoManual) GetByRFQID(
-	_ context.Context, _ repository.Querier, _, _ uuid.UUID,
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ uuid.UUID,
 ) (*domain.RfqListItem, error) {
 	return nil, errors.New("not implemented in manual fake")
 }
@@ -105,7 +111,7 @@ func (f *fakeRfqRepoManual) CreateManualEntry(
 
 func manualHarness(repo *fakeRfqRepoManual) (*RFQService, *fakeDB) {
 	db := &fakeDB{}
-	svc := NewRFQService(db, repo, nil, nil, nil, nil, nil, nil, config.RFQConfig{})
+	svc := NewRFQService(db, repo, nil, nil, nil, nil, nil, nil, nil, config.RFQConfig{})
 	svc.now = func() time.Time { return fixedNow }
 	return svc, db
 }
@@ -406,11 +412,13 @@ type rfqStatusChangeCall struct {
 }
 
 type fakeRFQs struct {
-	created       []domain.NewRFQ
-	updatedStatus []domain.RFQStatus
-	statusChanges []rfqStatusChangeCall
-	rfqByID       *domain.RfqListItem
-	rfqByIDErr    error
+	created          []domain.NewRFQ
+	updatedStatus    []domain.RFQStatus
+	statusChanges    []rfqStatusChangeCall
+	statusHistory    []domain.RFQStatusChange
+	statusHistoryErr error
+	rfqByID          *domain.RfqListItem
+	rfqByIDErr       error
 }
 
 func (f *fakeRFQs) Create(
@@ -447,6 +455,15 @@ func (f *fakeRFQs) AppendStatusChange(
 	}, nil
 }
 
+func (f *fakeRFQs) ListStatusChanges(
+	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID,
+) ([]domain.RFQStatusChange, error) {
+	if f.statusHistoryErr != nil {
+		return nil, f.statusHistoryErr
+	}
+	return f.statusHistory, nil
+}
+
 func (f *fakeRFQs) ListByTenant(
 	_ context.Context, _ repository.Querier, _ domain.Tenant,
 ) ([]domain.RfqListItem, error) {
@@ -454,7 +471,7 @@ func (f *fakeRFQs) ListByTenant(
 }
 
 func (f *fakeRFQs) GetByRFQID(
-	_ context.Context, _ repository.Querier, _, _ uuid.UUID,
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ uuid.UUID,
 ) (*domain.RfqListItem, error) {
 	if f.rfqByIDErr != nil {
 		return nil, f.rfqByIDErr
@@ -489,27 +506,186 @@ type quoteStatusChangeCall struct {
 }
 
 type fakeQuoteDrafts struct {
-	created            []domain.NewQuote
-	currentVersion     []uuid.UUID
-	versions           []domain.NewQuoteVersion
-	itemBatches        [][]domain.NewQuoteItem
-	alternativeBatches [][]domain.NewQuoteItemAlternative
-	alternativeReads   [][]uuid.UUID
-	storedAlternatives []domain.QuoteItemAlternative
-	alternativesErr    error
-	statusChanges      []quoteStatusChangeCall
-	quoteByID          *domain.Quote
-	quoteByIDErr       error
-	currentVersionData *domain.QuoteVersion
-	currentVersionErr  error
-	itemsByVersionID   []domain.QuoteItem
-	itemsByVersionErr  error
+	created                []domain.NewQuote
+	currentVersion         []uuid.UUID
+	versions               []domain.NewQuoteVersion
+	itemBatches            [][]domain.NewQuoteItem
+	alternativeBatches     [][]domain.NewQuoteItemAlternative
+	alternativeReads       [][]uuid.UUID
+	storedAlternatives     []domain.QuoteItemAlternative
+	alternativesErr        error
+	statusChanges          []quoteStatusChangeCall
+	quoteByID              *domain.Quote
+	quoteByIDErr           error
+	currentVersionData     *domain.QuoteVersion
+	currentVersionErr      error
+	currentVersionBranches []uuid.UUID
+	itemsByVersionID       []domain.QuoteItem
+	itemsByVersionErr      error
+	quoteStatusHistory     []domain.QuoteStatusChange
+	statusHistoryErr       error
+	previousVersionData    *domain.QuoteVersion
+	previousVersionErr     error
+	frozenItems            []domain.QuoteItem
+	getPreviousCalls       int
+	versionTotals          []decimal.Decimal
 }
 
 type fakeQuoteAIGenerations struct {
 	created []domain.NewQuoteAIGeneration
 	items   [][]domain.NewQuoteAIGenerationItem
 	err     error
+}
+
+// fakeQuoteDiscounts is the in-memory quote_discount surface for service tests.
+type fakeQuoteDiscounts struct {
+	stored   []domain.QuoteDiscount
+	links    map[uuid.UUID][]uuid.UUID // discountID -> itemIDs
+	nextErr  error
+	updateIn []domain.QuoteDiscountUpdate
+	createIn []domain.QuoteDiscountCreate
+}
+
+func (f *fakeQuoteDiscounts) ListByVersionID(
+	_ context.Context, _ repository.Querier, accountID, versionID uuid.UUID,
+) ([]domain.QuoteDiscount, error) {
+	if f.nextErr != nil {
+		return nil, f.nextErr
+	}
+	var out []domain.QuoteDiscount
+	for _, d := range f.stored {
+		if d.AccountID == accountID && d.QuoteVersionID == versionID {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeQuoteDiscounts) Create(
+	_ context.Context, _ repository.Querier, accountID, versionID uuid.UUID,
+	in domain.QuoteDiscountCreate,
+) (*domain.QuoteDiscount, error) {
+	f.createIn = append(f.createIn, in)
+	discount := domain.QuoteDiscount{
+		ID: uuid.New(), AccountID: accountID, QuoteVersionID: versionID,
+		ConditionType: *conditionTypeFor(in.Scope), Scope: in.Scope,
+		Origin:      domain.DiscountOriginManualSeller,
+		Amount:      in.Amount,
+		ActionType:  in.ActionType,
+		ActionValue: &in.Value,
+		Description: &in.Description,
+		CreatedAt:   fixedNow,
+	}
+	f.stored = append(f.stored, discount)
+	return &discount, nil
+}
+
+func (f *fakeQuoteDiscounts) GetByID(
+	_ context.Context, _ repository.Querier, accountID, versionID, discountID uuid.UUID,
+) (*domain.QuoteDiscount, error) {
+	for i := range f.stored {
+		d := &f.stored[i]
+		if d.ID == discountID && d.AccountID == accountID && d.QuoteVersionID == versionID {
+			return d, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+
+func (f *fakeQuoteDiscounts) UpdateByID(
+	_ context.Context, _ repository.Querier, accountID, versionID, discountID uuid.UUID,
+	in domain.QuoteDiscountUpdate,
+) (*domain.QuoteDiscount, error) {
+	f.updateIn = append(f.updateIn, in)
+	d, err := f.GetByID(context.Background(), nil, accountID, versionID, discountID)
+	if err != nil {
+		return nil, err
+	}
+	if in.Value != nil {
+		d.ActionValue = in.Value
+	}
+	if in.ActionType != nil {
+		d.ActionType = *in.ActionType
+	}
+	if in.Scope != nil {
+		d.Scope = *in.Scope
+	}
+	if in.ConditionType != nil {
+		d.ConditionType = *in.ConditionType
+	}
+	if in.Description != nil {
+		d.Description = in.Description
+	}
+	if in.SuppressedBySeller != nil {
+		d.SuppressedBySeller = *in.SuppressedBySeller
+	}
+	return d, nil
+}
+
+func (f *fakeQuoteDiscounts) DeleteByID(
+	_ context.Context, _ repository.Querier, accountID, versionID, discountID uuid.UUID,
+) error {
+	for i, d := range f.stored {
+		if d.ID == discountID && d.AccountID == accountID && d.QuoteVersionID == versionID {
+			f.stored = append(f.stored[:i], f.stored[i+1:]...)
+			return nil
+		}
+	}
+	return domain.ErrNotFound
+}
+
+func (f *fakeQuoteDiscounts) UpdateAmount(
+	_ context.Context, _ repository.Querier, accountID, versionID, discountID uuid.UUID,
+	amount decimal.Decimal,
+) error {
+	d, err := f.GetByID(context.Background(), nil, accountID, versionID, discountID)
+	if err != nil {
+		return err
+	}
+	d.Amount = amount
+	return nil
+}
+
+func (f *fakeQuoteDiscounts) CreateItemLinks(
+	_ context.Context, _ repository.Querier, accountID, versionID, discountID uuid.UUID,
+	itemIDs []uuid.UUID,
+) error {
+	if f.links == nil {
+		f.links = make(map[uuid.UUID][]uuid.UUID)
+	}
+	f.links[discountID] = append([]uuid.UUID{}, itemIDs...)
+	return nil
+}
+
+func (f *fakeQuoteDiscounts) ReplaceItemLinks(
+	ctx context.Context, q repository.Querier, accountID, versionID, discountID uuid.UUID,
+	itemIDs []uuid.UUID,
+) error {
+	return f.CreateItemLinks(ctx, q, accountID, versionID, discountID, itemIDs)
+}
+
+func (f *fakeQuoteDiscounts) ListItemIDs(
+	_ context.Context, _ repository.Querier, accountID, discountID uuid.UUID,
+) ([]uuid.UUID, error) {
+	for _, d := range f.stored {
+		if d.ID == discountID && d.AccountID == accountID {
+			return f.links[discountID], nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+
+func (f *fakeQuoteDiscounts) ListItemIDsByDiscountIDs(
+	_ context.Context, _ repository.Querier, accountID, versionID uuid.UUID,
+	discountIDs []uuid.UUID,
+) (map[uuid.UUID][]uuid.UUID, error) {
+	linked := make(map[uuid.UUID][]uuid.UUID, len(discountIDs))
+	for _, discountID := range discountIDs {
+		if f.links[discountID] != nil {
+			linked[discountID] = f.links[discountID]
+		}
+	}
+	return linked, nil
 }
 
 func (f *fakeQuoteAIGenerations) Create(
@@ -569,6 +745,7 @@ func (f *fakeQuoteDrafts) CreateVersion(
 func (f *fakeQuoteDrafts) UpdateVersionTotal(
 	_ context.Context, _ repository.Querier, _ uuid.UUID, _ uuid.UUID, total decimal.Decimal,
 ) (*domain.QuoteVersion, error) {
+	f.versionTotals = append(f.versionTotals, total)
 	return &domain.QuoteVersion{ID: testVersionID, Total: total}, nil
 }
 
@@ -639,6 +816,15 @@ func (f *fakeQuoteDrafts) AppendStatusChange(
 	}, nil
 }
 
+func (f *fakeQuoteDrafts) ListStatusChanges(
+	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID,
+) ([]domain.QuoteStatusChange, error) {
+	if f.statusHistoryErr != nil {
+		return nil, f.statusHistoryErr
+	}
+	return f.quoteStatusHistory, nil
+}
+
 func (f *fakeQuoteDrafts) GetByRFQID(
 	_ context.Context, _ repository.Querier, _ uuid.UUID, _ uuid.UUID,
 ) (*domain.Quote, error) {
@@ -658,8 +844,9 @@ func (f *fakeQuoteDrafts) GetByID(
 }
 
 func (f *fakeQuoteDrafts) GetCurrentVersion(
-	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID,
+	_ context.Context, _ repository.Querier, _, branchID, _ uuid.UUID,
 ) (*domain.QuoteVersion, error) {
+	f.currentVersionBranches = append(f.currentVersionBranches, branchID)
 	if f.currentVersionErr != nil {
 		return nil, f.currentVersionErr
 	}
@@ -675,10 +862,23 @@ func (f *fakeQuoteDrafts) ListItems(
 	return f.itemsByVersionID, nil
 }
 
+func (f *fakeQuoteDrafts) GetPreviousVersion(
+	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID, _ int,
+) (*domain.QuoteVersion, error) {
+	f.getPreviousCalls++
+	if f.previousVersionErr != nil {
+		return nil, f.previousVersionErr
+	}
+	return f.previousVersionData, nil
+}
+
 func (f *fakeQuoteDrafts) ListItemsWithProduct(
-	_ context.Context, _ repository.Querier, _ uuid.UUID, _ uuid.UUID,
+	ctx context.Context, _ repository.Querier, accountID, versionID uuid.UUID,
 ) ([]domain.QuoteItem, error) {
-	return f.ListItems(context.Background(), nil, uuid.Nil, uuid.Nil)
+	if f.previousVersionData != nil && versionID == f.previousVersionData.ID {
+		return f.frozenItems, nil
+	}
+	return f.ListItems(ctx, nil, accountID, versionID)
 }
 
 func (f *fakeQuoteDrafts) GetItem(
@@ -744,6 +944,22 @@ func (f *fakeQuoteDrafts) CreateSingleItem(
 	return &item, nil
 }
 
+type fakeQuoteSends struct {
+	deliveries []domain.QuoteSend
+	err        error
+	reads      []uuid.UUID
+}
+
+func (f *fakeQuoteSends) ListByQuote(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, _ uuid.UUID, quoteID uuid.UUID,
+) ([]domain.QuoteSend, error) {
+	f.reads = append(f.reads, quoteID)
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.deliveries, nil
+}
+
 type rfqHarness struct {
 	service     *RFQService
 	db          *fakeRFQDB
@@ -751,6 +967,8 @@ type rfqHarness struct {
 	matcher     *fakeCatalogMatcher
 	rfqs        *fakeRFQs
 	quotes      *fakeQuoteDrafts
+	discounts   *fakeQuoteDiscounts
+	sends       *fakeQuoteSends
 	generations *fakeQuoteAIGenerations
 	channels    *fakeRFQChannels
 }
@@ -772,6 +990,8 @@ func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 		matcher:     &fakeCatalogMatcher{matches: matches, db: db},
 		rfqs:        &fakeRFQs{},
 		quotes:      &fakeQuoteDrafts{},
+		discounts:   &fakeQuoteDiscounts{},
+		sends:       &fakeQuoteSends{},
 		generations: &fakeQuoteAIGenerations{},
 		channels:    &fakeRFQChannels{},
 	}
@@ -781,8 +1001,8 @@ func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 	}
 	h.channels.channel = &channel
 	h.channels.channelsByType = []domain.Channel{channel}
-	h.service = NewRFQService(h.db, h.rfqs, h.quotes, h.generations, h.channels, h.extractor,
-		h.matcher, nil, testRFQConfig())
+	h.service = NewRFQService(h.db, h.rfqs, h.quotes, h.sends, h.generations, h.channels,
+		h.extractor, h.matcher, nil, testRFQConfig()).WithDiscounts(h.discounts)
 	return h
 }
 
@@ -1378,6 +1598,24 @@ func getDetailHarness() (*rfqHarness, *domain.RfqListItem, *domain.Quote, *domai
 	h.quotes.quoteByID = quote
 	h.quotes.currentVersionData = version
 	h.quotes.itemsByVersionID = items
+	h.rfqs.statusHistory = []domain.RFQStatusChange{{
+		ID: uuid.New(), RFQID: testRFQID, NewStatus: domain.RFQStatusGenerated,
+		ChangedAt: fixedNow.Add(-2 * time.Hour), CreatedAt: fixedNow.Add(-2 * time.Hour),
+	}}
+	previous := domain.QuoteStatusQuoted
+	h.quotes.quoteStatusHistory = []domain.QuoteStatusChange{{
+		ID: uuid.New(), QuoteID: testQuoteID, PreviousStatus: &previous,
+		NewStatus: domain.QuoteStatusSent, ChangedAt: fixedNow.Add(-time.Hour),
+		CreatedAt: fixedNow.Add(-time.Hour),
+	}}
+	sentAt := fixedNow.Add(-time.Hour)
+	expiresAt := fixedNow.AddDate(0, 0, 7)
+	h.sends.deliveries = []domain.QuoteSend{{
+		ID: uuid.New(), VersionID: testVersionID, ChannelType: domain.ChannelTypeWhatsApp,
+		Destination: "+5491155550101", Format: domain.SendFormatWebAppLink,
+		TrackingStatus: domain.SendTrackingStatusViewed, SentAt: &sentAt,
+		ExpiresAt: &expiresAt, CreatedAt: sentAt,
+	}}
 
 	return h, rfqItem, quote, version, items
 }
@@ -1404,8 +1642,51 @@ func TestRFQService_GetDetail_ReturnsFullDetailWhenAllDataExists(t *testing.T) {
 	if len(detail.Items) != len(items) {
 		t.Errorf("items = %d, want %d", len(detail.Items), len(items))
 	}
+	if len(h.quotes.currentVersionBranches) != 1 ||
+		h.quotes.currentVersionBranches[0] != quote.BranchID {
+		t.Errorf("current version branch = %v, want [%v]",
+			h.quotes.currentVersionBranches, quote.BranchID)
+	}
+	if len(detail.RFQStatusChanges) != 1 ||
+		detail.RFQStatusChanges[0].NewStatus != domain.RFQStatusGenerated {
+		t.Errorf("RFQ status history = %+v, want one GENERATED transition",
+			detail.RFQStatusChanges)
+	}
+	if len(detail.QuoteStatusChanges) != 1 ||
+		detail.QuoteStatusChanges[0].NewStatus != domain.QuoteStatusSent {
+		t.Errorf("quote status history = %+v, want one SENT transition",
+			detail.QuoteStatusChanges)
+	}
+	if len(detail.Deliveries) != 1 ||
+		detail.Deliveries[0].TrackingStatus != domain.SendTrackingStatusViewed {
+		t.Errorf("deliveries = %+v, want one viewed send", detail.Deliveries)
+	}
+	if len(h.sends.reads) != 1 || h.sends.reads[0] != quote.ID {
+		t.Errorf("delivery reads = %v, want [%v]", h.sends.reads, quote.ID)
+	}
 	if len(h.db.scopes) != 1 || h.db.scopes[0] != testAccountID {
 		t.Errorf("transaction scoped to %v, want [%v]", h.db.scopes, testAccountID)
+	}
+}
+
+func TestRFQService_GetDetail_LoadsQuoteVersionWhenTenantHasNoActiveBranch(t *testing.T) {
+	h, _, quote, version, items := getDetailHarness()
+	tenant := domain.Tenant{AccountID: testAccountID, UserID: testUserID}
+
+	detail, err := h.service.GetDetail(context.Background(), tenant, testRFQID)
+	if err != nil {
+		t.Fatalf("GetDetail returned %v", err)
+	}
+	if detail.Version == nil || detail.Version.ID != version.ID {
+		t.Fatalf("version = %v, want %v", detail.Version, version)
+	}
+	if len(detail.Items) != len(items) {
+		t.Errorf("items = %d, want %d", len(detail.Items), len(items))
+	}
+	if len(h.quotes.currentVersionBranches) != 1 ||
+		h.quotes.currentVersionBranches[0] != quote.BranchID {
+		t.Errorf("current version branch = %v, want [%v]",
+			h.quotes.currentVersionBranches, quote.BranchID)
 	}
 }
 
@@ -1776,5 +2057,485 @@ func TestRFQService_GetDetail_QuoteWithoutVersionReturnsRfqAndQuoteOnly(t *testi
 	}
 	if detail.Items != nil {
 		t.Errorf("items = %v, want nil when no version", detail.Items)
+	}
+}
+
+// ---------- Discount tests ----------
+
+func discountHarness() *rfqHarness {
+	h := newRFQHarness(nil)
+	h.quotes.quoteByID = &domain.Quote{
+		ID: testQuoteID, RFQID: testRFQID, BranchID: testBranchID,
+		CurrentStatus:    domain.QuoteStatusQuoted,
+		CurrentVersionID: &testVersionID,
+	}
+	h.quotes.currentVersionData = &domain.QuoteVersion{
+		ID: testVersionID, QuoteID: testQuoteID, VersionNumber: 1,
+		Total: decimal.RequireFromString("2000.00"),
+	}
+	h.quotes.itemsByVersionID = []domain.QuoteItem{{
+		ID:        uuid.New(),
+		VersionID: testVersionID,
+		Quantity:  decimal.RequireFromString("10"),
+		Subtotal:  decimal.NewNullDecimal(decimal.RequireFromString("2000.00")),
+	}}
+	return h
+}
+
+func TestRFQService_AddDiscount_AppliesAndRecomputesTotal(t *testing.T) {
+	h := discountHarness()
+
+	got, err := h.service.AddDiscount(context.Background(), rfqTenant(), testQuoteID,
+		domain.QuoteDiscountCreate{
+			Description: "Descuento por pago contado",
+			ActionType:  domain.PromotionActionFixedAmount,
+			Value:       decimal.RequireFromString("250.00"),
+			Scope:       domain.DiscountScopeTotal,
+		})
+	if err != nil {
+		t.Fatalf("AddDiscount returned %v", err)
+	}
+	if got.Origin != domain.DiscountOriginManualSeller {
+		t.Errorf("origin = %q, want MANUAL_SELLER", got.Origin)
+	}
+	if got.Scope != domain.DiscountScopeTotal {
+		t.Errorf("scope = %q, want TOTAL", got.Scope)
+	}
+	if got.ActionType != domain.PromotionActionFixedAmount {
+		t.Errorf("action_type = %q, want FIXED_AMOUNT", got.ActionType)
+	}
+	if got.ActionValue == nil || got.ActionValue.String() != "250" {
+		t.Errorf("action_value = %v, want 250", got.ActionValue)
+	}
+	if got.Description == nil || *got.Description != "Descuento por pago contado" {
+		t.Errorf("description = %v, want the seller's text", got.Description)
+	}
+	if len(h.discounts.stored) != 1 {
+		t.Fatalf("stored discounts = %d, want 1", len(h.discounts.stored))
+	}
+	if len(h.quotes.versionTotals) != 1 {
+		t.Fatalf("version total updates = %d, want 1", len(h.quotes.versionTotals))
+	}
+	if want := "1750.00"; h.quotes.versionTotals[0].StringFixed(domain.MoneyScale) != want {
+		t.Errorf("recomputed total = %v, want %q", h.quotes.versionTotals[0], want)
+	}
+}
+
+func TestRFQService_AddDiscount_ComputesAPercentageAgainstTheScope(t *testing.T) {
+	h := discountHarness()
+
+	got, err := h.service.AddDiscount(context.Background(), rfqTenant(), testQuoteID,
+		domain.QuoteDiscountCreate{
+			Description: "10% pago contado",
+			ActionType:  domain.PromotionActionPercentage,
+			Value:       decimal.RequireFromString("10.00"),
+			Scope:       domain.DiscountScopeTotal,
+		})
+	if err != nil {
+		t.Fatalf("AddDiscount returned %v", err)
+	}
+	if got.ActionValue == nil || got.ActionValue.String() != "10" {
+		t.Errorf("action_value = %v, want 10", got.ActionValue)
+	}
+	if want := "200.00"; got.Amount.StringFixed(domain.MoneyScale) != want {
+		t.Errorf("amount = %v, want %q", got.Amount, want)
+	}
+	if want := "1800.00"; h.quotes.versionTotals[0].StringFixed(domain.MoneyScale) != want {
+		t.Errorf("recomputed total = %v, want %q", h.quotes.versionTotals[0], want)
+	}
+}
+
+func TestRFQService_AddDiscount_ScopesToAnItem(t *testing.T) {
+	h := discountHarness()
+	itemID := h.quotes.itemsByVersionID[0].ID
+
+	got, err := h.service.AddDiscount(context.Background(), rfqTenant(), testQuoteID,
+		domain.QuoteDiscountCreate{
+			Description: "Bono por ítem",
+			ActionType:  domain.PromotionActionFixedAmount,
+			Value:       decimal.RequireFromString("100.00"),
+			Scope:       domain.DiscountScopeItem,
+			ItemIDs:     []uuid.UUID{itemID},
+		})
+	if err != nil {
+		t.Fatalf("AddDiscount returned %v", err)
+	}
+	if got.Scope != domain.DiscountScopeItem {
+		t.Errorf("scope = %q, want ITEM", got.Scope)
+	}
+	if want := "100.00"; got.Amount.StringFixed(domain.MoneyScale) != want {
+		t.Errorf("amount = %v, want %q", got.Amount, want)
+	}
+	if len(h.discounts.links[got.ID]) != 1 || h.discounts.links[got.ID][0] != itemID {
+		t.Errorf("links = %v, want [%s]", h.discounts.links[got.ID], itemID)
+	}
+	if want := "1900.00"; h.quotes.versionTotals[0].StringFixed(domain.MoneyScale) != want {
+		t.Errorf("recomputed total = %v, want %q", h.quotes.versionTotals[0], want)
+	}
+}
+
+func TestRFQService_AddDiscount_RejectsZeroValue(t *testing.T) {
+	h := discountHarness()
+
+	_, err := h.service.AddDiscount(context.Background(), rfqTenant(), testQuoteID,
+		domain.QuoteDiscountCreate{
+			Description: "Bienvenida",
+			ActionType:  domain.PromotionActionFixedAmount,
+			Value:       decimal.Zero,
+			Scope:       domain.DiscountScopeTotal,
+		})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("AddDiscount returned %v, want ErrInvalidInput", err)
+	}
+	if len(h.discounts.stored) != 0 {
+		t.Errorf("stored discounts = %d, want none", len(h.discounts.stored))
+	}
+}
+
+func TestRFQService_AddDiscount_RejectsAnEmptyDescription(t *testing.T) {
+	h := discountHarness()
+
+	_, err := h.service.AddDiscount(context.Background(), rfqTenant(), testQuoteID,
+		domain.QuoteDiscountCreate{
+			Description: "  ",
+			ActionType:  domain.PromotionActionFixedAmount,
+			Value:       decimal.RequireFromString("100"),
+			Scope:       domain.DiscountScopeTotal,
+		})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("AddDiscount returned %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestRFQService_AddDiscount_RejectsAValueAboveTheScope(t *testing.T) {
+	h := discountHarness()
+
+	_, err := h.service.AddDiscount(context.Background(), rfqTenant(), testQuoteID,
+		domain.QuoteDiscountCreate{
+			Description: "Excesivo",
+			ActionType:  domain.PromotionActionFixedAmount,
+			Value:       decimal.RequireFromString("2000.01"),
+			Scope:       domain.DiscountScopeTotal,
+		})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("AddDiscount returned %v, want ErrInvalidInput", err)
+	}
+	if len(h.discounts.stored) != 0 {
+		t.Errorf("stored discounts = %d, want none", len(h.discounts.stored))
+	}
+}
+
+func TestRFQService_AddDiscount_RejectsAStringItemID(t *testing.T) {
+	h := discountHarness()
+
+	_, err := h.service.AddDiscount(context.Background(), rfqTenant(), testQuoteID,
+		domain.QuoteDiscountCreate{
+			Description: "Item fantasma",
+			ActionType:  domain.PromotionActionFixedAmount,
+			Value:       decimal.RequireFromString("100"),
+			Scope:       domain.DiscountScopeItem,
+			ItemIDs:     []uuid.UUID{uuid.New()},
+		})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("AddDiscount returned %v, want ErrInvalidInput", err)
+	}
+	if len(h.discounts.stored) != 0 {
+		t.Errorf("stored discounts = %d, want none", len(h.discounts.stored))
+	}
+}
+
+func TestRFQService_AddDiscount_RefusesAFrozenStatus(t *testing.T) {
+	h := discountHarness()
+	h.quotes.quoteByID.CurrentStatus = domain.QuoteStatusSent
+
+	_, err := h.service.AddDiscount(context.Background(), rfqTenant(), testQuoteID,
+		domain.QuoteDiscountCreate{
+			Description: "Fuera de tiempo",
+			ActionType:  domain.PromotionActionFixedAmount,
+			Value:       decimal.RequireFromString("100"),
+			Scope:       domain.DiscountScopeTotal,
+		})
+	if !errors.Is(err, domain.ErrImmutable) {
+		t.Fatalf("AddDiscount returned %v, want ErrImmutable", err)
+	}
+	if len(h.discounts.stored) != 0 {
+		t.Errorf("stored discounts = %d, want none", len(h.discounts.stored))
+	}
+}
+
+func TestRFQService_UpdateDiscount_TogglingSuppressionRecomputesTheTotal(t *testing.T) {
+	h := discountHarness()
+	created, err := h.service.AddDiscount(context.Background(), rfqTenant(), testQuoteID,
+		domain.QuoteDiscountCreate{
+			Description: "Contado",
+			ActionType:  domain.PromotionActionFixedAmount,
+			Value:       decimal.RequireFromString("200.00"),
+			Scope:       domain.DiscountScopeTotal,
+		})
+	if err != nil {
+		t.Fatalf("AddDiscount returned %v", err)
+	}
+	suppress := true
+	updated, err := h.service.UpdateDiscount(context.Background(), rfqTenant(), testQuoteID,
+		created.ID, domain.QuoteDiscountUpdate{SuppressedBySeller: &suppress})
+	if err != nil {
+		t.Fatalf("UpdateDiscount returned %v", err)
+	}
+	if !updated.SuppressedBySeller {
+		t.Error("discount is not suppressed, want suppressed")
+	}
+	last := h.quotes.versionTotals[len(h.quotes.versionTotals)-1]
+	if want := "2000.00"; last.StringFixed(domain.MoneyScale) != want {
+		t.Errorf("total after suppressing = %v, want %q", last, want)
+	}
+}
+
+func TestRFQService_UpdateDiscount_ChangesTheValueWithinTheScope(t *testing.T) {
+	h := discountHarness()
+	created, err := h.service.AddDiscount(context.Background(), rfqTenant(), testQuoteID,
+		domain.QuoteDiscountCreate{
+			Description: "Bono",
+			ActionType:  domain.PromotionActionFixedAmount,
+			Value:       decimal.RequireFromString("200.00"),
+			Scope:       domain.DiscountScopeTotal,
+		})
+	if err != nil {
+		t.Fatalf("AddDiscount returned %v", err)
+	}
+	value := decimal.RequireFromString("500.00")
+	updated, err := h.service.UpdateDiscount(context.Background(), rfqTenant(), testQuoteID,
+		created.ID, domain.QuoteDiscountUpdate{Value: &value})
+	if err != nil {
+		t.Fatalf("UpdateDiscount returned %v", err)
+	}
+	if updated.Amount.StringFixed(domain.MoneyScale) != "500.00" {
+		t.Errorf("amount = %v, want 500.00", updated.Amount)
+	}
+	last := h.quotes.versionTotals[len(h.quotes.versionTotals)-1]
+	if want := "1500.00"; last.StringFixed(domain.MoneyScale) != want {
+		t.Errorf("total after editing = %v, want %q", last, want)
+	}
+}
+
+func TestRFQService_UpdateDiscount_RejectsAValueAboveTheScope(t *testing.T) {
+	h := discountHarness()
+	created, err := h.service.AddDiscount(context.Background(), rfqTenant(), testQuoteID,
+		domain.QuoteDiscountCreate{
+			Description: "Bono",
+			ActionType:  domain.PromotionActionFixedAmount,
+			Value:       decimal.RequireFromString("200.00"),
+			Scope:       domain.DiscountScopeTotal,
+		})
+	if err != nil {
+		t.Fatalf("AddDiscount returned %v", err)
+	}
+	value := decimal.RequireFromString("2000.01")
+	_, err = h.service.UpdateDiscount(context.Background(), rfqTenant(), testQuoteID,
+		created.ID, domain.QuoteDiscountUpdate{Value: &value})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("UpdateDiscount returned %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestRFQService_UpdateDiscount_SwitchesToAPercentage(t *testing.T) {
+	h := discountHarness()
+	created, err := h.service.AddDiscount(context.Background(), rfqTenant(), testQuoteID,
+		domain.QuoteDiscountCreate{
+			Description: "Bono",
+			ActionType:  domain.PromotionActionFixedAmount,
+			Value:       decimal.RequireFromString("200.00"),
+			Scope:       domain.DiscountScopeTotal,
+		})
+	if err != nil {
+		t.Fatalf("AddDiscount returned %v", err)
+	}
+	actionType := domain.PromotionActionPercentage
+	value := decimal.RequireFromString("25")
+	updated, err := h.service.UpdateDiscount(context.Background(), rfqTenant(), testQuoteID,
+		created.ID, domain.QuoteDiscountUpdate{ActionType: &actionType, Value: &value})
+	if err != nil {
+		t.Fatalf("UpdateDiscount returned %v", err)
+	}
+	if updated.ActionType != domain.PromotionActionPercentage {
+		t.Errorf("action_type = %q, want PERCENTAGE", updated.ActionType)
+	}
+	if updated.Amount.StringFixed(domain.MoneyScale) != "500.00" {
+		t.Errorf("amount = %v, want 500.00 (25%% of 2000)", updated.Amount)
+	}
+	last := h.quotes.versionTotals[len(h.quotes.versionTotals)-1]
+	if want := "1500.00"; last.StringFixed(domain.MoneyScale) != want {
+		t.Errorf("total after editing = %v, want %q", last, want)
+	}
+}
+
+func TestRFQService_DeleteDiscount_RemovesASellerTypedDiscount(t *testing.T) {
+	h := discountHarness()
+	created, err := h.service.AddDiscount(context.Background(), rfqTenant(), testQuoteID,
+		domain.QuoteDiscountCreate{
+			Description: "Fuera",
+			ActionType:  domain.PromotionActionFixedAmount,
+			Value:       decimal.RequireFromString("200.00"),
+			Scope:       domain.DiscountScopeTotal,
+		})
+	if err != nil {
+		t.Fatalf("AddDiscount returned %v", err)
+	}
+	if err := h.service.DeleteDiscount(context.Background(), rfqTenant(), testQuoteID, created.ID); err != nil {
+		t.Fatalf("DeleteDiscount returned %v", err)
+	}
+	if len(h.discounts.stored) != 0 {
+		t.Errorf("stored discounts = %d, want none after delete", len(h.discounts.stored))
+	}
+	last := h.quotes.versionTotals[len(h.quotes.versionTotals)-1]
+	if want := "2000.00"; last.StringFixed(domain.MoneyScale) != want {
+		t.Errorf("total after deleting = %v, want %q", last, want)
+	}
+}
+
+func TestRFQService_DeleteDiscount_RefusesAnAutomaticOne(t *testing.T) {
+	h := discountHarness()
+	h.discounts.stored = append(h.discounts.stored, domain.QuoteDiscount{
+		ID: uuid.New(), AccountID: testAccountID, QuoteVersionID: testVersionID,
+		ConditionType: domain.PromotionConditionOnTotal, Scope: domain.DiscountScopeTotal,
+		Origin: domain.DiscountOriginAutomatic, Amount: decimal.RequireFromString("150.00"),
+	})
+
+	err := h.service.DeleteDiscount(context.Background(), rfqTenant(), testQuoteID,
+		h.discounts.stored[0].ID)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("DeleteDiscount returned %v, want ErrInvalidInput", err)
+	}
+	if len(h.discounts.stored) != 1 {
+		t.Errorf("stored discounts = %d, want the automatic one kept", len(h.discounts.stored))
+	}
+}
+
+func TestRFQService_GetDetail_CarriesTheVersionDiscounts(t *testing.T) {
+	h, _, _, _, _ := getDetailHarness()
+	h.discounts.stored = append(h.discounts.stored, domain.QuoteDiscount{
+		ID: uuid.New(), AccountID: testAccountID, QuoteVersionID: testVersionID,
+		ConditionType: domain.PromotionConditionOnTotal, Scope: domain.DiscountScopeTotal,
+		Origin:      domain.DiscountOriginManualSeller,
+		Amount:      decimal.RequireFromString("250.00"),
+		Description: strPtr("Descuento contado"),
+	})
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if err != nil {
+		t.Fatalf("GetDetail returned %v", err)
+	}
+	if len(detail.Discounts) != 1 {
+		t.Fatalf("discounts = %d, want 1", len(detail.Discounts))
+	}
+	if detail.Discounts[0].Amount.String() != "250" {
+		t.Errorf("discount amount = %v, want 250", detail.Discounts[0].Amount)
+	}
+}
+
+func TestRFQService_GetDetail_PopulatesChangeRequestDiffFromFrozenPredecessor(t *testing.T) {
+	h, _, _, _, _ := getDetailHarness()
+
+	frozenID := uuid.New()
+	h.quotes.currentVersionData = &domain.QuoteVersion{
+		ID: testVersionID, QuoteID: testQuoteID, VersionNumber: 2, Total: decimal.NewFromFloat(17000),
+		IsImmutable: false, Comment: strPtr("necesito entrega el viernes"),
+	}
+	h.quotes.previousVersionData = &domain.QuoteVersion{
+		ID: frozenID, QuoteID: testQuoteID, VersionNumber: 1,
+		Total: decimal.NewFromFloat(16000), IsImmutable: true,
+	}
+	h.quotes.itemsByVersionID = []domain.QuoteItem{
+		{
+			ID: uuid.New(), VersionID: testVersionID,
+			RequestedDescription: "10 bolsas de cemento",
+			Quantity:             decimal.RequireFromString("12"),
+			MatchStatus:          domain.ItemMatchStatusMatched,
+		},
+	}
+	h.quotes.frozenItems = []domain.QuoteItem{
+		{
+			ID: uuid.New(), VersionID: frozenID,
+			RequestedDescription: "10 bolsas de cemento",
+			Quantity:             decimal.RequireFromString("10"),
+			MatchStatus:          domain.ItemMatchStatusMatched,
+		},
+	}
+	h.quotes.quoteByID.CurrentStatus = domain.QuoteStatusChangeRequested
+	h.discounts.stored = []domain.QuoteDiscount{
+		{
+			ID: uuid.New(), AccountID: testAccountID, QuoteVersionID: frozenID,
+			PromotionName: strPtr("Descuento obra"), Amount: decimal.RequireFromString("500.00"),
+		},
+		{
+			ID: uuid.New(), AccountID: testAccountID, QuoteVersionID: testVersionID,
+			PromotionName: strPtr("Descuento obra"), Amount: decimal.RequireFromString("800.00"),
+		},
+	}
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if err != nil {
+		t.Fatalf("GetDetail returned %v", err)
+	}
+	if detail.ChangesRequested == nil {
+		t.Fatal("ChangesRequested is nil, want the frozen-vs-draft comparison")
+	}
+	if detail.ChangesRequested.Reason == nil || *detail.ChangesRequested.Reason != "necesito entrega el viernes" {
+		t.Errorf("reason = %v, want the client's request", detail.ChangesRequested.Reason)
+	}
+	if len(detail.ChangesRequested.Original.Items) != 1 || len(detail.ChangesRequested.Requested.Items) != 1 {
+		t.Fatalf("items = original %d requested %d, want 1 and 1",
+			len(detail.ChangesRequested.Original.Items), len(detail.ChangesRequested.Requested.Items))
+	}
+	if !detail.ChangesRequested.Requested.Items[0].Changed {
+		t.Error("quantity change not flagged")
+	}
+	if detail.ChangesRequested.Requested.Items[0].ChangeType != "modified" {
+		t.Errorf("change type = %q, want modified", detail.ChangesRequested.Requested.Items[0].ChangeType)
+	}
+	if len(detail.ChangesRequested.Requested.Discounts) != 1 || !detail.ChangesRequested.Requested.Discounts[0].Changed {
+		t.Error("discount amount change not flagged on the requested side")
+	}
+	if !detail.ChangesRequested.Original.Total.Equal(decimal.NewFromFloat(16000)) {
+		t.Errorf("original total = %v, want 16000", detail.ChangesRequested.Original.Total)
+	}
+	if !detail.ChangesRequested.Requested.Total.Equal(decimal.NewFromFloat(17000)) {
+		t.Errorf("requested total = %v, want 17000", detail.ChangesRequested.Requested.Total)
+	}
+}
+
+func TestRFQService_GetDetail_NoDiffWithoutAFrozenPredecessor(t *testing.T) {
+	h, _, _, _, _ := getDetailHarness()
+	h.quotes.currentVersionData = &domain.QuoteVersion{
+		ID: testVersionID, QuoteID: testQuoteID, VersionNumber: 1,
+		Total: decimal.NewFromFloat(16000), IsImmutable: false,
+	}
+	h.quotes.quoteByID.CurrentStatus = domain.QuoteStatusChangeRequested
+	h.quotes.previousVersionErr = domain.ErrNotFound
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if err != nil {
+		t.Fatalf("GetDetail returned %v", err)
+	}
+	if detail.ChangesRequested != nil {
+		t.Error("ChangesRequested is set without a frozen predecessor")
+	}
+}
+
+func TestRFQService_GetDetail_SkipsTheDiffOutsideChangeRequested(t *testing.T) {
+	h, _, _, _, _ := getDetailHarness()
+	h.quotes.previousVersionData = &domain.QuoteVersion{
+		ID: uuid.New(), QuoteID: testQuoteID, VersionNumber: 1,
+		Total: decimal.NewFromFloat(16000), IsImmutable: true,
+	}
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if err != nil {
+		t.Fatalf("GetDetail returned %v", err)
+	}
+	if detail.ChangesRequested != nil {
+		t.Error("ChangesRequested is set for a non-CHANGE_REQUESTED quote")
+	}
+	if h.quotes.getPreviousCalls != 0 {
+		t.Errorf("GetPreviousVersion called %d times, want 0", h.quotes.getPreviousCalls)
 	}
 }

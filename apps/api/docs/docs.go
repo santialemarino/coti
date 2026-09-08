@@ -3086,6 +3086,237 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/quotes/{quoteId}/discounts": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Applies a seller-typed discount — fixed amount or percentage, scoped to the total, one item, or a set — and recomputes the total.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rfqs"
+                ],
+                "summary": "Add a discount",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New discount data",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateDiscountRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteDiscountResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/{quoteId}/discounts/{discountId}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Removes one seller-typed discount application and recomputes the total.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rfqs"
+                ],
+                "summary": "Delete a discount",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Discount id",
+                        "name": "discountId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Patches a discount's rule (value, action type, scope, covered items), description, or suppressed flag.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rfqs"
+                ],
+                "summary": "Update a discount",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Discount id",
+                        "name": "discountId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to patch",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateDiscountRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteDiscountResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/quotes/{quoteId}/items": {
             "post": {
                 "security": [
@@ -4809,6 +5040,41 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ChangeRequestDiffResponse": {
+            "type": "object",
+            "properties": {
+                "original": {
+                    "$ref": "#/definitions/dto.ChangeRequestSideResponse"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "requested": {
+                    "$ref": "#/definitions/dto.ChangeRequestSideResponse"
+                }
+            }
+        },
+        "dto.ChangeRequestSideResponse": {
+            "type": "object",
+            "properties": {
+                "discounts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.DiffDiscountLineResponse"
+                    }
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.DiffLineItemResponse"
+                    }
+                },
+                "total": {
+                    "description": "decimal string, never float.",
+                    "type": "string"
+                }
+            }
+        },
         "dto.ChannelListResponse": {
             "type": "object",
             "properties": {
@@ -4952,6 +5218,46 @@ const docTemplate = `{
                         "WEBAPP",
                         "MANUAL_ENTRY"
                     ]
+                }
+            }
+        },
+        "dto.CreateDiscountRequest": {
+            "type": "object",
+            "required": [
+                "action_type",
+                "description",
+                "scope",
+                "value"
+            ],
+            "properties": {
+                "action_type": {
+                    "type": "string",
+                    "enum": [
+                        "FIXED_AMOUNT",
+                        "PERCENTAGE"
+                    ]
+                },
+                "description": {
+                    "type": "string",
+                    "maxLength": 512,
+                    "minLength": 1
+                },
+                "item_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "scope": {
+                    "type": "string",
+                    "enum": [
+                        "TOTAL",
+                        "ITEM",
+                        "ITEM_SET"
+                    ]
+                },
+                "value": {
+                    "type": "string"
                 }
             }
         },
@@ -5129,6 +5435,43 @@ const docTemplate = `{
                 "text": {
                     "type": "string",
                     "minLength": 1
+                }
+            }
+        },
+        "dto.DiffDiscountLineResponse": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "string"
+                },
+                "changed": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.DiffLineItemResponse": {
+            "type": "object",
+            "properties": {
+                "change_type": {
+                    "type": "string"
+                },
+                "changed": {
+                    "type": "boolean"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "quantity": {
+                    "type": "string"
+                },
+                "unit": {
+                    "type": "string"
+                },
+                "unit_price": {
+                    "type": "string"
                 }
             }
         },
@@ -5510,6 +5853,56 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.QuoteDiscountResponse": {
+            "type": "object",
+            "properties": {
+                "action_type": {
+                    "type": "string"
+                },
+                "action_value": {
+                    "type": "string"
+                },
+                "amount": {
+                    "type": "string"
+                },
+                "condition_type": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "item_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "origin": {
+                    "type": "string"
+                },
+                "promotion_id": {
+                    "type": "string"
+                },
+                "promotion_name": {
+                    "type": "string"
+                },
+                "quote_version_id": {
+                    "type": "string"
+                },
+                "scope": {
+                    "type": "string"
+                },
+                "suppressed_by_seller": {
+                    "type": "boolean"
+                }
+            }
+        },
         "dto.QuoteEmailDeliveryRequest": {
             "type": "object",
             "required": [
@@ -5882,6 +6275,64 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.QuoteSendTrackingResponse": {
+            "type": "object",
+            "properties": {
+                "channel": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "destination": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "format": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "sent_at": {
+                    "type": "string"
+                },
+                "tracking_status": {
+                    "type": "string"
+                },
+                "version_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.QuoteStatusChangeResponse": {
+            "type": "object",
+            "properties": {
+                "changed_at": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "new_status": {
+                    "type": "string"
+                },
+                "previous_status": {
+                    "type": "string"
+                },
+                "quote_id": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.QuoteVersionResponse": {
             "type": "object",
             "properties": {
@@ -5992,6 +6443,32 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.RFQStatusChangeResponse": {
+            "type": "object",
+            "properties": {
+                "changed_at": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "new_status": {
+                    "type": "string"
+                },
+                "previous_status": {
+                    "type": "string"
+                },
+                "rfq_id": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.RateLimitResponse": {
             "type": "object",
             "properties": {
@@ -6059,6 +6536,21 @@ const docTemplate = `{
                         }
                     }
                 },
+                "changes_requested": {
+                    "$ref": "#/definitions/dto.ChangeRequestDiffResponse"
+                },
+                "deliveries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.QuoteSendTrackingResponse"
+                    }
+                },
+                "discounts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.QuoteDiscountResponse"
+                    }
+                },
                 "items": {
                     "type": "array",
                     "items": {
@@ -6068,8 +6560,20 @@ const docTemplate = `{
                 "quote": {
                     "$ref": "#/definitions/dto.QuoteResponse"
                 },
+                "quote_status_history": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.QuoteStatusChangeResponse"
+                    }
+                },
                 "rfq": {
                     "$ref": "#/definitions/dto.RfqListItemResponse"
+                },
+                "rfq_status_history": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.RFQStatusChangeResponse"
+                    }
                 },
                 "version": {
                     "$ref": "#/definitions/dto.QuoteVersionResponse"
@@ -6444,6 +6948,43 @@ const docTemplate = `{
                 },
                 "is_active": {
                     "type": "boolean"
+                }
+            }
+        },
+        "dto.UpdateDiscountRequest": {
+            "type": "object",
+            "properties": {
+                "action_type": {
+                    "type": "string",
+                    "enum": [
+                        "FIXED_AMOUNT",
+                        "PERCENTAGE"
+                    ]
+                },
+                "description": {
+                    "type": "string",
+                    "maxLength": 512,
+                    "minLength": 1
+                },
+                "item_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "scope": {
+                    "type": "string",
+                    "enum": [
+                        "TOTAL",
+                        "ITEM",
+                        "ITEM_SET"
+                    ]
+                },
+                "suppressed_by_seller": {
+                    "type": "boolean"
+                },
+                "value": {
+                    "type": "string"
                 }
             }
         },

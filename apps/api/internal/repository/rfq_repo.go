@@ -86,10 +86,38 @@ func (r *RFQRepository) AppendStatusChange(
 		accountID, rfqID, previousStatus, newStatus, userID))
 }
 
+// ListStatusChanges loads the RFQ transition log for one branch-scoped request.
+func (r *RFQRepository) ListStatusChanges(
+	ctx context.Context, q Querier, accountID, branchID, rfqID uuid.UUID,
+) ([]domain.RFQStatusChange, error) {
+	rows, err := q.Query(ctx,
+		`SELECT change.id, change.account_id, change.rfq_id, change.previous_status,
+		        change.new_status, change.user_id, change.changed_at, change.created_at
+		 FROM rfq_status_change change
+		 JOIN rfq ON rfq.account_id = change.account_id AND rfq.id = change.rfq_id
+		 WHERE change.account_id = $1 AND rfq.branch_id = $2 AND change.rfq_id = $3
+		 ORDER BY change.changed_at, change.created_at, change.id`,
+		accountID, branchID, rfqID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	changes := make([]domain.RFQStatusChange, 0)
+	for rows.Next() {
+		change, scanErr := scanRFQStatusChange(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		changes = append(changes, *change)
+	}
+	return changes, rows.Err()
+}
+
 // GetByRFQID returns a single RFQ scoped to the account, including its associated quote
 // data when present. This is the detail view backend.
 func (r *RFQRepository) GetByRFQID(
-	ctx context.Context, q Querier, accountID, rfqID uuid.UUID,
+	ctx context.Context, q Querier, tenant domain.Tenant, rfqID uuid.UUID,
 ) (*domain.RfqListItem, error) {
 	var item domain.RfqListItem
 	var total decimal.Decimal
@@ -119,8 +147,9 @@ func (r *RFQRepository) GetByRFQID(
 		 LEFT JOIN channel c ON c.id = r.channel_id AND c.account_id = r.account_id
 		 LEFT JOIN app_user u ON u.id = q.seller_id AND u.account_id = r.account_id
 		 LEFT JOIN quote_version qt ON qt.id = q.current_version_id AND qt.account_id = r.account_id
-		 WHERE r.account_id = $1 AND r.id = $2`,
-		accountID, rfqID,
+		 WHERE r.account_id = $1 AND r.id = $2
+		   AND ($3::uuid[] IS NULL OR r.branch_id = ANY($3::uuid[]))`,
+		tenant.AccountID, rfqID, tenant.BranchFilter(),
 	).Scan(
 		&item.ID, &item.ClientID,
 		&item.ClientLabel, &item.CreatedAt,

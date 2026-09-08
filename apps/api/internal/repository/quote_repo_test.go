@@ -415,6 +415,61 @@ func TestQuoteRepository_UpdateStatus_OnlyMovesFromTheStatusRead(t *testing.T) {
 	}
 }
 
+func TestQuoteRepository_ListStatusChanges_OrdersAndNarrowsToBranch(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Quote status history")
+	branchID := branchOf(t, db, accountID)
+	otherBranchID := seedExtraBranch(t, db, accountID, "Sucursal Sur")
+	productID := seedProduct(t, db, accountID, "Cemento Portland 50kg")
+	priceCleanup(t, db, productID)
+	quoteID, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+	otherQuoteID, _, _ := seedQuoteChain(t, db, accountID, otherBranchID, productID)
+	repo := NewQuoteRepository()
+
+	firstAt := time.Date(2026, time.September, 4, 9, 0, 0, 0, time.UTC)
+	secondAt := firstAt.Add(time.Hour)
+	if _, err := db.CrossAccount().Exec(ctx,
+		`INSERT INTO quote_status_change (account_id, quote_id, previous_status, new_status, changed_at)
+		 VALUES ($1, $2, 'DRAFT', 'QUOTED', $3),
+		        ($1, $2, NULL, 'DRAFT', $4),
+		        ($1, $5, NULL, 'DRAFT', $4)`,
+		accountID, quoteID, secondAt, firstAt, otherQuoteID); err != nil {
+		t.Fatalf("seed quote status history: %v", err)
+	}
+
+	var changes []domain.QuoteStatusChange
+	if err := db.InTenantTx(ctx,
+		domain.Tenant{AccountID: accountID, BranchID: branchID, Role: domain.UserRoleAdmin},
+		func(q Querier) error {
+			var readErr error
+			changes, readErr = repo.ListStatusChanges(ctx, q, accountID, branchID, quoteID)
+			return readErr
+		}); err != nil {
+		t.Fatalf("ListStatusChanges() = %v, want no error", err)
+	}
+	if len(changes) != 2 {
+		t.Fatalf("changes = %d, want 2 for the selected quote", len(changes))
+	}
+	if changes[0].NewStatus != domain.QuoteStatusDraft ||
+		changes[1].NewStatus != domain.QuoteStatusQuoted {
+		t.Errorf("changes = %+v, want chronological DRAFT then QUOTED", changes)
+	}
+
+	if err := db.InTenantTx(ctx,
+		domain.Tenant{AccountID: accountID, BranchID: otherBranchID, Role: domain.UserRoleAdmin},
+		func(q Querier) error {
+			var readErr error
+			changes, readErr = repo.ListStatusChanges(ctx, q, accountID, otherBranchID, quoteID)
+			return readErr
+		}); err != nil {
+		t.Fatalf("wrong-branch ListStatusChanges() = %v, want no error", err)
+	}
+	if len(changes) != 0 {
+		t.Errorf("wrong branch read %d changes, want none", len(changes))
+	}
+}
+
 // A quote is branch-scoped and row level security guards only the account boundary, so the branch
 // predicate is the only thing keeping one branch of an account out of another's quotes.
 func TestQuoteRepository_GetByID_NarrowsToTheQuotesOwnBranch(t *testing.T) {
@@ -956,5 +1011,89 @@ func TestQuoteRepository_UpdateItem_ChangesQuantityAndSubtotal(t *testing.T) {
 	wantSubtotal := newQuantity.Mul(price)
 	if !updated.Subtotal.Valid || !updated.Subtotal.Decimal.Equal(wantSubtotal) {
 		t.Errorf("subtotal = %v, want quantity × price = %v", updated.Subtotal, wantSubtotal)
+	}
+}
+
+// GetPreviousVersion feeds the change-request diff: the newest frozen version older than a
+// mutable draft. The seed creates v1; freezing it and appending a mutable v2 must make the
+// call answer v1, and a second call for v1 itself must answer ErrNotFound (nothing older).
+func TestQuoteRepository_GetPreviousVersion_UsesNewestFrozenPredecessor(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "GetPreviousVersion")
+	branchID := branchOf(t, db, accountID)
+	productID := seedProduct(t, db, accountID, "Cemento Portland 50kg")
+	priceCleanup(t, db, productID)
+	quoteID, versionID, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+
+	// Only one mutable draft per quote (uq_quote_version_draft), so v1 freezes first and v2
+	// is born as the draft — exactly the sequence the change-request flow follows.
+	draftID := uuid.New()
+	if _, err := db.CrossAccount().Exec(ctx,
+		`UPDATE quote_version SET is_immutable = TRUE WHERE id = $1`, versionID); err != nil {
+		t.Fatalf("freeze v1: %v", err)
+	}
+	if _, err := db.CrossAccount().Exec(ctx,
+		`INSERT INTO quote_version (id, account_id, quote_id, version_number, is_immutable)
+		 VALUES ($1, $2, $3, 2, FALSE)`, draftID, accountID, quoteID); err != nil {
+		t.Fatalf("seed draft version: %v", err)
+	}
+	if _, err := db.CrossAccount().Exec(ctx,
+		`UPDATE quote SET current_version_id = $2 WHERE id = $1`, quoteID, draftID); err != nil {
+		t.Fatalf("point quote at draft: %v", err)
+	}
+	t.Cleanup(func() {
+		mustCleanup(t, db.CrossAccount(), `UPDATE quote SET current_version_id = NULL WHERE id = $1`, quoteID)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM quote_version WHERE id = $1`, draftID)
+	})
+
+	repo := NewQuoteRepository()
+	var previous *domain.QuoteVersion
+	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID, BranchID: branchID,
+		Role: domain.UserRoleAdmin}, func(q Querier) error {
+		var readErr error
+		previous, readErr = repo.GetPreviousVersion(ctx, q, accountID, branchID, quoteID, 2)
+		return readErr
+	}); err != nil {
+		t.Fatalf("GetPreviousVersion: %v", err)
+	}
+
+	if previous == nil || previous.ID != versionID {
+		t.Fatalf("previous version = %v, want the frozen v1 %v", previous, versionID)
+	}
+	if !previous.IsImmutable {
+		t.Error("previous version not frozen")
+	}
+
+	var missing *domain.QuoteVersion
+	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID, BranchID: branchID,
+		Role: domain.UserRoleAdmin}, func(q Querier) error {
+		var readErr error
+		missing, readErr = repo.GetPreviousVersion(ctx, q, accountID, branchID, quoteID, 1)
+		return readErr
+	}); err != nil && !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("GetPreviousVersion for v1 = %v, want ErrNotFound", err)
+	}
+	if missing != nil {
+		t.Errorf("previous version for v1 = %v, want none", missing)
+	}
+
+	// Once v2 is frozen too, asking from v3 answers v2: newest frozen below the number.
+	if _, err := db.CrossAccount().Exec(ctx,
+		`UPDATE quote_version SET is_immutable = TRUE WHERE id = $1`, draftID); err != nil {
+		t.Fatalf("freeze draft: %v", err)
+	}
+
+	var newest *domain.QuoteVersion
+	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID, BranchID: branchID,
+		Role: domain.UserRoleAdmin}, func(q Querier) error {
+		var readErr error
+		newest, readErr = repo.GetPreviousVersion(ctx, q, accountID, branchID, quoteID, 3)
+		return readErr
+	}); err != nil {
+		t.Fatalf("GetPreviousVersion: %v", err)
+	}
+	if newest == nil || newest.ID != draftID {
+		t.Errorf("previous version = %v, want the frozen draft %v", newest, draftID)
 	}
 }

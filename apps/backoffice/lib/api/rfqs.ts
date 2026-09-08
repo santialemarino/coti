@@ -83,6 +83,9 @@ export interface RfqDetailResponse {
   version: QuoteVersionResponse | null;
   items: QuoteItemResponse[];
   alternatives: Record<string, QuoteItemAlternativeResponse[]>;
+  rfq_status_history: RfqStatusChangeResponse[];
+  quote_status_history: QuoteStatusChangeResponse[];
+  deliveries: QuoteSendTrackingResponse[];
   discounts?: QuoteDiscountResponse[];
   changes_requested?: ChangeRequestDiff;
 }
@@ -151,7 +154,41 @@ export interface QuoteItemAlternativeResponse {
   unit: string | null;
 }
 
-export type DiscountScope = 'ITEM' | 'ITEM_SET' | 'TOTAL';
+export type DiscountScope = 'TOTAL' | 'ITEM' | 'ITEM_SET';
+export type DiscountActionType = 'FIXED_AMOUNT' | 'PERCENTAGE';
+
+export interface RfqStatusChangeResponse {
+  id: string;
+  rfq_id: string;
+  previous_status: string | null;
+  new_status: string;
+  user_id: string | null;
+  changed_at: string;
+  created_at: string;
+}
+
+export interface QuoteStatusChangeResponse {
+  id: string;
+  quote_id: string;
+  previous_status: string | null;
+  new_status: string;
+  user_id: string | null;
+  changed_at: string;
+  created_at: string;
+}
+
+export interface QuoteSendTrackingResponse {
+  id: string;
+  version_id: string;
+  channel: string;
+  destination: string;
+  format: string;
+  tracking_status: string;
+  sent_at: string | null;
+  expires_at: string | null;
+  created_at: string;
+}
+
 export type DiscountOrigin = 'AUTOMATIC' | 'AI_ADAPTATION' | 'MANUAL_SELLER';
 
 export interface QuoteDiscountResponse {
@@ -159,12 +196,40 @@ export interface QuoteDiscountResponse {
   quote_version_id: string;
   promotion_id: string | null;
   promotion_name: string | null;
-  condition_type: string | null;
+  condition_type: string;
   scope: DiscountScope;
   origin: DiscountOrigin;
   amount: string;
+  action_type: DiscountActionType;
+  // The raw rule the seller typed, null for engine-applied discounts; decimals are strings.
+  action_value: string | null;
+  // Lines an ITEM/ITEM_SET discount covers; empty for TOTAL and on post/patch responses.
+  item_ids: string[];
+  description: string | null;
   suppressed_by_seller: boolean;
   created_at: string;
+}
+
+/*
+ * Create/update body for a seller-typed discount, matching the backend DTOs. The backend computes
+ * the money amount from the rule (fixed ≤ scope base, percentage of the scope base) and recomputes
+ * the version total; item_ids are required for ITEM/ITEM_SET scopes.
+ */
+export interface CreateDiscountBody {
+  description: string;
+  action_type: DiscountActionType;
+  value: string;
+  scope: DiscountScope;
+  item_ids?: string[];
+}
+
+export interface UpdateDiscountBody {
+  description?: string;
+  action_type?: DiscountActionType;
+  value?: string;
+  scope?: DiscountScope;
+  item_ids?: string[];
+  suppressed_by_seller?: boolean;
 }
 
 export interface DiffLineItem {

@@ -828,7 +828,9 @@ CREATE TABLE promotion_tier (
 
 -- One application of a discount to a version. The amount is computed by the deterministic
 -- engine, NEVER by the AI. suppressed_by_seller stops the sweep re-applying it: suppressing
--- an AUTOMATIC is reversible, deleting a MANUAL_SELLER is not.
+-- an AUTOMATIC is reversible, deleting a MANUAL_SELLER is not. A MANUAL_SELLER row also
+-- carries the rule it was typed with — action_type (FIXED_AMOUNT | PERCENTAGE) and the raw
+-- action_value — while amount always holds the computed money.
 CREATE TABLE quote_discount (
   id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id           UUID NOT NULL,
@@ -838,9 +840,19 @@ CREATE TABLE quote_discount (
   scope                discount_scope NOT NULL,
   origin               discount_origin NOT NULL,
   amount               NUMERIC(14,2) NOT NULL,
+  action_type          promotion_action_type NOT NULL DEFAULT 'FIXED_AMOUNT',
+  action_value         NUMERIC(14,2),
   description          VARCHAR(512),
   suppressed_by_seller BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT ck_quote_discount_manual_action CHECK (
+    origin <> 'MANUAL_SELLER'::discount_origin
+    OR (action_value > 0)
+  ),
+  CONSTRAINT ck_quote_discount_percentage_bounds CHECK (
+    action_type <> 'PERCENTAGE'::promotion_action_type
+    OR (action_value > 0 AND action_value <= 100)
+  )
 );
 
 CREATE TABLE quote_discount_item (

@@ -22,8 +22,9 @@ type rfqRepository interface {
 	Create(ctx context.Context, q repository.Querier, accountID uuid.UUID, in domain.NewRFQ) (*domain.RFQ, error)
 	UpdateStatus(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, status domain.RFQStatus) (*domain.RFQ, error)
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID, previousStatus *domain.RFQStatus, newStatus domain.RFQStatus, userID *uuid.UUID) (*domain.RFQStatusChange, error)
+	ListStatusChanges(ctx context.Context, q repository.Querier, accountID, branchID, rfqID uuid.UUID) ([]domain.RFQStatusChange, error)
 	ListByTenant(ctx context.Context, q repository.Querier, tenant domain.Tenant) ([]domain.RfqListItem, error)
-	GetByRFQID(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID) (*domain.RfqListItem, error)
+	GetByRFQID(ctx context.Context, q repository.Querier, tenant domain.Tenant, rfqID uuid.UUID) (*domain.RfqListItem, error)
 	GetManualEntryChannelID(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (uuid.UUID, error)
 	CountProductsInAccount(ctx context.Context, q repository.Querier, accountID uuid.UUID, productIDs []uuid.UUID) (int, error)
 	CreateManualEntry(ctx context.Context, q repository.Querier, tenant domain.Tenant, channelID uuid.UUID, in domain.NewRfq, now time.Time) (*domain.RfqCreation, error)
@@ -42,12 +43,33 @@ type quoteDraftRepository interface {
 	GetByRFQID(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID) (*domain.Quote, error)
 	GetByID(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
 	GetCurrentVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.QuoteVersion, error)
+	GetPreviousVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID, versionNumber int) (*domain.QuoteVersion, error)
 	ListItems(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID) ([]domain.QuoteItem, error)
 	ListItemsWithProduct(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID) ([]domain.QuoteItem, error)
 	GetItem(ctx context.Context, q repository.Querier, accountID, versionID, itemID uuid.UUID) (*domain.QuoteItem, error)
 	UpdateItem(ctx context.Context, q repository.Querier, accountID, versionID, itemID uuid.UUID, in domain.QuoteItemUpdate) (*domain.QuoteItem, error)
 	DeleteItem(ctx context.Context, q repository.Querier, accountID, versionID, itemID uuid.UUID) error
 	CreateSingleItem(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, in domain.QuoteItemCreate) (*domain.QuoteItem, error)
+	ListStatusChanges(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) ([]domain.QuoteStatusChange, error)
+}
+
+// quoteSendTracker is the delivery tracking surface the RFQ detail needs.
+type quoteSendTracker interface {
+	ListByQuote(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) ([]domain.QuoteSend, error)
+}
+
+// quoteDiscountRepository is the discount application persistence surface the RFQ flow needs.
+type quoteDiscountRepository interface {
+	ListByVersionID(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID) ([]domain.QuoteDiscount, error)
+	Create(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, in domain.QuoteDiscountCreate) (*domain.QuoteDiscount, error)
+	GetByID(ctx context.Context, q repository.Querier, accountID, versionID, discountID uuid.UUID) (*domain.QuoteDiscount, error)
+	UpdateByID(ctx context.Context, q repository.Querier, accountID, versionID, discountID uuid.UUID, in domain.QuoteDiscountUpdate) (*domain.QuoteDiscount, error)
+	DeleteByID(ctx context.Context, q repository.Querier, accountID, versionID, discountID uuid.UUID) error
+	UpdateAmount(ctx context.Context, q repository.Querier, accountID, versionID, discountID uuid.UUID, amount decimal.Decimal) error
+	CreateItemLinks(ctx context.Context, q repository.Querier, accountID, versionID, discountID uuid.UUID, itemIDs []uuid.UUID) error
+	ReplaceItemLinks(ctx context.Context, q repository.Querier, accountID, versionID, discountID uuid.UUID, itemIDs []uuid.UUID) error
+	ListItemIDs(ctx context.Context, q repository.Querier, accountID, discountID uuid.UUID) ([]uuid.UUID, error)
+	ListItemIDsByDiscountIDs(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, discountIDs []uuid.UUID) (map[uuid.UUID][]uuid.UUID, error)
 }
 
 // quoteAIGenerationRepository stores the original proposal independently of its editable version.
@@ -87,6 +109,8 @@ type RFQService struct {
 	db          tenantTxRunner
 	rfqs        rfqRepository
 	quotes      quoteDraftRepository
+	discounts   quoteDiscountRepository
+	sends       quoteSendTracker
 	generations quoteAIGenerationRepository
 	channels    rfqChannelReader
 	extractor   domain.RFQExtractor
@@ -103,10 +127,17 @@ func (s *RFQService) WithCorrectionMemory(memories interpretationMemoryFinder) *
 	return s
 }
 
+// WithDiscounts wires quote discount persistence, which the manual entry detail and the
+// version total depend on.
+func (s *RFQService) WithDiscounts(discounts quoteDiscountRepository) *RFQService {
+	s.discounts = discounts
+	return s
+}
+
 // NewRFQService builds an RFQService.
 func NewRFQService(
 	db tenantTxRunner, rfqs rfqRepository, quotes quoteDraftRepository,
-	generations quoteAIGenerationRepository,
+	sends quoteSendTracker, generations quoteAIGenerationRepository,
 	channels rfqChannelReader, extractor domain.RFQExtractor, matcher catalogMatcher,
 	log *slog.Logger, cfg config.RFQConfig,
 ) *RFQService {
@@ -114,7 +145,7 @@ func NewRFQService(
 		log = slog.Default()
 	}
 	return &RFQService{
-		db: db, rfqs: rfqs, quotes: quotes, generations: generations, channels: channels,
+		db: db, rfqs: rfqs, quotes: quotes, sends: sends, generations: generations, channels: channels,
 		extractor: extractor, matcher: matcher, log: log, cfg: cfg, now: time.Now,
 	}
 }
@@ -138,7 +169,7 @@ func (s *RFQService) List(ctx context.Context, tenant domain.Tenant) ([]domain.R
 func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID) (*domain.RfqDetail, error) {
 	var detail *domain.RfqDetail
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		rfq, rfqErr := s.rfqs.GetByRFQID(ctx, q, tenant.AccountID, rfqID)
+		rfq, rfqErr := s.rfqs.GetByRFQID(ctx, q, tenant, rfqID)
 		if rfqErr != nil {
 			return rfqErr
 		}
@@ -152,15 +183,38 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 			Rfq: *rfq,
 		}
 
+		rfqChanges, rfqChangesErr := s.rfqs.ListStatusChanges(ctx, q, tenant.AccountID,
+			rfq.BranchID, rfqID)
+		if rfqChangesErr != nil {
+			return rfqChangesErr
+		}
+		detail.RFQStatusChanges = rfqChanges
+
 		if quote == nil {
 			return nil
 		}
 
 		detail.Quote = quote
 
+		quoteChanges, quoteChangesErr := s.quotes.ListStatusChanges(ctx, q, tenant.AccountID,
+			quote.BranchID, quote.ID)
+		if quoteChangesErr != nil {
+			return quoteChangesErr
+		}
+		detail.QuoteStatusChanges = quoteChanges
+
+		if s.sends != nil {
+			deliveries, deliveryErr := s.sends.ListByQuote(ctx, q, tenant.AccountID,
+				quote.BranchID, quote.ID)
+			if deliveryErr != nil {
+				return deliveryErr
+			}
+			detail.Deliveries = deliveries
+		}
+
 		if quote.CurrentVersionID != nil {
 			version, versionErr := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID,
-				tenant.BranchID, quote.ID)
+				quote.BranchID, quote.ID)
 			if versionErr != nil && !errors.Is(versionErr, domain.ErrNotFound) {
 				return versionErr
 			}
@@ -183,6 +237,26 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 					return altErr
 				}
 				detail.Alternatives = alternatives
+
+				detail.Discounts = []domain.QuoteDiscount{}
+				if s.discounts != nil {
+					discounts, discountErr := s.discounts.ListByVersionID(ctx, q,
+						tenant.AccountID, version.ID)
+					if discountErr != nil {
+						return discountErr
+					}
+					detail.Discounts = discounts
+					if linkErr := s.attachDiscountItemIDs(ctx, q, tenant.AccountID,
+						version.ID, detail.Discounts); linkErr != nil {
+						return linkErr
+					}
+					if quote.CurrentStatus == domain.QuoteStatusChangeRequested && !version.IsImmutable {
+						if buildErr := s.buildChangeRequestDiff(ctx, q, tenant,
+							quote, version, items, discounts, detail); buildErr != nil {
+							return buildErr
+						}
+					}
+				}
 			}
 		}
 
@@ -191,6 +265,64 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 		return nil, err
 	}
 	return detail, nil
+}
+
+// attachDiscountItemIDs loads every discount's covered lines in one batch and folds them back
+// into the detail so the seller sees what an ITEM/ITEM_SET discount applies to.
+func (s *RFQService) attachDiscountItemIDs(
+	ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
+	discounts []domain.QuoteDiscount,
+) error {
+	if len(discounts) == 0 {
+		return nil
+	}
+	ids := make([]uuid.UUID, 0, len(discounts))
+	for _, discount := range discounts {
+		ids = append(ids, discount.ID)
+	}
+	links, err := s.discounts.ListItemIDsByDiscountIDs(ctx, q, accountID, versionID, ids)
+	if err != nil {
+		return err
+	}
+	for i := range discounts {
+		discounts[i].ItemIDs = links[discounts[i].ID]
+	}
+	return nil
+}
+
+// buildChangeRequestDiff fills the change-request comparison for a CHANGE_REQUESTED
+// quote whose current version is a mutable draft: the frozen predecessor the client
+// saw versus the lines and discounts the seller is rebuilding. The client's reason
+// rides on the draft version comment, so it stays visible while the rework is open.
+func (s *RFQService) buildChangeRequestDiff(
+	ctx context.Context, q repository.Querier, tenant domain.Tenant,
+	quote *domain.Quote, version *domain.QuoteVersion, items []domain.QuoteItem,
+	discounts []domain.QuoteDiscount, detail *domain.RfqDetail,
+) error {
+	previous, prevErr := s.quotes.GetPreviousVersion(ctx, q, tenant.AccountID,
+		tenant.BranchID, quote.ID, version.VersionNumber)
+	if prevErr != nil {
+		if errors.Is(prevErr, domain.ErrNotFound) {
+			return nil
+		}
+		return prevErr
+	}
+	frozenItems, itemsErr := s.quotes.ListItemsWithProduct(ctx, q, tenant.AccountID, previous.ID)
+	if itemsErr != nil {
+		return itemsErr
+	}
+	frozenDiscounts, discountsErr := s.discounts.ListByVersionID(ctx, q,
+		tenant.AccountID, previous.ID)
+	if discountsErr != nil {
+		return discountsErr
+	}
+	diff := domain.BuildChangeRequestDiff(version.Comment, domain.ChangeRequestSnapshot{
+		Items: frozenItems, Discounts: frozenDiscounts, Total: previous.Total,
+	}, domain.ChangeRequestSnapshot{
+		Items: items, Discounts: discounts, Total: version.Total,
+	})
+	detail.ChangesRequested = &diff
+	return nil
 }
 
 // UpdateItem patches a quote item. The version must be mutable and the item must belong to it.
@@ -342,6 +474,221 @@ func (s *RFQService) AddItem(
 		return nil, err
 	}
 	return item, nil
+}
+
+// AddDiscount applies a seller-typed discount to the current version. A FIXED_AMOUNT value
+// must not exceed the subtotal it is scoped to; a PERCENTAGE one is a rate the recalculator
+// turns into money, so it moves in step with the items underneath it. The total never goes
+// negative: it bottoms out at zero in the recalculator.
+func (s *RFQService) AddDiscount(
+	ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID, in domain.QuoteDiscountCreate,
+) (*domain.QuoteDiscount, error) {
+	if err := requireBranch(tenant, "adding a discount"); err != nil {
+		return nil, err
+	}
+	if s.discounts == nil {
+		return nil, fmt.Errorf("%w: discount persistence is not wired", domain.ErrInvalidInput)
+	}
+	normalized, err := normalizeDiscountRule(in)
+	if err != nil {
+		return nil, err
+	}
+
+	var discount *domain.QuoteDiscount
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, quoteErr := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if quoteErr != nil {
+			return quoteErr
+		}
+		if !domain.IsEditableStatus(quote.CurrentStatus) {
+			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+		}
+		if quote.CurrentVersionID == nil {
+			return domain.ErrNotFound
+		}
+		version, versionErr := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID,
+			tenant.BranchID, quote.ID)
+		if versionErr != nil {
+			return versionErr
+		}
+		items, itemsErr := s.quotes.ListItems(ctx, q, tenant.AccountID, version.ID)
+		if itemsErr != nil {
+			return itemsErr
+		}
+		amount, baseErr := s.amountForRule(items, normalized)
+		if baseErr != nil {
+			return baseErr
+		}
+		normalized.Amount = amount
+		var createErr error
+		discount, createErr = s.discounts.Create(ctx, q, tenant.AccountID, version.ID, normalized)
+		if createErr != nil {
+			return createErr
+		}
+		if normalized.Scope != domain.DiscountScopeTotal {
+			if linkErr := s.discounts.CreateItemLinks(ctx, q, tenant.AccountID, version.ID,
+				discount.ID, normalized.ItemIDs); linkErr != nil {
+				return linkErr
+			}
+		}
+		if recalcErr := s.recalculateVersionTotal(ctx, q, tenant, version.ID); recalcErr != nil {
+			return recalcErr
+		}
+		fresh, freshErr := s.discounts.GetByID(ctx, q, tenant.AccountID, version.ID, discount.ID)
+		if freshErr != nil {
+			return freshErr
+		}
+		discount = fresh
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return discount, nil
+}
+
+// UpdateDiscount patches a seller-typed discount: its rule (value, action type, scope, the
+// lines it covers) or the suppression flag. Editing the rule revalidates the covered base
+// and recomputes the money amount, so the total stays consistent after the write.
+func (s *RFQService) UpdateDiscount(
+	ctx context.Context, tenant domain.Tenant, quoteID, discountID uuid.UUID,
+	in domain.QuoteDiscountUpdate,
+) (*domain.QuoteDiscount, error) {
+	if err := requireBranch(tenant, "updating a discount"); err != nil {
+		return nil, err
+	}
+	if s.discounts == nil {
+		return nil, fmt.Errorf("%w: discount persistence is not wired", domain.ErrInvalidInput)
+	}
+	if err := validateDiscountUpdate(&in); err != nil {
+		return nil, err
+	}
+
+	var discount *domain.QuoteDiscount
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, quoteErr := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if quoteErr != nil {
+			return quoteErr
+		}
+		if !domain.IsEditableStatus(quote.CurrentStatus) {
+			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+		}
+		if quote.CurrentVersionID == nil {
+			return domain.ErrNotFound
+		}
+		version, versionErr := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID,
+			tenant.BranchID, quote.ID)
+		if versionErr != nil {
+			return versionErr
+		}
+		existing, existingErr := s.discounts.GetByID(ctx, q, tenant.AccountID, version.ID,
+			discountID)
+		if existingErr != nil {
+			return existingErr
+		}
+		if existing.Origin != domain.DiscountOriginManualSeller {
+			return fmt.Errorf("%w: only a seller-typed discount can be edited",
+				domain.ErrInvalidInput)
+		}
+
+		ruleEdited := in.Value != nil || in.ActionType != nil || in.Scope != nil || len(in.ItemIDs) > 0
+		if ruleEdited {
+			rule, ruleErr := s.rebuiltRule(ctx, q, tenant.AccountID, version.ID, existing, in)
+			if ruleErr != nil {
+				return ruleErr
+			}
+			suppression := existing.SuppressedBySeller
+			update := domain.QuoteDiscountUpdate{
+				ActionType:         &rule.actionType,
+				Value:              &rule.value,
+				Scope:              &rule.scope,
+				ConditionType:      conditionTypeFor(rule.scope),
+				SuppressedBySeller: &suppression,
+			}
+			if in.Description != nil {
+				update.Description = in.Description
+			}
+			if _, updateErr := s.discounts.UpdateByID(ctx, q, tenant.AccountID, version.ID,
+				discountID, update); updateErr != nil {
+				return updateErr
+			}
+			if rule.items != nil {
+				if linkErr := s.discounts.ReplaceItemLinks(ctx, q, tenant.AccountID, version.ID,
+					discountID, rule.items); linkErr != nil {
+					return linkErr
+				}
+			}
+			if amountErr := s.discounts.UpdateAmount(ctx, q, tenant.AccountID, version.ID,
+				discountID, rule.amount); amountErr != nil {
+				return amountErr
+			}
+		} else if in.Description != nil {
+			if _, updateErr := s.discounts.UpdateByID(ctx, q, tenant.AccountID, version.ID,
+				discountID, domain.QuoteDiscountUpdate{Description: in.Description}); updateErr != nil {
+				return updateErr
+			}
+		} else if in.SuppressedBySeller != nil {
+			if _, updateErr := s.discounts.UpdateByID(ctx, q, tenant.AccountID, version.ID,
+				discountID, domain.QuoteDiscountUpdate{SuppressedBySeller: in.SuppressedBySeller}); updateErr != nil {
+				return updateErr
+			}
+		}
+
+		if recalcErr := s.recalculateVersionTotal(ctx, q, tenant, version.ID); recalcErr != nil {
+			return recalcErr
+		}
+		fresh, freshErr := s.discounts.GetByID(ctx, q, tenant.AccountID, version.ID, discountID)
+		if freshErr != nil {
+			return freshErr
+		}
+		discount = fresh
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return discount, nil
+}
+
+// DeleteDiscount removes a seller-typed discount. An AUTOMATIC one is never deleted: it is
+// suppressed instead, because suppressing stays reversible and deleting does not.
+func (s *RFQService) DeleteDiscount(
+	ctx context.Context, tenant domain.Tenant, quoteID, discountID uuid.UUID,
+) error {
+	if err := requireBranch(tenant, "deleting a discount"); err != nil {
+		return err
+	}
+	if s.discounts == nil {
+		return fmt.Errorf("%w: discount persistence is not wired", domain.ErrInvalidInput)
+	}
+	return s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, quoteErr := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if quoteErr != nil {
+			return quoteErr
+		}
+		if !domain.IsEditableStatus(quote.CurrentStatus) {
+			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+		}
+		if quote.CurrentVersionID == nil {
+			return domain.ErrNotFound
+		}
+		version, versionErr := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID,
+			tenant.BranchID, quote.ID)
+		if versionErr != nil {
+			return versionErr
+		}
+		existing, existingErr := s.discounts.GetByID(ctx, q, tenant.AccountID, version.ID,
+			discountID)
+		if existingErr != nil {
+			return existingErr
+		}
+		if existing.Origin != domain.DiscountOriginManualSeller {
+			return fmt.Errorf("%w: only a seller-typed discount can be deleted",
+				domain.ErrInvalidInput)
+		}
+		if deleteErr := s.discounts.DeleteByID(ctx, q, tenant.AccountID, version.ID, discountID); deleteErr != nil {
+			return deleteErr
+		}
+		return s.recalculateVersionTotal(ctx, q, tenant, version.ID)
+	})
 }
 
 // CreateManual records a counter, phone or otherwise unintegrated order.
@@ -960,8 +1307,243 @@ func requireMaxRunes(value, field string, max int) error {
 	return nil
 }
 
+// sumItemSubtotals totals a version's item subtotals, ignoring lines nothing has valued yet.
+func sumItemSubtotals(items []domain.QuoteItem) decimal.Decimal {
+	totals := decimal.Zero
+	for _, item := range items {
+		if item.Subtotal.Valid {
+			totals = totals.Add(item.Subtotal.Decimal)
+		}
+	}
+	return totals
+}
+
+// normalizeDiscountRule validates and trims the entries a manual discount is created from.
+// The amount is set by the caller once the rule is validated against its scope base.
+func normalizeDiscountRule(in domain.QuoteDiscountCreate) (domain.QuoteDiscountCreate, error) {
+	in.Description = strings.TrimSpace(in.Description)
+	if in.Description == "" {
+		return domain.QuoteDiscountCreate{}, fmt.Errorf("%w: description is required",
+			domain.ErrInvalidInput)
+	}
+	if err := requireMaxRunes(in.Description, "description", 512); err != nil {
+		return domain.QuoteDiscountCreate{}, err
+	}
+	if in.ActionType != domain.PromotionActionFixedAmount &&
+		in.ActionType != domain.PromotionActionPercentage {
+		return domain.QuoteDiscountCreate{}, fmt.Errorf(
+			"%w: action_type must be FIXED_AMOUNT or PERCENTAGE", domain.ErrInvalidInput)
+	}
+	if in.Value.LessThanOrEqual(decimal.Zero) {
+		return domain.QuoteDiscountCreate{}, fmt.Errorf("%w: value must be greater than zero",
+			domain.ErrInvalidInput)
+	}
+	if err := validateAmount(in.Value, "value"); err != nil {
+		return domain.QuoteDiscountCreate{}, err
+	}
+	if in.ActionType == domain.PromotionActionPercentage &&
+		in.Value.GreaterThan(decimal.NewFromInt(100)) {
+		return domain.QuoteDiscountCreate{}, fmt.Errorf(
+			"%w: a percentage discount cannot exceed 100", domain.ErrInvalidInput)
+	}
+	if err := validateDiscountScope(in.Scope, len(in.ItemIDs)); err != nil {
+		return domain.QuoteDiscountCreate{}, err
+	}
+	return in, nil
+}
+
+// validateDiscountUpdate checks the patch entries a manual discount is edited with. Values
+// the caller did not send stay nil, so the transaction can tell a rule edit from a plain
+// suppression toggle.
+func validateDiscountUpdate(in *domain.QuoteDiscountUpdate) error {
+	if in.Description != nil {
+		*in.Description = strings.TrimSpace(*in.Description)
+		if *in.Description == "" {
+			return fmt.Errorf("%w: description is required", domain.ErrInvalidInput)
+		}
+		if err := requireMaxRunes(*in.Description, "description", 512); err != nil {
+			return err
+		}
+	}
+	if in.Value != nil {
+		if in.Value.LessThanOrEqual(decimal.Zero) {
+			return fmt.Errorf("%w: value must be greater than zero", domain.ErrInvalidInput)
+		}
+		if err := validateAmount(*in.Value, "value"); err != nil {
+			return err
+		}
+		if in.ActionType != nil && *in.ActionType == domain.PromotionActionPercentage &&
+			in.Value.GreaterThan(decimal.NewFromInt(100)) {
+			return fmt.Errorf("%w: a percentage discount cannot exceed 100",
+				domain.ErrInvalidInput)
+		}
+	}
+	if in.ActionType != nil &&
+		*in.ActionType != domain.PromotionActionFixedAmount &&
+		*in.ActionType != domain.PromotionActionPercentage {
+		return fmt.Errorf("%w: action_type must be FIXED_AMOUNT or PERCENTAGE",
+			domain.ErrInvalidInput)
+	}
+	if in.Scope != nil {
+		return validateDiscountScope(*in.Scope, len(in.ItemIDs))
+	}
+	if len(in.ItemIDs) > 0 && in.Scope == nil {
+		return fmt.Errorf("%w: item_ids needs a scope", domain.ErrInvalidInput)
+	}
+	return nil
+}
+
+// validateDiscountScope enforces the item count a discount scope allows.
+func validateDiscountScope(scope domain.DiscountScope, itemCount int) error {
+	switch scope {
+	case domain.DiscountScopeTotal:
+		if itemCount != 0 {
+			return fmt.Errorf("%w: a TOTAL discount applies to no items",
+				domain.ErrInvalidInput)
+		}
+	case domain.DiscountScopeItem, domain.DiscountScopeItemSet:
+		if itemCount == 0 {
+			return fmt.Errorf("%w: %s scope needs at least one item",
+				domain.ErrInvalidInput, scope)
+		}
+	default:
+		return fmt.Errorf("%w: scope must be TOTAL, ITEM or ITEM_SET",
+			domain.ErrInvalidInput)
+	}
+	if scope == domain.DiscountScopeItem && itemCount != 1 {
+		return fmt.Errorf("%w: ITEM scope takes exactly one item", domain.ErrInvalidInput)
+	}
+	return nil
+}
+
+// amountForRule validates the lines a manual discount covers and returns the money its rule
+// applies: the fixed amount as typed, or the percentage of the covered base.
+func (s *RFQService) amountForRule(items []domain.QuoteItem, in domain.QuoteDiscountCreate) (decimal.Decimal, error) {
+	base, err := scopeBaseForItems(items, in.Scope, in.ItemIDs)
+	if err != nil {
+		return decimal.Zero, err
+	}
+	amount := ruleAmount(base, in.ActionType, in.Value)
+	if in.ActionType == domain.PromotionActionFixedAmount && amount.GreaterThan(base) {
+		return decimal.Zero, fmt.Errorf("%w: the discount cannot exceed the subtotal it covers",
+			domain.ErrInvalidInput)
+	}
+	return amount, nil
+}
+
+// discountRule is the resolved shape of a manual discount before it is written.
+type discountRule struct {
+	actionType domain.PromotionActionType
+	value      decimal.Decimal
+	amount     decimal.Decimal
+	scope      domain.DiscountScope
+	items      []uuid.UUID
+}
+
+// rebuiltRule merges the current discount with a patch: absent patch fields keep the stored
+// rule, and the covered lines come from ItemIDs or, when absent, from the existing links.
+func (s *RFQService) rebuiltRule(
+	ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
+	existing *domain.QuoteDiscount, in domain.QuoteDiscountUpdate,
+) (discountRule, error) {
+	rule := discountRule{actionType: existing.ActionType, value: decimal.Zero, scope: existing.Scope}
+	if existing.ActionValue != nil {
+		rule.value = *existing.ActionValue
+	}
+	if in.ActionType != nil {
+		rule.actionType = *in.ActionType
+	}
+	if in.Value != nil {
+		rule.value = *in.Value
+	}
+	if in.Scope != nil {
+		rule.scope = *in.Scope
+	}
+	if rule.actionType == domain.PromotionActionPercentage &&
+		rule.value.GreaterThan(decimal.NewFromInt(100)) {
+		return rule, fmt.Errorf("%w: a percentage discount cannot exceed 100",
+			domain.ErrInvalidInput)
+	}
+	rule.items = in.ItemIDs
+	if rule.scope != domain.DiscountScopeTotal && len(rule.items) == 0 {
+		ids, listErr := s.discounts.ListItemIDs(ctx, q, accountID, existing.ID)
+		if listErr != nil {
+			return rule, listErr
+		}
+		rule.items = ids
+	}
+	if err := validateDiscountScope(rule.scope, len(rule.items)); err != nil {
+		return rule, err
+	}
+	items, listErr := s.quotes.ListItems(ctx, q, accountID, versionID)
+	if listErr != nil {
+		return rule, listErr
+	}
+	base, baseErr := scopeBaseForItems(items, rule.scope, rule.items)
+	if baseErr != nil {
+		return rule, baseErr
+	}
+	rule.amount = ruleAmount(base, rule.actionType, rule.value)
+	if rule.actionType == domain.PromotionActionFixedAmount && rule.amount.GreaterThan(base) {
+		return rule, fmt.Errorf("%w: the discount cannot exceed the subtotal it covers",
+			domain.ErrInvalidInput)
+	}
+	return rule, nil
+}
+
+// scopeBaseForItems validates the covered lines and returns the subtotal the discount acts
+// on: the whole version for TOTAL, the covered items otherwise.
+func scopeBaseForItems(items []domain.QuoteItem, scope domain.DiscountScope, itemIDs []uuid.UUID) (decimal.Decimal, error) {
+	if scope == domain.DiscountScopeTotal {
+		return sumItemSubtotals(items), nil
+	}
+	ids := make(map[uuid.UUID]struct{}, len(items))
+	subtotals := make(map[uuid.UUID]decimal.Decimal, len(items))
+	for _, item := range items {
+		ids[item.ID] = struct{}{}
+		if item.Subtotal.Valid {
+			subtotals[item.ID] = item.Subtotal.Decimal
+		}
+	}
+	base := decimal.Zero
+	for _, id := range itemIDs {
+		if _, ok := ids[id]; !ok {
+			return decimal.Zero, fmt.Errorf("%w: item %s does not belong to this quote",
+				domain.ErrInvalidInput, id)
+		}
+		base = base.Add(subtotals[id])
+	}
+	return base, nil
+}
+
+// ruleAmount turns a typed rule over a base into money: the typed amount itself, or the
+// base percentage rounded to the money scale.
+func ruleAmount(base decimal.Decimal, actionType domain.PromotionActionType, value decimal.Decimal) decimal.Decimal {
+	if actionType == domain.PromotionActionPercentage {
+		return base.Mul(value).Div(decimal.NewFromInt(100)).Round(domain.MoneyScale)
+	}
+	return value.Round(domain.MoneyScale)
+}
+
+// conditionTypeFor derives the condition a manual discount's scope implies.
+func conditionTypeFor(scope domain.DiscountScope) *domain.PromotionConditionType {
+	switch scope {
+	case domain.DiscountScopeTotal:
+		condition := domain.PromotionConditionOnTotal
+		return &condition
+	case domain.DiscountScopeItem:
+		condition := domain.PromotionConditionPerItem
+		return &condition
+	default:
+		condition := domain.PromotionConditionItemSet
+		return &condition
+	}
+}
+
 // recalculateVersionTotal recomputes a version's total from its items and discounts, then
-// persists it. Called after any item or price mutation.
+// persists it. A non-suppressed seller-typed PERCENTAGE is turned into money against its
+// scope and written back, so a discount always tracks the lines that carry it. Called after
+// any item, price, or discount mutation.
 func (s *RFQService) recalculateVersionTotal(
 	ctx context.Context, q repository.Querier, tenant domain.Tenant, versionID uuid.UUID,
 ) error {
@@ -969,15 +1551,55 @@ func (s *RFQService) recalculateVersionTotal(
 	if err != nil {
 		return err
 	}
-	subtotals := decimal.Zero
-	for _, item := range items {
-		if item.Subtotal.Valid {
-			subtotals = subtotals.Add(item.Subtotal.Decimal)
+	subtotals := sumItemSubtotals(items)
+	discountSum := decimal.Zero
+	if s.discounts != nil {
+		discounts, listErr := s.discounts.ListByVersionID(ctx, q, tenant.AccountID, versionID)
+		if listErr != nil {
+			return listErr
+		}
+		if len(discounts) > 0 {
+			discountIDs := make([]uuid.UUID, 0, len(discounts))
+			for _, discount := range discounts {
+				discountIDs = append(discountIDs, discount.ID)
+			}
+			linked, listErr := s.discounts.ListItemIDsByDiscountIDs(ctx, q,
+				tenant.AccountID, versionID, discountIDs)
+			if listErr != nil {
+				return listErr
+			}
+			for _, discount := range discounts {
+				if discount.SuppressedBySeller {
+					continue
+				}
+				amount := discount.Amount
+				if discount.Origin == domain.DiscountOriginManualSeller &&
+					discount.ActionType == domain.PromotionActionPercentage &&
+					discount.ActionValue != nil {
+					base, baseErr := scopeBaseForItems(items, discount.Scope, linked[discount.ID])
+					if baseErr != nil {
+						return baseErr
+					}
+					computed := ruleAmount(base, discount.ActionType, *discount.ActionValue)
+					if !computed.Equal(amount) {
+						if updateErr := s.discounts.UpdateAmount(ctx, q, tenant.AccountID,
+							versionID, discount.ID, computed); updateErr != nil {
+							return updateErr
+						}
+						amount = computed
+					}
+				}
+				discountSum = discountSum.Add(amount)
+			}
 		}
 	}
-	// The discount sweep is US-38. When implemented, load quote_discount rows here.
-	discounts := decimal.Zero
-	total := subtotals.Sub(discounts).Round(domain.MoneyScale)
+	// The result never goes negative: a discount scoped after the items it beat can exceed the
+	// net, and the total bottoms out at zero instead of carrying a sign.
+	net := subtotals.Sub(discountSum)
+	if net.IsNegative() {
+		net = decimal.Zero
+	}
+	total := net.Round(domain.MoneyScale)
 	_, err = s.quotes.UpdateVersionTotal(ctx, q, tenant.AccountID, versionID, total)
 	return err
 }

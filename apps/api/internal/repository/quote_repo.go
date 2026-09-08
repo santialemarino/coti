@@ -230,6 +230,25 @@ func (r *QuoteRepository) GetCurrentVersion(
 		accountID, branchID, quoteID))
 }
 
+// GetPreviousVersion loads the newest frozen version older than the given number for
+// a quote, which the change-request diff compares against the mutable draft. Returns
+// domain.ErrNotFound when no frozen predecessor exists.
+func (r *QuoteRepository) GetPreviousVersion(
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID, versionNumber int,
+) (*domain.QuoteVersion, error) {
+	return scanQuoteVersion(q.QueryRow(ctx,
+		`SELECT `+quoteVersionColumns+`
+		 FROM quote_version
+		 WHERE account_id = $1
+		   AND quote_id = (SELECT id FROM quote
+		                   WHERE account_id = $1 AND branch_id = $2 AND id = $3)
+		   AND version_number < $4
+		   AND is_immutable = TRUE
+		 ORDER BY version_number DESC
+		 LIMIT 1`,
+		accountID, branchID, quoteID, versionNumber))
+}
+
 // FreezeVersion makes the selected current version permanently immutable.
 func (r *QuoteRepository) FreezeVersion(
 	ctx context.Context, q Querier, accountID, branchID, quoteID, versionID uuid.UUID,
@@ -610,6 +629,34 @@ func (r *QuoteRepository) AppendStatusChange(
 		 VALUES ($1, $2, $3, $4, $5)
 		 RETURNING `+quoteStatusChangeColumns,
 		accountID, quoteID, previousStatus, newStatus, userID))
+}
+
+// ListStatusChanges loads the quote transition log, narrowed to the quote's branch.
+func (r *QuoteRepository) ListStatusChanges(
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID,
+) ([]domain.QuoteStatusChange, error) {
+	rows, err := q.Query(ctx,
+		`SELECT change.id, change.account_id, change.quote_id, change.previous_status,
+		        change.new_status, change.user_id, change.changed_at, change.created_at
+		 FROM quote_status_change change
+		 JOIN quote ON quote.account_id = change.account_id AND quote.id = change.quote_id
+		 WHERE change.account_id = $1 AND quote.branch_id = $2 AND change.quote_id = $3
+		 ORDER BY change.changed_at, change.created_at, change.id`,
+		accountID, branchID, quoteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	changes := make([]domain.QuoteStatusChange, 0)
+	for rows.Next() {
+		change, scanErr := scanQuoteStatusChange(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		changes = append(changes, *change)
+	}
+	return changes, rows.Err()
 }
 
 type quoteItemPayload struct {

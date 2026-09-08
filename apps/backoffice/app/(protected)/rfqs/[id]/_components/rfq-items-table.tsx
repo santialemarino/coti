@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { MinusIcon, PencilIcon, PercentIcon, PlusIcon, TrashIcon } from 'lucide-react';
+import { MinusIcon, PencilIcon, PlusIcon, TrashIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
@@ -11,10 +11,6 @@ import {
   Card,
   CardHeader,
   CardTitle,
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-  DropdownChevron,
   Input,
   Table,
   TableBody,
@@ -23,10 +19,21 @@ import {
   TableHeader,
   TableRow,
 } from '@repo/ui/components';
+import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
+import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { CatalogProduct } from '@/lib/api/catalog';
-import type { QuoteDiscountResponse, QuoteItemResponse } from '@/lib/api/rfqs';
-import { addQuoteItem, deleteQuoteItem, updateQuoteItem } from '@/lib/api/rfqs-client';
+import { errorCodeOf } from '@/lib/api/errors';
+import type { CreateDiscountBody, QuoteDiscountResponse, QuoteItemResponse } from '@/lib/api/rfqs';
+import {
+  addDiscount,
+  addQuoteItem,
+  deleteDiscount,
+  deleteQuoteItem,
+  updateDiscount,
+  updateQuoteItem,
+} from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
+import { DiscountDialog } from './discount-dialog';
 import { ProductSearchDialog } from './product-search-dialog';
 
 /*
@@ -48,6 +55,7 @@ interface RfqItemsTableProps {
   discounts: QuoteDiscountResponse[];
   onItemsChange: (items: QuoteItemResponse[]) => void;
   onDiscountsChange?: (discounts: QuoteDiscountResponse[]) => void;
+  onRefresh?: () => Promise<void>;
 }
 
 function toQuantity(value: string): string {
@@ -78,6 +86,18 @@ function confidenceLabel(score: string | null): string {
   return 'low';
 }
 
+// The raw rule a seller-typed discount carries, e.g. "10 %" or "$ 1.500,00"; null when the
+// row keeps no rule (engine-applied or pre-rule manual discounts).
+function discountRuleLabel(
+  discount: QuoteDiscountResponse,
+  fmt: ReturnType<typeof useFormatters>,
+): string | null {
+  if (discount.action_value == null) return null;
+  return discount.action_type === 'PERCENTAGE'
+    ? `${fmt.value(Number(discount.action_value))} %`
+    : fmt.currency(discount.action_value);
+}
+
 export function RfqItemsTable({
   quoteId,
   quoteStatus,
@@ -85,13 +105,17 @@ export function RfqItemsTable({
   discounts,
   onItemsChange,
   onDiscountsChange,
+  onRefresh,
 }: RfqItemsTableProps) {
-  const t = useTranslations('rfqs');
   const fmt = useFormatters();
+  const t = useTranslations('rfqs');
+  const message = useApiErrorMessage('rfqs.detail.items');
+  const { activeBranchId } = useRfqList();
   const [searchOpen, setSearchOpen] = useState(false);
   const [editingQuantity, setEditingQuantity] = useState<Record<string, string>>({});
   const [editingPrice, setEditingPrice] = useState<Record<string, string>>({});
-  const [discountsOpen, setDiscountsOpen] = useState(false);
+  const [discountDialogOpen, setDiscountDialogOpen] = useState(false);
+  const [editingDiscount, setEditingDiscount] = useState<QuoteDiscountResponse | null>(null);
   const [editingProductItemId, setEditingProductItemId] = useState<string | null>(null);
 
   const hasQuote = !!quoteId;
@@ -117,6 +141,80 @@ export function RfqItemsTable({
   );
   const grandTotal = itemsSubtotal - discountsTotal;
 
+  function requireActiveBranch(): boolean {
+    if (activeBranchId) return true;
+    toast.error(t('detail.items.toast.branchRequired'));
+    return false;
+  }
+
+  async function handleDiscountSave(body: CreateDiscountBody) {
+    if (!quoteId) return;
+    if (!requireActiveBranch()) return;
+    try {
+      if (editingDiscount) {
+        await updateDiscount(quoteId, editingDiscount.id, body);
+        toast.success(t('detail.items.discounts.toast.updated'));
+      } else {
+        await addDiscount(quoteId, body);
+        toast.success(t('detail.items.discounts.toast.added'));
+      }
+      await onRefresh?.();
+      setDiscountDialogOpen(false);
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
+    }
+  }
+
+  function openAddDiscount() {
+    if (!requireActiveBranch()) return;
+    setEditingDiscount(null);
+    setDiscountDialogOpen(true);
+  }
+
+  function openEditDiscount(discount: QuoteDiscountResponse) {
+    if (!requireActiveBranch()) return;
+    setEditingDiscount(discount);
+    setDiscountDialogOpen(true);
+  }
+
+  async function handleToggleDiscount(discount: QuoteDiscountResponse) {
+    if (!quoteId) return;
+    if (!requireActiveBranch()) return;
+    try {
+      const updated = await updateDiscount(quoteId, discount.id, {
+        suppressed_by_seller: !discount.suppressed_by_seller,
+      });
+      await onRefresh?.();
+      onDiscountsChange?.(discounts.map((d) => (d.id === updated.id ? updated : d)));
+      toast.success(
+        updated.suppressed_by_seller
+          ? t('detail.items.discounts.toast.suppressed')
+          : t('detail.items.discounts.toast.restored'),
+      );
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
+    }
+  }
+
+  async function handleDeleteDiscount(discount: QuoteDiscountResponse) {
+    if (!quoteId) return;
+    if (!requireActiveBranch()) return;
+    try {
+      await deleteDiscount(quoteId, discount.id);
+      onDiscountsChange?.(discounts.filter((d) => d.id !== discount.id));
+      await onRefresh?.();
+      toast.success(t('detail.items.discounts.toast.removed'));
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
+    }
+  }
+
+  function openProductSearch(itemId?: string) {
+    if (!requireActiveBranch()) return;
+    setEditingProductItemId(itemId ?? null);
+    setSearchOpen(true);
+  }
+
   async function handleQuantityBlur(itemId: string, currentQuantity: string) {
     if (!quoteId) return;
     const raw = editingQuantity[itemId];
@@ -130,13 +228,21 @@ export function RfqItemsTable({
       });
       return;
     }
+    if (!requireActiveBranch()) {
+      setEditingQuantity((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+      return;
+    }
 
     try {
       const updated = await updateQuoteItem(quoteId, itemId, { quantity: normalized });
       onItemsChange(items.map((item) => (item.id === itemId ? updated : item)));
       toast.success(t('detail.items.toast.updated'));
-    } catch {
-      toast.error(t('detail.items.toast.error'));
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
     }
 
     setEditingQuantity((prev) => {
@@ -159,6 +265,14 @@ export function RfqItemsTable({
       });
       return;
     }
+    if (!requireActiveBranch()) {
+      setEditingPrice((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+      return;
+    }
 
     try {
       const updated = await updateQuoteItem(quoteId, itemId, {
@@ -166,8 +280,8 @@ export function RfqItemsTable({
       });
       onItemsChange(items.map((item) => (item.id === itemId ? updated : item)));
       toast.success(t('detail.items.toast.updated'));
-    } catch {
-      toast.error(t('detail.items.toast.error'));
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
     }
 
     setEditingPrice((prev) => {
@@ -179,17 +293,19 @@ export function RfqItemsTable({
 
   async function handleDelete(itemId: string) {
     if (!quoteId) return;
+    if (!requireActiveBranch()) return;
     try {
       await deleteQuoteItem(quoteId, itemId);
       onItemsChange(items.filter((item) => item.id !== itemId));
       toast.success(t('detail.items.toast.deleted'));
-    } catch {
-      toast.error(t('detail.items.toast.error'));
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
     }
   }
 
   async function handleAddProduct(product: CatalogProduct) {
     if (!quoteId) return;
+    if (!requireActiveBranch()) return;
     try {
       const created = await addQuoteItem(quoteId, {
         product_id: product.id,
@@ -199,13 +315,14 @@ export function RfqItemsTable({
       });
       onItemsChange([...items, created]);
       toast.success(t('detail.items.toast.added'));
-    } catch {
-      toast.error(t('detail.items.toast.error'));
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
     }
   }
 
   async function handleModifyProduct(product: CatalogProduct) {
     if (!quoteId || !editingProductItemId) return;
+    if (!requireActiveBranch()) return;
     const item = items.find((i) => i.id === editingProductItemId);
     if (!item) return;
     try {
@@ -216,44 +333,11 @@ export function RfqItemsTable({
       });
       onItemsChange(items.map((i) => (i.id === item.id ? updated : i)));
       toast.success(t('detail.items.toast.updated'));
-    } catch {
-      toast.error(t('detail.items.toast.error'));
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
     } finally {
       setEditingProductItemId(null);
     }
-  }
-
-  function handleToggleDiscount(discountId: string) {
-    if (!onDiscountsChange) return;
-    onDiscountsChange(
-      discounts.map((d) =>
-        d.id === discountId ? { ...d, suppressed_by_seller: !d.suppressed_by_seller } : d,
-      ),
-    );
-  }
-
-  function handleDeleteDiscount(discountId: string) {
-    if (!onDiscountsChange) return;
-    onDiscountsChange(discounts.filter((d) => d.id !== discountId));
-  }
-
-  function handleAddAdHocDiscount() {
-    if (!onDiscountsChange) return;
-    onDiscountsChange([
-      ...discounts,
-      {
-        id: crypto.randomUUID(),
-        quote_version_id: '',
-        promotion_id: null,
-        promotion_name: null,
-        condition_type: null,
-        scope: 'TOTAL',
-        origin: 'MANUAL_SELLER',
-        amount: '0',
-        suppressed_by_seller: false,
-        created_at: new Date().toISOString(),
-      },
-    ]);
   }
 
   if (items.length === 0) {
@@ -262,7 +346,7 @@ export function RfqItemsTable({
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle className="text-heading-5">{t('detail.items.title')}</CardTitle>
           {canEditProducts && (
-            <Button type="button" variant="outline" size="sm" onClick={() => setSearchOpen(true)}>
+            <Button type="button" variant="outline" size="sm" onClick={() => openProductSearch()}>
               <PlusIcon className="size-4" />
               {t('detail.items.add')}
             </Button>
@@ -289,7 +373,7 @@ export function RfqItemsTable({
             <span className="ml-2 text-paragraph-sm text-foreground-muted">({items.length})</span>
           </CardTitle>
           {canEditProducts && (
-            <Button type="button" variant="outline" size="sm" onClick={() => setSearchOpen(true)}>
+            <Button type="button" variant="outline" size="sm" onClick={() => openProductSearch()}>
               <PlusIcon className="size-4" />
               {t('detail.items.add')}
             </Button>
@@ -339,10 +423,7 @@ export function RfqItemsTable({
                         {canEditProducts ? (
                           <button
                             type="button"
-                            onClick={() => {
-                              setEditingProductItemId(item.id);
-                              setSearchOpen(true);
-                            }}
+                            onClick={() => openProductSearch(item.id)}
                             className="flex items-center gap-x-1 text-paragraph-sm text-foreground underline-offset-2 hover:underline"
                           >
                             {item.product_name}
@@ -367,10 +448,7 @@ export function RfqItemsTable({
                       canEditProducts ? (
                         <button
                           type="button"
-                          onClick={() => {
-                            setEditingProductItemId(item.id);
-                            setSearchOpen(true);
-                          }}
+                          onClick={() => openProductSearch(item.id)}
                           className="flex items-center gap-x-1 text-paragraph-xs text-foreground-muted underline-offset-2 hover:underline"
                         >
                           {item.product_id.slice(0, 8)}…
@@ -427,7 +505,8 @@ export function RfqItemsTable({
                   </TableCell>
                   {showPricing && (
                     <TableCell className="text-center tabular-nums text-paragraph-sm">
-                      {canEditPrices && item.unit_price_snapshot != null ? (
+                      {canEditPrices &&
+                      (item.unit_price_snapshot != null || item.match_status === 'NO_MATCH') ? (
                         <Input
                           type="number"
                           inputMode="decimal"
@@ -482,59 +561,31 @@ export function RfqItemsTable({
                 </TableRow>
               );
             })}
-
-            {showPricing && (
-              <TableRow className="bg-accent/50">
-                <TableCell colSpan={showConfidence ? 5 : 4} />
-                <TableCell
-                  colSpan={2}
-                  className="text-center text-paragraph-xs text-foreground-muted"
-                >
-                  {t('detail.items.total')}
-                  {hasDiscounts && (
-                    <span className="ml-1 text-foreground-subtle">
-                      (−{fmt.currency(String(discountsTotal))})
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell className="text-center text-paragraph-sm-semibold tabular-nums">
-                  {fmt.currency(String(grandTotal))}
-                </TableCell>
-                {(canEditProducts || canEditPrices) && <TableCell />}
-              </TableRow>
-            )}
           </TableBody>
         </Table>
 
         {showPricing && (
           <div className="border-t border-border px-4 py-3">
-            <Collapsible open={discountsOpen} onOpenChange={setDiscountsOpen}>
-              <CollapsibleTrigger asChild>
-                <button
-                  type="button"
-                  className="flex items-center gap-x-1.5 text-paragraph-xs font-medium text-foreground-muted hover:text-foreground transition-colors"
-                >
-                  <PercentIcon className="size-3" />
-                  {t('detail.items.discounts.title')}
-                  <span className="tabular-nums">
-                    {hasDiscounts ? `(−${fmt.currency(String(discountsTotal))})` : ''}
+            <div className="flex flex-col gap-y-1.5">
+              <div className="flex items-center justify-between text-paragraph-sm">
+                <span className="text-foreground-muted">{t('detail.items.summary.subtotal')}</span>
+                <span className="tabular-nums text-foreground">
+                  {fmt.currency(String(itemsSubtotal))}
+                </span>
+              </div>
+
+              {hasDiscounts && (
+                <>
+                  <span className="pt-1 text-paragraph-xs font-semibold text-foreground-muted">
+                    {t('detail.items.discounts.title')}
                   </span>
-                  <DropdownChevron open={discountsOpen} />
-                </button>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <div className="flex flex-col gap-y-1.5 pt-2">
-                  {discounts.length === 0 ? (
-                    <p className="text-paragraph-xs text-foreground-muted">
-                      {t('detail.items.discounts.empty')}
-                    </p>
-                  ) : (
-                    discounts.map((discount) => (
+                  <div className="flex flex-col gap-y-1">
+                    {discounts.map((discount) => (
                       <div
                         key={discount.id}
                         className="flex items-center justify-between gap-x-2 text-paragraph-xs"
                       >
-                        <div className="flex items-center gap-x-1.5 min-w-0">
+                        <div className="flex min-w-0 items-center gap-x-1.5">
                           <MinusIcon className="size-3 shrink-0 text-foreground-muted" />
                           <span
                             className={
@@ -549,65 +600,96 @@ export function RfqItemsTable({
                             tone={discount.suppressed_by_seller ? 'neutral' : 'success'}
                             size="sm"
                           >
-                            {discount.scope === 'TOTAL'
-                              ? 'Global'
-                              : discount.scope === 'ITEM'
-                                ? 'Por ítem'
-                                : 'Combo'}
+                            {t(`detail.items.discounts.scope.${discount.scope}`)}
                           </Badge>
+                          {discountRuleLabel(discount, fmt) && (
+                            <Badge tone="neutral" size="sm">
+                              {discountRuleLabel(discount, fmt)}
+                            </Badge>
+                          )}
                         </div>
-                        <div className="flex items-center gap-x-2 shrink-0">
+                        <div className="flex shrink-0 items-center gap-x-2">
                           <span className="tabular-nums text-foreground-muted">
                             −{fmt.currency(discount.amount)}
                           </span>
                           {canEditDiscounts && (
                             <>
-                              <button
-                                type="button"
-                                className="text-foreground-muted hover:text-foreground transition-colors"
-                                onClick={() => handleToggleDiscount(discount.id)}
-                                aria-label={
-                                  discount.suppressed_by_seller
-                                    ? t('detail.items.discounts.restore')
-                                    : t('detail.items.discounts.suppress')
-                                }
-                              >
-                                {discount.suppressed_by_seller ? (
-                                  <PlusIcon className="size-3" />
-                                ) : (
-                                  <MinusIcon className="size-3" />
-                                )}
-                              </button>
-                              <button
-                                type="button"
-                                className="text-foreground-muted hover:text-danger transition-colors"
-                                onClick={() => handleDeleteDiscount(discount.id)}
-                                aria-label={t('detail.items.discounts.remove')}
-                              >
-                                <TrashIcon className="size-3" />
-                              </button>
+                              {discount.origin === 'MANUAL_SELLER' && (
+                                <button
+                                  type="button"
+                                  className="text-foreground-muted transition-colors hover:text-foreground"
+                                  onClick={() => openEditDiscount(discount)}
+                                  aria-label={t('detail.items.discounts.edit')}
+                                >
+                                  <PencilIcon className="size-3" />
+                                </button>
+                              )}
+                              {discount.origin !== 'MANUAL_SELLER' && (
+                                <button
+                                  type="button"
+                                  className="text-foreground-muted transition-colors hover:text-foreground"
+                                  onClick={() => handleToggleDiscount(discount)}
+                                  aria-label={
+                                    discount.suppressed_by_seller
+                                      ? t('detail.items.discounts.restore')
+                                      : t('detail.items.discounts.suppress')
+                                  }
+                                >
+                                  {discount.suppressed_by_seller ? (
+                                    <PlusIcon className="size-3" />
+                                  ) : (
+                                    <MinusIcon className="size-3" />
+                                  )}
+                                </button>
+                              )}
+                              {discount.origin === 'MANUAL_SELLER' && (
+                                <button
+                                  type="button"
+                                  className="text-foreground-muted transition-colors hover:text-danger"
+                                  onClick={() => handleDeleteDiscount(discount)}
+                                  aria-label={t('detail.items.discounts.remove')}
+                                >
+                                  <TrashIcon className="size-3" />
+                                </button>
+                              )}
                             </>
                           )}
                         </div>
                       </div>
-                    ))
-                  )}
-                  {canEditDiscounts && (
-                    <button
-                      type="button"
-                      onClick={handleAddAdHocDiscount}
-                      className="mt-1 flex items-center gap-x-1.5 self-start text-paragraph-xs font-medium text-foreground-muted hover:text-foreground transition-colors"
-                    >
-                      <PlusIcon className="size-3" />
-                      {t('detail.items.discounts.add')}
-                    </button>
-                  )}
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <div className="mt-1 flex items-center justify-between border-t border-border pt-2">
+                <span className="text-paragraph-sm font-semibold text-foreground">
+                  {t('detail.items.total')}
+                </span>
+                <span className="text-paragraph-sm-semibold tabular-nums text-foreground">
+                  {fmt.currency(String(Math.max(grandTotal, 0)))}
+                </span>
+              </div>
+            </div>
+
+            {canEditDiscounts && (
+              <div className="mt-3 border-t border-border pt-3">
+                <Button type="button" variant="outline" size="sm" onClick={openAddDiscount}>
+                  <PlusIcon className="size-4" />
+                  {t('detail.items.discounts.add')}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </Card>
+
+      <DiscountDialog
+        open={discountDialogOpen}
+        onOpenChange={setDiscountDialogOpen}
+        initial={editingDiscount}
+        items={items}
+        onSave={handleDiscountSave}
+      />
 
       <ProductSearchDialog
         open={searchOpen}

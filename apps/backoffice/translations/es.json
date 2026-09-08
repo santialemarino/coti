@@ -88,6 +88,8 @@
     "SELF_ROLE_CHANGE": "No podés cambiar tu propio rol. Pedíselo a otro administrador.",
     "PASSWORD_POLICY": "La contraseña no cumple con los requisitos.",
     "INVALID_LINK": "El enlace no es válido, ya se usó o venció.",
+    "QUOTE_ARCHIVED": "La cotización está archivada y no se puede modificar.",
+    "QUOTE_NOT_DRAFT": "La cotización ya no está en un estado que permita esa acción.",
     "INTERNAL": "Ocurrió un error inesperado. Intentá de nuevo.",
     "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
     "SESSION_EXPIRED": "Tu sesión expiró. Volvé a iniciar sesión."
@@ -431,6 +433,13 @@
       "REJECTED": "Rechazado",
       "ARCHIVED": "Archivado"
     },
+    "sendTracking": {
+      "PENDING": "Pendiente",
+      "SENT": "Enviado",
+      "DELIVERED": "Entregado",
+      "VIEWED": "Visto",
+      "FAILED": "Fallido"
+    },
     "processing": {
       "ingestion": "Procesando pedido…",
       "quote": "Generando cotización…"
@@ -573,12 +582,23 @@
       "quoteStatus": "Estado de la cotización",
       "expiresAt": "Vence el",
       "timeline": {
-        "title": "Estado",
+        "title": "Tracking",
         "current": "Estado actual",
         "completed": "Completado",
         "createdAt": "Fecha de creación",
         "version": "Versión",
-        "total": "Total"
+        "total": "Total",
+        "deliveryTracking": "Estado del envío",
+        "statusHistory": "Historial de estados",
+        "deliveries": "Envíos",
+        "noStatusHistory": "Todavía no hay cambios registrados.",
+        "noDeliveries": "Todavía no hay envíos registrados.",
+        "sentAt": "Registrado",
+        "expiresAt": "Vence",
+        "sources": {
+          "rfq": "Pedido",
+          "quote": "Cotización"
+        }
       },
       "confidence": {
         "high": "Alta",
@@ -631,6 +651,10 @@
           "rationale": "Razón"
         },
         "total": "Total",
+        "summary": {
+          "subtotal": "Subtotal",
+          "discounts": "Descuentos"
+        },
         "matchStatus": {
           "MATCHED": "Emparejado",
           "AMBIGUOUS": "Ambiguo",
@@ -644,14 +668,68 @@
           "suppress": "Suprimir descuento",
           "restore": "Restaurar",
           "remove": "Eliminar descuento",
-          "add": "Agregar descuento"
+          "edit": "Editar descuento",
+          "add": "Agregar descuento",
+          "addTitle": "Agregar descuento",
+          "editTitle": "Editar descuento",
+          "nameLabel": "Nombre",
+          "namePlaceholder": "Ej.: Descuento por volumen…",
+          "amountLabel": "Monto",
+          "valueLabel": "Valor",
+          "typeLabel": "Tipo",
+          "fixedAmount": "Monto fijo",
+          "percentage": "Porcentaje",
+          "scopeLabel": "Alcance",
+          "itemsLabel": "Ítems incluidos",
+          "cancel": "Cancelar",
+          "save": "Guardar",
+          "saving": "Guardando…",
+          "scope": {
+            "TOTAL": "Global",
+            "ITEM": "Por ítem",
+            "ITEM_SET": "Por combo"
+          },
+          "toast": {
+            "added": "Descuento agregado",
+            "updated": "Descuento actualizado",
+            "removed": "Descuento eliminado",
+            "suppressed": "Descuento suprimido",
+            "restored": "Descuento restaurado"
+          }
         },
         "toast": {
           "updated": "Ítem actualizado",
           "deleted": "Ítem eliminado",
           "added": "Producto agregado",
           "generated": "Cotización generada",
-          "error": "Ocurrió un error. Intentá de nuevo."
+          "branchRequired": "Seleccioná una sucursal antes de modificar o generar esta cotización."
+        },
+        "errors": {
+          "NOT_FOUND": "No encontramos ese ítem o cotización. Actualizá la pantalla e intentá de nuevo.",
+          "INVALID_INPUT": "Revisá el dato ingresado: la cantidad debe ser mayor a cero y los precios pueden tener hasta dos decimales.",
+          "QUOTE_ARCHIVED": "Esta cotización está archivada. Desarchivala antes de modificarla.",
+          "QUOTE_NOT_DRAFT": "Esta cotización ya cambió de estado. Actualizá la pantalla antes de volver a editarla.",
+          "FORBIDDEN": "No tenés permiso para modificar esta cotización.",
+          "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
+          "INTERNAL": "No pudimos guardar el cambio. Intentá de nuevo."
+        }
+      },
+      "send": {
+        "button": "Enviar cotización",
+        "title": "Enviar cotización",
+        "channelLabel": "Canal",
+        "whatsapp": "WhatsApp",
+        "email": "Email",
+        "messageLabel": "Mensaje",
+        "greeting": "¡Hola {client}!",
+        "noClient": "cliente",
+        "body": "Te compartimos la cotización {id}. El total es {total}.",
+        "closing": "Quedamos a disposición por cualquier consulta.",
+        "cancel": "Cancelar",
+        "send": "Enviar",
+        "sending": "Enviando…",
+        "toast": {
+          "comingSoon": "El envío estará disponible próximamente."
         }
       },
       "diff": {
@@ -661,7 +739,6 @@
         "reason": "Motivo del cliente",
         "discountsTitle": "Descuentos aplicados",
         "downloadOriginal": "Descargar pedido original",
-        "sendChanges": "Enviar",
         "columns": {
           "product": "Producto",
           "quantity": "Cantidad",
