@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/app/(protected)/settings/account/_components/account-form', () => ({
@@ -58,5 +58,16 @@ describe('AccountSettingsPage', () => {
 
     expect(getAccount).toHaveBeenCalledOnce();
     expect(props?.account).toEqual(ACCOUNT);
+  });
+
+  it('offers email and password changes after the account form', async () => {
+    await renderPage();
+
+    expect(screen.getByRole('link', { name: 'access.changeEmail' }).getAttribute('href')).toBe(
+      '/settings/email',
+    );
+    expect(screen.getByRole('link', { name: 'access.changePassword' }).getAttribute('href')).toBe(
+      '/settings/password',
+    );
   });
 });

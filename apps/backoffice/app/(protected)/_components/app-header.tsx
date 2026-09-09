@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { KeyRoundIcon, LogOutIcon, SettingsIcon } from 'lucide-react';
+import { LogOutIcon, SettingsIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 import {
@@ -87,13 +87,7 @@ export async function AppHeader({ session }: AppHeaderProps) {
                 </Link>
               </DropdownMenuItem>
             ) : null}
-            <DropdownMenuItem asChild>
-              <Link href={ROUTES.changePassword}>
-                <KeyRoundIcon aria-hidden="true" />
-                {t('nav.changePassword')}
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
+            {session.role === ADMIN_ROLE ? <DropdownMenuSeparator /> : null}
             {/*
               Signing out is a POST, so it stays a form action rather than a link — and the menu item
               renders as the submit button so it keeps the menu's highlight and keyboard behaviour.

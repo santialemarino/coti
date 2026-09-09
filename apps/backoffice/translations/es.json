@@ -17,7 +17,6 @@
     },
     "nav": {
       "signOut": "Cerrar sesión",
-      "changePassword": "Cambiar contraseña",
       "orders": "Pedidos",
       "clients": "Clientes",
       "reports": "Reportes",
@@ -763,8 +762,6 @@
   "settings": {
     "title": "Configuración",
     "nav": {
-      "password": "Contraseña",
-      "email": "Correo",
       "account": "Cuenta",
       "branches": "Sucursales",
       "users": "Usuarios",
@@ -845,6 +842,11 @@
   },
   "account": {
     "title": "Cuenta",
+    "access": {
+      "title": "Acceso",
+      "changeEmail": "Cambiar correo",
+      "changePassword": "Cambiar contraseña"
+    },
     "name": {
       "label": "Nombre del corralón",
       "placeholder": "Ingresá el nombre del corralón",

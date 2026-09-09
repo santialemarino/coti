@@ -20,8 +20,6 @@ export default async function SettingsLayout({ children }: { children: React.Rea
   const onboarding = session?.role === ADMIN_ROLE ? await getOnboarding() : null;
 
   const items: SettingsNavItem[] = [
-    { href: ROUTES.changePassword, label: t('nav.password') },
-    { href: ROUTES.emailSettings, label: t('nav.email') },
     ...(session?.role === ADMIN_ROLE
       ? [
           { href: ROUTES.accountSettings, label: t('nav.account') },
