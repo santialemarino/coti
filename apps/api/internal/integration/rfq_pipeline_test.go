@@ -62,7 +62,7 @@ func (e *env) pipeline(
 ) *services.RFQService {
 	t.Helper()
 	return services.NewRFQService(e.db, repository.NewRFQRepository(),
-repository.NewQuoteRepository(), repository.NewQuoteSendRepository(),
+		repository.NewQuoteRepository(), repository.NewQuoteSendRepository(),
 		repository.NewQuoteAIGenerationRepository(),
 		repository.NewChannelRepository(), repository.NewUserRepository(), extractor,
 		e.matcher(t, matchConfig(), axes),

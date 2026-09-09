@@ -421,7 +421,7 @@ func (r *RFQRepository) CreateManualEntry(
 	}
 
 	err = q.QueryRow(ctx,
-`WITH allocated AS (
+		`WITH allocated AS (
 		   INSERT INTO quote_number_counter (account_id, last_number)
 		   VALUES ($1, 1)
 		   ON CONFLICT (account_id) DO UPDATE

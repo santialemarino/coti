@@ -150,7 +150,7 @@ func (f *fakeSellerReach) SellerServesBranches(
 
 func manualHarness(repo *fakeRfqRepoManual) (*RFQService, *fakeDB) {
 	db := &fakeDB{}
-svc := NewRFQService(db, repo, nil, nil, nil, nil, &fakeSellerReach{serves: true},
+	svc := NewRFQService(db, repo, nil, nil, nil, nil, &fakeSellerReach{serves: true},
 		nil, nil, nil, config.RFQConfig{})
 	svc.now = func() time.Time { return fixedNow }
 	return svc, db
@@ -1106,7 +1106,7 @@ func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 	}
 	h.channels.channel = &channel
 	h.channels.channelsByType = []domain.Channel{channel}
-h.service = NewRFQService(h.db, h.rfqs, h.quotes, h.sends, h.generations, h.channels,
+	h.service = NewRFQService(h.db, h.rfqs, h.quotes, h.sends, h.generations, h.channels,
 		&fakeSellerReach{serves: true}, h.extractor, h.matcher, nil, testRFQConfig()).
 		WithDiscounts(h.discounts)
 	return h

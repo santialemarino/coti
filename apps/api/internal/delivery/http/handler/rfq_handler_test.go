@@ -632,7 +632,7 @@ func TestRfqHandler_SetSeller_BadBodyIs400(t *testing.T) {
 // the latter never normally reaches this route because RequireAdmin sits before it.
 func TestRfqHandler_SetSeller_ServiceRefusalsPassThrough(t *testing.T) {
 	for name, want := range map[string]struct {
-		err   error
+		err    error
 		status int
 	}{
 		"foreign seller": {err: fmt.Errorf("%w: seller_id names a seller who cannot serve the order's branch", domain.ErrInvalidInput), status: http.StatusUnprocessableEntity},

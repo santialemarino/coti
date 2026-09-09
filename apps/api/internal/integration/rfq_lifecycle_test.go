@@ -457,7 +457,9 @@ func TestRfq_AdminSteersTheSeller(t *testing.T) {
 	// Visibility moved with the owner: seller1 no longer lists the order, seller2 does.
 	list1 := e.do(t, request{method: http.MethodGet, path: "/v1/rfqs", token: tokenSeller, branch: branchID.String()})
 	list2 := e.do(t, request{method: http.MethodGet, path: "/v1/rfqs", token: e.tokenFor(t, seller2), branch: branchID.String()})
-	var list1Body, list2Body []struct{ ID string `json:"id"` }
+	var list1Body, list2Body []struct {
+		ID string `json:"id"`
+	}
 	if err := json.Unmarshal(list1.Body.Bytes(), &list1Body); err != nil {
 		t.Fatalf("decode seller1 list: %v", err)
 	}

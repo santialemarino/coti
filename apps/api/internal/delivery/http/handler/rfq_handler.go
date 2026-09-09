@@ -25,7 +25,7 @@ type ManualRFQService interface {
 	AddDiscount(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID, in domain.QuoteDiscountCreate) (*domain.QuoteDiscount, error)
 	UpdateDiscount(ctx context.Context, tenant domain.Tenant, quoteID, discountID uuid.UUID, in domain.QuoteDiscountUpdate) (*domain.QuoteDiscount, error)
 	DeleteDiscount(ctx context.Context, tenant domain.Tenant, quoteID, discountID uuid.UUID) error
-	AssignSeller(ctx context.Context,tenant domain.Tenant,rfqID uuid.UUID,) (*domain.Quote, error)
+	AssignSeller(ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID) (*domain.Quote, error)
 	SetSeller(ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID, sellerID *uuid.UUID) (*domain.Quote, error)
 }
 

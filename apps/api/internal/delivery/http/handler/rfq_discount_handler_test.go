@@ -21,20 +21,20 @@ import (
 // selectors an AddDiscount/UpdateDiscount/DeleteDiscount test never touches answer
 // zero values so the stub satisfies the whole interface at once.
 type stubDiscountRFQService struct {
-	created       *domain.QuoteDiscount
-	updated       *domain.QuoteDiscount
-	createdTenant domain.Tenant
-	createdQuote  uuid.UUID
-	createdInput  domain.QuoteDiscountCreate
-	updatedTenant domain.Tenant
-	updatedQuote  uuid.UUID
-	updatedID     uuid.UUID
-	updatedInput  domain.QuoteDiscountUpdate
-	deletedTenant domain.Tenant
-	deletedQuote  uuid.UUID
-	deletedID     uuid.UUID
-	createErr     error
-	deleteErr     error
+	created         *domain.QuoteDiscount
+	updated         *domain.QuoteDiscount
+	createdTenant   domain.Tenant
+	createdQuote    uuid.UUID
+	createdInput    domain.QuoteDiscountCreate
+	updatedTenant   domain.Tenant
+	updatedQuote    uuid.UUID
+	updatedID       uuid.UUID
+	updatedInput    domain.QuoteDiscountUpdate
+	deletedTenant   domain.Tenant
+	deletedQuote    uuid.UUID
+	deletedID       uuid.UUID
+	createErr       error
+	deleteErr       error
 	setSeller       *domain.Quote
 	setSellerErr    error
 	setSellerTenant domain.Tenant
