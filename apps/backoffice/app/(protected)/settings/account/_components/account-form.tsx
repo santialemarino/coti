@@ -86,7 +86,6 @@ export function AccountForm({ account }: AccountFormProps) {
                   {...field}
                 />
               </FormControl>
-              <FormDescription>{t('name.hint')}</FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -123,7 +122,6 @@ export function AccountForm({ account }: AccountFormProps) {
                   {...field}
                 />
               </FormControl>
-              <FormDescription>{t('taxId.hint')}</FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -131,10 +129,7 @@ export function AccountForm({ account }: AccountFormProps) {
 
         <Separator />
 
-        <div className="flex flex-col gap-y-1">
-          <h2 className="text-heading-6">{t('brand.title')}</h2>
-          <p className="text-paragraph-sm text-foreground-muted">{t('brand.description')}</p>
-        </div>
+        <h2 className="text-heading-6">{t('brand.title')}</h2>
 
         <FormField
           control={form.control}
@@ -151,18 +146,17 @@ export function AccountForm({ account }: AccountFormProps) {
                   {...field}
                 />
               </FormControl>
-              <FormDescription>
-                {t('brandLogoUrl.hint')}{' '}
-                {/* Opened rather than rendered: the backoffice does not load an address someone
-                    pasted, and one click confirms it is the right image. */}
-                {logo ? (
+              {/* Opened rather than rendered: the backoffice does not load an address someone
+                  pasted, and one click confirms it is the right image. */}
+              {logo ? (
+                <FormDescription>
                   <InlineLink asChild>
                     <a href={logo} target="_blank" rel="noreferrer noopener">
                       {t('brandLogoUrl.open')}
                     </a>
                   </InlineLink>
-                ) : null}
-              </FormDescription>
+                </FormDescription>
+              ) : null}
               <FormMessage />
             </FormItem>
           )}
@@ -187,7 +181,6 @@ export function AccountForm({ account }: AccountFormProps) {
                   style={swatch ? { backgroundColor: swatch } : undefined}
                 />
               </div>
-              <FormDescription>{t('brandColor.hint')}</FormDescription>
               <FormMessage />
             </FormItem>
           )}

@@ -414,9 +414,8 @@ export function RfqDashboard({
 
   return (
     <>
-      <div className="flex flex-col gap-y-1 pb-6">
+      <div className="pb-6">
         <h1 className="text-heading-2">{t('greeting', { name: userName })}</h1>
-        <p className="text-paragraph-sm text-foreground-muted">{t('selectHint')}</p>
       </div>
       <Card className="gap-y-0 overflow-hidden py-0">
         <CardHeader className="flex-row items-center justify-between py-6">
@@ -627,9 +626,7 @@ export function RfqDashboard({
                 colSpan={COLUMN_COUNT}
                 icon={hasCriteria ? SearchXIcon : InboxIcon}
                 title={t(hasCriteria ? 'list.noResults.title' : 'list.empty.title')}
-                description={t(
-                  hasCriteria ? 'list.noResults.description' : 'list.empty.description',
-                )}
+                description={hasCriteria ? t('list.noResults.description') : undefined}
               />
             ) : (
               pageItems.map((rfq) => {

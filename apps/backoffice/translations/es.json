@@ -233,8 +233,7 @@
       },
       "taxId": {
         "label": "CUIT",
-        "placeholder": "Ingresá el CUIT",
-        "hint": "Son 11 dígitos, con guiones o sin ellos: 30-70123456-8."
+        "placeholder": "Ingresá el CUIT"
       },
       "branchName": {
         "label": "Nombre de la sucursal",
@@ -317,7 +316,6 @@
     },
     "changePassword": {
       "title": "Cambiar contraseña",
-      "description": "Para cambiarla necesitás ingresar la contraseña actual. Al cambiarla se cierran las demás sesiones abiertas.",
       "currentPassword": {
         "label": "Contraseña actual",
         "placeholder": "Ingresá tu contraseña actual",
@@ -343,7 +341,6 @@
     },
     "changeEmail": {
       "title": "Cambiar tu correo",
-      "description": "Ahora usás {email}. Para cambiar tu dirección necesitás ingresar tu contraseña actual, y la nueva queda sin confirmar hasta que abras el enlace que te enviamos.",
       "newEmail": {
         "label": "Correo electrónico nuevo",
         "placeholder": "Ingresá tu dirección de correo",
@@ -421,7 +418,6 @@
   "rfqs": {
     "title": "Pedidos",
     "greeting": "¡Hola, {name}!",
-    "selectHint": "Buscá, filtrá y abrí un pedido para revisar su cotización.",
     "status": {
       "RECEIVED": "Recibido",
       "GENERATED": "Generado",
@@ -505,8 +501,7 @@
         "archive": "Archivar pedido"
       },
       "empty": {
-        "title": "Todavía no hay pedidos",
-        "description": "Los pedidos de cotización que reciban tus clientes van a aparecer acá."
+        "title": "Todavía no hay pedidos"
       },
       "noResults": {
         "title": "No encontramos pedidos",
@@ -780,7 +775,6 @@
   },
   "branches": {
     "title": "Sucursales",
-    "description": "Cada sucursal opera con su propia disponibilidad, sus precios y sus canales. El catálogo de productos es de toda la cuenta.",
     "add": "Agregar sucursal",
     "cancel": "Cancelar",
     "table": {
@@ -851,11 +845,9 @@
   },
   "account": {
     "title": "Cuenta",
-    "description": "Los datos del corralón y la marca con la que tu cliente ve una cotización. Valen para toda la cuenta, no para una sucursal.",
     "name": {
       "label": "Nombre del corralón",
       "placeholder": "Ingresá el nombre del corralón",
-      "hint": "Es el nombre que aparece en el backoffice y en lo que enviamos a tu cliente.",
       "required": "Ingresá el nombre del corralón."
     },
     "legalName": {
@@ -864,24 +856,20 @@
     },
     "taxId": {
       "label": "CUIT",
-      "placeholder": "Ingresá el CUIT",
-      "hint": "Son 11 dígitos, con guiones o sin ellos: 30-70123456-8."
+      "placeholder": "Ingresá el CUIT"
     },
     "brand": {
-      "title": "Marca",
-      "description": "Con esto armamos las cotizaciones que ve tu cliente. Si lo dejás vacío usamos el diseño de Coti."
+      "title": "Marca"
     },
     "brandLogoUrl": {
       "label": "Logo",
       "placeholder": "Ingresá la dirección de la imagen",
-      "hint": "Tiene que ser una imagen accesible desde internet, como https://tucorralon.com/logo.png.",
       "open": "Verla",
       "invalid": "Ingresá una dirección web completa, con https:// adelante."
     },
     "brandColor": {
       "label": "Color de la marca",
       "placeholder": "Ingresá el color de tu marca",
-      "hint": "En hexadecimal, como lo escribís en un diseño: #C2410C.",
       "invalid": "Ingresá un color hexadecimal válido."
     },
     "submit": "Guardar cambios",
@@ -895,7 +883,6 @@
   },
   "users": {
     "title": "Usuarios",
-    "description": "Quiénes entran al backoffice, con qué rol y en qué sucursales trabajan. El catálogo y los precios son de toda la cuenta.",
     "add": "Agregar usuario",
     "cancel": "Cancelar",
     "you": "Vos",
@@ -996,28 +983,23 @@
   },
   "catalogImport": {
     "title": "Catálogo",
-    "description": "Cargá productos y precios desde una planilla. Primero revisás el contenido y recién después confirmás la importación.",
     "noBranch": {
       "title": "Elegí una sucursal",
       "description": "Seleccioná una sucursal desde el encabezado para cargar el catálogo y sus precios iniciales."
     },
     "steps": {
       "download": {
-        "title": "Descargá la plantilla",
-        "description": "Usá las columnas y formatos esperados."
+        "title": "Descargá la plantilla"
       },
       "complete": {
-        "title": "Completá tus productos",
-        "description": "Incluí códigos, nombres, rubros y precios."
+        "title": "Completá tus productos"
       },
       "upload": {
-        "title": "Subí y revisá",
-        "description": "Nada se importa hasta tu confirmación."
+        "title": "Subí y revisá"
       }
     },
     "dropzone": {
       "title": "Arrastrá tu archivo hasta acá",
-      "hint": "Formato .xlsx o .csv.",
       "release": "Soltá el archivo para cargarlo",
       "selected": "Archivo seleccionado: {size, number} KB",
       "choose": "Elegir archivo",
@@ -1213,7 +1195,6 @@
   },
   "priceImport": {
     "title": "Precios",
-    "description": "Actualizá los precios vigentes de una sucursal. Primero revisás el archivo y después confirmás los cambios.",
     "targetBranch": "Los cambios se aplican en la sucursal {name}. Cambiala desde el selector del encabezado.",
     "noBranch": {
       "title": "Elegí una sucursal",
@@ -1234,7 +1215,6 @@
         "INTERNAL": "No pudimos exportar los precios. Intentá de nuevo."
       }
     },
-    "formatHint": "Usá un archivo .xlsx o .csv con las columnas codigo y precio. También podés incluir precio_minimo.",
     "summary": "Filas válidas: {valid}. Filas con errores: {invalid}.",
     "confirm": "Confirmar actualización",
     "confirming": "Actualizando…",

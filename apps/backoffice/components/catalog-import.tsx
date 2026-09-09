@@ -98,12 +98,7 @@ export function CatalogUpload({
             <span className="flex size-7 shrink-0 items-center justify-center bg-primary rounded-full text-paragraph-sm-medium text-primary-foreground">
               {index + 1}
             </span>
-            <div className="flex flex-col gap-y-1">
-              <p className="text-paragraph-sm-medium">{t(`steps.${key}.title`)}</p>
-              <p className="text-paragraph-xs text-foreground-muted">
-                {t(`steps.${key}.description`)}
-              </p>
-            </div>
+            <p className="text-paragraph-sm-medium">{t(`steps.${key}.title`)}</p>
           </div>
         ))}
       </div>
@@ -126,11 +121,11 @@ export function CatalogUpload({
                 <p className="break-all text-paragraph-medium">
                   {dragging ? t('dropzone.release') : file ? file.name : t('dropzone.title')}
                 </p>
-                <p className="text-paragraph-sm text-foreground-muted">
-                  {file
-                    ? t('dropzone.selected', { size: Math.max(1, Math.round(file.size / 1024)) })
-                    : t('dropzone.hint')}
-                </p>
+                {file ? (
+                  <p className="text-paragraph-sm text-foreground-muted">
+                    {t('dropzone.selected', { size: Math.max(1, Math.round(file.size / 1024)) })}
+                  </p>
+                ) : null}
               </div>
               <Button type="button" variant="outline" disabled={busy} onClick={openFileDialog}>
                 {file ? t('dropzone.replace') : t('dropzone.choose')}
