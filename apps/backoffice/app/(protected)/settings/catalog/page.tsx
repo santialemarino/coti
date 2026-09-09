@@ -3,7 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { Callout } from '@repo/ui/components';
 import { CatalogImport } from '@/components/catalog-import';
 import { getBranches } from '@/lib/api/branches';
-import { getActiveBranchId } from '@/lib/auth/branch';
+import { getEffectiveBranchId } from '@/lib/auth/branch';
 import { requireAdmin } from '@/lib/auth/session';
 import { generatePageMetadata } from '@/lib/utils/page';
 
@@ -13,10 +13,8 @@ export default async function CatalogSettingsPage() {
   await requireAdmin();
   const t = await getTranslations('catalogImport');
   const branches = await getBranches();
-  const activeBranchId = await getActiveBranchId();
-  const branch =
-    branches.find((candidate) => candidate.id === activeBranchId) ??
-    (branches.length === 1 ? branches[0] : undefined);
+  const activeBranchId = await getEffectiveBranchId(branches);
+  const branch = branches.find((candidate) => candidate.id === activeBranchId);
 
   return (
     <main className="flex flex-col gap-y-8">

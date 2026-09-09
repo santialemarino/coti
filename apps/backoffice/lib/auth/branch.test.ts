@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { cookieJar } from '@repo/vitest-config/cookies';
-import { clearActiveBranch, getActiveBranchId, setActiveBranch } from '@/lib/auth/branch';
+import {
+  clearActiveBranch,
+  getActiveBranchId,
+  getEffectiveBranchId,
+  setActiveBranch,
+} from '@/lib/auth/branch';
 import { BRANCH_COOKIE } from '@/lib/auth/tokens';
 
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
@@ -45,6 +50,18 @@ describe('the active branch cookie', () => {
   it('reports no selection when nothing was chosen', async () => {
     jar();
     await expect(getActiveBranchId()).resolves.toBeUndefined();
+  });
+
+  it('uses the only reachable branch as the effective selection', async () => {
+    jar();
+    await expect(getEffectiveBranchId([{ id: VILLA_BOSCH }])).resolves.toBe(VILLA_BOSCH);
+  });
+
+  it('requires an explicit selection when several branches are reachable', async () => {
+    jar();
+    await expect(
+      getEffectiveBranchId([{ id: VILLA_BOSCH }, { id: MORON }]),
+    ).resolves.toBeUndefined();
   });
 
   /*

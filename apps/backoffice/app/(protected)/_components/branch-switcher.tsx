@@ -20,15 +20,19 @@ interface BranchSwitcherProps {
 export function BranchSwitcher({ branches, activeBranchId }: BranchSwitcherProps) {
   const t = useTranslations('common.branch');
   const [pending, startTransition] = useTransition();
+  const onlyBranch = branches.length === 1 ? branches[0] : undefined;
 
-  const options = [
-    { value: ALL_BRANCHES, label: t('all'), icon: <Building2Icon aria-hidden="true" /> },
-    ...branches.map((branch) => ({
-      value: branch.id,
-      label: branch.name,
-      icon: <StoreIcon aria-hidden="true" />,
-    })),
-  ];
+  const branchOptions = branches.map((branch) => ({
+    value: branch.id,
+    label: branch.name,
+    icon: <StoreIcon aria-hidden="true" />,
+  }));
+  const options = onlyBranch
+    ? branchOptions
+    : [
+        { value: ALL_BRANCHES, label: t('all'), icon: <Building2Icon aria-hidden="true" /> },
+        ...branchOptions,
+      ];
 
   function onValueChange(value: string) {
     startTransition(async () => {
@@ -39,13 +43,13 @@ export function BranchSwitcher({ branches, activeBranchId }: BranchSwitcherProps
   return (
     <Combobox
       options={options}
-      value={activeBranchId ?? ALL_BRANCHES}
+      value={activeBranchId ?? onlyBranch?.id ?? ALL_BRANCHES}
       onValueChange={onValueChange}
       placeholder={t('placeholder')}
       searchable={branches.length >= SEARCHABLE_FROM}
       searchPlaceholder={t('search')}
       emptyLabel={t('empty')}
-      disabled={pending}
+      disabled={pending || Boolean(onlyBranch)}
       aria-label={t('label')}
       className="w-44 sm:w-56"
     />

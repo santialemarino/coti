@@ -1,8 +1,9 @@
 import { RfqListProvider } from '@/app/(protected)/rfqs/_components/rfq-list-context';
+import { getBranches } from '@/lib/api/branches';
 import { apiRequest } from '@/lib/api/client';
 import type { RfqChannel, RfqListItem, RfqRecord } from '@/lib/api/rfqs';
 import { normalizeRfqStatus } from '@/lib/api/rfqs';
-import { getActiveBranchId } from '@/lib/auth/branch';
+import { getEffectiveBranchId } from '@/lib/auth/branch';
 import { getSession } from '@/lib/auth/session';
 
 function mapListItem(item: RfqListItem): RfqRecord {
@@ -30,8 +31,12 @@ async function fetchRfqs(): Promise<RfqRecord[]> {
 }
 
 export default async function RfqsLayout({ children }: { children: React.ReactNode }) {
-  const [records, session] = await Promise.all([fetchRfqs(), getSession()]);
-  const activeBranchId = await getActiveBranchId();
+  const [records, session, branches] = await Promise.all([
+    fetchRfqs(),
+    getSession(),
+    getBranches(),
+  ]);
+  const activeBranchId = await getEffectiveBranchId(branches);
 
   return (
     <RfqListProvider

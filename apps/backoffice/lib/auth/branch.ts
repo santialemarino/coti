@@ -7,7 +7,7 @@ import { isRemembered } from '@/lib/auth/session';
 import { BRANCH_COOKIE, sessionCookieOptions } from '@/lib/auth/tokens';
 
 /*
- * The branch the caller is working in. A cookie because it outlives a navigation and no
+ * The branch the caller explicitly chose. A cookie because it outlives a navigation and no
  * client code reads it — the shell renders the switcher from the server.
  *
  * Nothing here validates the cookie on read, deliberately: no branch header means
@@ -18,6 +18,12 @@ import { BRANCH_COOKIE, sessionCookieOptions } from '@/lib/auth/tokens';
 export async function getActiveBranchId(): Promise<string | undefined> {
   // Blank is no selection: a delete leaves the entry empty for the rest of the request.
   return (await cookies()).get(BRANCH_COOKIE)?.value || undefined;
+}
+
+export async function getEffectiveBranchId(
+  branches: ReadonlyArray<{ id: string }>,
+): Promise<string | undefined> {
+  return (await getActiveBranchId()) ?? (branches.length === 1 ? branches[0]?.id : undefined);
 }
 
 /*

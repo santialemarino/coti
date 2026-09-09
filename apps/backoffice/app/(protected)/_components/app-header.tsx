@@ -19,7 +19,7 @@ import { signOut } from '@/app/(protected)/actions';
 import { Brand } from '@/components/brand';
 import { ROUTES } from '@/config/routes';
 import { getBranches } from '@/lib/api/branches';
-import { getActiveBranchId } from '@/lib/auth/branch';
+import { getEffectiveBranchId } from '@/lib/auth/branch';
 import type { SessionUser } from '@/lib/auth/session';
 import { ADMIN_ROLE } from '@/lib/constants/auth';
 
@@ -41,7 +41,7 @@ function initials(name: string) {
 export async function AppHeader({ session }: AppHeaderProps) {
   const t = await getTranslations('common');
   const branches = await getBranches();
-  const activeBranchId = await getActiveBranchId();
+  const activeBranchId = await getEffectiveBranchId(branches);
 
   return (
     <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-8 px-6 bg-background/85 border-b border-border backdrop-blur">
@@ -56,8 +56,7 @@ export async function AppHeader({ session }: AppHeaderProps) {
       <PrimaryNav />
 
       <div className="ml-auto flex items-center gap-x-3">
-        {/* One reachable branch is the caller's whole reach, so there is nothing to switch. */}
-        {branches.length > 1 ? (
+        {branches.length > 0 ? (
           <BranchSwitcher branches={branches} activeBranchId={activeBranchId ?? null} />
         ) : null}
 
