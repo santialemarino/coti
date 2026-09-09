@@ -510,4 +510,22 @@ func TestRfq_AdminSteersTheSeller(t *testing.T) {
 	if quoteBody.SellerID != nil {
 		t.Errorf("cleared seller_id = %v, want nil", quoteBody.SellerID)
 	}
+
+	// An order that does not exist is the one legitimate 404 on this route. It must arrive as
+	// the JSON error DTO, not as Gin's plain "404 page not found" that a dropped route would
+	// answer — the assertion pins the distinction so a routing regression cannot masquerade
+	// as a missing resource.
+	missing := e.do(t, request{
+		method: http.MethodPut,
+		path:   "/v1/rfqs/" + uuid.New().String() + "/seller",
+		token:  tokenAdmin,
+		branch: branchID.String(),
+		body:   map[string]any{"seller_id": seller2.ID.String()},
+	})
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("missing RFQ PUT seller = %d, want 404 (body %s)", missing.Code, missing.Body.String())
+	}
+	if body := missing.Body.String(); len(body) == 0 || body[0] != '{' {
+		t.Errorf("missing RFQ PUT seller body %q, want the JSON error DTO (routing 404 would answer text/plain)", body)
+	}
 }
