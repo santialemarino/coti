@@ -1,8 +1,10 @@
 'use client';
 
-import { createContext, useContext } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import type { RfqRecord } from '@/lib/api/rfqs';
+
+type RfqRecordPatch = Partial<RfqRecord> | ((record: RfqRecord) => RfqRecord);
 
 interface RfqListContextValue {
   records: RfqRecord[];
@@ -11,6 +13,7 @@ interface RfqListContextValue {
   // The signed-in user's id and role; the list rows stamp an assignment with them.
   userId: string;
   isAdmin: boolean;
+  updateRecord: (id: string, patch: RfqRecordPatch) => void;
 }
 
 const RfqListContext = createContext<RfqListContextValue>({
@@ -19,21 +22,38 @@ const RfqListContext = createContext<RfqListContextValue>({
   userName: '',
   userId: '',
   isAdmin: false,
+  updateRecord: () => undefined,
 });
 
 export function RfqListProvider({
-  records,
+  records: initialRecords,
   activeBranchId,
   userName,
   userId,
   isAdmin,
   children,
-}: RfqListContextValue & { children: React.ReactNode }) {
-  return (
-    <RfqListContext.Provider value={{ records, activeBranchId, userName, userId, isAdmin }}>
-      {children}
-    </RfqListContext.Provider>
+}: Omit<RfqListContextValue, 'updateRecord'> & { children: React.ReactNode }) {
+  const [records, setRecords] = useState(initialRecords);
+
+  useEffect(() => {
+    setRecords(initialRecords);
+  }, [initialRecords]);
+
+  const updateRecord = useCallback((id: string, patch: RfqRecordPatch) => {
+    setRecords((previous) =>
+      previous.map((record) => {
+        if (record.id !== id) return record;
+        return typeof patch === 'function' ? patch(record) : { ...record, ...patch };
+      }),
+    );
+  }, []);
+
+  const value = useMemo(
+    () => ({ records, activeBranchId, userName, userId, isAdmin, updateRecord }),
+    [activeBranchId, records, updateRecord, userName, userId, isAdmin],
   );
+
+  return <RfqListContext.Provider value={value}>{children}</RfqListContext.Provider>;
 }
 
 export function useRfqList() {

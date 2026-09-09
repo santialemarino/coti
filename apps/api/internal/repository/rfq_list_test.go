@@ -49,9 +49,9 @@ func seedListingRFQ(
 			archivedAt = &now
 		}
 		if _, err := db.CrossAccount().Exec(ctx,
-			`INSERT INTO quote (id, account_id, branch_id, rfq_id, seller_id, current_status,
+`INSERT INTO quote (id, account_id, number, branch_id, rfq_id, seller_id, current_status,
 			                    needs_followup, archived_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			 VALUES ($1, $2, (('x'||substr(replace($1::uuid::text,'-',''),1,15))::bit(60)::bigint), $3, $4, $5, $6, $7, $8)`,
 			quoteID, accountID, branchID, spec.rfqID, spec.sellerID, *spec.quoteStatus,
 			spec.needsFollowup, archivedAt); err != nil {
 			t.Fatalf("seed listing quote: %v", err)

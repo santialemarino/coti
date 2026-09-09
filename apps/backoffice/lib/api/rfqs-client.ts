@@ -4,6 +4,7 @@ import type {
   QuoteDiscountResponse,
   QuoteItemResponse,
   QuoteResponse,
+  QuoteVersionResponse,
   RfqDetailResponse,
   UpdateDiscountBody,
 } from '@/lib/api/rfqs';
@@ -246,7 +247,7 @@ export async function addQuoteItem(
  */
 export async function generateQuote(
   quoteId: string,
-): Promise<{ quote: unknown; version: unknown; items: QuoteItemResponse[] }> {
+): Promise<{ quote: QuoteResponse; version: QuoteVersionResponse; items: QuoteItemResponse[] }> {
   const response = await fetch(`/api/quotes/${quoteId}/generate`, {
     method: 'POST',
     cache: 'no-store',

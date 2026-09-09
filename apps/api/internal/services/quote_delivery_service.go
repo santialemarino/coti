@@ -86,6 +86,13 @@ type quoteEmailSender interface {
 	Send(ctx context.Context, out OutboundMail) error
 }
 
+type quoteRepresentationEnsurer interface {
+	Ensure(ctx context.Context, tenant domain.Tenant,
+		quoteID uuid.UUID) (*domain.QuoteRepresentationResult, error)
+	ResolvePublic(ctx context.Context, accountID, versionID uuid.UUID, expiresAt time.Time,
+		publicURL string) (*domain.PublicQuoteRepresentation, error)
+}
+
 type quotePublicDB interface {
 	tenantTxRunner
 	CrossAccount() repository.Querier
@@ -94,19 +101,28 @@ type quotePublicDB interface {
 
 // QuoteDeliveryService freezes and delivers a seller-approved quote, then labels it post-commit.
 type QuoteDeliveryService struct {
-	db        quotePublicDB
-	sends     quoteDeliveryRepository
-	quotes    quoteDeliveryQuoteRepository
-	rfqs      quoteDeliveryRFQRepository
-	clients   quoteDeliveryClientRepository
-	channels  quoteDeliveryChannelRepository
-	branches  quoteDeliveryBranchRepository
-	whatsapp  domain.QuoteWhatsAppSender
-	email     quoteEmailSender
-	evaluator QuoteQualityEvaluator
-	webappURL string
-	now       func() time.Time
-	log       *slog.Logger
+	db              quotePublicDB
+	sends           quoteDeliveryRepository
+	quotes          quoteDeliveryQuoteRepository
+	rfqs            quoteDeliveryRFQRepository
+	clients         quoteDeliveryClientRepository
+	channels        quoteDeliveryChannelRepository
+	branches        quoteDeliveryBranchRepository
+	whatsapp        domain.QuoteWhatsAppSender
+	email           quoteEmailSender
+	evaluator       QuoteQualityEvaluator
+	representations quoteRepresentationEnsurer
+	webappURL       string
+	now             func() time.Time
+	log             *slog.Logger
+}
+
+// WithRepresentationService makes immutable output generation a prerequisite for delivery.
+func (s *QuoteDeliveryService) WithRepresentationService(
+	representations quoteRepresentationEnsurer,
+) *QuoteDeliveryService {
+	s.representations = representations
+	return s
 }
 
 // NewQuoteDeliveryService builds the delivery orchestrator.
@@ -152,19 +168,29 @@ func (s *QuoteDeliveryService) Send(ctx context.Context, tenant domain.Tenant, q
 
 func (s *QuoteDeliveryService) sendLocked(ctx context.Context, tenant domain.Tenant,
 	quoteID uuid.UUID, normalized domain.QuoteDeliveryInput) (*domain.QuoteDeliveryResult, error) {
-	prepared, quote, version, err := s.prepare(ctx, tenant, quoteID, normalized)
+	if s.representations == nil {
+		return nil, domain.ErrNotConfigured
+	}
+	bundle, err := s.representations.Ensure(ctx, tenant, quoteID)
+	if err != nil {
+		return nil, err
+	}
+	prepared, quote, version, err := s.prepare(ctx, tenant, quoteID, normalized, bundle.Representation.VersionID)
 	if errors.Is(err, domain.ErrConflict) && domain.CodeOf(err) == domain.CodeConflict {
 		prepared, quote, version, err = s.loadConcurrentReplay(ctx, tenant, quoteID, normalized)
 	}
 	if err != nil {
 		return nil, err
 	}
+	if version.ID != bundle.Representation.VersionID {
+		return nil, domain.WithCode(domain.CodeQuoteNotSendable, domain.ErrConflict)
+	}
 	s.decorateURLs(prepared)
 	if complete(prepared) {
 		return replayResult(*quote, *version, prepared)
 	}
 
-	outcomes := s.dispatch(ctx, tenant, *quote, prepared)
+	outcomes := s.dispatch(ctx, tenant, *quote, prepared, bundle)
 	completedAt := s.now().UTC()
 	expiresAt := completedAt.AddDate(0, 0, prepared[0].ValidityDays)
 	for _, delivery := range prepared {
@@ -235,7 +261,7 @@ func (s *QuoteDeliveryService) sendLocked(ctx context.Context, tenant domain.Ten
 }
 
 func (s *QuoteDeliveryService) prepare(ctx context.Context, tenant domain.Tenant,
-	quoteID uuid.UUID, in domain.QuoteDeliveryInput) ([]domain.QuoteSend, *domain.Quote,
+	quoteID uuid.UUID, in domain.QuoteDeliveryInput, representedVersionID uuid.UUID) ([]domain.QuoteSend, *domain.Quote,
 	*domain.QuoteVersion, error) {
 	var prepared []domain.QuoteSend
 	var quote *domain.Quote
@@ -253,6 +279,9 @@ func (s *QuoteDeliveryService) prepare(ctx context.Context, tenant domain.Tenant
 		version, err = s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
 		if err != nil {
 			return err
+		}
+		if version.ID != representedVersionID || !version.IsImmutable {
+			return domain.WithCode(domain.CodeQuoteNotSendable, domain.ErrConflict)
 		}
 
 		prepared, err = s.sends.ListByOperation(ctx, q, tenant.AccountID, tenant.BranchID,
@@ -409,7 +438,9 @@ func (s *QuoteDeliveryService) loadConcurrentReplay(ctx context.Context, tenant 
 }
 
 func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenant,
-	quote domain.Quote, sends []domain.QuoteSend) []domain.QuoteSendOutcome {
+	quote domain.Quote, sends []domain.QuoteSend,
+	bundle *domain.QuoteRepresentationResult,
+) []domain.QuoteSendOutcome {
 	outcomes := make([]domain.QuoteSendOutcome, 0, len(sends))
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -422,6 +453,11 @@ func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenan
 			defer wg.Done()
 			send := sends[index]
 			publicURL := s.publicURL(send.PublicToken)
+			messageBody := "Tu cotización está lista. Podés verla en " + publicURL
+			if bundle != nil {
+				messageBody = strings.ReplaceAll(bundle.Representation.Message,
+					domain.QuotePublicURLPlaceholder, publicURL)
+			}
 			outcome := domain.QuoteSendOutcome{ID: send.ID,
 				Status: domain.SendTrackingStatusFailed}
 			var err error
@@ -430,18 +466,26 @@ func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenan
 				var receipt *domain.DeliveryReceipt
 				receipt, err = s.whatsapp.SendQuote(ctx, domain.QuoteWhatsAppMessage{
 					DeliveryID: send.ID, To: send.Destination,
-					Body:      "Tu cotización está lista. Podés verla en " + publicURL,
+					Body:      messageBody,
 					PublicURL: publicURL})
 				if err == nil && receipt != nil && receipt.ProviderReference != "" {
 					outcome.ProviderReference = &receipt.ProviderReference
 				}
 			case domain.ChannelTypeEmail:
 				clientID := quote.ClientID
+				subject := "Tu cotización está lista"
+				paragraphs := []string{"Revisá el detalle y la vigencia en la web."}
+				if bundle != nil {
+					payload := bundle.Representation.Payload
+					subject = "Cotización " + payload.Reference + " de " + payload.Supplier.Name
+					paragraphs = []string{"Total: " + formatCommercialMoney(payload.Currency, payload.Total),
+						payload.ValidityNote}
+				}
 				err = s.email.Send(ctx, OutboundMail{AccountID: tenant.AccountID,
 					UserID: &tenant.UserID, ClientID: clientID, QuoteID: &quote.ID,
 					Event: domain.NotificationEventQuoteSent, To: send.Destination,
-					Subject: "Tu cotización está lista", Heading: "Tu cotización está lista",
-					Paragraphs:  []string{"Revisá el detalle y la vigencia en la web."},
+					Subject: subject, Heading: "Tu cotización está lista",
+					Paragraphs:  paragraphs,
 					ActionLabel: "Ver cotización", ActionURL: publicURL})
 			default:
 				err = fmt.Errorf("unsupported delivery channel %s", send.ChannelType)
@@ -462,9 +506,9 @@ func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenan
 	return outcomes
 }
 
-// ResolvePublic returns only token validity; quote contents belong to the future webapp ticket.
+// ResolvePublic returns expiry alone for expired tokens and the immutable bundle for active ones.
 func (s *QuoteDeliveryService) ResolvePublic(ctx context.Context,
-	token string) (*domain.PublicQuoteSend, error) {
+	token string) (*domain.PublicQuoteRepresentation, error) {
 	token = strings.TrimSpace(token)
 	if token == "" {
 		return nil, domain.ErrNotFound
@@ -486,11 +530,14 @@ func (s *QuoteDeliveryService) ResolvePublic(ctx context.Context,
 	if send.ExpiresAt == nil {
 		return nil, domain.ErrNotFound
 	}
-	status := "ACTIVE"
 	if !s.now().Before(*send.ExpiresAt) {
-		status = "EXPIRED"
+		return &domain.PublicQuoteRepresentation{Status: "EXPIRED", ExpiresAt: *send.ExpiresAt}, nil
 	}
-	return &domain.PublicQuoteSend{Status: status, ExpiresAt: *send.ExpiresAt}, nil
+	if s.representations == nil {
+		return nil, domain.ErrNotConfigured
+	}
+	return s.representations.ResolvePublic(ctx, accountID, send.VersionID, *send.ExpiresAt,
+		s.publicURL(send.PublicToken))
 }
 
 func (s *QuoteDeliveryService) evaluateAfterCommit(ctx context.Context, tenant domain.Tenant,

@@ -190,7 +190,8 @@ func newEnvWithRFQProviders(
 		extractor = ai.NewRFQExtractor(ai.DisabledGenerator{}, cfg.RFQ.MaxItems)
 	}
 	rfqService := services.NewRFQService(db, repository.NewRFQRepository(), quoteRepo,
-		repository.NewQuoteAIGenerationRepository(), channelRepo, repository.NewUserRepository(),
+repository.NewQuoteSendRepository(), repository.NewQuoteAIGenerationRepository(),
+		channelRepo, repository.NewUserRepository(),
 		extractor,
 		services.NewCatalogMatchService(catalogSearchService, cfg.Catalog), quiet, cfg.RFQ)
 	quoteService := services.NewQuoteService(db, quoteRepo,
@@ -230,7 +231,7 @@ func newEnvWithRFQProviders(
 			RFQ:           handler.NewRFQHandler(rfqService),
 			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
 			File:          handler.NewFileHandler(objectStorage.Local),
-			Quote:         handler.NewQuoteHandler(quoteService, nil),
+			Quote:         handler.NewQuoteHandler(quoteService, nil, nil),
 			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
 				branchRepo, channelRepo, userRepo, onboardingRepo, authService, verificationService, quiet,
 				cfg.Auth, cfg.Branch)),
@@ -288,6 +289,7 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 			`DELETE FROM message_batch WHERE account_id = $1`,
 			`DELETE FROM client_action WHERE account_id = $1`,
 			`DELETE FROM quote_send WHERE account_id = $1`,
+			`DELETE FROM quote_representation WHERE account_id = $1`,
 			`DELETE FROM quote_status_change WHERE account_id = $1`,
 			`DELETE FROM notification WHERE account_id = $1`,
 			`DELETE FROM promotion_tier WHERE account_id = $1`,
@@ -321,6 +323,7 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 			`DELETE FROM channel WHERE account_id = $1`,
 			`DELETE FROM client WHERE account_id = $1`,
 			`DELETE FROM branch WHERE account_id = $1`,
+			`DELETE FROM quote_number_counter WHERE account_id = $1`,
 			`DELETE FROM account WHERE id = $1`,
 		} {
 			e.mustCleanup(t, stmt, accountID)

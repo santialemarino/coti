@@ -148,6 +148,8 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	// its own beyond the global one.
 	quotes := verified.Group("/quotes")
 	quotes.POST("/:quoteId/accept-materials", h.Quote.AcceptMaterials)
+	quotes.POST("/:quoteId/representations", h.Quote.GenerateRepresentation)
+	quotes.PATCH("/:quoteId/items/:itemId/alternatives/:alternativeId", h.Quote.ApproveAlternative)
 	quotes.POST("/:quoteId/sends", h.Quote.Send)
 	quotes.POST("/:quoteId/transition", h.Quote.Transition)
 	quotes.POST("/:quoteId/archive", h.Quote.Archive)

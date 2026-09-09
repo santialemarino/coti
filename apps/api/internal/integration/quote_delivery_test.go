@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -17,8 +18,10 @@ import (
 
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
+	"github.com/santialemarino/coti/apps/api/internal/pdf"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 	"github.com/santialemarino/coti/apps/api/internal/services"
+	"github.com/santialemarino/coti/apps/api/internal/storage"
 )
 
 type captureWhatsAppSender struct {
@@ -61,6 +64,18 @@ type failingQuoteEvaluator struct {
 	mu    sync.Mutex
 	calls int
 	err   error
+}
+
+type failingRepresentationEnsurer struct{}
+
+func (failingRepresentationEnsurer) Ensure(context.Context, domain.Tenant,
+	uuid.UUID) (*domain.QuoteRepresentationResult, error) {
+	return nil, domain.ErrRepresentationUnavailable
+}
+
+func (failingRepresentationEnsurer) ResolvePublic(context.Context, uuid.UUID, uuid.UUID,
+	time.Time, string) (*domain.PublicQuoteRepresentation, error) {
+	return nil, domain.ErrRepresentationUnavailable
 }
 
 func (e *failingQuoteEvaluator) EvaluateFinalQuote(context.Context, domain.Tenant,
@@ -116,16 +131,27 @@ func (e *env) seedSendableQuote(t *testing.T, name string, corrected bool) senda
 	return sendableQuote{tenant: tenant, draft: draft}
 }
 
-func (e *env) quoteDeliveryService(whatsapp domain.QuoteWhatsAppSender,
+func (e *env) quoteDeliveryService(t *testing.T, whatsapp domain.QuoteWhatsAppSender,
 	email interface {
 		Send(context.Context, services.OutboundMail) error
 	},
 	evaluator services.QuoteQualityEvaluator) *services.QuoteDeliveryService {
+	t.Helper()
+	baseURL, _ := url.Parse("https://files.test")
+	objects, err := storage.NewLocalStorage(t.TempDir(), baseURL,
+		storage.NewURLSigner([]byte(testJWTSecret), nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	representations := services.NewQuoteRepresentationService(e.db,
+		repository.NewQuoteRepresentationRepository(), repository.NewQuoteRepository(),
+		objects, nil, pdf.NewQuoteRenderer(), 15*time.Minute, nil, nil)
 	return services.NewQuoteDeliveryService(e.db, repository.NewQuoteSendRepository(),
 		repository.NewQuoteRepository(), repository.NewRFQRepository(),
 		repository.NewClientRepository(), repository.NewChannelRepository(),
 		repository.NewBranchRepository(), whatsapp, email, evaluator,
-		"https://quotes.test", nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		"https://quotes.test", nil, slog.New(slog.NewTextHandler(io.Discard, nil))).
+		WithRepresentationService(representations)
 }
 
 func (e *env) realQualityEvaluator(embedder domain.Embedder) services.QuoteQualityEvaluator {
@@ -142,7 +168,7 @@ func TestQuoteDelivery_SuccessFreezesSendsAndEvaluatesUnchangedQuote(t *testing.
 	e := newEnv(t)
 	seed := e.seedSendableQuote(t, "Delivery unchanged", false)
 	whatsapp := &captureWhatsAppSender{}
-	service := e.quoteDeliveryService(whatsapp, &stagedQuoteEmailSender{},
+	service := e.quoteDeliveryService(t, whatsapp, &stagedQuoteEmailSender{},
 		e.realQualityEvaluator(axisEmbedder{axes: map[string]int{}}))
 	key := uuid.New()
 
@@ -207,11 +233,28 @@ func TestQuoteDelivery_SuccessFreezesSendsAndEvaluatesUnchangedQuote(t *testing.
 	}
 }
 
+func TestQuoteDelivery_RepresentationFailureContactsNobody(t *testing.T) {
+	e := newEnv(t)
+	seed := e.seedSendableQuote(t, "Delivery representation failure", false)
+	whatsapp := &captureWhatsAppSender{}
+	email := &stagedQuoteEmailSender{}
+	service := e.quoteDeliveryService(t, whatsapp, email, nil).
+		WithRepresentationService(failingRepresentationEnsurer{})
+	_, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID,
+		domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550188"})
+	if !errors.Is(err, domain.ErrRepresentationUnavailable) {
+		t.Fatalf("Send() = %v, want ErrRepresentationUnavailable", err)
+	}
+	if whatsapp.count() != 0 || email.sends != 0 {
+		t.Fatalf("contacts = %d/%d, want none", whatsapp.count(), email.sends)
+	}
+}
+
 func TestQuoteDelivery_CorrectionLearnsAndPostCommitEvaluationFailureDoesNotFailSend(t *testing.T) {
 	t.Run("corrected quote", func(t *testing.T) {
 		e := newEnv(t)
 		seed := e.seedSendableQuote(t, "Delivery corrected", true)
-		service := e.quoteDeliveryService(&captureWhatsAppSender{}, &stagedQuoteEmailSender{},
+		service := e.quoteDeliveryService(t, &captureWhatsAppSender{}, &stagedQuoteEmailSender{},
 			e.realQualityEvaluator(failingCorrectionEmbedder{}))
 		if _, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID,
 			domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(),
@@ -239,7 +282,7 @@ func TestQuoteDelivery_CorrectionLearnsAndPostCommitEvaluationFailureDoesNotFail
 		e := newEnv(t)
 		seed := e.seedSendableQuote(t, "Delivery evaluation outage", false)
 		evaluator := &failingQuoteEvaluator{err: errors.New("evaluation outage")}
-		service := e.quoteDeliveryService(&captureWhatsAppSender{}, &stagedQuoteEmailSender{}, evaluator)
+		service := e.quoteDeliveryService(t, &captureWhatsAppSender{}, &stagedQuoteEmailSender{}, evaluator)
 		result, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID,
 			domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550103"})
 		if err != nil || result.CurrentStatus != domain.QuoteStatusSent || evaluator.count() != 1 {
@@ -272,7 +315,7 @@ func TestQuoteDelivery_ChannelsAreIndependentAndTenantBoundariesHold(t *testing.
 	}
 	whatsapp := &captureWhatsAppSender{err: errors.New("whatsapp outage")}
 	email := &stagedQuoteEmailSender{}
-	service := e.quoteDeliveryService(whatsapp, email,
+	service := e.quoteDeliveryService(t, whatsapp, email,
 		e.realQualityEvaluator(axisEmbedder{axes: map[string]int{}}))
 	address := "client@test.local"
 	result, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID,
@@ -319,7 +362,7 @@ func TestQuoteDelivery_AllChannelsFailLeavesQuoteQuotedAndDoesNotEvaluate(t *tes
 	seed := e.seedSendableQuote(t, "Delivery provider failure", false)
 	whatsapp := &captureWhatsAppSender{err: errors.New("provider outage")}
 	evaluator := &failingQuoteEvaluator{}
-	service := e.quoteDeliveryService(whatsapp, &stagedQuoteEmailSender{}, evaluator)
+	service := e.quoteDeliveryService(t, whatsapp, &stagedQuoteEmailSender{}, evaluator)
 	_, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID,
 		domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550107"})
 	if !errors.Is(err, domain.ErrDeliveryUnavailable) {
@@ -345,7 +388,7 @@ func TestQuoteDelivery_ConcurrentIdempotentRequestsDeliverOnce(t *testing.T) {
 	e := newEnv(t)
 	seed := e.seedSendableQuote(t, "Delivery concurrent idempotency", false)
 	whatsapp := &captureWhatsAppSender{}
-	service := e.quoteDeliveryService(whatsapp, &stagedQuoteEmailSender{},
+	service := e.quoteDeliveryService(t, whatsapp, &stagedQuoteEmailSender{},
 		e.realQualityEvaluator(axisEmbedder{axes: map[string]int{}}))
 	input := domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550108"}
 	results := make([]*domain.QuoteDeliveryResult, 2)

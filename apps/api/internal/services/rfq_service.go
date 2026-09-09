@@ -22,6 +22,7 @@ type rfqRepository interface {
 	Create(ctx context.Context, q repository.Querier, accountID uuid.UUID, in domain.NewRFQ) (*domain.RFQ, error)
 	UpdateStatus(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, status domain.RFQStatus) (*domain.RFQ, error)
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID, previousStatus *domain.RFQStatus, newStatus domain.RFQStatus, userID *uuid.UUID) (*domain.RFQStatusChange, error)
+	ListStatusChanges(ctx context.Context, q repository.Querier, accountID, branchID, rfqID uuid.UUID) ([]domain.RFQStatusChange, error)
 	ListByTenant(ctx context.Context, q repository.Querier, tenant domain.Tenant) ([]domain.RfqListItem, error)
 	GetByRFQID(ctx context.Context, q repository.Querier, tenant domain.Tenant, rfqID uuid.UUID) (*domain.RfqListItem, error)
 	AssignSeller(ctx context.Context, q repository.Querier, tenant domain.Tenant, rfqID uuid.UUID) (*domain.Quote, error)
@@ -51,6 +52,12 @@ type quoteDraftRepository interface {
 	UpdateItem(ctx context.Context, q repository.Querier, accountID, versionID, itemID uuid.UUID, in domain.QuoteItemUpdate) (*domain.QuoteItem, error)
 	DeleteItem(ctx context.Context, q repository.Querier, accountID, versionID, itemID uuid.UUID) error
 	CreateSingleItem(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, in domain.QuoteItemCreate) (*domain.QuoteItem, error)
+	ListStatusChanges(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) ([]domain.QuoteStatusChange, error)
+}
+
+// quoteSendTracker is the delivery tracking surface the RFQ detail needs.
+type quoteSendTracker interface {
+	ListByQuote(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) ([]domain.QuoteSend, error)
 }
 
 // quoteDiscountRepository is the discount application persistence surface the RFQ flow needs.
@@ -112,6 +119,7 @@ type RFQService struct {
 	rfqs        rfqRepository
 	quotes      quoteDraftRepository
 	discounts   quoteDiscountRepository
+	sends       quoteSendTracker
 	generations quoteAIGenerationRepository
 	channels    rfqChannelReader
 	sellers     sellerReach
@@ -139,7 +147,7 @@ func (s *RFQService) WithDiscounts(discounts quoteDiscountRepository) *RFQServic
 // NewRFQService builds an RFQService.
 func NewRFQService(
 	db tenantTxRunner, rfqs rfqRepository, quotes quoteDraftRepository,
-	generations quoteAIGenerationRepository,
+	sends quoteSendTracker, generations quoteAIGenerationRepository,
 	channels rfqChannelReader, sellers sellerReach,
 	extractor domain.RFQExtractor, matcher catalogMatcher,
 	log *slog.Logger, cfg config.RFQConfig,
@@ -148,7 +156,7 @@ func NewRFQService(
 		log = slog.Default()
 	}
 	return &RFQService{
-		db: db, rfqs: rfqs, quotes: quotes, generations: generations, channels: channels,
+		db: db, rfqs: rfqs, quotes: quotes, sends: sends, generations: generations, channels: channels,
 		sellers: sellers, extractor: extractor, matcher: matcher, log: log, cfg: cfg,
 		now: time.Now,
 	}
@@ -187,15 +195,38 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 			Rfq: *rfq,
 		}
 
+		rfqChanges, rfqChangesErr := s.rfqs.ListStatusChanges(ctx, q, tenant.AccountID,
+			rfq.BranchID, rfqID)
+		if rfqChangesErr != nil {
+			return rfqChangesErr
+		}
+		detail.RFQStatusChanges = rfqChanges
+
 		if quote == nil {
 			return nil
 		}
 
 		detail.Quote = quote
 
+		quoteChanges, quoteChangesErr := s.quotes.ListStatusChanges(ctx, q, tenant.AccountID,
+			quote.BranchID, quote.ID)
+		if quoteChangesErr != nil {
+			return quoteChangesErr
+		}
+		detail.QuoteStatusChanges = quoteChanges
+
+		if s.sends != nil {
+			deliveries, deliveryErr := s.sends.ListByQuote(ctx, q, tenant.AccountID,
+				quote.BranchID, quote.ID)
+			if deliveryErr != nil {
+				return deliveryErr
+			}
+			detail.Deliveries = deliveries
+		}
+
 		if quote.CurrentVersionID != nil {
 			version, versionErr := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID,
-				tenant.BranchID, quote.ID)
+				quote.BranchID, quote.ID)
 			if versionErr != nil && !errors.Is(versionErr, domain.ErrNotFound) {
 				return versionErr
 			}
@@ -406,6 +437,9 @@ func (s *RFQService) UpdateItem(
 			return versionErr
 		}
 		var updateErr error
+		if version.IsImmutable {
+			return domain.ErrImmutable
+		}
 		item, updateErr = s.quotes.UpdateItem(ctx, q, tenant.AccountID, version.ID, itemID, in)
 		if updateErr != nil {
 			return updateErr
@@ -453,6 +487,9 @@ func (s *RFQService) DeleteItem(
 		if versionErr != nil {
 			return versionErr
 		}
+		if version.IsImmutable {
+			return domain.ErrImmutable
+		}
 		if deleteErr := s.quotes.DeleteItem(ctx, q, tenant.AccountID, version.ID, itemID); deleteErr != nil {
 			return deleteErr
 		}
@@ -497,6 +534,9 @@ func (s *RFQService) AddItem(
 			return versionErr
 		}
 		var createErr error
+		if version.IsImmutable {
+			return domain.ErrImmutable
+		}
 		item, createErr = s.quotes.CreateSingleItem(ctx, q, tenant.AccountID, version.ID, in)
 		return createErr
 	}); err != nil {
@@ -1032,6 +1072,7 @@ func (s *RFQService) persistGeneratedDraft(
 				QuoteID:       quote.ID,
 				AuthorID:      sellerID,
 				VersionNumber: 1,
+				Currency:      domain.DefaultCurrency,
 				Total:         decimal.Zero,
 				IsImmutable:   false,
 			})

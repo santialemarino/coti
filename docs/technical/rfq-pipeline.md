@@ -18,13 +18,14 @@ files an order arrives with are stored beside it and are not read here — see
 | Method | Path                               | What it does                                                         |
 | ------ | ---------------------------------- | -------------------------------------------------------------------- |
 | `POST` | `/v1/rfqs/text-drafts`             | Runs an order the seller pasted or typed through the pipeline        |
+| `GET`  | `/v1/rfqs/{id}`                    | Returns the detail with quote state history and delivery tracking    |
 | `GET`  | `/v1/channels`                     | The active intake channels of the selected branch                    |
 | `POST` | `/v1/dev/whatsapp/messages`        | Simulates one inbound WhatsApp message. Not registered in production |
 | `POST` | `/v1/quotes/{id}/accept-materials` | Prices the draft's lines and moves the quote to `QUOTED`             |
 
 The two that reach a model share **their own rate-limit allowance**, `RATE_LIMIT_AI_MAX` — the global one would let a single seller spend 300 generations a minute, and this is the first surface in the product billed per call. Valorization reaches no provider and spends nothing, so it stays on the global allowance.
 
-All four are branch-scoped and read the branch from `X-Branch-Id`. `channel_id` is required on a
+All five are branch-scoped and read the branch from `X-Branch-Id`. `channel_id` is required on a
 text draft, which is why the channel listing exists: `rfq.channel_id` is `NOT NULL`, and a caller
 has to name the route the order arrived through rather than have one guessed for it. How a channel
 is configured, and where its provider credentials live, is in
@@ -343,7 +344,7 @@ platform's cron rather than on demand.
 `POST /v1/quotes/{quoteId}/sends` is the seller-owned transition from `QUOTED` to `SENT`.
 `Idempotency-Key` is a UUID. The body always names an E.164 WhatsApp destination, may add one
 email destination, and may override the branch validity with `expiry_days` from 1 through 365.
-The service freezes the current version and creates one `PENDING` `quote_send` per selected
+The service first ensures the immutable representation bundle, then creates one `PENDING` `quote_send` per selected
 channel before calling a provider. WhatsApp and email run independently; at least one successful
 channel commits the transition and all selected outcomes are retained. Each channel receives its
 own opaque token and `/quotes/{token}` webapp URL.
@@ -354,6 +355,13 @@ prepare and confirm the operation. A replay with the same payload returns the st
 different payload under the same key is a conflict. A new key is an explicit resend and opens a
 new validity window without changing older tokens.
 
+The seller-facing detail endpoint exposes the current view and the audit trail together:
+`rfq_status_history` comes from `rfq_status_change`, `quote_status_history` comes from
+`quote_status_change`, and `deliveries` lists the `quote_send` attempts for the quote. Delivery
+rows include the channel, destination, format, `tracking_status`, `sent_at`, `expires_at`, and
+`created_at`, including failed attempts so the backoffice can explain why a quote is still not
+visible to the client.
+
 After the successful confirmation commits, `QuoteQualityEvaluator.EvaluateFinalQuote` compares
 the original AI proposal with the frozen version. Evaluation or embedding failures never change
 the delivery response. The `quote-quality-evaluation` scheduled job finds missing evaluations
@@ -361,8 +369,9 @@ from durable successful sends; the existing `quote-correction-learning` job cont
 pending embeddings.
 
 `GET /v1/public/quote-sends/{token}` first resolves only the owning account through the owner
-pool, then verifies the completed send under an RLS-scoped transaction. It exposes only `ACTIVE`
-or `EXPIRED` and the timestamp; quote content belongs to the public webapp feature. The current
+pool, then verifies the completed send under an RLS-scoped transaction. Active tokens expose
+the frozen quote, message and a short-lived PDF URL; expired tokens expose only `EXPIRED`
+and `expires_at`. See [quote representations](quote-representations.md). The current
 WhatsApp composition-root adapter is deliberately disabled until the Meta transport ticket lands,
 and the console mailer is never treated as a successful client delivery.
 

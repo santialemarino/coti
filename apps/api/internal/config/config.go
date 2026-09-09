@@ -81,6 +81,7 @@ type Config struct {
 	RFQ             RFQConfig
 	QuoteCorrection QuoteCorrectionConfig
 	QuoteQuality    QuoteQualityConfig
+	QuoteLogo       QuoteLogoConfig
 	RateLimit       RateLimitConfig
 	Branch          BranchConfig
 	Job             JobConfig
@@ -88,6 +89,31 @@ type Config struct {
 	PriceImport     SpreadsheetImportConfig
 	Storage         StorageConfig
 	Channel         ChannelConfig
+}
+
+// QuoteLogoConfig bounds retrieval of untrusted branding images.
+type QuoteLogoConfig struct {
+	FetchTimeout time.Duration
+	MaxSizeBytes int64
+	MaxPixels    int64
+	MaxRedirects int
+}
+
+func (c QuoteLogoConfig) problems() []string {
+	var problems []string
+	if c.FetchTimeout <= 0 {
+		problems = append(problems, "QUOTE_LOGO_FETCH_TIMEOUT_SECONDS must be greater than zero")
+	}
+	if c.MaxSizeBytes <= 0 {
+		problems = append(problems, "QUOTE_LOGO_MAX_SIZE_BYTES must be greater than zero")
+	}
+	if c.MaxPixels <= 0 {
+		problems = append(problems, "QUOTE_LOGO_MAX_PIXELS must be greater than zero")
+	}
+	if c.MaxRedirects < 0 {
+		problems = append(problems, "QUOTE_LOGO_MAX_REDIRECTS must not be negative")
+	}
+	return problems
 }
 
 // ChannelConfig holds what protects an intake channel's stored credentials.
@@ -705,6 +731,12 @@ func Load() (*Config, error) {
 			MaxInterpretationExamples: getInt("QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES", 3, &problems),
 			ProcessingBatchSize:       getInt("QUOTE_CORRECTION_PROCESSING_BATCH_SIZE", 100, &problems),
 		},
+		QuoteLogo: QuoteLogoConfig{
+			FetchTimeout: getDuration("QUOTE_LOGO_FETCH_TIMEOUT_SECONDS", 3*time.Second, &problems),
+			MaxSizeBytes: int64(getInt("QUOTE_LOGO_MAX_SIZE_BYTES", 2*1024*1024, &problems)),
+			MaxPixels:    int64(getInt("QUOTE_LOGO_MAX_PIXELS", 12_000_000, &problems)),
+			MaxRedirects: getInt("QUOTE_LOGO_MAX_REDIRECTS", 3, &problems),
+		},
 		QuoteQuality: QuoteQualityConfig{
 			ProcessingBatchSize: getInt("QUOTE_QUALITY_PROCESSING_BATCH_SIZE", 100, &problems),
 		},
@@ -800,6 +832,7 @@ func Load() (*Config, error) {
 	}
 
 	problems = append(problems, cfg.AI.problems()...)
+	problems = append(problems, cfg.QuoteLogo.problems()...)
 	problems = append(problems, cfg.Storage.problems()...)
 
 	// A base URL missing its scheme or host yields recovery links that go nowhere, and the

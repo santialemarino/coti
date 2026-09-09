@@ -1,10 +1,14 @@
 'use client';
 
 import { useCallback, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import { Callout, PendingButton } from '@repo/ui/components';
+import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
+import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import { errorCodeOf } from '@/lib/api/errors';
 import type { QuoteDiscountResponse, QuoteItemResponse, RfqDetailResponse } from '@/lib/api/rfqs';
 import { normalizeRfqStatus } from '@/lib/api/rfqs';
 import { fetchRfqDetail, generateQuote } from '@/lib/api/rfqs-client';
@@ -20,8 +24,11 @@ interface RfqDetailViewProps {
 }
 
 export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
-  const t = useTranslations('rfqs');
+  const router = useRouter();
   const fmt = useFormatters();
+  const t = useTranslations('rfqs');
+  const message = useApiErrorMessage('rfqs.detail.items');
+  const { activeBranchId, updateRecord } = useRfqList();
   const [detail, setDetail] = useState(initialDetail);
   const [items, setItems] = useState<QuoteItemResponse[]>(initialDetail.items);
   const [discounts, setDiscounts] = useState<QuoteDiscountResponse[]>(
@@ -62,18 +69,33 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
 
   function handleGenerate() {
     if (!quoteId) return;
+    if (!activeBranchId) {
+      toast.error(t('detail.items.toast.branchRequired'));
+      return;
+    }
     startGenerate(async () => {
       try {
         const result = await generateQuote(quoteId);
+        const status = normalizeRfqStatus(result.quote.current_status);
         toast.success(t('detail.items.toast.generated'));
         setDetail((prev) => ({
           ...prev,
-          quote: result.quote as RfqDetailResponse['quote'],
-          version: result.version as RfqDetailResponse['version'],
+          rfq: { ...prev.rfq, status, total: result.version.total },
+          quote: result.quote,
+          version: result.version,
         }));
         setItems(result.items);
-      } catch {
-        toast.error(t('detail.items.toast.error'));
+        updateRecord(detail.rfq.id, {
+          archived: result.quote.archived_at != null,
+          itemCount: result.items.length,
+          needsFollowup: result.quote.needs_followup,
+          status,
+          total: result.version.total,
+        });
+        router.refresh();
+      } catch (error) {
+        toast.error(message(errorCodeOf(error)));
+        router.refresh();
       }
     });
   }
@@ -125,6 +147,7 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
             items={items}
             discounts={discounts}
             onItemsChange={handleItemsChange}
+            onDiscountsChange={setDiscounts}
             onRefresh={refreshDetail}
           />
         </>
@@ -135,6 +158,7 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
           items={items}
           discounts={discounts}
           onItemsChange={handleItemsChange}
+          onDiscountsChange={setDiscounts}
           onRefresh={refreshDetail}
         />
       )}

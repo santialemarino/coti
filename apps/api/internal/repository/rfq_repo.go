@@ -86,6 +86,34 @@ func (r *RFQRepository) AppendStatusChange(
 		accountID, rfqID, previousStatus, newStatus, userID))
 }
 
+// ListStatusChanges loads the RFQ transition log for one branch-scoped request.
+func (r *RFQRepository) ListStatusChanges(
+	ctx context.Context, q Querier, accountID, branchID, rfqID uuid.UUID,
+) ([]domain.RFQStatusChange, error) {
+	rows, err := q.Query(ctx,
+		`SELECT change.id, change.account_id, change.rfq_id, change.previous_status,
+		        change.new_status, change.user_id, change.changed_at, change.created_at
+		 FROM rfq_status_change change
+		 JOIN rfq ON rfq.account_id = change.account_id AND rfq.id = change.rfq_id
+		 WHERE change.account_id = $1 AND rfq.branch_id = $2 AND change.rfq_id = $3
+		 ORDER BY change.changed_at, change.created_at, change.id`,
+		accountID, branchID, rfqID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	changes := make([]domain.RFQStatusChange, 0)
+	for rows.Next() {
+		change, scanErr := scanRFQStatusChange(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		changes = append(changes, *change)
+	}
+	return changes, rows.Err()
+}
+
 // GetByRFQID returns a single RFQ scoped to the account, including its associated quote
 // data when present. This is the detail view backend. A seller only reaches orders in their
 // branch scope that are unassigned or their own; anything else answers not found, so the
@@ -126,7 +154,7 @@ func (r *RFQRepository) GetByRFQID(
 		 LEFT JOIN channel c ON c.id = r.channel_id AND c.account_id = r.account_id
 		 LEFT JOIN app_user u ON u.id = q.seller_id AND u.account_id = r.account_id
 		 LEFT JOIN quote_version qt ON qt.id = q.current_version_id AND qt.account_id = r.account_id
-		 WHERE r.account_id = $1
+WHERE r.account_id = $1
 		   AND ($2::uuid[] IS NULL OR r.branch_id = ANY($2::uuid[]))
 		   AND r.id = $3
 		   AND ($4::uuid IS NULL OR q.seller_id = $4 OR q.seller_id IS NULL)`,
@@ -393,11 +421,19 @@ func (r *RFQRepository) CreateManualEntry(
 	}
 
 	err = q.QueryRow(ctx,
-		`INSERT INTO quote (account_id, branch_id, rfq_id, seller_id, current_status)
-		 VALUES ($1, $2, $3, $4, 'DRAFT')
-		 RETURNING id, created_at, updated_at`,
+`WITH allocated AS (
+		   INSERT INTO quote_number_counter (account_id, last_number)
+		   VALUES ($1, 1)
+		   ON CONFLICT (account_id) DO UPDATE
+		     SET last_number = quote_number_counter.last_number + 1, updated_at = now()
+		   RETURNING last_number
+		 )
+		 INSERT INTO quote (account_id, number, branch_id, rfq_id, seller_id, current_status)
+		 SELECT $1, allocated.last_number, $2, $3, $4, 'DRAFT' FROM allocated
+		 RETURNING id, number, created_at, updated_at`,
 		tenant.AccountID, tenant.BranchID, creation.Rfq.ID, sellerID,
-	).Scan(&creation.Quote.ID, &creation.Quote.CreatedAt, &creation.Quote.UpdatedAt)
+	).Scan(&creation.Quote.ID, &creation.Quote.Number, &creation.Quote.CreatedAt,
+		&creation.Quote.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -423,6 +459,7 @@ func (r *RFQRepository) CreateManualEntry(
 	creation.Version.QuoteID = creation.Quote.ID
 	creation.Version.AuthorID = &tenant.UserID
 	creation.Version.VersionNumber = 1
+	creation.Version.Currency = domain.DefaultCurrency
 	creation.Version.Total = decimal.Zero
 
 	if _, err := q.Exec(ctx,

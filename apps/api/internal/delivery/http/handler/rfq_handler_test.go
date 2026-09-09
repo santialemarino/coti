@@ -313,6 +313,11 @@ func TestToRfqDetailResponse_MapsAllFieldsFromDomainDetail(t *testing.T) {
 	quoteID := uuid.New()
 	clientLabel := "Obra Norte"
 	totalStr := "5000.00"
+	changedAt := time.Date(2026, time.September, 4, 14, 30, 0, 0, time.UTC)
+	previousRFQ := domain.RFQStatusReceived
+	previousQuote := domain.QuoteStatusQuoted
+	sentAt := changedAt.Add(5 * time.Minute)
+	expiresAt := changedAt.AddDate(0, 0, 7)
 
 	detail := domain.RfqDetail{
 		Rfq: domain.RfqListItem{
@@ -349,6 +354,22 @@ func TestToRfqDetailResponse_MapsAllFieldsFromDomainDetail(t *testing.T) {
 				ConfidenceScore: decimal.NewNullDecimal(decimal.RequireFromString("0.8500")),
 			}},
 		},
+		RFQStatusChanges: []domain.RFQStatusChange{{
+			ID: uuid.New(), RFQID: rfqID, PreviousStatus: &previousRFQ,
+			NewStatus: domain.RFQStatusGenerated, UserID: &productID,
+			ChangedAt: changedAt, CreatedAt: changedAt,
+		}},
+		QuoteStatusChanges: []domain.QuoteStatusChange{{
+			ID: uuid.New(), QuoteID: quoteID, PreviousStatus: &previousQuote,
+			NewStatus: domain.QuoteStatusSent, UserID: &productID,
+			ChangedAt: sentAt, CreatedAt: sentAt,
+		}},
+		Deliveries: []domain.QuoteSend{{
+			ID: uuid.New(), VersionID: versionID, ChannelType: domain.ChannelTypeWhatsApp,
+			Destination: "+5491155550101", Format: domain.SendFormatWebAppLink,
+			TrackingStatus: domain.SendTrackingStatusDelivered, SentAt: &sentAt,
+			ExpiresAt: &expiresAt, CreatedAt: changedAt,
+		}},
 	}
 
 	resp := toRfqDetailResponse(detail)
@@ -387,6 +408,25 @@ func TestToRfqDetailResponse_MapsAllFieldsFromDomainDetail(t *testing.T) {
 	}
 	if alts[0].Rank != 1 {
 		t.Errorf("alternative rank = %d, want 1", alts[0].Rank)
+	}
+	if len(resp.RFQHistory) != 1 ||
+		resp.RFQHistory[0].PreviousStatus == nil ||
+		*resp.RFQHistory[0].PreviousStatus != string(domain.RFQStatusReceived) ||
+		resp.RFQHistory[0].NewStatus != string(domain.RFQStatusGenerated) {
+		t.Errorf("RFQ history = %+v, want RECEIVED -> GENERATED", resp.RFQHistory)
+	}
+	if len(resp.QuoteHistory) != 1 ||
+		resp.QuoteHistory[0].PreviousStatus == nil ||
+		*resp.QuoteHistory[0].PreviousStatus != string(domain.QuoteStatusQuoted) ||
+		resp.QuoteHistory[0].NewStatus != string(domain.QuoteStatusSent) {
+		t.Errorf("quote history = %+v, want QUOTED -> SENT", resp.QuoteHistory)
+	}
+	if len(resp.Deliveries) != 1 ||
+		resp.Deliveries[0].TrackingStatus != string(domain.SendTrackingStatusDelivered) ||
+		resp.Deliveries[0].Channel != string(domain.ChannelTypeWhatsApp) ||
+		resp.Deliveries[0].ExpiresAt == nil {
+		t.Errorf("deliveries = %+v, want one delivered WhatsApp send with expiry",
+			resp.Deliveries)
 	}
 }
 
@@ -461,6 +501,15 @@ func TestToRfqDetailResponse_OmitsQuoteAndVersionWhenAbsent(t *testing.T) {
 	}
 	if resp.Alternatives == nil || len(resp.Alternatives) != 0 {
 		t.Errorf("alternatives = %v, want empty map", resp.Alternatives)
+	}
+	if resp.RFQHistory == nil || len(resp.RFQHistory) != 0 {
+		t.Errorf("RFQ history = %v, want empty array", resp.RFQHistory)
+	}
+	if resp.QuoteHistory == nil || len(resp.QuoteHistory) != 0 {
+		t.Errorf("quote history = %v, want empty array", resp.QuoteHistory)
+	}
+	if resp.Deliveries == nil || len(resp.Deliveries) != 0 {
+		t.Errorf("deliveries = %v, want empty array", resp.Deliveries)
 	}
 }
 

@@ -250,8 +250,8 @@ func (e *env) seedInboxRFQ(
 		t.Fatalf("seed inbox rfq: %v", err)
 	}
 	if _, err := e.db.CrossAccount().Exec(context.Background(),
-		`INSERT INTO quote (id, account_id, branch_id, rfq_id, seller_id, current_status)
-		 VALUES ($1, $2, $3, $4, NULL, 'DRAFT')`,
+		`INSERT INTO quote (id, account_id, number, branch_id, rfq_id, seller_id, current_status)
+		 VALUES ($1, $2, (('x'||substr(replace($4::uuid::text,'-',''),1,15))::bit(60)::bigint), $3, $4, NULL, 'DRAFT')`,
 		uuid.New(), accountID, branchID, rfqID); err != nil {
 		t.Fatalf("seed inbox quote: %v", err)
 	}

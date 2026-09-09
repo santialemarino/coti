@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
@@ -102,6 +103,100 @@ func TestRFQRepository_TransitionsStayInsideTheAccount(t *testing.T) {
 	}
 	if status != string(domain.RFQStatusGenerated) {
 		t.Errorf("stored status = %q, want it untouched at GENERATED", status)
+	}
+}
+
+func TestRFQRepository_ListStatusChanges_OrdersAndNarrowsToBranch(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "RFQ status history")
+	branchID := branchOf(t, db, accountID)
+	otherBranchID := seedExtraBranch(t, db, accountID, "Sucursal Sur")
+	channelID := seedChannel(t, db, accountID, branchID, domain.ChannelTypeWhatsApp, true)
+	otherChannelID := seedChannel(t, db, accountID, otherBranchID, domain.ChannelTypeWhatsApp, true)
+	rfq := seedTextRFQ(t, db, accountID, branchID, channelID)
+	otherRFQ := seedTextRFQ(t, db, accountID, otherBranchID, otherChannelID)
+	repo := NewRFQRepository()
+
+	firstAt := time.Date(2026, time.September, 4, 9, 0, 0, 0, time.UTC)
+	secondAt := firstAt.Add(time.Hour)
+	if _, err := db.CrossAccount().Exec(ctx,
+		`INSERT INTO rfq_status_change (account_id, rfq_id, previous_status, new_status, changed_at)
+		 VALUES ($1, $2, 'RECEIVED', 'GENERATED', $3),
+		        ($1, $2, NULL, 'RECEIVED', $4),
+		        ($1, $5, 'RECEIVED', 'GENERATED', $4)`,
+		accountID, rfq.ID, secondAt, firstAt, otherRFQ.ID); err != nil {
+		t.Fatalf("seed RFQ status history: %v", err)
+	}
+
+	var changes []domain.RFQStatusChange
+	if err := db.InTenantTx(ctx,
+		domain.Tenant{AccountID: accountID, BranchID: branchID, Role: domain.UserRoleAdmin},
+		func(q Querier) error {
+			var readErr error
+			changes, readErr = repo.ListStatusChanges(ctx, q, accountID, branchID, rfq.ID)
+			return readErr
+		}); err != nil {
+		t.Fatalf("ListStatusChanges() = %v, want no error", err)
+	}
+	if len(changes) != 2 {
+		t.Fatalf("changes = %d, want 2 for the selected RFQ", len(changes))
+	}
+	if changes[0].NewStatus != domain.RFQStatusReceived ||
+		changes[1].NewStatus != domain.RFQStatusGenerated {
+		t.Errorf("changes = %+v, want chronological RECEIVED then GENERATED", changes)
+	}
+
+	if err := db.InTenantTx(ctx,
+		domain.Tenant{AccountID: accountID, BranchID: otherBranchID, Role: domain.UserRoleAdmin},
+		func(q Querier) error {
+			var readErr error
+			changes, readErr = repo.ListStatusChanges(ctx, q, accountID, otherBranchID, rfq.ID)
+			return readErr
+		}); err != nil {
+		t.Fatalf("wrong-branch ListStatusChanges() = %v, want no error", err)
+	}
+	if len(changes) != 0 {
+		t.Errorf("wrong branch read %d changes, want none", len(changes))
+	}
+}
+
+func TestRFQRepository_GetByRFQID_UsesTheTenantBranchFilter(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "RFQ detail branch filter")
+	branchID := branchOf(t, db, accountID)
+	otherBranchID := seedExtraBranch(t, db, accountID, "Sucursal Sur")
+	channelID := seedChannel(t, db, accountID, branchID, domain.ChannelTypeWhatsApp, true)
+	rfq := seedTextRFQ(t, db, accountID, branchID, channelID)
+	repo := NewRFQRepository()
+
+	read := func(tenant domain.Tenant) (*domain.RfqListItem, error) {
+		var item *domain.RfqListItem
+		err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+			var readErr error
+			item, readErr = repo.GetByRFQID(ctx, q, tenant, rfq.ID)
+			return readErr
+		})
+		return item, err
+	}
+
+	item, err := read(domain.Tenant{AccountID: accountID, Role: domain.UserRoleAdmin})
+	if err != nil || item.ID != rfq.ID {
+		t.Fatalf("admin all-branch read = %+v, %v; want RFQ", item, err)
+	}
+	item, err = read(domain.Tenant{AccountID: accountID, BranchID: branchID,
+		Role: domain.UserRoleSeller})
+	if err != nil || item.ID != rfq.ID {
+		t.Fatalf("selected branch read = %+v, %v; want RFQ", item, err)
+	}
+	if _, err = read(domain.Tenant{AccountID: accountID, BranchID: otherBranchID,
+		Role: domain.UserRoleSeller}); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("wrong selected branch read = %v, want ErrNotFound", err)
+	}
+	if _, err = read(domain.Tenant{AccountID: accountID, Role: domain.UserRoleSeller,
+		AllowedBranchIDs: []uuid.UUID{otherBranchID}}); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("unselected seller branch read = %v, want ErrNotFound", err)
 	}
 }
 

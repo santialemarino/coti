@@ -3,6 +3,8 @@
   "ui": "tui",
   "globalEnv": [
     "NODE_ENV",
+    "LOCALAPPDATA",
+    "GOCACHE",
     "NEXT_PUBLIC_API_URL",
     "AUTH_REFRESH_SKEW_SECONDS",
     "AUTH_REMEMBERED_SESSION_DAYS",
