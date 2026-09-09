@@ -44,3 +44,14 @@ type UserResponse struct {
 type UserListResponse struct {
 	Items []UserResponse `json:"items"`
 }
+
+// SellerResponse is one row of the manual RFQ assignee picklist.
+type SellerResponse struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+// SellerListResponse is returned by GET /v1/sellers.
+type SellerListResponse struct {
+	Items []SellerResponse `json:"items"`
+}

@@ -23,7 +23,9 @@ type rfqRepository interface {
 	UpdateStatus(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, status domain.RFQStatus) (*domain.RFQ, error)
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID, previousStatus *domain.RFQStatus, newStatus domain.RFQStatus, userID *uuid.UUID) (*domain.RFQStatusChange, error)
 	ListByTenant(ctx context.Context, q repository.Querier, tenant domain.Tenant) ([]domain.RfqListItem, error)
-	GetByRFQID(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID) (*domain.RfqListItem, error)
+	GetByRFQID(ctx context.Context, q repository.Querier, tenant domain.Tenant, rfqID uuid.UUID) (*domain.RfqListItem, error)
+	AssignSeller(ctx context.Context, q repository.Querier, tenant domain.Tenant, rfqID uuid.UUID) (*domain.Quote, error)
+	SetSeller(ctx context.Context, q repository.Querier, tenant domain.Tenant, rfqID uuid.UUID, sellerID *uuid.UUID) (*domain.Quote, error)
 	GetManualEntryChannelID(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (uuid.UUID, error)
 	CountProductsInAccount(ctx context.Context, q repository.Querier, accountID uuid.UUID, productIDs []uuid.UUID) (int, error)
 	CreateManualEntry(ctx context.Context, q repository.Querier, tenant domain.Tenant, channelID uuid.UUID, in domain.NewRfq, now time.Time) (*domain.RfqCreation, error)
@@ -96,6 +98,13 @@ type memoryAwareRFQExtractor interface {
 		examples []domain.RFQInterpretationExample) (*domain.RFQExtraction, error)
 }
 
+// sellerReach checks that a named seller can serve the caller's branch before a manual entry
+// names them, so an order cannot point at a seller another branch owns.
+type sellerReach interface {
+	SellerServesBranches(ctx context.Context, q repository.Querier, accountID uuid.UUID,
+		branchIDs []uuid.UUID, userID uuid.UUID) (bool, error)
+}
+
 // RFQService owns the text RFQ pipeline up to a seller-reviewable quote draft, and the manual
 // entry flow.
 type RFQService struct {
@@ -105,6 +114,7 @@ type RFQService struct {
 	discounts   quoteDiscountRepository
 	generations quoteAIGenerationRepository
 	channels    rfqChannelReader
+	sellers     sellerReach
 	extractor   domain.RFQExtractor
 	matcher     catalogMatcher
 	memories    interpretationMemoryFinder
@@ -130,7 +140,8 @@ func (s *RFQService) WithDiscounts(discounts quoteDiscountRepository) *RFQServic
 func NewRFQService(
 	db tenantTxRunner, rfqs rfqRepository, quotes quoteDraftRepository,
 	generations quoteAIGenerationRepository,
-	channels rfqChannelReader, extractor domain.RFQExtractor, matcher catalogMatcher,
+	channels rfqChannelReader, sellers sellerReach,
+	extractor domain.RFQExtractor, matcher catalogMatcher,
 	log *slog.Logger, cfg config.RFQConfig,
 ) *RFQService {
 	if log == nil {
@@ -138,7 +149,8 @@ func NewRFQService(
 	}
 	return &RFQService{
 		db: db, rfqs: rfqs, quotes: quotes, generations: generations, channels: channels,
-		extractor: extractor, matcher: matcher, log: log, cfg: cfg, now: time.Now,
+		sellers: sellers, extractor: extractor, matcher: matcher, log: log, cfg: cfg,
+		now: time.Now,
 	}
 }
 
@@ -161,7 +173,7 @@ func (s *RFQService) List(ctx context.Context, tenant domain.Tenant) ([]domain.R
 func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID) (*domain.RfqDetail, error) {
 	var detail *domain.RfqDetail
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		rfq, rfqErr := s.rfqs.GetByRFQID(ctx, q, tenant.AccountID, rfqID)
+		rfq, rfqErr := s.rfqs.GetByRFQID(ctx, q, tenant, rfqID)
 		if rfqErr != nil {
 			return rfqErr
 		}
@@ -234,6 +246,63 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 		return nil, err
 	}
 	return detail, nil
+}
+
+// AssignSeller claims an unclaimed order for the seller. Self-assignment is seller-only: an
+// admin already reaches the whole account, so they have no unclaimed pool to draw from. The
+// claim is atomic at the repository, and the loser of a race answers ErrConflict.
+func (s *RFQService) AssignSeller(
+	ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID,
+) (*domain.Quote, error) {
+	if tenant.IsAdmin() {
+		return nil, domain.ErrForbidden
+	}
+	var quote *domain.Quote
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		var err error
+		quote, err = s.rfqs.AssignSeller(ctx, q, tenant, rfqID)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	return quote, nil
+}
+
+// SetSeller writes an order's owner for an admin: the caller themself, a seller who can serve
+// the order's own branch, or — with a nil id — no one. The order's branch anchors the seller
+// check rather than the admin's active branch, so an admin shown every branch cannot hand an
+// order to a seller who would never list it. Self always passes, because the caller is already
+// inside the account. Unlike AssignSeller there is no unclaimed-pool to draw from: the write
+// replaces whoever owns the order.
+func (s *RFQService) SetSeller(
+	ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID, sellerID *uuid.UUID,
+) (*domain.Quote, error) {
+	if !tenant.IsAdmin() {
+		return nil, domain.ErrForbidden
+	}
+	var quote *domain.Quote
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		item, err := s.rfqs.GetByRFQID(ctx, q, tenant, rfqID)
+		if err != nil {
+			return err
+		}
+		if sellerID != nil && *sellerID != tenant.UserID {
+			serves, checkErr := s.sellers.SellerServesBranches(ctx, q, tenant.AccountID,
+				[]uuid.UUID{item.BranchID}, *sellerID)
+			if checkErr != nil {
+				return checkErr
+			}
+			if !serves {
+				return fmt.Errorf("%w: seller_id names a seller who cannot serve the order's branch",
+					domain.ErrInvalidInput)
+			}
+		}
+		quote, err = s.rfqs.SetSeller(ctx, q, tenant, rfqID, sellerID)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	return quote, nil
 }
 
 // attachDiscountItemIDs loads every discount's covered lines in one batch and folds them back
@@ -665,6 +734,17 @@ func (s *RFQService) CreateManual(
 
 	var creation *domain.RfqCreation
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		if in.SellerID != nil {
+			serves, checkErr := s.sellers.SellerServesBranches(ctx, q, tenant.AccountID,
+				tenant.BranchFilter(), *in.SellerID)
+			if checkErr != nil {
+				return checkErr
+			}
+			if !serves {
+				return fmt.Errorf("%w: seller_id names a seller who cannot serve the active branch",
+					domain.ErrInvalidInput)
+			}
+		}
 		channelID, getErr := s.rfqs.GetManualEntryChannelID(ctx, q, tenant.AccountID, tenant.BranchID)
 		if getErr != nil {
 			return getErr

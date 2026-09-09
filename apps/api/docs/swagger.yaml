@@ -90,6 +90,11 @@ definitions:
       type:
         type: string
     type: object
+  dto.AssignSellerRequest:
+    properties:
+      seller_id:
+        type: string
+    type: object
   dto.AvailabilityListResponse:
     properties:
       items:
@@ -422,6 +427,8 @@ definitions:
           $ref: '#/definitions/dto.CreateRfqItemRequest'
         type: array
       raw_text:
+        type: string
+      seller_id:
         type: string
       work_type:
         type: string
@@ -1142,6 +1149,20 @@ definitions:
     - current_step
     - step
     - step_status
+    type: object
+  dto.SellerListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.SellerResponse'
+        type: array
+    type: object
+  dto.SellerResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
     type: object
   dto.SetAvailabilityRequest:
     properties:
@@ -4071,6 +4092,44 @@ paths:
       summary: Get RFQ detail
       tags:
       - rfqs
+  /v1/rfqs/{rfqId}/assign:
+    post:
+      description: Claims an unassigned order in the seller's branch. Self-assignment
+        only; admins see the whole account and cannot draw from the unclaimed pool.
+      parameters:
+      - description: RFQ id
+        in: path
+        name: rfqId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Assign an RFQ to yourself
+      tags:
+      - rfqs
   /v1/rfqs/{rfqId}/attachments:
     get:
       description: Returns each stored file with a freshly signed link. The link expires,
@@ -4165,6 +4224,57 @@ paths:
       summary: Upload an RFQ attachment
       tags:
       - rfq
+  /v1/rfqs/{rfqId}/seller:
+    put:
+      consumes:
+      - application/json
+      description: Assigns, reassigns or clears the seller on an order. Admin-only.
+        A null seller_id clears the assignment; a non-null id must be the admin themself
+        or a seller who serves the order's branch.
+      parameters:
+      - description: RFQ id
+        in: path
+        name: rfqId
+        required: true
+        type: string
+      - description: Seller to assign, or null to clear
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AssignSellerRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Set an RFQ's seller
+      tags:
+      - rfqs
   /v1/rfqs/text-drafts:
     post:
       consumes:
@@ -4216,6 +4326,31 @@ paths:
       summary: Create an RFQ text draft
       tags:
       - rfq
+  /v1/sellers:
+    get:
+      description: 'The manual RFQ assignee picklist: active sellers, narrowed to
+        the active branch when one is set.'
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SellerListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List sellers
+      tags:
+      - users
   /v1/users:
     get:
       description: Admin only. Ordered by name, deactivated users included so they

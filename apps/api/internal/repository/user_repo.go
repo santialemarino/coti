@@ -73,6 +73,62 @@ func (r *UserRepository) GetByID(ctx context.Context, q Querier, accountID, id u
 		accountID, id))
 }
 
+// SellersForBranches lists the account's active sellers assigned to at least one of the
+// given branches, ordered by name. A nil set means the whole account, which only an admin
+// reaches; the empty set fails closed for a seller who reaches nothing.
+func (r *UserRepository) SellersForBranches(
+	ctx context.Context, q Querier, accountID uuid.UUID, branchIDs []uuid.UUID,
+) ([]domain.Seller, error) {
+	rows, err := q.Query(ctx,
+		`SELECT DISTINCT u.id, u.name
+		 FROM app_user u
+		 JOIN user_branch ub ON ub.user_id = u.id
+		 WHERE u.account_id = $1
+		   AND u.role = 'SELLER'
+		   AND u.is_active = TRUE
+		   AND ($2::uuid[] IS NULL OR ub.branch_id = ANY($2))
+		 ORDER BY u.name`,
+		accountID, branchIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sellers []domain.Seller
+	for rows.Next() {
+		var s domain.Seller
+		if err := rows.Scan(&s.ID, &s.Name); err != nil {
+			return nil, err
+		}
+		sellers = append(sellers, s)
+	}
+	return sellers, rows.Err()
+}
+
+// SellerServesBranches reports whether the user is an active seller assigned to at least one
+// of the given branches. Row level security already confines a query to the account, but the
+// branch set comes from the caller, so this is where a manual RFQ cannot name an assignee
+// another branch (or another account) owns.
+func (r *UserRepository) SellerServesBranches(
+	ctx context.Context, q Querier, accountID uuid.UUID, branchIDs []uuid.UUID, userID uuid.UUID,
+) (bool, error) {
+	var serves bool
+	err := q.QueryRow(ctx,
+		`SELECT EXISTS (
+			SELECT 1
+			FROM app_user u
+			JOIN user_branch ub ON ub.user_id = u.id
+			WHERE u.account_id = $1
+			  AND u.id = $3
+			  AND u.role = 'SELLER'
+			  AND u.is_active = TRUE
+			  AND ub.branch_id = ANY($2)
+		)`,
+		accountID, branchIDs, userID,
+	).Scan(&serves)
+	return serves, err
+}
+
 // GetAuthSubjectByID loads a user and their account's state together, which is what the
 // per-request session check needs.
 func (r *UserRepository) GetAuthSubjectByID(

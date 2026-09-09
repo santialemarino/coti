@@ -127,6 +127,10 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	verified.POST("/rfqs/text-drafts", ai, h.RFQ.CreateTextDraft)
 	rfqs := verified.Group("/rfqs")
 	rfqs.GET("/:rfqId", h.Rfq.Get)
+	rfqs.POST("/:rfqId/assign", h.Rfq.AssignAsSelf)
+	// Overwriting who owns an order is an admin's power: a seller draws from the unclaimed
+	// pool, an admin steers the whole branch.
+	rfqs.PUT("/:rfqId/seller", middleware.RequireAdmin(), h.Rfq.SetSeller)
 	rfqs.GET("/:rfqId/attachments", h.RFQAttachment.List)
 	rfqs.POST("/:rfqId/attachments", h.RFQAttachment.Upload)
 
@@ -182,6 +186,11 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	// Manual RFQ intake.
 	verified.GET("/rfqs", h.Rfq.List)
 	verified.POST("/rfqs", h.Rfq.Create)
+
+	// The manual RFQ creator offers the assignable sellers before the order exists, so the
+	// list is not admin-only: it narrows to the branch the X-Branch-Id header named, and the
+	// same header the creator will send when the RFQ is created.
+	verified.GET("/sellers", h.User.ListSellers)
 
 	// User administration is the one admin-only group. RequireAdmin runs after RequireTenant,
 	// which is what put the role on the context.

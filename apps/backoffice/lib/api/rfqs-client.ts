@@ -3,6 +3,7 @@ import type {
   CreateDiscountBody,
   QuoteDiscountResponse,
   QuoteItemResponse,
+  QuoteResponse,
   RfqDetailResponse,
   UpdateDiscountBody,
 } from '@/lib/api/rfqs';
@@ -10,6 +11,7 @@ import type {
 interface CreateRfqBody {
   client_label?: string | null;
   work_type?: string | null;
+  seller_id?: string | null;
   items: {
     product_id?: string | null;
     requested_description: string;
@@ -136,6 +138,41 @@ async function throwOnError(response: Response): Promise<never> {
     response.status,
     detail || undefined,
   );
+}
+
+/*
+ * Claim an unassigned order for the signed-in seller. The backend answers 409
+ * when a peer took it first; the caller surfaces that as a conflict toast.
+ */
+export async function assignRfqSeller(rfqId: string): Promise<QuoteResponse> {
+  const response = await fetch(`/api/rfqs/${rfqId}/assign`, {
+    method: 'POST',
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    await throwOnError(response);
+  }
+  return response.json() as Promise<QuoteResponse>;
+}
+
+/*
+ * Admin steering of an order's owner: seller_id names the seller to put on the order, or null
+ * clears the assignment. The backend is admin-only and refuses a seller who does not serve the
+ * order's own branch.
+ */
+export async function setRfqSeller(rfqId: string, sellerId: string | null): Promise<QuoteResponse> {
+  const response = await fetch(`/api/rfqs/${rfqId}/seller`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ seller_id: sellerId }),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    await throwOnError(response);
+  }
+  return response.json() as Promise<QuoteResponse>;
 }
 
 /*

@@ -19,6 +19,8 @@ var manualChannelID = uuid.MustParse("66666666-6666-4666-8666-666666666666")
 var knownProduct = uuid.MustParse("77777777-7777-4777-8777-777777777777")
 var foreignProduct = uuid.MustParse("88888888-8888-4888-8888-888888888888")
 
+var foreignSellerID = uuid.MustParse("99999999-9999-4999-8999-999999999999")
+
 type fakeRfqRepoManual struct {
 	channelID  uuid.UUID
 	channelErr error
@@ -55,8 +57,20 @@ func (f *fakeRfqRepoManual) ListByTenant(
 }
 
 func (f *fakeRfqRepoManual) GetByRFQID(
-	_ context.Context, _ repository.Querier, _, _ uuid.UUID,
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ uuid.UUID,
 ) (*domain.RfqListItem, error) {
+	return nil, errors.New("not implemented in manual fake")
+}
+
+func (f *fakeRfqRepoManual) AssignSeller(
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ uuid.UUID,
+) (*domain.Quote, error) {
+	return nil, errors.New("not implemented in manual fake")
+}
+
+func (f *fakeRfqRepoManual) SetSeller(
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ uuid.UUID, _ *uuid.UUID,
+) (*domain.Quote, error) {
 	return nil, errors.New("not implemented in manual fake")
 }
 
@@ -103,9 +117,35 @@ func (f *fakeRfqRepoManual) CreateManualEntry(
 	}, nil
 }
 
+// fakeSellerReach answers the seller-assignment check the manual entry runs before naming a
+// seller, letting a test steer both the happy path and the rejection. It also records every
+// check, so a test can assert which branches and users the service asked about.
+type fakeSellerReach struct {
+	serves     bool
+	err        error
+	calls      int
+	branchSets [][]uuid.UUID
+	userIDs    []uuid.UUID
+}
+
+// SellerServesBranches reports the configured verdict.
+func (f *fakeSellerReach) SellerServesBranches(
+	_ context.Context, _ repository.Querier, _ uuid.UUID,
+	branchIDs []uuid.UUID, userID uuid.UUID,
+) (bool, error) {
+	f.calls++
+	f.branchSets = append(f.branchSets, branchIDs)
+	f.userIDs = append(f.userIDs, userID)
+	if f.err != nil {
+		return false, f.err
+	}
+	return f.serves, nil
+}
+
 func manualHarness(repo *fakeRfqRepoManual) (*RFQService, *fakeDB) {
 	db := &fakeDB{}
-	svc := NewRFQService(db, repo, nil, nil, nil, nil, nil, nil, config.RFQConfig{})
+	svc := NewRFQService(db, repo, nil, nil, nil, &fakeSellerReach{serves: true},
+		nil, nil, nil, config.RFQConfig{})
 	svc.now = func() time.Time { return fixedNow }
 	return svc, db
 }
@@ -271,6 +311,47 @@ func TestRfqService_CreateManual_RepositoryErrorRollsBack(t *testing.T) {
 	}
 }
 
+func TestRfqService_CreateManual_SellerOutsideReachIsRejected(t *testing.T) {
+	repo := &fakeRfqRepoManual{channelID: manualChannelID, owned: 1}
+	db := &fakeDB{}
+	svc := NewRFQService(db, repo, nil, nil, nil, &fakeSellerReach{serves: false},
+		nil, nil, nil, config.RFQConfig{})
+
+	_, err := svc.CreateManual(context.Background(), branchTenant(), domain.NewRfq{
+		SellerID: &foreignSellerID,
+		Items:    manualItems(),
+	})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("err = %v, want ErrInvalidInput", err)
+	}
+	if got := len(repo.created); got != 0 {
+		t.Fatalf("CreateManualEntry called %d times, want 0", got)
+	}
+}
+
+func TestRfqService_CreateManual_NamedSellerIsPersisted(t *testing.T) {
+	repo := &fakeRfqRepoManual{channelID: manualChannelID, owned: 1}
+	db := &fakeDB{}
+	svc := NewRFQService(db, repo, nil, nil, nil, &fakeSellerReach{serves: true},
+		nil, nil, nil, config.RFQConfig{})
+
+	caller := testUserID
+	named := &caller
+	_, err := svc.CreateManual(context.Background(), branchTenant(), domain.NewRfq{
+		SellerID: named,
+		Items:    manualItems(),
+	})
+	if err != nil {
+		t.Fatalf("CreateManual returned an unexpected error: %v", err)
+	}
+	if len(repo.created) != 1 {
+		t.Fatalf("CreateManualEntry called %d times, want 1", len(repo.created))
+	}
+	if got := repo.created[0].SellerID; got == nil || *got != testUserID {
+		t.Errorf("recorded seller_id = %v, want %v", got, testUserID)
+	}
+}
+
 // ---------- AI pipeline fakes & tests ----------
 
 var (
@@ -411,6 +492,11 @@ type fakeRFQs struct {
 	statusChanges []rfqStatusChangeCall
 	rfqByID       *domain.RfqListItem
 	rfqByIDErr    error
+	assigned      *domain.Quote
+	assignErr     error
+	set           *domain.Quote
+	setErr        error
+	setSellerIDs  []*uuid.UUID
 }
 
 func (f *fakeRFQs) Create(
@@ -454,12 +540,31 @@ func (f *fakeRFQs) ListByTenant(
 }
 
 func (f *fakeRFQs) GetByRFQID(
-	_ context.Context, _ repository.Querier, _, _ uuid.UUID,
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ uuid.UUID,
 ) (*domain.RfqListItem, error) {
 	if f.rfqByIDErr != nil {
 		return nil, f.rfqByIDErr
 	}
 	return f.rfqByID, nil
+}
+
+func (f *fakeRFQs) AssignSeller(
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ uuid.UUID,
+) (*domain.Quote, error) {
+	if f.assignErr != nil {
+		return nil, f.assignErr
+	}
+	return f.assigned, nil
+}
+
+func (f *fakeRFQs) SetSeller(
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ uuid.UUID, sellerID *uuid.UUID,
+) (*domain.Quote, error) {
+	f.setSellerIDs = append(f.setSellerIDs, sellerID)
+	if f.setErr != nil {
+		return nil, f.setErr
+	}
+	return f.set, nil
 }
 
 func (f *fakeRFQs) GetManualEntryChannelID(
@@ -953,8 +1058,9 @@ func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 	}
 	h.channels.channel = &channel
 	h.channels.channelsByType = []domain.Channel{channel}
-	h.service = NewRFQService(h.db, h.rfqs, h.quotes, h.generations, h.channels, h.extractor,
-		h.matcher, nil, testRFQConfig()).WithDiscounts(h.discounts)
+	h.service = NewRFQService(h.db, h.rfqs, h.quotes, h.generations, h.channels,
+		&fakeSellerReach{serves: true}, h.extractor, h.matcher, nil, testRFQConfig()).
+		WithDiscounts(h.discounts)
 	return h
 }
 
@@ -2428,5 +2534,178 @@ func TestRFQService_GetDetail_SkipsTheDiffOutsideChangeRequested(t *testing.T) {
 	}
 	if h.quotes.getPreviousCalls != 0 {
 		t.Errorf("GetPreviousVersion called %d times, want 0", h.quotes.getPreviousCalls)
+	}
+}
+
+func TestRFQService_AssignSeller_ClaimsTheRFQ(t *testing.T) {
+	h := newRFQHarness(nil)
+	claimed := &domain.Quote{
+		ID: uuid.New(), RFQID: testRFQID, SellerID: &testUserID,
+		CurrentStatus: domain.QuoteStatusDraft,
+	}
+	h.rfqs.assigned = claimed
+
+	got, err := h.service.AssignSeller(context.Background(), rfqTenant(), testRFQID)
+	if err != nil {
+		t.Fatalf("AssignSeller returned %v, want no error", err)
+	}
+	if got != claimed {
+		t.Errorf("AssignSeller returned %v, want the claimed quote %v", got, claimed)
+	}
+	if len(h.db.scopes) != 1 || h.db.scopes[0] != testAccountID {
+		t.Errorf("AssignSeller scoped accounts = %v, want exactly [%v]", h.db.scopes, testAccountID)
+	}
+}
+
+func TestRFQService_AssignSeller_AdminsNeverClaim(t *testing.T) {
+	h := newRFQHarness(nil)
+	admin := rfqTenant()
+	admin.Role = domain.UserRoleAdmin
+
+	if _, err := h.service.AssignSeller(context.Background(), admin, testRFQID); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("AssignSeller as admin = %v, want ErrForbidden", err)
+	}
+	if len(h.db.scopes) != 0 {
+		t.Errorf("AssignSeller as admin opened %d transactions, want none", len(h.db.scopes))
+	}
+}
+
+func TestRFQService_AssignSeller_ConflictsAndHiddenOrdersSurface(t *testing.T) {
+	for name, want := range map[string]error{
+		"already claimed": domain.ErrConflict,
+		"out of scope":    domain.ErrNotFound,
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newRFQHarness(nil)
+			h.rfqs.assignErr = want
+
+			if _, err := h.service.AssignSeller(context.Background(), rfqTenant(), testRFQID); !errors.Is(err, want) {
+				t.Fatalf("AssignSeller = %v, want %v", err, want)
+			}
+		})
+	}
+}
+
+// setSellerHarness wires a service whose rfq repository is the assign fake and whose seller
+// reach answers the given verdict, so SetSeller tests can steer both sides of the write.
+func setSellerHarness(serves bool, sellerErr error) (*RFQService, *fakeRFQDB, *fakeRFQs, *fakeSellerReach) {
+	db := &fakeRFQDB{}
+	rfqs := &fakeRFQs{}
+	reach := &fakeSellerReach{serves: serves, err: sellerErr}
+	svc := NewRFQService(db, rfqs, nil, nil, nil, reach, nil, nil, nil, testRFQConfig())
+	return svc, db, rfqs, reach
+}
+
+// An admin delegates an order to an active seller of the order's own branch: the target is
+// checked against that branch and then written, all inside the tenant transaction.
+func TestRFQService_SetSeller_AdminReassignsToBranchSeller(t *testing.T) {
+	svc, db, rfqs, reach := setSellerHarness(true, nil)
+	target := uuid.New()
+	rfqs.rfqByID = &domain.RfqListItem{ID: testRFQID, BranchID: testBranchID}
+	rfqs.set = &domain.Quote{ID: uuid.New(), RFQID: testRFQID, BranchID: testBranchID, SellerID: &target}
+
+	got, err := svc.SetSeller(context.Background(), adminTenant(), testRFQID, &target)
+	if err != nil {
+		t.Fatalf("SetSeller returned %v, want no error", err)
+	}
+	if got != rfqs.set {
+		t.Errorf("SetSeller returned %v, want the repo quote %v", got, rfqs.set)
+	}
+	if len(rfqs.setSellerIDs) != 1 || rfqs.setSellerIDs[0] == nil || *rfqs.setSellerIDs[0] != target {
+		t.Fatalf("repo wrote seller ids %v, want exactly [%v]", rfqs.setSellerIDs, target)
+	}
+	if reach.calls != 1 || len(reach.branchSets[0]) != 1 || reach.branchSets[0][0] != testBranchID {
+		t.Errorf("seller check = %d calls on branches %v, want one call on the order's branch",
+			reach.calls, reach.branchSets)
+	}
+	if reach.userIDs[0] != target {
+		t.Errorf("seller check user = %v, want %v", reach.userIDs[0], target)
+	}
+	if len(db.scopes) != 1 || db.scopes[0] != testAccountID {
+		t.Errorf("SetSeller scoped accounts = %v, want exactly [%v]", db.scopes, testAccountID)
+	}
+}
+
+// Assigning the order to themselves never consults the seller reach: the admin is already
+// inside the account, so no branch membership check applies.
+func TestRFQService_SetSeller_SelfSkipsTheServesCheck(t *testing.T) {
+	svc, _, rfqs, reach := setSellerHarness(false, nil)
+	rfqs.rfqByID = &domain.RfqListItem{ID: testRFQID, BranchID: testBranchID}
+	rfqs.set = &domain.Quote{ID: uuid.New(), RFQID: testRFQID, SellerID: &testUserID}
+
+	if _, err := svc.SetSeller(context.Background(), adminTenant(), testRFQID, &testUserID); err != nil {
+		t.Fatalf("self assignment returned %v, want no error", err)
+	}
+	if reach.calls != 0 {
+		t.Errorf("self assignment ran the seller reach %d times, want none", reach.calls)
+	}
+}
+
+// A nil id leaves the order unassigned, and no branch check runs for a removal.
+func TestRFQService_SetSeller_ClearNeverChecksTheSeller(t *testing.T) {
+	svc, _, rfqs, reach := setSellerHarness(false, nil)
+	rfqs.rfqByID = &domain.RfqListItem{ID: testRFQID, BranchID: testBranchID}
+	rfqs.set = &domain.Quote{ID: uuid.New(), RFQID: testRFQID, BranchID: testBranchID}
+
+	if _, err := svc.SetSeller(context.Background(), adminTenant(), testRFQID, nil); err != nil {
+		t.Fatalf("clear returned %v, want no error", err)
+	}
+	if len(rfqs.setSellerIDs) != 1 || rfqs.setSellerIDs[0] != nil {
+		t.Fatalf("repo wrote seller ids %v, want exactly [nil]", rfqs.setSellerIDs)
+	}
+	if reach.calls != 0 {
+		t.Errorf("clear ran the seller reach %d times, want none", reach.calls)
+	}
+}
+
+// Only an admin steers assignments; a seller keeps the self-claim route and nothing else.
+func TestRFQService_SetSeller_OnlyAdminsWriteTheSeller(t *testing.T) {
+	svc, db, _, _ := setSellerHarness(true, nil)
+
+	if _, err := svc.SetSeller(context.Background(), rfqTenant(), testRFQID, &testUserID); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("SetSeller as seller = %v, want ErrForbidden", err)
+	}
+	if len(db.scopes) != 0 {
+		t.Errorf("SetSeller as seller opened %d transactions, want none", len(db.scopes))
+	}
+}
+
+// A named seller who does not serve the order's branch is refused before anything is written;
+// so is one the reach could not examine. Both are the same refusal a manual entry hits.
+func TestRFQService_SetSeller_RejectsForeignAndFailedChecks(t *testing.T) {
+	for name, reachCfg := range map[string]*fakeSellerReach{
+		"does not serve": &fakeSellerReach{serves: false},
+		"check failed":   &fakeSellerReach{serves: true, err: errors.New("reach boom")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			svc, _, rfqs, _ := setSellerHarness(reachCfg.serves, reachCfg.err)
+			rfqs.rfqByID = &domain.RfqListItem{ID: testRFQID, BranchID: testBranchID}
+			foreign := uuid.New()
+
+			_, err := svc.SetSeller(context.Background(), adminTenant(), testRFQID, &foreign)
+			if name == "does not serve" && !errors.Is(err, domain.ErrInvalidInput) {
+				t.Fatalf("SetSeller = %v, want ErrInvalidInput", err)
+			}
+			if name == "check failed" && (err == nil || err.Error() != "reach boom") {
+				t.Fatalf("SetSeller = %v, want the reach error", err)
+			}
+			if len(rfqs.setSellerIDs) != 0 {
+				t.Errorf("repo wrote seller ids %v, want none on a refused target", rfqs.setSellerIDs)
+			}
+		})
+	}
+}
+
+// A hidden order never reaches the seller check: the read refuses first, like every other
+// tenant-scoped path.
+func TestRFQService_SetSeller_HiddenOrderIsNotFound(t *testing.T) {
+	svc, _, rfqs, reach := setSellerHarness(true, nil)
+	rfqs.rfqByIDErr = domain.ErrNotFound
+
+	if _, err := svc.SetSeller(context.Background(), adminTenant(), testRFQID, &testUserID); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("SetSeller = %v, want ErrNotFound", err)
+	}
+	if reach.calls != 0 {
+		t.Errorf("hidden order ran the seller reach %d times, want none", reach.calls)
 	}
 }

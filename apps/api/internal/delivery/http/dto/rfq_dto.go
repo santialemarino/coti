@@ -12,6 +12,7 @@ type CreateRfqRequest struct {
 	RawText     *string                `json:"raw_text"`
 	WorkType    *string                `json:"work_type"`
 	ClientLabel *string                `json:"client_label"`
+	SellerID    *uuid.UUID             `json:"seller_id"`
 	Items       []CreateRfqItemRequest `json:"items" binding:"omitempty,dive"`
 }
 
@@ -21,6 +22,13 @@ type CreateRfqItemRequest struct {
 	RequestedDescription string     `json:"requested_description" binding:"required,min=1,max=512"`
 	Quantity             string     `json:"quantity" binding:"required,numeric"`
 	Unit                 *string    `json:"unit" binding:"omitempty,max=64"`
+}
+
+// AssignSellerRequest is the body for PUT /v1/rfqs/{rfqId}/seller: the seller_id to put on the
+// order, or null to leave it unassigned. Admin-only on the route; the seller must serve the
+// order's own branch unless the id is the caller themself.
+type AssignSellerRequest struct {
+	SellerID *uuid.UUID `json:"seller_id"`
 }
 
 // RfqResponse is one RFQ as returned by the creation endpoint.
