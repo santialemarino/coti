@@ -74,7 +74,7 @@ function toPrice(value: string): string {
       : compact.replace(/\./g, '');
   if (!/^\d+(?:\.\d+)?$/.test(normalized)) return '0';
 
-  const [integer, fraction] = normalized.split('.');
+  const [integer = '0', fraction] = normalized.split('.');
   const normalizedInteger = integer.replace(/^0+(?=\d)/, '');
   return fraction === undefined ? normalizedInteger : `${normalizedInteger}.${fraction}`;
 }

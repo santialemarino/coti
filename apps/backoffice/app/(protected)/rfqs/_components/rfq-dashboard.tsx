@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ComponentProps } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArchiveIcon,
@@ -33,6 +32,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
   Pagination,
   SearchInput,
@@ -130,11 +132,6 @@ function compareRfqs(a: RfqRecord, b: RfqRecord, key: SortKey, order: SortOrder)
       result = a[key].localeCompare(b[key], 'es', { sensitivity: 'base' });
   }
   return result * direction;
-}
-
-function PriorityBadge({ priority }: { priority: RfqPriority }) {
-  const t = useTranslations('rfqs');
-  return <Badge tone={PRIORITY_TONE[priority]}>{t(`priority.${priority}`)}</Badge>;
 }
 
 interface SellerMenuItemsProps {
@@ -282,7 +279,6 @@ interface RowMenuProps {
   sellers: Seller[];
   sellersLoading: boolean;
   userId: string;
-  onChangeStatus: (rfq: RfqRecord, status: RfqStatus) => void;
   onAssign: (rfq: RfqRecord) => void;
   // Fetches the sellers of the order's own branch the first time its submenu opens.
   onLoadSellers: (branchId: string) => void;
@@ -298,7 +294,6 @@ function RowMenu({
   sellers,
   sellersLoading,
   userId,
-  onChangeStatus,
   onAssign,
   onLoadSellers,
   onSellerChange,
@@ -306,7 +301,6 @@ function RowMenu({
 }: RowMenuProps) {
   const t = useTranslations('rfqs');
   const router = useRouter();
-  const t = useTranslations('rfqs');
 
   return (
     <DropdownMenu>
@@ -365,8 +359,6 @@ export function RfqDashboard({
   const fmt = useFormatters();
   const t = useTranslations('rfqs');
   const tCommon = useTranslations('common');
-  const fmt = useFormatters();
-  const router = useRouter();
   const message = useApiErrorMessage('rfqs');
   const { userName, userId, isAdmin } = useRfqList();
 
@@ -548,6 +540,7 @@ export function RfqDashboard({
    */
   async function assignOne(rfq: RfqRecord) {
     if (claiming.has(rfq.id)) return;
+    const reference = formatRfqReference(rfq.quoteNumber) ?? t('list.numberPending');
     setClaiming((previous) => new Set(previous).add(rfq.id));
     try {
       await assignRfqSeller(rfq.id);
@@ -558,7 +551,7 @@ export function RfqDashboard({
             )
           : previous,
       );
-      toast.success(t('list.toast.assigned', { id: rfq.id, name: userName }));
+      toast.success(t('list.toast.assigned', { id: reference, name: userName }));
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
     } finally {
@@ -578,6 +571,7 @@ export function RfqDashboard({
    */
   async function steeredSeller(rfq: RfqRecord, sellerId: string | null) {
     if (updatingSeller.has(rfq.id)) return;
+    const reference = formatRfqReference(rfq.quoteNumber) ?? t('list.numberPending');
     setUpdatingSeller((previous) => new Set(previous).add(rfq.id));
     try {
       await setRfqSeller(rfq.id, sellerId);
@@ -596,11 +590,11 @@ export function RfqDashboard({
           : previous,
       );
       if (sellerId == null) {
-        toast.success(t('list.toast.sellerUnassigned', { id: rfq.id }));
+        toast.success(t('list.toast.sellerUnassigned', { id: reference }));
       } else {
         toast.success(
           t('list.toast.sellerAssigned', {
-            id: rfq.id,
+            id: reference,
             seller: sellerName ?? t('list.unassigned'),
           }),
         );
@@ -918,7 +912,6 @@ export function RfqDashboard({
                           sellers={sellersByBranch[rfq.branchId] ?? EMPTY_SELLERS}
                           sellersLoading={sellersLoadingBranches.has(rfq.branchId)}
                           userId={userId}
-                          onChangeStatus={updateStatus}
                           onAssign={assignOne}
                           onLoadSellers={loadSellersForBranch}
                           onSellerChange={steeredSeller}

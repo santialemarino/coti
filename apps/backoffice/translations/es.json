@@ -448,6 +448,11 @@
       "ingestion": "Procesando pedido…",
       "quote": "Generando cotización…"
     },
+    "errors": {
+      "CONFLICT": "Ese pedido ya tiene un vendedor asignado.",
+      "FORBIDDEN": "Solo los vendedores pueden asignarse pedidos.",
+      "INVALID_INPUT": "Ese vendedor no trabaja en la sucursal del pedido."
+    },
     "channels": {
       "whatsapp": "WhatsApp",
       "email": "Email",
@@ -518,7 +523,10 @@
       },
       "toast": {
         "archived": "El pedido {id} se archivó.",
-        "archivedMany": "{count, plural, one {# pedido archivado} other {# pedidos archivados}}."
+        "archivedMany": "{count, plural, one {# pedido archivado} other {# pedidos archivados}}.",
+        "assigned": "Tomaste el pedido {id}, {name}. Lo vas a encontrar en tu lista.",
+        "sellerAssigned": "El pedido {id} quedó asignado a {seller}.",
+        "sellerUnassigned": "Al pedido {id} le quitamos el vendedor."
       }
     },
     "create": {

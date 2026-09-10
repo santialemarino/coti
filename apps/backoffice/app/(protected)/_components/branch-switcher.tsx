@@ -21,19 +21,19 @@ interface BranchSwitcherProps {
 export function BranchSwitcher({ branches, activeBranchId, isAdmin }: BranchSwitcherProps) {
   const t = useTranslations('common.branch');
   const [pending, startTransition] = useTransition();
-  const onlyBranch = branches.length === 1 ? branches[0] : undefined;
 
-  const branchOptions = branches.map((branch) => ({
-    value: branch.id,
-    label: branch.name,
-    icon: <StoreIcon aria-hidden="true" />,
-  }));
-  const options = onlyBranch
-    ? branchOptions
-    : [
-        { value: ALL_BRANCHES, label: t('all'), icon: <Building2Icon aria-hidden="true" /> },
-        ...branchOptions,
-      ];
+  // "Todas" is account-wide, an admin's reach alone; a seller never sees an option the API
+  // reads as something wider than their assignments.
+  const options = [
+    ...(isAdmin
+      ? [{ value: ALL_BRANCHES, label: t('all'), icon: <Building2Icon aria-hidden="true" /> }]
+      : []),
+    ...branches.map((branch) => ({
+      value: branch.id,
+      label: branch.name,
+      icon: <StoreIcon aria-hidden="true" />,
+    })),
+  ];
 
   // A seller on a single branch has nowhere to switch to, so the control reads as context
   // rather than a menu: locked, but naming the branch they are working in.
@@ -48,13 +48,13 @@ export function BranchSwitcher({ branches, activeBranchId, isAdmin }: BranchSwit
   return (
     <Combobox
       options={options}
-      value={activeBranchId ?? onlyBranch?.id ?? ALL_BRANCHES}
+      value={activeBranchId ?? ALL_BRANCHES}
       onValueChange={onValueChange}
       placeholder={t('placeholder')}
       searchable={branches.length >= SEARCHABLE_FROM}
       searchPlaceholder={t('search')}
       emptyLabel={t('empty')}
-      disabled={pending || Boolean(onlyBranch)}
+      disabled={locked || pending}
       aria-label={t('label')}
       className="w-44 sm:w-56"
     />

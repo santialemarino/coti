@@ -57,9 +57,9 @@ export async function AppHeader({ session }: AppHeaderProps) {
       <PrimaryNav />
 
       <div className="ml-auto flex items-center gap-x-3">
-        {/* An admin with nothing to switch hides the control as before. A single-branch seller sees it
-            but locked, so their active branch stays visible instead of vanishing with the menu. */}
-        {branches.length > 1 || (!isAdmin && branches.length > 0) ? (
+        {/* Every reachable branch stays visible as working context. Sellers with one branch see a
+            locked control; admins keep the account-wide option alongside their branches. */}
+        {branches.length > 0 ? (
           <BranchSwitcher
             branches={branches}
             activeBranchId={activeBranchId ?? null}

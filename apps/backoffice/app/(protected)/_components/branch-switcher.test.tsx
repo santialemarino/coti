@@ -27,10 +27,10 @@ const BRANCHES: Branch[] = [
   },
 ];
 
-function renderSwitcher(branches: Branch[], activeBranchId: string | null = null) {
+function renderSwitcher(branches: Branch[], activeBranchId: string | null = null, isAdmin = false) {
   return render(
     <NextIntlClientProvider locale="es" messages={messages}>
-      <BranchSwitcher branches={branches} activeBranchId={activeBranchId} />
+      <BranchSwitcher branches={branches} activeBranchId={activeBranchId} isAdmin={isAdmin} />
     </NextIntlClientProvider>,
   );
 }
@@ -41,7 +41,7 @@ beforeEach(() => {
 
 describe('BranchSwitcher', () => {
   it('shows the only reachable branch as the selected context without requiring a choice', () => {
-    const view = renderSwitcher([BRANCHES[0]!]);
+    const view = renderSwitcher([BRANCHES[0]!], BRANCHES[0]!.id);
     const switcher = view.getByRole('combobox', { name: messages.common.branch.label });
 
     expect(switcher.textContent).toContain(BRANCHES[0]!.name);

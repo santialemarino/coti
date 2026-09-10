@@ -16,10 +16,6 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.f
 vi.mock('@/app/(protected)/rfqs/_components/create-rfq-dialog', () => ({
   CreateRfqDialog: () => null,
 }));
-// QUOTE_GENERATION_MS shortened so the generation step lands without fake timers.
-vi.mock('@/lib/api/rfqs', () => ({
-  QUOTE_GENERATION_MS: 50,
-}));
 vi.mock('@/lib/api/rfqs-client', () => ({
   assignRfqSeller: vi.fn(),
   setRfqSeller: vi.fn(),
@@ -33,6 +29,7 @@ const { assignRfqSeller, setRfqSeller } = await import('@/lib/api/rfqs-client');
 const { listSellers } = await import('@/lib/api/sellers');
 
 const copy = messages.rfqs;
+const TEST_REFERENCES: Record<string, string> = { '2006': '#06', '2007': '#07' };
 
 const RFQS: RfqRecord[] = [
   {
@@ -151,7 +148,7 @@ function tabCount(view: ReturnType<typeof render>, label: string): number {
 }
 
 function rowOf(view: ReturnType<typeof render>, label: string) {
-  const row = view.getByText(label).closest('tr');
+  const row = view.getByText(TEST_REFERENCES[label] ?? label).closest('tr');
   if (!row) throw new Error(`No row contains ${label}`);
   return within(row);
 }
@@ -277,6 +274,7 @@ describe('RfqDashboard row actions', () => {
 describe('RfqDashboard claiming an unassigned order', () => {
   const unassigned: RfqRecord = {
     id: '2006',
+    quoteNumber: 6,
     client: 'Obra F',
     createdAt: '2026-08-03T05:00:00.000Z',
     channel: 'whatsapp',
@@ -285,7 +283,6 @@ describe('RfqDashboard claiming an unassigned order', () => {
     branch: 'Centro',
     branchId: 'b1',
     itemCount: 1,
-    priority: 'normal',
     status: 'RECEIVED',
     needsFollowup: false,
   };
@@ -325,7 +322,7 @@ describe('RfqDashboard claiming an unassigned order', () => {
     // The row only stamps the owner once the backend confirms the claim, so wait for it.
     await vi.waitFor(() => expect(rowOf(view, '2006').getByText('Ana Robles')).toBeTruthy());
     expect(toast.success).toHaveBeenCalledWith(
-      copy.list.toast.assigned.replace('{id}', '2006').replace('{name}', 'Ana Robles'),
+      copy.list.toast.assigned.replace('{id}', '#06').replace('{name}', 'Ana Robles'),
     );
   });
 
@@ -431,6 +428,7 @@ const SELLERS_BY_BRANCH: Record<string, Array<{ id: string; name: string }>> = {
 describe('RfqDashboard admin steering the seller', () => {
   const moronOrder: RfqRecord = {
     id: '2006',
+    quoteNumber: 6,
     client: 'Obra F',
     createdAt: '2026-08-03T05:00:00.000Z',
     channel: 'whatsapp',
@@ -439,13 +437,13 @@ describe('RfqDashboard admin steering the seller', () => {
     branch: 'Morón',
     branchId: 'b-moron',
     itemCount: 1,
-    priority: 'normal',
     status: 'RECEIVED',
     needsFollowup: false,
   };
   const villaOrder: RfqRecord = {
     ...moronOrder,
     id: '2007',
+    quoteNumber: 7,
     branch: 'Villa Bosch',
     branchId: 'b-villa',
   };
@@ -502,7 +500,7 @@ describe('RfqDashboard admin steering the seller', () => {
     expect(setRfqSeller).toHaveBeenCalledWith('2007', 's-villa');
     await vi.waitFor(() => expect(rowOf(view, '2007').getByText('Diego Villa')).toBeTruthy());
     expect(toast.success).toHaveBeenCalledWith(
-      copy.list.toast.sellerAssigned.replace('{id}', '2007').replace('{seller}', 'Diego Villa'),
+      copy.list.toast.sellerAssigned.replace('{id}', '#07').replace('{seller}', 'Diego Villa'),
     );
   });
 
@@ -518,7 +516,7 @@ describe('RfqDashboard admin steering the seller', () => {
     expect(setRfqSeller).toHaveBeenCalledWith('2006', 's-moron');
     await vi.waitFor(() => expect(rowOf(view, '2006').getByText('Vero Morón')).toBeTruthy());
     expect(toast.success).toHaveBeenCalledWith(
-      copy.list.toast.sellerAssigned.replace('{id}', '2006').replace('{seller}', 'Vero Morón'),
+      copy.list.toast.sellerAssigned.replace('{id}', '#06').replace('{seller}', 'Vero Morón'),
     );
   });
 
@@ -534,7 +532,7 @@ describe('RfqDashboard admin steering the seller', () => {
     expect(setRfqSeller).toHaveBeenCalledWith('2006', 'me');
     await vi.waitFor(() => expect(rowOf(view, '2006').getByText('Admin')).toBeTruthy());
     expect(toast.success).toHaveBeenCalledWith(
-      copy.list.toast.sellerAssigned.replace('{id}', '2006').replace('{seller}', 'Admin'),
+      copy.list.toast.sellerAssigned.replace('{id}', '#06').replace('{seller}', 'Admin'),
     );
   });
 
@@ -553,7 +551,7 @@ describe('RfqDashboard admin steering the seller', () => {
       expect(rowOf(view, '2006').getByText(copy.list.unassigned)).toBeTruthy(),
     );
     expect(toast.success).toHaveBeenCalledWith(
-      copy.list.toast.sellerUnassigned.replace('{id}', '2006'),
+      copy.list.toast.sellerUnassigned.replace('{id}', '#06'),
     );
   });
 
@@ -594,6 +592,7 @@ describe('RfqDashboard admin steering the seller', () => {
 describe('RfqDashboard seller column as the assignment surface', () => {
   const moronOrder: RfqRecord = {
     id: '2006',
+    quoteNumber: 6,
     client: 'Obra F',
     createdAt: '2026-08-03T05:00:00.000Z',
     channel: 'whatsapp',
@@ -602,7 +601,6 @@ describe('RfqDashboard seller column as the assignment surface', () => {
     branch: 'Morón',
     branchId: 'b-moron',
     itemCount: 1,
-    priority: 'normal',
     status: 'RECEIVED',
     needsFollowup: false,
   };
@@ -656,7 +654,7 @@ describe('RfqDashboard seller column as the assignment surface', () => {
     expect(setRfqSeller).toHaveBeenCalledWith('2006', 's-moron2');
     await vi.waitFor(() => expect(rowOf(view, '2006').getByText('Caro Morón')).toBeTruthy());
     expect(toast.success).toHaveBeenCalledWith(
-      copy.list.toast.sellerAssigned.replace('{id}', '2006').replace('{seller}', 'Caro Morón'),
+      copy.list.toast.sellerAssigned.replace('{id}', '#06').replace('{seller}', 'Caro Morón'),
     );
   });
 
