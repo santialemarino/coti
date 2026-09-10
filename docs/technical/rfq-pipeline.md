@@ -358,7 +358,10 @@ Three settings, all in `apps/api/.env.example`:
   order past the cap is **refused, not truncated**, because keeping the first two hundred lines of a
   three-hundred-line list reads as a complete quote and is not one. A list that long is a
   spreadsheet, and spreadsheets have their own ingest path.
-- **`RFQ_PIPELINE_TIMEOUT_SECONDS`** (25) bounds extraction and matching together.
+- **`RFQ_PIPELINE_TIMEOUT_SECONDS`** (165) bounds reading, extraction and matching together.
+  It is sized off what a generation actually costs: the answer is one forced-schema object of
+  roughly seventy tokens per line, so a sixty-item order takes about two minutes to write and
+  a budget under that refuses orders nothing is wrong with.
 - **`RATE_LIMIT_AI_MAX`** (10) is the fourth, and it lives with the other allowances rather than
   here: it bounds calls per caller per window on the routes that reach a provider. Startup refuses
   a value above `RATE_LIMIT_GLOBAL_MAX`, which could never bite.

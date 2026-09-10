@@ -159,11 +159,12 @@ export function RfqImportView({ onBack, onClose, onCreated, activeBranchId }: Rf
       </FileDropzone>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-y-1.5">
+        <div className="flex flex-col gap-y-1">
           <label htmlFor="rfq-import-channel" className="text-paragraph-sm-medium">
             {t('channelLabel')}
           </label>
           <Combobox
+            id="rfq-import-channel"
             options={channels.map((channel) => ({
               value: channel.id,
               label: channel.identifier
@@ -178,7 +179,7 @@ export function RfqImportView({ onBack, onClose, onCreated, activeBranchId }: Rf
           />
         </div>
 
-        <div className="flex flex-col gap-y-1.5">
+        <div className="flex flex-col gap-y-1">
           <label htmlFor="rfq-import-client" className="text-paragraph-sm-medium">
             {t('clientLabel')}
           </label>
@@ -192,7 +193,7 @@ export function RfqImportView({ onBack, onClose, onCreated, activeBranchId }: Rf
         </div>
       </div>
 
-      <div className="flex flex-col gap-y-1.5">
+      <div className="flex flex-col gap-y-1">
         <label htmlFor="rfq-import-note" className="text-paragraph-sm-medium">
           {t('noteLabel')}
         </label>

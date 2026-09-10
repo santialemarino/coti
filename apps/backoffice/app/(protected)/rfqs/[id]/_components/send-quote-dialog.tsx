@@ -45,6 +45,7 @@ interface SendQuoteDialogProps {
 export function SendQuoteDialog({ detail, branchId, onSent }: SendQuoteDialogProps) {
   const fmt = useFormatters();
   const t = useTranslations('rfqs.detail.send');
+  const tChannel = useTranslations('rfqs.channels');
   const message = useApiErrorMessage('rfqs.detail.send');
   const [open, setOpen] = useState(false);
   const [phone, setPhone] = useState('');
@@ -95,7 +96,9 @@ export function SendQuoteDialog({ detail, branchId, onSent }: SendQuoteDialogPro
       return;
     }
     toast.warning(
-      t('toast.partial', { channels: fmt.list(failed.map((delivery) => delivery.channel)) }),
+      t('toast.partial', {
+        channels: fmt.list(failed.map((delivery) => tChannel(delivery.channel.toLowerCase()))),
+      }),
     );
   }
 

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -61,7 +62,7 @@ func (s *RFQService) readFileContent(
 }
 
 func (s *RFQService) readSpreadsheet(filename string, data []byte) (string, error) {
-	rows, err := spreadsheet.ReadRaw(filename, strings.NewReader(string(data)))
+	rows, err := spreadsheet.ReadRaw(filename, bytes.NewReader(data))
 	if err != nil {
 		return "", fmt.Errorf("%w: the spreadsheet could not be read: %s",
 			domain.ErrInvalidInput, err)
