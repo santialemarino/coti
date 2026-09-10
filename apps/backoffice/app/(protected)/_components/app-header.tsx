@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { KeyRoundIcon, LogOutIcon, SettingsIcon } from 'lucide-react';
+import { LogOutIcon, SettingsIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 import {
@@ -19,7 +19,7 @@ import { signOut } from '@/app/(protected)/actions';
 import { Brand } from '@/components/brand';
 import { ROUTES } from '@/config/routes';
 import { getBranches } from '@/lib/api/branches';
-import { getActiveBranchId } from '@/lib/auth/branch';
+import { getEffectiveBranchId } from '@/lib/auth/branch';
 import type { SessionUser } from '@/lib/auth/session';
 import { ADMIN_ROLE } from '@/lib/constants/auth';
 
@@ -41,7 +41,7 @@ function initials(name: string) {
 export async function AppHeader({ session }: AppHeaderProps) {
   const t = await getTranslations('common');
   const branches = await getBranches();
-  const activeBranchId = await getActiveBranchId();
+  const activeBranchId = await getEffectiveBranchId(branches);
   const isAdmin = session.role === ADMIN_ROLE;
 
   return (
@@ -57,9 +57,9 @@ export async function AppHeader({ session }: AppHeaderProps) {
       <PrimaryNav />
 
       <div className="ml-auto flex items-center gap-x-3">
-        {/* An admin with nothing to switch hides the control as before. A single-branch seller sees it
-            but locked, so their active branch stays visible instead of vanishing with the menu. */}
-        {branches.length > 1 || (!isAdmin && branches.length > 0) ? (
+        {/* Every reachable branch stays visible as working context. Sellers with one branch see a
+            locked control; admins keep the account-wide option alongside their branches. */}
+        {branches.length > 0 ? (
           <BranchSwitcher
             branches={branches}
             activeBranchId={activeBranchId ?? null}
@@ -94,13 +94,7 @@ export async function AppHeader({ session }: AppHeaderProps) {
                 </Link>
               </DropdownMenuItem>
             ) : null}
-            <DropdownMenuItem asChild>
-              <Link href={ROUTES.changePassword}>
-                <KeyRoundIcon aria-hidden="true" />
-                {t('nav.changePassword')}
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
+            {session.role === ADMIN_ROLE ? <DropdownMenuSeparator /> : null}
             {/*
               Signing out is a POST, so it stays a form action rather than a link — and the menu item
               renders as the submit button so it keeps the menu's highlight and keyboard behaviour.

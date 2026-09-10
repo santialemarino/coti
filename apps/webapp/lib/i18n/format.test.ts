@@ -35,6 +35,11 @@ describe('formatValue', () => {
     expect(formatValue(1234.567, { maxDecimals: 1 })).toBe('1.234,6');
   });
 
+  it('keeps the requested fraction width', () => {
+    expect(formatValue(132467.89, { minDecimals: 2, maxDecimals: 2 })).toBe('132.467,89');
+    expect(formatValue(780, { minDecimals: 2, maxDecimals: 2 })).toBe('780,00');
+  });
+
   // \s rather than a literal space: ICU separates the unit with a non-breaking one.
   it('abbreviates in compact notation', () => {
     expect(formatValue(1_500_000, { compact: true })).toMatch(/^1,5\sM$/);

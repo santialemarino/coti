@@ -1,14 +1,16 @@
 import { RfqListProvider } from '@/app/(protected)/rfqs/_components/rfq-list-context';
+import { getBranches } from '@/lib/api/branches';
 import { apiRequest } from '@/lib/api/client';
 import type { RfqChannel, RfqListItem, RfqRecord } from '@/lib/api/rfqs';
 import { normalizeRfqStatus } from '@/lib/api/rfqs';
-import { getActiveBranchId } from '@/lib/auth/branch';
+import { getEffectiveBranchId } from '@/lib/auth/branch';
 import { getSession } from '@/lib/auth/session';
 import { ADMIN_ROLE } from '@/lib/constants/auth';
 
 function mapListItem(item: RfqListItem): RfqRecord {
   return {
     id: item.id,
+    quoteNumber: item.quote_number,
     client: item.client ?? '',
     createdAt: item.created_at,
     channel: item.channel as RfqChannel,
@@ -18,7 +20,6 @@ function mapListItem(item: RfqListItem): RfqRecord {
     branchId: item.branch_id,
     itemCount: item.item_count,
     total: item.total ?? undefined,
-    priority: 'normal',
     status: normalizeRfqStatus(item.status),
     needsFollowup: item.needs_followup,
     archived: item.archived_at != null,
@@ -31,8 +32,12 @@ async function fetchRfqs(): Promise<RfqRecord[]> {
 }
 
 export default async function RfqsLayout({ children }: { children: React.ReactNode }) {
-  const [records, session] = await Promise.all([fetchRfqs(), getSession()]);
-  const activeBranchId = await getActiveBranchId();
+  const [records, session, branches] = await Promise.all([
+    fetchRfqs(),
+    getSession(),
+    getBranches(),
+  ]);
+  const activeBranchId = await getEffectiveBranchId(branches);
 
   return (
     <RfqListProvider

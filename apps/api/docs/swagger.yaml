@@ -144,6 +144,11 @@ definitions:
       updated_at:
         type: string
     type: object
+  dto.BrandLogoResponse:
+    properties:
+      path:
+        type: string
+    type: object
   dto.CatalogImportInput:
     properties:
       code:
@@ -1286,6 +1291,8 @@ definitions:
         type: integer
       needs_followup:
         type: boolean
+      quote_number:
+        type: integer
       seller:
         type: string
       seller_id:
@@ -1772,6 +1779,49 @@ paths:
       security:
       - BearerAuth: []
       summary: Update the current account
+      tags:
+      - accounts
+  /v1/account/logo:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Stores one PNG or JPEG logo and returns its permanent public path.
+      parameters:
+      - description: PNG or JPEG logo
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.BrandLogoResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "413":
+          description: FILE_TOO_LARGE
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: UNSUPPORTED_FILE_TYPE
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Upload an account logo
       tags:
       - accounts
   /v1/auth/change-email:
@@ -3372,6 +3422,38 @@ paths:
       summary: Preview an initial catalog import
       tags:
       - catalog
+  /v1/public/account-logos/{accountId}/{logoId}:
+    get:
+      description: Serves one account logo by its public, unguessable identifier.
+      parameters:
+      - description: Account id
+        in: path
+        name: accountId
+        required: true
+        type: string
+      - description: Logo id
+        in: path
+        name: logoId
+        required: true
+        type: string
+      produces:
+      - image/png
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Get an account logo
+      tags:
+      - accounts
   /v1/public/accounts:
     post:
       consumes:

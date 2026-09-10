@@ -2,15 +2,16 @@ import { fireEvent, render, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { LogoDropzone } from '@/app/(onboarding)/onboarding/_components/logo-dropzone';
+import { LogoDropzone } from '@/components/logo-dropzone';
 
 const messages = (await import('@/translations/es.json')).default;
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe('LogoDropzone', () => {
-  it('previews the selected image locally without adding it to form data', async () => {
+  it('previews the selected image and reports it for upload', async () => {
     const createObjectURL = vi.fn(() => 'blob:local-logo');
+    const onFileChange = vi.fn();
     const onPreviewChange = vi.fn();
     const NativeURL = URL;
     class LocalPreviewURL extends NativeURL {
@@ -20,7 +21,7 @@ describe('LogoDropzone', () => {
     vi.stubGlobal('URL', LocalPreviewURL);
     const view = render(
       <NextIntlClientProvider locale="es" messages={messages}>
-        <LogoDropzone onPreviewChange={onPreviewChange} />
+        <LogoDropzone onFileChange={onFileChange} onPreviewChange={onPreviewChange} />
       </NextIntlClientProvider>,
     );
     const input = view.container.querySelector<HTMLInputElement>('input[type="file"]');
@@ -30,8 +31,8 @@ describe('LogoDropzone', () => {
 
     expect(createObjectURL).toHaveBeenCalledWith(logo);
     expect(input?.name).toBe('');
-    expect(view.getByText(messages.onboarding.brand.logo.localOnly)).toBeTruthy();
+    expect(onFileChange).toHaveBeenCalledWith(logo);
     await waitFor(() => expect(onPreviewChange).toHaveBeenCalledWith('blob:local-logo'));
-    expect(view.getByRole('img', { name: messages.onboarding.brand.logo.previewAlt })).toBeTruthy();
+    expect(view.getByRole('img', { name: messages.common.logoUpload.previewAlt })).toBeTruthy();
   });
 });

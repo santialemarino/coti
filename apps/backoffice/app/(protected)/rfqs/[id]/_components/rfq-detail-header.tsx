@@ -15,13 +15,8 @@ import { Button } from '@repo/ui/components';
 import { RfqStatusBadge } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
 import { ROUTES } from '@/config/routes';
 import type { RfqChannel, RfqDetailResponse } from '@/lib/api/rfqs';
-import { normalizeRfqStatus } from '@/lib/api/rfqs';
+import { formatRfqReference, normalizeRfqStatus } from '@/lib/api/rfqs';
 import { useFormatters } from '@/lib/i18n/formatters';
-
-function formatId(id: string): string {
-  if (/^\d{1,6}$/.test(id)) return id;
-  return id.replace(/-/g, '').slice(0, 6).toUpperCase();
-}
 
 const CHANNEL_ICON: Record<RfqChannel, typeof MailIcon> = {
   whatsapp: MessageCircleIcon,
@@ -35,8 +30,8 @@ interface RfqDetailHeaderProps {
 }
 
 export function RfqDetailHeader({ detail }: RfqDetailHeaderProps) {
-  const t = useTranslations('rfqs');
   const fmt = useFormatters();
+  const t = useTranslations('rfqs');
   const { rfq } = detail;
 
   const channel = rfq.channel as RfqChannel;
@@ -54,7 +49,9 @@ export function RfqDetailHeader({ detail }: RfqDetailHeaderProps) {
           >
             <ArrowLeftIcon className="size-4" />
           </Link>
-          <h2 className="min-w-0 truncate text-heading-3 text-foreground">#{formatId(rfq.id)}</h2>
+          <h2 className="min-w-0 truncate text-heading-3 text-foreground">
+            {formatRfqReference(rfq.quote_number) ?? t('list.numberPending')}
+          </h2>
         </div>
         <RfqStatusBadge status={normalizeRfqStatus(rfq.status)} />
       </div>

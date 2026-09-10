@@ -51,6 +51,11 @@ type AccountResponse struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
+// BrandLogoResponse is returned by POST /v1/account/logo.
+type BrandLogoResponse struct {
+	Path string `json:"path"`
+}
+
 // MeResponse is the authenticated caller's own identity and reach.
 type MeResponse struct {
 	ID    uuid.UUID `json:"id"`

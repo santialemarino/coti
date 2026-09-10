@@ -17,15 +17,10 @@ import {
   RadioGroupItem,
   Textarea,
 } from '@repo/ui/components';
-import type { RfqDetailResponse } from '@/lib/api/rfqs';
+import { formatRfqReference, type RfqDetailResponse } from '@/lib/api/rfqs';
 import { useFormatters } from '@/lib/i18n/formatters';
 
 type SendChannel = 'whatsapp' | 'email';
-
-function formatId(id: string): string {
-  if (/^\d{1,6}$/.test(id)) return id;
-  return id.replace(/-/g, '').slice(0, 6).toUpperCase();
-}
 
 interface SendQuoteDialogProps {
   detail: RfqDetailResponse;
@@ -37,8 +32,8 @@ interface SendQuoteDialogProps {
  * is ready without leaving the screen.
  */
 export function SendQuoteDialog({ detail }: SendQuoteDialogProps) {
-  const t = useTranslations('rfqs.detail.send');
   const fmt = useFormatters();
+  const t = useTranslations('rfqs.detail.send');
   const [open, setOpen] = useState(false);
   const [channel, setChannel] = useState<SendChannel>(
     detail.rfq.channel === 'email' ? 'email' : 'whatsapp',
@@ -50,10 +45,13 @@ export function SendQuoteDialog({ detail }: SendQuoteDialogProps) {
     const client = detail.rfq.client;
     return [
       t('greeting', { client: client?.trim() ? client.trim() : t('noClient') }),
-      t('body', { id: formatId(detail.rfq.id), total: fmt.currency(detail.version?.total ?? '0') }),
+      t('body', {
+        id: formatRfqReference(detail.rfq.quote_number) ?? t('numberPending'),
+        total: fmt.currency(detail.version?.total ?? '0'),
+      }),
       t('closing'),
     ].join(' ');
-  }, [detail.rfq.client, detail.rfq.id, detail.version?.total, fmt, t]);
+  }, [detail.rfq.client, detail.rfq.quote_number, detail.version?.total, fmt, t]);
 
   function handleOpenChange(next: boolean) {
     if (sending) return;

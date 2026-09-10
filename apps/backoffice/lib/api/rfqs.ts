@@ -27,10 +27,9 @@ export function normalizeRfqStatus(status: string): RfqStatus {
 // The channel a request arrived through; an icon and an i18n label hang off each value.
 export type RfqChannel = 'whatsapp' | 'email' | 'webapp' | 'manual_entry';
 
-export type RfqPriority = 'high' | 'normal' | 'low';
-
 export interface RfqRecord {
   id: string;
+  quoteNumber: number | null;
   client: string;
   createdAt: string;
   channel: RfqChannel;
@@ -45,7 +44,6 @@ export interface RfqRecord {
    * Absent until the quote exists — an uncotized request has no amount to show.
    */
   total?: string;
-  priority: RfqPriority;
   status: RfqStatus;
   // Backend-set flag: the seller must chase this quote; it surfaces first and is highlighted.
   needsFollowup: boolean;
@@ -56,6 +54,7 @@ export interface RfqRecord {
 // Raw shape returned by GET /v1/rfqs — the mapper lives on the server side.
 export interface RfqListItem {
   id: string;
+  quote_number: number | null;
   client: string | null;
   created_at: string;
   channel: string;
@@ -70,11 +69,12 @@ export interface RfqListItem {
   archived_at: string | null;
 }
 
-/*
- * The stand-in duration of an AI quote generation until the backend drives it; the dashboard shows
- * the processing spinner for this long when the seller marks a pedido as QUOTED.
- */
-export const QUOTE_GENERATION_MS = 1200;
+const RFQ_REFERENCE_MIN_DIGITS = 2;
+
+export function formatRfqReference(quoteNumber: number | null | undefined): string | null {
+  if (quoteNumber == null) return null;
+  return `#${String(quoteNumber).padStart(RFQ_REFERENCE_MIN_DIGITS, '0')}`;
+}
 
 // Raw shape returned by GET /v1/rfqs/:rfqId — the detail view projection.
 export interface RfqDetailResponse {

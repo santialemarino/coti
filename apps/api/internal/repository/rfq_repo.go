@@ -136,6 +136,7 @@ func (r *RFQRepository) GetByRFQID(
 		        COALESCE(u.name, ''),
 		        r.branch_id,
 		        b.name,
+		        q.number,
 		        COALESCE(qt.total, 0),
 		        CASE WHEN q.id IS NULL THEN r.status::text
 		             ELSE q.current_status::text
@@ -164,6 +165,7 @@ WHERE r.account_id = $1
 		&item.ClientLabel, &item.CreatedAt,
 		&item.Channel, &item.SellerID, &item.SellerName,
 		&item.BranchID, &item.BranchName,
+		&item.QuoteNumber,
 		&total, &item.Status, &item.ArchivedAt, &item.NeedsFollowup,
 		&item.ItemCount,
 	)
@@ -196,6 +198,7 @@ func (r *RFQRepository) ListByTenant(
 		        COALESCE(u.name, ''),
 		        r.branch_id,
 		        b.name,
+		        q.number,
 		        COALESCE(qt.total, 0),
 		        CASE WHEN q.id IS NULL THEN r.status::text
 		             ELSE q.current_status::text
@@ -235,6 +238,7 @@ func (r *RFQRepository) ListByTenant(
 			&item.ClientLabel, &item.CreatedAt,
 			&item.Channel, &item.SellerID, &item.SellerName,
 			&item.BranchID, &item.BranchName,
+			&item.QuoteNumber,
 			&total, &item.Status, &item.ArchivedAt, &item.NeedsFollowup,
 			&item.ItemCount,
 		); err != nil {

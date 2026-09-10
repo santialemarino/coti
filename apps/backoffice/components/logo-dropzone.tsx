@@ -8,29 +8,36 @@ import { useTranslations } from 'next-intl';
 import { Button, Callout } from '@repo/ui/components';
 import { FileDropzone } from '@/components/file-dropzone';
 
-const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/svg+xml'];
+const ACCEPTED_TYPES = ['image/png', 'image/jpeg'];
 
 interface LogoDropzoneProps {
+  initialUrl?: string | null;
+  onFileChange?: (file: File | null) => void;
   onPreviewChange?: (url: string | null) => void;
 }
 
-export function LogoDropzone({ onPreviewChange }: LogoDropzoneProps) {
-  const t = useTranslations('onboarding.brand.logo');
-  const [file, setFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+export function LogoDropzone({ initialUrl, onFileChange, onPreviewChange }: LogoDropzoneProps) {
+  const t = useTranslations('common.logoUpload');
+  const [selection, setSelection] = useState<File | null>();
+  const [previewUrl, setPreviewUrl] = useState<string | null>(initialUrl ?? null);
   const [error, setError] = useState<string | null>(null);
+  const file = selection instanceof File ? selection : null;
 
   useEffect(() => {
-    if (!file) {
-      setPreviewUrl(null);
-      onPreviewChange?.(null);
+    if (selection === undefined) {
+      setPreviewUrl(initialUrl ?? null);
       return;
     }
-    const url = URL.createObjectURL(file);
+    if (selection === null) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(selection);
     setPreviewUrl(url);
-    onPreviewChange?.(url);
     return () => URL.revokeObjectURL(url);
-  }, [file, onPreviewChange]);
+  }, [initialUrl, selection]);
+
+  useEffect(() => onPreviewChange?.(previewUrl), [onPreviewChange, previewUrl]);
 
   function choose(next: File | undefined) {
     if (!next) return;
@@ -39,21 +46,19 @@ export function LogoDropzone({ onPreviewChange }: LogoDropzoneProps) {
       return;
     }
     setError(null);
-    setFile(next);
+    setSelection(next);
+    onFileChange?.(next);
   }
 
   function clear() {
-    setFile(null);
+    setSelection(null);
     setError(null);
+    onFileChange?.(null);
   }
 
   return (
     <div className="flex flex-col gap-y-3">
-      <FileDropzone
-        accept="image/png,image/jpeg,image/svg+xml"
-        onFile={choose}
-        className="min-h-52 py-7"
-      >
+      <FileDropzone accept="image/png,image/jpeg" onFile={choose} className="min-h-52 py-7">
         {({ dragging, openFileDialog }) => (
           <>
             {previewUrl ? (
@@ -78,16 +83,13 @@ export function LogoDropzone({ onPreviewChange }: LogoDropzoneProps) {
               <p className="break-all text-paragraph-medium">
                 {dragging ? t('release') : (file?.name ?? t('title'))}
               </p>
-              <p className="text-paragraph-sm text-foreground-muted">
-                {file ? t('localOnly') : t('hint')}
-              </p>
             </div>
             <div className="flex flex-col w-full items-stretch gap-2 sm:flex-row sm:w-auto sm:items-center">
               <Button type="button" variant="outline" onClick={openFileDialog}>
                 <ImageIcon aria-hidden="true" />
-                {file ? t('replace') : t('choose')}
+                {previewUrl ? t('replace') : t('choose')}
               </Button>
-              {file ? (
+              {previewUrl ? (
                 <Button type="button" variant="ghost" onClick={clear}>
                   <XIcon aria-hidden="true" />
                   {t('remove')}

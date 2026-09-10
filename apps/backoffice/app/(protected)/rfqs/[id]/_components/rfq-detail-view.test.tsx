@@ -24,10 +24,9 @@ vi.mock('@/lib/api/rfqs-client', () => ({
   generateQuote: vi.fn(),
 }));
 // The send button's presence per status is what these tests exercise; the edit surface, diff and
-// chrome are stubbed out, with the send dialog and the diff left as spies.
+// header are stubbed out, with the send dialog and the diff left as spies.
 vi.mock('./rfq-items-table', () => ({ RfqItemsTable: () => null }));
 vi.mock('./rfq-detail-header', () => ({ RfqDetailHeader: () => null }));
-vi.mock('./rfq-status-timeline', () => ({ RfqStatusTimeline: () => null }));
 vi.mock('./send-quote-dialog', () => ({ SendQuoteDialog: vi.fn(() => null) }));
 vi.mock('./rfq-change-diff', () => ({ RfqChangeDiff: vi.fn(() => null) }));
 
@@ -76,6 +75,7 @@ const PRICED_ITEM: QuoteItemResponse = {
 function draftRecord(): RfqRecord {
   return {
     id: RFQ_ID,
+    quoteNumber: 1,
     client: 'Constructora',
     createdAt: BASE_TIME,
     channel: 'manual_entry',
@@ -84,7 +84,6 @@ function draftRecord(): RfqRecord {
     branch: 'Villa Bosch',
     branchId: BRANCH_ID,
     itemCount: 1,
-    priority: 'normal',
     status: 'GENERATED',
     needsFollowup: false,
   };
@@ -131,6 +130,7 @@ function makeDetail(quoteStatus: string, rfqStatus: string = quoteStatus): RfqDe
   return {
     rfq: {
       id: RFQ_ID,
+      quote_number: 1,
       client: 'Constructora',
       created_at: BASE_TIME,
       channel: 'manual_entry',
@@ -240,6 +240,14 @@ function dialogPropsFor(status: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+describe('RfqDetailView tracking', () => {
+  it('reports the empty delivery history once', () => {
+    const view = renderView(makeDetail('QUOTED'));
+
+    expect(view.getAllByText(copy.detail.timeline.noDeliveries)).toHaveLength(1);
+  });
 });
 
 describe('RfqDetailView send flow', () => {

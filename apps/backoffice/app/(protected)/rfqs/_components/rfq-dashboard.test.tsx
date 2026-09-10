@@ -8,17 +8,13 @@ import { ApiError } from '@/lib/api/errors';
 import type { RfqRecord } from '@/lib/api/rfqs';
 import messages from '@/translations/es.json';
 
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
-}));
+const router = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
+
+vi.mock('next/navigation', () => ({ useRouter: () => router }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 // The create dialog pulls in the import/manual views; it is not what these tests exercise.
 vi.mock('@/app/(protected)/rfqs/_components/create-rfq-dialog', () => ({
   CreateRfqDialog: () => null,
-}));
-// QUOTE_GENERATION_MS shortened so the generation step lands without fake timers.
-vi.mock('@/lib/api/rfqs', () => ({
-  QUOTE_GENERATION_MS: 50,
 }));
 vi.mock('@/lib/api/rfqs-client', () => ({
   assignRfqSeller: vi.fn(),
@@ -33,10 +29,12 @@ const { assignRfqSeller, setRfqSeller } = await import('@/lib/api/rfqs-client');
 const { listSellers } = await import('@/lib/api/sellers');
 
 const copy = messages.rfqs;
+const TEST_REFERENCES: Record<string, string> = { '2006': '#06', '2007': '#07' };
 
 const RFQS: RfqRecord[] = [
   {
     id: '2001',
+    quoteNumber: 1,
     client: 'Constructora A',
     createdAt: '2026-08-06T10:00:00.000Z',
     channel: 'whatsapp',
@@ -45,13 +43,13 @@ const RFQS: RfqRecord[] = [
     branch: 'Centro',
     branchId: 'b1',
     itemCount: 2,
-    priority: 'high',
     status: 'QUOTED',
     total: '100.00',
     needsFollowup: false,
   },
   {
     id: '2002',
+    quoteNumber: 2,
     client: 'Ferretería B',
     createdAt: '2026-08-06T09:00:00.000Z',
     channel: 'email',
@@ -60,13 +58,13 @@ const RFQS: RfqRecord[] = [
     branch: 'Norte',
     branchId: 'b2',
     itemCount: 3,
-    priority: 'normal',
     status: 'SENT',
     total: '200.00',
     needsFollowup: false,
   },
   {
     id: '2003',
+    quoteNumber: 3,
     client: 'Obra C',
     createdAt: '2026-08-05T08:00:00.000Z',
     channel: 'manual_entry',
@@ -75,13 +73,13 @@ const RFQS: RfqRecord[] = [
     branch: 'Centro',
     branchId: 'b1',
     itemCount: 4,
-    priority: 'normal',
     status: 'QUOTED',
     total: '300.00',
     needsFollowup: false,
   },
   {
     id: '2004',
+    quoteNumber: null,
     client: 'Techos D',
     createdAt: '2026-08-05T07:00:00.000Z',
     channel: 'manual_entry',
@@ -90,12 +88,12 @@ const RFQS: RfqRecord[] = [
     branch: 'Norte',
     branchId: 'b2',
     itemCount: 5,
-    priority: 'low',
     status: 'RECEIVED',
     needsFollowup: false,
   },
   {
     id: '2005',
+    quoteNumber: 5,
     client: 'Pinturas E',
     createdAt: '2026-08-04T06:00:00.000Z',
     channel: 'webapp',
@@ -104,7 +102,6 @@ const RFQS: RfqRecord[] = [
     branch: 'Centro',
     branchId: 'b1',
     itemCount: 6,
-    priority: 'high',
     status: 'GENERATED',
     needsFollowup: false,
   },
@@ -150,8 +147,9 @@ function tabCount(view: ReturnType<typeof render>, label: string): number {
   return Number(count);
 }
 
-function rowOf(view: ReturnType<typeof render>, id: string) {
-  const row = view.getByRole('row', { name: new RegExp(id) });
+function rowOf(view: ReturnType<typeof render>, label: string) {
+  const row = view.getByText(TEST_REFERENCES[label] ?? label).closest('tr');
+  if (!row) throw new Error(`No row contains ${label}`);
   return within(row);
 }
 
@@ -185,7 +183,7 @@ describe('RfqDashboard status tab counts', () => {
     expect(tabCount(view, copy.status.SENT)).toBe(1);
     expect(tabCount(view, copy.status.RECEIVED)).toBe(0);
     expect(tabCount(view, copy.status.GENERATED)).toBe(1);
-    expect(view.queryByText('#2003')).toBeNull();
+    expect(view.queryByText('#03')).toBeNull();
   });
 
   it('combines the status tab with the other filters', async () => {
@@ -200,8 +198,8 @@ describe('RfqDashboard status tab counts', () => {
     await vi.waitFor(() => expect(tabCount(view, copy.status.QUOTED)).toBe(1));
 
     fireEvent.click(within(view.getByLabelText(copy.list.tabs)).getByText(copy.status.QUOTED));
-    await vi.waitFor(() => expect(view.queryByText('#2002')).toBeNull());
-    expect(view.getByText('#2001')).toBeTruthy();
+    await vi.waitFor(() => expect(view.queryByText('#02')).toBeNull());
+    expect(view.getByText('#01')).toBeTruthy();
   });
 });
 
@@ -209,39 +207,61 @@ describe('RfqDashboard totals column', () => {
   it('shows a dash until the quote exists and the amount once it does', () => {
     const view = renderDashboard();
 
-    expect(rowOf(view, '2004').getByText('-')).toBeTruthy();
-    expect(rowOf(view, '2001').getByText('$ 100,00')).toBeTruthy();
-    expect(rowOf(view, '2001').queryByText('-')).toBeNull();
+    expect(rowOf(view, copy.list.numberPending).getByText('-')).toBeTruthy();
+    expect(rowOf(view, '#01').getByText('$ 100,00')).toBeTruthy();
+    expect(rowOf(view, '#01').queryByText('-')).toBeNull();
   });
 });
 
-describe('RfqDashboard marking a pedido as QUOTED', () => {
-  it('runs the generation spinner and then lands on the pill', async () => {
+describe('RfqDashboard row actions', () => {
+  it('opens the detail from the whole row without hijacking its controls', () => {
+    const view = renderDashboard();
+    const row = view.getByRole('link', {
+      name: copy.list.openRow.replace('{id}', '#01'),
+    });
+
+    fireEvent.click(within(row).getByText('Centro'));
+    expect(router.push).toHaveBeenLastCalledWith('/rfqs/2001');
+
+    router.push.mockClear();
+    fireEvent.keyDown(row, { key: 'Enter' });
+    expect(router.push).toHaveBeenLastCalledWith('/rfqs/2001');
+
+    router.push.mockClear();
+    fireEvent.click(within(row).getByRole('checkbox'));
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it('shows only detail and archive actions and opens the detail route', async () => {
     const view = renderDashboard();
 
     fireEvent.pointerDown(
-      rowOf(view, '2005').getByRole('button', { name: copy.list.actions.more }),
+      rowOf(view, '#01').getByRole('button', { name: copy.list.actions.more }),
       {
         button: 0,
       },
     );
-    const changeStatus = await vi.waitFor(() =>
-      view.getByRole('menuitem', { name: copy.list.actions.changeStatus }),
-    );
-    fireEvent.click(changeStatus);
-    const quoted = await vi.waitFor(() => view.getByRole('menuitem', { name: copy.status.QUOTED }));
-    fireEvent.click(quoted);
+    const menu = await vi.waitFor(() => view.getByRole('menu'));
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(2);
+    expect(within(menu).getByRole('menuitem', { name: copy.list.actions.archive })).toBeTruthy();
 
-    await vi.waitFor(() =>
-      expect(rowOf(view, '2005').getByText(copy.processing.quote)).toBeTruthy(),
+    fireEvent.click(within(menu).getByRole('menuitem', { name: copy.list.actions.view }));
+
+    expect(router.push).toHaveBeenCalledWith('/rfqs/2001');
+  });
+
+  it('uses the sequence number in archive feedback', async () => {
+    const view = renderDashboard();
+
+    fireEvent.pointerDown(
+      rowOf(view, '#01').getByRole('button', { name: copy.list.actions.more }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await vi.waitFor(() => view.getByRole('menuitem', { name: copy.list.actions.archive })),
     );
 
-    await vi.waitFor(() => expect(rowOf(view, '2005').getByText(copy.status.QUOTED)).toBeTruthy(), {
-      timeout: 3000,
-    });
-    expect(toast.success).toHaveBeenCalledWith(
-      copy.list.toast.quoteGenerated.replace('{id}', '2005'),
-    );
+    expect(toast.success).toHaveBeenCalledWith(copy.list.toast.archived.replace('{id}', '#01'));
   });
 });
 
@@ -254,6 +274,7 @@ describe('RfqDashboard marking a pedido as QUOTED', () => {
 describe('RfqDashboard claiming an unassigned order', () => {
   const unassigned: RfqRecord = {
     id: '2006',
+    quoteNumber: 6,
     client: 'Obra F',
     createdAt: '2026-08-03T05:00:00.000Z',
     channel: 'whatsapp',
@@ -262,7 +283,6 @@ describe('RfqDashboard claiming an unassigned order', () => {
     branch: 'Centro',
     branchId: 'b1',
     itemCount: 1,
-    priority: 'normal',
     status: 'RECEIVED',
     needsFollowup: false,
   };
@@ -302,7 +322,7 @@ describe('RfqDashboard claiming an unassigned order', () => {
     // The row only stamps the owner once the backend confirms the claim, so wait for it.
     await vi.waitFor(() => expect(rowOf(view, '2006').getByText('Ana Robles')).toBeTruthy());
     expect(toast.success).toHaveBeenCalledWith(
-      copy.list.toast.assigned.replace('{id}', '2006').replace('{name}', 'Ana Robles'),
+      copy.list.toast.assigned.replace('{id}', '#06').replace('{name}', 'Ana Robles'),
     );
   });
 
@@ -408,6 +428,7 @@ const SELLERS_BY_BRANCH: Record<string, Array<{ id: string; name: string }>> = {
 describe('RfqDashboard admin steering the seller', () => {
   const moronOrder: RfqRecord = {
     id: '2006',
+    quoteNumber: 6,
     client: 'Obra F',
     createdAt: '2026-08-03T05:00:00.000Z',
     channel: 'whatsapp',
@@ -416,13 +437,13 @@ describe('RfqDashboard admin steering the seller', () => {
     branch: 'Morón',
     branchId: 'b-moron',
     itemCount: 1,
-    priority: 'normal',
     status: 'RECEIVED',
     needsFollowup: false,
   };
   const villaOrder: RfqRecord = {
     ...moronOrder,
     id: '2007',
+    quoteNumber: 7,
     branch: 'Villa Bosch',
     branchId: 'b-villa',
   };
@@ -479,7 +500,7 @@ describe('RfqDashboard admin steering the seller', () => {
     expect(setRfqSeller).toHaveBeenCalledWith('2007', 's-villa');
     await vi.waitFor(() => expect(rowOf(view, '2007').getByText('Diego Villa')).toBeTruthy());
     expect(toast.success).toHaveBeenCalledWith(
-      copy.list.toast.sellerAssigned.replace('{id}', '2007').replace('{seller}', 'Diego Villa'),
+      copy.list.toast.sellerAssigned.replace('{id}', '#07').replace('{seller}', 'Diego Villa'),
     );
   });
 
@@ -495,7 +516,7 @@ describe('RfqDashboard admin steering the seller', () => {
     expect(setRfqSeller).toHaveBeenCalledWith('2006', 's-moron');
     await vi.waitFor(() => expect(rowOf(view, '2006').getByText('Vero Morón')).toBeTruthy());
     expect(toast.success).toHaveBeenCalledWith(
-      copy.list.toast.sellerAssigned.replace('{id}', '2006').replace('{seller}', 'Vero Morón'),
+      copy.list.toast.sellerAssigned.replace('{id}', '#06').replace('{seller}', 'Vero Morón'),
     );
   });
 
@@ -511,7 +532,7 @@ describe('RfqDashboard admin steering the seller', () => {
     expect(setRfqSeller).toHaveBeenCalledWith('2006', 'me');
     await vi.waitFor(() => expect(rowOf(view, '2006').getByText('Admin')).toBeTruthy());
     expect(toast.success).toHaveBeenCalledWith(
-      copy.list.toast.sellerAssigned.replace('{id}', '2006').replace('{seller}', 'Admin'),
+      copy.list.toast.sellerAssigned.replace('{id}', '#06').replace('{seller}', 'Admin'),
     );
   });
 
@@ -530,7 +551,7 @@ describe('RfqDashboard admin steering the seller', () => {
       expect(rowOf(view, '2006').getByText(copy.list.unassigned)).toBeTruthy(),
     );
     expect(toast.success).toHaveBeenCalledWith(
-      copy.list.toast.sellerUnassigned.replace('{id}', '2006'),
+      copy.list.toast.sellerUnassigned.replace('{id}', '#06'),
     );
   });
 
@@ -571,6 +592,7 @@ describe('RfqDashboard admin steering the seller', () => {
 describe('RfqDashboard seller column as the assignment surface', () => {
   const moronOrder: RfqRecord = {
     id: '2006',
+    quoteNumber: 6,
     client: 'Obra F',
     createdAt: '2026-08-03T05:00:00.000Z',
     channel: 'whatsapp',
@@ -579,7 +601,6 @@ describe('RfqDashboard seller column as the assignment surface', () => {
     branch: 'Morón',
     branchId: 'b-moron',
     itemCount: 1,
-    priority: 'normal',
     status: 'RECEIVED',
     needsFollowup: false,
   };
@@ -633,7 +654,7 @@ describe('RfqDashboard seller column as the assignment surface', () => {
     expect(setRfqSeller).toHaveBeenCalledWith('2006', 's-moron2');
     await vi.waitFor(() => expect(rowOf(view, '2006').getByText('Caro Morón')).toBeTruthy());
     expect(toast.success).toHaveBeenCalledWith(
-      copy.list.toast.sellerAssigned.replace('{id}', '2006').replace('{seller}', 'Caro Morón'),
+      copy.list.toast.sellerAssigned.replace('{id}', '#06').replace('{seller}', 'Caro Morón'),
     );
   });
 

@@ -6,13 +6,8 @@ import { useTranslations } from 'next-intl';
 import { cn } from '@repo/ui/lib';
 import { RfqStatusBadge } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
 import { ROUTES } from '@/config/routes';
-import type { RfqRecord } from '@/lib/api/rfqs';
+import { formatRfqReference, type RfqRecord } from '@/lib/api/rfqs';
 import { useFormatters } from '@/lib/i18n/formatters';
-
-function formatId(id: string): string {
-  if (/^\d{1,6}$/.test(id)) return id;
-  return id.replace(/-/g, '').slice(0, 6).toUpperCase();
-}
 
 interface RfqSidebarListProps {
   records: RfqRecord[];
@@ -21,13 +16,13 @@ interface RfqSidebarListProps {
 
 /*
  * Compact sidebar shown when a pedido is selected. Displays only the essential
- * info per row: truncated ID, status badge, and date+time. Clicking a row
+ * info per row: sequence number, status badge, and date+time. Clicking a row
  * navigates to that pedido's detail without losing the sidebar context.
  */
 export function RfqSidebarList({ records, activeRfqId }: RfqSidebarListProps) {
-  const t = useTranslations('rfqs');
-  const fmt = useFormatters();
   const router = useRouter();
+  const fmt = useFormatters();
+  const t = useTranslations('rfqs');
 
   return (
     <nav className="flex flex-col" aria-label={t('list.title')}>
@@ -39,6 +34,7 @@ export function RfqSidebarList({ records, activeRfqId }: RfqSidebarListProps) {
         <ul className="flex flex-col">
           {records.map((rfq) => {
             const isActive = rfq.id === activeRfqId;
+            const reference = formatRfqReference(rfq.quoteNumber) ?? t('list.numberPending');
 
             return (
               <li key={rfq.id}>
@@ -53,7 +49,7 @@ export function RfqSidebarList({ records, activeRfqId }: RfqSidebarListProps) {
                   )}
                 >
                   <span className="truncate text-paragraph-sm-medium text-foreground">
-                    #{formatId(rfq.id)} — {rfq.client}
+                    {reference} — {rfq.client}
                   </span>
                   <div className="flex items-center gap-x-2">
                     <RfqStatusBadge status={rfq.status} size="sm" />

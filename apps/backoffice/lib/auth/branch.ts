@@ -8,7 +8,7 @@ import { BRANCH_COOKIE, sessionCookieOptions } from '@/lib/auth/tokens';
 import { SELLER_ROLE } from '@/lib/constants/auth';
 
 /*
- * The branch the caller is working in. A cookie because it outlives a navigation and no
+ * The branch the caller explicitly chose. A cookie because it outlives a navigation and no
  * client code reads it — the shell renders the switcher from the server.
  *
  * Nothing here validates the cookie on read, deliberately: no branch header means
@@ -31,6 +31,12 @@ export async function getActiveBranchId(): Promise<string | undefined> {
 
   const branches = await getBranches();
   return branches.length === 1 ? branches[0]?.id : undefined;
+}
+
+export async function getEffectiveBranchId(
+  branches: ReadonlyArray<{ id: string }>,
+): Promise<string | undefined> {
+  return (await getActiveBranchId()) ?? (branches.length === 1 ? branches[0]?.id : undefined);
 }
 
 /*

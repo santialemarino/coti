@@ -136,7 +136,6 @@ export function PriceImport({ branch }: PriceImportProps) {
         </div>
       </form>
 
-      <p className="text-paragraph-sm text-foreground-muted">{t('formatHint')}</p>
       {error ? <Callout tone="danger">{error}</Callout> : null}
       {successCount !== null ? (
         <Callout tone="success">{t('success', { count: successCount })}</Callout>

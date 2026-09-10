@@ -39,6 +39,7 @@ type Handlers struct {
 	RFQAttachment *handler.RFQAttachmentHandler
 	Quote         *handler.QuoteHandler
 	Account       *handler.AccountHandler
+	AccountLogo   *handler.BrandLogoHandler
 	Prices        *handler.ProductPriceHandler
 	CatalogImport *handler.CatalogImportHandler
 	Onboarding    *handler.OnboardingHandler
@@ -107,6 +108,9 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	public.POST("/auth/resend-verification", mail, h.Verification.Resend)
 
 	public.POST("/accounts", limit("signup", cfg.RateLimit.Signup), h.Account.Register)
+	if h.AccountLogo != nil {
+		public.GET("/account-logos/:accountId/:logoId", h.AccountLogo.Get)
+	}
 	public.GET("/quote-sends/:token", h.Quote.ResolvePublic)
 
 	authed := v1.Group("", middleware.RequireTenant())
@@ -168,6 +172,9 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	account := verified.Group("/account")
 	account.GET("", h.Account.Get)
 	account.PUT("", middleware.RequireAdmin(), h.Account.Update)
+	if h.AccountLogo != nil {
+		account.POST("/logo", middleware.RequireAdmin(), h.AccountLogo.Upload)
+	}
 
 	onboarding := verified.Group("/onboarding", middleware.RequireAdmin())
 	onboarding.GET("", h.Onboarding.Get)

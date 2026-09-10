@@ -65,9 +65,24 @@ function toQuantity(value: string): string {
 }
 
 function toPrice(value: string): string {
-  const parsed = Number.parseFloat(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return '0';
-  return String(parsed);
+  const compact = value.trim().replace(/\s/g, '');
+  const parts = compact.split('.');
+  const normalized = compact.includes(',')
+    ? compact.replace(/\./g, '').replace(',', '.')
+    : parts.length === 2 && (parts[1]?.length ?? 0) <= 2
+      ? compact
+      : compact.replace(/\./g, '');
+  if (!/^\d+(?:\.\d+)?$/.test(normalized)) return '0';
+
+  const [integer = '0', fraction] = normalized.split('.');
+  const normalizedInteger = integer.replace(/^0+(?=\d)/, '');
+  return fraction === undefined ? normalizedInteger : `${normalizedInteger}.${fraction}`;
+}
+
+function priceInputValue(value: string, fmt: ReturnType<typeof useFormatters>): string {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return value;
+  return fmt.value(parsed, { minDecimals: 2, maxDecimals: 2 });
 }
 
 function confidenceTone(score: string | null): 'success' | 'warning' | 'danger' | 'neutral' {
@@ -405,7 +420,9 @@ export function RfqItemsTable({
           <TableBody>
             {items.map((item, index) => {
               const quantityValue = editingQuantity[item.id] ?? item.quantity;
-              const priceValue = editingPrice[item.id] ?? item.unit_price_snapshot ?? '';
+              const priceValue =
+                editingPrice[item.id] ??
+                (item.unit_price_snapshot ? priceInputValue(item.unit_price_snapshot, fmt) : '');
               const noMatch =
                 !showConfidence && item.match_status === 'NO_MATCH' && !item.product_name;
 
@@ -508,10 +525,9 @@ export function RfqItemsTable({
                       {canEditPrices &&
                       (item.unit_price_snapshot != null || item.match_status === 'NO_MATCH') ? (
                         <Input
-                          type="number"
+                          type="text"
                           inputMode="decimal"
-                          min={0}
-                          step={0.01}
+                          prefix="$"
                           value={priceValue}
                           onFocus={(event) => event.target.select()}
                           onChange={(event) =>
@@ -526,7 +542,7 @@ export function RfqItemsTable({
                               (event.target as HTMLInputElement).blur();
                             }
                           }}
-                          containerClassName="w-28 mx-auto"
+                          containerClassName="w-36 mx-auto"
                           className="text-center tabular-nums"
                         />
                       ) : item.unit_price_snapshot != null ? (

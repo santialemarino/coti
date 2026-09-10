@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"io"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,6 +28,19 @@ type AccountUpdate struct {
 	TaxID        *string
 	BrandLogoURL *string
 	BrandColor   *string
+}
+
+// AccountLogo is one account logo stored under a public, unguessable identifier.
+type AccountLogo struct {
+	ID        uuid.UUID
+	AccountID uuid.UUID
+}
+
+// AccountLogoUpload is one image offered as an account logo.
+type AccountLogoUpload struct {
+	ContentType string
+	Size        int64
+	Content     io.Reader
 }
 
 // Signup registers a corralón: the account, its first branch, and the administrator who

@@ -602,6 +602,7 @@ func toListItemResponse(item domain.RfqListItem) dto.RfqListItemResponse {
 		Seller:        item.SellerName,
 		BranchID:      item.BranchID,
 		Branch:        item.BranchName,
+		QuoteNumber:   item.QuoteNumber,
 		ItemCount:     item.ItemCount,
 		Total:         item.Total,
 		Status:        item.Status,

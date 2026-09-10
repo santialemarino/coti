@@ -114,9 +114,9 @@ export function OnboardingFlow({
     startTransition(task);
   }
 
-  function submitBrand(values: OnboardingBrandValues) {
+  function submitBrand(values: OnboardingBrandValues, logo?: File | null) {
     run(async () => {
-      const result = await updateOnboardingBrand(values);
+      const result = await updateOnboardingBrand(values, logo);
       if (!result.ok) {
         setError(message(result.error));
         return;
