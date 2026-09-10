@@ -64,7 +64,7 @@ func (e *env) pipeline(
 	return services.NewRFQService(e.db, repository.NewRFQRepository(),
 		repository.NewQuoteRepository(), repository.NewQuoteSendRepository(),
 		repository.NewQuoteAIGenerationRepository(),
-		repository.NewChannelRepository(), extractor,
+		repository.NewChannelRepository(), repository.NewUserRepository(), extractor,
 		e.matcher(t, matchConfig(), axes),
 		slog.New(slog.NewTextHandler(io.Discard, nil)), rfqConfig())
 }

@@ -115,12 +115,19 @@ func (r *RFQRepository) ListStatusChanges(
 }
 
 // GetByRFQID returns a single RFQ scoped to the account, including its associated quote
-// data when present. This is the detail view backend.
+// data when present. This is the detail view backend. A seller only reaches orders in their
+// branch scope that are unassigned or their own; anything else answers not found, so the
+// route does not confirm an order it refuses to show. An admin keeps their existing reach:
+// account-wide, independent of any active branch.
 func (r *RFQRepository) GetByRFQID(
 	ctx context.Context, q Querier, tenant domain.Tenant, rfqID uuid.UUID,
 ) (*domain.RfqListItem, error) {
 	var item domain.RfqListItem
 	var total decimal.Decimal
+	var branchFilter []uuid.UUID
+	if !tenant.IsAdmin() {
+		branchFilter = tenant.BranchFilter()
+	}
 	err := q.QueryRow(ctx,
 		`SELECT r.id, r.client_id,
 		        COALESCE(cl.name, r.client_label), r.created_at,
@@ -147,9 +154,11 @@ func (r *RFQRepository) GetByRFQID(
 		 LEFT JOIN channel c ON c.id = r.channel_id AND c.account_id = r.account_id
 		 LEFT JOIN app_user u ON u.id = q.seller_id AND u.account_id = r.account_id
 		 LEFT JOIN quote_version qt ON qt.id = q.current_version_id AND qt.account_id = r.account_id
-		 WHERE r.account_id = $1 AND r.id = $2
-		   AND ($3::uuid[] IS NULL OR r.branch_id = ANY($3::uuid[]))`,
-		tenant.AccountID, rfqID, tenant.BranchFilter(),
+WHERE r.account_id = $1
+		   AND ($2::uuid[] IS NULL OR r.branch_id = ANY($2::uuid[]))
+		   AND r.id = $3
+		   AND ($4::uuid IS NULL OR q.seller_id = $4 OR q.seller_id IS NULL)`,
+		tenant.AccountID, branchFilter, rfqID, sellerParam(tenant),
 	).Scan(
 		&item.ID, &item.ClientID,
 		&item.ClientLabel, &item.CreatedAt,
@@ -206,10 +215,11 @@ func (r *RFQRepository) ListByTenant(
 		 LEFT JOIN app_user u ON u.id = q.seller_id AND u.account_id = r.account_id
 		 LEFT JOIN quote_version qt ON qt.id = q.current_version_id AND qt.account_id = r.account_id
 		 WHERE r.account_id = $1
-		   AND ($2::uuid = '00000000-0000-0000-0000-000000000000'::uuid OR r.branch_id = $2)
+		   AND ($2::uuid[] IS NULL OR r.branch_id = ANY($2::uuid[]))
+		   AND ($3::uuid IS NULL OR q.seller_id = $3 OR q.seller_id IS NULL)
 		   AND (q.id IS NULL OR q.archived_at IS NULL)
 		 ORDER BY COALESCE(q.needs_followup, FALSE) DESC, r.created_at DESC`,
-		tenant.AccountID, tenant.BranchID,
+		tenant.AccountID, tenant.BranchFilter(), sellerParam(tenant),
 	)
 	if err != nil {
 		return nil, err
@@ -239,6 +249,107 @@ func (r *RFQRepository) ListByTenant(
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+// AssignSeller claims an unclaimed quote for the caller, atomically. The branch scope anchors
+// the write, and seller_id IS NULL is the claim guard: two sellers racing for the same order
+// leave exactly one owner. A claimed order answers ErrConflict; an order outside the caller's
+// branch reach answers ErrNotFound like any other hidden resource.
+func (r *RFQRepository) AssignSeller(
+	ctx context.Context, q Querier, tenant domain.Tenant, rfqID uuid.UUID,
+) (*domain.Quote, error) {
+	// Anchoring the claim before the conditional update tells a hidden order apart from a
+	// fought-over one: only the latter is allowed to read as a conflict.
+	var visible bool
+	err := q.QueryRow(ctx,
+		`SELECT EXISTS (
+			SELECT 1 FROM rfq
+			WHERE account_id = $1 AND id = $2
+			  AND ($3::uuid[] IS NULL OR branch_id = ANY($3::uuid[]))
+		)`, tenant.AccountID, rfqID, tenant.BranchFilter(),
+	).Scan(&visible)
+	if err != nil {
+		return nil, err
+	}
+	if !visible {
+		return nil, domain.ErrNotFound
+	}
+
+	// The claim. Zero affected rows means a peer won the race: READ COMMITTED re-evaluates the
+	// predicate on the freshly locked row, so the loser reads seller_id already set.
+	var quote domain.Quote
+	err = q.QueryRow(ctx,
+		`UPDATE quote
+		 SET seller_id = $3, updated_at = now()
+		 FROM rfq r
+		 WHERE quote.rfq_id = r.id
+		   AND r.account_id = $1 AND r.id = $2
+		   AND quote.seller_id IS NULL
+		 RETURNING quote.id, quote.account_id, quote.branch_id, quote.rfq_id, quote.seller_id,
+		           quote.current_version_id, quote.current_status, quote.expires_at,
+		           quote.archived_at, quote.needs_followup, quote.followup_flagged_at,
+		           quote.created_at, quote.updated_at`,
+		tenant.AccountID, rfqID, tenant.UserID,
+	).Scan(&quote.ID, &quote.AccountID, &quote.BranchID, &quote.RFQID, &quote.SellerID,
+		&quote.CurrentVersionID, &quote.CurrentStatus, &quote.ExpiresAt,
+		&quote.ArchivedAt, &quote.NeedsFollowup, &quote.FollowupFlaggedAt,
+		&quote.CreatedAt, &quote.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrConflict
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &quote, nil
+}
+
+// SetSeller writes an order's owner for an admin: a named seller, the caller themself, or —
+// with a nil id — no one. Unlike AssignSeller there is no claim guard: an admin replaces
+// whoever owns the order. The branch scope anchors the write, and an order outside the
+// caller's reach answers ErrNotFound like any other hidden resource.
+func (r *RFQRepository) SetSeller(
+	ctx context.Context, q Querier, tenant domain.Tenant, rfqID uuid.UUID, sellerID *uuid.UUID,
+) (*domain.Quote, error) {
+	// Same anchor as AssignSeller: a hidden order tells itself apart from a reachable one
+	// before anything is written.
+	var visible bool
+	err := q.QueryRow(ctx,
+		`SELECT EXISTS (
+			SELECT 1 FROM rfq
+			WHERE account_id = $1 AND id = $2
+			  AND ($3::uuid[] IS NULL OR branch_id = ANY($3::uuid[]))
+		)`, tenant.AccountID, rfqID, tenant.BranchFilter(),
+	).Scan(&visible)
+	if err != nil {
+		return nil, err
+	}
+	if !visible {
+		return nil, domain.ErrNotFound
+	}
+
+	var quote domain.Quote
+	err = q.QueryRow(ctx,
+		`UPDATE quote
+		 SET seller_id = $3, updated_at = now()
+		 FROM rfq r
+		 WHERE quote.rfq_id = r.id
+		   AND r.account_id = $1 AND r.id = $2
+		 RETURNING quote.id, quote.account_id, quote.branch_id, quote.rfq_id, quote.seller_id,
+		           quote.current_version_id, quote.current_status, quote.expires_at,
+		           quote.archived_at, quote.needs_followup, quote.followup_flagged_at,
+		           quote.created_at, quote.updated_at`,
+		tenant.AccountID, rfqID, sellerID,
+	).Scan(&quote.ID, &quote.AccountID, &quote.BranchID, &quote.RFQID, &quote.SellerID,
+		&quote.CurrentVersionID, &quote.CurrentStatus, &quote.ExpiresAt,
+		&quote.ArchivedAt, &quote.NeedsFollowup, &quote.FollowupFlaggedAt,
+		&quote.CreatedAt, &quote.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &quote, nil
 }
 
 // GetManualEntryChannelID returns the branch's manual-entry channel.
@@ -304,6 +415,11 @@ func (r *RFQRepository) CreateManualEntry(
 	creation.Rfq.Status = domain.RFQStatusGenerated
 	creation.Rfq.WorkType = in.WorkType
 
+	sellerID := in.SellerID
+	if sellerID == nil {
+		sellerID = nil // explicitly NULL
+	}
+
 	err = q.QueryRow(ctx,
 		`WITH allocated AS (
 		   INSERT INTO quote_number_counter (account_id, last_number)
@@ -315,7 +431,7 @@ func (r *RFQRepository) CreateManualEntry(
 		 INSERT INTO quote (account_id, number, branch_id, rfq_id, seller_id, current_status)
 		 SELECT $1, allocated.last_number, $2, $3, $4, 'DRAFT' FROM allocated
 		 RETURNING id, number, created_at, updated_at`,
-		tenant.AccountID, tenant.BranchID, creation.Rfq.ID, tenant.UserID,
+		tenant.AccountID, tenant.BranchID, creation.Rfq.ID, sellerID,
 	).Scan(&creation.Quote.ID, &creation.Quote.Number, &creation.Quote.CreatedAt,
 		&creation.Quote.UpdatedAt)
 	if err != nil {
@@ -324,7 +440,11 @@ func (r *RFQRepository) CreateManualEntry(
 	creation.Quote.AccountID = tenant.AccountID
 	creation.Quote.BranchID = tenant.BranchID
 	creation.Quote.RFQID = creation.Rfq.ID
-	creation.Quote.SellerID = &tenant.UserID
+	if sellerID != nil {
+		creation.Quote.SellerID = sellerID
+	} else {
+		creation.Quote.SellerID = nil
+	}
 	creation.Quote.CurrentStatus = domain.QuoteStatusDraft
 
 	err = q.QueryRow(ctx,
@@ -429,4 +549,13 @@ func scanRFQStatusChange(row pgx.Row) (*domain.RFQStatusChange, error) {
 		return nil, err
 	}
 	return &change, nil
+}
+
+// sellerParam is the user id a non-admin read must see assignments for, or nil for an
+// account-wide admin read.
+func sellerParam(tenant domain.Tenant) *uuid.UUID {
+	if tenant.IsAdmin() {
+		return nil
+	}
+	return &tenant.UserID
 }

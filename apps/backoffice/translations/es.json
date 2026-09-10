@@ -449,6 +449,11 @@
       "normal": "Normal",
       "low": "Baja"
     },
+    "errors": {
+      "CONFLICT": "Ese pedido ya tiene un vendedor asignado.",
+      "FORBIDDEN": "Solo los vendedores pueden asignarse pedidos.",
+      "INVALID_INPUT": "Ese vendedor no trabaja en la sucursal del pedido."
+    },
     "channels": {
       "whatsapp": "WhatsApp",
       "email": "Email",
@@ -499,6 +504,10 @@
       },
       "actions": {
         "more": "Acciones del pedido",
+        "assign": "Asignarme",
+        "changeSeller": "Cambiar vendedor",
+        "unassignSeller": "Quitar vendedor",
+        "sellersLoading": "Cargando vendedores…",
         "view": "Ver detalle",
         "edit": "Editar pedido",
         "changeStatus": "Cambiar estado",
@@ -522,6 +531,9 @@
         "quoteGenerated": "La cotización del pedido {id} está lista.",
         "archived": "El pedido {id} se archivó.",
         "archivedMany": "{count, plural, one {# pedido archivado} other {# pedidos archivados}}.",
+        "assigned": "Tomaste el pedido {id}, {name}. Lo vas a encontrar en tu lista.",
+        "sellerAssigned": "El pedido {id} quedó asignado a {seller}.",
+        "sellerUnassigned": "Al pedido {id} le quitamos el vendedor.",
         "comingSoon": "La edición del pedido va a estar disponible en el detalle."
       }
     },
@@ -546,6 +558,11 @@
       "manual": {
         "clientLabel": "Cliente",
         "clientPlaceholder": "Nombre del cliente",
+        "sellerLabel": "Vendedor",
+        "unassigned": "Sin asignar",
+        "sellersLoading": "Cargando vendedores…",
+        "noSellers": "No hay vendedores disponibles para esta sucursal.",
+        "sellerPlaceholder": "Seleccioná un vendedor",
         "clearSearch": "Limpiar búsqueda",
         "search": "Buscar producto por nombre, código o categoría…",
         "loading": "Cargando catálogo…",

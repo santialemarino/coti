@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -509,5 +510,153 @@ func TestToRfqDetailResponse_OmitsQuoteAndVersionWhenAbsent(t *testing.T) {
 	}
 	if resp.Deliveries == nil || len(resp.Deliveries) != 0 {
 		t.Errorf("deliveries = %v, want empty array", resp.Deliveries)
+	}
+}
+
+// rfqSetSellerTenant is the admin tenant sharing the seller-set handler tests.
+func rfqSetSellerTenant() domain.Tenant {
+	return domain.Tenant{
+		AccountID: uuid.MustParse("11111111-1111-4111-8111-111111111111"),
+		BranchID:  uuid.MustParse("22222222-2222-4222-8222-222222222222"),
+		UserID:    uuid.MustParse("33333333-3333-4333-8333-333333333333"),
+		Role:      domain.UserRoleAdmin,
+	}
+}
+
+// The full admin steering path: the route reads the operator's identity, the path id and the
+// body id, forwards all three, and the quote comes back stamped.
+func TestRfqHandler_SetSeller_RoutesTheAdminRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tenant := rfqSetSellerTenant()
+	targetID := uuid.New()
+	service := &stubDiscountRFQService{
+		setSeller: &domain.Quote{
+			ID: uuid.New(), AccountID: tenant.AccountID, BranchID: tenant.BranchID,
+			RFQID: tenant.AccountID, SellerID: &targetID,
+		},
+	}
+	handler := NewRfqHandler(service)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Params = gin.Params{{Key: "rfqId", Value: tenant.AccountID.String()}}
+	c.Request = httptest.NewRequest(http.MethodPut, "/v1/rfqs/"+tenant.AccountID.String()+"/seller",
+		bytes.NewReader([]byte(`{"seller_id":"`+targetID.String()+`"}`)))
+	c.Request.Header.Set("Content-Type", "application/json")
+	middleware.SetTenant(c, tenant)
+
+	handler.SetSeller(c)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body)
+	}
+	if !equalTenant(service.setSellerTenant, tenant) {
+		t.Errorf("service tenant = %+v, want %+v", service.setSellerTenant, tenant)
+	}
+	if service.setSellerRFQID != tenant.AccountID {
+		t.Errorf("service rfq = %v, want %v", service.setSellerRFQID, tenant.AccountID)
+	}
+	if service.setSellerID == nil || *service.setSellerID != targetID {
+		t.Errorf("service seller = %v, want %v", service.setSellerID, targetID)
+	}
+
+	var response dto.QuoteResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response %s: %v", recorder.Body, err)
+	}
+	if response.SellerID == nil || *response.SellerID != targetID {
+		t.Errorf("response seller_id = %v, want %v", response.SellerID, targetID)
+	}
+}
+
+// A missing or null seller_id in the body clears the assignment rather than naming anyone.
+func TestRfqHandler_SetSeller_NullBodyClears(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tenant := rfqSetSellerTenant()
+	service := &stubDiscountRFQService{
+		setSeller: &domain.Quote{ID: uuid.New(), AccountID: tenant.AccountID, BranchID: tenant.BranchID},
+	}
+	handler := NewRfqHandler(service)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Params = gin.Params{{Key: "rfqId", Value: tenant.AccountID.String()}}
+	c.Request = httptest.NewRequest(http.MethodPut, "/v1/rfqs/"+tenant.AccountID.String()+"/seller",
+		bytes.NewReader([]byte(`{"seller_id":null}`)))
+	c.Request.Header.Set("Content-Type", "application/json")
+	middleware.SetTenant(c, tenant)
+
+	handler.SetSeller(c)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body)
+	}
+	if service.setSellerID != nil {
+		t.Errorf("service seller = %v, want nil (clear)", service.setSellerID)
+	}
+}
+
+// A body that is not the envelope reaches bind validation, which answers 400 before the
+// service sees anything.
+func TestRfqHandler_SetSeller_BadBodyIs400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tenant := rfqSetSellerTenant()
+	service := &stubDiscountRFQService{}
+	handler := NewRfqHandler(service)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Params = gin.Params{{Key: "rfqId", Value: tenant.AccountID.String()}}
+	c.Request = httptest.NewRequest(http.MethodPut, "/v1/rfqs/"+tenant.AccountID.String()+"/seller",
+		bytes.NewReader([]byte(`{"seller_id":123}`)))
+	c.Request.Header.Set("Content-Type", "application/json")
+	middleware.SetTenant(c, tenant)
+
+	handler.SetSeller(c)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", recorder.Code, recorder.Body)
+	}
+	if recorder.Body.String() != "" {
+		var envelope dto.ErrorResponse
+		if err := json.Unmarshal(recorder.Body.Bytes(), &envelope); err != nil {
+			t.Fatalf("decode error envelope: %v", err)
+		}
+		if envelope.Code != string(domain.CodeInvalidBody) {
+			t.Errorf("error code = %q, want INVALID_BODY", envelope.Code)
+		}
+	}
+}
+
+// The service refusals surface unchanged: a foreign seller is 422 and the caller's role 403 —
+// the latter never normally reaches this route because RequireAdmin sits before it.
+func TestRfqHandler_SetSeller_ServiceRefusalsPassThrough(t *testing.T) {
+	for name, want := range map[string]struct {
+		err    error
+		status int
+	}{
+		"foreign seller": {err: fmt.Errorf("%w: seller_id names a seller who cannot serve the order's branch", domain.ErrInvalidInput), status: http.StatusUnprocessableEntity},
+		"not an admin":   {err: domain.ErrForbidden, status: http.StatusForbidden},
+	} {
+		t.Run(name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			tenant := rfqSetSellerTenant()
+			service := &stubDiscountRFQService{setSellerErr: want.err}
+			handler := NewRfqHandler(service)
+
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Params = gin.Params{{Key: "rfqId", Value: tenant.AccountID.String()}}
+			c.Request = httptest.NewRequest(http.MethodPut, "/v1/rfqs/"+tenant.AccountID.String()+"/seller",
+				bytes.NewReader([]byte(`{"seller_id":"`+uuid.New().String()+`"}`)))
+			c.Request.Header.Set("Content-Type", "application/json")
+			middleware.SetTenant(c, tenant)
+
+			handler.SetSeller(c)
+
+			if recorder.Code != want.status {
+				t.Fatalf("status = %d, want %d: %s", recorder.Code, want.status, recorder.Body)
+			}
+		})
 	}
 }

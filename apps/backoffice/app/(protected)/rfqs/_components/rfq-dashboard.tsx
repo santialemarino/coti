@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentProps } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -16,6 +16,8 @@ import {
   PlusIcon,
   RefreshCcwIcon,
   SearchXIcon,
+  UserPlusIcon,
+  UsersIcon,
   XIcon,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -60,6 +62,8 @@ import {
   STATUS_ORDER,
 } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
 import { ROUTES } from '@/config/routes';
+import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import { errorCodeOf } from '@/lib/api/errors';
 import {
   QUOTE_GENERATION_MS,
   type RfqChannel,
@@ -67,10 +71,15 @@ import {
   type RfqRecord,
   type RfqStatus,
 } from '@/lib/api/rfqs';
+import { assignRfqSeller, setRfqSeller } from '@/lib/api/rfqs-client';
+import { listSellers, type Seller } from '@/lib/api/sellers';
 import { useFormatters } from '@/lib/i18n/formatters';
 
 const PAGE_SIZE = 10;
 const COLUMN_COUNT = 11;
+
+// Shared read-only empty seller list so unloaded branches never allocate per render.
+const EMPTY_SELLERS: Seller[] = [];
 
 const CHANNELS: readonly RfqChannel[] = ['whatsapp', 'email', 'webapp', 'manual_entry'];
 
@@ -144,14 +153,173 @@ function PriorityBadge({ priority }: { priority: RfqPriority }) {
   return <Badge tone={PRIORITY_TONE[priority]}>{t(`priority.${priority}`)}</Badge>;
 }
 
+interface SellerMenuItemsProps {
+  rfq: RfqRecord;
+  sellers: Seller[];
+  sellersLoading: boolean;
+  userId: string;
+  onSellerChange: (rfq: RfqRecord, sellerId: string | null) => void;
+}
+
+/*
+ * The owner-steering items both entry points share: put the order on the caller, on a listed
+ * seller of the order's own branch, or on no one. One component, so the row menu and the
+ * clickable seller cell cannot drift apart.
+ */
+function SellerMenuItems({
+  rfq,
+  sellers,
+  sellersLoading,
+  userId,
+  onSellerChange,
+}: SellerMenuItemsProps) {
+  const t = useTranslations('rfqs');
+
+  return (
+    <>
+      <DropdownMenuItem
+        disabled={rfq.sellerId === userId}
+        onSelect={() => onSellerChange(rfq, userId)}
+      >
+        <UserPlusIcon aria-hidden="true" />
+        {t('list.actions.assign')}
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      {sellersLoading ? (
+        <DropdownMenuItem disabled>{t('list.actions.sellersLoading')}</DropdownMenuItem>
+      ) : (
+        sellers.map((seller) => (
+          <DropdownMenuItem
+            key={seller.id}
+            disabled={seller.id === rfq.sellerId}
+            onSelect={() => onSellerChange(rfq, seller.id)}
+          >
+            {seller.name}
+          </DropdownMenuItem>
+        ))
+      )}
+      <DropdownMenuSeparator />
+      <DropdownMenuItem disabled={rfq.sellerId === null} onSelect={() => onSellerChange(rfq, null)}>
+        <XIcon aria-hidden="true" />
+        {t('list.actions.unassignSeller')}
+      </DropdownMenuItem>
+    </>
+  );
+}
+
+interface SellerCellProps {
+  rfq: RfqRecord;
+  // True when the row has no owner and the caller is a seller: the cell offers the claim.
+  canAssign: boolean;
+  isAdmin: boolean;
+  sellers: Seller[];
+  sellersLoading: boolean;
+  userId: string;
+  onLoadSellers: (branchId: string) => void;
+  onAssign: (rfq: RfqRecord) => void;
+  onSellerChange: (rfq: RfqRecord, sellerId: string | null) => void;
+}
+
+/*
+ * The seller column doubles as the assignment surface: an admin opens the owner menu right from
+ * the cell, and a seller claims an unassigned order the same way. A row the caller cannot touch
+ * (a seller on someone else's order) stays plain text, so no admin power leaks through the cell.
+ */
+function SellerCell({
+  rfq,
+  canAssign,
+  isAdmin,
+  sellers,
+  sellersLoading,
+  userId,
+  onLoadSellers,
+  onAssign,
+  onSellerChange,
+}: SellerCellProps) {
+  const t = useTranslations('rfqs');
+
+  const managesSeller = isAdmin || canAssign;
+  const content = rfq.seller ? (
+    rfq.seller
+  ) : (
+    <span className="inline-flex items-center gap-x-1.5 text-foreground-subtle">
+      <UserPlusIcon aria-hidden="true" className="size-3.5" />
+      {t('list.unassigned')}
+    </span>
+  );
+
+  if (!managesSeller) {
+    return <TableCell className="whitespace-nowrap">{content}</TableCell>;
+  }
+
+  return (
+    <TableCell className="whitespace-nowrap">
+      <DropdownMenu onOpenChange={(open) => open && isAdmin && onLoadSellers(rfq.branchId)}>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              'group/seller flex w-full items-center justify-start rounded-md text-left outline-none',
+              'transition-colors duration-150 ease-out-soft',
+              'text-foreground underline-offset-4 hover:text-primary hover:underline',
+              'focus-visible:text-primary focus-visible:underline',
+            )}
+          >
+            {content}
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          {isAdmin ? (
+            <SellerMenuItems
+              rfq={rfq}
+              sellers={sellers}
+              sellersLoading={sellersLoading}
+              userId={userId}
+              onSellerChange={onSellerChange}
+            />
+          ) : (
+            <DropdownMenuItem onSelect={() => onAssign(rfq)}>
+              <UserPlusIcon aria-hidden="true" />
+              {t('list.actions.assign')}
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </TableCell>
+  );
+}
+
 interface RowMenuProps {
   rfq: RfqRecord;
+  // True when the row has no owner and the caller is a seller: the order is claimable.
+  canAssign: boolean;
+  // True for an account owner: the assign item becomes a seller steered from the picklist.
+  isAdmin: boolean;
+  sellers: Seller[];
+  sellersLoading: boolean;
+  userId: string;
   onChangeStatus: (rfq: RfqRecord, status: RfqStatus) => void;
+  onAssign: (rfq: RfqRecord) => void;
+  // Fetches the sellers of the order's own branch the first time its submenu opens.
+  onLoadSellers: (branchId: string) => void;
+  onSellerChange: (rfq: RfqRecord, sellerId: string | null) => void;
   onArchive: (rfq: RfqRecord) => void;
 }
 
-// The per-row contextual menu: view, edit, move through the statuses and archive.
-function RowMenu({ rfq, onChangeStatus, onArchive }: RowMenuProps) {
+// The per-row contextual menu: claim or steer the owner, view, edit, move through the statuses and archive.
+function RowMenu({
+  rfq,
+  canAssign,
+  isAdmin,
+  sellers,
+  sellersLoading,
+  userId,
+  onChangeStatus,
+  onAssign,
+  onLoadSellers,
+  onSellerChange,
+  onArchive,
+}: RowMenuProps) {
   const t = useTranslations('rfqs');
   const router = useRouter();
 
@@ -163,6 +331,28 @@ function RowMenu({ rfq, onChangeStatus, onArchive }: RowMenuProps) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        {isAdmin ? (
+          <DropdownMenuSub onOpenChange={(open) => open && onLoadSellers(rfq.branchId)}>
+            <DropdownMenuSubTrigger>
+              <UsersIcon aria-hidden="true" />
+              {t('list.actions.changeSeller')}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <SellerMenuItems
+                rfq={rfq}
+                sellers={sellers}
+                sellersLoading={sellersLoading}
+                userId={userId}
+                onSellerChange={onSellerChange}
+              />
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        ) : canAssign ? (
+          <DropdownMenuItem onSelect={() => onAssign(rfq)}>
+            <UserPlusIcon aria-hidden="true" />
+            {t('list.actions.assign')}
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem onSelect={() => router.push(ROUTES.rfqsDetail(rfq.id))}>
           <EyeIcon aria-hidden="true" />
           {t('list.actions.view')}
@@ -207,14 +397,51 @@ export function RfqDashboard({
   const tCommon = useTranslations('common');
   const fmt = useFormatters();
   const router = useRouter();
-  const { userName } = useRfqList();
+  const message = useApiErrorMessage('rfqs');
+  const { userName, userId, isAdmin } = useRfqList();
 
   const [records, setRecords] = useState<RfqRecord[]>(initialRecords);
+  // Orders already being claimed, so a double-click cannot fire two claims.
+  const [claiming, setClaiming] = useState<ReadonlySet<string>>(new Set());
+  /*
+   * The admin-only seller picklist, keyed by the branch of the order whose submenu is open.
+   * An order lives in one branch and only that branch's sellers may own it (a cross-branch
+   * seller would never list it again), so the operator's active branch is never the filter —
+   * the order's own branch is.
+   */
+  const [sellersByBranch, setSellersByBranch] = useState<Readonly<Record<string, Seller[]>>>({});
+  const [sellersLoadingBranches, setSellersLoadingBranches] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+  // Branches already fetched, so reopening an order of the same branch never refetches.
+  const loadedSellerBranches = useRef<ReadonlySet<string>>(new Set());
+  // Orders whose owner is being steered, so two menu picks cannot overlap on one write.
+  const [updatingSeller, setUpdatingSeller] = useState<ReadonlySet<string>>(new Set());
 
   /* Sync local state when the server re-fetches (e.g. after a new RFQ is created). */
   useEffect(() => {
     setRecords(initialRecords);
   }, [initialRecords]);
+
+  /*
+   * Fetches the sellers of one branch, once. A failure keeps an empty list (the backend
+   * already refuses cross-branch picks), so the menu shows only self + clear.
+   */
+  async function loadSellersForBranch(branchId: string) {
+    if (loadedSellerBranches.current.has(branchId) || sellersLoadingBranches.has(branchId)) return;
+    setSellersLoadingBranches((previous) => new Set(previous).add(branchId));
+    try {
+      const items = await listSellers(branchId);
+      setSellersByBranch((previous) => ({ ...previous, [branchId]: items }));
+      loadedSellerBranches.current = new Set(loadedSellerBranches.current).add(branchId);
+    } finally {
+      setSellersLoadingBranches((previous) => {
+        const next = new Set(previous);
+        next.delete(branchId);
+        return next;
+      });
+    }
+  }
 
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<RfqStatus | 'all'>('all');
@@ -395,6 +622,80 @@ export function RfqDashboard({
       return next;
     });
     toast.success(t('list.toast.archived', { id: rfq.id }));
+  }
+
+  /*
+   * Claim an unassigned order for the signed-in seller. The row only stamps the owner after the
+   * backend confirms the claim, so a peer who took it first keeps the row intact and gets a toast.
+   */
+  async function assignOne(rfq: RfqRecord) {
+    if (claiming.has(rfq.id)) return;
+    setClaiming((previous) => new Set(previous).add(rfq.id));
+    try {
+      await assignRfqSeller(rfq.id);
+      setRecords((previous) =>
+        previous
+          ? previous.map((item) =>
+              item.id === rfq.id ? { ...item, sellerId: userId, seller: userName } : item,
+            )
+          : previous,
+      );
+      toast.success(t('list.toast.assigned', { id: rfq.id, name: userName }));
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
+    } finally {
+      setClaiming((previous) => {
+        const next = new Set(previous);
+        next.delete(rfq.id);
+        return next;
+      });
+    }
+  }
+
+  /*
+   * Admin steering of an order's owner: put a named seller on it, or clear it with null. The
+   * row only reflects the change once the backend confirms it, and the seller name comes from
+   * the branch picklist (the caller's own name for self). Cross-branch sellers are just not in
+   * the list, and the backend is the last word on who the order can go to.
+   */
+  async function steeredSeller(rfq: RfqRecord, sellerId: string | null) {
+    if (updatingSeller.has(rfq.id)) return;
+    setUpdatingSeller((previous) => new Set(previous).add(rfq.id));
+    try {
+      await setRfqSeller(rfq.id, sellerId);
+      const sellerName =
+        sellerId == null
+          ? null
+          : sellerId === userId
+            ? userName
+            : (sellersByBranch[rfq.branchId]?.find((seller) => seller.id === sellerId)?.name ??
+              null);
+      setRecords((previous) =>
+        previous
+          ? previous.map((item) =>
+              item.id === rfq.id ? { ...item, sellerId, seller: sellerName ?? '' } : item,
+            )
+          : previous,
+      );
+      if (sellerId == null) {
+        toast.success(t('list.toast.sellerUnassigned', { id: rfq.id }));
+      } else {
+        toast.success(
+          t('list.toast.sellerAssigned', {
+            id: rfq.id,
+            seller: sellerName ?? t('list.unassigned'),
+          }),
+        );
+      }
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
+    } finally {
+      setUpdatingSeller((previous) => {
+        const next = new Set(previous);
+        next.delete(rfq.id);
+        return next;
+      });
+    }
   }
 
   function archiveSelected() {
@@ -671,13 +972,17 @@ export function RfqDashboard({
                         {t(`channels.${rfq.channel}`)}
                       </span>
                     </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {rfq.seller ? (
-                        rfq.seller
-                      ) : (
-                        <span className="text-foreground-subtle">{t('list.unassigned')}</span>
-                      )}
-                    </TableCell>
+                    <SellerCell
+                      rfq={rfq}
+                      canAssign={rfq.sellerId === null && !isAdmin}
+                      isAdmin={isAdmin}
+                      sellers={sellersByBranch[rfq.branchId] ?? EMPTY_SELLERS}
+                      sellersLoading={sellersLoadingBranches.has(rfq.branchId)}
+                      userId={userId}
+                      onLoadSellers={loadSellersForBranch}
+                      onAssign={assignOne}
+                      onSellerChange={steeredSeller}
+                    />
                     <TableCell className="whitespace-nowrap">{rfq.branch}</TableCell>
                     <TableCell>{t('list.items', { count: rfq.itemCount })}</TableCell>
                     <TableCell className="whitespace-nowrap text-right tabular-nums">
@@ -701,7 +1006,19 @@ export function RfqDashboard({
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end">
-                        <RowMenu rfq={rfq} onChangeStatus={updateStatus} onArchive={archiveOne} />
+                        <RowMenu
+                          rfq={rfq}
+                          canAssign={rfq.sellerId === null && !isAdmin}
+                          isAdmin={isAdmin}
+                          sellers={sellersByBranch[rfq.branchId] ?? EMPTY_SELLERS}
+                          sellersLoading={sellersLoadingBranches.has(rfq.branchId)}
+                          userId={userId}
+                          onChangeStatus={updateStatus}
+                          onAssign={assignOne}
+                          onLoadSellers={loadSellersForBranch}
+                          onSellerChange={steeredSeller}
+                          onArchive={archiveOne}
+                        />
                       </div>
                     </TableCell>
                   </TableRow>

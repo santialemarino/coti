@@ -5,9 +5,17 @@ import { AlertCircleIcon, PlusIcon, XIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
-import { Button, DialogFooter, Input, PendingButton, SearchInput } from '@repo/ui/components';
+import {
+  Button,
+  Combobox,
+  DialogFooter,
+  Input,
+  PendingButton,
+  SearchInput,
+} from '@repo/ui/components';
 import { searchCatalog, type CatalogProduct } from '@/lib/api/catalog';
 import { createRfq } from '@/lib/api/rfqs-client';
+import { listSellers } from '@/lib/api/sellers';
 import { useFormatters } from '@/lib/i18n/formatters';
 
 interface RfqManualViewProps {
@@ -42,6 +50,9 @@ export function RfqManualView({ onBack, onClose, onCreated, activeBranchId }: Rf
   const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [items, setItems] = useState<LineItem[]>([]);
+  const [seller, setSeller] = useState<string | null>(null);
+  const [sellers, setSellers] = useState<Array<{ id: string; name: string }>>([]);
+  const [loadingSellers, setLoadingSellers] = useState(true);
   const [submitting, startSubmit] = useTransition();
 
   /* Debounced search through the async seam, so a swap to the real endpoint changes nothing here. */
@@ -59,6 +70,23 @@ export function RfqManualView({ onBack, onClose, onCreated, activeBranchId }: Rf
       window.clearTimeout(timer);
     };
   }, [query]);
+
+  /* Fetch the active branch's sellers so the new order can be assigned up front. */
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingSellers(true);
+    (async () => {
+      // A seller without an active branch cannot create a manual RFQ at all (the submit is
+      // disabled), so there is nobody to offer on that path.
+      const results = await listSellers(activeBranchId);
+      if (cancelled) return;
+      setSellers(results);
+      setLoadingSellers(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeBranchId]);
 
   function addProduct(product: CatalogProduct) {
     setItems((current) => {
@@ -92,6 +120,7 @@ export function RfqManualView({ onBack, onClose, onCreated, activeBranchId }: Rf
       try {
         await createRfq({
           client_label: client.trim() || null,
+          seller_id: seller ?? null,
           items: items.map((item) => ({
             product_id: item.product.id,
             requested_description: item.product.name,
@@ -138,6 +167,29 @@ export function RfqManualView({ onBack, onClose, onCreated, activeBranchId }: Rf
             placeholder={t('clientPlaceholder')}
             autoComplete="off"
           />
+        </div>
+
+        <div className="flex flex-col gap-y-1">
+          <label htmlFor="rfq-manual-seller" className="text-paragraph-sm-medium">
+            {t('sellerLabel')}
+          </label>
+          <Combobox
+            id="rfq-manual-seller"
+            options={[
+              { value: '', label: t('unassigned') },
+              ...sellers.map((seller) => ({ value: seller.id, label: seller.name })),
+            ]}
+            value={seller}
+            onValueChange={(value) => setSeller(value === '' ? null : value)}
+            placeholder={t('sellerPlaceholder')}
+            aria-label={t('sellerLabel')}
+            className="min-w-64"
+          />
+          {activeBranchId && loadingSellers ? (
+            <p className="text-paragraph-sm text-foreground-muted">{t('sellersLoading')}</p>
+          ) : activeBranchId && sellers.length === 0 ? (
+            <p className="text-paragraph-sm text-foreground-muted">{t('noSellers')}</p>
+          ) : null}
         </div>
 
         <SearchInput

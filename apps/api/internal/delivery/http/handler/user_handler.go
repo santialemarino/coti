@@ -18,6 +18,7 @@ type UserService interface {
 	CreateUser(ctx context.Context, tenant domain.Tenant, in domain.NewUser) (*domain.UserWithBranches, error)
 	UpdateUser(ctx context.Context, tenant domain.Tenant, id uuid.UUID, in domain.UserUpdate) (*domain.UserWithBranches, error)
 	DeactivateUser(ctx context.Context, tenant domain.Tenant, id uuid.UUID) error
+	ListSellers(ctx context.Context, tenant domain.Tenant) ([]domain.Seller, error)
 }
 
 // UserHandler serves the admin-only user administration routes.
@@ -58,6 +59,36 @@ func (h *UserHandler) List(c *gin.Context) {
 		items = append(items, toUserResponse(u))
 	}
 	c.JSON(http.StatusOK, dto.UserListResponse{Items: items})
+}
+
+// ListSellers returns the active sellers the caller can assign a new RFQ to.
+//
+//	@Summary		List sellers
+//	@Description	The manual RFQ assignee picklist: active sellers, narrowed to the active branch when one is set.
+//	@Tags			users
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header	string	false	"Active branch"
+//	@Success		200			{object}	dto.SellerListResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Router			/v1/sellers [get]
+func (h *UserHandler) ListSellers(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+
+	sellers, err := h.users.ListSellers(c.Request.Context(), tenant)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+
+	items := make([]dto.SellerResponse, 0, len(sellers))
+	for _, seller := range sellers {
+		items = append(items, dto.SellerResponse{ID: seller.ID, Name: seller.Name})
+	}
+	c.JSON(http.StatusOK, dto.SellerListResponse{Items: items})
 }
 
 // Get returns one user of the account.

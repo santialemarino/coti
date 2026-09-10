@@ -4206,6 +4206,64 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/rfqs/{rfqId}/assign": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Claims an unassigned order in the seller's branch. Self-assignment only; admins see the whole account and cannot draw from the unclaimed pool.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rfqs"
+                ],
+                "summary": "Assign an RFQ to yourself",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "RFQ id",
+                        "name": "rfqId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/rfqs/{rfqId}/attachments": {
             "get": {
                 "security": [
@@ -4337,6 +4395,121 @@ const docTemplate = `{
                     },
                     "422": {
                         "description": "UNSUPPORTED_FILE_TYPE, or no active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/rfqs/{rfqId}/seller": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Assigns, reassigns or clears the seller on an order. Admin-only. A null seller_id clears the assignment; a non-null id must be the admin themself or a seller who serves the order's branch.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rfqs"
+                ],
+                "summary": "Set an RFQ's seller",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "RFQ id",
+                        "name": "rfqId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Seller to assign, or null to clear",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.AssignSellerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/sellers": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "The manual RFQ assignee picklist: active sellers, narrowed to the active branch when one is set.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "List sellers",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.SellerListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -4840,6 +5013,14 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.AssignSellerRequest": {
+            "type": "object",
+            "properties": {
+                "seller_id": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.AvailabilityListResponse": {
             "type": "object",
             "properties": {
@@ -5330,6 +5511,9 @@ const docTemplate = `{
                     }
                 },
                 "raw_text": {
+                    "type": "string"
+                },
+                "seller_id": {
                     "type": "string"
                 },
                 "work_type": {
@@ -6697,6 +6881,28 @@ const docTemplate = `{
                         "COMPLETED",
                         "SKIPPED"
                     ]
+                }
+            }
+        },
+        "dto.SellerListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.SellerResponse"
+                    }
+                }
+            }
+        },
+        "dto.SellerResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
                 }
             }
         },

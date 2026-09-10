@@ -191,7 +191,8 @@ func newEnvWithRFQProviders(
 	}
 	rfqService := services.NewRFQService(db, repository.NewRFQRepository(), quoteRepo,
 		repository.NewQuoteSendRepository(), repository.NewQuoteAIGenerationRepository(),
-		channelRepo, extractor,
+		channelRepo, repository.NewUserRepository(),
+		extractor,
 		services.NewCatalogMatchService(catalogSearchService, cfg.Catalog), quiet, cfg.RFQ)
 	quoteService := services.NewQuoteService(db, quoteRepo,
 		repository.NewProductPriceRepository(), quiet)
@@ -455,6 +456,80 @@ func TestUsers_SellerIsForbidden(t *testing.T) {
 				t.Errorf("status = %d, want %d; body = %s", rec.Code, http.StatusForbidden, rec.Body)
 			}
 		})
+	}
+}
+
+type sellerRow struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+// The sellers picklist is not admin-only: it feeds the manual RFQ screen, where any caller
+// who can create an order names who carries it. It narrows to the active branch and to active
+// sellers, so nobody is offered a seller their branch cannot use.
+func TestUsers_ListSellersNarrowsByActiveBranch(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchA := e.seedAccount(t, "Corralón A")
+	branchB := e.seedBranch(t, accountID, "Sucursal B")
+	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	sellerA := e.seedUser(t, accountID, domain.UserRoleSeller)
+	sellerB := e.seedUser(t, accountID, domain.UserRoleSeller)
+	gone := e.seedUser(t, accountID, domain.UserRoleSeller)
+
+	for _, a := range []struct {
+		user   uuid.UUID
+		branch uuid.UUID
+	}{{sellerA.ID, branchA}, {sellerB.ID, branchB}, {gone.ID, branchA}} {
+		if _, err := e.db.CrossAccount().Exec(context.Background(),
+			`INSERT INTO user_branch (account_id, user_id, branch_id) VALUES ($1, $2, $3)`,
+			accountID, a.user, a.branch); err != nil {
+			t.Fatalf("assign %s to a branch: %v", a.user, err)
+		}
+	}
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`UPDATE app_user SET is_active = FALSE WHERE id = $1`, gone.ID); err != nil {
+		t.Fatalf("deactivate seller: %v", err)
+	}
+
+	list := func(t *testing.T, token, branch string) []sellerRow {
+		t.Helper()
+		rec := e.do(t, request{method: http.MethodGet, path: "/v1/sellers", token: token, branch: branch})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET /v1/sellers: status = %d, want %d; body = %s", rec.Code, http.StatusOK, rec.Body)
+		}
+		var body struct {
+			Items []sellerRow `json:"items"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("decode /v1/sellers: %v", err)
+		}
+		return body.Items
+	}
+	ids := func(rows []sellerRow) map[uuid.UUID]bool {
+		out := map[uuid.UUID]bool{}
+		for _, r := range rows {
+			out[r.ID] = true
+		}
+		return out
+	}
+
+	adminToken := e.tokenFor(t, admin)
+	if got := ids(list(t, adminToken, "")); !got[sellerA.ID] || !got[sellerB.ID] || got[gone.ID] || got[admin.ID] {
+		t.Errorf("admin's whole-account picklist = %v, want sellers A and B only", got)
+	}
+	if got := ids(list(t, adminToken, branchA.String())); !got[sellerA.ID] || got[sellerB.ID] {
+		t.Errorf("admin's branch-A picklist = %v, want only seller A", got)
+	}
+	if got := ids(list(t, adminToken, branchB.String())); !got[sellerB.ID] || got[sellerA.ID] {
+		t.Errorf("admin's branch-B picklist = %v, want only seller B", got)
+	}
+
+	sellerAToken := e.tokenFor(t, sellerA)
+	if got := ids(list(t, sellerAToken, "")); !got[sellerA.ID] || got[sellerB.ID] || got[admin.ID] {
+		t.Errorf("seller A's own picklist = %v, want only seller A", got)
+	}
+	if got := ids(list(t, sellerAToken, branchA.String())); !got[sellerA.ID] || got[sellerB.ID] {
+		t.Errorf("seller A's explicit branch-A picklist = %v, want only seller A", got)
 	}
 }
 

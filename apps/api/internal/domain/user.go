@@ -54,6 +54,13 @@ type UserWithBranches struct {
 	BranchIDs []uuid.UUID
 }
 
+// Seller is the picklist a manual RFQ offers as possible assignees: active sellers only,
+// because nobody should be able to assign an order to someone who cannot take it.
+type Seller struct {
+	ID   uuid.UUID
+	Name string
+}
+
 // NewUser is an admin-created user. The account comes from the tenant scope, never the
 // request, and Password is the plaintext the service hashes.
 type NewUser struct {
