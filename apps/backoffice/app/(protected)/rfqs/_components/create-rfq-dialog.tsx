@@ -54,7 +54,11 @@ export function CreateRfqDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={cn('sm:max-w-lg', step === 'manual' && 'sm:max-w-3xl')}
+        className={cn(
+          'sm:max-w-lg',
+          step === 'manual' && 'sm:max-w-3xl',
+          step === 'import' && 'sm:max-w-xl',
+        )}
         closeOnClickOutside={step === 'choose'}
       >
         <DialogHeader>
@@ -86,7 +90,12 @@ export function CreateRfqDialog({
         ) : null}
 
         {step === 'import' ? (
-          <RfqImportView onBack={() => setStep('choose')} onClose={() => onOpenChange(false)} />
+          <RfqImportView
+            onBack={() => setStep('choose')}
+            onClose={() => onOpenChange(false)}
+            onCreated={onCreated}
+            activeBranchId={activeBranchId}
+          />
         ) : null}
 
         {step === 'manual' ? (

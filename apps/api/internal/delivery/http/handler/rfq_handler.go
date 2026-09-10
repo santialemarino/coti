@@ -614,17 +614,21 @@ func toListItemResponse(item domain.RfqListItem) dto.RfqListItemResponse {
 // RFQService is the RFQ surface the AI pipeline handler needs.
 type RFQService interface {
 	CreateTextDraft(ctx context.Context, tenant domain.Tenant, in domain.TextRFQDraftInput) (*domain.TextRFQDraft, error)
+	CreateFileDraft(ctx context.Context, tenant domain.Tenant, in domain.FileRFQDraftInput) (*domain.TextRFQDraft, error)
 	CreateWhatsAppMockDraft(ctx context.Context, tenant domain.Tenant, in domain.WhatsAppMockRFQInput) (*domain.TextRFQDraft, error)
 }
 
 // RFQHandler serves AI pipeline RFQ intake endpoints.
 type RFQHandler struct {
 	rfqs RFQService
+	// maxUploadBytes caps the request body, so an oversized file is refused while it is still
+	// arriving rather than after it is buffered.
+	maxUploadBytes int64
 }
 
 // NewRFQHandler builds an RFQHandler.
-func NewRFQHandler(rfqs RFQService) *RFQHandler {
-	return &RFQHandler{rfqs: rfqs}
+func NewRFQHandler(rfqs RFQService, maxUploadBytes int64) *RFQHandler {
+	return &RFQHandler{rfqs: rfqs, maxUploadBytes: maxUploadBytes}
 }
 
 // CreateTextDraft creates a quote draft from plain RFQ text.
@@ -662,6 +666,81 @@ func (h *RFQHandler) CreateTextDraft(c *gin.Context) {
 		ClientLabel: body.ClientLabel,
 		RawText:     body.RawText,
 		WorkType:    body.WorkType,
+	})
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, toTextRFQDraftResponse(*draft))
+}
+
+// CreateFileDraft creates a quote draft from an order sent as a file.
+//
+//	@Summary		Create an RFQ draft from a file
+//	@Description	Reads an order that arrived as a photo, PDF, spreadsheet, voice note or text file, stores the file against the RFQ, and returns the same seller-reviewable quote DRAFT as the text flow.
+//	@Tags			rfq
+//	@Accept			multipart/form-data
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id		header		string	true	"Active branch"
+//	@Param			file			formData	file	true	"The order file"
+//	@Param			channel_id		formData	string	true	"Channel the order arrived through"
+//	@Param			client_id		formData	string	false	"Known client"
+//	@Param			client_label	formData	string	false	"Client name when there is no client record"
+//	@Param			work_type		formData	string	false	"Work type"
+//	@Param			note			formData	string	false	"Seller's note about the order"
+//	@Success		201				{object}	dto.TextRFQDraftResponse
+//	@Failure		400				{object}	dto.ErrorResponse
+//	@Failure		401				{object}	dto.ErrorResponse
+//	@Failure		413				{object}	dto.ErrorResponse
+//	@Failure		422				{object}	dto.ErrorResponse
+//	@Failure		429				{object}	dto.RateLimitResponse
+//	@Failure		503				{object}	dto.ErrorResponse
+//	@Router			/v1/rfqs/file-drafts [post]
+func (h *RFQHandler) CreateFileDraft(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+
+	file, header, ok := openUpload(c, h.maxUploadBytes)
+	if !ok {
+		return
+	}
+	defer file.Close()
+
+	var form dto.CreateFileRFQDraftForm
+	if err := c.ShouldBind(&form); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	channelID, err := uuid.Parse(form.ChannelID)
+	if err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	var clientID *uuid.UUID
+	if form.ClientID != "" {
+		parsed, parseErr := uuid.Parse(form.ClientID)
+		if parseErr != nil {
+			RespondBindError(c, parseErr)
+			return
+		}
+		clientID = &parsed
+	}
+
+	draft, err := h.rfqs.CreateFileDraft(c.Request.Context(), tenant, domain.FileRFQDraftInput{
+		ChannelID:   channelID,
+		ClientID:    clientID,
+		ClientLabel: form.ClientLabel,
+		WorkType:    form.WorkType,
+		Note:        form.Note,
+		Filename:    header.Filename,
+		File: domain.AttachmentUpload{
+			ContentType: header.Header.Get("Content-Type"),
+			Size:        header.Size,
+			Content:     file,
+		},
 	})
 	if err != nil {
 		Respond(c, err)

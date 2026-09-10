@@ -18,18 +18,52 @@ files an order arrives with are stored beside it and are not read here — see
 | Method | Path                               | What it does                                                         |
 | ------ | ---------------------------------- | -------------------------------------------------------------------- |
 | `POST` | `/v1/rfqs/text-drafts`             | Runs an order the seller pasted or typed through the pipeline        |
+| `POST` | `/v1/rfqs/file-drafts`             | Runs an order that arrived as a file through the same pipeline       |
 | `GET`  | `/v1/rfqs/{id}`                    | Returns the detail with quote state history and delivery tracking    |
 | `GET`  | `/v1/channels`                     | The active intake channels of the selected branch                    |
 | `POST` | `/v1/dev/whatsapp/messages`        | Simulates one inbound WhatsApp message. Not registered in production |
 | `POST` | `/v1/quotes/{id}/accept-materials` | Prices the draft's lines and moves the quote to `QUOTED`             |
 
-The two that reach a model share **their own rate-limit allowance**, `RATE_LIMIT_AI_MAX` — the global one would let a single seller spend 300 generations a minute, and this is the first surface in the product billed per call. Valorization reaches no provider and spends nothing, so it stays on the global allowance.
+The three that reach a model share **their own rate-limit allowance**, `RATE_LIMIT_AI_MAX` — the global one would let a single seller spend 300 generations a minute, and this is the first surface in the product billed per call. Valorization reaches no provider and spends nothing, so it stays on the global allowance.
 
-All five are branch-scoped and read the branch from `X-Branch-Id`. `channel_id` is required on a
-text draft, which is why the channel listing exists: `rfq.channel_id` is `NOT NULL`, and a caller
+All six are branch-scoped and read the branch from `X-Branch-Id`. `channel_id` is required on a
+draft, which is why the channel listing exists: `rfq.channel_id` is `NOT NULL`, and a caller
 has to name the route the order arrived through rather than have one guessed for it. How a channel
 is configured, and where its provider credentials live, is in
 [accounts-and-branches.md](accounts-and-branches.md#channels).
+
+## An order that arrived as a file
+
+`POST /v1/rfqs/file-drafts` is a multipart request: the file on the `file` part, and the same
+envelope the text route takes beside it (`channel_id`, `client_id`, `client_label`, `work_type`,
+plus an optional `note` the seller adds for the model). It answers with the same reviewable draft.
+
+What the format decides is only **how the order reaches the model**:
+
+| Kind                                       | How it is read                                |
+| ------------------------------------------ | --------------------------------------------- |
+| Image (`jpeg`, `png`, `webp`, `heic`)      | Straight to the model as an image block       |
+| PDF                                        | Straight to the model as a document block     |
+| Spreadsheet (`xlsx`, `xls`, `csv`)         | Flattened to tab-separated rows, then as text |
+| Audio (`mp3`, `m4a`, `ogg`, `wav`, `webm`) | Transcribed, then as text                     |
+| Plain text                                 | As text                                       |
+
+A photo and a PDF go to the model **as they are**, because a materials list is laid out and
+flattening it first throws away the columns the model reads it by. A recording and a spreadsheet
+have no layout a model can use, so they become text first — the transcriber and the spreadsheet
+reader respectively. The accepted set is `domain.AttachmentFormatFor`, the same one the attachment
+upload enforces, so a file the pipeline would refuse cannot be stored either.
+
+The order is kept before it is read, and the file before the model runs: a provider outage then
+leaves the seller the order the client actually sent, on an RFQ they can work by hand. The
+attachment row keeps whatever text the file yielded in `extracted_text` and closes at `DONE`; an
+image and a PDF yield none, so the RFQ's `raw_text` names the file instead of inventing content
+for it.
+
+`RFQ_MAX_ITEMS` bounds what the model may return; a spreadsheet is bounded on the way in too, by
+`RFQ_MAX_SPREADSHEET_ROWS` (default 500), so a price list uploaded by mistake is refused before it
+is paid for. The file's own size is capped by `STORAGE_MAX_FILE_SIZE_BYTES`, the same limit the
+attachment upload uses.
 
 The development route resolves the branch's WhatsApp channel and then calls the same service method
 the production route does. It is a different way in, not a second pipeline — a copy would drift from

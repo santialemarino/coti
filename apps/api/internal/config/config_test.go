@@ -48,7 +48,8 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"CATALOG_IMPORT_MAX_BYTES",
 		"PRICE_IMPORT_MAX_BYTES",
 		"JOB_TIMEOUT_MINUTES",
-		"RFQ_MAX_TEXT_CHARACTERS", "RFQ_MAX_ITEMS", "RFQ_PIPELINE_TIMEOUT_SECONDS",
+		"RFQ_MAX_TEXT_CHARACTERS", "RFQ_MAX_ITEMS", "RFQ_MAX_SPREADSHEET_ROWS",
+		"RFQ_PIPELINE_TIMEOUT_SECONDS",
 		"QUOTE_CORRECTION_SIMILARITY_PERCENT", "QUOTE_CORRECTION_MAX_PATTERNS_PER_ACCOUNT",
 		"QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES", "QUOTE_CORRECTION_PROCESSING_BATCH_SIZE",
 		"QUOTE_LOGO_FETCH_TIMEOUT_SECONDS", "QUOTE_LOGO_MAX_SIZE_BYTES",
@@ -225,6 +226,7 @@ func TestLoad_RFQKeysLandOnTheirOwnFields(t *testing.T) {
 	env := minimalEnv()
 	env["RFQ_MAX_TEXT_CHARACTERS"] = "1234"
 	env["RFQ_MAX_ITEMS"] = "77"
+	env["RFQ_MAX_SPREADSHEET_ROWS"] = "321"
 	env["RFQ_PIPELINE_TIMEOUT_SECONDS"] = "9"
 	setEnv(t, env)
 
@@ -237,6 +239,9 @@ func TestLoad_RFQKeysLandOnTheirOwnFields(t *testing.T) {
 	}
 	if cfg.RFQ.MaxItems != 77 {
 		t.Errorf("RFQ.MaxItems = %d, want 77", cfg.RFQ.MaxItems)
+	}
+	if cfg.RFQ.MaxSpreadsheetRows != 321 {
+		t.Errorf("RFQ.MaxSpreadsheetRows = %d, want 321", cfg.RFQ.MaxSpreadsheetRows)
 	}
 	if cfg.RFQ.PipelineTimeout != 9*time.Second {
 		t.Errorf("RFQ.PipelineTimeout = %v, want 9s", cfg.RFQ.PipelineTimeout)

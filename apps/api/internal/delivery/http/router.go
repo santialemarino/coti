@@ -129,6 +129,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 
 	ai := limit("ai", cfg.RateLimit.AI)
 	verified.POST("/rfqs/text-drafts", ai, h.RFQ.CreateTextDraft)
+	verified.POST("/rfqs/file-drafts", ai, h.RFQ.CreateFileDraft)
 	rfqs := verified.Group("/rfqs")
 	rfqs.GET("/:rfqId", h.Rfq.Get)
 	rfqs.POST("/:rfqId/assign", h.Rfq.AssignAsSelf)

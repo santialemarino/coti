@@ -433,6 +433,10 @@ type RFQConfig struct {
 	// MaxItems caps the lines one order may produce. Matching runs a query per line, so a
 	// spreadsheet pasted as text would turn one request into hundreds of them.
 	MaxItems int
+	// MaxSpreadsheetRows caps the rows read out of an uploaded spreadsheet. MaxItems bounds
+	// what the model may answer; this bounds what it is asked to read, so a price list
+	// uploaded by mistake is refused before it is paid for.
+	MaxSpreadsheetRows int
 	// PipelineTimeout bounds the whole extract-and-match pass. The AI timeouts are per attempt,
 	// so a retrying chain outruns the response budget; this makes the route answer 503 instead
 	// of having its response cut off mid-write.
@@ -721,9 +725,10 @@ func Load() (*Config, error) {
 			TrustedProxies:   getCIDRs("RATE_LIMIT_TRUSTED_PROXY_CIDRS", &problems),
 		},
 		RFQ: RFQConfig{
-			MaxTextCharacters: getInt("RFQ_MAX_TEXT_CHARACTERS", 20000, &problems),
-			MaxItems:          getInt("RFQ_MAX_ITEMS", 200, &problems),
-			PipelineTimeout:   getDuration("RFQ_PIPELINE_TIMEOUT_SECONDS", 25*time.Second, &problems),
+			MaxTextCharacters:  getInt("RFQ_MAX_TEXT_CHARACTERS", 20000, &problems),
+			MaxItems:           getInt("RFQ_MAX_ITEMS", 200, &problems),
+			MaxSpreadsheetRows: getInt("RFQ_MAX_SPREADSHEET_ROWS", 500, &problems),
+			PipelineTimeout:    getDuration("RFQ_PIPELINE_TIMEOUT_SECONDS", 25*time.Second, &problems),
 		},
 		QuoteCorrection: QuoteCorrectionConfig{
 			SimilarityPercent:         getInt("QUOTE_CORRECTION_SIMILARITY_PERCENT", 80, &problems),
@@ -888,6 +893,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.RFQ.MaxItems <= 0 {
 		problems = append(problems, "RFQ_MAX_ITEMS must be greater than zero")
+	}
+	if cfg.RFQ.MaxSpreadsheetRows <= 0 {
+		problems = append(problems, "RFQ_MAX_SPREADSHEET_ROWS must be greater than zero")
 	}
 	if cfg.RFQ.PipelineTimeout <= 0 {
 		problems = append(problems, "RFQ_PIPELINE_TIMEOUT_SECONDS must be greater than zero")

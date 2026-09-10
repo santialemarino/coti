@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"mime"
@@ -19,6 +20,7 @@ import (
 type rfqAttachmentRepo interface {
 	ListByRFQ(ctx context.Context, q repository.Querier, accountID, branchID, rfqID uuid.UUID) ([]domain.RFQAttachment, error)
 	Create(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, in domain.NewRFQAttachment) (*domain.RFQAttachment, error)
+	MarkProcessed(ctx context.Context, q repository.Querier, accountID, attachmentID uuid.UUID, extractedText *string, status domain.AttachmentProcessingStatus, processedAt time.Time) error
 }
 
 // RFQAttachmentService stores the files an RFQ arrived with and hands back links to them.
@@ -118,6 +120,47 @@ func (s *RFQAttachmentService) Upload(
 		return nil, err
 	}
 	return &link, nil
+}
+
+/*
+ * StoreForRFQ keeps the file an order arrived as, already read into memory by the intake, and
+ * records what was read out of it. The intake has validated the type and the size and needs
+ * the same bytes for the model, so this takes the buffer rather than a reader and skips the
+ * checks Upload makes for a file arriving on its own.
+ */
+func (s *RFQAttachmentService) StoreForRFQ(
+	ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID, file domain.AttachmentUpload,
+	data []byte, extractedText string,
+) error {
+	format, ok := domain.AttachmentFormatFor(normalizeContentType(file.ContentType))
+	if !ok {
+		return domain.WithCode(domain.CodeUnsupportedFileType, fmt.Errorf(
+			"%w: %q is not an accepted file type", domain.ErrInvalidInput, file.ContentType))
+	}
+
+	attachmentID := uuid.New()
+	key := attachmentKey(tenant.AccountID, rfqID, attachmentID, format.Extension)
+	if err := s.storage.Upload(ctx, key, file.ContentType, bytes.NewReader(data)); err != nil {
+		return err
+	}
+
+	var text *string
+	if trimmed := strings.TrimSpace(extractedText); trimmed != "" {
+		text = &trimmed
+	}
+	return s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		if _, err := s.attachments.Create(ctx, q, tenant.AccountID, tenant.BranchID,
+			domain.NewRFQAttachment{
+				ID:         attachmentID,
+				RFQID:      rfqID,
+				Type:       format.Type,
+				StorageKey: key,
+			}); err != nil {
+			return err
+		}
+		return s.attachments.MarkProcessed(ctx, q, tenant.AccountID, attachmentID, text,
+			domain.AttachmentProcessingDone, s.now())
+	})
 }
 
 // acceptedFormat refuses a file whose type is not accepted or whose size is over the limit,

@@ -105,6 +105,12 @@ type memoryAwareRFQExtractor interface {
 		examples []domain.RFQInterpretationExample) (*domain.RFQExtraction, error)
 }
 
+// rfqAttachmentStorer keeps the file an order arrived as, against the RFQ it produced.
+type rfqAttachmentStorer interface {
+	StoreForRFQ(ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID,
+		file domain.AttachmentUpload, data []byte, extractedText string) error
+}
+
 // sellerReach checks that a named seller can serve the caller's branch before a manual entry
 // names them, so an order cannot point at a seller another branch owns.
 type sellerReach interface {
@@ -126,9 +132,24 @@ type RFQService struct {
 	extractor   domain.RFQExtractor
 	matcher     catalogMatcher
 	memories    interpretationMemoryFinder
+	// transcriber and attachments are only needed by the file intake, which refuses when
+	// either is unbound rather than making the text pipeline depend on them.
+	transcriber domain.Transcriber
+	attachments rfqAttachmentStorer
+	maxFileSize int64
 	log         *slog.Logger
 	cfg         config.RFQConfig
 	now         func() time.Time
+}
+
+// WithFileIntake wires what an order that arrived as a file needs: somewhere to keep the file
+// and a transcriber for a voice note.
+func (s *RFQService) WithFileIntake(attachments rfqAttachmentStorer,
+	transcriber domain.Transcriber, maxFileSize int64) *RFQService {
+	s.attachments = attachments
+	s.transcriber = transcriber
+	s.maxFileSize = maxFileSize
+	return s
 }
 
 // WithCorrectionMemory enables account-local interpretation examples.
@@ -888,6 +909,79 @@ func (s *RFQService) CreateTextDraft(
 	return s.createTextDraft(ctx, tenant, normalized, &sellerID)
 }
 
+// CreateFileDraft turns an order that arrived as a file into a quote DRAFT for seller review.
+// The file is read before anything is written, so an unreadable one leaves no half-made order
+// behind; once it reads, the RFQ, the stored file and the draft are the same flow the text
+// pipeline runs.
+func (s *RFQService) CreateFileDraft(
+	ctx context.Context, tenant domain.Tenant, in domain.FileRFQDraftInput,
+) (*domain.TextRFQDraft, error) {
+	if err := requireBranch(tenant, "an RFQ draft"); err != nil {
+		return nil, err
+	}
+	if s.extractor == nil || s.channels == nil || s.attachments == nil {
+		return nil, fmt.Errorf("%w: the RFQ file pipeline is not fully wired",
+			domain.ErrInvalidInput)
+	}
+	contentExtractor, ok := s.extractor.(domain.RFQContentExtractor)
+	if !ok {
+		return nil, domain.ErrNotConfigured
+	}
+
+	normalized, format, data, err := s.normalizeFileRFQDraftInput(in)
+	if err != nil {
+		return nil, err
+	}
+
+	pipelineCtx, cancel := context.WithTimeout(ctx, s.cfg.PipelineTimeout)
+	defer cancel()
+	blocks, extractedText, err := s.readFileContent(pipelineCtx, normalized, format, data)
+	if err != nil {
+		return nil, err
+	}
+	if normalized.Note != nil {
+		blocks = append(blocks,
+			domain.TextContent("Nota del vendedor sobre este pedido:\n"+*normalized.Note))
+	}
+
+	// The RFQ keeps whatever text the file yielded. An image or a PDF yields none — the file
+	// itself is the record, and the attachment row points at it.
+	rawText := extractedText
+	if rawText == "" {
+		rawText = fileOrderPlaceholder(normalized.Filename)
+	}
+	rfq, err := s.persistReceivedRFQ(ctx, tenant, domain.TextRFQDraftInput{
+		ChannelID:   normalized.ChannelID,
+		ClientID:    normalized.ClientID,
+		ClientLabel: normalized.ClientLabel,
+		RawText:     rawText,
+		WorkType:    normalized.WorkType,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Storing the file before the model runs means an outage there still leaves the seller the
+	// order the client actually sent, on an RFQ they can work by hand.
+	if storeErr := s.attachments.StoreForRFQ(ctx, tenant, rfq.ID, normalized.File, data,
+		extractedText); storeErr != nil {
+		return nil, storeErr
+	}
+
+	extraction, items, alternatives, err := s.readMaterialsFromContent(pipelineCtx, tenant,
+		contentExtractor, blocks, extractedText)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		s.log.InfoContext(ctx, "rfq file produced no materials",
+			slog.String("rfq_id", rfq.ID.String()))
+		return &domain.TextRFQDraft{RFQ: *rfq}, nil
+	}
+	sellerID := tenant.UserID
+	return s.persistGeneratedDraft(ctx, tenant, rfq, &sellerID, extraction, items, alternatives)
+}
+
 // CreateWhatsAppMockDraft simulates one inbound WhatsApp text message in development.
 func (s *RFQService) CreateWhatsAppMockDraft(
 	ctx context.Context, tenant domain.Tenant, in domain.WhatsAppMockRFQInput,
@@ -947,6 +1041,32 @@ func (s *RFQService) createTextDraft(
 	return s.persistGeneratedDraft(ctx, tenant, rfq, sellerID, extraction, items, alternatives)
 }
 
+// readMaterialsFromContent is readMaterials for an order that arrived as a file. Interpretation
+// memory is keyed on text, so it only applies when the file yielded some: a photo has nothing
+// to look up examples by.
+func (s *RFQService) readMaterialsFromContent(
+	ctx context.Context, tenant domain.Tenant, extractor domain.RFQContentExtractor,
+	blocks []domain.Content, extractedText string,
+) (*domain.RFQExtraction, []domain.NewQuoteItem, []domain.NewQuoteItemAlternative, error) {
+	var examples []domain.RFQInterpretationExample
+	if s.memories != nil && extractedText != "" {
+		var memoryErr error
+		examples, memoryErr = s.memories.FindInterpretationExamples(ctx, tenant, extractedText)
+		if memoryErr != nil {
+			s.log.WarnContext(ctx, "interpretation memory unavailable", slog.Any("error", memoryErr))
+		}
+	}
+	extraction, err := extractor.ExtractFromContent(ctx, blocks, examples)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if extraction == nil {
+		return nil, nil, nil, fmt.Errorf("%w: RFQ extraction returned no result",
+			domain.ErrInvalidInput)
+	}
+	return s.quoteItemsFromExtraction(ctx, tenant, extraction)
+}
+
 func (s *RFQService) readMaterials(
 	ctx context.Context, tenant domain.Tenant, raw string,
 ) (*domain.RFQExtraction, []domain.NewQuoteItem, []domain.NewQuoteItemAlternative, error) {
@@ -975,6 +1095,14 @@ func (s *RFQService) readMaterials(
 		return nil, nil, nil, fmt.Errorf("%w: RFQ extraction returned no result",
 			domain.ErrInvalidInput)
 	}
+	return s.quoteItemsFromExtraction(pipelineCtx, tenant, extraction)
+}
+
+// quoteItemsFromExtraction turns one model answer into matched draft lines, whatever the order
+// arrived as.
+func (s *RFQService) quoteItemsFromExtraction(
+	ctx context.Context, tenant domain.Tenant, extraction *domain.RFQExtraction,
+) (*domain.RFQExtraction, []domain.NewQuoteItem, []domain.NewQuoteItemAlternative, error) {
 	// Matching runs one query per line, so an order that came back as a catalog would turn one
 	// request into hundreds of them. Stated in the prompt, enforced here.
 	if len(extraction.Lines) > s.cfg.MaxItems {
@@ -988,7 +1116,7 @@ func (s *RFQService) readMaterials(
 	if len(items) == 0 {
 		return extraction, nil, nil, nil
 	}
-	return extraction, items, s.applyMatches(pipelineCtx, tenant, items), nil
+	return extraction, items, s.applyMatches(ctx, tenant, items), nil
 }
 
 func (s *RFQService) applyMatches(
@@ -1269,6 +1397,60 @@ func (s *RFQService) normalizeTextRFQDraftInput(
 	in.ClientLabel = clientLabel
 	in.WorkType = workType
 	return in, nil
+}
+
+/*
+ * normalizeFileRFQDraftInput checks the envelope and buffers the file, refusing a type or a
+ * size before any of it is read. It returns the resolved format and the bytes, so the caller
+ * reads the upload once and both the model and storage are served from the same buffer.
+ */
+func (s *RFQService) normalizeFileRFQDraftInput(
+	in domain.FileRFQDraftInput,
+) (domain.FileRFQDraftInput, domain.AttachmentFormat, []byte, error) {
+	var empty domain.AttachmentFormat
+	if in.ChannelID == uuid.Nil {
+		return in, empty, nil, fmt.Errorf("%w: channel_id is required", domain.ErrInvalidInput)
+	}
+	clientLabel, err := optionalLimitedText(in.ClientLabel, "client_label", 255)
+	if err != nil {
+		return in, empty, nil, err
+	}
+	workType, err := optionalLimitedText(in.WorkType, "work_type", 255)
+	if err != nil {
+		return in, empty, nil, err
+	}
+	note, err := optionalLimitedText(in.Note, "note", s.cfg.MaxTextCharacters)
+	if err != nil {
+		return in, empty, nil, err
+	}
+
+	in.File.ContentType = normalizeContentType(in.File.ContentType)
+	format, ok := domain.AttachmentFormatFor(in.File.ContentType)
+	if !ok {
+		return in, empty, nil, domain.WithCode(domain.CodeUnsupportedFileType, fmt.Errorf(
+			"%w: %q is not an accepted file type, which are: %s", domain.ErrInvalidInput,
+			in.File.ContentType, strings.Join(domain.AcceptedAttachmentContentTypes(), ", ")))
+	}
+	data, err := readUpload(in.File, s.maxFileSize)
+	if err != nil {
+		return in, empty, nil, err
+	}
+
+	in.ClientLabel = clientLabel
+	in.WorkType = workType
+	in.Note = note
+	// The extension decides how a spreadsheet is parsed and how a recording is decoded, and the
+	// client's filename may carry neither, so the accepted format's own extension stands in.
+	if in.Filename == "" || !strings.Contains(in.Filename, ".") {
+		in.Filename = "pedido." + format.Extension
+	}
+	return in, format, data, nil
+}
+
+// fileOrderPlaceholder is the raw_text of an order whose file yields no text of its own — a
+// photo or a PDF. The row cannot be blank and the file is the record, so it names the file.
+func fileOrderPlaceholder(filename string) string {
+	return "Pedido recibido como archivo: " + filename
 }
 
 func (s *RFQService) requiredRFQText(raw string) (string, error) {

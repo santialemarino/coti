@@ -149,6 +149,14 @@ type RFQExtractor interface {
 	Extract(ctx context.Context, raw string) (*RFQExtraction, error)
 }
 
+// RFQContentExtractor reads an order that arrived as a file. A photographed list and a PDF go
+// to the model as they are, so they are blocks rather than text: flattening them first would
+// throw away the layout the model reads a materials table from.
+type RFQContentExtractor interface {
+	ExtractFromContent(ctx context.Context, blocks []Content,
+		examples []RFQInterpretationExample) (*RFQExtraction, error)
+}
+
 // TextRFQDraftInput is one plain-text order to run through the RFQ pipeline.
 type TextRFQDraftInput struct {
 	ChannelID   uuid.UUID
@@ -156,6 +164,22 @@ type TextRFQDraftInput struct {
 	ClientLabel *string
 	RawText     string
 	WorkType    *string
+}
+
+// FileRFQDraftInput is one order that arrived as a file — a photo of a handwritten list, a PDF,
+// a spreadsheet, a voice note — to run through the RFQ pipeline.
+type FileRFQDraftInput struct {
+	ChannelID   uuid.UUID
+	ClientID    *uuid.UUID
+	ClientLabel *string
+	WorkType    *string
+	// Note is what the seller typed alongside the file, and is optional. It reaches the model
+	// as context, never as a replacement for what the file says.
+	Note *string
+	File AttachmentUpload
+	// Filename is the client's own, kept because the transcriber reads its extension to pick
+	// a decoder and the spreadsheet reader to pick a parser.
+	Filename string
 }
 
 // WhatsAppMockRFQInput simulates one inbound WhatsApp text message outside production.
