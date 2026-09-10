@@ -7,7 +7,6 @@ import {
   getEffectiveBranchId,
   setActiveBranch,
 } from '@/lib/auth/branch';
-
 import type { SessionUser } from '@/lib/auth/session';
 import { BRANCH_COOKIE } from '@/lib/auth/tokens';
 
