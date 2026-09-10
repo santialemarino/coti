@@ -97,6 +97,7 @@ type RfqListItem struct {
 	SellerName    string
 	BranchID      uuid.UUID
 	BranchName    string
+	QuoteNumber   *int64
 	ItemCount     int
 	Total         *string // decimal string from quote_version.total; NULL when no priced version.
 	Status        string  // merged: rfq.status when no quote, otherwise quote.current_status.

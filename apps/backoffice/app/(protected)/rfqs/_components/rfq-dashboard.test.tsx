@@ -6,19 +6,14 @@ import { RfqDashboard } from '@/app/(protected)/rfqs/_components/rfq-dashboard';
 import type { RfqRecord } from '@/lib/api/rfqs';
 import messages from '@/translations/es.json';
 
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
-}));
+const router = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
+
+vi.mock('next/navigation', () => ({ useRouter: () => router }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 // The create dialog pulls in the import/manual views; it is not what these tests exercise.
 vi.mock('@/app/(protected)/rfqs/_components/create-rfq-dialog', () => ({
   CreateRfqDialog: () => null,
 }));
-// QUOTE_GENERATION_MS shortened so the generation step lands without fake timers.
-vi.mock('@/lib/api/rfqs', () => ({
-  QUOTE_GENERATION_MS: 50,
-}));
-
 const { toast } = await import('sonner');
 
 const copy = messages.rfqs;
@@ -26,6 +21,7 @@ const copy = messages.rfqs;
 const RFQS: RfqRecord[] = [
   {
     id: '2001',
+    quoteNumber: 1,
     client: 'Constructora A',
     createdAt: '2026-08-06T10:00:00.000Z',
     channel: 'whatsapp',
@@ -41,6 +37,7 @@ const RFQS: RfqRecord[] = [
   },
   {
     id: '2002',
+    quoteNumber: 2,
     client: 'Ferretería B',
     createdAt: '2026-08-06T09:00:00.000Z',
     channel: 'email',
@@ -56,6 +53,7 @@ const RFQS: RfqRecord[] = [
   },
   {
     id: '2003',
+    quoteNumber: 3,
     client: 'Obra C',
     createdAt: '2026-08-05T08:00:00.000Z',
     channel: 'manual_entry',
@@ -71,6 +69,7 @@ const RFQS: RfqRecord[] = [
   },
   {
     id: '2004',
+    quoteNumber: null,
     client: 'Techos D',
     createdAt: '2026-08-05T07:00:00.000Z',
     channel: 'manual_entry',
@@ -85,6 +84,7 @@ const RFQS: RfqRecord[] = [
   },
   {
     id: '2005',
+    quoteNumber: 5,
     client: 'Pinturas E',
     createdAt: '2026-08-04T06:00:00.000Z',
     channel: 'webapp',
@@ -123,8 +123,8 @@ function tabCount(view: ReturnType<typeof render>, label: string): number {
   return Number(count);
 }
 
-function rowOf(view: ReturnType<typeof render>, id: string) {
-  const row = view.getByRole('row', { name: new RegExp(id) });
+function rowOf(view: ReturnType<typeof render>, label: string) {
+  const row = view.getByRole('row', { name: new RegExp(label) });
   return within(row);
 }
 
@@ -158,7 +158,7 @@ describe('RfqDashboard status tab counts', () => {
     expect(tabCount(view, copy.status.SENT)).toBe(1);
     expect(tabCount(view, copy.status.RECEIVED)).toBe(0);
     expect(tabCount(view, copy.status.GENERATED)).toBe(1);
-    expect(view.queryByText('#2003')).toBeNull();
+    expect(view.queryByText('#03')).toBeNull();
   });
 
   it('combines the status tab with the other filters', async () => {
@@ -173,8 +173,8 @@ describe('RfqDashboard status tab counts', () => {
     await vi.waitFor(() => expect(tabCount(view, copy.status.QUOTED)).toBe(1));
 
     fireEvent.click(within(view.getByLabelText(copy.list.tabs)).getByText(copy.status.QUOTED));
-    await vi.waitFor(() => expect(view.queryByText('#2002')).toBeNull());
-    expect(view.getByText('#2001')).toBeTruthy();
+    await vi.waitFor(() => expect(view.queryByText('#02')).toBeNull());
+    expect(view.getByText('#01')).toBeTruthy();
   });
 });
 
@@ -182,38 +182,42 @@ describe('RfqDashboard totals column', () => {
   it('shows a dash until the quote exists and the amount once it does', () => {
     const view = renderDashboard();
 
-    expect(rowOf(view, '2004').getByText('-')).toBeTruthy();
-    expect(rowOf(view, '2001').getByText('$ 100,00')).toBeTruthy();
-    expect(rowOf(view, '2001').queryByText('-')).toBeNull();
+    expect(rowOf(view, copy.list.numberPending).getByText('-')).toBeTruthy();
+    expect(rowOf(view, '#01').getByText('$ 100,00')).toBeTruthy();
+    expect(rowOf(view, '#01').queryByText('-')).toBeNull();
   });
 });
 
-describe('RfqDashboard marking a pedido as QUOTED', () => {
-  it('runs the generation spinner and then lands on the pill', async () => {
+describe('RfqDashboard row actions', () => {
+  it('shows only detail and archive actions and opens the detail route', async () => {
     const view = renderDashboard();
 
     fireEvent.pointerDown(
-      rowOf(view, '2005').getByRole('button', { name: copy.list.actions.more }),
+      rowOf(view, '#01').getByRole('button', { name: copy.list.actions.more }),
       {
         button: 0,
       },
     );
-    const changeStatus = await vi.waitFor(() =>
-      view.getByRole('menuitem', { name: copy.list.actions.changeStatus }),
-    );
-    fireEvent.click(changeStatus);
-    const quoted = await vi.waitFor(() => view.getByRole('menuitem', { name: copy.status.QUOTED }));
-    fireEvent.click(quoted);
+    const menu = await vi.waitFor(() => view.getByRole('menu'));
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(2);
+    expect(within(menu).getByRole('menuitem', { name: copy.list.actions.archive })).toBeTruthy();
 
-    await vi.waitFor(() =>
-      expect(rowOf(view, '2005').getByText(copy.processing.quote)).toBeTruthy(),
+    fireEvent.click(within(menu).getByRole('menuitem', { name: copy.list.actions.view }));
+
+    expect(router.push).toHaveBeenCalledWith('/rfqs/2001');
+  });
+
+  it('uses the sequence number in archive feedback', async () => {
+    const view = renderDashboard();
+
+    fireEvent.pointerDown(
+      rowOf(view, '#01').getByRole('button', { name: copy.list.actions.more }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await vi.waitFor(() => view.getByRole('menuitem', { name: copy.list.actions.archive })),
     );
 
-    await vi.waitFor(() => expect(rowOf(view, '2005').getByText(copy.status.QUOTED)).toBeTruthy(), {
-      timeout: 3000,
-    });
-    expect(toast.success).toHaveBeenCalledWith(
-      copy.list.toast.quoteGenerated.replace('{id}', '2005'),
-    );
+    expect(toast.success).toHaveBeenCalledWith(copy.list.toast.archived.replace('{id}', '#01'));
   });
 });

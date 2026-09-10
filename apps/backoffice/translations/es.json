@@ -469,6 +469,7 @@
       "resultsTotal": "{total, plural, one {# pedido} other {# pedidos}}",
       "results": "Mostrando {from}–{to} de {total} pedidos",
       "items": "{count, plural, one {# ítem} other {# ítems}}",
+      "numberPending": "Sin número",
       "unassigned": "Sin asignar",
       "selectAll": "Seleccionar todos los pedidos de esta página",
       "selectRow": "Seleccionar el pedido {id}",
@@ -504,8 +505,6 @@
       "actions": {
         "more": "Acciones del pedido",
         "view": "Ver detalle",
-        "edit": "Editar pedido",
-        "changeStatus": "Cambiar estado",
         "archive": "Archivar pedido"
       },
       "empty": {
@@ -521,11 +520,8 @@
         "retry": "Reintentar"
       },
       "toast": {
-        "statusChanged": "El pedido {id} quedó en “{status}”.",
-        "quoteGenerated": "La cotización del pedido {id} está lista.",
         "archived": "El pedido {id} se archivó.",
-        "archivedMany": "{count, plural, one {# pedido archivado} other {# pedidos archivados}}.",
-        "comingSoon": "La edición del pedido va a estar disponible en el detalle."
+        "archivedMany": "{count, plural, one {# pedido archivado} other {# pedidos archivados}}."
       }
     },
     "create": {
@@ -726,6 +722,7 @@
         "messageLabel": "Mensaje",
         "greeting": "¡Hola {client}!",
         "noClient": "cliente",
+        "numberPending": "sin número",
         "body": "Te compartimos la cotización {id}. El total es {total}.",
         "closing": "Quedamos a disposición por cualquier consulta.",
         "cancel": "Cancelar",

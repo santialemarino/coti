@@ -12,9 +12,7 @@ import {
   MailIcon,
   MessageCircleIcon,
   MoreHorizontalIcon,
-  PencilIcon,
   PlusIcon,
-  RefreshCcwIcon,
   SearchXIcon,
   XIcon,
 } from 'lucide-react';
@@ -33,9 +31,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
   Pagination,
   SearchInput,
@@ -61,7 +56,7 @@ import {
 } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
 import { ROUTES } from '@/config/routes';
 import {
-  QUOTE_GENERATION_MS,
+  formatRfqReference,
   type RfqChannel,
   type RfqPriority,
   type RfqRecord,
@@ -71,6 +66,7 @@ import { useFormatters } from '@/lib/i18n/formatters';
 
 const PAGE_SIZE = 10;
 const COLUMN_COUNT = 11;
+const UNASSIGNED_SELLER = '__unassigned__';
 
 const CHANNELS: readonly RfqChannel[] = ['whatsapp', 'email', 'webapp', 'manual_entry'];
 
@@ -96,7 +92,7 @@ const CHANNEL_ICON: Record<RfqChannel, typeof MailIcon> = {
 };
 
 type SortKey =
-  | 'id'
+  | 'quoteNumber'
   | 'client'
   | 'createdAt'
   | 'channel'
@@ -117,6 +113,9 @@ function compareRfqs(a: RfqRecord, b: RfqRecord, key: SortKey, order: SortOrder)
   const direction = order === 'asc' ? 1 : -1;
   let result: number;
   switch (key) {
+    case 'quoteNumber':
+      result = (a.quoteNumber ?? 0) - (b.quoteNumber ?? 0);
+      break;
     case 'itemCount':
       result = a.itemCount - b.itemCount;
       break;
@@ -146,14 +145,12 @@ function PriorityBadge({ priority }: { priority: RfqPriority }) {
 
 interface RowMenuProps {
   rfq: RfqRecord;
-  onChangeStatus: (rfq: RfqRecord, status: RfqStatus) => void;
   onArchive: (rfq: RfqRecord) => void;
 }
 
-// The per-row contextual menu: view, edit, move through the statuses and archive.
-function RowMenu({ rfq, onChangeStatus, onArchive }: RowMenuProps) {
-  const t = useTranslations('rfqs');
+function RowMenu({ rfq, onArchive }: RowMenuProps) {
   const router = useRouter();
+  const t = useTranslations('rfqs');
 
   return (
     <DropdownMenu>
@@ -167,23 +164,6 @@ function RowMenu({ rfq, onChangeStatus, onArchive }: RowMenuProps) {
           <EyeIcon aria-hidden="true" />
           {t('list.actions.view')}
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => toast.info(t('list.toast.comingSoon'))}>
-          <PencilIcon aria-hidden="true" />
-          {t('list.actions.edit')}
-        </DropdownMenuItem>
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger>
-            <RefreshCcwIcon aria-hidden="true" />
-            {t('list.actions.changeStatus')}
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent>
-            {STATUS_ORDER.map((status) => (
-              <DropdownMenuItem key={status} onSelect={() => onChangeStatus(rfq, status)}>
-                {t(`status.${status}`)}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
         <DropdownMenuSeparator />
         <DropdownMenuItem tone="danger" onSelect={() => onArchive(rfq)}>
           <ArchiveIcon aria-hidden="true" />
@@ -203,10 +183,10 @@ export function RfqDashboard({
   activeBranchId: string | null;
   activeRfqId?: string | null;
 }) {
+  const router = useRouter();
+  const fmt = useFormatters();
   const t = useTranslations('rfqs');
   const tCommon = useTranslations('common');
-  const fmt = useFormatters();
-  const router = useRouter();
   const { userName } = useRfqList();
 
   const [records, setRecords] = useState<RfqRecord[]>(initialRecords);
@@ -221,8 +201,6 @@ export function RfqDashboard({
   const [channelFilter, setChannelFilter] = useState<RfqChannel | 'all'>('all');
   const [branchFilter, setBranchFilter] = useState<string | 'all'>('all');
   const [sellerFilter, setSellerFilter] = useState<string | 'all'>('all');
-  // Sentinel value for "needs a seller" rows: seller is an empty string when unassigned.
-  const UNASSIGNED_SELLER = '__unassigned__';
   const [priorityFilter, setPriorityFilter] = useState<RfqPriority | 'all'>('all');
   const [sortBy, setSortBy] = useState<SortKey>('createdAt');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
@@ -265,7 +243,8 @@ export function RfqDashboard({
         }
         if (priorityFilter !== 'all' && rfq.priority !== priorityFilter) return false;
         if (needle) {
-          const haystack = `${rfq.id} ${rfq.client} ${rfq.seller} ${rfq.branch}`.toLowerCase();
+          const haystack =
+            `${formatRfqReference(rfq.quoteNumber) ?? ''} ${rfq.client} ${rfq.seller} ${rfq.branch}`.toLowerCase();
           if (!haystack.includes(needle)) return false;
         }
         return true;
@@ -349,39 +328,6 @@ export function RfqDashboard({
     });
   }
 
-  function updateStatus(rfq: RfqRecord, status: RfqStatus) {
-    // A change mid-generation would race the timer below, so ignore it.
-    if (rfq.processing) return;
-
-    // Generating the quote is the AI step the list simulates: the row shows the processing spinner
-    // for QUOTE_GENERATION_MS and then lands on QUOTED, instead of jumping straight there.
-    if (status === 'QUOTED' && rfq.status !== 'QUOTED') {
-      setRecords((previous) =>
-        previous
-          ? previous.map((item) => (item.id === rfq.id ? { ...item, processing: true } : item))
-          : previous,
-      );
-      window.setTimeout(() => {
-        setRecords((previous) =>
-          previous
-            ? previous.map((item) =>
-                item.id === rfq.id ? { ...item, processing: false, status: 'QUOTED' } : item,
-              )
-            : previous,
-        );
-        toast.success(t('list.toast.quoteGenerated', { id: rfq.id }));
-      }, QUOTE_GENERATION_MS);
-      return;
-    }
-
-    setRecords((previous) =>
-      previous
-        ? previous.map((item) => (item.id === rfq.id ? { ...item, status } : item))
-        : previous,
-    );
-    toast.success(t('list.toast.statusChanged', { id: rfq.id, status: t(`status.${status}`) }));
-  }
-
   function archiveOne(rfq: RfqRecord) {
     // Archivado is a flag, not a state: the row stays and shows the grey pill over its real status.
     setRecords((previous) =>
@@ -394,7 +340,11 @@ export function RfqDashboard({
       next.delete(rfq.id);
       return next;
     });
-    toast.success(t('list.toast.archived', { id: rfq.id }));
+    toast.success(
+      t('list.toast.archived', {
+        id: formatRfqReference(rfq.quoteNumber) ?? t('list.numberPending'),
+      }),
+    );
   }
 
   function archiveSelected() {
@@ -552,7 +502,7 @@ export function RfqDashboard({
               </TableHead>
               <SortableTableHead
                 label={t('list.columns.id')}
-                column="id"
+                column="quoteNumber"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onSort={handleSort}
@@ -631,6 +581,7 @@ export function RfqDashboard({
             ) : (
               pageItems.map((rfq) => {
                 const ChannelIcon = CHANNEL_ICON[rfq.channel];
+                const reference = formatRfqReference(rfq.quoteNumber);
                 return (
                   <TableRow
                     key={rfq.id}
@@ -644,7 +595,9 @@ export function RfqDashboard({
                       <Checkbox
                         checked={selected.has(rfq.id)}
                         onCheckedChange={() => toggleSelected(rfq.id)}
-                        aria-label={t('list.selectRow', { id: rfq.id })}
+                        aria-label={t('list.selectRow', {
+                          id: reference ?? t('list.numberPending'),
+                        })}
                       />
                     </TableCell>
                     <TableCell>
@@ -654,7 +607,7 @@ export function RfqDashboard({
                         className="group/order w-full text-left outline-none"
                       >
                         <span className="block truncate text-paragraph-sm-medium text-foreground transition-colors duration-150 ease-out-soft group-focus-visible/order:text-primary group-hover/order:text-primary">
-                          #{rfq.id}
+                          {reference ?? t('list.numberPending')}
                         </span>
                         <span className="block truncate text-paragraph-mini text-foreground-muted">
                           {rfq.client}
@@ -698,7 +651,7 @@ export function RfqDashboard({
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end">
-                        <RowMenu rfq={rfq} onChangeStatus={updateStatus} onArchive={archiveOne} />
+                        <RowMenu rfq={rfq} onArchive={archiveOne} />
                       </div>
                     </TableCell>
                   </TableRow>

@@ -9,6 +9,7 @@ import { getSession } from '@/lib/auth/session';
 function mapListItem(item: RfqListItem): RfqRecord {
   return {
     id: item.id,
+    quoteNumber: item.quote_number,
     client: item.client ?? '',
     createdAt: item.created_at,
     channel: item.channel as RfqChannel,

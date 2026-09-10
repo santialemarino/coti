@@ -6736,6 +6736,9 @@ const docTemplate = `{
                 "needs_followup": {
                     "type": "boolean"
                 },
+                "quote_number": {
+                    "type": "integer"
+                },
                 "seller": {
                     "type": "string"
                 },

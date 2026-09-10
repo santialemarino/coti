@@ -312,6 +312,7 @@ func TestToRfqDetailResponse_MapsAllFieldsFromDomainDetail(t *testing.T) {
 	quoteID := uuid.New()
 	clientLabel := "Obra Norte"
 	totalStr := "5000.00"
+	quoteNumber := int64(42)
 	changedAt := time.Date(2026, time.September, 4, 14, 30, 0, 0, time.UTC)
 	previousRFQ := domain.RFQStatusReceived
 	previousQuote := domain.QuoteStatusQuoted
@@ -321,6 +322,7 @@ func TestToRfqDetailResponse_MapsAllFieldsFromDomainDetail(t *testing.T) {
 	detail := domain.RfqDetail{
 		Rfq: domain.RfqListItem{
 			ID:          rfqID,
+			QuoteNumber: &quoteNumber,
 			ClientLabel: &clientLabel,
 			Channel:     "whatsapp",
 			SellerName:  "Juan Pérez",
@@ -375,6 +377,9 @@ func TestToRfqDetailResponse_MapsAllFieldsFromDomainDetail(t *testing.T) {
 
 	if resp.Rfq.ID != rfqID {
 		t.Errorf("rfq ID = %v, want %v", resp.Rfq.ID, rfqID)
+	}
+	if resp.Rfq.QuoteNumber == nil || *resp.Rfq.QuoteNumber != quoteNumber {
+		t.Errorf("quote number = %v, want %d", resp.Rfq.QuoteNumber, quoteNumber)
 	}
 	if resp.Rfq.Client == nil || *resp.Rfq.Client != clientLabel {
 		t.Errorf("client = %v, want %q", resp.Rfq.Client, clientLabel)

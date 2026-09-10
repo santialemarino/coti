@@ -132,6 +132,9 @@ func TestRFQRepository_ListByTenant_FollowupFirstArchivedOut(t *testing.T) {
 	if !items[0].NeedsFollowup {
 		t.Error("follow-up row is not flagged needs_followup")
 	}
+	if items[0].QuoteNumber == nil || *items[0].QuoteNumber <= 0 {
+		t.Errorf("follow-up quote number = %v, want its account sequence", items[0].QuoteNumber)
+	}
 	if items[1].ID != noQuoteID || items[2].ID != draftID {
 		t.Errorf("rest of order = %v, %v; want newest then oldest",
 			items[1].ID, items[2].ID)
@@ -143,6 +146,9 @@ func TestRFQRepository_ListByTenant_FollowupFirstArchivedOut(t *testing.T) {
 	}
 	if containsID(t, items, archivedID) {
 		t.Error("archived quote is in the list, want it excluded")
+	}
+	if items[1].QuoteNumber != nil {
+		t.Errorf("RFQ without quote number = %v, want nil", *items[1].QuoteNumber)
 	}
 }
 
