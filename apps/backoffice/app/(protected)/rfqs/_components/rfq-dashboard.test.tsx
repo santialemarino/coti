@@ -30,7 +30,6 @@ const RFQS: RfqRecord[] = [
     branch: 'Centro',
     branchId: 'b1',
     itemCount: 2,
-    priority: 'high',
     status: 'QUOTED',
     total: '100.00',
     needsFollowup: false,
@@ -46,7 +45,6 @@ const RFQS: RfqRecord[] = [
     branch: 'Norte',
     branchId: 'b2',
     itemCount: 3,
-    priority: 'normal',
     status: 'SENT',
     total: '200.00',
     needsFollowup: false,
@@ -62,7 +60,6 @@ const RFQS: RfqRecord[] = [
     branch: 'Centro',
     branchId: 'b1',
     itemCount: 4,
-    priority: 'normal',
     status: 'QUOTED',
     total: '300.00',
     needsFollowup: false,
@@ -78,7 +75,6 @@ const RFQS: RfqRecord[] = [
     branch: 'Norte',
     branchId: 'b2',
     itemCount: 5,
-    priority: 'low',
     status: 'RECEIVED',
     needsFollowup: false,
   },
@@ -93,7 +89,6 @@ const RFQS: RfqRecord[] = [
     branch: 'Centro',
     branchId: 'b1',
     itemCount: 6,
-    priority: 'high',
     status: 'GENERATED',
     needsFollowup: false,
   },
@@ -124,7 +119,8 @@ function tabCount(view: ReturnType<typeof render>, label: string): number {
 }
 
 function rowOf(view: ReturnType<typeof render>, label: string) {
-  const row = view.getByRole('row', { name: new RegExp(label) });
+  const row = view.getByText(label).closest('tr');
+  if (!row) throw new Error(`No row contains ${label}`);
   return within(row);
 }
 
@@ -189,6 +185,24 @@ describe('RfqDashboard totals column', () => {
 });
 
 describe('RfqDashboard row actions', () => {
+  it('opens the detail from the whole row without hijacking its controls', () => {
+    const view = renderDashboard();
+    const row = view.getByRole('link', {
+      name: copy.list.openRow.replace('{id}', '#01'),
+    });
+
+    fireEvent.click(within(row).getByText('Centro'));
+    expect(router.push).toHaveBeenLastCalledWith('/rfqs/2001');
+
+    router.push.mockClear();
+    fireEvent.keyDown(row, { key: 'Enter' });
+    expect(router.push).toHaveBeenLastCalledWith('/rfqs/2001');
+
+    router.push.mockClear();
+    fireEvent.click(within(row).getByRole('checkbox'));
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
   it('shows only detail and archive actions and opens the detail route', async () => {
     const view = renderDashboard();
 

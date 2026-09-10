@@ -85,7 +85,6 @@ function draftRecord(): RfqRecord {
     branch: 'Villa Bosch',
     branchId: BRANCH_ID,
     itemCount: 1,
-    priority: 'normal',
     status: 'GENERATED',
     needsFollowup: false,
   };

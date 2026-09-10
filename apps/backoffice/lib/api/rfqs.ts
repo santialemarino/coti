@@ -27,8 +27,6 @@ export function normalizeRfqStatus(status: string): RfqStatus {
 // The channel a request arrived through; an icon and an i18n label hang off each value.
 export type RfqChannel = 'whatsapp' | 'email' | 'webapp' | 'manual_entry';
 
-export type RfqPriority = 'high' | 'normal' | 'low';
-
 export interface RfqRecord {
   id: string;
   quoteNumber: number | null;
@@ -46,7 +44,6 @@ export interface RfqRecord {
    * Absent until the quote exists — an uncotized request has no amount to show.
    */
   total?: string;
-  priority: RfqPriority;
   status: RfqStatus;
   // Backend-set flag: the seller must chase this quote; it surfaces first and is highlighted.
   needsFollowup: boolean;

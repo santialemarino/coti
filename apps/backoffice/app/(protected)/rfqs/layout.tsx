@@ -19,7 +19,6 @@ function mapListItem(item: RfqListItem): RfqRecord {
     branchId: item.branch_id,
     itemCount: item.item_count,
     total: item.total ?? undefined,
-    priority: 'normal',
     status: normalizeRfqStatus(item.status),
     needsFollowup: item.needs_followup,
     archived: item.archived_at != null,

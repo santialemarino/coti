@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import type { ComponentProps } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArchiveIcon,
@@ -58,31 +57,20 @@ import { ROUTES } from '@/config/routes';
 import {
   formatRfqReference,
   type RfqChannel,
-  type RfqPriority,
   type RfqRecord,
   type RfqStatus,
 } from '@/lib/api/rfqs';
 import { useFormatters } from '@/lib/i18n/formatters';
 
 const PAGE_SIZE = 10;
-const COLUMN_COUNT = 11;
+const COLUMN_COUNT = 10;
 const UNASSIGNED_SELLER = '__unassigned__';
 
 const CHANNELS: readonly RfqChannel[] = ['whatsapp', 'email', 'webapp', 'manual_entry'];
 
-const PRIORITIES: readonly RfqPriority[] = ['high', 'normal', 'low'];
-
-const PRIORITY_RANK: Record<RfqPriority, number> = { high: 0, normal: 1, low: 2 };
-
 const STATUS_RANK = Object.fromEntries(
   STATUS_ORDER.map((status, index) => [status, index]),
 ) as Record<RfqStatus, number>;
-
-const PRIORITY_TONE: Record<RfqPriority, ComponentProps<typeof Badge>['tone']> = {
-  high: 'danger',
-  normal: 'neutral',
-  low: 'outline',
-};
 
 const CHANNEL_ICON: Record<RfqChannel, typeof MailIcon> = {
   whatsapp: MessageCircleIcon,
@@ -100,7 +88,6 @@ type SortKey =
   | 'branch'
   | 'itemCount'
   | 'total'
-  | 'priority'
   | 'status';
 
 type SortOrder = 'asc' | 'desc';
@@ -123,9 +110,6 @@ function compareRfqs(a: RfqRecord, b: RfqRecord, key: SortKey, order: SortOrder)
       // No amount yet (no quote) sorts as the smallest number, not the largest.
       result = Number(a.total ?? 0) - Number(b.total ?? 0);
       break;
-    case 'priority':
-      result = PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
-      break;
     case 'status':
       result = STATUS_RANK[a.status] - STATUS_RANK[b.status];
       break;
@@ -136,11 +120,6 @@ function compareRfqs(a: RfqRecord, b: RfqRecord, key: SortKey, order: SortOrder)
       result = a[key].localeCompare(b[key], 'es', { sensitivity: 'base' });
   }
   return result * direction;
-}
-
-function PriorityBadge({ priority }: { priority: RfqPriority }) {
-  const t = useTranslations('rfqs');
-  return <Badge tone={PRIORITY_TONE[priority]}>{t(`priority.${priority}`)}</Badge>;
 }
 
 interface RowMenuProps {
@@ -201,7 +180,6 @@ export function RfqDashboard({
   const [channelFilter, setChannelFilter] = useState<RfqChannel | 'all'>('all');
   const [branchFilter, setBranchFilter] = useState<string | 'all'>('all');
   const [sellerFilter, setSellerFilter] = useState<string | 'all'>('all');
-  const [priorityFilter, setPriorityFilter] = useState<RfqPriority | 'all'>('all');
   const [sortBy, setSortBy] = useState<SortKey>('createdAt');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [page, setPage] = useState(1);
@@ -211,16 +189,7 @@ export function RfqDashboard({
   // Any criterion change starts over at the first page, or a stale page number would point nowhere.
   useEffect(() => {
     setPage(1);
-  }, [
-    query,
-    statusFilter,
-    channelFilter,
-    branchFilter,
-    sellerFilter,
-    priorityFilter,
-    sortBy,
-    sortOrder,
-  ]);
+  }, [query, statusFilter, channelFilter, branchFilter, sellerFilter, sortBy, sortOrder]);
 
   const branches = useMemo(() => unique(records.map((rfq) => rfq.branch)), [records]);
   const sellers = useMemo(() => unique(records.map((rfq) => rfq.seller)), [records]);
@@ -241,7 +210,6 @@ export function RfqDashboard({
         } else if (sellerFilter !== 'all' && rfq.seller !== sellerFilter) {
           return false;
         }
-        if (priorityFilter !== 'all' && rfq.priority !== priorityFilter) return false;
         if (needle) {
           const haystack =
             `${formatRfqReference(rfq.quoteNumber) ?? ''} ${rfq.client} ${rfq.seller} ${rfq.branch}`.toLowerCase();
@@ -256,16 +224,7 @@ export function RfqDashboard({
         if (byFollowup !== 0) return byFollowup;
         return compareRfqs(a, b, sortBy, sortOrder);
       });
-  }, [
-    records,
-    query,
-    channelFilter,
-    branchFilter,
-    sellerFilter,
-    priorityFilter,
-    sortBy,
-    sortOrder,
-  ]);
+  }, [records, query, channelFilter, branchFilter, sellerFilter, sortBy, sortOrder]);
 
   const statusCounts = useMemo(() => {
     const counts = new Map<RfqStatus, number>();
@@ -285,8 +244,7 @@ export function RfqDashboard({
   const activeFilterCount =
     (channelFilter !== 'all' ? 1 : 0) +
     (branchFilter !== 'all' ? 1 : 0) +
-    (sellerFilter !== 'all' ? 1 : 0) +
-    (priorityFilter !== 'all' ? 1 : 0);
+    (sellerFilter !== 'all' ? 1 : 0);
   const hasCriteria = query.trim() !== '' || activeFilterCount > 0 || statusFilter !== 'all';
 
   function clearFilters() {
@@ -294,7 +252,6 @@ export function RfqDashboard({
     setChannelFilter('all');
     setBranchFilter('all');
     setSellerFilter('all');
-    setPriorityFilter('all');
     setStatusFilter('all');
   }
 
@@ -430,20 +387,6 @@ export function RfqDashboard({
               aria-label={t('list.filters.seller')}
               className="min-w-36 flex-1"
             />
-            <Combobox
-              options={[
-                { value: 'all', label: t('list.filters.allPriority') },
-                ...PRIORITIES.map((priority) => ({
-                  value: priority,
-                  label: t(`priority.${priority}`),
-                })),
-              ]}
-              value={priorityFilter}
-              onValueChange={(value) => setPriorityFilter(value as RfqPriority | 'all')}
-              placeholder={t('list.filters.priority')}
-              aria-label={t('list.filters.priority')}
-              className="min-w-36 flex-1"
-            />
             {activeFilterCount > 0 ? (
               <Button variant="ghost" size="sm" onClick={clearFilters} className="flex-none">
                 <XIcon aria-hidden="true" />
@@ -552,13 +495,6 @@ export function RfqDashboard({
                 className="text-right"
               />
               <SortableTableHead
-                label={t('list.columns.priority')}
-                column="priority"
-                sortBy={sortBy}
-                sortOrder={sortOrder}
-                onSort={handleSort}
-              />
-              <SortableTableHead
                 label={t('list.columns.status')}
                 column="status"
                 sortBy={sortBy}
@@ -585,8 +521,23 @@ export function RfqDashboard({
                 return (
                   <TableRow
                     key={rfq.id}
+                    role="link"
+                    tabIndex={0}
+                    aria-label={t('list.openRow', {
+                      id: reference ?? t('list.numberPending'),
+                    })}
+                    onClick={(event) => {
+                      if ((event.target as HTMLElement).closest('button, a, input')) return;
+                      router.push(ROUTES.rfqsDetail(rfq.id));
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget || event.key !== 'Enter') return;
+                      event.preventDefault();
+                      router.push(ROUTES.rfqsDetail(rfq.id));
+                    }}
                     data-state={selected.has(rfq.id) ? 'selected' : undefined}
                     className={cn(
+                      'cursor-pointer outline-none active:bg-accent focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45',
                       rfq.id === activeRfqId && 'bg-accent',
                       rfq.needsFollowup && 'bg-warning-subtle',
                     )}
@@ -601,18 +552,14 @@ export function RfqDashboard({
                       />
                     </TableCell>
                     <TableCell>
-                      <button
-                        type="button"
-                        onClick={() => router.push(ROUTES.rfqsDetail(rfq.id))}
-                        className="group/order w-full text-left outline-none"
-                      >
-                        <span className="block truncate text-paragraph-sm-medium text-foreground transition-colors duration-150 ease-out-soft group-focus-visible/order:text-primary group-hover/order:text-primary">
+                      <div className="w-full text-left">
+                        <span className="block truncate text-paragraph-sm-medium text-foreground">
                           {reference ?? t('list.numberPending')}
                         </span>
                         <span className="block truncate text-paragraph-mini text-foreground-muted">
                           {rfq.client}
                         </span>
-                      </button>
+                      </div>
                     </TableCell>
                     <TableCell className="whitespace-nowrap">{fmt.date(rfq.createdAt)}</TableCell>
                     <TableCell>
@@ -638,9 +585,6 @@ export function RfqDashboard({
                           -
                         </span>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      <PriorityBadge priority={rfq.priority} />
                     </TableCell>
                     <TableCell>
                       <RfqStatusBadge

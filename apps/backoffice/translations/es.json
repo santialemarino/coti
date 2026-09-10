@@ -448,11 +448,6 @@
       "ingestion": "Procesando pedido…",
       "quote": "Generando cotización…"
     },
-    "priority": {
-      "high": "Alta",
-      "normal": "Normal",
-      "low": "Baja"
-    },
     "channels": {
       "whatsapp": "WhatsApp",
       "email": "Email",
@@ -473,16 +468,15 @@
       "unassigned": "Sin asignar",
       "selectAll": "Seleccionar todos los pedidos de esta página",
       "selectRow": "Seleccionar el pedido {id}",
+      "openRow": "Abrir el pedido {id}",
       "selected": "{count, plural, one {# pedido seleccionado} other {# pedidos seleccionados}}",
       "filters": {
         "channel": "Canal",
         "branch": "Sucursal",
         "seller": "Vendedor",
-        "priority": "Prioridad",
         "allChannel": "Canales",
         "allBranch": "Sucursales",
         "allSeller": "Vendedores",
-        "allPriority": "Prioridades",
         "unassigned": "Sin vendedor",
         "clear": "Limpiar filtros"
       },
@@ -494,7 +488,6 @@
         "branch": "Sucursal",
         "items": "Ítems",
         "total": "Monto",
-        "priority": "Prioridad",
         "status": "Estado",
         "actions": "Acciones"
       },
