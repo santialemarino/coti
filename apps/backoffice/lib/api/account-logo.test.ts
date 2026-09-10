@@ -6,6 +6,7 @@ vi.mock('@/lib/api/client', () => ({ apiRequest: vi.fn() }));
 vi.mock('@/lib/config', () => ({ API_URL: 'https://api.coti.test' }));
 
 const { apiRequest } = await import('@/lib/api/client');
+const { ApiError } = await import('@/lib/api/errors');
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -26,5 +27,15 @@ describe('uploadAccountLogo', () => {
       branchScoped: false,
     });
     expect(request?.formData?.get('file')).toBe(logo);
+  });
+
+  it('does not report a missing upload route as a missing account', async () => {
+    const logo = new File(['logo'], 'logo.png', { type: 'image/png' });
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('NOT_FOUND', 404));
+
+    await expect(uploadAccountLogo(logo)).rejects.toMatchObject({
+      code: 'INTERNAL',
+      status: 500,
+    });
   });
 });
