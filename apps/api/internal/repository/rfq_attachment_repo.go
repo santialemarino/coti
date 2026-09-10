@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -65,6 +66,26 @@ func (r *RFQAttachmentRepository) Create(
 		 )
 		 RETURNING `+rfqAttachmentColumns,
 		in.ID, accountID, in.RFQID, in.Type, in.StorageKey, branchID))
+}
+
+// MarkProcessed records what the multi-format engine read out of one attachment and closes it
+// out. An empty text is stored as NULL: an image yields none, and the file is the record.
+func (r *RFQAttachmentRepository) MarkProcessed(
+	ctx context.Context, q Querier, accountID, attachmentID uuid.UUID, extractedText *string,
+	status domain.AttachmentProcessingStatus, processedAt time.Time,
+) error {
+	tag, err := q.Exec(ctx,
+		`UPDATE rfq_attachment
+		    SET extracted_text = $3, processing_status = $4, processed_at = $5
+		  WHERE account_id = $1 AND id = $2`,
+		accountID, attachmentID, extractedText, status, processedAt)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 func scanRFQAttachment(row pgx.Row) (*domain.RFQAttachment, error) {

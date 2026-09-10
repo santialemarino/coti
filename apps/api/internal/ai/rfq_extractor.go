@@ -10,7 +10,10 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
-var _ domain.RFQExtractor = (*RFQExtractor)(nil)
+var (
+	_ domain.RFQExtractor        = (*RFQExtractor)(nil)
+	_ domain.RFQContentExtractor = (*RFQExtractor)(nil)
+)
 
 const (
 	rfqExtractionPromptVersion = "rfq-extraction-prompt-v2"
@@ -50,6 +53,28 @@ func (e *RFQExtractor) ExtractWithExamples(ctx context.Context, raw string,
 			domain.TextContent("Order to interpret:\n" + raw),
 		}
 	}
+	return e.extract(ctx, input)
+}
+
+// ExtractFromContent reads an order the client sent as a file. The blocks are the order itself,
+// so the caller assembles them and the prompt is the same one plain text answers.
+func (e *RFQExtractor) ExtractFromContent(ctx context.Context, blocks []domain.Content,
+	examples []domain.RFQInterpretationExample) (*domain.RFQExtraction, error) {
+	input := blocks
+	if len(examples) > 0 {
+		payload, err := json.Marshal(examples)
+		if err != nil {
+			return nil, err
+		}
+		input = append([]domain.Content{
+			domain.TextContent("Relevant seller-approved examples:\n" + string(payload)),
+		}, blocks...)
+	}
+	return e.extract(ctx, input)
+}
+
+func (e *RFQExtractor) extract(ctx context.Context,
+	input []domain.Content) (*domain.RFQExtraction, error) {
 	var answer rfqExtractionAnswer
 	usage, err := e.generator.Generate(ctx, domain.GenerationRequest{
 		Instructions: e.instructions(),

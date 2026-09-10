@@ -20,10 +20,11 @@ import (
 )
 
 type stubRFQService struct {
-	draft  *domain.TextRFQDraft
-	tenant domain.Tenant
-	input  domain.TextRFQDraftInput
-	calls  int
+	draft     *domain.TextRFQDraft
+	tenant    domain.Tenant
+	input     domain.TextRFQDraftInput
+	fileInput domain.FileRFQDraftInput
+	calls     int
 }
 
 func (s *stubRFQService) CreateTextDraft(
@@ -32,6 +33,15 @@ func (s *stubRFQService) CreateTextDraft(
 	s.calls++
 	s.tenant = tenant
 	s.input = input
+	return s.draft, nil
+}
+
+func (s *stubRFQService) CreateFileDraft(
+	_ context.Context, tenant domain.Tenant, input domain.FileRFQDraftInput,
+) (*domain.TextRFQDraft, error) {
+	s.calls++
+	s.tenant = tenant
+	s.fileInput = input
 	return s.draft, nil
 }
 
@@ -79,7 +89,7 @@ func TestRFQHandler_CreateTextDraft_ReturnsAReviewableDraft(t *testing.T) {
 			MatchStatus:     domain.ItemMatchStatusMatched, QuantityRationale: &rationale, CreatedAt: now,
 		}},
 	}}
-	handler := NewRFQHandler(service)
+	handler := NewRFQHandler(service, 10<<20)
 	payload, err := json.Marshal(map[string]any{
 		"channel_id": channelID,
 		"raw_text":   rawText,

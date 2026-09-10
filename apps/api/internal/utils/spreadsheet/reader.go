@@ -90,6 +90,23 @@ func Read(filename string, src io.Reader, schema Schema) ([]Row, error) {
 	return mapRecords(records, schema)
 }
 
+// ReadRaw parses CSV or XLSX content into its cells, in file order, with no schema. A client's
+// order names its columns however it likes, so there is no header set to map it through.
+func ReadRaw(filename string, src io.Reader) ([][]string, error) {
+	records, err := readRecords(filename, src)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([][]string, 0, len(records))
+	for _, entry := range records {
+		if rowIsEmpty(entry.values) {
+			continue
+		}
+		rows = append(rows, entry.values)
+	}
+	return rows, nil
+}
+
 func readRecords(filename string, src io.Reader) ([]record, error) {
 	switch strings.ToLower(filepath.Ext(filename)) {
 	case ".csv":

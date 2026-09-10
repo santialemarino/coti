@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
-import { AlertCircleIcon, PlusIcon, XIcon } from 'lucide-react';
+import { PlusIcon, XIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import {
   Button,
+  Callout,
   Combobox,
   DialogFooter,
   Input,
@@ -148,12 +149,7 @@ export function RfqManualView({ onBack, onClose, onCreated, activeBranchId }: Rf
       noValidate
       className="flex flex-col gap-y-5"
     >
-      {activeBranchId ? null : (
-        <div className="flex items-center gap-x-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-paragraph-sm text-amber-800">
-          <AlertCircleIcon aria-hidden="true" className="shrink-0 size-4" />
-          {t('noBranch')}
-        </div>
-      )}
+      {activeBranchId ? null : <Callout tone="warning">{t('noBranch')}</Callout>}
 
       <div className="flex flex-col gap-y-4">
         <div className="flex flex-col gap-y-1">

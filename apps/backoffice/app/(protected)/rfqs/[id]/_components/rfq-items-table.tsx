@@ -19,7 +19,6 @@ import {
   TableHeader,
   TableRow,
 } from '@repo/ui/components';
-import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { CatalogProduct } from '@/lib/api/catalog';
 import { errorCodeOf } from '@/lib/api/errors';
@@ -32,6 +31,7 @@ import {
   updateDiscount,
   updateQuoteItem,
 } from '@/lib/api/rfqs-client';
+import { decimalToMoneyInput, maskMoneyInput, moneyInputToDecimal } from '@/lib/forms/money-input';
 import { useFormatters } from '@/lib/i18n/formatters';
 import { DiscountDialog } from './discount-dialog';
 import { ProductSearchDialog } from './product-search-dialog';
@@ -51,6 +51,9 @@ const PRICED_STATUSES = new Set(['QUOTED', 'SENT', 'CHANGE_REQUESTED', 'ACCEPTED
 interface RfqItemsTableProps {
   quoteId: string | null;
   quoteStatus: string | null;
+  // The branch that owns this order. Every write is scoped to it rather than to the header
+  // switcher, which is a filter over the list and sits on "todas" by default.
+  branchId: string;
   items: QuoteItemResponse[];
   discounts: QuoteDiscountResponse[];
   onItemsChange: (items: QuoteItemResponse[]) => void;
@@ -62,27 +65,6 @@ function toQuantity(value: string): string {
   const parsed = Number.parseFloat(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return '1';
   return String(parsed);
-}
-
-function toPrice(value: string): string {
-  const compact = value.trim().replace(/\s/g, '');
-  const parts = compact.split('.');
-  const normalized = compact.includes(',')
-    ? compact.replace(/\./g, '').replace(',', '.')
-    : parts.length === 2 && (parts[1]?.length ?? 0) <= 2
-      ? compact
-      : compact.replace(/\./g, '');
-  if (!/^\d+(?:\.\d+)?$/.test(normalized)) return '0';
-
-  const [integer = '0', fraction] = normalized.split('.');
-  const normalizedInteger = integer.replace(/^0+(?=\d)/, '');
-  return fraction === undefined ? normalizedInteger : `${normalizedInteger}.${fraction}`;
-}
-
-function priceInputValue(value: string, fmt: ReturnType<typeof useFormatters>): string {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return value;
-  return fmt.value(parsed, { minDecimals: 2, maxDecimals: 2 });
 }
 
 function confidenceTone(score: string | null): 'success' | 'warning' | 'danger' | 'neutral' {
@@ -116,6 +98,7 @@ function discountRuleLabel(
 export function RfqItemsTable({
   quoteId,
   quoteStatus,
+  branchId,
   items,
   discounts,
   onItemsChange,
@@ -125,7 +108,6 @@ export function RfqItemsTable({
   const fmt = useFormatters();
   const t = useTranslations('rfqs');
   const message = useApiErrorMessage('rfqs.detail.items');
-  const { activeBranchId } = useRfqList();
   const [searchOpen, setSearchOpen] = useState(false);
   const [editingQuantity, setEditingQuantity] = useState<Record<string, string>>({});
   const [editingPrice, setEditingPrice] = useState<Record<string, string>>({});
@@ -156,21 +138,14 @@ export function RfqItemsTable({
   );
   const grandTotal = itemsSubtotal - discountsTotal;
 
-  function requireActiveBranch(): boolean {
-    if (activeBranchId) return true;
-    toast.error(t('detail.items.toast.branchRequired'));
-    return false;
-  }
-
   async function handleDiscountSave(body: CreateDiscountBody) {
     if (!quoteId) return;
-    if (!requireActiveBranch()) return;
     try {
       if (editingDiscount) {
-        await updateDiscount(quoteId, editingDiscount.id, body);
+        await updateDiscount(quoteId, editingDiscount.id, branchId, body);
         toast.success(t('detail.items.discounts.toast.updated'));
       } else {
-        await addDiscount(quoteId, body);
+        await addDiscount(quoteId, branchId, body);
         toast.success(t('detail.items.discounts.toast.added'));
       }
       await onRefresh?.();
@@ -181,22 +156,19 @@ export function RfqItemsTable({
   }
 
   function openAddDiscount() {
-    if (!requireActiveBranch()) return;
     setEditingDiscount(null);
     setDiscountDialogOpen(true);
   }
 
   function openEditDiscount(discount: QuoteDiscountResponse) {
-    if (!requireActiveBranch()) return;
     setEditingDiscount(discount);
     setDiscountDialogOpen(true);
   }
 
   async function handleToggleDiscount(discount: QuoteDiscountResponse) {
     if (!quoteId) return;
-    if (!requireActiveBranch()) return;
     try {
-      const updated = await updateDiscount(quoteId, discount.id, {
+      const updated = await updateDiscount(quoteId, discount.id, branchId, {
         suppressed_by_seller: !discount.suppressed_by_seller,
       });
       await onRefresh?.();
@@ -213,9 +185,8 @@ export function RfqItemsTable({
 
   async function handleDeleteDiscount(discount: QuoteDiscountResponse) {
     if (!quoteId) return;
-    if (!requireActiveBranch()) return;
     try {
-      await deleteDiscount(quoteId, discount.id);
+      await deleteDiscount(quoteId, discount.id, branchId);
       onDiscountsChange?.(discounts.filter((d) => d.id !== discount.id));
       await onRefresh?.();
       toast.success(t('detail.items.discounts.toast.removed'));
@@ -225,7 +196,6 @@ export function RfqItemsTable({
   }
 
   function openProductSearch(itemId?: string) {
-    if (!requireActiveBranch()) return;
     setEditingProductItemId(itemId ?? null);
     setSearchOpen(true);
   }
@@ -243,17 +213,9 @@ export function RfqItemsTable({
       });
       return;
     }
-    if (!requireActiveBranch()) {
-      setEditingQuantity((prev) => {
-        const next = { ...prev };
-        delete next[itemId];
-        return next;
-      });
-      return;
-    }
 
     try {
-      const updated = await updateQuoteItem(quoteId, itemId, { quantity: normalized });
+      const updated = await updateQuoteItem(quoteId, itemId, branchId, { quantity: normalized });
       onItemsChange(items.map((item) => (item.id === itemId ? updated : item)));
       toast.success(t('detail.items.toast.updated'));
     } catch (error) {
@@ -271,16 +233,9 @@ export function RfqItemsTable({
     if (!quoteId) return;
     const raw = editingPrice[itemId];
     if (raw === undefined) return;
-    const normalized = toPrice(raw);
-    if (normalized === currentPrice) {
-      setEditingPrice((prev) => {
-        const next = { ...prev };
-        delete next[itemId];
-        return next;
-      });
-      return;
-    }
-    if (!requireActiveBranch()) {
+    const normalized = moneyInputToDecimal(raw);
+    // A field cleared to nothing is an edit the seller has not finished, not a price of zero.
+    if (!normalized || Number(normalized) === Number(currentPrice)) {
       setEditingPrice((prev) => {
         const next = { ...prev };
         delete next[itemId];
@@ -290,7 +245,7 @@ export function RfqItemsTable({
     }
 
     try {
-      const updated = await updateQuoteItem(quoteId, itemId, {
+      const updated = await updateQuoteItem(quoteId, itemId, branchId, {
         unit_price_snapshot: normalized,
       });
       onItemsChange(items.map((item) => (item.id === itemId ? updated : item)));
@@ -308,9 +263,8 @@ export function RfqItemsTable({
 
   async function handleDelete(itemId: string) {
     if (!quoteId) return;
-    if (!requireActiveBranch()) return;
     try {
-      await deleteQuoteItem(quoteId, itemId);
+      await deleteQuoteItem(quoteId, itemId, branchId);
       onItemsChange(items.filter((item) => item.id !== itemId));
       toast.success(t('detail.items.toast.deleted'));
     } catch (error) {
@@ -320,9 +274,8 @@ export function RfqItemsTable({
 
   async function handleAddProduct(product: CatalogProduct) {
     if (!quoteId) return;
-    if (!requireActiveBranch()) return;
     try {
-      const created = await addQuoteItem(quoteId, {
+      const created = await addQuoteItem(quoteId, branchId, {
         product_id: product.id,
         requested_description: product.name,
         quantity: '1',
@@ -337,11 +290,10 @@ export function RfqItemsTable({
 
   async function handleModifyProduct(product: CatalogProduct) {
     if (!quoteId || !editingProductItemId) return;
-    if (!requireActiveBranch()) return;
     const item = items.find((i) => i.id === editingProductItemId);
     if (!item) return;
     try {
-      const updated = await updateQuoteItem(quoteId, item.id, {
+      const updated = await updateQuoteItem(quoteId, item.id, branchId, {
         product_id: product.id,
         requested_description: product.name,
         unit: product.unit || null,
@@ -422,7 +374,7 @@ export function RfqItemsTable({
               const quantityValue = editingQuantity[item.id] ?? item.quantity;
               const priceValue =
                 editingPrice[item.id] ??
-                (item.unit_price_snapshot ? priceInputValue(item.unit_price_snapshot, fmt) : '');
+                (item.unit_price_snapshot ? decimalToMoneyInput(item.unit_price_snapshot) : '');
               const noMatch =
                 !showConfidence && item.match_status === 'NO_MATCH' && !item.product_name;
 
@@ -533,7 +485,7 @@ export function RfqItemsTable({
                           onChange={(event) =>
                             setEditingPrice((prev) => ({
                               ...prev,
-                              [item.id]: event.target.value,
+                              [item.id]: maskMoneyInput(event.target.value),
                             }))
                           }
                           onBlur={() => handlePriceBlur(item.id, item.unit_price_snapshot ?? '0')}

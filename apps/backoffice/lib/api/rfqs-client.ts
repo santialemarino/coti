@@ -1,9 +1,12 @@
 import { ApiError, codeForStatus, knownErrorCode } from '@/lib/api/errors';
 import type {
   CreateDiscountBody,
+  FileRfqDraftResponse,
   QuoteDiscountResponse,
   QuoteItemResponse,
   QuoteResponse,
+  QuoteSendBody,
+  QuoteSendResponse,
   QuoteVersionResponse,
   RfqDetailResponse,
   UpdateDiscountBody,
@@ -82,6 +85,43 @@ export async function createRfq(body: CreateRfqBody): Promise<CreateRfqResponse>
   return response.json() as Promise<CreateRfqResponse>;
 }
 
+export interface FileRfqDraftFields {
+  channelId: string;
+  clientLabel?: string;
+  workType?: string;
+  note?: string;
+}
+
+/*
+ * Run an order that arrived as a file through the AI pipeline. The API reads the file — a
+ * photo, a PDF, a spreadsheet or a voice note — stores it against the RFQ, and answers with
+ * the same seller-reviewable draft the text flow produces.
+ */
+export async function createFileRfqDraft(
+  file: File,
+  fields: FileRfqDraftFields,
+  branchId: string | null,
+): Promise<FileRfqDraftResponse> {
+  const body = new FormData();
+  body.set('file', file);
+  body.set('channel_id', fields.channelId);
+  if (fields.clientLabel) body.set('client_label', fields.clientLabel);
+  if (fields.workType) body.set('work_type', fields.workType);
+  if (fields.note) body.set('note', fields.note);
+
+  const response = await fetch('/api/rfqs/file-drafts', {
+    method: 'POST',
+    headers: branchId ? { 'X-Branch-Id': branchId } : undefined,
+    body,
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    await throwOnError(response);
+  }
+  return response.json() as Promise<FileRfqDraftResponse>;
+}
+
 /*
  * Client-side RFQ detail fetch. Calls the internal BFF route that reads the
  * session and branch cookies server-side and forwards them as auth headers.
@@ -114,6 +154,18 @@ export async function fetchRfqDetail(id: string): Promise<RfqDetailResponse> {
   }
 
   return response.json() as Promise<RfqDetailResponse>;
+}
+
+/*
+ * The branch a write is scoped to. An order belongs to exactly one branch, and the header
+ * switcher is a filter over the list — it sits on "todas las sucursales" by default — so a
+ * screen acting on one order names that order's branch instead of the current filter.
+ */
+function branchHeaders(branchId: string, json = false): Record<string, string> {
+  return {
+    'X-Branch-Id': branchId,
+    ...(json ? { 'Content-Type': 'application/json' } : {}),
+  };
 }
 
 /*
@@ -182,6 +234,7 @@ export async function setRfqSeller(rfqId: string, sellerId: string | null): Prom
 export async function updateQuoteItem(
   quoteId: string,
   itemId: string,
+  branchId: string,
   body: {
     product_id?: string | null;
     requested_description?: string;
@@ -192,7 +245,7 @@ export async function updateQuoteItem(
 ): Promise<QuoteItemResponse> {
   const response = await fetch(`/api/quotes/${quoteId}/items/${itemId}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: branchHeaders(branchId, true),
     body: JSON.stringify(body),
     cache: 'no-store',
   });
@@ -206,9 +259,14 @@ export async function updateQuoteItem(
 /*
  * Delete a draft quote item.
  */
-export async function deleteQuoteItem(quoteId: string, itemId: string): Promise<void> {
+export async function deleteQuoteItem(
+  quoteId: string,
+  itemId: string,
+  branchId: string,
+): Promise<void> {
   const response = await fetch(`/api/quotes/${quoteId}/items/${itemId}`, {
     method: 'DELETE',
+    headers: branchHeaders(branchId),
     cache: 'no-store',
   });
 
@@ -222,6 +280,7 @@ export async function deleteQuoteItem(quoteId: string, itemId: string): Promise<
  */
 export async function addQuoteItem(
   quoteId: string,
+  branchId: string,
   body: {
     product_id?: string | null;
     requested_description: string;
@@ -231,7 +290,7 @@ export async function addQuoteItem(
 ): Promise<QuoteItemResponse> {
   const response = await fetch(`/api/quotes/${quoteId}/items`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: branchHeaders(branchId, true),
     body: JSON.stringify(body),
     cache: 'no-store',
   });
@@ -247,9 +306,11 @@ export async function addQuoteItem(
  */
 export async function generateQuote(
   quoteId: string,
+  branchId: string,
 ): Promise<{ quote: QuoteResponse; version: QuoteVersionResponse; items: QuoteItemResponse[] }> {
   const response = await fetch(`/api/quotes/${quoteId}/generate`, {
     method: 'POST',
+    headers: branchHeaders(branchId),
     cache: 'no-store',
   });
 
@@ -265,11 +326,12 @@ export async function generateQuote(
  */
 export async function addDiscount(
   quoteId: string,
+  branchId: string,
   body: CreateDiscountBody,
 ): Promise<QuoteDiscountResponse> {
   const response = await fetch(`/api/quotes/${quoteId}/discounts`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: branchHeaders(branchId, true),
     body: JSON.stringify(body),
     cache: 'no-store',
   });
@@ -287,11 +349,12 @@ export async function addDiscount(
 export async function updateDiscount(
   quoteId: string,
   discountId: string,
+  branchId: string,
   body: UpdateDiscountBody,
 ): Promise<QuoteDiscountResponse> {
   const response = await fetch(`/api/quotes/${quoteId}/discounts/${discountId}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: branchHeaders(branchId, true),
     body: JSON.stringify(body),
     cache: 'no-store',
   });
@@ -306,13 +369,41 @@ export async function updateDiscount(
  * Delete a MANUAL_SELLER discount for good. The backend refuses deleting an engine-applied
  * discount; those are suppressed instead.
  */
-export async function deleteDiscount(quoteId: string, discountId: string): Promise<void> {
+export async function deleteDiscount(
+  quoteId: string,
+  discountId: string,
+  branchId: string,
+): Promise<void> {
   const response = await fetch(`/api/quotes/${quoteId}/discounts/${discountId}`, {
     method: 'DELETE',
+    headers: branchHeaders(branchId),
     cache: 'no-store',
   });
 
   if (!response.ok) {
     await throwOnError(response);
   }
+}
+
+/*
+ * Deliver an approved quote to its client. The API freezes the version, always attempts
+ * WhatsApp with the public link, and attempts email independently when an address is given —
+ * each destination reports its own outcome, so a failed one does not hide a delivered one.
+ */
+export async function sendQuote(
+  quoteId: string,
+  branchId: string,
+  body: QuoteSendBody,
+): Promise<QuoteSendResponse> {
+  const response = await fetch(`/api/quotes/${quoteId}/sends`, {
+    method: 'POST',
+    headers: { ...branchHeaders(branchId, true), 'Idempotency-Key': crypto.randomUUID() },
+    body: JSON.stringify(body),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    await throwOnError(response);
+  }
+  return response.json() as Promise<QuoteSendResponse>;
 }

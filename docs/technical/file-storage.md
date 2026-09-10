@@ -110,8 +110,10 @@ The stored extension comes from the accepted format, never from the client's fil
 a file is called cannot decide what the object is called. `file_url` holds the **key**, not a
 URL: every link expires and the reference must not.
 
-**Nothing here reads the file.** Turning an attachment into text is the multi-format engine's
-job; this layer stores bytes and hands back links, and every row starts at `PENDING`.
+**Nothing here reads the file.** Turning an attachment into text is the pipeline's job — see
+[rfq-pipeline.md](rfq-pipeline.md#an-order-that-arrived-as-a-file) — and this layer stores bytes
+and hands back links. A file uploaded on its own leaves its row at `PENDING`; one the pipeline
+read arrives with its `extracted_text` already set and closes at `DONE`.
 
 ## What uses it: account logos
 

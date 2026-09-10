@@ -78,6 +78,17 @@ type CreateTextRFQDraftRequest struct {
 	WorkType    *string    `json:"work_type" binding:"omitempty,max=255"`
 }
 
+// CreateFileRFQDraftForm is the multipart form for POST /v1/rfqs/file-drafts. The file rides
+// the "file" part; these are the fields beside it. The ids are strings because a uuid.UUID is
+// a byte array, which the form binder reads as a collection rather than one value.
+type CreateFileRFQDraftForm struct {
+	ChannelID   string  `form:"channel_id" binding:"required,uuid"`
+	ClientID    string  `form:"client_id" binding:"omitempty,uuid"`
+	ClientLabel *string `form:"client_label" binding:"omitempty,max=255"`
+	WorkType    *string `form:"work_type" binding:"omitempty,max=255"`
+	Note        *string `form:"note"`
+}
+
 // CreateWhatsAppMockRFQDraftRequest is the body for POST /v1/dev/whatsapp/messages.
 type CreateWhatsAppMockRFQDraftRequest struct {
 	ChannelID   *uuid.UUID `json:"channel_id"`

@@ -21,7 +21,9 @@ ALTER TEXT SEARCH CONFIGURATION spanish_unaccent
 -- ENUMS
 -- =============================================================================
 
-CREATE TYPE rfq_status AS ENUM ('RECEIVED', 'GENERATED');
+-- FAILED is terminal and never produces a quote: it is where an RFQ lands when reading it
+-- never finished, so a seller can tell one apart from an order still being read.
+CREATE TYPE rfq_status AS ENUM ('RECEIVED', 'GENERATED', 'FAILED');
 
 -- DRAFT: the quote exists with matched materials but no accepted prices. It is the state
 -- while the RFQ is GENERATED, and what lets the state x intention matrix evaluate on one

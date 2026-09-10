@@ -368,7 +368,9 @@ var (
 )
 
 func testRFQConfig() config.RFQConfig {
-	return config.RFQConfig{MaxTextCharacters: 200, MaxItems: 3, PipelineTimeout: time.Minute}
+	return config.RFQConfig{
+		MaxTextCharacters: 200, MaxItems: 3, MaxSpreadsheetRows: 50, PipelineTimeout: time.Minute,
+	}
 }
 
 type fakeRFQDB struct {
@@ -396,6 +398,7 @@ type fakeRFQExtractor struct {
 	err             error
 	calls           int
 	raw             string
+	blocks          []domain.Content
 	db              *fakeRFQDB
 	calledOutsideTx bool
 }
@@ -419,6 +422,21 @@ func (f *fakeRFQExtractor) Extract(
 		},
 		PromptVersion: "test-prompt-v1", SchemaVersion: "test-schema-v1",
 	}, nil
+}
+
+func (f *fakeRFQExtractor) ExtractFromContent(
+	ctx context.Context, blocks []domain.Content, _ []domain.RFQInterpretationExample,
+) (*domain.RFQExtraction, error) {
+	f.blocks = blocks
+	// The text half of the blocks stands in for the order, so a caller asserting on `raw`
+	// reads the same thing whichever intake produced it.
+	var raw []string
+	for _, block := range blocks {
+		if block.Kind == domain.ContentKindText {
+			raw = append(raw, block.Text)
+		}
+	}
+	return f.Extract(ctx, strings.Join(raw, "\n"))
 }
 
 type fakeCatalogMatcher struct {
@@ -1321,8 +1339,10 @@ func TestRFQService_CreateTextDraft_KeepsTheOrderWhenNoMaterialIsRead(t *testing
 	if draft.Quote != nil || draft.Version != nil || len(draft.Items) != 0 {
 		t.Errorf("draft returned %+v, want the RFQ alone", draft)
 	}
-	if draft.RFQ.Status != domain.RFQStatusReceived {
-		t.Errorf("RFQ status %q, want RECEIVED", draft.RFQ.Status)
+	// The pipeline is finished and produced nothing, so the order is the seller's to load. Left
+	// RECEIVED it would read as one still being processed, and the spinner would never resolve.
+	if draft.RFQ.Status != domain.RFQStatusFailed {
+		t.Errorf("RFQ status %q, want FAILED", draft.RFQ.Status)
 	}
 }
 

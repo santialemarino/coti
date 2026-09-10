@@ -1,72 +1,105 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { MailIcon, MessageCircleIcon, SendIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import {
   Button,
+  Checkbox,
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Input,
   Label,
-  RadioGroup,
-  RadioGroupItem,
-  Textarea,
+  PendingButton,
 } from '@repo/ui/components';
-import { formatRfqReference, type RfqDetailResponse } from '@/lib/api/rfqs';
+import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import { errorCodeOf } from '@/lib/api/errors';
+import {
+  formatRfqReference,
+  type QuoteDeliveryResponse,
+  type RfqDetailResponse,
+} from '@/lib/api/rfqs';
+import { sendQuote } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
 
-type SendChannel = 'whatsapp' | 'email';
+// Same shape the API enforces, so a malformed number is caught before the round trip.
+const E164 = /^\+[1-9]\d{7,14}$/;
 
 interface SendQuoteDialogProps {
   detail: RfqDetailResponse;
+  branchId: string;
+  onSent: () => Promise<void>;
 }
 
 /*
- * Send modal shared by QUOTED and CHANGE_REQUESTED reads. The real handoff
- * (WhatsApp/email) is not wired yet, so the send button acknowledges the draft
- * is ready without leaving the screen.
+ * Delivery of an approved quote. WhatsApp always carries the public link, and the email copy
+ * is an independent extra rather than an alternative — the backend attempts each on its own
+ * and reports both, so the dialog reports both too.
  */
-export function SendQuoteDialog({ detail }: SendQuoteDialogProps) {
+export function SendQuoteDialog({ detail, branchId, onSent }: SendQuoteDialogProps) {
   const fmt = useFormatters();
   const t = useTranslations('rfqs.detail.send');
+  const tChannel = useTranslations('rfqs.channels');
+  const message = useApiErrorMessage('rfqs.detail.send');
   const [open, setOpen] = useState(false);
-  const [channel, setChannel] = useState<SendChannel>(
-    detail.rfq.channel === 'email' ? 'email' : 'whatsapp',
-  );
-  const [message, setMessage] = useState('');
+  const [phone, setPhone] = useState('');
+  const [alsoEmail, setAlsoEmail] = useState(false);
+  const [email, setEmail] = useState('');
   const [sending, setSending] = useState(false);
 
-  const defaultMessage = useMemo(() => {
-    const client = detail.rfq.client;
-    return [
-      t('greeting', { client: client?.trim() ? client.trim() : t('noClient') }),
-      t('body', {
-        id: formatRfqReference(detail.rfq.quote_number) ?? t('numberPending'),
-        total: fmt.currency(detail.version?.total ?? '0'),
-      }),
-      t('closing'),
-    ].join(' ');
-  }, [detail.rfq.client, detail.rfq.quote_number, detail.version?.total, fmt, t]);
+  const quoteId = detail.quote?.id ?? null;
+  const phoneValid = E164.test(phone.trim());
+  const emailValid = !alsoEmail || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const canSend = !!quoteId && phoneValid && emailValid;
 
   function handleOpenChange(next: boolean) {
     if (sending) return;
-    if (next) setMessage(defaultMessage);
     setOpen(next);
   }
 
-  function handleSend() {
+  async function handleSend() {
+    if (!quoteId || !canSend) return;
     setSending(true);
-    // The handoff is next screen; nothing leaves here yet.
-    window.setTimeout(() => {
-      setSending(false);
+    try {
+      const result = await sendQuote(quoteId, branchId, {
+        recipient_phone: phone.trim(),
+        email_delivery: alsoEmail ? { address: email.trim() } : null,
+      });
+      reportOutcome(result.deliveries);
       setOpen(false);
-      toast.success(t('toast.comingSoon'));
-    }, 600);
+      await onSent();
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
+    } finally {
+      setSending(false);
+    }
+  }
+
+  /*
+   * A partly delivered send is not a failure and not a success: the seller has to know which
+   * channel to follow up by hand, so each one is named rather than summed into one verdict.
+   */
+  function reportOutcome(deliveries: QuoteDeliveryResponse[]) {
+    const failed = deliveries.filter((delivery) => delivery.tracking_status === 'FAILED');
+    if (failed.length === 0) {
+      toast.success(t('toast.sent'));
+      return;
+    }
+    if (failed.length === deliveries.length) {
+      toast.error(t('toast.failed'));
+      return;
+    }
+    toast.warning(
+      t('toast.partial', {
+        channels: fmt.list(failed.map((delivery) => tChannel(delivery.channel.toLowerCase()))),
+      }),
+    );
   }
 
   return (
@@ -80,45 +113,70 @@ export function SendQuoteDialog({ detail }: SendQuoteDialogProps) {
         <DialogContent className="sm:max-w-lg" closeOnClickOutside={!sending}>
           <DialogHeader>
             <DialogTitle>{t('title')}</DialogTitle>
+            <DialogDescription>{t('description')}</DialogDescription>
           </DialogHeader>
 
           <div className="flex flex-col gap-y-4">
-            <div className="flex flex-col gap-y-2">
-              <Label className="text-foreground">{t('channelLabel')}</Label>
-              <RadioGroup
-                value={channel}
-                onValueChange={(value: SendChannel) => setChannel(value)}
-                className="flex flex-col gap-y-2"
-              >
-                <label
-                  htmlFor="send-channel-whatsapp"
-                  className="flex cursor-pointer items-center gap-x-3 rounded-lg border border-border bg-card p-3 text-paragraph-sm transition-colors hover:bg-accent"
-                >
-                  <RadioGroupItem id="send-channel-whatsapp" value="whatsapp" />
-                  <MessageCircleIcon className="size-4 text-foreground-muted" />
-                  <span className="font-medium text-foreground">{t('whatsapp')}</span>
-                </label>
-                <label
-                  htmlFor="send-channel-email"
-                  className="flex cursor-pointer items-center gap-x-3 rounded-lg border border-border bg-card p-3 text-paragraph-sm transition-colors hover:bg-accent"
-                >
-                  <RadioGroupItem id="send-channel-email" value="email" />
-                  <MailIcon className="size-4 text-foreground-muted" />
-                  <span className="font-medium text-foreground">{t('email')}</span>
-                </label>
-              </RadioGroup>
+            <div className="flex flex-col gap-y-1.5">
+              <Label htmlFor="send-phone" required>
+                <MessageCircleIcon aria-hidden="true" className="size-4 text-foreground-muted" />
+                {t('phoneLabel')}
+              </Label>
+              <Input
+                id="send-phone"
+                type="tel"
+                inputMode="tel"
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                placeholder={t('phonePlaceholder')}
+                autoFocus
+              />
+              <p className="text-paragraph-xs text-foreground-muted">{t('phoneHint')}</p>
             </div>
 
-            <div className="flex flex-col gap-y-1.5">
-              <Label htmlFor="send-message" className="text-foreground">
-                {t('messageLabel')}
-              </Label>
-              <Textarea
-                id="send-message"
-                value={message}
-                onChange={(event) => setMessage(event.target.value)}
-                rows={4}
-              />
+            <div className="flex flex-col gap-y-2">
+              <label
+                htmlFor="send-also-email"
+                className="flex cursor-pointer items-center gap-x-2.5 text-paragraph-sm text-foreground"
+              >
+                <Checkbox
+                  id="send-also-email"
+                  checked={alsoEmail}
+                  onCheckedChange={(checked) => setAlsoEmail(checked === true)}
+                />
+                <MailIcon aria-hidden="true" className="size-4 text-foreground-muted" />
+                {t('alsoEmail')}
+              </label>
+              {alsoEmail && (
+                <Input
+                  id="send-email"
+                  type="email"
+                  inputMode="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder={t('emailPlaceholder')}
+                  aria-label={t('emailLabel')}
+                />
+              )}
+            </div>
+
+            <div className="flex flex-col gap-y-1.5 rounded-lg border border-border bg-sunken p-3">
+              <span className="text-paragraph-xs-medium text-foreground-muted">
+                {t('summaryLabel')}
+              </span>
+              <div className="flex items-center justify-between text-paragraph-sm">
+                <span className="text-foreground-muted">{t('summaryQuote')}</span>
+                <span className="tabular-nums text-foreground">
+                  {formatRfqReference(detail.rfq.quote_number) ?? t('numberPending')}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-paragraph-sm">
+                <span className="text-foreground-muted">{t('summaryTotal')}</span>
+                <span className="tabular-nums text-foreground">
+                  {fmt.currency(detail.version?.total ?? '0')}
+                </span>
+              </div>
+              <p className="pt-1 text-paragraph-xs text-foreground-muted">{t('summaryLink')}</p>
             </div>
           </div>
 
@@ -131,10 +189,16 @@ export function SendQuoteDialog({ detail }: SendQuoteDialogProps) {
             >
               {t('cancel')}
             </Button>
-            <Button type="button" disabled={sending} onClick={handleSend}>
+            <PendingButton
+              type="button"
+              pending={sending}
+              pendingLabel={t('sending')}
+              disabled={!canSend}
+              onClick={handleSend}
+            >
               <SendIcon className="size-4" />
-              {sending ? t('sending') : t('send')}
-            </Button>
+              {t('send')}
+            </PendingButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>

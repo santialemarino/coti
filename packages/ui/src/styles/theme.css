@@ -55,6 +55,7 @@
   /* RFQ status colours — reach for these instead of the generic success/warning/danger families. */
   --color-status-accepted: var(--status-accepted-base);
   --color-status-rejected: var(--status-rejected-base);
+  --color-status-failed: var(--status-failed-base);
   --color-status-change-requested: var(--status-change-requested-base);
   --color-status-generated: var(--status-generated-base);
   --color-status-quoted: var(--status-quoted-base);

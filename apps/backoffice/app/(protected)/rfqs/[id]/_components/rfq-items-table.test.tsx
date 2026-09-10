@@ -63,6 +63,7 @@ function renderItems(activeBranchId: string | null = BRANCH_ID) {
         <RfqItemsTable
           quoteId={QUOTE_ID}
           quoteStatus="QUOTED"
+          branchId={BRANCH_ID}
           items={[PRICED_ITEM]}
           discounts={[]}
           onItemsChange={vi.fn()}
@@ -91,7 +92,9 @@ describe('RfqItemsTable action errors', () => {
     );
   });
 
-  it('names the missing branch before attempting the write', async () => {
+  it('scopes the write to the order\u2019s branch even with no branch selected in the header', async () => {
+    vi.mocked(updateQuoteItem).mockResolvedValue({ ...PRICED_ITEM, unit_price_snapshot: '900.00' });
+
     const view = renderItems(null);
     const price = view.getByDisplayValue('780,00');
 
@@ -99,13 +102,28 @@ describe('RfqItemsTable action errors', () => {
     fireEvent.blur(price);
 
     await vi.waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith(copy.detail.items.toast.branchRequired),
+      expect(updateQuoteItem).toHaveBeenCalledWith(QUOTE_ID, ITEM_ID, BRANCH_ID, {
+        unit_price_snapshot: '900',
+      }),
     );
-    expect(updateQuoteItem).not.toHaveBeenCalled();
   });
 });
 
 describe('RfqItemsTable price input', () => {
+  it('groups thousands as the seller types, without them typing a single separator', async () => {
+    const view = renderItems();
+    const price = view.getByDisplayValue('780,00');
+
+    fireEvent.change(price, { target: { value: '1' } });
+    expect((price as HTMLInputElement).value).toBe('1');
+    fireEvent.change(price, { target: { value: '1324' } });
+    expect((price as HTMLInputElement).value).toBe('1.324');
+    fireEvent.change(price, { target: { value: '132467' } });
+    expect((price as HTMLInputElement).value).toBe('132.467');
+    fireEvent.change(price, { target: { value: '132467,8' } });
+    expect((price as HTMLInputElement).value).toBe('132.467,8');
+  });
+
   it('shows an implicit currency sign and sends an Argentine-formatted value as a decimal', async () => {
     vi.mocked(updateQuoteItem).mockResolvedValue({
       ...PRICED_ITEM,
@@ -120,7 +138,7 @@ describe('RfqItemsTable price input', () => {
     fireEvent.blur(price);
 
     await vi.waitFor(() =>
-      expect(updateQuoteItem).toHaveBeenCalledWith(QUOTE_ID, ITEM_ID, {
+      expect(updateQuoteItem).toHaveBeenCalledWith(QUOTE_ID, ITEM_ID, BRANCH_ID, {
         unit_price_snapshot: '132467.89',
       }),
     );

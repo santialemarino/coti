@@ -157,10 +157,13 @@ func run() error {
 	quoteCorrectionService := services.NewQuoteCorrectionService(db, quoteCorrectionRepo,
 		providers.Embedder, cfg.QuoteCorrection, log)
 	rfqExtractor := ai.NewRFQExtractor(providers.Generator, cfg.RFQ.MaxItems)
+	rfqAttachmentService := services.NewRFQAttachmentService(db, rfqAttachmentRepo,
+		objectStorage.Storage, cfg.Storage, nil)
 	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo, quoteSendRepo,
 		quoteAIGenerationRepo, channelRepo, userRepo, rfqExtractor, catalogMatchService, log, cfg.RFQ).
 		WithCorrectionMemory(quoteCorrectionService).
-		WithDiscounts(quoteDiscountRepo)
+		WithDiscounts(quoteDiscountRepo).
+		WithFileIntake(rfqAttachmentService, providers.Transcriber, cfg.Storage.MaxFileSize)
 	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, log)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
 		WithCorrectionLearning(quoteCorrectionService)
@@ -172,9 +175,6 @@ func run() error {
 		clientRepo, channelRepo, branchRepo, whatsapp.DisabledSender{}, quoteMailService,
 		quoteQualityService, cfg.Web.WebAppURL, nil, log).
 		WithRepresentationService(quoteRepresentationService)
-	rfqAttachmentService := services.NewRFQAttachmentService(db, rfqAttachmentRepo,
-		objectStorage.Storage, cfg.Storage, nil)
-
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
 			Health:        handler.NewHealthHandler(db),
@@ -187,7 +187,7 @@ func run() error {
 			Channel:       handler.NewChannelHandler(channelService),
 			Product:       handler.NewProductHandler(productService),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
-			RFQ:           handler.NewRFQHandler(rfqService),
+			RFQ:           handler.NewRFQHandler(rfqService, cfg.Storage.MaxFileSize),
 			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
 			Quote: handler.NewQuoteHandler(quoteService, quoteDeliveryService,
 				quoteRepresentationService),

@@ -4669,6 +4669,81 @@ paths:
       summary: Set an RFQ's seller
       tags:
       - rfqs
+  /v1/rfqs/file-drafts:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Reads an order that arrived as a photo, PDF, spreadsheet, voice
+        note or text file, stores the file against the RFQ, and returns the same seller-reviewable
+        quote DRAFT as the text flow.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: The order file
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: Channel the order arrived through
+        in: formData
+        name: channel_id
+        required: true
+        type: string
+      - description: Known client
+        in: formData
+        name: client_id
+        type: string
+      - description: Client name when there is no client record
+        in: formData
+        name: client_label
+        type: string
+      - description: Work type
+        in: formData
+        name: work_type
+        type: string
+      - description: Seller's note about the order
+        in: formData
+        name: note
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.TextRFQDraftResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/dto.RateLimitResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create an RFQ draft from a file
+      tags:
+      - rfq
   /v1/rfqs/text-drafts:
     post:
       consumes:

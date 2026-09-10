@@ -83,6 +83,9 @@ function statusDate(state: TimelineState, detail: RfqDetailResponse): string | n
 
 function stepperStatus(status: RfqStatus): TimelineState {
   if (status === 'CHANGE_REQUESTED' || status === 'REJECTED') return 'SENT';
+  // FAILED is where reading the order stopped, so the stepper rests on the step it reached
+  // instead of claiming a generation that never happened.
+  if (status === 'FAILED') return 'RECEIVED';
   return status;
 }
 

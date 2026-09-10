@@ -659,8 +659,10 @@ func TestRFQTextDraftRoute_KeepsTheOrderWhenNoModelIsBound(t *testing.T) {
 		t.Fatalf("the order was not stored: %v", err)
 	}
 	e.dropDraft(t, rfqID)
-	if status != string(domain.RFQStatusReceived) {
-		t.Errorf("rfq status = %q, want RECEIVED", status)
+	// The order survives so the seller can work it by hand, but the read is over: left RECEIVED
+	// the backoffice would show it as still being processed and the spinner would never resolve.
+	if status != string(domain.RFQStatusFailed) {
+		t.Errorf("rfq status = %q, want FAILED", status)
 	}
 
 	var quotes int

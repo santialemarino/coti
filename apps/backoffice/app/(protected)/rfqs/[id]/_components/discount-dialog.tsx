@@ -24,6 +24,7 @@ import type {
   QuoteDiscountResponse,
   QuoteItemResponse,
 } from '@/lib/api/rfqs';
+import { decimalToMoneyInput, maskMoneyInput, moneyInputToDecimal } from '@/lib/forms/money-input';
 
 interface DiscountDialogProps {
   open: boolean;
@@ -60,20 +61,25 @@ export function DiscountDialog({
 
   useEffect(() => {
     if (open) {
+      const stored = initial?.action_value ?? initial?.amount ?? '';
       setName(initial?.description ?? initial?.promotion_name ?? '');
       setActionType(initial?.action_type ?? 'FIXED_AMOUNT');
-      setValue(initial?.action_value ?? initial?.amount ?? '');
+      setValue(
+        stored && (initial?.action_type ?? 'FIXED_AMOUNT') === 'FIXED_AMOUNT'
+          ? decimalToMoneyInput(stored)
+          : stored,
+      );
       setScope(initial?.scope ?? 'TOTAL');
       setLinkedItemIds(initial?.item_ids ?? []);
     }
   }, [open, initial]);
 
   const coversItems = scope !== 'TOTAL';
-  const parsedValue = Number.parseFloat(value);
+  // An amount is money and carries the Argentine grouping; a percentage is a plain rate.
+  const isAmount = actionType === 'FIXED_AMOUNT';
+  const parsedValue = Number.parseFloat(isAmount ? moneyInputToDecimal(value) : value);
   const validValue =
-    Number.isFinite(parsedValue) &&
-    parsedValue > 0 &&
-    (actionType === 'FIXED_AMOUNT' || parsedValue <= 100);
+    Number.isFinite(parsedValue) && parsedValue > 0 && (isAmount || parsedValue <= 100);
   const hasLinkedItems = linkedItemIds.length > 0;
   const canSave = name.trim().length > 0 && validValue && (!coversItems || hasLinkedItems);
 
@@ -138,7 +144,11 @@ export function DiscountDialog({
               size="sm"
               value={actionType}
               onValueChange={(next) => {
-                if (next) setActionType(next as DiscountActionType);
+                if (!next) return;
+                setActionType(next as DiscountActionType);
+                // The two read the same digits differently, so a switch clears rather than
+                // reinterpreting "10" as ten pesos when it was ten percent.
+                setValue('');
               }}
               className="w-full"
             >
@@ -155,18 +165,32 @@ export function DiscountDialog({
             <Label htmlFor="discount-value" required>
               {t(actionType === 'PERCENTAGE' ? 'valueLabel' : 'amountLabel')}
             </Label>
-            <Input
-              id="discount-value"
-              type="number"
-              inputMode="decimal"
-              min={0.01}
-              step={0.01}
-              max={actionType === 'PERCENTAGE' ? 100 : undefined}
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              onKeyDown={handleFormKey}
-              placeholder="0.00"
-            />
+            {isAmount ? (
+              <Input
+                id="discount-value"
+                type="text"
+                inputMode="decimal"
+                prefix="$"
+                value={value}
+                onChange={(event) => setValue(maskMoneyInput(event.target.value))}
+                onKeyDown={handleFormKey}
+                placeholder="0,00"
+              />
+            ) : (
+              <Input
+                id="discount-value"
+                type="number"
+                inputMode="decimal"
+                min={0.01}
+                step={0.01}
+                max={100}
+                suffix="%"
+                value={value}
+                onChange={(event) => setValue(event.target.value)}
+                onKeyDown={handleFormKey}
+                placeholder="0"
+              />
+            )}
           </div>
 
           <div className="flex flex-col gap-y-1.5">
