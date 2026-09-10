@@ -28,7 +28,7 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
   const fmt = useFormatters();
   const t = useTranslations('rfqs');
   const message = useApiErrorMessage('rfqs.detail.items');
-  const { activeBranchId, updateRecord } = useRfqList();
+  const { updateRecord } = useRfqList();
   const [detail, setDetail] = useState(initialDetail);
   const [items, setItems] = useState<QuoteItemResponse[]>(initialDetail.items);
   const [discounts, setDiscounts] = useState<QuoteDiscountResponse[]>(
@@ -37,12 +37,14 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
   const [generating, startGenerate] = useTransition();
 
   const quoteId = detail.quote?.id ?? null;
+  // The order's own branch, which is what every write on this screen is scoped to.
+  const branchId = detail.rfq.branch_id;
   const quoteStatus = detail.quote?.current_status ?? null;
   // Business status the seller sees: DRAFT (an internal quote_state) reads as GENERATED here.
   // isDraft below stays raw so the generate button only surfaces while the quote is really DRAFT.
   const rfqStatus = normalizeRfqStatus(detail.rfq.status);
   const isDraft = quoteStatus === 'DRAFT';
-  // The send flow is one screen for every review-ready status: same modal, same mock handoff.
+  // The send flow is one screen for every review-ready status.
   const canSendQuote = quoteStatus === 'QUOTED' || quoteStatus === 'CHANGE_REQUESTED';
 
   /*
@@ -69,13 +71,9 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
 
   function handleGenerate() {
     if (!quoteId) return;
-    if (!activeBranchId) {
-      toast.error(t('detail.items.toast.branchRequired'));
-      return;
-    }
     startGenerate(async () => {
       try {
-        const result = await generateQuote(quoteId);
+        const result = await generateQuote(quoteId, branchId);
         const status = normalizeRfqStatus(result.quote.current_status);
         toast.success(t('detail.items.toast.generated'));
         setDetail((prev) => ({
@@ -144,6 +142,7 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
           <RfqItemsTable
             quoteId={quoteId}
             quoteStatus={quoteStatus}
+            branchId={branchId}
             items={items}
             discounts={discounts}
             onItemsChange={handleItemsChange}
@@ -155,6 +154,7 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
         <RfqItemsTable
           quoteId={quoteId}
           quoteStatus={quoteStatus}
+          branchId={branchId}
           items={items}
           discounts={discounts}
           onItemsChange={handleItemsChange}
@@ -175,7 +175,9 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
               {t('detail.items.generate')}
             </PendingButton>
           )}
-          {canSendQuote && <SendQuoteDialog detail={detail} />}
+          {canSendQuote && (
+            <SendQuoteDialog detail={detail} branchId={branchId} onSent={refreshDetail} />
+          )}
         </div>
       )}
     </div>

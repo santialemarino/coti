@@ -98,6 +98,10 @@
     "INVALID_LINK": "El enlace no es válido, ya se usó o venció.",
     "QUOTE_ARCHIVED": "La cotización está archivada y no se puede modificar.",
     "QUOTE_NOT_DRAFT": "La cotización ya no está en un estado que permita esa acción.",
+    "QUOTE_NOT_SENDABLE": "La cotización cambió y esta versión ya no es la aprobada.",
+    "UNSUPPORTED_FILE_TYPE": "Ese tipo de archivo no está soportado.",
+    "AI_UNAVAILABLE": "La IA no está disponible en este momento. Probá de nuevo en unos minutos.",
+    "NOT_CONFIGURED": "Esa función todavía no está configurada en esta cuenta.",
     "INTERNAL": "Ocurrió un error inesperado. Intentá de nuevo.",
     "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
     "SESSION_EXPIRED": "Tu sesión expiró. Volvé a iniciar sesión."
@@ -541,11 +545,37 @@
         "description": "Elegís los productos del catálogo y definís las cantidades."
       },
       "import": {
-        "fileLabel": "Archivo",
-        "acceptHint": "Podés subir un PDF, un Excel, un CSV, una imagen o un audio con el pedido del cliente.",
+        "dropzone": {
+          "title": "Arrastrá el archivo del pedido o elegilo",
+          "release": "Soltá el archivo acá",
+          "choose": "Elegir archivo",
+          "replace": "Cambiar archivo",
+          "selected": "{size} KB"
+        },
+        "acceptHint": "PDF, Excel, CSV, foto o audio con el pedido del cliente.",
+        "noBranch": "Seleccioná una sucursal en el selector del encabezado para crear un pedido.",
+        "channelLabel": "¿Por dónde llegó?",
+        "channelPlaceholder": "Elegí el canal",
+        "channelEmpty": "Esta sucursal no tiene canales activos.",
+        "clientLabel": "Cliente (opcional)",
+        "clientPlaceholder": "Nombre del cliente",
+        "noteLabel": "Nota para la IA (opcional)",
+        "notePlaceholder": "Algo que ayude a interpretar el pedido.",
         "back": "Volver",
-        "processing": "Procesando…",
-        "submit": "Crear pedido con IA"
+        "processing": "Leyendo el pedido…",
+        "submit": "Crear pedido con IA",
+        "errors": {
+          "INVALID_INPUT": "No pudimos leer un pedido en ese archivo. Revisá que se entienda el listado de materiales.",
+          "UNSUPPORTED_FILE_TYPE": "Ese tipo de archivo no está soportado. Subí un PDF, un Excel, un CSV, una imagen o un audio.",
+          "FILE_TOO_LARGE": "El archivo es muy grande. Subí uno más liviano.",
+          "NOT_FOUND": "No encontramos el canal seleccionado. Actualizá la pantalla e intentá de nuevo.",
+          "FORBIDDEN": "No tenés permiso para crear pedidos en esta sucursal.",
+          "NOT_CONFIGURED": "La lectura de este tipo de archivo todavía no está configurada en esta cuenta.",
+          "AI_UNAVAILABLE": "La IA no está disponible en este momento. Probá de nuevo en unos minutos.",
+          "RATE_LIMITED": "Hiciste muchos pedidos con IA seguidos. Esperá un momento y volvé a intentar.",
+          "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
+          "INTERNAL": "No pudimos procesar el archivo. Intentá de nuevo."
+        }
       },
       "manual": {
         "clientLabel": "Cliente",
@@ -573,7 +603,8 @@
         "submit": "Crear pedido"
       },
       "toast": {
-        "imported": "La IA procesó \u201c{filename}\u201d y generó el pedido.",
+        "imported": "{count, plural, one {La IA leyó # ítem del archivo.} other {La IA leyó # ítems del archivo.}}",
+        "importedEmpty": "No encontramos materiales en el archivo. Revisá el pedido y cargalos a mano.",
         "created": "El pedido se creó correctamente.",
         "error": "No se pudo crear el pedido. Intentá de nuevo."
       }
@@ -709,8 +740,7 @@
           "updated": "Ítem actualizado",
           "deleted": "Ítem eliminado",
           "added": "Producto agregado",
-          "generated": "Cotización generada",
-          "branchRequired": "Seleccioná una sucursal antes de modificar o generar esta cotización."
+          "generated": "Cotización generada"
         },
         "errors": {
           "NOT_FOUND": "No encontramos ese ítem o cotización. Actualizá la pantalla e intentá de nuevo.",
@@ -725,20 +755,36 @@
       "send": {
         "button": "Enviar cotización",
         "title": "Enviar cotización",
-        "channelLabel": "Canal",
-        "whatsapp": "WhatsApp",
-        "email": "Email",
-        "messageLabel": "Mensaje",
-        "greeting": "¡Hola {client}!",
-        "noClient": "cliente",
+        "description": "La cotización se envía por WhatsApp con un enlace al detalle. Podés mandar además una copia por correo.",
+        "phoneLabel": "WhatsApp del cliente",
+        "phonePlaceholder": "+5491122334455",
+        "phoneHint": "Con código de país, sin espacios ni guiones.",
+        "alsoEmail": "Enviar también una copia por correo",
+        "emailLabel": "Correo del cliente",
+        "emailPlaceholder": "cliente@empresa.com",
+        "summaryLabel": "Qué se envía",
+        "summaryQuote": "Cotización",
+        "summaryTotal": "Total",
+        "summaryLink": "Incluye un enlace para que el cliente vea el detalle y responda.",
         "numberPending": "sin número",
-        "body": "Te compartimos la cotización {id}. El total es {total}.",
-        "closing": "Quedamos a disposición por cualquier consulta.",
         "cancel": "Cancelar",
         "send": "Enviar",
         "sending": "Enviando…",
         "toast": {
-          "comingSoon": "El envío estará disponible próximamente."
+          "sent": "Cotización enviada",
+          "partial": "Enviamos la cotización, pero falló {channels}. Reintentá ese envío.",
+          "failed": "No pudimos enviar la cotización por ningún canal. Intentá de nuevo."
+        },
+        "errors": {
+          "NOT_FOUND": "No encontramos esta cotización. Actualizá la pantalla e intentá de nuevo.",
+          "INVALID_INPUT": "Revisá el teléfono y el correo: el teléfono va con código de país.",
+          "CONFLICT": "La cotización cambió mientras la enviabas. Actualizá la pantalla y revisala antes de enviar.",
+          "QUOTE_NOT_SENDABLE": "Esta versión ya no es la aprobada. Actualizá la pantalla y volvé a intentar.",
+          "QUOTE_ARCHIVED": "Esta cotización está archivada. Desarchivala antes de enviarla.",
+          "FORBIDDEN": "No tenés permiso para enviar esta cotización.",
+          "NOT_CONFIGURED": "El envío al cliente todavía no está configurado en esta cuenta.",
+          "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
+          "INTERNAL": "No pudimos enviar la cotización. Intentá de nuevo."
         }
       },
       "diff": {

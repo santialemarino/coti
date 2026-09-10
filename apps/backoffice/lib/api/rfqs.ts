@@ -189,6 +189,42 @@ export interface QuoteSendTrackingResponse {
   created_at: string;
 }
 
+/*
+ * Returned by POST /v1/rfqs/file-drafts. Quote and version are absent when the model read no
+ * material out of the file: the RFQ and the file are kept and the seller works it by hand.
+ */
+export interface FileRfqDraftResponse {
+  rfq: { id: string; status: string };
+  quote: QuoteResponse | null;
+  version: QuoteVersionResponse | null;
+  items: QuoteItemResponse[];
+}
+
+// Body of POST /v1/quotes/:quoteId/sends. WhatsApp and the public link always go; the email
+// copy is the optional one, so an absent email_delivery means "WhatsApp only".
+export interface QuoteSendBody {
+  recipient_phone: string;
+  email_delivery?: { address: string } | null;
+  expiry_days?: number | null;
+}
+
+export interface QuoteSendResponse {
+  quote_id: string;
+  version_id: string;
+  current_status: string;
+  expires_at: string | null;
+  deliveries: QuoteDeliveryResponse[];
+}
+
+export interface QuoteDeliveryResponse {
+  id: string;
+  channel: string;
+  destination: string;
+  tracking_status: string;
+  public_url: string;
+  sent_at: string | null;
+}
+
 export type DiscountOrigin = 'AUTOMATIC' | 'AI_ADAPTATION' | 'MANUAL_SELLER';
 
 export interface QuoteDiscountResponse {

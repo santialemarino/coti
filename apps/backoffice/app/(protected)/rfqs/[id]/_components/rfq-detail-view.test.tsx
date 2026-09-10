@@ -297,12 +297,12 @@ describe('RfqDetailView quote generation', () => {
     expect(router.refresh).toHaveBeenCalled();
   });
 
-  it('names the missing branch before calling the API', () => {
+  it("prices through the order's own branch even with no branch selected in the header", async () => {
     renderView(makeDetail('DRAFT', 'GENERATED'), null);
 
     fireEvent.click(screen.getByRole('button', { name: copy.detail.items.generate }));
 
-    expect(generateQuote).not.toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith(copy.detail.items.toast.branchRequired);
+    await vi.waitFor(() => expect(generateQuote).toHaveBeenCalledWith(QUOTE_ID, BRANCH_ID));
+    expect(toast.error).not.toHaveBeenCalled();
   });
 });
