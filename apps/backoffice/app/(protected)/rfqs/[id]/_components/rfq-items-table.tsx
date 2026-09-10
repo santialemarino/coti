@@ -542,7 +542,7 @@ export function RfqItemsTable({
                               (event.target as HTMLInputElement).blur();
                             }
                           }}
-                          containerClassName="w-30 mx-auto"
+                          containerClassName="w-36 mx-auto"
                           className="text-center tabular-nums"
                         />
                       ) : item.unit_price_snapshot != null ? (
