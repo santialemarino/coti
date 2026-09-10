@@ -4,13 +4,15 @@ import { getLocaleTag } from '@/lib/i18n/locales';
 export interface FormatValueOptions {
   locale?: string;
   compact?: boolean;
+  // Min fraction digits for non-compact output.
+  minDecimals?: number;
   // Max fraction digits for non-compact output.
   maxDecimals?: number;
 }
 
-// Thousand separators, stripping .00 for integers. `compact: true` abbreviates ("1,5 M").
+// Thousand separators with configurable decimals. `compact: true` abbreviates ("1,5 M").
 export function formatValue(value: number, options: FormatValueOptions = {}): string {
-  const { locale, compact = false, maxDecimals = 2 } = options;
+  const { locale, compact = false, minDecimals = 0, maxDecimals = 2 } = options;
   if (compact) {
     return numberFormat(getLocaleTag(locale), {
       notation: 'compact',
@@ -20,8 +22,8 @@ export function formatValue(value: number, options: FormatValueOptions = {}): st
   }
   const hasDecimals = value % 1 !== 0;
   return numberFormat(getLocaleTag(locale), {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: hasDecimals ? maxDecimals : 0,
+    minimumFractionDigits: minDecimals,
+    maximumFractionDigits: Math.max(minDecimals, hasDecimals ? maxDecimals : 0),
   }).format(value);
 }
 

@@ -75,7 +75,7 @@ describe('RfqItemsTable action errors', () => {
     vi.mocked(updateQuoteItem).mockRejectedValue(new ApiError('QUOTE_NOT_DRAFT', 409));
 
     const view = renderItems();
-    const price = view.getByDisplayValue('780.00');
+    const price = view.getByDisplayValue('780,00');
 
     fireEvent.change(price, { target: { value: '900' } });
     fireEvent.blur(price);
@@ -87,7 +87,7 @@ describe('RfqItemsTable action errors', () => {
 
   it('names the missing branch before attempting the write', async () => {
     const view = renderItems(null);
-    const price = view.getByDisplayValue('780.00');
+    const price = view.getByDisplayValue('780,00');
 
     fireEvent.change(price, { target: { value: '900' } });
     fireEvent.blur(price);
@@ -96,5 +96,27 @@ describe('RfqItemsTable action errors', () => {
       expect(toast.error).toHaveBeenCalledWith(copy.detail.items.toast.branchRequired),
     );
     expect(updateQuoteItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('RfqItemsTable price input', () => {
+  it('shows an implicit currency sign and sends an Argentine-formatted value as a decimal', async () => {
+    vi.mocked(updateQuoteItem).mockResolvedValue({
+      ...PRICED_ITEM,
+      unit_price_snapshot: '132467.89',
+    });
+
+    const view = renderItems();
+    const price = view.getByDisplayValue('780,00');
+    expect(price.parentElement?.textContent).toContain('$');
+
+    fireEvent.change(price, { target: { value: '132.467,89' } });
+    fireEvent.blur(price);
+
+    await vi.waitFor(() =>
+      expect(updateQuoteItem).toHaveBeenCalledWith(QUOTE_ID, ITEM_ID, {
+        unit_price_snapshot: '132467.89',
+      }),
+    );
   });
 });
