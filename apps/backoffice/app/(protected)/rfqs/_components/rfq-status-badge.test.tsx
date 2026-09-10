@@ -111,7 +111,9 @@ describe('RfqStatusBadge', () => {
     expect(archivedChip.className).not.toContain('text-status-sent');
     colours.add('text-status-archived');
 
-    expect(colours.size, 'each state must map to a distinct colour').toBe(7);
+    // Every state but RECEIVED renders a badge, and archived adds one more. Derived rather than
+    // written out, so a state added later has to bring its own colour instead of borrowing one.
+    expect(colours.size, 'each state must map to a distinct colour').toBe(STATUS_ORDER.length);
   });
 
   it('recognises which statuses carry a definitive quote total', () => {

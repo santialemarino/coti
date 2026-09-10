@@ -968,17 +968,18 @@ func (s *RFQService) CreateFileDraft(
 		return nil, storeErr
 	}
 
+	sellerID := tenant.UserID
 	extraction, items, alternatives, err := s.readMaterialsFromContent(pipelineCtx, tenant,
 		contentExtractor, blocks, extractedText)
 	if err != nil {
+		s.markRFQFailed(ctx, tenant, rfq, &sellerID)
 		return nil, err
 	}
 	if len(items) == 0 {
 		s.log.InfoContext(ctx, "rfq file produced no materials",
 			slog.String("rfq_id", rfq.ID.String()))
-		return &domain.TextRFQDraft{RFQ: *rfq}, nil
+		return &domain.TextRFQDraft{RFQ: *s.markRFQFailed(ctx, tenant, rfq, &sellerID)}, nil
 	}
-	sellerID := tenant.UserID
 	return s.persistGeneratedDraft(ctx, tenant, rfq, &sellerID, extraction, items, alternatives)
 }
 
@@ -1032,11 +1033,12 @@ func (s *RFQService) createTextDraft(
 
 	extraction, items, alternatives, err := s.readMaterials(ctx, tenant, in.RawText)
 	if err != nil {
+		s.markRFQFailed(ctx, tenant, rfq, sellerID)
 		return nil, err
 	}
 	if len(items) == 0 {
 		s.log.InfoContext(ctx, "rfq produced no materials", slog.String("rfq_id", rfq.ID.String()))
-		return &domain.TextRFQDraft{RFQ: *rfq}, nil
+		return &domain.TextRFQDraft{RFQ: *s.markRFQFailed(ctx, tenant, rfq, sellerID)}, nil
 	}
 	return s.persistGeneratedDraft(ctx, tenant, rfq, sellerID, extraction, items, alternatives)
 }
@@ -1175,6 +1177,40 @@ func (s *RFQService) persistReceivedRFQ(
 		return nil, err
 	}
 	return rfq, nil
+}
+
+/*
+ * markRFQFailed closes out an RFQ the pipeline could not turn into a quote, whether the model
+ * refused, ran out of time, or read no materials at all. Without it the row keeps the RECEIVED
+ * it was created with, which the backoffice reads as still in progress — so a seller waits on a
+ * pipeline that already gave up instead of loading the order by hand.
+ *
+ * It runs on the request context rather than the pipeline one, which is exactly the context that
+ * has just expired when a timeout is what brought us here. A failure to record the failure is
+ * logged and swallowed: the caller is owed the original error, not this one.
+ */
+func (s *RFQService) markRFQFailed(
+	ctx context.Context, tenant domain.Tenant, rfq *domain.RFQ, sellerID *uuid.UUID,
+) *domain.RFQ {
+	failed := rfq
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		previous := rfq.Status
+		if _, appendErr := s.rfqs.AppendStatusChange(ctx, q, tenant.AccountID, rfq.ID, &previous,
+			domain.RFQStatusFailed, sellerID); appendErr != nil {
+			return appendErr
+		}
+		updated, updateErr := s.rfqs.UpdateStatus(ctx, q, tenant.AccountID, rfq.ID,
+			domain.RFQStatusFailed)
+		if updateErr != nil {
+			return updateErr
+		}
+		failed = updated
+		return nil
+	}); err != nil {
+		s.log.ErrorContext(ctx, "could not mark the rfq as failed",
+			slog.String("rfq_id", rfq.ID.String()), slog.Any("error", err))
+	}
+	return failed
 }
 
 func (s *RFQService) persistGeneratedDraft(

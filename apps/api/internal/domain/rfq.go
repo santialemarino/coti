@@ -12,7 +12,10 @@ import (
 type RFQStatus string
 
 const (
-	RFQStatusReceived  RFQStatus = "RECEIVED"
+	RFQStatusReceived RFQStatus = "RECEIVED"
+	// RFQStatusFailed is terminal and never carries a quote: reading the order never finished,
+	// so the seller works it by hand instead of waiting on a pipeline that already gave up.
+	RFQStatusFailed    RFQStatus = "FAILED"
 	RFQStatusGenerated RFQStatus = "GENERATED"
 )
 

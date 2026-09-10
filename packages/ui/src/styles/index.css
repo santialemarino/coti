@@ -86,6 +86,10 @@
 
   --status-rejected-base: oklch(0.6234 0.2208 30.05); /* #EF3826 */
 
+  /* Darker and duller than rejected on purpose: a read that failed is a system outcome, not
+     a client saying no, and the two must not read alike down a column. */
+  --status-failed-base: oklch(0.5086 0.1384 31.69); /* #A6402F */
+
   --status-change-requested-base: oklch(0.8008 0.1415 61.04); /* #FFA756 */
 
   --status-generated-base: oklch(0.6155 0.2868 310.79); /* #BA29FF */

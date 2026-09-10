@@ -9,6 +9,7 @@ import type { RfqStatus } from '@/lib/api/rfqs';
 // The order the domain documents them in, used by the tabs and by sorting.
 export const STATUS_ORDER: readonly RfqStatus[] = [
   'RECEIVED',
+  'FAILED',
   'GENERATED',
   'QUOTED',
   'SENT',
@@ -25,6 +26,7 @@ export const STATUS_ORDER: readonly RfqStatus[] = [
  */
 export const STATUS_COLOUR: Record<RfqStatus, string> = {
   RECEIVED: '',
+  FAILED: 'text-status-failed',
   GENERATED: 'text-status-generated',
   QUOTED: 'text-status-quoted',
   SENT: 'text-status-sent',

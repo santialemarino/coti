@@ -1339,8 +1339,10 @@ func TestRFQService_CreateTextDraft_KeepsTheOrderWhenNoMaterialIsRead(t *testing
 	if draft.Quote != nil || draft.Version != nil || len(draft.Items) != 0 {
 		t.Errorf("draft returned %+v, want the RFQ alone", draft)
 	}
-	if draft.RFQ.Status != domain.RFQStatusReceived {
-		t.Errorf("RFQ status %q, want RECEIVED", draft.RFQ.Status)
+	// The pipeline is finished and produced nothing, so the order is the seller's to load. Left
+	// RECEIVED it would read as one still being processed, and the spinner would never resolve.
+	if draft.RFQ.Status != domain.RFQStatusFailed {
+		t.Errorf("RFQ status %q, want FAILED", draft.RFQ.Status)
 	}
 }
 

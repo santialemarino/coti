@@ -6,6 +6,7 @@
  */
 export type RfqStatus =
   | 'RECEIVED'
+  | 'FAILED'
   | 'GENERATED'
   | 'QUOTED'
   | 'SENT'

@@ -329,3 +329,58 @@ func TestRFQService_CreateFileDraft_NamesTheFileWhenItYieldsNoText(t *testing.T)
 		t.Errorf("raw text = %v, want it to name the file it arrived as", created.RawText)
 	}
 }
+
+func TestRFQService_CreateFileDraft_MarksTheRFQFailedWhenTheModelDoesNot(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name  string
+		lines []domain.ExtractedRFQLine
+		err   error
+	}{
+		// The two ways the pipeline ends with no quote. They differ in whether the model answered
+		// at all, and in nothing the seller can act on: either way the order is theirs to load.
+		{name: "the model fails", err: domain.ErrAIUnavailable},
+		{name: "the model reads no material"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h := newRFQHarness(tc.lines)
+			h.extractor.err = tc.err
+			h.service.WithFileIntake(&fakeAttachmentStore{}, &fakeTranscriber{}, 10<<20)
+
+			_, err := h.service.CreateFileDraft(context.Background(), rfqTenant(),
+				domain.FileRFQDraftInput{
+					ChannelID: testChannelID,
+					Filename:  "pedido.csv",
+					File: domain.AttachmentUpload{
+						ContentType: "text/csv",
+						Size:        20,
+						Content:     strings.NewReader("Producto,Cantidad\nCemento,10\n"),
+					},
+				})
+			if tc.err != nil && !errors.Is(err, tc.err) {
+				t.Fatalf("CreateFileDraft returned %v, want %v", err, tc.err)
+			}
+			if tc.err == nil && err != nil {
+				t.Fatalf("CreateFileDraft returned %v", err)
+			}
+
+			// Left RECEIVED the row reads as still being processed, so the seller waits on a
+			// pipeline that already gave up.
+			if len(h.rfqs.updatedStatus) != 1 || h.rfqs.updatedStatus[0] != domain.RFQStatusFailed {
+				t.Fatalf("wrote RFQ statuses %v, want one FAILED", h.rfqs.updatedStatus)
+			}
+			if len(h.rfqs.statusChanges) != 1 {
+				t.Fatalf("appended %d status changes, want the transition recorded",
+					len(h.rfqs.statusChanges))
+			}
+			change := h.rfqs.statusChanges[0]
+			if change.newStatus != domain.RFQStatusFailed ||
+				change.previousStatus == nil || *change.previousStatus != domain.RFQStatusReceived {
+				t.Errorf("status change = %+v, want RECEIVED to FAILED", change)
+			}
+		})
+	}
+}

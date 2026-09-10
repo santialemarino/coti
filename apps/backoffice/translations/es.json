@@ -432,6 +432,7 @@
     "greeting": "¡Hola, {name}!",
     "status": {
       "RECEIVED": "Recibido",
+      "FAILED": "Falló la lectura",
       "GENERATED": "Generado",
       "DRAFT": "Borrador",
       "QUOTED": "Cotizado",
