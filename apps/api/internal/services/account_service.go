@@ -1,9 +1,12 @@
 package services
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"path"
 	"strings"
 
 	"github.com/google/uuid"
@@ -66,6 +69,8 @@ type AccountService struct {
 	log               *slog.Logger
 	policy            domain.PasswordPolicy
 	defaultExpiryDays int
+	logoStorage       domain.ObjectStorage
+	logoMaxBytes      int64
 }
 
 // NewAccountService builds an AccountService.
@@ -84,6 +89,13 @@ func NewAccountService(
 		defaultExpiryDays: branchCfg.DefaultExpiryDays}
 }
 
+// WithLogoStorage enables account-logo uploads and public reads.
+func (s *AccountService) WithLogoStorage(storage domain.ObjectStorage, maxBytes int64) *AccountService {
+	s.logoStorage = storage
+	s.logoMaxBytes = maxBytes
+	return s
+}
+
 // Get returns the caller's own account.
 func (s *AccountService) Get(ctx context.Context, tenant domain.Tenant) (*domain.Account, error) {
 	var account *domain.Account
@@ -95,6 +107,16 @@ func (s *AccountService) Get(ctx context.Context, tenant domain.Tenant) (*domain
 		return nil, err
 	}
 	return account, nil
+}
+
+// DownloadLogo returns one public account logo by its unguessable identifier.
+func (s *AccountService) DownloadLogo(
+	ctx context.Context, accountID, logoID uuid.UUID,
+) (*domain.StoredObject, error) {
+	if s.logoStorage == nil {
+		return nil, fmt.Errorf("account logo storage is unavailable")
+	}
+	return s.logoStorage.Download(ctx, brandLogoKey(accountID, logoID))
 }
 
 // Register opens an account with its first branch and administrator.
@@ -196,4 +218,44 @@ func (s *AccountService) Update(
 		return nil, err
 	}
 	return account, nil
+}
+
+// UploadLogo validates and stores one PNG or JPEG account logo.
+func (s *AccountService) UploadLogo(
+	ctx context.Context, tenant domain.Tenant, file domain.AccountLogoUpload,
+) (*domain.AccountLogo, error) {
+	if s.logoStorage == nil {
+		return nil, fmt.Errorf("account logo storage is unavailable")
+	}
+	file.ContentType = normalizeContentType(file.ContentType)
+	if file.Size <= 0 {
+		return nil, fmt.Errorf("%w: the logo is empty", domain.ErrInvalidInput)
+	}
+	if file.Size > s.logoMaxBytes {
+		return nil, fmt.Errorf("%w: the logo exceeds %d bytes", domain.ErrTooLarge, s.logoMaxBytes)
+	}
+	if file.ContentType != "image/png" && file.ContentType != "image/jpeg" {
+		return nil, domain.WithCode(domain.CodeUnsupportedFileType,
+			fmt.Errorf("%w: account logos must be PNG or JPEG", domain.ErrInvalidInput))
+	}
+
+	content := bufio.NewReader(file.Content)
+	head, err := content.Peek(512)
+	if err != nil && len(head) == 0 {
+		return nil, fmt.Errorf("%w: read logo header", domain.ErrInvalidInput)
+	}
+	if detected := http.DetectContentType(head); detected != file.ContentType {
+		return nil, domain.WithCode(domain.CodeUnsupportedFileType,
+			fmt.Errorf("%w: logo bytes are %s, not %s", domain.ErrInvalidInput, detected, file.ContentType))
+	}
+
+	logo := &domain.AccountLogo{ID: uuid.New(), AccountID: tenant.AccountID}
+	if err := s.logoStorage.Upload(ctx, brandLogoKey(logo.AccountID, logo.ID), file.ContentType, content); err != nil {
+		return nil, err
+	}
+	return logo, nil
+}
+
+func brandLogoKey(accountID, logoID uuid.UUID) string {
+	return path.Join("accounts", accountID.String(), "brand", logoID.String())
 }

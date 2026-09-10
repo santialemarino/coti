@@ -7,35 +7,26 @@ import { Building2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useForm, useWatch } from 'react-hook-form';
 
-import {
-  Card,
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-  FormRootMessage,
-  Input,
-} from '@repo/ui/components';
-import { LogoDropzone } from '@/app/(onboarding)/onboarding/_components/logo-dropzone';
+import { Card, Form, FormRootMessage } from '@repo/ui/components';
 import {
   onboardingBrandSchema,
   type OnboardingBrandValues,
 } from '@/app/(onboarding)/onboarding/form-schema';
+import { BrandColorField } from '@/components/brand-color-field';
+import { LogoDropzone } from '@/components/logo-dropzone';
 import type { Account } from '@/lib/api/account';
-import { DEFAULT_BRAND_COLOR, HEX_COLOR_DIGITS } from '@/lib/constants/brand';
+import { HEX_COLOR_DIGITS } from '@/lib/constants/brand';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 
 interface BrandStepProps {
   account: Account;
   formId: string;
-  onSubmit: (values: OnboardingBrandValues) => void | Promise<void>;
+  onSubmit: (values: OnboardingBrandValues, logo?: File | null) => void | Promise<void>;
 }
 
 export function BrandStep({ account, formId, onSubmit }: BrandStepProps) {
   const t = useTranslations('onboarding.brand');
+  const tLogo = useTranslations('common.logoUpload');
   const tErrors = useTranslations('common.form.errors');
   const text = useMemo(() => ({ field: t, shared: tErrors }), [t, tErrors]);
   const form = useForm<OnboardingBrandValues>({
@@ -43,10 +34,10 @@ export function BrandStep({ account, formId, onSubmit }: BrandStepProps) {
     resolver: zodResolver(onboardingBrandSchema(text)),
     defaultValues: { brandColor: account.brandColor?.replace(/^#/, '') ?? '' },
   });
+  const [logo, setLogo] = useState<File | null>();
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
   const brandColor = useWatch({ control: form.control, name: 'brandColor' });
   const previewColor = HEX_COLOR_DIGITS.test(brandColor) ? `#${brandColor}` : null;
-  const pickerColor = /^[0-9a-f]{6}$/i.test(brandColor) ? `#${brandColor}` : DEFAULT_BRAND_COLOR;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
@@ -61,39 +52,25 @@ export function BrandStep({ account, formId, onSubmit }: BrandStepProps) {
           </p>
         </Card>
 
-        <LogoDropzone onPreviewChange={setLogoPreviewUrl} />
+        <LogoDropzone
+          initialUrl={account.brandLogoUrl}
+          onFileChange={setLogo}
+          onPreviewChange={setLogoPreviewUrl}
+        />
 
         <Form {...form}>
-          <form id={formId} onSubmit={form.handleSubmit(onSubmit)} noValidate>
-            <FormField
+          <form
+            id={formId}
+            onSubmit={form.handleSubmit((values) => onSubmit(values, logo))}
+            noValidate
+          >
+            <BrandColorField
               control={form.control}
               name="brandColor"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('brandColor.label')}</FormLabel>
-                  <div className="flex items-center gap-x-2.5">
-                    <FormControl>
-                      <Input
-                        prefix="#"
-                        placeholder={t('brandColor.placeholder')}
-                        maxLength={8}
-                        {...field}
-                      />
-                    </FormControl>
-                    <input
-                      type="color"
-                      aria-label={t('brandColor.pickerLabel')}
-                      value={pickerColor}
-                      className="size-9 shrink-0 p-1 bg-input border border-border rounded-lg outline-none shadow-e1 transition-[border-color,box-shadow,scale] duration-200 ease-out-soft hover:border-strong active:scale-[0.98] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45 [&::-moz-color-swatch]:border-0 [&::-moz-color-swatch]:rounded-md [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch]:rounded-md [&::-webkit-color-swatch-wrapper]:p-0"
-                      onInput={(event) =>
-                        field.onChange(event.currentTarget.value.slice(1).toUpperCase())
-                      }
-                    />
-                  </div>
-                  <FormDescription>{t('brandColor.hint')}</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
+              label={t('brandColor.label')}
+              placeholder={t('brandColor.placeholder')}
+              pickerLabel={t('brandColor.pickerLabel')}
+              hint={t('brandColor.hint')}
             />
             <FormRootMessage />
           </form>
@@ -112,7 +89,7 @@ export function BrandStep({ account, formId, onSubmit }: BrandStepProps) {
               <div className="relative h-14 w-40">
                 <Image
                   src={logoPreviewUrl}
-                  alt={t('logo.previewAlt')}
+                  alt={tLogo('previewAlt')}
                   fill
                   unoptimized
                   className="object-contain object-left"

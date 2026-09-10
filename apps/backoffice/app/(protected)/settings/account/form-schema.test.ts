@@ -61,17 +61,12 @@ describe('accountSchema', () => {
   });
 });
 
-/*
- * The brand formats mirror what the API accepts, neither looser nor stricter. Stricter is the
- * dangerous direction: the form would refuse a value already in the column and the account could
- * never save anything again.
- */
 describe('accountSchema and the brand', () => {
-  it.each(['#C2410C', '#c2410c', '#FFF', '#ffff', '#C2410C80'])('accepts the colour %s', (raw) => {
+  it.each(['C2410C', 'c2410c', 'FFF', 'ffff', 'C2410C80'])('accepts the colour %s', (raw) => {
     expect(accountSchema().safeParse({ ...VALID, brandColor: raw }).success).toBe(true);
   });
 
-  it.each(['C2410C', 'naranja', '#C2410', '#', 'rgb(194, 65, 12)', '#GGGGGG'])(
+  it.each(['#C2410C', 'naranja', 'C2410', '#', 'rgb(194, 65, 12)', 'GGGGGG'])(
     'refuses the colour %p',
     (raw) => {
       expect(messagesFor({ brandColor: raw }).brandColor).toBe('brandColor.invalid');

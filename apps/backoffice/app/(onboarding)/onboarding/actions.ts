@@ -11,6 +11,7 @@ import { createUser } from '@/app/(protected)/settings/users/actions';
 import type { UserValues } from '@/app/(protected)/settings/users/form-schema';
 import { ROUTES } from '@/config/routes';
 import { getAccount } from '@/lib/api/account';
+import { uploadAccountLogo } from '@/lib/api/account-logo';
 import { apiRequest } from '@/lib/api/client';
 import { errorCodeOf, type ApiErrorCode } from '@/lib/api/errors';
 import type { OnboardingStepKey, OnboardingStepStatus } from '@/lib/api/onboarding';
@@ -46,17 +47,28 @@ export async function resumeOnboarding(): Promise<OnboardingActionResult> {
 
 export async function updateOnboardingBrand(
   values: OnboardingBrandValues,
+  logo?: File | null,
 ): Promise<OnboardingActionResult> {
   const parsed = onboardingBrandSchema().safeParse(values);
   if (!parsed.success) return { error: 'INVALID_BODY' };
   const account = await getAccount();
-  return write('/v1/account', 'PUT', {
-    name: account.name,
-    legal_name: account.legalName ?? undefined,
-    tax_id: account.taxId ?? undefined,
-    brand_logo_url: account.brandLogoUrl ?? undefined,
-    brand_color: parsed.data.brandColor ? `#${parsed.data.brandColor}` : undefined,
-  });
+  try {
+    const brandLogoUrl =
+      logo === undefined
+        ? account.brandLogoUrl
+        : logo === null
+          ? undefined
+          : await uploadAccountLogo(logo);
+    return write('/v1/account', 'PUT', {
+      name: account.name,
+      legal_name: account.legalName ?? undefined,
+      tax_id: account.taxId ?? undefined,
+      brand_logo_url: brandLogoUrl ?? undefined,
+      brand_color: parsed.data.brandColor ? `#${parsed.data.brandColor}` : undefined,
+    });
+  } catch (error) {
+    return { error: errorCodeOf(error) };
+  }
 }
 
 export async function updateOnboardingBranch(

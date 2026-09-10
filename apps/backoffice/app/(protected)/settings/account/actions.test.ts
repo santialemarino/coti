@@ -5,6 +5,7 @@ import { type AccountValues } from '@/app/(protected)/settings/account/form-sche
 import { ROUTES } from '@/config/routes';
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+vi.mock('@/lib/api/account-logo', () => ({ uploadAccountLogo: vi.fn() }));
 // Only the request: the error vocabulary is what maps a status onto a rejection, and that mapping
 // is what this file is about.
 vi.mock('@/lib/api/client', async (importOriginal) => ({
@@ -13,6 +14,7 @@ vi.mock('@/lib/api/client', async (importOriginal) => ({
 }));
 
 const { revalidatePath } = await import('next/cache');
+const { uploadAccountLogo } = await import('@/lib/api/account-logo');
 const { apiRequest } = await import('@/lib/api/client');
 const { ApiError } = await import('@/lib/api/errors');
 
@@ -21,7 +23,7 @@ const VALUES: AccountValues = {
   legalName: 'Corralón San Martín S.R.L.',
   taxId: '30-71234567-9',
   brandLogoUrl: 'https://tucorralon.com/logo.png',
-  brandColor: '#C2410C',
+  brandColor: 'C2410C',
 };
 
 function requestSent() {
@@ -59,6 +61,26 @@ describe('updateAccount', () => {
     });
   });
 
+  it('uploads a selected logo and stores its public URL', async () => {
+    const logo = new File(['logo'], 'logo.png', { type: 'image/png' });
+    vi.mocked(uploadAccountLogo).mockResolvedValue('https://api.coti.test/v1/public/logo');
+    vi.mocked(apiRequest).mockResolvedValue(undefined);
+
+    await updateAccount(VALUES, logo);
+
+    expect(uploadAccountLogo).toHaveBeenCalledWith(logo);
+    expect(bodySent().brand_logo_url).toBe('https://api.coti.test/v1/public/logo');
+  });
+
+  it('clears the logo when the selection was removed', async () => {
+    vi.mocked(apiRequest).mockResolvedValue(undefined);
+
+    await updateAccount(VALUES, null);
+
+    expect(bodySent()).not.toHaveProperty('brand_logo_url');
+    expect(uploadAccountLogo).not.toHaveBeenCalled();
+  });
+
   /*
    * Omitting is how a value is cleared, and it has to be omission rather than an empty string: the
    * API's optional fields are pointers with `omitempty`, which only skips a nil one, so a pointer
@@ -85,7 +107,7 @@ describe('updateAccount', () => {
     await expect(updateAccount({ ...VALUES, name: '  ' })).resolves.toEqual({
       error: 'INVALID_BODY',
     });
-    await expect(updateAccount({ ...VALUES, brandColor: 'naranja' })).resolves.toEqual({
+    await expect(updateAccount({ ...VALUES, brandColor: '#C2410C' })).resolves.toEqual({
       error: 'INVALID_BODY',
     });
     await expect(updateAccount({ ...VALUES, brandLogoUrl: 'tucorralon.com' })).resolves.toEqual({

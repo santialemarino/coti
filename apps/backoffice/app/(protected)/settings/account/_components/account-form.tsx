@@ -1,31 +1,30 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
-import { useForm, useWatch } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
   FormRootMessage,
-  InlineLink,
   Input,
   PendingButton,
   Separator,
 } from '@repo/ui/components';
 import { updateAccount } from '@/app/(protected)/settings/account/actions';
 import { accountSchema, type AccountValues } from '@/app/(protected)/settings/account/form-schema';
+import { BrandColorField } from '@/components/brand-color-field';
+import { LogoDropzone } from '@/components/logo-dropzone';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Account } from '@/lib/api/account';
-import { HEX_COLOR } from '@/lib/constants/brand';
-import { TEXT_FIELD_MAX_LENGTH, URL_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
+import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 
 interface AccountFormProps {
@@ -45,18 +44,13 @@ export function AccountForm({ account }: AccountFormProps) {
       legalName: account.legalName ?? '',
       taxId: account.taxId ?? '',
       brandLogoUrl: account.brandLogoUrl ?? '',
-      brandColor: account.brandColor ?? '',
+      brandColor: account.brandColor?.replace(/^#/, '') ?? '',
     },
   });
-  const brandColor = useWatch({ control: form.control, name: 'brandColor' });
-  const brandLogoUrl = useWatch({ control: form.control, name: 'brandLogoUrl' });
-  // Previewed only once the value is one the API would store, so the swatch going blank is the
-  // first thing that says a colour is malformed.
-  const swatch = HEX_COLOR.test(brandColor) ? brandColor : null;
-  const logo = URL.canParse(brandLogoUrl) ? brandLogoUrl : null;
+  const [logo, setLogo] = useState<File | null>();
 
   async function onSubmit(values: AccountValues) {
-    const result = await updateAccount(values);
+    const result = await updateAccount(values, logo);
     if (result.ok) {
       toast.success(t('saved'));
       return;
@@ -131,59 +125,14 @@ export function AccountForm({ account }: AccountFormProps) {
 
         <h2 className="text-heading-6">{t('brand.title')}</h2>
 
-        <FormField
-          control={form.control}
-          name="brandLogoUrl"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('brandLogoUrl.label')}</FormLabel>
-              <FormControl>
-                <Input
-                  type="url"
-                  inputMode="url"
-                  maxLength={URL_FIELD_MAX_LENGTH}
-                  placeholder={t('brandLogoUrl.placeholder')}
-                  {...field}
-                />
-              </FormControl>
-              {/* Opened rather than rendered: the backoffice does not load an address someone
-                  pasted, and one click confirms it is the right image. */}
-              {logo ? (
-                <FormDescription>
-                  <InlineLink asChild>
-                    <a href={logo} target="_blank" rel="noreferrer noopener">
-                      {t('brandLogoUrl.open')}
-                    </a>
-                  </InlineLink>
-                </FormDescription>
-              ) : null}
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <LogoDropzone initialUrl={account.brandLogoUrl} onFileChange={setLogo} />
 
-        <FormField
+        <BrandColorField
           control={form.control}
           name="brandColor"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('brandColor.label')}</FormLabel>
-              <div className="flex items-center gap-x-2.5">
-                <FormControl>
-                  <Input placeholder={t('brandColor.placeholder')} {...field} />
-                </FormControl>
-                {/* The account's own colour is data, not styling, so no token can express it. The
-                    class keeps the box occupying its space while there is nothing to show. */}
-                <span
-                  data-slot="brand-swatch"
-                  aria-hidden="true"
-                  className="shrink-0 size-9 bg-input-readonly border border-border rounded-lg"
-                  style={swatch ? { backgroundColor: swatch } : undefined}
-                />
-              </div>
-              <FormMessage />
-            </FormItem>
-          )}
+          label={t('brandColor.label')}
+          placeholder={t('brandColor.placeholder')}
+          pickerLabel={t('brandColor.pickerLabel')}
         />
 
         <FormRootMessage />

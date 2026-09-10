@@ -49,3 +49,16 @@ func TestFileRouteIsMountedOnlyForTheAdapterThatServesIt(t *testing.T) {
 		t.Errorf("routes = %v, want no %s when no local adapter is bound", got, route)
 	}
 }
+
+func TestAccountLogoRoutesAreMountedTogether(t *testing.T) {
+	t.Parallel()
+	routes := mountedPaths(t, Handlers{AccountLogo: &handler.BrandLogoHandler{}})
+	for _, route := range []string{
+		"/v1/account/logo",
+		"/v1/public/account-logos/:accountId/:logoId",
+	} {
+		if !slices.Contains(routes, route) {
+			t.Errorf("routes = %v, want %s", routes, route)
+		}
+	}
+}

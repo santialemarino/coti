@@ -141,7 +141,8 @@ func run() error {
 	userService := services.NewUserService(db, userRepo, userBranchRepo, branchRepo, cfg.Auth)
 	branchService := services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)
 	accountService := services.NewAccountService(db, accountRepo, branchRepo, channelRepo,
-		userRepo, onboardingRepo, authService, verificationService, log, cfg.Auth, cfg.Branch)
+		userRepo, onboardingRepo, authService, verificationService, log, cfg.Auth, cfg.Branch).
+		WithLogoStorage(objectStorage.Storage, cfg.Storage.MaxFileSize)
 	onboardingService := services.NewOnboardingService(db, onboardingRepo)
 	productService := services.NewProductService(db, productRepo, productSynonymRepo,
 		productAlternativeRepo, cfg.Catalog)
@@ -193,6 +194,7 @@ func run() error {
 			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
 			CatalogImport: handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
 			Account:       handler.NewAccountHandler(accountService),
+			AccountLogo:   handler.NewBrandLogoHandler(accountService, cfg.Storage.MaxFileSize),
 			Onboarding:    handler.NewOnboardingHandler(onboardingService),
 			File:          fileHandler(objectStorage),
 		},

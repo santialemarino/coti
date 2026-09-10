@@ -34,6 +34,15 @@
       "search": "Buscá una sucursal...",
       "empty": "No encontramos esa sucursal."
     },
+    "logoUpload": {
+      "title": "Logo",
+      "release": "Soltá la imagen para usarla",
+      "choose": "Elegir imagen",
+      "replace": "Cambiar imagen",
+      "remove": "Quitar imagen",
+      "invalidType": "Elegí una imagen PNG o JPG.",
+      "previewAlt": "Vista previa del logo"
+    },
     "retry": "Reintentar",
     "form": {
       "togglePassword": "Mostrar u ocultar la contraseña",
@@ -864,14 +873,12 @@
       "title": "Marca"
     },
     "brandLogoUrl": {
-      "label": "Logo",
-      "placeholder": "Ingresá la dirección de la imagen",
-      "open": "Verla",
       "invalid": "Ingresá una dirección web completa, con https:// adelante."
     },
     "brandColor": {
       "label": "Color de la marca",
-      "placeholder": "Ingresá el color de tu marca",
+      "placeholder": "C2410C",
+      "pickerLabel": "Elegir color de marca",
       "invalid": "Ingresá un color hexadecimal válido."
     },
     "submit": "Guardar cambios",
@@ -1132,20 +1139,6 @@
         "pickerLabel": "Elegir color de marca",
         "hint": "Usamos este color en detalles de las cotizaciones.",
         "invalid": "Ingresá un color hexadecimal válido."
-      },
-      "logo": {
-        "title": "Logo",
-        "description": "Arrastrá una imagen para probar cómo se vería. Por ahora la vista previa queda sólo en este navegador y no se guarda.",
-        "drop": "Arrastrá el logo hasta acá",
-        "hint": "PNG, JPG o SVG. Sólo vista previa local.",
-        "release": "Soltá la imagen para usarla",
-        "choose": "Elegir imagen",
-        "replace": "Cambiar imagen",
-        "remove": "Quitar imagen",
-        "invalid": "Elegí una imagen PNG, JPG o SVG.",
-        "invalidType": "Elegí una imagen PNG, JPG o SVG.",
-        "previewAlt": "Vista previa local del logo",
-        "localOnly": "Esta imagen no se va a subir ni guardar."
       }
     },
     "branch": {
