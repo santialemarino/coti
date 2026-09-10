@@ -94,13 +94,6 @@ function deliveryTime(delivery: QuoteSendTrackingResponse): string {
   return delivery.sent_at ?? delivery.created_at;
 }
 
-function latestDelivery(deliveries: QuoteSendTrackingResponse[]): QuoteSendTrackingResponse | null {
-  if (deliveries.length === 0) return null;
-  return [...deliveries].sort(
-    (a, b) => Date.parse(deliveryTime(b)) - Date.parse(deliveryTime(a)),
-  )[0]!;
-}
-
 function deliveryTone(status: string): ComponentProps<typeof Badge>['tone'] {
   switch (status) {
     case 'SENT':
@@ -148,11 +141,10 @@ export function RfqStatusTimeline({ detail }: RfqStatusTimelineProps) {
   const currentRank = TIMELINE_STATES.indexOf(currentStep);
   const events = statusEvents(detail);
   const deliveries = detail.deliveries ?? [];
-  const mostRecentDelivery = latestDelivery(deliveries);
 
   return (
     <section className="flex flex-col gap-y-4" aria-labelledby="rfq-tracking-title">
-      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+      <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
         <div className="min-w-0">
           <h3 id="rfq-tracking-title" className="text-heading-5 text-foreground">
             {t('detail.timeline.title')}
@@ -173,18 +165,6 @@ export function RfqStatusTimeline({ detail }: RfqStatusTimelineProps) {
               </>
             )}
           </div>
-        </div>
-
-        <div className="flex min-w-[180px] flex-col items-start gap-y-1 text-paragraph-xs text-foreground-muted sm:items-end">
-          <span className="inline-flex items-center gap-x-1.5">
-            <SendIcon className="size-3.5" aria-hidden="true" />
-            {t('detail.timeline.deliveryTracking')}
-          </span>
-          {mostRecentDelivery ? (
-            <DeliveryBadge status={mostRecentDelivery.tracking_status} />
-          ) : (
-            <span>{t('detail.timeline.noDeliveries')}</span>
-          )}
         </div>
       </div>
 
