@@ -93,6 +93,11 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Server.Port != "8000" {
 		t.Errorf("Server.Port = %q, want %q", cfg.Server.Port, "8000")
 	}
+	if cfg.Server.ReadTimeout != 15*time.Second || cfg.Server.WriteTimeout != 180*time.Second ||
+		cfg.Server.ShutdownTimeout != 10*time.Second {
+		t.Errorf("Server timeouts = %v/%v/%v, want 15s/180s/10s",
+			cfg.Server.ReadTimeout, cfg.Server.WriteTimeout, cfg.Server.ShutdownTimeout)
+	}
 	if cfg.Database.MaxConns != 10 {
 		t.Errorf("Database.MaxConns = %d, want 10", cfg.Database.MaxConns)
 	}
@@ -120,8 +125,8 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.RFQ.MaxItems != 200 {
 		t.Errorf("RFQ.MaxItems = %d, want 200", cfg.RFQ.MaxItems)
 	}
-	if cfg.RFQ.PipelineTimeout != 25*time.Second {
-		t.Errorf("RFQ.PipelineTimeout = %v, want 25s", cfg.RFQ.PipelineTimeout)
+	if cfg.RFQ.PipelineTimeout != 165*time.Second {
+		t.Errorf("RFQ.PipelineTimeout = %v, want 165s", cfg.RFQ.PipelineTimeout)
 	}
 	if cfg.QuoteCorrection.SimilarityPercent != 80 ||
 		cfg.QuoteCorrection.MaxPatternsPerAccount != 1000 ||
@@ -665,6 +670,12 @@ func TestLoad_AIProvidersArriveDisabled(t *testing.T) {
 	// Mapping work rather than open-ended writing, so the reasoning default sits at the low end.
 	if cfg.AI.LLMEffort != "low" {
 		t.Errorf("AI.LLMEffort = %q, want low", cfg.AI.LLMEffort)
+	}
+	// One attempt has to be able to finish an extraction: the answer runs ~70 tokens per line
+	// item, so a full order takes minutes, and a cap under that retries a call nothing was
+	// wrong with. It also has to leave room inside RFQ_PIPELINE_TIMEOUT_SECONDS.
+	if cfg.AI.LLMTimeout != 150*time.Second {
+		t.Errorf("AI.LLMTimeout = %v, want 150s", cfg.AI.LLMTimeout)
 	}
 	if cfg.AI.Retry.MaxAttempts != 3 || cfg.AI.Retry.Backoff != time.Second {
 		t.Errorf("AI.Retry = %+v, want 3 attempts from 1s", cfg.AI.Retry)
