@@ -22,6 +22,7 @@ type userAdminRepository interface {
 	Deactivate(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) error
 	BumpSessionEpoch(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) (int, error)
 	MarkEmailVerified(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) error
+	SellersForBranches(ctx context.Context, q repository.Querier, accountID uuid.UUID, branchIDs []uuid.UUID) ([]domain.Seller, error)
 }
 
 // userBranchRepository is the seller-to-branch assignment surface.
@@ -106,6 +107,19 @@ func (s *UserService) GetUser(ctx context.Context, tenant domain.Tenant, id uuid
 		return nil, err
 	}
 	return out, nil
+}
+
+// ListSellers returns the account's active sellers, narrowed to the branches the caller
+// reaches. It powers the manual RFQ assignee picker, so no seller a caller cannot assign to
+// appears in it.
+func (s *UserService) ListSellers(ctx context.Context, tenant domain.Tenant) ([]domain.Seller, error) {
+	var out []domain.Seller
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		var listErr error
+		out, listErr = s.users.SellersForBranches(ctx, q, tenant.AccountID, tenant.BranchFilter())
+		return listErr
+	})
+	return out, err
 }
 
 // CreateUser adds a user to the caller's account, assigning their branches in the same

@@ -15,9 +15,10 @@ const SEARCHABLE_FROM = 8;
 interface BranchSwitcherProps {
   branches: Branch[];
   activeBranchId: string | null;
+  isAdmin: boolean;
 }
 
-export function BranchSwitcher({ branches, activeBranchId }: BranchSwitcherProps) {
+export function BranchSwitcher({ branches, activeBranchId, isAdmin }: BranchSwitcherProps) {
   const t = useTranslations('common.branch');
   const [pending, startTransition] = useTransition();
   const onlyBranch = branches.length === 1 ? branches[0] : undefined;
@@ -33,6 +34,10 @@ export function BranchSwitcher({ branches, activeBranchId }: BranchSwitcherProps
         { value: ALL_BRANCHES, label: t('all'), icon: <Building2Icon aria-hidden="true" /> },
         ...branchOptions,
       ];
+
+  // A seller on a single branch has nowhere to switch to, so the control reads as context
+  // rather than a menu: locked, but naming the branch they are working in.
+  const locked = !isAdmin && branches.length <= 1;
 
   function onValueChange(value: string) {
     startTransition(async () => {

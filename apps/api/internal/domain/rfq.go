@@ -64,6 +64,7 @@ type NewRfq struct {
 	RawText     *string
 	WorkType    *string
 	ClientLabel *string
+	SellerID    *uuid.UUID
 	Items       []NewRfqItem
 }
 

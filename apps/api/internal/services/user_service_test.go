@@ -112,6 +112,22 @@ func (f *fakeAdminUsers) MarkEmailVerified(_ context.Context, _ repository.Queri
 	return nil
 }
 
+func (f *fakeAdminUsers) SellersForBranches(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, branchIDs []uuid.UUID,
+) ([]domain.Seller, error) {
+	if branchIDs != nil && len(branchIDs) == 0 {
+		return nil, nil
+	}
+	var sellers []domain.Seller
+	for _, u := range f.stored {
+		if u.Role != domain.UserRoleSeller || !u.IsActive {
+			continue
+		}
+		sellers = append(sellers, domain.Seller{ID: u.ID, Name: u.Name})
+	}
+	return sellers, nil
+}
+
 type fakeAssignments struct {
 	byUser   map[uuid.UUID][]uuid.UUID
 	replaced map[uuid.UUID][]uuid.UUID
@@ -483,5 +499,41 @@ func TestUserService_ListReturnsBranchAssignments(t *testing.T) {
 		if u.ID == otherUserID && !reflect.DeepEqual(u.BranchIDs, []uuid.UUID{assignedBranch}) {
 			t.Errorf("seller assignments = %v, want [%v]", u.BranchIDs, assignedBranch)
 		}
+	}
+}
+
+// The picklist only offers sellers who could receive a new order: active sellers, and no
+// admins or deactivated accounts, whatever role they carry.
+func TestUserService_ListSellersSkipsAdminsAndDeactivated(t *testing.T) {
+	gone := &domain.AppUser{
+		ID: uuid.New(), AccountID: testAccountID, Name: "Gone", Email: "gone@corralon.test",
+		Role: domain.UserRoleSeller, IsActive: false, SessionEpoch: 1,
+	}
+	h := newUserHarness(storedAdmin(), storedSeller(), gone)
+
+	sellers, err := h.svc.ListSellers(context.Background(), adminTenant())
+	if err != nil {
+		t.Fatalf("ListSellers() = %v, want no error", err)
+	}
+	if len(sellers) != 1 {
+		t.Fatalf("ListSellers() returned %d sellers, want 1", len(sellers))
+	}
+	if sellers[0].ID != otherUserID || sellers[0].Name != "Vendedor" {
+		t.Errorf("seller = %+v, want the active seller", sellers[0])
+	}
+}
+
+// A seller with no branch selection reads nothing rather than the whole account, so the
+// picklist can never leak branches a caller does not reach.
+func TestUserService_ListSellersSellersFailsClosedWithoutBranch(t *testing.T) {
+	h := newUserHarness(storedAdmin(), storedSeller())
+	tenant := domain.Tenant{AccountID: testAccountID, UserID: testUserID, Role: domain.UserRoleSeller}
+
+	sellers, err := h.svc.ListSellers(context.Background(), tenant)
+	if err != nil {
+		t.Fatalf("ListSellers() = %v, want no error", err)
+	}
+	if len(sellers) != 0 {
+		t.Errorf("ListSellers() returned %d sellers, want 0", len(sellers))
 	}
 }

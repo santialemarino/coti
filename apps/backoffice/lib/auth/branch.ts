@@ -3,8 +3,9 @@ import 'server-only';
 import { cookies } from 'next/headers';
 
 import { getBranches } from '@/lib/api/branches';
-import { isRemembered } from '@/lib/auth/session';
+import { getSession, isRemembered } from '@/lib/auth/session';
 import { BRANCH_COOKIE, sessionCookieOptions } from '@/lib/auth/tokens';
+import { SELLER_ROLE } from '@/lib/constants/auth';
 
 /*
  * The branch the caller explicitly chose. A cookie because it outlives a navigation and no
@@ -14,10 +15,22 @@ import { BRANCH_COOKIE, sessionCookieOptions } from '@/lib/auth/tokens';
  * account-wide for an admin, so discarding one that looks wrong widens their scope instead
  * of narrowing it. The API checks the branch against the account and the caller's
  * assignments on every request and answers 403, which is the check that matters.
+ *
+ * A seller with exactly one reachable branch never gets a branch to choose, so their choice
+ * is resolved for them: with no cookie they are pinned to the assigned set anyway, and this
+ * makes that set visible (the switcher) and sends X-Branch-Id on branch-scoped reads instead
+ * of leaving the header silent. A seller with several keeps picking; an admin changes nothing.
  */
 export async function getActiveBranchId(): Promise<string | undefined> {
   // Blank is no selection: a delete leaves the entry empty for the rest of the request.
-  return (await cookies()).get(BRANCH_COOKIE)?.value || undefined;
+  const selected = (await cookies()).get(BRANCH_COOKIE)?.value || undefined;
+  if (selected) return selected;
+
+  const session = await getSession();
+  if (session?.role !== SELLER_ROLE) return undefined;
+
+  const branches = await getBranches();
+  return branches.length === 1 ? branches[0]?.id : undefined;
 }
 
 export async function getEffectiveBranchId(

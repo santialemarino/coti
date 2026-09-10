@@ -5,6 +5,7 @@ import type { RfqChannel, RfqListItem, RfqRecord } from '@/lib/api/rfqs';
 import { normalizeRfqStatus } from '@/lib/api/rfqs';
 import { getEffectiveBranchId } from '@/lib/auth/branch';
 import { getSession } from '@/lib/auth/session';
+import { ADMIN_ROLE } from '@/lib/constants/auth';
 
 function mapListItem(item: RfqListItem): RfqRecord {
   return {
@@ -43,6 +44,8 @@ export default async function RfqsLayout({ children }: { children: React.ReactNo
       records={records}
       activeBranchId={activeBranchId ?? null}
       userName={session?.name ?? ''}
+      userId={session?.userId ?? ''}
+      isAdmin={session?.role === ADMIN_ROLE}
     >
       {children}
     </RfqListProvider>

@@ -25,6 +25,8 @@ type ManualRFQService interface {
 	AddDiscount(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID, in domain.QuoteDiscountCreate) (*domain.QuoteDiscount, error)
 	UpdateDiscount(ctx context.Context, tenant domain.Tenant, quoteID, discountID uuid.UUID, in domain.QuoteDiscountUpdate) (*domain.QuoteDiscount, error)
 	DeleteDiscount(ctx context.Context, tenant domain.Tenant, quoteID, discountID uuid.UUID) error
+	AssignSeller(ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID) (*domain.Quote, error)
+	SetSeller(ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID, sellerID *uuid.UUID) (*domain.Quote, error)
 }
 
 // RfqHandler serves manual RFQ intake.
@@ -96,6 +98,7 @@ func (h *RfqHandler) Create(c *gin.Context) {
 		RawText:     body.RawText,
 		WorkType:    body.WorkType,
 		ClientLabel: body.ClientLabel,
+		SellerID:    body.SellerID,
 		Items:       make([]domain.NewRfqItem, 0, len(body.Items)),
 	}
 	for _, item := range body.Items {
@@ -121,6 +124,85 @@ func (h *RfqHandler) Create(c *gin.Context) {
 		Rfq:   toRfqResponse(creation.Rfq),
 		Quote: toQuoteResponse(creation.Quote),
 	})
+}
+
+// AssignAsSelf claims an unassigned order for the caller. Seller-only, atomic on the quote:
+// a racing peer answers 409 instead of both taking the order.
+//
+//	@Summary		Assign an RFQ to yourself
+//	@Description	Claims an unassigned order in the seller's branch. Self-assignment only; admins see the whole account and cannot draw from the unclaimed pool.
+//	@Tags			rfqs
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			rfqId	path	string	true	"RFQ id"
+//	@Success		200		{object}	dto.QuoteResponse
+//	@Failure		401		{object}	dto.ErrorResponse
+//	@Failure		403		{object}	dto.ErrorResponse
+//	@Failure		404		{object}	dto.ErrorResponse
+//	@Failure		409		{object}	dto.ErrorResponse
+//	@Router			/v1/rfqs/{rfqId}/assign [post]
+func (h *RfqHandler) AssignAsSelf(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	rfqID, ok := pathUUID(c, "rfqId")
+	if !ok {
+		return
+	}
+
+	// Attempt assignment using the manual RFQ service.
+	// Note: ManualRFQService may not have AssignSeller; if unavailable, falls back to not-found.
+	quote, err := h.rfqs.AssignSeller(c.Request.Context(), tenant, rfqID)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, toQuoteResponse(*quote))
+}
+
+// SetSeller overwrites an order's owner for an admin. The body names the seller to assign —
+// the caller's own id for self — or a null seller_id to leave the order unassigned. A named
+// seller who does not serve the order's own branch answers 422; the route is admin-only.
+//
+//	@Summary		Set an RFQ's seller
+//	@Description	Assigns, reassigns or clears the seller on an order. Admin-only. A null seller_id clears the assignment; a non-null id must be the admin themself or a seller who serves the order's branch.
+//	@Tags			rfqs
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			rfqId		path		string					true	"RFQ id"
+//	@Param			body		body		dto.AssignSellerRequest	true	"Seller to assign, or null to clear"
+//	@Success		200			{object}	dto.QuoteResponse
+//	@Failure		400			{object}	dto.ErrorResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		403			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse
+//	@Failure		422			{object}	dto.ErrorResponse
+//	@Router			/v1/rfqs/{rfqId}/seller [put]
+func (h *RfqHandler) SetSeller(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	rfqID, ok := pathUUID(c, "rfqId")
+	if !ok {
+		return
+	}
+	var body dto.AssignSellerRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+
+	quote, err := h.rfqs.SetSeller(c.Request.Context(), tenant, rfqID, body.SellerID)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, toQuoteResponse(*quote))
 }
 
 // Get returns the full detail of one RFQ.

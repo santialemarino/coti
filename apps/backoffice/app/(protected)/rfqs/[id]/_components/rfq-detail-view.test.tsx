@@ -216,7 +216,13 @@ function renderView(detail: RfqDetailResponse, activeBranchId: string | null = B
       messages={messages}
       timeZone="America/Argentina/Buenos_Aires"
     >
-      <RfqListProvider records={[draftRecord()]} activeBranchId={activeBranchId} userName="Admin">
+      <RfqListProvider
+        records={[draftRecord()]}
+        activeBranchId={activeBranchId}
+        userName="Admin"
+        userId="u-admin"
+        isAdmin={true}
+      >
         <RfqDetailView detail={detail} />
         <RecordProbe />
       </RfqListProvider>

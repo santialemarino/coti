@@ -42,6 +42,7 @@ export async function AppHeader({ session }: AppHeaderProps) {
   const t = await getTranslations('common');
   const branches = await getBranches();
   const activeBranchId = await getEffectiveBranchId(branches);
+  const isAdmin = session.role === ADMIN_ROLE;
 
   return (
     <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-8 px-6 bg-background/85 border-b border-border backdrop-blur">
@@ -56,8 +57,14 @@ export async function AppHeader({ session }: AppHeaderProps) {
       <PrimaryNav />
 
       <div className="ml-auto flex items-center gap-x-3">
-        {branches.length > 0 ? (
-          <BranchSwitcher branches={branches} activeBranchId={activeBranchId ?? null} />
+        {/* An admin with nothing to switch hides the control as before. A single-branch seller sees it
+            but locked, so their active branch stays visible instead of vanishing with the menu. */}
+        {branches.length > 1 || (!isAdmin && branches.length > 0) ? (
+          <BranchSwitcher
+            branches={branches}
+            activeBranchId={activeBranchId ?? null}
+            isAdmin={isAdmin}
+          />
         ) : null}
 
         <DropdownMenu>

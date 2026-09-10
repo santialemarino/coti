@@ -7,18 +7,42 @@ import {
   getEffectiveBranchId,
   setActiveBranch,
 } from '@/lib/auth/branch';
+
+import type { SessionUser } from '@/lib/auth/session';
 import { BRANCH_COOKIE } from '@/lib/auth/tokens';
 
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('@/lib/api/branches', () => ({ getBranches: vi.fn() }));
-vi.mock('@/lib/auth/session', () => ({ isRemembered: vi.fn() }));
+vi.mock('@/lib/auth/session', () => ({ getSession: vi.fn(), isRemembered: vi.fn() }));
 
 const { cookies } = await import('next/headers');
 const { getBranches } = await import('@/lib/api/branches');
-const { isRemembered } = await import('@/lib/auth/session');
+const { getSession, isRemembered } = await import('@/lib/auth/session');
 
 const VILLA_BOSCH = '11111111-1111-4111-8111-111111111111';
 const MORON = '22222222-2222-4222-8222-222222222222';
+
+function seller(): SessionUser {
+  return {
+    userId: 'u',
+    accountId: 'a',
+    name: 'N',
+    email: 'n@x',
+    emailVerified: true,
+    role: 'SELLER',
+  };
+}
+
+function admin(): SessionUser {
+  return {
+    userId: 'u',
+    accountId: 'a',
+    name: 'N',
+    email: 'n@x',
+    emailVerified: true,
+    role: 'ADMIN',
+  };
+}
 
 function jar(initial: Record<string, string> = {}) {
   const fake = cookieJar(initial);
@@ -35,6 +59,7 @@ function reachable(...ids: string[]) {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(isRemembered).mockResolvedValue(false);
+  vi.mocked(getSession).mockResolvedValue(null);
 });
 
 describe('the active branch cookie', () => {
@@ -62,6 +87,37 @@ describe('the active branch cookie', () => {
     await expect(
       getEffectiveBranchId([{ id: VILLA_BOSCH }, { id: MORON }]),
     ).resolves.toBeUndefined();
+  });
+
+  /*
+   * A single-branch seller never gets a shelf to pick from, so the one branch they reach is
+   * resolved for them: with no cookie the API would read account-wide-set for them anyway, and
+   * this is what makes the disabled switcher name it and X-Branch-Id travel on their reads.
+   */
+  it('resolves the one reachable branch for a seller who never chose', async () => {
+    jar();
+    reachable(VILLA_BOSCH);
+    vi.mocked(getSession).mockResolvedValue(seller());
+
+    await expect(getActiveBranchId()).resolves.toBe(VILLA_BOSCH);
+  });
+
+  it('leaves a multi-branch seller on no selection until they choose', async () => {
+    jar();
+    reachable(VILLA_BOSCH, MORON);
+    vi.mocked(getSession).mockResolvedValue(seller());
+
+    await expect(getActiveBranchId()).resolves.toBeUndefined();
+    expect(getBranches).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an admin whose cookie failed to write on account-wide', async () => {
+    jar();
+    reachable(VILLA_BOSCH);
+    vi.mocked(getSession).mockResolvedValue(admin());
+
+    await expect(getActiveBranchId()).resolves.toBeUndefined();
+    expect(getBranches).not.toHaveBeenCalled();
   });
 
   /*

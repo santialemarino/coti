@@ -497,6 +497,10 @@
       },
       "actions": {
         "more": "Acciones del pedido",
+        "assign": "Asignarme",
+        "changeSeller": "Cambiar vendedor",
+        "unassignSeller": "Quitar vendedor",
+        "sellersLoading": "Cargando vendedores…",
         "view": "Ver detalle",
         "archive": "Archivar pedido"
       },
@@ -538,6 +542,11 @@
       "manual": {
         "clientLabel": "Cliente",
         "clientPlaceholder": "Nombre del cliente",
+        "sellerLabel": "Vendedor",
+        "unassigned": "Sin asignar",
+        "sellersLoading": "Cargando vendedores…",
+        "noSellers": "No hay vendedores disponibles para esta sucursal.",
+        "sellerPlaceholder": "Seleccioná un vendedor",
         "clearSearch": "Limpiar búsqueda",
         "search": "Buscar producto por nombre, código o categoría…",
         "loading": "Cargando catálogo…",

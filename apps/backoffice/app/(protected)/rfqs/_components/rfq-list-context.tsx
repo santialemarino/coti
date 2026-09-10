@@ -10,6 +10,9 @@ interface RfqListContextValue {
   records: RfqRecord[];
   activeBranchId: string | null;
   userName: string;
+  // The signed-in user's id and role; the list rows stamp an assignment with them.
+  userId: string;
+  isAdmin: boolean;
   updateRecord: (id: string, patch: RfqRecordPatch) => void;
 }
 
@@ -17,6 +20,8 @@ const RfqListContext = createContext<RfqListContextValue>({
   records: [],
   activeBranchId: null,
   userName: '',
+  userId: '',
+  isAdmin: false,
   updateRecord: () => undefined,
 });
 
@@ -24,6 +29,8 @@ export function RfqListProvider({
   records: initialRecords,
   activeBranchId,
   userName,
+  userId,
+  isAdmin,
   children,
 }: Omit<RfqListContextValue, 'updateRecord'> & { children: React.ReactNode }) {
   const [records, setRecords] = useState(initialRecords);
@@ -42,8 +49,8 @@ export function RfqListProvider({
   }, []);
 
   const value = useMemo(
-    () => ({ records, activeBranchId, userName, updateRecord }),
-    [activeBranchId, records, updateRecord, userName],
+    () => ({ records, activeBranchId, userName, userId, isAdmin, updateRecord }),
+    [activeBranchId, records, updateRecord, userName, userId, isAdmin],
   );
 
   return <RfqListContext.Provider value={value}>{children}</RfqListContext.Provider>;

@@ -53,7 +53,13 @@ function renderItems(activeBranchId: string | null = BRANCH_ID) {
       messages={messages}
       timeZone="America/Argentina/Buenos_Aires"
     >
-      <RfqListProvider records={[]} activeBranchId={activeBranchId} userName="Admin">
+      <RfqListProvider
+        records={[]}
+        activeBranchId={activeBranchId}
+        userName="Admin"
+        userId="u-admin"
+        isAdmin={true}
+      >
         <RfqItemsTable
           quoteId={QUOTE_ID}
           quoteStatus="QUOTED"
