@@ -54,14 +54,18 @@ export function RfqSidebarList({ records, activeRfqId }: RfqSidebarListProps) {
                     : 'border-l-transparent hover:bg-surface-hover active:bg-surface-active focus-visible:bg-surface-hover',
                 )}
               >
-                {/* MetaList, not a hand-typed dash: a counter order has no client to put after it. */}
+                {/* MetaList, not a hand-typed dash: a counter order has no client to put after it.
+                    The client is wrapped only when there is one — a wrapper around an empty string
+                    is not empty, and the separator would survive it. */}
                 <MetaList
                   className="min-w-0 flex-nowrap text-paragraph-sm-medium text-foreground"
                   items={[
                     reference,
-                    <span key="client" className="truncate">
-                      {rfq.client}
-                    </span>,
+                    rfq.client ? (
+                      <span key="client" className="truncate">
+                        {rfq.client}
+                      </span>
+                    ) : null,
                   ]}
                 />
                 <div className="flex items-center gap-x-2">

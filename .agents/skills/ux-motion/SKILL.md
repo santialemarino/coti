@@ -75,8 +75,22 @@ Keyboard focus must be **as visible as hover**. Tab through what you built.
 
 - **Pair every hover with a matching focus-visible.** Never signal interactivity with colour alone —
   add the underline, the shape change, or the elevation step too.
-- **`active` where a press reads:** `active:bg-primary-active` plus `active:scale-[0.98]` on buttons,
-  `active:scale-[0.97]` on segmented items. **`:active` covers pointer and Space, never Enter** —
+- **A press is a colour step, never a scale.** `active:bg-primary-active`, `active:bg-surface-active`
+  — one rung deeper than the hover, and the box stays where it is. A control that shrinks under the
+  pointer moves its own edges away from it: a press started a few pixels inside the border releases
+  outside the shrunken box, so the browser dispatches the click on the **parent** and the control
+  lights up and does nothing. It is worst on exactly the widest controls — a full-width select, a
+  table row — where the press also reads as the deepest. The bug and the "too much movement" are the
+  same line of CSS.
+- **Hover and press stay in one family, one step apart.** A neutral hover that jumps to a brand tint
+  on press reads as a different control answering, because nothing carries from one frame to the
+  next. Pick the hover fill, then pick its next rung down.
+- **A hover fill has to clear the surface it is painted on.** `muted` sits within half a point of
+  lightness of the page wash, so it reads on a white card and vanishes on a settings page — and the
+  one screen with the most entries to scan is the one where hover stops working. Anything that may
+  sit on either ground uses `surface-hover` / `surface-active`, which clear both. Measure it: sample
+  `getComputedStyle` on the element and on `body` and compare L\*, rather than trusting the swatch.
+- **`:active` covers pointer and Space, never Enter** —
   browsers fire a button's click on Enter without ever matching `:active`, so an Enter press is
   acknowledged by the focus ring and by whatever the action does, not by the press state. That is
   native behaviour, not a missing style; don't go looking for the bug.
@@ -152,6 +166,26 @@ data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=close
 Directional slides need the exit too (`slide-out-to-top-2` alongside `slide-in-from-top-2`), or the
 panel enters from the trigger and then dissolves in place.
 
+- **An anchored panel fades and slides; it never zooms.** A zoom scales from the transform origin, so
+  on a surface pinned by one corner the opposite edge travels — and on a dropdown as wide as its
+  trigger, a `zoom-in-95` is a 16px width change that reads as the list being measured and resized
+  rather than as it arriving. Popovers, dropdown menus and comboboxes get `fade-in-0` plus the
+  directional slide. A **dialog keeps its zoom**: centred, the same motion reads as depth.
+- **A panel sized from a Radix CSS variable is one frame late.** `--radix-popover-trigger-width` is
+  published after a `ResizeObserver` has measured the trigger, so `w-(--radix-popover-trigger-width)`
+  paints once at the content's own width and snaps to the trigger's on the next frame. Measure the
+  trigger in the same event that opens the panel and pass the width inline; the CSS variable stays as
+  the fallback. Verify by sampling the panel's width per frame in one `requestAnimationFrame` loop —
+  the first frame must already be the trigger's width.
+- **A dialog that changes size between steps animates `max-width`.** Both step widths are concrete
+  values, so `transition-[max-width] duration-300` interpolates; there is no previous value on mount,
+  so the entrance is unaffected. The height half of the same problem is not a transition: a panel
+  whose content arrives after the dialog does must reserve its height (a fixed box with skeletons),
+  or the dialog grows into its own result and reads as assembling itself on screen.
+- **An outside click closes unless it would discard work.** Key `closeOnClickOutside` on whether the
+  body is dirty, never on which step is showing: a step that refuses to close while empty reads as a
+  stuck dialog, and one that closes over a half-filled form loses it. Have each step report its own
+  dirtiness upward.
 - **Reuse the primitives** — `Dialog`, `Popover`, `DropdownMenu`, `Sheet`, `Tooltip`, `Collapsible`,
   `Combobox`. Don't hand-roll an overlay.
 - **Under reduced motion both directions collapse**, which is also why the exit needs no special

@@ -70,22 +70,31 @@ at hue 258) so greys read as related to the brand rather than dirty.
 Components consume the semantic layer. Reach for `brand-*` only when building a
 deliberately brand-coloured surface.
 
-| Token                                            | Resolves to                            | For                         |
-| ------------------------------------------------ | -------------------------------------- | --------------------------- |
-| `background` / `foreground`                      | white / `brand-950`                    | page base and body ink      |
-| `body-background`                                | `oklch(0.974 0.007 240)`               | the wash cards sit on       |
-| `card` / `card-foreground`, `popover` / …        | white / `brand-950`                    | raised surfaces             |
-| `sunken`                                         | `neutral-100`                          | table headers, inset panels |
-| `foreground-muted` / `foreground-subtle`         | `neutral-500` / `neutral-400`          | secondary and tertiary copy |
-| `primary` / `primary-foreground`                 | `brand-600` / white                    | the main action             |
-| `primary-hover` / `primary-active`               | `brand-700` / `brand-800`              | its pressed states          |
-| `secondary` / `secondary-hover`                  | `neutral-100` / `neutral-200`          | the neutral action          |
-| `accent` / `accent-strong` / `accent-foreground` | `brand-50` / `brand-100` / `brand-700` | tinted hover surfaces       |
-| `muted` / `muted-foreground`                     | `neutral-100` / `neutral-500`          | quiet fills and copy        |
-| `border` / `border-strong`                       | `neutral-200` / `neutral-300`          | hairlines                   |
-| `input` / `input-readonly`                       | `neutral-50` / `neutral-100`           | field fills                 |
-| `ring`                                           | `brand-500`                            | the focus ring              |
-| `backdrop`                                       | ink at 55%                             | dialog scrim                |
+| Token                                          | Resolves to                            | For                                             |
+| ---------------------------------------------- | -------------------------------------- | ----------------------------------------------- |
+| `background` / `foreground`                    | white / `brand-950`                    | page base and body ink                          |
+| `body-background`                              | `oklch(0.974 0.007 240)`               | the wash cards sit on                           |
+| `card` / `card-foreground`, `popover` / …      | white / `brand-950`                    | raised surfaces                                 |
+| `sunken`                                       | `neutral-100`                          | table headers, inset panels                     |
+| `foreground-muted` / `foreground-subtle`       | `neutral-500` / `neutral-400`          | secondary and tertiary copy                     |
+| `primary` / `primary-foreground`               | `brand-600` / white                    | the main action                                 |
+| `primary-hover` / `primary-active`             | `brand-700` / `brand-800`              | its pressed states                              |
+| `secondary` / `secondary-hover`                | `neutral-100` / `neutral-200`          | the neutral action                              |
+| `accent` / `accent-strong` / `accent-stronger` | `brand-50` / `brand-100` / `brand-200` | a tinted surface and its hover and press steps  |
+| `accent-foreground`                            | `brand-700`                            | copy on an accent surface                       |
+| `surface-hover` / `surface-active`             | `neutral-200` / `neutral-300`          | a neutral hover and press that clear any ground |
+| `muted` / `muted-foreground`                   | `neutral-100` / `neutral-500`          | quiet fills and copy                            |
+| `border` / `border-strong`                     | `neutral-200` / `neutral-300`          | hairlines                                       |
+| `danger-hover` / `danger-active`               | two steps under `danger-base`          | the destructive button's states                 |
+| `input` / `input-readonly`                     | `neutral-50` / `neutral-100`           | field fills                                     |
+| `ring`                                         | `brand-500`                            | the focus ring                                  |
+| `backdrop`                                     | ink at 55%                             | dialog scrim                                    |
+
+`muted` and `surface-hover` are not interchangeable. `muted` is `neutral-100`, within half a point
+of lightness of `body-background`, so it reads as a hover on a white card and disappears on the page
+wash. Anything that can sit on either ground — a nav item, a row action, a segmented control — uses
+`surface-hover` / `surface-active`, which clear both. A press is always the next rung down from its
+own hover, never a jump to another family.
 
 ### Status families
 
@@ -109,21 +118,20 @@ Every `-foreground` clears WCAG AA on white, and white clears AA on `bg-danger`:
 `-base` values are tuned for fills and icons, not for text — `success-base` and
 `warning-base` do not carry text contrast. Use `-foreground` for copy.
 
-The RFQ lifecycle gets its own colours, `status-accepted`, `status-rejected`,
-`status-change-requested`, `status-generated`, `status-quoted`, `status-sent` and
-`status-archived` — a single `-base` value each, reproducing the exact status colours
-from the product (e.g. `status-sent-base` is `#0088FF`). `status-archived` is the
-neutral one: archivado is an orthogonal flag on a quote (see
-`docs/internal/domain/estados.md`), not a lifecycle state, so it shares no hue with the
+The RFQ lifecycle gets its own colours: `status-accepted`, `status-rejected`, `status-failed`,
+`status-change-requested`, `status-generated`, `status-quoted`, `status-sent`, `status-draft` and
+`status-archived`. Each is a **four-step family built exactly like `success`/`warning`/`danger`** —
+a `-base` reproducing the product's exact hex for fills and dots (e.g. `status-sent-base` is
+`#0088FF`), a `-subtle` wash, a `-border` hairline, and a `-foreground` at the same hue pinned near
+L 0.55 for the label. `status-archived` is the neutral one: archivado is an orthogonal flag on a
+quote (see `docs/internal/domain/estados.md`), not a lifecycle state, so it shares no hue with the
 true statuses.
 
-The Backoffice status badge is the only consumer. Per the Figma spec it is a tinted
-chip, not a pill: the label is painted with `-base` and the backdrop tints the same
-colour at 20% opacity (`bg-current` + `opacity-20` on an absolutely positioned layer,
-with a 3px radius and the colour bleeding a hair above and below the box). There is no
-border and no solid fill. Because label and backdrop share one colour, the status
-families only need `-base` — do not reintroduce `-subtle`/`-border`/`-foreground` steps
-for them.
+The Backoffice status badge is the only consumer, and it renders **Coti's ordinary pill** in the
+state's family: `rounded-full`, the badge type scale, the `-subtle` fill, the `-border` hairline,
+the `-foreground` label and a full-strength `-base` dot. The label never uses `-base`. That is not a
+style preference — several bases are light (`status-quoted-base` is `#FFCC00`), so a label painted
+with one sits on its own wash at roughly 1.6:1 and stops being a word.
 
 **Mapping a domain enum to a tone is the app's job, not the design system's.** A quote
 status (`GENERATED`, `QUOTED`, `SENT`, …) maps to a `status-*` colour in the app that

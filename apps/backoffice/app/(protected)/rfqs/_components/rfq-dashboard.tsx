@@ -295,12 +295,19 @@ function RowActions({ rfq, onArchive, archiving }: RowActionsProps) {
   const t = useTranslations('rfqs');
   const archived = rfq.archived === true;
 
+  /*
+   * Archivado is a flag on the quote, so an order that never produced one has nothing to archive.
+   * The action is absent rather than disabled: a tooltip never fires on a disabled trigger, so the
+   * explanation would be unreachable exactly where it was needed.
+   */
+  if (rfq.quoteId === null) return null;
+
   return (
     <RowActionButton
       icon={archived ? ArchiveRestoreIcon : ArchiveIcon}
       label={t(archived ? 'list.actions.unarchive' : 'list.actions.archive')}
       tone={archived ? 'default' : 'danger'}
-      disabled={archiving || rfq.quoteId === null}
+      disabled={archiving}
       onClick={() => onArchive(rfq)}
     />
   );

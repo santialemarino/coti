@@ -62,13 +62,13 @@ composes components. Put UI and interactivity in components.
 `@repo/ui` is a real design system now — check it before writing markup. The
 catalogue:
 
-| Group    | Components                                                                                                                                                         |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Controls | `Button` `PendingButton` `Badge` `Input` `SearchInput` `Textarea` `Label` `Checkbox` `RadioGroup` `Switch` `ToggleGroup` `Combobox` `Pagination` `RowActionButton` |
-| Surfaces | `Card` `Separator` `Table` `Skeleton` `Spinner` `Progress` `Avatar` `Hint` `Callout`                                                                               |
-| Overlays | `Dialog` `Sheet` `Popover` `DropdownMenu` `Tooltip` `Collapsible` `Command` `ConfirmDialog`                                                                        |
-| Patterns | `StatusScreen` `Stepper` `EmptyState` `TableEmptyRow` `SortableTableHead` `InlineLink` `DropdownChevron`                                                           |
-| Forms    | `Form` `FormField` `FormItem` `FormLabel` `FormControl` `FormDescription` `FormMessage` `FormRootMessage`                                                          |
+| Group    | Components                                                                                                                                                                                    |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Controls | `Button` `PendingButton` `Badge` `Input` `SearchInput` `Textarea` `Label` `Checkbox` `RadioGroup` `Switch` `ToggleGroup` `Combobox` `MultiCombobox` `Pagination` `RowActionButton` `Dropzone` |
+| Surfaces | `Card` `Separator` `Table` `Skeleton` `Spinner` `Progress` `Avatar` `Hint` `Callout`                                                                                                          |
+| Overlays | `Dialog` `Sheet` `Popover` `DropdownMenu` `Tooltip` `Collapsible` `Command` `ConfirmDialog`                                                                                                   |
+| Patterns | `StatusScreen` `Stepper` `StepList` `EmptyState` `TableEmptyRow` `SortableTableHead` `MetaList` `InlineLink` `DropdownChevron`                                                                |
+| Forms    | `Form` `FormField` `FormItem` `FormLabel` `FormControl` `FormDescription` `FormMessage` `FormRootMessage`                                                                                     |
 
 - **Reuse-first, in search order.** Look in this order: (1) the page's
   `_components/`, (2) the app's `components/`, (3) `@repo/ui`. Restyle through the
@@ -80,8 +80,25 @@ catalogue:
   `closeOnClickOutside`, `PendingButton` has `pending`/`pendingLabel`. Passing raw
   classes where a prop exists is how two call
   sites end up looking different.
-- **One dropdown: `Combobox`.** Radix `Select` is deliberately absent from the
-  design system because it has no exit animation. Never add it back.
+- **One dropdown: `Combobox`, and `MultiCombobox` when more than one value is valid.** Radix `Select`
+  is deliberately absent from the design system because it has no exit animation. Never add it back.
+  **A filter with more than four values is a select, not a row of chips**: chips spend a whole band
+  of the screen to offer what a 36px control offers, and a single-select row of them is a select
+  that has been drawn the long way.
+- **A filter's reset is not its placeholder.** `Combobox` takes `resetValue`: while that option is
+  the value, the trigger shows the `placeholder` in the muted colour, so an untouched filter reads as
+  untouched. The reset option carries its own wording — "Todos los canales" against a "Canal"
+  placeholder — because a filter whose reset is spelled the same as its name is indistinguishable
+  from one that is actually narrowing something. A multi-select needs no reset option at all: an
+  empty selection already means everything, and its reset is clearing the field.
+- **A run of facts on one line is `MetaList`, never a hand-typed separator.** The separator is only
+  ever correct as a function of what survived, so a call site that writes its own renders
+  `10 de sept · · Morón` the first time a seller is unassigned. Emptiness has to reach the list
+  unwrapped — an element around an empty string is still an element.
+- **A file intake is `Dropzone`,** wherever it appears: the onboarding logo, the catalogue import,
+  the price list. The whole dashed box is one control, so there is one hit target and one focus ring;
+  anything it cannot own (removing what was chosen) goes under the box, because a button inside a
+  button is invalid markup and the browser drops one of them.
 - **A control used in both apps is one shared component** in `@repo/ui`, exported
   from `src/components/index.ts`. One app only → that app's `components/`. Never
   reach across apps.
@@ -142,6 +159,22 @@ The stack is **react-hook-form + zod** with the shared `Form` primitives from
   confirmation or on a login, where the caller is presenting one they already have. The meter marks
   what is missing in red only once that field has actually been rejected — keyed on the field's own
   error, not on the form's submit count, which a wizard step would trip on arrival.
+- **Never `<input type="number">`.** A focused number field treats the wheel as a stepper, so
+  scrolling a long form past one silently rewrites the value the pointer happened to be over — and
+  the taller the form, the more certain it is. There are two replacements and the choice is the
+  field's meaning, not its width: **`AmountInput`** for money and for any measured figure that can
+  carry a fraction (a unit price, a line quantity, a percentage), and **`QuantityInput`** for a whole
+  count (days, users, items). Both are `type="text"` with the right `inputMode`, both hold the
+  canonical `.`-decimal or digit-only string the API speaks, and both step on ↑/↓ so the one thing
+  the native control was good for survives.
+- **`AmountInput` shows the locale and stores the canon.** An Argentine seller types `1234,56` and
+  the field displays `1.234,56` while form state holds `1234.56`; `<input type="number">` silently
+  rejects that keystroke. The keystroke rules, the paste normaliser and the caret mapper live in
+  `lib/i18n/numeric-input.ts` — compose from there rather than writing a third masker. The caret is
+  mapped by counting digits, not characters, because the group separators are exactly what moved.
+- **A label is `w-fit`.** A label forwards its click to the control it names, so a block-level one
+  spans the whole field row and a click in the empty space far to its right focuses an input the
+  pointer is nowhere near — or opens a select. `Label` carries this; don't override it with `w-full`.
 - **Pass the accessible names the design system can't own:** `passwordToggleLabel`
   on a password `Input`, `clearLabel` on a `SearchInput`. They live under
   `common.form.*`.
@@ -241,6 +274,33 @@ toast keeps the half the caller acts on and drops what the dialog already said.
 Note this does **not** conflict with "never say the same thing twice on one field" under
 "Validation messages" — that governs a hint against its own error, both on screen at once.
 It is not a licence to strip a confirmation of what it confirms.
+
+## Tables and lists
+
+A table is the densest thing in the product, so every column has to earn its width.
+
+- **A column that repeats a value the page has already fixed is noise.** While the header's branch
+  switcher is on one branch, every row's Sucursal is the same word — render the column only when the
+  switcher is on "todas". The same test retires a column whose value is better carried as an icon
+  beside the row's identifier than as a word in a column of its own.
+- **Numeric columns are right-aligned and `tabular-nums`;** text columns are left-aligned. A money
+  column that wanders because the digits are proportional is unreadable down the page.
+- **A sortable header follows its column's alignment.** `SortableTableHead` renders a full-width
+  flex trigger, so `text-right` on the cell alone leaves the label pinned left inside a right-aligned
+  header — pass `align="end"`. This is the one place a table's numbers and their heading visibly
+  disagree, and it reads as carelessness rather than as a bug.
+- **A clickable row tests containment, not the target.** React sends a portalled child's events up
+  the **React** tree, so a click on a dropdown item rendered from inside a row arrives at that row's
+  `onClick` with a target that is nowhere near it in the DOM. `event.currentTarget.contains(target)`
+  first, then the usual `closest('button, a, input, label, [role="menuitem"]')`. Getting this wrong
+  is why picking a menu item also navigates.
+- **Row actions are inline until there are three of them.** A menu is a lid; a lid over one item is
+  a click spent on nothing. And an action that duplicates what clicking the row already does — a
+  "ver detalle" next to a row that opens the detail — is not an action, it is a second copy of the
+  affordance.
+- **An empty table is `TableEmptyRow`, an empty panel is `EmptyState`.** "Nothing here" arrives as a
+  designed block in one place and a bare sentence in another exactly when a screen is built in two
+  sittings; there is one component so it cannot.
 
 ## Icons
 
@@ -349,6 +409,17 @@ reference, including how the ramp was derived and every contrast figure:
   (text). `destructive-*` aliases `danger-*`. Use `-foreground` for copy: `-base` is
   tuned for fills and does not carry text contrast. **Mapping a domain enum to a tone is
   the app's job** — `@repo/ui` ships tones, the app that owns the enum picks one.
+- **A domain enum with more than three states gets its own colour families.** Nine lifecycle states
+  cannot be told apart by three tones, so each names a `-subtle` wash, a `-border` and a
+  `-foreground` pinned near L 0.55, exactly the way `success`/`warning`/`danger` are built — and the
+  pill that renders them is the app's ordinary pill in those colours, not a shape invented for the
+  enum. Painting the label with the `-base` instead, which a tinted chip invites, leaves a yellow
+  state reading yellow-on-pale-yellow at about 1.6:1: a colour, not a word.
+- **Name the border colour; the default is a safety net, not the convention.** Tailwind v4's default
+  `border-color` is `currentColor`, so a bare `border` paints the text colour — a black hairline
+  wherever the foreground is the ink. The base layer defaults it to `--border` so a miss is not a
+  visible defect, but every border still says which token it is, and an invented one (`border-strong`
+  rather than `border-border-strong`) is silently dropped and falls back.
 - **Light-only.** There is no `.dark` block and no `dark:` variant. Never write a `dark:`
   class; it cannot match.
 - **Type — use the scale, never a raw size/weight pair.** Headings are
@@ -519,6 +590,11 @@ namespaced. Each page/feature gets a top-level namespace (`quotes`, `catalog`,
   (`"itemCount": "{count, plural, =0 {Sin ítems} one {# ítem} other {# ítems}}"`).
 - Argentine Spanish, voseo ("Ingresá…", "Buscá…", "Seleccioná…"). The text lives in
   the catalog; the wording conventions below describe what to write there.
+- **A missing key is not a missing translation — it is the key, on screen.** `t('status.FAILED')`
+  renders the literal `rfqs.status.FAILED` in the middle of the table when nobody added the entry,
+  and it looks exactly like a bug in the data. Every value of an enum the API can return needs a key,
+  including the ones a screen is not expecting yet, and every enum added to a union on the wire is
+  three edits, not one: the TypeScript union, the catalog, and whatever maps it to a colour.
 
 **Formatting — the formatters.** Never call `Intl.*`, `toLocaleString`, or build a
 currency/date string inline. Use the locale-bound formatters from `lib/i18n/`:
@@ -531,8 +607,12 @@ currency/date string inline. Use the locale-bound formatters from `lib/i18n/`:
   (`$ 1.234,56`). `'ARS'` is the default.
 - **Numbers:** `fmt.value(n)` (thousand separators; `{ compact: true }` → "1,5 M"),
   `fmt.signedValue(n)`, `fmt.ratePct(ratio)` (0.21 → "21%").
-- **Dates:** `fmt.date(iso)` (date-only, "2 ene 2025"), `fmt.timestamp(iso)`
-  (date + time in the Argentina zone). **Lists:** `fmt.list(items)` ("cemento, arena y cal").
+- **Dates come in two shapes, chosen by where the date is read.** `fmt.date(iso)` is the long form
+  ("2 de ene de 2025") and belongs in prose — a subtitle, a sentence, a callout, where the date is
+  read. `fmt.dateNumeric(iso)` is `02/01/2025`, zero-padded on both fields, and belongs in a column
+  or a dense list, where dates are scanned rather than read and every row has to be the same width;
+  pair it with `tabular-nums`. `fmt.timestamp(iso)` is date + time in the Argentina zone.
+  **Lists:** `fmt.list(items)` ("cemento, arena y cal").
 - Interpolate a formatted value into copy by formatting first, then passing it as an
   ICU arg: `t('total', { amount: fmt.currency(quote.total) })`.
 

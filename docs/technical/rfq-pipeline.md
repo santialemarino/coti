@@ -15,14 +15,15 @@ files an order arrives with are stored beside it and are not read here — see
 
 ## Endpoints
 
-| Method | Path                               | What it does                                                         |
-| ------ | ---------------------------------- | -------------------------------------------------------------------- |
-| `POST` | `/v1/rfqs/text-drafts`             | Runs an order the seller pasted or typed through the pipeline        |
-| `POST` | `/v1/rfqs/file-drafts`             | Runs an order that arrived as a file through the same pipeline       |
-| `GET`  | `/v1/rfqs/{id}`                    | Returns the detail with quote state history and delivery tracking    |
-| `GET`  | `/v1/channels`                     | The active intake channels of the selected branch                    |
-| `POST` | `/v1/dev/whatsapp/messages`        | Simulates one inbound WhatsApp message. Not registered in production |
-| `POST` | `/v1/quotes/{id}/accept-materials` | Prices the draft's lines and moves the quote to `QUOTED`             |
+| Method | Path                               | What it does                                                           |
+| ------ | ---------------------------------- | ---------------------------------------------------------------------- |
+| `POST` | `/v1/rfqs/text-drafts`             | Runs an order the seller pasted or typed through the pipeline          |
+| `POST` | `/v1/rfqs/file-drafts`             | Runs an order that arrived as a file through the same pipeline         |
+| `GET`  | `/v1/rfqs`                         | The dashboard queue; `?include_archived=true` keeps archived quotes in |
+| `GET`  | `/v1/rfqs/{id}`                    | Returns the detail with quote state history and delivery tracking      |
+| `GET`  | `/v1/channels`                     | The active intake channels of the selected branch                      |
+| `POST` | `/v1/dev/whatsapp/messages`        | Simulates one inbound WhatsApp message. Not registered in production   |
+| `POST` | `/v1/quotes/{id}/accept-materials` | Prices the draft's lines and moves the quote to `QUOTED`               |
 
 The three that reach a model share **their own rate-limit allowance**, `RATE_LIMIT_AI_MAX` — the global one would let a single seller spend 300 generations a minute, and this is the first surface in the product billed per call. Valorization reaches no provider and spends nothing, so it stays on the global allowance.
 

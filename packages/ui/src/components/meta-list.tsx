@@ -16,6 +16,9 @@ interface MetaListProps {
  * drawn here rather than typed at the call site, because a call site that writes its own ends up
  * rendering "10 de sept · · Morón" the moment one of the facts is missing — the separator is only
  * ever correct as a function of what survived, never of what was written.
+ *
+ * Emptiness has to reach this list unwrapped. An element around an empty string is still an element,
+ * so `<span>{name}</span>` with no name keeps its separator; pass `name ? <span>…</span> : null`.
  */
 function MetaList({ items, className }: MetaListProps) {
   const shown = items.filter(
