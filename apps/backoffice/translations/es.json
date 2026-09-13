@@ -804,6 +804,11 @@
           "product": "Producto",
           "quantity": "Cantidad",
           "price": "Precio en el catálogo"
+        },
+        "changeTypes": {
+          "added": "agregado",
+          "removed": "eliminado",
+          "modified": "modificado"
         }
       }
     }

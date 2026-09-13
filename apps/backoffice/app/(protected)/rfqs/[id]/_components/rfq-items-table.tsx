@@ -540,7 +540,7 @@ export function RfqItemsTable({
 
               {hasDiscounts && (
                 <>
-                  <span className="pt-1 text-paragraph-xs font-semibold text-foreground-muted">
+                  <span className="pt-1 text-paragraph-xs-semibold text-foreground-muted">
                     {t('detail.items.discounts.title')}
                   </span>
                   <div className="flex flex-col gap-y-1">
@@ -626,7 +626,7 @@ export function RfqItemsTable({
               )}
 
               <div className="mt-1 flex items-center justify-between border-t border-border pt-2">
-                <span className="text-paragraph-sm font-semibold text-foreground">
+                <span className="text-paragraph-sm-semibold text-foreground">
                   {t('detail.items.total')}
                 </span>
                 <span className="text-paragraph-sm-semibold tabular-nums text-foreground">
