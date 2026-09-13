@@ -5,6 +5,7 @@ export * from './callout';
 export * from './card';
 export * from './checkbox';
 export * from './collapsible';
+export * from './color-picker';
 export * from './combobox';
 export * from './command';
 export * from './confirm-dialog';

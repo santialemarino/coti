@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AccountForm } from '@/app/(protected)/settings/account/_components/account-form';
 import type { Account } from '@/lib/api/account';
+import { BRAND_COLOR_PRESETS } from '@/lib/constants/brand';
 import messages from '@/translations/es.json';
 
 vi.mock('@/app/(protected)/settings/account/actions', () => ({ updateAccount: vi.fn() }));
@@ -184,13 +185,15 @@ describe('AccountForm brand controls', () => {
     expect(view.getByText('#')).toBeTruthy();
   });
 
-  it('copies the native colour picker value into the text field without its hash', () => {
+  // The picker writes into the same field the hex input owns, and the hash stays a prefix.
+  it('copies a picked colour into the text field without its hash', async () => {
     const view = renderForm();
-    const picker = view.getByLabelText(copy.brandColor.pickerLabel);
 
-    fireEvent.input(picker, { target: { value: '#12abef' } });
+    fireEvent.click(view.getByLabelText(copy.brandColor.pickerLabel));
+    const preset = await waitFor(() => view.getByLabelText(`#${BRAND_COLOR_PRESETS[4]}`));
+    fireEvent.click(preset);
 
-    expect(field(view, 'brandColor').value).toBe('12ABEF');
+    expect(field(view, 'brandColor').value).toBe(BRAND_COLOR_PRESETS[4]);
   });
 
   it('hands the selected logo file to the save action', async () => {
