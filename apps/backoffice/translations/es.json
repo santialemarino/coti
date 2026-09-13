@@ -50,6 +50,11 @@
       "replace": "Cambiar archivo",
       "spreadsheetFormats": "Aceptamos Excel (.xlsx) y CSV."
     },
+    "colorPicker": {
+      "shade": "Saturación y brillo",
+      "hue": "Tono",
+      "presets": "Colores sugeridos"
+    },
     "retry": "Reintentar",
     "form": {
       "togglePassword": "Mostrar u ocultar la contraseña",
@@ -676,6 +681,12 @@
         "emptyHint": "Agregá productos del catálogo para armar la cotización.",
         "add": "Agregar producto",
         "delete": "Eliminar ítem",
+        "deleteConfirm": {
+          "title": "¿Quitar el ítem?",
+          "description": "Se va a quitar “{name}” de la cotización. No se puede deshacer.",
+          "confirm": "Quitar ítem",
+          "pending": "Quitando…"
+        },
         "generate": "Generar cotización",
         "generating": "Generando cotización…",
         "select": "Seleccionar",
@@ -693,7 +704,8 @@
           "subtotal": "Subtotal",
           "matchStatus": "Estado",
           "confidence": "Confianza",
-          "rationale": "Razón"
+          "rationale": "Razón",
+          "actions": "Acciones"
         },
         "total": "Total",
         "summary": {

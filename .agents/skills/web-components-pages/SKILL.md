@@ -283,8 +283,13 @@ A table is the densest thing in the product, so every column has to earn its wid
   switcher is on one branch, every row's Sucursal is the same word — render the column only when the
   switcher is on "todas". The same test retires a column whose value is better carried as an icon
   beside the row's identifier than as a word in a column of its own.
-- **Numeric columns are right-aligned and `tabular-nums`;** text columns are left-aligned. A money
-  column that wanders because the digits are proportional is unreadable down the page.
+- **One alignment rule, and it is not "centre everything".** Copy is **left**, so the eye follows a
+  common edge down the column — which is most of what a table buys over a list. Figures are **right**
+  with `tabular-nums`, so digits line up by place value. A column whose entire content is one control
+  — a checkbox, a row action — is **centred**, under a centred heading. Nothing else is centred:
+  centred copy gives every row a different starting x, and centred numbers line up on nothing.
+  Applying this per table is how one screen ends up with three conventions; apply it to every table
+  in the app at once.
 - **A sortable header follows its column's alignment.** `SortableTableHead` renders a full-width
   flex trigger, so `text-right` on the cell alone leaves the label pinned left inside a right-aligned
   header — pass `align="end"`. This is the one place a table's numbers and their heading visibly
@@ -297,7 +302,15 @@ A table is the densest thing in the product, so every column has to earn its wid
 - **Row actions are inline until there are three of them.** A menu is a lid; a lid over one item is
   a click spent on nothing. And an action that duplicates what clicking the row already does — a
   "ver detalle" next to a row that opens the detail — is not an action, it is a second copy of the
-  affordance.
+  affordance. The column still carries its heading: an unnamed column behind a rule is one the
+  reader has to decode.
+- **A destructive row action is `RowActionButton` with `tone="danger"`, and it asks first when the
+  screen cannot undo it.** Reversibility is the test, not severity: archiving flips a flag the same
+  row can flip back, so it goes straight through; removing a quote line cannot be taken back —
+  re-adding the product mints a new line and re-prices it, which can change a total the seller had
+  already reviewed — so it goes through `ConfirmDialog`. A bulk equivalent existing elsewhere is not
+  a reason to drop the per-row action: two interactions to act on one row is a worse trade than a
+  column of 32px buttons.
 - **An empty table is `TableEmptyRow`, an empty panel is `EmptyState`.** "Nothing here" arrives as a
   designed block in one place and a bare sentence in another exactly when a screen is built in two
   sittings; there is one component so it cannot.

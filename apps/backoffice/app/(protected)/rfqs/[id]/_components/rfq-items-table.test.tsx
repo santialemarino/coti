@@ -17,7 +17,7 @@ vi.mock('@/lib/api/rfqs-client', () => ({
 }));
 
 const { toast } = await import('sonner');
-const { updateQuoteItem } = await import('@/lib/api/rfqs-client');
+const { deleteQuoteItem, updateQuoteItem } = await import('@/lib/api/rfqs-client');
 
 const copy = messages.rfqs;
 
@@ -141,6 +141,27 @@ describe('RfqItemsTable price input', () => {
       expect(updateQuoteItem).toHaveBeenCalledWith(QUOTE_ID, ITEM_ID, BRANCH_ID, {
         unit_price_snapshot: '132467.89',
       }),
+    );
+  });
+
+  /*
+   * Removing a line cannot be undone by the screen — re-adding the product mints a new line and
+   * re-prices it — so the trash asks first and only the confirmation writes.
+   */
+  it('asks before removing a line, and writes only once confirmed', async () => {
+    vi.mocked(deleteQuoteItem).mockResolvedValue(undefined);
+    const view = renderItems();
+
+    fireEvent.click(view.getByRole('button', { name: copy.detail.items.delete }));
+
+    expect(deleteQuoteItem).not.toHaveBeenCalled();
+    const dialog = await vi.waitFor(() => view.getByRole('dialog'));
+    expect(dialog.textContent).toContain(PRICED_ITEM.requested_description);
+
+    fireEvent.click(view.getByRole('button', { name: copy.detail.items.deleteConfirm.confirm }));
+
+    await vi.waitFor(() =>
+      expect(deleteQuoteItem).toHaveBeenCalledWith(QUOTE_ID, ITEM_ID, BRANCH_ID),
     );
   });
 });

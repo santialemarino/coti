@@ -765,7 +765,7 @@ export function RfqDashboard({
           <TableCaption className="sr-only">{t('list.caption')}</TableCaption>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10">
+              <TableHead className="w-10 text-center">
                 <Checkbox
                   checked={pageSomeSelected ? 'indeterminate' : pageAllSelected}
                   onCheckedChange={togglePageSelection}
@@ -827,8 +827,14 @@ export function RfqDashboard({
                 sortOrder={sortOrder}
                 onSort={handleSort}
               />
-              <TableHead className="w-16 border-l border-border pl-6 text-right">
-                <span className="sr-only">{t('list.columns.actions')}</span>
+              {/*
+               * The column keeps its name. It holds one action now that claiming lives in the
+               * Vendedor cell and the row itself opens the detail, but an unnamed column behind a
+               * rule is a column the reader has to decode — and archiving one order should not cost
+               * the two interactions that going through the bulk bar does.
+               */}
+              <TableHead className="w-28 border-l border-border pl-6 text-center">
+                {t('list.columns.actions')}
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -945,7 +951,7 @@ export function RfqDashboard({
                       />
                     </TableCell>
                     <TableCell>
-                      <div className="flex justify-end">
+                      <div className="flex justify-center">
                         <RowActions
                           rfq={rfq}
                           onArchive={toggleArchived}

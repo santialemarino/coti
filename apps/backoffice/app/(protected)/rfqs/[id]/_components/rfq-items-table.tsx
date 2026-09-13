@@ -11,7 +11,9 @@ import {
   Card,
   CardHeader,
   CardTitle,
+  ConfirmDialog,
   EmptyState,
+  RowActionButton,
   Table,
   TableBody,
   TableCell,
@@ -113,8 +115,12 @@ export function RfqItemsTable({
 }: RfqItemsTableProps) {
   const fmt = useFormatters();
   const t = useTranslations('rfqs');
+  const tCommon = useTranslations('common');
   const message = useApiErrorMessage('rfqs.detail.items');
   const [searchOpen, setSearchOpen] = useState(false);
+  // The line awaiting confirmation, and the one whose delete is in flight.
+  const [pendingDelete, setPendingDelete] = useState<QuoteItemResponse | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [editingQuantity, setEditingQuantity] = useState<Record<string, string>>({});
   const [editingPrice, setEditingPrice] = useState<Record<string, string>>({});
   const [discountDialogOpen, setDiscountDialogOpen] = useState(false);
@@ -267,14 +273,23 @@ export function RfqItemsTable({
     });
   }
 
+  /*
+   * Confirmed rather than immediate. Re-adding the product is not an undo — it mints a new line and
+   * re-runs pricing, so a quote that had been reviewed could come back with a different subtotal.
+   * One click of friction is the honest price for a write the screen cannot take back.
+   */
   async function handleDelete(itemId: string) {
     if (!quoteId) return;
+    setDeleting(itemId);
     try {
       await deleteQuoteItem(quoteId, itemId, branchId);
       onItemsChange(items.filter((item) => item.id !== itemId));
+      setPendingDelete(null);
       toast.success(t('detail.items.toast.deleted'));
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
+    } finally {
+      setDeleting(null);
     }
   }
 
@@ -357,15 +372,17 @@ export function RfqItemsTable({
 
         <Table className="[&_th]:h-10 [&_td]:py-3">
           <TableHeader>
+            {/*
+             * One alignment rule across every table: copy reads from a common left edge, figures
+             * line up on the right with tabular figures, and a column holding a single control is
+             * centred under its own heading. Centring the copy too would cost the left edge the eye
+             * follows down the column, which is the whole reason a table beats a list.
+             */}
             <TableRow>
-              <TableHead className="w-8 text-center">#</TableHead>
+              <TableHead className="w-8 text-right">#</TableHead>
               <TableHead>{t('detail.items.columns.description')}</TableHead>
-              <TableHead className="text-center">{t('detail.items.columns.product')}</TableHead>
-              {showConfidence && (
-                <TableHead className="text-center">
-                  {t('detail.items.columns.confidence')}
-                </TableHead>
-              )}
+              <TableHead>{t('detail.items.columns.product')}</TableHead>
+              {showConfidence && <TableHead>{t('detail.items.columns.confidence')}</TableHead>}
               <TableHead className="text-right">{t('detail.items.columns.quantity')}</TableHead>
               <TableHead>{t('detail.items.columns.unit')}</TableHead>
               {showPricing && (
@@ -374,7 +391,11 @@ export function RfqItemsTable({
               {showPricing && (
                 <TableHead className="text-right">{t('detail.items.columns.subtotal')}</TableHead>
               )}
-              {(canEditProducts || canEditPrices) && <TableHead className="w-10" />}
+              {(canEditProducts || canEditPrices) && (
+                <TableHead className="w-20 text-center">
+                  {t('detail.items.columns.actions')}
+                </TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -386,15 +407,17 @@ export function RfqItemsTable({
 
               return (
                 <TableRow key={item.id}>
-                  <TableCell className="text-center text-foreground-subtle">{index + 1}</TableCell>
+                  <TableCell className="text-right tabular-nums text-foreground-subtle">
+                    {index + 1}
+                  </TableCell>
                   <TableCell>
                     <span className="text-paragraph-sm-medium text-foreground">
                       {item.requested_description}
                     </span>
                   </TableCell>
-                  <TableCell className="text-center">
+                  <TableCell>
                     {item.product_name ? (
-                      <div className="flex flex-col items-center gap-y-0.5">
+                      <div className="flex flex-col items-start gap-y-0.5">
                         {canEditProducts ? (
                           <button
                             type="button"
@@ -439,7 +462,7 @@ export function RfqItemsTable({
                     )}
                   </TableCell>
                   {showConfidence && (
-                    <TableCell className="text-center">
+                    <TableCell>
                       <Badge tone={confidenceTone(item.confidence_score)} size="sm">
                         {t(`detail.confidence.${confidenceLabel(item.confidence_score)}`)}
                       </Badge>
@@ -511,15 +534,17 @@ export function RfqItemsTable({
                   )}
                   {(canEditProducts || canEditPrices) && (
                     <TableCell>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => handleDelete(item.id)}
-                        aria-label={t('detail.items.delete')}
-                      >
-                        <TrashIcon className="size-4 text-foreground-muted" />
-                      </Button>
+                      <div className="flex justify-center">
+                        {/* Danger tone, like every other destructive row action — and unlike
+                            archiving, removing a line is not something the screen can undo. */}
+                        <RowActionButton
+                          icon={TrashIcon}
+                          tone="danger"
+                          label={t('detail.items.delete')}
+                          disabled={deleting !== null}
+                          onClick={() => setPendingDelete(item)}
+                        />
+                      </div>
                     </TableCell>
                   )}
                 </TableRow>
@@ -663,6 +688,25 @@ export function RfqItemsTable({
         }}
         onSelect={editingProductItemId ? handleModifyProduct : handleAddProduct}
         title={editingProductItemId ? t('detail.items.columns.modifyProduct') : undefined}
+      />
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(next) => !next && setPendingDelete(null)}
+        entity={pendingDelete}
+        pending={deleting !== null}
+        title={t('detail.items.deleteConfirm.title')}
+        description={(item) =>
+          t('detail.items.deleteConfirm.description', { name: item.requested_description })
+        }
+        onConfirm={() => {
+          if (pendingDelete) void handleDelete(pendingDelete.id);
+        }}
+        labels={{
+          confirm: t('detail.items.deleteConfirm.confirm'),
+          pending: t('detail.items.deleteConfirm.pending'),
+          cancel: tCommon('actions.cancel'),
+        }}
       />
     </>
   );
