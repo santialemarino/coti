@@ -72,38 +72,13 @@ function Dropzone({
   }
 
   return (
-    <button
-      type="button"
-      data-slot="dropzone"
-      data-dragging={dragging || undefined}
-      disabled={locked}
-      onClick={openFileDialog}
-      onDragEnter={(event) => {
-        event.preventDefault();
-        if (!locked) setDragDepth((depth) => depth + 1);
-      }}
-      onDragLeave={(event) => {
-        event.preventDefault();
-        setDragDepth((depth) => Math.max(0, depth - 1));
-      }}
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={(event) => {
-        event.preventDefault();
-        setDragDepth(0);
-        if (!locked) onFile(event.dataTransfer.files[0]);
-      }}
-      className={cn(
-        'group/dropzone flex flex-col w-full items-center justify-center px-6 py-10 gap-y-3',
-        'bg-card border-2 border-dashed border-border rounded-1.5xl outline-none',
-        'transition-[background-color,border-color,box-shadow] duration-200 ease-out-soft',
-        'hover:border-border-strong hover:bg-muted',
-        'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45',
-        'active:bg-surface-hover',
-        'data-[dragging]:border-primary data-[dragging]:bg-accent data-[dragging]:shadow-e3',
-        'disabled:pointer-events-none disabled:opacity-60',
-        className,
-      )}
-    >
+    /*
+     * The input is the button's sibling, not its child. A `<button>` may not contain interactive
+     * content, and a file input is interactive — the same rule that keeps the "elegir archivo"
+     * affordance a span. Off-screen rather than `display: none`, so a form that submits the element
+     * still finds it.
+     */
+    <div className="contents">
       <input
         ref={inputRef}
         type="file"
@@ -111,45 +86,75 @@ function Dropzone({
         disabled={locked}
         className="sr-only"
         onChange={(event) => onFile(event.target.files?.[0])}
-        /* The surface owns the click; a bubbling one from the input would reopen the picker. */
-        onClick={(event) => event.stopPropagation()}
       />
+      <button
+        type="button"
+        data-slot="dropzone"
+        data-dragging={dragging || undefined}
+        disabled={locked}
+        onClick={openFileDialog}
+        onDragEnter={(event) => {
+          event.preventDefault();
+          if (!locked) setDragDepth((depth) => depth + 1);
+        }}
+        onDragLeave={(event) => {
+          event.preventDefault();
+          setDragDepth((depth) => Math.max(0, depth - 1));
+        }}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDragDepth(0);
+          if (!locked) onFile(event.dataTransfer.files[0]);
+        }}
+        className={cn(
+          'group/dropzone flex flex-col w-full items-center justify-center px-6 py-10 gap-y-3',
+          'bg-card border-2 border-dashed border-border rounded-1.5xl outline-none',
+          'transition-[background-color,border-color,box-shadow] duration-200 ease-out-soft',
+          'hover:border-border-strong hover:bg-muted',
+          'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45',
+          'active:bg-surface-hover',
+          'data-[dragging]:border-primary data-[dragging]:bg-accent data-[dragging]:shadow-e3',
+          'disabled:pointer-events-none disabled:opacity-60',
+          className,
+        )}
+      >
+        {preview ?? (
+          <span
+            aria-hidden="true"
+            className={cn(
+              'grid size-12 shrink-0 place-items-center bg-accent rounded-full text-accent-foreground',
+              'transition-[scale,translate,background-color] duration-200 ease-out-soft',
+              'group-hover/dropzone:bg-accent-strong',
+              'group-data-[dragging]/dropzone:scale-110 group-data-[dragging]/dropzone:-translate-y-1',
+            )}
+          >
+            {loading ? <Spinner size="sm" /> : <Icon className="size-6" />}
+          </span>
+        )}
 
-      {preview ?? (
+        <span className="flex flex-col items-center gap-y-1 text-center">
+          <span className="break-all text-paragraph-medium text-foreground">
+            {loading ? (loadingLabel ?? title) : dragging ? releaseLabel : (fileName ?? title)}
+          </span>
+          {fileMeta ? (
+            <span className="text-paragraph-sm text-foreground-muted">{fileMeta}</span>
+          ) : hint ? (
+            <span className="text-paragraph-xs text-foreground-muted">{hint}</span>
+          ) : null}
+        </span>
+
         <span
           aria-hidden="true"
           className={cn(
-            'grid size-12 shrink-0 place-items-center bg-accent rounded-full text-accent-foreground',
-            'transition-[scale,translate,background-color] duration-200 ease-out-soft',
-            'group-hover/dropzone:bg-accent-strong',
-            'group-data-[dragging]/dropzone:scale-110 group-data-[dragging]/dropzone:-translate-y-1',
+            buttonVariants({ variant: 'outline', size: 'default' }),
+            'pointer-events-none group-hover/dropzone:border-border-strong group-hover/dropzone:bg-background',
           )}
         >
-          {loading ? <Spinner size="sm" /> : <Icon className="size-6" />}
+          {chooseLabel}
         </span>
-      )}
-
-      <span className="flex flex-col items-center gap-y-1 text-center">
-        <span className="break-all text-paragraph-medium text-foreground">
-          {loading ? (loadingLabel ?? title) : dragging ? releaseLabel : (fileName ?? title)}
-        </span>
-        {fileMeta ? (
-          <span className="text-paragraph-sm text-foreground-muted">{fileMeta}</span>
-        ) : hint ? (
-          <span className="text-paragraph-xs text-foreground-muted">{hint}</span>
-        ) : null}
-      </span>
-
-      <span
-        aria-hidden="true"
-        className={cn(
-          buttonVariants({ variant: 'outline', size: 'default' }),
-          'pointer-events-none group-hover/dropzone:border-border-strong group-hover/dropzone:bg-background',
-        )}
-      >
-        {chooseLabel}
-      </span>
-    </button>
+      </button>
+    </div>
   );
 }
 

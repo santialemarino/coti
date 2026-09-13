@@ -747,18 +747,19 @@
             "ITEM_SET": "Por combo"
           },
           "toast": {
-            "added": "Descuento agregado",
-            "updated": "Descuento actualizado",
-            "removed": "Descuento eliminado",
-            "suppressed": "Descuento suprimido",
-            "restored": "Descuento restaurado"
+            "added": "Agregamos el descuento «{name}».",
+            "updated": "Actualizamos el descuento «{name}».",
+            "removed": "Quitamos el descuento «{name}».",
+            "suppressed": "Suprimimos el descuento «{name}»; no se aplica a esta cotización.",
+            "restored": "Restauramos el descuento «{name}»."
           }
         },
         "toast": {
-          "updated": "Ítem actualizado",
-          "deleted": "Ítem eliminado",
-          "added": "Producto agregado",
-          "generated": "Cotización generada"
+          "updated": "Actualizamos «{name}».",
+          "deleted": "Quitamos «{name}» de la cotización.",
+          "added": "Agregamos «{name}» a la cotización.",
+          "generated": "La cotización quedó generada y lista para revisar.",
+          "error": "No pudimos guardar el cambio. Intentá de nuevo."
         },
         "errors": {
           "NOT_FOUND": "No encontramos ese ítem o cotización. Actualizá la pantalla e intentá de nuevo.",

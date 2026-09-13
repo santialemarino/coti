@@ -29,7 +29,7 @@ const { toast } = await import('sonner');
 const { assignRfqSeller, setQuoteArchived, setRfqSeller } = await import('@/lib/api/rfqs-client');
 const { listSellers } = await import('@/lib/api/sellers');
 
-const copy = messages.rfqs;
+const copy = { ...messages.rfqs, common: messages.common };
 const TEST_REFERENCES: Record<string, string> = { '2006': '#06', '2007': '#07' };
 
 const RFQS: RfqRecord[] = [
@@ -218,6 +218,66 @@ describe('RfqDashboard status filter counts', () => {
   });
 });
 
+describe('RfqDashboard archived filter', () => {
+  const ARCHIVED: RfqRecord = {
+    ...(RFQS[0] as RfqRecord),
+    id: 'arch-1',
+    quoteNumber: 77,
+    quoteId: 'quote-arch',
+    client: 'Cliente archivado',
+    archived: true,
+  };
+
+  /*
+   * Archivado is a value in the status picker, so picking it on its own means the archive — not
+   * the whole queue with the archive added to it.
+   */
+  it('hides archived orders until the filter asks for them, then shows only those', async () => {
+    const view = renderAs({ userName: 'Ana', userId: 'me', isAdmin: true }, [...RFQS, ARCHIVED]);
+
+    expect(view.queryByText('#77')).toBeNull();
+
+    fireEvent.click(view.getByRole('combobox', { name: copy.list.filters.status }));
+    const option = await vi.waitFor(() =>
+      view
+        .getAllByRole('option')
+        .find((item) => item.textContent?.startsWith(copy.status.ARCHIVED)),
+    );
+    if (!option) throw new Error('Archivados option never appeared');
+    fireEvent.click(option);
+
+    await vi.waitFor(() => expect(view.getByText('#77')).toBeTruthy());
+    expect(view.queryByText('#01')).toBeNull();
+  });
+});
+
+describe('RfqDashboard bulk archive', () => {
+  // Twelve rows, so the selection spans two pages at a page size of ten.
+  const MANY: RfqRecord[] = Array.from({ length: 12 }, (_, index) => ({
+    ...(RFQS[0] as RfqRecord),
+    id: `bulk-${index}`,
+    quoteNumber: 100 + index,
+    quoteId: `quote-bulk-${index}`,
+    client: `Cliente ${index}`,
+  }));
+
+  /*
+   * A selection survives paging, so acting on the visible page only would archive part of it and
+   * clear the rest without saying so.
+   */
+  it('archives every selected order, including the ones off the current page', async () => {
+    vi.mocked(setQuoteArchived).mockResolvedValue(undefined);
+    const view = renderAs({ userName: 'Ana', userId: 'me', isAdmin: true }, MANY);
+
+    fireEvent.click(view.getByLabelText(copy.list.selectAll));
+    fireEvent.click(view.getByRole('button', { name: copy.common.pagination.next }));
+    fireEvent.click(view.getByLabelText(copy.list.selectAll));
+    fireEvent.click(view.getByRole('button', { name: copy.list.bulk.archive }));
+
+    await vi.waitFor(() => expect(setQuoteArchived).toHaveBeenCalledTimes(MANY.length));
+  });
+});
+
 describe('RfqDashboard branch column', () => {
   /*
    * The header switcher already says which branch is in view, so repeating it on every row is a
@@ -270,7 +330,12 @@ describe('RfqDashboard row actions', () => {
     await vi.waitFor(() =>
       expect(toast.success).toHaveBeenCalledWith(copy.list.toast.archived.replace('{id}', '#01')),
     );
-    expect(setQuoteArchived).toHaveBeenCalledWith('quote-b1', true);
+    /*
+     * Named branch, not the header switcher's: it sits on "todas las sucursales" by default and a
+     * quote write that arrives without one is refused, which is how this shipped reporting success
+     * for a 422.
+     */
+    expect(setQuoteArchived).toHaveBeenCalledWith('quote-b1', true, 'b1');
     // Archived rows leave the queue until the status filter asks for them back.
     expect(view.queryByText('#01')).toBeNull();
   });

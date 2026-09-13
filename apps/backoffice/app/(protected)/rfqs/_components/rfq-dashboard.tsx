@@ -415,11 +415,8 @@ export function RfqDashboard({
   const filteredBase = useMemo(() => {
     if (!records) return [];
     const needle = query.trim().toLowerCase();
-    // Archived orders are only in the list at all so this filter can reveal them.
-    const showArchived = statusFilter.includes(ARCHIVED_FILTER);
     return records
       .filter((rfq) => {
-        if (rfq.archived && !showArchived) return false;
         if (channelFilter !== 'all' && rfq.channel !== channelFilter) return false;
         if (branchFilter !== 'all' && rfq.branch !== branchFilter) return false;
         if (sellerFilter === UNASSIGNED_SELLER) {
@@ -441,18 +438,35 @@ export function RfqDashboard({
         if (byFollowup !== 0) return byFollowup;
         return compareRfqs(a, b, sortBy, sortOrder);
       });
-  }, [records, query, statusFilter, channelFilter, branchFilter, sellerFilter, sortBy, sortOrder]);
+  }, [records, query, channelFilter, branchFilter, sellerFilter, sortBy, sortOrder]);
 
+  /*
+   * Counted over everything the other filters allow, archived included and counted separately, so
+   * the number beside a status answers "how many are there" rather than "how many are there given
+   * what this very picker is already hiding".
+   */
   const statusCounts = useMemo(() => {
-    const counts = new Map<RfqStatus, number>();
-    filteredBase.forEach((rfq) => counts.set(rfq.status, (counts.get(rfq.status) ?? 0) + 1));
+    const counts = new Map<StatusFilterValue, number>();
+    filteredBase.forEach((rfq) => {
+      const key: StatusFilterValue = rfq.archived ? ARCHIVED_FILTER : rfq.status;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    });
     return counts;
   }, [filteredBase]);
 
+  /*
+   * The picker lists things an order can be, and archivado is one of them. Nothing selected means
+   * the open queue; selecting Archivados on its own means the archive and nothing else; selecting it
+   * alongside statuses means both. Leaving archived rows in whenever the option was merely present
+   * in the list is what made "Archivados" read as "everything, plus archived".
+   */
   const filtered = useMemo(() => {
+    const showArchived = statusFilter.includes(ARCHIVED_FILTER);
     const wanted = statusFilter.filter((value) => value !== ARCHIVED_FILTER);
-    if (wanted.length === 0) return filteredBase;
-    return filteredBase.filter((rfq) => wanted.includes(rfq.status));
+    if (statusFilter.length === 0) return filteredBase.filter((rfq) => !rfq.archived);
+    return filteredBase.filter((rfq) =>
+      rfq.archived ? showArchived : wanted.includes(rfq.status),
+    );
   }, [filteredBase, statusFilter]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -515,7 +529,7 @@ export function RfqDashboard({
     const next = !rfq.archived;
     setArchiving((previous) => new Set(previous).add(rfq.id));
     try {
-      await setQuoteArchived(rfq.quoteId, next);
+      await setQuoteArchived(rfq.quoteId, next, rfq.branchId);
       setRecords((previous) =>
         previous.map((item) => (item.id === rfq.id ? { ...item, archived: next } : item)),
       );
@@ -617,10 +631,14 @@ export function RfqDashboard({
    * instead of claiming the whole selection did.
    */
   async function archiveSelected() {
-    const targets = pageItems.filter((rfq) => selected.has(rfq.id) && rfq.quoteId && !rfq.archived);
+    /*
+     * Over every record, not the visible page: a selection survives paging, so filtering by what is
+     * on screen would archive one page's worth and clear the rest of the selection without a word.
+     */
+    const targets = records.filter((rfq) => selected.has(rfq.id) && rfq.quoteId && !rfq.archived);
     if (targets.length === 0) return;
     const results = await Promise.allSettled(
-      targets.map((rfq) => setQuoteArchived(rfq.quoteId as string, true)),
+      targets.map((rfq) => setQuoteArchived(rfq.quoteId as string, true, rfq.branchId)),
     );
     const archived = new Set(
       targets.filter((_, index) => results[index]?.status === 'fulfilled').map((rfq) => rfq.id),
@@ -676,10 +694,9 @@ export function RfqDashboard({
             <MultiCombobox
               options={STATUS_FILTER_VALUES.map((status) => ({
                 value: status,
-                label:
-                  status === ARCHIVED_FILTER
-                    ? t('status.ARCHIVED')
-                    : `${t(`status.${status}`)} (${statusCounts.get(status) ?? 0})`,
+                label: `${status === ARCHIVED_FILTER ? t('status.ARCHIVED') : t(`status.${status}`)} (${
+                  statusCounts.get(status) ?? 0
+                })`,
               }))}
               values={statusFilter}
               onValuesChange={(values) => setStatusFilter(values as StatusFilterValue[])}

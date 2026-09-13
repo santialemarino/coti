@@ -37,7 +37,25 @@ interface Hsv {
   v: number;
 }
 
-const HEX = /^[0-9a-f]{6}$/i;
+/*
+ * The field that owns this picker accepts 3, 6 or 8 digits, so the swatch has to read all three or
+ * it goes black the moment someone types a valid shorthand. Alpha is dropped: the picker has no
+ * channel for it and showing a colour it cannot reproduce would be a lie.
+ */
+function normalizeHex(value: string): string | null {
+  const digits = value.replace(/^#/, '');
+  if (/^[0-9a-f]{3}$/i.test(digits)) {
+    return digits
+      .split('')
+      .map((digit) => digit + digit)
+      .join('')
+      .toUpperCase();
+  }
+  if (/^[0-9a-f]{6}$/i.test(digits) || /^[0-9a-f]{8}$/i.test(digits)) {
+    return digits.slice(0, 6).toUpperCase();
+  }
+  return null;
+}
 
 function clamp(value: number, min = 0, max = 100) {
   return Math.min(max, Math.max(min, value));
@@ -57,7 +75,12 @@ export function hexToHsv(hex: string): Hsv {
     else if (max === g) h = (b - r) / delta + 2;
     else h = (r - g) / delta + 4;
   }
-  h = Math.round(h * 60);
+  /*
+   * Deliberately not rounded. A hue rounded to whole degrees does not survive the trip back to hex:
+   * #2F6CB3 returns as #2F6DB3, and since every pad or rail move rebuilds the colour from this
+   * value, the drift compounds one channel at a time while the user thinks they moved one slider.
+   */
+  h *= 60;
   if (h < 0) h += 360;
 
   return { h, s: max === 0 ? 0 : (delta / max) * 100, v: max * 100 };
@@ -116,8 +139,7 @@ function ColorPicker({
   const padRef = React.useRef<HTMLDivElement>(null);
   const hueRef = React.useRef<HTMLDivElement>(null);
 
-  const valid = HEX.test(value);
-  const hex = valid ? value.toUpperCase() : '000000';
+  const hex = normalizeHex(value) ?? '000000';
   /*
    * Derived from the hex on every render rather than held in state. A stored HSV drifts out of sync
    * the moment the hex input is typed into, and hue is genuinely unrecoverable from a greyscale hex

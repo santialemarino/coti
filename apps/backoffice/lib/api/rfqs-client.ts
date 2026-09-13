@@ -231,10 +231,18 @@ export async function setRfqSeller(rfqId: string, sellerId: string | null): Prom
 /*
  * Archive an order out of the queue, or put it back. Archivado is a flag on the quote, not a
  * lifecycle state, so both directions leave the order's real status untouched.
+ *
+ * Branch-scoped like every other quote write: the header switcher sits on "todas las sucursales" by
+ * default, and a write that arrives without a branch is refused — so the row names its own.
  */
-export async function setQuoteArchived(quoteId: string, archived: boolean): Promise<void> {
+export async function setQuoteArchived(
+  quoteId: string,
+  archived: boolean,
+  branchId: string,
+): Promise<void> {
   const response = await fetch(`/api/quotes/${quoteId}/archive`, {
     method: archived ? 'POST' : 'DELETE',
+    headers: branchHeaders(branchId),
     cache: 'no-store',
   });
 

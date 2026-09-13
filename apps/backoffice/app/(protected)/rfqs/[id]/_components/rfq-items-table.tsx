@@ -155,10 +155,10 @@ export function RfqItemsTable({
     try {
       if (editingDiscount) {
         await updateDiscount(quoteId, editingDiscount.id, branchId, body);
-        toast.success(t('detail.items.discounts.toast.updated'));
+        toast.success(t('detail.items.discounts.toast.updated', { name: body.description }));
       } else {
         await addDiscount(quoteId, branchId, body);
-        toast.success(t('detail.items.discounts.toast.added'));
+        toast.success(t('detail.items.discounts.toast.added', { name: body.description }));
       }
       await onRefresh?.();
       setDiscountDialogOpen(false);
@@ -177,6 +177,11 @@ export function RfqItemsTable({
     setDiscountDialogOpen(true);
   }
 
+  /* What a discount is called on screen: the seller's own description, else the promotion's name. */
+  function discountName(discount: QuoteDiscountResponse): string {
+    return discount.description ?? discount.promotion_name ?? '';
+  }
+
   async function handleToggleDiscount(discount: QuoteDiscountResponse) {
     if (!quoteId) return;
     try {
@@ -186,9 +191,12 @@ export function RfqItemsTable({
       await onRefresh?.();
       onDiscountsChange?.(discounts.map((d) => (d.id === updated.id ? updated : d)));
       toast.success(
-        updated.suppressed_by_seller
-          ? t('detail.items.discounts.toast.suppressed')
-          : t('detail.items.discounts.toast.restored'),
+        t(
+          updated.suppressed_by_seller
+            ? 'detail.items.discounts.toast.suppressed'
+            : 'detail.items.discounts.toast.restored',
+          { name: discountName(updated) },
+        ),
       );
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
@@ -201,7 +209,7 @@ export function RfqItemsTable({
       await deleteDiscount(quoteId, discount.id, branchId);
       onDiscountsChange?.(discounts.filter((d) => d.id !== discount.id));
       await onRefresh?.();
-      toast.success(t('detail.items.discounts.toast.removed'));
+      toast.success(t('detail.items.discounts.toast.removed', { name: discountName(discount) }));
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
     }
@@ -229,7 +237,7 @@ export function RfqItemsTable({
     try {
       const updated = await updateQuoteItem(quoteId, itemId, branchId, { quantity: normalized });
       onItemsChange(items.map((item) => (item.id === itemId ? updated : item)));
-      toast.success(t('detail.items.toast.updated'));
+      toast.success(t('detail.items.toast.updated', { name: updated.requested_description }));
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
     }
@@ -261,7 +269,7 @@ export function RfqItemsTable({
         unit_price_snapshot: normalized,
       });
       onItemsChange(items.map((item) => (item.id === itemId ? updated : item)));
-      toast.success(t('detail.items.toast.updated'));
+      toast.success(t('detail.items.toast.updated', { name: updated.requested_description }));
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
     }
@@ -278,14 +286,14 @@ export function RfqItemsTable({
    * re-runs pricing, so a quote that had been reviewed could come back with a different subtotal.
    * One click of friction is the honest price for a write the screen cannot take back.
    */
-  async function handleDelete(itemId: string) {
+  async function handleDelete(item: QuoteItemResponse) {
     if (!quoteId) return;
-    setDeleting(itemId);
+    setDeleting(item.id);
     try {
-      await deleteQuoteItem(quoteId, itemId, branchId);
-      onItemsChange(items.filter((item) => item.id !== itemId));
+      await deleteQuoteItem(quoteId, item.id, branchId);
+      onItemsChange(items.filter((line) => line.id !== item.id));
       setPendingDelete(null);
-      toast.success(t('detail.items.toast.deleted'));
+      toast.success(t('detail.items.toast.deleted', { name: item.requested_description }));
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
     } finally {
@@ -303,7 +311,7 @@ export function RfqItemsTable({
         unit: product.unit || null,
       });
       onItemsChange([...items, created]);
-      toast.success(t('detail.items.toast.added'));
+      toast.success(t('detail.items.toast.added', { name: created.requested_description }));
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
     }
@@ -320,7 +328,7 @@ export function RfqItemsTable({
         unit: product.unit || null,
       });
       onItemsChange(items.map((i) => (i.id === item.id ? updated : i)));
-      toast.success(t('detail.items.toast.updated'));
+      toast.success(t('detail.items.toast.updated', { name: updated.requested_description }));
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
     } finally {
@@ -700,7 +708,7 @@ export function RfqItemsTable({
           t('detail.items.deleteConfirm.description', { name: item.requested_description })
         }
         onConfirm={() => {
-          if (pendingDelete) void handleDelete(pendingDelete.id);
+          if (pendingDelete) void handleDelete(pendingDelete);
         }}
         labels={{
           confirm: t('detail.items.deleteConfirm.confirm'),
