@@ -3,7 +3,17 @@
 import { useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 
-import { Callout, PendingButton } from '@repo/ui/components';
+import {
+  Callout,
+  Dropzone,
+  PendingButton,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@repo/ui/components';
 import {
   confirmPriceImport,
   exportPrices,
@@ -21,10 +31,12 @@ interface PriceImportProps {
 export function PriceImport({ branch }: PriceImportProps) {
   const fmt = useFormatters();
   const t = useTranslations('priceImport');
+  const tCommon = useTranslations('common');
   // Two resolvers: exporting words a 422 as "this branch has no prices yet", where the import
   // reads the same code as a file it could not use.
   const message = useApiErrorMessage('priceImport');
   const exportMessage = useApiErrorMessage('priceImport.export');
+  const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ProductPriceImportPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successCount, setSuccessCount] = useState<number | null>(null);
@@ -41,9 +53,12 @@ export function PriceImport({ branch }: PriceImportProps) {
   // locks all three.
   const busy = previewing || confirming || exporting;
 
-  function onPreview(formData: FormData) {
+  function onPreview() {
+    if (!file) return;
     setError(null);
     setSuccessCount(null);
+    const formData = new FormData();
+    formData.set('file', file);
     startPreview(async () => {
       const result = await previewPriceImport(branch.id, formData);
       if (!result.ok) {
@@ -97,24 +112,24 @@ export function PriceImport({ branch }: PriceImportProps) {
       <Callout tone="info">{t('targetBranch', { name: branch.name })}</Callout>
 
       <form
-        action={onPreview}
+        onSubmit={(event) => {
+          event.preventDefault();
+          onPreview();
+        }}
         noValidate
-        className="grid p-5 gap-4 bg-card border rounded-lg md:grid-cols-[1fr_auto] md:items-end"
+        className="flex flex-col gap-y-4"
       >
-        <div className="flex flex-col gap-y-1">
-          <label htmlFor="file" className="text-paragraph-sm-medium">
-            {t('form.file.label')}
-          </label>
-          <input
-            id="file"
-            name="file"
-            type="file"
-            required
-            accept=".xlsx,.csv"
-            className="h-10 px-3 py-2 bg-background border border-input rounded-lg outline-none transition-[border-color,box-shadow] duration-200 ease-out-soft focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45 file:mr-3 file:border-0 file:bg-transparent file:text-paragraph-sm-medium"
-          />
-        </div>
-        <div className="flex gap-x-2">
+        <Dropzone
+          accept=".xlsx,.csv"
+          disabled={busy}
+          onFile={(next) => setFile(next ?? null)}
+          title={tCommon('fileUpload.title')}
+          releaseLabel={tCommon('fileUpload.release')}
+          chooseLabel={file ? tCommon('fileUpload.replace') : tCommon('fileUpload.choose')}
+          hint={tCommon('fileUpload.spreadsheetFormats')}
+          fileName={file?.name}
+        />
+        <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
           <PendingButton
             type="button"
             variant="outline"
@@ -127,7 +142,7 @@ export function PriceImport({ branch }: PriceImportProps) {
           </PendingButton>
           <PendingButton
             type="submit"
-            disabled={busy}
+            disabled={busy || !file}
             pending={previewing}
             pendingLabel={t('form.previewing')}
           >
@@ -162,49 +177,54 @@ export function PriceImport({ branch }: PriceImportProps) {
               {t('invalidRowsSkipped', { count: preview.invalidRows })}
             </Callout>
           ) : null}
-          <div className="overflow-x-auto border rounded-lg">
-            <table className="w-full border-collapse text-paragraph-sm">
-              <thead className="bg-muted">
-                <tr>
-                  <th className="px-3 py-2 text-left">{t('table.row')}</th>
-                  <th className="px-3 py-2 text-left">{t('table.code')}</th>
-                  <th className="px-3 py-2 text-left">{t('table.product')}</th>
-                  <th className="px-3 py-2 text-left">{t('table.currentPrice')}</th>
-                  <th className="px-3 py-2 text-left">{t('table.newPrice')}</th>
-                  <th className="px-3 py-2 text-left">{t('table.minPrice')}</th>
-                  <th className="px-3 py-2 text-left">{t('table.result')}</th>
-                </tr>
-              </thead>
-              <tbody>
+          <div className="overflow-hidden border border-border rounded-1.5xl shadow-e1">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('table.row')}</TableHead>
+                  <TableHead>{t('table.code')}</TableHead>
+                  <TableHead>{t('table.product')}</TableHead>
+                  <TableHead className="text-right">{t('table.currentPrice')}</TableHead>
+                  <TableHead className="text-right">{t('table.newPrice')}</TableHead>
+                  <TableHead className="text-right">{t('table.minPrice')}</TableHead>
+                  <TableHead>{t('table.result')}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {preview.rows.map((row) => (
-                  <tr key={`${row.rowNumber}-${row.code}`} className="border-t">
-                    <td className="px-3 py-2">{row.rowNumber}</td>
-                    <td className="px-3 py-2 text-paragraph-sm-medium">{row.code || '—'}</td>
-                    <td className="px-3 py-2">{row.productName || '—'}</td>
-                    <td className="px-3 py-2">
+                  <TableRow
+                    key={`${row.rowNumber}-${row.code}`}
+                    className={
+                      row.errors.length > 0 ? 'bg-danger-subtle hover:bg-danger-subtle' : undefined
+                    }
+                  >
+                    <TableCell>{row.rowNumber}</TableCell>
+                    <TableCell className="text-paragraph-sm-medium">{row.code || '—'}</TableCell>
+                    <TableCell>{row.productName || '—'}</TableCell>
+                    <TableCell className="text-right tabular-nums">
                       {row.currentPrice ? fmt.currency(row.currentPrice, row.currency) : '—'}
-                    </td>
-                    <td className="px-3 py-2">
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
                       {row.price ? fmt.currency(row.price, row.currency) : '—'}
-                    </td>
-                    <td className="px-3 py-2">
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
                       {row.minPrice ? fmt.currency(row.minPrice, row.currency) : '—'}
-                    </td>
-                    <td className="px-3 py-2">
+                    </TableCell>
+                    <TableCell>
                       {row.errors.length === 0 ? (
                         <span>{t('valid')}</span>
                       ) : (
-                        <ul className="flex flex-col gap-y-1 text-danger-foreground">
+                        <ul className="flex flex-col gap-y-1 text-paragraph-xs-medium text-danger-foreground">
                           {row.errors.map((rowError) => (
                             <li key={rowError}>{t(`rowErrors.${rowError}`)}</li>
                           ))}
                         </ul>
                       )}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
           {!preview.canConfirm ? (
             <p className="text-paragraph-sm text-danger-foreground">{t('fixErrors')}</p>

@@ -49,7 +49,7 @@ export function BrandColorField<TValues extends FieldValues>({
                 type="color"
                 aria-label={pickerLabel}
                 value={pickerColor}
-                className="size-9 shrink-0 p-1 bg-input border border-border rounded-lg outline-none shadow-e1 transition-[border-color,box-shadow,scale] duration-200 ease-out-soft hover:border-strong active:scale-[0.98] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45 [&::-moz-color-swatch]:border-0 [&::-moz-color-swatch]:rounded-md [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch]:rounded-md [&::-webkit-color-swatch-wrapper]:p-0"
+                className="size-9 shrink-0 p-1 bg-input border border-border rounded-lg outline-none shadow-e1 transition-[border-color,box-shadow] duration-200 ease-out-soft hover:border-border-strong focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45 [&::-moz-color-swatch]:border-0 [&::-moz-color-swatch]:rounded-md [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch]:rounded-md [&::-webkit-color-swatch-wrapper]:p-0"
                 onInput={(event) =>
                   field.onChange(event.currentTarget.value.slice(1).toUpperCase())
                 }

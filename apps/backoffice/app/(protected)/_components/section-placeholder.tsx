@@ -24,7 +24,8 @@ export function SectionPlaceholder({
   backLabel,
 }: SectionPlaceholderProps) {
   return (
-    <Card className="gap-y-0 overflow-hidden py-0">
+    /* py-14, not the card's default py-6: the screen is the whole section, not a block inside one. */
+    <Card className="gap-y-0 py-14">
       <StatusScreen icon={icon} tone="info" title={title} description={description}>
         <Button asChild variant="outline">
           <Link href={ROUTES.rfqs}>

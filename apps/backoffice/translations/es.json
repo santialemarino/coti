@@ -43,6 +43,13 @@
       "invalidType": "Elegí una imagen PNG o JPG.",
       "previewAlt": "Vista previa del logo"
     },
+    "fileUpload": {
+      "title": "Arrastrá tu archivo hasta acá",
+      "release": "Soltá el archivo para cargarlo",
+      "choose": "Elegir archivo",
+      "replace": "Cambiar archivo",
+      "spreadsheetFormats": "Aceptamos Excel (.xlsx) y CSV."
+    },
     "retry": "Reintentar",
     "form": {
       "togglePassword": "Mostrar u ocultar la contraseña",
@@ -1065,7 +1072,8 @@
       "release": "Soltá el archivo para cargarlo",
       "selected": "Archivo seleccionado: {size, number} KB",
       "choose": "Elegir archivo",
-      "replace": "Cambiar archivo"
+      "replace": "Cambiar archivo",
+      "formats": "Aceptamos Excel (.xlsx) y CSV."
     },
     "fileRequired": "Elegí un archivo para continuar.",
     "template": {

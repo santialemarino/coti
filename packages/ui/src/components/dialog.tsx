@@ -64,6 +64,10 @@ function DialogContent({
           'max-h-[90dvh] overflow-y-auto',
           'gap-y-4 px-4 py-6 sm:px-6 bg-background border border-border rounded-2xl shadow-e4',
           'focus:outline-none',
+          /* A multi-step dialog widens as it advances. Both widths are concrete values, so the step
+             can travel instead of cutting — and the entrance is unaffected, since there is no
+             previous value to interpolate from on the first frame. */
+          'transition-[max-width] duration-300 ease-out-soft',
           'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
           'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
           'duration-200 ease-out-soft',

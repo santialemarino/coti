@@ -26,6 +26,9 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent-strong: var(--accent-strong);
+  --color-accent-stronger: var(--accent-stronger);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-active: var(--surface-active);
 
   /* Lines and fields */
   --color-border: var(--border);
@@ -44,6 +47,8 @@
   --color-warning-border: var(--warning-border);
   --color-warning-foreground: var(--warning-foreground);
   --color-danger: var(--danger-base);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger-active: var(--danger-active);
   --color-danger-subtle: var(--danger-subtle);
   --color-danger-border: var(--danger-border);
   --color-danger-foreground: var(--danger-foreground);

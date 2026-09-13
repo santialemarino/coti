@@ -130,6 +130,19 @@
   --accent-foreground: var(--brand-700);
   --accent-strong: var(--brand-100);
 
+  /*
+   * Neutral interaction fills. `muted` sits within half a point of lightness of the page wash, so it
+   * can only read as a hover on a white card — on the wash it is invisible. Anything that may sit on
+   * either surface (a nav item, a row action) reaches for these instead, which clear both.
+   */
+  --surface-hover: var(--neutral-200);
+  --surface-active: var(--neutral-300);
+  /* The press step for an accent-tinted surface, one rung past --accent-strong. */
+  --accent-stronger: var(--brand-200);
+  /* Hover and press steps for a solid danger fill; --danger-base is its resting colour. */
+  --danger-hover: oklch(0.545 0.2 27);
+  --danger-active: oklch(0.498 0.185 27);
+
   --border: var(--neutral-200);
   --border-strong: var(--neutral-300);
   --input: var(--neutral-50);
@@ -149,6 +162,17 @@
 }
 
 @layer base {
+  /*
+   * Tailwind v4's default border colour is `currentColor`, so a bare `border` paints the text
+   * colour — a black hairline on any surface whose foreground is the ink. Every border in Coti is
+   * a line, not text, so the default is the line token and `border-<colour>` is the opt-in.
+   */
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
+
   /* An enabled control looks clickable. */
   button:not([disabled]),
   [role='button']:not([disabled]) {
