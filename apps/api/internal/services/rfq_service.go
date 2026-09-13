@@ -23,7 +23,7 @@ type rfqRepository interface {
 	UpdateStatus(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, status domain.RFQStatus) (*domain.RFQ, error)
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID, previousStatus *domain.RFQStatus, newStatus domain.RFQStatus, userID *uuid.UUID) (*domain.RFQStatusChange, error)
 	ListStatusChanges(ctx context.Context, q repository.Querier, accountID, branchID, rfqID uuid.UUID) ([]domain.RFQStatusChange, error)
-	ListByTenant(ctx context.Context, q repository.Querier, tenant domain.Tenant) ([]domain.RfqListItem, error)
+	ListByTenant(ctx context.Context, q repository.Querier, tenant domain.Tenant, includeArchived bool) ([]domain.RfqListItem, error)
 	GetByRFQID(ctx context.Context, q repository.Querier, tenant domain.Tenant, rfqID uuid.UUID) (*domain.RfqListItem, error)
 	AssignSeller(ctx context.Context, q repository.Querier, tenant domain.Tenant, rfqID uuid.UUID) (*domain.Quote, error)
 	SetSeller(ctx context.Context, q repository.Querier, tenant domain.Tenant, rfqID uuid.UUID, sellerID *uuid.UUID) (*domain.Quote, error)
@@ -185,12 +185,15 @@ func NewRFQService(
 
 // ---------- Manual entry ----------
 
-// List returns the RFQ list for the caller's tenant scope.
-func (s *RFQService) List(ctx context.Context, tenant domain.Tenant) ([]domain.RfqListItem, error) {
+// List returns the RFQ list for the caller's tenant scope. includeArchived keeps archived quotes
+// in the result so the dashboard can offer them as a filter.
+func (s *RFQService) List(
+	ctx context.Context, tenant domain.Tenant, includeArchived bool,
+) ([]domain.RfqListItem, error) {
 	var items []domain.RfqListItem
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		var err error
-		items, err = s.rfqs.ListByTenant(ctx, q, tenant)
+		items, err = s.rfqs.ListByTenant(ctx, q, tenant, includeArchived)
 		return err
 	}); err != nil {
 		return nil, err

@@ -39,6 +39,8 @@ export interface RfqRecord {
   sellerId: string | null;
   branch: string;
   branchId: string;
+  // The quote the order produced; null until it has one. Archiving is keyed on it.
+  quoteId: string | null;
   itemCount: number;
   /*
    * Decimal string, the wire format money travels as (NUMERIC(14,2)); currency is per-account.
@@ -63,6 +65,7 @@ export interface RfqListItem {
   seller: string;
   branch: string;
   branch_id: string;
+  quote_id: string | null;
   item_count: number;
   total: string | null;
   status: string;

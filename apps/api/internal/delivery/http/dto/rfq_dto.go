@@ -61,6 +61,7 @@ type RfqListItemResponse struct {
 	Seller        string     `json:"seller"`
 	BranchID      uuid.UUID  `json:"branch_id"`
 	Branch        string     `json:"branch"`
+	QuoteID       *uuid.UUID `json:"quote_id"`
 	QuoteNumber   *int64     `json:"quote_number"`
 	ItemCount     int        `json:"item_count"`
 	Total         *string    `json:"total"`

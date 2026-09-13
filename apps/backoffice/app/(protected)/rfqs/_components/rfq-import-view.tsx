@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { FileTextIcon, UploadCloudIcon } from 'lucide-react';
+import { FileTextIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
@@ -11,11 +11,12 @@ import {
   Callout,
   Combobox,
   DialogFooter,
+  Dropzone,
   Input,
+  Label,
   PendingButton,
   Textarea,
 } from '@repo/ui/components';
-import { FileDropzone } from '@/components/file-dropzone';
 import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { listChannels, type Channel } from '@/lib/api/channels';
@@ -45,6 +46,8 @@ interface RfqImportViewProps {
   onClose: () => void;
   onCreated: () => void;
   activeBranchId: string | null;
+  /* Lets the dialog refuse a click outside once there is work a stray click would throw away. */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 /*
@@ -53,7 +56,13 @@ interface RfqImportViewProps {
  * materials out of it. The draft it produces is a proposal: the seller lands on the order to
  * review every line before anything is priced.
  */
-export function RfqImportView({ onBack, onClose, onCreated, activeBranchId }: RfqImportViewProps) {
+export function RfqImportView({
+  onBack,
+  onClose,
+  onCreated,
+  activeBranchId,
+  onDirtyChange,
+}: RfqImportViewProps) {
   const router = useRouter();
   const t = useTranslations('rfqs.create.import');
   const tToast = useTranslations('rfqs.create.toast');
@@ -85,6 +94,10 @@ export function RfqImportView({ onBack, onClose, onCreated, activeBranchId }: Rf
   // A new order has no branch of its own to fall back on, so one has to be selected before it
   // can be created at all — the same gate the manual flow applies.
   const canSubmit = !!file && !!channelId && !!activeBranchId;
+  // What a stray click outside the dialog would throw away.
+  const dirty = file !== null || client.trim() !== '' || note.trim() !== '';
+
+  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
 
   function onSubmit() {
     if (!file || !channelId) return;
@@ -124,45 +137,24 @@ export function RfqImportView({ onBack, onClose, onCreated, activeBranchId }: Rf
     >
       {activeBranchId ? null : <Callout tone="warning">{t('noBranch')}</Callout>}
 
-      <FileDropzone
+      <Dropzone
         accept={ACCEPTED_TYPES.join(',')}
         disabled={processing}
         onFile={(chosen) => setFile(chosen ?? null)}
-      >
-        {({ dragging, openFileDialog }) => (
-          <>
-            <span
-              data-dragging={dragging}
-              className="flex size-12 items-center justify-center bg-accent rounded-full text-accent-foreground transition-[scale,translate] duration-200 ease-out-soft data-[dragging=true]:scale-110 data-[dragging=true]:-translate-y-1"
-            >
-              {file ? (
-                <FileTextIcon aria-hidden="true" className="size-6" />
-              ) : (
-                <UploadCloudIcon aria-hidden="true" className="size-6" />
-              )}
-            </span>
-            <div className="flex flex-col items-center gap-y-1 text-center">
-              <p className="break-all text-paragraph-medium">
-                {dragging ? t('dropzone.release') : file ? file.name : t('dropzone.title')}
-              </p>
-              <p className="text-paragraph-sm text-foreground-muted">
-                {file
-                  ? t('dropzone.selected', { size: Math.max(1, Math.round(file.size / 1024)) })
-                  : t('acceptHint')}
-              </p>
-            </div>
-            <Button type="button" variant="outline" disabled={processing} onClick={openFileDialog}>
-              {file ? t('dropzone.replace') : t('dropzone.choose')}
-            </Button>
-          </>
-        )}
-      </FileDropzone>
+        icon={file ? FileTextIcon : undefined}
+        title={t('dropzone.title')}
+        releaseLabel={t('dropzone.release')}
+        chooseLabel={file ? t('dropzone.replace') : t('dropzone.choose')}
+        hint={t('acceptHint')}
+        fileName={file?.name}
+        fileMeta={
+          file ? t('dropzone.selected', { size: Math.max(1, Math.round(file.size / 1024)) }) : null
+        }
+      />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-y-1">
-          <label htmlFor="rfq-import-channel" className="text-paragraph-sm-medium">
-            {t('channelLabel')}
-          </label>
+          <Label htmlFor="rfq-import-channel">{t('channelLabel')}</Label>
           <Combobox
             id="rfq-import-channel"
             options={channels.map((channel) => ({
@@ -180,9 +172,7 @@ export function RfqImportView({ onBack, onClose, onCreated, activeBranchId }: Rf
         </div>
 
         <div className="flex flex-col gap-y-1">
-          <label htmlFor="rfq-import-client" className="text-paragraph-sm-medium">
-            {t('clientLabel')}
-          </label>
+          <Label htmlFor="rfq-import-client">{t('clientLabel')}</Label>
           <Input
             id="rfq-import-client"
             value={client}
@@ -194,9 +184,7 @@ export function RfqImportView({ onBack, onClose, onCreated, activeBranchId }: Rf
       </div>
 
       <div className="flex flex-col gap-y-1">
-        <label htmlFor="rfq-import-note" className="text-paragraph-sm-medium">
-          {t('noteLabel')}
-        </label>
+        <Label htmlFor="rfq-import-note">{t('noteLabel')}</Label>
         <Textarea
           id="rfq-import-note"
           value={note}

@@ -4,15 +4,17 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArchiveIcon,
+  ArchiveRestoreIcon,
+  Building2Icon,
   ClipboardListIcon,
-  EyeIcon,
   InboxIcon,
   LinkIcon,
   MailIcon,
   MessageCircleIcon,
-  MoreHorizontalIcon,
   PlusIcon,
+  RadioIcon,
   SearchXIcon,
+  TagIcon,
   UserPlusIcon,
   UsersIcon,
   XIcon,
@@ -32,11 +34,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
+  MultiCombobox,
   Pagination,
+  RowActionButton,
   SearchInput,
   SortableTableHead,
   Table,
@@ -47,8 +48,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-  ToggleGroup,
-  ToggleGroupItem,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from '@repo/ui/components';
 import { cn } from '@repo/ui/lib';
 import { CreateRfqDialog } from '@/app/(protected)/rfqs/_components/create-rfq-dialog';
@@ -67,12 +69,13 @@ import {
   type RfqRecord,
   type RfqStatus,
 } from '@/lib/api/rfqs';
-import { assignRfqSeller, setRfqSeller } from '@/lib/api/rfqs-client';
+import { assignRfqSeller, setQuoteArchived, setRfqSeller } from '@/lib/api/rfqs-client';
 import { listSellers, type Seller } from '@/lib/api/sellers';
 import { useFormatters } from '@/lib/i18n/formatters';
 
 const PAGE_SIZE = 10;
-const COLUMN_COUNT = 10;
+// Checkbox, pedido, fecha, vendedor, ítems, monto, estado, acciones — plus sucursal when shown.
+const BASE_COLUMN_COUNT = 8;
 const UNASSIGNED_SELLER = '__unassigned__';
 
 // Shared read-only empty seller list so unloaded branches never allocate per render.
@@ -83,6 +86,13 @@ const CHANNELS: readonly RfqChannel[] = ['whatsapp', 'email', 'webapp', 'manual_
 const STATUS_RANK = Object.fromEntries(
   STATUS_ORDER.map((status, index) => [status, index]),
 ) as Record<RfqStatus, number>;
+
+/* Archivado is a flag, not a lifecycle state, so it joins the status picker as its own value. */
+const ARCHIVED_FILTER = 'ARCHIVED';
+
+type StatusFilterValue = RfqStatus | typeof ARCHIVED_FILTER;
+
+const STATUS_FILTER_VALUES: readonly StatusFilterValue[] = [...STATUS_ORDER, ARCHIVED_FILTER];
 
 const CHANNEL_ICON: Record<RfqChannel, typeof MailIcon> = {
   whatsapp: MessageCircleIcon,
@@ -270,79 +280,29 @@ function SellerCell({
   );
 }
 
-interface RowMenuProps {
+interface RowActionsProps {
   rfq: RfqRecord;
-  // True when the row has no owner and the caller is a seller: the order is claimable.
-  canAssign: boolean;
-  // True for an account owner: the assign item becomes a seller steered from the picklist.
-  isAdmin: boolean;
-  sellers: Seller[];
-  sellersLoading: boolean;
-  userId: string;
-  onAssign: (rfq: RfqRecord) => void;
-  // Fetches the sellers of the order's own branch the first time its submenu opens.
-  onLoadSellers: (branchId: string) => void;
-  onSellerChange: (rfq: RfqRecord, sellerId: string | null) => void;
   onArchive: (rfq: RfqRecord) => void;
+  archiving: boolean;
 }
 
-// The per-row contextual menu: claim or steer the owner, view, edit, move through the statuses and archive.
-function RowMenu({
-  rfq,
-  canAssign,
-  isAdmin,
-  sellers,
-  sellersLoading,
-  userId,
-  onAssign,
-  onLoadSellers,
-  onSellerChange,
-  onArchive,
-}: RowMenuProps) {
+/*
+ * The row's own actions, inline rather than behind a menu. There is one of them: opening the order
+ * is what clicking the row already does, and steering the owner lives in the seller cell, so a menu
+ * here would be a lid over a single item.
+ */
+function RowActions({ rfq, onArchive, archiving }: RowActionsProps) {
   const t = useTranslations('rfqs');
-  const router = useRouter();
+  const archived = rfq.archived === true;
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label={t('list.actions.more')}>
-          <MoreHorizontalIcon aria-hidden="true" className="size-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        {isAdmin ? (
-          <DropdownMenuSub onOpenChange={(open) => open && onLoadSellers(rfq.branchId)}>
-            <DropdownMenuSubTrigger>
-              <UsersIcon aria-hidden="true" />
-              {t('list.actions.changeSeller')}
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent>
-              <SellerMenuItems
-                rfq={rfq}
-                sellers={sellers}
-                sellersLoading={sellersLoading}
-                userId={userId}
-                onSellerChange={onSellerChange}
-              />
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        ) : canAssign ? (
-          <DropdownMenuItem onSelect={() => onAssign(rfq)}>
-            <UserPlusIcon aria-hidden="true" />
-            {t('list.actions.assign')}
-          </DropdownMenuItem>
-        ) : null}
-        <DropdownMenuItem onSelect={() => router.push(ROUTES.rfqsDetail(rfq.id))}>
-          <EyeIcon aria-hidden="true" />
-          {t('list.actions.view')}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem tone="danger" onSelect={() => onArchive(rfq)}>
-          <ArchiveIcon aria-hidden="true" />
-          {t('list.actions.archive')}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <RowActionButton
+      icon={archived ? ArchiveRestoreIcon : ArchiveIcon}
+      label={t(archived ? 'list.actions.unarchive' : 'list.actions.archive')}
+      tone={archived ? 'default' : 'danger'}
+      disabled={archiving || rfq.quoteId === null}
+      onClick={() => onArchive(rfq)}
+    />
   );
 }
 
@@ -405,8 +365,17 @@ export function RfqDashboard({
     }
   }
 
+  // Orders whose archive flag is in flight, so a double-click cannot fire two writes.
+  const [archiving, setArchiving] = useState<ReadonlySet<string>>(new Set());
+
   const [query, setQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<RfqStatus | 'all'>('all');
+  /*
+   * An empty selection means every status, which is why there is no "todos" option: the reset is
+   * clearing the field. ARCHIVED rides along as a value even though it is a flag and not a
+   * lifecycle state — to the seller reading the list it is one more thing an order can be, and
+   * keeping it out of the picker is what made archived orders unreachable.
+   */
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue[]>([]);
   const [channelFilter, setChannelFilter] = useState<RfqChannel | 'all'>('all');
   const [branchFilter, setBranchFilter] = useState<string | 'all'>('all');
   const [sellerFilter, setSellerFilter] = useState<string | 'all'>('all');
@@ -421,6 +390,12 @@ export function RfqDashboard({
     setPage(1);
   }, [query, statusFilter, channelFilter, branchFilter, sellerFilter, sortBy, sortOrder]);
 
+  /*
+   * The branch column and its filter only exist while the header switcher is on "todas las
+   * sucursales". Narrowed to one branch, every row repeats the same word — a column that answers a
+   * question the header already answered.
+   */
+  const showBranchColumn = activeBranchId === null;
   const branches = useMemo(() => unique(records.map((rfq) => rfq.branch)), [records]);
   const sellers = useMemo(() => unique(records.map((rfq) => rfq.seller)), [records]);
 
@@ -431,8 +406,11 @@ export function RfqDashboard({
   const filteredBase = useMemo(() => {
     if (!records) return [];
     const needle = query.trim().toLowerCase();
+    // Archived orders are only in the list at all so this filter can reveal them.
+    const showArchived = statusFilter.includes(ARCHIVED_FILTER);
     return records
       .filter((rfq) => {
+        if (rfq.archived && !showArchived) return false;
         if (channelFilter !== 'all' && rfq.channel !== channelFilter) return false;
         if (branchFilter !== 'all' && rfq.branch !== branchFilter) return false;
         if (sellerFilter === UNASSIGNED_SELLER) {
@@ -454,7 +432,7 @@ export function RfqDashboard({
         if (byFollowup !== 0) return byFollowup;
         return compareRfqs(a, b, sortBy, sortOrder);
       });
-  }, [records, query, channelFilter, branchFilter, sellerFilter, sortBy, sortOrder]);
+  }, [records, query, statusFilter, channelFilter, branchFilter, sellerFilter, sortBy, sortOrder]);
 
   const statusCounts = useMemo(() => {
     const counts = new Map<RfqStatus, number>();
@@ -463,8 +441,9 @@ export function RfqDashboard({
   }, [filteredBase]);
 
   const filtered = useMemo(() => {
-    if (statusFilter === 'all') return filteredBase;
-    return filteredBase.filter((rfq) => rfq.status === statusFilter);
+    const wanted = statusFilter.filter((value) => value !== ARCHIVED_FILTER);
+    if (wanted.length === 0) return filteredBase;
+    return filteredBase.filter((rfq) => wanted.includes(rfq.status));
   }, [filteredBase, statusFilter]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -472,17 +451,18 @@ export function RfqDashboard({
   const pageItems = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const activeFilterCount =
+    (statusFilter.length > 0 ? 1 : 0) +
     (channelFilter !== 'all' ? 1 : 0) +
     (branchFilter !== 'all' ? 1 : 0) +
     (sellerFilter !== 'all' ? 1 : 0);
-  const hasCriteria = query.trim() !== '' || activeFilterCount > 0 || statusFilter !== 'all';
+  const hasCriteria = query.trim() !== '' || activeFilterCount > 0;
 
   function clearFilters() {
     setQuery('');
     setChannelFilter('all');
     setBranchFilter('all');
     setSellerFilter('all');
-    setStatusFilter('all');
+    setStatusFilter([]);
   }
 
   function handleSort(column: SortKey) {
@@ -515,23 +495,36 @@ export function RfqDashboard({
     });
   }
 
-  function archiveOne(rfq: RfqRecord) {
-    // Archivado is a flag, not a state: the row stays and shows the grey pill over its real status.
-    setRecords((previous) =>
-      previous
-        ? previous.map((item) => (item.id === rfq.id ? { ...item, archived: true } : item))
-        : previous,
-    );
-    setSelected((previous) => {
-      const next = new Set(previous);
-      next.delete(rfq.id);
-      return next;
-    });
-    toast.success(
-      t('list.toast.archived', {
-        id: formatRfqReference(rfq.quoteNumber) ?? t('list.numberPending'),
-      }),
-    );
+  /*
+   * Archivado is a flag on the quote, not a lifecycle state. The row only changes once the backend
+   * confirms the write — the previous version of this flipped it locally and reported success for a
+   * write it never made, so the order came back on the next refresh.
+   */
+  async function toggleArchived(rfq: RfqRecord) {
+    if (rfq.quoteId === null || archiving.has(rfq.id)) return;
+    const reference = formatRfqReference(rfq.quoteNumber) ?? t('list.numberPending');
+    const next = !rfq.archived;
+    setArchiving((previous) => new Set(previous).add(rfq.id));
+    try {
+      await setQuoteArchived(rfq.quoteId, next);
+      setRecords((previous) =>
+        previous.map((item) => (item.id === rfq.id ? { ...item, archived: next } : item)),
+      );
+      setSelected((previous) => {
+        const remaining = new Set(previous);
+        remaining.delete(rfq.id);
+        return remaining;
+      });
+      toast.success(t(next ? 'list.toast.archived' : 'list.toast.unarchived', { id: reference }));
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
+    } finally {
+      setArchiving((previous) => {
+        const remaining = new Set(previous);
+        remaining.delete(rfq.id);
+        return remaining;
+      });
+    }
   }
 
   /*
@@ -610,16 +603,29 @@ export function RfqDashboard({
     }
   }
 
-  function archiveSelected() {
-    const ids = [...selected];
-    if (ids.length === 0) return;
+  /*
+   * Bulk archive. Every write is reported, so a partial failure says how many rows actually moved
+   * instead of claiming the whole selection did.
+   */
+  async function archiveSelected() {
+    const targets = pageItems.filter((rfq) => selected.has(rfq.id) && rfq.quoteId && !rfq.archived);
+    if (targets.length === 0) return;
+    const results = await Promise.allSettled(
+      targets.map((rfq) => setQuoteArchived(rfq.quoteId as string, true)),
+    );
+    const archived = new Set(
+      targets.filter((_, index) => results[index]?.status === 'fulfilled').map((rfq) => rfq.id),
+    );
     setRecords((previous) =>
-      previous
-        ? previous.map((item) => (selected.has(item.id) ? { ...item, archived: true } : item))
-        : previous,
+      previous.map((item) => (archived.has(item.id) ? { ...item, archived: true } : item)),
     );
     setSelected(new Set());
-    toast.success(t('list.toast.archivedMany', { count: ids.length }));
+    if (archived.size > 0) {
+      toast.success(t('list.toast.archivedMany', { count: archived.size }));
+    }
+    if (archived.size < targets.length) {
+      toast.error(t('list.toast.archiveFailed', { count: targets.length - archived.size }));
+    }
   }
 
   const pageAllSelected = pageItems.length > 0 && pageItems.every((rfq) => selected.has(rfq.id));
@@ -651,7 +657,29 @@ export function RfqDashboard({
             placeholder={t('list.search')}
             containerClassName="w-full"
           />
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-4">
+          {/*
+           * One row of dropdowns, status included. The status chips it replaces could hold one
+           * value at a time — the same thing a select does, in a fraction of the space and without
+           * a row of counts competing with the table's own numbers for attention.
+           */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-3">
+            <MultiCombobox
+              options={STATUS_FILTER_VALUES.map((status) => ({
+                value: status,
+                label:
+                  status === ARCHIVED_FILTER
+                    ? t('status.ARCHIVED')
+                    : `${t(`status.${status}`)} (${statusCounts.get(status) ?? 0})`,
+              }))}
+              values={statusFilter}
+              onValuesChange={(values) => setStatusFilter(values as StatusFilterValue[])}
+              placeholder={t('list.filters.status')}
+              summaryLabel={(count) => t('list.filters.statusCount', { count })}
+              clearLabel={t('list.filters.clearStatus')}
+              icon={<TagIcon aria-hidden="true" className="size-4" />}
+              aria-label={t('list.filters.status')}
+              className="min-w-44 flex-1"
+            />
             <Combobox
               options={[
                 { value: 'all', label: t('list.filters.allChannel') },
@@ -661,22 +689,28 @@ export function RfqDashboard({
                 })),
               ]}
               value={channelFilter}
+              resetValue="all"
               onValueChange={(value) => setChannelFilter(value as RfqChannel | 'all')}
               placeholder={t('list.filters.channel')}
+              icon={<RadioIcon aria-hidden="true" className="size-4" />}
               aria-label={t('list.filters.channel')}
               className="min-w-36 flex-1"
             />
-            <Combobox
-              options={[
-                { value: 'all', label: t('list.filters.allBranch') },
-                ...branches.map((branch) => ({ value: branch, label: branch })),
-              ]}
-              value={branchFilter}
-              onValueChange={(value) => setBranchFilter(value === 'all' ? 'all' : value)}
-              placeholder={t('list.filters.branch')}
-              aria-label={t('list.filters.branch')}
-              className="min-w-36 flex-1"
-            />
+            {showBranchColumn ? (
+              <Combobox
+                options={[
+                  { value: 'all', label: t('list.filters.allBranch') },
+                  ...branches.map((branch) => ({ value: branch, label: branch })),
+                ]}
+                value={branchFilter}
+                resetValue="all"
+                onValueChange={(value) => setBranchFilter(value === 'all' ? 'all' : value)}
+                placeholder={t('list.filters.branch')}
+                icon={<Building2Icon aria-hidden="true" className="size-4" />}
+                aria-label={t('list.filters.branch')}
+                className="min-w-36 flex-1"
+              />
+            ) : null}
             <Combobox
               options={[
                 { value: 'all', label: t('list.filters.allSeller') },
@@ -684,12 +718,10 @@ export function RfqDashboard({
                 ...sellers.map((seller) => ({ value: seller, label: seller })),
               ]}
               value={sellerFilter}
-              onValueChange={(value) =>
-                setSellerFilter(
-                  value === 'all' ? 'all' : value === UNASSIGNED_SELLER ? UNASSIGNED_SELLER : value,
-                )
-              }
+              resetValue="all"
+              onValueChange={(value) => setSellerFilter(value)}
               placeholder={t('list.filters.seller')}
+              icon={<UsersIcon aria-hidden="true" className="size-4" />}
               aria-label={t('list.filters.seller')}
               className="min-w-36 flex-1"
             />
@@ -700,24 +732,6 @@ export function RfqDashboard({
               </Button>
             ) : null}
           </div>
-
-          <ToggleGroup
-            type="single"
-            value={statusFilter}
-            onValueChange={(value) => value && setStatusFilter(value as RfqStatus | 'all')}
-            variant="pills"
-            size="sm"
-            aria-label={t('list.tabs')}
-            className="flex-wrap gap-y-2"
-          >
-            <ToggleGroupItem value="all">{t('list.all')}</ToggleGroupItem>
-            {STATUS_ORDER.map((status) => (
-              <ToggleGroupItem key={status} value={status}>
-                {t(`status.${status}`)}
-                <span className="ml-1 text-foreground-subtle">{statusCounts.get(status) ?? 0}</span>
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
         </div>
 
         {selected.size > 0 ? (
@@ -765,32 +779,28 @@ export function RfqDashboard({
                 onSort={handleSort}
               />
               <SortableTableHead
-                label={t('list.columns.channel')}
-                column="channel"
-                sortBy={sortBy}
-                sortOrder={sortOrder}
-                onSort={handleSort}
-              />
-              <SortableTableHead
                 label={t('list.columns.seller')}
                 column="seller"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onSort={handleSort}
               />
-              <SortableTableHead
-                label={t('list.columns.branch')}
-                column="branch"
-                sortBy={sortBy}
-                sortOrder={sortOrder}
-                onSort={handleSort}
-              />
+              {showBranchColumn ? (
+                <SortableTableHead
+                  label={t('list.columns.branch')}
+                  column="branch"
+                  sortBy={sortBy}
+                  sortOrder={sortOrder}
+                  onSort={handleSort}
+                />
+              ) : null}
               <SortableTableHead
                 label={t('list.columns.items')}
                 column="itemCount"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onSort={handleSort}
+                align="end"
               />
               <SortableTableHead
                 label={t('list.columns.total')}
@@ -798,7 +808,7 @@ export function RfqDashboard({
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onSort={handleSort}
-                className="text-right"
+                align="end"
               />
               <SortableTableHead
                 label={t('list.columns.status')}
@@ -807,15 +817,15 @@ export function RfqDashboard({
                 sortOrder={sortOrder}
                 onSort={handleSort}
               />
-              <TableHead className="border-l border-border pl-6 text-right">
-                {t('list.columns.actions')}
+              <TableHead className="w-16 border-l border-border pl-6 text-right">
+                <span className="sr-only">{t('list.columns.actions')}</span>
               </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.length === 0 ? (
               <TableEmptyRow
-                colSpan={COLUMN_COUNT}
+                colSpan={BASE_COLUMN_COUNT + (showBranchColumn ? 1 : 0)}
                 icon={hasCriteria ? SearchXIcon : InboxIcon}
                 title={t(hasCriteria ? 'list.noResults.title' : 'list.empty.title')}
                 description={hasCriteria ? t('list.noResults.description') : undefined}
@@ -832,8 +842,16 @@ export function RfqDashboard({
                     aria-label={t('list.openRow', {
                       id: reference ?? t('list.numberPending'),
                     })}
+                    /*
+                     * React sends a portalled child's events up the React tree, not the DOM one, so
+                     * a click on a dropdown item rendered from inside this row arrives here with a
+                     * target that is nowhere near it. Containment is the test that holds; asking
+                     * what the target is misses every menu item and navigates on an archive.
+                     */
                     onClick={(event) => {
-                      if ((event.target as HTMLElement).closest('button, a, input')) return;
+                      const target = event.target as HTMLElement;
+                      if (!event.currentTarget.contains(target)) return;
+                      if (target.closest('button, a, input, label, [role="menuitem"]')) return;
                       router.push(ROUTES.rfqsDetail(rfq.id));
                     }}
                     onKeyDown={(event) => {
@@ -858,21 +876,30 @@ export function RfqDashboard({
                       />
                     </TableCell>
                     <TableCell>
-                      <div className="w-full text-left">
-                        <span className="block truncate text-paragraph-sm-medium text-foreground">
-                          {reference ?? t('list.numberPending')}
-                        </span>
-                        <span className="block truncate text-paragraph-mini text-foreground-muted">
-                          {rfq.client}
-                        </span>
+                      {/* The channel rides with the reference as an icon: it tells the seller how
+                          the order arrived without spending a column on a word per row. */}
+                      <div className="flex w-full items-center gap-x-2.5">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="grid size-7 shrink-0 place-items-center bg-muted rounded-md text-foreground-subtle">
+                              <ChannelIcon aria-hidden="true" className="size-3.5" />
+                              <span className="sr-only">{t(`channels.${rfq.channel}`)}</span>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>{t(`channels.${rfq.channel}`)}</TooltipContent>
+                        </Tooltip>
+                        <div className="min-w-0">
+                          <span className="block truncate text-paragraph-sm-medium text-foreground">
+                            {reference ?? t('list.numberPending')}
+                          </span>
+                          <span className="block truncate text-paragraph-mini text-foreground-muted">
+                            {rfq.client}
+                          </span>
+                        </div>
                       </div>
                     </TableCell>
-                    <TableCell className="whitespace-nowrap">{fmt.date(rfq.createdAt)}</TableCell>
-                    <TableCell>
-                      <span className="inline-flex items-center gap-x-2 whitespace-nowrap text-foreground-subtle">
-                        <ChannelIcon aria-hidden="true" className="size-4" />
-                        {t(`channels.${rfq.channel}`)}
-                      </span>
+                    <TableCell className="whitespace-nowrap tabular-nums">
+                      {fmt.dateNumeric(rfq.createdAt)}
                     </TableCell>
                     <SellerCell
                       rfq={rfq}
@@ -885,14 +912,18 @@ export function RfqDashboard({
                       onAssign={assignOne}
                       onSellerChange={steeredSeller}
                     />
-                    <TableCell className="whitespace-nowrap">{rfq.branch}</TableCell>
-                    <TableCell>{t('list.items', { count: rfq.itemCount })}</TableCell>
+                    {showBranchColumn ? (
+                      <TableCell className="whitespace-nowrap">{rfq.branch}</TableCell>
+                    ) : null}
+                    <TableCell className="text-right tabular-nums">
+                      {t('list.items', { count: rfq.itemCount })}
+                    </TableCell>
                     <TableCell className="whitespace-nowrap text-right tabular-nums">
                       {hasQuoteTotal(rfq.status) && rfq.total != null ? (
                         fmt.currency(rfq.total)
                       ) : (
                         <span className="text-foreground-subtle" aria-hidden="true">
-                          -
+                          —
                         </span>
                       )}
                     </TableCell>
@@ -905,17 +936,10 @@ export function RfqDashboard({
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end">
-                        <RowMenu
+                        <RowActions
                           rfq={rfq}
-                          canAssign={rfq.sellerId === null && !isAdmin}
-                          isAdmin={isAdmin}
-                          sellers={sellersByBranch[rfq.branchId] ?? EMPTY_SELLERS}
-                          sellersLoading={sellersLoadingBranches.has(rfq.branchId)}
-                          userId={userId}
-                          onAssign={assignOne}
-                          onLoadSellers={loadSellersForBranch}
-                          onSellerChange={steeredSeller}
-                          onArchive={archiveOne}
+                          onArchive={toggleArchived}
+                          archiving={archiving.has(rfq.id)}
                         />
                       </div>
                     </TableCell>

@@ -18,6 +18,7 @@ function mapListItem(item: RfqListItem): RfqRecord {
     sellerId: item.seller_id,
     branch: item.branch,
     branchId: item.branch_id,
+    quoteId: item.quote_id,
     itemCount: item.item_count,
     total: item.total ?? undefined,
     status: normalizeRfqStatus(item.status),
@@ -26,8 +27,13 @@ function mapListItem(item: RfqListItem): RfqRecord {
   };
 }
 
+/*
+ * Archived orders come down with the rest and the dashboard filters them out by default. They are
+ * a handful of rows and the whole list is already filtered client-side, so fetching them is what
+ * makes "archivados" a filter rather than a second round trip.
+ */
 async function fetchRfqs(): Promise<RfqRecord[]> {
-  const items = await apiRequest<RfqListItem[]>({ path: '/v1/rfqs' });
+  const items = await apiRequest<RfqListItem[]>({ path: '/v1/rfqs?include_archived=true' });
   return (items ?? []).map(mapListItem);
 }
 

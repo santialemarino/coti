@@ -40,6 +40,8 @@ interface AmountInputProps {
   maxDecimals?: number;
   /* How much one arrow press moves the value. */
   step?: number;
+  /* Runs after the field's own rules, and only when they let the key through. */
+  onKeyDown?: React.KeyboardEventHandler<HTMLInputElement>;
   prefix?: React.ReactNode;
   suffix?: React.ReactNode;
   className?: string;
@@ -64,7 +66,10 @@ interface AmountInputProps {
  * characters, because the group separators are what moved.
  */
 const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
-  ({ value = '', onChange, onBlur, name, currency, maxDecimals, step = 1, ...rest }, ref) => {
+  (
+    { value = '', onChange, onBlur, onKeyDown, name, currency, maxDecimals, step = 1, ...rest },
+    ref,
+  ) => {
     const locale = useLocale();
     const decimal = getDecimalSeparator(locale);
     const group = getGroupSeparator(locale);
@@ -156,6 +161,7 @@ const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
         event.preventDefault();
         applyRaw(display.slice(0, start) + display.slice(start + 2), start);
       }
+      if (!event.defaultPrevented) onKeyDown?.(event);
     }
 
     return (

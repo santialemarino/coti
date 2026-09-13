@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ClipboardListIcon, UploadIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
@@ -39,11 +39,25 @@ export function CreateRfqDialog({
 }: CreateRfqDialogProps) {
   const t = useTranslations('rfqs.create');
   const [step, setStep] = useState<Step>('choose');
+  /*
+   * A click outside closes the dialog unless there is something to lose. Blocking it on the step
+   * instead made "cargar manualmente" refuse to close even when nothing had been typed into it,
+   * which reads as the dialog being stuck rather than as it protecting anything.
+   */
+  const [dirty, setDirty] = useState(false);
 
   /* A fresh dialog always starts at the choice, whatever step closed it last. */
   useEffect(() => {
-    if (open) setStep('choose');
+    if (open) {
+      setStep('choose');
+      setDirty(false);
+    }
   }, [open]);
+
+  const goBack = useCallback(() => {
+    setStep('choose');
+    setDirty(false);
+  }, []);
 
   const copy = {
     choose: { title: t('title'), description: t('description') },
@@ -59,7 +73,7 @@ export function CreateRfqDialog({
           step === 'manual' && 'sm:max-w-3xl',
           step === 'import' && 'sm:max-w-xl',
         )}
-        closeOnClickOutside={step === 'choose'}
+        closeOnClickOutside={!dirty}
       >
         <DialogHeader>
           <DialogTitle>{copy.title}</DialogTitle>
@@ -91,19 +105,21 @@ export function CreateRfqDialog({
 
         {step === 'import' ? (
           <RfqImportView
-            onBack={() => setStep('choose')}
+            onBack={goBack}
             onClose={() => onOpenChange(false)}
             onCreated={onCreated}
             activeBranchId={activeBranchId}
+            onDirtyChange={setDirty}
           />
         ) : null}
 
         {step === 'manual' ? (
           <RfqManualView
-            onBack={() => setStep('choose')}
+            onBack={goBack}
             onClose={() => onOpenChange(false)}
             onCreated={onCreated}
             activeBranchId={activeBranchId}
+            onDirtyChange={setDirty}
           />
         ) : null}
       </DialogContent>

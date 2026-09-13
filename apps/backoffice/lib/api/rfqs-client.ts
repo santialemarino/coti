@@ -229,6 +229,21 @@ export async function setRfqSeller(rfqId: string, sellerId: string | null): Prom
 }
 
 /*
+ * Archive an order out of the queue, or put it back. Archivado is a flag on the quote, not a
+ * lifecycle state, so both directions leave the order's real status untouched.
+ */
+export async function setQuoteArchived(quoteId: string, archived: boolean): Promise<void> {
+  const response = await fetch(`/api/quotes/${quoteId}/archive`, {
+    method: archived ? 'POST' : 'DELETE',
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    await throwOnError(response);
+  }
+}
+
+/*
  * Patch an editable quote item. Only provided fields are written.
  */
 export async function updateQuoteItem(

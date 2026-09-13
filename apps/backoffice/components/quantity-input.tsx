@@ -23,6 +23,8 @@ interface QuantityInputProps {
   disabled?: boolean;
   min?: number;
   step?: number;
+  /* Runs after the field's own rules, and only when they let the key through. */
+  onKeyDown?: React.KeyboardEventHandler<HTMLInputElement>;
   suffix?: React.ReactNode;
   className?: string;
   containerClassName?: string;
@@ -41,7 +43,7 @@ interface QuantityInputProps {
  * Neither is `<input type="number">`.
  */
 const QuantityInput = forwardRef<HTMLInputElement, QuantityInputProps>(
-  ({ value = '', onChange, onBlur, name, min = 0, step = 1, ...rest }, ref) => {
+  ({ value = '', onChange, onBlur, onKeyDown, name, min = 0, step = 1, ...rest }, ref) => {
     const runKeyRules = composeKeyHandlers(blockSignKeys, blockScientificKeys, blockAllSeparators);
 
     return (
@@ -59,9 +61,12 @@ const QuantityInput = forwardRef<HTMLInputElement, QuantityInputProps>(
           runKeyRules(event);
           if (event.defaultPrevented) return;
           const stepped = stepCanonical(event.key, value, { step, min, maxDecimals: 0 });
-          if (stepped === null) return;
-          event.preventDefault();
-          onChange?.(stepped);
+          if (stepped !== null) {
+            event.preventDefault();
+            onChange?.(stepped);
+            return;
+          }
+          onKeyDown?.(event);
         }}
         onPaste={(event) => {
           event.preventDefault();

@@ -11,7 +11,6 @@ import {
   Card,
   CardHeader,
   CardTitle,
-  Input,
   Table,
   TableBody,
   TableCell,
@@ -19,6 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from '@repo/ui/components';
+import { AmountInput } from '@/components/amount-input';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { CatalogProduct } from '@/lib/api/catalog';
 import { errorCodeOf } from '@/lib/api/errors';
@@ -31,7 +31,6 @@ import {
   updateDiscount,
   updateQuoteItem,
 } from '@/lib/api/rfqs-client';
-import { decimalToMoneyInput, maskMoneyInput, moneyInputToDecimal } from '@/lib/forms/money-input';
 import { useFormatters } from '@/lib/i18n/formatters';
 import { DiscountDialog } from './discount-dialog';
 import { ProductSearchDialog } from './product-search-dialog';
@@ -47,6 +46,12 @@ import { ProductSearchDialog } from './product-search-dialog';
 const PRODUCT_EDIT_STATUSES = new Set(['DRAFT', 'CHANGE_REQUESTED']);
 const PRICE_EDIT_STATUSES = new Set(['QUOTED', 'CHANGE_REQUESTED']);
 const PRICED_STATUSES = new Set(['QUOTED', 'SENT', 'CHANGE_REQUESTED', 'ACCEPTED', 'REJECTED']);
+
+// A line quantity is a measured figure, not a count — half a cubic metre is a real order line.
+// Both are NUMERIC(14,2) on the wire, so entry is capped where storage is.
+const QUANTITY_DECIMALS = 2;
+// Quotes are priced in the account's currency; the multi-currency catalogue is a later decision.
+const ACCOUNT_CURRENCY = 'ARS';
 
 interface RfqItemsTableProps {
   quoteId: string | null;
@@ -233,7 +238,7 @@ export function RfqItemsTable({
     if (!quoteId) return;
     const raw = editingPrice[itemId];
     if (raw === undefined) return;
-    const normalized = moneyInputToDecimal(raw);
+    const normalized = raw.trim();
     // A field cleared to nothing is an edit the seller has not finished, not a price of zero.
     if (!normalized || Number(normalized) === Number(currentPrice)) {
       setEditingPrice((prev) => {
@@ -358,13 +363,13 @@ export function RfqItemsTable({
                   {t('detail.items.columns.confidence')}
                 </TableHead>
               )}
-              <TableHead className="text-center">{t('detail.items.columns.quantity')}</TableHead>
-              <TableHead className="text-center">{t('detail.items.columns.unit')}</TableHead>
+              <TableHead className="text-right">{t('detail.items.columns.quantity')}</TableHead>
+              <TableHead>{t('detail.items.columns.unit')}</TableHead>
               {showPricing && (
-                <TableHead className="text-center">{t('detail.items.columns.unitPrice')}</TableHead>
+                <TableHead className="text-right">{t('detail.items.columns.unitPrice')}</TableHead>
               )}
               {showPricing && (
-                <TableHead className="text-center">{t('detail.items.columns.subtotal')}</TableHead>
+                <TableHead className="text-right">{t('detail.items.columns.subtotal')}</TableHead>
               )}
               {(canEditProducts || canEditPrices) && <TableHead className="w-10" />}
             </TableRow>
@@ -372,9 +377,7 @@ export function RfqItemsTable({
           <TableBody>
             {items.map((item, index) => {
               const quantityValue = editingQuantity[item.id] ?? item.quantity;
-              const priceValue =
-                editingPrice[item.id] ??
-                (item.unit_price_snapshot ? decimalToMoneyInput(item.unit_price_snapshot) : '');
+              const priceValue = editingPrice[item.id] ?? item.unit_price_snapshot ?? '';
               const noMatch =
                 !showConfidence && item.match_status === 'NO_MATCH' && !item.product_name;
 
@@ -439,20 +442,14 @@ export function RfqItemsTable({
                       </Badge>
                     </TableCell>
                   )}
-                  <TableCell className="text-center">
+                  <TableCell className="text-right">
                     {canEditProducts ? (
-                      <Input
-                        type="number"
-                        inputMode="decimal"
-                        min={0}
-                        step={0.01}
+                      <AmountInput
+                        aria-label={t('detail.items.columns.quantity')}
+                        maxDecimals={QUANTITY_DECIMALS}
                         value={quantityValue}
-                        onFocus={(event) => event.target.select()}
-                        onChange={(event) =>
-                          setEditingQuantity((prev) => ({
-                            ...prev,
-                            [item.id]: event.target.value,
-                          }))
+                        onChange={(next) =>
+                          setEditingQuantity((prev) => ({ ...prev, [item.id]: next }))
                         }
                         onBlur={() => handleQuantityBlur(item.id, item.quantity)}
                         onKeyDown={(event) => {
@@ -460,8 +457,8 @@ export function RfqItemsTable({
                             (event.target as HTMLInputElement).blur();
                           }
                         }}
-                        containerClassName="w-20 mx-auto"
-                        className="text-center tabular-nums"
+                        containerClassName="w-24 ml-auto"
+                        className="text-right tabular-nums"
                       />
                     ) : (
                       <span className="tabular-nums text-paragraph-sm">
@@ -469,24 +466,20 @@ export function RfqItemsTable({
                       </span>
                     )}
                   </TableCell>
-                  <TableCell className="text-center text-paragraph-sm">
+                  <TableCell className="text-paragraph-sm">
                     {item.unit ?? item.product_unit ?? '—'}
                   </TableCell>
                   {showPricing && (
-                    <TableCell className="text-center tabular-nums text-paragraph-sm">
+                    <TableCell className="text-right tabular-nums text-paragraph-sm">
                       {canEditPrices &&
                       (item.unit_price_snapshot != null || item.match_status === 'NO_MATCH') ? (
-                        <Input
-                          type="text"
-                          inputMode="decimal"
+                        <AmountInput
+                          aria-label={t('detail.items.columns.unitPrice')}
+                          currency={ACCOUNT_CURRENCY}
                           prefix="$"
                           value={priceValue}
-                          onFocus={(event) => event.target.select()}
-                          onChange={(event) =>
-                            setEditingPrice((prev) => ({
-                              ...prev,
-                              [item.id]: maskMoneyInput(event.target.value),
-                            }))
+                          onChange={(next) =>
+                            setEditingPrice((prev) => ({ ...prev, [item.id]: next }))
                           }
                           onBlur={() => handlePriceBlur(item.id, item.unit_price_snapshot ?? '0')}
                           onKeyDown={(event) => {
@@ -494,8 +487,8 @@ export function RfqItemsTable({
                               (event.target as HTMLInputElement).blur();
                             }
                           }}
-                          containerClassName="w-36 mx-auto"
-                          className="text-center tabular-nums"
+                          containerClassName="w-36 ml-auto"
+                          className="text-right tabular-nums"
                         />
                       ) : item.unit_price_snapshot != null ? (
                         fmt.currency(item.unit_price_snapshot)
@@ -505,7 +498,7 @@ export function RfqItemsTable({
                     </TableCell>
                   )}
                   {showPricing && (
-                    <TableCell className="text-center tabular-nums text-paragraph-sm-medium">
+                    <TableCell className="text-right tabular-nums text-paragraph-sm-medium">
                       {item.subtotal ? (
                         fmt.currency(item.subtotal)
                       ) : (

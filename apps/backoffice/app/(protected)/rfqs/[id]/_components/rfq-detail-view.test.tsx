@@ -75,6 +75,7 @@ const PRICED_ITEM: QuoteItemResponse = {
 function draftRecord(): RfqRecord {
   return {
     id: RFQ_ID,
+    quoteId: QUOTE_ID,
     quoteNumber: 1,
     client: 'Constructora',
     createdAt: BASE_TIME,
@@ -130,6 +131,7 @@ function makeDetail(quoteStatus: string, rfqStatus: string = quoteStatus): RfqDe
   return {
     rfq: {
       id: RFQ_ID,
+      quote_id: QUOTE_ID,
       quote_number: 1,
       client: 'Constructora',
       created_at: BASE_TIME,

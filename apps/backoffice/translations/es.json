@@ -476,8 +476,6 @@
       "caption": "Pedidos de cotización recibidos",
       "create": "Crear pedido",
       "search": "Buscar por pedido, cliente, vendedor…",
-      "all": "Todos",
-      "tabs": "Filtrar por estado",
       "resultsTotal": "{total, plural, one {# pedido} other {# pedidos}}",
       "results": "Mostrando {from}–{to} de {total} pedidos",
       "items": "{count, plural, one {# ítem} other {# ítems}}",
@@ -488,12 +486,15 @@
       "openRow": "Abrir el pedido {id}",
       "selected": "{count, plural, one {# pedido seleccionado} other {# pedidos seleccionados}}",
       "filters": {
+        "status": "Estado",
+        "statusCount": "{count} estados",
+        "clearStatus": "Limpiar estados",
         "channel": "Canal",
         "branch": "Sucursal",
         "seller": "Vendedor",
-        "allChannel": "Canales",
-        "allBranch": "Sucursales",
-        "allSeller": "Vendedores",
+        "allChannel": "Todos los canales",
+        "allBranch": "Todas las sucursales",
+        "allSeller": "Todos los vendedores",
         "unassigned": "Sin vendedor",
         "clear": "Limpiar filtros"
       },
@@ -513,13 +514,11 @@
         "archive": "Archivar"
       },
       "actions": {
-        "more": "Acciones del pedido",
         "assign": "Asignarme",
-        "changeSeller": "Cambiar vendedor",
         "unassignSeller": "Quitar vendedor",
         "sellersLoading": "Cargando vendedores…",
-        "view": "Ver detalle",
-        "archive": "Archivar pedido"
+        "archive": "Archivar pedido",
+        "unarchive": "Desarchivar pedido"
       },
       "empty": {
         "title": "Todavía no hay pedidos"
@@ -535,7 +534,9 @@
       },
       "toast": {
         "archived": "El pedido {id} se archivó.",
+        "unarchived": "El pedido {id} volvió a la lista.",
         "archivedMany": "{count, plural, one {# pedido archivado} other {# pedidos archivados}}.",
+        "archiveFailed": "No pudimos archivar {count, plural, one {# pedido} other {# pedidos}}. Intentá de nuevo.",
         "assigned": "Tomaste el pedido {id}, {name}. Lo vas a encontrar en tu lista.",
         "sellerAssigned": "El pedido {id} quedó asignado a {seller}.",
         "sellerUnassigned": "Al pedido {id} le quitamos el vendedor."
