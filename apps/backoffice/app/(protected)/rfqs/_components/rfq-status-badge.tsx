@@ -19,28 +19,47 @@ export const STATUS_ORDER: readonly RfqStatus[] = [
 ];
 
 /*
- * The single mapping from a domain state to its colour, written out verbatim so Tailwind emits each
- * utility. The colour is inherited by the label and by the backdrop (bg-current at 20% opacity), so
- * a state always looks the same in the table and the filter tabs. RECEIVED has no colour of its own
- * (it never renders a badge — it always shows the ingestion spinner) and stays neutral.
+ * The single mapping from a domain state to its colours, written out verbatim so Tailwind emits each
+ * utility. Each state names a wash, a hairline and a label, exactly the way the badge's own
+ * success/warning/danger tones are built — so a status pill is visibly one of Coti's pills that
+ * happens to be purple, rather than a foreign object that happens to be on a Coti screen. RECEIVED
+ * has no colours of its own: it never renders a badge, it always shows the ingestion spinner.
  */
 export const STATUS_COLOUR: Record<RfqStatus, string> = {
   RECEIVED: '',
-  FAILED: 'text-status-failed',
-  GENERATED: 'text-status-generated',
-  QUOTED: 'text-status-quoted',
-  SENT: 'text-status-sent',
-  CHANGE_REQUESTED: 'text-status-change-requested',
-  ACCEPTED: 'text-status-accepted',
-  REJECTED: 'text-status-rejected',
+  FAILED: 'bg-status-failed-subtle border-status-failed-border text-status-failed-foreground',
+  GENERATED:
+    'bg-status-generated-subtle border-status-generated-border text-status-generated-foreground',
+  QUOTED: 'bg-status-quoted-subtle border-status-quoted-border text-status-quoted-foreground',
+  SENT: 'bg-status-sent-subtle border-status-sent-border text-status-sent-foreground',
+  CHANGE_REQUESTED:
+    'bg-status-change-requested-subtle border-status-change-requested-border text-status-change-requested-foreground',
+  ACCEPTED:
+    'bg-status-accepted-subtle border-status-accepted-border text-status-accepted-foreground',
+  REJECTED:
+    'bg-status-rejected-subtle border-status-rejected-border text-status-rejected-foreground',
+};
+
+/* The dot carries the full-strength hex, which is what keeps each state recognisable at a glance. */
+const STATUS_DOT: Record<RfqStatus, string> = {
+  RECEIVED: '',
+  FAILED: 'bg-status-failed',
+  GENERATED: 'bg-status-generated',
+  QUOTED: 'bg-status-quoted',
+  SENT: 'bg-status-sent',
+  CHANGE_REQUESTED: 'bg-status-change-requested',
+  ACCEPTED: 'bg-status-accepted',
+  REJECTED: 'bg-status-rejected',
 };
 
 /*
  * Archivado is an orthogonal flag, not a lifecycle state (see docs/internal/domain/estados.md), so
- * it maps to its own neutral colour instead of joining the table above. The flag wins over the real
+ * it maps to its own neutral family instead of joining the table above. The flag wins over the real
  * status when both are set.
  */
-const ARCHIVED_COLOUR = 'text-status-archived';
+const ARCHIVED_COLOUR =
+  'bg-status-archived-subtle border-status-archived-border text-status-archived-foreground';
+const ARCHIVED_DOT = 'bg-status-archived';
 
 /*
  * Only statuses whose quote exists and is final enough to carry an amount show a total in the list;
@@ -93,30 +112,28 @@ export function RfqStatusBadge({
   }
 
   /*
-   * The Figma status label: the state colour paints the text and, through bg-current, the backdrop
-   * at 20% opacity — a tinted chip, never a solid pill. The backdrop bleeds a hair past the box the
-   * way the mockup draws it.
+   * Coti's pill, in the state's own colours: the same geometry, border and type scale as every other
+   * badge in the app, with a full-strength dot so the hue still reads at a glance.
    */
   return (
     <span
       className={cn(
-        'relative inline-flex items-center justify-center whitespace-nowrap',
-        size === 'sm' ? 'h-4 px-1.5' : 'h-[22px] px-1.5',
+        'inline-flex w-fit shrink-0 items-center justify-center gap-x-1.5 border whitespace-nowrap rounded-full',
+        'transition-[color,background-color,border-color] duration-200 ease-out-soft',
+        size === 'sm'
+          ? 'h-5 px-2 text-paragraph-mini-medium'
+          : 'h-6 px-2.5 text-paragraph-xs-medium',
         archived ? ARCHIVED_COLOUR : STATUS_COLOUR[status],
       )}
     >
       <span
         aria-hidden="true"
-        className="absolute inset-x-0 -top-[4.55%] h-[109.09%] rounded-[3px] bg-current opacity-20"
-      />
-      <span
         className={cn(
-          'relative',
-          size === 'sm' ? 'text-paragraph-mini-medium' : 'text-paragraph-xs-semibold',
+          'size-1.5 shrink-0 rounded-full',
+          archived ? ARCHIVED_DOT : STATUS_DOT[status],
         )}
-      >
-        {t(archived ? 'status.ARCHIVED' : `status.${status}`)}
-      </span>
+      />
+      {t(archived ? 'status.ARCHIVED' : `status.${status}`)}
     </span>
   );
 }

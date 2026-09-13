@@ -51,6 +51,7 @@ import {
   type SortOrder,
 } from '@repo/ui/components';
 import { Item, Row, Section } from '@/app/(protected)/design/_components/section';
+import { QuantityInput } from '@/components/quantity-input';
 
 const STEPS = [
   { id: 'received', label: 'Recibido', meta: '02/08/26' },
@@ -380,7 +381,7 @@ export function Patterns() {
                     <FormItem required>
                       <FormLabel>Cantidad</FormLabel>
                       <FormControl>
-                        <Input type="number" suffix="kg" {...field} />
+                        <QuantityInput suffix="kg" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

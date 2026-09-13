@@ -17,7 +17,9 @@ import {
   Input,
 } from '@repo/ui/components';
 import { branchSchema, type BranchValues } from '@/app/(protected)/settings/branches/form-schema';
+import { QuantityInput } from '@/components/quantity-input';
 import type { Branch } from '@/lib/api/branches';
+import { EXPIRY_MIN_DAYS } from '@/lib/constants/branch';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 
 interface BranchStepProps {
@@ -83,7 +85,7 @@ export function BranchStep({ branch, formId, onSubmit }: BranchStepProps) {
               <FormItem className="md:col-span-2">
                 <FormLabel required>{tFields('defaultExpiryDays.label')}</FormLabel>
                 <FormControl>
-                  <Input type="number" inputMode="numeric" className="max-w-44" {...field} />
+                  <QuantityInput min={EXPIRY_MIN_DAYS} containerClassName="max-w-44" {...field} />
                 </FormControl>
                 <FormDescription>{t('expiryHint')}</FormDescription>
                 <FormMessage />

@@ -76,31 +76,61 @@
   --danger-foreground: oklch(0.545 0.2 27); /* #CB2526 — 5.49:1 */
 
   /*
-   * RFQ status colours, one per lifecycle state. Each `-base` reproduces the product's exact hex.
-   * The Backoffice status badge is the only consumer: it paints the label with the base colour and
-   * tints the backdrop with the same colour at 20% opacity (bg-current), so a state needs nothing
-   * else here. Archivado is a grey family: it is an orthogonal flag, not a lifecycle state, but it
-   * still needs a colour when a row is marked archived.
+   * RFQ status colours, one family per lifecycle state, built the way success/warning/danger are:
+   * a `-base` reproducing the product's exact hex for fills and dots, a `-subtle` wash, a `-border`,
+   * and a `-foreground` at the same hue but pinned near L 0.55 so the label clears 4.5:1 on its own
+   * wash. Painting the label with the base instead — which is what a tinted chip invites — leaves
+   * Cotizado reading #FFCC00 on pale yellow at about 1.6:1, which is a colour, not a word.
+   *
+   * Archivado is a grey family: an orthogonal flag rather than a lifecycle state, but a row marked
+   * archived still needs a colour.
    */
   --status-accepted-base: oklch(0.694 0.1287 176.98); /* #00B69B */
+  --status-accepted-subtle: oklch(0.962 0.026 177);
+  --status-accepted-border: oklch(0.885 0.062 177);
+  --status-accepted-foreground: oklch(0.538 0.105 177);
 
   --status-rejected-base: oklch(0.6234 0.2208 30.05); /* #EF3826 */
+  --status-rejected-subtle: oklch(0.962 0.019 30);
+  --status-rejected-border: oklch(0.885 0.055 30);
+  --status-rejected-foreground: oklch(0.545 0.2 30);
 
   /* Darker and duller than rejected on purpose: a read that failed is a system outcome, not
      a client saying no, and the two must not read alike down a column. */
   --status-failed-base: oklch(0.5086 0.1384 31.69); /* #A6402F */
+  --status-failed-subtle: oklch(0.962 0.018 32);
+  --status-failed-border: oklch(0.888 0.05 32);
+  --status-failed-foreground: oklch(0.5086 0.1384 31.69);
 
   --status-change-requested-base: oklch(0.8008 0.1415 61.04); /* #FFA756 */
+  --status-change-requested-subtle: oklch(0.965 0.028 61);
+  --status-change-requested-border: oklch(0.895 0.082 61);
+  --status-change-requested-foreground: oklch(0.56 0.116 61);
 
   --status-generated-base: oklch(0.6155 0.2868 310.79); /* #BA29FF */
+  --status-generated-subtle: oklch(0.963 0.028 311);
+  --status-generated-border: oklch(0.9 0.072 311);
+  --status-generated-foreground: oklch(0.545 0.23 311);
 
   --status-quoted-base: oklch(0.8652 0.1768 90.38); /* #FFCC00 */
+  --status-quoted-subtle: oklch(0.968 0.035 90);
+  --status-quoted-border: oklch(0.9 0.09 90);
+  --status-quoted-foreground: oklch(0.558 0.115 90);
 
   --status-sent-base: oklch(0.6321 0.2018 254.09); /* #0088FF */
+  --status-sent-subtle: oklch(0.962 0.026 254);
+  --status-sent-border: oklch(0.89 0.068 254);
+  --status-sent-foreground: oklch(0.545 0.18 254);
 
   --status-archived-base: oklch(0.6764 0 89.88); /* #979797 */
+  --status-archived-subtle: oklch(0.965 0 0);
+  --status-archived-border: oklch(0.9 0 0);
+  --status-archived-foreground: oklch(0.52 0 0);
 
   --status-draft-base: oklch(0.64 0.01 250); /* muted blue-grey */
+  --status-draft-subtle: oklch(0.965 0.006 250);
+  --status-draft-border: oklch(0.9 0.012 250);
+  --status-draft-foreground: oklch(0.5 0.015 250);
 
   /* Semantic tokens — what components actually consume. */
   --radius: 0.625rem;
