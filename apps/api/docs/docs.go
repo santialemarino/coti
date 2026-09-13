@@ -4110,6 +4110,12 @@ const docTemplate = `{
                         "description": "Active branch",
                         "name": "X-Branch-Id",
                         "in": "header"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Include archived quotes",
+                        "name": "include_archived",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -7030,6 +7036,9 @@ const docTemplate = `{
                 },
                 "needs_followup": {
                     "type": "boolean"
+                },
+                "quote_id": {
+                    "type": "string"
                 },
                 "quote_number": {
                     "type": "integer"
