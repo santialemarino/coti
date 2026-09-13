@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { MinusIcon, PencilIcon, PlusIcon, TrashIcon } from 'lucide-react';
+import { MinusIcon, PackageOpenIcon, PencilIcon, PlusIcon, TrashIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
@@ -11,6 +11,7 @@ import {
   Card,
   CardHeader,
   CardTitle,
+  EmptyState,
   Table,
   TableBody,
   TableCell,
@@ -324,9 +325,11 @@ export function RfqItemsTable({
             </Button>
           )}
         </CardHeader>
-        <div className="px-6 py-8 text-center">
-          <p className="text-paragraph-sm text-foreground-muted">{t('detail.items.empty')}</p>
-        </div>
+        <EmptyState
+          icon={PackageOpenIcon}
+          title={t('detail.items.empty')}
+          description={canEditProducts ? t('detail.items.emptyHint') : undefined}
+        />
         <ProductSearchDialog
           open={searchOpen}
           onOpenChange={setSearchOpen}

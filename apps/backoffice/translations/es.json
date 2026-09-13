@@ -420,12 +420,8 @@
   },
   "home": {
     "title": "Coti",
-    "signedInAs": "Sesión iniciada como {role}.",
-    "links": {
-      "prices": "Precios",
-      "catalog": "Catálogo",
-      "onboarding": "Configuración inicial"
-    }
+    "queueHint": "Elegí un pedido de la lista para trabajarlo, o creá uno nuevo.",
+    "seeAllOrders": "Ver todos los pedidos"
   },
   "quotes": {
     "title": "Cotizaciones",
@@ -677,6 +673,7 @@
       "items": {
         "title": "Ítems",
         "empty": "Este pedido no tiene ítems.",
+        "emptyHint": "Agregá productos del catálogo para armar la cotización.",
         "add": "Agregar producto",
         "delete": "Eliminar ítem",
         "generate": "Generar cotización",

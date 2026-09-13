@@ -104,8 +104,6 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
 
       <RfqStatusTimeline detail={detail} />
 
-      <div className="border-t border-border" />
-
       {rfqStatus === 'ACCEPTED' && (
         <Callout tone="success" title={t('detail.callouts.accepted.title')}>
           {t('detail.callouts.accepted.description')}

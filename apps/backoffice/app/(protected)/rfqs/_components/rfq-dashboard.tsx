@@ -396,6 +396,8 @@ export function RfqDashboard({
    * question the header already answered.
    */
   const showBranchColumn = activeBranchId === null;
+  // The headline count is the open queue, not the archive it now also holds.
+  const visibleRecords = useMemo(() => records.filter((rfq) => !rfq.archived), [records]);
   const branches = useMemo(() => unique(records.map((rfq) => rfq.branch)), [records]);
   const sellers = useMemo(() => unique(records.map((rfq) => rfq.seller)), [records]);
 
@@ -633,14 +635,15 @@ export function RfqDashboard({
 
   return (
     <>
+      {/* The greeting belongs to the home screen; this one is the section, so it says so once. */}
       <div className="pb-6">
-        <h1 className="text-heading-2">{t('greeting', { name: userName })}</h1>
+        <h1 className="text-heading-2">{t('list.title')}</h1>
       </div>
       <Card className="gap-y-0 overflow-hidden py-0">
         <CardHeader className="flex-row items-center justify-between py-6">
-          <CardTitle className="text-heading-3">{t('list.title')}</CardTitle>
+          <CardTitle className="text-heading-3">{t('list.caption')}</CardTitle>
           <div className="flex items-center gap-x-3">
-            <Badge tone="neutral">{t('list.resultsTotal', { total: records.length })}</Badge>
+            <Badge tone="neutral">{t('list.resultsTotal', { total: visibleRecords.length })}</Badge>
             <Button onClick={() => setCreateOpen(true)}>
               <PlusIcon aria-hidden="true" />
               {t('list.create')}

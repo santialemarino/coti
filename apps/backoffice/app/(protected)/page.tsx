@@ -1,21 +1,20 @@
-import { getTranslations } from 'next-intl/server';
-
-import { getSession } from '@/lib/auth/session';
+import { RfqQueueEmpty } from '@/app/(protected)/_components/rfq-queue-empty';
+import { RfqQueueProvider } from '@/app/(protected)/rfqs/_components/rfq-queue-provider';
+import { RfqSplitView } from '@/app/(protected)/rfqs/_components/rfq-split-view';
 import { generatePageMetadata } from '@/lib/utils/page';
 
 export const generateMetadata = () => generatePageMetadata('home');
 
-export default async function HomePage() {
-  const session = await getSession();
-  const t = await getTranslations('home');
-  const common = await getTranslations('common');
-
+/*
+ * Home is the queue with nothing selected. Triaging orders is what the day is, so landing anywhere
+ * else costs a click before the work starts.
+ */
+export default function HomePage() {
   return (
-    <main className="flex flex-col px-6 py-10 gap-y-6">
-      <h1 className="text-heading-2">{t('title')}</h1>
-      <p className="text-paragraph text-foreground-muted">
-        {t('signedInAs', { role: session ? common(`roles.${session.role}`) : '' })}
-      </p>
-    </main>
+    <RfqQueueProvider>
+      <RfqSplitView activeRfqId={null}>
+        <RfqQueueEmpty />
+      </RfqSplitView>
+    </RfqQueueProvider>
   );
 }
