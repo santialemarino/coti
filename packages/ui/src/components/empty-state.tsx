@@ -8,10 +8,16 @@ interface EmptyStateProps {
   title: string;
   description?: string;
   /*
-   * `sm` is the in-place emptiness of a table body or a panel inside a card; `lg` is a whole pane
-   * with nothing in it, where the same treatment at the same size reads as a loading glitch.
+   * `inline` is a note where a short list would be — a folded panel, a sidebar section — and takes
+   * one line. `sm` is the in-place emptiness of a table body or a panel that owns its own block of
+   * the page. `lg` is a whole pane with nothing in it, where the same treatment at the same size
+   * reads as a loading glitch.
+   *
+   * The size follows the space the missing content would have taken, not the importance of the
+   * message: a centred block with a haloed icon inside a two-row panel reserves more room for the
+   * absence than the presence ever needed, and pushes everything under it away.
    */
-  size?: 'sm' | 'lg';
+  size?: 'inline' | 'sm' | 'lg';
   /* A primary action, when the emptiness is something the user can resolve. */
   children?: React.ReactNode;
   className?: string;
@@ -32,36 +38,57 @@ function EmptyState({
   className,
 }: EmptyStateProps) {
   const large = size === 'lg';
+  const inline = size === 'inline';
 
   return (
     <div
       data-slot="empty-state"
       data-size={size}
       className={cn(
-        'flex flex-col items-center justify-center px-6 gap-y-3 whitespace-normal text-center',
-        large ? 'py-20 gap-y-4' : 'py-12',
+        'flex whitespace-normal',
+        inline
+          ? 'items-center py-2 gap-x-2 text-left'
+          : 'flex-col items-center justify-center px-6 gap-y-3 text-center',
+        large && 'py-20 gap-y-4',
+        size === 'sm' && 'py-12',
         className,
       )}
     >
-      <span
-        className={cn(
-          'grid shrink-0 place-items-center bg-muted rounded-full text-foreground-subtle',
-          large ? 'size-16' : 'size-12',
-        )}
-      >
-        <Icon aria-hidden="true" className={large ? 'size-8' : 'size-6'} />
-      </span>
-      <div className="flex flex-col items-center gap-y-1">
+      {/* Inline drops the halo: at one line of copy the disc is bigger than the message. */}
+      {inline ? (
+        <Icon aria-hidden="true" className="size-4 shrink-0 text-foreground-subtle" />
+      ) : (
+        <span
+          className={cn(
+            'grid shrink-0 place-items-center bg-muted rounded-full text-foreground-subtle',
+            large ? 'size-16' : 'size-12',
+          )}
+        >
+          <Icon aria-hidden="true" className={large ? 'size-8' : 'size-6'} />
+        </span>
+      )}
+
+      <div className={cn('flex flex-col gap-y-1', !inline && 'items-center')}>
         <p
-          className={cn('text-foreground', large ? 'text-heading-6' : 'text-paragraph-sm-semibold')}
+          className={cn(
+            large
+              ? 'text-heading-6 text-foreground'
+              : inline
+                ? 'text-paragraph-sm text-foreground-muted'
+                : 'text-paragraph-sm-semibold text-foreground',
+          )}
         >
           {title}
         </p>
         {description ? (
           <p
             className={cn(
-              'max-w-sm text-foreground-muted',
-              large ? 'text-paragraph-sm' : 'text-paragraph-xs',
+              'max-w-sm',
+              large
+                ? 'text-paragraph-sm text-foreground-muted'
+                : inline
+                  ? 'text-paragraph-xs text-foreground-subtle'
+                  : 'text-paragraph-xs text-foreground-muted',
             )}
           >
             {description}

@@ -232,7 +232,11 @@ export function RfqStatusTimeline({ detail }: RfqStatusTimelineProps) {
               ))}
             </ol>
           ) : (
-            <EmptyState icon={HistoryIcon} title={t('detail.timeline.noStatusHistory')} />
+            <EmptyState
+              icon={HistoryIcon}
+              size="inline"
+              title={t('detail.timeline.noStatusHistory')}
+            />
           )}
         </TimelinePanel>
 
@@ -273,7 +277,7 @@ export function RfqStatusTimeline({ detail }: RfqStatusTimelineProps) {
               })}
             </div>
           ) : (
-            <EmptyState icon={SendIcon} title={t('detail.timeline.noDeliveries')} />
+            <EmptyState icon={SendIcon} size="inline" title={t('detail.timeline.noDeliveries')} />
           )}
         </TimelinePanel>
       </div>
