@@ -18,6 +18,7 @@ vi.mock('@/app/(protected)/rfqs/_components/create-rfq-dialog', () => ({
 }));
 vi.mock('@/lib/api/rfqs-client', () => ({
   assignRfqSeller: vi.fn(),
+  setQuoteArchived: vi.fn(),
   setRfqSeller: vi.fn(),
 }));
 vi.mock('@/lib/api/sellers', () => ({
@@ -25,10 +26,10 @@ vi.mock('@/lib/api/sellers', () => ({
 }));
 
 const { toast } = await import('sonner');
-const { assignRfqSeller, setRfqSeller } = await import('@/lib/api/rfqs-client');
+const { assignRfqSeller, setQuoteArchived, setRfqSeller } = await import('@/lib/api/rfqs-client');
 const { listSellers } = await import('@/lib/api/sellers');
 
-const copy = messages.rfqs;
+const copy = { ...messages.rfqs, common: messages.common };
 const TEST_REFERENCES: Record<string, string> = { '2006': '#06', '2007': '#07' };
 
 const RFQS: RfqRecord[] = [
@@ -42,6 +43,7 @@ const RFQS: RfqRecord[] = [
     sellerId: 's1',
     branch: 'Centro',
     branchId: 'b1',
+    quoteId: 'quote-b1',
     itemCount: 2,
     status: 'QUOTED',
     total: '100.00',
@@ -57,6 +59,7 @@ const RFQS: RfqRecord[] = [
     sellerId: 's1',
     branch: 'Norte',
     branchId: 'b2',
+    quoteId: 'quote-b2',
     itemCount: 3,
     status: 'SENT',
     total: '200.00',
@@ -72,6 +75,7 @@ const RFQS: RfqRecord[] = [
     sellerId: 's2',
     branch: 'Centro',
     branchId: 'b1',
+    quoteId: 'quote-b1',
     itemCount: 4,
     status: 'QUOTED',
     total: '300.00',
@@ -87,6 +91,7 @@ const RFQS: RfqRecord[] = [
     sellerId: 's2',
     branch: 'Norte',
     branchId: 'b2',
+    quoteId: 'quote-b2',
     itemCount: 5,
     status: 'RECEIVED',
     needsFollowup: false,
@@ -101,6 +106,7 @@ const RFQS: RfqRecord[] = [
     sellerId: 's1',
     branch: 'Centro',
     branchId: 'b1',
+    quoteId: 'quote-b1',
     itemCount: 6,
     status: 'GENERATED',
     needsFollowup: false,
@@ -140,11 +146,16 @@ function renderAs(
   );
 }
 
-function tabCount(view: ReturnType<typeof render>, label: string): number {
-  const group = view.getByLabelText(copy.list.tabs);
-  const item = within(group).getByText(label);
-  const count = (item.textContent ?? '').replace(label, '');
-  return Number(count);
+/* Opens the status picker and reads the count the option carries, e.g. "Cotizado (2)". */
+async function statusCount(view: ReturnType<typeof render>, label: string): Promise<number> {
+  fireEvent.click(view.getByRole('combobox', { name: copy.list.filters.status }));
+  const option = await vi.waitFor(() =>
+    view.getAllByRole('option').find((item) => item.textContent?.startsWith(label)),
+  );
+  if (!option) throw new Error(`No status option for ${label}`);
+  const count = /\((\d+)\)/.exec(option.textContent ?? '');
+  fireEvent.keyDown(option, { key: 'Escape' });
+  return Number(count?.[1]);
 }
 
 function rowOf(view: ReturnType<typeof render>, label: string) {
@@ -153,53 +164,130 @@ function rowOf(view: ReturnType<typeof render>, label: string) {
   return within(row);
 }
 
+/* Narrows the list to one seller through the seller dropdown. */
+async function pickSeller(view: ReturnType<typeof render>, name: string) {
+  fireEvent.click(view.getByRole('combobox', { name: copy.list.filters.seller }));
+  const option = await vi.waitFor(() =>
+    view.getAllByRole('option').find((item) => item.textContent === name),
+  );
+  if (!option) throw new Error(`${name} option never appeared`);
+  fireEvent.click(option);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('RfqDashboard status tab counts', () => {
-  it('counts the whole list when no filter is active', () => {
+describe('RfqDashboard status filter counts', () => {
+  it('counts the whole list when no filter is active', async () => {
     const view = renderDashboard();
 
-    expect(tabCount(view, copy.status.QUOTED)).toBe(2);
-    expect(tabCount(view, copy.status.SENT)).toBe(1);
-    expect(tabCount(view, copy.status.RECEIVED)).toBe(1);
-    expect(tabCount(view, copy.status.GENERATED)).toBe(1);
+    expect(await statusCount(view, copy.status.QUOTED)).toBe(2);
+    expect(await statusCount(view, copy.status.SENT)).toBe(1);
+    expect(await statusCount(view, copy.status.RECEIVED)).toBe(1);
+    expect(await statusCount(view, copy.status.GENERATED)).toBe(1);
   });
 
-  // The tabs are counters of "how many match what I'm looking at", so a seller filter narrows them
-  // too instead of leaving stale global numbers next to the filtered rows.
+  // The counts answer "how many match what I'm looking at", so a seller filter narrows them too
+  // instead of leaving stale global numbers next to the filtered rows.
   it('recounts within the active filters instead of staying global', async () => {
     const view = renderDashboard();
 
-    fireEvent.click(view.getByRole('combobox', { name: copy.list.filters.seller }));
-    const maria = await vi.waitFor(() =>
-      view.getAllByRole('option').find((option) => option.textContent === 'María López'),
-    );
-    if (!maria) throw new Error('María López option never appeared');
-    fireEvent.click(maria);
+    await pickSeller(view, 'María López');
 
-    await vi.waitFor(() => expect(tabCount(view, copy.status.QUOTED)).toBe(1));
-    expect(tabCount(view, copy.status.SENT)).toBe(1);
-    expect(tabCount(view, copy.status.RECEIVED)).toBe(0);
-    expect(tabCount(view, copy.status.GENERATED)).toBe(1);
+    await vi.waitFor(async () => expect(await statusCount(view, copy.status.QUOTED)).toBe(1));
+    expect(await statusCount(view, copy.status.RECEIVED)).toBe(0);
     expect(view.queryByText('#03')).toBeNull();
   });
 
-  it('combines the status tab with the other filters', async () => {
+  it('combines the status filter with the other filters', async () => {
     const view = renderDashboard();
 
-    fireEvent.click(view.getByRole('combobox', { name: copy.list.filters.seller }));
-    const maria = await vi.waitFor(() =>
-      view.getAllByRole('option').find((option) => option.textContent === 'María López'),
-    );
-    if (!maria) throw new Error('María López option never appeared');
-    fireEvent.click(maria);
-    await vi.waitFor(() => expect(tabCount(view, copy.status.QUOTED)).toBe(1));
+    await pickSeller(view, 'María López');
+    await vi.waitFor(async () => expect(await statusCount(view, copy.status.QUOTED)).toBe(1));
 
-    fireEvent.click(within(view.getByLabelText(copy.list.tabs)).getByText(copy.status.QUOTED));
+    fireEvent.click(view.getByRole('combobox', { name: copy.list.filters.status }));
+    const quoted = await vi.waitFor(() =>
+      view.getAllByRole('option').find((item) => item.textContent?.startsWith(copy.status.QUOTED)),
+    );
+    if (!quoted) throw new Error('Cotizado option never appeared');
+    fireEvent.click(quoted);
+
     await vi.waitFor(() => expect(view.queryByText('#02')).toBeNull());
     expect(view.getByText('#01')).toBeTruthy();
+  });
+});
+
+describe('RfqDashboard archived filter', () => {
+  const ARCHIVED: RfqRecord = {
+    ...(RFQS[0] as RfqRecord),
+    id: 'arch-1',
+    quoteNumber: 77,
+    quoteId: 'quote-arch',
+    client: 'Cliente archivado',
+    archived: true,
+  };
+
+  /*
+   * Archivado is a value in the status picker, so picking it on its own means the archive — not
+   * the whole queue with the archive added to it.
+   */
+  it('hides archived orders until the filter asks for them, then shows only those', async () => {
+    const view = renderAs({ userName: 'Ana', userId: 'me', isAdmin: true }, [...RFQS, ARCHIVED]);
+
+    expect(view.queryByText('#77')).toBeNull();
+
+    fireEvent.click(view.getByRole('combobox', { name: copy.list.filters.status }));
+    const option = await vi.waitFor(() =>
+      view
+        .getAllByRole('option')
+        .find((item) => item.textContent?.startsWith(copy.status.ARCHIVED)),
+    );
+    if (!option) throw new Error('Archivados option never appeared');
+    fireEvent.click(option);
+
+    await vi.waitFor(() => expect(view.getByText('#77')).toBeTruthy());
+    expect(view.queryByText('#01')).toBeNull();
+  });
+});
+
+describe('RfqDashboard bulk archive', () => {
+  // Twelve rows, so the selection spans two pages at a page size of ten.
+  const MANY: RfqRecord[] = Array.from({ length: 12 }, (_, index) => ({
+    ...(RFQS[0] as RfqRecord),
+    id: `bulk-${index}`,
+    quoteNumber: 100 + index,
+    quoteId: `quote-bulk-${index}`,
+    client: `Cliente ${index}`,
+  }));
+
+  /*
+   * A selection survives paging, so acting on the visible page only would archive part of it and
+   * clear the rest without saying so.
+   */
+  it('archives every selected order, including the ones off the current page', async () => {
+    vi.mocked(setQuoteArchived).mockResolvedValue(undefined);
+    const view = renderAs({ userName: 'Ana', userId: 'me', isAdmin: true }, MANY);
+
+    fireEvent.click(view.getByLabelText(copy.list.selectAll));
+    fireEvent.click(view.getByRole('button', { name: copy.common.pagination.next }));
+    fireEvent.click(view.getByLabelText(copy.list.selectAll));
+    fireEvent.click(view.getByRole('button', { name: copy.list.bulk.archive }));
+
+    await vi.waitFor(() => expect(setQuoteArchived).toHaveBeenCalledTimes(MANY.length));
+  });
+});
+
+describe('RfqDashboard branch column', () => {
+  /*
+   * The header switcher already says which branch is in view, so repeating it on every row is a
+   * column of the same word. It comes back the moment the switcher is on "todas las sucursales".
+   */
+  it('drops the branch column while one branch is selected and restores it for all', () => {
+    expect(renderDashboard().queryByText('Centro')).toBeNull();
+
+    const all = renderAs({ userName: 'Ana', userId: 'me', isAdmin: true }, RFQS);
+    expect(all.getAllByText('Centro').length).toBeGreaterThan(0);
   });
 });
 
@@ -207,9 +295,9 @@ describe('RfqDashboard totals column', () => {
   it('shows a dash until the quote exists and the amount once it does', () => {
     const view = renderDashboard();
 
-    expect(rowOf(view, copy.list.numberPending).getByText('-')).toBeTruthy();
+    expect(rowOf(view, copy.list.numberPending).getByText('—')).toBeTruthy();
     expect(rowOf(view, '#01').getByText('$ 100,00')).toBeTruthy();
-    expect(rowOf(view, '#01').queryByText('-')).toBeNull();
+    expect(rowOf(view, '#01').queryByText('—')).toBeNull();
   });
 });
 
@@ -220,7 +308,7 @@ describe('RfqDashboard row actions', () => {
       name: copy.list.openRow.replace('{id}', '#01'),
     });
 
-    fireEvent.click(within(row).getByText('Centro'));
+    fireEvent.click(within(row).getByText('Constructora A'));
     expect(router.push).toHaveBeenLastCalledWith('/rfqs/2001');
 
     router.push.mockClear();
@@ -232,36 +320,35 @@ describe('RfqDashboard row actions', () => {
     expect(router.push).not.toHaveBeenCalled();
   });
 
-  it('shows only detail and archive actions and opens the detail route', async () => {
+  // Archiving is inline: the row already opens the detail, so a menu here would hold one item.
+  it('archives from the row and names the order by its sequence number', async () => {
+    vi.mocked(setQuoteArchived).mockResolvedValue(undefined);
     const view = renderDashboard();
 
-    fireEvent.pointerDown(
-      rowOf(view, '#01').getByRole('button', { name: copy.list.actions.more }),
-      {
-        button: 0,
-      },
+    fireEvent.click(rowOf(view, '#01').getByRole('button', { name: copy.list.actions.archive }));
+
+    await vi.waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(copy.list.toast.archived.replace('{id}', '#01')),
     );
-    const menu = await vi.waitFor(() => view.getByRole('menu'));
-    expect(within(menu).getAllByRole('menuitem')).toHaveLength(2);
-    expect(within(menu).getByRole('menuitem', { name: copy.list.actions.archive })).toBeTruthy();
-
-    fireEvent.click(within(menu).getByRole('menuitem', { name: copy.list.actions.view }));
-
-    expect(router.push).toHaveBeenCalledWith('/rfqs/2001');
+    /*
+     * Named branch, not the header switcher's: it sits on "todas las sucursales" by default and a
+     * quote write that arrives without one is refused, which is how this shipped reporting success
+     * for a 422.
+     */
+    expect(setQuoteArchived).toHaveBeenCalledWith('quote-b1', true, 'b1');
+    // Archived rows leave the queue until the status filter asks for them back.
+    expect(view.queryByText('#01')).toBeNull();
   });
 
-  it('uses the sequence number in archive feedback', async () => {
+  // The flag only flips once the backend confirms it, or the row comes back on the next refresh.
+  it('keeps the row and warns when the archive write fails', async () => {
+    vi.mocked(setQuoteArchived).mockRejectedValue(new ApiError('INTERNAL', 500));
     const view = renderDashboard();
 
-    fireEvent.pointerDown(
-      rowOf(view, '#01').getByRole('button', { name: copy.list.actions.more }),
-      { button: 0 },
-    );
-    fireEvent.click(
-      await vi.waitFor(() => view.getByRole('menuitem', { name: copy.list.actions.archive })),
-    );
+    fireEvent.click(rowOf(view, '#01').getByRole('button', { name: copy.list.actions.archive }));
 
-    expect(toast.success).toHaveBeenCalledWith(copy.list.toast.archived.replace('{id}', '#01'));
+    await vi.waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(view.getByText('#01')).toBeTruthy();
   });
 });
 
@@ -282,6 +369,7 @@ describe('RfqDashboard claiming an unassigned order', () => {
     sellerId: null,
     branch: 'Centro',
     branchId: 'b1',
+    quoteId: 'quote-b1',
     itemCount: 1,
     status: 'RECEIVED',
     needsFollowup: false,
@@ -306,17 +394,21 @@ describe('RfqDashboard claiming an unassigned order', () => {
     });
   });
 
-  it('offers Asignarme to a seller on an unassigned row and stamps the owner on the claim', async () => {
-    const view = renderAs({ userName: 'Ana Robles', userId: 'me', isAdmin: false }, [unassigned]);
-
-    fireEvent.pointerDown(
-      rowOf(view, '2006').getByRole('button', { name: copy.list.actions.more }),
-      { button: 0 },
-    );
+  // The seller cell is the one claim surface now that the row menu is gone.
+  async function claimFromCell(view: ReturnType<typeof render>) {
+    fireEvent.pointerDown(rowOf(view, '2006').getByRole('button', { name: copy.list.unassigned }), {
+      button: 0,
+    });
     const assign = await vi.waitFor(() =>
       view.getByRole('menuitem', { name: copy.list.actions.assign }),
     );
     fireEvent.click(assign);
+  }
+
+  it('offers Asignarme to a seller on an unassigned row and stamps the owner on the claim', async () => {
+    const view = renderAs({ userName: 'Ana Robles', userId: 'me', isAdmin: false }, [unassigned]);
+
+    await claimFromCell(view);
 
     expect(assignRfqSeller).toHaveBeenCalledWith('2006');
     // The row only stamps the owner once the backend confirms the claim, so wait for it.
@@ -331,14 +423,7 @@ describe('RfqDashboard claiming an unassigned order', () => {
 
     const view = renderAs({ userName: 'Ana Robles', userId: 'me', isAdmin: false }, [unassigned]);
 
-    fireEvent.pointerDown(
-      rowOf(view, '2006').getByRole('button', { name: copy.list.actions.more }),
-      { button: 0 },
-    );
-    const assign = await vi.waitFor(() =>
-      view.getByRole('menuitem', { name: copy.list.actions.assign }),
-    );
-    fireEvent.click(assign);
+    await claimFromCell(view);
 
     expect(assignRfqSeller).toHaveBeenCalledWith('2006');
     // The conflict surfaces as a toast once the backend answers.
@@ -353,44 +438,21 @@ describe('RfqDashboard claiming an unassigned order', () => {
 
     const view = renderAs({ userName: 'Ana Robles', userId: 'me', isAdmin: false }, [unassigned]);
 
-    fireEvent.pointerDown(
-      rowOf(view, '2006').getByRole('button', { name: copy.list.actions.more }),
-      { button: 0 },
-    );
-    const assign = await vi.waitFor(() =>
-      view.getByRole('menuitem', { name: copy.list.actions.assign }),
-    );
-    fireEvent.click(assign);
+    await claimFromCell(view);
 
     expect(assignRfqSeller).toHaveBeenCalledWith('2006');
     await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith(copy.errors.FORBIDDEN));
     expect(view.queryByText('Ana Robles')).toBeNull();
   });
 
-  it('shows no assignable item when the order already has a seller', async () => {
+  // A seller on someone else's order has nothing to claim, so the cell is plain text.
+  it('offers no claim surface when the order already has a seller', () => {
     const assigned: RfqRecord = { ...unassigned, sellerId: 'other', seller: 'Otro Vendedor' };
 
     const view = renderAs({ userName: 'Ana Robles', userId: 'me', isAdmin: false }, [assigned]);
 
-    fireEvent.pointerDown(
-      rowOf(view, '2006').getByRole('button', { name: copy.list.actions.more }),
-      { button: 0 },
-    );
-    // The menu opens with the usual actions, but "Asignarme" must not appear.
-    await vi.waitFor(() => view.getByRole('menuitem', { name: copy.list.actions.view }));
-    expect(view.queryByRole('menuitem', { name: copy.list.actions.assign })).toBeNull();
-  });
-
-  it('shows the item is disabled/non-claimable for an admin', async () => {
-    const view = renderAs({ userName: 'Admin', userId: 'u1', isAdmin: true }, [unassigned]);
-
-    fireEvent.pointerDown(
-      rowOf(view, '2006').getByRole('button', { name: copy.list.actions.more }),
-      { button: 0 },
-    );
-    // The menu still shows the usual actions, but an admin never sees "Asignarme".
-    await vi.waitFor(() => view.getByRole('menuitem', { name: copy.list.actions.view }));
-    expect(view.queryByRole('menuitem', { name: copy.list.actions.assign })).toBeNull();
+    expect(rowOf(view, '2006').queryByRole('button', { name: 'Otro Vendedor' })).toBeNull();
+    expect(rowOf(view, '2006').getByText('Otro Vendedor')).toBeTruthy();
   });
 });
 
@@ -436,6 +498,7 @@ describe('RfqDashboard admin steering the seller', () => {
     sellerId: null,
     branch: 'Morón',
     branchId: 'b-moron',
+    quoteId: 'quote-b-moron',
     itemCount: 1,
     status: 'RECEIVED',
     needsFollowup: false,
@@ -446,6 +509,7 @@ describe('RfqDashboard admin steering the seller', () => {
     quoteNumber: 7,
     branch: 'Villa Bosch',
     branchId: 'b-villa',
+    quoteId: 'quote-b-villa',
   };
 
   beforeEach(() => {
@@ -456,17 +520,13 @@ describe('RfqDashboard admin steering the seller', () => {
     vi.mocked(setRfqSeller).mockResolvedValue(quoteResponse('2006', 'b-moron', 's-moron'));
   });
 
-  // Opens the admin row menu, then the seller submenu, and returns its content.
-  async function openSellerMenu(view: ReturnType<typeof render>, rfqId: string) {
-    fireEvent.pointerDown(
-      rowOf(view, rfqId).getByRole('button', { name: copy.list.actions.more }),
-      { button: 0 },
-    );
-    const trigger = await vi.waitFor(() =>
-      view.getByRole('menuitem', { name: copy.list.actions.changeSeller }),
-    );
-    fireEvent.pointerMove(trigger, { pointerType: 'mouse' });
-    fireEvent.pointerDown(trigger, { button: 0 });
+  // Opens the owner picklist from the seller cell, which is where it lives.
+  async function openSellerMenu(
+    view: ReturnType<typeof render>,
+    rfqId: string,
+    name: string = copy.list.unassigned,
+  ) {
+    fireEvent.pointerDown(rowOf(view, rfqId).getByRole('button', { name }), { button: 0 });
     await vi.waitFor(() => view.getByRole('menuitem', { name: copy.list.actions.assign }));
     return view;
   }
@@ -542,6 +602,7 @@ describe('RfqDashboard admin steering the seller', () => {
     const view = await openSellerMenu(
       renderAs({ userName: 'Admin', userId: 'me', isAdmin: true }, [assigned]),
       '2006',
+      'Vero Morón',
     );
 
     fireEvent.click(view.getByRole('menuitem', { name: copy.list.actions.unassignSeller }));
@@ -570,15 +631,15 @@ describe('RfqDashboard admin steering the seller', () => {
     expect(rowOf(view, '2006').getByText(copy.list.unassigned)).toBeTruthy();
   });
 
-  it('hides the owner steered items when the caller is a seller', async () => {
+  it('offers a seller only the claim, never the branch picklist', async () => {
     const view = renderAs({ userName: 'Ana Robles', userId: 'me', isAdmin: false }, [moronOrder]);
 
-    fireEvent.pointerDown(
-      rowOf(view, '2006').getByRole('button', { name: copy.list.actions.more }),
-      { button: 0 },
-    );
-    await vi.waitFor(() => view.getByRole('menuitem', { name: copy.list.actions.assign }));
-    expect(view.queryByRole('menuitem', { name: copy.list.actions.changeSeller })).toBeNull();
+    fireEvent.pointerDown(rowOf(view, '2006').getByRole('button', { name: copy.list.unassigned }), {
+      button: 0,
+    });
+    const menu = await vi.waitFor(() => view.getByRole('menu'));
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(1);
+    expect(within(menu).getByRole('menuitem', { name: copy.list.actions.assign })).toBeTruthy();
     // A seller never pulls the branch picklist.
     expect(listSellers).not.toHaveBeenCalled();
   });
@@ -600,6 +661,7 @@ describe('RfqDashboard seller column as the assignment surface', () => {
     sellerId: null,
     branch: 'Morón',
     branchId: 'b-moron',
+    quoteId: 'quote-b-moron',
     itemCount: 1,
     status: 'RECEIVED',
     needsFollowup: false,
@@ -713,7 +775,6 @@ describe('RfqDashboard seller column as the assignment surface', () => {
 
     // The cell menu for a seller offers only the claim: no picklist, no steer, no unassign.
     expect(view.getByRole('menuitem', { name: copy.list.actions.assign })).toBeTruthy();
-    expect(view.queryByRole('menuitem', { name: copy.list.actions.changeSeller })).toBeNull();
     expect(view.queryByRole('menuitem', { name: copy.list.actions.unassignSeller })).toBeNull();
     expect(view.queryByRole('menuitem', { name: 'Vero Morón' })).toBeNull();
     expect(listSellers).not.toHaveBeenCalled();
@@ -732,14 +793,21 @@ describe('RfqDashboard seller column as the assignment surface', () => {
     expect(cell.queryByRole('button', { name: 'Otro Vendedor' })).toBeNull();
   });
 
-  it('keeps the three-dot menu functional next to the interactive cell', async () => {
-    const view = renderAs({ userName: 'Admin', userId: 'me', isAdmin: true }, [moronOrder]);
-
-    fireEvent.pointerDown(
-      rowOf(view, '2006').getByRole('button', { name: copy.list.actions.more }),
-      { button: 0 },
+  /*
+   * The owner menu is portalled, so React sends its click up this row's React tree even though the
+   * DOM node is nowhere near it. Picking an owner must not also open the order.
+   */
+  it('does not open the detail when the cell menu is used', async () => {
+    vi.mocked(setRfqSeller).mockResolvedValue(quoteResponse('2006', 'b-moron', 's-moron'));
+    const view = await openSellerCellMenu(
+      renderAs({ userName: 'Admin', userId: 'me', isAdmin: true }, [moronOrder]),
+      '2006',
+      copy.list.unassigned,
     );
-    await vi.waitFor(() => view.getByRole('menuitem', { name: copy.list.actions.view }));
-    expect(view.getByRole('menuitem', { name: copy.list.actions.changeSeller })).toBeTruthy();
+
+    fireEvent.click(await vi.waitFor(() => view.getByRole('menuitem', { name: 'Vero Morón' })));
+
+    await vi.waitFor(() => expect(setRfqSeller).toHaveBeenCalledWith('2006', 's-moron'));
+    expect(router.push).not.toHaveBeenCalled();
   });
 });

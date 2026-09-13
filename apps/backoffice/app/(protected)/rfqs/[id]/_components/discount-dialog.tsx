@@ -17,6 +17,7 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from '@repo/ui/components';
+import { AmountInput } from '@/components/amount-input';
 import type {
   CreateDiscountBody,
   DiscountActionType,
@@ -24,7 +25,6 @@ import type {
   QuoteDiscountResponse,
   QuoteItemResponse,
 } from '@/lib/api/rfqs';
-import { decimalToMoneyInput, maskMoneyInput, moneyInputToDecimal } from '@/lib/forms/money-input';
 
 interface DiscountDialogProps {
   open: boolean;
@@ -64,20 +64,16 @@ export function DiscountDialog({
       const stored = initial?.action_value ?? initial?.amount ?? '';
       setName(initial?.description ?? initial?.promotion_name ?? '');
       setActionType(initial?.action_type ?? 'FIXED_AMOUNT');
-      setValue(
-        stored && (initial?.action_type ?? 'FIXED_AMOUNT') === 'FIXED_AMOUNT'
-          ? decimalToMoneyInput(stored)
-          : stored,
-      );
+      setValue(stored);
       setScope(initial?.scope ?? 'TOTAL');
       setLinkedItemIds(initial?.item_ids ?? []);
     }
   }, [open, initial]);
 
   const coversItems = scope !== 'TOTAL';
-  // An amount is money and carries the Argentine grouping; a percentage is a plain rate.
+  // An amount is money and carries the grouping; a percentage is a plain rate capped at 100.
   const isAmount = actionType === 'FIXED_AMOUNT';
-  const parsedValue = Number.parseFloat(isAmount ? moneyInputToDecimal(value) : value);
+  const parsedValue = Number.parseFloat(value);
   const validValue =
     Number.isFinite(parsedValue) && parsedValue > 0 && (isAmount || parsedValue <= 100);
   const hasLinkedItems = linkedItemIds.length > 0;
@@ -165,32 +161,17 @@ export function DiscountDialog({
             <Label htmlFor="discount-value" required>
               {t(actionType === 'PERCENTAGE' ? 'valueLabel' : 'amountLabel')}
             </Label>
-            {isAmount ? (
-              <Input
-                id="discount-value"
-                type="text"
-                inputMode="decimal"
-                prefix="$"
-                value={value}
-                onChange={(event) => setValue(maskMoneyInput(event.target.value))}
-                onKeyDown={handleFormKey}
-                placeholder="0,00"
-              />
-            ) : (
-              <Input
-                id="discount-value"
-                type="number"
-                inputMode="decimal"
-                min={0.01}
-                step={0.01}
-                max={100}
-                suffix="%"
-                value={value}
-                onChange={(event) => setValue(event.target.value)}
-                onKeyDown={handleFormKey}
-                placeholder="0"
-              />
-            )}
+            {/* One field for both rules: they differ in what caps them and how they are marked. */}
+            <AmountInput
+              id="discount-value"
+              value={value}
+              onChange={setValue}
+              onKeyDown={handleFormKey}
+              maxDecimals={2}
+              prefix={isAmount ? '$' : undefined}
+              suffix={isAmount ? undefined : '%'}
+              placeholder="0,00"
+            />
           </div>
 
           <div className="flex flex-col gap-y-1.5">

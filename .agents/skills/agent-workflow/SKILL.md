@@ -46,7 +46,13 @@ The Husky pre-commit hook runs **`lint-staged` only** (Prettier + ESLint on stag
 - `pnpm lint` (and `pnpm lint:fix` to auto-fix) — ESLint on the web apps + `packages/ui`, `go vet` on the API.
 - `pnpm format:check` (or `pnpm format` to fix) — Prettier on web, `gofmt` on the API.
 - `pnpm check` — runs `check:api` (the API's `go build ./...` + `go vet ./...`) + `check:web` (`turbo run check-types` across `backoffice` + `webapp`).
-- `pnpm test:api` / `pnpm test:web` (once web tests exist).
+- `pnpm test:api` / `pnpm test:web` (once web tests exist). The API's **integration** suite is behind
+  a build tag and is not in `test:api`: run
+  `TEST_DATABASE_URL=… TEST_DATABASE_ADMIN_URL=… go test -tags=integration ./...` from `apps/api`
+  whenever you change behaviour it asserts. Compiling is not running — `go vet -tags=integration`
+  passes on a test that the suite then fails.
+- `pnpm --filter api run docs` after touching a handler annotation or a DTO, and commit the three
+  generated files under `apps/api/docs/`.
 
 Treat `pnpm check` + `pnpm test:api` as a manual pre-push gate: never push code that would fail them. After any non-trivial change, run `pnpm check` once before committing.
 
@@ -65,6 +71,11 @@ After implementation and before committing, audit every changed or created file 
 - **DTOs.** Request/response structs live in the delivery layer, carry `json:"snake_case"` tags and `binding:"..."` validation, and bind via `c.ShouldBindJSON`. Domain ↔ DTO mapping happens at the handler boundary, never in services or repositories.
 - **pgvector.** Semantic catalog search uses the `product.embedding VECTOR(1536)` column via vector operators; any embedding written must match that dimension.
 - **Comments.** A `//` doc comment sits above every exported func/type, is a full sentence that starts with the symbol name and ends with a period. No narration on trivial code.
+- **A DTO or a handler annotation changes the committed OpenAPI spec.** `apps/api/docs/` is generated
+  from the `@Param` / `@Success` comments and checked in, and CI regenerates it and fails on any
+  difference — so adding a field to a response struct or a query parameter to a handler is also
+  `pnpm --filter api run docs` plus the three files it writes. **`pnpm check` does not cover this**;
+  it is the one API gate that only CI enforces, which is exactly why it is easy to push without.
 - **A schema change ships a goose migration in the same PR.** Any table/column/index/enum/type change adds a goose migration under `apps/api/migrations/` (create with `pnpm db:create-migration`) AND updates the consolidated reference schema under `apps/api/database/` in the same PR. **Migrations are the only executable path** — `pnpm db:init` builds a fresh DB by running them, so the chain must always rebuild from zero. The reference schema is what humans and agents read to know the current shape: keep its CREATE statements matching the migrated result, never apply it directly, and never add migration-style comments to it.
 
 ### Web (web-structure + web-components-pages) — Next.js (backoffice + webapp), React 19, `@repo/ui`

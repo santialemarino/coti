@@ -136,6 +136,7 @@ func (r *RFQRepository) GetByRFQID(
 		        COALESCE(u.name, ''),
 		        r.branch_id,
 		        b.name,
+		        q.id,
 		        q.number,
 		        COALESCE(qt.total, 0),
 		        CASE WHEN q.id IS NULL THEN r.status::text
@@ -165,7 +166,7 @@ WHERE r.account_id = $1
 		&item.ClientLabel, &item.CreatedAt,
 		&item.Channel, &item.SellerID, &item.SellerName,
 		&item.BranchID, &item.BranchName,
-		&item.QuoteNumber,
+		&item.QuoteID, &item.QuoteNumber,
 		&total, &item.Status, &item.ArchivedAt, &item.NeedsFollowup,
 		&item.ItemCount,
 	)
@@ -184,11 +185,12 @@ WHERE r.account_id = $1
 	return &item, nil
 }
 
-// ListByTenant returns the RFQ list the Backoffice dashboard consumes. Archived quotes are
-// hidden, needs_followup rows sort first, and the client display name falls back to
-// rfq.client_label when no ficha client is linked.
+// ListByTenant returns the RFQ list the Backoffice dashboard consumes. needs_followup rows sort
+// first and the client display name falls back to rfq.client_label when no ficha client is linked.
+// Archived quotes are hidden unless includeArchived asks for them, which is what lets a screen
+// offer "archivados" as a filter rather than as a place orders disappear into.
 func (r *RFQRepository) ListByTenant(
-	ctx context.Context, q Querier, tenant domain.Tenant,
+	ctx context.Context, q Querier, tenant domain.Tenant, includeArchived bool,
 ) ([]domain.RfqListItem, error) {
 	rows, err := q.Query(ctx,
 		`SELECT r.id, r.client_id,
@@ -198,6 +200,7 @@ func (r *RFQRepository) ListByTenant(
 		        COALESCE(u.name, ''),
 		        r.branch_id,
 		        b.name,
+		        q.id,
 		        q.number,
 		        COALESCE(qt.total, 0),
 		        CASE WHEN q.id IS NULL THEN r.status::text
@@ -220,9 +223,9 @@ func (r *RFQRepository) ListByTenant(
 		 WHERE r.account_id = $1
 		   AND ($2::uuid[] IS NULL OR r.branch_id = ANY($2::uuid[]))
 		   AND ($3::uuid IS NULL OR q.seller_id = $3 OR q.seller_id IS NULL)
-		   AND (q.id IS NULL OR q.archived_at IS NULL)
+		   AND ($4::bool OR q.id IS NULL OR q.archived_at IS NULL)
 		 ORDER BY COALESCE(q.needs_followup, FALSE) DESC, r.created_at DESC`,
-		tenant.AccountID, tenant.BranchFilter(), sellerParam(tenant),
+		tenant.AccountID, tenant.BranchFilter(), sellerParam(tenant), includeArchived,
 	)
 	if err != nil {
 		return nil, err
@@ -238,7 +241,7 @@ func (r *RFQRepository) ListByTenant(
 			&item.ClientLabel, &item.CreatedAt,
 			&item.Channel, &item.SellerID, &item.SellerName,
 			&item.BranchID, &item.BranchName,
-			&item.QuoteNumber,
+			&item.QuoteID, &item.QuoteNumber,
 			&total, &item.Status, &item.ArchivedAt, &item.NeedsFollowup,
 			&item.ItemCount,
 		); err != nil {

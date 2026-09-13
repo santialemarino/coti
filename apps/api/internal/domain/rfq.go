@@ -101,6 +101,7 @@ type RfqListItem struct {
 	SellerName    string
 	BranchID      uuid.UUID
 	BranchName    string
+	QuoteID       *uuid.UUID // NULL until the RFQ has a quote; the archive endpoints key off it.
 	QuoteNumber   *int64
 	ItemCount     int
 	Total         *string // decimal string from quote_version.total; NULL when no priced version.

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   formatDate,
+  formatDateNumeric,
   formatList,
   formatRatePct,
   formatSignedValue,
@@ -95,6 +96,17 @@ describe('formatDate', () => {
     expect(formatted).toMatch(/15/);
     expect(formatted).toMatch(/mar/i);
     expect(formatted).toMatch(/2025/);
+  });
+});
+
+describe('formatDateNumeric', () => {
+  // Zero-padded on both fields, so a column of dates is one width and scans as a column.
+  it('pads the day and the month to two digits', () => {
+    expect(formatDateNumeric('2025-01-02')).toBe('02/01/2025');
+  });
+
+  it('anchors a date-only value at local midnight, like the long form', () => {
+    expect(formatDateNumeric('2025-01-02')).not.toContain('01/01');
   });
 });
 

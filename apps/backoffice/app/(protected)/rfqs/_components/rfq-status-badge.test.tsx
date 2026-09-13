@@ -63,57 +63,44 @@ describe('RfqStatusBadge', () => {
   });
 
   /*
-   * The Figma spec: the label is painted with the state colour and the backdrop tints that same
-   * colour at 20% opacity — never a solid fill, never default black text. If the tinted backdrop is
-   * ever replaced by a solid `bg-status-*` or the neutral defaults sneak back in, this test fails.
+   * Each state carries its own wash, hairline and label, and its own full-strength dot. What this
+   * pins is that no two states share a family and that none of them falls back on the neutral
+   * defaults — a pill that quietly renders `bg-muted` looks finished and says nothing.
    */
-  it('gives every state its own colour as a 20% tinted chip, never a solid pill', () => {
-    const colours = new Set<string>();
+  it("gives every state its own colour family, in the app's own pill", () => {
+    const families = new Set<string>();
 
     for (const status of STATUS_ORDER) {
       if (status === 'RECEIVED') continue; // RECEIVED renders the ingestion spinner, never a badge
       const view = renderBadge({ status });
-      const label = view.getByText(copy.status[status]) as HTMLElement;
-      const chip = label.parentElement as HTMLElement;
-      const backdrop = chip.querySelector<HTMLElement>('[aria-hidden="true"]');
+      const chip = view.getByText(copy.status[status]).closest('span') as HTMLElement;
+      const dot = chip.querySelector<HTMLElement>('[aria-hidden="true"]');
 
-      const colour = `text-status-${status.toLowerCase().replace('_', '-')}`;
-      expect(chip.className, `${status} must be painted with its colour`).toContain(colour);
-      expect(chip.className, `${status} must not use a solid status fill`).not.toContain(
-        'bg-status',
+      const family = `status-${status.toLowerCase().replaceAll('_', '-')}`;
+      expect(chip.className, `${status} needs its wash`).toContain(`bg-${family}-subtle`);
+      expect(chip.className, `${status} needs its hairline`).toContain(`border-${family}-border`);
+      expect(chip.className, `${status} needs its label colour`).toContain(
+        `text-${family}-foreground`,
       );
-      colours.add(colour);
+      families.add(family);
 
-      expect(backdrop, `${status} needs the tinted backdrop`).toBeTruthy();
-      expect(backdrop!.className).toContain('bg-current');
-      expect(backdrop!.className).toContain('opacity-20');
-      expect(backdrop!.className).not.toContain('bg-status');
+      expect(dot, `${status} needs its dot`).toBeTruthy();
+      expect(dot!.className).toContain(`bg-${family}`);
 
-      expect(label.className, `${status} label should inherit the colour`).not.toContain(
-        'text-foreground',
-      );
-
-      for (const forbidden of [
-        'bg-black',
-        'text-black',
-        'bg-muted',
-        'border-border',
-        'rounded-full',
-      ]) {
+      for (const forbidden of ['bg-black', 'text-black', 'bg-muted', 'text-foreground-muted']) {
         expect(chip.className, `${status} leaks ${forbidden}`).not.toContain(forbidden);
       }
     }
 
     const archived = renderBadge({ status: 'SENT', archived: true });
-    const archivedLabel = archived.getByText(copy.status.ARCHIVED) as HTMLElement;
-    const archivedChip = archivedLabel.parentElement as HTMLElement;
-    expect(archivedChip.className).toContain('text-status-archived');
-    expect(archivedChip.className).not.toContain('text-status-sent');
-    colours.add('text-status-archived');
+    const archivedChip = archived.getByText(copy.status.ARCHIVED).closest('span') as HTMLElement;
+    expect(archivedChip.className).toContain('status-archived');
+    expect(archivedChip.className).not.toContain('status-sent');
+    families.add('status-archived');
 
     // Every state but RECEIVED renders a badge, and archived adds one more. Derived rather than
-    // written out, so a state added later has to bring its own colour instead of borrowing one.
-    expect(colours.size, 'each state must map to a distinct colour').toBe(STATUS_ORDER.length);
+    // written out, so a state added later has to bring its own family instead of borrowing one.
+    expect(families.size, 'each state must map to a distinct family').toBe(STATUS_ORDER.length);
   });
 
   it('recognises which statuses carry a definitive quote total', () => {

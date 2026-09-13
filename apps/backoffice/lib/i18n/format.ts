@@ -47,15 +47,28 @@ export function formatRatePct(ratio: number, locale?: string): string {
   }).format(ratio);
 }
 
-// "2 de ene de 2025". Date-only input (YYYY-MM-DD) is anchored at local midnight so it never
-// timezone-shifts to the previous day.
+// Date-only input (YYYY-MM-DD) is anchored at local midnight so it never timezone-shifts to the
+// previous day. Both date formatters parse through here.
+function parseDate(iso: string): Date {
+  return iso.length === 10 ? new Date(iso + 'T00:00:00') : new Date(iso);
+}
+
+// "2 de ene de 2025", for prose: a sentence, a subtitle, a callout. Reads as a date, not as a value.
 export function formatDate(iso: string, locale?: string): string {
-  const date = iso.length === 10 ? new Date(iso + 'T00:00:00') : new Date(iso);
   return dateTimeFormat(getLocaleTag(locale), {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
-  }).format(date);
+  }).format(parseDate(iso));
+}
+
+// "02/01/2025", for a column of dates: same width on every row, scanned rather than read.
+export function formatDateNumeric(iso: string, locale?: string): string {
+  return dateTimeFormat(getLocaleTag(locale), {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(parseDate(iso));
 }
 
 // "2 de ene de 2025, 11:30 p. m.", rendered in `timeZone` so the calendar day is right for

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
-import { CheckCircle2Icon, DownloadIcon, FileSpreadsheetIcon, UploadCloudIcon } from 'lucide-react';
+import { CheckCircle2Icon, DownloadIcon, FileSpreadsheetIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import {
@@ -9,7 +9,9 @@ import {
   Button,
   Callout,
   Card,
+  Dropzone,
   PendingButton,
+  StepList,
   Table,
   TableBody,
   TableCell,
@@ -23,7 +25,6 @@ import {
   previewCatalogImport,
   type CatalogImportPreview,
 } from '@/app/(protected)/_actions/catalog-import';
-import { FileDropzone } from '@/components/file-dropzone';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Branch } from '@/lib/api/branches';
 import { useFormatters } from '@/lib/i18n/formatters';
@@ -92,47 +93,27 @@ export function CatalogUpload({
 
   return (
     <div className="flex flex-col gap-y-5">
-      <div className="grid gap-4 md:grid-cols-3">
-        {(['download', 'complete', 'upload'] as const).map((key, index) => (
-          <div key={key} className="flex items-start p-4 gap-x-3 bg-muted border rounded-lg">
-            <span className="flex size-7 shrink-0 items-center justify-center bg-primary rounded-full text-paragraph-sm-medium text-primary-foreground">
-              {index + 1}
-            </span>
-            <p className="text-paragraph-sm-medium">{t(`steps.${key}.title`)}</p>
-          </div>
-        ))}
-      </div>
+      <StepList
+        steps={(['download', 'complete', 'upload'] as const).map((key) => t(`steps.${key}.title`))}
+      />
 
       <form id={formId} onSubmit={onSubmit} noValidate className="flex flex-col gap-y-4">
-        <FileDropzone accept=".xlsx,.csv" disabled={busy} onFile={choose} className="min-h-56">
-          {({ dragging, openFileDialog }) => (
-            <>
-              <span
-                data-dragging={dragging}
-                className="flex size-12 items-center justify-center bg-accent rounded-full text-accent-foreground transition-[scale,translate] duration-200 ease-out-soft data-[dragging=true]:scale-110 data-[dragging=true]:-translate-y-1"
-              >
-                {file ? (
-                  <FileSpreadsheetIcon aria-hidden="true" className="size-6" />
-                ) : (
-                  <UploadCloudIcon aria-hidden="true" className="size-6" />
-                )}
-              </span>
-              <div className="flex flex-col items-center gap-y-1 text-center">
-                <p className="break-all text-paragraph-medium">
-                  {dragging ? t('dropzone.release') : file ? file.name : t('dropzone.title')}
-                </p>
-                {file ? (
-                  <p className="text-paragraph-sm text-foreground-muted">
-                    {t('dropzone.selected', { size: Math.max(1, Math.round(file.size / 1024)) })}
-                  </p>
-                ) : null}
-              </div>
-              <Button type="button" variant="outline" disabled={busy} onClick={openFileDialog}>
-                {file ? t('dropzone.replace') : t('dropzone.choose')}
-              </Button>
-            </>
-          )}
-        </FileDropzone>
+        <Dropzone
+          accept=".xlsx,.csv"
+          disabled={busy}
+          onFile={choose}
+          icon={file ? FileSpreadsheetIcon : undefined}
+          title={t('dropzone.title')}
+          releaseLabel={t('dropzone.release')}
+          chooseLabel={file ? t('dropzone.replace') : t('dropzone.choose')}
+          hint={t('dropzone.formats')}
+          fileName={file?.name}
+          fileMeta={
+            file
+              ? t('dropzone.selected', { size: Math.max(1, Math.round(file.size / 1024)) })
+              : null
+          }
+        />
 
         {error ? <Callout tone="danger">{error}</Callout> : null}
 
@@ -202,17 +183,17 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
       ) : null}
       {error ? <Callout tone="danger">{error}</Callout> : null}
 
-      <div className="overflow-hidden border rounded-1.5xl shadow-e1">
+      <div className="overflow-hidden border border-border rounded-1.5xl shadow-e1">
         <Table>
           <TableHeader>
-            <tr>
+            <TableRow>
               <TableHead>{t('table.row')}</TableHead>
               <TableHead>{t('table.code')}</TableHead>
               <TableHead>{t('table.product')}</TableHead>
               <TableHead>{t('table.family')}</TableHead>
               <TableHead>{t('table.price')}</TableHead>
               <TableHead>{t('table.result')}</TableHead>
-            </tr>
+            </TableRow>
           </TableHeader>
           <TableBody>
             {preview.rows.map((row) => (

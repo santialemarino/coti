@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
-import { PlusIcon, XIcon } from 'lucide-react';
+import { PackageSearchIcon, PlusIcon, ShoppingCartIcon, XIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
@@ -10,10 +10,15 @@ import {
   Callout,
   Combobox,
   DialogFooter,
+  EmptyState,
   Input,
+  Label,
+  MetaList,
   PendingButton,
   SearchInput,
+  Skeleton,
 } from '@repo/ui/components';
+import { AmountInput } from '@/components/amount-input';
 import { searchCatalog, type CatalogProduct } from '@/lib/api/catalog';
 import { createRfq } from '@/lib/api/rfqs-client';
 import { listSellers } from '@/lib/api/sellers';
@@ -24,24 +29,41 @@ interface RfqManualViewProps {
   onClose: () => void;
   onCreated: () => void;
   activeBranchId: string | null;
+  /* Lets the dialog refuse a click outside once there is work a stray click would throw away. */
+  onDirtyChange?: (dirty: boolean) => void;
 }
+
+/* How many placeholder rows stand in for the catalogue while it loads. */
+const CATALOG_SKELETON_ROWS = 4;
+// A line quantity is NUMERIC(14,2) on the wire, so entry is capped where storage is.
+const QUANTITY_DECIMALS = 2;
 
 interface LineItem {
   product: CatalogProduct;
   quantity: string;
 }
 
+/*
+ * A line quantity is a measured figure — half a cubic metre of sand is a real order line — so it
+ * keeps its decimals and only the empty and non-positive cases fall back to one unit.
+ */
 function toQuantity(value: string): string {
-  const parsed = Number.parseInt(value, 10);
+  const parsed = Number.parseFloat(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return '1';
-  return String(parsed);
+  return value;
 }
 
 /*
  * The "cargar manualmente" step: the seller optionally names the client, searches the catalog and
  * builds the order line by line. Submitting calls POST /v1/rfqs.
  */
-export function RfqManualView({ onBack, onClose, onCreated, activeBranchId }: RfqManualViewProps) {
+export function RfqManualView({
+  onBack,
+  onClose,
+  onCreated,
+  activeBranchId,
+  onDirtyChange,
+}: RfqManualViewProps) {
   const t = useTranslations('rfqs.create.manual');
   const tToast = useTranslations('rfqs.create.toast');
   const fmt = useFormatters();
@@ -95,7 +117,7 @@ export function RfqManualView({ onBack, onClose, onCreated, activeBranchId }: Rf
       if (existing) {
         return current.map((item) =>
           item.product.id === product.id
-            ? { ...item, quantity: toQuantity(String(Number(item.quantity) + 1)) }
+            ? { ...item, quantity: String(Number(item.quantity || 0) + 1) }
             : item,
         );
       }
@@ -105,9 +127,7 @@ export function RfqManualView({ onBack, onClose, onCreated, activeBranchId }: Rf
 
   function setQuantity(productId: string, value: string) {
     setItems((current) =>
-      current.map((item) =>
-        item.product.id === productId ? { ...item, quantity: toQuantity(value) } : item,
-      ),
+      current.map((item) => (item.product.id === productId ? { ...item, quantity: value } : item)),
     );
   }
 
@@ -139,6 +159,10 @@ export function RfqManualView({ onBack, onClose, onCreated, activeBranchId }: Rf
   }
 
   const disabled = items.length === 0 || !activeBranchId;
+  // What a stray click outside the dialog would throw away.
+  const dirty = items.length > 0 || client.trim() !== '' || seller !== null;
+
+  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
 
   return (
     <form
@@ -153,9 +177,7 @@ export function RfqManualView({ onBack, onClose, onCreated, activeBranchId }: Rf
 
       <div className="flex flex-col gap-y-4">
         <div className="flex flex-col gap-y-1">
-          <label htmlFor="rfq-manual-client" className="text-paragraph-sm-medium">
-            {t('clientLabel')}
-          </label>
+          <Label htmlFor="rfq-manual-client">{t('clientLabel')}</Label>
           <Input
             id="rfq-manual-client"
             value={client}
@@ -166,9 +188,7 @@ export function RfqManualView({ onBack, onClose, onCreated, activeBranchId }: Rf
         </div>
 
         <div className="flex flex-col gap-y-1">
-          <label htmlFor="rfq-manual-seller" className="text-paragraph-sm-medium">
-            {t('sellerLabel')}
-          </label>
+          <Label htmlFor="rfq-manual-seller">{t('sellerLabel')}</Label>
           <Combobox
             id="rfq-manual-seller"
             options={[
@@ -182,9 +202,9 @@ export function RfqManualView({ onBack, onClose, onCreated, activeBranchId }: Rf
             className="min-w-64"
           />
           {activeBranchId && loadingSellers ? (
-            <p className="text-paragraph-sm text-foreground-muted">{t('sellersLoading')}</p>
+            <p className="text-paragraph-xs text-foreground-muted">{t('sellersLoading')}</p>
           ) : activeBranchId && sellers.length === 0 ? (
-            <p className="text-paragraph-sm text-foreground-muted">{t('noSellers')}</p>
+            <p className="text-paragraph-xs text-foreground-muted">{t('noSellers')}</p>
           ) : null}
         </div>
 
@@ -199,102 +219,112 @@ export function RfqManualView({ onBack, onClose, onCreated, activeBranchId }: Rf
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
+        {/*
+         * Both columns are a fixed height whatever they hold. The catalogue arrives a moment after
+         * the dialog does, and a column that grows into its result drags the dialog's own size with
+         * it — which is the resize that reads as the dialog assembling itself on screen.
+         */}
         <section className="flex min-w-0 flex-col gap-y-3">
-          <p className="text-paragraph-xs-semibold uppercase tracking-wide text-foreground-muted">
+          <p className="text-paragraph-xs-medium text-foreground-muted uppercase">
             {t('catalogLabel')}
           </p>
-          {loadingCatalog ? (
-            <p className="text-paragraph-sm text-foreground-muted">{t('loading')}</p>
-          ) : catalog.length === 0 ? (
-            <p className="text-paragraph-sm text-foreground-muted">{t('catalogEmpty')}</p>
-          ) : (
-            <ul className="flex max-h-80 flex-col gap-y-2 overflow-y-auto pr-1">
-              {catalog.map((product) => (
-                <li
-                  key={product.id}
-                  className="flex items-center justify-between gap-x-3 rounded-lg border border-border bg-card p-3"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-paragraph-sm-medium text-foreground">
-                      {product.name}
-                    </p>
-                    <p className="truncate text-paragraph-mini text-foreground-subtle">
-                      {product.code} · {product.unit}
-                      {product.price ? <> · {fmt.currency(product.price)}</> : null}
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => addProduct(product)}
-                    className="shrink-0"
+          <div className="h-80 overflow-y-auto pr-1">
+            {loadingCatalog ? (
+              <ul aria-busy="true" aria-label={t('loading')} className="flex flex-col gap-y-2">
+                {Array.from({ length: CATALOG_SKELETON_ROWS }, (_, index) => (
+                  <li key={index} className="flex h-[62px] items-center gap-x-3 p-3">
+                    <div className="flex min-w-0 flex-1 flex-col gap-y-1.5">
+                      <Skeleton className="h-3.5 w-2/3" />
+                      <Skeleton className="h-2.5 w-1/3" />
+                    </div>
+                    <Skeleton className="h-8 w-20 shrink-0 rounded-lg" />
+                  </li>
+                ))}
+              </ul>
+            ) : catalog.length === 0 ? (
+              <EmptyState icon={PackageSearchIcon} title={t('catalogEmpty')} />
+            ) : (
+              <ul className="flex flex-col gap-y-2">
+                {catalog.map((product) => (
+                  <li
+                    key={product.id}
+                    className="flex items-center justify-between gap-x-3 p-3 bg-card border border-border rounded-lg"
                   >
-                    <PlusIcon aria-hidden="true" />
-                    {t('add')}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
+                    <div className="min-w-0">
+                      <p className="truncate text-paragraph-sm-medium text-foreground">
+                        {product.name}
+                      </p>
+                      <MetaList
+                        className="text-paragraph-mini text-foreground-subtle"
+                        items={[
+                          product.code,
+                          product.unit,
+                          product.price ? fmt.currency(product.price) : null,
+                        ]}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => addProduct(product)}
+                      className="shrink-0"
+                    >
+                      <PlusIcon aria-hidden="true" />
+                      {t('add')}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </section>
 
         <section className="flex min-w-0 flex-col gap-y-3">
-          <p className="text-paragraph-xs-semibold uppercase tracking-wide text-foreground-muted">
+          <p className="text-paragraph-xs-medium text-foreground-muted uppercase">
             {t('itemsLabel', { count: items.length })}
           </p>
-          {items.length === 0 ? (
-            <p className="text-paragraph-sm text-foreground-muted">{t('itemsEmpty')}</p>
-          ) : (
-            <ul className="flex max-h-80 flex-col gap-y-2 overflow-y-auto pr-1">
-              {items.map(({ product, quantity }) => (
-                <li
-                  key={product.id}
-                  className="flex items-center gap-x-3 rounded-lg border border-border bg-card p-3"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-paragraph-sm-medium text-foreground">
-                      {product.name}
-                    </p>
-                    <p className="text-paragraph-mini text-foreground-subtle">
-                      {product.price ? (
-                        <>
-                          {fmt.currency(product.price)} {t('each')}
-                        </>
-                      ) : (
-                        t('each')
-                      )}
-                    </p>
-                  </div>
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    min={1}
-                    aria-label={t('quantityLabel', { name: product.name })}
-                    value={quantity}
-                    onFocus={(event) => event.target.select()}
-                    onChange={(event) => setQuantity(product.id, event.target.value)}
-                    onBlur={(event) => {
-                      const normalized = toQuantity(event.target.value);
-                      if (normalized !== event.target.value) {
-                        setQuantity(product.id, normalized);
-                      }
-                    }}
-                    containerClassName="w-20 flex-none"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={t('remove', { name: product.name })}
-                    onClick={() => removeProduct(product.id)}
+          <div className="h-80 overflow-y-auto pr-1">
+            {items.length === 0 ? (
+              <EmptyState icon={ShoppingCartIcon} title={t('itemsEmpty')} />
+            ) : (
+              <ul className="flex flex-col gap-y-2">
+                {items.map(({ product, quantity }) => (
+                  <li
+                    key={product.id}
+                    className="flex items-center gap-x-3 p-3 bg-card border border-border rounded-lg"
                   >
-                    <XIcon aria-hidden="true" />
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-paragraph-sm-medium text-foreground">
+                        {product.name}
+                      </p>
+                      <p className="text-paragraph-mini text-foreground-subtle">
+                        {product.price ? `${fmt.currency(product.price)} ${t('each')}` : t('each')}
+                      </p>
+                    </div>
+                    <AmountInput
+                      maxDecimals={QUANTITY_DECIMALS}
+                      aria-label={t('quantityLabel', { name: product.name })}
+                      value={quantity}
+                      onChange={(next) => setQuantity(product.id, next)}
+                      onBlur={() => setQuantity(product.id, toQuantity(quantity))}
+                      containerClassName="w-24 flex-none"
+                      className="text-right tabular-nums"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t('remove', { name: product.name })}
+                      onClick={() => removeProduct(product.id)}
+                    >
+                      <XIcon aria-hidden="true" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </section>
       </div>
 

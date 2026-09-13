@@ -24,8 +24,9 @@ import {
   PendingButton,
 } from '@repo/ui/components';
 import { branchSchema, type BranchValues } from '@/app/(protected)/settings/branches/form-schema';
+import { QuantityInput } from '@/components/quantity-input';
 import type { Branch } from '@/lib/api/branches';
-import { DEFAULT_EXPIRY_DAYS, EXPIRY_MAX_DAYS, EXPIRY_MIN_DAYS } from '@/lib/constants/branch';
+import { DEFAULT_EXPIRY_DAYS, EXPIRY_MIN_DAYS } from '@/lib/constants/branch';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 
@@ -135,11 +136,8 @@ export function BranchFormDialog({
                 <FormItem>
                   <FormLabel required>{t('defaultExpiryDays.label')}</FormLabel>
                   <FormControl>
-                    <Input
-                      type="number"
-                      inputMode="numeric"
+                    <QuantityInput
                       min={EXPIRY_MIN_DAYS}
-                      max={EXPIRY_MAX_DAYS}
                       placeholder={String(DEFAULT_EXPIRY_DAYS)}
                       {...field}
                     />

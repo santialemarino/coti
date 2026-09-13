@@ -57,7 +57,7 @@ func (f *fakeRfqRepoManual) ListStatusChanges(
 }
 
 func (f *fakeRfqRepoManual) ListByTenant(
-	_ context.Context, _ repository.Querier, _ domain.Tenant,
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ bool,
 ) ([]domain.RfqListItem, error) {
 	return f.listItems, nil
 }
@@ -569,7 +569,7 @@ func (f *fakeRFQs) ListStatusChanges(
 }
 
 func (f *fakeRFQs) ListByTenant(
-	_ context.Context, _ repository.Querier, _ domain.Tenant,
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ bool,
 ) ([]domain.RfqListItem, error) {
 	return nil, errors.New("not implemented in pipeline fake")
 }

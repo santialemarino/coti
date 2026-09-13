@@ -79,7 +79,7 @@ export function BrandStep({ account, formId, onSubmit }: BrandStepProps) {
 
       <Card className="self-start p-5 gap-y-5">
         <p className="text-paragraph-xs-medium text-foreground-subtle uppercase">{t('preview')}</p>
-        <div className="overflow-hidden border rounded-lg">
+        <div className="overflow-hidden border border-border rounded-lg">
           <div
             className="h-2 bg-primary"
             style={previewColor ? { backgroundColor: previewColor } : undefined}

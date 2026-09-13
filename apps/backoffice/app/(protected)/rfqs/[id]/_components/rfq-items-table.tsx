@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { MinusIcon, PencilIcon, PlusIcon, TrashIcon } from 'lucide-react';
+import { MinusIcon, PackageOpenIcon, PencilIcon, PlusIcon, TrashIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
@@ -11,7 +11,9 @@ import {
   Card,
   CardHeader,
   CardTitle,
-  Input,
+  ConfirmDialog,
+  EmptyState,
+  RowActionButton,
   Table,
   TableBody,
   TableCell,
@@ -19,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from '@repo/ui/components';
+import { AmountInput } from '@/components/amount-input';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { CatalogProduct } from '@/lib/api/catalog';
 import { errorCodeOf } from '@/lib/api/errors';
@@ -31,7 +34,6 @@ import {
   updateDiscount,
   updateQuoteItem,
 } from '@/lib/api/rfqs-client';
-import { decimalToMoneyInput, maskMoneyInput, moneyInputToDecimal } from '@/lib/forms/money-input';
 import { useFormatters } from '@/lib/i18n/formatters';
 import { DiscountDialog } from './discount-dialog';
 import { ProductSearchDialog } from './product-search-dialog';
@@ -47,6 +49,12 @@ import { ProductSearchDialog } from './product-search-dialog';
 const PRODUCT_EDIT_STATUSES = new Set(['DRAFT', 'CHANGE_REQUESTED']);
 const PRICE_EDIT_STATUSES = new Set(['QUOTED', 'CHANGE_REQUESTED']);
 const PRICED_STATUSES = new Set(['QUOTED', 'SENT', 'CHANGE_REQUESTED', 'ACCEPTED', 'REJECTED']);
+
+// A line quantity is a measured figure, not a count — half a cubic metre is a real order line.
+// Both are NUMERIC(14,2) on the wire, so entry is capped where storage is.
+const QUANTITY_DECIMALS = 2;
+// Quotes are priced in the account's currency; the multi-currency catalogue is a later decision.
+const ACCOUNT_CURRENCY = 'ARS';
 
 interface RfqItemsTableProps {
   quoteId: string | null;
@@ -107,8 +115,12 @@ export function RfqItemsTable({
 }: RfqItemsTableProps) {
   const fmt = useFormatters();
   const t = useTranslations('rfqs');
+  const tCommon = useTranslations('common');
   const message = useApiErrorMessage('rfqs.detail.items');
   const [searchOpen, setSearchOpen] = useState(false);
+  // The line awaiting confirmation, and the one whose delete is in flight.
+  const [pendingDelete, setPendingDelete] = useState<QuoteItemResponse | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [editingQuantity, setEditingQuantity] = useState<Record<string, string>>({});
   const [editingPrice, setEditingPrice] = useState<Record<string, string>>({});
   const [discountDialogOpen, setDiscountDialogOpen] = useState(false);
@@ -143,10 +155,10 @@ export function RfqItemsTable({
     try {
       if (editingDiscount) {
         await updateDiscount(quoteId, editingDiscount.id, branchId, body);
-        toast.success(t('detail.items.discounts.toast.updated'));
+        toast.success(t('detail.items.discounts.toast.updated', { name: body.description }));
       } else {
         await addDiscount(quoteId, branchId, body);
-        toast.success(t('detail.items.discounts.toast.added'));
+        toast.success(t('detail.items.discounts.toast.added', { name: body.description }));
       }
       await onRefresh?.();
       setDiscountDialogOpen(false);
@@ -165,6 +177,11 @@ export function RfqItemsTable({
     setDiscountDialogOpen(true);
   }
 
+  /* What a discount is called on screen: the seller's own description, else the promotion's name. */
+  function discountName(discount: QuoteDiscountResponse): string {
+    return discount.description ?? discount.promotion_name ?? '';
+  }
+
   async function handleToggleDiscount(discount: QuoteDiscountResponse) {
     if (!quoteId) return;
     try {
@@ -174,9 +191,12 @@ export function RfqItemsTable({
       await onRefresh?.();
       onDiscountsChange?.(discounts.map((d) => (d.id === updated.id ? updated : d)));
       toast.success(
-        updated.suppressed_by_seller
-          ? t('detail.items.discounts.toast.suppressed')
-          : t('detail.items.discounts.toast.restored'),
+        t(
+          updated.suppressed_by_seller
+            ? 'detail.items.discounts.toast.suppressed'
+            : 'detail.items.discounts.toast.restored',
+          { name: discountName(updated) },
+        ),
       );
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
@@ -189,7 +209,7 @@ export function RfqItemsTable({
       await deleteDiscount(quoteId, discount.id, branchId);
       onDiscountsChange?.(discounts.filter((d) => d.id !== discount.id));
       await onRefresh?.();
-      toast.success(t('detail.items.discounts.toast.removed'));
+      toast.success(t('detail.items.discounts.toast.removed', { name: discountName(discount) }));
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
     }
@@ -217,7 +237,7 @@ export function RfqItemsTable({
     try {
       const updated = await updateQuoteItem(quoteId, itemId, branchId, { quantity: normalized });
       onItemsChange(items.map((item) => (item.id === itemId ? updated : item)));
-      toast.success(t('detail.items.toast.updated'));
+      toast.success(t('detail.items.toast.updated', { name: updated.requested_description }));
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
     }
@@ -233,7 +253,7 @@ export function RfqItemsTable({
     if (!quoteId) return;
     const raw = editingPrice[itemId];
     if (raw === undefined) return;
-    const normalized = moneyInputToDecimal(raw);
+    const normalized = raw.trim();
     // A field cleared to nothing is an edit the seller has not finished, not a price of zero.
     if (!normalized || Number(normalized) === Number(currentPrice)) {
       setEditingPrice((prev) => {
@@ -249,7 +269,7 @@ export function RfqItemsTable({
         unit_price_snapshot: normalized,
       });
       onItemsChange(items.map((item) => (item.id === itemId ? updated : item)));
-      toast.success(t('detail.items.toast.updated'));
+      toast.success(t('detail.items.toast.updated', { name: updated.requested_description }));
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
     }
@@ -261,14 +281,23 @@ export function RfqItemsTable({
     });
   }
 
-  async function handleDelete(itemId: string) {
+  /*
+   * Confirmed rather than immediate. Re-adding the product is not an undo — it mints a new line and
+   * re-runs pricing, so a quote that had been reviewed could come back with a different subtotal.
+   * One click of friction is the honest price for a write the screen cannot take back.
+   */
+  async function handleDelete(item: QuoteItemResponse) {
     if (!quoteId) return;
+    setDeleting(item.id);
     try {
-      await deleteQuoteItem(quoteId, itemId, branchId);
-      onItemsChange(items.filter((item) => item.id !== itemId));
-      toast.success(t('detail.items.toast.deleted'));
+      await deleteQuoteItem(quoteId, item.id, branchId);
+      onItemsChange(items.filter((line) => line.id !== item.id));
+      setPendingDelete(null);
+      toast.success(t('detail.items.toast.deleted', { name: item.requested_description }));
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
+    } finally {
+      setDeleting(null);
     }
   }
 
@@ -282,7 +311,7 @@ export function RfqItemsTable({
         unit: product.unit || null,
       });
       onItemsChange([...items, created]);
-      toast.success(t('detail.items.toast.added'));
+      toast.success(t('detail.items.toast.added', { name: created.requested_description }));
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
     }
@@ -299,7 +328,7 @@ export function RfqItemsTable({
         unit: product.unit || null,
       });
       onItemsChange(items.map((i) => (i.id === item.id ? updated : i)));
-      toast.success(t('detail.items.toast.updated'));
+      toast.success(t('detail.items.toast.updated', { name: updated.requested_description }));
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
     } finally {
@@ -319,9 +348,11 @@ export function RfqItemsTable({
             </Button>
           )}
         </CardHeader>
-        <div className="px-6 py-8 text-center">
-          <p className="text-paragraph-sm text-foreground-muted">{t('detail.items.empty')}</p>
-        </div>
+        <EmptyState
+          icon={PackageOpenIcon}
+          title={t('detail.items.empty')}
+          description={canEditProducts ? t('detail.items.emptyHint') : undefined}
+        />
         <ProductSearchDialog
           open={searchOpen}
           onOpenChange={setSearchOpen}
@@ -349,46 +380,52 @@ export function RfqItemsTable({
 
         <Table className="[&_th]:h-10 [&_td]:py-3">
           <TableHeader>
+            {/*
+             * One alignment rule across every table: copy reads from a common left edge, figures
+             * line up on the right with tabular figures, and a column holding a single control is
+             * centred under its own heading. Centring the copy too would cost the left edge the eye
+             * follows down the column, which is the whole reason a table beats a list.
+             */}
             <TableRow>
-              <TableHead className="w-8 text-center">#</TableHead>
+              <TableHead className="w-8 text-right">#</TableHead>
               <TableHead>{t('detail.items.columns.description')}</TableHead>
-              <TableHead className="text-center">{t('detail.items.columns.product')}</TableHead>
-              {showConfidence && (
-                <TableHead className="text-center">
-                  {t('detail.items.columns.confidence')}
+              <TableHead>{t('detail.items.columns.product')}</TableHead>
+              {showConfidence && <TableHead>{t('detail.items.columns.confidence')}</TableHead>}
+              <TableHead className="text-right">{t('detail.items.columns.quantity')}</TableHead>
+              <TableHead>{t('detail.items.columns.unit')}</TableHead>
+              {showPricing && (
+                <TableHead className="text-right">{t('detail.items.columns.unitPrice')}</TableHead>
+              )}
+              {showPricing && (
+                <TableHead className="text-right">{t('detail.items.columns.subtotal')}</TableHead>
+              )}
+              {(canEditProducts || canEditPrices) && (
+                <TableHead className="w-20 text-center">
+                  {t('detail.items.columns.actions')}
                 </TableHead>
               )}
-              <TableHead className="text-center">{t('detail.items.columns.quantity')}</TableHead>
-              <TableHead className="text-center">{t('detail.items.columns.unit')}</TableHead>
-              {showPricing && (
-                <TableHead className="text-center">{t('detail.items.columns.unitPrice')}</TableHead>
-              )}
-              {showPricing && (
-                <TableHead className="text-center">{t('detail.items.columns.subtotal')}</TableHead>
-              )}
-              {(canEditProducts || canEditPrices) && <TableHead className="w-10" />}
             </TableRow>
           </TableHeader>
           <TableBody>
             {items.map((item, index) => {
               const quantityValue = editingQuantity[item.id] ?? item.quantity;
-              const priceValue =
-                editingPrice[item.id] ??
-                (item.unit_price_snapshot ? decimalToMoneyInput(item.unit_price_snapshot) : '');
+              const priceValue = editingPrice[item.id] ?? item.unit_price_snapshot ?? '';
               const noMatch =
                 !showConfidence && item.match_status === 'NO_MATCH' && !item.product_name;
 
               return (
                 <TableRow key={item.id}>
-                  <TableCell className="text-center text-foreground-subtle">{index + 1}</TableCell>
+                  <TableCell className="text-right tabular-nums text-foreground-subtle">
+                    {index + 1}
+                  </TableCell>
                   <TableCell>
                     <span className="text-paragraph-sm-medium text-foreground">
                       {item.requested_description}
                     </span>
                   </TableCell>
-                  <TableCell className="text-center">
+                  <TableCell>
                     {item.product_name ? (
-                      <div className="flex flex-col items-center gap-y-0.5">
+                      <div className="flex flex-col items-start gap-y-0.5">
                         {canEditProducts ? (
                           <button
                             type="button"
@@ -433,26 +470,20 @@ export function RfqItemsTable({
                     )}
                   </TableCell>
                   {showConfidence && (
-                    <TableCell className="text-center">
+                    <TableCell>
                       <Badge tone={confidenceTone(item.confidence_score)} size="sm">
                         {t(`detail.confidence.${confidenceLabel(item.confidence_score)}`)}
                       </Badge>
                     </TableCell>
                   )}
-                  <TableCell className="text-center">
+                  <TableCell className="text-right">
                     {canEditProducts ? (
-                      <Input
-                        type="number"
-                        inputMode="decimal"
-                        min={0}
-                        step={0.01}
+                      <AmountInput
+                        aria-label={t('detail.items.columns.quantity')}
+                        maxDecimals={QUANTITY_DECIMALS}
                         value={quantityValue}
-                        onFocus={(event) => event.target.select()}
-                        onChange={(event) =>
-                          setEditingQuantity((prev) => ({
-                            ...prev,
-                            [item.id]: event.target.value,
-                          }))
+                        onChange={(next) =>
+                          setEditingQuantity((prev) => ({ ...prev, [item.id]: next }))
                         }
                         onBlur={() => handleQuantityBlur(item.id, item.quantity)}
                         onKeyDown={(event) => {
@@ -460,8 +491,8 @@ export function RfqItemsTable({
                             (event.target as HTMLInputElement).blur();
                           }
                         }}
-                        containerClassName="w-20 mx-auto"
-                        className="text-center tabular-nums"
+                        containerClassName="w-24 ml-auto"
+                        className="text-right tabular-nums"
                       />
                     ) : (
                       <span className="tabular-nums text-paragraph-sm">
@@ -469,24 +500,20 @@ export function RfqItemsTable({
                       </span>
                     )}
                   </TableCell>
-                  <TableCell className="text-center text-paragraph-sm">
+                  <TableCell className="text-paragraph-sm">
                     {item.unit ?? item.product_unit ?? '—'}
                   </TableCell>
                   {showPricing && (
-                    <TableCell className="text-center tabular-nums text-paragraph-sm">
+                    <TableCell className="text-right tabular-nums text-paragraph-sm">
                       {canEditPrices &&
                       (item.unit_price_snapshot != null || item.match_status === 'NO_MATCH') ? (
-                        <Input
-                          type="text"
-                          inputMode="decimal"
+                        <AmountInput
+                          aria-label={t('detail.items.columns.unitPrice')}
+                          currency={ACCOUNT_CURRENCY}
                           prefix="$"
                           value={priceValue}
-                          onFocus={(event) => event.target.select()}
-                          onChange={(event) =>
-                            setEditingPrice((prev) => ({
-                              ...prev,
-                              [item.id]: maskMoneyInput(event.target.value),
-                            }))
+                          onChange={(next) =>
+                            setEditingPrice((prev) => ({ ...prev, [item.id]: next }))
                           }
                           onBlur={() => handlePriceBlur(item.id, item.unit_price_snapshot ?? '0')}
                           onKeyDown={(event) => {
@@ -494,8 +521,8 @@ export function RfqItemsTable({
                               (event.target as HTMLInputElement).blur();
                             }
                           }}
-                          containerClassName="w-36 mx-auto"
-                          className="text-center tabular-nums"
+                          containerClassName="w-36 ml-auto"
+                          className="text-right tabular-nums"
                         />
                       ) : item.unit_price_snapshot != null ? (
                         fmt.currency(item.unit_price_snapshot)
@@ -505,7 +532,7 @@ export function RfqItemsTable({
                     </TableCell>
                   )}
                   {showPricing && (
-                    <TableCell className="text-center tabular-nums text-paragraph-sm-medium">
+                    <TableCell className="text-right tabular-nums text-paragraph-sm-medium">
                       {item.subtotal ? (
                         fmt.currency(item.subtotal)
                       ) : (
@@ -515,15 +542,17 @@ export function RfqItemsTable({
                   )}
                   {(canEditProducts || canEditPrices) && (
                     <TableCell>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => handleDelete(item.id)}
-                        aria-label={t('detail.items.delete')}
-                      >
-                        <TrashIcon className="size-4 text-foreground-muted" />
-                      </Button>
+                      <div className="flex justify-center">
+                        {/* Danger tone, like every other destructive row action — and unlike
+                            archiving, removing a line is not something the screen can undo. */}
+                        <RowActionButton
+                          icon={TrashIcon}
+                          tone="danger"
+                          label={t('detail.items.delete')}
+                          disabled={deleting !== null}
+                          onClick={() => setPendingDelete(item)}
+                        />
+                      </div>
                     </TableCell>
                   )}
                 </TableRow>
@@ -544,7 +573,7 @@ export function RfqItemsTable({
 
               {hasDiscounts && (
                 <>
-                  <span className="pt-1 text-paragraph-xs font-semibold text-foreground-muted">
+                  <span className="pt-1 text-paragraph-xs-semibold text-foreground-muted">
                     {t('detail.items.discounts.title')}
                   </span>
                   <div className="flex flex-col gap-y-1">
@@ -630,7 +659,7 @@ export function RfqItemsTable({
               )}
 
               <div className="mt-1 flex items-center justify-between border-t border-border pt-2">
-                <span className="text-paragraph-sm font-semibold text-foreground">
+                <span className="text-paragraph-sm-semibold text-foreground">
                   {t('detail.items.total')}
                 </span>
                 <span className="text-paragraph-sm-semibold tabular-nums text-foreground">
@@ -667,6 +696,25 @@ export function RfqItemsTable({
         }}
         onSelect={editingProductItemId ? handleModifyProduct : handleAddProduct}
         title={editingProductItemId ? t('detail.items.columns.modifyProduct') : undefined}
+      />
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(next) => !next && setPendingDelete(null)}
+        entity={pendingDelete}
+        pending={deleting !== null}
+        title={t('detail.items.deleteConfirm.title')}
+        description={(item) =>
+          t('detail.items.deleteConfirm.description', { name: item.requested_description })
+        }
+        onConfirm={() => {
+          if (pendingDelete) void handleDelete(pendingDelete);
+        }}
+        labels={{
+          confirm: t('detail.items.deleteConfirm.confirm'),
+          pending: t('detail.items.deleteConfirm.pending'),
+          cancel: tCommon('actions.cancel'),
+        }}
       />
     </>
   );

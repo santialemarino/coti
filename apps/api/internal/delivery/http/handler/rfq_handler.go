@@ -16,7 +16,7 @@ import (
 
 // ManualRFQService is the request-to-quote surface the manual entry handler needs.
 type ManualRFQService interface {
-	List(ctx context.Context, tenant domain.Tenant) ([]domain.RfqListItem, error)
+	List(ctx context.Context, tenant domain.Tenant, includeArchived bool) ([]domain.RfqListItem, error)
 	CreateManual(ctx context.Context, tenant domain.Tenant, in domain.NewRfq) (*domain.RfqCreation, error)
 	GetDetail(ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID) (*domain.RfqDetail, error)
 	UpdateItem(ctx context.Context, tenant domain.Tenant, quoteID, itemID uuid.UUID, in domain.QuoteItemUpdate) (*domain.QuoteItem, error)
@@ -46,16 +46,20 @@ func NewRfqHandler(rfqs ManualRFQService) *RfqHandler {
 //	@Tags			rfqs
 //	@Produce		json
 //	@Security		BearerAuth
-//	@Param			X-Branch-Id	header		string	false	"Active branch"
-//	@Success		200			{object}	[]dto.RfqListItemResponse
-//	@Failure		401			{object}	dto.ErrorResponse
+//	@Param			X-Branch-Id			header		string	false	"Active branch"
+//	@Param			include_archived	query		bool	false	"Include archived quotes"
+//	@Success		200					{object}	[]dto.RfqListItemResponse
+//	@Failure		401					{object}	dto.ErrorResponse
 //	@Router			/v1/rfqs [get]
 func (h *RfqHandler) List(c *gin.Context) {
 	tenant, ok := tenantOf(c)
 	if !ok {
 		return
 	}
-	items, err := h.rfqs.List(c.Request.Context(), tenant)
+	// Anything but an explicit "true" leaves archived orders out, so a caller that does not know
+	// about the flag keeps the queue it had.
+	includeArchived := c.Query("include_archived") == "true"
+	items, err := h.rfqs.List(c.Request.Context(), tenant, includeArchived)
 	if err != nil {
 		Respond(c, err)
 		return
@@ -602,6 +606,7 @@ func toListItemResponse(item domain.RfqListItem) dto.RfqListItemResponse {
 		Seller:        item.SellerName,
 		BranchID:      item.BranchID,
 		Branch:        item.BranchName,
+		QuoteID:       item.QuoteID,
 		QuoteNumber:   item.QuoteNumber,
 		ItemCount:     item.ItemCount,
 		Total:         item.Total,

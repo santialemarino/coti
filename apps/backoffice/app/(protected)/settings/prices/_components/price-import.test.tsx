@@ -51,6 +51,15 @@ function renderImport() {
   return { ...view, form, preview: button(copy.form.preview), export: button(copy.export.submit) };
 }
 
+/* Picks a file through the dropzone's own input, which is what the preview needs before it runs. */
+function chooseFile(view: { container: HTMLElement }) {
+  const input = view.container.querySelector<HTMLInputElement>('input[type="file"]');
+  if (!input) throw new Error('no file input rendered');
+  fireEvent.change(input, {
+    target: { files: [new File(['code,price'], 'precios.csv', { type: 'text/csv' })] },
+  });
+}
+
 /*
  * Submitted rather than clicked: jsdom does not implement requestSubmit, so a click on the
  * submit button never reaches the form action React installed and nothing runs.
@@ -95,6 +104,7 @@ describe('PriceImport pending state', () => {
     );
 
     const view = renderImport();
+    chooseFile(view);
     submitPreview(view.form);
 
     await waitFor(() => expect(view.preview.getAttribute('aria-busy')).toBe('true'));
@@ -116,6 +126,7 @@ describe('PriceImport pending state', () => {
     await waitFor(() => expect(exportPrices).toHaveBeenCalledWith(BRANCH.id));
 
     vi.mocked(previewPriceImport).mockResolvedValue({ ok: false, error: 'INVALID_INPUT' });
+    chooseFile(view);
     submitPreview(view.form);
 
     await waitFor(() =>
@@ -162,6 +173,7 @@ describe('PriceImport partial confirmation', () => {
     });
 
     const view = renderImport();
+    chooseFile(view);
     submitPreview(view.form);
 
     await waitFor(() => expect(view.container.textContent).toContain('se omitirán 1 fila'));

@@ -80,12 +80,21 @@ func listByTenant(
 // narrowing alongside the account row level security.
 func listByTenantFor(t *testing.T, db *DB, tenant domain.Tenant) []domain.RfqListItem {
 	t.Helper()
+	return listByTenantIncluding(t, db, tenant, false)
+}
+
+// listByTenantIncluding is the same query with the archived rows kept in, which is what the
+// dashboard's "archivados" filter asks for.
+func listByTenantIncluding(
+	t *testing.T, db *DB, tenant domain.Tenant, includeArchived bool,
+) []domain.RfqListItem {
+	t.Helper()
 	ctx := context.Background()
 	repo := NewRFQRepository()
 	var items []domain.RfqListItem
 	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
 		var err error
-		items, err = repo.ListByTenant(ctx, q, tenant)
+		items, err = repo.ListByTenant(ctx, q, tenant, includeArchived)
 		return err
 	}); err != nil {
 		t.Fatalf("ListByTenant() = %v, want no error", err)
@@ -156,6 +165,29 @@ func TestRFQRepository_ListByTenant_FollowupFirstArchivedOut(t *testing.T) {
 	}
 	if items[1].QuoteNumber != nil {
 		t.Errorf("RFQ without quote number = %v, want nil", *items[1].QuoteNumber)
+	}
+
+	// The dashboard's "archivados" filter asks for the same query with the archived rows kept,
+	// so an archived order is reachable again instead of only reachable by its URL.
+	withArchived := listByTenantIncluding(t, db, domain.Tenant{
+		AccountID: accountID, BranchID: branchID, Role: domain.UserRoleAdmin,
+	}, true)
+	if len(withArchived) != 4 {
+		t.Fatalf("listed %d rows including archived, want 4", len(withArchived))
+	}
+	if !containsID(t, withArchived, archivedID) {
+		t.Error("archived quote missing when include_archived is set")
+	}
+	for _, item := range withArchived {
+		if item.ID != archivedID {
+			continue
+		}
+		if item.ArchivedAt == nil {
+			t.Error("archived row carries no archived_at, so the UI cannot mark it")
+		}
+		if item.QuoteID == nil {
+			t.Error("archived row carries no quote_id, so it could never be unarchived")
+		}
 	}
 }
 

@@ -50,6 +50,12 @@ interface SortableTableHeadProps<TColumn extends string> {
   sortBy: TColumn | null;
   sortOrder: SortOrder;
   onSort: (column: TColumn) => void;
+  /*
+   * Follows the column's own alignment. The trigger is a flex box filling the cell, so `text-right`
+   * on the cell alone leaves the label pinned left inside a right-aligned header — the one place
+   * where a table's numbers and their heading visibly disagree.
+   */
+  align?: 'start' | 'end';
   className?: string;
 }
 
@@ -64,6 +70,7 @@ function SortableTableHead<TColumn extends string>({
   sortBy,
   sortOrder,
   onSort,
+  align = 'start',
   className,
 }: SortableTableHeadProps<TColumn>) {
   const active = sortBy === column;
@@ -71,13 +78,14 @@ function SortableTableHead<TColumn extends string>({
   return (
     <TableHead
       aria-sort={active ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
-      className={className}
+      className={cn(align === 'end' && 'text-right', className)}
     >
       <button
         type="button"
         onClick={() => onSort(column)}
         className={cn(
-          'group/sort flex items-center gap-x-1.5 rounded-sm outline-none',
+          'group/sort flex w-full items-center gap-x-1.5 rounded-sm outline-none',
+          align === 'end' && 'justify-end',
           'transition-colors duration-150 ease-out-soft',
           active ? 'text-foreground' : 'hover:text-foreground focus-visible:text-foreground',
         )}

@@ -43,6 +43,18 @@
       "invalidType": "Elegí una imagen PNG o JPG.",
       "previewAlt": "Vista previa del logo"
     },
+    "fileUpload": {
+      "title": "Arrastrá tu archivo hasta acá",
+      "release": "Soltá el archivo para cargarlo",
+      "choose": "Elegir archivo",
+      "replace": "Cambiar archivo",
+      "spreadsheetFormats": "Aceptamos Excel (.xlsx) y CSV."
+    },
+    "colorPicker": {
+      "shade": "Saturación y brillo",
+      "hue": "Tono",
+      "presets": "Colores sugeridos"
+    },
     "retry": "Reintentar",
     "form": {
       "togglePassword": "Mostrar u ocultar la contraseña",
@@ -413,12 +425,8 @@
   },
   "home": {
     "title": "Coti",
-    "signedInAs": "Sesión iniciada como {role}.",
-    "links": {
-      "prices": "Precios",
-      "catalog": "Catálogo",
-      "onboarding": "Configuración inicial"
-    }
+    "queueHint": "Elegí un pedido de la lista para trabajarlo, o creá uno nuevo.",
+    "seeAllOrders": "Ver todos los pedidos"
   },
   "quotes": {
     "title": "Cotizaciones",
@@ -469,8 +477,6 @@
       "caption": "Pedidos de cotización recibidos",
       "create": "Crear pedido",
       "search": "Buscar por pedido, cliente, vendedor…",
-      "all": "Todos",
-      "tabs": "Filtrar por estado",
       "resultsTotal": "{total, plural, one {# pedido} other {# pedidos}}",
       "results": "Mostrando {from}–{to} de {total} pedidos",
       "items": "{count, plural, one {# ítem} other {# ítems}}",
@@ -481,12 +487,15 @@
       "openRow": "Abrir el pedido {id}",
       "selected": "{count, plural, one {# pedido seleccionado} other {# pedidos seleccionados}}",
       "filters": {
+        "status": "Estado",
+        "statusCount": "{count} estados",
+        "clearStatus": "Limpiar estados",
         "channel": "Canal",
         "branch": "Sucursal",
         "seller": "Vendedor",
-        "allChannel": "Canales",
-        "allBranch": "Sucursales",
-        "allSeller": "Vendedores",
+        "allChannel": "Todos los canales",
+        "allBranch": "Todas las sucursales",
+        "allSeller": "Todos los vendedores",
         "unassigned": "Sin vendedor",
         "clear": "Limpiar filtros"
       },
@@ -506,13 +515,11 @@
         "archive": "Archivar"
       },
       "actions": {
-        "more": "Acciones del pedido",
         "assign": "Asignarme",
-        "changeSeller": "Cambiar vendedor",
         "unassignSeller": "Quitar vendedor",
         "sellersLoading": "Cargando vendedores…",
-        "view": "Ver detalle",
-        "archive": "Archivar pedido"
+        "archive": "Archivar pedido",
+        "unarchive": "Desarchivar pedido"
       },
       "empty": {
         "title": "Todavía no hay pedidos"
@@ -528,7 +535,9 @@
       },
       "toast": {
         "archived": "El pedido {id} se archivó.",
+        "unarchived": "El pedido {id} volvió a la lista.",
         "archivedMany": "{count, plural, one {# pedido archivado} other {# pedidos archivados}}.",
+        "archiveFailed": "No pudimos archivar {count, plural, one {# pedido} other {# pedidos}}. Intentá de nuevo.",
         "assigned": "Tomaste el pedido {id}, {name}. Lo vas a encontrar en tu lista.",
         "sellerAssigned": "El pedido {id} quedó asignado a {seller}.",
         "sellerUnassigned": "Al pedido {id} le quitamos el vendedor."
@@ -669,8 +678,15 @@
       "items": {
         "title": "Ítems",
         "empty": "Este pedido no tiene ítems.",
+        "emptyHint": "Agregá productos del catálogo para armar la cotización.",
         "add": "Agregar producto",
         "delete": "Eliminar ítem",
+        "deleteConfirm": {
+          "title": "¿Quitar el ítem?",
+          "description": "Se va a quitar “{name}” de la cotización. No se puede deshacer.",
+          "confirm": "Quitar ítem",
+          "pending": "Quitando…"
+        },
         "generate": "Generar cotización",
         "generating": "Generando cotización…",
         "select": "Seleccionar",
@@ -688,7 +704,8 @@
           "subtotal": "Subtotal",
           "matchStatus": "Estado",
           "confidence": "Confianza",
-          "rationale": "Razón"
+          "rationale": "Razón",
+          "actions": "Acciones"
         },
         "total": "Total",
         "summary": {
@@ -730,18 +747,19 @@
             "ITEM_SET": "Por combo"
           },
           "toast": {
-            "added": "Descuento agregado",
-            "updated": "Descuento actualizado",
-            "removed": "Descuento eliminado",
-            "suppressed": "Descuento suprimido",
-            "restored": "Descuento restaurado"
+            "added": "Agregamos el descuento «{name}».",
+            "updated": "Actualizamos el descuento «{name}».",
+            "removed": "Quitamos el descuento «{name}».",
+            "suppressed": "Suprimimos el descuento «{name}»; no se aplica a esta cotización.",
+            "restored": "Restauramos el descuento «{name}»."
           }
         },
         "toast": {
-          "updated": "Ítem actualizado",
-          "deleted": "Ítem eliminado",
-          "added": "Producto agregado",
-          "generated": "Cotización generada"
+          "updated": "Actualizamos «{name}».",
+          "deleted": "Quitamos «{name}» de la cotización.",
+          "added": "Agregamos «{name}» a la cotización.",
+          "generated": "La cotización quedó generada y lista para revisar.",
+          "error": "No pudimos guardar el cambio. Intentá de nuevo."
         },
         "errors": {
           "NOT_FOUND": "No encontramos ese ítem o cotización. Actualizá la pantalla e intentá de nuevo.",
@@ -799,6 +817,11 @@
           "product": "Producto",
           "quantity": "Cantidad",
           "price": "Precio en el catálogo"
+        },
+        "changeTypes": {
+          "added": "agregado",
+          "removed": "eliminado",
+          "modified": "modificado"
         }
       }
     }
@@ -1065,7 +1088,8 @@
       "release": "Soltá el archivo para cargarlo",
       "selected": "Archivo seleccionado: {size, number} KB",
       "choose": "Elegir archivo",
-      "replace": "Cambiar archivo"
+      "replace": "Cambiar archivo",
+      "formats": "Aceptamos Excel (.xlsx) y CSV."
     },
     "fileRequired": "Elegí un archivo para continuar.",
     "template": {

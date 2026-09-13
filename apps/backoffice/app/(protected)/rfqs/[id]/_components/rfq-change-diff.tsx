@@ -2,7 +2,19 @@
 
 import { useTranslations } from 'next-intl';
 
-import { Card, CardHeader, CardTitle } from '@repo/ui/components';
+import {
+  Callout,
+  Card,
+  CardHeader,
+  CardTitle,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@repo/ui/components';
+import { cn } from '@repo/ui/lib';
 import type { ChangeRequestDiff, DiffDiscountLine, DiffLineItem } from '@/lib/api/rfqs';
 import { useFormatters } from '@/lib/i18n/formatters';
 
@@ -53,13 +65,16 @@ function DiffItemCell({
   changeType: 'modified' | 'added' | 'removed' | null;
   fmt: ReturnType<typeof useFormatters>;
 }) {
+  const t = useTranslations('rfqs');
+
+  // A line the other side does not have: the row is held so both panels stay in step.
   if (!item) {
     return (
-      <tr className="bg-muted/30">
-        <td className="px-4 py-2.5 text-paragraph-sm text-foreground-subtle">—</td>
-        <td className="px-4 py-2.5 text-center text-paragraph-sm text-foreground-subtle">—</td>
-        <td className="px-4 py-2.5 text-center text-paragraph-sm text-foreground-subtle">—</td>
-      </tr>
+      <TableRow className="bg-muted/30 hover:bg-muted/30">
+        <TableCell className="text-foreground-subtle">—</TableCell>
+        <TableCell className="text-right text-foreground-subtle">—</TableCell>
+        <TableCell className="text-right text-foreground-subtle">—</TableCell>
+      </TableRow>
     );
   }
 
@@ -67,41 +82,44 @@ function DiffItemCell({
   const isAdded = changeType === 'added';
   const isModified = changeType === 'modified';
 
-  const bgClass = isRemoved
-    ? 'bg-danger/10'
+  const rowTone = isRemoved
+    ? 'bg-danger-subtle hover:bg-danger-subtle'
     : isAdded
-      ? 'bg-success/10'
+      ? 'bg-success-subtle hover:bg-success-subtle'
       : isModified
-        ? 'bg-warning/10'
-        : '';
+        ? 'bg-warning-subtle hover:bg-warning-subtle'
+        : undefined;
 
+  /* `-foreground`, not `-base`: the base steps are tuned for fills and carry no text contrast. */
   const changeLabel = changeType ? (
     <span
-      className={`ml-2 text-paragraph-xs font-medium ${
-        isRemoved ? 'text-danger' : isAdded ? 'text-success' : 'text-warning'
-      }`}
+      className={cn(
+        'ml-2 text-paragraph-xs-medium',
+        isRemoved
+          ? 'text-danger-foreground'
+          : isAdded
+            ? 'text-success-foreground'
+            : 'text-warning-foreground',
+      )}
     >
-      {isRemoved ? 'eliminado' : isAdded ? 'agregado' : 'modificado'}
+      {t(`detail.diff.changeTypes.${changeType}`)}
     </span>
   ) : null;
 
   return (
-    <tr className={bgClass}>
-      <td className="px-4 py-2.5 text-paragraph-sm text-foreground">
+    <TableRow className={rowTone}>
+      <TableCell className="text-foreground">
         <span
-          className={
-            isRemoved
-              ? 'line-through text-foreground-muted'
-              : isAdded
-                ? 'font-medium text-foreground'
-                : ''
-          }
+          className={cn(
+            isRemoved && 'line-through text-foreground-muted',
+            isAdded && 'text-paragraph-sm-medium text-foreground',
+          )}
         >
           {item.description}
         </span>
         {changeLabel}
-      </td>
-      <td className="px-4 py-2.5 text-center tabular-nums text-paragraph-sm">
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
         {isRemoved ? (
           <span className="text-foreground-muted">—</span>
         ) : (
@@ -109,8 +127,8 @@ function DiffItemCell({
             {fmt.value(Number(item.quantity))} {item.unit ?? ''}
           </span>
         )}
-      </td>
-      <td className="px-4 py-2.5 text-center tabular-nums text-paragraph-sm-medium">
+      </TableCell>
+      <TableCell className="text-right text-paragraph-sm-medium tabular-nums">
         {isRemoved ? (
           <span className="text-foreground-muted">—</span>
         ) : item.unit_price != null ? (
@@ -118,8 +136,8 @@ function DiffItemCell({
         ) : (
           <span className="text-foreground-subtle">—</span>
         )}
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -130,18 +148,27 @@ function DiffDiscountRow({
   discount: DiffDiscountLine;
   fmt: ReturnType<typeof useFormatters>;
 }) {
+  const t = useTranslations('rfqs');
+
   return (
-    <tr className={discount.changed ? 'bg-warning/10' : ''}>
-      <td colSpan={2} className="px-4 py-1.5 text-paragraph-xs text-foreground-muted">
+    <TableRow
+      className={cn(
+        '[&>td]:py-1.5',
+        discount.changed && 'bg-warning-subtle hover:bg-warning-subtle',
+      )}
+    >
+      <TableCell colSpan={2} className="text-paragraph-xs text-foreground-muted">
         {discount.name}
-        {discount.changed && (
-          <span className="ml-2 text-paragraph-xs font-medium text-warning">modificado</span>
-        )}
-      </td>
-      <td className="px-4 py-1.5 text-center tabular-nums text-paragraph-xs text-foreground-muted">
+        {discount.changed ? (
+          <span className="ml-2 text-paragraph-xs-medium text-warning-foreground">
+            {t('detail.diff.changeTypes.modified')}
+          </span>
+        ) : null}
+      </TableCell>
+      <TableCell className="text-right text-paragraph-xs text-foreground-muted tabular-nums">
         −{fmt.currency(discount.amount)}
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -168,51 +195,41 @@ function DiffPanel({
         <CardTitle className="text-heading-5">{title}</CardTitle>
       </CardHeader>
 
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="border-y border-border bg-accent/30">
-              <th className="px-4 py-2 text-left text-paragraph-xs font-semibold text-foreground-muted">
-                {t('detail.diff.columns.product')}
-              </th>
-              <th className="px-4 py-2 text-center text-paragraph-xs font-semibold text-foreground-muted">
-                {t('detail.diff.columns.quantity')}
-              </th>
-              <th className="px-4 py-2 text-center text-paragraph-xs font-semibold text-foreground-muted">
-                {t('detail.diff.columns.price')}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {alignedRows.map((row, i) => {
-              const item = row[side];
-
-              return <DiffItemCell key={i} item={item} changeType={row.changeType} fmt={fmt} />;
-            })}
-          </tbody>
-        </table>
-      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('detail.diff.columns.product')}</TableHead>
+            <TableHead className="text-right">{t('detail.diff.columns.quantity')}</TableHead>
+            <TableHead className="text-right">{t('detail.diff.columns.price')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {alignedRows.map((row, i) => (
+            <DiffItemCell key={i} item={row[side]} changeType={row.changeType} fmt={fmt} />
+          ))}
+        </TableBody>
+      </Table>
 
       {discounts.length > 0 && (
         <div className="mt-auto border-t border-border">
           <div className="px-4 pt-3 pb-1">
-            <span className="text-paragraph-xs font-semibold text-foreground-muted">
+            <span className="text-paragraph-xs-semibold text-foreground-muted">
               {t('detail.diff.discountsTitle')}
             </span>
           </div>
-          <table className="w-full border-collapse">
-            <tbody>
+          <Table>
+            <TableBody>
               {discounts.map((d, i) => (
                 <DiffDiscountRow key={i} discount={d} fmt={fmt} />
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
 
       <div className="border-t border-border px-4 py-3">
         <div className="flex items-center justify-between">
-          <span className="text-paragraph-xs font-semibold text-foreground-muted">
+          <span className="text-paragraph-xs-semibold text-foreground-muted">
             {t('detail.items.total')}
           </span>
           <span className="text-paragraph-sm-semibold tabular-nums text-foreground">
@@ -232,12 +249,11 @@ export function RfqChangeDiff({ diff }: RfqChangeDiffProps) {
 
   return (
     <div className="flex flex-col gap-y-4">
-      {diff.reason && (
-        <div className="rounded-md bg-accent/50 px-4 py-3 text-paragraph-sm text-foreground">
-          <span className="font-medium text-foreground-muted">{t('detail.diff.reason')}: </span>
+      {diff.reason ? (
+        <Callout tone="info" title={t('detail.diff.reason')}>
           {diff.reason}
-        </div>
-      )}
+        </Callout>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <DiffPanel

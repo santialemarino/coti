@@ -1291,6 +1291,8 @@ definitions:
         type: integer
       needs_followup:
         type: boolean
+      quote_id:
+        type: string
       quote_number:
         type: integer
       seller:
@@ -4395,6 +4397,10 @@ paths:
         in: header
         name: X-Branch-Id
         type: string
+      - description: Include archived quotes
+        in: query
+        name: include_archived
+        type: boolean
       produces:
       - application/json
       responses:

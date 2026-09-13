@@ -4,14 +4,13 @@ import Link from 'next/link';
 import {
   ArrowLeftIcon,
   ClipboardListIcon,
-  DownloadIcon,
   LinkIcon,
   MailIcon,
   MessageCircleIcon,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { Button } from '@repo/ui/components';
+import { MetaList } from '@repo/ui/components';
 import { RfqStatusBadge } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
 import { ROUTES } from '@/config/routes';
 import type { RfqChannel, RfqDetailResponse } from '@/lib/api/rfqs';
@@ -38,52 +37,46 @@ export function RfqDetailHeader({ detail }: RfqDetailHeaderProps) {
   const ChannelIcon = CHANNEL_ICON[channel] ?? ClipboardListIcon;
 
   return (
-    <div className="flex flex-col gap-y-3">
-      {/* Title row */}
+    <div className="flex flex-col gap-y-2">
+      {/*
+       * The way back is its own line with its own label. Sitting it beside the heading meant
+       * centring a 16px glyph against a 30px line, which never lands anywhere that looks
+       * deliberate — and left the only exit from the screen unnamed.
+       */}
+      <Link
+        href={ROUTES.rfqs}
+        className="group/back flex w-fit items-center gap-x-1.5 rounded-sm outline-none text-paragraph-xs-medium text-foreground-muted transition-colors duration-200 ease-out-soft hover:text-foreground focus-visible:text-foreground"
+      >
+        <ArrowLeftIcon
+          aria-hidden="true"
+          className="size-3.5 group-focus-visible/back:animate-focus-bump-soft"
+        />
+        {t('detail.backToList')}
+      </Link>
+
       <div className="flex items-center justify-between gap-x-4">
-        <div className="flex items-center gap-x-3 min-w-0">
-          <Link
-            href={ROUTES.rfqs}
-            aria-label={t('detail.backToList')}
-            className="flex size-8 shrink-0 items-center justify-center rounded-md text-foreground-muted transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <ArrowLeftIcon className="size-4" />
-          </Link>
-          <h2 className="min-w-0 truncate text-heading-3 text-foreground">
-            {formatRfqReference(rfq.quote_number) ?? t('list.numberPending')}
-          </h2>
-        </div>
-        <RfqStatusBadge status={normalizeRfqStatus(rfq.status)} />
+        <h2 className="min-w-0 truncate text-heading-3 text-foreground">
+          {formatRfqReference(rfq.quote_number) ?? t('list.numberPending')}
+        </h2>
+        <RfqStatusBadge
+          status={normalizeRfqStatus(rfq.status)}
+          archived={rfq.archived_at != null}
+        />
       </div>
 
-      {/* Metadata — single horizontal line */}
-      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-paragraph-sm text-foreground-muted">
-        <span className="font-medium text-foreground">{fmt.date(rfq.created_at)}</span>
-        <span aria-hidden="true" className="text-foreground-subtle">
-          ·
-        </span>
-        <span className="inline-flex items-center gap-x-1">
-          <ChannelIcon className="size-3.5" />
-          {t(`channels.${channel}`)}
-        </span>
-        <span aria-hidden="true" className="text-foreground-subtle">
-          ·
-        </span>
-        <span>{rfq.seller}</span>
-        <span aria-hidden="true" className="text-foreground-subtle">
-          ·
-        </span>
-        <span>{rfq.branch}</span>
-      </div>
-
-      {channel !== 'manual_entry' && (
-        <div>
-          <Button type="button" variant="outline" size="sm">
-            <DownloadIcon className="size-4" />
-            {t('detail.diff.downloadOriginal')}
-          </Button>
-        </div>
-      )}
+      <MetaList
+        items={[
+          <span key="date" className="text-paragraph-sm-medium text-foreground">
+            {fmt.date(rfq.created_at)}
+          </span>,
+          <span key="channel" className="inline-flex items-center gap-x-1">
+            <ChannelIcon aria-hidden="true" className="size-3.5" />
+            {t(`channels.${channel}`)}
+          </span>,
+          rfq.seller || t('list.unassigned'),
+          rfq.branch,
+        ]}
+      />
     </div>
   );
 }

@@ -26,6 +26,9 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent-strong: var(--accent-strong);
+  --color-accent-stronger: var(--accent-stronger);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-active: var(--surface-active);
 
   /* Lines and fields */
   --color-border: var(--border);
@@ -44,6 +47,8 @@
   --color-warning-border: var(--warning-border);
   --color-warning-foreground: var(--warning-foreground);
   --color-danger: var(--danger-base);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger-active: var(--danger-active);
   --color-danger-subtle: var(--danger-subtle);
   --color-danger-border: var(--danger-border);
   --color-danger-foreground: var(--danger-foreground);
@@ -54,14 +59,41 @@
 
   /* RFQ status colours — reach for these instead of the generic success/warning/danger families. */
   --color-status-accepted: var(--status-accepted-base);
+  --color-status-accepted-subtle: var(--status-accepted-subtle);
+  --color-status-accepted-border: var(--status-accepted-border);
+  --color-status-accepted-foreground: var(--status-accepted-foreground);
   --color-status-rejected: var(--status-rejected-base);
+  --color-status-rejected-subtle: var(--status-rejected-subtle);
+  --color-status-rejected-border: var(--status-rejected-border);
+  --color-status-rejected-foreground: var(--status-rejected-foreground);
   --color-status-failed: var(--status-failed-base);
+  --color-status-failed-subtle: var(--status-failed-subtle);
+  --color-status-failed-border: var(--status-failed-border);
+  --color-status-failed-foreground: var(--status-failed-foreground);
   --color-status-change-requested: var(--status-change-requested-base);
+  --color-status-change-requested-subtle: var(--status-change-requested-subtle);
+  --color-status-change-requested-border: var(--status-change-requested-border);
+  --color-status-change-requested-foreground: var(--status-change-requested-foreground);
   --color-status-generated: var(--status-generated-base);
+  --color-status-generated-subtle: var(--status-generated-subtle);
+  --color-status-generated-border: var(--status-generated-border);
+  --color-status-generated-foreground: var(--status-generated-foreground);
   --color-status-quoted: var(--status-quoted-base);
+  --color-status-quoted-subtle: var(--status-quoted-subtle);
+  --color-status-quoted-border: var(--status-quoted-border);
+  --color-status-quoted-foreground: var(--status-quoted-foreground);
   --color-status-sent: var(--status-sent-base);
+  --color-status-sent-subtle: var(--status-sent-subtle);
+  --color-status-sent-border: var(--status-sent-border);
+  --color-status-sent-foreground: var(--status-sent-foreground);
   --color-status-archived: var(--status-archived-base);
+  --color-status-archived-subtle: var(--status-archived-subtle);
+  --color-status-archived-border: var(--status-archived-border);
+  --color-status-archived-foreground: var(--status-archived-foreground);
   --color-status-draft: var(--status-draft-base);
+  --color-status-draft-subtle: var(--status-draft-subtle);
+  --color-status-draft-border: var(--status-draft-border);
+  --color-status-draft-foreground: var(--status-draft-foreground);
 
   /* Brand ramp — reach for a semantic token first; these are for brand surfaces only. */
   --color-brand-50: var(--brand-50);

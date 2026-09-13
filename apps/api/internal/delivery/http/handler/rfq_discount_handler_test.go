@@ -42,7 +42,9 @@ type stubDiscountRFQService struct {
 	setSellerID     *uuid.UUID
 }
 
-func (s *stubDiscountRFQService) List(context.Context, domain.Tenant) ([]domain.RfqListItem, error) {
+func (s *stubDiscountRFQService) List(
+	context.Context, domain.Tenant, bool,
+) ([]domain.RfqListItem, error) {
 	return nil, nil
 }
 

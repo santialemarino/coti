@@ -1,12 +1,19 @@
 'use client';
 
 import type { ComponentProps } from 'react';
-import { CheckIcon, Clock3Icon, HistoryIcon, SendIcon } from 'lucide-react';
+import { HistoryIcon, SendIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { Badge } from '@repo/ui/components';
-import { cn } from '@repo/ui/lib';
-import { RfqStatusBadge } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
+import {
+  Badge,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+  DropdownChevron,
+  EmptyState,
+  Separator,
+  Stepper,
+} from '@repo/ui/components';
 import type {
   QuoteSendTrackingResponse,
   QuoteStatusChangeResponse,
@@ -83,8 +90,6 @@ function statusDate(state: TimelineState, detail: RfqDetailResponse): string | n
 
 function stepperStatus(status: RfqStatus): TimelineState {
   if (status === 'CHANGE_REQUESTED' || status === 'REJECTED') return 'SENT';
-  // FAILED is where reading the order stopped, so the stepper rests on the step it reached
-  // instead of claiming a generation that never happened.
   if (status === 'FAILED') return 'RECEIVED';
   return status;
 }
@@ -130,6 +135,37 @@ function DeliveryBadge({ status }: DeliveryBadgeProps) {
   );
 }
 
+interface TimelinePanelProps {
+  title: string;
+  icon: typeof HistoryIcon;
+  count: number;
+  children: React.ReactNode;
+}
+
+/*
+ * A folded panel under the rail. Both of these are records, not the answer to "where is this order
+ * now?" — that is the rail, and the header's badge. Open by default they doubled the height of the
+ * screen with material a seller reads once a week.
+ */
+function TimelinePanel({ title, icon: Icon, count, children }: TimelinePanelProps) {
+  return (
+    <Collapsible className="min-w-0">
+      <CollapsibleTrigger className="group/panel flex w-full items-center gap-x-2 py-1 rounded-md outline-none text-paragraph-sm-medium text-foreground transition-colors duration-200 ease-out-soft hover:text-primary focus-visible:text-primary">
+        <Icon aria-hidden="true" className="size-4 text-foreground-muted" />
+        {title}
+        <Badge tone="neutral" size="sm">
+          {count}
+        </Badge>
+        {/* The trigger owns the open state, so the rotation is driven off its data-state. */}
+        <DropdownChevron className="ml-auto group-data-[state=open]/panel:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="pt-3">{children}</div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 interface RfqStatusTimelineProps {
   detail: RfqDetailResponse;
 }
@@ -137,109 +173,58 @@ interface RfqStatusTimelineProps {
 export function RfqStatusTimeline({ detail }: RfqStatusTimelineProps) {
   const t = useTranslations('rfqs');
   const fmt = useFormatters();
-  const { rfq, version } = detail;
+  const { rfq } = detail;
 
   const currentStatus = normalizeRfqStatus(rfq.status);
   const currentStep = stepperStatus(currentStatus);
-  const currentRank = TIMELINE_STATES.indexOf(currentStep);
   const events = statusEvents(detail);
   const deliveries = detail.deliveries ?? [];
 
   return (
     <section className="flex flex-col gap-y-4" aria-labelledby="rfq-tracking-title">
-      <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
-        <div className="min-w-0">
-          <h3 id="rfq-tracking-title" className="text-heading-5 text-foreground">
-            {t('detail.timeline.title')}
-          </h3>
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-paragraph-sm text-foreground-muted">
-            <span className="inline-flex items-center gap-x-1.5">
-              <Clock3Icon className="size-4" aria-hidden="true" />
-              {t('detail.timeline.current')}
-            </span>
-            <RfqStatusBadge status={currentStatus} size="sm" />
-            {version && (
-              <>
-                <span aria-hidden="true" className="text-foreground-subtle">
-                  |
-                </span>
-                <span>v{version.version_number}</span>
-                <span className="font-medium text-foreground">{fmt.currency(version.total)}</span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+      <h3 id="rfq-tracking-title" className="sr-only">
+        {t('detail.timeline.title')}
+      </h3>
 
-      <div className="flex items-center overflow-x-auto pb-1">
-        {TIMELINE_STATES.map((state, index) => {
-          const isCurrent = state === currentStep;
-          const isPast = currentRank >= 0 && index < currentRank;
+      {/*
+       * The rail gets a rule above and below it. It is the one thing on this screen that is read at
+       * a glance, and with the panels pressed against it nothing said where it started or ended.
+       */}
+      <Separator />
+      <Stepper
+        className="py-1"
+        currentIndex={TIMELINE_STATES.indexOf(currentStep)}
+        steps={TIMELINE_STATES.map((state) => {
           const date = statusDate(state, detail);
-
-          return (
-            <div key={state} className="flex min-w-[96px] flex-1 items-center last:flex-none">
-              <div className="flex flex-col items-center gap-y-1">
-                <div
-                  className={cn(
-                    'flex size-5 items-center justify-center rounded-full border-2',
-                    isCurrent
-                      ? 'border-primary bg-primary'
-                      : isPast
-                        ? 'border-primary bg-primary/20'
-                        : 'border-border bg-background',
-                  )}
-                >
-                  {isCurrent && <div className="size-1.5 rounded-full bg-primary-foreground" />}
-                  {isPast && <CheckIcon className="size-2.5 text-primary" aria-hidden="true" />}
-                </div>
-                <span
-                  className={cn(
-                    'whitespace-nowrap text-center text-paragraph-mini',
-                    isCurrent
-                      ? 'font-medium text-foreground'
-                      : isPast
-                        ? 'text-foreground'
-                        : 'text-foreground-subtle',
-                  )}
-                >
-                  {t(`status.${state}`)}
-                </span>
-                {date && (
-                  <span className="whitespace-nowrap text-center text-paragraph-mini text-foreground-muted">
-                    {fmt.date(date)}
-                  </span>
-                )}
-              </div>
-
-              {index < TIMELINE_STATES.length - 1 && (
-                <div className={cn('mx-1 h-px flex-1', isPast ? 'bg-primary' : 'bg-border')} />
-              )}
-            </div>
-          );
+          return {
+            id: state,
+            label: t(`status.${state}`),
+            meta: date ? fmt.dateNumeric(date) : undefined,
+          };
         })}
-      </div>
+      />
+      <Separator />
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.9fr)]">
-        <div className="min-w-0">
-          <div className="mb-3 flex items-center gap-x-2 text-paragraph-sm-medium text-foreground">
-            <HistoryIcon className="size-4 text-foreground-muted" aria-hidden="true" />
-            {t('detail.timeline.statusHistory')}
-          </div>
+      <div className="grid gap-x-6 gap-y-2 lg:grid-cols-2">
+        <TimelinePanel
+          title={t('detail.timeline.statusHistory')}
+          icon={HistoryIcon}
+          count={events.length}
+        >
           {events.length > 0 ? (
-            <ol className="space-y-3">
+            <ol className="flex flex-col gap-y-3">
               {events.map((event) => (
                 <li key={`${event.source}-${event.id}`} className="flex gap-x-3">
                   <span
                     aria-hidden="true"
-                    className="mt-1 size-2 shrink-0 rounded-full bg-primary"
+                    className="mt-1 size-2 shrink-0 bg-primary rounded-full"
                   />
                   <div className="min-w-0">
                     <p className="text-paragraph-sm text-foreground">
                       {t(`status.${statusLabelKey(event.newStatus)}`)}
                     </p>
                     <p className="text-paragraph-xs text-foreground-muted">
-                      {t(`detail.timeline.sources.${event.source}`)} |{' '}
+                      {t(`detail.timeline.sources.${event.source}`)} ·{' '}
                       {fmt.timestamp(event.changedAt)}
                     </p>
                   </div>
@@ -247,25 +232,27 @@ export function RfqStatusTimeline({ detail }: RfqStatusTimelineProps) {
               ))}
             </ol>
           ) : (
-            <p className="text-paragraph-sm text-foreground-muted">
-              {t('detail.timeline.noStatusHistory')}
-            </p>
+            <EmptyState
+              icon={HistoryIcon}
+              size="inline"
+              title={t('detail.timeline.noStatusHistory')}
+            />
           )}
-        </div>
+        </TimelinePanel>
 
-        <div className="min-w-0">
-          <div className="mb-3 flex items-center gap-x-2 text-paragraph-sm-medium text-foreground">
-            <SendIcon className="size-4 text-foreground-muted" aria-hidden="true" />
-            {t('detail.timeline.deliveries')}
-          </div>
+        <TimelinePanel
+          title={t('detail.timeline.deliveries')}
+          icon={SendIcon}
+          count={deliveries.length}
+        >
           {deliveries.length > 0 ? (
-            <div className="space-y-3">
+            <div className="flex flex-col gap-y-3">
               {deliveries.map((delivery) => {
                 const channel = channelKey(delivery.channel);
                 return (
                   <div
                     key={delivery.id}
-                    className="flex flex-col gap-y-2 rounded-lg border border-border bg-muted p-3"
+                    className="flex flex-col p-3 gap-y-2 bg-muted border border-border rounded-lg"
                   >
                     <div className="flex items-center justify-between gap-x-3">
                       <span className="truncate text-paragraph-sm-medium text-foreground">
@@ -276,25 +263,23 @@ export function RfqStatusTimeline({ detail }: RfqStatusTimelineProps) {
                     <dl className="grid gap-y-1 text-paragraph-xs text-foreground-muted">
                       <div className="flex justify-between gap-x-3">
                         <dt>{t('detail.timeline.sentAt')}</dt>
-                        <dd>{fmt.timestamp(deliveryTime(delivery))}</dd>
+                        <dd className="tabular-nums">{fmt.timestamp(deliveryTime(delivery))}</dd>
                       </div>
-                      {delivery.expires_at && (
+                      {delivery.expires_at ? (
                         <div className="flex justify-between gap-x-3">
                           <dt>{t('detail.timeline.expiresAt')}</dt>
-                          <dd>{fmt.date(delivery.expires_at)}</dd>
+                          <dd className="tabular-nums">{fmt.dateNumeric(delivery.expires_at)}</dd>
                         </div>
-                      )}
+                      ) : null}
                     </dl>
                   </div>
                 );
               })}
             </div>
           ) : (
-            <p className="text-paragraph-sm text-foreground-muted">
-              {t('detail.timeline.noDeliveries')}
-            </p>
+            <EmptyState icon={SendIcon} size="inline" title={t('detail.timeline.noDeliveries')} />
           )}
-        </div>
+        </TimelinePanel>
       </div>
     </section>
   );
