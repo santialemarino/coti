@@ -68,6 +68,112 @@ func (r *RFQAttachmentRepository) Create(
 		in.ID, accountID, in.RFQID, in.Type, in.StorageKey, branchID))
 }
 
+/*
+ * ClaimPending takes the next attachments waiting to be read and marks them PROCESSING in the same
+ * statement, so a row is never handed to two workers. It crosses every account by design: a sweep
+ * runs as the owner, and an attachment queue split per account would need a schedule per account.
+ *
+ * A claim expires. Without that, a run killed between claiming a row and finishing it leaves that
+ * row PROCESSING forever, which is the same leak as the PENDING one it exists to drain — so a
+ * PROCESSING row whose claim is older than reclaimAfter is taken again.
+ *
+ * SKIP LOCKED is not redundant beside the scheduler's advisory lock: the lock keeps two runs of
+ * this job apart, and nothing else, so any other writer reaching these rows still has to be
+ * stepped over rather than waited on.
+ *
+ * It claims only the types the caller can finish. A type it cannot close out would be taken,
+ * skipped and re-taken on every firing once its claim expired — a busier leak than the PENDING one.
+ *
+ * The selection is a CTE rather than `id IN (SELECT … LIMIT n)`, and that is load-bearing: the
+ * planner reads the IN form as a semi-join whose inner side it may re-execute per outer row, so
+ * the LIMIT stops bounding anything and one firing claims the whole queue. A CTE carrying
+ * FOR UPDATE is materialised once, so the batch is the batch.
+ */
+func (r *RFQAttachmentRepository) ClaimPending(
+	ctx context.Context, q Querier, types []domain.AttachmentType, limit int,
+	reclaimAfter time.Duration, now time.Time,
+) ([]domain.ClaimedAttachment, error) {
+	// pgx has no encode plan for a slice of the named type, so the enum array crosses as strings.
+	wanted := make([]string, 0, len(types))
+	for _, t := range types {
+		wanted = append(wanted, string(t))
+	}
+
+	rows, err := q.Query(ctx,
+		`WITH claimed AS (
+		        SELECT a.id
+		          FROM rfq_attachment a
+		         WHERE a.type = ANY($4::attachment_type[])
+		           AND (a.processing_status = 'PENDING'
+		                OR (a.processing_status = 'PROCESSING'
+		                    AND a.processing_started_at < $2::timestamptz - $3::interval))
+		         ORDER BY a.created_at, a.id
+		         LIMIT $1
+		           FOR UPDATE SKIP LOCKED)
+		 UPDATE rfq_attachment
+		    SET processing_status = 'PROCESSING', processing_started_at = $2
+		   FROM claimed
+		  WHERE rfq_attachment.id = claimed.id
+		 RETURNING rfq_attachment.id, rfq_attachment.account_id, rfq_attachment.rfq_id,
+		           rfq_attachment.type, COALESCE(rfq_attachment.file_url, '')`,
+		limit, now, reclaimAfter.String(), wanted)
+	if err != nil {
+		return nil, err
+	}
+
+	claimed := make([]domain.ClaimedAttachment, 0)
+	for rows.Next() {
+		var a domain.ClaimedAttachment
+		if err := rows.Scan(&a.ID, &a.AccountID, &a.RFQID, &a.Type, &a.StorageKey); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		claimed = append(claimed, a)
+	}
+	// Closed before the next query rather than deferred: both run on one connection, and pgx
+	// refuses a second query while the first result set is still open.
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return r.fillBranches(ctx, q, claimed)
+}
+
+// fillBranches reads each claimed attachment's branch off its RFQ in one round trip, because the
+// attachment row does not carry one and every service the sweep calls is branch-scoped.
+func (r *RFQAttachmentRepository) fillBranches(
+	ctx context.Context, q Querier, claimed []domain.ClaimedAttachment,
+) ([]domain.ClaimedAttachment, error) {
+	if len(claimed) == 0 {
+		return claimed, nil
+	}
+	rfqIDs := make([]uuid.UUID, 0, len(claimed))
+	for _, a := range claimed {
+		rfqIDs = append(rfqIDs, a.RFQID)
+	}
+	rows, err := q.Query(ctx, `SELECT id, branch_id FROM rfq WHERE id = ANY($1)`, rfqIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	branches := make(map[uuid.UUID]uuid.UUID, len(claimed))
+	for rows.Next() {
+		var rfqID, branchID uuid.UUID
+		if err := rows.Scan(&rfqID, &branchID); err != nil {
+			return nil, err
+		}
+		branches[rfqID] = branchID
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range claimed {
+		claimed[i].BranchID = branches[claimed[i].RFQID]
+	}
+	return claimed, nil
+}
+
 // MarkProcessed records what the multi-format engine read out of one attachment and closes it
 // out. An empty text is stored as NULL: an image yields none, and the file is the record.
 func (r *RFQAttachmentRepository) MarkProcessed(

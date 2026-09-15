@@ -423,16 +423,20 @@ CREATE TABLE rfq (
 
 -- The original input is persisted before it is processed: a quote must always be
 -- reconstructible from its source. The files live in object storage.
+-- The two process timestamps answer different questions and neither substitutes for the other:
+-- processing_started_at is when the sweep claimed the row, which is what lets a claim expire after
+-- a run dies mid-work; processed_at is the transition that finished it.
 CREATE TABLE rfq_attachment (
-  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  account_id        UUID NOT NULL,
-  rfq_id            UUID NOT NULL,
-  type              attachment_type NOT NULL,
-  file_url          VARCHAR(512),
-  extracted_text    TEXT,
-  processing_status attachment_processing_status NOT NULL DEFAULT 'PENDING',
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  processed_at      TIMESTAMPTZ
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id            UUID NOT NULL,
+  rfq_id                UUID NOT NULL,
+  type                  attachment_type NOT NULL,
+  file_url              VARCHAR(512),
+  extracted_text        TEXT,
+  processing_status     attachment_processing_status NOT NULL DEFAULT 'PENDING',
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  processing_started_at TIMESTAMPTZ,
+  processed_at          TIMESTAMPTZ
 );
 
 CREATE TABLE rfq_status_change (

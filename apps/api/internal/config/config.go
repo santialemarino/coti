@@ -81,6 +81,7 @@ type Config struct {
 	RFQ             RFQConfig
 	QuoteCorrection QuoteCorrectionConfig
 	QuoteQuality    QuoteQualityConfig
+	Attachment      AttachmentConfig
 	QuoteLogo       QuoteLogoConfig
 	RateLimit       RateLimitConfig
 	Branch          BranchConfig
@@ -457,6 +458,14 @@ type QuoteQualityConfig struct {
 	ProcessingBatchSize int
 }
 
+// AttachmentConfig bounds the sweep that reads the files an order arrived with. The reclaim
+// window is how long a claim stands: past it the row is taken again, so a run killed mid-work
+// releases its attachments instead of parking them at PROCESSING forever.
+type AttachmentConfig struct {
+	ExtractionBatchSize    int
+	ExtractionReclaimAfter time.Duration
+}
+
 // CatalogConfig holds the catalog listing limits and the knobs behind the hybrid search. The
 // listing cap is what stops a client from asking for the whole catalog in one response.
 type CatalogConfig struct {
@@ -745,6 +754,11 @@ func Load() (*Config, error) {
 		},
 		QuoteQuality: QuoteQualityConfig{
 			ProcessingBatchSize: getInt("QUOTE_QUALITY_PROCESSING_BATCH_SIZE", 100, &problems),
+		},
+		Attachment: AttachmentConfig{
+			ExtractionBatchSize: getInt("ATTACHMENT_EXTRACTION_BATCH_SIZE", 25, &problems),
+			ExtractionReclaimAfter: getDuration("ATTACHMENT_EXTRACTION_RECLAIM_MINUTES",
+				15*time.Minute, &problems),
 		},
 		Job: JobConfig{
 			Timeout: getDuration("JOB_TIMEOUT_MINUTES", 30*time.Minute, &problems),

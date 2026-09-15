@@ -93,6 +93,20 @@ type RFQAttachment struct {
 	ProcessedAt      *time.Time
 }
 
+// ClaimedAttachment is one attachment the sweep has taken for processing. It carries the branch
+// its RFQ belongs to, which the attachment row does not hold and the work downstream needs: a job
+// runs as the owner across every account, and everything it calls is still branch-scoped.
+type ClaimedAttachment struct {
+	ID        uuid.UUID
+	AccountID uuid.UUID
+	BranchID  uuid.UUID
+	RFQID     uuid.UUID
+	Type      AttachmentType
+	// StorageKey is empty on a row whose file never landed, which the sweep fails rather than
+	// retries — there is nothing to read and no later run will find one.
+	StorageKey string
+}
+
 // NewRFQAttachment is the input for recording a stored file against an RFQ.
 type NewRFQAttachment struct {
 	ID         uuid.UUID
