@@ -6604,6 +6604,9 @@ const docTemplate = `{
                 "legal_name": {
                     "type": "string"
                 },
+                "logo_url": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },

@@ -322,6 +322,11 @@ func buildRepresentationPayload(
 	if source.Account.BrandColor != nil && regexp.MustCompile(`^#[0-9a-fA-F]{6}$`).MatchString(*source.Account.BrandColor) {
 		color = strings.ToUpper(strings.TrimSpace(*source.Account.BrandColor))
 	}
+	var logoURL *string
+	if source.Account.BrandLogoURL != nil && strings.TrimSpace(*source.Account.BrandLogoURL) != "" {
+		trimmed := strings.TrimSpace(*source.Account.BrandLogoURL)
+		logoURL = &trimmed
+	}
 	items := make([]domain.QuoteRepresentationItem, 0, len(source.Items))
 	for _, item := range source.Items {
 		alternatives := make([]domain.QuoteRepresentationAlternative, 0,
@@ -346,7 +351,8 @@ func buildRepresentationPayload(
 		VersionNumber: source.Version.VersionNumber, ApprovedAt: approvedAt,
 		Currency: source.Version.Currency,
 		Supplier: domain.QuoteRepresentationSupplier{Name: source.Account.Name,
-			LegalName: source.Account.LegalName, TaxID: source.Account.TaxID, BrandColor: color},
+			LegalName: source.Account.LegalName, TaxID: source.Account.TaxID, BrandColor: color,
+			LogoURL: logoURL},
 		Branch: domain.QuoteRepresentationBranch{Name: source.Branch.Name,
 			Address: source.Branch.Address},
 		Customer: domain.QuoteRepresentationCustomer{Name: source.CustomerName},

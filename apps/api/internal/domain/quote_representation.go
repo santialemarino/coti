@@ -101,6 +101,8 @@ type QuoteRepresentationSupplier struct {
 	LegalName  *string `json:"legal_name,omitempty"`
 	TaxID      *string `json:"tax_id,omitempty"`
 	BrandColor string  `json:"brand_color"`
+	// Absent on a snapshot frozen before the field existed, and on an account with no logo.
+	LogoURL *string `json:"logo_url,omitempty"`
 }
 
 // QuoteRepresentationBranch is the public location identity frozen for the quote.

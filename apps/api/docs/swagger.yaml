@@ -1005,6 +1005,8 @@ definitions:
         type: string
       legal_name:
         type: string
+      logo_url:
+        type: string
       name:
         type: string
       tax_id:

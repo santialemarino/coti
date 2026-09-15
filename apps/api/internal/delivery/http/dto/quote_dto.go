@@ -175,6 +175,7 @@ type QuoteRepresentationSupplierResponse struct {
 	LegalName  *string `json:"legal_name,omitempty"`
 	TaxID      *string `json:"tax_id,omitempty"`
 	BrandColor string  `json:"brand_color"`
+	LogoURL    *string `json:"logo_url,omitempty"`
 }
 
 // QuoteRepresentationBranchResponse is the public branch identity.
