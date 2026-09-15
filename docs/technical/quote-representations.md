@@ -64,6 +64,10 @@ Active responses contain `status`, `expires_at`, `quote`, `message` and `pdf_url
 responses contain only `status` and `expires_at`, with HTTP 200. Responses use `no-store`.
 Reads neither mark the send viewed nor run evaluation.
 
+The webapp serves that token at `/quotes/{token}`, reading this endpoint server-side. An unknown
+token renders the app's 404 and an expired one its own terminal screen, so neither reaches a quote
+body. The page is `noindex`.
+
 PDF URLs use the existing ObjectStorage signer, bounded by its configured lifetime and the
 remaining delivery validity (rounded down to seconds). Already downloaded PDFs cannot be
 revoked; the document directs the reader to the public link for current validity. It embeds
@@ -75,6 +79,12 @@ a message preview containing exactly one `{{public_url}}` marker, replaced only 
 The native Go renderer uses A4 pages and embedded Go Unicode fonts. Brand color is an accent,
 not a text background. Tables repeat their headings and long rows continue across pages.
 The logo preserves its aspect ratio; missing or rejected logos fall back to supplier text.
+
+The snapshot's supplier also carries `logo_url`, frozen from the account at generation time, for
+the surfaces that link to an image rather than embed one. It is absent on an account without a
+logo and on any snapshot frozen before the field existed, and the webapp falls back to the
+supplier name the same way the PDF does. Brand color is an accent there too: it is tenant data
+with no contrast guarantee, so it paints a rule and never text.
 
 Logo requests require HTTPS on port 443 without credentials, proxies or cookies. Every dial
 validates resolved addresses and connects to a validated IP; redirects are revalidated.
