@@ -278,7 +278,7 @@ func toQuoteRepresentationPayloadResponse(
 		ApprovedAt: payload.ApprovedAt, Currency: payload.Currency,
 		Supplier: dto.QuoteRepresentationSupplierResponse{Name: payload.Supplier.Name,
 			LegalName: payload.Supplier.LegalName, TaxID: payload.Supplier.TaxID,
-			BrandColor: payload.Supplier.BrandColor},
+			BrandColor: payload.Supplier.BrandColor, LogoURL: payload.Supplier.LogoURL},
 		Branch: dto.QuoteRepresentationBranchResponse{Name: payload.Branch.Name,
 			Address: payload.Branch.Address},
 		Customer: dto.QuoteRepresentationCustomerResponse{Name: payload.Customer.Name},

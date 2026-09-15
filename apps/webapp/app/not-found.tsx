@@ -5,6 +5,7 @@ import { getTranslations } from 'next-intl/server';
 
 import { Button, Card, StatusScreen } from '@repo/ui/components';
 import { Brand } from '@/components/brand';
+import { ROUTES } from '@/config/routes';
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('notFound');
@@ -32,7 +33,7 @@ export default async function NotFound() {
             description={t('description')}
           >
             <Button asChild size="lg">
-              <Link href="/">{t('goHome')}</Link>
+              <Link href={ROUTES.home}>{t('goHome')}</Link>
             </Button>
           </StatusScreen>
         </Card>

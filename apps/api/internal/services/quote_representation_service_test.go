@@ -88,6 +88,30 @@ func TestBuildQuoteMessage_UsesReferenceTotalAndOneURLPlaceholder(t *testing.T) 
 	}
 }
 
+func TestBuildRepresentationPayload_FreezesTheSupplierLogoWhenTheAccountHasOne(t *testing.T) {
+	t.Parallel()
+	approvedAt := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
+	if logo := buildRepresentationPayload(representationSourceFixture(), approvedAt).Supplier.LogoURL; logo != nil {
+		t.Fatalf("logo = %q, want none for an account without one", *logo)
+	}
+
+	for _, stored := range []string{"/v1/public/account-logos/a/b", "  /v1/public/account-logos/a/b  "} {
+		source := representationSourceFixture()
+		source.Account.BrandLogoURL = &stored
+		logo := buildRepresentationPayload(source, approvedAt).Supplier.LogoURL
+		if logo == nil || *logo != "/v1/public/account-logos/a/b" {
+			t.Errorf("logo for %q = %v, want the trimmed path", stored, logo)
+		}
+	}
+
+	blank := "   "
+	source := representationSourceFixture()
+	source.Account.BrandLogoURL = &blank
+	if logo := buildRepresentationPayload(source, approvedAt).Supplier.LogoURL; logo != nil {
+		t.Errorf("logo = %q, want none for a blank stored value", *logo)
+	}
+}
+
 func TestQuoteRepresentationService_LoadLogoFallsBackWithoutFailingGeneration(t *testing.T) {
 	t.Parallel()
 	rawURL := "https://cdn.example.test/logo.png"
