@@ -37,8 +37,9 @@ export async function QuoteSummary({
                 className="flex items-baseline justify-between gap-x-4"
               >
                 <dt className="text-paragraph-sm text-foreground-muted">{discount.description}</dt>
+                {/* The formatter owns the sign, so the minus is the locale's and not a typed glyph. */}
                 <dd className="text-paragraph-sm text-foreground tabular-nums">
-                  −{fmt.currency(discount.amount, currency)}
+                  {fmt.currency(`-${discount.amount}`, currency)}
                 </dd>
               </div>
             ))}
@@ -60,7 +61,7 @@ export async function QuoteSummary({
       <p className="text-paragraph-xs text-foreground-subtle">{validityNote}</p>
 
       {pdfUrl ? (
-        <Button asChild variant="outline" className="mt-1 self-start">
+        <Button asChild variant="outline" className="self-start mt-1">
           <a href={pdfUrl} target="_blank" rel="noopener noreferrer">
             <DownloadIcon />
             {t('downloadPdf')}

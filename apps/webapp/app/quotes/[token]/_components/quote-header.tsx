@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import { getTranslations } from 'next-intl/server';
 
 import type { Branch, Supplier } from '@/lib/api/public-quotes';
@@ -36,14 +37,21 @@ export async function QuoteHeader({
       />
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <div className="flex flex-col min-w-0 gap-y-1">
+          {/*
+            `unoptimized` because the host is the corralón's own and unknown at build time: running
+            it through the optimizer would need `remotePatterns` wide enough to proxy anything.
+            The box is sized so the header does not reflow as the logo decodes.
+          */}
           {supplier.logoUrl ? (
-            // Not next/image: the host is a tenant's own, unknown at build time.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={supplier.logoUrl}
-              alt={t('logoAlt', { name: supplier.name })}
-              className="mb-1 h-10 w-auto max-w-56 self-start object-contain"
-            />
+            <span className="block h-10 w-40 self-start mb-1 relative">
+              <Image
+                src={supplier.logoUrl}
+                alt={t('logoAlt', { name: supplier.name })}
+                fill
+                unoptimized
+                className="object-contain object-left"
+              />
+            </span>
           ) : null}
           <p className="text-heading-4 text-foreground">{supplier.name}</p>
           <p className="text-paragraph-sm text-foreground-muted">

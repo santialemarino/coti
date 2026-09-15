@@ -110,7 +110,7 @@ export async function QuoteItems({ items, currency }: QuoteItemsProps) {
                   <p className="text-paragraph-xs-medium text-foreground-muted">
                     {t('alternativesHeading')}
                   </p>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {optionsFor(item).map((option) => (
                       <div
                         key={option.key}
