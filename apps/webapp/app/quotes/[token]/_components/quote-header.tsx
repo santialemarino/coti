@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import { getTranslations } from 'next-intl/server';
 
+import { MetaList } from '@repo/ui/components';
 import type { Branch, Supplier } from '@/lib/api/public-quotes';
 import { getFormatters } from '@/lib/i18n/formatters-server';
 
@@ -54,16 +55,16 @@ export async function QuoteHeader({
             </span>
           ) : null}
           <p className="text-heading-4 text-foreground">{supplier.name}</p>
-          <p className="text-paragraph-sm text-foreground-muted">
-            {branch.address ? `${branch.name} · ${branch.address}` : branch.name}
-          </p>
+          <MetaList items={[branch.name, branch.address]} />
         </div>
         <div className="flex flex-col items-start gap-y-1 sm:items-end">
           <p className="text-paragraph-medium text-foreground">{t('reference', { reference })}</p>
-          <p className="text-paragraph-sm text-foreground-muted">
-            {t('version', { number: versionNumber })} ·{' '}
-            {t('issuedOn', { date: fmt.date(approvedAt) })}
-          </p>
+          <MetaList
+            items={[
+              t('version', { number: versionNumber }),
+              t('issuedOn', { date: fmt.date(approvedAt) }),
+            ]}
+          />
         </div>
       </div>
     </header>
