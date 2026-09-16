@@ -3058,6 +3058,65 @@
                 }
             }
         },
+        "/v1/public/quote-sends/{token}/actions": {
+            "post": {
+                "description": "Records an explicit accept or reject against the version the customer was shown and moves the quote to ACCEPTED or REJECTED. The unguessable token is the whole authority — there is no session — so an unknown token is a 404 and an expired one is refused. A rejection is always the customer's own action; nothing infers one. The quote's seller is told by mail, and a mail that cannot be sent does not undo the answer.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Answer a quote as its customer",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Public delivery token",
+                        "name": "token",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The answer",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.PublicQuoteActionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.PublicQuoteActionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_SEND_EXPIRED on a link past its validity, QUOTE_NOT_SENT once the quote has already been answered",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/quotes/{quoteId}/accept-materials": {
             "post": {
                 "security": [
@@ -6212,6 +6271,35 @@
                     "type": "string"
                 },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.PublicQuoteActionRequest": {
+            "type": "object",
+            "required": [
+                "action"
+            ],
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "ACCEPT",
+                        "REJECT"
+                    ]
+                }
+            }
+        },
+        "dto.PublicQuoteActionResponse": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "reference": {
+                    "type": "string"
+                },
+                "status": {
                     "type": "string"
                 }
             }

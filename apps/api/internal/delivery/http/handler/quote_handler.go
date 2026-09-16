@@ -29,6 +29,8 @@ type QuoteDeliveryService interface {
 	Send(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID,
 		in domain.QuoteDeliveryInput) (*domain.QuoteDeliveryResult, error)
 	ResolvePublic(ctx context.Context, token string) (*domain.PublicQuoteRepresentation, error)
+	RecordClientAction(ctx context.Context, token string,
+		action domain.ClientActionType) (*domain.ClientQuoteOutcome, error)
 }
 
 // QuoteRepresentationService is the explicit seller-approved generation surface.
@@ -224,6 +226,42 @@ func (h *QuoteHandler) ResolvePublic(c *gin.Context) {
 	response.PDFURL = result.PDFURL
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, response)
+}
+
+// RecordClientAction records the customer's answer to the quote they were sent.
+//
+//	@Summary		Answer a quote as its customer
+//	@Description	Records an explicit accept or reject against the version the customer was shown and moves the quote to ACCEPTED or REJECTED. The unguessable token is the whole authority — there is no session — so an unknown token is a 404 and an expired one is refused. A rejection is always the customer's own action; nothing infers one. The quote's seller is told by mail, and a mail that cannot be sent does not undo the answer.
+//	@Tags			quotes
+//	@Accept			json
+//	@Produce		json
+//	@Param			token	path		string							true	"Public delivery token"
+//	@Param			request	body		dto.PublicQuoteActionRequest	true	"The answer"
+//	@Success		200		{object}	dto.PublicQuoteActionResponse
+//	@Failure		400		{object}	dto.ErrorResponse
+//	@Failure		404		{object}	dto.ErrorResponse
+//	@Failure		409		{object}	dto.ErrorResponse	"QUOTE_SEND_EXPIRED on a link past its validity, QUOTE_NOT_SENT once the quote has already been answered"
+//	@Router			/v1/public/quote-sends/{token}/actions [post]
+func (h *QuoteHandler) RecordClientAction(c *gin.Context) {
+	if h.delivery == nil {
+		Respond(c, domain.ErrNotFound)
+		return
+	}
+	var request dto.PublicQuoteActionRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		Respond(c, domain.ErrInvalidInput)
+		return
+	}
+
+	outcome, err := h.delivery.RecordClientAction(c.Request.Context(), c.Param("token"),
+		domain.ClientActionType(request.Action))
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, dto.PublicQuoteActionResponse{Reference: outcome.Reference,
+		Status: string(outcome.Status), Action: string(outcome.Action)})
 }
 
 func toQuoteSendResponse(result domain.QuoteDeliveryResult) dto.QuoteSendResponse {

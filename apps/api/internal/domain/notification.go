@@ -28,6 +28,8 @@ const (
 	NotificationEventEmailVerification NotificationEvent = "EMAIL_VERIFICATION"
 	NotificationEventEmailChanged      NotificationEvent = "EMAIL_CHANGED"
 	NotificationEventQuoteSent         NotificationEvent = "QUOTE_SENT"
+	NotificationEventQuoteAccepted     NotificationEvent = "QUOTE_ACCEPTED"
+	NotificationEventQuoteRejected     NotificationEvent = "QUOTE_REJECTED"
 )
 
 // Notification is the delivery record of one outbound message. Append-only: SentAt is the

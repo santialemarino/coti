@@ -1,6 +1,10 @@
 package services
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/santialemarino/coti/apps/api/internal/domain"
+)
 
 // Product copy, not documentation: an Argentine corralón reads it. This file is the API's
 // counterpart to the web apps' es-AR catalog and the only Spanish in the backend.
@@ -60,4 +64,19 @@ func emailVerificationValidity(hours int) string {
 		return fmt.Sprintf("El enlace vence en %d días y se puede usar una sola vez.", days)
 	}
 	return fmt.Sprintf("El enlace vence en %d horas y se puede usar una sola vez.", hours)
+}
+
+// quoteOutcomeCopy words what a customer decided, for the seller who sent the quote. The reference
+// carries the subject because a seller with several quotes out reads the list, not the mail.
+func quoteOutcomeCopy(outcome domain.ClientQuoteOutcome) (subject, heading, body string) {
+	if outcome.Action == domain.ClientActionAccept {
+		return fmt.Sprintf("%s: el cliente aceptó la cotización", outcome.Reference),
+			"Te aceptaron la cotización",
+			fmt.Sprintf("El cliente aceptó %s. Entrá al backoffice para coordinar la entrega.",
+				outcome.Reference)
+	}
+	return fmt.Sprintf("%s: el cliente rechazó la cotización", outcome.Reference),
+		"Te rechazaron la cotización",
+		fmt.Sprintf("El cliente rechazó %s. Si querés retomarla, reactivala desde el backoffice.",
+			outcome.Reference)
 }
