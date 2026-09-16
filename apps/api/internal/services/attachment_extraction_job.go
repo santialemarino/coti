@@ -183,9 +183,16 @@ func (j *AttachmentExtractionJob) processOrder(ctx context.Context, q repository
  * Only stored text is reused — a recording is never transcribed twice — so an earlier image or PDF
  * contributes nothing here. That is a known gap rather than an oversight: re-reading those means
  * downloading them again on every later attachment.
+ *
+ * Earlier readings are context for something new, never input on their own: with nothing newly
+ * read there is nothing to interpret, and extracting over the old material alone would pay for a
+ * model call that can only reproduce the draft the order already has.
  */
 func orderMaterial(read []readAttachment,
 	earlier []domain.RFQAttachment) ([]domain.Content, string) {
+	if len(read) == 0 {
+		return nil, ""
+	}
 	blocks := make([]domain.Content, 0, len(read)+len(earlier))
 	texts := make([]string, 0, len(read)+len(earlier))
 

@@ -317,6 +317,40 @@ func TestAttachmentExtractionJob_Run_PrefersTheFreshReadingOverTheStoredOne(t *t
 	}
 }
 
+/*
+ * Earlier readings are CONTEXT for something new, never input on their own. When every file this
+ * run claimed fails to read, there is nothing new to interpret — extracting over the order's old
+ * material would pay for a model call that can only reproduce the draft the order already has, and
+ * would write a second draft version saying the same thing.
+ */
+func TestAttachmentExtractionJob_Run_DoesNotReExtractOldMaterialWhenNothingNewWasRead(t *testing.T) {
+	t.Parallel()
+	rfqID := uuid.New()
+	broken := claimedIn(rfqID, domain.AttachmentTypeText)
+	earlierText := "20 bolsas de cemento"
+	repo := &fakeClaimRepo{
+		claim: []domain.ClaimedAttachment{broken},
+		stored: map[uuid.UUID][]domain.RFQAttachment{rfqID: {{
+			ID: uuid.New(), RFQID: rfqID, Type: domain.AttachmentTypeText,
+			ExtractedText: &earlierText, ProcessingStatus: domain.AttachmentProcessingDone,
+		}}},
+	}
+	reader := fakeReader{byType: map[domain.AttachmentType]readResult{
+		domain.AttachmentTypeText: {err: errors.New("gone")},
+	}}
+	folder := &fakeFolder{outcome: domain.AttachmentUnreadable}
+
+	if _, err := attachmentJob(repo, reader, folder).Run(context.Background(), nil); err != nil {
+		t.Fatalf("Run() = %v, want no error", err)
+	}
+	if len(folder.calls) != 1 {
+		t.Fatalf("extractions = %d, want the order reported once", len(folder.calls))
+	}
+	if got := len(folder.calls[0].blocks); got != 0 {
+		t.Errorf("blocks = %d, want none — the order's old material is not a new order", got)
+	}
+}
+
 // One order that cannot be closed out must not cost the rest of the batch, or a single bad row
 // stalls the queue behind it on every firing.
 func TestAttachmentExtractionJob_Run_ReportsAFailedCloseOutWithoutDroppingTheBatch(t *testing.T) {
