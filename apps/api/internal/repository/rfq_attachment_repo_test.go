@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -173,5 +174,168 @@ func TestRFQAttachmentRepository_CreateThenList_RoundTripsOneAttachment(t *testi
 	}
 	if len(listed) != 1 || listed[0].ID != in.ID {
 		t.Fatalf("listed = %#v, want the one created attachment", listed)
+	}
+}
+
+// insertAttachment writes one attachment directly, so a test can choose the status and the claim
+// timestamp the sweep is supposed to react to.
+func insertAttachment(
+	t *testing.T, db *DB, accountID, rfqID uuid.UUID, status string, startedAt *time.Time,
+) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	if _, err := db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO rfq_attachment (id, account_id, rfq_id, type, file_url, processing_status,
+		                             processing_started_at)
+		 VALUES ($1, $2, $3, 'PDF', $4, $5::attachment_processing_status, $6)`,
+		id, accountID, rfqID, "accounts/x/"+id.String()+".pdf", status, startedAt); err != nil {
+		t.Fatalf("seed attachment: %v", err)
+	}
+	return id
+}
+
+func statusOf(t *testing.T, db *DB, attachmentID uuid.UUID) string {
+	t.Helper()
+	var status string
+	if err := db.CrossAccount().QueryRow(context.Background(),
+		`SELECT processing_status FROM rfq_attachment WHERE id = $1`,
+		attachmentID).Scan(&status); err != nil {
+		t.Fatalf("read status: %v", err)
+	}
+	return status
+}
+
+// The claim is the whole contract of the sweep: it must take a pending row, mark it PROCESSING in
+// the same statement, and carry the branch its RFQ belongs to — the attachment row has none, and
+// every service the sweep calls is branch-scoped.
+func TestRFQAttachmentRepository_ClaimPending_TakesPendingRowsAndCarriesTheirBranch(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Attachment claim pending")
+	branchID := branchOf(t, db, accountID)
+	rfqID := seedRFQFor(t, db, accountID, branchID)
+	pendingID := insertAttachment(t, db, accountID, rfqID, "PENDING", nil)
+	doneID := insertAttachment(t, db, accountID, rfqID, "DONE", nil)
+
+	now := time.Now()
+	claimed, err := NewRFQAttachmentRepository().ClaimPending(ctx, db.CrossAccount(), allAttachmentTypes(), 10,
+		15*time.Minute, now)
+	if err != nil {
+		t.Fatalf("ClaimPending() = %v, want no error", err)
+	}
+
+	var got *domain.ClaimedAttachment
+	for i := range claimed {
+		if claimed[i].ID == pendingID {
+			got = &claimed[i]
+		}
+		if claimed[i].ID == doneID {
+			t.Errorf("ClaimPending() took a DONE attachment")
+		}
+	}
+	if got == nil {
+		t.Fatalf("ClaimPending() did not take the pending attachment")
+	}
+	if got.AccountID != accountID || got.BranchID != branchID || got.RFQID != rfqID {
+		t.Errorf("claimed = account %v branch %v rfq %v, want %v / %v / %v",
+			got.AccountID, got.BranchID, got.RFQID, accountID, branchID, rfqID)
+	}
+	if got.StorageKey == "" {
+		t.Errorf("claimed storage key is empty, want the stored object key")
+	}
+	if status := statusOf(t, db, pendingID); status != "PROCESSING" {
+		t.Errorf("claimed row status = %q, want PROCESSING", status)
+	}
+	if status := statusOf(t, db, doneID); status != "DONE" {
+		t.Errorf("untouched row status = %q, want DONE", status)
+	}
+}
+
+/*
+ * A run killed between claiming a row and finishing it leaves that row PROCESSING. Without an
+ * expiring claim the queue leaks exactly the way it leaks at PENDING, so a stale claim is taken
+ * again and a fresh one is left alone. Both halves are asserted here: pinning only the reclaim
+ * would pass on a query that ignores processing_started_at entirely and re-claims everything.
+ */
+func TestRFQAttachmentRepository_ClaimPending_ReclaimsAStaleClaimAndLeavesAFreshOne(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Attachment claim reclaim")
+	branchID := branchOf(t, db, accountID)
+	rfqID := seedRFQFor(t, db, accountID, branchID)
+
+	now := time.Now()
+	stale := now.Add(-30 * time.Minute)
+	fresh := now.Add(-1 * time.Minute)
+	staleID := insertAttachment(t, db, accountID, rfqID, "PROCESSING", &stale)
+	freshID := insertAttachment(t, db, accountID, rfqID, "PROCESSING", &fresh)
+
+	claimed, err := NewRFQAttachmentRepository().ClaimPending(ctx, db.CrossAccount(), allAttachmentTypes(), 10,
+		15*time.Minute, now)
+	if err != nil {
+		t.Fatalf("ClaimPending() = %v, want no error", err)
+	}
+
+	took := map[uuid.UUID]bool{}
+	for _, a := range claimed {
+		took[a.ID] = true
+	}
+	if !took[staleID] {
+		t.Errorf("ClaimPending() left a claim older than the window, want it reclaimed")
+	}
+	if took[freshID] {
+		t.Errorf("ClaimPending() took a claim inside the window, want it left to its worker")
+	}
+}
+
+// The batch size is what keeps one firing bounded, so a queue longer than the limit is drained
+// across runs rather than in one that outlives its own timeout.
+func TestRFQAttachmentRepository_ClaimPending_TakesNoMoreThanTheLimit(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Attachment claim limit")
+	branchID := branchOf(t, db, accountID)
+	rfqID := seedRFQFor(t, db, accountID, branchID)
+	for range 5 {
+		insertAttachment(t, db, accountID, rfqID, "PENDING", nil)
+	}
+
+	claimed, err := NewRFQAttachmentRepository().ClaimPending(ctx, db.CrossAccount(), allAttachmentTypes(), 2,
+		15*time.Minute, time.Now())
+	if err != nil {
+		t.Fatalf("ClaimPending() = %v, want no error", err)
+	}
+	if len(claimed) != 2 {
+		t.Fatalf("ClaimPending(limit 2) took %d, want 2", len(claimed))
+	}
+}
+
+// allAttachmentTypes claims every format, so these tests pin the claim's own semantics rather than
+// the sweep's choice of which formats it can finish.
+func allAttachmentTypes() []domain.AttachmentType {
+	return []domain.AttachmentType{domain.AttachmentTypeImage, domain.AttachmentTypePDF,
+		domain.AttachmentTypeText, domain.AttachmentTypeSpreadsheet, domain.AttachmentTypeAudio}
+}
+
+/*
+ * rfq_attachment.rfq_id references rfq(id) alone, so nothing in the database stops a row naming
+ * another account's order. The sweep runs as the owner, where row level security refuses nothing,
+ * and it reads the branch off that RFQ — so a mismatched pair would carry a foreign branch into
+ * everything the sweep then does. The claim refuses instead of defaulting.
+ */
+func TestRFQAttachmentRepository_ClaimPending_RefusesAnAttachmentNamingAnotherAccountsRFQ(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	victimAccount := seedAccount(t, db, "Attachment claim victim")
+	intruderAccount := seedAccount(t, db, "Attachment claim intruder")
+	victimRFQ := seedRFQFor(t, db, victimAccount, branchOf(t, db, victimAccount))
+
+	// The attachment claims the intruder's account while pointing at the victim's order.
+	insertAttachment(t, db, intruderAccount, victimRFQ, "PENDING", nil)
+
+	_, err := NewRFQAttachmentRepository().ClaimPending(ctx, db.CrossAccount(),
+		allAttachmentTypes(), 10, 15*time.Minute, time.Now())
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("ClaimPending() = %v, want ErrNotFound for a cross-account attachment", err)
 	}
 }
