@@ -102,6 +102,15 @@ No request has any reason to read an audit trail, let alone rewrite one.
 
 ## Registered schedules
 
-| Job                         | DigitalOcean schedule | Purpose                                      |
-| --------------------------- | --------------------- | -------------------------------------------- |
-| `quote-correction-learning` | Every 15 minutes      | Retry durable correction memories in PENDING |
+| Job                         | DigitalOcean schedule | Purpose                                          |
+| --------------------------- | --------------------- | ------------------------------------------------ |
+| `quote-correction-learning` | Every 15 minutes      | Retry durable correction memories in PENDING     |
+| `quote-quality-evaluation`  | Every 15 minutes      | Retry evaluations missing after a committed send |
+| `attachment-extraction`     | Every 5 minutes       | Read the files an order arrived with, into text  |
+
+`attachment-extraction` claims a bounded batch, marks it `PROCESSING`, and closes each attachment
+`DONE` with what it read or `FAILED` when it could not be read. A claim expires after
+`ATTACHMENT_EXTRACTION_RECLAIM_MINUTES`, so a run killed mid-work releases its rows instead of
+parking them. It sweeps only the formats that carry text of their own — a recording, a spreadsheet,
+a text file. An image and a PDF are read by the model as they are, so closing them out means
+running the extraction, which is the rest of the multi-format ticket.
