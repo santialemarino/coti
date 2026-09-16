@@ -347,7 +347,7 @@ func buildRepresentationPayload(
 			Subtotal: item.Subtotal.Decimal.StringFixed(domain.MoneyScale), Alternatives: alternatives})
 	}
 	return domain.QuoteRepresentationPayload{
-		Reference:     fmt.Sprintf("COT-%06d", source.Quote.Number),
+		Reference:     domain.QuoteReference(source.Quote.Number),
 		VersionNumber: source.Version.VersionNumber, ApprovedAt: approvedAt,
 		Currency: source.Version.Currency,
 		Supplier: domain.QuoteRepresentationSupplier{Name: source.Account.Name,

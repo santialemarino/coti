@@ -112,7 +112,9 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 		public.GET("/account-logos/:accountId/:logoId", h.AccountLogo.Get)
 	}
 	public.GET("/quote-sends/:token", h.Quote.ResolvePublic)
-	public.POST("/quote-sends/:token/actions", h.Quote.RecordClientAction)
+	// Bounded by the mail allowance: a successful answer sends the seller a message, and the
+	// token is the only thing standing between a caller and doing that.
+	public.POST("/quote-sends/:token/actions", mail, h.Quote.RecordClientAction)
 
 	authed := v1.Group("", middleware.RequireTenant())
 

@@ -112,7 +112,7 @@ func (s *QuoteDeliveryService) RecordClientAction(
 			}
 
 			outcome = domain.ClientQuoteOutcome{QuoteID: moved.ID,
-				Reference: fmt.Sprintf("COT-%06d", moved.Number), Status: moved.CurrentStatus,
+				Reference: domain.QuoteReference(moved.Number), Status: moved.CurrentStatus,
 				Action: action, SellerID: moved.SellerID}
 			return nil
 		})

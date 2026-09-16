@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -229,4 +230,11 @@ type PricedQuote struct {
 	Items           []QuoteItem
 	UnpricedItemIDs []uuid.UUID
 	Alternatives    map[uuid.UUID][]QuoteItemAlternative
+}
+
+// QuoteReference is how a quote is named to anyone outside the product — on the customer's page,
+// in the seller's mail, in the subject line. One place, because it appears on several surfaces and
+// a quote called COT-000042 in one and COT-42 in another is two quotes to whoever reads them.
+func QuoteReference(number int64) string {
+	return fmt.Sprintf("COT-%06d", number)
 }
