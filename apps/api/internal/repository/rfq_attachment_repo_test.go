@@ -316,3 +316,26 @@ func allAttachmentTypes() []domain.AttachmentType {
 	return []domain.AttachmentType{domain.AttachmentTypeImage, domain.AttachmentTypePDF,
 		domain.AttachmentTypeText, domain.AttachmentTypeSpreadsheet, domain.AttachmentTypeAudio}
 }
+
+/*
+ * rfq_attachment.rfq_id references rfq(id) alone, so nothing in the database stops a row naming
+ * another account's order. The sweep runs as the owner, where row level security refuses nothing,
+ * and it reads the branch off that RFQ — so a mismatched pair would carry a foreign branch into
+ * everything the sweep then does. The claim refuses instead of defaulting.
+ */
+func TestRFQAttachmentRepository_ClaimPending_RefusesAnAttachmentNamingAnotherAccountsRFQ(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	victimAccount := seedAccount(t, db, "Attachment claim victim")
+	intruderAccount := seedAccount(t, db, "Attachment claim intruder")
+	victimRFQ := seedRFQFor(t, db, victimAccount, branchOf(t, db, victimAccount))
+
+	// The attachment claims the intruder's account while pointing at the victim's order.
+	insertAttachment(t, db, intruderAccount, victimRFQ, "PENDING", nil)
+
+	_, err := NewRFQAttachmentRepository().ClaimPending(ctx, db.CrossAccount(),
+		allAttachmentTypes(), 10, 15*time.Minute, time.Now())
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("ClaimPending() = %v, want ErrNotFound for a cross-account attachment", err)
+	}
+}

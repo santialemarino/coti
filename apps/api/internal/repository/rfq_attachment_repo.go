@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -69,25 +70,14 @@ func (r *RFQAttachmentRepository) Create(
 }
 
 /*
- * ClaimPending takes the next attachments waiting to be read and marks them PROCESSING in the same
+ * ClaimPending takes the next attachments of the given types and marks them PROCESSING in the same
  * statement, so a row is never handed to two workers. It crosses every account by design: a sweep
- * runs as the owner, and an attachment queue split per account would need a schedule per account.
- *
- * A claim expires. Without that, a run killed between claiming a row and finishing it leaves that
- * row PROCESSING forever, which is the same leak as the PENDING one it exists to drain — so a
- * PROCESSING row whose claim is older than reclaimAfter is taken again.
- *
- * SKIP LOCKED is not redundant beside the scheduler's advisory lock: the lock keeps two runs of
- * this job apart, and nothing else, so any other writer reaching these rows still has to be
- * stepped over rather than waited on.
- *
- * It claims only the types the caller can finish. A type it cannot close out would be taken,
- * skipped and re-taken on every firing once its claim expired — a busier leak than the PENDING one.
+ * runs as the owner. A claim expires after reclaimAfter, or a run killed mid-work would park its
+ * rows at PROCESSING forever — the same leak it exists to drain.
  *
  * The selection is a CTE rather than `id IN (SELECT … LIMIT n)`, and that is load-bearing: the
  * planner reads the IN form as a semi-join whose inner side it may re-execute per outer row, so
- * the LIMIT stops bounding anything and one firing claims the whole queue. A CTE carrying
- * FOR UPDATE is materialised once, so the batch is the batch.
+ * the LIMIT stops bounding anything and one firing claims the whole queue.
  */
 func (r *RFQAttachmentRepository) ClaimPending(
 	ctx context.Context, q Querier, types []domain.AttachmentType, limit int,
@@ -139,41 +129,6 @@ func (r *RFQAttachmentRepository) ClaimPending(
 	return r.fillBranches(ctx, q, claimed)
 }
 
-// fillBranches reads each claimed attachment's branch off its RFQ in one round trip, because the
-// attachment row does not carry one and every service the sweep calls is branch-scoped.
-func (r *RFQAttachmentRepository) fillBranches(
-	ctx context.Context, q Querier, claimed []domain.ClaimedAttachment,
-) ([]domain.ClaimedAttachment, error) {
-	if len(claimed) == 0 {
-		return claimed, nil
-	}
-	rfqIDs := make([]uuid.UUID, 0, len(claimed))
-	for _, a := range claimed {
-		rfqIDs = append(rfqIDs, a.RFQID)
-	}
-	rows, err := q.Query(ctx, `SELECT id, branch_id FROM rfq WHERE id = ANY($1)`, rfqIDs)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	branches := make(map[uuid.UUID]uuid.UUID, len(claimed))
-	for rows.Next() {
-		var rfqID, branchID uuid.UUID
-		if err := rows.Scan(&rfqID, &branchID); err != nil {
-			return nil, err
-		}
-		branches[rfqID] = branchID
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	for i := range claimed {
-		claimed[i].BranchID = branches[claimed[i].RFQID]
-	}
-	return claimed, nil
-}
-
 // MarkProcessed records what the multi-format engine read out of one attachment and closes it
 // out. An empty text is stored as NULL: an image yields none, and the file is the record.
 func (r *RFQAttachmentRepository) MarkProcessed(
@@ -192,6 +147,60 @@ func (r *RFQAttachmentRepository) MarkProcessed(
 		return domain.ErrNotFound
 	}
 	return nil
+}
+
+/*
+ * fillBranches reads each claimed attachment's branch off its RFQ in one round trip, because the
+ * attachment row carries none and every service the sweep calls is branch-scoped.
+ *
+ * It matches on the account as well as the id even though the sweep already runs as the owner: an
+ * attachment whose RFQ belongs to another account is a corrupt row, and handing that RFQ's branch
+ * downstream would carry the mistake into everything the sweep then does. Unmatched means refused,
+ * not defaulted.
+ */
+func (r *RFQAttachmentRepository) fillBranches(
+	ctx context.Context, q Querier, claimed []domain.ClaimedAttachment,
+) ([]domain.ClaimedAttachment, error) {
+	if len(claimed) == 0 {
+		return claimed, nil
+	}
+	rfqIDs := make([]uuid.UUID, 0, len(claimed))
+	accountIDs := make([]uuid.UUID, 0, len(claimed))
+	for _, a := range claimed {
+		rfqIDs = append(rfqIDs, a.RFQID)
+		accountIDs = append(accountIDs, a.AccountID)
+	}
+	rows, err := q.Query(ctx,
+		`SELECT r.id, r.branch_id
+		   FROM rfq r
+		   JOIN unnest($1::uuid[], $2::uuid[]) AS wanted(rfq_id, account_id)
+		     ON r.id = wanted.rfq_id AND r.account_id = wanted.account_id`,
+		rfqIDs, accountIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	branches := make(map[uuid.UUID]uuid.UUID, len(claimed))
+	for rows.Next() {
+		var rfqID, branchID uuid.UUID
+		if err := rows.Scan(&rfqID, &branchID); err != nil {
+			return nil, err
+		}
+		branches[rfqID] = branchID
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range claimed {
+		branchID, ok := branches[claimed[i].RFQID]
+		if !ok {
+			return nil, fmt.Errorf("%w: attachment %s names an rfq its account does not own",
+				domain.ErrNotFound, claimed[i].ID)
+		}
+		claimed[i].BranchID = branchID
+	}
+	return claimed, nil
 }
 
 func scanRFQAttachment(row pgx.Row) (*domain.RFQAttachment, error) {

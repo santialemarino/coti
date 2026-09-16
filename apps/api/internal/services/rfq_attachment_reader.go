@@ -109,14 +109,17 @@ func (s *RFQAttachmentService) ReadStoredAttachmentText(
 }
 
 // boundedText refuses an empty read and one past the pipeline's character cap, so a file that
-// would be rejected by the extractor is closed out here instead of reaching it.
+// would be rejected by the extractor is closed out here instead of reaching it. An unset cap means
+// this service was built for a path that reads no files — applying it would reject every read.
 func (s *RFQAttachmentService) boundedText(raw string) (string, error) {
 	text, err := requiredText(raw, "extracted_text")
 	if err != nil {
 		return "", err
 	}
-	if err := requireMaxRunes(text, "extracted_text", s.maxTextCharacters); err != nil {
-		return "", err
+	if s.maxTextCharacters > 0 {
+		if err := requireMaxRunes(text, "extracted_text", s.maxTextCharacters); err != nil {
+			return "", err
+		}
 	}
 	return text, nil
 }
