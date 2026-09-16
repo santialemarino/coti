@@ -376,6 +376,7 @@ var (
 func testRFQConfig() config.RFQConfig {
 	return config.RFQConfig{
 		MaxTextCharacters: 200, MaxItems: 3, MaxSpreadsheetRows: 50, PipelineTimeout: time.Minute,
+		InlinePipelineTimeout: time.Minute,
 	}
 }
 

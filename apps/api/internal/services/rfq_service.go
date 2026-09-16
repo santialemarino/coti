@@ -937,7 +937,7 @@ func (s *RFQService) CreateFileDraft(
 		return nil, err
 	}
 
-	pipelineCtx, cancel := context.WithTimeout(ctx, s.cfg.PipelineTimeout)
+	pipelineCtx, cancel := context.WithTimeout(ctx, s.cfg.InlinePipelineTimeout)
 	defer cancel()
 	blocks, extractedText, err := s.readFileContent(pipelineCtx, normalized, format, data)
 	if err != nil {
@@ -1076,7 +1076,7 @@ func (s *RFQService) readMaterialsFromContent(
 func (s *RFQService) readMaterials(
 	ctx context.Context, tenant domain.Tenant, raw string,
 ) (*domain.RFQExtraction, []domain.NewQuoteItem, []domain.NewQuoteItemAlternative, error) {
-	pipelineCtx, cancel := context.WithTimeout(ctx, s.cfg.PipelineTimeout)
+	pipelineCtx, cancel := context.WithTimeout(ctx, s.cfg.InlinePipelineTimeout)
 	defer cancel()
 
 	var examples []domain.RFQInterpretationExample

@@ -52,7 +52,8 @@ func (s stagedExtractor) Extract(
 }
 
 func rfqConfig() config.RFQConfig {
-	return config.RFQConfig{MaxTextCharacters: 20000, MaxItems: 200, PipelineTimeout: time.Minute}
+	return config.RFQConfig{MaxTextCharacters: 20000, MaxItems: 200, PipelineTimeout: time.Minute,
+		InlinePipelineTimeout: time.Minute}
 }
 
 // pipeline wires the RFQ service over the real repositories, the real matching stack, and the

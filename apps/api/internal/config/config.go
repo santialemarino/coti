@@ -148,9 +148,20 @@ type RateLimitConfig struct {
 
 // ServerConfig holds the HTTP listener settings.
 type ServerConfig struct {
-	Port            string
-	ReadTimeout     time.Duration
-	WriteTimeout    time.Duration
+	Port        string
+	ReadTimeout time.Duration
+	// WriteTimeout bounds one handler. It has to stay under EdgeTimeout: whichever deadline
+	// fires first decides what the caller sees, and ours produces an answer where the platform's
+	// produces a severed connection.
+	WriteTimeout time.Duration
+	/*
+	 * EdgeTimeout is how long the platform in front of the API waits for a response before it
+	 * gives up on us. It is not ours to enforce — nothing here can extend it — and it is here so
+	 * the settings that ARE ours can be checked against it at startup.
+	 *
+	 * Zero means nothing is in front (a bare container, a local run) and the checks are skipped.
+	 */
+	EdgeTimeout     time.Duration
 	ShutdownTimeout time.Duration
 }
 
@@ -438,11 +449,19 @@ type RFQConfig struct {
 	// what the model may answer; this bounds what it is asked to read, so a price list
 	// uploaded by mistake is refused before it is paid for.
 	MaxSpreadsheetRows int
-	// PipelineTimeout bounds the whole read-extract-and-match pass. The AI timeouts are per
-	// attempt, so a retrying chain outruns the response budget; this makes the route answer 503
-	// instead of having its response cut off mid-write. It covers an uploaded file too, where
-	// reading or transcribing runs before extraction and the model is handed a whole document.
+	// PipelineTimeout bounds the whole read-extract-and-match pass where nothing is waiting on an
+	// HTTP response — the scheduled sweep. Its ceiling is the job's own budget, which is minutes.
 	PipelineTimeout time.Duration
+	/*
+	 * InlinePipelineTimeout is the same pass with a seller's request still open, and it is a
+	 * separate, shorter budget because it answers to a deadline the sweep does not have: the
+	 * platform's edge. The AI timeouts are per attempt, so a retrying chain outruns any of these;
+	 * this is what makes the route answer rather than have its response cut off mid-write.
+	 *
+	 * Splitting the two is the point. One value would either let a request outlive the edge or
+	 * cut the sweep short for a limit that does not apply to it.
+	 */
+	InlinePipelineTimeout time.Duration
 }
 
 // QuoteCorrectionConfig bounds account-local correction learning.
@@ -628,7 +647,8 @@ func Load() (*Config, error) {
 		Server: ServerConfig{
 			Port:            getString("API_PORT", "8000"),
 			ReadTimeout:     getDuration("SERVER_READ_TIMEOUT_SECONDS", 15*time.Second, &problems),
-			WriteTimeout:    getDuration("SERVER_WRITE_TIMEOUT_SECONDS", 180*time.Second, &problems),
+			WriteTimeout:    getDuration("SERVER_WRITE_TIMEOUT_SECONDS", 90*time.Second, &problems),
+			EdgeTimeout:     getDuration("SERVER_EDGE_TIMEOUT_SECONDS", 100*time.Second, &problems),
 			ShutdownTimeout: getDuration("SERVER_SHUTDOWN_TIMEOUT_SECONDS", 10*time.Second, &problems),
 		},
 		Database: DatabaseConfig{
@@ -742,6 +762,8 @@ func Load() (*Config, error) {
 			MaxItems:           getInt("RFQ_MAX_ITEMS", 200, &problems),
 			MaxSpreadsheetRows: getInt("RFQ_MAX_SPREADSHEET_ROWS", 500, &problems),
 			PipelineTimeout:    getDuration("RFQ_PIPELINE_TIMEOUT_SECONDS", 165*time.Second, &problems),
+			InlinePipelineTimeout: getDuration("RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS",
+				75*time.Second, &problems),
 		},
 		QuoteCorrection: QuoteCorrectionConfig{
 			SimilarityPercent:         getInt("QUOTE_CORRECTION_SIMILARITY_PERCENT", 80, &problems),
@@ -917,12 +939,29 @@ func Load() (*Config, error) {
 	}
 	if cfg.RFQ.PipelineTimeout <= 0 {
 		problems = append(problems, "RFQ_PIPELINE_TIMEOUT_SECONDS must be greater than zero")
-	} else if cfg.RFQ.PipelineTimeout >= cfg.Server.WriteTimeout {
+	}
+	if cfg.RFQ.InlinePipelineTimeout <= 0 {
+		problems = append(problems, "RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS must be greater than zero")
+	} else if cfg.RFQ.InlinePipelineTimeout >= cfg.Server.WriteTimeout {
 		// A pipeline allowed to outlast the response budget has its answer cut off mid-write,
 		// which the client reads as a broken connection rather than as a model that timed out.
 		problems = append(problems, fmt.Sprintf(
-			"RFQ_PIPELINE_TIMEOUT_SECONDS (%s) must be below SERVER_WRITE_TIMEOUT_SECONDS (%s)",
-			cfg.RFQ.PipelineTimeout, cfg.Server.WriteTimeout))
+			"RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS (%s) must be below SERVER_WRITE_TIMEOUT_SECONDS (%s)",
+			cfg.RFQ.InlinePipelineTimeout, cfg.Server.WriteTimeout))
+	}
+	/*
+	 * The platform in front gives up on us at EdgeTimeout, and nothing here can extend it. If our
+	 * own budget is the larger one it never fires: the caller gets a severed connection instead of
+	 * an answer, and — worse — the handler is cancelled mid-flight, so the code that records the
+	 * failure cannot run either. An order is then left looking like it is still being worked.
+	 *
+	 * Zero means nothing is in front of us, which is the local case.
+	 */
+	if cfg.Server.EdgeTimeout > 0 && cfg.Server.WriteTimeout >= cfg.Server.EdgeTimeout {
+		problems = append(problems, fmt.Sprintf(
+			"SERVER_WRITE_TIMEOUT_SECONDS (%s) must be below SERVER_EDGE_TIMEOUT_SECONDS (%s), "+
+				"or the platform cuts the connection before this server can answer",
+			cfg.Server.WriteTimeout, cfg.Server.EdgeTimeout))
 	}
 	if cfg.QuoteCorrection.MaxPatternsPerAccount < 1 {
 		problems = append(problems, "QUOTE_CORRECTION_MAX_PATTERNS_PER_ACCOUNT must be greater than zero")
