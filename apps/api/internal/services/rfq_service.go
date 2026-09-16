@@ -109,7 +109,8 @@ type memoryAwareRFQExtractor interface {
 // rfqAttachmentStorer keeps the file an order arrived as, against the RFQ it produced.
 type rfqAttachmentStorer interface {
 	StoreForRFQ(ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID,
-		file domain.AttachmentUpload, data []byte, extractedText string) error
+		file domain.AttachmentUpload, data []byte, extractedText string) (uuid.UUID, error)
+	ReturnToQueue(ctx context.Context, tenant domain.Tenant, attachmentID uuid.UUID) error
 }
 
 // sellerReach checks that a named seller can serve the caller's branch before a manual entry
@@ -967,8 +968,9 @@ func (s *RFQService) CreateFileDraft(
 
 	// Storing the file before the model runs means an outage there still leaves the seller the
 	// order the client actually sent, on an RFQ they can work by hand.
-	if storeErr := s.attachments.StoreForRFQ(ctx, tenant, rfq.ID, normalized.File, data,
-		extractedText); storeErr != nil {
+	attachmentID, storeErr := s.attachments.StoreForRFQ(ctx, tenant, rfq.ID, normalized.File, data,
+		extractedText)
+	if storeErr != nil {
 		return nil, storeErr
 	}
 
@@ -976,6 +978,24 @@ func (s *RFQService) CreateFileDraft(
 	extraction, items, alternatives, err := s.readMaterialsFromContent(pipelineCtx, tenant,
 		contentExtractor, blocks, extractedText)
 	if err != nil {
+		/*
+		 * A budget that ran out, or a provider that was not there, says nothing about the file:
+		 * it is stored, it is readable, and the sweep has a longer budget with no caller holding
+		 * a connection open. So the order is handed over rather than failed, and stays RECEIVED —
+		 * which is the truth, because it is still being worked.
+		 */
+		if deferrableToSweep(err) {
+			queueErr := s.attachments.ReturnToQueue(ctx, tenant, attachmentID)
+			if queueErr == nil {
+				s.log.InfoContext(ctx, "rfq file handed to the attachment sweep",
+					slog.String("rfq_id", rfq.ID.String()), slog.Any("reason", err))
+				return &domain.TextRFQDraft{RFQ: *rfq}, nil
+			}
+			// The hand-off itself failed, so the order falls through to FAILED: a seller looking
+			// at it by hand beats one waiting on a sweep that will never see the file.
+			s.log.ErrorContext(ctx, "could not hand the rfq file to the sweep",
+				slog.String("rfq_id", rfq.ID.String()), slog.Any("error", queueErr))
+		}
 		s.markRFQFailed(ctx, tenant, rfq, &sellerID)
 		return nil, err
 	}
@@ -1193,6 +1213,17 @@ func (s *RFQService) persistReceivedRFQ(
  * has just expired when a timeout is what brought us here. A failure to record the failure is
  * logged and swallowed: the caller is owed the original error, not this one.
  */
+/*
+ * deferrableToSweep separates "this order could not be interpreted in time" from "this order
+ * cannot be interpreted". The first is about the budget or the provider and a later run may well
+ * succeed; the second is about the file, and no later run changes it.
+ *
+ * A cancelled caller is deliberately absent: nothing can be written once the request is gone.
+ */
+func deferrableToSweep(err error) bool {
+	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, domain.ErrAIUnavailable)
+}
+
 func (s *RFQService) markRFQFailed(
 	ctx context.Context, tenant domain.Tenant, rfq *domain.RFQ, sellerID *uuid.UUID,
 ) *domain.RFQ {

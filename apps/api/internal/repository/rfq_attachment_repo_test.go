@@ -484,3 +484,77 @@ func TestRFQAttachmentRepository_ListReadByRFQIDs_RefusesAnotherAccountsMaterial
 			len(byRFQ))
 	}
 }
+
+/*
+ * The inline intake closes a file out as read the moment it stores it, which is right when the
+ * request goes on to interpret it and wrong when the request runs out of budget first. Handing it
+ * back has to make it claimable again — both timestamps cleared, or a row carrying a stale
+ * processing_started_at reads as a claim somebody else is working.
+ */
+func TestRFQAttachmentRepository_MarkPending_MakesADoneAttachmentClaimableAgain(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Attachment returned to the queue")
+	branchID := branchOf(t, db, accountID)
+	rfqID := seedRFQFor(t, db, accountID, branchID)
+	attachmentID := insertReadAttachment(t, db, accountID, rfqID, "DONE", "20 bolsas de cemento")
+	// A DONE row in the wild carries both timestamps — the claim wrote one and the close-out the
+	// other. Starting from NULLs would let a MarkPending that clears neither pass this.
+	if _, err := db.CrossAccount().Exec(ctx,
+		`UPDATE rfq_attachment SET processing_started_at = now(), processed_at = now()
+		  WHERE id = $1`, attachmentID); err != nil {
+		t.Fatalf("seed timestamps: %v", err)
+	}
+
+	repo := NewRFQAttachmentRepository()
+	if err := repo.MarkPending(ctx, db.CrossAccount(), accountID, attachmentID); err != nil {
+		t.Fatalf("MarkPending() = %v, want no error", err)
+	}
+	if status := statusOf(t, db, attachmentID); status != "PENDING" {
+		t.Fatalf("status = %q, want PENDING", status)
+	}
+
+	var startedAt, processedAt *time.Time
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT processing_started_at, processed_at FROM rfq_attachment WHERE id = $1`,
+		attachmentID).Scan(&startedAt, &processedAt); err != nil {
+		t.Fatalf("read timestamps: %v", err)
+	}
+	if startedAt != nil || processedAt != nil {
+		t.Errorf("timestamps = %v/%v, want both cleared", startedAt, processedAt)
+	}
+
+	claimed, err := repo.ClaimPendingByRFQ(ctx, db.CrossAccount(), everyPendingOrder,
+		15*time.Minute, time.Now())
+	if err != nil {
+		t.Fatalf("ClaimPendingByRFQ() = %v, want no error", err)
+	}
+	took := false
+	for _, a := range claimed {
+		if a.ID == attachmentID {
+			took = true
+		}
+	}
+	if !took {
+		t.Error("the sweep did not claim the attachment that was handed back to it")
+	}
+}
+
+// A row belonging to another account is not this account's to hand back.
+func TestRFQAttachmentRepository_MarkPending_RefusesAnotherAccountsAttachment(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	ownerAccount := seedAccount(t, db, "Requeue owner")
+	otherAccount := seedAccount(t, db, "Requeue intruder")
+	rfqID := seedRFQFor(t, db, ownerAccount, branchOf(t, db, ownerAccount))
+	attachmentID := insertReadAttachment(t, db, ownerAccount, rfqID, "DONE", "cemento")
+
+	err := NewRFQAttachmentRepository().MarkPending(ctx, db.CrossAccount(), otherAccount,
+		attachmentID)
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("MarkPending() = %v, want ErrNotFound across accounts", err)
+	}
+	if status := statusOf(t, db, attachmentID); status != "DONE" {
+		t.Errorf("status = %q, want the row untouched", status)
+	}
+}
