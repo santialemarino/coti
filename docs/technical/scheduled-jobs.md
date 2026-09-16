@@ -106,7 +106,11 @@ No request has any reason to read an audit trail, let alone rewrite one.
 | --------------------------- | --------------------- | ------------------------------------------------ |
 | `quote-correction-learning` | Every 15 minutes      | Retry durable correction memories in PENDING     |
 | `quote-quality-evaluation`  | Every 15 minutes      | Retry evaluations missing after a committed send |
-| `attachment-extraction`     | Every 5 minutes       | Read the files an order arrived with, into text  |
+| `attachment-extraction`     | Every 15 minutes      | Read the files an order arrived with, into text  |
+
+App Platform's scheduled jobs accept a cron expression and a timezone, with a **minimum interval of
+every 15 minutes** — a tighter cron is not honoured, and `doctl apps spec validate --schema-only`
+does not catch it because it is a platform limit rather than a schema rule.
 
 `attachment-extraction` claims a bounded batch, marks it `PROCESSING`, and closes each attachment
 `DONE` with what it read or `FAILED` when it could not be read. A claim expires after

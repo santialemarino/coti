@@ -269,7 +269,7 @@ jobs:
   - name: attachment-extraction
     kind: SCHEDULED
     schedule:
-      cron: '*/5 * * * *'
+      cron: '*/15 * * * *'
       time_zone: America/Argentina/Buenos_Aires
     dockerfile_path: docker/api.Dockerfile
     source_dir: /
