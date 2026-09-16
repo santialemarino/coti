@@ -353,6 +353,8 @@ CREATE TABLE branch_combo (
 
 -- Contact details are nullable: a counter sale with none is allowed and enriched later.
 -- Missing contact never blocks creation.
+-- uq_client_account exists so a child can reference the (account, client) pair rather than the id
+-- alone: the id alone would let another account's client be attached.
 CREATE TABLE client (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id     UUID NOT NULL,
@@ -362,7 +364,8 @@ CREATE TABLE client (
   origin_channel client_origin,
   notes          VARCHAR(512),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_client_account UNIQUE (account_id, id)
 );
 
 CREATE TABLE tag (
@@ -370,7 +373,8 @@ CREATE TABLE tag (
   account_id UUID NOT NULL,
   name       VARCHAR(128) NOT NULL,
   color      VARCHAR(32),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_tag_account UNIQUE (account_id, id)
 );
 
 CREATE TABLE client_tag (
@@ -969,14 +973,14 @@ ALTER TABLE branch_combo ADD CONSTRAINT fk_branch_combo_combo FOREIGN KEY (combo
 ALTER TABLE client ADD CONSTRAINT fk_client_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE tag ADD CONSTRAINT fk_tag_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE client_tag ADD CONSTRAINT fk_client_tag_account FOREIGN KEY (account_id) REFERENCES account(id);
-ALTER TABLE client_tag ADD CONSTRAINT fk_client_tag_client FOREIGN KEY (client_id) REFERENCES client(id);
-ALTER TABLE client_tag ADD CONSTRAINT fk_client_tag_tag FOREIGN KEY (tag_id) REFERENCES tag(id);
+ALTER TABLE client_tag ADD CONSTRAINT fk_client_tag_client FOREIGN KEY (account_id, client_id) REFERENCES client(account_id, id);
+ALTER TABLE client_tag ADD CONSTRAINT fk_client_tag_tag FOREIGN KEY (account_id, tag_id) REFERENCES tag(account_id, id);
 
 ALTER TABLE channel ADD CONSTRAINT fk_channel_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE channel ADD CONSTRAINT fk_channel_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
-ALTER TABLE rfq ADD CONSTRAINT fk_rfq_client FOREIGN KEY (client_id) REFERENCES client(id);
+ALTER TABLE rfq ADD CONSTRAINT fk_rfq_client FOREIGN KEY (account_id, client_id) REFERENCES client(account_id, id);
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_channel FOREIGN KEY (channel_id) REFERENCES channel(id);
 ALTER TABLE rfq_attachment ADD CONSTRAINT fk_rfq_attachment_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE rfq_attachment ADD CONSTRAINT fk_rfq_attachment_rfq FOREIGN KEY (rfq_id) REFERENCES rfq(id);
@@ -986,7 +990,7 @@ ALTER TABLE rfq_status_change ADD CONSTRAINT fk_rfq_status_change_user FOREIGN K
 
 ALTER TABLE quote ADD CONSTRAINT fk_quote_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE quote ADD CONSTRAINT fk_quote_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
-ALTER TABLE quote ADD CONSTRAINT fk_quote_client FOREIGN KEY (client_id) REFERENCES client(id);
+ALTER TABLE quote ADD CONSTRAINT fk_quote_client FOREIGN KEY (account_id, client_id) REFERENCES client(account_id, id);
 ALTER TABLE quote ADD CONSTRAINT fk_quote_rfq FOREIGN KEY (rfq_id) REFERENCES rfq(id);
 ALTER TABLE quote ADD CONSTRAINT fk_quote_seller FOREIGN KEY (seller_id) REFERENCES app_user(id);
 ALTER TABLE quote ADD CONSTRAINT fk_quote_current_version FOREIGN KEY (current_version_id) REFERENCES quote_version(id);
@@ -1068,7 +1072,7 @@ ALTER TABLE handler_decision ADD CONSTRAINT fk_handler_decision_batch FOREIGN KE
 ALTER TABLE handler_decision ADD CONSTRAINT fk_handler_decision_user FOREIGN KEY (user_id) REFERENCES app_user(id);
 ALTER TABLE notification ADD CONSTRAINT fk_notification_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE notification ADD CONSTRAINT fk_notification_user FOREIGN KEY (user_id) REFERENCES app_user(id);
-ALTER TABLE notification ADD CONSTRAINT fk_notification_client FOREIGN KEY (client_id) REFERENCES client(id);
+ALTER TABLE notification ADD CONSTRAINT fk_notification_client FOREIGN KEY (account_id, client_id) REFERENCES client(account_id, id);
 ALTER TABLE notification ADD CONSTRAINT fk_notification_quote FOREIGN KEY (quote_id) REFERENCES quote(id);
 
 -- =============================================================================
