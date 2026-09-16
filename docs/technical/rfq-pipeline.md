@@ -359,10 +359,16 @@ Three settings, all in `apps/api/.env.example`:
   order past the cap is **refused, not truncated**, because keeping the first two hundred lines of a
   three-hundred-line list reads as a complete quote and is not one. A list that long is a
   spreadsheet, and spreadsheets have their own ingest path.
-- **`RFQ_PIPELINE_TIMEOUT_SECONDS`** (165) bounds reading, extraction and matching together.
-  It is sized off what a generation actually costs: the answer is one forced-schema object of
-  roughly seventy tokens per line, so a sixty-item order takes about two minutes to write and
-  a budget under that refuses orders nothing is wrong with.
+- **`RFQ_PIPELINE_TIMEOUT_SECONDS`** (165) bounds reading, extraction and matching **where nothing
+  is waiting on an HTTP response** — the scheduled attachment sweep. It is sized off what a
+  generation actually costs: the answer is one forced-schema object of roughly seventy tokens per
+  line, so a sixty-item order takes about two minutes to write and a budget under that refuses
+  orders nothing is wrong with.
+- **`RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS`** (75) is the same pass **with a seller's request still
+  open**, and it is a separate, shorter value because it answers to a deadline the sweep does not
+  have: `SERVER_EDGE_TIMEOUT_SECONDS`. One shared number would either let a request outlive the edge
+  or cut the sweep short for a limit that does not apply to it. **It is deliberately smaller than
+  what a large order costs** — see below.
 - **`RATE_LIMIT_AI_MAX`** (10) is the fourth, and it lives with the other allowances rather than
   here: it bounds calls per caller per window on the routes that reach a provider. Startup refuses
   a value above `RATE_LIMIT_GLOBAL_MAX`, which could never bite.
@@ -370,12 +376,29 @@ Three settings, all in `apps/api/.env.example`:
 That last one exists because the AI timeouts are **per attempt**: `AI_LLM_TIMEOUT_SECONDS` times
 `AI_MAX_ATTEMPTS` plus backoff is several times `SERVER_WRITE_TIMEOUT_SECONDS`. Left alone, the
 server would cut the response off while it was being written, and the client would read a broken
-connection rather than a model that ran out of time. Startup refuses a pipeline timeout at or above
-the write budget, so the two cannot drift apart.
+connection rather than a model that ran out of time. Startup refuses an inline pipeline timeout at or
+above the write budget, so the two cannot drift apart.
 
-This bounds the symptom. The wider answer is to move extraction off the request path, which is its
-own piece of work: there is no queue in the API today, and `cmd/scheduled-job` runs work on the
-platform's cron rather than on demand.
+### The chain, and why the edge is the outer bound
+
+`RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS` (75) < `SERVER_WRITE_TIMEOUT_SECONDS` (90) <
+`SERVER_EDGE_TIMEOUT_SECONDS` (100). Startup refuses any ordering but that one.
+
+The edge is **not ours** — it is how long the platform in front waits before it gives up on us, and
+nothing in this config can extend it. Whichever deadline fires first decides what the caller sees,
+and the difference is not cosmetic: ours produces an answer, the platform's severs the connection
+mid-handler. That cancellation takes `markRFQFailed` with it — it runs on the **request** context by
+design, so that a pipeline timeout can still record the failure — which leaves the order at
+`RECEIVED` and the seller watching a queue that says "in progress" over a pipeline that already
+died. None of it reproduces locally, where nothing is in front of the server. Set the edge to `0`
+when that is genuinely true.
+
+**A 75-second inline budget cannot finish a large order, and that is the accepted trade.** By the
+sizing above, a sixty-item order needs roughly two minutes. What saves it is that extraction no
+longer has to happen inline: an attachment left unread is picked up by the `attachment-extraction`
+sweep, which has the longer budget and no edge in front of it. That is the wider answer this
+document used to call "its own piece of work" — it exists now, in
+[scheduled-jobs.md](scheduled-jobs.md).
 
 ## Client delivery
 
