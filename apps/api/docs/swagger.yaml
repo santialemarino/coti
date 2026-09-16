@@ -751,6 +751,25 @@ definitions:
       updated_at:
         type: string
     type: object
+  dto.PublicQuoteActionRequest:
+    properties:
+      action:
+        enum:
+        - ACCEPT
+        - REJECT
+        type: string
+    required:
+    - action
+    type: object
+  dto.PublicQuoteActionResponse:
+    properties:
+      action:
+        type: string
+      reference:
+        type: string
+      status:
+        type: string
+    type: object
   dto.PublicQuoteSendResponse:
     properties:
       expires_at:
@@ -3704,6 +3723,51 @@ paths:
       summary: Resolve a public quote delivery token
       tags:
       - public quote sends
+  /v1/public/quote-sends/{token}/actions:
+    post:
+      consumes:
+      - application/json
+      description: Records an explicit accept or reject against the version the customer
+        was shown and moves the quote to ACCEPTED or REJECTED. The unguessable token
+        is the whole authority — there is no session — so an unknown token is a 404
+        and an expired one is refused. A rejection is always the customer's own action;
+        nothing infers one. The quote's seller is told by mail, and a mail that cannot
+        be sent does not undo the answer.
+      parameters:
+      - description: Public delivery token
+        in: path
+        name: token
+        required: true
+        type: string
+      - description: The answer
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.PublicQuoteActionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.PublicQuoteActionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_SEND_EXPIRED on a link past its validity, QUOTE_NOT_SENT
+            once the quote has already been answered
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Answer a quote as its customer
+      tags:
+      - quotes
   /v1/quotes/{quoteId}/accept-materials:
     post:
       description: 'Freezes each line''s unit price and discount floor from the prices

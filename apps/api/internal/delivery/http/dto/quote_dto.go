@@ -169,6 +169,18 @@ type QuoteRepresentationPayloadResponse struct {
 	ValidityNote  string                                `json:"validity_note"`
 }
 
+// PublicQuoteActionRequest is the answer a customer gives to the quote they were sent.
+type PublicQuoteActionRequest struct {
+	Action string `json:"action" binding:"required,oneof=ACCEPT REJECT"`
+}
+
+// PublicQuoteActionResponse reports what the quote became, and nothing the customer may not see.
+type PublicQuoteActionResponse struct {
+	Reference string `json:"reference"`
+	Status    string `json:"status"`
+	Action    string `json:"action"`
+}
+
 // QuoteRepresentationSupplierResponse is the public supplier identity.
 type QuoteRepresentationSupplierResponse struct {
 	Name       string  `json:"name"`

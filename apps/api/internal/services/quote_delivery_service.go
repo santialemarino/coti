@@ -45,6 +45,8 @@ type quoteDeliveryQuoteRepository interface {
 		id uuid.UUID) (*domain.Quote, error)
 	GetByIDForUpdate(ctx context.Context, q repository.Querier, accountID, branchID,
 		id uuid.UUID) (*domain.Quote, error)
+	GetByVersionID(ctx context.Context, q repository.Querier, accountID,
+		versionID uuid.UUID) (*domain.Quote, error)
 	GetCurrentVersion(ctx context.Context, q repository.Querier, accountID, branchID,
 		quoteID uuid.UUID) (*domain.QuoteVersion, error)
 	FreezeVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID,
@@ -112,6 +114,8 @@ type QuoteDeliveryService struct {
 	email           quoteEmailSender
 	evaluator       QuoteQualityEvaluator
 	representations quoteRepresentationEnsurer
+	actions         clientActionRecorder
+	sellers         quoteSellerReader
 	webappURL       string
 	now             func() time.Time
 	log             *slog.Logger

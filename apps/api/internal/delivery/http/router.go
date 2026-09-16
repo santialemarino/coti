@@ -112,6 +112,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 		public.GET("/account-logos/:accountId/:logoId", h.AccountLogo.Get)
 	}
 	public.GET("/quote-sends/:token", h.Quote.ResolvePublic)
+	public.POST("/quote-sends/:token/actions", h.Quote.RecordClientAction)
 
 	authed := v1.Group("", middleware.RequireTenant())
 
