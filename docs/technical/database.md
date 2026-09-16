@@ -42,6 +42,13 @@ pnpm db:reset     # drop the volume and rebuild
 pnpm db:create-migration <name>
 ```
 
+**Every one of these connects by `DATABASE_ADMIN_URL`** — none of them shells into a container, so
+they reach whatever database that URL names: a differently named container, a Postgres installed on
+the host, a remote development instance. Only the first step of `db:init` is Docker-specific (it runs
+`docker compose up -d postgres`); readiness and the seed are plain connections. The `POSTGRES_*`
+variables provision the compose container, so they and the URLs have to agree — the URLs are what
+everything actually connects by.
+
 **One index is not in the chain, on purpose.** The catalog's approximate vector index is
 degenerate when built on an empty table, so it is a start-up step run once the catalog is loaded
 and embedded — `pnpm db:vector-index`, documented in [catalog.md](catalog.md#embedding-the-catalog).
