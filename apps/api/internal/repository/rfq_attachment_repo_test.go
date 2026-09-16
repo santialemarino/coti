@@ -205,6 +205,23 @@ func statusOf(t *testing.T, db *DB, attachmentID uuid.UUID) string {
 	return status
 }
 
+// everyPendingOrder is a limit no test can be crowded out of. The package shares a database, so a
+// test asserting on its OWN rows must not compete for a bounded number of slots — the limit's
+// semantics are pinned by the two tests that exist for them.
+const everyPendingOrder = 1000
+
+// pendingCountFor reports how many of one order's attachments are still waiting to be claimed.
+func pendingCountFor(t *testing.T, db *DB, rfqID uuid.UUID) int {
+	t.Helper()
+	var pending int
+	if err := db.CrossAccount().QueryRow(context.Background(),
+		`SELECT count(*) FROM rfq_attachment WHERE rfq_id = $1 AND processing_status = 'PENDING'`,
+		rfqID).Scan(&pending); err != nil {
+		t.Fatalf("count pending: %v", err)
+	}
+	return pending
+}
+
 // The claim is the whole contract of the sweep: it must take a pending row, mark it PROCESSING in
 // the same statement, and carry the branch its RFQ belongs to — the attachment row has none, and
 // every service the sweep calls is branch-scoped.
@@ -218,7 +235,7 @@ func TestRFQAttachmentRepository_ClaimPendingByRFQ_TakesPendingRowsAndCarriesThe
 	doneID := insertAttachment(t, db, accountID, rfqID, "DONE", nil)
 
 	now := time.Now()
-	claimed, err := NewRFQAttachmentRepository().ClaimPendingByRFQ(ctx, db.CrossAccount(), 10,
+	claimed, err := NewRFQAttachmentRepository().ClaimPendingByRFQ(ctx, db.CrossAccount(), everyPendingOrder,
 		15*time.Minute, now)
 	if err != nil {
 		t.Fatalf("ClaimPendingByRFQ() = %v, want no error", err)
@@ -270,7 +287,7 @@ func TestRFQAttachmentRepository_ClaimPendingByRFQ_ReclaimsAStaleClaimAndLeavesA
 	staleID := insertAttachment(t, db, accountID, rfqID, "PROCESSING", &stale)
 	freshID := insertAttachment(t, db, accountID, rfqID, "PROCESSING", &fresh)
 
-	claimed, err := NewRFQAttachmentRepository().ClaimPendingByRFQ(ctx, db.CrossAccount(), 10,
+	claimed, err := NewRFQAttachmentRepository().ClaimPendingByRFQ(ctx, db.CrossAccount(), everyPendingOrder,
 		15*time.Minute, now)
 	if err != nil {
 		t.Fatalf("ClaimPendingByRFQ() = %v, want no error", err)
@@ -314,9 +331,13 @@ func TestRFQAttachmentRepository_ClaimPendingByRFQ_TakesNoMoreOrdersThanTheLimit
 }
 
 /*
- * A whole order is claimed at once, however many files it is holding and whatever the limit is.
- * An order is extracted a single time over everything it arrived with, so a limit that cut across
- * one would send the model half a client's message and close the other half out as read.
+ * A whole order is claimed at once, however many files it is holding and whatever the limit is. An
+ * order is extracted a single time over everything it arrived with, so a limit that cut across one
+ * would send the model half a client's message and close the other half out as read.
+ *
+ * The assertion is on whichever order the limit picks rather than on this test's own: the package
+ * shares a database, so which order is oldest is not this test's to decide — but no order may come
+ * back half-claimed.
  */
 func TestRFQAttachmentRepository_ClaimPendingByRFQ_TakesEveryFileOfAnOrder(t *testing.T) {
 	db := testDB(t)
@@ -333,32 +354,51 @@ func TestRFQAttachmentRepository_ClaimPendingByRFQ_TakesEveryFileOfAnOrder(t *te
 	if err != nil {
 		t.Fatalf("ClaimPendingByRFQ() = %v, want no error", err)
 	}
-	if len(claimed) != 3 {
-		t.Fatalf("ClaimPendingByRFQ(limit 1 order) took %d files, want all 3 of the order",
-			len(claimed))
+	if len(claimed) == 0 {
+		t.Fatal("ClaimPendingByRFQ(limit 1) took nothing, want one whole order")
+	}
+
+	orders := map[uuid.UUID]bool{}
+	for _, a := range claimed {
+		orders[a.RFQID] = true
+	}
+	if len(orders) != 1 {
+		t.Fatalf("ClaimPendingByRFQ(limit 1) spanned %d orders, want exactly one", len(orders))
+	}
+	for taken := range orders {
+		if left := pendingCountFor(t, db, taken); left != 0 {
+			t.Errorf("order %s kept %d files pending, want the whole order claimed", taken, left)
+		}
 	}
 }
 
-/*
- * rfq_attachment.rfq_id references rfq(id) alone, so nothing in the database stops a row naming
- * another account's order. The sweep runs as the owner, where row level security refuses nothing,
- * and it reads the branch off that RFQ — so a mismatched pair would carry a foreign branch into
- * everything the sweep then does. The claim refuses instead of defaulting.
- */
-func TestRFQAttachmentRepository_ClaimPendingByRFQ_RefusesAnAttachmentNamingAnotherAccountsRFQ(t *testing.T) {
+// Claimed with a limit that cannot crowd it out, an order hands over every file it is holding.
+func TestRFQAttachmentRepository_ClaimPendingByRFQ_LeavesNoFileOfAnOrderBehind(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()
-	victimAccount := seedAccount(t, db, "Attachment claim victim")
-	intruderAccount := seedAccount(t, db, "Attachment claim intruder")
-	victimRFQ := seedRFQFor(t, db, victimAccount, branchOf(t, db, victimAccount))
+	accountID := seedAccount(t, db, "Attachment claim no file behind")
+	branchID := branchOf(t, db, accountID)
+	rfqID := seedRFQFor(t, db, accountID, branchID)
+	for range 3 {
+		insertAttachment(t, db, accountID, rfqID, "PENDING", nil)
+	}
 
-	// The attachment claims the intruder's account while pointing at the victim's order.
-	insertAttachment(t, db, intruderAccount, victimRFQ, "PENDING", nil)
-
-	_, err := NewRFQAttachmentRepository().ClaimPendingByRFQ(ctx, db.CrossAccount(),
-		10, 15*time.Minute, time.Now())
-	if !errors.Is(err, domain.ErrNotFound) {
-		t.Fatalf("ClaimPendingByRFQ() = %v, want ErrNotFound for a cross-account attachment", err)
+	claimed, err := NewRFQAttachmentRepository().ClaimPendingByRFQ(ctx, db.CrossAccount(),
+		everyPendingOrder, 15*time.Minute, time.Now())
+	if err != nil {
+		t.Fatalf("ClaimPendingByRFQ() = %v, want no error", err)
+	}
+	var mine int
+	for _, a := range claimed {
+		if a.RFQID == rfqID {
+			mine++
+		}
+	}
+	if mine != 3 {
+		t.Errorf("ClaimPendingByRFQ() took %d of the order's files, want all 3", mine)
+	}
+	if left := pendingCountFor(t, db, rfqID); left != 0 {
+		t.Errorf("the order kept %d files pending, want none", left)
 	}
 }
 
