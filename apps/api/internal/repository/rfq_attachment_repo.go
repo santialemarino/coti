@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -70,43 +71,50 @@ func (r *RFQAttachmentRepository) Create(
 }
 
 /*
- * ClaimPending takes the next attachments of the given types and marks them PROCESSING in the same
+ * ClaimPendingByRFQ takes the attachments waiting to be read and marks them PROCESSING in the same
  * statement, so a row is never handed to two workers. It crosses every account by design: a sweep
  * runs as the owner. A claim expires after reclaimAfter, or a run killed mid-work would park its
  * rows at PROCESSING forever — the same leak it exists to drain.
  *
- * The selection is a CTE rather than `id IN (SELECT … LIMIT n)`, and that is load-bearing: the
- * planner reads the IN form as a semi-join whose inner side it may re-execute per outer row, so
- * the LIMIT stops bounding anything and one firing claims the whole queue.
+ * The limit counts ORDERS rather than attachments, and a whole order is claimed at once: an order
+ * is extracted a single time over everything it arrived with, so claiming half of one would
+ * extract over half its material and close the rest out as read. Every format is claimed — a
+ * recording, a spreadsheet and a text file yield text of their own, an image and a PDF reach the
+ * model as they are.
+ *
+ * The selection is a materialised CTE rather than `id IN (SELECT … LIMIT n)`, and that is
+ * load-bearing: the planner reads the IN form as a semi-join whose inner side it may re-execute
+ * per outer row, so the LIMIT stops bounding anything and one firing claims the whole queue.
  */
-func (r *RFQAttachmentRepository) ClaimPending(
-	ctx context.Context, q Querier, types []domain.AttachmentType, limit int,
-	reclaimAfter time.Duration, now time.Time,
+func (r *RFQAttachmentRepository) ClaimPendingByRFQ(
+	ctx context.Context, q Querier, rfqLimit int, reclaimAfter time.Duration, now time.Time,
 ) ([]domain.ClaimedAttachment, error) {
-	// pgx has no encode plan for a slice of the named type, so the enum array crosses as strings.
-	wanted := make([]string, 0, len(types))
-	for _, t := range types {
-		wanted = append(wanted, string(t))
-	}
-
 	rows, err := q.Query(ctx,
-		`WITH claimed AS (
+		`WITH targets AS MATERIALIZED (
+		        SELECT a.rfq_id
+		          FROM rfq_attachment a
+		         WHERE a.processing_status = 'PENDING'
+		            OR (a.processing_status = 'PROCESSING'
+		                AND a.processing_started_at < $2::timestamptz - $3::interval)
+		         GROUP BY a.rfq_id
+		         ORDER BY MIN(a.created_at), a.rfq_id
+		         LIMIT $1),
+		      claimed AS (
 		        SELECT a.id
 		          FROM rfq_attachment a
-		         WHERE a.type = ANY($4::attachment_type[])
-		           AND (a.processing_status = 'PENDING'
-		                OR (a.processing_status = 'PROCESSING'
-		                    AND a.processing_started_at < $2::timestamptz - $3::interval))
-		         ORDER BY a.created_at, a.id
-		         LIMIT $1
-		           FOR UPDATE SKIP LOCKED)
+		          JOIN targets t ON t.rfq_id = a.rfq_id
+		         WHERE a.processing_status = 'PENDING'
+		            OR (a.processing_status = 'PROCESSING'
+		                AND a.processing_started_at < $2::timestamptz - $3::interval)
+		           FOR UPDATE OF a SKIP LOCKED)
 		 UPDATE rfq_attachment
 		    SET processing_status = 'PROCESSING', processing_started_at = $2
 		   FROM claimed
 		  WHERE rfq_attachment.id = claimed.id
 		 RETURNING rfq_attachment.id, rfq_attachment.account_id, rfq_attachment.rfq_id,
-		           rfq_attachment.type, COALESCE(rfq_attachment.file_url, '')`,
-		limit, now, reclaimAfter.String(), wanted)
+		           rfq_attachment.type, COALESCE(rfq_attachment.file_url, ''),
+		           rfq_attachment.created_at`,
+		rfqLimit, now, reclaimAfter.String())
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +122,8 @@ func (r *RFQAttachmentRepository) ClaimPending(
 	claimed := make([]domain.ClaimedAttachment, 0)
 	for rows.Next() {
 		var a domain.ClaimedAttachment
-		if err := rows.Scan(&a.ID, &a.AccountID, &a.RFQID, &a.Type, &a.StorageKey); err != nil {
+		if err := rows.Scan(&a.ID, &a.AccountID, &a.RFQID, &a.Type, &a.StorageKey,
+			&a.CreatedAt); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -126,7 +135,58 @@ func (r *RFQAttachmentRepository) ClaimPending(
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	// RETURNING does not promise the order the rows were chosen in, and the material a model
+	// reads is assembled in this order.
+	sort.Slice(claimed, func(i, j int) bool {
+		if !claimed[i].CreatedAt.Equal(claimed[j].CreatedAt) {
+			return claimed[i].CreatedAt.Before(claimed[j].CreatedAt)
+		}
+		return claimed[i].ID.String() < claimed[j].ID.String()
+	})
 	return r.fillBranches(ctx, q, claimed)
+}
+
+/*
+ * ListReadByRFQIDs returns, per order, the attachments that have already been read and yielded
+ * text. The sweep needs it for the whole batch at once: a later file is extracted alongside what
+ * the order's earlier ones yielded, and asking per order would be a query inside the batch loop.
+ *
+ * Orders are matched by the (rfq_id, account_id) pair, so an order can never pick up another
+ * account's material — rfq_attachment.rfq_id references rfq(id) alone, and the sweep runs as the
+ * owner where row level security refuses nothing.
+ */
+func (r *RFQAttachmentRepository) ListReadByRFQIDs(
+	ctx context.Context, q Querier, rfqIDs, accountIDs []uuid.UUID,
+) (map[uuid.UUID][]domain.RFQAttachment, error) {
+	byRFQ := make(map[uuid.UUID][]domain.RFQAttachment, len(rfqIDs))
+	if len(rfqIDs) == 0 {
+		return byRFQ, nil
+	}
+	rows, err := q.Query(ctx,
+		`SELECT a.id, a.account_id, a.rfq_id, a.type, a.file_url, a.extracted_text,
+		        a.processing_status, a.created_at, a.processed_at
+		   FROM rfq_attachment a
+		   JOIN unnest($1::uuid[], $2::uuid[]) AS wanted(rfq_id, account_id)
+		     ON a.rfq_id = wanted.rfq_id AND a.account_id = wanted.account_id
+		  WHERE a.processing_status = 'DONE'
+		    AND a.extracted_text IS NOT NULL
+		    AND a.extracted_text <> ''
+		  ORDER BY a.created_at, a.id`,
+		rfqIDs, accountIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var a domain.RFQAttachment
+		if err := rows.Scan(&a.ID, &a.AccountID, &a.RFQID, &a.Type, &a.StorageKey,
+			&a.ExtractedText, &a.ProcessingStatus, &a.CreatedAt, &a.ProcessedAt); err != nil {
+			return nil, err
+		}
+		byRFQ[a.RFQID] = append(byRFQ[a.RFQID], a)
+	}
+	return byRFQ, rows.Err()
 }
 
 // MarkProcessed records what the multi-format engine read out of one attachment and closes it
@@ -149,15 +209,6 @@ func (r *RFQAttachmentRepository) MarkProcessed(
 	return nil
 }
 
-/*
- * fillBranches reads each claimed attachment's branch off its RFQ in one round trip, because the
- * attachment row carries none and every service the sweep calls is branch-scoped.
- *
- * It matches on the account as well as the id even though the sweep already runs as the owner: an
- * attachment whose RFQ belongs to another account is a corrupt row, and handing that RFQ's branch
- * downstream would carry the mistake into everything the sweep then does. Unmatched means refused,
- * not defaulted.
- */
 func (r *RFQAttachmentRepository) fillBranches(
 	ctx context.Context, q Querier, claimed []domain.ClaimedAttachment,
 ) ([]domain.ClaimedAttachment, error) {

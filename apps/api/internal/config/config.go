@@ -462,7 +462,10 @@ type QuoteQualityConfig struct {
 // window is how long a claim stands: past it the row is taken again, so a run killed mid-work
 // releases its attachments instead of parking them at PROCESSING forever.
 type AttachmentConfig struct {
-	ExtractionBatchSize    int
+	// ExtractionRFQBatchSize counts orders, not files: an order with several attachments is
+	// extracted once over all of them, so the model call — not the file read — is what a batch
+	// costs. Startup keeps the batch short enough to finish inside the reclaim window.
+	ExtractionRFQBatchSize int
 	ExtractionReclaimAfter time.Duration
 }
 
@@ -756,7 +759,7 @@ func Load() (*Config, error) {
 			ProcessingBatchSize: getInt("QUOTE_QUALITY_PROCESSING_BATCH_SIZE", 100, &problems),
 		},
 		Attachment: AttachmentConfig{
-			ExtractionBatchSize: getInt("ATTACHMENT_EXTRACTION_BATCH_SIZE", 25, &problems),
+			ExtractionRFQBatchSize: getInt("ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE", 5, &problems),
 			ExtractionReclaimAfter: getDuration("ATTACHMENT_EXTRACTION_RECLAIM_MINUTES",
 				15*time.Minute, &problems),
 		},
@@ -932,6 +935,27 @@ func Load() (*Config, error) {
 	}
 	if cfg.QuoteQuality.ProcessingBatchSize < 1 {
 		problems = append(problems, "QUOTE_QUALITY_PROCESSING_BATCH_SIZE must be greater than zero")
+	}
+	if cfg.Attachment.ExtractionRFQBatchSize < 1 {
+		problems = append(problems, "ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE must be greater than zero")
+	}
+	if cfg.Attachment.ExtractionReclaimAfter <= 0 {
+		problems = append(problems, "ATTACHMENT_EXTRACTION_RECLAIM_MINUTES must be greater than zero")
+	}
+	// Every order in a batch costs a model call, so a full batch can run for the batch size times
+	// the pipeline budget. Past the reclaim window the run's own claims expire while it still
+	// holds them, and the next firing extracts the same orders again — paying twice and writing
+	// two drafts. The batch is what gives way, because the other two are bounded elsewhere.
+	if cfg.Attachment.ExtractionRFQBatchSize > 0 && cfg.RFQ.PipelineTimeout > 0 &&
+		cfg.Attachment.ExtractionReclaimAfter > 0 {
+		worst := time.Duration(cfg.Attachment.ExtractionRFQBatchSize) * cfg.RFQ.PipelineTimeout
+		if worst > cfg.Attachment.ExtractionReclaimAfter {
+			problems = append(problems, fmt.Sprintf(
+				"ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE (%d) times RFQ_PIPELINE_TIMEOUT_SECONDS (%s) "+
+					"is %s, which must not exceed ATTACHMENT_EXTRACTION_RECLAIM_MINUTES (%s)",
+				cfg.Attachment.ExtractionRFQBatchSize, cfg.RFQ.PipelineTimeout, worst,
+				cfg.Attachment.ExtractionReclaimAfter))
+		}
 	}
 
 	catalogPercents := []struct {

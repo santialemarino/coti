@@ -253,6 +253,46 @@ func TestLoad_RFQKeysLandOnTheirOwnFields(t *testing.T) {
 	}
 }
 
+/*
+ * A batch of orders costs a model call each, so a full batch can run for the batch size times the
+ * pipeline budget. Past the reclaim window the run's own claims expire while it still holds them
+ * and the next firing extracts the same orders again, paying twice and writing two drafts.
+ * Nothing at runtime would report that, so startup refuses the combination.
+ */
+func TestLoad_RejectsAnAttachmentBatchThatOutlastsItsClaim(t *testing.T) {
+	env := minimalEnv()
+	env["ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE"] = "10"
+	env["RFQ_PIPELINE_TIMEOUT_SECONDS"] = "165"
+	env["ATTACHMENT_EXTRACTION_RECLAIM_MINUTES"] = "15"
+	setEnv(t, env)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() = nil, want the batch refused for outlasting its own claim")
+	}
+	if !strings.Contains(err.Error(), "ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE") {
+		t.Errorf("error = %v, want it to name the key that has to give way", err)
+	}
+}
+
+// The same three keys in a combination that fits must load, or the check above is just a ban.
+func TestLoad_AcceptsAnAttachmentBatchThatFitsItsClaim(t *testing.T) {
+	env := minimalEnv()
+	env["ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE"] = "5"
+	env["RFQ_PIPELINE_TIMEOUT_SECONDS"] = "165"
+	env["ATTACHMENT_EXTRACTION_RECLAIM_MINUTES"] = "15"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.Attachment.ExtractionRFQBatchSize != 5 {
+		t.Errorf("Attachment.ExtractionRFQBatchSize = %d, want 5",
+			cfg.Attachment.ExtractionRFQBatchSize)
+	}
+}
+
 func TestLoad_QuoteCorrectionKeysLandOnTheirOwnFields(t *testing.T) {
 	env := minimalEnv()
 	env["QUOTE_CORRECTION_SIMILARITY_PERCENT"] = "81"

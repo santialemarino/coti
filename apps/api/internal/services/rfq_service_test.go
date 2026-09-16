@@ -68,6 +68,12 @@ func (f *fakeRfqRepoManual) GetByRFQID(
 	return nil, errors.New("not implemented in manual fake")
 }
 
+func (f *fakeRfqRepoManual) GetByID(
+	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID,
+) (*domain.RFQ, error) {
+	return nil, errors.New("not implemented in manual fake")
+}
+
 func (f *fakeRfqRepoManual) AssignSeller(
 	_ context.Context, _ repository.Querier, _ domain.Tenant, _ uuid.UUID,
 ) (*domain.Quote, error) {
@@ -518,6 +524,8 @@ type fakeRFQs struct {
 	statusHistoryErr error
 	rfqByID          *domain.RfqListItem
 	rfqByIDErr       error
+	rfqRow           *domain.RFQ
+	rfqRowErr        error
 	assigned         *domain.Quote
 	assignErr        error
 	set              *domain.Quote
@@ -534,6 +542,18 @@ func (f *fakeRFQs) Create(
 		ChannelID: in.ChannelID, RawText: in.RawText, Status: in.Status, WorkType: in.WorkType,
 		ClientLabel: in.ClientLabel,
 	}, nil
+}
+
+func (f *fakeRFQs) GetByID(
+	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID,
+) (*domain.RFQ, error) {
+	if f.rfqRowErr != nil {
+		return nil, f.rfqRowErr
+	}
+	if f.rfqRow == nil {
+		return nil, domain.ErrNotFound
+	}
+	return f.rfqRow, nil
 }
 
 func (f *fakeRFQs) UpdateStatus(

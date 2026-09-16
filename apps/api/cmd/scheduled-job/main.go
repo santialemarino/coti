@@ -23,6 +23,7 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"github.com/santialemarino/coti/apps/api/internal/ai"
 	aiprovider "github.com/santialemarino/coti/apps/api/internal/ai/provider"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
@@ -89,10 +90,23 @@ func run() error {
 	attachmentReader := services.NewRFQAttachmentService(db, attachmentRepo,
 		objectStorage.Storage, cfg.Storage, nil).
 		WithTranscription(providers.Transcriber, cfg.RFQ.MaxTextCharacters)
+	// The sweep extracts, so it needs the RFQ engine the request path uses — the same extractor,
+	// the same catalog matching, the same persistence. Reading a file and interpreting it are one
+	// decision, and a second implementation of it here would be a second one to keep honest.
+	rfqRepo := repository.NewRFQRepository()
+	quoteRepo := repository.NewQuoteRepository()
+	catalogSearch := services.NewCatalogSearchService(db, repository.NewProductRepository(),
+		providers.Embedder, cfg.Catalog)
+	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo, sends,
+		repository.NewQuoteAIGenerationRepository(), repository.NewChannelRepository(),
+		repository.NewUserRepository(), ai.NewRFQExtractor(providers.Generator, cfg.RFQ.MaxItems),
+		services.NewCatalogMatchService(catalogSearch, cfg.Catalog), log, cfg.RFQ).
+		WithCorrectionMemory(correctionService)
 	jobs, err := services.NewJobService(db, repository.NewJobRunRepository(), log,
 		services.NewQuoteCorrectionJob(corrections, providers.Embedder, cfg.QuoteCorrection),
 		services.NewQuoteQualityJob(sends, qualityEvaluator, cfg.QuoteQuality),
-		services.NewAttachmentExtractionJob(attachmentRepo, attachmentReader, cfg.Attachment, log))
+		services.NewAttachmentExtractionJob(attachmentRepo, attachmentReader, rfqService,
+			cfg.Attachment, log))
 	if err != nil {
 		return err
 	}
