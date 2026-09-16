@@ -393,12 +393,24 @@ design, so that a pipeline timeout can still record the failure — which leaves
 died. None of it reproduces locally, where nothing is in front of the server. Set the edge to `0`
 when that is genuinely true.
 
-**A 75-second inline budget cannot finish a large order, and that is the accepted trade.** By the
-sizing above, a sixty-item order needs roughly two minutes. What saves it is that extraction no
-longer has to happen inline: an attachment left unread is picked up by the `attachment-extraction`
-sweep, which has the longer budget and no edge in front of it. That is the wider answer this
-document used to call "its own piece of work" — it exists now, in
-[scheduled-jobs.md](scheduled-jobs.md).
+### A large order outruns the inline budget, and is handed over rather than failed
+
+**A 75-second inline budget cannot finish a large order** — by the sizing above a sixty-item order
+needs roughly two minutes — so `CreateFileDraft` hands it to the sweep instead of failing it. The
+file is already stored by then, so the intake returns the attachment to the queue (`PENDING`, both
+timestamps cleared) and answers with the order at **`RECEIVED`**, which is the truth: it is still
+being worked. `attachment-extraction` reads it on its next firing with the longer budget and no
+caller holding a connection open, and drafts the quote exactly as the inline path would have.
+
+**Only an interruption is handed over.** A budget that ran out or a provider that was not there says
+nothing about the file, and a later run may well succeed. A model that answered and found no
+materials, or a failure about the file itself, still moves the order to `FAILED` — the bytes do not
+change, so a later run reads the same nothing, and the order is the seller's to load by hand. A
+hand-off that cannot itself be written falls back to `FAILED` for the same reason.
+
+So the three outcomes a caller sees are `rfq.status`: **`GENERATED`** with a draft, **`RECEIVED`**
+with none (the sweep has it), **`FAILED`** (yours to load). No new field, and nothing to poll that
+the queue does not already show.
 
 ## Client delivery
 

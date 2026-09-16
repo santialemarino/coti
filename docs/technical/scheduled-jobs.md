@@ -128,6 +128,12 @@ order's already-processed files yielded is passed along with the new material, s
 photo was read an hour ago and whose recording arrives now is not extracted from the recording
 alone. Only stored text is reused — an earlier image or PDF is not downloaded again.
 
+**It also catches what the request path could not finish.** The inline file intake runs on a budget
+below the platform's edge timeout (`RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS`, 75s), which is smaller than
+a large order costs. When it runs out — or the provider is unavailable — it returns the attachment to
+this queue instead of failing the order, and the sweep finishes the job on the longer budget. See
+[rfq-pipeline.md](rfq-pipeline.md).
+
 **What the extraction is allowed to write is decided by the quote's own state**, per _the AI never
 rewrites a reviewed quote_:
 

@@ -189,6 +189,28 @@ func (r *RFQAttachmentRepository) ListReadByRFQIDs(
 	return byRFQ, rows.Err()
 }
 
+/*
+ * MarkPending hands an attachment back to the sweep, clearing both timestamps so the row reads as
+ * one nothing has started on. The inline intake uses it when it runs out of budget: the file is
+ * stored and perfectly readable, it just could not be interpreted inside a request.
+ */
+func (r *RFQAttachmentRepository) MarkPending(
+	ctx context.Context, q Querier, accountID, attachmentID uuid.UUID,
+) error {
+	tag, err := q.Exec(ctx,
+		`UPDATE rfq_attachment
+		    SET processing_status = 'PENDING', processing_started_at = NULL, processed_at = NULL
+		  WHERE account_id = $1 AND id = $2`,
+		accountID, attachmentID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 // MarkProcessed records what the multi-format engine read out of one attachment and closes it
 // out. An empty text is stored as NULL: an image yields none, and the file is the record.
 func (r *RFQAttachmentRepository) MarkProcessed(
