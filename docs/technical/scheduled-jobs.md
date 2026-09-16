@@ -96,9 +96,11 @@ No request has any reason to read an audit trail, let alone rewrite one.
 
 ## Configuration
 
-| Variable              | Default | What for              |
-| --------------------- | ------- | --------------------- |
-| `JOB_TIMEOUT_MINUTES` | 30      | Bound on a single run |
+| Variable                                | Default | What for                                  |
+| --------------------------------------- | ------- | ----------------------------------------- |
+| `JOB_TIMEOUT_MINUTES`                   | 30      | Bound on a single run                     |
+| `ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE`  | 5       | Orders read per firing of the sweep       |
+| `ATTACHMENT_EXTRACTION_RECLAIM_MINUTES` | 15      | How long one run's claim on a file stands |
 
 ## Registered schedules
 
@@ -106,15 +108,48 @@ No request has any reason to read an audit trail, let alone rewrite one.
 | --------------------------- | --------------------- | ------------------------------------------------ |
 | `quote-correction-learning` | Every 15 minutes      | Retry durable correction memories in PENDING     |
 | `quote-quality-evaluation`  | Every 15 minutes      | Retry evaluations missing after a committed send |
-| `attachment-extraction`     | Every 15 minutes      | Read the files an order arrived with, into text  |
+| `attachment-extraction`     | Every 15 minutes      | Read the files an order arrived with and extract |
 
 App Platform's scheduled jobs accept a cron expression and a timezone, with a **minimum interval of
 every 15 minutes** — a tighter cron is not honoured, and `doctl apps spec validate --schema-only`
 does not catch it because it is a platform limit rather than a schema rule.
 
-`attachment-extraction` claims a bounded batch, marks it `PROCESSING`, and closes each attachment
-`DONE` with what it read or `FAILED` when it could not be read. A claim expires after
-`ATTACHMENT_EXTRACTION_RECLAIM_MINUTES`, so a run killed mid-work releases its rows instead of
-parking them. It sweeps only the formats that carry text of their own — a recording, a spreadsheet,
-a text file. An image and a PDF are read by the model as they are, so closing them out means
-running the extraction, which is the rest of the multi-format ticket.
+### `attachment-extraction`
+
+**Its unit is the order, not the file.** An order regularly arrives as a photo with a recording
+explaining it, so the sweep claims every pending file of an order together, reads each one, and
+runs the extraction **once** over all of it. `ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE` therefore counts
+orders; a limit that cut across one order would send the model half a client's message and close
+the other half out as read.
+
+Every format is claimed. A recording, a spreadsheet and a text file yield text, which is stored on
+the attachment row; an image and a PDF have no text step and reach the model as they are. What the
+order's already-processed files yielded is passed along with the new material, so an order whose
+photo was read an hour ago and whose recording arrives now is not extracted from the recording
+alone. Only stored text is reused — an earlier image or PDF is not downloaded again.
+
+**What the extraction is allowed to write is decided by the quote's own state**, per _the AI never
+rewrites a reviewed quote_:
+
+| Quote on the order | What happens                                                        |
+| ------------------ | ------------------------------------------------------------------- |
+| None               | The material drafts one, exactly as the inline intake would         |
+| `DRAFT`            | A **new draft version** of the same quote; the earlier one is kept  |
+| `QUOTED` onwards   | Nothing is written — the file is stored and surfaced for the seller |
+
+A second quote is never created for an order: `rfq → quote` is one to one. The seller is never
+recorded as the author of anything the sweep writes, because a sweep is not a person.
+
+An attachment that cannot be read is closed `FAILED` on its own and the rest of the order is
+extracted anyway; the failed row is what shows the seller which file needs their attention. An
+order where nothing could be read and that has no quote is moved to `FAILED`, so it stops looking
+like it is still being worked. An **extraction** that fails is the opposite case: the model may
+simply have been unreachable, so the files stay claimed and the expiring claim puts them back in
+the queue.
+
+**The batch, the pipeline budget and the reclaim window are one constraint.** Each order in a batch
+costs a model call, so a full batch can run for `ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE` ×
+`RFQ_PIPELINE_TIMEOUT_SECONDS`. If that exceeds `ATTACHMENT_EXTRACTION_RECLAIM_MINUTES`, a run's own
+claims expire while it still holds them and the next firing extracts the same orders again — paying
+twice and writing two drafts. Startup refuses the combination rather than leaving it to be noticed
+in a bill.
