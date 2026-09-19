@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
@@ -211,5 +212,54 @@ func TestFoldAttachmentsIntoQuote_RefusesAnOrderItCannotRead(t *testing.T) {
 	}
 	if h.extractor.calls != 0 {
 		t.Errorf("extractor ran %d times, want none", h.extractor.calls)
+	}
+}
+
+/*
+ * The same "sin descarte silencioso" rule seen from the sweep: a line the catalog cannot answer
+ * for reaches the draft flagged. A file that arrives on its own is the case where nobody is
+ * watching the request, so a line dropped here is a line nobody ever learns was asked for.
+ */
+func TestFoldAttachmentsIntoQuote_FlagsAnAmbiguousLineRatherThanDroppingIt(t *testing.T) {
+	t.Parallel()
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("cemento portland 50kg", "20", "bolsa", "lo pidió así"),
+		explicitLine("lo de siempre para el contrapiso", "1", "", "no lo aclaró"),
+	})
+	h.rfqs.rfqRow = &domain.RFQ{ID: testRFQID, AccountID: testAccountID, BranchID: testBranchID,
+		ChannelID: testChannelID, Status: domain.RFQStatusReceived}
+	matched := testProductID
+	h.matcher.matches = []domain.LineMatch{
+		{ProductID: &matched, MatchStatus: domain.ItemMatchStatusMatched,
+			Confidence: decimal.RequireFromString("0.9100")},
+		{MatchStatus: domain.ItemMatchStatusNoMatch, Confidence: decimal.Zero},
+	}
+
+	outcome, err := h.service.FoldAttachmentsIntoQuote(context.Background(), rfqTenant(),
+		testRFQID, materialBlocks(), "20 bolsas de cemento")
+	if err != nil {
+		t.Fatalf("FoldAttachmentsIntoQuote() = %v, want no error", err)
+	}
+	if outcome != domain.AttachmentFoldedIntoDraft {
+		t.Errorf("outcome = %q, want the material folded into a draft", outcome)
+	}
+	if len(h.quotes.itemBatches) != 1 || len(h.quotes.itemBatches[0]) != 2 {
+		t.Fatalf("wrote %v item batches, want both lines kept", h.quotes.itemBatches)
+	}
+	// NO_MATCH is what every line is built as, so the matched line is what proves matching ran
+	// and applied its decisions rather than leaving both at the default.
+	if answered := h.quotes.itemBatches[0][0]; answered.MatchStatus != domain.ItemMatchStatusMatched ||
+		answered.ProductID == nil || *answered.ProductID != testProductID {
+		t.Fatalf("answered line = %q/%v, want MATCHED against the catalog product",
+			answered.MatchStatus, answered.ProductID)
+	}
+	flagged := h.quotes.itemBatches[0][1]
+	if flagged.MatchStatus != domain.ItemMatchStatusNoMatch || flagged.ProductID != nil {
+		t.Errorf("ambiguous line = %q/%v, want NO_MATCH with nothing behind it",
+			flagged.MatchStatus, flagged.ProductID)
+	}
+	if flagged.RequestedDescription != "lo de siempre para el contrapiso" {
+		t.Errorf("ambiguous line = %q, want the client's own words kept",
+			flagged.RequestedDescription)
 	}
 }
