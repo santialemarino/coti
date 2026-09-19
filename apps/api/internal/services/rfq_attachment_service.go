@@ -31,10 +31,11 @@ type RFQAttachmentService struct {
 	storage     domain.ObjectStorage
 	cfg         config.StorageConfig
 	now         func() time.Time
-	// transcriber and maxTextCharacters are only needed by the sweep that reads stored files,
-	// so they arrive through WithTranscription rather than the constructor every caller uses.
-	transcriber       domain.Transcriber
-	maxTextCharacters int
+	// These are only needed by the sweep that reads stored files, so they arrive through
+	// WithStoredReading rather than the constructor every caller uses.
+	transcriber        domain.Transcriber
+	maxTextCharacters  int
+	maxSpreadsheetRows int
 }
 
 // NewRFQAttachmentService builds an RFQAttachmentService. A nil now means time.Now.

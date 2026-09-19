@@ -1,7 +1,6 @@
 package services
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -9,23 +8,20 @@ import (
 	"strings"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
-	"github.com/santialemarino/coti/apps/api/internal/utils/spreadsheet"
 )
 
-// spreadsheetSweepCellSeparator joins a row's cells. A tab survives commas and semicolons inside a
-// cell, which a comma would not — the same reason the inline intake picks it.
-const spreadsheetSweepCellSeparator = "\t"
-
 /*
- * WithTranscription wires the voice-note reader. The sweep refuses a recording when it is unbound
- * rather than failing the attachment, because an unconfigured provider is the deployment's problem
- * and a later run will find it bound.
+ * WithStoredReading wires what reading a stored file needs: the voice-note reader and the limits
+ * an order is held to. The sweep refuses a recording when the transcriber is unbound rather than
+ * failing the attachment, because an unconfigured provider is the deployment's problem and a
+ * later run will find it bound.
  */
-func (s *RFQAttachmentService) WithTranscription(
-	transcriber domain.Transcriber, maxTextCharacters int,
+func (s *RFQAttachmentService) WithStoredReading(
+	transcriber domain.Transcriber, maxTextCharacters, maxSpreadsheetRows int,
 ) *RFQAttachmentService {
 	s.transcriber = transcriber
 	s.maxTextCharacters = maxTextCharacters
+	s.maxSpreadsheetRows = maxSpreadsheetRows
 	return s
 }
 
@@ -75,20 +71,11 @@ func (s *RFQAttachmentService) ReadStoredAttachment(
 		return s.textBlock(string(data))
 
 	case domain.AttachmentTypeSpreadsheet:
-		rows, readErr := spreadsheet.ReadRaw(filename, bytes.NewReader(data))
+		text, readErr := spreadsheetOrderText(filename, data, s.maxSpreadsheetRows)
 		if readErr != nil {
-			return domain.Content{}, "", fmt.Errorf("%w: the spreadsheet could not be read: %s",
-				domain.ErrInvalidInput, readErr)
+			return domain.Content{}, "", readErr
 		}
-		if len(rows) == 0 {
-			return domain.Content{}, "", fmt.Errorf("%w: the spreadsheet has no rows",
-				domain.ErrInvalidInput)
-		}
-		lines := make([]string, 0, len(rows))
-		for _, row := range rows {
-			lines = append(lines, strings.Join(row, spreadsheetSweepCellSeparator))
-		}
-		return s.textBlock(strings.Join(lines, "\n"))
+		return s.textBlock(text)
 
 	case domain.AttachmentTypeAudio:
 		if s.transcriber == nil {
