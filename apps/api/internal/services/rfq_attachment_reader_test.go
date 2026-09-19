@@ -11,6 +11,11 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
+// spreadsheetContentType is the modern workbook type, which is what an ".xlsx" key is stored
+// under. The reader picks its parser off the key, so a case whose type and key disagree would
+// read as testing the type when it is testing neither.
+const spreadsheetContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
 func storedAttachment(kind domain.AttachmentType, key string) domain.ClaimedAttachment {
 	return domain.ClaimedAttachment{ID: uuid.New(), AccountID: uuid.New(), BranchID: uuid.New(),
 		RFQID: uuid.New(), Type: kind, StorageKey: key}
@@ -153,7 +158,7 @@ func TestRFQAttachmentService_ReadStoredAttachment_RefusesWhatCannotBeReadAsAnOr
 	}{
 		{
 			name: "a spreadsheet whose bytes are not a sheet", kind: domain.AttachmentTypeSpreadsheet,
-			key: "accounts/a/rfqs/r/f.xlsx", contentType: "application/vnd.ms-excel",
+			key: "accounts/a/rfqs/r/f.xlsx", contentType: spreadsheetContentType,
 			data: "this is not a workbook", wantErr: domain.ErrInvalidInput,
 			wantMessage: "could not be read",
 		},
