@@ -1,19 +1,12 @@
 package services
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
-	"github.com/santialemarino/coti/apps/api/internal/utils/spreadsheet"
 )
-
-// spreadsheetCellSeparator joins a row's cells for the model. A tab survives commas and
-// semicolons inside a cell, which a client's own description regularly carries.
-const spreadsheetCellSeparator = "\t"
 
 /*
  * readFileContent turns one uploaded order into the blocks the extractor reads. An image and a
@@ -62,24 +55,11 @@ func (s *RFQService) readFileContent(
 }
 
 func (s *RFQService) readSpreadsheet(filename string, data []byte) (string, error) {
-	rows, err := spreadsheet.ReadRaw(filename, bytes.NewReader(data))
+	text, err := spreadsheetOrderText(filename, data, s.cfg.MaxSpreadsheetRows)
 	if err != nil {
-		return "", fmt.Errorf("%w: the spreadsheet could not be read: %s",
-			domain.ErrInvalidInput, err)
+		return "", err
 	}
-	if len(rows) == 0 {
-		return "", fmt.Errorf("%w: the spreadsheet has no rows", domain.ErrInvalidInput)
-	}
-	if len(rows) > s.cfg.MaxSpreadsheetRows {
-		return "", fmt.Errorf("%w: the spreadsheet has %d rows and the limit is %d, which is a "+
-			"catalog rather than an order", domain.ErrInvalidInput, len(rows),
-			s.cfg.MaxSpreadsheetRows)
-	}
-	lines := make([]string, 0, len(rows))
-	for _, row := range rows {
-		lines = append(lines, strings.Join(row, spreadsheetCellSeparator))
-	}
-	return s.requiredRFQText(strings.Join(lines, "\n"))
+	return s.requiredRFQText(text)
 }
 
 func (s *RFQService) transcribe(

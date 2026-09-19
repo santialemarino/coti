@@ -89,7 +89,8 @@ func run() error {
 	attachmentRepo := repository.NewRFQAttachmentRepository()
 	attachmentReader := services.NewRFQAttachmentService(db, attachmentRepo,
 		objectStorage.Storage, cfg.Storage, nil).
-		WithTranscription(providers.Transcriber, cfg.RFQ.MaxTextCharacters)
+		WithStoredReading(providers.Transcriber, cfg.RFQ.MaxTextCharacters,
+			cfg.RFQ.MaxSpreadsheetRows)
 	// The sweep extracts, so it needs the RFQ engine the request path uses — the same extractor,
 	// the same catalog matching, the same persistence. Reading a file and interpreting it are one
 	// decision, and a second implementation of it here would be a second one to keep honest.

@@ -63,7 +63,8 @@ for it.
 
 `RFQ_MAX_ITEMS` bounds what the model may return; a spreadsheet is bounded on the way in too, by
 `RFQ_MAX_SPREADSHEET_ROWS` (default 500), so a price list uploaded by mistake is refused before it
-is paid for. The file's own size is capped by `STORAGE_MAX_FILE_SIZE_BYTES`, the same limit the
+is paid for. Both doors into the engine apply that limit over the same reader, so a sheet is an
+order or a catalog by its own size and never by whether it arrived inline or through the sweep. The file's own size is capped by `STORAGE_MAX_FILE_SIZE_BYTES`, the same limit the
 attachment upload uses.
 
 The development route resolves the branch's WhatsApp channel and then calls the same service method

@@ -123,7 +123,10 @@ orders; a limit that cut across one order would send the model half a client's m
 the other half out as read.
 
 Every format is claimed. A recording, a spreadsheet and a text file yield text, which is stored on
-the attachment row; an image and a PDF have no text step and reach the model as they are. What the
+the attachment row; an image and a PDF have no text step and reach the model as they are. A file is
+held to the same limits here as at the inline intake — `RFQ_MAX_SPREADSHEET_ROWS` and
+`RFQ_MAX_TEXT_CHARACTERS` — because what a file says is decided by the file, not by which door it
+came through. What the
 order's already-processed files yielded is passed along with the new material, so an order whose
 photo was read an hour ago and whose recording arrives now is not extracted from the recording
 alone. Only stored text is reused — an earlier image or PDF is not downloaded again.
