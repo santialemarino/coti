@@ -25,6 +25,8 @@ func spreadsheetOrderText(filename string, data []byte, maxRows int) (string, er
 	if len(rows) == 0 {
 		return "", fmt.Errorf("%w: the spreadsheet has no rows", domain.ErrInvalidInput)
 	}
+	// An unset limit reads as no limit, never as a limit of zero: a service wired without one
+	// would otherwise refuse every sheet it was ever handed as a catalog.
 	if maxRows > 0 && len(rows) > maxRows {
 		return "", fmt.Errorf("%w: the spreadsheet has %d rows and the limit is %d, which is a "+
 			"catalog rather than an order", domain.ErrInvalidInput, len(rows), maxRows)
