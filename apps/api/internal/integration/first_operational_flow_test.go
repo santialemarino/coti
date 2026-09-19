@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -26,7 +27,6 @@ const (
 
 // flowRun is one order carried to the point where only the customer's answer is left.
 type flowRun struct {
-	tenant      domain.Tenant
 	draft       *domain.TextRFQDraft
 	seller      domain.AppUser
 	service     *services.QuoteDeliveryService
@@ -85,6 +85,17 @@ func firstOperationalFlow(t *testing.T, e *env, name string) flowRun {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("review PATCH = %d, want 200: %s", rec.Code, rec.Body)
 	}
+	var reviewed struct {
+		Quantity string `json:"quantity"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &reviewed); err != nil {
+		t.Fatalf("decode the reviewed line %s: %v", rec.Body, err)
+	}
+	if !decimal.RequireFromString(reviewed.Quantity).Equal(
+		decimal.RequireFromString(reviewedQuantity)) {
+		t.Fatalf("reviewed quantity = %s, want the seller's %s", reviewed.Quantity,
+			reviewedQuantity)
+	}
 
 	priced := e.acceptMaterials(t, draft.Quote.ID, token, branchID.String())
 	if priced.Quote.CurrentStatus != string(domain.QuoteStatusQuoted) {
@@ -94,8 +105,7 @@ func firstOperationalFlow(t *testing.T, e *env, name string) flowRun {
 
 	service := e.clientAnswerService(t, &captureWhatsAppSender{}, &stagedQuoteEmailSender{})
 	publicToken, _ := e.sentQuoteToken(t, service, sendableQuote{tenant: tenant, draft: draft})
-	return flowRun{tenant: tenant, draft: draft, seller: seller, service: service,
-		publicToken: publicToken}
+	return flowRun{draft: draft, seller: seller, service: service, publicToken: publicToken}
 }
 
 /*
@@ -154,15 +164,13 @@ func TestFirstOperationalFlow_PlainTextOrderReachesRejection(t *testing.T) {
  * their actor would pass on one that credited the customer's answer to the seller who sent it.
  *
  * The two ledgers are read separately rather than unioned and sorted together: the order's move to
- * GENERATED and the quote's birth happen in one transaction, so they share a changed_at to the
- * microsecond and any ordering across the two is a coin toss. Within each table the rows come from
- * separate requests and do order.
- *
- * The order is born RECEIVED and its arrival is not a transition, so its ledger opens at the move
- * the pipeline made; the quote is born by that same move, so its ledger opens from nothing.
+ * GENERATED and the quote's birth share a transaction, so they share a changed_at to the
+ * microsecond and any ordering across the two is a coin toss.
  */
 func assertFlowLedger(t *testing.T, e *env, run flowRun, closing domain.QuoteStatus) {
 	t.Helper()
+	// The order is born RECEIVED, and being born is not a transition, so its ledger opens at the
+	// move the pipeline made rather than at its arrival.
 	assertLedger(t, e, "rfq", `SELECT COALESCE(previous_status::text, '<none>'), new_status::text,
 	          user_id
 	     FROM rfq_status_change WHERE rfq_id = $1 ORDER BY changed_at`,
@@ -198,11 +206,11 @@ func assertLedger(t *testing.T, e *env, label, query string, id, sellerID uuid.U
 		if err := rows.Scan(&previous, &next, &userID); err != nil {
 			t.Fatalf("scan the %s ledger: %v", label, err)
 		}
-		// A customer has no user row, so their answer is recorded against nobody. Naming it here
-		// is what makes crediting it to the seller a failure rather than a detail.
 		who := "nobody"
 		switch {
 		case userID == nil:
+			// A customer is not one of ours, so their answer is recorded against no user at all.
+			// Naming that here is what makes crediting it to the seller a failure.
 		case *userID == sellerID:
 			who = "seller"
 		default:
