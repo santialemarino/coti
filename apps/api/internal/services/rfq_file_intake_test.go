@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
@@ -468,5 +469,73 @@ func TestRFQService_CreateFileDraft_FailsTheRFQWhenTheHandOffCannotBeWritten(t *
 	}
 	if len(h.rfqs.updatedStatus) != 1 || h.rfqs.updatedStatus[0] != domain.RFQStatusFailed {
 		t.Errorf("wrote RFQ statuses %v, want one FAILED", h.rfqs.updatedStatus)
+	}
+}
+
+/*
+ * A material the catalog has no answer for is flagged, never dropped. This is the "sin descarte
+ * silencioso" half of the multi-format engine seen from the request path: a draft that quietly
+ * shipped without the lines nobody could match would read to the seller as a complete quote over
+ * an order they had never been shown.
+ */
+func TestRFQService_CreateFileDraft_FlagsAnAmbiguousLineRatherThanDroppingIt(t *testing.T) {
+	t.Parallel()
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("cemento portland 50kg", "20", "bolsa", "lo pidió así"),
+		explicitLine("lo de siempre para el contrapiso", "1", "", "no lo aclaró"),
+	})
+	// The catalog answers for the first line and has nothing for the second, which is what an
+	// ambiguous description looks like once it reaches matching.
+	matched := testProductID
+	h.matcher.matches = []domain.LineMatch{
+		{ProductID: &matched, MatchStatus: domain.ItemMatchStatusMatched,
+			Confidence: decimal.RequireFromString("0.9100")},
+		{MatchStatus: domain.ItemMatchStatusNoMatch, Confidence: decimal.Zero},
+	}
+	h.service.WithFileIntake(&fakeAttachmentStore{}, &fakeTranscriber{}, 10<<20)
+
+	draft, err := h.service.CreateFileDraft(context.Background(), rfqTenant(),
+		domain.FileRFQDraftInput{
+			ChannelID: testChannelID,
+			Filename:  "pedido.csv",
+			File: domain.AttachmentUpload{
+				ContentType: "text/csv",
+				Size:        40,
+				Content: strings.NewReader(
+					"Producto,Cantidad\nCemento,20\nLo de siempre,1\n"),
+			},
+		})
+	if err != nil {
+		t.Fatalf("CreateFileDraft returned %v", err)
+	}
+	if len(h.quotes.itemBatches) != 1 || len(h.quotes.itemBatches[0]) != 2 {
+		t.Fatalf("wrote %v item batches, want both lines kept", h.quotes.itemBatches)
+	}
+	// NO_MATCH is what every line is built as, so the flagged line alone would prove nothing:
+	// the matched line is what shows matching ran and applied its decisions, which makes the
+	// other line's NO_MATCH a decision rather than an untouched default.
+	if answered := h.quotes.itemBatches[0][0]; answered.MatchStatus != domain.ItemMatchStatusMatched ||
+		answered.ProductID == nil || *answered.ProductID != testProductID {
+		t.Fatalf("answered line = %q/%v, want MATCHED against the catalog product",
+			answered.MatchStatus, answered.ProductID)
+	}
+	flagged := h.quotes.itemBatches[0][1]
+	if flagged.MatchStatus != domain.ItemMatchStatusNoMatch {
+		t.Errorf("ambiguous line status = %q, want NO_MATCH", flagged.MatchStatus)
+	}
+	if flagged.ProductID != nil {
+		t.Errorf("ambiguous line points at product %v, want nothing behind it", flagged.ProductID)
+	}
+	if flagged.RequestedDescription != "lo de siempre para el contrapiso" {
+		t.Errorf("ambiguous line = %q, want the client's own words kept",
+			flagged.RequestedDescription)
+	}
+	// The order still reaches the seller as a draft: an unmatched line is review, not failure.
+	if draft.Quote == nil {
+		t.Fatal("draft carries no quote, want the order drafted for review")
+	}
+	if len(h.rfqs.updatedStatus) != 1 || h.rfqs.updatedStatus[0] != domain.RFQStatusGenerated {
+		t.Errorf("rfq statuses = %v, want the order GENERATED rather than failed over an "+
+			"unmatched line", h.rfqs.updatedStatus)
 	}
 }

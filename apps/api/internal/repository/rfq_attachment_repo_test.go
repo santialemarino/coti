@@ -558,3 +558,49 @@ func TestRFQAttachmentRepository_MarkPending_RefusesAnotherAccountsAttachment(t 
 		t.Errorf("status = %q, want the row untouched", status)
 	}
 }
+
+/*
+ * A file closed FAILED is never claimed again. That is what makes FAILED the end of the line for
+ * an unreadable attachment: its bytes will not change, so a queue that took it back would pay for
+ * the same refusal every reclaim window, forever, while the order looked like it was still being
+ * worked. The DONE row alongside it is the control — without one, a query that claims nothing at
+ * all would pass this too.
+ */
+func TestRFQAttachmentRepository_ClaimPendingByRFQ_NeverTakesAClosedAttachmentAgain(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Attachment claim closed")
+	branchID := branchOf(t, db, accountID)
+	rfqID := seedRFQFor(t, db, accountID, branchID)
+	long := time.Now().Add(-24 * time.Hour)
+	failedID := insertAttachment(t, db, accountID, rfqID, "FAILED", &long)
+	doneID := insertAttachment(t, db, accountID, rfqID, "DONE", &long)
+	pendingID := insertAttachment(t, db, accountID, rfqID, "PENDING", nil)
+
+	claimed, err := NewRFQAttachmentRepository().ClaimPendingByRFQ(ctx, db.CrossAccount(),
+		everyPendingOrder, 15*time.Minute, time.Now())
+	if err != nil {
+		t.Fatalf("ClaimPendingByRFQ() = %v, want no error", err)
+	}
+
+	var tookPending bool
+	for _, a := range claimed {
+		switch a.ID {
+		case failedID:
+			t.Errorf("ClaimPendingByRFQ() took a FAILED attachment back")
+		case doneID:
+			t.Errorf("ClaimPendingByRFQ() took a DONE attachment back")
+		case pendingID:
+			tookPending = true
+		}
+	}
+	if !tookPending {
+		t.Fatal("ClaimPendingByRFQ() did not take the pending attachment of the same order")
+	}
+	if status := statusOf(t, db, failedID); status != "FAILED" {
+		t.Errorf("closed row status = %q, want FAILED left alone", status)
+	}
+	if status := statusOf(t, db, doneID); status != "DONE" {
+		t.Errorf("closed row status = %q, want DONE left alone", status)
+	}
+}
