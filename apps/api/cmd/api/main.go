@@ -87,6 +87,7 @@ func run() error {
 	quoteCorrectionRepo := repository.NewQuoteCorrectionRepository()
 	quoteQualityRepo := repository.NewQuoteQualityRepository()
 	quoteSendRepo := repository.NewQuoteSendRepository()
+	clientActionRepo := repository.NewClientActionRepository()
 	quoteRepresentationRepo := repository.NewQuoteRepresentationRepository()
 	clientRepo := repository.NewClientRepository()
 	accountRepo := repository.NewAccountRepository()
@@ -163,6 +164,8 @@ func run() error {
 		quoteAIGenerationRepo, channelRepo, userRepo, rfqExtractor, catalogMatchService, log, cfg.RFQ).
 		WithCorrectionMemory(quoteCorrectionService).
 		WithDiscounts(quoteDiscountRepo).
+		WithClientActions(clientActionRepo).
+		WithWebAppURL(cfg.Web.WebAppURL).
 		WithFileIntake(rfqAttachmentService, providers.Transcriber, cfg.Storage.MaxFileSize)
 	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, log)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
@@ -174,7 +177,8 @@ func run() error {
 	quoteDeliveryService := services.NewQuoteDeliveryService(db, quoteSendRepo, quoteRepo, rfqRepo,
 		clientRepo, channelRepo, branchRepo, whatsapp.DisabledSender{}, quoteMailService,
 		quoteQualityService, cfg.Web.WebAppURL, nil, log).
-		WithRepresentationService(quoteRepresentationService)
+		WithRepresentationService(quoteRepresentationService).
+		WithClientActions(clientActionRepo)
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
 			Health:        handler.NewHealthHandler(db),

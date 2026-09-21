@@ -13,11 +13,11 @@ import type { QuoteDiscountResponse, QuoteItemResponse, RfqDetailResponse } from
 import { normalizeRfqStatus } from '@/lib/api/rfqs';
 import { fetchRfqDetail, generateQuote } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
+import { QuoteDeliveryCard } from './quote-delivery-card';
 import { RfqChangeDiff } from './rfq-change-diff';
 import { RfqDetailHeader } from './rfq-detail-header';
 import { RfqItemsTable } from './rfq-items-table';
 import { RfqStatusTimeline } from './rfq-status-timeline';
-import { SendQuoteDialog } from './send-quote-dialog';
 
 interface RfqDetailViewProps {
   detail: RfqDetailResponse;
@@ -44,8 +44,6 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
   // isDraft below stays raw so the generate button only surfaces while the quote is really DRAFT.
   const rfqStatus = normalizeRfqStatus(detail.rfq.status);
   const isDraft = quoteStatus === 'DRAFT';
-  // The send flow is one screen for every review-ready status.
-  const canSendQuote = quoteStatus === 'QUOTED' || quoteStatus === 'CHANGE_REQUESTED';
 
   /*
    * Reconcile the screen against the backend after a mutation. The discount endpoints
@@ -101,6 +99,8 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
   return (
     <div className="flex flex-col gap-y-4">
       <RfqDetailHeader detail={detail} />
+
+      <QuoteDeliveryCard detail={detail} onSent={refreshDetail} />
 
       <RfqStatusTimeline detail={detail} />
 
@@ -161,21 +161,16 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
         />
       )}
 
-      {(isDraft || canSendQuote) && quoteId && (
+      {isDraft && quoteId && (
         <div className="flex justify-end">
-          {isDraft && (
-            <PendingButton
-              type="button"
-              onClick={handleGenerate}
-              pending={generating}
-              pendingLabel={t('detail.items.generating')}
-            >
-              {t('detail.items.generate')}
-            </PendingButton>
-          )}
-          {canSendQuote && (
-            <SendQuoteDialog detail={detail} branchId={branchId} onSent={refreshDetail} />
-          )}
+          <PendingButton
+            type="button"
+            onClick={handleGenerate}
+            pending={generating}
+            pendingLabel={t('detail.items.generating')}
+          >
+            {t('detail.items.generate')}
+          </PendingButton>
         </div>
       )}
     </div>

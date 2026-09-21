@@ -3065,6 +3065,64 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/public/quote-sends/{token}/action": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "public quote sends"
+                ],
+                "summary": "Record a customer response on a public quote",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Public delivery token",
+                        "name": "token",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Customer answer",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.PublicQuoteActionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.PublicQuoteActionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/quotes/{quoteId}/accept-materials": {
             "post": {
                 "security": [
@@ -5536,6 +5594,29 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ClientActionResponse": {
+            "type": "object",
+            "properties": {
+                "comment": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "version_id": {
+                    "type": "string"
+                },
+                "version_number": {
+                    "type": "integer"
+                }
+            }
+        },
         "dto.ConfirmCatalogImportRequest": {
             "type": "object",
             "required": [
@@ -6223,9 +6304,41 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.PublicQuoteActionRequest": {
+            "type": "object",
+            "required": [
+                "type"
+            ],
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.PublicQuoteActionResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "customer_status": {
+                    "type": "string"
+                },
+                "quote_status": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.PublicQuoteSendResponse": {
             "type": "object",
             "properties": {
+                "customer_status": {
+                    "description": "CustomerStatus is the answer this token already received, present only when the\ncustomer responded through the link.",
+                    "type": "string"
+                },
                 "expires_at": {
                     "type": "string"
                 },
@@ -6723,6 +6836,9 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "public_url": {
+                    "type": "string"
+                },
                 "sent_at": {
                     "type": "string"
                 },
@@ -6965,6 +7081,12 @@ const docTemplate = `{
                 },
                 "changes_requested": {
                     "$ref": "#/definitions/dto.ChangeRequestDiffResponse"
+                },
+                "client_actions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ClientActionResponse"
+                    }
                 },
                 "deliveries": {
                     "type": "array",

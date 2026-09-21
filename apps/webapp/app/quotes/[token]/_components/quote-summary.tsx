@@ -1,73 +1,58 @@
-import { DownloadIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { Button, Separator } from '@repo/ui/components';
-import type { QuoteDiscount } from '@/lib/api/public-quotes';
+import type { QuoteDiscount, QuoteItem } from '@/lib/api/public-quotes';
 import { getFormatters } from '@/lib/i18n/formatters-server';
 
 interface QuoteSummaryProps {
+  items: QuoteItem[];
   discounts: QuoteDiscount[];
   total: string;
   currency: string;
-  expiresAt: string;
-  validityNote: string;
-  pdfUrl?: string;
 }
 
-export async function QuoteSummary({
-  discounts,
-  total,
-  currency,
-  expiresAt,
-  validityNote,
-  pdfUrl,
-}: QuoteSummaryProps) {
+/*
+ * The footer of the items card: subtotal built from the frozen decimal strings, the discounts that
+ * trim it, and the backend's authoritative total with the last word. The display never recomputes
+ * money the engine already calculated — `total` travels whole from the frozen payload.
+ */
+export async function QuoteSummary({ items, discounts, total, currency }: QuoteSummaryProps) {
   const fmt = await getFormatters();
   const t = await getTranslations('quote');
 
+  const itemsSubtotal = items.reduce((sum, item) => sum + Number(item.subtotal), 0);
+
   return (
-    <section className="flex flex-col p-4 gap-y-3 bg-card border border-border rounded-1.5xl shadow-e1">
+    <div className="flex flex-col gap-y-3 border-t border-border px-4 py-4 sm:px-6">
+      <div className="flex items-baseline justify-between gap-x-4">
+        <p className="text-paragraph-sm text-foreground-muted">{t('subtotal')}</p>
+        <p className="text-paragraph-sm text-foreground tabular-nums">
+          {fmt.currency(String(itemsSubtotal), currency)}
+        </p>
+      </div>
+
       {discounts.length > 0 ? (
-        <>
-          <h2 className="text-heading-6 text-foreground">{t('discountsHeading')}</h2>
-          <dl className="flex flex-col gap-y-1.5">
-            {discounts.map((discount, index) => (
-              <div
-                key={`${discount.description}-${index}`}
-                className="flex items-baseline justify-between gap-x-4"
-              >
-                <dt className="text-paragraph-sm text-foreground-muted">{discount.description}</dt>
-                {/* The formatter owns the sign, so the minus is the locale's and not a typed glyph. */}
-                <dd className="text-paragraph-sm text-foreground tabular-nums">
-                  {fmt.currency(`-${discount.amount}`, currency)}
-                </dd>
-              </div>
-            ))}
-          </dl>
-          <Separator />
-        </>
+        <div className="flex flex-col gap-y-1.5">
+          {discounts.map((discount, index) => (
+            <div
+              key={`${discount.description}-${index}`}
+              className="flex items-baseline justify-between gap-x-4"
+            >
+              <p className="text-paragraph-sm text-foreground-muted">{discount.description}</p>
+              {/* The formatter owns the sign, so the minus is the locale's and not a typed glyph. */}
+              <p className="text-paragraph-sm text-foreground tabular-nums">
+                {fmt.currency(`-${discount.amount}`, currency)}
+              </p>
+            </div>
+          ))}
+        </div>
       ) : null}
 
-      <div className="flex items-baseline justify-between gap-x-4">
+      <div className="flex items-baseline justify-between gap-x-4 border-t border-border pt-3">
         <p className="text-heading-6 text-foreground">{t('totalLabel')}</p>
         <p className="text-heading-4 text-foreground tabular-nums">
           {fmt.currency(total, currency)}
         </p>
       </div>
-
-      <p className="text-paragraph-sm text-foreground-muted">
-        {t('validUntil', { date: fmt.date(expiresAt) })}
-      </p>
-      <p className="text-paragraph-xs text-foreground-subtle">{validityNote}</p>
-
-      {pdfUrl ? (
-        <Button asChild variant="outline" className="self-start mt-1">
-          <a href={pdfUrl} target="_blank" rel="noopener noreferrer">
-            <DownloadIcon />
-            {t('downloadPdf')}
-          </a>
-        </Button>
-      ) : null}
-    </section>
+    </div>
   );
 }

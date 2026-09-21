@@ -141,6 +141,24 @@ type PublicQuoteSendResponse struct {
 	Quote     *QuoteRepresentationPayloadResponse `json:"quote,omitempty"`
 	Message   *string                             `json:"message,omitempty"`
 	PDFURL    *string                             `json:"pdf_url,omitempty"`
+	// CustomerStatus is the answer this token already received, present only when the
+	// customer responded through the link.
+	CustomerStatus *string `json:"customer_status,omitempty"`
+}
+
+// PublicQuoteActionRequest is the deliberate customer answer to the frozen quote. type is the
+// wire value of client_action_type; message is mandatory for REQUEST_CHANGE.
+type PublicQuoteActionRequest struct {
+	Type    string  `json:"type" binding:"required"`
+	Message *string `json:"message"`
+}
+
+// PublicQuoteActionResponse reports the recorded answer and the status the quote settled on. When
+// the answer did not move the quote (version already superseded), quote_status stays unchanged.
+type PublicQuoteActionResponse struct {
+	CustomerStatus string    `json:"customer_status"`
+	CreatedAt      time.Time `json:"created_at"`
+	QuoteStatus    *string   `json:"quote_status"`
 }
 
 // QuoteRepresentationResponse is one authenticated immutable output bundle.

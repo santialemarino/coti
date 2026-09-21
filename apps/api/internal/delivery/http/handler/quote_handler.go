@@ -29,6 +29,8 @@ type QuoteDeliveryService interface {
 	Send(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID,
 		in domain.QuoteDeliveryInput) (*domain.QuoteDeliveryResult, error)
 	ResolvePublic(ctx context.Context, token string) (*domain.PublicQuoteRepresentation, error)
+	RespondPublic(ctx context.Context, token string,
+		in domain.ClientActionInput) (*domain.PublicQuoteActionResult, error)
 }
 
 // QuoteRepresentationService is the explicit seller-approved generation surface.
@@ -222,6 +224,46 @@ func (h *QuoteHandler) ResolvePublic(c *gin.Context) {
 	}
 	response.Message = result.Message
 	response.PDFURL = result.PDFURL
+	if result.CustomerStatus != nil {
+		status := string(*result.CustomerStatus)
+		response.CustomerStatus = &status
+	}
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, response)
+}
+
+// RespondPublic records the customer's answer to a frozen quote and moves the quote when the
+// answer addresses the version it still shows.
+//
+//	@Summary	Record a customer response on a public quote
+//	@Tags		public quote sends
+//	@Accept		json
+//	@Produce	json
+//	@Param		token		path	string					true	"Public delivery token"
+//	@Param		request		body	dto.PublicQuoteActionRequest	true	"Customer answer"
+//	@Success	200			{object}	dto.PublicQuoteActionResponse
+//	@Failure	400,404,409	{object}	dto.ErrorResponse
+//	@Router		/v1/public/quote-sends/{token}/action [post]
+func (h *QuoteHandler) RespondPublic(c *gin.Context) {
+	if h.delivery == nil {
+		Respond(c, domain.ErrNotConfigured)
+		return
+	}
+	var request dto.PublicQuoteActionRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	result, err := h.delivery.RespondPublic(c.Request.Context(), c.Param("token"),
+		domain.ClientActionInput{Type: domain.ClientActionType(request.Type), Message: request.Message})
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	response := dto.PublicQuoteActionResponse{CustomerStatus: string(result.CustomerStatus),
+		CreatedAt: result.CreatedAt}
+	status := string(result.QuoteStatus)
+	response.QuoteStatus = &status
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, response)
 }

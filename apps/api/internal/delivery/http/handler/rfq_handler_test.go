@@ -379,8 +379,9 @@ func TestToRfqDetailResponse_MapsAllFieldsFromDomainDetail(t *testing.T) {
 		Deliveries: []domain.QuoteSend{{
 			ID: uuid.New(), VersionID: versionID, ChannelType: domain.ChannelTypeWhatsApp,
 			Destination: "+5491155550101", Format: domain.SendFormatWebAppLink,
-			TrackingStatus: domain.SendTrackingStatusDelivered, SentAt: &sentAt,
-			ExpiresAt: &expiresAt, CreatedAt: changedAt,
+			PublicToken: "pub-token", PublicURL: "https://quotes.test/quotes/pub-token",
+			TrackingStatus: domain.SendTrackingStatusDelivered,
+			SentAt:         &sentAt, ExpiresAt: &expiresAt, CreatedAt: changedAt,
 		}},
 	}
 
@@ -439,8 +440,9 @@ func TestToRfqDetailResponse_MapsAllFieldsFromDomainDetail(t *testing.T) {
 	if len(resp.Deliveries) != 1 ||
 		resp.Deliveries[0].TrackingStatus != string(domain.SendTrackingStatusDelivered) ||
 		resp.Deliveries[0].Channel != string(domain.ChannelTypeWhatsApp) ||
+		resp.Deliveries[0].PublicURL != "https://quotes.test/quotes/pub-token" ||
 		resp.Deliveries[0].ExpiresAt == nil {
-		t.Errorf("deliveries = %+v, want one delivered WhatsApp send with expiry",
+		t.Errorf("deliveries = %+v, want one delivered WhatsApp send with expiry and public_url",
 			resp.Deliveries)
 	}
 }
@@ -525,6 +527,44 @@ func TestToRfqDetailResponse_OmitsQuoteAndVersionWhenAbsent(t *testing.T) {
 	}
 	if resp.Deliveries == nil || len(resp.Deliveries) != 0 {
 		t.Errorf("deliveries = %v, want empty array", resp.Deliveries)
+	}
+	if resp.ClientActions == nil || len(resp.ClientActions) != 0 {
+		t.Errorf("client actions = %v, want empty array", resp.ClientActions)
+	}
+}
+
+func TestToRfqDetailResponse_MapsTheCustomerResponses(t *testing.T) {
+	comment := "Sumar membrana al presupuesto"
+	createdAt := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
+	action := domain.ClientAction{
+		ID: uuid.New(), QuoteSendID: &uuid.Nil, VersionID: uuid.New(), VersionNumber: 2,
+		Type: domain.ClientActionRequestChange, Comment: &comment, CreatedAt: createdAt,
+	}
+	detail := domain.RfqDetail{
+		Rfq:           domain.RfqListItem{ID: uuid.New()},
+		ClientActions: []domain.ClientAction{action},
+	}
+
+	resp := toRfqDetailResponse(detail)
+
+	if len(resp.ClientActions) != 1 {
+		t.Fatalf("client actions = %d, want 1", len(resp.ClientActions))
+	}
+	mapped := resp.ClientActions[0]
+	if mapped.ID != action.ID || mapped.VersionID != action.VersionID {
+		t.Errorf("client action identity = %+v, want %+v", mapped, action)
+	}
+	if mapped.VersionNumber != 2 {
+		t.Errorf("version number = %d, want 2", mapped.VersionNumber)
+	}
+	if mapped.Type != string(domain.ClientActionRequestChange) {
+		t.Errorf("type = %q, want %q", mapped.Type, domain.ClientActionRequestChange)
+	}
+	if mapped.Comment == nil || *mapped.Comment != comment {
+		t.Errorf("comment = %v, want %q", mapped.Comment, comment)
+	}
+	if !mapped.CreatedAt.Equal(createdAt) {
+		t.Errorf("created at = %v, want %v", mapped.CreatedAt, createdAt)
 	}
 }
 

@@ -222,4 +222,7 @@ type RfqDetail struct {
 	// ChangesRequested is the frozen-vs-draft comparison for a CHANGE_REQUESTED quote;
 	// nil until a frozen predecessor exists.
 	ChangesRequested *ChangeRequestDiff
+	// ClientActions are the customer responses recorded against the quote's versions,
+	// oldest first; empty when none were recorded or the surface is not wired.
+	ClientActions []ClientAction
 }

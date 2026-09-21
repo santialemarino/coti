@@ -91,6 +91,21 @@ func (r *QuoteRepository) GetByRFQID(
 		accountID, rfqID))
 }
 
+// GetByVersionID loads the quote that owns one account-scoped version. Version→quote is 1-to-1,
+// so the version's own account boundary narrows the result and the branch is not part of the
+// predicate; the caller reads the branch from the returned quote.
+func (r *QuoteRepository) GetByVersionID(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID,
+) (*domain.Quote, error) {
+	return scanQuote(q.QueryRow(ctx,
+		`SELECT `+quoteColumns+`
+		 FROM quote
+		 JOIN quote_version version ON version.account_id = quote.account_id
+		   AND version.quote_id = quote.id
+		 WHERE quote.account_id = $1 AND version.id = $2`,
+		accountID, versionID))
+}
+
 // Create inserts a quote shell.
 func (r *QuoteRepository) Create(
 	ctx context.Context, q Querier, accountID uuid.UUID, in domain.NewQuote,

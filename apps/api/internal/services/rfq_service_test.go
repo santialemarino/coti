@@ -1083,17 +1083,34 @@ func (f *fakeQuoteSends) ListByQuote(
 	return f.deliveries, nil
 }
 
+type fakeRFQClientActions struct {
+	actions []domain.ClientAction
+	err     error
+	reads   []uuid.UUID
+}
+
+func (f *fakeRFQClientActions) ListByQuote(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, _ uuid.UUID, quoteID uuid.UUID,
+) ([]domain.ClientAction, error) {
+	f.reads = append(f.reads, quoteID)
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.actions, nil
+}
+
 type rfqHarness struct {
-	service     *RFQService
-	db          *fakeRFQDB
-	extractor   *fakeRFQExtractor
-	matcher     *fakeCatalogMatcher
-	rfqs        *fakeRFQs
-	quotes      *fakeQuoteDrafts
-	discounts   *fakeQuoteDiscounts
-	sends       *fakeQuoteSends
-	generations *fakeQuoteAIGenerations
-	channels    *fakeRFQChannels
+	service       *RFQService
+	db            *fakeRFQDB
+	extractor     *fakeRFQExtractor
+	matcher       *fakeCatalogMatcher
+	rfqs          *fakeRFQs
+	quotes        *fakeQuoteDrafts
+	discounts     *fakeQuoteDiscounts
+	sends         *fakeQuoteSends
+	generations   *fakeQuoteAIGenerations
+	channels      *fakeRFQChannels
+	clientActions *fakeRFQClientActions
 }
 
 func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
@@ -1108,15 +1125,16 @@ func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 		}
 	}
 	h := &rfqHarness{
-		db:          db,
-		extractor:   &fakeRFQExtractor{lines: lines, db: db},
-		matcher:     &fakeCatalogMatcher{matches: matches, db: db},
-		rfqs:        &fakeRFQs{},
-		quotes:      &fakeQuoteDrafts{},
-		discounts:   &fakeQuoteDiscounts{},
-		sends:       &fakeQuoteSends{},
-		generations: &fakeQuoteAIGenerations{},
-		channels:    &fakeRFQChannels{},
+		db:            db,
+		extractor:     &fakeRFQExtractor{lines: lines, db: db},
+		matcher:       &fakeCatalogMatcher{matches: matches, db: db},
+		rfqs:          &fakeRFQs{},
+		quotes:        &fakeQuoteDrafts{},
+		discounts:     &fakeQuoteDiscounts{},
+		sends:         &fakeQuoteSends{},
+		generations:   &fakeQuoteAIGenerations{},
+		channels:      &fakeRFQChannels{},
+		clientActions: &fakeRFQClientActions{},
 	}
 	channel := domain.Channel{
 		ID: testChannelID, AccountID: testAccountID, BranchID: testBranchID,
@@ -1126,7 +1144,7 @@ func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 	h.channels.channelsByType = []domain.Channel{channel}
 	h.service = NewRFQService(h.db, h.rfqs, h.quotes, h.sends, h.generations, h.channels,
 		&fakeSellerReach{serves: true}, h.extractor, h.matcher, nil, testRFQConfig()).
-		WithDiscounts(h.discounts)
+		WithDiscounts(h.discounts).WithClientActions(h.clientActions)
 	return h
 }
 
@@ -1738,7 +1756,8 @@ func getDetailHarness() (*rfqHarness, *domain.RfqListItem, *domain.Quote, *domai
 	expiresAt := fixedNow.AddDate(0, 0, 7)
 	h.sends.deliveries = []domain.QuoteSend{{
 		ID: uuid.New(), VersionID: testVersionID, ChannelType: domain.ChannelTypeWhatsApp,
-		Destination: "+5491155550101", Format: domain.SendFormatWebAppLink,
+		Destination: "+5491155550101", PublicToken: "tk-viewed",
+		Format:         domain.SendFormatWebAppLink,
 		TrackingStatus: domain.SendTrackingStatusViewed, SentAt: &sentAt,
 		ExpiresAt: &expiresAt, CreatedAt: sentAt,
 	}}
@@ -1787,11 +1806,69 @@ func TestRFQService_GetDetail_ReturnsFullDetailWhenAllDataExists(t *testing.T) {
 		detail.Deliveries[0].TrackingStatus != domain.SendTrackingStatusViewed {
 		t.Errorf("deliveries = %+v, want one viewed send", detail.Deliveries)
 	}
+	// No webapp URL is wired in this harness, so the token stays on the row and no link is built.
+	if detail.Deliveries[0].PublicURL != "" {
+		t.Errorf("delivery public_url = %q, want empty without a webapp URL", detail.Deliveries[0].PublicURL)
+	}
 	if len(h.sends.reads) != 1 || h.sends.reads[0] != quote.ID {
 		t.Errorf("delivery reads = %v, want [%v]", h.sends.reads, quote.ID)
 	}
 	if len(h.db.scopes) != 1 || h.db.scopes[0] != testAccountID {
 		t.Errorf("transaction scoped to %v, want [%v]", h.db.scopes, testAccountID)
+	}
+}
+
+func TestRFQService_GetDetail_DecoratesDeliveryPublicURLs(t *testing.T) {
+	h, _, _, _, _ := getDetailHarness()
+	h.service.WithWebAppURL("https://quotes.test/")
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if err != nil {
+		t.Fatalf("GetDetail returned %v", err)
+	}
+	if len(detail.Deliveries) != 1 {
+		t.Fatalf("deliveries = %d, want 1", len(detail.Deliveries))
+	}
+	if want := "https://quotes.test/quotes/tk-viewed"; detail.Deliveries[0].PublicURL != want {
+		t.Errorf("delivery public_url = %q, want %q", detail.Deliveries[0].PublicURL, want)
+	}
+}
+
+func TestRFQService_GetDetail_CarriesTheCustomerResponses(t *testing.T) {
+	h, _, quote, _, _ := getDetailHarness()
+	comment := "El precio está bien, arrancamos la obra el lunes"
+	h.clientActions.actions = []domain.ClientAction{{
+		ID: uuid.New(), QuoteSendID: &h.sends.deliveries[0].ID, VersionID: testVersionID,
+		VersionNumber: 2, Type: domain.ClientActionRequestChange, Comment: &comment,
+		CreatedAt: fixedNow,
+	}}
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if err != nil {
+		t.Fatalf("GetDetail returned %v", err)
+	}
+	if len(detail.ClientActions) != 1 {
+		t.Fatalf("client actions = %d, want 1", len(detail.ClientActions))
+	}
+	action := detail.ClientActions[0]
+	if action.Type != domain.ClientActionRequestChange || action.VersionNumber != 2 {
+		t.Errorf("client action = %+v, want a v2 REQUEST_CHANGE", action)
+	}
+	if action.VersionID != testVersionID {
+		t.Errorf("client action version = %v, want %v", action.VersionID, testVersionID)
+	}
+	if len(h.clientActions.reads) != 1 || h.clientActions.reads[0] != quote.ID {
+		t.Errorf("client action reads = %v, want [%v]", h.clientActions.reads, quote.ID)
+	}
+}
+
+func TestRFQService_GetDetail_PropagatesClientActionReadErrors(t *testing.T) {
+	h, _, _, _, _ := getDetailHarness()
+	h.clientActions.err = domain.ErrNotFound
+
+	_, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("GetDetail = %v, want ErrNotFound", err)
 	}
 }
 

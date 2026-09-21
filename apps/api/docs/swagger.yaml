@@ -282,6 +282,21 @@ definitions:
       updated_at:
         type: string
     type: object
+  dto.ClientActionResponse:
+    properties:
+      comment:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      type:
+        type: string
+      version_id:
+        type: string
+      version_number:
+        type: integer
+    type: object
   dto.ConfirmCatalogImportRequest:
     properties:
       rows:
@@ -751,8 +766,31 @@ definitions:
       updated_at:
         type: string
     type: object
+  dto.PublicQuoteActionRequest:
+    properties:
+      message:
+        type: string
+      type:
+        type: string
+    required:
+    - type
+    type: object
+  dto.PublicQuoteActionResponse:
+    properties:
+      created_at:
+        type: string
+      customer_status:
+        type: string
+      quote_status:
+        type: string
+    type: object
   dto.PublicQuoteSendResponse:
     properties:
+      customer_status:
+        description: |-
+          CustomerStatus is the answer this token already received, present only when the
+          customer responded through the link.
+        type: string
       expires_at:
         type: string
       message:
@@ -1083,6 +1121,8 @@ definitions:
         type: string
       id:
         type: string
+      public_url:
+        type: string
       sent_at:
         type: string
       tracking_status:
@@ -1244,6 +1284,10 @@ definitions:
         type: object
       changes_requested:
         $ref: '#/definitions/dto.ChangeRequestDiffResponse'
+      client_actions:
+        items:
+          $ref: '#/definitions/dto.ClientActionResponse'
+        type: array
       deliveries:
         items:
           $ref: '#/definitions/dto.QuoteSendTrackingResponse'
@@ -3702,6 +3746,44 @@ paths:
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
       summary: Resolve a public quote delivery token
+      tags:
+      - public quote sends
+  /v1/public/quote-sends/{token}/action:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Public delivery token
+        in: path
+        name: token
+        required: true
+        type: string
+      - description: Customer answer
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.PublicQuoteActionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.PublicQuoteActionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Record a customer response on a public quote
       tags:
       - public quote sends
   /v1/quotes/{quoteId}/accept-materials:

@@ -789,6 +789,14 @@
         "cancel": "Cancelar",
         "send": "Enviar",
         "sending": "Enviando…",
+        "successTitle": "Cotización enviada",
+        "successDescription": "El enlace ya llegó con el mensaje. Copialo o abrílo si necesitás reenviarlo.",
+        "linkLabel": "Enlace de la cotización",
+        "copyLink": "Copiar enlace",
+        "copiedLink": "Enlace copiado",
+        "openQuote": "Abrir",
+        "resend": "Enviar a otro destino",
+        "done": "Listo",
         "toast": {
           "sent": "Cotización enviada",
           "partial": "Enviamos la cotización, pero falló {channels}. Reintentá ese envío.",
@@ -806,11 +814,20 @@
           "INTERNAL": "No pudimos enviar la cotización. Intentá de nuevo."
         }
       },
+      "quoteCard": {
+        "title": "Cotización {reference}",
+        "version": "Versión {version}",
+        "numberPending": "sin número",
+        "linkLabel": "Enlace del cliente",
+        "openQuote": "Ver cotización",
+        "copyLink": "Copiar enlace",
+        "copiedLink": "Enlace copiado",
+        "unavailable": "La cotización todavía no fue enviada: el enlace va a estar disponible cuando la envíes."
+      },
       "diff": {
         "title": "Cambios solicitados",
         "originalTitle": "Cotización original",
         "requestedTitle": "Cotización con cambios solicitados",
-        "reason": "Motivo del cliente",
         "discountsTitle": "Descuentos aplicados",
         "downloadOriginal": "Descargar pedido original",
         "columns": {

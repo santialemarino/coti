@@ -168,4 +168,7 @@ type PublicQuoteRepresentation struct {
 	Payload   *QuoteRepresentationPayload
 	Message   *string
 	PDFURL    *string
+	// CustomerStatus is the answer this send already received, absent while the customer
+	// has not responded through the token.
+	CustomerStatus *ClientActionType
 }

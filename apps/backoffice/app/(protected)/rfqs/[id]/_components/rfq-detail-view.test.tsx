@@ -249,7 +249,7 @@ describe('RfqDetailView tracking', () => {
    * The records fold away: the rail answers "where is this order", and these two answer "how did it
    * get here", which is not what the screen is opened for.
    */
-  it('folds the delivery history away and reports it empty once when opened', () => {
+  it('folds the delivery history away and reports it empty once opened', () => {
     const view = renderView(makeDetail('QUOTED'));
 
     expect(view.queryByText(copy.detail.timeline.noDeliveries)).toBeNull();

@@ -463,6 +463,8 @@ CREATE TABLE quote (
   client_id           UUID,
   rfq_id              UUID NOT NULL,
   seller_id           UUID,
+  public_token        VARCHAR(255),
+  public_pinned_version_id UUID,
   current_version_id  UUID,
   current_status      quote_status NOT NULL,
   expires_at          TIMESTAMPTZ,

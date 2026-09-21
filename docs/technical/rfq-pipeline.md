@@ -396,9 +396,11 @@ new validity window without changing older tokens.
 The seller-facing detail endpoint exposes the current view and the audit trail together:
 `rfq_status_history` comes from `rfq_status_change`, `quote_status_history` comes from
 `quote_status_change`, and `deliveries` lists the `quote_send` attempts for the quote. Delivery
-rows include the channel, destination, format, `tracking_status`, `sent_at`, `expires_at`, and
-`created_at`, including failed attempts so the backoffice can explain why a quote is still not
-visible to the client.
+rows include the channel, destination, format, `tracking_status`, `public_url`, `sent_at`,
+`expires_at`, and `created_at`, including failed attempts so the backoffice can explain why a
+quote is still not visible to the client. `public_url` mirrors the exact link the webapp serves
+for the send's `public_token`, so the backoffice can offer the client the address he actually
+received without ever minting a token of its own.
 
 After the successful confirmation commits, `QuoteQualityEvaluator.EvaluateFinalQuote` compares
 the original AI proposal with the frozen version. Evaluation or embedding failures never change

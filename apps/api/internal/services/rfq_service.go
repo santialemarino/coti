@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -81,6 +82,13 @@ type quoteAIGenerationRepository interface {
 	) (*domain.QuoteAIGeneration, error)
 }
 
+// rfqClientActionRepository lists the customer responses a quote's versions received, so the
+// seller review can show what the client answered and on which version.
+type rfqClientActionRepository interface {
+	ListByQuote(ctx context.Context, q repository.Querier, accountID, branchID,
+		quoteID uuid.UUID) ([]domain.ClientAction, error)
+}
+
 // rfqChannelReader is the channel validation surface the RFQ flow needs.
 type rfqChannelReader interface {
 	ListActiveByType(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, channelType domain.ChannelType) ([]domain.Channel, error)
@@ -132,6 +140,12 @@ type RFQService struct {
 	extractor   domain.RFQExtractor
 	matcher     catalogMatcher
 	memories    interpretationMemoryFinder
+	// clientActions trails the customer responses the quote's versions received; the detail
+	// only enriches when the surface is wired, so older surfaces stay lean.
+	clientActions rfqClientActionRepository
+	// webappURL is the customer-facing app origin; the detail rebuilds each delivery's public_url
+	// from its token only when the surface is wired.
+	webappURL string
 	// transcriber and attachments are only needed by the file intake, which refuses when
 	// either is unbound rather than making the text pipeline depend on them.
 	transcriber domain.Transcriber
@@ -162,6 +176,19 @@ func (s *RFQService) WithCorrectionMemory(memories interpretationMemoryFinder) *
 // version total depend on.
 func (s *RFQService) WithDiscounts(discounts quoteDiscountRepository) *RFQService {
 	s.discounts = discounts
+	return s
+}
+
+// WithClientActions wires customer response reads, which the seller detail lists when present.
+func (s *RFQService) WithClientActions(clientActions rfqClientActionRepository) *RFQService {
+	s.clientActions = clientActions
+	return s
+}
+
+// WithWebAppURL configures the customer-facing origin the detail decorates each delivery's
+// public_url with; without it the tracking rows carry their token but no resolvable link.
+func (s *RFQService) WithWebAppURL(webappURL string) *RFQService {
+	s.webappURL = strings.TrimRight(webappURL, "/")
 	return s
 }
 
@@ -245,7 +272,17 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 			if deliveryErr != nil {
 				return deliveryErr
 			}
+			s.decorateDeliveryURLs(deliveries)
 			detail.Deliveries = deliveries
+		}
+
+		if s.clientActions != nil {
+			actions, actionsErr := s.clientActions.ListByQuote(ctx, q, tenant.AccountID,
+				quote.BranchID, quote.ID)
+			if actionsErr != nil {
+				return actionsErr
+			}
+			detail.ClientActions = actions
 		}
 
 		if quote.CurrentVersionID != nil {
@@ -301,6 +338,17 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 		return nil, err
 	}
 	return detail, nil
+}
+
+// decorateDeliveryURLs rebuilds each delivery's public_url from the token the repository stored,
+// mirroring the URL the sender embedded in the client message so the seller can reopen it.
+func (s *RFQService) decorateDeliveryURLs(sends []domain.QuoteSend) {
+	if s.webappURL == "" {
+		return
+	}
+	for i := range sends {
+		sends[i].PublicURL = s.webappURL + "/quotes/" + url.PathEscape(sends[i].PublicToken)
+	}
 }
 
 // AssignSeller claims an unclaimed order for the seller. Self-assignment is seller-only: an

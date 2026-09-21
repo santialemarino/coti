@@ -112,6 +112,12 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 		public.GET("/account-logos/:accountId/:logoId", h.AccountLogo.Get)
 	}
 	public.GET("/quote-sends/:token", h.Quote.ResolvePublic)
+	// A public response is heavy on idempotency and race control, so it gets its own limit lane
+	// rather than sharing the generic public one.
+	// The quote-action lane shares a window with the generic public traffic but is keyed on its
+	// own label, so a flood of link clicks cannot starve the token GETs or vice versa.
+	public.POST("/quote-sends/:token/action", limit("quote-action", cfg.RateLimit.Global),
+		h.Quote.RespondPublic)
 
 	authed := v1.Group("", middleware.RequireTenant())
 

@@ -415,3 +415,68 @@ func TestQuoteDelivery_ConcurrentIdempotentRequestsDeliverOnce(t *testing.T) {
 			whatsapp.count(), results[0], results[1])
 	}
 }
+
+// A token is bound to the exact version its send froze, so a newer version of the same quote sent
+// later must leave what an earlier customer link serves untouched. The public read never consults
+// the quote's current version: the send row owns the snapshot it resolves.
+func TestQuoteDelivery_PublicTokenStaysPinnedToTheSentVersion(t *testing.T) {
+	e := newEnv(t)
+	seed := e.seedSendableQuote(t, "Delivery token pinning", false)
+	service := e.quoteDeliveryService(t, &captureWhatsAppSender{}, &stagedQuoteEmailSender{},
+		e.realQualityEvaluator(axisEmbedder{axes: map[string]int{}}))
+
+	first, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID,
+		domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550121"})
+	if err != nil {
+		t.Fatalf("first Send() = %v", err)
+	}
+	tokenA := strings.TrimPrefix(first.Deliveries[0].PublicURL, "https://quotes.test/quotes/")
+
+	// A second version arrives (the change-request flow) and is sent under its own fresh token; its
+	// version and snapshot rows mirror what that flow publishes.
+	secondVersion := uuid.New()
+	if _, err := e.db.CrossAccount().Exec(context.Background(), `
+		INSERT INTO quote_version (id, account_id, quote_id, author_id, version_number, currency,
+		                           total, is_immutable)
+		SELECT $1, account_id, quote_id, NULL, version_number + 1, currency, total, FALSE
+		  FROM quote_version WHERE id = $2`, secondVersion, first.VersionID); err != nil {
+		t.Fatalf("seed second version: %v", err)
+	}
+	if _, err := e.db.CrossAccount().Exec(context.Background(), `
+		INSERT INTO quote_representation (id, account_id, branch_id, quote_id, version_id,
+		                                  schema_version, payload, message, pdf_storage_key,
+		                                  pdf_content_type, pdf_size_bytes, pdf_sha256,
+		                                  logo_fallback_used)
+		SELECT gen_random_uuid(), account_id, branch_id, quote_id, $1, schema_version,
+		       jsonb_set(payload, '{version_number}', '2'), message, pdf_storage_key,
+		       pdf_content_type, pdf_size_bytes, pdf_sha256, logo_fallback_used
+		  FROM quote_representation WHERE version_id = $2`, secondVersion,
+		first.VersionID); err != nil {
+		t.Fatalf("seed second version snapshot: %v", err)
+	}
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`UPDATE quote SET current_version_id = $2 WHERE id = $1`, seed.draft.Quote.ID,
+		secondVersion); err != nil {
+		t.Fatalf("point quote at second version: %v", err)
+	}
+
+	second, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID,
+		domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550122"})
+	if err != nil {
+		t.Fatalf("second Send() = %v", err)
+	}
+	tokenB := strings.TrimPrefix(second.Deliveries[0].PublicURL, "https://quotes.test/quotes/")
+
+	firstStillPinned, err := service.ResolvePublic(context.Background(), tokenA)
+	if err != nil || firstStillPinned.Payload == nil {
+		t.Fatalf("old token ResolvePublic() = %+v, %v, want the original snapshot", firstStillPinned, err)
+	}
+	secondServed, err := service.ResolvePublic(context.Background(), tokenB)
+	if err != nil || secondServed.Payload == nil {
+		t.Fatalf("new token ResolvePublic() = %+v, %v, want the second snapshot", secondServed, err)
+	}
+	if firstStillPinned.Payload.VersionNumber != 1 || secondServed.Payload.VersionNumber != 2 {
+		t.Errorf("version served = %d / %d, want 1 on the old token and 2 on the new one",
+			firstStillPinned.Payload.VersionNumber, secondServed.Payload.VersionNumber)
+	}
+}

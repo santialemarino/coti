@@ -29,8 +29,13 @@ export async function QuoteHeader({
   const fmt = await getFormatters();
   const t = await getTranslations('quote');
 
+  /*
+   * The header reads as the masthead of a document rather than a card: corralón identity on the
+   * left, the frozen quote's own stamp on the right, and a hairline where the body starts. The brand
+   * colour paints the rule above the identity, never text, for the contrast reason stated below.
+   */
   return (
-    <header className="flex flex-col gap-y-4">
+    <header className="flex flex-col gap-y-4 border-b border-border pb-6">
       <span
         aria-hidden="true"
         className="h-1 w-16 rounded-full"
@@ -44,7 +49,7 @@ export async function QuoteHeader({
             The box is sized so the header does not reflow as the logo decodes.
           */}
           {supplier.logoUrl ? (
-            <span className="block h-10 w-40 self-start mb-1 relative">
+            <span className="block h-11 w-44 self-start mb-1 relative">
               <Image
                 src={supplier.logoUrl}
                 alt={t('logoAlt', { name: supplier.name })}
@@ -54,11 +59,11 @@ export async function QuoteHeader({
               />
             </span>
           ) : null}
-          <p className="text-heading-4 text-foreground">{supplier.name}</p>
+          <p className="text-heading-3 text-foreground">{supplier.name}</p>
           <MetaList items={[branch.name, branch.address]} />
         </div>
         <div className="flex flex-col items-start gap-y-1 sm:items-end">
-          <p className="text-paragraph-medium text-foreground">{t('reference', { reference })}</p>
+          <p className="text-heading-5 text-foreground">{t('reference', { reference })}</p>
           <MetaList
             items={[
               t('version', { number: versionNumber }),

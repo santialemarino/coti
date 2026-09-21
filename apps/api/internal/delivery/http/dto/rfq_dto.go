@@ -139,7 +139,7 @@ type RFQAttachmentListResponse struct {
 
 // RfqDetailResponse is returned by GET /v1/rfqs/{rfqId}. It includes the RFQ
 // list item projection plus the full quote, version, items, alternatives, discounts,
-// and the change-request diff when one applies.
+// the change-request diff when one applies, and the customer responses the versions received.
 type RfqDetailResponse struct {
 	Rfq              RfqListItemResponse                       `json:"rfq"`
 	Quote            *QuoteResponse                            `json:"quote"`
@@ -151,6 +151,18 @@ type RfqDetailResponse struct {
 	Deliveries       []QuoteSendTrackingResponse               `json:"deliveries"`
 	Discounts        []QuoteDiscountResponse                   `json:"discounts"`
 	ChangesRequested *ChangeRequestDiffResponse                `json:"changes_requested,omitempty"`
+	ClientActions    []ClientActionResponse                    `json:"client_actions"`
+}
+
+// ClientActionResponse is one customer response the quote's versions received. version_number
+// names the frozen version the answer pinned, which is the one the client actually looked at.
+type ClientActionResponse struct {
+	ID            uuid.UUID `json:"id"`
+	VersionID     uuid.UUID `json:"version_id"`
+	VersionNumber int       `json:"version_number"`
+	Type          string    `json:"type"`
+	Comment       *string   `json:"comment"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // RFQStatusChangeResponse is one recorded transition on the RFQ status cache.
@@ -183,6 +195,7 @@ type QuoteSendTrackingResponse struct {
 	Destination    string     `json:"destination"`
 	Format         string     `json:"format"`
 	TrackingStatus string     `json:"tracking_status"`
+	PublicURL      string     `json:"public_url"`
 	SentAt         *time.Time `json:"sent_at"`
 	ExpiresAt      *time.Time `json:"expires_at"`
 	CreatedAt      time.Time  `json:"created_at"`
