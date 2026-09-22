@@ -111,6 +111,8 @@
     "QUOTE_ARCHIVED": "La cotización está archivada y no se puede modificar.",
     "QUOTE_NOT_DRAFT": "La cotización ya no está en un estado que permita esa acción.",
     "QUOTE_NOT_SENDABLE": "La cotización cambió y esta versión ya no es la aprobada.",
+    "DELIVERY_CHANNEL": "Esta sucursal no tiene los canales de envío necesarios configurados.",
+    "DELIVERY_UNAVAILABLE": "No se pudo entregar por ningún canal. Revisá la configuración de envío o intentá más tarde.",
     "UNSUPPORTED_FILE_TYPE": "Ese tipo de archivo no está soportado.",
     "AI_UNAVAILABLE": "La IA no está disponible en este momento. Probá de nuevo en unos minutos.",
     "NOT_CONFIGURED": "Esa función todavía no está configurada en esta cuenta.",
@@ -805,6 +807,8 @@
         "errors": {
           "NOT_FOUND": "No encontramos esta cotización. Actualizá la pantalla e intentá de nuevo.",
           "INVALID_INPUT": "Revisá el teléfono y el correo: el teléfono va con código de país.",
+          "DELIVERY_CHANNEL": "Falta un canal activo de WhatsApp o correo en esta sucursal. Pedile a un administrador que lo configure.",
+          "DELIVERY_UNAVAILABLE": "No pudimos entregar la cotización por ningún canal. Revisá la configuración de envío o intentá más tarde.",
           "CONFLICT": "La cotización cambió mientras la enviabas. Actualizá la pantalla y revisala antes de enviar.",
           "QUOTE_NOT_SENDABLE": "Esta versión ya no es la aprobada. Actualizá la pantalla y volvé a intentar.",
           "QUOTE_ARCHIVED": "Esta cotización está archivada. Desarchivala antes de enviarla.",
