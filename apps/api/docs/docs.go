@@ -3065,9 +3065,8 @@ const docTemplate = `{
                 }
             }
         },
-        "/v1/public/quote-sends/{token}/actions": {
+        "/v1/public/quote-sends/{token}/action": {
             "post": {
-                "description": "Records an explicit accept or reject against the version the customer was shown and moves the quote to ACCEPTED or REJECTED. The unguessable token is the whole authority — there is no session — so an unknown token is a 404 and an expired one is refused. A rejection is always the customer's own action; nothing infers one. The quote's seller is told by mail, and a mail that cannot be sent does not undo the answer.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3075,9 +3074,9 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "quotes"
+                    "public quote sends"
                 ],
-                "summary": "Answer a quote as its customer",
+                "summary": "Record a customer response on a public quote",
                 "parameters": [
                     {
                         "type": "string",
@@ -3087,7 +3086,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "The answer",
+                        "description": "Customer answer",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -3116,7 +3115,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "QUOTE_SEND_EXPIRED on a link past its validity, QUOTE_NOT_SENT once the quote has already been answered",
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -5595,6 +5594,29 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ClientActionResponse": {
+            "type": "object",
+            "properties": {
+                "comment": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "version_id": {
+                    "type": "string"
+                },
+                "version_number": {
+                    "type": "integer"
+                }
+            }
+        },
         "dto.ConfirmCatalogImportRequest": {
             "type": "object",
             "required": [
@@ -6285,28 +6307,27 @@ const docTemplate = `{
         "dto.PublicQuoteActionRequest": {
             "type": "object",
             "required": [
-                "action"
+                "type"
             ],
             "properties": {
-                "action": {
-                    "type": "string",
-                    "enum": [
-                        "ACCEPT",
-                        "REJECT"
-                    ]
+                "message": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
                 }
             }
         },
         "dto.PublicQuoteActionResponse": {
             "type": "object",
             "properties": {
-                "action": {
+                "created_at": {
                     "type": "string"
                 },
-                "reference": {
+                "customer_status": {
                     "type": "string"
                 },
-                "status": {
+                "quote_status": {
                     "type": "string"
                 }
             }
@@ -6314,6 +6335,10 @@ const docTemplate = `{
         "dto.PublicQuoteSendResponse": {
             "type": "object",
             "properties": {
+                "customer_status": {
+                    "description": "CustomerStatus is the answer this token already received, present only when the\ncustomer responded through the link.",
+                    "type": "string"
+                },
                 "expires_at": {
                     "type": "string"
                 },
@@ -6811,6 +6836,9 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "public_url": {
+                    "type": "string"
+                },
                 "sent_at": {
                     "type": "string"
                 },
@@ -7053,6 +7081,12 @@ const docTemplate = `{
                 },
                 "changes_requested": {
                     "$ref": "#/definitions/dto.ChangeRequestDiffResponse"
+                },
+                "client_actions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ClientActionResponse"
+                    }
                 },
                 "deliveries": {
                     "type": "array",

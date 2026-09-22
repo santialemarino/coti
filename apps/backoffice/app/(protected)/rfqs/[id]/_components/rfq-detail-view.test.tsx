@@ -249,7 +249,7 @@ describe('RfqDetailView tracking', () => {
    * The records fold away: the rail answers "where is this order", and these two answer "how did it
    * get here", which is not what the screen is opened for.
    */
-  it('folds the delivery history away and reports it empty once when opened', () => {
+  it('folds the delivery history away and reports it empty once opened', () => {
     const view = renderView(makeDetail('QUOTED'));
 
     expect(view.queryByText(copy.detail.timeline.noDeliveries)).toBeNull();
@@ -272,10 +272,11 @@ describe('RfqDetailView send flow', () => {
     expect(SendDialog).toHaveBeenCalledWith(dialogPropsFor('QUOTED'), undefined);
   });
 
-  it('reuses the same send dialog on CHANGE_REQUESTED and keeps the diff', () => {
-    renderView(makeDetail('CHANGE_REQUESTED'));
+  it('keeps the requested change editable until the seller reprices it', () => {
+    const view = renderView(makeDetail('CHANGE_REQUESTED'));
 
-    expect(SendDialog).toHaveBeenCalledWith(dialogPropsFor('CHANGE_REQUESTED'), undefined);
+    expect(SendDialog).not.toHaveBeenCalled();
+    expect(view.getByRole('button', { name: copy.detail.items.generate })).toBeTruthy();
     expect(ChangeDiff).toHaveBeenCalledTimes(1);
   });
 

@@ -21,6 +21,13 @@ interface PublicQuoteSendRaw {
   quote?: QuotePayloadRaw;
   message?: string;
   pdf_url?: string;
+  customer_status?: string;
+}
+
+interface PublicQuoteActionResultRaw {
+  customer_status: string;
+  created_at: string;
+  quote_status?: string;
 }
 
 interface QuotePayloadRaw {
@@ -78,12 +85,28 @@ interface QuoteDiscountRaw {
 // The API answers EXPIRED with no quote body, so the payload is what separates the two states.
 export type PublicQuoteStatus = 'ACTIVE' | 'EXPIRED';
 
+// The wire value of client_action_type; this is the customer's deliberate decision on the frozen
+// version, so the approval pallet mirrors the backend enum exactly.
+export type CustomerActionType = 'ACCEPT' | 'REQUEST_CHANGE' | 'REJECT';
+
 export interface PublicQuoteSend {
   status: PublicQuoteStatus;
   expiresAt: string;
   quote?: QuotePayload;
   message?: string;
   pdfUrl?: string;
+  customerStatus?: CustomerActionType;
+}
+
+export interface PublicQuoteAction {
+  type: CustomerActionType;
+  message?: string;
+}
+
+export interface PublicQuoteActionResult {
+  customerStatus: CustomerActionType;
+  createdAt: string;
+  quoteStatus?: string;
 }
 
 export interface QuotePayload {
@@ -192,6 +215,7 @@ function mapPublicQuoteSend(raw: PublicQuoteSendRaw): PublicQuoteSend {
     quote: raw.quote ? mapQuotePayload(raw.quote) : undefined,
     message: raw.message,
     pdfUrl: raw.pdf_url,
+    customerStatus: raw.customer_status as CustomerActionType | undefined,
   };
 }
 
@@ -217,4 +241,43 @@ export async function getPublicQuoteByToken(token: string): Promise<PublicQuoteS
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`public quote read failed with ${response.status}`);
   return mapPublicQuoteSend((await response.json()) as PublicQuoteSendRaw);
+}
+
+// PublicQuoteActionError carries the HTTP status behind a refused customer response, so the app
+// route can forward the right shape instead of guessing from a message string.
+export class PublicQuoteActionError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`public quote action failed with ${status}`);
+    this.status = status;
+  }
+}
+
+/*
+ * Records the customer's deliberate answer on the frozen version. Like the read above this is
+ * server-only and unauthenticated: the token in the URL is the access control. The API treats a
+ * repeated answer for the same send as a replay, so this is safe for the component to call twice
+ * on a flaky first response.
+ */
+export async function submitPublicQuoteAction(
+  token: string,
+  action: PublicQuoteAction,
+): Promise<PublicQuoteActionResult> {
+  const response = await fetch(
+    `${API_URL}${PUBLIC_QUOTE_PATH}/${encodeURIComponent(token)}/action`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ type: action.type, message: action.message }),
+      cache: 'no-store',
+    },
+  );
+  if (!response.ok) throw new PublicQuoteActionError(response.status);
+  const raw = (await response.json()) as PublicQuoteActionResultRaw;
+  return {
+    customerStatus: raw.customer_status as CustomerActionType,
+    createdAt: raw.created_at,
+    quoteStatus: raw.quote_status,
+  };
 }

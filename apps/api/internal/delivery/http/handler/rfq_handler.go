@@ -871,7 +871,18 @@ func toRfqDetailResponse(detail domain.RfqDetail) dto.RfqDetailResponse {
 		resp.ChangesRequested = &diff
 	}
 
+	resp.ClientActions = make([]dto.ClientActionResponse, 0, len(detail.ClientActions))
+	for _, action := range detail.ClientActions {
+		resp.ClientActions = append(resp.ClientActions, toClientActionResponse(action))
+	}
+
 	return resp
+}
+
+func toClientActionResponse(action domain.ClientAction) dto.ClientActionResponse {
+	return dto.ClientActionResponse{ID: action.ID, VersionID: action.VersionID,
+		VersionNumber: action.VersionNumber, Type: string(action.Type), Comment: action.Comment,
+		CreatedAt: action.CreatedAt}
 }
 
 func toChangeRequestDiffResponse(diff domain.ChangeRequestDiff) dto.ChangeRequestDiffResponse {
@@ -997,8 +1008,8 @@ func toQuoteSendTrackingResponses(sends []domain.QuoteSend) []dto.QuoteSendTrack
 		responses = append(responses, dto.QuoteSendTrackingResponse{
 			ID: send.ID, VersionID: send.VersionID, Channel: string(send.ChannelType),
 			Destination: send.Destination, Format: string(send.Format),
-			TrackingStatus: string(send.TrackingStatus), SentAt: send.SentAt,
-			ExpiresAt: send.ExpiresAt, CreatedAt: send.CreatedAt,
+			TrackingStatus: string(send.TrackingStatus), PublicURL: send.PublicURL,
+			SentAt: send.SentAt, ExpiresAt: send.ExpiresAt, CreatedAt: send.CreatedAt,
 		})
 	}
 	return responses

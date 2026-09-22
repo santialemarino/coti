@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -49,6 +50,17 @@ type quoteDeliveryQuoteRepository interface {
 		versionID uuid.UUID) (*domain.Quote, error)
 	GetCurrentVersion(ctx context.Context, q repository.Querier, accountID, branchID,
 		quoteID uuid.UUID) (*domain.QuoteVersion, error)
+	CreateVersion(ctx context.Context, q repository.Querier, accountID uuid.UUID,
+		in domain.NewQuoteVersion) (*domain.QuoteVersion, error)
+	UpdateCurrentVersion(ctx context.Context, q repository.Querier, accountID, quoteID,
+		versionID uuid.UUID) (*domain.Quote, error)
+	ListItems(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID) ([]domain.QuoteItem, error)
+	CreateItems(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
+		items []domain.NewQuoteItem) ([]domain.QuoteItem, error)
+	ListAlternativesByItemIDs(ctx context.Context, q repository.Querier, accountID uuid.UUID,
+		itemIDs []uuid.UUID) (map[uuid.UUID][]domain.QuoteItemAlternative, error)
+	CreateAlternatives(ctx context.Context, q repository.Querier, accountID uuid.UUID,
+		alternatives []domain.NewQuoteItemAlternative) error
 	FreezeVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID,
 		versionID uuid.UUID) (*domain.QuoteVersion, error)
 	SetClient(ctx context.Context, q repository.Querier, accountID, branchID, quoteID,
@@ -108,6 +120,7 @@ type QuoteDeliveryService struct {
 	quotes          quoteDeliveryQuoteRepository
 	rfqs            quoteDeliveryRFQRepository
 	clients         quoteDeliveryClientRepository
+	messages        quoteMessageWriter
 	channels        quoteDeliveryChannelRepository
 	branches        quoteDeliveryBranchRepository
 	whatsapp        domain.QuoteWhatsAppSender
@@ -322,13 +335,6 @@ func (s *QuoteDeliveryService) prepare(ctx context.Context, tenant domain.Tenant
 		}
 		quote.ClientID = &clientID
 
-		if !version.IsImmutable {
-			version, err = s.quotes.FreezeVersion(ctx, q, tenant.AccountID, tenant.BranchID,
-				quote.ID, version.ID)
-			if err != nil {
-				return err
-			}
-		}
 		selected, err := s.selectedChannels(ctx, q, tenant, in)
 		if err != nil {
 			return err
@@ -540,8 +546,155 @@ func (s *QuoteDeliveryService) ResolvePublic(ctx context.Context,
 	if s.representations == nil {
 		return nil, domain.ErrNotConfigured
 	}
-	return s.representations.ResolvePublic(ctx, accountID, send.VersionID, *send.ExpiresAt,
+	result, err := s.representations.ResolvePublic(ctx, accountID, send.VersionID, *send.ExpiresAt,
 		s.publicURL(send.PublicToken))
+	if err != nil {
+		return nil, err
+	}
+	if customerStatus := s.customerStatus(ctx, accountID, send.ID); customerStatus != nil {
+		result.CustomerStatus = customerStatus
+	}
+	return result, nil
+}
+
+// RespondPublic records the customer's deliberate answer to a published quote and closes the loop
+// when that answer addresses the version the quote still shows: ACCEPT moves SENT to ACCEPTED,
+// REJECT to REJECTED, and REQUEST_CHANGE to CHANGE_REQUESTED. A token that already answered
+// replays its first answer instead of recording another one, so a flaky retry never doubles the
+// response.
+func (s *QuoteDeliveryService) RespondPublic(ctx context.Context, token string,
+	in domain.ClientActionInput) (*domain.PublicQuoteActionResult, error) {
+	if s.actions == nil {
+		return nil, domain.ErrNotConfigured
+	}
+	if err := normalizeClientAction(&in); err != nil {
+		return nil, err
+	}
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return nil, domain.ErrNotFound
+	}
+	accountID, err := s.sends.GetAccountIDByPublicToken(ctx, s.db.CrossAccount(), token)
+	if err != nil {
+		return nil, err
+	}
+	var result *domain.PublicQuoteActionResult
+	err = s.db.WithAdvisoryLock(ctx, strings.Join([]string{"quote-action",
+		accountID.String(), token}, ":"), func() error {
+		var respondErr error
+		result, respondErr = s.respondLocked(ctx, accountID, token, in)
+		return respondErr
+	})
+	return result, err
+}
+
+func (s *QuoteDeliveryService) respondLocked(ctx context.Context, accountID uuid.UUID, token string,
+	in domain.ClientActionInput) (*domain.PublicQuoteActionResult, error) {
+	var result *domain.PublicQuoteActionResult
+	var moved *domain.ClientQuoteOutcome
+	err := s.db.InTenantTx(ctx, domain.Tenant{AccountID: accountID},
+		func(q repository.Querier) error {
+			send, err := s.sends.GetPublicByToken(ctx, q, accountID, token)
+			if err != nil {
+				return err
+			}
+			if send.ExpiresAt == nil {
+				return domain.ErrNotFound
+			}
+			if !s.now().Before(*send.ExpiresAt) {
+				return domain.ErrConflict
+			}
+			quote, err := s.quotes.GetByVersionID(ctx, q, accountID, send.VersionID)
+			if err != nil {
+				return err
+			}
+			quote, err = s.quotes.GetByIDForUpdate(ctx, q, accountID, quote.BranchID, quote.ID)
+			if err != nil {
+				return err
+			}
+			existing, err := s.actions.GetBySend(ctx, q, accountID, send.ID)
+			if err != nil && !errors.Is(err, domain.ErrNotFound) {
+				return err
+			}
+			if existing != nil {
+				result = &domain.PublicQuoteActionResult{CustomerStatus: existing.Type,
+					CreatedAt: existing.CreatedAt, QuoteStatus: quote.CurrentStatus}
+				return nil
+			}
+			if quote.ArchivedAt != nil {
+				return domain.WithCode(domain.CodeQuoteArchived, domain.ErrConflict)
+			}
+			if quote.CurrentVersionID == nil || *quote.CurrentVersionID != send.VersionID ||
+				quote.CurrentStatus != domain.QuoteStatusSent {
+				return domain.WithCode(domain.CodeQuoteNotSent, domain.ErrConflict)
+			}
+			target, ok := statusForClientAction(in.Type)
+			if !ok {
+				return domain.ErrInvalidInput
+			}
+			created, err := s.actions.Create(ctx, q, accountID, domain.NewClientAction{
+				ID: uuid.New(), QuoteSendID: &send.ID, VersionID: send.VersionID, Type: in.Type,
+				Comment: in.Message})
+			if err != nil {
+				return err
+			}
+			if in.Type == domain.ClientActionRequestChange {
+				if err := s.createChangeRequest(ctx, q, accountID, *quote, *send, *created,
+					*in.Message); err != nil {
+					return err
+				}
+			}
+			updated, updateErr := s.quotes.UpdateStatus(ctx, q, accountID, quote.BranchID,
+				quote.ID, quote.CurrentStatus, target)
+			if updateErr != nil {
+				return updateErr
+			}
+			previous := quote.CurrentStatus
+			if _, appendErr := s.quotes.AppendStatusChange(ctx, q, accountID, quote.ID,
+				&previous, target, nil); appendErr != nil {
+				return appendErr
+			}
+			result = &domain.PublicQuoteActionResult{CustomerStatus: created.Type,
+				CreatedAt: created.CreatedAt, QuoteStatus: target}
+			if in.Type == domain.ClientActionAccept || in.Type == domain.ClientActionReject {
+				moved = &domain.ClientQuoteOutcome{QuoteID: updated.ID,
+					Reference: string(domain.QuoteReference(updated.Number)), Status: target,
+					Action: in.Type, SellerID: updated.SellerID}
+			}
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
+	if moved != nil {
+		s.notifySellerOfOutcome(ctx, accountID, *moved)
+	}
+	return result, nil
+}
+
+// customerStatus reads the answer this exact send already received, if any; a read failure is
+// logged and left unanswered rather than failing the whole public page.
+func (s *QuoteDeliveryService) customerStatus(ctx context.Context, accountID, sendID uuid.UUID,
+) *domain.ClientActionType {
+	if s.actions == nil {
+		return nil
+	}
+	var action *domain.ClientAction
+	err := s.db.InTenantTx(ctx, domain.Tenant{AccountID: accountID},
+		func(q repository.Querier) error {
+			var getErr error
+			action, getErr = s.actions.GetBySend(ctx, q, accountID, sendID)
+			return getErr
+		})
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		s.log.WarnContext(ctx, "customer response read failed",
+			slog.String("send_id", sendID.String()), slog.Any("error", err))
+		return nil
+	}
+	return &action.Type
 }
 
 func (s *QuoteDeliveryService) evaluateAfterCommit(ctx context.Context, tenant domain.Tenant,
@@ -585,6 +738,49 @@ func validateValidityDays(days int) error {
 			minQuoteValidityDays, maxQuoteValidityDays)
 	}
 	return nil
+}
+
+const maxClientActionComment = 512
+
+func normalizeClientAction(in *domain.ClientActionInput) error {
+	switch in.Type {
+	case domain.ClientActionAccept, domain.ClientActionReject, domain.ClientActionRequestChange:
+	default:
+		return fmt.Errorf("%w: a customer response must be ACCEPT, REQUEST_CHANGE or REJECT",
+			domain.ErrInvalidInput)
+	}
+	if in.Message != nil {
+		trimmed := strings.TrimSpace(*in.Message)
+		if trimmed == "" {
+			in.Message = nil
+		} else {
+			in.Message = &trimmed
+		}
+	}
+	if in.Type == domain.ClientActionRequestChange &&
+		(in.Message == nil || utf8.RuneCountInString(*in.Message) > maxClientActionComment) {
+		return fmt.Errorf("%w: requesting a change needs a message of 1 to %d characters",
+			domain.ErrInvalidInput, maxClientActionComment)
+	}
+	if in.Type != domain.ClientActionRequestChange && in.Message != nil &&
+		utf8.RuneCountInString(*in.Message) > maxClientActionComment {
+		return fmt.Errorf("%w: comment must be at most %d characters",
+			domain.ErrInvalidInput, maxClientActionComment)
+	}
+	return nil
+}
+
+func statusForClientAction(action domain.ClientActionType) (domain.QuoteStatus, bool) {
+	switch action {
+	case domain.ClientActionAccept:
+		return domain.QuoteStatusAccepted, true
+	case domain.ClientActionReject:
+		return domain.QuoteStatusRejected, true
+	case domain.ClientActionRequestChange:
+		return domain.QuoteStatusChangeRequested, true
+	default:
+		return "", false
+	}
 }
 
 func validateReplay(sends []domain.QuoteSend, versionID uuid.UUID,

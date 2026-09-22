@@ -141,6 +141,23 @@ type PublicQuoteSendResponse struct {
 	Quote     *QuoteRepresentationPayloadResponse `json:"quote,omitempty"`
 	Message   *string                             `json:"message,omitempty"`
 	PDFURL    *string                             `json:"pdf_url,omitempty"`
+	// CustomerStatus is the answer this token already received, present only when the
+	// customer responded through the link.
+	CustomerStatus *string `json:"customer_status,omitempty"`
+}
+
+// PublicQuoteActionRequest is the customer's response to the frozen quote.
+type PublicQuoteActionRequest struct {
+	Type    string  `json:"type" binding:"required"`
+	Message *string `json:"message"`
+}
+
+// PublicQuoteActionResponse reports the recorded answer and the status the quote settled on. When
+// the answer did not move the quote (version already superseded), quote_status stays unchanged.
+type PublicQuoteActionResponse struct {
+	CustomerStatus string    `json:"customer_status"`
+	CreatedAt      time.Time `json:"created_at"`
+	QuoteStatus    *string   `json:"quote_status"`
 }
 
 // QuoteRepresentationResponse is one authenticated immutable output bundle.
@@ -167,18 +184,6 @@ type QuoteRepresentationPayloadResponse struct {
 	Discounts     []QuoteRepresentationDiscountResponse `json:"discounts"`
 	Total         string                                `json:"total"`
 	ValidityNote  string                                `json:"validity_note"`
-}
-
-// PublicQuoteActionRequest is the answer a customer gives to the quote they were sent.
-type PublicQuoteActionRequest struct {
-	Action string `json:"action" binding:"required,oneof=ACCEPT REJECT"`
-}
-
-// PublicQuoteActionResponse reports what the quote became, and nothing the customer may not see.
-type PublicQuoteActionResponse struct {
-	Reference string `json:"reference"`
-	Status    string `json:"status"`
-	Action    string `json:"action"`
 }
 
 // QuoteRepresentationSupplierResponse is the public supplier identity.

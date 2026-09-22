@@ -65,3 +65,8 @@ func (stubClientActions) Create(context.Context, repository.Querier, uuid.UUID,
 	domain.NewClientAction) (*domain.ClientAction, error) {
 	return &domain.ClientAction{}, nil
 }
+
+func (stubClientActions) GetBySend(context.Context, repository.Querier, uuid.UUID,
+	uuid.UUID) (*domain.ClientAction, error) {
+	return nil, domain.ErrNotFound
+}

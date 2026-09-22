@@ -92,6 +92,7 @@ export interface RfqDetailResponse {
   deliveries: QuoteSendTrackingResponse[];
   discounts?: QuoteDiscountResponse[];
   changes_requested?: ChangeRequestDiff;
+  client_actions?: ClientActionResponse[];
 }
 
 export interface QuoteResponse {
@@ -188,8 +189,25 @@ export interface QuoteSendTrackingResponse {
   destination: string;
   format: string;
   tracking_status: string;
+  public_url: string;
   sent_at: string | null;
   expires_at: string | null;
+  created_at: string;
+}
+
+// The three answers a customer can give on the public quote page, in the wire's snake_case words.
+export type ClientActionType = 'ACCEPT' | 'REQUEST_CHANGE' | 'REJECT';
+
+/*
+ * One customer answer on the public page. version_number names the frozen version the client
+ * actually looked at — the author of a later version needs it to know what they are responding to.
+ */
+export interface ClientActionResponse {
+  id: string;
+  version_id: string;
+  version_number: number;
+  type: ClientActionType;
+  comment: string | null;
   created_at: string;
 }
 

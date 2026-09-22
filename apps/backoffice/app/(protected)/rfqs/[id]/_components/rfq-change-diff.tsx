@@ -3,7 +3,6 @@
 import { useTranslations } from 'next-intl';
 
 import {
-  Callout,
   Card,
   CardHeader,
   CardTitle,
@@ -248,31 +247,23 @@ export function RfqChangeDiff({ diff }: RfqChangeDiffProps) {
   const alignedRows = buildAlignedRows(diff.original.items, diff.requested.items);
 
   return (
-    <div className="flex flex-col gap-y-4">
-      {diff.reason ? (
-        <Callout tone="info" title={t('detail.diff.reason')}>
-          {diff.reason}
-        </Callout>
-      ) : null}
-
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <DiffPanel
-          title={t('detail.diff.originalTitle')}
-          side="original"
-          alignedRows={alignedRows}
-          discounts={diff.original.discounts}
-          total={diff.original.total}
-          fmt={fmt}
-        />
-        <DiffPanel
-          title={t('detail.diff.requestedTitle')}
-          side="requested"
-          alignedRows={alignedRows}
-          discounts={diff.requested.discounts}
-          total={diff.requested.total}
-          fmt={fmt}
-        />
-      </div>
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <DiffPanel
+        title={t('detail.diff.originalTitle')}
+        side="original"
+        alignedRows={alignedRows}
+        discounts={diff.original.discounts}
+        total={diff.original.total}
+        fmt={fmt}
+      />
+      <DiffPanel
+        title={t('detail.diff.requestedTitle')}
+        side="requested"
+        alignedRows={alignedRows}
+        discounts={diff.requested.discounts}
+        total={diff.requested.total}
+        fmt={fmt}
+      />
     </div>
   );
 }

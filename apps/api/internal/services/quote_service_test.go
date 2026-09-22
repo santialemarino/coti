@@ -362,6 +362,32 @@ func TestQuoteService_AcceptMaterials_FreezesPricesAndMovesToQuoted(t *testing.T
 	}
 }
 
+func TestQuoteService_AcceptMaterials_PricesRequestedChanges(t *testing.T) {
+	t.Parallel()
+	product := uuid.New()
+	f := newQuoteFixture([]domain.QuoteItem{pricedLine(product, "2")},
+		map[uuid.UUID]domain.BranchPrice{product: branchPrice(product, "30.00", nil)})
+	f.quotes.quote.CurrentStatus = domain.QuoteStatusChangeRequested
+
+	priced, err := f.service.AcceptMaterials(context.Background(), f.tenant, f.quoteID)
+	if err != nil {
+		t.Fatalf("AcceptMaterials() = %v", err)
+	}
+	if priced.Quote.CurrentStatus != domain.QuoteStatusQuoted ||
+		!priced.Version.Total.Equal(decimal.RequireFromString("60.00")) {
+		t.Errorf("priced quote = %+v, want QUOTED with total 60.00", priced)
+	}
+	if len(f.quotes.statusUpdates) != 1 ||
+		f.quotes.statusUpdates[0].from != domain.QuoteStatusChangeRequested ||
+		f.quotes.statusUpdates[0].to != domain.QuoteStatusQuoted {
+		t.Errorf("status updates = %+v, want CHANGE_REQUESTED to QUOTED", f.quotes.statusUpdates)
+	}
+	if len(f.quotes.statusChanges) != 1 || f.quotes.statusChanges[0].previousStatus == nil ||
+		*f.quotes.statusChanges[0].previousStatus != domain.QuoteStatusChangeRequested {
+		t.Errorf("status history = %+v, want CHANGE_REQUESTED as previous", f.quotes.statusChanges)
+	}
+}
+
 func TestQuoteService_AcceptMaterials_PricesEveryLineInOneQuery(t *testing.T) {
 	t.Parallel()
 	first, second := uuid.New(), uuid.New()
@@ -417,7 +443,6 @@ func TestQuoteService_AcceptMaterials_RefusesAQuoteThatIsNotADraft(t *testing.T)
 	}{
 		{"already quoted", domain.QuoteStatusQuoted, false, domain.CodeQuoteNotDraft},
 		{"sent", domain.QuoteStatusSent, false, domain.CodeQuoteNotDraft},
-		{"change requested", domain.QuoteStatusChangeRequested, false, domain.CodeQuoteNotDraft},
 		{"accepted", domain.QuoteStatusAccepted, false, domain.CodeQuoteNotDraft},
 		{"rejected", domain.QuoteStatusRejected, false, domain.CodeQuoteNotDraft},
 		{"archived draft", domain.QuoteStatusDraft, true, domain.CodeQuoteArchived},
