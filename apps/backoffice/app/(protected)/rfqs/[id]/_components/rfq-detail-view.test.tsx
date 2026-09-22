@@ -272,7 +272,7 @@ describe('RfqDetailView send flow', () => {
     expect(SendDialog).toHaveBeenCalledWith(dialogPropsFor('QUOTED'), undefined);
   });
 
-  it('keeps the requested change editable until the seller reprices it', () => {
+  it('keeps the requested change editable until the seller approves it', () => {
     const view = renderView(makeDetail('CHANGE_REQUESTED'));
 
     expect(SendDialog).not.toHaveBeenCalled();

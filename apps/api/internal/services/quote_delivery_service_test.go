@@ -342,6 +342,7 @@ type quoteActionHarness struct {
 	db              *fakePublicQuoteDB
 	sends           *fakePublicQuoteSends
 	quotes          *fakePublicQuoteQuotes
+	prices          *fakeBranchPrices
 	clientActions   *fakePublicQuoteClientActions
 	messages        *fakeQuoteMessages
 	representations *fakeQuoteDeliverRepresentations
@@ -354,6 +355,7 @@ func newQuoteActionHarness() *quoteActionHarness {
 		db:              &fakePublicQuoteDB{},
 		sends:           &fakePublicQuoteSends{accountID: testAccountID},
 		quotes:          &fakePublicQuoteQuotes{},
+		prices:          &fakeBranchPrices{},
 		clientActions:   &fakePublicQuoteClientActions{},
 		messages:        &fakeQuoteMessages{},
 		representations: &fakeQuoteDeliverRepresentations{},
@@ -361,7 +363,7 @@ func newQuoteActionHarness() *quoteActionHarness {
 		now:             fixedNow,
 	}
 	h.service = NewQuoteDeliveryService(h.db, h.sends, h.quotes, unusedDeliveryDeps{},
-		unusedDeliveryDeps{}, unusedDeliveryDeps{}, unusedDeliveryDeps{}, unusedDeliveryDeps{},
+		unusedDeliveryDeps{}, unusedDeliveryDeps{}, unusedDeliveryDeps{}, h.prices, unusedDeliveryDeps{},
 		unusedDeliveryDeps{}, nil, "https://app.coti.ar", func() time.Time { return h.now }, nil).
 		WithClientActions(h.clientActions, nil).WithRepresentationService(h.representations).
 		WithMessages(h.messages)
@@ -458,7 +460,11 @@ func TestQuoteDeliveryService_RespondPublic_CreatesAReviewableChangeRequest(t *t
 		MatchStatus: domain.ItemMatchStatusMatched}}
 	h.quotes.alternatives = map[uuid.UUID][]domain.QuoteItemAlternative{
 		oldItemID: {{ProductID: &productID, Type: domain.QuoteItemAlternativeTypeProduct,
-			Origin: domain.QuoteItemAlternativeOriginSeller, Rank: 1}},
+			Origin: domain.QuoteItemAlternativeOriginSeller, Rank: 1,
+			ApprovedBySeller: true}},
+	}
+	h.prices.prices = map[uuid.UUID]domain.BranchPrice{
+		productID: {ProductID: productID, Price: decimal.NewFromInt(65), Currency: "ARS"},
 	}
 	message := "sumar una bolsa de cemento"
 	result, err := h.service.RespondPublic(context.Background(), h.token,
@@ -470,8 +476,9 @@ func TestQuoteDeliveryService_RespondPublic_CreatesAReviewableChangeRequest(t *t
 		t.Errorf("status = %s, want CHANGE_REQUESTED", result.QuoteStatus)
 	}
 	if h.quotes.newVersion == nil || h.quotes.newVersion.VersionNumber != 2 ||
-		h.quotes.newVersion.IsImmutable || h.quotes.newVersion.Total.Sign() != 0 {
-		t.Errorf("new version = %+v, want an unpriced v2 draft", h.quotes.newVersion)
+		h.quotes.newVersion.IsImmutable ||
+		!h.quotes.newVersion.Total.Equal(decimal.NewFromInt(130)) {
+		t.Errorf("new version = %+v, want a priced, mutable v2 draft", h.quotes.newVersion)
 	}
 	if h.quotes.quote.CurrentVersionID == nil ||
 		*h.quotes.quote.CurrentVersionID != h.quotes.newVersion.ID {
@@ -479,14 +486,22 @@ func TestQuoteDeliveryService_RespondPublic_CreatesAReviewableChangeRequest(t *t
 	}
 	if len(h.quotes.newItems) != 1 || h.quotes.newItems[0].ID == oldItemID ||
 		h.quotes.newItems[0].Quantity.Cmp(decimal.NewFromInt(2)) != 0 ||
-		h.quotes.newItems[0].UnitPriceSnapshot.Valid {
-		t.Errorf("cloned items = %+v, want unpriced copy with fresh identity", h.quotes.newItems)
+		!h.quotes.newItems[0].UnitPriceSnapshot.Valid ||
+		!h.quotes.newItems[0].UnitPriceSnapshot.Decimal.Equal(decimal.NewFromInt(65)) ||
+		!h.quotes.newItems[0].Subtotal.Decimal.Equal(decimal.NewFromInt(130)) {
+		t.Errorf("cloned items = %+v, want repriced copy with fresh identity", h.quotes.newItems)
 	}
 	if len(h.quotes.newAlts) != 1 ||
 		h.quotes.newAlts[0].QuoteItemID != h.quotes.newItems[0].ID ||
 		h.quotes.newAlts[0].ProductID == nil ||
-		*h.quotes.newAlts[0].ProductID != productID {
-		t.Errorf("cloned alternatives = %+v, want reviewable copy", h.quotes.newAlts)
+		*h.quotes.newAlts[0].ProductID != productID ||
+		!h.quotes.newAlts[0].PriceSnapshot.Valid ||
+		!h.quotes.newAlts[0].PriceSnapshot.Decimal.Equal(decimal.NewFromInt(65)) {
+		t.Errorf("cloned alternatives = %+v, want repriced copy", h.quotes.newAlts)
+	}
+	if h.prices.calls != 1 || len(h.prices.askedFor[0]) != 1 ||
+		h.prices.askedFor[0][0] != productID || h.prices.branches[0] != testBranchID {
+		t.Errorf("price lookup = %+v, want one batch in the quote branch", h.prices)
 	}
 	if h.messages.calls != 1 || h.messages.quoteID != testQuoteID ||
 		h.messages.channelID != send.ChannelID || h.messages.body != message ||
@@ -635,7 +650,7 @@ func TestQuoteDeliveryService_RespondPublic_BlankOrUnknownTokenIsNotFound(t *tes
 func TestQuoteDeliveryService_RespondPublic_RequiresWiredActions(t *testing.T) {
 	h := newQuoteActionHarness()
 	service := NewQuoteDeliveryService(h.db, h.sends, h.quotes, unusedDeliveryDeps{},
-		unusedDeliveryDeps{}, unusedDeliveryDeps{}, unusedDeliveryDeps{}, unusedDeliveryDeps{},
+		unusedDeliveryDeps{}, unusedDeliveryDeps{}, unusedDeliveryDeps{}, h.prices, unusedDeliveryDeps{},
 		unusedDeliveryDeps{}, nil, "https://app.coti.ar", func() time.Time { return h.now }, nil)
 
 	_, err := service.RespondPublic(context.Background(), h.token,

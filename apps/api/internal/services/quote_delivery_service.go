@@ -123,6 +123,7 @@ type QuoteDeliveryService struct {
 	messages        quoteMessageWriter
 	channels        quoteDeliveryChannelRepository
 	branches        quoteDeliveryBranchRepository
+	prices          branchPriceReader
 	whatsapp        domain.QuoteWhatsAppSender
 	email           quoteEmailSender
 	evaluator       QuoteQualityEvaluator
@@ -146,7 +147,8 @@ func (s *QuoteDeliveryService) WithRepresentationService(
 func NewQuoteDeliveryService(db quotePublicDB, sends quoteDeliveryRepository,
 	quotes quoteDeliveryQuoteRepository, rfqs quoteDeliveryRFQRepository,
 	clients quoteDeliveryClientRepository, channels quoteDeliveryChannelRepository,
-	branches quoteDeliveryBranchRepository, whatsapp domain.QuoteWhatsAppSender,
+	branches quoteDeliveryBranchRepository, prices branchPriceReader,
+	whatsapp domain.QuoteWhatsAppSender,
 	email quoteEmailSender, evaluator QuoteQualityEvaluator, webappURL string,
 	now func() time.Time, log *slog.Logger) *QuoteDeliveryService {
 	if now == nil {
@@ -156,7 +158,7 @@ func NewQuoteDeliveryService(db quotePublicDB, sends quoteDeliveryRepository,
 		log = slog.Default()
 	}
 	return &QuoteDeliveryService{db: db, sends: sends, quotes: quotes, rfqs: rfqs,
-		clients: clients, channels: channels, branches: branches, whatsapp: whatsapp,
+		clients: clients, channels: channels, branches: branches, prices: prices, whatsapp: whatsapp,
 		email: email, evaluator: evaluator, webappURL: strings.TrimRight(webappURL, "/"),
 		now: now, log: log}
 }

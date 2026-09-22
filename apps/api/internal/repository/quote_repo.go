@@ -867,6 +867,10 @@ func (r *QuoteRepository) UpdateItem(
 		setClauses = append(setClauses, fmt.Sprintf("product_id = $%d", argIdx))
 		args = append(args, *in.ProductID)
 		argIdx++
+		setClauses = append(setClauses, "min_price_snapshot = NULL")
+		if in.UnitPriceSnapshot == nil {
+			setClauses = append(setClauses, "unit_price_snapshot = NULL", "subtotal = NULL")
+		}
 	}
 	if in.RequestedDescription != nil {
 		setClauses = append(setClauses, fmt.Sprintf("requested_description = $%d", argIdx))

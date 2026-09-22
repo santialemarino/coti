@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
@@ -43,21 +42,44 @@ func (s *QuoteDeliveryService) createChangeRequest(ctx context.Context, q reposi
 	if err != nil {
 		return err
 	}
+	prices, err := s.prices.GetCurrentByProductIDs(ctx, q, accountID, quote.BranchID,
+		quoteProductIDs(items, alternatives))
+	if err != nil {
+		return err
+	}
+	valuation, err := valueQuoteItems(items, prices)
+	if err != nil {
+		return err
+	}
+	// The seller must review alternatives again, even when one was approved on v1.
+	for itemID, offered := range alternatives {
+		for i := range offered {
+			offered[i].ApprovedBySeller = false
+		}
+		alternatives[itemID] = offered
+	}
+	alternativePricings, err := valueQuoteAlternatives(alternatives, prices, valuation.currency)
+	if err != nil {
+		return err
+	}
+	applyAlternativePricing(alternatives, alternativePricings)
 	draft, err := s.quotes.CreateVersion(ctx, q, accountID, domain.NewQuoteVersion{
-		QuoteID: quote.ID, VersionNumber: version.VersionNumber + 1, Currency: version.Currency,
-		Total: decimal.Zero, Comment: &message,
+		QuoteID: quote.ID, VersionNumber: version.VersionNumber + 1, Currency: valuation.currency,
+		Total: valuation.total, Comment: &message,
 	})
 	if err != nil {
 		return err
 	}
 	clonedItems := make([]domain.NewQuoteItem, 0, len(items))
 	clonedAlternatives := make([]domain.NewQuoteItemAlternative, 0)
-	for _, item := range items {
+	for _, item := range valuation.items {
 		newID := uuid.New()
 		clonedItems = append(clonedItems, domain.NewQuoteItem{
 			ID: newID, ProductID: item.ProductID, RequestedDescription: item.RequestedDescription,
 			Quantity: item.Quantity, Unit: item.Unit, ConfidenceScore: item.ConfidenceScore,
 			MatchStatus: item.MatchStatus, QuantityRationale: item.QuantityRationale,
+			UnitPriceSnapshot: item.UnitPriceSnapshot, MinPriceSnapshot: item.MinPriceSnapshot,
+			Subtotal: item.Subtotal,
 		})
 		for _, alternative := range alternatives[item.ID] {
 			clonedAlternatives = append(clonedAlternatives, domain.NewQuoteItemAlternative{
@@ -65,6 +87,7 @@ func (s *QuoteDeliveryService) createChangeRequest(ctx context.Context, q reposi
 				ComboID: alternative.ComboID, Type: alternative.Type,
 				Origin: alternative.Origin, Rank: alternative.Rank,
 				ConfidenceScore: alternative.ConfidenceScore,
+				PriceSnapshot:   alternative.PriceSnapshot,
 			})
 		}
 	}

@@ -519,8 +519,8 @@ func (s *RFQService) UpdateItem(
 			return updateErr
 		}
 
-		// Recalculate subtotal and version total when price or quantity changed.
-		if in.UnitPriceSnapshot != nil || in.Quantity != nil {
+		// A product change invalidates its previous price until materials are accepted again.
+		if in.ProductID != nil || in.UnitPriceSnapshot != nil || in.Quantity != nil {
 			if recalcErr := s.recalculateVersionTotal(ctx, q, tenant, version.ID); recalcErr != nil {
 				return recalcErr
 			}
