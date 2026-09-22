@@ -462,9 +462,8 @@ link remain pinned to v1. A stale send for another version cannot change the quo
 
 The seller edits v2 manually, accepts its materials to recalculate prices and move to `QUOTED`,
 then sends it to move to `SENT`. The second send has its own token. No conversational window or
-AI interpretation is involved in this manual path; those remain future work. The schema's
-`quote.public_token` and `public_pinned_version_id` columns are reserved for a stable quote URL,
-but the current public route still resolves `quote_send.public_token`.
+AI interpretation is involved in this manual path; those remain future work. Public links resolve
+through `quote_send.public_token`, scoped to the delivery and channel.
 
 ## Where the code lives
 
