@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
@@ -27,20 +28,38 @@ func (f *fakeTranscriber) Transcribe(_ context.Context, audio domain.Audio) (str
 
 // fakeAttachmentStore records what the intake kept against the RFQ.
 type fakeAttachmentStore struct {
-	calls     int
-	err       error
-	data      []byte
-	extracted string
-	file      domain.AttachmentUpload
+	calls      int
+	err        error
+	data       []byte
+	extracted  string
+	file       domain.AttachmentUpload
+	stored     uuid.UUID
+	requeued   []uuid.UUID
+	requeueErr error
 }
 
 func (f *fakeAttachmentStore) StoreForRFQ(_ context.Context, _ domain.Tenant, _ uuid.UUID,
-	file domain.AttachmentUpload, data []byte, extractedText string) error {
+	file domain.AttachmentUpload, data []byte, extractedText string) (uuid.UUID, error) {
 	f.calls++
 	f.file = file
 	f.data = data
 	f.extracted = extractedText
-	return f.err
+	if f.err != nil {
+		return uuid.Nil, f.err
+	}
+	if f.stored == uuid.Nil {
+		f.stored = uuid.New()
+	}
+	return f.stored, nil
+}
+
+func (f *fakeAttachmentStore) ReturnToQueue(_ context.Context, _ domain.Tenant,
+	attachmentID uuid.UUID) error {
+	if f.requeueErr != nil {
+		return f.requeueErr
+	}
+	f.requeued = append(f.requeued, attachmentID)
+	return nil
 }
 
 func TestRFQService_ReadFileContent_ShapesEachFormatForTheModel(t *testing.T) {
@@ -330,57 +349,193 @@ func TestRFQService_CreateFileDraft_NamesTheFileWhenItYieldsNoText(t *testing.T)
 	}
 }
 
-func TestRFQService_CreateFileDraft_MarksTheRFQFailedWhenTheModelDoesNot(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name  string
-		lines []domain.ExtractedRFQLine
-		err   error
-	}{
-		// The two ways the pipeline ends with no quote. They differ in whether the model answered
-		// at all, and in nothing the seller can act on: either way the order is theirs to load.
-		{name: "the model fails", err: domain.ErrAIUnavailable},
-		{name: "the model reads no material"},
+// fileOrder is the same uploaded order for every case below.
+func fileOrder() domain.FileRFQDraftInput {
+	return domain.FileRFQDraftInput{
+		ChannelID: testChannelID,
+		Filename:  "pedido.csv",
+		File: domain.AttachmentUpload{
+			ContentType: "text/csv",
+			Size:        20,
+			Content:     strings.NewReader("Producto,Cantidad\nCemento,10\n"),
+		},
 	}
+}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+/*
+ * The model answered and found nothing in the file. That is a result, not an interruption: no
+ * later run changes it, so the order is the seller's to load by hand. Left RECEIVED the row reads
+ * as still being processed, and the seller waits on a pipeline that already gave up.
+ */
+func TestRFQService_CreateFileDraft_FailsTheRFQWhenTheModelReadsNoMaterial(t *testing.T) {
+	t.Parallel()
+	h := newRFQHarness(nil)
+	store := &fakeAttachmentStore{}
+	h.service.WithFileIntake(store, &fakeTranscriber{}, 10<<20)
+
+	if _, err := h.service.CreateFileDraft(context.Background(), rfqTenant(),
+		fileOrder()); err != nil {
+		t.Fatalf("CreateFileDraft returned %v", err)
+	}
+	if len(h.rfqs.updatedStatus) != 1 || h.rfqs.updatedStatus[0] != domain.RFQStatusFailed {
+		t.Fatalf("wrote RFQ statuses %v, want one FAILED", h.rfqs.updatedStatus)
+	}
+	if len(h.rfqs.statusChanges) != 1 {
+		t.Fatalf("appended %d status changes, want the transition recorded",
+			len(h.rfqs.statusChanges))
+	}
+	change := h.rfqs.statusChanges[0]
+	if change.newStatus != domain.RFQStatusFailed ||
+		change.previousStatus == nil || *change.previousStatus != domain.RFQStatusReceived {
+		t.Errorf("status change = %+v, want RECEIVED to FAILED", change)
+	}
+	if len(store.requeued) != 0 {
+		t.Errorf("handed the file to the sweep, want it kept — a later run reads the same nothing")
+	}
+}
+
+/*
+ * A budget that ran out, or a provider that was not there, says nothing about the file. It is
+ * stored and readable, and the sweep has a longer budget with no caller holding a connection open,
+ * so the order is handed over rather than failed — and stays RECEIVED, which is the truth.
+ *
+ * This is what keeps a large order working at all: the inline budget is deliberately below what a
+ * sixty-line order costs, because it has to answer before the platform's edge cuts the connection.
+ */
+func TestRFQService_CreateFileDraft_HandsTheFileToTheSweepRatherThanFailing(t *testing.T) {
+	t.Parallel()
+	for _, interrupted := range []error{domain.ErrAIUnavailable, context.DeadlineExceeded} {
+		t.Run(interrupted.Error(), func(t *testing.T) {
 			t.Parallel()
-			h := newRFQHarness(tc.lines)
-			h.extractor.err = tc.err
-			h.service.WithFileIntake(&fakeAttachmentStore{}, &fakeTranscriber{}, 10<<20)
+			h := newRFQHarness(nil)
+			h.extractor.err = interrupted
+			store := &fakeAttachmentStore{}
+			h.service.WithFileIntake(store, &fakeTranscriber{}, 10<<20)
 
-			_, err := h.service.CreateFileDraft(context.Background(), rfqTenant(),
-				domain.FileRFQDraftInput{
-					ChannelID: testChannelID,
-					Filename:  "pedido.csv",
-					File: domain.AttachmentUpload{
-						ContentType: "text/csv",
-						Size:        20,
-						Content:     strings.NewReader("Producto,Cantidad\nCemento,10\n"),
-					},
-				})
-			if tc.err != nil && !errors.Is(err, tc.err) {
-				t.Fatalf("CreateFileDraft returned %v, want %v", err, tc.err)
+			draft, err := h.service.CreateFileDraft(context.Background(), rfqTenant(), fileOrder())
+			if err != nil {
+				t.Fatalf("CreateFileDraft returned %v, want the order handed over, not failed", err)
 			}
-			if tc.err == nil && err != nil {
-				t.Fatalf("CreateFileDraft returned %v", err)
+			if draft == nil || draft.Quote != nil {
+				t.Fatalf("draft = %+v, want the order with no quote yet", draft)
 			}
-
-			// Left RECEIVED the row reads as still being processed, so the seller waits on a
-			// pipeline that already gave up.
-			if len(h.rfqs.updatedStatus) != 1 || h.rfqs.updatedStatus[0] != domain.RFQStatusFailed {
-				t.Fatalf("wrote RFQ statuses %v, want one FAILED", h.rfqs.updatedStatus)
+			if draft.RFQ.Status != domain.RFQStatusReceived {
+				t.Errorf("rfq status = %q, want it left RECEIVED — it is still being worked",
+					draft.RFQ.Status)
 			}
-			if len(h.rfqs.statusChanges) != 1 {
-				t.Fatalf("appended %d status changes, want the transition recorded",
-					len(h.rfqs.statusChanges))
+			if len(h.rfqs.updatedStatus) != 0 {
+				t.Errorf("wrote RFQ statuses %v, want none", h.rfqs.updatedStatus)
 			}
-			change := h.rfqs.statusChanges[0]
-			if change.newStatus != domain.RFQStatusFailed ||
-				change.previousStatus == nil || *change.previousStatus != domain.RFQStatusReceived {
-				t.Errorf("status change = %+v, want RECEIVED to FAILED", change)
+			if len(store.requeued) != 1 || store.requeued[0] != store.stored {
+				t.Errorf("requeued %v, want the stored attachment %v", store.requeued, store.stored)
 			}
 		})
+	}
+}
+
+// A failure that is about the file rather than the budget is not the sweep's to retry: the bytes
+// do not change, so a later run fails on the same ones.
+func TestRFQService_CreateFileDraft_FailsTheRFQWhenTheFailureIsNotTheSweepsToRetry(t *testing.T) {
+	t.Parallel()
+	h := newRFQHarness(nil)
+	h.extractor.err = errors.New("the provider refused the schema")
+	store := &fakeAttachmentStore{}
+	h.service.WithFileIntake(store, &fakeTranscriber{}, 10<<20)
+
+	if _, err := h.service.CreateFileDraft(context.Background(), rfqTenant(),
+		fileOrder()); err == nil {
+		t.Fatal("CreateFileDraft returned nil, want the failure surfaced")
+	}
+	if len(store.requeued) != 0 {
+		t.Errorf("handed the file to the sweep, want it kept")
+	}
+	if len(h.rfqs.updatedStatus) != 1 || h.rfqs.updatedStatus[0] != domain.RFQStatusFailed {
+		t.Errorf("wrote RFQ statuses %v, want one FAILED", h.rfqs.updatedStatus)
+	}
+}
+
+// If the hand-off itself cannot be written the order must not be left looking like it is being
+// worked: a seller loading it by hand beats one waiting on a sweep that will never see the file.
+func TestRFQService_CreateFileDraft_FailsTheRFQWhenTheHandOffCannotBeWritten(t *testing.T) {
+	t.Parallel()
+	h := newRFQHarness(nil)
+	h.extractor.err = domain.ErrAIUnavailable
+	store := &fakeAttachmentStore{requeueErr: errors.New("write refused")}
+	h.service.WithFileIntake(store, &fakeTranscriber{}, 10<<20)
+
+	if _, err := h.service.CreateFileDraft(context.Background(), rfqTenant(),
+		fileOrder()); err == nil {
+		t.Fatal("CreateFileDraft returned nil, want the original failure surfaced")
+	}
+	if len(h.rfqs.updatedStatus) != 1 || h.rfqs.updatedStatus[0] != domain.RFQStatusFailed {
+		t.Errorf("wrote RFQ statuses %v, want one FAILED", h.rfqs.updatedStatus)
+	}
+}
+
+/*
+ * A material the catalog has no answer for is flagged, never dropped. This is the "sin descarte
+ * silencioso" half of the multi-format engine seen from the request path: a draft that quietly
+ * shipped without the lines nobody could match would read to the seller as a complete quote over
+ * an order they had never been shown.
+ */
+func TestRFQService_CreateFileDraft_FlagsAnAmbiguousLineRatherThanDroppingIt(t *testing.T) {
+	t.Parallel()
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("cemento portland 50kg", "20", "bolsa", "lo pidió así"),
+		explicitLine("lo de siempre para el contrapiso", "1", "", "no lo aclaró"),
+	})
+	// The catalog answers for the first line and has nothing for the second, which is what an
+	// ambiguous description looks like once it reaches matching.
+	matched := testProductID
+	h.matcher.matches = []domain.LineMatch{
+		{ProductID: &matched, MatchStatus: domain.ItemMatchStatusMatched,
+			Confidence: decimal.RequireFromString("0.9100")},
+		{MatchStatus: domain.ItemMatchStatusNoMatch, Confidence: decimal.Zero},
+	}
+	h.service.WithFileIntake(&fakeAttachmentStore{}, &fakeTranscriber{}, 10<<20)
+
+	draft, err := h.service.CreateFileDraft(context.Background(), rfqTenant(),
+		domain.FileRFQDraftInput{
+			ChannelID: testChannelID,
+			Filename:  "pedido.csv",
+			File: domain.AttachmentUpload{
+				ContentType: "text/csv",
+				Size:        40,
+				Content: strings.NewReader(
+					"Producto,Cantidad\nCemento,20\nLo de siempre,1\n"),
+			},
+		})
+	if err != nil {
+		t.Fatalf("CreateFileDraft returned %v", err)
+	}
+	if len(h.quotes.itemBatches) != 1 || len(h.quotes.itemBatches[0]) != 2 {
+		t.Fatalf("wrote %v item batches, want both lines kept", h.quotes.itemBatches)
+	}
+	// NO_MATCH is what every line is built as, so the flagged line alone would prove nothing:
+	// the matched line is what shows matching ran and applied its decisions, which makes the
+	// other line's NO_MATCH a decision rather than an untouched default.
+	if answered := h.quotes.itemBatches[0][0]; answered.MatchStatus != domain.ItemMatchStatusMatched ||
+		answered.ProductID == nil || *answered.ProductID != testProductID {
+		t.Fatalf("answered line = %q/%v, want MATCHED against the catalog product",
+			answered.MatchStatus, answered.ProductID)
+	}
+	flagged := h.quotes.itemBatches[0][1]
+	if flagged.MatchStatus != domain.ItemMatchStatusNoMatch {
+		t.Errorf("ambiguous line status = %q, want NO_MATCH", flagged.MatchStatus)
+	}
+	if flagged.ProductID != nil {
+		t.Errorf("ambiguous line points at product %v, want nothing behind it", flagged.ProductID)
+	}
+	if flagged.RequestedDescription != "lo de siempre para el contrapiso" {
+		t.Errorf("ambiguous line = %q, want the client's own words kept",
+			flagged.RequestedDescription)
+	}
+	// The order still reaches the seller as a draft: an unmatched line is review, not failure.
+	if draft.Quote == nil {
+		t.Fatal("draft carries no quote, want the order drafted for review")
+	}
+	if len(h.rfqs.updatedStatus) != 1 || h.rfqs.updatedStatus[0] != domain.RFQStatusGenerated {
+		t.Errorf("rfq statuses = %v, want the order GENERATED rather than failed over an "+
+			"unmatched line", h.rfqs.updatedStatus)
 	}
 }

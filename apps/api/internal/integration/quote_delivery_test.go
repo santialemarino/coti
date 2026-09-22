@@ -53,6 +53,12 @@ type stagedQuoteEmailSender struct {
 	err   error
 }
 
+func (s *stagedQuoteEmailSender) count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sends
+}
+
 func (s *stagedQuoteEmailSender) Send(context.Context, services.OutboundMail) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -437,8 +443,8 @@ func TestQuoteDelivery_PublicTokenStaysPinnedToTheSentVersion(t *testing.T) {
 	secondVersion := uuid.New()
 	if _, err := e.db.CrossAccount().Exec(context.Background(), `
 		INSERT INTO quote_version (id, account_id, quote_id, author_id, version_number, currency,
-		                           total, is_immutable)
-		SELECT $1, account_id, quote_id, NULL, version_number + 1, currency, total, FALSE
+		                           total, is_immutable, frozen_at)
+		SELECT $1, account_id, quote_id, NULL, version_number + 1, currency, total, TRUE, now()
 		  FROM quote_version WHERE id = $2`, secondVersion, first.VersionID); err != nil {
 		t.Fatalf("seed second version: %v", err)
 	}
@@ -478,5 +484,128 @@ func TestQuoteDelivery_PublicTokenStaysPinnedToTheSentVersion(t *testing.T) {
 	if firstStillPinned.Payload.VersionNumber != 1 || secondServed.Payload.VersionNumber != 2 {
 		t.Errorf("version served = %d / %d, want 1 on the old token and 2 on the new one",
 			firstStillPinned.Payload.VersionNumber, secondServed.Payload.VersionNumber)
+	}
+}
+
+// clientAnswerService is the delivery service with the customer-answer surface wired, which the
+// shared helper leaves off because most delivery tests never reach it.
+func (e *env) clientAnswerService(t *testing.T, whatsapp domain.QuoteWhatsAppSender,
+	email interface {
+		Send(context.Context, services.OutboundMail) error
+	}) *services.QuoteDeliveryService {
+	t.Helper()
+	return e.quoteDeliveryService(t, whatsapp, email,
+		e.realQualityEvaluator(axisEmbedder{axes: map[string]int{}})).
+		WithClientActions(repository.NewClientActionRepository(), repository.NewUserRepository())
+}
+
+// sentQuoteToken sends the seeded quote and hands back the token its delivery published.
+func (e *env) sentQuoteToken(t *testing.T, service *services.QuoteDeliveryService,
+	seed sendableQuote) (string, uuid.UUID) {
+	t.Helper()
+	result, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID,
+		domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550199"})
+	if err != nil {
+		t.Fatalf("Send() = %v", err)
+	}
+	return strings.TrimPrefix(result.Deliveries[0].PublicURL, "https://quotes.test/quotes/"),
+		result.Deliveries[0].ID
+}
+
+/*
+ * The customer's answer has to move the quote and leave the record of why, in one transaction, and
+ * the seller has to hear about it. The action is tied to the send it came back through: a quote
+ * delivered twice would otherwise leave its answer with no origin.
+ */
+func TestQuoteClientAction_AcceptMovesTheQuoteRecordsTheActionAndMailsTheSeller(t *testing.T) {
+	e := newEnv(t)
+	seed := e.seedSendableQuote(t, "Client accepts", false)
+	mail := &stagedQuoteEmailSender{}
+	service := e.clientAnswerService(t, &captureWhatsAppSender{}, mail)
+	token, sendID := e.sentQuoteToken(t, service, seed)
+
+	outcome, err := service.RecordClientAction(context.Background(), token,
+		domain.ClientActionAccept)
+	if err != nil {
+		t.Fatalf("RecordClientAction() = %v, want no error", err)
+	}
+	if outcome.Status != domain.QuoteStatusAccepted {
+		t.Errorf("status = %q, want ACCEPTED", outcome.Status)
+	}
+
+	var status string
+	var actions, changes int
+	var actionSend *uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT quote.current_status,
+		        (SELECT count(*) FROM client_action a WHERE a.version_id = quote.current_version_id),
+		        (SELECT count(*) FROM quote_status_change c
+		          WHERE c.quote_id = quote.id AND c.new_status = 'ACCEPTED'),
+		        (SELECT a.quote_send_id FROM client_action a
+		          WHERE a.version_id = quote.current_version_id LIMIT 1)
+		   FROM quote WHERE quote.id = $1`, seed.draft.Quote.ID).
+		Scan(&status, &actions, &changes, &actionSend); err != nil {
+		t.Fatalf("read the answered quote: %v", err)
+	}
+	if status != "ACCEPTED" || actions != 1 || changes != 1 {
+		t.Errorf("status/actions/changes = %s/%d/%d, want ACCEPTED/1/1", status, actions, changes)
+	}
+	if actionSend == nil || *actionSend != sendID {
+		t.Errorf("action's send = %v, want the delivery it came back through (%v)", actionSend, sendID)
+	}
+	if mail.count() == 0 {
+		t.Error("the seller was not told their quote was answered")
+	}
+}
+
+func TestQuoteClientAction_RejectMovesTheQuoteToRejected(t *testing.T) {
+	e := newEnv(t)
+	seed := e.seedSendableQuote(t, "Client rejects", false)
+	service := e.clientAnswerService(t, &captureWhatsAppSender{}, &stagedQuoteEmailSender{})
+	token, _ := e.sentQuoteToken(t, service, seed)
+
+	outcome, err := service.RecordClientAction(context.Background(), token,
+		domain.ClientActionReject)
+	if err != nil {
+		t.Fatalf("RecordClientAction() = %v, want no error", err)
+	}
+	if outcome.Status != domain.QuoteStatusRejected {
+		t.Errorf("status = %q, want REJECTED", outcome.Status)
+	}
+}
+
+// A quote answers once. Without this the same link would move an accepted quote to rejected, which
+// is a customer overwriting a decision the seller has already started acting on.
+func TestQuoteClientAction_RefusesASecondAnswerOnTheSameQuote(t *testing.T) {
+	e := newEnv(t)
+	seed := e.seedSendableQuote(t, "Client answers twice", false)
+	service := e.clientAnswerService(t, &captureWhatsAppSender{}, &stagedQuoteEmailSender{})
+	token, _ := e.sentQuoteToken(t, service, seed)
+
+	if _, err := service.RecordClientAction(context.Background(), token,
+		domain.ClientActionAccept); err != nil {
+		t.Fatalf("first answer = %v, want no error", err)
+	}
+	_, err := service.RecordClientAction(context.Background(), token, domain.ClientActionReject)
+	if !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("second answer = %v, want a conflict", err)
+	}
+}
+
+// An expired link showed prices that are no longer on offer, so it cannot close a quote.
+func TestQuoteClientAction_RefusesAnExpiredLink(t *testing.T) {
+	e := newEnv(t)
+	seed := e.seedSendableQuote(t, "Client answers late", false)
+	service := e.clientAnswerService(t, &captureWhatsAppSender{}, &stagedQuoteEmailSender{})
+	token, sendID := e.sentQuoteToken(t, service, seed)
+
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`UPDATE quote_send SET expires_at = $2 WHERE id = $1`, sendID,
+		time.Now().Add(-time.Minute)); err != nil {
+		t.Fatalf("expire the delivery: %v", err)
+	}
+	_, err := service.RecordClientAction(context.Background(), token, domain.ClientActionAccept)
+	if !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("answer on an expired link = %v, want a conflict", err)
 	}
 }

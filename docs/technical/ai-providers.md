@@ -128,9 +128,11 @@ One policy, shared by every adapter, in `apps/api/internal/ai/retry.go`.
 - **Timeouts are per attempt**, not per chain: `AI_LLM_TIMEOUT_SECONDS` and its two siblings cap one
   call, and `AI_MAX_ATTEMPTS` bounds how many there are. **The whole chain can therefore run far
   longer than `SERVER_WRITE_TIMEOUT_SECONDS` allows a response** — 150s × 3 for one generation
-  against a 180s server budget. A route that waits for a call inline therefore bounds itself:
-  `RFQ_PIPELINE_TIMEOUT_SECONDS` leaves room for one generation and no more, so a retry there
-  helps a fast failure only. Off the request path is still the wider answer.
+  against a 90s server budget. A route that waits for a call inline therefore bounds itself:
+  `RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS` (75s) leaves room for one short generation and no more, so
+  a retry there helps a fast failure only. The per-attempt caps are left long because the scheduled
+  sweep uses the same providers with no response to hold open. Off the request path is the wider
+  answer, and since the attachment sweep it is an available one.
 
 Every call is logged once, on success and on failure alike, with provider, model, operation,
 attempt count, elapsed time and token counts. **The counts are summed over every attempt**, because

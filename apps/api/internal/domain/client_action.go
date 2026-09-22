@@ -7,6 +7,9 @@ import (
 )
 
 // ClientActionType is the durable intent of one customer response to a published quote.
+//
+// REJECT is always the customer's own button or the seller's own decision — the assistant never
+// infers one. Anything that is not an acceptance arrives as a change request instead.
 type ClientActionType string
 
 const (
@@ -27,6 +30,8 @@ type ClientAction struct {
 	// QuoteSendID is nil on internal annotations that did not come from a public link.
 	QuoteSendID *uuid.UUID
 	VersionID   uuid.UUID
+	// QuoteItemID is the line a per-item answer refers to, nil on whole-quote answers.
+	QuoteItemID *uuid.UUID
 	// VersionNumber is the version the action answered, filled when listed through a quote.
 	VersionNumber int
 	Type          ClientActionType
@@ -35,6 +40,9 @@ type ClientAction struct {
 }
 
 // NewClientAction is a validated customer response ready for its insert.
+//
+// QuoteSendID is what ties the answer to the delivery it came back through. A quote sent twice —
+// once by message and again by mail — would otherwise leave its answer with no origin.
 type NewClientAction struct {
 	ID          uuid.UUID
 	QuoteSendID *uuid.UUID
@@ -54,4 +62,15 @@ type PublicQuoteActionResult struct {
 	CustomerStatus ClientActionType
 	CreatedAt      time.Time
 	QuoteStatus    QuoteStatus
+}
+
+// ClientQuoteOutcome is the quote's state after a customer answered, for the caller that has to
+// report it without holding the whole quote.
+type ClientQuoteOutcome struct {
+	QuoteID   uuid.UUID
+	Reference string
+	Status    QuoteStatus
+	Action    ClientActionType
+	// SellerID is nil on a quote nobody has taken, which has nobody to notify.
+	SellerID *uuid.UUID
 }

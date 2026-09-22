@@ -23,10 +23,12 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"github.com/santialemarino/coti/apps/api/internal/ai"
 	aiprovider "github.com/santialemarino/coti/apps/api/internal/ai/provider"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 	"github.com/santialemarino/coti/apps/api/internal/services"
+	storageprovider "github.com/santialemarino/coti/apps/api/internal/storage/provider"
 )
 
 func main() {
@@ -79,9 +81,33 @@ func run() error {
 	qualityEvaluator := services.NewQuoteQualityService(db, quality).
 		WithCorrectionLearning(correctionService)
 	sends := repository.NewQuoteSendRepository()
+	// The attachment sweep reads files, so it needs storage — the only job that does.
+	objectStorage, err := storageprovider.Bind(cfg.Storage, log)
+	if err != nil {
+		return err
+	}
+	attachmentRepo := repository.NewRFQAttachmentRepository()
+	attachmentReader := services.NewRFQAttachmentService(db, attachmentRepo,
+		objectStorage.Storage, cfg.Storage, nil).
+		WithStoredReading(providers.Transcriber, cfg.RFQ.MaxTextCharacters,
+			cfg.RFQ.MaxSpreadsheetRows)
+	// The sweep extracts, so it needs the RFQ engine the request path uses — the same extractor,
+	// the same catalog matching, the same persistence. Reading a file and interpreting it are one
+	// decision, and a second implementation of it here would be a second one to keep honest.
+	rfqRepo := repository.NewRFQRepository()
+	quoteRepo := repository.NewQuoteRepository()
+	catalogSearch := services.NewCatalogSearchService(db, repository.NewProductRepository(),
+		providers.Embedder, cfg.Catalog)
+	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo, sends,
+		repository.NewQuoteAIGenerationRepository(), repository.NewChannelRepository(),
+		repository.NewUserRepository(), ai.NewRFQExtractor(providers.Generator, cfg.RFQ.MaxItems),
+		services.NewCatalogMatchService(catalogSearch, cfg.Catalog), log, cfg.RFQ).
+		WithCorrectionMemory(correctionService)
 	jobs, err := services.NewJobService(db, repository.NewJobRunRepository(), log,
 		services.NewQuoteCorrectionJob(corrections, providers.Embedder, cfg.QuoteCorrection),
-		services.NewQuoteQualityJob(sends, qualityEvaluator, cfg.QuoteQuality))
+		services.NewQuoteQualityJob(sends, qualityEvaluator, cfg.QuoteQuality),
+		services.NewAttachmentExtractionJob(attachmentRepo, attachmentReader, rfqService,
+			cfg.Attachment, log))
 	if err != nil {
 		return err
 	}

@@ -262,3 +262,36 @@ jobs:
       - key: AI_OPENAI_API_KEY
         scope: RUN_TIME
         type: SECRET
+
+  # An attachment uploaded against an order is stored and then waits: nothing reads it on the
+  # request path. This sweep drains that queue, so a file a seller added stops being a file nobody
+  # opened. It reads objects, so it carries the storage keys the other two do not need.
+  - name: attachment-extraction
+    kind: SCHEDULED
+    schedule:
+      cron: '*/15 * * * *'
+      time_zone: America/Argentina/Buenos_Aires
+    dockerfile_path: docker/api.Dockerfile
+    source_dir: /
+    github:
+      repo: santialemarino/coti
+      branch: main
+      deploy_on_push: true
+    instance_size_slug: apps-s-1vcpu-1gb
+    run_command: /api/bin/scheduled-job --job attachment-extraction
+    envs:
+      - key: ENV
+        scope: RUN_TIME
+        value: production
+      - key: DATABASE_ADMIN_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: AUTH_JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_LOCAL_SIGNING_SECRET
+        scope: RUN_TIME
+        type: SECRET

@@ -63,8 +63,10 @@ for it.
 
 `RFQ_MAX_ITEMS` bounds what the model may return; a spreadsheet is bounded on the way in too, by
 `RFQ_MAX_SPREADSHEET_ROWS` (default 500), so a price list uploaded by mistake is refused before it
-is paid for. The file's own size is capped by `STORAGE_MAX_FILE_SIZE_BYTES`, the same limit the
-attachment upload uses.
+is paid for. Both doors into the engine apply that limit over the same reader, so a sheet is an
+order or a catalog by its own size and never by whether it arrived inline or through the sweep.
+The file's own size is capped by `STORAGE_MAX_FILE_SIZE_BYTES`, the same limit the attachment
+upload uses.
 
 The development route resolves the branch's WhatsApp channel and then calls the same service method
 the production route does. It is a different way in, not a second pipeline — a copy would drift from
@@ -359,10 +361,16 @@ Three settings, all in `apps/api/.env.example`:
   order past the cap is **refused, not truncated**, because keeping the first two hundred lines of a
   three-hundred-line list reads as a complete quote and is not one. A list that long is a
   spreadsheet, and spreadsheets have their own ingest path.
-- **`RFQ_PIPELINE_TIMEOUT_SECONDS`** (165) bounds reading, extraction and matching together.
-  It is sized off what a generation actually costs: the answer is one forced-schema object of
-  roughly seventy tokens per line, so a sixty-item order takes about two minutes to write and
-  a budget under that refuses orders nothing is wrong with.
+- **`RFQ_PIPELINE_TIMEOUT_SECONDS`** (165) bounds reading, extraction and matching **where nothing
+  is waiting on an HTTP response** — the scheduled attachment sweep. It is sized off what a
+  generation actually costs: the answer is one forced-schema object of roughly seventy tokens per
+  line, so a sixty-item order takes about two minutes to write and a budget under that refuses
+  orders nothing is wrong with.
+- **`RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS`** (75) is the same pass **with a seller's request still
+  open**, and it is a separate, shorter value because it answers to a deadline the sweep does not
+  have: `SERVER_EDGE_TIMEOUT_SECONDS`. One shared number would either let a request outlive the edge
+  or cut the sweep short for a limit that does not apply to it. **It is deliberately smaller than
+  what a large order costs** — see below.
 - **`RATE_LIMIT_AI_MAX`** (10) is the fourth, and it lives with the other allowances rather than
   here: it bounds calls per caller per window on the routes that reach a provider. Startup refuses
   a value above `RATE_LIMIT_GLOBAL_MAX`, which could never bite.
@@ -370,12 +378,41 @@ Three settings, all in `apps/api/.env.example`:
 That last one exists because the AI timeouts are **per attempt**: `AI_LLM_TIMEOUT_SECONDS` times
 `AI_MAX_ATTEMPTS` plus backoff is several times `SERVER_WRITE_TIMEOUT_SECONDS`. Left alone, the
 server would cut the response off while it was being written, and the client would read a broken
-connection rather than a model that ran out of time. Startup refuses a pipeline timeout at or above
-the write budget, so the two cannot drift apart.
+connection rather than a model that ran out of time. Startup refuses an inline pipeline timeout at or
+above the write budget, so the two cannot drift apart.
 
-This bounds the symptom. The wider answer is to move extraction off the request path, which is its
-own piece of work: there is no queue in the API today, and `cmd/scheduled-job` runs work on the
-platform's cron rather than on demand.
+### The chain, and why the edge is the outer bound
+
+`RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS` (75) < `SERVER_WRITE_TIMEOUT_SECONDS` (90) <
+`SERVER_EDGE_TIMEOUT_SECONDS` (100). Startup refuses any ordering but that one.
+
+The edge is **not ours** — it is how long the platform in front waits before it gives up on us, and
+nothing in this config can extend it. Whichever deadline fires first decides what the caller sees,
+and the difference is not cosmetic: ours produces an answer, the platform's severs the connection
+mid-handler. That cancellation takes `markRFQFailed` with it — it runs on the **request** context by
+design, so that a pipeline timeout can still record the failure — which leaves the order at
+`RECEIVED` and the seller watching a queue that says "in progress" over a pipeline that already
+died. None of it reproduces locally, where nothing is in front of the server. Set the edge to `0`
+when that is genuinely true.
+
+### A large order outruns the inline budget, and is handed over rather than failed
+
+**A 75-second inline budget cannot finish a large order** — by the sizing above a sixty-item order
+needs roughly two minutes — so `CreateFileDraft` hands it to the sweep instead of failing it. The
+file is already stored by then, so the intake returns the attachment to the queue (`PENDING`, both
+timestamps cleared) and answers with the order at **`RECEIVED`**, which is the truth: it is still
+being worked. `attachment-extraction` reads it on its next firing with the longer budget and no
+caller holding a connection open, and drafts the quote exactly as the inline path would have.
+
+**Only an interruption is handed over.** A budget that ran out or a provider that was not there says
+nothing about the file, and a later run may well succeed. A model that answered and found no
+materials, or a failure about the file itself, still moves the order to `FAILED` — the bytes do not
+change, so a later run reads the same nothing, and the order is the seller's to load by hand. A
+hand-off that cannot itself be written falls back to `FAILED` for the same reason.
+
+So the three outcomes a caller sees are `rfq.status`: **`GENERATED`** with a draft, **`RECEIVED`**
+with none (the sweep has it), **`FAILED`** (yours to load). No new field, and nothing to poll that
+the queue does not already show.
 
 ## Client delivery
 

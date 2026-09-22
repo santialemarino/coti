@@ -62,13 +62,6 @@ type quoteDeliveryQuoteRepository interface {
 		userID *uuid.UUID) (*domain.QuoteStatusChange, error)
 }
 
-type quoteDeliveryClientActionRepository interface {
-	Create(ctx context.Context, q repository.Querier, accountID uuid.UUID,
-		in domain.NewClientAction) (*domain.ClientAction, error)
-	GetBySend(ctx context.Context, q repository.Querier, accountID uuid.UUID,
-		sendID uuid.UUID) (*domain.ClientAction, error)
-}
-
 type quoteDeliveryRFQRepository interface {
 	SetClient(ctx context.Context, q repository.Querier, accountID, branchID, rfqID,
 		clientID uuid.UUID) error
@@ -121,7 +114,8 @@ type QuoteDeliveryService struct {
 	email           quoteEmailSender
 	evaluator       QuoteQualityEvaluator
 	representations quoteRepresentationEnsurer
-	clientActions   quoteDeliveryClientActionRepository
+	actions         clientActionRecorder
+	sellers         quoteSellerReader
 	webappURL       string
 	now             func() time.Time
 	log             *slog.Logger
@@ -132,14 +126,6 @@ func (s *QuoteDeliveryService) WithRepresentationService(
 	representations quoteRepresentationEnsurer,
 ) *QuoteDeliveryService {
 	s.representations = representations
-	return s
-}
-
-// WithClientActions wires customer response persistence, which ResolvePublic reads and Respond writes.
-func (s *QuoteDeliveryService) WithClientActions(
-	clientActions quoteDeliveryClientActionRepository,
-) *QuoteDeliveryService {
-	s.clientActions = clientActions
 	return s
 }
 
@@ -336,13 +322,6 @@ func (s *QuoteDeliveryService) prepare(ctx context.Context, tenant domain.Tenant
 		}
 		quote.ClientID = &clientID
 
-		if !version.IsImmutable {
-			version, err = s.quotes.FreezeVersion(ctx, q, tenant.AccountID, tenant.BranchID,
-				quote.ID, version.ID)
-			if err != nil {
-				return err
-			}
-		}
 		selected, err := s.selectedChannels(ctx, q, tenant, in)
 		if err != nil {
 			return err
@@ -572,7 +551,7 @@ func (s *QuoteDeliveryService) ResolvePublic(ctx context.Context,
 // response.
 func (s *QuoteDeliveryService) RespondPublic(ctx context.Context, token string,
 	in domain.ClientActionInput) (*domain.PublicQuoteActionResult, error) {
-	if s.clientActions == nil {
+	if s.actions == nil {
 		return nil, domain.ErrNotConfigured
 	}
 	if err := normalizeClientAction(&in); err != nil {
@@ -599,6 +578,7 @@ func (s *QuoteDeliveryService) RespondPublic(ctx context.Context, token string,
 func (s *QuoteDeliveryService) respondLocked(ctx context.Context, accountID uuid.UUID, token string,
 	in domain.ClientActionInput) (*domain.PublicQuoteActionResult, error) {
 	var result *domain.PublicQuoteActionResult
+	var moved *domain.ClientQuoteOutcome
 	err := s.db.InTenantTx(ctx, domain.Tenant{AccountID: accountID},
 		func(q repository.Querier) error {
 			send, err := s.sends.GetPublicByToken(ctx, q, accountID, token)
@@ -611,7 +591,7 @@ func (s *QuoteDeliveryService) respondLocked(ctx context.Context, accountID uuid
 			if !s.now().Before(*send.ExpiresAt) {
 				return domain.ErrConflict
 			}
-			existing, err := s.clientActions.GetBySend(ctx, q, accountID, send.ID)
+			existing, err := s.actions.GetBySend(ctx, q, accountID, send.ID)
 			if err != nil && !errors.Is(err, domain.ErrNotFound) {
 				return err
 			}
@@ -624,7 +604,7 @@ func (s *QuoteDeliveryService) respondLocked(ctx context.Context, accountID uuid
 					CreatedAt: existing.CreatedAt, QuoteStatus: quote.CurrentStatus}
 				return nil
 			}
-			created, err := s.clientActions.Create(ctx, q, accountID, domain.NewClientAction{
+			created, err := s.actions.Create(ctx, q, accountID, domain.NewClientAction{
 				ID: uuid.New(), QuoteSendID: &send.ID, VersionID: send.VersionID, Type: in.Type,
 				Comment: in.Message})
 			if err != nil {
@@ -652,11 +632,19 @@ func (s *QuoteDeliveryService) respondLocked(ctx context.Context, accountID uuid
 					return appendErr
 				}
 				result.QuoteStatus = target
+				if in.Type == domain.ClientActionAccept || in.Type == domain.ClientActionReject {
+					moved = &domain.ClientQuoteOutcome{QuoteID: updated.ID,
+						Reference: string(domain.QuoteReference(updated.Number)), Status: target,
+						Action: in.Type, SellerID: updated.SellerID}
+				}
 			}
 			return nil
 		})
 	if err != nil {
 		return nil, err
+	}
+	if moved != nil {
+		s.notifySellerOfOutcome(ctx, accountID, *moved)
 	}
 	return result, nil
 }
@@ -665,14 +653,14 @@ func (s *QuoteDeliveryService) respondLocked(ctx context.Context, accountID uuid
 // logged and left unanswered rather than failing the whole public page.
 func (s *QuoteDeliveryService) customerStatus(ctx context.Context, accountID, sendID uuid.UUID,
 ) *domain.ClientActionType {
-	if s.clientActions == nil {
+	if s.actions == nil {
 		return nil
 	}
 	var action *domain.ClientAction
 	err := s.db.InTenantTx(ctx, domain.Tenant{AccountID: accountID},
 		func(q repository.Querier) error {
 			var getErr error
-			action, getErr = s.clientActions.GetBySend(ctx, q, accountID, sendID)
+			action, getErr = s.actions.GetBySend(ctx, q, accountID, sendID)
 			return getErr
 		})
 	if err != nil {

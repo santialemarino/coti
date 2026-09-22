@@ -11,7 +11,7 @@ import (
 )
 
 const clientActionColumns = `action.id, action.account_id, action.version_id,
-	action.quote_send_id, action.type, action.comment, action.created_at`
+	action.quote_send_id, action.quote_item_id, action.type, action.comment, action.created_at`
 
 // ClientActionRepository owns customer responses to published quotes and their seller-side reads.
 type ClientActionRepository struct{}
@@ -19,13 +19,18 @@ type ClientActionRepository struct{}
 // NewClientActionRepository builds a ClientActionRepository.
 func NewClientActionRepository() *ClientActionRepository { return &ClientActionRepository{} }
 
-// Create inserts one customer response bound to the exact version it answers.
+// Create inserts one customer response bound to the exact version it answers. The version id
+// arrives from a public token rather than from a session, so the insert proves it belongs to the
+// account before it writes and returns domain.ErrNotFound when it does not. A zero id lets the
+// database generate the primary key.
 func (r *ClientActionRepository) Create(ctx context.Context, q Querier, accountID uuid.UUID,
 	in domain.NewClientAction) (*domain.ClientAction, error) {
 	return scanClientAction(q.QueryRow(ctx, `INSERT INTO client_action
-		(id, account_id, version_id, quote_send_id, type, comment)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING `+clientActionColumns,
+		(id, account_id, version_id, quote_send_id, quote_item_id, type, comment)
+		SELECT COALESCE(NULLIF($1::uuid, '00000000-0000-0000-0000-000000000000'),
+		       gen_random_uuid()), $2, $3, $4, NULL, $5, $6
+		WHERE EXISTS (SELECT 1 FROM quote_version WHERE id = $3 AND account_id = $2)
+		RETURNING id, account_id, version_id, quote_send_id, quote_item_id, type, comment, created_at`,
 		in.ID, accountID, in.VersionID, in.QuoteSendID, in.Type, in.Comment))
 }
 
@@ -59,7 +64,8 @@ func (r *ClientActionRepository) ListByQuote(ctx context.Context, q Querier, acc
 		var action domain.ClientAction
 		// The version number trails the row's own columns; only this list join answers it.
 		err := rows.Scan(&action.ID, &action.AccountID, &action.VersionID, &action.QuoteSendID,
-			&action.Type, &action.Comment, &action.CreatedAt, &action.VersionNumber)
+			&action.QuoteItemID, &action.Type, &action.Comment, &action.CreatedAt,
+			&action.VersionNumber)
 		if err != nil {
 			return nil, err
 		}
@@ -71,7 +77,7 @@ func (r *ClientActionRepository) ListByQuote(ctx context.Context, q Querier, acc
 func scanClientAction(row pgx.Row) (*domain.ClientAction, error) {
 	var action domain.ClientAction
 	err := row.Scan(&action.ID, &action.AccountID, &action.VersionID, &action.QuoteSendID,
-		&action.Type, &action.Comment, &action.CreatedAt)
+		&action.QuoteItemID, &action.Type, &action.Comment, &action.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

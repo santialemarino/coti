@@ -41,10 +41,13 @@ const (
 	CodeUnsupportedFileType ErrorCode = "UNSUPPORTED_FILE_TYPE"
 	// The three a channel write is refused with. A form editing one channel can answer all three
 	// on the same 422, and the field it has to point the administrator at differs per code.
-	CodeChannelConfigShape         ErrorCode = "CHANNEL_CONFIG_SHAPE"
-	CodeChannelIdentifier          ErrorCode = "CHANNEL_IDENTIFIER"
-	CodeManualEntryChannel         ErrorCode = "MANUAL_ENTRY_CHANNEL"
-	CodeQuoteNotSendable           ErrorCode = "QUOTE_NOT_SENDABLE"
+	CodeChannelConfigShape ErrorCode = "CHANNEL_CONFIG_SHAPE"
+	CodeChannelIdentifier  ErrorCode = "CHANNEL_IDENTIFIER"
+	CodeManualEntryChannel ErrorCode = "MANUAL_ENTRY_CHANNEL"
+	CodeQuoteNotSendable   ErrorCode = "QUOTE_NOT_SENDABLE"
+	// CodeQuoteNotSent refuses a customer answering a quote that is not out for an answer.
+	CodeQuoteNotSent               ErrorCode = "QUOTE_NOT_SENT"
+	CodeQuoteSendExpired           ErrorCode = "QUOTE_SEND_EXPIRED"
 	CodeDeliveryChannel            ErrorCode = "DELIVERY_CHANNEL"
 	CodeIdempotencyMismatch        ErrorCode = "IDEMPOTENCY_MISMATCH"
 	CodeQuoteRepresentationInvalid ErrorCode = "QUOTE_REPRESENTATION_INVALID"

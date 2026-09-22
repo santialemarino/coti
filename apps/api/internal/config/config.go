@@ -81,6 +81,7 @@ type Config struct {
 	RFQ             RFQConfig
 	QuoteCorrection QuoteCorrectionConfig
 	QuoteQuality    QuoteQualityConfig
+	Attachment      AttachmentConfig
 	QuoteLogo       QuoteLogoConfig
 	RateLimit       RateLimitConfig
 	Branch          BranchConfig
@@ -147,9 +148,20 @@ type RateLimitConfig struct {
 
 // ServerConfig holds the HTTP listener settings.
 type ServerConfig struct {
-	Port            string
-	ReadTimeout     time.Duration
-	WriteTimeout    time.Duration
+	Port        string
+	ReadTimeout time.Duration
+	// WriteTimeout bounds one handler. It has to stay under EdgeTimeout: whichever deadline
+	// fires first decides what the caller sees, and ours produces an answer where the platform's
+	// produces a severed connection.
+	WriteTimeout time.Duration
+	/*
+	 * EdgeTimeout is how long the platform in front of the API waits for a response before it
+	 * gives up on us. It is not ours to enforce — nothing here can extend it — and it is here so
+	 * the settings that ARE ours can be checked against it at startup.
+	 *
+	 * Zero means nothing is in front (a bare container, a local run) and the checks are skipped.
+	 */
+	EdgeTimeout     time.Duration
 	ShutdownTimeout time.Duration
 }
 
@@ -437,11 +449,19 @@ type RFQConfig struct {
 	// what the model may answer; this bounds what it is asked to read, so a price list
 	// uploaded by mistake is refused before it is paid for.
 	MaxSpreadsheetRows int
-	// PipelineTimeout bounds the whole read-extract-and-match pass. The AI timeouts are per
-	// attempt, so a retrying chain outruns the response budget; this makes the route answer 503
-	// instead of having its response cut off mid-write. It covers an uploaded file too, where
-	// reading or transcribing runs before extraction and the model is handed a whole document.
+	// PipelineTimeout bounds the whole read-extract-and-match pass where nothing is waiting on an
+	// HTTP response — the scheduled sweep. Its ceiling is the job's own budget, which is minutes.
 	PipelineTimeout time.Duration
+	/*
+	 * InlinePipelineTimeout is the same pass with a seller's request still open, and it is a
+	 * separate, shorter budget because it answers to a deadline the sweep does not have: the
+	 * platform's edge. The AI timeouts are per attempt, so a retrying chain outruns any of these;
+	 * this is what makes the route answer rather than have its response cut off mid-write.
+	 *
+	 * Splitting the two is the point. One value would either let a request outlive the edge or
+	 * cut the sweep short for a limit that does not apply to it.
+	 */
+	InlinePipelineTimeout time.Duration
 }
 
 // QuoteCorrectionConfig bounds account-local correction learning.
@@ -455,6 +475,17 @@ type QuoteCorrectionConfig struct {
 // QuoteQualityConfig bounds the durable post-send evaluation retry.
 type QuoteQualityConfig struct {
 	ProcessingBatchSize int
+}
+
+// AttachmentConfig bounds the sweep that reads the files an order arrived with. The reclaim
+// window is how long a claim stands: past it the row is taken again, so a run killed mid-work
+// releases its attachments instead of parking them at PROCESSING forever.
+type AttachmentConfig struct {
+	// ExtractionRFQBatchSize counts orders, not files: an order with several attachments is
+	// extracted once over all of them, so the model call — not the file read — is what a batch
+	// costs. Startup keeps the batch short enough to finish inside the reclaim window.
+	ExtractionRFQBatchSize int
+	ExtractionReclaimAfter time.Duration
 }
 
 // CatalogConfig holds the catalog listing limits and the knobs behind the hybrid search. The
@@ -616,7 +647,8 @@ func Load() (*Config, error) {
 		Server: ServerConfig{
 			Port:            getString("API_PORT", "8000"),
 			ReadTimeout:     getDuration("SERVER_READ_TIMEOUT_SECONDS", 15*time.Second, &problems),
-			WriteTimeout:    getDuration("SERVER_WRITE_TIMEOUT_SECONDS", 180*time.Second, &problems),
+			WriteTimeout:    getDuration("SERVER_WRITE_TIMEOUT_SECONDS", 90*time.Second, &problems),
+			EdgeTimeout:     getDuration("SERVER_EDGE_TIMEOUT_SECONDS", 100*time.Second, &problems),
 			ShutdownTimeout: getDuration("SERVER_SHUTDOWN_TIMEOUT_SECONDS", 10*time.Second, &problems),
 		},
 		Database: DatabaseConfig{
@@ -730,6 +762,8 @@ func Load() (*Config, error) {
 			MaxItems:           getInt("RFQ_MAX_ITEMS", 200, &problems),
 			MaxSpreadsheetRows: getInt("RFQ_MAX_SPREADSHEET_ROWS", 500, &problems),
 			PipelineTimeout:    getDuration("RFQ_PIPELINE_TIMEOUT_SECONDS", 165*time.Second, &problems),
+			InlinePipelineTimeout: getDuration("RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS",
+				75*time.Second, &problems),
 		},
 		QuoteCorrection: QuoteCorrectionConfig{
 			SimilarityPercent:         getInt("QUOTE_CORRECTION_SIMILARITY_PERCENT", 80, &problems),
@@ -745,6 +779,11 @@ func Load() (*Config, error) {
 		},
 		QuoteQuality: QuoteQualityConfig{
 			ProcessingBatchSize: getInt("QUOTE_QUALITY_PROCESSING_BATCH_SIZE", 100, &problems),
+		},
+		Attachment: AttachmentConfig{
+			ExtractionRFQBatchSize: getInt("ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE", 5, &problems),
+			ExtractionReclaimAfter: getDuration("ATTACHMENT_EXTRACTION_RECLAIM_MINUTES",
+				15*time.Minute, &problems),
 		},
 		Job: JobConfig{
 			Timeout: getDuration("JOB_TIMEOUT_MINUTES", 30*time.Minute, &problems),
@@ -900,12 +939,29 @@ func Load() (*Config, error) {
 	}
 	if cfg.RFQ.PipelineTimeout <= 0 {
 		problems = append(problems, "RFQ_PIPELINE_TIMEOUT_SECONDS must be greater than zero")
-	} else if cfg.RFQ.PipelineTimeout >= cfg.Server.WriteTimeout {
+	}
+	if cfg.RFQ.InlinePipelineTimeout <= 0 {
+		problems = append(problems, "RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS must be greater than zero")
+	} else if cfg.RFQ.InlinePipelineTimeout >= cfg.Server.WriteTimeout {
 		// A pipeline allowed to outlast the response budget has its answer cut off mid-write,
 		// which the client reads as a broken connection rather than as a model that timed out.
 		problems = append(problems, fmt.Sprintf(
-			"RFQ_PIPELINE_TIMEOUT_SECONDS (%s) must be below SERVER_WRITE_TIMEOUT_SECONDS (%s)",
-			cfg.RFQ.PipelineTimeout, cfg.Server.WriteTimeout))
+			"RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS (%s) must be below SERVER_WRITE_TIMEOUT_SECONDS (%s)",
+			cfg.RFQ.InlinePipelineTimeout, cfg.Server.WriteTimeout))
+	}
+	/*
+	 * The platform in front gives up on us at EdgeTimeout, and nothing here can extend it. If our
+	 * own budget is the larger one it never fires: the caller gets a severed connection instead of
+	 * an answer, and — worse — the handler is cancelled mid-flight, so the code that records the
+	 * failure cannot run either. An order is then left looking like it is still being worked.
+	 *
+	 * Zero means nothing is in front of us, which is the local case.
+	 */
+	if cfg.Server.EdgeTimeout > 0 && cfg.Server.WriteTimeout >= cfg.Server.EdgeTimeout {
+		problems = append(problems, fmt.Sprintf(
+			"SERVER_WRITE_TIMEOUT_SECONDS (%s) must be below SERVER_EDGE_TIMEOUT_SECONDS (%s), "+
+				"or the platform cuts the connection before this server can answer",
+			cfg.Server.WriteTimeout, cfg.Server.EdgeTimeout))
 	}
 	if cfg.QuoteCorrection.MaxPatternsPerAccount < 1 {
 		problems = append(problems, "QUOTE_CORRECTION_MAX_PATTERNS_PER_ACCOUNT must be greater than zero")
@@ -918,6 +974,27 @@ func Load() (*Config, error) {
 	}
 	if cfg.QuoteQuality.ProcessingBatchSize < 1 {
 		problems = append(problems, "QUOTE_QUALITY_PROCESSING_BATCH_SIZE must be greater than zero")
+	}
+	if cfg.Attachment.ExtractionRFQBatchSize < 1 {
+		problems = append(problems, "ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE must be greater than zero")
+	}
+	if cfg.Attachment.ExtractionReclaimAfter <= 0 {
+		problems = append(problems, "ATTACHMENT_EXTRACTION_RECLAIM_MINUTES must be greater than zero")
+	}
+	// Every order in a batch costs a model call, so a full batch can run for the batch size times
+	// the pipeline budget. Past the reclaim window the run's own claims expire while it still
+	// holds them, and the next firing extracts the same orders again — paying twice and writing
+	// two drafts. The batch is what gives way, because the other two are bounded elsewhere.
+	if cfg.Attachment.ExtractionRFQBatchSize > 0 && cfg.RFQ.PipelineTimeout > 0 &&
+		cfg.Attachment.ExtractionReclaimAfter > 0 {
+		worst := time.Duration(cfg.Attachment.ExtractionRFQBatchSize) * cfg.RFQ.PipelineTimeout
+		if worst > cfg.Attachment.ExtractionReclaimAfter {
+			problems = append(problems, fmt.Sprintf(
+				"ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE (%d) times RFQ_PIPELINE_TIMEOUT_SECONDS (%s) "+
+					"is %s, which must not exceed ATTACHMENT_EXTRACTION_RECLAIM_MINUTES (%s)",
+				cfg.Attachment.ExtractionRFQBatchSize, cfg.RFQ.PipelineTimeout, worst,
+				cfg.Attachment.ExtractionReclaimAfter))
+		}
 	}
 
 	catalogPercents := []struct {

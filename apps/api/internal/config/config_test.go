@@ -93,10 +93,13 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Server.Port != "8000" {
 		t.Errorf("Server.Port = %q, want %q", cfg.Server.Port, "8000")
 	}
-	if cfg.Server.ReadTimeout != 15*time.Second || cfg.Server.WriteTimeout != 180*time.Second ||
+	if cfg.Server.ReadTimeout != 15*time.Second || cfg.Server.WriteTimeout != 90*time.Second ||
 		cfg.Server.ShutdownTimeout != 10*time.Second {
-		t.Errorf("Server timeouts = %v/%v/%v, want 15s/180s/10s",
+		t.Errorf("Server timeouts = %v/%v/%v, want 15s/90s/10s",
 			cfg.Server.ReadTimeout, cfg.Server.WriteTimeout, cfg.Server.ShutdownTimeout)
+	}
+	if cfg.Server.EdgeTimeout != 100*time.Second {
+		t.Errorf("Server.EdgeTimeout = %v, want 100s", cfg.Server.EdgeTimeout)
 	}
 	if cfg.Database.MaxConns != 10 {
 		t.Errorf("Database.MaxConns = %d, want 10", cfg.Database.MaxConns)
@@ -134,11 +137,12 @@ func TestLoad_Defaults(t *testing.T) {
 		cfg.QuoteCorrection.ProcessingBatchSize != 100 {
 		t.Errorf("QuoteCorrection defaults = %+v, want 80/1000/3/100", cfg.QuoteCorrection)
 	}
-	// The pipeline has to answer inside the response budget, or its reply is cut off mid-write
-	// and the client reads a broken connection instead of a model that ran out of time.
-	if cfg.RFQ.PipelineTimeout >= cfg.Server.WriteTimeout {
-		t.Errorf("RFQ.PipelineTimeout = %v, want it below Server.WriteTimeout %v",
-			cfg.RFQ.PipelineTimeout, cfg.Server.WriteTimeout)
+	// The pipeline that runs with a request open has to answer inside the response budget, or its
+	// reply is cut off mid-write and the client reads a broken connection instead of a model that
+	// ran out of time. The sweep's own budget answers to the job and is deliberately longer.
+	if cfg.RFQ.InlinePipelineTimeout >= cfg.Server.WriteTimeout {
+		t.Errorf("RFQ.InlinePipelineTimeout = %v, want it below Server.WriteTimeout %v",
+			cfg.RFQ.InlinePipelineTimeout, cfg.Server.WriteTimeout)
 	}
 	if cfg.Mail.Provider != MailProviderConsole {
 		t.Errorf("Mail.Provider = %q, want %q", cfg.Mail.Provider, MailProviderConsole)
@@ -250,6 +254,136 @@ func TestLoad_RFQKeysLandOnTheirOwnFields(t *testing.T) {
 	}
 	if cfg.RFQ.PipelineTimeout != 9*time.Second {
 		t.Errorf("RFQ.PipelineTimeout = %v, want 9s", cfg.RFQ.PipelineTimeout)
+	}
+}
+
+/*
+ * A batch of orders costs a model call each, so a full batch can run for the batch size times the
+ * pipeline budget. Past the reclaim window the run's own claims expire while it still holds them
+ * and the next firing extracts the same orders again, paying twice and writing two drafts.
+ * Nothing at runtime would report that, so startup refuses the combination.
+ */
+func TestLoad_RejectsAnAttachmentBatchThatOutlastsItsClaim(t *testing.T) {
+	env := minimalEnv()
+	env["ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE"] = "10"
+	env["RFQ_PIPELINE_TIMEOUT_SECONDS"] = "165"
+	env["ATTACHMENT_EXTRACTION_RECLAIM_MINUTES"] = "15"
+	setEnv(t, env)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() = nil, want the batch refused for outlasting its own claim")
+	}
+	if !strings.Contains(err.Error(), "ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE") {
+		t.Errorf("error = %v, want it to name the key that has to give way", err)
+	}
+}
+
+// The same three keys in a combination that fits must load, or the check above is just a ban.
+func TestLoad_AcceptsAnAttachmentBatchThatFitsItsClaim(t *testing.T) {
+	env := minimalEnv()
+	env["ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE"] = "5"
+	env["RFQ_PIPELINE_TIMEOUT_SECONDS"] = "165"
+	env["ATTACHMENT_EXTRACTION_RECLAIM_MINUTES"] = "15"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.Attachment.ExtractionRFQBatchSize != 5 {
+		t.Errorf("Attachment.ExtractionRFQBatchSize = %d, want 5",
+			cfg.Attachment.ExtractionRFQBatchSize)
+	}
+}
+
+/*
+ * The whole chain in one assertion, on the DEFAULTS, because the defaults are what a deployment
+ * that sets none of these runs on: the inline pass has to finish before this server's own write
+ * deadline, which has to fire before the platform in front gives up on us.
+ *
+ * The sweep's budget is deliberately NOT in that chain — nothing is waiting on a response there.
+ */
+func TestLoad_DefaultTimeoutsFitInsideTheEdge(t *testing.T) {
+	setEnv(t, minimalEnv())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if !(cfg.RFQ.InlinePipelineTimeout < cfg.Server.WriteTimeout) {
+		t.Errorf("inline pipeline %s is not below the write budget %s",
+			cfg.RFQ.InlinePipelineTimeout, cfg.Server.WriteTimeout)
+	}
+	if !(cfg.Server.WriteTimeout < cfg.Server.EdgeTimeout) {
+		t.Errorf("write budget %s is not below the edge %s", cfg.Server.WriteTimeout,
+			cfg.Server.EdgeTimeout)
+	}
+	if cfg.RFQ.PipelineTimeout <= cfg.RFQ.InlinePipelineTimeout {
+		t.Errorf("sweep budget %s is not longer than the inline one %s — splitting them is the "+
+			"point", cfg.RFQ.PipelineTimeout, cfg.RFQ.InlinePipelineTimeout)
+	}
+}
+
+/*
+ * A write budget above the edge never fires: the platform severs the connection first, so the
+ * caller reads a broken connection instead of an answer AND the handler is cancelled mid-flight,
+ * which takes the code that records the failure with it. Nothing at runtime reports that, and it
+ * cannot happen locally, where nothing is in front of the server.
+ */
+func TestLoad_RejectsAWriteBudgetTheEdgeWouldCutFirst(t *testing.T) {
+	env := minimalEnv()
+	env["SERVER_WRITE_TIMEOUT_SECONDS"] = "180"
+	env["SERVER_EDGE_TIMEOUT_SECONDS"] = "100"
+	env["RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS"] = "75"
+	setEnv(t, env)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() = nil, want the write budget refused for outlasting the edge")
+	}
+	if !strings.Contains(err.Error(), "SERVER_EDGE_TIMEOUT_SECONDS") {
+		t.Errorf("error = %v, want it to name the ceiling being exceeded", err)
+	}
+}
+
+// Nothing in front is the local case, and a bare container is a real deployment shape, so zero
+// turns the check off rather than being refused as nonsense.
+func TestLoad_AnEdgeOfZeroMeansNothingIsInFront(t *testing.T) {
+	env := minimalEnv()
+	env["SERVER_WRITE_TIMEOUT_SECONDS"] = "600"
+	env["SERVER_EDGE_TIMEOUT_SECONDS"] = "0"
+	env["RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS"] = "75"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error with no edge in front", err)
+	}
+	if cfg.Server.EdgeTimeout != 0 {
+		t.Errorf("Server.EdgeTimeout = %v, want zero", cfg.Server.EdgeTimeout)
+	}
+}
+
+// The sweep's budget answers to the job, not to a request, so it may exceed the write budget that
+// bounds a handler. Checking it against the response budget would cut it short for no reason.
+func TestLoad_TheSweepBudgetMayExceedTheResponseBudget(t *testing.T) {
+	env := minimalEnv()
+	env["RFQ_PIPELINE_TIMEOUT_SECONDS"] = "165"
+	env["RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS"] = "75"
+	env["SERVER_WRITE_TIMEOUT_SECONDS"] = "90"
+	env["SERVER_EDGE_TIMEOUT_SECONDS"] = "100"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want the sweep budget accepted above the write budget", err)
+	}
+	if cfg.RFQ.PipelineTimeout != 165*time.Second {
+		t.Errorf("RFQ.PipelineTimeout = %v, want 165s", cfg.RFQ.PipelineTimeout)
+	}
+	if cfg.RFQ.InlinePipelineTimeout != 75*time.Second {
+		t.Errorf("RFQ.InlinePipelineTimeout = %v, want 75s", cfg.RFQ.InlinePipelineTimeout)
 	}
 }
 

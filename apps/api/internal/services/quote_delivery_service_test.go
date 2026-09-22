@@ -280,7 +280,7 @@ func newQuoteActionHarness() *quoteActionHarness {
 	h.service = NewQuoteDeliveryService(h.db, h.sends, h.quotes, unusedDeliveryDeps{},
 		unusedDeliveryDeps{}, unusedDeliveryDeps{}, unusedDeliveryDeps{}, unusedDeliveryDeps{},
 		unusedDeliveryDeps{}, nil, "https://app.coti.ar", func() time.Time { return h.now }, nil).
-		WithClientActions(h.clientActions).WithRepresentationService(h.representations)
+		WithClientActions(h.clientActions, nil).WithRepresentationService(h.representations)
 	return h
 }
 

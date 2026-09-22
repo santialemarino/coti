@@ -119,6 +119,7 @@ func newEnvWithRFQProviders(
 		Catalog: config.CatalogConfig{DefaultPageSize: 50, MaxPageSize: 200},
 		RFQ: config.RFQConfig{
 			MaxTextCharacters: 20000, MaxItems: 200, PipelineTimeout: 25 * time.Second,
+			InlinePipelineTimeout: 25 * time.Second,
 		},
 		Branch:  config.BranchConfig{DefaultExpiryDays: 7},
 		Channel: config.ChannelConfig{EncryptionKey: testChannelKey},

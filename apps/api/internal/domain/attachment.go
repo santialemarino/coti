@@ -93,6 +93,39 @@ type RFQAttachment struct {
 	ProcessedAt      *time.Time
 }
 
+// ClaimedAttachment is one attachment the sweep has taken for processing. It carries the branch
+// its RFQ belongs to, which the attachment row does not hold and the work downstream needs: a job
+// runs as the owner across every account, and everything it calls is still branch-scoped.
+type ClaimedAttachment struct {
+	ID        uuid.UUID
+	AccountID uuid.UUID
+	BranchID  uuid.UUID
+	RFQID     uuid.UUID
+	Type      AttachmentType
+	// StorageKey is empty on a row whose file never landed, which the sweep fails rather than
+	// retries — there is nothing to read and no later run will find one.
+	StorageKey string
+	// CreatedAt orders the material of an order that arrived with several files, so the model
+	// reads a photo and the recording explaining it in the order they were sent.
+	CreatedAt time.Time
+}
+
+// AttachmentFoldOutcome is what the sweep did with the material an order's files carried, once it
+// had read them. It is a report, not a state: nothing is stored under these names.
+type AttachmentFoldOutcome string
+
+const (
+	// AttachmentFoldedIntoDraft means the material reached a draft nobody had reviewed yet.
+	AttachmentFoldedIntoDraft AttachmentFoldOutcome = "FOLDED_INTO_DRAFT"
+	// AttachmentHeldForSeller means the quote was already past review, so the file is stored and
+	// surfaced and folding it in is the seller's own action.
+	AttachmentHeldForSeller AttachmentFoldOutcome = "HELD_FOR_SELLER"
+	// AttachmentReadNoMaterials means the model read the material and found no lines in it.
+	AttachmentReadNoMaterials AttachmentFoldOutcome = "READ_NO_MATERIALS"
+	// AttachmentUnreadable means nothing the order carried could be read at all, so no model ran.
+	AttachmentUnreadable AttachmentFoldOutcome = "UNREADABLE"
+)
+
 // NewRFQAttachment is the input for recording a stored file against an RFQ.
 type NewRFQAttachment struct {
 	ID         uuid.UUID

@@ -52,7 +52,8 @@ func (s stagedExtractor) Extract(
 }
 
 func rfqConfig() config.RFQConfig {
-	return config.RFQConfig{MaxTextCharacters: 20000, MaxItems: 200, PipelineTimeout: time.Minute}
+	return config.RFQConfig{MaxTextCharacters: 20000, MaxItems: 200, PipelineTimeout: time.Minute,
+		InlinePipelineTimeout: time.Minute}
 }
 
 // pipeline wires the RFQ service over the real repositories, the real matching stack, and the
@@ -111,6 +112,11 @@ func (e *env) dropDraft(t *testing.T, rfqID uuid.UUID) {
 		  JOIN quote_version v ON v.id = i.version_id
 		  JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`, rfqID)
 		e.mustCleanup(t, `DELETE FROM quote_item WHERE version_id IN (
+		  SELECT v.id FROM quote_version v JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`,
+			rfqID)
+		// A customer's answer points at both the version and the send it came back through, so it
+		// goes before either of them.
+		e.mustCleanup(t, `DELETE FROM client_action WHERE version_id IN (
 		  SELECT v.id FROM quote_version v JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`,
 			rfqID)
 		e.mustCleanup(t, `DELETE FROM quote_send WHERE version_id IN (

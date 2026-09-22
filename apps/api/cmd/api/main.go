@@ -178,7 +178,7 @@ func run() error {
 		clientRepo, channelRepo, branchRepo, whatsapp.DisabledSender{}, quoteMailService,
 		quoteQualityService, cfg.Web.WebAppURL, nil, log).
 		WithRepresentationService(quoteRepresentationService).
-		WithClientActions(clientActionRepo)
+		WithClientActions(clientActionRepo, userRepo)
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
 			Health:        handler.NewHealthHandler(db),

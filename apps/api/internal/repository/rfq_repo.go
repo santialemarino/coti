@@ -45,6 +45,18 @@ func (r *RFQRepository) Create(
 		in.ClientLabel))
 }
 
+// GetByID loads one RFQ row, scoped to its account and branch. The sweep needs the row itself
+// rather than the list projection, whose merged status answers for the quote when there is one.
+func (r *RFQRepository) GetByID(
+	ctx context.Context, q Querier, accountID, branchID, rfqID uuid.UUID,
+) (*domain.RFQ, error) {
+	return scanRFQ(q.QueryRow(ctx,
+		`SELECT `+rfqColumns+`
+		   FROM rfq
+		  WHERE account_id = $1 AND branch_id = $2 AND id = $3`,
+		accountID, branchID, rfqID))
+}
+
 // UpdateStatus writes the RFQ status cache and returns the stored row.
 func (r *RFQRepository) UpdateStatus(
 	ctx context.Context, q Querier, accountID, id uuid.UUID, status domain.RFQStatus,
