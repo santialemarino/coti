@@ -41,19 +41,26 @@ INSERT INTO user_branch (account_id, user_id, branch_id) VALUES
   ('a0000000-0000-4000-8000-000000000001', 'c0000000-0000-4000-8000-000000000002', 'b0000000-0000-4000-8000-000000000001')
 ON CONFLICT (user_id, branch_id) DO NOTHING;
 
--- One channel per type at the main branch, plus manual entry at the second one, which every
--- branch needs to originate a counter order.
+-- Each branch has intake and outbound channels so either can exercise the quote flow.
 --
--- identifier stays NULL on all of them: the seed cannot invent a real WhatsApp number or
--- mailbox, and inventing one would diverge from already-migrated databases where those rows
--- exist without an identifier. The ON CONFLICT therefore targets the partial index, which is
--- what holds uniqueness up while the identifier is absent.
-INSERT INTO channel (account_id, branch_id, type) VALUES
+-- identifier stays NULL: the seed cannot invent a real WhatsApp number or mailbox. Leave any
+-- channel already configured for the branch and type untouched when the seed runs again.
+INSERT INTO channel (account_id, branch_id, type)
+SELECT desired.account_id::uuid, desired.branch_id::uuid, desired.type::channel_type
+FROM (VALUES
   ('a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001', 'WHATSAPP'),
   ('a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001', 'EMAIL'),
   ('a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001', 'WEBAPP'),
   ('a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001', 'MANUAL_ENTRY'),
+  ('a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000002', 'WHATSAPP'),
+  ('a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000002', 'EMAIL'),
   ('a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000002', 'MANUAL_ENTRY')
+) AS desired(account_id, branch_id, type)
+WHERE NOT EXISTS (
+  SELECT 1 FROM channel existing
+  WHERE existing.branch_id = desired.branch_id::uuid
+    AND existing.type = desired.type::channel_type
+)
 ON CONFLICT (branch_id, type) WHERE identifier IS NULL DO NOTHING;
 
 -- Account catalog. embedding stays NULL: the AI pipeline populates it.

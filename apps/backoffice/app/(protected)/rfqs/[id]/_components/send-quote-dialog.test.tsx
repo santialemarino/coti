@@ -212,6 +212,28 @@ describe('SendQuoteDialog', () => {
     expect(phoneField(view)).toBeTruthy();
   });
 
+  it('reports missing branch channels without blaming valid contact details', async () => {
+    vi.mocked(sendQuote).mockRejectedValue(new ApiError('DELIVERY_CHANNEL', 422));
+    const view = renderDialog();
+    openDialog(view);
+    fireEvent.click(view.getByLabelText(copy.alsoEmail));
+    fireEvent.change(view.getByLabelText(copy.emailLabel), {
+      target: { value: 'cliente@empresa.com' },
+    });
+    await sendOn(view);
+
+    expect(toast.error).toHaveBeenCalledWith(copy.errors.DELIVERY_CHANNEL);
+  });
+
+  it('reports an unavailable delivery provider separately from invalid input', async () => {
+    vi.mocked(sendQuote).mockRejectedValue(new ApiError('DELIVERY_UNAVAILABLE', 503));
+    const view = renderDialog();
+    openDialog(view);
+    await sendOn(view);
+
+    expect(toast.error).toHaveBeenCalledWith(copy.errors.DELIVERY_UNAVAILABLE);
+  });
+
   it('returns to the form from the success view to send to another destination', async () => {
     vi.mocked(sendQuote).mockResolvedValue(sentResult([delivery({})]));
     const view = renderDialog();
