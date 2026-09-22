@@ -41,7 +41,7 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
   const branchId = detail.rfq.branch_id;
   const quoteStatus = detail.quote?.current_status ?? null;
   // Business status the seller sees: DRAFT (an internal quote_state) reads as GENERATED here.
-  // A requested revision is a mutable draft until the seller recalculates its prices.
+  // A requested revision remains a mutable draft until the seller accepts its materials.
   const rfqStatus = normalizeRfqStatus(detail.rfq.status);
   const isDraft = quoteStatus === 'DRAFT' || quoteStatus === 'CHANGE_REQUESTED';
 

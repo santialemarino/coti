@@ -176,7 +176,7 @@ func run() error {
 		branding.NewLogoLoader(cfg.QuoteLogo), quotePDF.NewQuoteRenderer(),
 		cfg.Storage.SignedURLExpiry, nil, log)
 	quoteDeliveryService := services.NewQuoteDeliveryService(db, quoteSendRepo, quoteRepo, rfqRepo,
-		clientRepo, channelRepo, branchRepo, whatsapp.DisabledSender{}, quoteMailService,
+		clientRepo, channelRepo, branchRepo, productPriceRepo, whatsapp.DisabledSender{}, quoteMailService,
 		quoteQualityService, cfg.Web.WebAppURL, nil, log).
 		WithRepresentationService(quoteRepresentationService).
 		WithClientActions(clientActionRepo, userRepo).

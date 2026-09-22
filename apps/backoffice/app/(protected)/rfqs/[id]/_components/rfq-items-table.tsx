@@ -42,13 +42,14 @@ import { ProductSearchDialog } from './product-search-dialog';
  * Capability matrix keyed on the raw quote.current_status. GENERATED reads as DRAFT here (the
  * backend-only state while a draft quote is being worked); the seller never sees DRAFT as a
  * status, it only decides what is editable. Gaps are deliberate and map 1:1 to the status rules:
- *   GENERATED (DRAFT) + CHANGE_REQUESTED products editable, no prices shown yet
+ *   GENERATED (DRAFT)      products editable, no prices shown yet
+ *   CHANGE_REQUESTED       products editable, provisional prices shown
  *   QUOTED                 prices (and discounts) editable
  *   SENT/ACCEPTED/REJECTED  read-only, prices shown
  */
 const PRODUCT_EDIT_STATUSES = new Set(['DRAFT', 'CHANGE_REQUESTED']);
 const PRICE_EDIT_STATUSES = new Set(['QUOTED']);
-const PRICED_STATUSES = new Set(['QUOTED', 'SENT', 'ACCEPTED', 'REJECTED']);
+const PRICED_STATUSES = new Set(['CHANGE_REQUESTED', 'QUOTED', 'SENT', 'ACCEPTED', 'REJECTED']);
 
 // A line quantity is a measured figure, not a count — half a cubic metre is a real order line.
 // Both are NUMERIC(14,2) on the wire, so entry is capped where storage is.

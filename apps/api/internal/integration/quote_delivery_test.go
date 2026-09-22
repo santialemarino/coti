@@ -155,7 +155,7 @@ func (e *env) quoteDeliveryService(t *testing.T, whatsapp domain.QuoteWhatsAppSe
 	return services.NewQuoteDeliveryService(e.db, repository.NewQuoteSendRepository(),
 		repository.NewQuoteRepository(), repository.NewRFQRepository(),
 		repository.NewClientRepository(), repository.NewChannelRepository(),
-		repository.NewBranchRepository(), whatsapp, email, evaluator,
+		repository.NewBranchRepository(), repository.NewProductPriceRepository(), whatsapp, email, evaluator,
 		"https://quotes.test", nil, slog.New(slog.NewTextHandler(io.Discard, nil))).
 		WithRepresentationService(representations)
 }
@@ -581,6 +581,13 @@ func TestQuoteClientAction_ChangeRequestCreatesAndResendsReviewedVersion(t *test
 	service := e.clientAnswerService(t, &captureWhatsAppSender{}, &stagedQuoteEmailSender{})
 	token, sendID := e.sentQuoteToken(t, service, seed)
 	message := "Add one cement bag"
+	var productID uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT product_id FROM quote_item WHERE version_id = $1 LIMIT 1`,
+		*seed.draft.Quote.CurrentVersionID).Scan(&productID); err != nil {
+		t.Fatalf("read original product: %v", err)
+	}
+	e.openPricePeriod(t, seed.tenant.AccountID, seed.tenant.BranchID, productID, "65", nil)
 
 	result, err := service.RespondPublic(context.Background(), token,
 		domain.ClientActionInput{Type: domain.ClientActionRequestChange, Message: &message})
@@ -618,6 +625,45 @@ func TestQuoteClientAction_ChangeRequestCreatesAndResendsReviewedVersion(t *test
 			status, versionNumber, mutable, originalItems, newItems, actionSendID,
 			messageActionID, actionID, body, changes)
 	}
+	if got := e.storedVersionTotal(t, versionID); !got.Equal(decimal.NewFromInt(130)) {
+		t.Errorf("v2 total = %s, want 130 at the new branch price", got)
+	}
+	if got := e.storedVersionTotal(t, *seed.draft.Quote.CurrentVersionID); !got.Equal(decimal.NewFromInt(100)) {
+		t.Errorf("v1 total = %s, want the original 100", got)
+	}
+	lines := e.storedLines(t, versionID)
+	if len(lines) != 1 {
+		t.Fatalf("v2 stored %d lines, want 1", len(lines))
+	}
+	assertStored(t, "v2 unit price", lines[0].unitPrice, "65.00")
+	assertStored(t, "v2 subtotal", lines[0].subtotal, "130.00")
+	assertStored(t, "v1 unit price", e.storedLines(t,
+		*seed.draft.Quote.CurrentVersionID)[0].unitPrice, "50.00")
+	var draftItemID uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT id FROM quote_item WHERE version_id = $1 LIMIT 1`, versionID).
+		Scan(&draftItemID); err != nil {
+		t.Fatalf("read v2 item id: %v", err)
+	}
+	otherProductID := e.seedPricedProduct(t, seed.tenant.AccountID, seed.tenant.BranchID,
+		"Replacement cement", "80", nil)
+	rfqService := e.pipeline(t, stagedExtractor{}, map[string]int{})
+	if _, err := rfqService.UpdateItem(context.Background(), seed.tenant,
+		seed.draft.Quote.ID, draftItemID,
+		domain.QuoteItemUpdate{ProductID: &otherProductID}); err != nil {
+		t.Fatalf("replace v2 product: %v", err)
+	}
+	if got := e.storedLines(t, versionID)[0].unitPrice; got.Valid {
+		t.Errorf("v2 price after replacing the product = %s, want null", got.Decimal)
+	}
+	if got := e.storedVersionTotal(t, versionID); !got.IsZero() {
+		t.Errorf("v2 total after replacing the product = %s, want 0 pending review", got)
+	}
+	if _, err := rfqService.UpdateItem(context.Background(), seed.tenant,
+		seed.draft.Quote.ID, draftItemID,
+		domain.QuoteItemUpdate{ProductID: &productID}); err != nil {
+		t.Fatalf("restore v2 product: %v", err)
+	}
 
 	quoteService := services.NewQuoteService(e.db, repository.NewQuoteRepository(),
 		repository.NewProductPriceRepository(), slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -629,6 +675,9 @@ func TestQuoteClientAction_ChangeRequestCreatesAndResendsReviewedVersion(t *test
 	if priced.Quote.CurrentStatus != domain.QuoteStatusQuoted || priced.Version.ID != versionID {
 		t.Errorf("reviewed version = %s/%v, want QUOTED/%v",
 			priced.Quote.CurrentStatus, priced.Version.ID, versionID)
+	}
+	if !priced.Version.Total.Equal(decimal.NewFromInt(130)) {
+		t.Errorf("reviewed v2 total = %s, want 130", priced.Version.Total)
 	}
 	resent, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID,
 		domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550199"})

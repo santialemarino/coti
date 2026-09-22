@@ -457,11 +457,14 @@ and the console mailer is never treated as a successful client delivery.
 An active send can receive one public answer. `REQUEST_CHANGE` requires a message of at most
 512 characters. Under one tenant transaction, the service locks the quote, records the
 `client_action`, links a `quote_message` to it, copies the frozen version's items and alternatives
-into an unpriced, mutable v2, and moves `SENT` to `CHANGE_REQUESTED`. The old send and public
-link remain pinned to v1. A stale send for another version cannot change the quote.
+into a mutable v2, values the copied lines and alternatives at the quote branch's current catalog
+prices, and moves `SENT` to `CHANGE_REQUESTED`. Products with no current branch price remain
+unpriced for seller review. The old send and public link remain pinned to v1. A stale send for
+another version cannot change the quote.
 
-The seller edits v2 manually, accepts its materials to recalculate prices and move to `QUOTED`,
-then sends it to move to `SENT`. The second send has its own token. No conversational window or
+The seller edits v2 manually. Replacing a product clears that line's previous price and updates
+the draft total; accepting materials recalculates current prices and moves to `QUOTED`, then
+sending moves to `SENT`. The second send has its own token. No conversational window or
 AI interpretation is involved in this manual path; those remain future work. Public links resolve
 through `quote_send.public_token`, scoped to the delivery and channel.
 

@@ -46,7 +46,7 @@ const PRICED_ITEM: QuoteItemResponse = {
   created_at: '2026-09-07T20:45:00.000Z',
 };
 
-function renderItems(activeBranchId: string | null = BRANCH_ID) {
+function renderItems(activeBranchId: string | null = BRANCH_ID, quoteStatus = 'QUOTED') {
   return render(
     <NextIntlClientProvider
       locale="es"
@@ -62,7 +62,7 @@ function renderItems(activeBranchId: string | null = BRANCH_ID) {
       >
         <RfqItemsTable
           quoteId={QUOTE_ID}
-          quoteStatus="QUOTED"
+          quoteStatus={quoteStatus}
           branchId={BRANCH_ID}
           items={[PRICED_ITEM]}
           discounts={[]}
@@ -110,6 +110,17 @@ describe('RfqItemsTable action errors', () => {
 });
 
 describe('RfqItemsTable price input', () => {
+  it('shows the change-request draft price without allowing a price edit', () => {
+    const view = renderItems(BRANCH_ID, 'CHANGE_REQUESTED');
+
+    expect(
+      view.getByRole('columnheader', { name: copy.detail.items.columns.unitPrice }),
+    ).toBeTruthy();
+    expect(view.container.textContent).toContain('780,00');
+    expect(view.container.textContent).toContain('390.000,00');
+    expect(view.queryByDisplayValue('780,00')).toBeNull();
+  });
+
   it('groups thousands as the seller types, without them typing a single separator', async () => {
     const view = renderItems();
     const price = view.getByDisplayValue('780,00');
