@@ -40,8 +40,7 @@ export function QuoteDeliveryCard({ detail, onSent }: QuoteDeliveryCardProps) {
   const version = detail.version;
   if (quote === null || version === null) return null;
 
-  const canSendQuote =
-    quote.current_status === 'QUOTED' || quote.current_status === 'CHANGE_REQUESTED';
+  const canSendQuote = quote.current_status === 'QUOTED';
 
   // The API orders deliveries newest-first, so the first live one is the link the client holds.
   const liveDelivery = (detail.deliveries ?? []).find(

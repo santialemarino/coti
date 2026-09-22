@@ -75,10 +75,8 @@ const RESPONDED_DESCRIPTION_KEY: Record<CustomerActionType, string> = {
 };
 
 /*
- * The customer's deliberate answer to the frozen quote. All three decisions are explicit and the
- * dialog words their consequence before the click commits; REQUEST_CHANGE always carries a message
- * because the seller has to know what to rework. The preview route simulates the round trip so the
- * flow is inspectable without a running API.
+ * The customer's answer to the frozen quote. A change request requires a message so the seller
+ * knows what to rework. The preview route simulates the round trip without a running API.
  */
 export function QuoteActions({ token, customerStatus }: QuoteActionsProps) {
   const t = useTranslations('quote.actions');
@@ -89,7 +87,6 @@ export function QuoteActions({ token, customerStatus }: QuoteActionsProps) {
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState(false);
   const [result, setResult] = useState<PublicQuoteActionResult | null>(null);
-
   const messageMissing = message.trim() === '';
   const showMessageError = choice === 'REQUEST_CHANGE' && messageMissing && messageTouched;
 

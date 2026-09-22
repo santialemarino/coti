@@ -1004,6 +1004,7 @@ ALTER TABLE quote_representation ADD CONSTRAINT fk_quote_representation_account 
 ALTER TABLE quote_representation ADD CONSTRAINT fk_quote_representation_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
 ALTER TABLE quote ADD CONSTRAINT uq_quote_tenant_branch_id UNIQUE (account_id, branch_id, id);
 ALTER TABLE quote_version ADD CONSTRAINT uq_quote_version_tenant_quote_id UNIQUE (account_id, quote_id, id);
+ALTER TABLE quote ADD CONSTRAINT fk_quote_public_pinned_version FOREIGN KEY (account_id, id, public_pinned_version_id) REFERENCES quote_version(account_id, quote_id, id);
 ALTER TABLE quote_representation ADD CONSTRAINT fk_quote_representation_quote FOREIGN KEY (account_id, branch_id, quote_id) REFERENCES quote(account_id, branch_id, id);
 ALTER TABLE quote_representation ADD CONSTRAINT fk_quote_representation_version FOREIGN KEY (account_id, quote_id, version_id) REFERENCES quote_version(account_id, quote_id, id);
 ALTER TABLE quote_item ADD CONSTRAINT fk_quote_item_account FOREIGN KEY (account_id) REFERENCES account(id);
@@ -1153,6 +1154,7 @@ CREATE INDEX idx_message_batch_queue ON message_batch(quote_id, closed_at) WHERE
 CREATE UNIQUE INDEX uq_channel_branch_type_no_identifier
   ON channel (branch_id, type) WHERE identifier IS NULL;
 CREATE UNIQUE INDEX uq_quote_version_draft ON quote_version(quote_id) WHERE is_immutable = FALSE;
+CREATE UNIQUE INDEX uq_quote_public_token ON quote(public_token) WHERE public_token IS NOT NULL;
 -- One open price period per branch and product. The service also takes a FOR UPDATE on the
 -- parent product row, which is what lets two concurrent repricings both succeed; this index
 -- is the backstop that makes a missing lock loud instead of silently duplicating a period.

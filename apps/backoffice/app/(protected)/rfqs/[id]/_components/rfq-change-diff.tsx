@@ -3,7 +3,6 @@
 import { useTranslations } from 'next-intl';
 
 import {
-  Callout,
   Card,
   CardHeader,
   CardTitle,

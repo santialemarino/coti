@@ -146,8 +146,7 @@ type PublicQuoteSendResponse struct {
 	CustomerStatus *string `json:"customer_status,omitempty"`
 }
 
-// PublicQuoteActionRequest is the deliberate customer answer to the frozen quote. type is the
-// wire value of client_action_type; message is mandatory for REQUEST_CHANGE.
+// PublicQuoteActionRequest is the customer's response to the frozen quote.
 type PublicQuoteActionRequest struct {
 	Type    string  `json:"type" binding:"required"`
 	Message *string `json:"message"`

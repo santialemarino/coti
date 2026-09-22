@@ -321,10 +321,10 @@ deletes `product_price` when a product is withdrawn.
   are correlated but different things — the seller still edits the draft, and freezing belongs to
   sending it.
 - **It does not touch `rfq.status`,** which only has `RECEIVED` and `GENERATED`.
-- **It does not price a second time.** Only an unarchived quote at `DRAFT` may be valued; anything
-  else answers `409` with `QUOTE_NOT_DRAFT`, or `QUOTE_ARCHIVED` on an archived one. Re-pricing an
-  already-valued version is an explicit act of the seller's, not the side effect of a repeated
-  request — a double-clicked button must not quietly re-value a quote at today's prices.
+- **It does not price an already-valued version twice.** An unarchived `DRAFT` or
+  `CHANGE_REQUESTED` quote with a mutable current version may be valued. Other states answer
+  `409` with `QUOTE_NOT_DRAFT`, or `QUOTE_ARCHIVED` on an archived one. A repeated request
+  cannot quietly re-value a quote at today's prices.
 - **No model is involved, not even to suggest an amount.** The arithmetic is deterministic and it
   is the backend's.
 
@@ -452,6 +452,20 @@ and `expires_at`. See [quote representations](quote-representations.md). The cur
 WhatsApp composition-root adapter is deliberately disabled until the Meta transport ticket lands,
 and the console mailer is never treated as a successful client delivery.
 
+### Customer change requests
+
+An active send can receive one public answer. `REQUEST_CHANGE` requires a message of at most
+512 characters. Under one tenant transaction, the service locks the quote, records the
+`client_action`, links a `quote_message` to it, copies the frozen version's items and alternatives
+into an unpriced, mutable v2, and moves `SENT` to `CHANGE_REQUESTED`. The old send and public
+link remain pinned to v1. A stale send for another version cannot change the quote.
+
+The seller edits v2 manually, accepts its materials to recalculate prices and move to `QUOTED`,
+then sends it to move to `SENT`. The second send has its own token. No conversational window or
+AI interpretation is involved in this manual path; those remain future work. The schema's
+`quote.public_token` and `public_pinned_version_id` columns are reserved for a stable quote URL,
+but the current public route still resolves `quote_send.public_token`.
+
 ## Where the code lives
 
 | Piece                       | File                                                         |
@@ -466,6 +480,7 @@ and the console mailer is never treated as a successful client delivery.
 | Routes and DTOs             | `internal/delivery/http/{handler,dto}/{rfq,quote}_*.go`      |
 | Client delivery             | `internal/services/quote_delivery_service.go`                |
 | Delivery persistence        | `internal/repository/quote_send_repo.go`                     |
+| Change request persistence  | `internal/repository/quote_message_repo.go`                  |
 | Evaluation retry            | `internal/services/quote_quality_job.go`                     |
 
 `RFQExtractor` is a **feature port**: its adapter owns the prompt and the schema and reaches the

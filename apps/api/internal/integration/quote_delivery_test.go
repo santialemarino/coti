@@ -496,7 +496,8 @@ func (e *env) clientAnswerService(t *testing.T, whatsapp domain.QuoteWhatsAppSen
 	t.Helper()
 	return e.quoteDeliveryService(t, whatsapp, email,
 		e.realQualityEvaluator(axisEmbedder{axes: map[string]int{}})).
-		WithClientActions(repository.NewClientActionRepository(), repository.NewUserRepository())
+		WithClientActions(repository.NewClientActionRepository(), repository.NewUserRepository()).
+		WithMessages(repository.NewQuoteMessageRepository())
 }
 
 // sentQuoteToken sends the seeded quote and hands back the token its delivery published.
@@ -571,6 +572,76 @@ func TestQuoteClientAction_RejectMovesTheQuoteToRejected(t *testing.T) {
 	}
 	if outcome.Status != domain.QuoteStatusRejected {
 		t.Errorf("status = %q, want REJECTED", outcome.Status)
+	}
+}
+
+func TestQuoteClientAction_ChangeRequestCreatesAndResendsReviewedVersion(t *testing.T) {
+	e := newEnv(t)
+	seed := e.seedSendableQuote(t, "Client requests a change", false)
+	service := e.clientAnswerService(t, &captureWhatsAppSender{}, &stagedQuoteEmailSender{})
+	token, sendID := e.sentQuoteToken(t, service, seed)
+	message := "Add one cement bag"
+
+	result, err := service.RespondPublic(context.Background(), token,
+		domain.ClientActionInput{Type: domain.ClientActionRequestChange, Message: &message})
+	if err != nil {
+		t.Fatalf("RespondPublic() = %v", err)
+	}
+	if result.QuoteStatus != domain.QuoteStatusChangeRequested {
+		t.Errorf("status = %s, want CHANGE_REQUESTED", result.QuoteStatus)
+	}
+
+	var versionID, actionSendID, messageActionID, actionID uuid.UUID
+	var versionNumber, originalItems, newItems, changes int
+	var mutable bool
+	var body, status string
+	err = e.db.CrossAccount().QueryRow(context.Background(), `
+		SELECT q.current_version_id, q.current_status, v.version_number, NOT v.is_immutable,
+		  (SELECT count(*) FROM quote_item WHERE version_id = $2),
+		  (SELECT count(*) FROM quote_item WHERE version_id = v.id),
+		  a.id, a.quote_send_id, m.client_action_id, m.body,
+		  (SELECT count(*) FROM quote_status_change c WHERE c.quote_id = q.id
+		    AND c.previous_status = 'SENT' AND c.new_status = 'CHANGE_REQUESTED')
+		FROM quote q JOIN quote_version v ON v.id = q.current_version_id
+		JOIN client_action a ON a.version_id = $2
+		JOIN quote_message m ON m.client_action_id = a.id
+		WHERE q.id = $1`, seed.draft.Quote.ID, *seed.draft.Quote.CurrentVersionID).
+		Scan(&versionID, &status, &versionNumber, &mutable, &originalItems, &newItems,
+			&actionID, &actionSendID, &messageActionID, &body, &changes)
+	if err != nil {
+		t.Fatalf("read change request: %v", err)
+	}
+	if status != "CHANGE_REQUESTED" || versionNumber != 2 || !mutable ||
+		originalItems != newItems || actionSendID != sendID || messageActionID != actionID ||
+		body != message || changes != 1 {
+		t.Errorf("draft/request = %s v%d mutable=%v items=%d/%d send=%v action=%v/%v body=%q history=%d",
+			status, versionNumber, mutable, originalItems, newItems, actionSendID,
+			messageActionID, actionID, body, changes)
+	}
+
+	quoteService := services.NewQuoteService(e.db, repository.NewQuoteRepository(),
+		repository.NewProductPriceRepository(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	priced, err := quoteService.AcceptMaterials(context.Background(), seed.tenant,
+		seed.draft.Quote.ID)
+	if err != nil {
+		t.Fatalf("AcceptMaterials(v2) = %v", err)
+	}
+	if priced.Quote.CurrentStatus != domain.QuoteStatusQuoted || priced.Version.ID != versionID {
+		t.Errorf("reviewed version = %s/%v, want QUOTED/%v",
+			priced.Quote.CurrentStatus, priced.Version.ID, versionID)
+	}
+	resent, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID,
+		domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550199"})
+	if err != nil {
+		t.Fatalf("Send(v2) = %v", err)
+	}
+	if resent.CurrentStatus != domain.QuoteStatusSent || resent.VersionID != versionID {
+		t.Errorf("resent version = %s/%v, want SENT/%v", resent.CurrentStatus,
+			resent.VersionID, versionID)
+	}
+	old, err := service.ResolvePublic(context.Background(), token)
+	if err != nil || old.Payload == nil || old.Payload.VersionNumber != 1 {
+		t.Errorf("original link = %+v, %v, want frozen v1", old, err)
 	}
 }
 

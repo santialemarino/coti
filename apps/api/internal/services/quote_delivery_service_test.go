@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
@@ -89,11 +90,20 @@ type quoteStatusCall struct {
 
 type fakePublicQuoteQuotes struct {
 	quote        *domain.Quote
+	version      *domain.QuoteVersion
+	items        []domain.QuoteItem
+	alternatives map[uuid.UUID][]domain.QuoteItemAlternative
+	newVersion   *domain.QuoteVersion
+	newItems     []domain.NewQuoteItem
+	newAlts      []domain.NewQuoteItemAlternative
 	getErr       error
 	statusErr    error
 	statusCalls  []quoteStatusCall
 	appendCalls  int
 	appendUserID []*uuid.UUID
+	appendFrom   []*domain.QuoteStatus
+	appendTo     []domain.QuoteStatus
+	locks        int
 }
 
 func (f *fakePublicQuoteQuotes) GetByVersionID(_ context.Context, _ repository.Querier,
@@ -116,6 +126,7 @@ func (f *fakePublicQuoteQuotes) UpdateStatus(_ context.Context, _ repository.Que
 	}
 	updated := *f.quote
 	updated.CurrentStatus = to
+	f.quote.CurrentStatus = to
 	return &updated, nil
 }
 
@@ -124,6 +135,8 @@ func (f *fakePublicQuoteQuotes) AppendStatusChange(_ context.Context, _ reposito
 	userID *uuid.UUID) (*domain.QuoteStatusChange, error) {
 	f.appendCalls++
 	f.appendUserID = append(f.appendUserID, userID)
+	f.appendFrom = append(f.appendFrom, previous)
+	f.appendTo = append(f.appendTo, newStatus)
 	return &domain.QuoteStatusChange{ID: uuid.New(), QuoteID: quoteID,
 		PreviousStatus: previous, NewStatus: newStatus, UserID: userID,
 		ChangedAt: fixedNow, CreatedAt: fixedNow}, nil
@@ -134,14 +147,63 @@ func (f *fakePublicQuoteQuotes) GetByID(context.Context, repository.Querier, uui
 	return nil, errors.New("not used by public quote action tests")
 }
 
-func (f *fakePublicQuoteQuotes) GetByIDForUpdate(context.Context, repository.Querier,
-	uuid.UUID, uuid.UUID, uuid.UUID) (*domain.Quote, error) {
-	return nil, errors.New("not used by public quote action tests")
+func (f *fakePublicQuoteQuotes) GetByIDForUpdate(_ context.Context, _ repository.Querier,
+	_ uuid.UUID, _ uuid.UUID, _ uuid.UUID) (*domain.Quote, error) {
+	f.locks++
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	if f.quote == nil {
+		return nil, domain.ErrNotFound
+	}
+	copy := *f.quote
+	return &copy, nil
 }
 
 func (f *fakePublicQuoteQuotes) GetCurrentVersion(context.Context, repository.Querier,
 	uuid.UUID, uuid.UUID, uuid.UUID) (*domain.QuoteVersion, error) {
-	return nil, errors.New("not used by public quote action tests")
+	if f.version == nil {
+		return nil, domain.ErrNotFound
+	}
+	copy := *f.version
+	return &copy, nil
+}
+
+func (f *fakePublicQuoteQuotes) CreateVersion(_ context.Context, _ repository.Querier,
+	_ uuid.UUID, in domain.NewQuoteVersion) (*domain.QuoteVersion, error) {
+	f.newVersion = &domain.QuoteVersion{ID: uuid.New(), QuoteID: in.QuoteID,
+		VersionNumber: in.VersionNumber, Currency: in.Currency, Total: in.Total,
+		Comment: in.Comment}
+	return f.newVersion, nil
+}
+
+func (f *fakePublicQuoteQuotes) UpdateCurrentVersion(_ context.Context, _ repository.Querier,
+	_, _, versionID uuid.UUID) (*domain.Quote, error) {
+	f.quote.CurrentVersionID = &versionID
+	copy := *f.quote
+	return &copy, nil
+}
+
+func (f *fakePublicQuoteQuotes) ListItems(context.Context, repository.Querier,
+	uuid.UUID, uuid.UUID) ([]domain.QuoteItem, error) {
+	return f.items, nil
+}
+
+func (f *fakePublicQuoteQuotes) CreateItems(_ context.Context, _ repository.Querier,
+	_, _ uuid.UUID, items []domain.NewQuoteItem) ([]domain.QuoteItem, error) {
+	f.newItems = items
+	return make([]domain.QuoteItem, len(items)), nil
+}
+
+func (f *fakePublicQuoteQuotes) ListAlternativesByItemIDs(context.Context, repository.Querier,
+	uuid.UUID, []uuid.UUID) (map[uuid.UUID][]domain.QuoteItemAlternative, error) {
+	return f.alternatives, nil
+}
+
+func (f *fakePublicQuoteQuotes) CreateAlternatives(_ context.Context, _ repository.Querier,
+	_ uuid.UUID, alternatives []domain.NewQuoteItemAlternative) error {
+	f.newAlts = alternatives
+	return nil
 }
 
 func (f *fakePublicQuoteQuotes) FreezeVersion(context.Context, repository.Querier,
@@ -165,6 +227,25 @@ type fakePublicQuoteClientActions struct {
 	createErr error
 	created   []domain.NewClientAction
 	reads     []uuid.UUID
+}
+
+type fakeQuoteMessages struct {
+	quoteID   uuid.UUID
+	channelID uuid.UUID
+	actionID  uuid.UUID
+	body      string
+	calls     int
+	err       error
+}
+
+func (f *fakeQuoteMessages) CreateClientRequest(_ context.Context, _ repository.Querier,
+	_, _, quoteID, channelID, actionID uuid.UUID, body string) error {
+	f.calls++
+	f.quoteID = quoteID
+	f.channelID = channelID
+	f.actionID = actionID
+	f.body = body
+	return f.err
 }
 
 func (f *fakePublicQuoteClientActions) GetBySend(_ context.Context, _ repository.Querier,
@@ -262,6 +343,7 @@ type quoteActionHarness struct {
 	sends           *fakePublicQuoteSends
 	quotes          *fakePublicQuoteQuotes
 	clientActions   *fakePublicQuoteClientActions
+	messages        *fakeQuoteMessages
 	representations *fakeQuoteDeliverRepresentations
 	token           string
 	now             time.Time
@@ -273,6 +355,7 @@ func newQuoteActionHarness() *quoteActionHarness {
 		sends:           &fakePublicQuoteSends{accountID: testAccountID},
 		quotes:          &fakePublicQuoteQuotes{},
 		clientActions:   &fakePublicQuoteClientActions{},
+		messages:        &fakeQuoteMessages{},
 		representations: &fakeQuoteDeliverRepresentations{},
 		token:           "public-token-quote-action",
 		now:             fixedNow,
@@ -280,13 +363,15 @@ func newQuoteActionHarness() *quoteActionHarness {
 	h.service = NewQuoteDeliveryService(h.db, h.sends, h.quotes, unusedDeliveryDeps{},
 		unusedDeliveryDeps{}, unusedDeliveryDeps{}, unusedDeliveryDeps{}, unusedDeliveryDeps{},
 		unusedDeliveryDeps{}, nil, "https://app.coti.ar", func() time.Time { return h.now }, nil).
-		WithClientActions(h.clientActions, nil).WithRepresentationService(h.representations)
+		WithClientActions(h.clientActions, nil).WithRepresentationService(h.representations).
+		WithMessages(h.messages)
 	return h
 }
 
 func (h *quoteActionHarness) seedActiveSend(versionID uuid.UUID) *domain.QuoteSend {
 	expiry := h.now.AddDate(0, 0, 7)
-	send := &domain.QuoteSend{ID: uuid.New(), VersionID: versionID, PublicToken: h.token,
+	send := &domain.QuoteSend{ID: uuid.New(), ChannelID: uuid.New(),
+		VersionID: versionID, PublicToken: h.token,
 		ExpiresAt: &expiry, TrackingStatus: domain.SendTrackingStatusViewed}
 	h.sends.send = send
 	return send
@@ -340,6 +425,14 @@ func TestQuoteDeliveryService_RespondPublic_RecordsTheAnswerAndClosesTheSentVers
 	if h.quotes.appendCalls != 1 {
 		t.Fatalf("status changes appended = %d, want 1", h.quotes.appendCalls)
 	}
+	if h.quotes.appendFrom[0] == nil || *h.quotes.appendFrom[0] != domain.QuoteStatusSent ||
+		h.quotes.appendTo[0] != domain.QuoteStatusAccepted {
+		t.Errorf("status history = %v -> %s, want SENT -> ACCEPTED",
+			h.quotes.appendFrom[0], h.quotes.appendTo[0])
+	}
+	if h.quotes.locks != 1 {
+		t.Errorf("quote row locks = %d, want 1", h.quotes.locks)
+	}
 	if len(h.quotes.appendUserID) != 1 || h.quotes.appendUserID[0] != nil {
 		t.Errorf("status change user = %v, want a system transition with nil user",
 			h.quotes.appendUserID)
@@ -348,6 +441,63 @@ func TestQuoteDeliveryService_RespondPublic_RecordsTheAnswerAndClosesTheSentVers
 		!strings.Contains(h.db.locks[0], testAccountID.String()) ||
 		!strings.Contains(h.db.locks[0], h.token) {
 		t.Errorf("advisory lock = %v, want quote-action:account:token", h.db.locks)
+	}
+}
+
+func TestQuoteDeliveryService_RespondPublic_CreatesAReviewableChangeRequest(t *testing.T) {
+	h := newQuoteActionHarness()
+	send := h.seedActiveSend(testVersionID)
+	h.quotes.quote = &domain.Quote{ID: testQuoteID, BranchID: testBranchID,
+		CurrentVersionID: &testVersionID, CurrentStatus: domain.QuoteStatusSent}
+	h.quotes.version = &domain.QuoteVersion{ID: testVersionID, QuoteID: testQuoteID,
+		VersionNumber: 1, Currency: "ARS", IsImmutable: true}
+	oldItemID := uuid.New()
+	productID := uuid.New()
+	h.quotes.items = []domain.QuoteItem{{ID: oldItemID, ProductID: &productID,
+		RequestedDescription: "cemento", Quantity: decimal.NewFromInt(2),
+		MatchStatus: domain.ItemMatchStatusMatched}}
+	h.quotes.alternatives = map[uuid.UUID][]domain.QuoteItemAlternative{
+		oldItemID: {{ProductID: &productID, Type: domain.QuoteItemAlternativeTypeProduct,
+			Origin: domain.QuoteItemAlternativeOriginSeller, Rank: 1}},
+	}
+	message := "sumar una bolsa de cemento"
+	result, err := h.service.RespondPublic(context.Background(), h.token,
+		domain.ClientActionInput{Type: domain.ClientActionRequestChange, Message: &message})
+	if err != nil {
+		t.Fatalf("RespondPublic() = %v", err)
+	}
+	if result.QuoteStatus != domain.QuoteStatusChangeRequested {
+		t.Errorf("status = %s, want CHANGE_REQUESTED", result.QuoteStatus)
+	}
+	if h.quotes.newVersion == nil || h.quotes.newVersion.VersionNumber != 2 ||
+		h.quotes.newVersion.IsImmutable || h.quotes.newVersion.Total.Sign() != 0 {
+		t.Errorf("new version = %+v, want an unpriced v2 draft", h.quotes.newVersion)
+	}
+	if h.quotes.quote.CurrentVersionID == nil ||
+		*h.quotes.quote.CurrentVersionID != h.quotes.newVersion.ID {
+		t.Errorf("current version = %v, want v2", h.quotes.quote.CurrentVersionID)
+	}
+	if len(h.quotes.newItems) != 1 || h.quotes.newItems[0].ID == oldItemID ||
+		h.quotes.newItems[0].Quantity.Cmp(decimal.NewFromInt(2)) != 0 ||
+		h.quotes.newItems[0].UnitPriceSnapshot.Valid {
+		t.Errorf("cloned items = %+v, want unpriced copy with fresh identity", h.quotes.newItems)
+	}
+	if len(h.quotes.newAlts) != 1 ||
+		h.quotes.newAlts[0].QuoteItemID != h.quotes.newItems[0].ID ||
+		h.quotes.newAlts[0].ProductID == nil ||
+		*h.quotes.newAlts[0].ProductID != productID {
+		t.Errorf("cloned alternatives = %+v, want reviewable copy", h.quotes.newAlts)
+	}
+	if h.messages.calls != 1 || h.messages.quoteID != testQuoteID ||
+		h.messages.channelID != send.ChannelID || h.messages.body != message ||
+		h.messages.actionID != h.clientActions.created[0].ID {
+		t.Errorf("linked message = %+v, want the customer request", h.messages)
+	}
+	if h.quotes.appendCalls != 1 || h.quotes.appendFrom[0] == nil ||
+		*h.quotes.appendFrom[0] != domain.QuoteStatusSent ||
+		h.quotes.appendTo[0] != domain.QuoteStatusChangeRequested {
+		t.Errorf("status history = %v -> %v, want SENT -> CHANGE_REQUESTED",
+			h.quotes.appendFrom, h.quotes.appendTo)
 	}
 }
 
@@ -363,9 +513,8 @@ func TestQuoteDeliveryService_RespondPublic_ReplaysItsFirstAnswer(t *testing.T) 
 		CurrentVersionID: &testVersionID, CurrentStatus: domain.QuoteStatusAccepted,
 	}
 
-	message := "bajale al precio"
 	result, err := h.service.RespondPublic(context.Background(), h.token,
-		domain.ClientActionInput{Type: domain.ClientActionRequestChange, Message: &message})
+		domain.ClientActionInput{Type: domain.ClientActionReject})
 	if err != nil {
 		t.Fatalf("RespondPublic returned %v", err)
 	}
@@ -386,7 +535,7 @@ func TestQuoteDeliveryService_RespondPublic_ReplaysItsFirstAnswer(t *testing.T) 
 	}
 }
 
-func TestQuoteDeliveryService_RespondPublic_RemembersTheAnswerOnAnOutdatedVersion(t *testing.T) {
+func TestQuoteDeliveryService_RespondPublic_RejectsAnOutdatedVersion(t *testing.T) {
 	h := newQuoteActionHarness()
 	oldVersion := uuid.New()
 	h.seedActiveSend(oldVersion)
@@ -395,19 +544,13 @@ func TestQuoteDeliveryService_RespondPublic_RemembersTheAnswerOnAnOutdatedVersio
 		CurrentVersionID: &testVersionID, CurrentStatus: domain.QuoteStatusSent,
 	}
 
-	result, err := h.service.RespondPublic(context.Background(), h.token,
+	_, err := h.service.RespondPublic(context.Background(), h.token,
 		domain.ClientActionInput{Type: domain.ClientActionReject})
-	if err != nil {
-		t.Fatalf("RespondPublic returned %v", err)
+	if !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("outdated version response = %v, want ErrConflict", err)
 	}
-	if result.CustomerStatus != domain.ClientActionReject {
-		t.Errorf("customer status = %q, want REJECT", result.CustomerStatus)
-	}
-	if result.QuoteStatus != domain.QuoteStatusSent {
-		t.Errorf("quote status = %q, want SENT untouched", result.QuoteStatus)
-	}
-	if len(h.clientActions.created) != 1 {
-		t.Fatalf("client actions created = %d, want 1", len(h.clientActions.created))
+	if len(h.clientActions.created) != 0 {
+		t.Fatalf("client actions created = %d, want 0", len(h.clientActions.created))
 	}
 	if len(h.quotes.statusCalls) != 0 || h.quotes.appendCalls != 0 {
 		t.Errorf("quote moved although the answer addressed an outdated version: "+
@@ -415,26 +558,41 @@ func TestQuoteDeliveryService_RespondPublic_RemembersTheAnswerOnAnOutdatedVersio
 	}
 }
 
-func TestQuoteDeliveryService_RespondPublic_RemembersTheAnswerOnceTheQuoteLeftSent(t *testing.T) {
+func TestQuoteDeliveryService_RespondPublic_RejectsAnAlreadyClosedQuote(t *testing.T) {
 	h := newQuoteActionHarness()
 	h.seedActiveSend(testVersionID)
 	h.quotes.quote = &domain.Quote{
 		ID: testQuoteID, BranchID: testBranchID,
-		CurrentVersionID: &testVersionID, CurrentStatus: domain.QuoteStatusChangeRequested,
+		CurrentVersionID: &testVersionID, CurrentStatus: domain.QuoteStatusAccepted,
 	}
 
-	message := "sumar membrana al presupuesto"
-	result, err := h.service.RespondPublic(context.Background(), h.token,
-		domain.ClientActionInput{Type: domain.ClientActionRequestChange, Message: &message})
-	if err != nil {
-		t.Fatalf("RespondPublic returned %v", err)
+	_, err := h.service.RespondPublic(context.Background(), h.token,
+		domain.ClientActionInput{Type: domain.ClientActionReject})
+	if !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("closed quote response = %v, want ErrConflict", err)
 	}
-	if result.QuoteStatus != domain.QuoteStatusChangeRequested {
-		t.Errorf("quote status = %q, want CHANGE_REQUESTED untouched", result.QuoteStatus)
+	if len(h.clientActions.created) != 0 || len(h.quotes.statusCalls) != 0 ||
+		h.quotes.appendCalls != 0 {
+		t.Errorf("closed quote wrote action or status: actions = %d, updates = %d, appends = %d",
+			len(h.clientActions.created), len(h.quotes.statusCalls), h.quotes.appendCalls)
 	}
-	if len(h.quotes.statusCalls) != 0 || h.quotes.appendCalls != 0 {
-		t.Errorf("quote moved although it already left SENT: status updates = %d, appends = %d",
-			len(h.quotes.statusCalls), h.quotes.appendCalls)
+}
+
+func TestQuoteDeliveryService_RespondPublic_RejectsAnArchivedQuote(t *testing.T) {
+	h := newQuoteActionHarness()
+	h.seedActiveSend(testVersionID)
+	archivedAt := h.now.Add(-time.Hour)
+	h.quotes.quote = &domain.Quote{ID: testQuoteID, BranchID: testBranchID,
+		CurrentVersionID: &testVersionID, CurrentStatus: domain.QuoteStatusSent,
+		ArchivedAt: &archivedAt}
+
+	_, err := h.service.RespondPublic(context.Background(), h.token,
+		domain.ClientActionInput{Type: domain.ClientActionAccept})
+	if !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("archived quote response = %v, want ErrConflict", err)
+	}
+	if len(h.clientActions.created) != 0 {
+		t.Errorf("client actions created = %d, want 0", len(h.clientActions.created))
 	}
 }
 
@@ -569,6 +727,9 @@ func TestNormalizeClientAction(t *testing.T) {
 			Type: domain.ClientActionRequestChange}, wantErr: true},
 		{name: "request change with a maximum message", input: domain.ClientActionInput{
 			Type: domain.ClientActionRequestChange, Message: strPtr(longComment)}},
+		{name: "request change counts accented characters", input: domain.ClientActionInput{
+			Type:    domain.ClientActionRequestChange,
+			Message: strPtr(strings.Repeat("á", maxClientActionComment))}},
 		{name: "request change with an oversized message", input: domain.ClientActionInput{
 			Type: domain.ClientActionRequestChange, Message: strPtr(tooLongComment)}, wantErr: true},
 		{name: "reject without a comment", input: domain.ClientActionInput{Type: domain.ClientActionReject}},

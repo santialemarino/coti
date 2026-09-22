@@ -27,19 +27,44 @@ function fetchResolving(body: unknown) {
 }
 
 /*
- * The public page's answer flow: an idle state with the three decisions, dialogs that word the
- * consequence before committing, a real round trip through the app route for a token, and a
- * simulated one on the dev-only preview. REQUEST_CHANGE demands a message because the seller has
- * to know what to rework.
+ * The public page's answer flow: an idle state with explicit decisions, a real round trip through
+ * the app route for a token, and a simulated one on the preview.
  */
 describe('QuoteActions', () => {
-  it('offers the three decisions when the send has no answer yet', () => {
+  it('offers all three decisions when the send has no answer yet', () => {
     const view = renderActions({ token: 'tok-abc' });
 
     expect(view.getByRole('button', { name: copy.acceptLabel })).toBeTruthy();
     expect(view.getByRole('button', { name: copy.requestChangesLabel })).toBeTruthy();
     expect(view.getByRole('button', { name: copy.rejectLabel })).toBeTruthy();
     expect(view.queryByText(copy.resultTitle)).toBeNull();
+  });
+
+  it('requires a message and submits a change request', async () => {
+    const fetchMock = fetchResolving({
+      customerStatus: 'REQUEST_CHANGE',
+      createdAt: '2026-09-16T12:00:00Z',
+      quoteStatus: 'CHANGE_REQUESTED',
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const view = renderActions({ token: 'tok-abc' });
+
+    fireEvent.click(view.getByRole('button', { name: copy.requestChangesLabel }));
+    fireEvent.click(view.getByRole('button', { name: copy.confirm }));
+    expect(view.getByText(copy.messageRequired)).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fireEvent.change(view.getByRole('textbox', { name: copy.messageLabel }), {
+      target: { value: 'Cambiar el cemento por 25kg' },
+    });
+    fireEvent.click(view.getByRole('button', { name: copy.confirm }));
+    await waitFor(() => expect(view.getByText(copy.resultRequestChange)).toBeTruthy());
+    expect(JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string)).toEqual({
+      token: 'tok-abc',
+      type: 'REQUEST_CHANGE',
+      message: 'Cambiar el cemento por 25kg',
+    });
+    vi.unstubAllGlobals();
   });
 
   it('posts an accept through the app route and shows the recorded outcome', async () => {
@@ -70,33 +95,25 @@ describe('QuoteActions', () => {
     vi.unstubAllGlobals();
   });
 
-  it('requires a message before a change request can go out', async () => {
+  it('posts a reject through the app route and shows the recorded outcome', async () => {
     const fetchMock = fetchResolving({
-      customerStatus: 'REQUEST_CHANGE',
+      customerStatus: 'REJECT',
       createdAt: '2026-09-16T12:00:00Z',
-      quoteStatus: 'CHANGE_REQUESTED',
+      quoteStatus: 'REJECTED',
     });
     vi.stubGlobal('fetch', fetchMock);
 
     const view = renderActions({ token: 'tok-abc' });
 
-    fireEvent.click(view.getByRole('button', { name: copy.requestChangesLabel }));
-    const confirm = view.getByRole('button', { name: copy.confirm });
-    fireEvent.click(confirm);
-
-    expect(view.getByText(copy.messageRequired)).toBeTruthy();
-    expect(fetchMock).not.toHaveBeenCalled();
-
-    const textarea = view.getByRole('textbox', { name: copy.messageLabel });
-    fireEvent.change(textarea, { target: { value: 'Cambiar el cemento por 25kg' } });
-    fireEvent.click(confirm);
+    fireEvent.click(view.getByRole('button', { name: copy.rejectLabel }));
+    expect(view.getByText(copy.rejectDescription)).toBeTruthy();
+    fireEvent.click(view.getByRole('button', { name: copy.confirm }));
 
     await waitFor(() => expect(view.getByText(copy.resultTitle)).toBeTruthy());
-    expect(view.getByText(copy.resultRequestChange)).toBeTruthy();
+    expect(view.getByText(copy.resultReject)).toBeTruthy();
     expect(JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string)).toEqual({
       token: 'tok-abc',
-      type: 'REQUEST_CHANGE',
-      message: 'Cambiar el cemento por 25kg',
+      type: 'REJECT',
     });
     vi.unstubAllGlobals();
   });
@@ -128,10 +145,10 @@ describe('QuoteActions', () => {
   });
 
   it('shows the saved answer instead of the decision buttons once answered', () => {
-    const view = renderActions({ token: 'tok-abc', customerStatus: 'REQUEST_CHANGE' });
+    const view = renderActions({ token: 'tok-abc', customerStatus: 'ACCEPT' });
 
     expect(view.getByText(copy.respondedTitle)).toBeTruthy();
-    expect(view.getByText(copy.respondedRequestChange)).toBeTruthy();
+    expect(view.getByText(copy.respondedAccept)).toBeTruthy();
     expect(view.queryByRole('button', { name: copy.acceptLabel })).toBeNull();
   });
 });

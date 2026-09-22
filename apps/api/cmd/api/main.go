@@ -88,6 +88,7 @@ func run() error {
 	quoteQualityRepo := repository.NewQuoteQualityRepository()
 	quoteSendRepo := repository.NewQuoteSendRepository()
 	clientActionRepo := repository.NewClientActionRepository()
+	quoteMessageRepo := repository.NewQuoteMessageRepository()
 	quoteRepresentationRepo := repository.NewQuoteRepresentationRepository()
 	clientRepo := repository.NewClientRepository()
 	accountRepo := repository.NewAccountRepository()
@@ -178,7 +179,8 @@ func run() error {
 		clientRepo, channelRepo, branchRepo, whatsapp.DisabledSender{}, quoteMailService,
 		quoteQualityService, cfg.Web.WebAppURL, nil, log).
 		WithRepresentationService(quoteRepresentationService).
-		WithClientActions(clientActionRepo, userRepo)
+		WithClientActions(clientActionRepo, userRepo).
+		WithMessages(quoteMessageRepo)
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
 			Health:        handler.NewHealthHandler(db),

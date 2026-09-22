@@ -217,8 +217,8 @@ describe('QuoteDeliveryCard live link', () => {
 describe('QuoteDeliveryCard send action', () => {
   const SendDialog = vi.mocked(SendQuoteDialog);
 
-  it('mounts the shared send dialog on every review-ready status', () => {
-    for (const status of ['QUOTED', 'CHANGE_REQUESTED']) {
+  it('mounts the shared send dialog when the version is priced and review-ready', () => {
+    for (const status of ['QUOTED']) {
       vi.clearAllMocks();
       renderCard(makeDetail({ quoteStatus: status }));
 
@@ -234,7 +234,14 @@ describe('QuoteDeliveryCard send action', () => {
   });
 
   it('keeps the dialog hidden unless the quote is review-ready', () => {
-    for (const status of ['DRAFT', 'GENERATED', 'SENT', 'ACCEPTED', 'REJECTED']) {
+    for (const status of [
+      'DRAFT',
+      'GENERATED',
+      'CHANGE_REQUESTED',
+      'SENT',
+      'ACCEPTED',
+      'REJECTED',
+    ]) {
       vi.clearAllMocks();
       renderCard(makeDetail({ quoteStatus: status }));
 

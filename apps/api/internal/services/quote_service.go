@@ -56,7 +56,7 @@ func NewQuoteService(
 }
 
 // AcceptMaterials values a draft quote and moves it to QUOTED for human review. Returns
-// domain.ErrConflict unless the quote is an unarchived DRAFT. See docs/technical/rfq-pipeline.md.
+// domain.ErrConflict unless the quote is an unarchived DRAFT or CHANGE_REQUESTED.
 func (s *QuoteService) AcceptMaterials(
 	ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID,
 ) (*domain.PricedQuote, error) {
@@ -79,6 +79,9 @@ func (s *QuoteService) AcceptMaterials(
 			quote.ID)
 		if err != nil {
 			return err
+		}
+		if version.IsImmutable {
+			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrConflict)
 		}
 		items, err := s.quotes.ListItems(ctx, q, tenant.AccountID, version.ID)
 		if err != nil {
@@ -211,27 +214,23 @@ func requireMaterialsPendingAcceptance(quote domain.Quote) error {
 	if quote.ArchivedAt != nil {
 		return domain.WithCode(domain.CodeQuoteArchived, domain.ErrConflict)
 	}
-	if quote.CurrentStatus != domain.QuoteStatusDraft {
+	if quote.CurrentStatus != domain.QuoteStatusDraft &&
+		quote.CurrentStatus != domain.QuoteStatusChangeRequested {
 		return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrConflict)
 	}
 	return nil
 }
 
 // sellerTransitions is the seller-action surface of the state machine, per docs/internal/domain/estados.md.
-// It names the statuses a quote may move to from each current status. The Enviado→Cambio solicitado
-// edge is included so the order can re-enter negotiation; the v2 draft that materializes it is the
-// pipeline's own follow-on and not this transition's job.
+// It names seller-only status changes; a change request needs a message and a new draft in the
+// customer action transaction before AcceptMaterials can price it.
 var sellerTransitions = map[domain.QuoteStatus]map[domain.QuoteStatus]struct{}{
 	domain.QuoteStatusQuoted: {
 		domain.QuoteStatusSent: {},
 	},
 	domain.QuoteStatusSent: {
-		domain.QuoteStatusAccepted:        {},
-		domain.QuoteStatusRejected:        {},
-		domain.QuoteStatusChangeRequested: {},
-	},
-	domain.QuoteStatusChangeRequested: {
-		domain.QuoteStatusSent: {},
+		domain.QuoteStatusAccepted: {},
+		domain.QuoteStatusRejected: {},
 	},
 }
 

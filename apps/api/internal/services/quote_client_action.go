@@ -17,10 +17,7 @@ import (
  * a quote they were never given. Folding the two surfaces together is how a public token ends up
  * with a seller's reach.
  *
- * REQUEST_CHANGE is absent on purpose. Its ticket specifies that the comment is simultaneously a
- * client action and an inbound conversation message, joined by an explicit reference, and the
- * entities that answer for the second half are not built. Accepting it here would record the
- * action and drop the message.
+ * REQUEST_CHANGE goes through RespondPublic, which also writes the linked message and draft.
  */
 var clientTransitions = map[domain.ClientActionType]domain.QuoteStatus{
 	domain.ClientActionAccept: domain.QuoteStatusAccepted,
@@ -90,7 +87,15 @@ func (s *QuoteDeliveryService) RecordClientAction(
 			if quoteErr != nil {
 				return quoteErr
 			}
-			if quote.CurrentStatus != domain.QuoteStatusSent {
+			quote, quoteErr = s.quotes.GetByIDForUpdate(ctx, q, accountID, quote.BranchID, quote.ID)
+			if quoteErr != nil {
+				return quoteErr
+			}
+			if quote.ArchivedAt != nil {
+				return domain.WithCode(domain.CodeQuoteArchived, domain.ErrConflict)
+			}
+			if quote.CurrentVersionID == nil || *quote.CurrentVersionID != send.VersionID ||
+				quote.CurrentStatus != domain.QuoteStatusSent {
 				return domain.WithCode(domain.CodeQuoteNotSent, domain.ErrConflict)
 			}
 
