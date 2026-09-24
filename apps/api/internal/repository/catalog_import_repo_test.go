@@ -40,12 +40,12 @@ func TestCatalogImportRepository_ApplyImport_CreatesTheAccountAndBranchRows(t *t
 		{
 			Code: "CEM-001", Name: "Cemento Portland", Description: "Cemento Portland 50 kg",
 			Unit: "bolsa", FamilyID: familyID, Family: "MATERIALES DE CONSTRUCCION",
-			SubgroupID: &subgroupID, Price: "10000.00", MinPrice: &minPrice,
+			SubgroupID: &subgroupID, Price: "10000.00", MinPrice: &minPrice, IsActive: true,
 		},
 		{
 			Code: "ARE-001", Name: "Arena fina", Description: "Arena fina a granel",
 			Unit: "m3", FamilyID: familyID, Family: "MATERIALES DE CONSTRUCCION",
-			Price: "5000.00",
+			Price: "5000.00", IsActive: true,
 		},
 	}
 
@@ -81,5 +81,78 @@ func TestCatalogImportRepository_ApplyImport_CreatesTheAccountAndBranchRows(t *t
 	}
 	if name != "Cemento Portland" || description != "Cemento Portland 50 kg" || price != "10000.00" {
 		t.Errorf("stored row = %q, %q, %q; want normalized catalog values", name, description, price)
+	}
+}
+
+func TestCatalogImportRepository_ApplyImport_UpdatesProductsAndCreatesPriceHistory(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Catalog update")
+	branchID := branchOf(t, db, accountID)
+	userID := seedUser(t, db, accountID, "ADMIN")
+	tenant := domain.Tenant{AccountID: accountID, BranchID: branchID, UserID: userID}
+	t.Cleanup(func() {
+		cleanupCtx := context.Background()
+		_, _ = db.CrossAccount().Exec(cleanupCtx, `DELETE FROM product_price WHERE account_id = $1`, accountID)
+		_, _ = db.CrossAccount().Exec(cleanupCtx, `DELETE FROM branch_product WHERE account_id = $1`, accountID)
+		_, _ = db.CrossAccount().Exec(cleanupCtx, `DELETE FROM product WHERE account_id = $1`, accountID)
+	})
+
+	var familyID uuid.UUID
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT id FROM product_family WHERE name = 'MATERIALES DE CONSTRUCCION'`,
+	).Scan(&familyID); err != nil {
+		t.Fatal(err)
+	}
+	repo := NewCatalogImportRepository()
+	firstAt := time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC)
+	first := []domain.CatalogImportRow{{
+		Code: "CEM-001", Name: "Cemento", Unit: "bolsa", FamilyID: familyID,
+		Price: "10000.00", IsActive: true,
+	}}
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		return repo.ApplyImport(ctx, q, tenant, firstAt, first)
+	}); err != nil {
+		t.Fatalf("first ApplyImport() = %v", err)
+	}
+
+	secondAt := firstAt.Add(time.Hour)
+	second := []domain.CatalogImportRow{{
+		Code: "CEM-001", Name: "Cemento Portland", Unit: "bolsa", FamilyID: familyID,
+		Price: "11000.00", IsActive: true,
+	}}
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		return repo.ApplyImport(ctx, q, tenant, secondAt, second)
+	}); err != nil {
+		t.Fatalf("second ApplyImport() = %v", err)
+	}
+
+	var products, prices int
+	var name, currentPrice string
+	var previousValidTo time.Time
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT
+		   (SELECT count(*) FROM product WHERE account_id = $1 AND code = 'CEM-001'),
+		   (SELECT count(*) FROM product_price WHERE account_id = $1 AND branch_id = $2),
+		   p.canonical_name,
+		   current_price.price::text,
+		   previous_price.valid_to
+		 FROM product p
+		 JOIN product_price current_price ON current_price.account_id = p.account_id
+		   AND current_price.product_id = p.id AND current_price.branch_id = $2
+		   AND current_price.valid_from = $3
+		 JOIN product_price previous_price ON previous_price.account_id = p.account_id
+		   AND previous_price.product_id = p.id AND previous_price.branch_id = $2
+		   AND previous_price.valid_from = $4
+		 WHERE p.account_id = $1 AND p.code = 'CEM-001'`,
+		accountID, branchID, secondAt, firstAt,
+	).Scan(&products, &prices, &name, &currentPrice, &previousValidTo); err != nil {
+		t.Fatal(err)
+	}
+	if products != 1 || prices != 2 {
+		t.Errorf("products, prices = %d, %d; want 1, 2", products, prices)
+	}
+	if name != "Cemento Portland" || currentPrice != "11000.00" || !previousValidTo.Equal(secondAt) {
+		t.Errorf("updated row = %q, %q, %v; want current product and closed previous price", name, currentPrice, previousValidTo)
 	}
 }

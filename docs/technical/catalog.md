@@ -167,23 +167,53 @@ The service rejects what the column cannot store exactly:
 the page, and comes from a `count(*) OVER ()` in the same query: one round trip, and the
 total cannot contradict the page it describes.
 
-## Initial catalog import
+## Catalog management
 
-Administrators can load an initial catalog through a reviewed spreadsheet flow that creates
+Administrators manage account-level products at `/settings/catalog`. The screen lists active and
+inactive products with server-side search and pagination, and supports creating, replacing editable
+attributes, deactivating, reactivating, and assigning a primary image. Deactivation is always soft:
+historical quotes and prices keep their product reference.
+
+The form reads the same database-backed family and subgroup taxonomy as the spreadsheet flow.
+`GET /v1/product-taxonomy` exposes it to administrators, and the API still validates the selected
+identifiers when a product is written.
+
+### Product images
+
+`POST /v1/products/{productId}/image` accepts one PNG, JPEG, or WebP image, verifies the detected
+bytes against the declared content type, and replaces the product's `image_id` with a newly generated
+identifier. The previous object can no longer be reached from the product. Images use the shared
+object-storage port and this account-first key:
+
+```
+accounts/<account_id>/products/<product_id>/<image_id>
+```
+
+`GET /v1/public/product-images/{accountId}/{productId}/{imageId}` serves the current immutable image
+inline. The random image id makes replacements cache-safe; the backoffice resolves the returned path
+against `API_URL`.
+
+### Bulk spreadsheet editing
+
+Administrators can create and edit the catalog through a reviewed spreadsheet flow that upserts
 account-level products and branch-scoped availability and prices:
 
-1. `GET /v1/products/export` downloads a Spanish XLSX with `Catálogo` and `Instrucciones`
-   sheets, plus a hidden `Listas` sheet populated from the database-backed product taxonomy.
-   Family and subgroup cells use dropdowns sourced from that hidden sheet.
+1. `GET /v1/products/export` downloads a Spanish XLSX already populated with the account's coded
+   products and the selected branch's current prices. It contains `Catálogo` and `Instrucciones`
+   sheets, plus a hidden `Listas` sheet populated from the database-backed product taxonomy. Family,
+   subgroup, and active-state cells use controlled values.
 2. `POST /v1/products/import/preview` accepts `.xlsx` or `.csv`, validates every row, and
    writes nothing. The required columns are `codigo`, `nombre`, `unidad`, `familia`, and
-   `precio`.
-3. `POST /v1/products/import/confirm` revalidates the reviewed rows and atomically creates
-   each valid account-level product, its active availability at the selected branch, and
-   its first branch price. Invalid or already-existing codes are reported and skipped.
+   `activo`, and a `precio` for every new code. An existing product without a branch price may keep
+   that cell empty while its catalog attributes are edited.
+3. `POST /v1/products/import/confirm` revalidates the reviewed rows and atomically upserts each valid
+   account-level product and its selected-branch availability. An existing code updates the product;
+   a new code creates it. A changed price closes the current validity period and creates a new one,
+   while an unchanged price creates no duplicate history row. Invalid rows are skipped.
 
-`descripcion`, `subgrupo`, and `precio_minimo` are optional. The service validates that a
-provided subgroup belongs to the selected family. Initial prices use ARS and remain decimal
+`descripcion`, `subgrupo`, and `precio_minimo` are optional. `activo` accepts `SI` or `NO`; `NO`
+soft-deactivates the account product and its availability in the selected branch. The service
+validates that a provided subgroup belongs to the selected family. Prices use ARS and remain decimal
 strings throughout the HTTP contract; currency and price conditions are not spreadsheet
 columns. Every route requires an administrator and an active `X-Branch-Id`; the account
 always comes from the authenticated tenant.

@@ -16,7 +16,7 @@ import (
 // productColumns keeps the SELECT list, the scan order, and the struct in one place.
 // embedding is left out on purpose: 1536 floats that no catalog read needs.
 const productColumns = `id, account_id, code, canonical_name, description, unit, family_id, subgroup_id,
-	is_active, created_at, updated_at`
+	image_id, is_active, created_at, updated_at`
 
 // productCodeIndex is the partial unique index behind "one code per account". Partial
 // because code is nullable, so unnamed products do not collide with each other.
@@ -56,7 +56,8 @@ func (r *ProductRepository) List(
 	for rows.Next() {
 		var p domain.Product
 		if err := rows.Scan(&p.ID, &p.AccountID, &p.Code, &p.CanonicalName, &p.Description,
-			&p.Unit, &p.FamilyID, &p.SubgroupID, &p.IsActive, &p.CreatedAt, &p.UpdatedAt, &page.Total); err != nil {
+			&p.Unit, &p.FamilyID, &p.SubgroupID, &p.ImageID, &p.IsActive, &p.CreatedAt, &p.UpdatedAt,
+			&page.Total); err != nil {
 			return domain.ProductPage{}, err
 		}
 		page.Items = append(page.Items, p)
@@ -152,6 +153,18 @@ func (r *ProductRepository) Update(
 		return nil, domain.ErrConflict
 	}
 	return p, err
+}
+
+// SetImage replaces the product's primary image reference.
+func (r *ProductRepository) SetImage(
+	ctx context.Context, q Querier, accountID, id, imageID uuid.UUID,
+) (*domain.Product, error) {
+	return scanProduct(q.QueryRow(ctx,
+		`UPDATE product
+		 SET image_id = $3
+		 WHERE account_id = $1 AND id = $2
+		 RETURNING `+productColumns,
+		accountID, id, imageID))
 }
 
 // SetEmbeddings stores a batch of vectors in one statement and stamps when each was computed,
@@ -311,7 +324,7 @@ func (r *ProductRepository) SearchCandidates(
 func scanProduct(row pgx.Row) (*domain.Product, error) {
 	var p domain.Product
 	err := row.Scan(&p.ID, &p.AccountID, &p.Code, &p.CanonicalName, &p.Description, &p.Unit,
-		&p.FamilyID, &p.SubgroupID, &p.IsActive, &p.CreatedAt, &p.UpdatedAt)
+		&p.FamilyID, &p.SubgroupID, &p.ImageID, &p.IsActive, &p.CreatedAt, &p.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

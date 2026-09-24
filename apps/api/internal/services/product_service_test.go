@@ -1,8 +1,10 @@
 package services
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -78,6 +80,12 @@ func (f *fakeProducts) Update(
 ) (*domain.Product, error) {
 	f.updated = append(f.updated, in)
 	return &domain.Product{ID: id, AccountID: accountID, CanonicalName: in.CanonicalName}, nil
+}
+
+func (f *fakeProducts) SetImage(
+	_ context.Context, _ repository.Querier, accountID, id, imageID uuid.UUID,
+) (*domain.Product, error) {
+	return &domain.Product{ID: id, AccountID: accountID, ImageID: &imageID}, nil
 }
 
 func (f *fakeProducts) Delete(_ context.Context, _ repository.Querier, _, id uuid.UUID) error {
@@ -416,5 +424,59 @@ func TestProductService_UpdateProduct_LeavesTheActiveFlagAloneWhenOmitted(t *tes
 	}
 	if h.products.updated[0].IsActive != nil {
 		t.Error("is_active reached the repository set; an edit must not revive a deactivated item")
+	}
+}
+
+func TestProductService_UploadImage_StoresDetectedImageUnderProduct(t *testing.T) {
+	h := newCatalogHarness(testProductID)
+	storage := &accountLogoStorage{}
+	h.service.WithImageStorage(storage, 1024)
+	data := append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte{0}, 32)...)
+
+	product, err := h.service.UploadImage(context.Background(), testTenant(), testProductID,
+		domain.ProductImageUpload{ContentType: "image/png", Size: int64(len(data)), Content: bytes.NewReader(data)})
+	if err != nil {
+		t.Fatalf("UploadImage() error = %v", err)
+	}
+	if product.ImageID == nil {
+		t.Fatal("UploadImage() image id = nil, want generated id")
+	}
+	wantPrefix := "accounts/" + testAccountID.String() + "/products/" + testProductID.String() + "/"
+	if !strings.HasPrefix(storage.key, wantPrefix) {
+		t.Errorf("stored key = %q, want prefix %q", storage.key, wantPrefix)
+	}
+	if storage.contentType != "image/png" || !bytes.Equal(storage.data, data) {
+		t.Errorf("stored image = (%q, %v), want image/png and original bytes", storage.contentType, storage.data)
+	}
+}
+
+func TestProductService_UploadImage_RequiresProductInAccount(t *testing.T) {
+	h := newCatalogHarness()
+	storage := &accountLogoStorage{}
+	h.service.WithImageStorage(storage, 1024)
+	data := append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte{0}, 32)...)
+
+	_, err := h.service.UploadImage(context.Background(), testTenant(), testProductID,
+		domain.ProductImageUpload{ContentType: "image/png", Size: int64(len(data)), Content: bytes.NewReader(data)})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("UploadImage() error = %v, want %v", err, domain.ErrNotFound)
+	}
+	if storage.key != "" {
+		t.Errorf("unknown product stored image at %q", storage.key)
+	}
+}
+
+func TestProductService_UploadImage_RefusesSpoofedContentType(t *testing.T) {
+	h := newCatalogHarness(testProductID)
+	storage := &accountLogoStorage{}
+	h.service.WithImageStorage(storage, 1024)
+
+	_, err := h.service.UploadImage(context.Background(), testTenant(), testProductID,
+		domain.ProductImageUpload{ContentType: "image/png", Size: 5, Content: strings.NewReader("hello")})
+	if err == nil {
+		t.Fatal("UploadImage() error = nil, want unsupported file refusal")
+	}
+	if storage.key != "" {
+		t.Errorf("spoofed product image stored at %q", storage.key)
 	}
 }

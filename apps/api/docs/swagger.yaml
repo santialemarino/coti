@@ -157,6 +157,8 @@ definitions:
         type: string
       family:
         type: string
+      is_active:
+        type: boolean
       min_price:
         type: string
       name:
@@ -185,6 +187,8 @@ definitions:
     type: object
   dto.CatalogImportRowResponse:
     properties:
+      action:
+        type: string
       code:
         type: string
       description:
@@ -195,6 +199,8 @@ definitions:
         type: array
       family:
         type: string
+      is_active:
+        type: boolean
       min_price:
         type: string
       name:
@@ -309,9 +315,11 @@ definitions:
     type: object
   dto.ConfirmCatalogImportResponse:
     properties:
-      imported_rows:
+      created_rows:
         type: integer
       skipped_rows:
+        type: integer
+      updated_rows:
         type: integer
     type: object
   dto.ConfirmEmailRequest:
@@ -679,6 +687,17 @@ definitions:
       version:
         $ref: '#/definitions/dto.QuoteVersionResponse'
     type: object
+  dto.ProductFamilyResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      subgroups:
+        items:
+          $ref: '#/definitions/dto.ProductSubgroupResponse'
+        type: array
+    type: object
   dto.ProductListResponse:
     properties:
       items:
@@ -757,6 +776,8 @@ definitions:
         type: string
       id:
         type: string
+      image_path:
+        type: string
       is_active:
         type: boolean
       subgroup_id:
@@ -765,6 +786,20 @@ definitions:
         type: string
       updated_at:
         type: string
+    type: object
+  dto.ProductSubgroupResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  dto.ProductTaxonomyResponse:
+    properties:
+      families:
+        items:
+          $ref: '#/definitions/dto.ProductFamilyResponse'
+        type: array
     type: object
   dto.PublicQuoteActionRequest:
     properties:
@@ -2716,6 +2751,28 @@ paths:
       summary: Preview a price import
       tags:
       - catalog
+  /v1/product-taxonomy:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProductTaxonomyResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List product taxonomy
+      tags:
+      - catalog
   /v1/products:
     get:
       description: Ordered by name. Soft-deleted items are hidden unless include_inactive
@@ -3131,6 +3188,59 @@ paths:
       summary: Set per-branch availability
       tags:
       - catalog
+  /v1/products/{productId}/image:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Stores one PNG, JPEG, or WebP image and assigns it as the product's
+        primary photo.
+      parameters:
+      - description: Product id
+        in: path
+        name: productId
+        required: true
+        type: string
+      - description: PNG, JPEG, or WebP image
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProductResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Upload a product image
+      tags:
+      - catalog
   /v1/products/{productId}/prices:
     get:
       description: Every validity period, open and closed. Scoped to X-Branch-Id when
@@ -3339,8 +3449,8 @@ paths:
       - catalog
   /v1/products/export:
     get:
-      description: Returns a Spanish XLSX with the catalog columns and a second sheet
-        of instructions.
+      description: Returns a Spanish XLSX populated with current products, prices,
+        and editing instructions.
       parameters:
       - description: Active branch
         in: header
@@ -3368,15 +3478,15 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Download the initial catalog template
+      summary: Download the bulk catalog workbook
       tags:
       - catalog
   /v1/products/import/confirm:
     post:
       consumes:
       - application/json
-      description: Revalidates all rows, skips invalid ones, and creates valid products,
-        availability, and prices atomically.
+      description: Revalidates all rows, skips invalid ones, and atomically upserts
+        products, availability, and changed prices.
       parameters:
       - description: Active branch
         in: header
@@ -3418,7 +3528,7 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Confirm an initial catalog import
+      summary: Confirm bulk catalog changes
       tags:
       - catalog
   /v1/products/import/preview:
@@ -3467,7 +3577,7 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Preview an initial catalog import
+      summary: Preview bulk catalog changes
       tags:
       - catalog
   /v1/public/account-logos/{accountId}/{logoId}:
@@ -3726,6 +3836,43 @@ paths:
       summary: Confirm an email address
       tags:
       - auth
+  /v1/public/product-images/{accountId}/{productId}/{imageId}:
+    get:
+      description: Serves one product image by its public, unguessable identifier.
+      parameters:
+      - description: Account id
+        in: path
+        name: accountId
+        required: true
+        type: string
+      - description: Product id
+        in: path
+        name: productId
+        required: true
+        type: string
+      - description: Image id
+        in: path
+        name: imageId
+        required: true
+        type: string
+      produces:
+      - image/png
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Get a product image
+      tags:
+      - catalog
   /v1/public/quote-sends/{token}:
     get:
       parameters:

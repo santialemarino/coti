@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"io"
 	"time"
 
 	"github.com/google/uuid"
@@ -55,9 +56,17 @@ type Product struct {
 	Unit          *string // nullable; free text (bolsa, m2, kg, ...).
 	FamilyID      *uuid.UUID
 	SubgroupID    *uuid.UUID
+	ImageID       *uuid.UUID
 	IsActive      bool
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+}
+
+// ProductImageUpload is one image offered as a product's primary photo.
+type ProductImageUpload struct {
+	ContentType string
+	Size        int64
+	Content     io.Reader
 }
 
 // NewProduct is the input for creating a catalog item.

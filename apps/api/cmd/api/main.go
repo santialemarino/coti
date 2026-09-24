@@ -147,7 +147,8 @@ func run() error {
 		WithLogoStorage(objectStorage.Storage, cfg.Storage.MaxFileSize)
 	onboardingService := services.NewOnboardingService(db, onboardingRepo)
 	productService := services.NewProductService(db, productRepo, productSynonymRepo,
-		productAlternativeRepo, cfg.Catalog)
+		productAlternativeRepo, cfg.Catalog).
+		WithImageStorage(objectStorage.Storage, cfg.Storage.MaxFileSize)
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo, branchProductRepo,
 		productPriceRepo, nil)
 	productPriceImportService := services.NewProductPriceImportService(db, productPriceRepo, nil)
@@ -191,7 +192,7 @@ func run() error {
 			Branch:        handler.NewBranchHandler(branchService),
 			Rfq:           handler.NewRfqHandler(rfqService),
 			Channel:       handler.NewChannelHandler(channelService),
-			Product:       handler.NewProductHandler(productService),
+			Product:       handler.NewProductHandler(productService, cfg.Storage.MaxFileSize),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			RFQ:           handler.NewRFQHandler(rfqService, cfg.Storage.MaxFileSize),
 			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),

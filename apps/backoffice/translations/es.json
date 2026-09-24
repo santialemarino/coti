@@ -1087,18 +1087,121 @@
       "INTERNAL": "No pudimos guardar el usuario. Intentá de nuevo."
     }
   },
+  "products": {
+    "title": "Productos",
+    "total": "{total, plural, one {# producto} other {# productos}}",
+    "add": "Agregar producto",
+    "cancel": "Cancelar",
+    "search": "Buscar por nombre o código",
+    "table": {
+      "caption": "Productos del catálogo",
+      "product": "Producto",
+      "code": "Código",
+      "family": "Rubro",
+      "unit": "Unidad",
+      "status": "Estado",
+      "actions": "Acciones"
+    },
+    "status": {
+      "active": "Activo",
+      "inactive": "Desactivado"
+    },
+    "empty": {
+      "title": "Todavía no hay productos",
+      "description": "Agregá el primero o importá una planilla para armar el catálogo."
+    },
+    "noResults": {
+      "title": "No encontramos productos",
+      "description": "Probá con otro nombre o código."
+    },
+    "create": {
+      "title": "Agregar producto",
+      "description": "Cargá los datos del producto y, si querés, una foto para reconocerlo más rápido.",
+      "submit": "Crear producto",
+      "submitting": "Creando…"
+    },
+    "edit": {
+      "action": "Editar",
+      "title": "Editar producto",
+      "description": "Los cambios se aplican al catálogo de toda la cuenta.",
+      "submit": "Guardar cambios",
+      "submitting": "Guardando…"
+    },
+    "deactivate": {
+      "action": "Desactivar",
+      "title": "Desactivar el producto",
+      "description": "«{name}» deja de estar disponible para nuevas cotizaciones. Su historial se conserva y podés reactivarlo cuando quieras.",
+      "confirm": "Desactivar producto",
+      "confirming": "Desactivando…"
+    },
+    "reactivate": {
+      "action": "Reactivar"
+    },
+    "name": {
+      "label": "Nombre",
+      "placeholder": "Ej. Cemento Portland 50 kg",
+      "required": "Ingresá el nombre del producto."
+    },
+    "code": {
+      "label": "Código",
+      "placeholder": "Ej. CEM-001"
+    },
+    "description": {
+      "label": "Descripción",
+      "placeholder": "Agregá detalles útiles para identificarlo"
+    },
+    "unit": {
+      "label": "Unidad",
+      "placeholder": "Ej. bolsa, unidad, metro",
+      "required": "Ingresá la unidad de venta."
+    },
+    "family": {
+      "label": "Rubro",
+      "placeholder": "Elegí un rubro",
+      "search": "Buscar rubro",
+      "empty": "No hay rubros que coincidan.",
+      "required": "Elegí un rubro."
+    },
+    "subgroup": {
+      "label": "Subgrupo",
+      "placeholder": "Elegí un subgrupo"
+    },
+    "image": {
+      "label": "Foto del producto",
+      "title": "Arrastrá una foto hasta acá",
+      "release": "Soltá la foto para cargarla",
+      "choose": "Elegir foto",
+      "replace": "Cambiar foto",
+      "hint": "PNG, JPG o WebP."
+    },
+    "created": "Creamos «{name}».",
+    "updated": "Guardamos los cambios de «{name}».",
+    "deactivated": "Desactivamos «{name}».",
+    "reactivated": "Reactivamos «{name}».",
+    "errors": {
+      "CONFLICT": "Ya existe un producto con ese código.",
+      "NOT_FOUND": "Ese producto ya no existe. Actualizá el listado.",
+      "INVALID_BODY": "Revisá los datos del producto e intentá de nuevo.",
+      "INVALID_INPUT": "Revisá los datos del producto e intentá de nuevo.",
+      "FILE_TOO_LARGE": "La foto supera el tamaño permitido.",
+      "INTERNAL": "No pudimos guardar el producto. Intentá de nuevo."
+    }
+  },
   "catalogImport": {
     "title": "Catálogo",
+    "bulk": {
+      "title": "Edición masiva"
+    },
     "noBranch": {
       "title": "Elegí una sucursal",
-      "description": "Seleccioná una sucursal desde el encabezado para cargar el catálogo y sus precios iniciales."
+      "description": "Seleccioná una sucursal desde el encabezado para editar el catálogo y sus precios."
     },
     "steps": {
       "download": {
         "title": "Descargá la plantilla"
       },
       "complete": {
-        "title": "Completá tus productos"
+        "title": "Editá o agregá productos"
       },
       "upload": {
         "title": "Subí y revisá"
@@ -1121,7 +1224,7 @@
     "continue": "Continuar",
     "summary": {
       "total": "Filas leídas",
-      "valid": "Listas para importar",
+      "valid": "Listas para aplicar",
       "invalid": "Con errores"
     },
     "invalidRowsSkipped": "Al confirmar se omitirán {count, plural, one {# fila con errores} other {# filas con errores}}.",
@@ -1131,14 +1234,24 @@
       "product": "Producto",
       "family": "Rubro",
       "price": "Precio",
+      "status": "Estado",
       "result": "Validación"
     },
-    "valid": "Lista para importar",
+    "status": {
+      "active": "Activo",
+      "inactive": "Desactivado"
+    },
+    "action": {
+      "CREATE": "Nuevo",
+      "UPDATE": "Actualización"
+    },
+    "valid": "Lista para aplicar",
     "chooseAnother": "Elegir otro archivo",
-    "confirm": "Importar {count, plural, one {# producto} other {# productos}}",
-    "confirming": "Importando…",
-    "noValidRows": "Corregí la planilla: no hay filas válidas para importar.",
-    "success": "Importamos {imported, plural, one {# producto} other {# productos}}. Omitimos {skipped, plural, one {# fila} other {# filas}}.",
+    "confirm": "Aplicar {count, plural, one {# cambio} other {# cambios}}",
+    "confirming": "Aplicando…",
+    "noValidRows": "Corregí la planilla: no hay filas válidas para aplicar.",
+    "success": "Creamos {created, plural, one {# producto} other {# productos}} y actualizamos {updated, plural, one {# producto} other {# productos}}. Omitimos {skipped, plural, one {# fila} other {# filas}}.",
+    "importAnother": "Editar otro archivo",
     "errors": {
       "INVALID_BODY": "Seleccioná un archivo válido con el formato indicado.",
       "INVALID_INPUT": "Revisá el archivo y volvé a intentarlo.",
@@ -1149,7 +1262,7 @@
       "missing_code": "El código es obligatorio.",
       "code_too_long": "El código es demasiado largo.",
       "duplicate_code": "El código está repetido en el archivo.",
-      "existing_code": "El código ya existe en el catálogo.",
+      "invalid_active": "El estado debe ser SI o NO.",
       "description_too_long": "La descripción es demasiado larga.",
       "missing_name": "El nombre es obligatorio.",
       "name_too_long": "El nombre es demasiado largo.",

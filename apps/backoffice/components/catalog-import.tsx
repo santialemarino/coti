@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { CheckCircle2Icon, DownloadIcon, FileSpreadsheetIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
@@ -148,7 +149,7 @@ export function CatalogUpload({
 interface CatalogReviewProps {
   preview: CatalogImportPreview;
   onBack: () => void;
-  onConfirmed: (importedRows: number, skippedRows: number) => void;
+  onConfirmed: (createdRows: number, updatedRows: number, skippedRows: number) => void;
 }
 
 export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewProps) {
@@ -166,7 +167,7 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
         setError(message(result.error));
         return;
       }
-      onConfirmed(result.importedRows, result.skippedRows);
+      onConfirmed(result.createdRows, result.updatedRows, result.skippedRows);
     });
   }
 
@@ -192,6 +193,7 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
               <TableHead>{t('table.product')}</TableHead>
               <TableHead>{t('table.family')}</TableHead>
               <TableHead>{t('table.price')}</TableHead>
+              <TableHead>{t('table.status')}</TableHead>
               <TableHead>{t('table.result')}</TableHead>
             </TableRow>
           </TableHeader>
@@ -209,10 +211,15 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
                 <TableCell>{row.family || '—'}</TableCell>
                 <TableCell>{row.price ? fmt.currency(row.price) : '—'}</TableCell>
                 <TableCell>
+                  <Badge tone={row.isActive ? 'success' : 'neutral'}>
+                    {t(row.isActive ? 'status.active' : 'status.inactive')}
+                  </Badge>
+                </TableCell>
+                <TableCell>
                   {row.errors.length === 0 ? (
-                    <Badge tone="success">
+                    <Badge tone={row.action === 'CREATE' ? 'success' : 'brand'}>
                       <CheckCircle2Icon aria-hidden="true" />
-                      {t('valid')}
+                      {t(`action.${row.action}`)}
                     </Badge>
                   ) : (
                     <ul className="flex flex-col gap-y-1 text-paragraph-xs-medium text-danger-foreground">
@@ -254,19 +261,40 @@ interface CatalogImportProps {
 }
 
 export function CatalogImport({ branch }: CatalogImportProps) {
+  const router = useRouter();
   const t = useTranslations('catalogImport');
   const [preview, setPreview] = useState<CatalogImportPreview | null>(null);
-  const [result, setResult] = useState<{ imported: number; skipped: number } | null>(null);
+  const [result, setResult] = useState<{
+    created: number;
+    updated: number;
+    skipped: number;
+  } | null>(null);
 
   if (result) {
-    return <Callout tone="success">{t('success', result)}</Callout>;
+    return (
+      <div className="flex flex-col items-start gap-y-4">
+        <Callout tone="success">{t('success', result)}</Callout>
+        <Button
+          variant="outline"
+          onClick={() => {
+            setResult(null);
+            setPreview(null);
+          }}
+        >
+          {t('importAnother')}
+        </Button>
+      </div>
+    );
   }
   if (preview) {
     return (
       <CatalogReview
         preview={preview}
         onBack={() => setPreview(null)}
-        onConfirmed={(imported, skipped) => setResult({ imported, skipped })}
+        onConfirmed={(created, updated, skipped) => {
+          setResult({ created, updated, skipped });
+          router.refresh();
+        }}
       />
     );
   }
