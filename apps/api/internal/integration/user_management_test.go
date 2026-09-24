@@ -227,7 +227,7 @@ func newEnvWithRFQProviders(
 			Branch:        handler.NewBranchHandler(services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)),
 			Rfq:           handler.NewRfqHandler(rfqService),
 			Channel:       handler.NewChannelHandler(channelService),
-			Product:       handler.NewProductHandler(productService),
+			Product:       handler.NewProductHandler(productService, cfg.Storage.MaxFileSize),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			RFQ:           handler.NewRFQHandler(rfqService, cfg.Storage.MaxFileSize),
 			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),

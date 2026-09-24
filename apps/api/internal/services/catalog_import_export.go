@@ -9,23 +9,35 @@ import (
 
 var catalogImportHeaders = []string{
 	"codigo", "nombre", "descripcion", "unidad", "familia", "subgrupo", "precio",
-	"precio_minimo",
+	"precio_minimo", "activo",
 }
 
 var catalogImportInstructions = []string{
-	"Completá la hoja Catálogo y volvé a importar este archivo desde el backoffice.",
-	"Las columnas codigo, nombre, unidad, familia y precio son obligatorias.",
+	"Editá la hoja Catálogo y volvé a importar este archivo desde el backoffice.",
+	"Las columnas codigo, nombre, unidad, familia y activo son obligatorias. Los productos nuevos también requieren precio.",
 	"Elegí la familia y, si corresponde, el subgrupo de sus desplegables. El subgrupo debe pertenecer a la familia.",
-	"Cada código debe ser único dentro del archivo y no puede existir previamente en el catálogo de la cuenta.",
-	"El precio y el precio mínimo deben ser mayores a cero y admitir hasta 2 decimales.",
+	"Cada código debe ser único dentro del archivo: uno existente actualiza el producto y uno nuevo lo crea.",
+	"El precio y el precio mínimo deben ser mayores a cero y admitir hasta 2 decimales. Un precio vacío conserva la falta de precio de un producto existente.",
 	"El precio mínimo no puede superar el precio de venta.",
+	"Usá SI o NO en activo. NO desactiva el producto sin borrar su historial.",
 	"Los precios iniciales se guardan en ARS.",
 	"Las filas con errores se muestran en la vista previa y se omiten al confirmar.",
-	"Los productos confirmados quedan activos y disponibles en la sucursal seleccionada.",
+	"Los cambios de precio crean una nueva vigencia y no modifican cotizaciones anteriores.",
 }
 
-func buildCatalogImportXLSX(families []domain.ProductFamily) ([]byte, error) {
+func buildCatalogImportXLSX(export domain.CatalogExport, families []domain.ProductFamily) ([]byte, error) {
 	subgroups := catalogSubgroupNames(families)
+	catalogRows := []spreadsheet.ExportRow{{Number: 1, Values: catalogImportHeaders, Header: true}}
+	for index, row := range export.Rows {
+		active := "NO"
+		if row.IsActive {
+			active = "SI"
+		}
+		catalogRows = append(catalogRows, spreadsheet.ExportRow{Number: index + 2, Values: []string{
+			row.Code, row.Name, row.Description, row.Unit, row.Family, optionalString(row.Subgroup),
+			optionalString(row.Price), optionalString(row.MinPrice), active,
+		}})
+	}
 	familyLastRow := len(families) + 1
 	if familyLastRow < 2 {
 		familyLastRow = 2
@@ -38,11 +50,11 @@ func buildCatalogImportXLSX(families []domain.ProductFamily) ([]byte, error) {
 		Sheets: []spreadsheet.Sheet{
 			{
 				Name: "Catálogo", FreezeHeader: true, AutoFilter: true,
-				Rows: []spreadsheet.ExportRow{{Number: 1, Values: catalogImportHeaders, Header: true}},
+				Rows: catalogRows,
 				ColumnWidths: []spreadsheet.ColumnWidth{
 					{Min: 1, Max: 1, Width: 20}, {Min: 2, Max: 3, Width: 38},
 					{Min: 4, Max: 4, Width: 18}, {Min: 5, Max: 6, Width: 34},
-					{Min: 7, Max: 8, Width: 18},
+					{Min: 7, Max: 9, Width: 18},
 				},
 				DataValidations: []spreadsheet.DataValidation{
 					{
@@ -53,6 +65,10 @@ func buildCatalogImportXLSX(families []domain.ProductFamily) ([]byte, error) {
 						Range: "F2:F10000", Formula: "Subgrupos", AllowBlank: true,
 						ErrorTitle:   "Subgrupo inválido",
 						ErrorMessage: "Elegí un subgrupo del listado que pertenezca a la familia seleccionada.",
+					},
+					{
+						Range: "I2:I10000", Formula: `"SI,NO"`, ErrorTitle: "Estado inválido",
+						ErrorMessage: "Elegí SI para mantener el producto activo o NO para desactivarlo.",
 					},
 				},
 			},
@@ -70,7 +86,7 @@ func buildCatalogImportXLSX(families []domain.ProductFamily) ([]byte, error) {
 }
 
 func catalogInstructionRows() []spreadsheet.ExportRow {
-	rows := []spreadsheet.ExportRow{{Number: 1, Values: []string{"Carga inicial del catálogo"}, Header: true}}
+	rows := []spreadsheet.ExportRow{{Number: 1, Values: []string{"Edición masiva del catálogo"}, Header: true}}
 	for index, instruction := range catalogImportInstructions {
 		rows = append(rows, spreadsheet.ExportRow{Number: index + 3, Values: []string{instruction}})
 	}

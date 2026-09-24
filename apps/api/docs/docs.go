@@ -1506,6 +1506,42 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/product-taxonomy": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "List product taxonomy",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ProductTaxonomyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/products": {
             "get": {
                 "security": [
@@ -1649,14 +1685,14 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Returns a Spanish XLSX with the catalog columns and a second sheet of instructions.",
+                "description": "Returns a Spanish XLSX populated with current products, prices, and editing instructions.",
                 "produces": [
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 ],
                 "tags": [
                     "catalog"
                 ],
-                "summary": "Download the initial catalog template",
+                "summary": "Download the bulk catalog workbook",
                 "parameters": [
                     {
                         "type": "string",
@@ -1701,7 +1737,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Revalidates all rows, skips invalid ones, and creates valid products, availability, and prices atomically.",
+                "description": "Revalidates all rows, skips invalid ones, and atomically upserts products, availability, and changed prices.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1711,7 +1747,7 @@ const docTemplate = `{
                 "tags": [
                     "catalog"
                 ],
-                "summary": "Confirm an initial catalog import",
+                "summary": "Confirm bulk catalog changes",
                 "parameters": [
                     {
                         "type": "string",
@@ -1787,7 +1823,7 @@ const docTemplate = `{
                 "tags": [
                     "catalog"
                 ],
-                "summary": "Preview an initial catalog import",
+                "summary": "Preview bulk catalog changes",
                 "parameters": [
                     {
                         "type": "string",
@@ -2334,6 +2370,86 @@ const docTemplate = `{
                     },
                     "422": {
                         "description": "No active branch, or a stock NUMERIC(14,2) cannot hold",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/products/{productId}/image": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Stores one PNG, JPEG, or WebP image and assigns it as the product's primary photo.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Upload a product image",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Product id",
+                        "name": "productId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "PNG, JPEG, or WebP image",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ProductResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -3024,6 +3140,61 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/public/product-images/{accountId}/{productId}/{imageId}": {
+            "get": {
+                "description": "Serves one product image by its public, unguessable identifier.",
+                "produces": [
+                    "image/png"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Get a product image",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Account id",
+                        "name": "accountId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Product id",
+                        "name": "productId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Image id",
+                        "name": "imageId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -5406,6 +5577,9 @@ const docTemplate = `{
                 "family": {
                     "type": "string"
                 },
+                "is_active": {
+                    "type": "boolean"
+                },
                 "min_price": {
                     "type": "string"
                 },
@@ -5449,6 +5623,9 @@ const docTemplate = `{
         "dto.CatalogImportRowResponse": {
             "type": "object",
             "properties": {
+                "action": {
+                    "type": "string"
+                },
                 "code": {
                     "type": "string"
                 },
@@ -5463,6 +5640,9 @@ const docTemplate = `{
                 },
                 "family": {
                     "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
                 },
                 "min_price": {
                     "type": "string"
@@ -5635,10 +5815,13 @@ const docTemplate = `{
         "dto.ConfirmCatalogImportResponse": {
             "type": "object",
             "properties": {
-                "imported_rows": {
+                "created_rows": {
                     "type": "integer"
                 },
                 "skipped_rows": {
+                    "type": "integer"
+                },
+                "updated_rows": {
                     "type": "integer"
                 }
             }
@@ -6172,6 +6355,23 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ProductFamilyResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "subgroups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ProductSubgroupResponse"
+                    }
+                }
+            }
+        },
         "dto.ProductListResponse": {
             "type": "object",
             "properties": {
@@ -6290,6 +6490,9 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "image_path": {
+                    "type": "string"
+                },
                 "is_active": {
                     "type": "boolean"
                 },
@@ -6301,6 +6504,28 @@ const docTemplate = `{
                 },
                 "updated_at": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.ProductSubgroupResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.ProductTaxonomyResponse": {
+            "type": "object",
+            "properties": {
+                "families": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ProductFamilyResponse"
+                    }
                 }
             }
         },

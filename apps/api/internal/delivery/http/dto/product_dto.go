@@ -69,6 +69,7 @@ type ProductResponse struct {
 	Unit          *string    `json:"unit"`
 	FamilyID      *uuid.UUID `json:"family_id"`
 	SubgroupID    *uuid.UUID `json:"subgroup_id"`
+	ImagePath     *string    `json:"image_path"`
 	IsActive      bool       `json:"is_active"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`

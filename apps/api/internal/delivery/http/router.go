@@ -108,6 +108,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	public.POST("/auth/resend-verification", mail, h.Verification.Resend)
 
 	public.POST("/accounts", limit("signup", cfg.RateLimit.Signup), h.Account.Register)
+	public.GET("/product-images/:accountId/:productId/:imageId", h.Product.GetImage)
 	if h.AccountLogo != nil {
 		public.GET("/account-logos/:accountId/:logoId", h.AccountLogo.Get)
 	}
@@ -208,8 +209,8 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	// same header the creator will send when the RFQ is created.
 	verified.GET("/sellers", h.User.ListSellers)
 
-	// User administration is the one admin-only group. RequireAdmin runs after RequireTenant,
-	// which is what put the role on the context.
+	// Account configuration is admin-only. RequireAdmin runs after RequireTenant, which is what
+	// put the role on the context.
 	admin := verified.Group("", middleware.RequireAdmin())
 	admin.GET("/product-prices/export", h.Prices.Export)
 	admin.POST("/product-prices/import/preview", h.Prices.PreviewImport)
@@ -217,6 +218,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	admin.GET("/products/export", h.CatalogImport.Export)
 	admin.POST("/products/import/preview", h.CatalogImport.Preview)
 	admin.POST("/products/import/confirm", h.CatalogImport.Confirm)
+	admin.GET("/product-taxonomy", h.CatalogImport.Taxonomy)
 
 	users := verified.Group("/users", middleware.RequireAdmin())
 	users.GET("", h.User.List)
@@ -230,10 +232,12 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	// per-branch ones below take it from the X-Branch-Id header the middleware validated.
 	products := verified.Group("/products")
 	products.GET("", h.Product.List)
-	products.POST("", h.Product.Create)
 	products.GET("/:productId", h.Product.Get)
-	products.PUT("/:productId", h.Product.Update)
-	products.DELETE("/:productId", h.Product.Delete)
+	productAdmin := products.Group("", middleware.RequireAdmin())
+	productAdmin.POST("", h.Product.Create)
+	productAdmin.PUT("/:productId", h.Product.Update)
+	productAdmin.DELETE("/:productId", h.Product.Delete)
+	productAdmin.POST("/:productId/image", h.Product.UploadImage)
 	products.GET("/:productId/synonyms", h.Product.ListSynonyms)
 	products.POST("/:productId/synonyms", h.Product.AddSynonym)
 	products.DELETE("/:productId/synonyms/:synonymId", h.Product.RemoveSynonym)

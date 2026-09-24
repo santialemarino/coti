@@ -11,14 +11,15 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
-// CatalogImportService is the initial-catalog import surface the handler needs.
+// CatalogImportService is the bulk catalog editing surface the handler needs.
 type CatalogImportService interface {
 	Template(ctx context.Context, tenant domain.Tenant) (*domain.CatalogImportFile, error)
 	Preview(ctx context.Context, tenant domain.Tenant, filename string, src io.Reader) (*domain.CatalogImportPreview, error)
 	Confirm(ctx context.Context, tenant domain.Tenant, inputs []domain.CatalogImportInput) (*domain.CatalogImportResult, error)
+	Taxonomy(ctx context.Context, tenant domain.Tenant) ([]domain.ProductFamily, error)
 }
 
-// CatalogImportHandler serves the reviewed initial-catalog import flow.
+// CatalogImportHandler serves the reviewed bulk catalog editing flow.
 type CatalogImportHandler struct {
 	imports  CatalogImportService
 	maxBytes int64
@@ -29,10 +30,10 @@ func NewCatalogImportHandler(imports CatalogImportService, maxBytes int64) *Cata
 	return &CatalogImportHandler{imports: imports, maxBytes: maxBytes}
 }
 
-// Export writes the Spanish XLSX template for an initial catalog load.
+// Export writes the Spanish XLSX populated with the branch's current catalog.
 //
-//	@Summary		Download the initial catalog template
-//	@Description	Returns a Spanish XLSX with the catalog columns and a second sheet of instructions.
+//	@Summary		Download the bulk catalog workbook
+//	@Description	Returns a Spanish XLSX populated with current products, prices, and editing instructions.
 //	@Tags			catalog
 //	@Produce		application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
 //	@Security		BearerAuth
@@ -58,7 +59,7 @@ func (h *CatalogImportHandler) Export(c *gin.Context) {
 
 // Preview validates an uploaded catalog spreadsheet without changing the catalog.
 //
-//	@Summary		Preview an initial catalog import
+//	@Summary		Preview bulk catalog changes
 //	@Description	Parses the spreadsheet and reports every valid and invalid row without writing data.
 //	@Tags			catalog
 //	@Accept			multipart/form-data
@@ -92,10 +93,10 @@ func (h *CatalogImportHandler) Preview(c *gin.Context) {
 	c.JSON(http.StatusOK, toCatalogImportPreviewResponse(preview))
 }
 
-// Confirm revalidates the reviewed rows and creates every valid catalog entry.
+// Confirm revalidates the reviewed rows and applies every valid catalog change.
 //
-//	@Summary		Confirm an initial catalog import
-//	@Description	Revalidates all rows, skips invalid ones, and creates valid products, availability, and prices atomically.
+//	@Summary		Confirm bulk catalog changes
+//	@Description	Revalidates all rows, skips invalid ones, and atomically upserts products, availability, and changed prices.
 //	@Tags			catalog
 //	@Accept			json
 //	@Produce		json
@@ -124,6 +125,7 @@ func (h *CatalogImportHandler) Confirm(c *gin.Context) {
 		inputs[i] = domain.CatalogImportInput{
 			Code: row.Code, Name: row.Name, Description: row.Description, Unit: row.Unit,
 			Family: row.Family, Subgroup: row.Subgroup, Price: row.Price, MinPrice: row.MinPrice,
+			IsActive: row.IsActive,
 		}
 	}
 	result, err := h.imports.Confirm(c.Request.Context(), tenant, inputs)
@@ -132,8 +134,39 @@ func (h *CatalogImportHandler) Confirm(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, dto.ConfirmCatalogImportResponse{
-		ImportedRows: result.ImportedRows, SkippedRows: result.SkippedRows,
+		CreatedRows: result.CreatedRows, UpdatedRows: result.UpdatedRows, SkippedRows: result.SkippedRows,
 	})
+}
+
+// Taxonomy returns the product families and subgroups used by catalog editors.
+//
+//	@Summary		List product taxonomy
+//	@Tags			catalog
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Success		200	{object}	dto.ProductTaxonomyResponse
+//	@Failure		401	{object}	dto.ErrorResponse
+//	@Failure		403	{object}	dto.ErrorResponse
+//	@Router			/v1/product-taxonomy [get]
+func (h *CatalogImportHandler) Taxonomy(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	families, err := h.imports.Taxonomy(c.Request.Context(), tenant)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	items := make([]dto.ProductFamilyResponse, len(families))
+	for i, family := range families {
+		subgroups := make([]dto.ProductSubgroupResponse, len(family.Subgroups))
+		for j, subgroup := range family.Subgroups {
+			subgroups[j] = dto.ProductSubgroupResponse{ID: subgroup.ID.String(), Name: subgroup.Name}
+		}
+		items[i] = dto.ProductFamilyResponse{ID: family.ID.String(), Name: family.Name, Subgroups: subgroups}
+	}
+	c.JSON(http.StatusOK, dto.ProductTaxonomyResponse{Families: items})
 }
 
 func toCatalogImportPreviewResponse(preview *domain.CatalogImportPreview) dto.CatalogImportPreviewResponse {
@@ -142,7 +175,8 @@ func toCatalogImportPreviewResponse(preview *domain.CatalogImportPreview) dto.Ca
 		rows[i] = dto.CatalogImportRowResponse{
 			RowNumber: row.RowNumber, Code: row.Code, Name: row.Name,
 			Description: row.Description, Unit: row.Unit, Family: row.Family,
-			Subgroup: row.Subgroup, Price: row.Price, MinPrice: row.MinPrice, Errors: row.Errors,
+			Subgroup: row.Subgroup, Price: row.Price, MinPrice: row.MinPrice,
+			IsActive: row.IsActive, Action: row.Action, Errors: row.Errors,
 		}
 	}
 	return dto.CatalogImportPreviewResponse{

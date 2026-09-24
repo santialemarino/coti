@@ -253,6 +253,7 @@ CREATE TABLE product (
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   family_id      UUID,
   subgroup_id    UUID,
+  image_id       UUID,
   -- Older than updated_at means the row was edited after it was embedded, which is how the
   -- backfill knows what to re-embed without re-embedding the whole catalog.
   embedding_updated_at TIMESTAMPTZ,

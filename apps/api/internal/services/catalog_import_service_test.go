@@ -28,6 +28,15 @@ type catalogImportTestRepository struct {
 	applied  []domain.CatalogImportRow
 }
 
+func (r *catalogImportTestRepository) ListForExport(
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID,
+) (*domain.CatalogExport, error) {
+	return &domain.CatalogExport{BranchName: "Villa Bosch", Rows: []domain.CatalogExportRow{{
+		Code: "CEM-1", Name: "Cemento", Unit: "bolsa", Family: "MATERIALES DE CONSTRUCCION",
+		Price: ptr("10000.00"), IsActive: true,
+	}}}, nil
+}
+
 func (r *catalogImportTestRepository) ListTaxonomy(
 	_ context.Context, _ repository.Querier,
 ) ([]domain.ProductFamily, error) {
@@ -80,15 +89,15 @@ func TestCatalogImportService_Preview_ReportsInvalidRowsWithoutBlockingValidOnes
 	if !preview.CanConfirm {
 		t.Error("CanConfirm = false, want true while at least one row is valid")
 	}
-	if preview.ValidRows != 1 || preview.InvalidRows != 4 {
-		t.Fatalf("valid, invalid = %d, %d; want 1, 4", preview.ValidRows, preview.InvalidRows)
+	if preview.ValidRows != 2 || preview.InvalidRows != 3 {
+		t.Fatalf("valid, invalid = %d, %d; want 2, 3", preview.ValidRows, preview.InvalidRows)
 	}
 	valid := preview.Rows[3]
 	if valid.Name != "Piedra partida" || valid.Price != "12500.50" || len(valid.Errors) != 0 {
 		t.Errorf("valid row = %#v, want canonical name and normalized price", valid)
 	}
-	if !containsError(preview.Rows[0].Errors, "existing_code") {
-		t.Errorf("existing row errors = %v, want existing_code", preview.Rows[0].Errors)
+	if preview.Rows[0].Action != "UPDATE" || len(preview.Rows[0].Errors) != 0 {
+		t.Errorf("existing row = %#v, want a valid update", preview.Rows[0])
 	}
 	if !containsError(preview.Rows[1].Errors, "duplicate_code") ||
 		!containsError(preview.Rows[2].Errors, "duplicate_code") {
@@ -103,18 +112,18 @@ func TestCatalogImportService_Confirm_SkipsInvalidRowsAndAppliesValidRows(t *tes
 	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(), BranchID: uuid.New()}
 
 	result, err := service.Confirm(context.Background(), tenant, []domain.CatalogImportInput{
-		{Code: "NUEVO", Name: "Cemento", Unit: "bolsa", Family: "MATERIALES DE CONSTRUCCION", Price: "10000"},
-		{Code: "EXISTE", Name: "Arena", Unit: "m3", Family: "MATERIALES DE CONSTRUCCION", Price: "5000"},
-		{Code: "MAL", Name: "Cal", Family: "MATERIALES DE CONSTRUCCION", Price: "abc"},
+		{Code: "NUEVO", Name: "Cemento", Unit: "bolsa", Family: "MATERIALES DE CONSTRUCCION", Price: "10000", IsActive: true},
+		{Code: "EXISTE", Name: "Arena", Unit: "m3", Family: "MATERIALES DE CONSTRUCCION", Price: "5000", IsActive: true},
+		{Code: "MAL", Name: "Cal", Family: "MATERIALES DE CONSTRUCCION", Price: "abc", IsActive: true},
 	})
 	if err != nil {
 		t.Fatalf("Confirm() = %v, want no error", err)
 	}
-	if result.ImportedRows != 1 || result.SkippedRows != 2 {
-		t.Fatalf("result = %#v, want 1 imported and 2 skipped", result)
+	if result.CreatedRows != 1 || result.UpdatedRows != 1 || result.SkippedRows != 1 {
+		t.Fatalf("result = %#v, want 1 created, 1 updated, and 1 skipped", result)
 	}
-	if len(repo.applied) != 1 || repo.applied[0].Code != "NUEVO" {
-		t.Fatalf("applied = %#v, want only NUEVO", repo.applied)
+	if len(repo.applied) != 2 || repo.applied[0].Code != "NUEVO" || repo.applied[1].Code != "EXISTE" {
+		t.Fatalf("applied = %#v, want NUEVO and EXISTE", repo.applied)
 	}
 	if repo.applied[0].Name != "Cemento" || repo.applied[0].Family != "MATERIALES DE CONSTRUCCION" {
 		t.Errorf("applied row = %#v, want normalized defaults", repo.applied[0])
@@ -139,6 +148,25 @@ func TestCatalogImportService_Preview_RejectsSubgroupFromAnotherFamily(t *testin
 	}
 }
 
+func TestCatalogImportService_Preview_AllowsAnExistingProductWithoutABranchPrice(t *testing.T) {
+	t.Parallel()
+	repo := &catalogImportTestRepository{existing: map[string]struct{}{"SIN-PRECIO": {}}}
+	service := NewCatalogImportService(catalogImportTestDB{}, repo, nil)
+	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(), BranchID: uuid.New()}
+	csvFile := "codigo;nombre;unidad;familia;precio;activo\n" +
+		"SIN-PRECIO;Producto editado;unidad;MATERIALES DE CONSTRUCCION;;SI"
+
+	preview, err := service.Preview(
+		context.Background(), tenant, "catalogo.csv", strings.NewReader(csvFile),
+	)
+	if err != nil {
+		t.Fatalf("Preview() = %v, want no error", err)
+	}
+	if preview.ValidRows != 1 || preview.Rows[0].Price != "" || preview.Rows[0].Action != "UPDATE" {
+		t.Fatalf("preview = %#v, want a valid update with no price change", preview)
+	}
+}
+
 func TestCatalogImportService_Template_IsSpanishAndCarriesInstructions(t *testing.T) {
 	t.Parallel()
 	service := NewCatalogImportService(catalogImportTestDB{}, &catalogImportTestRepository{}, nil)
@@ -148,8 +176,8 @@ func TestCatalogImportService_Template_IsSpanishAndCarriesInstructions(t *testin
 	if err != nil {
 		t.Fatalf("Template() = %v, want no error", err)
 	}
-	if file.Filename != "catalogo-inicial.xlsx" {
-		t.Errorf("Filename = %q, want catalogo-inicial.xlsx", file.Filename)
+	if file.Filename != "catalogo-villa-bosch.xlsx" {
+		t.Errorf("Filename = %q, want catalogo-villa-bosch.xlsx", file.Filename)
 	}
 	archive, err := zip.NewReader(bytes.NewReader(file.Content), int64(len(file.Content)))
 	if err != nil {
@@ -198,14 +226,18 @@ func TestCatalogImportService_Template_IsSpanishAndCarriesInstructions(t *testin
 		!strings.Contains(workbook, `<definedName name="Subgrupos">Listas!$B$2:$B$2</definedName>`) ||
 		!strings.Contains(catalog, `<formula1>Familias</formula1>`) ||
 		!strings.Contains(catalog, `<formula1>Subgrupos</formula1>`) ||
+		!strings.Contains(catalog, `<formula1>&#34;SI,NO&#34;</formula1>`) ||
 		strings.Contains(catalog, "INDIRECT") {
 		t.Error("workbook does not carry the hidden database-backed family and subgroup validations")
 	}
 	if !strings.Contains(lists, "MATERIALES DE CONSTRUCCION") || !strings.Contains(lists, "ARIDOS") {
 		t.Error("hidden lists sheet does not carry the configured taxonomy")
 	}
-	if !strings.Contains(instructions, "Las columnas codigo, nombre, unidad, familia y precio son obligatorias.") {
+	if !strings.Contains(instructions, "Los productos nuevos también requieren precio.") {
 		t.Errorf("instructions sheet does not explain the required Spanish columns")
+	}
+	if !strings.Contains(catalog, ">CEM-1</t>") || !strings.Contains(catalog, ">SI</t>") {
+		t.Error("catalog sheet does not carry the account's current products")
 	}
 }
 

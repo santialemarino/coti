@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/big"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -15,12 +16,13 @@ import (
 )
 
 type catalogImportRepository interface {
+	ListForExport(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (*domain.CatalogExport, error)
 	ListTaxonomy(ctx context.Context, q repository.Querier) ([]domain.ProductFamily, error)
 	ListExistingCodes(ctx context.Context, q repository.Querier, accountID uuid.UUID, codes []string) (map[string]struct{}, error)
 	ApplyImport(ctx context.Context, q repository.Querier, tenant domain.Tenant, effectiveAt time.Time, rows []domain.CatalogImportRow) error
 }
 
-// CatalogImportService previews and confirms initial catalog spreadsheets.
+// CatalogImportService previews and confirms bulk catalog spreadsheets.
 type CatalogImportService struct {
 	db      tenantTxRunner
 	catalog catalogImportRepository
@@ -37,7 +39,7 @@ func NewCatalogImportService(
 	return &CatalogImportService{db: db, catalog: catalog, now: now}
 }
 
-// Template creates the Spanish XLSX used for an initial catalog load.
+// Template creates the Spanish XLSX populated with the account's current catalog.
 func (s *CatalogImportService) Template(
 	ctx context.Context, tenant domain.Tenant,
 ) (*domain.CatalogImportFile, error) {
@@ -45,18 +47,25 @@ func (s *CatalogImportService) Template(
 		return nil, fmt.Errorf("%w: select a branch", domain.ErrInvalidInput)
 	}
 	var families []domain.ProductFamily
+	var export *domain.CatalogExport
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		var err error
-		families, err = s.catalog.ListTaxonomy(ctx, q)
-		return err
+		var listErr error
+		export, listErr = s.catalog.ListForExport(ctx, q, tenant.AccountID, tenant.BranchID)
+		if listErr != nil {
+			return listErr
+		}
+		families, listErr = s.catalog.ListTaxonomy(ctx, q)
+		return listErr
 	}); err != nil {
 		return nil, err
 	}
-	content, err := buildCatalogImportXLSX(families)
+	content, err := buildCatalogImportXLSX(*export, families)
 	if err != nil {
 		return nil, err
 	}
-	return &domain.CatalogImportFile{Filename: "catalogo-inicial.xlsx", Content: content}, nil
+	return &domain.CatalogImportFile{
+		Filename: "catalogo-" + slugFilename(export.BranchName) + ".xlsx", Content: content,
+	}, nil
 }
 
 // Preview parses and validates a catalog spreadsheet without writing rows.
@@ -81,7 +90,7 @@ func (s *CatalogImportService) Preview(
 	return preview, nil
 }
 
-// Confirm revalidates the reviewed rows and atomically creates every valid product.
+// Confirm revalidates the reviewed rows and atomically applies every valid product change.
 func (s *CatalogImportService) Confirm(
 	ctx context.Context, tenant domain.Tenant, inputs []domain.CatalogImportInput,
 ) (*domain.CatalogImportResult, error) {
@@ -96,7 +105,7 @@ func (s *CatalogImportService) Confirm(
 		rawRows[i] = catalogImportRawRow{
 			rowNumber: i + 2, code: input.Code, name: input.Name,
 			description: input.Description, unit: input.Unit, price: input.Price,
-			family: input.Family,
+			family: input.Family, active: activeSpreadsheetValue(input.IsActive),
 		}
 		if input.Subgroup != nil {
 			rawRows[i].subgroup = *input.Subgroup
@@ -124,7 +133,13 @@ func (s *CatalogImportService) Confirm(
 		if applyErr := s.catalog.ApplyImport(ctx, q, tenant, s.now().UTC(), validRows); applyErr != nil {
 			return applyErr
 		}
-		result.ImportedRows = len(validRows)
+		for _, row := range validRows {
+			if row.Action == "CREATE" {
+				result.CreatedRows++
+			} else {
+				result.UpdatedRows++
+			}
+		}
 		result.SkippedRows = preview.InvalidRows
 		return nil
 	})
@@ -179,7 +194,9 @@ func prepareCatalogImportRow(
 	row := domain.CatalogImportRow{
 		RowNumber: raw.rowNumber, Code: strings.TrimSpace(raw.code),
 		Name: strings.TrimSpace(raw.name), Description: description, Unit: strings.TrimSpace(raw.unit),
+		IsActive: true,
 	}
+	isExisting := false
 	if row.Code == "" {
 		row.Errors = append(row.Errors, "missing_code")
 	} else {
@@ -190,8 +207,17 @@ func prepareCatalogImportRow(
 			row.Errors = append(row.Errors, "duplicate_code")
 		}
 		if _, ok := existing[row.Code]; ok {
-			row.Errors = append(row.Errors, "existing_code")
+			isExisting = true
+			row.Action = "UPDATE"
+		} else {
+			row.Action = "CREATE"
 		}
+	}
+	active, activeErr := parseSpreadsheetActive(raw.active)
+	if activeErr != nil {
+		row.Errors = append(row.Errors, "invalid_active")
+	} else {
+		row.IsActive = active
 	}
 	if utf8.RuneCountInString(description) > 512 {
 		row.Errors = append(row.Errors, "description_too_long")
@@ -208,11 +234,17 @@ func prepareCatalogImportRow(
 	}
 	resolveCatalogTaxonomy(&row, raw, families)
 
-	price, priceValue, err := normalizeMoney(raw.price)
-	if err != nil || priceValue.Sign() <= 0 {
+	var priceValue *big.Rat
+	price, normalizedPrice, err := normalizeMoney(raw.price)
+	if strings.TrimSpace(raw.price) == "" && isExisting {
+		if strings.TrimSpace(raw.minPrice) != "" {
+			row.Errors = append(row.Errors, "invalid_price")
+		}
+	} else if err != nil || normalizedPrice.Sign() <= 0 {
 		row.Errors = append(row.Errors, "invalid_price")
 	} else {
 		row.Price = price
+		priceValue = normalizedPrice
 	}
 	if strings.TrimSpace(raw.minPrice) != "" {
 		minPrice, minPriceValue, minErr := normalizeMoney(raw.minPrice)
@@ -220,13 +252,44 @@ func prepareCatalogImportRow(
 			row.Errors = append(row.Errors, "invalid_min_price")
 		} else {
 			row.MinPrice = &minPrice
-			if err == nil && minPriceValue.Cmp(priceValue) > 0 {
+			if priceValue != nil && minPriceValue.Cmp(priceValue) > 0 {
 				row.Errors = append(row.Errors, "min_price_above_price")
 			}
 		}
 	}
 
 	return row
+}
+
+// Taxonomy returns the families and subgroups available to product editors.
+func (s *CatalogImportService) Taxonomy(
+	ctx context.Context, tenant domain.Tenant,
+) ([]domain.ProductFamily, error) {
+	var families []domain.ProductFamily
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		var listErr error
+		families, listErr = s.catalog.ListTaxonomy(ctx, q)
+		return listErr
+	})
+	return families, err
+}
+
+func parseSpreadsheetActive(raw string) (bool, error) {
+	switch strings.ToUpper(strings.TrimSpace(raw)) {
+	case "", "SI", "SÍ", "TRUE", "1":
+		return true, nil
+	case "NO", "FALSE", "0":
+		return false, nil
+	default:
+		return false, fmt.Errorf("invalid active value")
+	}
+}
+
+func activeSpreadsheetValue(active bool) string {
+	if active {
+		return "SI"
+	}
+	return "NO"
 }
 
 func resolveCatalogTaxonomy(

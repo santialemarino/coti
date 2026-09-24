@@ -15,6 +15,7 @@ const (
 	catalogColumnSubgroup    = "subgroup"
 	catalogColumnPrice       = "price"
 	catalogColumnMinPrice    = "min_price"
+	catalogColumnActive      = "active"
 )
 
 var catalogImportSchema = spreadsheet.Schema{Columns: []spreadsheet.Column{
@@ -26,6 +27,7 @@ var catalogImportSchema = spreadsheet.Schema{Columns: []spreadsheet.Column{
 	{Key: catalogColumnSubgroup, Headers: []string{"subgrupo", "subgroup"}},
 	{Key: catalogColumnPrice, Headers: []string{"precio", "price"}, Required: true},
 	{Key: catalogColumnMinPrice, Headers: []string{"precio_minimo", "min_price", "minimum_price"}},
+	{Key: catalogColumnActive, Headers: []string{"activo", "active"}},
 }}
 
 type catalogImportRawRow struct {
@@ -38,6 +40,7 @@ type catalogImportRawRow struct {
 	subgroup    string
 	price       string
 	minPrice    string
+	active      string
 }
 
 func parseCatalogImport(filename string, src io.Reader) ([]catalogImportRawRow, error) {
@@ -57,6 +60,7 @@ func parseCatalogImport(filename string, src io.Reader) ([]catalogImportRawRow, 
 			subgroup:    row.Values[catalogColumnSubgroup],
 			price:       row.Values[catalogColumnPrice],
 			minPrice:    row.Values[catalogColumnMinPrice],
+			active:      row.Values[catalogColumnActive],
 		}
 	}
 	return result, nil

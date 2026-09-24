@@ -1,6 +1,6 @@
 # File storage
 
-Attachments, quote documents, and account logos are bytes the database only points at. They go
+Attachments, quote documents, account logos, and product images are bytes the database only points at. They go
 through one port, and the adapter behind it is a startup decision; nothing above the port knows
 which one answered.
 
@@ -38,6 +38,7 @@ layout is the caller's contract — the adapters enforce the shape of a key, not
 ```
 accounts/<account_id>/rfqs/<rfq_id>/<object_id>.<ext>
 accounts/<account_id>/brand/<logo_id>
+accounts/<account_id>/products/<product_id>/<image_id>
 ```
 
 One key cannot be a prefix of another on the local adapter: a filesystem cannot hold both a file
@@ -132,6 +133,21 @@ The object key has no extension because the stored content type is authoritative
 
 ```
 accounts/<account_id>/brand/<logo_id>
+```
+
+## What uses it: product images
+
+`POST /v1/products/{productId}/image` stores one primary product image after proving the product
+belongs to the authenticated account. PNG, JPEG, and WebP are accepted; the declared type must match
+the detected bytes and the shared storage size limit applies. A successful replacement writes a new
+random `image_id` on the product, so a cached older image cannot mask it.
+
+`GET /v1/public/product-images/{accountId}/{productId}/{imageId}` serves the object inline with
+`nosniff` and an immutable public cache policy. It needs no session because product photos can appear
+on client-facing material. Its unguessable identifier is part of the path:
+
+```
+accounts/<account_id>/products/<product_id>/<image_id>
 ```
 
 ## Configuration

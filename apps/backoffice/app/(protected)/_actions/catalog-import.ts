@@ -13,6 +13,8 @@ interface CatalogImportRowRaw {
   subgroup: string | null;
   price: string;
   min_price: string | null;
+  is_active: boolean;
+  action: 'CREATE' | 'UPDATE';
   errors: string[] | null;
 }
 
@@ -25,7 +27,8 @@ interface CatalogImportPreviewRaw {
 }
 
 interface ConfirmCatalogImportRaw {
-  imported_rows: number;
+  created_rows: number;
+  updated_rows: number;
   skipped_rows: number;
 }
 
@@ -39,6 +42,8 @@ export interface CatalogImportRow {
   subgroup: string | null;
   price: string;
   minPrice: string | null;
+  isActive: boolean;
+  action: 'CREATE' | 'UPDATE';
   errors: string[];
 }
 
@@ -56,7 +61,7 @@ export type CatalogPreviewResult =
   | { ok: false; error: ApiErrorCode };
 
 export type CatalogConfirmResult =
-  | { ok: true; importedRows: number; skippedRows: number }
+  | { ok: true; createdRows: number; updatedRows: number; skippedRows: number }
   | { ok: false; error: ApiErrorCode };
 
 export type CatalogTemplateResult =
@@ -74,6 +79,8 @@ function mapCatalogImportRow(raw: CatalogImportRowRaw): CatalogImportRow {
     subgroup: raw.subgroup,
     price: raw.price,
     minPrice: raw.min_price,
+    isActive: raw.is_active,
+    action: raw.action,
     errors: raw.errors ?? [],
   };
 }
@@ -142,12 +149,14 @@ export async function confirmCatalogImport(
           subgroup: row.subgroup,
           price: row.price,
           min_price: row.minPrice,
+          is_active: row.isActive,
         })),
       },
     });
     return {
       ok: true,
-      importedRows: raw.imported_rows,
+      createdRows: raw.created_rows,
+      updatedRows: raw.updated_rows,
       skippedRows: preview.invalidRows + raw.skipped_rows,
     };
   } catch (error) {
