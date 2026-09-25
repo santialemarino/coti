@@ -131,12 +131,13 @@ schema is English.
 ## An order that names no material
 
 The extractor reads nothing a supplier sells — the message was a greeting, or a question about
-opening hours. Then **no quote is created and the `rfq` stays `RECEIVED`**, and the route answers
-`201` with the order alone: the text was stored, which is the part that matters.
+opening hours. Then **no quote is created and the `rfq` moves to `FAILED`**, and the route answers
+`201` with the order alone: the text was stored, which is the part that matters, and the seller
+works it by hand. A later run would read the same nothing, so there is nothing to wait for.
 
-This is not an error case. `GENERATED` means the engine produced materials, so an order that
-produced none has not reached it, and a `quote` with no lines would be indistinguishable from an
-order for nothing. The response carries `quote` and `version` as `null` for exactly this case.
+`GENERATED` means the engine produced materials, so an order that produced none has not reached
+it, and a `quote` with no lines would be indistinguishable from an order for nothing. The response
+carries `quote` and `version` as `null` for exactly this case.
 
 ## What a failed match does
 
@@ -320,7 +321,7 @@ deletes `product_price` when a product is withdrawn.
 - **It does not freeze the version.** `is_immutable` stays `false`. `QUOTED` and a frozen version
   are correlated but different things — the seller still edits the draft, and freezing belongs to
   sending it.
-- **It does not touch `rfq.status`,** which only has `RECEIVED` and `GENERATED`.
+- **It does not touch `rfq.status`,** which reached `GENERATED` when the draft was born.
 - **It does not price an already-valued version twice.** An unarchived `DRAFT` or
   `CHANGE_REQUESTED` quote with a mutable current version may be valued. Other states answer
   `409` with `QUOTE_NOT_DRAFT`, or `QUOTE_ARCHIVED` on an archived one. A repeated request
