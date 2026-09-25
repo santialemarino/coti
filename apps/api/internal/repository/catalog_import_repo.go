@@ -156,15 +156,14 @@ func (r *CatalogImportRepository) ApplyImport(
 		}
 	}
 
+	// Each statement binds a prefix of args, so the placeholders run from the widest-used value to
+	// the narrowest: Postgres cannot type a parameter a statement never references.
+	args := []any{tenant.AccountID, tenant.BranchID, codes, names, descriptions, units, familyIDs,
+		subgroupIDs, prices, minPrices, active, effectiveAt, tenant.UserID}
+	const products, closing = 11, 12
+
 	var imported int
-	err := q.QueryRow(ctx,
-		`WITH incoming AS (
-		   SELECT code, name, description, unit, family_id, subgroup_id, price, min_price, is_active
-		   FROM unnest(
-		     $5::text[], $6::text[], $7::text[], $8::text[], $9::uuid[],
-		     $10::text[], $11::text[], $12::text[], $13::boolean[]
-		   ) AS u(code, name, description, unit, family_id, subgroup_id, price, min_price, is_active)
-		 ), upserted_products AS (
+	err := q.QueryRow(ctx, importIncoming+`, upserted_products AS (
 		   INSERT INTO product
 		     (account_id, code, canonical_name, description, unit, family_id, subgroup_id, is_active)
 		   SELECT $1, code, name, NULLIF(description, ''), unit, family_id,
@@ -184,44 +183,8 @@ func (r *CatalogImportRepository) ApplyImport(
 		   FROM upserted_products
 		   ON CONFLICT (branch_id, product_id) DO UPDATE
 		   SET is_active = EXCLUDED.is_active
-		   RETURNING product_id
-		 ), prices_to_change AS (
-		   SELECT p.id AS product_id, i.price, i.min_price
-		   FROM upserted_products p
-		   JOIN incoming i ON i.code = p.code
-		   LEFT JOIN LATERAL (
-		     SELECT price, min_price
-		     FROM product_price
-		     WHERE account_id = $1 AND branch_id = $2 AND product_id = p.id
-		       AND valid_from <= $4 AND (valid_to IS NULL OR valid_to > $4)
-		     ORDER BY valid_from DESC
-		     LIMIT 1
-		   ) current_price ON TRUE
-		   WHERE i.price <> ''
-		     AND (current_price.price IS DISTINCT FROM NULLIF(i.price, '')::numeric
-		          OR current_price.min_price IS DISTINCT FROM NULLIF(i.min_price, '')::numeric)
-		 ), closed_prices AS (
-		   UPDATE product_price pp
-		   SET valid_to = $4
-		   FROM prices_to_change c
-		   WHERE pp.account_id = $1 AND pp.branch_id = $2 AND pp.product_id = c.product_id
-		     AND pp.valid_from <= $4 AND (pp.valid_to IS NULL OR pp.valid_to > $4)
-		   RETURNING pp.product_id
-		 ), inserted_prices AS (
-		   INSERT INTO product_price
-		     (account_id, branch_id, product_id, user_id, price, currency, min_price, valid_from)
-		   SELECT $1, $2, c.product_id, $3, c.price::numeric, 'ARS',
-		          NULLIF(c.min_price, '')::numeric, $4
-		   FROM prices_to_change c
-		   JOIN upserted_availability a ON a.product_id = c.product_id
-		   LEFT JOIN (SELECT DISTINCT product_id FROM closed_prices) closed
-		     ON closed.product_id = c.product_id
-		   RETURNING product_id
 		 )
-		 SELECT count(*) FROM upserted_products`,
-		tenant.AccountID, tenant.BranchID, tenant.UserID, effectiveAt, codes, names,
-		descriptions, units, familyIDs, subgroupIDs, prices, minPrices, active,
-	).Scan(&imported)
+		 SELECT count(*) FROM upserted_products`, args[:products]...).Scan(&imported)
 	if isUniqueViolation(err, productCodeIndex) {
 		return domain.ErrConflict
 	}
@@ -231,5 +194,53 @@ func (r *CatalogImportRepository) ApplyImport(
 	if imported != len(rows) {
 		return domain.ErrConflict
 	}
-	return nil
+
+	// Closing and opening a period are separate statements: sibling CTEs share one snapshot, so
+	// an insert beside the update still sees the open row and trips uq_product_price_open_period.
+	if _, err := q.Exec(ctx, importIncoming+importChangedPrices+`
+		 UPDATE product_price pp
+		 SET valid_to = $12
+		 FROM prices_to_change c
+		 WHERE pp.account_id = $1 AND pp.branch_id = $2 AND pp.product_id = c.product_id
+		   AND pp.valid_from <= $12 AND (pp.valid_to IS NULL OR pp.valid_to > $12)`,
+		args[:closing]...); err != nil {
+		return err
+	}
+	_, err = q.Exec(ctx, importIncoming+importChangedPrices+`
+		 INSERT INTO product_price
+		   (account_id, branch_id, product_id, user_id, price, currency, min_price, valid_from)
+		 SELECT $1, $2, c.product_id, $13, c.price::numeric, 'ARS',
+		        NULLIF(c.min_price, '')::numeric, $12
+		 FROM prices_to_change c`,
+		args...)
+	return err
 }
+
+// importIncoming unpacks an import's parallel arrays into rows; every import statement opens with it.
+const importIncoming = `WITH incoming AS (
+		   SELECT code, name, description, unit, family_id, subgroup_id, price, min_price, is_active
+		   FROM unnest(
+		     $3::text[], $4::text[], $5::text[], $6::text[], $7::uuid[],
+		     $8::text[], $9::text[], $10::text[], $11::boolean[]
+		   ) AS u(code, name, description, unit, family_id, subgroup_id, price, min_price, is_active)
+		 )`
+
+// importChangedPrices selects the imported products whose price or floor differs from the one in
+// force at the import instant, which is also every product with no price in force yet.
+const importChangedPrices = `, prices_to_change AS (
+		   SELECT p.id AS product_id, i.price, i.min_price
+		   FROM product p
+		   JOIN incoming i ON i.code = p.code
+		   LEFT JOIN LATERAL (
+		     SELECT price, min_price
+		     FROM product_price
+		     WHERE account_id = $1 AND branch_id = $2 AND product_id = p.id
+		       AND valid_from <= $12 AND (valid_to IS NULL OR valid_to > $12)
+		     ORDER BY valid_from DESC
+		     LIMIT 1
+		   ) current_price ON TRUE
+		   WHERE p.account_id = $1
+		     AND i.price <> ''
+		     AND (current_price.price IS DISTINCT FROM NULLIF(i.price, '')::numeric
+		          OR current_price.min_price IS DISTINCT FROM NULLIF(i.min_price, '')::numeric)
+		 )`

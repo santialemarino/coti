@@ -155,4 +155,18 @@ func TestCatalogImportRepository_ApplyImport_UpdatesProductsAndCreatesPriceHisto
 	if name != "Cemento Portland" || currentPrice != "11000.00" || !previousValidTo.Equal(secondAt) {
 		t.Errorf("updated row = %q, %q, %v; want current product and closed previous price", name, currentPrice, previousValidTo)
 	}
+
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		return repo.ApplyImport(ctx, q, tenant, secondAt.Add(time.Hour), second)
+	}); err != nil {
+		t.Fatalf("unchanged ApplyImport() = %v", err)
+	}
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT count(*) FROM product_price WHERE account_id = $1 AND branch_id = $2`,
+		accountID, branchID).Scan(&prices); err != nil {
+		t.Fatal(err)
+	}
+	if prices != 2 {
+		t.Errorf("prices after an unchanged import = %d, want 2", prices)
+	}
 }
