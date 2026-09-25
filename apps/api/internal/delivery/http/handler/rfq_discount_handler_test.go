@@ -146,7 +146,7 @@ func TestRfqHandler_AddDiscount_CreatesAndAnswers201(t *testing.T) {
 		SuppressedBySeller: false,
 	}
 	service := &stubDiscountRFQService{created: created}
-	handler := NewRfqHandler(service)
+	handler := NewRfqHandler(service, testHighConfidence)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -215,7 +215,7 @@ func TestRfqHandler_AddDiscount_CreatesAndAnswers201(t *testing.T) {
 func TestRfqHandler_AddDiscount_RejectsAnIncompletePayload(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	service := &stubDiscountRFQService{created: &domain.QuoteDiscount{}}
-	handler := NewRfqHandler(service)
+	handler := NewRfqHandler(service, testHighConfidence)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -244,7 +244,7 @@ func TestRfqHandler_AddDiscount_RejectsAnIncompletePayload(t *testing.T) {
 func TestRfqHandler_AddDiscount_UnknownQuoteAnswers404(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	service := &stubDiscountRFQService{createErr: domain.ErrNotFound}
-	handler := NewRfqHandler(service)
+	handler := NewRfqHandler(service, testHighConfidence)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -286,7 +286,7 @@ func TestRfqHandler_UpdateDiscount_ForwardsTheRulePatch(t *testing.T) {
 		ActionType: domain.PromotionActionPercentage, Description: &description,
 		SuppressedBySeller: suppressed,
 	}}
-	handler := NewRfqHandler(service)
+	handler := NewRfqHandler(service, testHighConfidence)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -332,7 +332,7 @@ func TestRfqHandler_UpdateDiscount_ForwardsTheRulePatch(t *testing.T) {
 func TestRfqHandler_DeleteDiscount_RemovesTheRow(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	service := &stubDiscountRFQService{}
-	handler := NewRfqHandler(service)
+	handler := NewRfqHandler(service, testHighConfidence)
 
 	tenant := domain.Tenant{
 		AccountID: uuid.MustParse("11111111-1111-4111-8111-111111111111"),

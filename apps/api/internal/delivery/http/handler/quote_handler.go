@@ -44,13 +44,17 @@ type QuoteHandler struct {
 	quotes          QuoteService
 	delivery        QuoteDeliveryService
 	representations QuoteRepresentationService
+	// highConfidence is the score a MATCHED line clears to read as HIGH.
+	highConfidence decimal.Decimal
 }
 
 // NewQuoteHandler builds a QuoteHandler.
 func NewQuoteHandler(
 	quotes QuoteService, delivery QuoteDeliveryService, representations QuoteRepresentationService,
+	highConfidence decimal.Decimal,
 ) *QuoteHandler {
-	return &QuoteHandler{quotes: quotes, delivery: delivery, representations: representations}
+	return &QuoteHandler{quotes: quotes, delivery: delivery, representations: representations,
+		highConfidence: highConfidence}
 }
 
 // ApproveAlternative records whether one priced candidate may appear in client representations.
@@ -360,7 +364,7 @@ func (h *QuoteHandler) AcceptMaterials(c *gin.Context) {
 		Respond(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, toPricedQuoteResponse(*priced))
+	c.JSON(http.StatusOK, toPricedQuoteResponse(*priced, h.highConfidence))
 }
 
 // Transition moves a quote along a seller-action edge of the state machine.
@@ -486,7 +490,9 @@ func parseQuoteStatus(raw string) (domain.QuoteStatus, error) {
 	}
 }
 
-func toPricedQuoteResponse(priced domain.PricedQuote) dto.PricedQuoteResponse {
+func toPricedQuoteResponse(
+	priced domain.PricedQuote, highConfidence decimal.Decimal,
+) dto.PricedQuoteResponse {
 	unpriced := make(map[uuid.UUID]struct{}, len(priced.UnpricedItemIDs))
 	for _, itemID := range priced.UnpricedItemIDs {
 		unpriced[itemID] = struct{}{}
@@ -496,7 +502,8 @@ func toPricedQuoteResponse(priced domain.PricedQuote) dto.PricedQuoteResponse {
 		// Valuation has run, so the gap is answered either way rather than left null: true names a
 		// line the branch cannot price, false a line that was priced or had nothing to price.
 		_, gap := unpriced[item.ID]
-		items = append(items, toQuoteItemResponse(item, priced.Alternatives[item.ID], &gap))
+		items = append(items, toQuoteItemResponse(item, priced.Alternatives[item.ID], &gap,
+			highConfidence))
 	}
 	return dto.PricedQuoteResponse{
 		Quote:   toQuoteResponse(priced.Quote),
@@ -540,10 +547,17 @@ func toQuoteItemAlternativeResponse(
 }
 
 // toQuoteItemResponse maps one line. pricingUnavailable is nil where nothing has been valued yet,
-// which is a different answer from a line the branch can price.
+// which is a different answer from a line the branch can price; highConfidence is the score a
+// MATCHED line clears to read as HIGH.
 func toQuoteItemResponse(
 	item domain.QuoteItem, alternatives []domain.QuoteItemAlternative, pricingUnavailable *bool,
+	highConfidence decimal.Decimal,
 ) dto.QuoteItemResponse {
+	var level *string
+	if l := domain.ConfidenceLevelOf(item.MatchStatus, item.ConfidenceScore, highConfidence); l != nil {
+		value := string(*l)
+		level = &value
+	}
 	return dto.QuoteItemResponse{
 		ID: item.ID, VersionID: item.VersionID, ProductID: item.ProductID,
 		ProductCode: item.ProductCode, ProductName: item.ProductName,
@@ -555,6 +569,7 @@ func toQuoteItemResponse(
 		MinPriceSnapshot:     amountString(item.MinPriceSnapshot),
 		Subtotal:             amountString(item.Subtotal),
 		ConfidenceScore:      confidenceString(item.ConfidenceScore),
+		ConfidenceLevel:      level,
 		MatchStatus:          string(item.MatchStatus),
 		Alternatives:         toQuoteItemAlternativeResponses(alternatives),
 		PricingUnavailable:   pricingUnavailable,

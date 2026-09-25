@@ -101,7 +101,8 @@ func run() error {
 	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo, sends,
 		repository.NewQuoteAIGenerationRepository(), repository.NewChannelRepository(),
 		repository.NewUserRepository(), ai.NewRFQExtractor(providers.Generator, cfg.RFQ.MaxItems),
-		services.NewCatalogMatchService(catalogSearch, cfg.Catalog), log, cfg.RFQ).
+		services.NewCatalogMatchService(catalogSearch, cfg.Catalog).
+			WithReviewer(ai.NewCatalogMatchReviewer(providers.Generator), log), log, cfg.RFQ).
 		WithCorrectionMemory(correctionService)
 	jobs, err := services.NewJobService(db, repository.NewJobRunRepository(), log,
 		services.NewQuoteCorrectionJob(corrections, providers.Embedder, cfg.QuoteCorrection),

@@ -32,11 +32,13 @@ type ManualRFQService interface {
 // RfqHandler serves manual RFQ intake.
 type RfqHandler struct {
 	rfqs ManualRFQService
+	// highConfidence is the score a MATCHED line clears to read as HIGH.
+	highConfidence decimal.Decimal
 }
 
 // NewRfqHandler builds an RfqHandler.
-func NewRfqHandler(rfqs ManualRFQService) *RfqHandler {
-	return &RfqHandler{rfqs: rfqs}
+func NewRfqHandler(rfqs ManualRFQService, highConfidence decimal.Decimal) *RfqHandler {
+	return &RfqHandler{rfqs: rfqs, highConfidence: highConfidence}
 }
 
 // List returns the RFQ list for the caller's tenant scope.
@@ -237,7 +239,7 @@ func (h *RfqHandler) Get(c *gin.Context) {
 		return
 	}
 
-	resp := toRfqDetailResponse(*detail)
+	resp := toRfqDetailResponse(*detail, h.highConfidence)
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -309,7 +311,7 @@ func (h *RfqHandler) UpdateItem(c *gin.Context) {
 		return
 	}
 
-	resp := toQuoteItemResponse(*item, nil, nil)
+	resp := toQuoteItemResponse(*item, nil, nil, h.highConfidence)
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -404,7 +406,7 @@ func (h *RfqHandler) AddItem(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, toQuoteItemResponse(*item, nil, nil))
+	c.JSON(http.StatusCreated, toQuoteItemResponse(*item, nil, nil, h.highConfidence))
 }
 
 // AddDiscount applies a seller-typed discount to the quote's current version.
@@ -629,11 +631,15 @@ type RFQHandler struct {
 	// maxUploadBytes caps the request body, so an oversized file is refused while it is still
 	// arriving rather than after it is buffered.
 	maxUploadBytes int64
+	// highConfidence is the score a MATCHED line clears to read as HIGH.
+	highConfidence decimal.Decimal
 }
 
 // NewRFQHandler builds an RFQHandler.
-func NewRFQHandler(rfqs RFQService, maxUploadBytes int64) *RFQHandler {
-	return &RFQHandler{rfqs: rfqs, maxUploadBytes: maxUploadBytes}
+func NewRFQHandler(
+	rfqs RFQService, maxUploadBytes int64, highConfidence decimal.Decimal,
+) *RFQHandler {
+	return &RFQHandler{rfqs: rfqs, maxUploadBytes: maxUploadBytes, highConfidence: highConfidence}
 }
 
 // CreateTextDraft creates a quote draft from plain RFQ text.
@@ -676,7 +682,7 @@ func (h *RFQHandler) CreateTextDraft(c *gin.Context) {
 		Respond(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, toTextRFQDraftResponse(*draft))
+	c.JSON(http.StatusCreated, toTextRFQDraftResponse(*draft, h.highConfidence))
 }
 
 // CreateFileDraft creates a quote draft from an order sent as a file.
@@ -751,7 +757,7 @@ func (h *RFQHandler) CreateFileDraft(c *gin.Context) {
 		Respond(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, toTextRFQDraftResponse(*draft))
+	c.JSON(http.StatusCreated, toTextRFQDraftResponse(*draft, h.highConfidence))
 }
 
 // CreateWhatsAppMockDraft simulates one inbound WhatsApp message outside production.
@@ -793,13 +799,16 @@ func (h *RFQHandler) CreateWhatsAppMockDraft(c *gin.Context) {
 		Respond(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, toTextRFQDraftResponse(*draft))
+	c.JSON(http.StatusCreated, toTextRFQDraftResponse(*draft, h.highConfidence))
 }
 
-func toTextRFQDraftResponse(draft domain.TextRFQDraft) dto.TextRFQDraftResponse {
+func toTextRFQDraftResponse(
+	draft domain.TextRFQDraft, highConfidence decimal.Decimal,
+) dto.TextRFQDraftResponse {
 	items := make([]dto.QuoteItemResponse, 0, len(draft.Items))
 	for _, item := range draft.Items {
-		items = append(items, toQuoteItemResponse(item, draft.Alternatives[item.ID], nil))
+		items = append(items, toQuoteItemResponse(item, draft.Alternatives[item.ID], nil,
+			highConfidence))
 	}
 	var quote *dto.QuoteResponse
 	if draft.Quote != nil {
@@ -832,7 +841,9 @@ func decimalFromString(s string) (decimal.Decimal, error) {
 	return decimal.NewFromString(s)
 }
 
-func toRfqDetailResponse(detail domain.RfqDetail) dto.RfqDetailResponse {
+func toRfqDetailResponse(
+	detail domain.RfqDetail, highConfidence decimal.Decimal,
+) dto.RfqDetailResponse {
 	resp := dto.RfqDetailResponse{
 		Rfq:          toListItemResponse(detail.Rfq),
 		RFQHistory:   toRFQStatusChangeResponses(detail.RFQStatusChanges),
@@ -852,7 +863,8 @@ func toRfqDetailResponse(detail domain.RfqDetail) dto.RfqDetailResponse {
 
 	resp.Items = make([]dto.QuoteItemResponse, 0, len(detail.Items))
 	for _, item := range detail.Items {
-		resp.Items = append(resp.Items, toQuoteItemResponse(item, detail.Alternatives[item.ID], nil))
+		resp.Items = append(resp.Items, toQuoteItemResponse(item, detail.Alternatives[item.ID], nil,
+			highConfidence))
 	}
 
 	resp.Alternatives = make(map[string][]dto.QuoteItemAlternativeResponse, len(detail.Alternatives))

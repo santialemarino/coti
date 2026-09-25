@@ -163,7 +163,10 @@ provider SDK, so it works behind whichever one is bound and its tests need no pr
 
 `domain.RFQExtractor` is the first of them: `ai.NewRFQExtractor` builds the extraction prompt and its
 forced schema, and `cmd/api` hands it the bound generator. See
-[rfq-pipeline.md](rfq-pipeline.md) for what it asks for and why.
+[rfq-pipeline.md](rfq-pipeline.md) for what it asks for and why. `domain.CatalogMatchReviewer` is
+the second: `ai.NewCatalogMatchReviewer` settles the lines catalog matching flagged, choosing only
+among the candidates it was shown — see
+[catalog.md](catalog.md#the-review-trade-knowledge-the-catalog-text-does-not-carry).
 
 One thing to know before writing a schema for one: **structured outputs do not enforce
 `minLength`, `maxLength`, `minItems` or `maxItems`**. Length and size are the service's to check, and

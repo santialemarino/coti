@@ -59,7 +59,11 @@ func matchConfig() config.CatalogConfig {
 		SearchTopK: 10, SearchOverFetchFactor: 4, SearchMaxFetch: 2000,
 		SearchProbes: 10, SearchRRFK: 60, EmbeddingBatchSize: 200,
 		MatchMinConfidencePercent: 60, MatchAmbiguityMarginPercent: 5,
-		MatchLexicalConfidencePercent: 75,
+		// Half coverage, half similarity, with the similarity read as it comes: every confidence
+		// below is then 0.5 × coverage + 0.5 × the seeded alignment, which anyone can redo.
+		MatchCoverageWeightPercent: 50, MatchSimilarityFloorPercent: 0,
+		MatchSimilarityCeilingPercent: 100, MatchHighConfidencePercent: 80,
+		MatchReviewFloorPercent: 40, MatchReviewMaxLines: 30,
 	}
 }
 
@@ -149,8 +153,8 @@ func (e *env) matchOne(
 }
 
 // The acceptance criterion, end to end: a trade term loaded as a synonym resolves to its
-// product. The product carries no embedding, so only the lexical half can reach it and the
-// configured lexical confidence is what has to carry it over the floor.
+// product. The product carries no embedding, so only the lexical half can reach it, and with no
+// vector to weigh its text is the whole reading.
 func TestCatalogMatch_ResolvesATradeTermThroughASynonym(t *testing.T) {
 	e := newEnv(t)
 	account, branch := e.seedAccount(t, "Corralon Sinonimos")
@@ -167,14 +171,14 @@ func TestCatalogMatch_ResolvesATradeTermThroughASynonym(t *testing.T) {
 	if got.ProductID == nil || *got.ProductID != product {
 		t.Errorf("product = %v, want the membrane %v", got.ProductID, product)
 	}
-	if want := decimal.RequireFromString("0.75"); !got.Confidence.Equal(want) {
-		t.Errorf("confidence = %s, want the configured lexical %s", got.Confidence, want)
+	if want := decimal.RequireFromString("1"); !got.Confidence.Equal(want) {
+		t.Errorf("confidence = %s, want the full coverage %s", got.Confidence, want)
 	}
 }
 
 // A real catalog product normally has an embedding, and extracted text normally contains more
-// than the synonym alone. The lexical evidence must survive both facts and carry the known trade
-// term over the confidence floor.
+// than the synonym alone. The synonym must still count as the line's own word, so a weak vector
+// cannot drag the known trade term under the floor.
 func TestCatalogMatch_ResolvesASynonymInsideALongerDescriptionForAnEmbeddedProduct(t *testing.T) {
 	e := newEnv(t)
 	account, branch := e.seedAccount(t, "Corralon Sinonimo Embebido")
@@ -192,8 +196,9 @@ func TestCatalogMatch_ResolvesASynonymInsideALongerDescriptionForAnEmbeddedProdu
 	if got.ProductID == nil || *got.ProductID != product {
 		t.Errorf("product = %v, want the plasterboard %v", got.ProductID, product)
 	}
-	if want := decimal.RequireFromString("0.75"); !got.Confidence.Equal(want) {
-		t.Errorf("confidence = %s, want lexical evidence preserved at %s", got.Confidence, want)
+	// "placas" meets the name and "durlock" the synonym: 0.5 × 1 + 0.5 × the 0.52 alignment.
+	if want := decimal.RequireFromString("0.76"); !got.Confidence.Equal(want) {
+		t.Errorf("confidence = %s, want %s", got.Confidence, want)
 	}
 }
 
@@ -217,8 +222,8 @@ func TestCatalogMatch_MatchesAClearLeaderAtTheDistanceItWasSeededWith(t *testing
 	if got.ProductID == nil || *got.ProductID != cement {
 		t.Errorf("product = %v, want the cement %v", got.ProductID, cement)
 	}
-	// Seeded at an alignment of 0.95, so the cosine distance is 0.05 and the similarity 0.9500.
-	if want := decimal.RequireFromString("0.95"); !got.Confidence.Equal(want) {
+	// The name covers the whole line and the alignment is 0.95: 0.5 × 1 + 0.5 × 0.95.
+	if want := decimal.RequireFromString("0.975"); !got.Confidence.Equal(want) {
 		t.Errorf("confidence = %s, want %s", got.Confidence, want)
 	}
 }
@@ -294,20 +299,19 @@ func TestCatalogMatch_FollowsTheConfiguredThreshold(t *testing.T) {
 	e.embed(t, sand, 0.45)
 	e.stock(t, account, branch, sand)
 
-	// Asked with a term the lexical half does not carry, so the vector half alone decides and
-	// the similarity is the seeded 0.45.
+	// Asked with words the name does not carry, so only the vector counts: half of the seeded 0.45.
 	if got := e.matchOne(t, matchConfig(), account, branch, "polvo de ladrillo"); got.MatchStatus !=
 		domain.ItemMatchStatusNoMatch {
 		t.Errorf("match status at a floor of 60%% = %q, want NO_MATCH", got.MatchStatus)
 	}
 
 	relaxed := matchConfig()
-	relaxed.MatchMinConfidencePercent = 40
+	relaxed.MatchMinConfidencePercent = 20
 	got := e.matchOne(t, relaxed, account, branch, "polvo de ladrillo")
 	if got.MatchStatus != domain.ItemMatchStatusMatched {
-		t.Errorf("match status at a floor of 40%% = %q, want MATCHED", got.MatchStatus)
+		t.Errorf("match status at a floor of 20%% = %q, want MATCHED", got.MatchStatus)
 	}
-	if want := decimal.RequireFromString("0.45"); !got.Confidence.Equal(want) {
+	if want := decimal.RequireFromString("0.225"); !got.Confidence.Equal(want) {
 		t.Errorf("confidence = %s, want %s", got.Confidence, want)
 	}
 }

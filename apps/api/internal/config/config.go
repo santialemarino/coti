@@ -516,9 +516,20 @@ type CatalogConfig struct {
 	// MatchAmbiguityMarginPercent is how far the leading candidate sits above the runner-up
 	// before the line counts as decided. Two cements a point apart are a choice, not a match.
 	MatchAmbiguityMarginPercent int
-	// MatchLexicalConfidencePercent is the confidence floor for lexical evidence.
-	// It keeps exact vocabulary useful when semantic similarity alone is weak.
-	MatchLexicalConfidencePercent int
+	// MatchCoverageWeightPercent is the share of a candidate's confidence that comes from how
+	// much of the line its name accounts for; the rest comes from the calibrated similarity.
+	MatchCoverageWeightPercent int
+	// MatchSimilarityFloorPercent and MatchSimilarityCeilingPercent are the cosine similarities
+	// that read as no resemblance and as a near-verbatim one. They belong to the embedding model.
+	MatchSimilarityFloorPercent   int
+	MatchSimilarityCeilingPercent int
+	// MatchHighConfidencePercent is what a MATCHED line clears to be shown as high confidence.
+	MatchHighConfidencePercent int
+	// MatchReviewFloorPercent is the confidence a flagged line's candidate needs for the language
+	// model's review to settle the line on it. Below it the catalog text does not back the pick.
+	MatchReviewFloorPercent int
+	// MatchReviewMaxLines caps the flagged lines one order sends to review. Zero turns it off.
+	MatchReviewMaxLines int
 	// CorrectionSimilarityPercent is the fixed semantic floor for seller-taught product choices.
 	CorrectionSimilarityPercent int
 }
@@ -727,9 +738,14 @@ func Load() (*Config, error) {
 			SearchProbes:                  getInt("CATALOG_SEARCH_IVFFLAT_PROBES", 10, &problems),
 			SearchRRFK:                    getInt("CATALOG_SEARCH_RRF_K", 60, &problems),
 			EmbeddingBatchSize:            getInt("CATALOG_EMBEDDING_BATCH_SIZE", 200, &problems),
-			MatchMinConfidencePercent:     getInt("CATALOG_MATCH_MIN_CONFIDENCE_PERCENT", 60, &problems),
+			MatchMinConfidencePercent:     getInt("CATALOG_MATCH_MIN_CONFIDENCE_PERCENT", 55, &problems),
 			MatchAmbiguityMarginPercent:   getInt("CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT", 5, &problems),
-			MatchLexicalConfidencePercent: getInt("CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT", 75, &problems),
+			MatchCoverageWeightPercent:    getInt("CATALOG_MATCH_COVERAGE_WEIGHT_PERCENT", 75, &problems),
+			MatchSimilarityFloorPercent:   getInt("CATALOG_MATCH_SIMILARITY_FLOOR_PERCENT", 25, &problems),
+			MatchSimilarityCeilingPercent: getInt("CATALOG_MATCH_SIMILARITY_CEILING_PERCENT", 90, &problems),
+			MatchHighConfidencePercent:    getInt("CATALOG_MATCH_HIGH_CONFIDENCE_PERCENT", 80, &problems),
+			MatchReviewFloorPercent:       getInt("CATALOG_MATCH_REVIEW_FLOOR_PERCENT", 40, &problems),
+			MatchReviewMaxLines:           getInt("CATALOG_MATCH_REVIEW_MAX_LINES", 30, &problems),
 			CorrectionSimilarityPercent:   getInt("QUOTE_CORRECTION_SIMILARITY_PERCENT", 80, &problems),
 		},
 		Storage: StorageConfig{
@@ -1003,7 +1019,11 @@ func Load() (*Config, error) {
 	}{
 		{"CATALOG_MATCH_MIN_CONFIDENCE_PERCENT", cfg.Catalog.MatchMinConfidencePercent},
 		{"CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT", cfg.Catalog.MatchAmbiguityMarginPercent},
-		{"CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT", cfg.Catalog.MatchLexicalConfidencePercent},
+		{"CATALOG_MATCH_COVERAGE_WEIGHT_PERCENT", cfg.Catalog.MatchCoverageWeightPercent},
+		{"CATALOG_MATCH_SIMILARITY_FLOOR_PERCENT", cfg.Catalog.MatchSimilarityFloorPercent},
+		{"CATALOG_MATCH_SIMILARITY_CEILING_PERCENT", cfg.Catalog.MatchSimilarityCeilingPercent},
+		{"CATALOG_MATCH_HIGH_CONFIDENCE_PERCENT", cfg.Catalog.MatchHighConfidencePercent},
+		{"CATALOG_MATCH_REVIEW_FLOOR_PERCENT", cfg.Catalog.MatchReviewFloorPercent},
 		{"QUOTE_CORRECTION_SIMILARITY_PERCENT", cfg.QuoteCorrection.SimilarityPercent},
 	}
 	for _, p := range catalogPercents {
@@ -1011,6 +1031,22 @@ func Load() (*Config, error) {
 			problems = append(problems, fmt.Sprintf("%s must be between 0 and 100, got %d",
 				p.key, p.value))
 		}
+	}
+	if cfg.Catalog.MatchSimilarityFloorPercent >= cfg.Catalog.MatchSimilarityCeilingPercent {
+		problems = append(problems, fmt.Sprintf(
+			"CATALOG_MATCH_SIMILARITY_FLOOR_PERCENT (%d) must be below "+
+				"CATALOG_MATCH_SIMILARITY_CEILING_PERCENT (%d)",
+			cfg.Catalog.MatchSimilarityFloorPercent, cfg.Catalog.MatchSimilarityCeilingPercent))
+	}
+	if cfg.Catalog.MatchHighConfidencePercent < cfg.Catalog.MatchMinConfidencePercent {
+		problems = append(problems, fmt.Sprintf(
+			"CATALOG_MATCH_HIGH_CONFIDENCE_PERCENT (%d) must not be below "+
+				"CATALOG_MATCH_MIN_CONFIDENCE_PERCENT (%d)",
+			cfg.Catalog.MatchHighConfidencePercent, cfg.Catalog.MatchMinConfidencePercent))
+	}
+	if cfg.Catalog.MatchReviewMaxLines < 0 {
+		problems = append(problems, fmt.Sprintf(
+			"CATALOG_MATCH_REVIEW_MAX_LINES must be zero or more, got %d", cfg.Catalog.MatchReviewMaxLines))
 	}
 	if cfg.QuoteCorrection.SimilarityPercent == 0 {
 		problems = append(problems, "QUOTE_CORRECTION_SIMILARITY_PERCENT must be greater than zero")
