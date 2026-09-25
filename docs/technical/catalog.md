@@ -404,6 +404,11 @@ under 55 is where those start. Move the settings against the pilot's catalog, no
 matching disappoints, the places to look are `product_synonym` and the similarity band, **not** the
 embedding model.
 
+The benchmark is committed and reruns with `pnpm eval:catalog-match` (`:review` adds the model's
+review): it seeds the catalog into a throwaway account, embeds it with the live model, grades every
+line, and fails on any wrong product matched with confidence. How to read and extend it is in
+[its README](../../apps/api/internal/integration/testdata/catalog_match/README.md).
+
 `CATALOG_SEARCH_TOP_K` is bound to this: below two there is no runner-up, so every line above the
 floor would read as decided and `AMBIGUOUS` could never happen. Configuration refuses it at boot
 rather than letting the quality drop silently.
