@@ -197,7 +197,7 @@ func (r *CatalogImportRepository) ApplyImport(
 
 	// Closing and opening a period are separate statements: sibling CTEs share one snapshot, so
 	// an insert beside the update still sees the open row and trips uq_product_price_open_period.
-	if _, err := q.Exec(ctx, importIncoming+importChangedPrices+`
+	if _, err = q.Exec(ctx, importIncoming+importChangedPrices+`
 		 UPDATE product_price pp
 		 SET valid_to = $12
 		 FROM prices_to_change c
@@ -206,17 +206,23 @@ func (r *CatalogImportRepository) ApplyImport(
 		args[:closing]...); err != nil {
 		return err
 	}
+	// A period scheduled ahead stays the next one, so the imported price ends where it starts.
 	_, err = q.Exec(ctx, importIncoming+importChangedPrices+`
 		 INSERT INTO product_price
-		   (account_id, branch_id, product_id, user_id, price, currency, min_price, valid_from)
+		   (account_id, branch_id, product_id, user_id, price, currency, min_price, valid_from,
+		    valid_to)
 		 SELECT $1, $2, c.product_id, $13, c.price::numeric, 'ARS',
-		        NULLIF(c.min_price, '')::numeric, $12
+		        NULLIF(c.min_price, '')::numeric, $12,
+		        (SELECT min(pp.valid_from)
+		         FROM product_price pp
+		         WHERE pp.account_id = $1 AND pp.branch_id = $2 AND pp.product_id = c.product_id
+		           AND pp.valid_from > $12)
 		 FROM prices_to_change c`,
 		args...)
 	return err
 }
 
-// importIncoming unpacks an import's parallel arrays into rows; every import statement opens with it.
+// importIncoming unpacks the import's parallel arrays into rows; each statement opens with it.
 const importIncoming = `WITH incoming AS (
 		   SELECT code, name, description, unit, family_id, subgroup_id, price, min_price, is_active
 		   FROM unnest(
