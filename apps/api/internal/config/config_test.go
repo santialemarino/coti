@@ -44,7 +44,9 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"CATALOG_SEARCH_MAX_FETCH", "CATALOG_SEARCH_IVFFLAT_PROBES", "CATALOG_SEARCH_RRF_K",
 		"CATALOG_EMBEDDING_BATCH_SIZE",
 		"CATALOG_MATCH_MIN_CONFIDENCE_PERCENT", "CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT",
-		"CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT",
+		"CATALOG_MATCH_COVERAGE_WEIGHT_PERCENT", "CATALOG_MATCH_SIMILARITY_FLOOR_PERCENT",
+		"CATALOG_MATCH_SIMILARITY_CEILING_PERCENT", "CATALOG_MATCH_HIGH_CONFIDENCE_PERCENT",
+		"CATALOG_MATCH_REVIEW_FLOOR_PERCENT", "CATALOG_MATCH_REVIEW_MAX_LINES",
 		"CATALOG_IMPORT_MAX_BYTES",
 		"PRICE_IMPORT_MAX_BYTES",
 		"JOB_TIMEOUT_MINUTES",
@@ -193,26 +195,37 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Catalog.EmbeddingBatchSize != 200 {
 		t.Errorf("Catalog.EmbeddingBatchSize = %d, want 200", cfg.Catalog.EmbeddingBatchSize)
 	}
-	// Pinned exactly, because .env.example and the catalog documentation both quote these three
-	// and nothing else would notice them drifting apart.
+	// Pinned exactly, because .env.example and the catalog documentation both quote these and
+	// nothing else would notice them drifting apart. They are the calibration the benchmark over a
+	// real 879-product catalog settled on, so moving one is a measurement, not a preference.
 	for _, tc := range []struct {
 		name string
 		got  int
 		want int
 	}{
-		{"Catalog.MatchMinConfidencePercent", cfg.Catalog.MatchMinConfidencePercent, 60},
+		{"Catalog.MatchMinConfidencePercent", cfg.Catalog.MatchMinConfidencePercent, 55},
 		{"Catalog.MatchAmbiguityMarginPercent", cfg.Catalog.MatchAmbiguityMarginPercent, 5},
-		{"Catalog.MatchLexicalConfidencePercent", cfg.Catalog.MatchLexicalConfidencePercent, 75},
+		{"Catalog.MatchCoverageWeightPercent", cfg.Catalog.MatchCoverageWeightPercent, 75},
+		{"Catalog.MatchSimilarityFloorPercent", cfg.Catalog.MatchSimilarityFloorPercent, 25},
+		{"Catalog.MatchSimilarityCeilingPercent", cfg.Catalog.MatchSimilarityCeilingPercent, 90},
+		{"Catalog.MatchHighConfidencePercent", cfg.Catalog.MatchHighConfidencePercent, 80},
+		{"Catalog.MatchReviewFloorPercent", cfg.Catalog.MatchReviewFloorPercent, 40},
+		{"Catalog.MatchReviewMaxLines", cfg.Catalog.MatchReviewMaxLines, 30},
 	} {
 		if tc.got != tc.want {
 			t.Errorf("%s = %d, want %d", tc.name, tc.got, tc.want)
 		}
 	}
-	// A trade term loaded as a synonym has to resolve to its product out of the box, and the
-	// lexical half is the only half that reaches an unembedded row.
-	if cfg.Catalog.MatchLexicalConfidencePercent < cfg.Catalog.MatchMinConfidencePercent {
-		t.Errorf("Catalog.MatchLexicalConfidencePercent = %d, want at least the floor of %d",
-			cfg.Catalog.MatchLexicalConfidencePercent, cfg.Catalog.MatchMinConfidencePercent)
+	// A line whose words a product's name carries in full has to match it out of the box, however
+	// far its vector sits: the coverage share alone must clear the floor.
+	if cfg.Catalog.MatchCoverageWeightPercent < cfg.Catalog.MatchMinConfidencePercent {
+		t.Errorf("Catalog.MatchCoverageWeightPercent = %d, want at least the floor of %d",
+			cfg.Catalog.MatchCoverageWeightPercent, cfg.Catalog.MatchMinConfidencePercent)
+	}
+	// The review settles only lines the floor already refused, so its own floor sits under it.
+	if cfg.Catalog.MatchReviewFloorPercent >= cfg.Catalog.MatchMinConfidencePercent {
+		t.Errorf("Catalog.MatchReviewFloorPercent = %d, want it under the floor of %d",
+			cfg.Catalog.MatchReviewFloorPercent, cfg.Catalog.MatchMinConfidencePercent)
 	}
 	// At zero every leading candidate is decided, whatever sits behind it.
 	if cfg.Catalog.MatchAmbiguityMarginPercent < 1 {
@@ -652,11 +665,50 @@ func TestLoad_Invalid(t *testing.T) {
 			wantSub: "CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT must be between 0 and 100",
 		},
 		{
-			name: "a lexical confidence off the scale",
+			name: "a coverage weight off the scale",
 			mutate: func(e map[string]string) {
-				e["CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT"] = "140"
+				e["CATALOG_MATCH_COVERAGE_WEIGHT_PERCENT"] = "140"
 			},
-			wantSub: "CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT must be between 0 and 100",
+			wantSub: "CATALOG_MATCH_COVERAGE_WEIGHT_PERCENT must be between 0 and 100",
+		},
+		{
+			// Calibration divides by the band's width, so an empty or inverted band has no scale.
+			name: "a similarity band with no width",
+			mutate: func(e map[string]string) {
+				e["CATALOG_MATCH_SIMILARITY_FLOOR_PERCENT"] = "90"
+				e["CATALOG_MATCH_SIMILARITY_CEILING_PERCENT"] = "90"
+			},
+			wantSub: "CATALOG_MATCH_SIMILARITY_FLOOR_PERCENT (90) must be below " +
+				"CATALOG_MATCH_SIMILARITY_CEILING_PERCENT (90)",
+		},
+		{
+			// A MATCHED line always clears the floor, so a high mark under it would call every
+			// match high.
+			name: "a high-confidence mark under the match floor",
+			mutate: func(e map[string]string) {
+				e["CATALOG_MATCH_HIGH_CONFIDENCE_PERCENT"] = "50"
+			},
+			wantSub: "CATALOG_MATCH_HIGH_CONFIDENCE_PERCENT (50) must not be below " +
+				"CATALOG_MATCH_MIN_CONFIDENCE_PERCENT (55)",
+		},
+		{
+			name:    "a review floor off the scale",
+			mutate:  func(e map[string]string) { e["CATALOG_MATCH_REVIEW_FLOOR_PERCENT"] = "-5" },
+			wantSub: "CATALOG_MATCH_REVIEW_FLOOR_PERCENT must be between 0 and 100",
+		},
+		{
+			// The review settles lines the match floor refused; above it, near misses never reach it.
+			name: "a review floor over the match floor",
+			mutate: func(e map[string]string) {
+				e["CATALOG_MATCH_REVIEW_FLOOR_PERCENT"] = "60"
+			},
+			wantSub: "CATALOG_MATCH_REVIEW_FLOOR_PERCENT (60) must not exceed " +
+				"CATALOG_MATCH_MIN_CONFIDENCE_PERCENT (55)",
+		},
+		{
+			name:    "a negative review cap",
+			mutate:  func(e map[string]string) { e["CATALOG_MATCH_REVIEW_MAX_LINES"] = "-1" },
+			wantSub: "CATALOG_MATCH_REVIEW_MAX_LINES must be zero or more, got -1",
 		},
 	}
 

@@ -937,6 +937,15 @@ definitions:
         items:
           $ref: '#/definitions/dto.QuoteItemAlternativeResponse'
         type: array
+      confidence_level:
+        description: |-
+          ConfidenceLevel is how settled the match reads: HIGH, MEDIUM or LOW, or null when the line
+          was never scored because matching did not run or a person chose the product.
+        enum:
+        - HIGH
+        - MEDIUM
+        - LOW
+        type: string
       confidence_score:
         type: string
       created_at:

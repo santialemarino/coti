@@ -142,7 +142,7 @@ carries `quote` and `version` as `null` for exactly this case.
 ## What a failed match does
 
 Matching is asked for a decision per line and may not be able to give one — the embedding provider
-is `disabled`, the catalog has no vectors yet, the provider is down. **Every line then stays
+is `disabled` or down, so no line can be embedded to search with. **Every line then stays
 `NO_MATCH` with no product and a null `confidence_score`, and the draft is still written.** Losing
 an extraction over a match would discard what the client asked for, and a flagged line is the state
 the seller resolves anyway.
@@ -167,25 +167,25 @@ do about it. So the candidates the matcher weighed are kept, as `quote_item_alte
 `origin = 'AI'` and `type = 'PRODUCT'`, and they come back attached to the line on both the draft
 and the priced response.
 
-| Line status | What it offers                      | Why                                                             |
-| ----------- | ----------------------------------- | --------------------------------------------------------------- |
-| `MATCHED`   | Nothing                             | The line is decided; there is nothing to choose between         |
-| `AMBIGUOUS` | Every candidate but the one it kept | It kept the leader, so the offers are the products it might be  |
-| `NO_MATCH`  | Every candidate                     | It points at nothing, so the closest near miss is the first one |
+| Line status | What it offers                        | Why                                                             |
+| ----------- | ------------------------------------- | --------------------------------------------------------------- |
+| `MATCHED`   | Nothing, unless the review decided it | The text decided it; a line the review settled keeps its offers |
+| `AMBIGUOUS` | Every candidate but the one it kept   | It kept the leader, so the offers are the products it might be  |
+| `NO_MATCH`  | Every candidate                       | It points at nothing, so the closest near miss is the first one |
 
 **A candidate that scored zero is dropped from both**, which is the one exception to that table.
 
 **`rank` is the candidate's place in the matcher's ranking, not a renumbering.** An `AMBIGUOUS`
-line's offers therefore start at two: rank one is the product on the line. Ranks can also skip,
-because the candidates are ordered by the fused rank rather than by score, so a dropped zero can
-sit between two offers. `confidence_score` is what the candidate scored, on
+line's offers therefore start at two: rank one is the product on the line. The ranking is the
+matcher's own order by confidence — or the review's, when it settled the line — so the dropped zeros
+are always its tail. `confidence_score` is what the candidate scored, on
 `quote_item.confidence_score`'s own scale, so a 59% near miss reads differently from a 12% long
 shot. Neither figure exists anywhere else on the row — `created_at` is the transaction's timestamp,
 shared by every row of one insert — which is why the table carries both columns.
 
-A zero means no similarity at all: the search reached the product because the top-K is wider than
-the catalog, or because it shares a word with the line. Offering those would bury the near miss
-under everything the account sells.
+A zero means the product shares no word with the line and its vector sits under the calibration
+band: the search reached it only because the pool is wider than what resembles the line. Offering
+those would bury the near miss under everything the account sells.
 
 **`price_snapshot` stays empty.** Nothing is priced when matching runs, and the price a seller would
 freeze is the one in force when they choose. Freezing prices belongs to valorization.

@@ -67,7 +67,10 @@ type QuoteItemResponse struct {
 	MinPriceSnapshot     *string    `json:"min_price_snapshot"`
 	Subtotal             *string    `json:"subtotal"`
 	ConfidenceScore      *string    `json:"confidence_score"`
-	MatchStatus          string     `json:"match_status"`
+	// ConfidenceLevel is how settled the match reads: HIGH, MEDIUM or LOW, or null when the line
+	// was never scored because matching did not run or a person chose the product.
+	ConfidenceLevel *string `json:"confidence_level" enums:"HIGH,MEDIUM,LOW"`
+	MatchStatus     string  `json:"match_status"`
 	// Alternatives are the candidates a flagged line was decided from, best first. A decided line
 	// carries none: there is nothing for the seller to choose between.
 	Alternatives []QuoteItemAlternativeResponse `json:"alternatives"`

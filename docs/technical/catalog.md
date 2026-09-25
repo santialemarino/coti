@@ -264,63 +264,85 @@ them within the ceiling.
 
 The search returns candidates and their evidence, and decides nothing: which of them counts as a
 match, which line is `AMBIGUOUS`, and which is flagged `NO_MATCH` belongs to the matching service.
+**Every candidate that has a vector carries its distance to the line**, whichever half found it,
+so a missing distance means a product not yet embedded rather than one outside the nearest few.
 
 ## Matching
 
 Matching turns the candidates a search offered into one decision per RFQ line: which product, how
 confident, and whether the seller has to look. It resolves every line of a request in a single
-search, which is what keeps the whole set to one embedding call and one transaction.
+search, which is what keeps the whole set to one embedding call and one transaction. It asks the
+search for a pool of `CATALOG_SEARCH_TOP_K × CATALOG_SEARCH_OVER_FETCH_FACTOR` candidates, scores
+every one, orders them by that score and keeps the best top K: the fused rank decides what reaches
+the matcher, never which candidate leads.
 
 Its caller is the plain-text RFQ pipeline — see [rfq-pipeline.md](rfq-pipeline.md), which also
 describes what a line looks like when matching cannot answer at all.
 
-### The fused score is a ranking, not a confidence
+### Confidence: what the name accounts for, and how close the vector sits
 
-Reciprocal rank fusion answers "which candidate first", and its figure maxes at
-`2 / (CATALOG_SEARCH_RRF_K + 1)` — about `0.033` at the default. Persisting it would put every
-line under any threshold worth setting. Confidence is derived instead from figures that mean
-something on their own scale:
+A candidate's confidence, on `0..1`, is a blend of two readings that mean something on their own:
 
-- **Cosine similarity**, `1 - distance`, clamped to `0..1`. A candidate carrying lexical evidence
-  takes `CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT` as its confidence floor, whether or not it also
-  carries an embedding. A stronger cosine similarity remains stronger. This keeps exact catalog
-  vocabulary useful in small catalogs where the semantic half can return every embedded product.
-- **The margin** over the runner-up, on the same scale. This is what separates a decided line from
-  a choice: two cements at `0.91` and `0.90` are not a confident match.
+- **Coverage** — how much of the client's line the product's text accounts for. The line and the
+  product's name, description and matched synonyms are tokenized the same way: accents folded,
+  plural and gender endings dropped, figures split from the letters around them (`8mm`, `15x15x6`,
+  `q188`), a decimal comma read as a point and a point grouping thousands read as one number
+  (`1.000` is a thousand), a whole number joined to a fraction kept as one figure (`1-1/2` never
+  meets `1/2`), and a unit bound to the figure it follows (`4mm` never meets `4L`; `m2` and `m²` are
+  one unit). The degree and ordinal signs are dropped (`90°`, `90º`, `Nº`). A letter against a slash
+  is an abbreviation (`p/`, `c/u`, `s/n`); any other lone letter is noise unless it is a unit, a
+  hand (`85 D`) or a shape right after a profile (`perfil C` is not `perfil U`). Every line token
+  earns the best credit a product token not already spent gives it: `1` for the same word or the
+  same value (`3` meets `3.00`), `0.9` for the same phonetic key (`ladriyo`, `sement`, `ierro`),
+  `0.8` for one letter off on words of five or more, `0.75` for an abbreviation of four letters or
+  more (`pret`, `durlo`). A figure weighs `1.5`, a word `1`, a lone unit `0.4` and a packaging word
+  (`bolsas`, `rollos`, `bol`) `0.3`: the spec is what tells two products of one family apart, and it
+  is exactly what an embedding blurs. A figure opening the line is the count
+  (`10 bolsas de cemento`) and is dropped, unless it is a fraction or a size in millimetres,
+  centimetres or inches (`8mm hierro`).
+- **Similarity** — cosine similarity mapped onto `0..1` between
+  `CATALOG_MATCH_SIMILARITY_FLOOR_PERCENT` (what an unrelated pair of catalog texts reaches) and
+  `CATALOG_MATCH_SIMILARITY_CEILING_PERCENT` (what a near-verbatim one does). Raw cosine from the
+  embedding model lives in a narrow band — correct pairs measured `0.55` to `0.90` — and reading
+  it as a probability is what made every correct match look weak. The band belongs to the model,
+  so it is re-measured when `AI_EMBEDDINGS_MODEL` changes.
 
-Two consequences of that shape are deliberate rather than oversights. **`ts_rank` never enters the
-score**, because it is not comparable across queries — it moves with term frequency and document
-length, so a flat configured worth is more honest than a number that looks precise and is not. Which
-means two candidates carrying lexical evidence below the configured floor tie at exactly that
-worth, and the line comes back `AMBIGUOUS` however much better one text match was. A candidate both
-halves found takes the higher of its cosine similarity and the lexical floor: the lexical signal is
-not counted arithmetically on top of the vector, but neither is it erased because the product was
-already embedded. Confidence measures the winner; the ranking measures the agreement.
+The confidence is `CATALOG_MATCH_COVERAGE_WEIGHT_PERCENT × coverage + the rest × similarity`, less
+`0.05 ×` the share of the product's figures the line never asked for — and that only when the line
+names a figure at all. A product with no vector yet is not evidence of dissimilarity, so its missing
+similarity reads as half its coverage. A seller-taught phrase (`quote_correction_memory`) leads
+whatever the text suggests, at `1 − its distance`. Every figure is **rounded to four decimals before
+it is compared**: `quote_item.confidence_score` is `NUMERIC(5,4)`, so the persisted number is the
+one the decision was taken on.
 
-The leading candidate is the one the **search** ranked first, never a re-ranking. Matching decides
-status; ranking is the search's, and the margin can therefore come out **negative** when the two
-halves disagree about which product a line is — which is an ambiguous line, and needs no special
-case.
-
-Every figure is carried as a decimal and **rounded to four decimals before it is compared**, not
-on the way to the database. `quote_item.confidence_score` is `NUMERIC(5,4)`, so the persisted
-number is then exactly the one the decision was taken on.
+`ts_rank` does not enter the score: it moves with term frequency and document length and means
+nothing across queries. Coverage is the lexical signal that does.
 
 ### The decision
 
-| Situation                                                                        | `match_status` | `product_id` | `confidence_score` |
-| -------------------------------------------------------------------------------- | -------------- | ------------ | ------------------ |
-| No candidate at all                                                              | `NO_MATCH`     | NULL         | `0.0000`           |
-| Leader below `CATALOG_MATCH_MIN_CONFIDENCE_PERCENT`                              | `NO_MATCH`     | NULL         | the leader's       |
-| Above the floor, margin at or above the ambiguity margin (or a single candidate) | `MATCHED`      | the leader   | the leader's       |
-| Above the floor, margin below it                                                 | `AMBIGUOUS`    | the leader   | the leader's       |
+| Situation                                           | `match_status` | `product_id` | `confidence_score` |
+| --------------------------------------------------- | -------------- | ------------ | ------------------ |
+| No candidate at all                                 | `NO_MATCH`     | NULL         | `0.0000`           |
+| Leader below `CATALOG_MATCH_MIN_CONFIDENCE_PERCENT` | `NO_MATCH`     | NULL         | the leader's       |
+| Above the floor with a rival, as defined below      | `AMBIGUOUS`    | the leader   | the leader's       |
+| Above the floor with no rival                       | `MATCHED`      | the leader   | the leader's       |
+
+A **rival** is a candidate within `CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT` of the leader, or one
+within three margins that covers the line as fully as the leader and carries no spec the line did
+not ask for beyond the leader's. The second clause is what makes `piedra partida` against three
+kinds of crushed stone a choice for the seller: the line never said which, and a vector a few
+points closer is not the client choosing. The third keeps `PVC CUPLA RED 110X100`, a reducer, from
+contesting `PVC CUPLA 110` for `cupla pvc 110`. Two seller-taught answers for one phrase are always
+a rival.
 
 Two parts of that are deliberate. **A rejected line keeps its best candidate's score**, because
 `0.55` and `0.00` are different problems for whoever reviews the unmatched items. And **an
 `AMBIGUOUS` line keeps the leading product**, so the seller confirms or replaces one proposal
 rather than searching the catalog from scratch; `match_status` is what says it is unconfirmed. Only
 `NO_MATCH` clears the product, which is the shape the domain asks for: **a line nothing matched is
-flagged and stays in the quote, never dropped.**
+flagged and stays in the quote, never dropped.** Choosing a product on a flagged line
+(`PATCH /v1/quotes/{id}/items/{itemId}` with a `product_id`) resolves it: `MATCHED`, and no score,
+since the matcher's reading described another product.
 
 Every line comes back, in the order it went in, and the candidates ride along with it — **each one
 carrying the confidence the matcher read it at**, not only the leader's. The seller picks another
@@ -328,11 +350,59 @@ from them, and the unmatched-items report shows what was considered and what eac
 Which of them are persisted, and how, is in
 [rfq-pipeline.md](rfq-pipeline.md#what-a-flagged-line-offers).
 
+### The review: trade knowledge the catalog text does not carry
+
+Some lines no text comparison settles: `placas de yeso` is a Durlock board, a green one resists
+moisture, `cinta aisladora` is the insulating tape the catalog calls `CINTA AISLANTE`. The lines
+the text left flagged — `AMBIGUOUS`, or `NO_MATCH` with a candidate at or above
+`CATALOG_MATCH_REVIEW_FLOOR_PERCENT` — go to the bound language model, at most
+`CATALOG_MATCH_REVIEW_MAX_LINES` per order, ten to a call and the calls side by side. A line whose
+leader is seller-taught is not sent, and `0` turns the review off.
+
+It is schema-forced like every call in [ai-providers.md](ai-providers.md#schema-forced-generation):
+the model sees the client's
+words and the candidates the matcher kept, each under a code, and the schema's enum is exactly
+those codes, so it cannot name a product it was not shown. It answers every line with a one-line
+reason and one verdict — `ONE` (the line names exactly this product), `SEVERAL` (these fit and the
+line does not say which) or `NONE` (no candidate is what the line asks for) — and is told the
+candidates are a shortlist, so "the only one offered" is not evidence. The backend then decides
+what the verdict is worth:
+
+| Verdict                                      | Becomes                                       |
+| -------------------------------------------- | --------------------------------------------- |
+| `ONE` on a candidate at or above the floor   | `MATCHED` on it                               |
+| `ONE` between the review floor and the floor | `AMBIGUOUS`, that candidate leading           |
+| `SEVERAL`                                    | `AMBIGUOUS`, the fitting candidates first     |
+| `NONE`                                       | `NO_MATCH`, the candidates and the score kept |
+| Anything that does not hold together         | The line exactly as the text had it           |
+
+So **the model's knowledge alone never marks a line decided** — the catalog text has to back a
+`MATCHED` on its own floor — and `NONE` only ever makes a line more cautious. The score kept is the
+text's own reading of the chosen candidate. A line the review settled keeps its other candidates on
+offer even once `MATCHED`, since the choice between them was the model's, and every verdict is
+logged with its reason (`catalog match reviewed`, the line named by position rather than by the
+client's words). A code outside a line's candidates voids that line's verdict. A review that fails,
+times out or answers for the wrong number of lines is logged and changes nothing: matching never
+fails an order over it.
+
+### What the review screen shows
+
+Each quote line carries `confidence_level` beside the score: `HIGH` for a `MATCHED` line at or
+above `CATALOG_MATCH_HIGH_CONFIDENCE_PERCENT`, `MEDIUM` for a `MATCHED` line below it or any
+`AMBIGUOUS` one, `LOW` for `NO_MATCH`, and null for a line with no score — matching did not run,
+or a person chose the product. The backoffice renders the level rather than cut-offs of its own,
+so moving the calibration moves the screen with it.
+
 ### Calibration
 
-The three settings are the whole knob, and they exist to be moved against a real catalog rather
-than guessed here. If matching disappoints, the place to look is `product_synonym` and the relative
-weight of the two halves — **not** the embedding model.
+Every default above is the calibration a labeled benchmark over a real 879-product corralón
+catalog settled on: 154 tuning queries and 45 held-out ones, each labeled with the statuses and the
+products a seller would accept. On it the text alone decides 92% of the tuning set and 93% of the
+held-out one correctly, the review brings them to 93–97% and 98%, and **no configuration in the
+chosen region matches a line to a wrong product with confidence** — a margin under 5 or a floor
+under 55 is where those start. Move the settings against the pilot's catalog, not by feel. If
+matching disappoints, the places to look are `product_synonym` and the similarity band, **not** the
+embedding model.
 
 `CATALOG_SEARCH_TOP_K` is bound to this: below two there is no runner-up, so every line above the
 floor would read as decided and `AMBIGUOUS` could never happen. Configuration refuses it at boot
@@ -387,9 +457,14 @@ per scan by default, which recalls too little of the catalog to survive the bran
 | `CATALOG_SEARCH_IVFFLAT_PROBES`            | 10      | Index partitions one approximate scan visits                   |
 | `CATALOG_SEARCH_RRF_K`                     | 60      | Constant in the rank fusion merging the two halves             |
 | `CATALOG_EMBEDDING_BATCH_SIZE`             | 200     | Products the backfill reads and writes per round               |
-| `CATALOG_MATCH_MIN_CONFIDENCE_PERCENT`     | 60      | Similarity below which a line is flagged `NO_MATCH`            |
+| `CATALOG_MATCH_MIN_CONFIDENCE_PERCENT`     | 55      | Confidence below which a line is flagged `NO_MATCH`            |
 | `CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT`   | 5       | Lead over the runner-up that makes a line `MATCHED`            |
-| `CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT` | 75      | Confidence floor for a candidate with lexical evidence         |
+| `CATALOG_MATCH_COVERAGE_WEIGHT_PERCENT`    | 75      | Share of the confidence coverage carries                       |
+| `CATALOG_MATCH_SIMILARITY_FLOOR_PERCENT`   | 25      | Cosine similarity read as no resemblance                       |
+| `CATALOG_MATCH_SIMILARITY_CEILING_PERCENT` | 90      | Cosine similarity read as a near-verbatim match                |
+| `CATALOG_MATCH_HIGH_CONFIDENCE_PERCENT`    | 80      | Score a `MATCHED` line clears to read `HIGH`                   |
+| `CATALOG_MATCH_REVIEW_FLOOR_PERCENT`       | 40      | Candidate score a flagged line needs to go to review           |
+| `CATALOG_MATCH_REVIEW_MAX_LINES`           | 30      | Flagged lines one order sends to review; `0` turns it off      |
 
 ## API specification
 

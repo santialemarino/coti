@@ -20,6 +20,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/ai"
 	"github.com/santialemarino/coti/apps/api/internal/config"
@@ -217,6 +218,8 @@ func newEnvWithRFQProviders(
 		Enabled: cfg.RateLimit.Enabled,
 	})
 
+	highConfidence := decimal.NewFromInt(int64(matchConfig().MatchHighConfidencePercent)).
+		Div(decimal.NewFromInt(100))
 	router := deliveryhttp.NewRouter(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)),
 		deliveryhttp.Handlers{
 			Health:        handler.NewHealthHandler(db),
@@ -225,14 +228,14 @@ func newEnvWithRFQProviders(
 			Verification:  handler.NewVerificationHandler(verificationService, mailTargetLimiter),
 			User:          handler.NewUserHandler(userService),
 			Branch:        handler.NewBranchHandler(services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)),
-			Rfq:           handler.NewRfqHandler(rfqService),
+			Rfq:           handler.NewRfqHandler(rfqService, highConfidence),
 			Channel:       handler.NewChannelHandler(channelService),
 			Product:       handler.NewProductHandler(productService, cfg.Storage.MaxFileSize),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
-			RFQ:           handler.NewRFQHandler(rfqService, cfg.Storage.MaxFileSize),
+			RFQ:           handler.NewRFQHandler(rfqService, cfg.Storage.MaxFileSize, highConfidence),
 			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
 			File:          handler.NewFileHandler(objectStorage.Local),
-			Quote:         handler.NewQuoteHandler(quoteService, nil, nil),
+			Quote:         handler.NewQuoteHandler(quoteService, nil, nil, highConfidence),
 			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
 				branchRepo, channelRepo, userRepo, onboardingRepo, authService, verificationService, quiet,
 				cfg.Auth, cfg.Branch)),

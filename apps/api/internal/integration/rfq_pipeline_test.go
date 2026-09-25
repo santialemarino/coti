@@ -458,8 +458,9 @@ func TestRFQPipeline_PersistsTheMatchRealSearchDecided(t *testing.T) {
 	if matched.productID == nil || *matched.productID != cement {
 		t.Errorf("cement product = %v, want %v", matched.productID, cement)
 	}
-	// The alignment is the similarity, so the stored score is arithmetic rather than a guess.
-	want := decimal.RequireFromString("0.9500")
+	// The count opening the line is dropped, "cemento" is all of it and the name carries it, so
+	// the stored score is 0.5 × 1 + 0.5 × the 0.95 alignment: arithmetic rather than a guess.
+	want := decimal.RequireFromString("0.9750")
 	if !matched.confidence.Valid || !matched.confidence.Decimal.Equal(want) {
 		t.Errorf("cement confidence = %v, want %s", matched.confidence, want)
 	}
@@ -485,9 +486,10 @@ func TestRFQPipeline_PersistsTheMatchRealSearchDecided(t *testing.T) {
 	if !flagged.quantity.IsZero() {
 		t.Errorf("sand quantity = %s, want zero", flagged.quantity)
 	}
-	// It kept the score of the candidate it rejected — 0.20 is the alignment the product was
-	// embedded at — which is what tells a near miss from a line nothing was offered for.
-	wantRejected := decimal.RequireFromString("0.2000")
+	// It kept the score of the candidate it rejected — half the 0.20 alignment the product was
+	// embedded at, its name sharing no word with the line — which is what tells a near miss from a
+	// line nothing was offered for.
+	wantRejected := decimal.RequireFromString("0.1000")
 	if !flagged.confidence.Valid || !flagged.confidence.Decimal.Equal(wantRejected) {
 		t.Errorf("flagged confidence = %v, want the rejected candidate's %s", flagged.confidence,
 			wantRejected)

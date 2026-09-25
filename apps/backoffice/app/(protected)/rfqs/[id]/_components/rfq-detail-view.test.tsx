@@ -56,6 +56,7 @@ const DRAFT_ITEM: QuoteItemResponse = {
   min_price_snapshot: null,
   subtotal: null,
   confidence_score: '0.9000',
+  confidence_level: 'HIGH',
   match_status: 'MATCHED',
   alternatives: [],
   pricing_unavailable: null,
@@ -69,6 +70,7 @@ const PRICED_ITEM: QuoteItemResponse = {
   min_price_snapshot: '700.00',
   subtotal: '390000.00',
   confidence_score: null,
+  confidence_level: null,
   pricing_unavailable: false,
 };
 

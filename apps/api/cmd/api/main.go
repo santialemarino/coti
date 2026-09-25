@@ -23,6 +23,7 @@ import (
 	"syscall"
 
 	"github.com/joho/godotenv"
+	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/ai"
 	aiprovider "github.com/santialemarino/coti/apps/api/internal/ai/provider"
@@ -156,7 +157,8 @@ func run() error {
 	channelService := services.NewChannelService(db, channelRepo, channelSealer)
 	catalogSearchService := services.NewCatalogSearchService(db, productRepo, providers.Embedder,
 		cfg.Catalog)
-	catalogMatchService := services.NewCatalogMatchService(catalogSearchService, cfg.Catalog)
+	catalogMatchService := services.NewCatalogMatchService(catalogSearchService, cfg.Catalog).
+		WithReviewer(ai.NewCatalogMatchReviewer(providers.Generator), log)
 	quoteCorrectionService := services.NewQuoteCorrectionService(db, quoteCorrectionRepo,
 		providers.Embedder, cfg.QuoteCorrection, log)
 	rfqExtractor := ai.NewRFQExtractor(providers.Generator, cfg.RFQ.MaxItems)
@@ -182,6 +184,9 @@ func run() error {
 		WithRepresentationService(quoteRepresentationService).
 		WithClientActions(clientActionRepo, userRepo).
 		WithMessages(quoteMessageRepo)
+	// What a MATCHED line clears to read as HIGH, on the 0..1 scale the item carries its score on.
+	highConfidence := decimal.NewFromInt(int64(cfg.Catalog.MatchHighConfidencePercent)).
+		Div(decimal.NewFromInt(100))
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
 			Health:        handler.NewHealthHandler(db),
@@ -190,14 +195,14 @@ func run() error {
 			Verification:  handler.NewVerificationHandler(verificationService, mailTargetLimiter),
 			User:          handler.NewUserHandler(userService),
 			Branch:        handler.NewBranchHandler(branchService),
-			Rfq:           handler.NewRfqHandler(rfqService),
+			Rfq:           handler.NewRfqHandler(rfqService, highConfidence),
 			Channel:       handler.NewChannelHandler(channelService),
 			Product:       handler.NewProductHandler(productService, cfg.Storage.MaxFileSize),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
-			RFQ:           handler.NewRFQHandler(rfqService, cfg.Storage.MaxFileSize),
+			RFQ:           handler.NewRFQHandler(rfqService, cfg.Storage.MaxFileSize, highConfidence),
 			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
 			Quote: handler.NewQuoteHandler(quoteService, quoteDeliveryService,
-				quoteRepresentationService),
+				quoteRepresentationService, highConfidence),
 			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
 			CatalogImport: handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
 			Account:       handler.NewAccountHandler(accountService),

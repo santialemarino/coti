@@ -223,7 +223,9 @@ func (r *ProductRepository) SetSearchProbes(ctx context.Context, q Querier, prob
 }
 
 // searchCandidatesQuery is the hybrid catalog search: the closest vectors and the full-text
-// matches over product names and their synonyms, narrowed to what the branch carries.
+// matches over product names and their synonyms, narrowed to what the branch carries. Every
+// candidate that has a vector is measured against the line, whichever half found it, so a missing
+// distance means the product has no vector rather than that it was not among the closest.
 //
 // Kept as a const so the test that reads its execution plan measures this statement rather than
 // a copy of it.
@@ -253,14 +255,16 @@ const searchCandidatesQuery = `
 	    GROUP BY product_id
 	),
 	lexical_hit AS (
-	    SELECT p.id AS product_id, ts_rank(p.search_document, ask.query)::float8 AS score
+	    SELECT p.id AS product_id, ts_rank(p.search_document, ask.query)::float8 AS score,
+	           NULL::text AS term
 	    FROM product p, ask
 	    WHERE p.account_id = $1 AND p.is_active = TRUE
 	      AND p.search_document @@ ask.query
 	    UNION ALL
 	    SELECT s.product_id,
 	           ts_rank(ask.document,
-	               plainto_tsquery('spanish_unaccent'::regconfig, s.term))::float8 AS score
+	               plainto_tsquery('spanish_unaccent'::regconfig, s.term))::float8 AS score,
+	           s.term
 	    FROM product_synonym s
 	    JOIN product sp ON sp.id = s.product_id AND sp.account_id = $1 AND sp.is_active = TRUE
 	    CROSS JOIN ask
@@ -269,7 +273,7 @@ const searchCandidatesQuery = `
 	      AND ask.document @@ plainto_tsquery('spanish_unaccent'::regconfig, s.term)
 	),
 	lexical AS (
-	    SELECT product_id, max(score)::float8 AS score
+	    SELECT product_id, max(score)::float8 AS score, array_remove(array_agg(term), NULL) AS terms
 	    FROM lexical_hit
 	    GROUP BY product_id
 	    ORDER BY score DESC
@@ -282,13 +286,12 @@ const searchCandidatesQuery = `
 	    UNION
 	    SELECT product_id FROM learned
 	)
-	SELECT p.id, p.code, p.canonical_name, p.unit, semantic.distance, lexical.score,
-	       learned.distance
+	SELECT p.id, p.code, p.canonical_name, p.description, p.unit, p.embedding <=> $4, lexical.score,
+	       lexical.terms, learned.distance
 	FROM candidate c
-	JOIN product p ON p.id = c.id AND p.account_id = $1
+	JOIN product p ON p.id = c.id AND p.account_id = $1 AND p.is_active = TRUE
 	JOIN branch_product bp ON bp.product_id = p.id AND bp.account_id = $1
 	  AND bp.branch_id = $2 AND bp.is_active = TRUE
-	LEFT JOIN semantic ON semantic.id = p.id
 	LEFT JOIN learned ON learned.product_id = p.id
 	LEFT JOIN lexical ON lexical.product_id = p.id`
 
@@ -312,8 +315,8 @@ func (r *ProductRepository) SearchCandidates(
 	var candidates []domain.CatalogCandidate
 	for rows.Next() {
 		var c domain.CatalogCandidate
-		if err := rows.Scan(&c.ProductID, &c.Code, &c.CanonicalName, &c.Unit,
-			&c.Distance, &c.LexicalScore, &c.LearnedDistance); err != nil {
+		if err := rows.Scan(&c.ProductID, &c.Code, &c.CanonicalName, &c.Description, &c.Unit,
+			&c.Distance, &c.LexicalScore, &c.Synonyms, &c.LearnedDistance); err != nil {
 			return nil, err
 		}
 		candidates = append(candidates, c)

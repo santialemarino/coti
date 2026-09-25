@@ -6730,6 +6730,15 @@ const docTemplate = `{
                         "$ref": "#/definitions/dto.QuoteItemAlternativeResponse"
                     }
                 },
+                "confidence_level": {
+                    "description": "ConfidenceLevel is how settled the match reads: HIGH, MEDIUM or LOW, or null when the line\nwas never scored because matching did not run or a person chose the product.",
+                    "type": "string",
+                    "enum": [
+                        "HIGH",
+                        "MEDIUM",
+                        "LOW"
+                    ]
+                },
                 "confidence_score": {
                     "type": "string"
                 },

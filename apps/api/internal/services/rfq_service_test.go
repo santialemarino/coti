@@ -2936,3 +2936,29 @@ func TestRFQService_SetSeller_HiddenOrderIsNotFound(t *testing.T) {
 		t.Errorf("hidden order ran the seller reach %d times, want none", reach.calls)
 	}
 }
+
+// A decided line offers nothing — unless the review decided it, when the choice between its
+// candidates was the model's and the seller keeps them to switch to.
+func TestAlternativesFromMatch_KeepsTheOffersOfALineTheReviewSettled(t *testing.T) {
+	leader, other := uuid.New(), uuid.New()
+	match := domain.LineMatch{
+		ProductID: &leader, MatchStatus: domain.ItemMatchStatusMatched,
+		Candidates: []domain.ScoredCandidate{
+			{CatalogCandidate: domain.CatalogCandidate{ProductID: leader},
+				Confidence: decimal.RequireFromString("0.85")},
+			{CatalogCandidate: domain.CatalogCandidate{ProductID: other},
+				Confidence: decimal.RequireFromString("0.83")},
+		},
+	}
+	itemID := uuid.New()
+
+	if got := alternativesFromMatch(itemID, match); got != nil {
+		t.Errorf("offers of a line the text decided = %+v, want none", got)
+	}
+
+	match.SettledByReview = true
+	got := alternativesFromMatch(itemID, match)
+	if len(got) != 1 || got[0].ProductID == nil || *got[0].ProductID != other || got[0].Rank != 2 {
+		t.Fatalf("offers of a reviewed line = %+v, want the other candidate at rank 2", got)
+	}
+}

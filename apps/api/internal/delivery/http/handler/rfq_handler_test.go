@@ -89,7 +89,7 @@ func TestRFQHandler_CreateTextDraft_ReturnsAReviewableDraft(t *testing.T) {
 			MatchStatus:     domain.ItemMatchStatusMatched, QuantityRationale: &rationale, CreatedAt: now,
 		}},
 	}}
-	handler := NewRFQHandler(service, 10<<20)
+	handler := NewRFQHandler(service, 10<<20, testHighConfidence)
 	payload, err := json.Marshal(map[string]any{
 		"channel_id": channelID,
 		"raw_text":   rawText,
@@ -143,7 +143,7 @@ func TestRFQHandler_CreateTextDraft_ReturnsAReviewableDraft(t *testing.T) {
 }
 
 func TestToTextRFQDraftResponse_MapsAnOrderThatProducedNoMaterials(t *testing.T) {
-	response := toTextRFQDraftResponse(domain.TextRFQDraft{
+	response := textDraftResponse(domain.TextRFQDraft{
 		RFQ: domain.RFQ{ID: uuid.New(), Status: domain.RFQStatusReceived},
 	})
 
@@ -163,7 +163,7 @@ func TestToTextRFQDraftResponse_MapsEveryLineAsADecimalString(t *testing.T) {
 	productID := uuid.New()
 	unit := "bolsa"
 	rationale := "el cliente pidió 10 bolsas"
-	response := toTextRFQDraftResponse(domain.TextRFQDraft{
+	response := textDraftResponse(domain.TextRFQDraft{
 		RFQ:     domain.RFQ{ID: uuid.New(), Status: domain.RFQStatusGenerated},
 		Quote:   &domain.Quote{ID: uuid.New(), CurrentStatus: domain.QuoteStatusDraft},
 		Version: &domain.QuoteVersion{ID: uuid.New(), VersionNumber: 1, Total: decimal.Zero},
@@ -244,7 +244,7 @@ func TestToTextRFQDraftResponse_LeavesThePricingQuestionOpenAndCarriesTheCandida
 	candidate := uuid.New()
 	name := "Membrana asfáltica 4mm"
 	code := "MEM-4"
-	response := toTextRFQDraftResponse(domain.TextRFQDraft{
+	response := textDraftResponse(domain.TextRFQDraft{
 		RFQ:     domain.RFQ{ID: uuid.New(), Status: domain.RFQStatusGenerated},
 		Quote:   &domain.Quote{ID: uuid.New(), CurrentStatus: domain.QuoteStatusDraft},
 		Version: &domain.QuoteVersion{ID: uuid.New(), VersionNumber: 1, Total: decimal.Zero},
@@ -302,7 +302,7 @@ func TestToQuoteItemResponse_AnswersThePricingQuestionOnceValued(t *testing.T) {
 		Quantity: decimal.RequireFromString("2"), MatchStatus: domain.ItemMatchStatusMatched,
 	}
 	gap := true
-	response := toQuoteItemResponse(unpriceable, nil, &gap)
+	response := toQuoteItemResponse(unpriceable, nil, &gap, testHighConfidence)
 
 	if response.PricingUnavailable == nil || !*response.PricingUnavailable {
 		t.Errorf("pricing_unavailable = %v, want true: the branch has no price for this product",
@@ -385,7 +385,7 @@ func TestToRfqDetailResponse_MapsAllFieldsFromDomainDetail(t *testing.T) {
 		}},
 	}
 
-	resp := toRfqDetailResponse(detail)
+	resp := toRfqDetailResponse(detail, testHighConfidence)
 
 	if resp.Rfq.ID != rfqID {
 		t.Errorf("rfq ID = %v, want %v", resp.Rfq.ID, rfqID)
@@ -473,7 +473,7 @@ func TestToRfqDetailResponse_MapsTheChangeRequestDiff(t *testing.T) {
 		},
 	}
 
-	resp := toRfqDetailResponse(detail)
+	resp := toRfqDetailResponse(detail, testHighConfidence)
 
 	if resp.ChangesRequested == nil {
 		t.Fatal("changes_requested is nil, want the mapped diff")
@@ -505,7 +505,7 @@ func TestToRfqDetailResponse_OmitsQuoteAndVersionWhenAbsent(t *testing.T) {
 		Rfq: domain.RfqListItem{ID: uuid.New(), Status: string(domain.RFQStatusReceived)},
 	}
 
-	resp := toRfqDetailResponse(detail)
+	resp := toRfqDetailResponse(detail, testHighConfidence)
 
 	if resp.Quote != nil {
 		t.Errorf("quote = %v, want nil", resp.Quote)
@@ -545,7 +545,7 @@ func TestToRfqDetailResponse_MapsTheCustomerResponses(t *testing.T) {
 		ClientActions: []domain.ClientAction{action},
 	}
 
-	resp := toRfqDetailResponse(detail)
+	resp := toRfqDetailResponse(detail, testHighConfidence)
 
 	if len(resp.ClientActions) != 1 {
 		t.Fatalf("client actions = %d, want 1", len(resp.ClientActions))
@@ -590,7 +590,7 @@ func TestRfqHandler_SetSeller_RoutesTheAdminRequest(t *testing.T) {
 			RFQID: tenant.AccountID, SellerID: &targetID,
 		},
 	}
-	handler := NewRfqHandler(service)
+	handler := NewRfqHandler(service, testHighConfidence)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -631,7 +631,7 @@ func TestRfqHandler_SetSeller_NullBodyClears(t *testing.T) {
 	service := &stubDiscountRFQService{
 		setSeller: &domain.Quote{ID: uuid.New(), AccountID: tenant.AccountID, BranchID: tenant.BranchID},
 	}
-	handler := NewRfqHandler(service)
+	handler := NewRfqHandler(service, testHighConfidence)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -657,7 +657,7 @@ func TestRfqHandler_SetSeller_BadBodyIs400(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	tenant := rfqSetSellerTenant()
 	service := &stubDiscountRFQService{}
-	handler := NewRfqHandler(service)
+	handler := NewRfqHandler(service, testHighConfidence)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -697,7 +697,7 @@ func TestRfqHandler_SetSeller_ServiceRefusalsPassThrough(t *testing.T) {
 			gin.SetMode(gin.TestMode)
 			tenant := rfqSetSellerTenant()
 			service := &stubDiscountRFQService{setSellerErr: want.err}
-			handler := NewRfqHandler(service)
+			handler := NewRfqHandler(service, testHighConfidence)
 
 			recorder := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(recorder)
@@ -714,4 +714,51 @@ func TestRfqHandler_SetSeller_ServiceRefusalsPassThrough(t *testing.T) {
 			}
 		})
 	}
+}
+
+// testHighConfidence is the mark a MATCHED line clears to read HIGH in these responses.
+var testHighConfidence = decimal.RequireFromString("0.80")
+
+func textDraftResponse(draft domain.TextRFQDraft) dto.TextRFQDraftResponse {
+	return toTextRFQDraftResponse(draft, testHighConfidence)
+}
+
+// The level is the API's reading of the score, so the review screen shows the backend's
+// calibration rather than cut-offs of its own. A person's choice carries no score and no level.
+func TestToQuoteItemResponse_ReadsTheConfidenceLevel(t *testing.T) {
+	score := func(raw string) decimal.NullDecimal {
+		return decimal.NewNullDecimal(decimal.RequireFromString(raw))
+	}
+	for _, tc := range []struct {
+		name   string
+		status domain.ItemMatchStatus
+		score  decimal.NullDecimal
+		want   *string
+	}{
+		{"a match at the mark", domain.ItemMatchStatusMatched, score("0.8000"), ptr("HIGH")},
+		{"a match under it", domain.ItemMatchStatusMatched, score("0.7999"), ptr("MEDIUM")},
+		{"an ambiguous line, however high", domain.ItemMatchStatusAmbiguous, score("0.9900"),
+			ptr("MEDIUM")},
+		{"a near miss", domain.ItemMatchStatusNoMatch, score("0.5400"), ptr("LOW")},
+		{"nothing offered", domain.ItemMatchStatusNoMatch, score("0.0000"), ptr("LOW")},
+		{"a line a person resolved", domain.ItemMatchStatusMatched, decimal.NullDecimal{}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := toQuoteItemResponse(domain.QuoteItem{
+				ID: uuid.New(), MatchStatus: tc.status, ConfidenceScore: tc.score,
+			}, nil, nil, testHighConfidence).ConfidenceLevel
+			if (got == nil) != (tc.want == nil) || (got != nil && *got != *tc.want) {
+				t.Errorf("confidence level = %v, want %v", deref(got), deref(tc.want))
+			}
+		})
+	}
+}
+
+func ptr(value string) *string { return &value }
+
+func deref(value *string) string {
+	if value == nil {
+		return "<nil>"
+	}
+	return *value
 }

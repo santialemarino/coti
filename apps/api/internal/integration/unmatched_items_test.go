@@ -226,13 +226,12 @@ func TestUnmatchedItems_OffersTheCandidatesOfEveryFlaggedLine(t *testing.T) {
 	if len(cementOffers) != 1 {
 		t.Fatalf("cemento line offers %d, want the one it is not", len(cementOffers))
 	}
-	// Which cement the fusion ranked first is the search's business, so the expectation is derived
-	// from the line's own product: the offer is the other one, at the alignment it was seeded with.
-	onTheLine := lineProduct(t, staged.draft.Items, staged.cementItem)
-	wantOffer, wantConfidence := staged.runnerUp, "0.9400"
-	if onTheLine == staged.runnerUp {
-		wantOffer, wantConfidence = staged.leader, "0.9500"
+	// Both names cover the line, so the closer vector leads and the other is what is on offer:
+	// 0.5 × 1 + 0.5 × its 0.94 alignment.
+	if onTheLine := lineProduct(t, staged.draft.Items, staged.cementItem); onTheLine != staged.leader {
+		t.Errorf("cemento line = %v, want the closer cement %v", onTheLine, staged.leader)
 	}
+	wantOffer, wantConfidence := staged.runnerUp, "0.9700"
 	if cementOffers[0].productID == nil || *cementOffers[0].productID != wantOffer {
 		t.Errorf("cemento offer = %v, want the other cement %v", cementOffers[0].productID,
 			wantOffer)
@@ -240,7 +239,6 @@ func TestUnmatchedItems_OffersTheCandidatesOfEveryFlaggedLine(t *testing.T) {
 	if cementOffers[0].rank != 2 {
 		t.Errorf("cemento offer rank = %d, want 2", cementOffers[0].rank)
 	}
-	// 1 − distance at the seeded alignment, rounded to the column's scale.
 	if !cementOffers[0].confidence.Valid ||
 		!cementOffers[0].confidence.Decimal.Equal(decimal.RequireFromString(wantConfidence)) {
 		t.Errorf("cemento offer confidence = %v, want %s", cementOffers[0].confidence,
@@ -283,17 +281,67 @@ func TestUnmatchedItems_OffersTheCandidatesOfEveryFlaggedLine(t *testing.T) {
 	}
 	// The catalog identity is joined, which is what makes an offer readable at all.
 	returned := staged.draft.Alternatives[staged.cementItem][0]
-	wantName := "Cemento Portland 25kg"
-	if onTheLine == staged.runnerUp {
-		wantName = "Cemento Portland 50kg"
-	}
-	if returned.CanonicalName == nil || *returned.CanonicalName != wantName {
+	if wantName := "Cemento Portland 25kg"; returned.CanonicalName == nil ||
+		*returned.CanonicalName != wantName {
 		t.Errorf("offer name = %v, want %q from the catalog", returned.CanonicalName, wantName)
 	}
 }
 
 // The ticket's fifth criterion: version one keeps the marks it had, and the candidates behind
 // them, after version two resolves the line.
+// The ticket's fourth criterion, through the route the backoffice calls: choosing the product of a
+// flagged line resolves it. A line the seller settled stays flagged otherwise, and a quote only
+// reaches the client once every line is MATCHED, so a resolved order could never be sent.
+func TestUnmatchedItems_ChoosingTheProductResolvesTheLine(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "Unmatched items resolution")
+	seller := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	staged := e.ambiguousDraft(t, accountID, branchID, seller)
+	token := e.tokenFor(t, seller)
+
+	for itemID, productID := range map[uuid.UUID]uuid.UUID{
+		staged.cementItem: staged.runnerUp, staged.strayItem: staged.nearMiss,
+	} {
+		rec := e.do(t, request{method: http.MethodPatch,
+			path:  "/v1/quotes/" + staged.draft.Quote.ID.String() + "/items/" + itemID.String(),
+			token: token, branch: branchID.String(),
+			body: map[string]any{"product_id": productID}})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("resolve PATCH = %d, want 200: %s", rec.Code, rec.Body)
+		}
+		var line struct {
+			ProductID       *uuid.UUID `json:"product_id"`
+			MatchStatus     string     `json:"match_status"`
+			ConfidenceScore *string    `json:"confidence_score"`
+			ConfidenceLevel *string    `json:"confidence_level"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &line); err != nil {
+			t.Fatalf("decode the resolved line %s: %v", rec.Body, err)
+		}
+		if line.ProductID == nil || *line.ProductID != productID {
+			t.Errorf("product = %v, want the seller's %v", line.ProductID, productID)
+		}
+		if line.MatchStatus != string(domain.ItemMatchStatusMatched) {
+			t.Errorf("match status = %q, want MATCHED once the seller chose", line.MatchStatus)
+		}
+		// The score was the matcher's reading of another product; a person's choice carries none.
+		if line.ConfidenceScore != nil || line.ConfidenceLevel != nil {
+			t.Errorf("confidence = %s / %s, want none on a line a person resolved",
+				stringOrNil(line.ConfidenceScore), stringOrNil(line.ConfidenceLevel))
+		}
+	}
+
+	var flagged int
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT count(*) FROM quote_item WHERE version_id = $1 AND match_status <> 'MATCHED'`,
+		staged.draft.Version.ID).Scan(&flagged); err != nil {
+		t.Fatalf("count flagged lines: %v", err)
+	}
+	if flagged != 0 {
+		t.Errorf("flagged lines stored = %d, want none after the seller resolved both", flagged)
+	}
+}
+
 func TestUnmatchedItems_AFrozenVersionKeepsItsMarks(t *testing.T) {
 	e := newEnv(t)
 	accountID, branchID := e.seedAccount(t, "Unmatched items freeze")
@@ -532,4 +580,11 @@ func TestUnmatchedItems_NamesTheLineTheBranchCannotPrice(t *testing.T) {
 		decimal.RequireFromString("150000.00")) {
 		t.Errorf("total = %s, want 150000.00", got)
 	}
+}
+
+func stringOrNil(value *string) string {
+	if value == nil {
+		return "<nil>"
+	}
+	return *value
 }
