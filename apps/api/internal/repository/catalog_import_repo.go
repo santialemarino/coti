@@ -126,7 +126,7 @@ func (r *CatalogImportRepository) ListExistingCodes(
 	return existing, rows.Err()
 }
 
-// ApplyImport upserts products, branch availability, and changed prices in one batch.
+// ApplyImport upserts products, branch availability and changed prices in the caller's transaction.
 func (r *CatalogImportRepository) ApplyImport(
 	ctx context.Context, q Querier, tenant domain.Tenant, effectiveAt time.Time,
 	rows []domain.CatalogImportRow,
