@@ -854,7 +854,7 @@ func (r *QuoteRepository) GetItem(
 }
 
 // UpdateItem patches a draft quote item's mutable fields. Only non-nil fields in the update are
-// written; the version must not be frozen.
+// written; the version must not be frozen. Setting the product resolves the line as MATCHED.
 func (r *QuoteRepository) UpdateItem(
 	ctx context.Context, q Querier, accountID, versionID, itemID uuid.UUID,
 	in domain.QuoteItemUpdate,
@@ -867,6 +867,9 @@ func (r *QuoteRepository) UpdateItem(
 		setClauses = append(setClauses, fmt.Sprintf("product_id = $%d", argIdx))
 		args = append(args, *in.ProductID)
 		argIdx++
+		// A person choosing the product settles the line, and the matcher's score described
+		// whatever it had proposed instead.
+		setClauses = append(setClauses, "match_status = 'MATCHED'", "confidence_score = NULL")
 		setClauses = append(setClauses, "min_price_snapshot = NULL")
 		if in.UnitPriceSnapshot == nil {
 			setClauses = append(setClauses, "unit_price_snapshot = NULL", "subtotal = NULL")
