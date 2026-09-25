@@ -31,8 +31,8 @@ type LineMatch struct {
 	// Candidates are the search's offers, best first, kept so the seller can pick another and
 	// the unmatched-items report can show what was considered.
 	Candidates []ScoredCandidate
-	// SettledByReview marks a line the language model's review decided, which keeps its candidates
-	// on offer even once MATCHED: the choice between them was the model's, not the text's.
+	// SettledByReview marks a line the language model's review decided. A MATCHED one keeps its
+	// candidates on offer, since the choice between them was the model's, not the text's.
 	SettledByReview bool
 }
 

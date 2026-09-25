@@ -300,12 +300,14 @@ func (s *CatalogMatchService) review(
 	}
 	for i, index := range pending {
 		matches[index] = s.applyReview(matches[index], decisions[i])
-		// The reason is not stored anywhere yet, so the log is the trace of why a line moved.
-		s.log.InfoContext(ctx, "catalog match reviewed",
-			slog.String("line", descriptions[index]),
-			slog.String("verdict", string(decisions[i].Verdict)),
-			slog.String("status", string(matches[index].MatchStatus)),
-			slog.String("reason", decisions[i].Reason))
+		// The reason is not stored anywhere yet, so the log is the trace of why a line moved. It
+		// names the line by position: the client's words stay out of the log.
+		if decisions[i].Verdict != "" {
+			s.log.InfoContext(ctx, "catalog match reviewed", slog.Int("line", index),
+				slog.String("verdict", string(decisions[i].Verdict)),
+				slog.String("status", string(matches[index].MatchStatus)),
+				slog.String("reason", decisions[i].Reason))
+		}
 	}
 }
 

@@ -307,6 +307,8 @@ func TestCatalogMatch_FollowsTheConfiguredThreshold(t *testing.T) {
 
 	relaxed := matchConfig()
 	relaxed.MatchMinConfidencePercent = 20
+	// Startup refuses a review floor over the match floor, so a lowered floor lowers both.
+	relaxed.MatchReviewFloorPercent = 20
 	got := e.matchOne(t, relaxed, account, branch, "polvo de ladrillo")
 	if got.MatchStatus != domain.ItemMatchStatusMatched {
 		t.Errorf("match status at a floor of 20%% = %q, want MATCHED", got.MatchStatus)

@@ -289,16 +289,17 @@ A candidate's confidence, on `0..1`, is a blend of two readings that mean someth
   `q188`), a decimal comma read as a point and a point grouping thousands read as one number
   (`1.000` is a thousand), a whole number joined to a fraction kept as one figure (`1-1/2` never
   meets `1/2`), and a unit bound to the figure it follows (`4mm` never meets `4L`; `m2` and `m²` are
-  one unit). The degree and ordinal signs are dropped (`90°`, `90º`, `Nº`), a letter before a slash
-  is an abbreviation (`p/`, `c/`, `s/`) and a lone letter is a shape (`perfil C` is not
-  `perfil U`). Every line token earns the best credit a product token not already spent gives it:
-  `1` for the same word or the same value (`3` meets `3.00`), `0.9` for the same phonetic key
-  (`ladriyo`, `sement`, `ierro`), `0.8` for one letter off on words of five or more, `0.75` for an
-  abbreviation of four letters or more (`pret`, `durlo`). A figure weighs `1.5`, a word `1`, a lone
-  unit `0.4` and a packaging word (`bolsas`, `rollos`, `bol`) `0.3`: the spec is what tells two
-  products of one family apart, and it is exactly what an embedding blurs. A figure opening the
-  line is the count (`10 bolsas de cemento`) and is dropped, unless it is a fraction or a size in
-  millimetres, centimetres or inches (`8mm hierro`).
+  one unit). The degree and ordinal signs are dropped (`90°`, `90º`, `Nº`). A letter against a slash
+  is an abbreviation (`p/`, `c/u`, `s/n`); any other lone letter is noise unless it is a unit, a
+  hand (`85 D`) or a shape right after a profile (`perfil C` is not `perfil U`). Every line token
+  earns the best credit a product token not already spent gives it: `1` for the same word or the
+  same value (`3` meets `3.00`), `0.9` for the same phonetic key (`ladriyo`, `sement`, `ierro`),
+  `0.8` for one letter off on words of five or more, `0.75` for an abbreviation of four letters or
+  more (`pret`, `durlo`). A figure weighs `1.5`, a word `1`, a lone unit `0.4` and a packaging word
+  (`bolsas`, `rollos`, `bol`) `0.3`: the spec is what tells two products of one family apart, and it
+  is exactly what an embedding blurs. A figure opening the line is the count
+  (`10 bolsas de cemento`) and is dropped, unless it is a fraction or a size in millimetres,
+  centimetres or inches (`8mm hierro`).
 - **Similarity** — cosine similarity mapped onto `0..1` between
   `CATALOG_MATCH_SIMILARITY_FLOOR_PERCENT` (what an unrelated pair of catalog texts reaches) and
   `CATALOG_MATCH_SIMILARITY_CEILING_PERCENT` (what a near-verbatim one does). Raw cosine from the
@@ -379,9 +380,10 @@ So **the model's knowledge alone never marks a line decided** — the catalog te
 `MATCHED` on its own floor — and `NONE` only ever makes a line more cautious. The score kept is the
 text's own reading of the chosen candidate. A line the review settled keeps its other candidates on
 offer even once `MATCHED`, since the choice between them was the model's, and every verdict is
-logged with its reason (`catalog match reviewed`). A code outside a line's candidates voids that
-line's verdict. A review that fails, times out or answers for the wrong number of lines is logged
-and changes nothing: matching never fails an order over it.
+logged with its reason (`catalog match reviewed`, the line named by position rather than by the
+client's words). A code outside a line's candidates voids that line's verdict. A review that fails,
+times out or answers for the wrong number of lines is logged and changes nothing: matching never
+fails an order over it.
 
 ### What the review screen shows
 

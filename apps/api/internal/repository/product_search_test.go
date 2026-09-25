@@ -200,8 +200,6 @@ func TestProductRepository_SearchCandidatesUsesAccountLocalCatalogCorrection(t *
 	}
 }
 
-// updated_at says a person changed the product. A backfill over a loaded catalog would otherwise
-// stamp every row as edited at once, and leave the staleness comparison with nothing to measure.
 // A seller-taught phrase keeps pointing at a product after it is deactivated; the search must
 // still not offer a product the account stopped selling.
 func TestProductRepository_SearchCandidatesSkipsADeactivatedProductASellerTaught(t *testing.T) {
@@ -227,6 +225,8 @@ func TestProductRepository_SearchCandidatesSkipsADeactivatedProductASellerTaught
 	}
 }
 
+// updated_at says a person changed the product. A backfill over a loaded catalog would otherwise
+// stamp every row as edited at once, and leave the staleness comparison with nothing to measure.
 func TestProductRepository_SetEmbeddingsDoesNotMarkTheProductEdited(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()
@@ -508,8 +508,11 @@ func TestProductRepository_SearchUsesTheVectorIndex(t *testing.T) {
 	stockBranch(t, db, account, branch, product, true)
 	writeEmbedding(t, db, account, product, alignedVector(1))
 
+	// Concurrently, because a plain build over a table with rows updated in place is marked
+	// indcheckxmin: while any older transaction is open — another package's test, in CI — the
+	// planner may not use it yet, and the plan would depend on who else is running.
 	if _, err := db.CrossAccount().Exec(ctx,
-		`CREATE INDEX idx_product_embedding ON product
+		`CREATE INDEX CONCURRENTLY idx_product_embedding ON product
 		 USING ivfflat (embedding vector_cosine_ops) WITH (lists = 1)`); err != nil {
 		t.Fatalf("create vector index: %v", err)
 	}

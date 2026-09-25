@@ -58,6 +58,18 @@ func TestTokenizeCatalogText_ReadsCatalogAndClientSpellingsAlike(t *testing.T) {
 		{"PERFIL C GALVANIZADO 100", []string{"perfil", "c", "galvanizad", "100"}},
 		{"PERFIL U NEGRO 160X60", []string{"perfil", "u", "negr", "160", "60"}},
 		{"AISLANTE 50MM S/ ALUM", []string{"aislante", "50/mm", "alum"}},
+		{"ANGULO L 1 1/2", []string{"angul", "l", "1+1/2"}},
+		// Elsewhere a lone letter is noise: the "u" of units, the "c" glued to a gauge.
+		{"ladrillo comun 10 c/u", []string{"ladrill", "comun", "10"}},
+		{"10 u ladrillos", []string{"10", "ladrill"}},
+		{"CHAPA ACAN C25 NEGRA", []string{"chap", "acan", "25", "negr"}},
+		// A section in square millimetres is how a cable's size is written, typed or printed.
+		{"CABLE 2,5 MM²", []string{"cable", "2.5/mm"}},
+		{"CERAMICA 45X45 X MT²", []string{"ceramic", "45", "45/m2"}},
+		// The hands stay single letters, and "XL" is a size, not litres.
+		{"GUANTE XL", []string{"guante", "xl"}},
+		// "0.500" is a decimal: a thousands group never opens with a zero.
+		{"CHAPA 0.500MM", []string{"chap", "0.500/mm"}},
 		{`CLAVOS P/PARIS 2"`, []string{"clav", "pari", "2/in"}},
 	} {
 		t.Run(tc.text, func(t *testing.T) {

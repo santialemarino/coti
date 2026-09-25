@@ -71,12 +71,12 @@ var accentFolder = strings.NewReplacer(
 )
 
 // thousandsFigure is a figure grouped with points ("1.000", "2.500"), the way Argentine text
-// writes thousands; a decimal point takes one or two digits.
-var thousandsFigure = regexp.MustCompile(`^\d{1,3}(\.\d{3})+$`)
+// writes thousands; a decimal point takes one or two digits, and "0.500" is a decimal.
+var thousandsFigure = regexp.MustCompile(`^[1-9]\d{0,2}(\.\d{3})+$`)
 
-// stopWords carry no identity of their own, including the "x" between two dimensions. A single
-// letter abbreviating one ("p/" para, "c/" con, "s/" sin) is dropped by its slash instead, since
-// on its own a letter can be a shape: a "perfil C" is not a "perfil U".
+// stopWords carry no identity of their own, including the "x" between two dimensions. Single
+// letters are dropped too, except the shape that names a profile: a "perfil C" is not a
+// "perfil U".
 var stopWords = map[string]bool{
 	"a": true, "al": true, "con": true, "de": true, "del": true, "e": true, "el": true,
 	"en": true, "la": true, "las": true, "lo": true, "los": true, "n": true, "o": true,
@@ -91,15 +91,27 @@ var unitWords = map[string]string{
 	"kg": "kg", "kgs": "kg", "kilo": "kg", "kilos": "kg", "kilogramo": "kg", "kilogramos": "kg",
 	"g": "g", "gr": "g", "grs": "g", "gramo": "g", "gramos": "g",
 	"l": "l", "lt": "l", "lts": "l", "litro": "l", "litros": "l",
-	"cc": "cc", "pulgada": "in", "pulgadas": "in", "m2": "m2", "m3": "m3",
+	"cc": "cc", "pulgada": "in", "pulgadas": "in",
+	// An area or a volume. For millimetres and centimetres the square is how clients and catalogs
+	// both mean a cable's section, and folding it keeps "2,5mm" meeting "2,5 MM²".
+	"m2": "m2", "mt2": "m2", "mts2": "m2", "m3": "m3", "mt3": "m3", "mts3": "m3",
+	"mm2": "mm", "cm2": "cm", "cm3": "cc",
 }
+
+// separatedUnits are the units a catalog glues to the "x" before them ("XM²", "XKG").
+var separatedUnits = map[string]bool{"m": true, "m2": true, "mt": true, "mts": true, "kg": true}
 
 // dimensionUnits are units a size is written in and a quantity never is, so a figure opening a
 // line in one of them is a spec: "8mm hierro" asks for 8mm iron.
 var dimensionUnits = map[string]bool{"mm": true, "cm": true, "in": true}
 
-// shapeLetters are the single letters a profile is named by: "perfil C", "perfil U", "perfil L".
-var shapeLetters = map[string]bool{"c": true, "u": true, "t": true, "h": true, "z": true}
+// shapeLetters are the single letters a profile is named by, read as a shape only right after the
+// word for a profile: "perfil C", "perfil U", "angulo L". Anywhere else a lone letter is noise —
+// the "u" of "10 u" or "c/u", the "c" glued to "c25".
+var shapeLetters = map[string]bool{"c": true, "u": true, "l": true, "t": true, "h": true, "z": true}
+
+// profileWords are the stems a shape letter follows.
+var profileWords = map[string]bool{"perfil": true, "angul": true, "hierr": true, "cano": true}
 
 // abbreviations catalogs write that a prefix cannot recover, being shorter than one.
 var abbreviations = map[string]string{"pta": "puerta", "ptas": "puerta"}
@@ -177,18 +189,30 @@ func tokenizeCatalogText(text string) []matchToken {
 			}
 			word := string(runes[start:i])
 			// "x m2" is often written "xm2": the "x" joining a unit is the separator, not a word.
-			if len(word) > 1 && word[0] == 'x' && unitWords[word[1:]] != "" {
+			if len(word) > 1 && word[0] == 'x' && separatedUnits[word[1:]] {
 				word = word[1:]
 			}
-			// A metre followed by 2 or 3 is an area or a volume, not a metre and a figure.
-			if word == "m" && i < len(runes) && (runes[i] == '2' || runes[i] == '3') &&
-				(i+1 == len(runes) || !unicode.IsDigit(runes[i+1])) {
+			// A unit followed by 2 or 3 is an area or a volume ("m2", "mts²"), not a unit and a
+			// figure.
+			if i < len(runes) && (runes[i] == '2' || runes[i] == '3') &&
+				(i+1 == len(runes) || !unicode.IsDigit(runes[i+1])) &&
+				unitWords[word+string(runes[i])] != "" {
 				word += string(runes[i])
 				i++
 			}
-			// A single letter before a slash abbreviates a word ("p/", "c/", "s/").
-			if utf8.RuneCountInString(word) == 1 && i < len(runes) && runes[i] == '/' {
-				continue
+			// A lone letter against a slash abbreviates a word ("p/", "c/u", "s/n"). Otherwise it
+			// is a shape after a profile, and only counts as a unit ("m", "l") or a hand ("d", "i").
+			if utf8.RuneCountInString(word) == 1 {
+				if (start > 0 && runes[start-1] == '/') || (i < len(runes) && runes[i] == '/') {
+					continue
+				}
+				if shapeLetters[word] && afterProfile(tokens) {
+					tokens = append(tokens, matchToken{text: word, kind: tokenWord, key: word})
+					continue
+				}
+				if unitWords[word] == "" && sideWords[word] == "" {
+					continue
+				}
 			}
 			if token, ok := wordToken(word); ok {
 				tokens = append(tokens, token)
@@ -293,6 +317,12 @@ func bindUnits(tokens []matchToken) []matchToken {
 	return bound
 }
 
+// afterProfile reports whether the token just read names a profile, which a shape letter follows.
+func afterProfile(tokens []matchToken) bool {
+	return len(tokens) > 0 && tokens[len(tokens)-1].kind == tokenWord &&
+		profileWords[tokens[len(tokens)-1].text]
+}
+
 func stems(words ...string) map[string]bool {
 	set := make(map[string]bool, len(words))
 	for _, word := range words {
@@ -336,7 +366,7 @@ func wordToken(word string) (matchToken, bool) {
 	if side, ok := sideWords[word]; ok {
 		return matchToken{text: side, kind: tokenWord, key: side}, true
 	}
-	if stopWords[word] || (utf8.RuneCountInString(word) < 2 && !shapeLetters[word]) {
+	if stopWords[word] {
 		return matchToken{}, false
 	}
 	if full, ok := abbreviations[word]; ok {
