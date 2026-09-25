@@ -439,8 +439,11 @@ func TestProductRepository_SearchUsesTheVectorIndex(t *testing.T) {
 	stockBranch(t, db, account, branch, product, true)
 	writeEmbedding(t, db, account, product, alignedVector(1))
 
+	// Concurrently, because a plain build over a table with rows updated in place is marked
+	// indcheckxmin: while any older transaction is open — another package's test, in CI — the
+	// planner may not use it yet, and the plan would depend on who else is running.
 	if _, err := db.CrossAccount().Exec(ctx,
-		`CREATE INDEX idx_product_embedding ON product
+		`CREATE INDEX CONCURRENTLY idx_product_embedding ON product
 		 USING ivfflat (embedding vector_cosine_ops) WITH (lists = 1)`); err != nil {
 		t.Fatalf("create vector index: %v", err)
 	}
