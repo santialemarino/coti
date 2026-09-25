@@ -29,6 +29,8 @@
     "test:rfq:integration": "pnpm --filter api run test:rfq:integration",
     "test:rfq:response": "pnpm --filter api run test:rfq:response",
     "eval:rfq": "node scripts/rfq-eval.mjs",
+    "eval:catalog-match": "pnpm --filter api run eval:catalog-match",
+    "eval:catalog-match:review": "pnpm --filter api run eval:catalog-match:review",
     "debug:rfq": "node scripts/rfq-eval.mjs --trace --api-url http://127.0.0.1:8001 --wait-seconds 10",
     "debug:rfq:case": "node scripts/rfq-eval.mjs --trace --case explicit-quantity --api-url http://127.0.0.1:8001 --wait-seconds 10",
     "report:rfq": "node scripts/rfq-report.mjs",

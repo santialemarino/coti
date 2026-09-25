@@ -1,0 +1,4397 @@
+[
+  {
+    "name": "ACELERANTE",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ACERO INOX 430 LISTELLO CLASICO 20mm x 2,2m BRI (",
+    "description": "430/02",
+    "unit": "unidad"
+  },
+  {
+    "name": "ACERO INOX 430 LISTELLO EMPERADOR 30mm x 2,2m BRI",
+    "description": "430/03",
+    "unit": "unidad"
+  },
+  {
+    "name": "ACERO INOX 430 LISTELLO ROYAL 10mm x 2,2m BRI (43",
+    "description": "430/01",
+    "unit": "unidad"
+  },
+  {
+    "name": "AGROPOL- FILM POLIETILENO NEGRO 200 MICRONES X M²",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "AISLANTE 50MM LANA DE VIDRIO ALUM 1.20 X18",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AISLANTE 50MM LANA DE VIDRIO S/ ALUM 18m x 1.2m",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AISLANTE TERM. C/ESPUMA DE 10MM X 20MT",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AISLANTE TERM. C/ESPUMA DE 10MM x M",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ALAMBRE POR KG",
+    "description": null,
+    "unit": "kg"
+  },
+  {
+    "name": "ALUBAND MAX 15 CM X 5M",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ALUBAND MAX 25 CM X 5M",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ANGULO 12.5X12.5MM - 2.50M",
+    "description": "2643",
+    "unit": "unidad"
+  },
+  {
+    "name": "ANGULO 19.5X19.5MM 2.50M ACERO INOX (2644)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ANGULO DE AJUSTE -",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ARENA EN BOLSA 15KG",
+    "description": null,
+    "unit": "bolsa"
+  },
+  {
+    "name": "ARENA EN BOLSON REUTILIZADO",
+    "description": null,
+    "unit": "bolsón"
+  },
+  {
+    "name": "ARENA POR 100KG",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ARENA POR M²",
+    "description": null,
+    "unit": "m3"
+  },
+  {
+    "name": "AWADUCT 110 CODO 45° HH (30074)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 110 CODO 45° MH (30104)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 110 CODO 90° HH (30084)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 110 CODO 90° MH (30114)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 110 CODO MH CON BASE (30116)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 110 CURVA 90° MH (30125)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 110 MANGUITO LISO (30134)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 110 RAMAL 45°HH (30168)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 110 RAMAL 45°MH (30164)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 110 RAMAL 90° MH (30154)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 110 SOMBRERO H",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 110 TAPA H (30224)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 110 TAPON M (30334)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 110X1 TUBO MH CLOACAL (30034)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 110X2 TUBO MH CLOACAL (30036)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 110X3 TUBO MH CLOACAL (30037)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 110X4 TUBLO MH CLOACAL (30038)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 110X63 BOCA DE ACCEDO HORIZONTAL 90° (302",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 110X63 CUPLA REDUCCION MH (30143)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 110X63 RAMAL 45° HH (30169)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 110X63 RAMAL 45° MH (30165)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 110X63 RAMAL 90° MH (30155)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 12X12 P/BALCON S/PORTAREJA (30204)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 12X12 P/DUCHA S/PORTAREJA (30203)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 40 CODO 45° HH (30071)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 40 CODO 45° MH (30101)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 40 CODO 90° HH (30081)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 40 CODO 90° MH (30111)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 40 CURVA 90° MH (30129)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 40 MANGUITO LISO (30131)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 40 RAMAL 45°HH (30160)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 40 RAMAL 90°HH (30151)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 40 TAPA H",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 40X0.50 TUBO MH CLOACAL (30002)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 40X0.75 TUBO MH CLOACAL (30003)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 40X1.50 TUBO MH CLOACAL (30005)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 40X1 TUBO MH CLOACAL (30004)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 40X2 TUBO MH CLOACAL (30006)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 40X3 TUBO MH CLOCAL (30007)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 40X4 TUBO MH CLOCAL (30008)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 440 SOLUCION/LUBRICANTE (30362)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 50 CODO 45° HH (30072)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 50 CODO 45°MH (30102)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 50 CODO 90°HH (30082)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 50 CODO 90° MH (30112)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 50 CURVA 90° MH (30127)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 50 MANGUITO LISO (30132)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 50 RAMAL 45° HH (30161)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 50 RAMAL 90° HH (30152)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 50 TAPA H (30222)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 50X0.75 TUBO MH CLOCAL (30013)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 50X1.50 TUBO MH CLOCAL (30015)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 50X1 TUBO MH CLOACAL (30014)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 50X2 TUBO MH CLOACAL (30016)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 50X40 CUPLA REDUCCION MH (30141)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 50X4 TUBO MH CLOACAL (30018)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 63 CODO 45° HH (30073)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 63 CODO 45° MH (30103)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 63 CODO 90° HH (30083)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 63 CODO 90° MH (30113)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 63 CURBA 90° MH (30126)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 63 MANGUITO LISO (30133)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 63 RAMAL 45° MH (30163)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 63 RAMAL 90° MH (30153)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 63 TAPA H (30223)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 63X1.50 TUBO MH CLOCAL (30025)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 63X1 TUBO MH CLOACAL (30024)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 63X2 TUBO MH CLOCAL (30026)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 63X4 TUBO MH CLOACAL (30028)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT 63X50 CUPLA REDUCCION MH (30142)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT BOC ACC HORIZONTAL C/ACOM 110X63 A 90° (",
+    "description": "30206",
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT CODO 110 CON BASE (30116)",
+    "description": "30116",
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT PILETA 12X12 BOCA DE ACCESO 63X50 (30195)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT PILETA 3E C/ORING S/PORTAR (30198)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT PILETA 4E C/ORING S/PORTAR (30192)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT PILETA 7E C/ORING S/PORTAR (30199)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT PILETA DESENGRASADORA C/SIFON Y FILTRO (3",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT REJA ACERO 12X12 C/PORTAREJA (30216)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT REJA ACERO 15X15 C/PORTAREJA (30217)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT REJA ACERO 8X8 C/PORTAREJA (30211)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT SOLUCION LUBRICANTE AEROSOL X440CC",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "AWADUCT SOPAPA BAÑERA CROMANDA OSOA40 (30366)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "BACHA BOWL MONOCOMANDO (GRUPO GRIFO",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "BAJO MESADA MELAMINA BLANCA 1.20 BACHA DER",
+    "description": "BACHA DERECHA",
+    "unit": "unidad"
+  },
+  {
+    "name": "BAJO MESADA MELAMINA BLANCA 1.20 BACHA IZQ",
+    "description": "BACHA IZQ",
+    "unit": "unidad"
+  },
+  {
+    "name": "BAJO MESADA MELAMINA BLANCA 1.40 BACHA DER",
+    "description": "BACHA DERECHA",
+    "unit": "unidad"
+  },
+  {
+    "name": "BAJO MESADA MELAMINA BLANCA 1.40 BACHA IZQ",
+    "description": "BACHA IZQ",
+    "unit": "unidad"
+  },
+  {
+    "name": "BAJO MESADA MELAMINA BLANCA 1.60 BACHA DER",
+    "description": "BACHA DERECHA",
+    "unit": "unidad"
+  },
+  {
+    "name": "BAJO MESADA MELAMINA BLANCA 1.60 BACHA IZQ",
+    "description": "BACHA IZQ",
+    "unit": "unidad"
+  },
+  {
+    "name": "BALDE ALBAÑIL PLASTICO (7840.000)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "BALDOSA DE CEMENTO ADOQUIN CIRCULAR X M²",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "BALDOSA DE CEMENTO ESPAÑOLA X M²",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "BALDOSA DE CEMENTO SAN LUIS X M²",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "BIDEMATIC ANDINO AGUA FRIA Y CALIENTE (B111)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "BOLSA DE GRANZA 15KG",
+    "description": null,
+    "unit": "bolsa"
+  },
+  {
+    "name": "BOLSON",
+    "description": null,
+    "unit": "bolsón"
+  },
+  {
+    "name": "BOLSON DE ARENA",
+    "description": null,
+    "unit": "bolsón"
+  },
+  {
+    "name": "BOLSON DE PIEDRA PARTIDA",
+    "description": null,
+    "unit": "bolsón"
+  },
+  {
+    "name": "BULIT DISCO DIAMANTADO SERIE 80 CONTINUO 115MM",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "BUÑA PERIMETRAL",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CAL COMUN CACIQUE 25 kG LOMA NEGRA",
+    "description": null,
+    "unit": "bolsa"
+  },
+  {
+    "name": "CAMARA CLOACAL COMPLETA 60X60X25",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CAMARA DESENGRASADORA",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CAMARA PVC 60X60",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CAMPANA ACERO INOX. 0.60",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CAMPANA BLANCA 0.60",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CANTONERA -",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CARAMICA CORTINES LAJA TOLEDO GRIS 50X50",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "CEMENTO EN BOLSA 10KG",
+    "description": null,
+    "unit": "bolsa"
+  },
+  {
+    "name": "CEMENTO HOLCIM 25KG",
+    "description": null,
+    "unit": "bolsa"
+  },
+  {
+    "name": "CEMENTO HOLCIM 25KG (P)",
+    "description": "PROMO",
+    "unit": "bolsa"
+  },
+  {
+    "name": "CEMENTO LOMA NEGRA 25KG",
+    "description": null,
+    "unit": "bolsa"
+  },
+  {
+    "name": "CEMENTO LOMA NEGRA 25KG (P)",
+    "description": "PROMO",
+    "unit": "bolsa"
+  },
+  {
+    "name": "CERAMICA CORTINES CAIRO GRIS 45X45",
+    "description": "1.62M/CAJA 8U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERAMICA CORTINES LAJA TOLEDO BGE 50X50",
+    "description": "1.75M/CAJA 7U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERAMICA CORTINES LEGNO LENGA 30X45",
+    "description": "1.35M/CAJA 10U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERAMICA CORTINES PARQUET FRESNO 30X45",
+    "description": ".35M/CAJA 10U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERAMICA CORTINES STATUARIO NEGRO 45X45",
+    "description": "1.62/CAJA 8U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERAMICA SCOP ADOQUIN FIT GRIS 45.3X45.3",
+    "description": "2.25M/CAJA 11U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERAMICA SCOP EBANO RUSTICO 45.3X45.3",
+    "description": "2.25M/CAJA 11U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERAM LOUR CASTOR GRIS 31X53",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "CERAM LOUR CASTOR MARRON 31X53",
+    "description": "1.65m_ /10 piezas",
+    "unit": "m2"
+  },
+  {
+    "name": "CERAM LOUR COTTO BEIGE SATINADO 56X56",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "CERAM LOUR COTTO GRIS SATINADO 56X56",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "CERAM LOUR GRAFIATO BEIGE 35X35",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "CERAM LOUR MADERA LENGA 31X53",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "CERAM LOUR MADERA LENGA GRIS 31X53",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "CERAM LOUR MEDITERRANEO GRIS 56X56",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "CERAM LOUR MEDITERRANEO TERRA 56X56",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "CERAM LOUR MURO PIEDRA NATURAL 31X53",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "CERAM LOUR TRAVERTINO BRILLANTE MARFIL 56X56",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM AMAZONIA TIZA 38X38",
+    "description": "2.31M/CAJA- 16 U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM ARCE CLARO 51X51",
+    "description": "2.08M²/CAJA-8 PIEZAS",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM ARCE OSCURO 51X51",
+    "description": "2.60M²/CAJA - 10U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM ASPEN MATE 29X59",
+    "description": "2.05M²/CAJA-12 PIEZA",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM ATACAMA GRIS TAAD 51X51",
+    "description": "2.60M²/CAJA- 10U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM ATACAMA TRICOLOR TAAD 51X51",
+    "description": "2.60M²/CAJA- 10U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM BARI BRILLANTE MARFIL 51X51",
+    "description": "2.08M²/CAJA-8 PIEZAS",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM BELEN ARENA 38X38",
+    "description": "2.02M/CAJA- 14 PIEZA",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM BELEN GRIS 38X38",
+    "description": "2.02M/CAJA- 14 PIEZA",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM BRASILIA BEIGE 38X38",
+    "description": "2.02M/CAJA- 14 PIEZA",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM CALACATA BRILLANTE 51X51",
+    "description": "2.60M²/CAJA - 10U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM CARRARA 29X59",
+    "description": "2.05M²/CAJA-12 PIEZA",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM CEDRO MARRON 38X38",
+    "description": "2.02M/CAJA- 14 PIEZA",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM CORCEGA GRIS 38X38",
+    "description": "2.31M²X CAJA - 16 U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM CORFU GRIS 51X51 (2DA)",
+    "description": "2.60M²/CAJA- 10 U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM CRETA BEIGE 51X51",
+    "description": "2.60M²/CAJA - 10U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM EBANO 51X51",
+    "description": "2.60M²/CAJA- 10U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM FORTALEZA ARENA 38X38",
+    "description": "2.02M/CAJA- 14 PIEZA",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM FORTALEZA GRAFITO 38X38",
+    "description": "2.02M/CAJA- 14 PIEZA",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM FRESNO 38X38",
+    "description": "2.02M/CAJA- 14 PIEZA",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM GRANITO SAND 29X59",
+    "description": "2.05M²/CAJA-12 PIEZA",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM KALIFA NEGRO 38X38",
+    "description": "2.31M²X CAJA - 16 U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM KIRI 51X51",
+    "description": "2.60M²/CAJA-10U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM LEBLON GRIS 38X38",
+    "description": "2.02M/CAJA- 14 PIEZA",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM LEBLON MARFIL 38X38",
+    "description": "2.02M/CAJA- 14 PIEZA",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM LUMINE BLANCO 38X38",
+    "description": "2.31M²X CAJA - 16 U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM MANAOS ARENA 38X38",
+    "description": "2.02M/CAJA- 14 PIEZA",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM MANAOS AZUL 2 - 38X38",
+    "description": "2.31M²X CAJA - 16 U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM MANAOS AZUL 38X38",
+    "description": "2.02M/CAJA- 14 PIEZA",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM MANAOS VERDE 38X38",
+    "description": "2.02M/CAJA- 14 PIEZA",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM MILANO BRILLANTE GRIS 51X51",
+    "description": "2.08M²/CAJA-8 PIEZAS",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM MUNICH GRIS 51X51 2DA CAL",
+    "description": "2.60M²/CAJA-10U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM MURANO ARENA 38X38",
+    "description": "2.31M²/CAJA 16PIEZAS",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM MURANO GRIS 38X38",
+    "description": "2.31M²/CAJA 16PIEZAS",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM NIEVE BRILLANTE 38X38",
+    "description": "2.31M²X CAJA - 16 U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM PARIS CREMA BRILLANTE 2 -51X51",
+    "description": "2.60M²CAJA - 10U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM PARIS GRIS BRILLANTE 2 -51X51",
+    "description": "2.60M²/CAJA - 10U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM PARIS GRIS BRILLANTE 51X51",
+    "description": "2.08M²/CAJA-8 PIEZAS",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM PERLINO 51X51 (2DA)",
+    "description": "2.60M²/CAJA -10U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM PIEDRA LAJA TAAD - 38X38",
+    "description": "2.31M²X CAJA - 16 U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM RECIFE TIZA 38X38",
+    "description": "2.02M/CAJA- 14 PIEZA",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM RECOLETA 51X51",
+    "description": "2.08M²/CAJA-8 PIEZAS",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM RONDA TIZA 38X38",
+    "description": "2.02M/CAJA- 14 PIEZA",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM SAUCE BRILLANTE 38X38",
+    "description": "2.31M²X CAJA - 16 U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM TEMPO AZUL 38X38",
+    "description": "2.31M²X CAJA - 16 U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM TERAMO TIZA 29X59",
+    "description": "2.05M²/CAJA-12 PIEZA",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM TILCARA MARRON 38X38",
+    "description": "2.02M/CAJA- 14 PIEZA",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM TRAVERTINO DUNA 38X38",
+    "description": "2.31M²/CAJA 16PIEZAS",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM TUNDRA PLATA 51X51 (2DA)",
+    "description": "2.60M²/CAJA - 10U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM URBANO 29X59",
+    "description": "2.05M²/CAJA-12 PIEZA",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO CERAM VENATO DARK TAAD 51X51",
+    "description": "2.60M²/CAJA - 10U",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO KANSAS WHITE 29x59",
+    "description": "2.05M/CAJA- 12 PIEZA",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO OSLO MARFIL 51X51",
+    "description": "2.08M²/CAJA-8 PIEZAS",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO PARIS CREMA BRILLANTE 51X51",
+    "description": "2.08M²/CAJA-8 PIEZAS",
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO PORCELANATO FORUM ARENA 61.5X61.5",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO PORCELANTO FORUM GRIS 61.5X61.5",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO PORCELANTO FORUM TIZA 61.5X61.5",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO PORCELANTO TRAFALGAR GRIS 58X117",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "CERRO NEGRO PORCELANTO ZEN MARFIL 61.5X61.5",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "CHAPA ACAN C25 NEGRA PREPINTADA",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CHAPA ACAN C25 VERDE PREPINTADA",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CHAPA ACAN. PLASTICA BLANCA",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CHAPA ACAN.PLASTICA TRANSPARENTE",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CHAPA CINC ACAN. C25",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CINTA AISLANTE PVC PLUS 19MMX20M (3650.965)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CINTA DE PAPEL MICROPERFORADA 150M",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CINTA DE PAPEL MICROPERFORADA 75M",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CINTA FLEJE METALICO X M",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CINTA METRICA 5MT",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CINTA TRAMADA 45M",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CINTA TRAMADA 90M",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CLARABOLLA P/TECHO CHAPA ACAN. 40X60(ACRILICO)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CLAVOS P/PARIS 2\"",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "COMPRIBAND SINUSOIDAL TIRA DE 1M",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CORBLOCK LADRILLO DE CEMENTO 13X20X40 (162)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CORBLOCK LADRILLO DE CEMENTO . 19X19X40 P20 STD (",
+    "description": "126",
+    "unit": "unidad"
+  },
+  {
+    "name": "CUCHARA ALBAÑIL N°7 CONER (4715.030)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "CUÑA ESTANDAR MICA",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "DISCO CORTE INOX / METAL 115 x 1.6 mm - PLANO / L",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "DISCO PATROLL LINEA AMARILLA CONTINUO DE 4.2(P",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "DURLOCK PLACA STAND 12.5 MM DE ESP 1.20mX2.40m",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "DURLOCK PLACA STAND 9 MM DE ESP 1.20mX2.40m",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "DURLOCK PLACA STAND RESISTENTE A FUEGO 1.20mX2.40m",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "DURLOCK PLACA STAND RESISTENTE A HUMEDAD 1.20mx2.4",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "DURMIENTE CEMENTO 85X23X6",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ELECTRODO CONARCO P/AZUL E-13A 2.50MM X KG (3224.7",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ESPACIADOR AUTOINIVELANTE CUÑA CHICA 1MM X UNID (",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ESPACIADOR AUTONIVELANTE 1 MM CLIP GRIS X UNID (A",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ESPACIADOR AUTONIVELANTE 2MM CLIP AMARILLO X UNID",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ESPACIADOR AUTONIVELANTE 3MM CLIP ROJO X UN (AT50",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ESTRUCTURAL CUADRADO 20X20",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ESTRUCTURAL CUADRADO 30X30",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ESTRUCTURAL CUADRADO 40X40",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ESTRUCTURAL CUADRADO 50X50",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ESTRUCTURAL CUADRADO 60X60",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ESTRUCTURAL CUADRADO 80x80",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ESTRUCTURAL RECTANGULAR 30X20",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ESTRUCTURAL RECTANGULAR 40x20",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ESTRUCTURAL RECTANGULAR 40X30",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ESTRUCTURAL RECTANGULAR50X20",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "ESTRUCTURAL RECTANGULAR 70x70",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "EUROPLAC BOTIQUIN BCO UNA PTA UNA LUZ Y DOS ESTAN",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "EUROPLAC BOTIQUIN C/ESPEJO 1 PTA 372",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "EUROPLAC BOTIQUIN CON ESPEJO PTA Y 2 EST",
+    "description": "134",
+    "unit": "unidad"
+  },
+  {
+    "name": "EUROPLAC BOTIQUIN CON PTA ESPEJO 103",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "EUROPLAC MARCO ESPEJO CAPILLA C/REPISA 108",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "EXTRACTOR P/BAÑO PLASTICO DE 4\" (400)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "EXTRACTOR P/BAÑO PLASTICO DE 6\" (600)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "EXTRACTOR TIRAJE EXTERIOR METALICO 4\" (492)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FERRUM ANDINA COLUMNA LAVATORIO (CTF)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FERRUM ANDINA DEPOSITO APOYO DUAL (DAW4A)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FERRUM ANDINA DEPOSITO COLGAR (DAS6C) 6L",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FERRUM ANDINA INODORO CORTO (IFA) 6L",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FERRUM ANDINA INODORO LARGO (IALQ) 4.5L",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FERRUM ANDINA LAVATORIO (LEA3)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FERRUM ATUEL BIDET (BFR3)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FERRUM ATUEL DEPOSITO DE APOYAR (DMA6F)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FERRUM ATUEL DEPOSITO DE COLGAR (DME6F)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FERRUM ATUEL INODORO LARGO (IFLM)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FERRUM BACHA TEMP CITERA",
+    "description": "LWZF",
+    "unit": "unidad"
+  },
+  {
+    "name": "FERRUM BACHA TORI RECT CUADRADA GDE 3AG",
+    "description": "L324",
+    "unit": "unidad"
+  },
+  {
+    "name": "FERRUM BARI DEPOSITO DE APOYAR DOBLE DESC (DKW6F)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FERRUM BARI DEPOSITO DE COLGAR (DKC6F)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FERRUM BARI DIDET (BKM3E)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FERRUM BARI INODORO CORTO (IKC)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FERRUM BARI INODORO LARGO (IKLM)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FERRUM BIDET ANDINA (BEA 3)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FERRUM DEPOSITO MAYO DFLX",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FERRUM MAYO BIDET BMF3",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FIJACIONES N 8 COMPLETAS",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FLEXIBLE COBRE 1/2 X 30CM",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FLEXIBLE MALLADO 1/2 X 20 (AGUA)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "FRATACHO",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GABINETE GAS CHAPA GALV 40X50X25",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GABINETE PARA GAS DE CEMENTO 40X50",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GABINETE PARA GAS DE CEMENTO 45X65X30",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GABINETE PARA GAS DE CEMENTO 60X40",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GRAMPA DE 1/2",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GRANZA POR M²",
+    "description": null,
+    "unit": "m3"
+  },
+  {
+    "name": "GRIFERIA FV-ARIZONA BIDET 295/B1P",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GRIFERIA FV ARIZONA LAVATORIO 207/B1P",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GRIFERIA FV-LLOSA/JGO BIDE/295/B4",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GRIFERIA FV-NEWPORT BIDET 295/B2P",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GROMANTI PLACA M/CH 60/10 ECO CH.24 DER.",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GROMANTI PLACA M/CH 60/10 ECO CH.24 IZQ.",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GROMANTI PLACA M/CH 60/15 ECO CH.24 DER.",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GROMANTI PLACA M/CH 60/15 ECO CH.24 IZQ.",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GROMANTI PLACA M/CH 70/10 ECO CH.24 DER.",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GROMANTI PLACA M/CH 70/10 ECO CH.24 IZQ.",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GROMANTI PLACA M/CH 70/15 ECO CH.24 DER.",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GROMANTI PLACA M/CH 70/15 ECO CH.24 IZQ.",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GROMANTI PLACA M/CH 80/15 ECO CH.24 DER.",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GROMANTI PLACA M/CH 80/15 ECO CH.24 IZQ.",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GROMANTI PLACA M/M 70/15 ECO CH.24 DER.",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GROMANTI PLACA M/M 70/15 ECO CH.24 IZQ.",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GROMANTI PLACA M/M 80/15 ECO CH.24 DER.",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GROMANTI PLACA M/M 80/15 ECO CH.24 IZQ.",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GROMANTI PUERTA DE EMBUTIR CANDEM M/MADERA 0.80",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GROMANTI PUERTA EMBUTIR 80/15 SABU",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GUANTES MOTEADOS",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GUARDA ATRIM ACERO BRILL.2.20/BOMBE C/PESTAÑA",
+    "description": "430/80",
+    "unit": "unidad"
+  },
+  {
+    "name": "GUARDA ATRIM ACERO BRILLANTE 10 X 20MM X 2.20M",
+    "description": "430/02",
+    "unit": "unidad"
+  },
+  {
+    "name": "GUARDA ATRIM ACERO BRILLANTE 10X30MMX2.20",
+    "description": "403/03",
+    "unit": "unidad"
+  },
+  {
+    "name": "GUARDA ATRIM ACERO BRILL S/PESTAÑA CUADRA 2.20",
+    "description": "430/01",
+    "unit": "unidad"
+  },
+  {
+    "name": "GUARDA ATRIM ACERO CUADRA. 2.20 C/PESTAÑA (430/10)",
+    "description": "430/10",
+    "unit": "unidad"
+  },
+  {
+    "name": "GUARDA DELIGHT WORLDS BEIGE X UNID",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GUARDA DELIGHT WORLDS GRIS X UNID",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GUARDA FRISO BASALTO BEIGE X UNID",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GUARDA FRISO BREACKFAST BEIGE X UNID",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GUARDA FRISO BREAKFAST AZUL (3.40 X 0.20CM) X UNID",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GUARDA FRISO FLORENCIA MARRON X UNID",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GUARDA FRISO FRUIT ROJO X UNID",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GUARDA FRISO KRASS VERDE X UNID",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GUARDA FRISO QUADRAT MARRON X UNID",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GUARDA FRISO QUADRAT NEGRO X UNID",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "GUARDA LISTEL 1/2 CAÑA BLANCO X UNID",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA AIREADOR ALUM BLANCO VID.MOS 40X36",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA AIREADOR ALUM BLANCO VID.MOS 60X36",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA ALUM 80X200 TUBULAR 36MM VID LATERAL DER",
+    "description": "5751",
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA ALUM 80X200 TUBULAR 36MM VID LATERAL IZQ",
+    "description": "5752",
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA ALUM ACANALADA 1/4 VIDRIO 80X200 25MM-DER",
+    "description": "5254",
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA ALUM ACANALADA 1/4 VIDRIO 80X200 25MM-IZQ",
+    "description": "5084",
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA PTA ALUM 80X200 TUB36MM 1/4 VID ENT- DER",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA PTA ALUM 80X200 TUB36MM 1/4 VID ENT- IZQ",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA PTA PLACA PINO M/ALUM 07 75 D",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA PTA PLACA PINO M/ALUM 07 85 D",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA PTA PLACA PINO M/ALUM 07 85 I",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA PUERTA ALUM 80 TUBULAR 1/2 VIDRIO DER",
+    "description": "36MM",
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA PUERTA ALUM 80 TUBULAR 1/2 VIDRIO IZQ",
+    "description": "36MM",
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA PUERTA ALUMINIO 90X200 Der",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA PUERTA ALUMINIO 90X200 Izq",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA PUERTA CHAPA SIMPLE CIEGA 85X205 D",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA PUERTA CHAPA SIMPLE CIEGA 85X205 I",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA PUERTA PLACA M/CH 10 PINO 75 D",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA PUERTA PLACA M/CH 10 PINO 75 I",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA PUERTA PLACA M/CH 10 PINO 85 D",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA PUERTA PLACA M/CH 10 PINO 85 I",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA PUERTA PLACA PINO M/ALUM 07 75 I",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA VENTANA ALUM 100X100",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA VENTANA ALUM 100X40",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA VENTANA ALUM 120X110",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA VENTANA ALUM 120X40",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA VENTANA ALUM 120X60",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA VENTANA ALUM 150X110",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA VENTANA ALUM 150X200",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA VENTANA ALUM 150X60",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HERFASA VENTANA ALUM 60X40",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 BUJE REDUCC. F/F 1 A 1/2 (9133)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 BUJE REDUCC. F/F 1 X 3/4 (9132)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 BUJE REDUCCION 1 1/2 X 1 (9626)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 BUJE REDUCCION 1-1/2 X 3/4 (9625)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 BUJE REDUCCION 1-1/4 X 1 F/F (9620)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 BUJE REDUCCION 1 1/4 X 3/4 (9619)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 BUJE REDUCCION 1/2 X 3/8 (9130)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 BUJE REDUCCION 3/4 X 1/2 F/F (9131)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CAÑO(VERDE) 1-1/2 X 6MT (02004)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CAÑO(VERDE) 1-1/4 6M (02003)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CAÑO(VERDE) 1/2 6M (02000)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CAÑO(VERDE) 1 6M (02002)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CAÑO(VERDE) 3/4 6M (02001)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CODO 1\" Codo 45° Fus - Fus. HH (09106)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CODO 3/4 45° Fus - Fus. HH (9105)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CODO 3/8 90° F/F (09000)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CODO 45° F/F 1/2 (09104)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CODO F/F 1 (09003)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CODO F/F 1-1/2 (09505)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CODO F/F 1-1/4 (09504)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CODO F/F 1/2 (09001)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CODO F/F 2 (09506)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CODO F/F 3/4 (09002)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CODO F/F 3/8 (09114)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CODO FUS-ROSCA PLASTICA 1/2 (09011)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CODO REDUCC. 1/2 X 3/8 (09005)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CODO REDUCC. 1 X 3/4 (09006)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CODO REDUCC. 3/4 X 1/2 (09004)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CUPLA F/F 1 (09043)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CUPLA F/F 1-1/2 (09545)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CUPLA F/F 1-1/4 (09544)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CUPLA F/F 1/2 (09041)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CUPLA F/F 1 X 3/4 (09053)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CUPLA F/F 3/4 (09042)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CUPLA F/F 3/4 X 1/2 (09051)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CUPLA FUS-R PLASTICA 1/2 (09071)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CUPLA (H) 3/8 (09080)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CUPLA H.HFUS R/PLASTICA 3/4 (09072)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CURVA 1/2 F/F 90° (09108)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CURVA 45 X 1/2",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CURVA F/F 1' 90° (09110)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 CURVA F/F 3/4 90° (09109)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM CODO (H) 1\" (09423)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM CODO (H) 1/2 (09009)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM CODO (H) 3/4 (09010)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM CODO (M) 1\" (09016)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM CODO (M) 1/2 (09014)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM CODO REDUC (H) 3/4 X 1/2 (09007)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM CODO REDUC (M) 1 X 3/4 (09428)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM CUPLA 1 1/12 (09575)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM CUPLA (H) 1\" (09083)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM CUPLA (H) 1-1/2 (09565)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM CUPLA (H) 1-1/4 (09564)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM CUPLA (H) 1/ 2\" (09081)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM CUPLA (H) 3/4 (09082)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM CUPLA (H) 3/8 (09080)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM CUPLA (M) 1\" (09076)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM CUPLA (M) 1/2 (09074)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM CUPLA (M) 3/4 (09075)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM CUPLA REDUC (H) 1/2 X 3/8 (09087)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM CUPLA REDUC (H) 1 X 1/2 (09090)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM CUPLA REDUC (H) 1 X 3/4 (09089)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM CUPLA REDUC (H) 3/4 X 1/2 (09088)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM TEE (H) 1\" (09430)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM TEE (H) 1/2 (09029)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM TEE (H) 3/4 (09030)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM TEE (M) 1/2 (09034)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM TEE (M) 3/4 809035)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM TEE REDUC (H) 1 X 1/2 (09432)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM TEE REDUC (H) 1 X 3/4 (09028)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM TEE REDUC (H) 3/4 X 1/2 (09027)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM TEE REDUC (M) 1 X 1/2",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM TEE REDUC (M) 1 X 3/4 (09441)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 FRM TEE REDUC (M) 3/4 X 1/2 (09440)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 LLAVE DA PASO EXTERIOR 1 1/2",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 LLAVE DE EMB MANDO OCULTO CROMO 1/2 (0928",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 LLAVE DE PASO (ESFERICA) 1 1/4 FF EXTERIOR",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 LLAVE DE PASO ESFERICA EXTERIOR 1/2 (0922",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 LLAVE DE PASO ESFERICA EXTERIOR 3/4 (0922",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 LLAVE DE PASO ESFERICA EXTERIOR BCO 3/4 (",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 LLAVE DE PASO FF 1/2 CROMO (09180)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 LLAVE DE PASO FF 3/4 (09282)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 LLAVE DE PASO FF 3/4 CROMO (09181)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 LLAVE DE PASO FF ESFERICA EXTERIOR 1\" (09",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 LLAVE DE PASO (VALVULAR ESFERICA) 1 (0918",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 LLAVE DE PASO (VALVULAR ESFERICA) 1/2 (09",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 LLAVE DE PASO (VALVULAR ESFERICA) 3/4 (09",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 NIPLE ENTRE FUSION 1/2 (09451)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 NIPLE ENTRE FUSION 3/4 (09452)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 SOBREPASO 1 (09173)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 SOBREPASO 1/2 (09171)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 SOBREPASO 3/4 (09172)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 TAPA F/F 1\" (09157)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 TAPA F/F 1-1/2 (09159)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 TAPA F/F 1-1/4 (09158)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 TAPA F/F 1/2 (09155)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 TAPA F/F 3/4 (09156)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 TAPA F/F 3/8 H (09154)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 TEE F/F 1 (09023)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 TEE F/F 1-1/2 (09525)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 TEE F/F 1-1/4 (09524)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 TEE F/F 1/2 (09021)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 TEE F/F 3/4 (09022)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 TEE REDUCC. F/F 1 X 3/4 (09025)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 TEE REDUCCION F/F 3/4 - 1/2",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 TE REDUCCION F/F 3/4x1/2 (09020)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 UNION DOBLE 1-1/2 (09605)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 UNION DOBLE F/F 1 (09093)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 UNION DOBLE F/F 1/2 (09091)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDRO 3 UNION DOBLE F/F 3/4 (09092)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROFUGO PREMECOL 10 KG",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROFUGO PREMECOL 1 KG",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROFUGO PREMECOL 200 KG",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROFUGO PREMECOL 20 KG",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROFUGO PREMECOL 4 KG",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROMET BIDET FUN 3032CRCR",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROMET BIDET NEW/AGE/ROJO/FERR. 6602CRRF",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROMET BIDET SPRAY 1023CRCR",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROMET COCINA/PARED BABY 1055",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROMET COCINA/PARED SPRAY 1035",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROMET COCINA /PARED/VIENA 1035CRBL",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROMET DUCHA C/TRANSF FLY LEVER 2608CRCR",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROMET JABONERA FLY 2621CRCR",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROMET LAVATORIO MONOC. WIN 40001CRCR",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROMET MESADA COCINA VIENA 1030CRBL",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROMET MESADA COCI.NEW/AGE/ROJO 6670CRRF",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROMET PERCHA FLY 2652CRCR",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROMET PERCHA SELF 9952CRCR",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROMET PERCHA TRIBBIS 5852CRCR",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROMET PORTACEPILLO TRIBISS 5811CRCR",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROMET PORTARROLLO JET 3711CRCR",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROMET TOALL.BARR/TRIBISS 5841CRCR",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROMET TOALLERO ARGOLLA TRIBISS 5843",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIDROMET VALVULA 939 CRCR",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIERRO 10MM DE 12M",
+    "description": null,
+    "unit": "barra"
+  },
+  {
+    "name": "HIERRO 12MM DE 12M",
+    "description": null,
+    "unit": "barra"
+  },
+  {
+    "name": "HIERRO 16MM DE 12M",
+    "description": null,
+    "unit": "barra"
+  },
+  {
+    "name": "HIERRO 20MM DE 12M",
+    "description": null,
+    "unit": "barra"
+  },
+  {
+    "name": "HIERRO 6MM DE 12M",
+    "description": null,
+    "unit": "barra"
+  },
+  {
+    "name": "HIERRO 8MM DE 12M",
+    "description": null,
+    "unit": "barra"
+  },
+  {
+    "name": "HIERRO MAS 340 CIEGA 4 BAST.C/ACERO IZQ",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIERRO MAS 870 CIEGA/MACH/MANIJ 0.80 IZQ.",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIERRO MAS PUERTA 272 REJA CAÑO REDONDO 0.80 DER",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIERRO MAS PUERTA 272 REJA CAÑO REDONDO 0.80 IZQ",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIERRO MAS PUERTA 277 REJA CAÑO REC 0.80 DER",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIERRO MAS PUERTA 277 REJA CAÑO REC 0.80 IZQ",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIERRO MAS PUERTA 456 REJA LATERAL 0.80 DER",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIERRO MAS PUERTA 456 REJA LATERAL 0.80 IZQ",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HIERRO MAS PUERTA 480 3 APLIQ VERT C/BARR 0.80 DER",
+    "description": "480",
+    "unit": "unidad"
+  },
+  {
+    "name": "HIERRO MAS PUERTA 480 3 APLIQ VERT C/BARR 0.80 IZQ",
+    "description": "480",
+    "unit": "unidad"
+  },
+  {
+    "name": "HIERRO MAS PUERTA 880 FOLIADA PVC BARRAL 0.80 DER-",
+    "description": "880",
+    "unit": "unidad"
+  },
+  {
+    "name": "HIERRO MAS PUERTA 880 FOLIADA PVC BARRAL 0.80 IZQ-",
+    "description": "880",
+    "unit": "unidad"
+  },
+  {
+    "name": "HIERRO MAS PUERTA CIEGA 883 FOLIADA 0.80 CAOBA DER",
+    "description": "883",
+    "unit": "unidad"
+  },
+  {
+    "name": "HIERRO MAS PUERTA CIEGA 883 FOLIADA 0.80 CAOBA IZQ",
+    "description": "883",
+    "unit": "unidad"
+  },
+  {
+    "name": "HIERRO MAS PUERTA MAD/GRANDIS C/BARRAL LARGO DER",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "HOLCIM CAL HIDRATADA COMUN 25KG",
+    "description": null,
+    "unit": "bolsa"
+  },
+  {
+    "name": "HOLCIM MAESTRO CEMENTO DE ALBAÑILERIA 25KG",
+    "description": null,
+    "unit": "bolsa"
+  },
+  {
+    "name": "HOLCIM TECTO PEGAMENTO IMPERMEABLE",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "IPN DE 160 12MTS",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "JOHNSON MESADA ACERO 430 PILETA SIMPLE 1.20 DER",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "JOHNSON MESADA ACERO 430 PILETA SIMPLE 1.20 IZQ",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "JOHNSON MESADA ACERO 430 PILETA SIMPLE 1.40 DER",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "JOHNSON MESADA ACERO 430 PILETA SIMPLE 1.40 IZQ",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "JOHNSON MESADA ACERO 430 PILETA SIMPLE 1.60 DER",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "JOHNSON MESADA ACERO 430 PILETA SIMPLE 1.60 IZQ",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "JOHNSON PILETA ACERO INOX DOBLE CC28/18 (59.8*34*",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "JOHNSON PILETA ACERO INOX DOBLE CC37 (70.8*37*15)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "JOHNSON PILETA ACERO INOX SIMPLE EE37/15 (37*34*1",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "JOHNSON PILETA ACERO INOX SIMPLE EE37/18 (37*34*1",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "JOHNSON PILETA ACERO INOX SIMPLE ZZ52 /15",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "JOHNSON PILETA ACERO INOX SIMPLE ZZ52/18",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "KIT ACCESORIOS PARA BAÑO ATREUS 5 PCS NEGRO (GRUP",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "KIT ACCESORIOS PARA BAÑO SOFY 6PCS CROMO (GRUPO G",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "Ladrillo Adamantio",
+    "description": "Indestructible",
+    "unit": "U."
+  },
+  {
+    "name": "LADRILLO COMUN",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO COMUN BUENO",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO COMUN MEDIA VISTA",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO DE PISO",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO DE TELGOPOR ESP 10X42X100",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO DOBLE MURO 25X18X33 (72 u x pallet)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO HUECO 12-18-33 (6AGUJE.) MARTIN",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO HUECO 12-18-33 (6AGUJE.) TERRABRIK",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO HUECO 12-18-33 (9 AGUJEROS) MARTIN",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO HUECO 12-18-33 (9 AGUJEROS) TERRABRICK",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO HUECO 12-18-33 CORMELA",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO HUECO 18-18-33(12AGUJEROS) MARTIN",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO HUECO 18-18-33(12AGUJEROS) TERRABRIK",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO HUECO 18-18-33(9AGUJEROS) TERRABRIK",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO HUECO 18-18-33 CORMELA (12T)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO HUECO 8-18-33 CORMELA (198)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO HUECO 8-18-33 MARTIN (216)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO HUECO 8-18-33 TERRABRIK (216)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO PORTANTE 12-19-33 CORMELA (126)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO PORTANTE 12-19-33 TERRABRIK (120)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO PORTANTE 18-19-33 CORMELA",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO PORTANTE 18-19-33 TERRABRIK",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO REFRACTARIO 51MM",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LADRILLO REFRACTARIO RECTO X 63mm COMUN",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LANA DE VIDRIO ALUM LISO POLYGLAS 50MM 1.2X18",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LAPIZ DE WIDIA NEIKE K-10 (417.300)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "LLANA DENTADA 8X8",
+    "description": "MARTIN",
+    "unit": "unidad"
+  },
+  {
+    "name": "LOSETA 40X40 CEMENTO X M2",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "LOSETA COLOR 40X40 XM2",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "MALLA DE FIBRA DE VIDRIO 90GRS (1M X 50M) XM²",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "MALLA ONIX MURO TRAVERTINO 30X30",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "MALLA P/AISLANTE x M²",
+    "description": null,
+    "unit": "m2"
+  },
+  {
+    "name": "MALLA SOLDADA 15 X 15 4.2 (2M X 3 M)",
+    "description": null,
+    "unit": "panel"
+  },
+  {
+    "name": "MALLA SOLDADA 15X15 4,2 (2X5)",
+    "description": null,
+    "unit": "panel"
+  },
+  {
+    "name": "MALLA SOLDADA 15 X 15 X 4.2 (6 X 2.40MT)",
+    "description": null,
+    "unit": "panel"
+  },
+  {
+    "name": "MALLA SOLDADA 15X15X4 (2X6)",
+    "description": "HIERRO 3.8",
+    "unit": "panel"
+  },
+  {
+    "name": "MALLA SOLDADA 15 X 15X 6 - (5M X 2M)",
+    "description": "5.5",
+    "unit": "panel"
+  },
+  {
+    "name": "MALLA SOLDADA 15X15X6 - (6MX2.40M)",
+    "description": "5.5",
+    "unit": "panel"
+  },
+  {
+    "name": "MALLA SOLDADA 15X25X4 (2X6)",
+    "description": "HIERRO 3.8",
+    "unit": "panel"
+  },
+  {
+    "name": "MALLA SOLDADA Q188 15X15X6 (2.40M X 6M)",
+    "description": null,
+    "unit": "panel"
+  },
+  {
+    "name": "MAZA GHERARDI 1.5KG (318.000)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "MEMBRANA ALUM FLEX PERFLEX 40KG",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "MESADA DE SALIGNA 1.20 BACHA SIMPLE",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "MESADA DE SALIGNA 1.40 BACHA SIMPLE",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "MESADA DE SALIGNA 1.60 BACHA SIMPLE",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "MICROFIBRA P/ HORMIGON X 600 G",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "MOLDURA DE POLIESTURENO EXTRUIDO X TIRA DE 2M (DE",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "MOLDURA DE POLIESTURENO EXTRUIDO X TIRA DE 2M M37",
+    "description": "M37 (37MMX37MM)",
+    "unit": "unidad"
+  },
+  {
+    "name": "MONOCOMANDO LAVATORIO FLAMING 17CM",
+    "description": "GRUPO GRIFO",
+    "unit": "unidad"
+  },
+  {
+    "name": "MONOCOMANDO LAVATORIO FLAMING 17CM (GRUPO GRIFO",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "MONTANTE 34 -",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "MONTANTE 69 -",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "OMEGA -",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PALA PALEAR CUADRADA CABO CORTO GHERARDI (2.00)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PALA PALEAR CUADRADA CABO LARGO GHERARDI (4.00)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PALA PUNTA POCERA CABO CORTO GHERARDI (5.00)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO BACHA APOYAR CUADRADA 3AG 420X420X125",
+    "description": "BCH4/3",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO BACHA DE APOYAR OVALADA 40X330X150",
+    "description": "BCH07",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO BACHA DE APOYAR SIMIL MARMOL 460X320X140",
+    "description": "BCH18",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO BACHA E APOYAR CIRCULAR 320X145",
+    "description": "BCH01",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO BACHAR CIRCULAR 415X145",
+    "description": "BCH02",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO BETIS LAVATORIO Q634",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO BIDET BEAT NICKEL C CERAM CR",
+    "description": "70-201NI",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO BIDET CROMO Y 70001N (25102)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO BIDET LIVE C CERAM",
+    "description": "70-199",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO BIDET MARBELLA C CERAM CR",
+    "description": "70-121",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO BIDET MONOCOMANDO ADRA",
+    "description": "70-203",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO BIDET MONOCOMANDO STEEL",
+    "description": "70-205",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO BIDET MONOC WAVE CR",
+    "description": "70-168",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO BIDET RENACER (25090)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO BIDET VALENCIA C CERAM CR",
+    "description": "70-122",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO COCINA MSDA MONOC P RED MARBELLA",
+    "description": "20-121",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO CROMO Y COCINA MESADA CROMO P511 (25108)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO CROMO Y COCINA PARED EMBUTIR P/ALTO (2513",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO CROMO Y DUCHA EXT C/TRAN P.831 (25103)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO DUCHA ARES 434/CR (25240)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO DUCHA EMB C/TRANSF CR C CERAM LIVE",
+    "description": "80-199",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO DUCHA EMB C/TRANSF MONOC ADRA",
+    "description": "80-203",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO DUCHA EMB C/ TRANSF MONOC CR RIO",
+    "description": "80-176",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO DUCHA EMB C/TRANSF NONOC STEEL",
+    "description": "80-205",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO DUCHA EMB MARBELLA PLUS CR CC",
+    "description": "80136",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO DUCHA EMB VALENCIA PLUS CR CIERRE CERAM",
+    "description": "80-138",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO DUCHA EXTERIOR ARES 414/CR (25218)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO DUCHA MONOC C/TRANSF Y DUCHADOR WAVE CR",
+    "description": "85-168",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO LAVATORIO ALTO WAVE CR",
+    "description": "61-168",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO LAVATORIO BAJO ADRA",
+    "description": "60-203",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO LAVATORIO BEAT NICKEL C CERAM",
+    "description": "60-201NI",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO LAVATORIO CROMO Y 60001N (25101)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO LAVATORIO DE PARED BEAT NICKEL C CERAM",
+    "description": "62.201 NI",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO LAVATORIO LIVE C CERAM CR",
+    "description": "60-199",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO LAVATORIO MONOC ALTO ADRA",
+    "description": "61-203",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO LAVATORIO MONOC ALTO RIO CR",
+    "description": "61-176",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO LAVATORIO MONOC ALTO STEEL",
+    "description": "61-205",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO LAVATORIO MONOC BAJO RIO CR",
+    "description": "60-176",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO LAVATORIO MONOC BAJO STEEL",
+    "description": "60-205",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO LAVATORIO MONOC MARBELLA DE PARED",
+    "description": "63-121",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO LAVATORIO RENACER (25087)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO LAVATORIO VALENCIA C CERAM CR",
+    "description": "60-122",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO LAVATRIO MARBELLA C CERAM",
+    "description": "60-121",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO MESADA BIMANDO MALLORCA C CERAM CR",
+    "description": "51-131",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO MESADA BIMANDO VALENCIA C CERAM CR",
+    "description": "51-122",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO MONOC COC C/PICO EXTRAIBLE VALENCIA BLACK",
+    "description": "20-122N",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO MONOC COCINA BETIS",
+    "description": "20-134",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO MONOC COCINA CR C/PICO EXTRAIBLE VALENCIA",
+    "description": "20-122",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO MONOC COCINA SWIFT",
+    "description": "20-147",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO MONOC COCINA WAVE CR",
+    "description": "20-168",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO MONOC MESADA COCINA DIQUE",
+    "description": "20-160",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO MONOCOMANDO COCINA RENACER P202 (25113)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO MONOCOMANDO LIINEA CUINA",
+    "description": "20-140",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO PACK GRIF ADRA (LAV-BID-DUSHCA C/T PLUS)",
+    "description": "90-166",
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO RENACER DUCHA EMB C/TRANSF (25096)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO RENACER MESADA P512 (25107)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO SET ACCESORIO BAÑO LINEA 3000 SET6 (25377)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PEIRANO SET DE 4 PIEZAS LINEA 22000",
+    "description": "22004",
+    "unit": "unidad"
+  },
+  {
+    "name": "PERFIL C GALVANIZADO 100 2.0MM X 12MT",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PERFIL C GALVANIZADO 100 X 1.6 X 12MT",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PERFIL C GALVANIZADO 120 X 1.6 X 12MT",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PERFIL C GALVANIZADO 120 X 2.0MM X 12MT",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PERFIL C GALVANIZADO 140 X 2.0MM X 12MT",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PERFIL C GALVANIZADO 160X2.50X12MM",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PERFIL C GALVANIZADO 200 X 2.0MM X 12MT",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PERFIL C GALVANIZADO 80 X 1.6 X 12MT",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PERFIL C GALVANIZADO 80 X 2.0 X 12MT",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PERFIL U NEGRO 160X60 3.2MM DE 12M-",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PIEDRA EN BOLSA 10KG",
+    "description": null,
+    "unit": "bolsa"
+  },
+  {
+    "name": "PIEDRA EN BOLSON REUTILIZADO",
+    "description": null,
+    "unit": "bolsón"
+  },
+  {
+    "name": "PIEDRA PARTIDA POR 100KG",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PIEDRA PARTIDA POR M²",
+    "description": null,
+    "unit": "m3"
+  },
+  {
+    "name": "PILAR DE LUZ 30X25X2.20",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PINTURA ASFALTICA INERTOLTECH 18L (AL AGUA)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PINTURA ASFALTICA MACA P 18LTS",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PINTURA ASFALTICA SECADO RAPIDO X 18L",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PINTURA ASFALTICA SECADO RAPIDO X 1L",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PINTURA ASFALTICA SECADO RAPIDO X 4L",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PLASTICOR LOMA NEGRA 25KG",
+    "description": null,
+    "unit": "bolsa"
+  },
+  {
+    "name": "PLOMADA ALBAÑIL 500GRS TOTH (658.000)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PORCELANATO SAN PIETRO POR UNIDAD",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL ADHESIVO REFRACTARIO 5KG",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL ADITIVO PLASTIFICANTE 1KG",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL ADITIVO PLASTIFICANTE 4KG",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL PASTINA 1.5KG BEIGE",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL PASTINA 1.5KG BLANCO",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL PASTINA 1.5KG GRIS CLARO",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL PASTINA 1.5KG GRIS OSCURO",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL PASTINA 1.5KG MARFIL",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL PASTINA 1.5KG MARRON CLARO",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL PASTINA 1.5KG MARRON OSCURO",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL PASTINA 1.5KG NEGRO",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL PASTINA 1KG BEIGE",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL PASTINA 1KG BLANCO",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL PASTINA 1KG GRIS CLARO",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL PASTINA 1KG GRIS OSCURO",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL PASTINA 1KG MARFIL",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL PASTINA 1KG MARRON CLARO",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL PASTINA 1KG MARRON OSCURO",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL PEGAMENTO 25KG- NORMAL INT/EXT",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL PEGAMENTO ESTANDAR 25KG (INT)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL PEGAMENTO PORCELLANATO 25KG",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL PEGAMENTO X 5KG",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PREMECOL REVOQUE FINO 25KG",
+    "description": null,
+    "unit": "bolsa"
+  },
+  {
+    "name": "PUERTA PLEGADIZA PVC 0.72 BLANCA",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PUERTA PLEGADIZA PVC 0.72 X 2.00 CIEGA CEDRO",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PUERTA PLEGADIZA PVC 0.82 BLANCA",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PUERTA PLEGADIZA PVC 0.82 X 2.00 CIEGA CEDRO",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC ADHESIVO X 1000CC",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC ADHESIVO X 100CC",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC ADHESIVO X 250CC",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC ADHESIVO X 500CC",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC ADHESIVO X 50CC",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CAÑO 100X4M",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CAÑO 110X4M",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CAÑO 160X4M",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CAÑO 40X4M",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CAÑO 50X4M",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CAÑO 60X4M",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CAÑO 63X4M",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CODO 100 A 90°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CODO 110 A 90°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CODO 160 A 90°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CODO 40 A 90°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CODO 50 A 90°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CODO 60 A 90°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CODO 63 A 90°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CODO C/ACOMETIDA 100",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CODO C/ACOMETIDA 110",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CUPLA 100",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CUPLA 110",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CUPLA 160",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CUPLA 40",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CUPLA 50",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CUPLA 60",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CUPLA 63",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CUPLA RED 110X100",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CUPLA RED 110X63",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVCCUPLA RED 50X40",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CUPLA RED 60X40",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CUPLA RED 60X50",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CURVA 100 A 45°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CURVA 100 A 90°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CURVA 110 A 45°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CURVA 110 A 90°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CURVA 160 A 45°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CURVA 40 A 45°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CURVA 40 A 90°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CURVA 50 A 45°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CURVA 50 A 90°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CURVA 60 A 45°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CURVA 60 A 90°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CURVA 63 A 45°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC CURVA 63 A 90°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC GUARD. LINEA PLUS 9mm x 2,44m",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC PILETA PATIO 10X10",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC PILETA PATIO 15X15",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC PILETA PATIO 18X18",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC RAMAL 100X45°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC RAMAL 100X60X45°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC RAMAL 100X60X90°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC RAMAL 100X90°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC RAMAL 110X45°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC RAMAL 110X63X45°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC RAMAL 110X63X90°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC RAMAL 110X90°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC RAMAL 160 A 45",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC RAMAL 160 A 90",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC RAMAL 160 X 110 A 45",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC RAMAL 160 X 110 A 90",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC RAMAL 40X45°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC RAMAL 40X90°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC RAMAL 50X45°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC RAMAL 50X90°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC RAMAL 60X45°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC RAMAL 60X90°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC RAMAL 63X45°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC RAMAL 63X90°",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC RECEPTACULO 40",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC SOMBRERETE 110",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC SOMBRERETE 60",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC TAPA 100",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC TAPA 110",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC TAPA 40",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC TAPA 50",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC TAPA 60",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC TAPA 63",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "PVC VALVULA ANTIRETORNO 110",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "QUIMTEX MASILLA QUIMMIX 28KG.",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "REJILLA ACERO DE PISO 10 X 10",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "REJILLA ACERO DE PISO 15 X 15",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "REJILLA DE VENTILACION BLANCA SIMPLE 20 X20",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "RUBEROID X M",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "SEPARADOR 3 MM",
+    "description": "MARTIN FERREDEL",
+    "unit": "unidad"
+  },
+  {
+    "name": "SEPARADOR CRUZ 2MM",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "SEPARADOR CRUZ 3MM",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "SHAP BLOQUE DE CEMENTO 14X19X39- 15L (140)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "SHAP BLOQUE DE CEMENTO 19X19X39 -20LC (105)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "SILICONA ACETICA 50GR TTE TEKBOND (7600.040)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "SIMULADOR CUBRE CAÑO ACERO",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "SINTEPLAST HIDROFUGO 10KG",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "SINTEPLAST HIDROFUGO 1 LTS",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "SINTEPLAST HIDROFUGO 20KG",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "SINTEPLAST HIDROFUGO 5 LTS",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "SOLERA 35 -",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "SOLERA 70 -",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TANQUE ROTOPLAS GDPV BEIGE 400L",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TANQUE ROTOPLAS GDPV BEIGE 600L",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TANQUE ROTOPLAS TRICAPA GRIS 400L",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TANQUE ROTOPLAS TRICAPA GRIS 600L",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TANQUE WATERPLAST PATAGONICO 1000L CON BASE",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TAPA CAMARA CHAPA 60X60",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TAPA DE INODORO ANDINA PVC FERRUM",
+    "description": "TSP",
+    "unit": "unidad"
+  },
+  {
+    "name": "TAPA DE INODORO FERRUM BARI PVC (TKXP)",
+    "description": "TKXP",
+    "unit": "unidad"
+  },
+  {
+    "name": "TAPA DE INODORO FERRUM BARI TKXM",
+    "description": "TKXM",
+    "unit": "unidad"
+  },
+  {
+    "name": "TAPA DE INODORO FLORENCIA",
+    "description": "TFX",
+    "unit": "unidad"
+  },
+  {
+    "name": "TAPA DE INODORO TRAFUL HDF (TKX)",
+    "description": "TKX",
+    "unit": "unidad"
+  },
+  {
+    "name": "TAPA DE INODORO TRAFUL UNIV (TSX) (AND-ATUEL-MA",
+    "description": "TSX",
+    "unit": "unidad"
+  },
+  {
+    "name": "TAPAJUNTA ATRIM 38MM X 1MT BRONCE MATE",
+    "description": "2391",
+    "unit": "unidad"
+  },
+  {
+    "name": "TAPAJUNTA ATRIM 38MM X 2.50 MT PLOMO/MATE",
+    "description": "2382",
+    "unit": "unidad"
+  },
+  {
+    "name": "TAPAJUNTA ATRIM ALUM. 38MM X 1MT PLOMO/MATE",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TAPON ROSCA M 1/2",
+    "description": "11121",
+    "unit": "unidad"
+  },
+  {
+    "name": "TEJUELA COMUN",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TEJUELAS REFRAC. S/C 2CM 229x114x22 mm",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TELGOPOR PLANCHA 1M X 1M X 2CM",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TELGOPOR X BOLSAS",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TIERRA NEGRA",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TIERRA REFRACTARIA 10KG",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TORNILLO AUTOPER. 14 - 2 PULGADAS",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TORNILLO AUTOPER. 14 X 2,5 PULGADAS",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TORNILLO AUTOPERF P/MADERA P17 14X2",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TORNILLO DE INODORO COMPLETO POR UNIDAD",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TORNILLO NIVELADOR 2MM (125u)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TORNILLO NIVELADOR 2MM (X100U)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TORNILLO -T1 AGUJA",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TORNILLO -T1 MECHA",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TORNILLO -T2 AGUJA",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TOSCA X M3",
+    "description": null,
+    "unit": "m3"
+  },
+  {
+    "name": "Tubería Vibranium",
+    "description": "No se atasca nunca",
+    "unit": "U."
+  },
+  {
+    "name": "TUBO ALCANTARILLA 0.30 MT",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TUBO ALCANTARILLA 0.40 MT",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TUBO ALCANTARILLA 0.60 MT",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TUBO ALCANTARILLA 0.80 MT",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TUBO ALCANTARILLA 1.00 MT",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "TUERCA NIVELADORA X1 UN (40u)",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VANITORY BELLA 500- STYLO MUEBLES",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VANITORY CINGOLI C/A 600 BL- STYLO MUEBLES",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VANITORY GENOVA DE PIE C/MESADA ACRILICO 50CM (GR",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VANITORY GENOVA DE PIE C/TAPA 50 CM",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VANITORY INTEGRAL 600 BL- STYLO MUEBLES",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VANITORY MOSCU 600 BL - STYLO MUEBLES",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VANITORY MOSCU 600 COLOR- STYLO MUEBLES",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VANITORY PACIFIC C/V COLOR- STYLO MUEBLES",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VANITORY SICILIA 50CM C/MESADA RESINA (GRUPO GRIF",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VENTANA MODENA 100X100 ALUM BCO",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 1.80",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 2.00",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 2.20",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 2.30",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 2.40",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 2.50",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 2.60",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 2.70",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 2.80",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 2.90",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 3.00",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 3.20",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 3.40",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 3.50",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 3.60",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 3.80",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 4.00",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 4.20",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 4.30",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 4.40",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 4.50",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 4.60",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 4.80",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 5.00",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 5.20",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 5.40",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 5.50",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 5.60",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 5.70",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 5.80",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 5.90",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 6.00",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 6.20",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 6.40",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 6.80",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIGUETA PRET 7.20",
+    "description": null,
+    "unit": "unidad"
+  },
+  {
+    "name": "VIVA CROMO KIT LAVATORIO-BIDET-DUCHA EXT",
+    "description": null,
+    "unit": "unidad"
+  }
+]
