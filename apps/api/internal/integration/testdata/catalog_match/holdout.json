@@ -1,0 +1,258 @@
+[
+  {
+    "line": "cemento avellaneda",
+    "statuses": ["AMBIGUOUS", "NO_MATCH"],
+    "products": [
+      "CEMENTO LOMA NEGRA 25KG",
+      "CEMENTO LOMA NEGRA 25KG (P)",
+      "CEMENTO HOLCIM 25KG",
+      "CEMENTO HOLCIM 25KG (P)",
+      "CEMENTO EN BOLSA 10KG"
+    ]
+  },
+  {
+    "line": "bolsa cemento holcim 25",
+    "statuses": ["MATCHED", "AMBIGUOUS"],
+    "products": ["CEMENTO HOLCIM 25KG", "CEMENTO HOLCIM 25KG (P)"]
+  },
+  {
+    "line": "hierros de 10 mm",
+    "statuses": ["MATCHED"],
+    "products": ["HIERRO 10MM DE 12M"]
+  },
+  {
+    "line": "varilla del 12",
+    "statuses": ["MATCHED", "AMBIGUOUS"],
+    "products": ["HIERRO 12MM DE 12M"]
+  },
+  {
+    "line": "hierro redondo 20",
+    "statuses": ["MATCHED"],
+    "products": ["HIERRO 20MM DE 12M"]
+  },
+  {
+    "line": "ladrillo hueco 8 martin",
+    "statuses": ["MATCHED"],
+    "products": ["LADRILLO HUECO 8-18-33 MARTIN (216)"]
+  },
+  {
+    "line": "ladrillo portante 12 terrabrik",
+    "statuses": ["MATCHED"],
+    "products": ["LADRILLO PORTANTE 12-19-33 TERRABRIK (120)"]
+  },
+  {
+    "line": "bloques de cemento",
+    "statuses": ["AMBIGUOUS"],
+    "products": [
+      "SHAP BLOQUE DE CEMENTO 14X19X39- 15L (140)",
+      "SHAP BLOQUE DE CEMENTO 19X19X39 -20LC (105)",
+      "CORBLOCK LADRILLO DE CEMENTO 13X20X40 (162)",
+      "CORBLOCK LADRILLO DE CEMENTO . 19X19X40 P20 STD ("
+    ]
+  },
+  {
+    "line": "vigueta 5,20",
+    "statuses": ["MATCHED"],
+    "products": ["VIGUETA PRET 5.20"]
+  },
+  {
+    "line": "viguetas 2.40",
+    "statuses": ["MATCHED"],
+    "products": ["VIGUETA PRET 2.40"]
+  },
+  {
+    "line": "placa de roca de yeso 9mm",
+    "statuses": ["MATCHED", "AMBIGUOUS"],
+    "products": ["DURLOCK PLACA STAND 9 MM DE ESP 1.20mX2.40m"]
+  },
+  {
+    "line": "montantes 34",
+    "statuses": ["MATCHED"],
+    "products": ["MONTANTE 34 -"]
+  },
+  {
+    "line": "caño pvc 63",
+    "statuses": ["MATCHED"],
+    "products": ["PVC CAÑO 63X4M"]
+  },
+  {
+    "line": "cupla pvc 110",
+    "statuses": ["MATCHED"],
+    "products": ["PVC CUPLA 110"]
+  },
+  {
+    "line": "ramal pvc 110 a 90",
+    "statuses": ["MATCHED"],
+    "products": ["PVC RAMAL 110X90°"]
+  },
+  {
+    "line": "codo termofusion 3/4",
+    "statuses": ["AMBIGUOUS"],
+    "products": ["HIDRO 3 CODO F/F 3/4 (09002)", "HIDRO 3 CODO 3/4 45° Fus - Fus. HH (9105)"]
+  },
+  {
+    "line": "llave de paso esferica 1/2",
+    "statuses": ["AMBIGUOUS"],
+    "products": [
+      "HIDRO 3 LLAVE DE PASO ESFERICA EXTERIOR 1/2 (0922",
+      "HIDRO 3 LLAVE DE PASO (VALVULAR ESFERICA) 1/2 (09"
+    ]
+  },
+  {
+    "line": "tanque rotoplas 400",
+    "statuses": ["AMBIGUOUS"],
+    "products": ["TANQUE ROTOPLAS GDPV BEIGE 400L", "TANQUE ROTOPLAS TRICAPA GRIS 400L"]
+  },
+  {
+    "line": "inodoro corto",
+    "statuses": ["AMBIGUOUS"],
+    "products": ["FERRUM ANDINA INODORO CORTO (IFA) 6L", "FERRUM BARI INODORO CORTO (IKC)"]
+  },
+  {
+    "line": "deposito de apoyar bari",
+    "statuses": ["MATCHED"],
+    "products": ["FERRUM BARI DEPOSITO DE APOYAR DOBLE DESC (DKW6F)"]
+  },
+  {
+    "line": "pastina marron oscuro 1.5",
+    "statuses": ["MATCHED"],
+    "products": ["PREMECOL PASTINA 1.5KG MARRON OSCURO"]
+  },
+  {
+    "line": "pegamento 25 kg interior",
+    "statuses": ["MATCHED", "AMBIGUOUS"],
+    "products": [
+      "PREMECOL PEGAMENTO ESTANDAR 25KG (INT)",
+      "PREMECOL PEGAMENTO 25KG- NORMAL INT/EXT"
+    ]
+  },
+  {
+    "line": "hidrofugo premecol 4kg",
+    "statuses": ["MATCHED"],
+    "products": ["HIDROFUGO PREMECOL 4 KG"]
+  },
+  {
+    "line": "pintura asfaltica 1 litro",
+    "statuses": ["MATCHED"],
+    "products": ["PINTURA ASFALTICA SECADO RAPIDO X 1L"]
+  },
+  {
+    "line": "chapa acanalada negra",
+    "statuses": ["MATCHED"],
+    "products": ["CHAPA ACAN C25 NEGRA PREPINTADA"]
+  },
+  {
+    "line": "malla 15x15 de 4.2",
+    "statuses": ["AMBIGUOUS"],
+    "products": [
+      "MALLA SOLDADA 15 X 15 4.2 (2M X 3 M)",
+      "MALLA SOLDADA 15X15 4,2 (2X5)",
+      "MALLA SOLDADA 15 X 15 X 4.2 (6 X 2.40MT)"
+    ]
+  },
+  {
+    "line": "tornillos para madera",
+    "statuses": ["MATCHED"],
+    "products": ["TORNILLO AUTOPERF P/MADERA P17 14X2"]
+  },
+  {
+    "line": "pala cuadrada cabo largo",
+    "statuses": ["MATCHED"],
+    "products": ["PALA PALEAR CUADRADA CABO LARGO GHERARDI (4.00)"]
+  },
+  {
+    "line": "extractor de baño 4 pulgadas",
+    "statuses": ["MATCHED", "AMBIGUOUS"],
+    "products": ["EXTRACTOR P/BAÑO PLASTICO DE 4\" (400)"]
+  },
+  {
+    "line": "botiquin con espejo",
+    "statuses": ["AMBIGUOUS"],
+    "products": [
+      "EUROPLAC BOTIQUIN BCO UNA PTA UNA LUZ Y DOS ESTAN",
+      "EUROPLAC BOTIQUIN C/ESPEJO 1 PTA 372",
+      "EUROPLAC BOTIQUIN CON ESPEJO PTA Y 2 EST",
+      "EUROPLAC BOTIQUIN CON PTA ESPEJO 103"
+    ]
+  },
+  {
+    "line": "arena en bolsa",
+    "statuses": ["MATCHED"],
+    "products": ["ARENA EN BOLSA 15KG"]
+  },
+  {
+    "line": "piedra en bolsa",
+    "statuses": ["MATCHED"],
+    "products": ["PIEDRA EN BOLSA 10KG"]
+  },
+  {
+    "line": "cal comun",
+    "statuses": ["AMBIGUOUS"],
+    "products": ["CAL COMUN CACIQUE 25 kG LOMA NEGRA", "HOLCIM CAL HIDRATADA COMUN 25KG"]
+  },
+  {
+    "line": "tierra para refractario",
+    "statuses": ["MATCHED"],
+    "products": ["TIERRA REFRACTARIA 10KG"]
+  },
+  {
+    "line": "ladrillos refractarios 51mm",
+    "statuses": ["MATCHED"],
+    "products": ["LADRILLO REFRACTARIO 51MM"]
+  },
+  {
+    "line": "cemento blanco",
+    "statuses": ["AMBIGUOUS", "NO_MATCH"],
+    "products": []
+  },
+  {
+    "line": "yeso en bolsa",
+    "statuses": ["AMBIGUOUS", "NO_MATCH"],
+    "products": []
+  },
+  {
+    "line": "clavos de 3 pulgadas",
+    "statuses": ["AMBIGUOUS", "NO_MATCH"],
+    "products": []
+  },
+  {
+    "line": "caño pvc 200",
+    "statuses": ["AMBIGUOUS", "NO_MATCH"],
+    "products": []
+  },
+  {
+    "line": "vigueta 8 metros",
+    "statuses": ["AMBIGUOUS", "NO_MATCH"],
+    "products": []
+  },
+  {
+    "line": "ceramica cerro negro 38x38 gris",
+    "statuses": ["AMBIGUOUS"],
+    "products": [
+      "CERRO NEGRO CERAM BELEN GRIS 38X38",
+      "CERRO NEGRO CERAM CORCEGA GRIS 38X38",
+      "CERRO NEGRO CERAM LEBLON GRIS 38X38",
+      "CERRO NEGRO CERAM MURANO GRIS 38X38"
+    ]
+  },
+  {
+    "line": "ventana 120x40",
+    "statuses": ["MATCHED"],
+    "products": ["HERFASA VENTANA ALUM 120X40"]
+  },
+  {
+    "line": "membrana liquida",
+    "statuses": ["AMBIGUOUS", "NO_MATCH"],
+    "products": []
+  },
+  {
+    "line": "malla de fibra de vidrio",
+    "statuses": ["MATCHED"],
+    "products": ["MALLA DE FIBRA DE VIDRIO 90GRS (1M X 50M) XM²"]
+  },
+  {
+    "line": "cinta aisladora",
+    "statuses": ["MATCHED"],
+    "products": ["CINTA AISLANTE PVC PLUS 19MMX20M (3650.965)"]
+  }
+]
