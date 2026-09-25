@@ -53,8 +53,9 @@ func TestCatalogMatchReviewer_MapsEachVerdictOntoItsOwnLinesCandidates(t *testin
 	want := []domain.MatchReviewDecision{
 		{Verdict: domain.MatchReviewVerdictSeveral, Chosen: []int{1, 0},
 			Reason: "Son placas de yeso de dos espesores."},
-		// "3" is a code the widest line handed out, but this line has one candidate: dropped.
-		{Verdict: domain.MatchReviewVerdictOne, Chosen: []int{0}, Reason: "Es el único cemento."},
+		// "3" is a code the widest line handed out, but this line has one candidate: a verdict
+		// about something it was not shown is void, not trimmed into a clean ONE.
+		{},
 		{Verdict: domain.MatchReviewVerdictNone, Reason: "No hay látex."},
 	}
 	if !reflect.DeepEqual(decisions, want) {

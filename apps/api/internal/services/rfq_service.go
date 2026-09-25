@@ -1627,7 +1627,7 @@ func newQuoteItemsFromRFQLines(lines []domain.ExtractedRFQLine) ([]domain.NewQuo
 func alternativesFromMatch(
 	itemID uuid.UUID, match domain.LineMatch,
 ) []domain.NewQuoteItemAlternative {
-	if match.MatchStatus == domain.ItemMatchStatusMatched {
+	if match.MatchStatus == domain.ItemMatchStatusMatched && !match.SettledByReview {
 		return nil
 	}
 	alternatives := make([]domain.NewQuoteItemAlternative, 0, len(match.Candidates))

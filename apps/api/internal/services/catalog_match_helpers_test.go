@@ -41,10 +41,23 @@ func TestTokenizeCatalogText_ReadsCatalogAndClientSpellingsAlike(t *testing.T) {
 		// Abbreviations with a slash are stop words; the hand of a door is read either way.
 		{"MICROFIBRA P/ HORMIGON X 600 G", []string{"microfibr", "hormigon", "600/g"}},
 		{"HERFASA PTA PLACA PINO M/ALUM 07 85 D",
-			[]string{"herfas", "puert", "plac", "pino", "m", "alum", "07", "85", "der"}},
+			[]string{"herfas", "puert", "plac", "pino", "alum", "07", "85", "der"}},
 		// Accents, the degree sign and superscripts decorate; inches are a unit.
 		{"PVC CURVA 63 A 90°", []string{"pvc", "curv", "63", "90"}},
-		{"ARENA POR M²", []string{"aren", "m"}},
+		// A superscript is the digit it stands for, and a metre squared is one unit either way.
+		{"ARENA POR M²", []string{"aren", "m2"}},
+		{"LOSETA 40X40 CEMENTO X M2", []string{"loset", "40", "40", "cement", "m2"}},
+		{"MALLA DE FIBRA DE VIDRIO XM²", []string{"mall", "fibr", "vidri", "m2"}},
+		// The ordinal sign decorates a figure the way the degree sign does.
+		{"codo 90º", []string{"codo", "90"}},
+		{"caño nº 10", []string{"cano", "10"}},
+		// Argentine text groups thousands with points; a decimal point takes one or two digits.
+		{"tanque 1.000 lts", []string{"tanque", "1000/l"}},
+		{"vigueta 4.50", []string{"viguet", "4.50"}},
+		// A lone letter is a shape; a letter before a slash abbreviates a word.
+		{"PERFIL C GALVANIZADO 100", []string{"perfil", "c", "galvanizad", "100"}},
+		{"PERFIL U NEGRO 160X60", []string{"perfil", "u", "negr", "160", "60"}},
+		{"AISLANTE 50MM S/ ALUM", []string{"aislante", "50/mm", "alum"}},
 		{`CLAVOS P/PARIS 2"`, []string{"clav", "pari", "2/in"}},
 	} {
 		t.Run(tc.text, func(t *testing.T) {
@@ -69,6 +82,8 @@ func TestLineTokens_DropsTheCountOpeningTheLine(t *testing.T) {
 		// A spec after the material is the spec, and a leading fraction is a size, not a count.
 		{"hierro del 8", []string{"hierr", "8"}},
 		{"3/4 codo", []string{"3/4", "codo"}},
+		// A size in a unit nobody counts in is a spec, wherever it stands.
+		{"8mm hierro", []string{"8/mm", "hierr"}},
 		// A line that is only a number keeps it: there is nothing else to match.
 		{"110", []string{"110"}},
 	} {
@@ -111,6 +126,12 @@ func TestCatalogCoverage_CreditsWhatTheCatalogTextAccountsFor(t *testing.T) {
 		// Three letters are too few to read as an abbreviation of a longer word.
 		{"a short word that only starts another", "cal", "CERRO NEGRO CERAM CALACATA", 0},
 		{"stop words alone", "de la para", "CEMENTO", 0},
+		{"thousands against a plain figure", "tanque 1.000 lts", "TANQUE AGUA 1000 L", 1},
+		{"thousands against one litre", "tanque 1.000 lts", "TANQUE AGUA 1 L", 1 / 2.5},
+		{"a typed m2 against a superscript", "ceramica 45x45 m2", "CERAMICA 45X45 x m²", 1},
+		{"an ordinal against a degree sign", "codo 90º", "CODO PVC 110 90°", 1},
+		{"the other profile shape", "perfil u 160", "PERFIL C GALVANIZADO 160X2.50X12MM",
+			(1 + 1.5) / 3.5},
 		// A packaging word weighs 0.3: missing it costs little, carrying it helps a little.
 		{"a packaging word the product lacks", "bolsas de cemento", "CEMENTO LOMA NEGRA 25KG",
 			1 / 1.3},

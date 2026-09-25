@@ -240,13 +240,14 @@ func TestCatalogMatchService_ForgivesASpellingTypedByEar(t *testing.T) {
 }
 
 // The acceptance criterion: a trade term loaded as a synonym resolves to its product. The
-// product has no vector yet, so its text is the whole reading rather than half of one.
+// product has no vector yet, which is no evidence either way: its missing half reads as middling
+// agreement with its text, 0.5 × 1 + 0.5 × ½.
 func TestCatalogMatchService_ResolvesATradeTermThroughASynonym(t *testing.T) {
 	membrane := unembedded("Membrana asfáltica 4mm", "telagoma")
 
 	got := matchOne(t, "telagoma", []domain.CatalogCandidate{membrane})
 
-	wantDecision(t, got, domain.ItemMatchStatusMatched, "1", &membrane.ProductID)
+	wantDecision(t, got, domain.ItemMatchStatusMatched, "0.75", &membrane.ProductID)
 
 	// Without the synonym nothing in the product's text is what the line asked for.
 	got = matchOne(t, "telagoma", []domain.CatalogCandidate{unembedded("Membrana asfáltica 4mm")})
@@ -401,7 +402,7 @@ func TestCatalogMatchService_ClampsAnOppositeVectorToZero(t *testing.T) {
 
 // A product stored with a zero-length vector comes back from the database at NaN, and the
 // decimal package refuses to build one — so the line would take the whole request down with it.
-// It reads as a product with no vector: its text is all there is.
+// It reads as a product with no vector: its text, and half of it for the missing vector.
 func TestCatalogMatchService_ScoresAnUnusableDistanceAsNoVector(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -418,7 +419,7 @@ func TestCatalogMatchService_ScoresAnUnusableDistanceAsNoVector(t *testing.T) {
 
 			cement := semantic("Cemento", tc.distance)
 			got = matchOne(t, "cemento", []domain.CatalogCandidate{cement})
-			wantDecision(t, got, domain.ItemMatchStatusMatched, "1", &cement.ProductID)
+			wantDecision(t, got, domain.ItemMatchStatusMatched, "0.75", &cement.ProductID)
 		})
 	}
 }
@@ -675,6 +676,13 @@ func TestCatalogMatchService_ReviewSettlesALineOnTheProductItNames(t *testing.T)
 	if matches[2].Candidates[1].ProductID != o.fifty.ProductID {
 		t.Errorf("runner-up = %s, want the other cement behind the chosen one",
 			matches[2].Candidates[1].CanonicalName)
+	}
+	// The choice between the cements was the model's, so the other one stays on offer.
+	if !matches[2].SettledByReview {
+		t.Error("settled by review = false, want the line marked as the model's decision")
+	}
+	if matches[0].SettledByReview {
+		t.Error("the line the text decided is marked as settled by review")
 	}
 }
 

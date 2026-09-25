@@ -289,7 +289,7 @@ const searchCandidatesQuery = `
 	SELECT p.id, p.code, p.canonical_name, p.description, p.unit, p.embedding <=> $4, lexical.score,
 	       lexical.terms, learned.distance
 	FROM candidate c
-	JOIN product p ON p.id = c.id AND p.account_id = $1
+	JOIN product p ON p.id = c.id AND p.account_id = $1 AND p.is_active = TRUE
 	JOIN branch_product bp ON bp.product_id = p.id AND bp.account_id = $1
 	  AND bp.branch_id = $2 AND bp.is_active = TRUE
 	LEFT JOIN learned ON learned.product_id = p.id

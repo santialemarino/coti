@@ -56,7 +56,7 @@ func (r *CatalogMatchReviewer) Review(
 
 // reviewChunk reviews one batch into decisions. A line's candidates travel under codes numbered
 // from 1 and the schema's enum is exactly those numbers, so the model cannot name a product it
-// was not shown; a code past the end of a shorter line is dropped here rather than trusted.
+// was not shown; a code past the end of a shorter line voids that line's verdict.
 func (r *CatalogMatchReviewer) reviewChunk(
 	ctx context.Context, lines []domain.MatchReviewLine, decisions []domain.MatchReviewDecision,
 ) error {
@@ -102,12 +102,20 @@ func (r *CatalogMatchReviewer) reviewChunk(
 		decision := domain.MatchReviewDecision{
 			Verdict: domain.MatchReviewVerdict(verdict.Verdict), Reason: verdict.Reason,
 		}
+		// A code past this line's candidates is a verdict about something it was not shown, so the
+		// whole verdict is void rather than trimmed into one that looks well-formed.
+		valid := true
 		for _, code := range verdict.Candidates {
-			if j, err := strconv.Atoi(code); err == nil && j >= 1 && j <= len(lines[i].Candidates) {
-				decision.Chosen = append(decision.Chosen, j-1)
+			j, err := strconv.Atoi(code)
+			if err != nil || j < 1 || j > len(lines[i].Candidates) {
+				valid = false
+				break
 			}
+			decision.Chosen = append(decision.Chosen, j-1)
 		}
-		decisions[i] = decision
+		if valid {
+			decisions[i] = decision
+		}
 	}
 	return nil
 }

@@ -166,11 +166,11 @@ do about it. So the candidates the matcher weighed are kept, as `quote_item_alte
 `origin = 'AI'` and `type = 'PRODUCT'`, and they come back attached to the line on both the draft
 and the priced response.
 
-| Line status | What it offers                      | Why                                                             |
-| ----------- | ----------------------------------- | --------------------------------------------------------------- |
-| `MATCHED`   | Nothing                             | The line is decided; there is nothing to choose between         |
-| `AMBIGUOUS` | Every candidate but the one it kept | It kept the leader, so the offers are the products it might be  |
-| `NO_MATCH`  | Every candidate                     | It points at nothing, so the closest near miss is the first one |
+| Line status | What it offers                        | Why                                                             |
+| ----------- | ------------------------------------- | --------------------------------------------------------------- |
+| `MATCHED`   | Nothing, unless the review decided it | The text decided it; a line the review settled keeps its offers |
+| `AMBIGUOUS` | Every candidate but the one it kept   | It kept the leader, so the offers are the products it might be  |
+| `NO_MATCH`  | Every candidate                       | It points at nothing, so the closest near miss is the first one |
 
 **A candidate that scored zero is dropped from both**, which is the one exception to that table.
 

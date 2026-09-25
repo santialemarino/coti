@@ -153,8 +153,8 @@ func (e *env) matchOne(
 }
 
 // The acceptance criterion, end to end: a trade term loaded as a synonym resolves to its
-// product. The product carries no embedding, so only the lexical half can reach it, and with no
-// vector to weigh its text is the whole reading.
+// product. The product carries no embedding, so only the lexical half can reach it, and its
+// missing vector reads as middling agreement: 0.5 × 1 + 0.5 × ½.
 func TestCatalogMatch_ResolvesATradeTermThroughASynonym(t *testing.T) {
 	e := newEnv(t)
 	account, branch := e.seedAccount(t, "Corralon Sinonimos")
@@ -171,8 +171,8 @@ func TestCatalogMatch_ResolvesATradeTermThroughASynonym(t *testing.T) {
 	if got.ProductID == nil || *got.ProductID != product {
 		t.Errorf("product = %v, want the membrane %v", got.ProductID, product)
 	}
-	if want := decimal.RequireFromString("1"); !got.Confidence.Equal(want) {
-		t.Errorf("confidence = %s, want the full coverage %s", got.Confidence, want)
+	if want := decimal.RequireFromString("0.75"); !got.Confidence.Equal(want) {
+		t.Errorf("confidence = %s, want %s", got.Confidence, want)
 	}
 }
 

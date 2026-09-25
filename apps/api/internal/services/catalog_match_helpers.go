@@ -2,10 +2,12 @@ package services
 
 import (
 	"math"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // Weights of one line token in the coverage figure. A figure carries the spec that tells two
@@ -59,21 +61,26 @@ const (
 )
 
 // accentFolder folds the characters Spanish text varies on into the ones a client may type
-// instead. "°" and the superscripts only decorate a figure and are dropped.
+// instead. The degree and ordinal signs only decorate a figure ("90°", "90º", "Nº") and are
+// dropped; superscripts become the digit they are, so "m²" reads like "m2".
 var accentFolder = strings.NewReplacer(
 	"á", "a", "à", "a", "ä", "a", "â", "a", "é", "e", "è", "e", "ë", "e", "ê", "e",
 	"í", "i", "ì", "i", "ï", "i", "î", "i", "ó", "o", "ò", "o", "ö", "o", "ô", "o",
-	"ú", "u", "ù", "u", "ü", "u", "û", "u", "ñ", "n", "°", " ", "²", "", "³", "",
-	`"`, " pulgada ", "´", " ", "'", " ",
+	"ú", "u", "ù", "u", "ü", "u", "û", "u", "ñ", "n", "°", " ", "º", " ", "ª", " ",
+	"²", "2", "³", "3", `"`, " pulgada ", "´", " ", "'", " ",
 )
 
-// stopWords carry no identity of their own, including the single letters that abbreviate one
-// ("p/" para, "c/" con, "s/" sin) and the "x" between two dimensions.
+// thousandsFigure is a figure grouped with points ("1.000", "2.500"), the way Argentine text
+// writes thousands; a decimal point takes one or two digits.
+var thousandsFigure = regexp.MustCompile(`^\d{1,3}(\.\d{3})+$`)
+
+// stopWords carry no identity of their own, including the "x" between two dimensions. A single
+// letter abbreviating one ("p/" para, "c/" con, "s/" sin) is dropped by its slash instead, since
+// on its own a letter can be a shape: a "perfil C" is not a "perfil U".
 var stopWords = map[string]bool{
-	"a": true, "al": true, "c": true, "con": true, "de": true, "del": true, "e": true,
-	"el": true, "en": true, "la": true, "las": true, "lo": true, "los": true, "n": true,
-	"o": true, "p": true, "para": true, "por": true, "s": true, "sin": true, "u": true,
-	"un": true, "una": true, "x": true, "y": true,
+	"a": true, "al": true, "con": true, "de": true, "del": true, "e": true, "el": true,
+	"en": true, "la": true, "las": true, "lo": true, "los": true, "n": true, "o": true,
+	"para": true, "por": true, "sin": true, "un": true, "una": true, "x": true, "y": true,
 }
 
 // unitWords map every spelling of a unit onto one form, so "3 metros" meets "3 m".
@@ -84,8 +91,15 @@ var unitWords = map[string]string{
 	"kg": "kg", "kgs": "kg", "kilo": "kg", "kilos": "kg", "kilogramo": "kg", "kilogramos": "kg",
 	"g": "g", "gr": "g", "grs": "g", "gramo": "g", "gramos": "g",
 	"l": "l", "lt": "l", "lts": "l", "litro": "l", "litros": "l",
-	"cc": "cc", "pulgada": "in", "pulgadas": "in",
+	"cc": "cc", "pulgada": "in", "pulgadas": "in", "m2": "m2", "m3": "m3",
 }
+
+// dimensionUnits are units a size is written in and a quantity never is, so a figure opening a
+// line in one of them is a spec: "8mm hierro" asks for 8mm iron.
+var dimensionUnits = map[string]bool{"mm": true, "cm": true, "in": true}
+
+// shapeLetters are the single letters a profile is named by: "perfil C", "perfil U", "perfil L".
+var shapeLetters = map[string]bool{"c": true, "u": true, "t": true, "h": true, "z": true}
 
 // abbreviations catalogs write that a prefix cannot recover, being shorter than one.
 var abbreviations = map[string]string{"pta": "puerta", "ptas": "puerta"}
@@ -130,7 +144,11 @@ func tokenizeCatalogText(text string) []matchToken {
 		case unicode.IsDigit(r):
 			start := i
 			i = scanFigure(runes, i)
-			figure := strings.ReplaceAll(string(runes[start:i]), ",", ".")
+			figure := string(runes[start:i])
+			if thousandsFigure.MatchString(figure) {
+				figure = strings.ReplaceAll(figure, ".", "")
+			}
+			figure = strings.ReplaceAll(figure, ",", ".")
 			if strings.Contains(figure, "/") {
 				if pendingWhole != "" && pendingJoinable {
 					figure = pendingWhole + "+" + figure
@@ -157,7 +175,22 @@ func tokenizeCatalogText(text string) []matchToken {
 			for i < len(runes) && unicode.IsLetter(runes[i]) {
 				i++
 			}
-			if token, ok := wordToken(string(runes[start:i])); ok {
+			word := string(runes[start:i])
+			// "x m2" is often written "xm2": the "x" joining a unit is the separator, not a word.
+			if len(word) > 1 && word[0] == 'x' && unitWords[word[1:]] != "" {
+				word = word[1:]
+			}
+			// A metre followed by 2 or 3 is an area or a volume, not a metre and a figure.
+			if word == "m" && i < len(runes) && (runes[i] == '2' || runes[i] == '3') &&
+				(i+1 == len(runes) || !unicode.IsDigit(runes[i+1])) {
+				word += string(runes[i])
+				i++
+			}
+			// A single letter before a slash abbreviates a word ("p/", "c/", "s/").
+			if utf8.RuneCountInString(word) == 1 && i < len(runes) && runes[i] == '/' {
+				continue
+			}
+			if token, ok := wordToken(word); ok {
 				tokens = append(tokens, token)
 			}
 		default:
@@ -171,10 +204,12 @@ func tokenizeCatalogText(text string) []matchToken {
 
 // lineTokens reads a client's line for coverage. A figure opening the line is how many the client
 // wants — specs follow the material they qualify — so it is dropped rather than counted as a size
-// no product carries, and so is a unit bound to it: "3 metros de arena" asks for sand.
+// no product carries, and so is a unit bound to it: "3 metros de arena" asks for sand. A fraction
+// or a size in a dimension unit ("8mm hierro") is a spec wherever it stands.
 func lineTokens(description string) []matchToken {
 	tokens := tokenizeCatalogText(description)
-	if len(tokens) < 2 || tokens[0].kind != tokenFigure || strings.Contains(tokens[0].text, "/") {
+	if len(tokens) < 2 || tokens[0].kind != tokenFigure || strings.Contains(tokens[0].text, "/") ||
+		dimensionUnits[tokens[0].unit] {
 		return tokens
 	}
 	return tokens[1:]
@@ -301,7 +336,7 @@ func wordToken(word string) (matchToken, bool) {
 	if side, ok := sideWords[word]; ok {
 		return matchToken{text: side, kind: tokenWord, key: side}, true
 	}
-	if stopWords[word] || len(word) < 2 {
+	if stopWords[word] || (utf8.RuneCountInString(word) < 2 && !shapeLetters[word]) {
 		return matchToken{}, false
 	}
 	if full, ok := abbreviations[word]; ok {

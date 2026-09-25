@@ -230,12 +230,13 @@ func (s *CatalogMatchService) confidenceOf(
 ) (decimal.Decimal, float64, float64) {
 	document := candidateTokens(candidate)
 	coverage := catalogCoverage(line, document)
-	// A product with no vector yet, or a zero-length one (read back as NaN), is read on its text.
-	confidence := coverage
+	// A product with no vector yet, or a zero-length one (read back as NaN), is not evidence of
+	// dissimilarity: its missing half reads as middling agreement with what its text says.
+	similarity := coverage / 2
 	if d := candidate.Distance; d != nil && !math.IsNaN(*d) && !math.IsInf(*d, 0) {
-		similarity := calibratedSimilarity(1-*d, s.similarityFloor, s.similarityCeiling)
-		confidence = s.coverageWeight*coverage + (1-s.coverageWeight)*similarity
+		similarity = calibratedSimilarity(1-*d, s.similarityFloor, s.similarityCeiling)
 	}
+	confidence := s.coverageWeight*coverage + (1-s.coverageWeight)*similarity
 	// Only a line that names a spec says anything about the specs it did not name.
 	unasked := 0.0
 	if slices.ContainsFunc(line, func(t matchToken) bool { return t.kind == tokenFigure }) {
@@ -299,6 +300,12 @@ func (s *CatalogMatchService) review(
 	}
 	for i, index := range pending {
 		matches[index] = s.applyReview(matches[index], decisions[i])
+		// The reason is not stored anywhere yet, so the log is the trace of why a line moved.
+		s.log.InfoContext(ctx, "catalog match reviewed",
+			slog.String("line", descriptions[index]),
+			slog.String("verdict", string(decisions[i].Verdict)),
+			slog.String("status", string(matches[index].MatchStatus)),
+			slog.String("reason", decisions[i].Reason))
 	}
 }
 
@@ -358,6 +365,7 @@ func settleOn(
 	match.ProductID = &productID
 	match.MatchStatus = status
 	match.Confidence = reordered[0].Confidence
+	match.SettledByReview = true
 	return match
 }
 

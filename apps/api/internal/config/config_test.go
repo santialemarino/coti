@@ -697,6 +697,15 @@ func TestLoad_Invalid(t *testing.T) {
 			wantSub: "CATALOG_MATCH_REVIEW_FLOOR_PERCENT must be between 0 and 100",
 		},
 		{
+			// The review settles lines the match floor refused; above it, near misses never reach it.
+			name: "a review floor over the match floor",
+			mutate: func(e map[string]string) {
+				e["CATALOG_MATCH_REVIEW_FLOOR_PERCENT"] = "60"
+			},
+			wantSub: "CATALOG_MATCH_REVIEW_FLOOR_PERCENT (60) must not exceed " +
+				"CATALOG_MATCH_MIN_CONFIDENCE_PERCENT (55)",
+		},
+		{
 			name:    "a negative review cap",
 			mutate:  func(e map[string]string) { e["CATALOG_MATCH_REVIEW_MAX_LINES"] = "-1" },
 			wantSub: "CATALOG_MATCH_REVIEW_MAX_LINES must be zero or more, got -1",

@@ -202,6 +202,31 @@ func TestProductRepository_SearchCandidatesUsesAccountLocalCatalogCorrection(t *
 
 // updated_at says a person changed the product. A backfill over a loaded catalog would otherwise
 // stamp every row as edited at once, and leave the staleness comparison with nothing to measure.
+// A seller-taught phrase keeps pointing at a product after it is deactivated; the search must
+// still not offer a product the account stopped selling.
+func TestProductRepository_SearchCandidatesSkipsADeactivatedProductASellerTaught(t *testing.T) {
+	db := testDB(t)
+	account := seedAccount(t, db, "Corralon Memoria Inactiva")
+	branch := branchOf(t, db, account)
+	product := seedCatalogProduct(t, db, account, "Producto discontinuado", "")
+	stockBranch(t, db, account, branch, product, true)
+	if _, err := db.CrossAccount().Exec(context.Background(), `INSERT INTO quote_correction_memory
+	  (account_id, kind, source_text, normalized_source, embedding, status, product_id,
+	   support_count)
+	 VALUES ($1, 'CATALOG', 'el coso gris', 'el coso gris', $2, 'READY', $3, 1)`,
+		account, queryVector(), product); err != nil {
+		t.Fatalf("seed correction memory: %v", err)
+	}
+	if _, err := db.CrossAccount().Exec(context.Background(),
+		`UPDATE product SET is_active = FALSE WHERE id = $1`, product); err != nil {
+		t.Fatalf("deactivate the product: %v", err)
+	}
+
+	if candidates := searchCandidates(t, db, account, branch, "words absent from catalog", 10); len(candidates) != 0 {
+		t.Errorf("candidates = %v, want none: the product is no longer sold", nameOf(candidates))
+	}
+}
+
 func TestProductRepository_SetEmbeddingsDoesNotMarkTheProductEdited(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()

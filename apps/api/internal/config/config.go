@@ -1044,6 +1044,12 @@ func Load() (*Config, error) {
 				"CATALOG_MATCH_MIN_CONFIDENCE_PERCENT (%d)",
 			cfg.Catalog.MatchHighConfidencePercent, cfg.Catalog.MatchMinConfidencePercent))
 	}
+	if cfg.Catalog.MatchReviewFloorPercent > cfg.Catalog.MatchMinConfidencePercent {
+		problems = append(problems, fmt.Sprintf(
+			"CATALOG_MATCH_REVIEW_FLOOR_PERCENT (%d) must not exceed "+
+				"CATALOG_MATCH_MIN_CONFIDENCE_PERCENT (%d): the review settles lines under that floor",
+			cfg.Catalog.MatchReviewFloorPercent, cfg.Catalog.MatchMinConfidencePercent))
+	}
 	if cfg.Catalog.MatchReviewMaxLines < 0 {
 		problems = append(problems, fmt.Sprintf(
 			"CATALOG_MATCH_REVIEW_MAX_LINES must be zero or more, got %d", cfg.Catalog.MatchReviewMaxLines))

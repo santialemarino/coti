@@ -286,15 +286,19 @@ A candidate's confidence, on `0..1`, is a blend of two readings that mean someth
 - **Coverage** — how much of the client's line the product's text accounts for. The line and the
   product's name, description and matched synonyms are tokenized the same way: accents folded,
   plural and gender endings dropped, figures split from the letters around them (`8mm`, `15x15x6`,
-  `q188`), a decimal comma read as a point, a whole number joined to a fraction kept as one figure
-  (`1-1/2` never meets `1/2`), and a unit bound to the figure it follows (`4mm` never meets `4L`).
-  Every line token earns the best credit a product token not already spent gives it: `1` for the
-  same word or the same value (`3` meets `3.00`), `0.9` for the same phonetic key (`ladriyo`,
-  `sement`, `ierro`), `0.8` for one letter off on words of five or more, `0.75` for an
-  abbreviation of four letters or more (`pret`, `durlo`). A figure weighs `1.5`, a word `1` and a
-  lone unit `0.4`: the spec is what tells two products of one family apart, and it is exactly what
-  an embedding blurs. A figure opening the line is the count (`10 bolsas de cemento`), and it is
-  dropped with the packaging word after it.
+  `q188`), a decimal comma read as a point and a point grouping thousands read as one number
+  (`1.000` is a thousand), a whole number joined to a fraction kept as one figure (`1-1/2` never
+  meets `1/2`), and a unit bound to the figure it follows (`4mm` never meets `4L`; `m2` and `m²` are
+  one unit). The degree and ordinal signs are dropped (`90°`, `90º`, `Nº`), a letter before a slash
+  is an abbreviation (`p/`, `c/`, `s/`) and a lone letter is a shape (`perfil C` is not
+  `perfil U`). Every line token earns the best credit a product token not already spent gives it:
+  `1` for the same word or the same value (`3` meets `3.00`), `0.9` for the same phonetic key
+  (`ladriyo`, `sement`, `ierro`), `0.8` for one letter off on words of five or more, `0.75` for an
+  abbreviation of four letters or more (`pret`, `durlo`). A figure weighs `1.5`, a word `1`, a lone
+  unit `0.4` and a packaging word (`bolsas`, `rollos`, `bol`) `0.3`: the spec is what tells two
+  products of one family apart, and it is exactly what an embedding blurs. A figure opening the
+  line is the count (`10 bolsas de cemento`) and is dropped, unless it is a fraction or a size in
+  millimetres, centimetres or inches (`8mm hierro`).
 - **Similarity** — cosine similarity mapped onto `0..1` between
   `CATALOG_MATCH_SIMILARITY_FLOOR_PERCENT` (what an unrelated pair of catalog texts reaches) and
   `CATALOG_MATCH_SIMILARITY_CEILING_PERCENT` (what a near-verbatim one does). Raw cosine from the
@@ -304,11 +308,11 @@ A candidate's confidence, on `0..1`, is a blend of two readings that mean someth
 
 The confidence is `CATALOG_MATCH_COVERAGE_WEIGHT_PERCENT × coverage + the rest × similarity`, less
 `0.05 ×` the share of the product's figures the line never asked for — and that only when the line
-names a figure at all. A product with no vector yet is read on its coverage alone rather than half
-of it. A seller-taught phrase (`quote_correction_memory`) leads whatever the text suggests, at
-`1 − its distance`. Every figure is **rounded to four decimals before it is compared**:
-`quote_item.confidence_score` is `NUMERIC(5,4)`, so the persisted number is the one the decision
-was taken on.
+names a figure at all. A product with no vector yet is not evidence of dissimilarity, so its missing
+similarity reads as half its coverage. A seller-taught phrase (`quote_correction_memory`) leads
+whatever the text suggests, at `1 − its distance`. Every figure is **rounded to four decimals before
+it is compared**: `quote_item.confidence_score` is `NUMERIC(5,4)`, so the persisted number is the
+one the decision was taken on.
 
 `ts_rank` does not enter the score: it moves with term frequency and document length and means
 nothing across queries. Coverage is the lexical signal that does.
@@ -373,8 +377,11 @@ what the verdict is worth:
 
 So **the model's knowledge alone never marks a line decided** — the catalog text has to back a
 `MATCHED` on its own floor — and `NONE` only ever makes a line more cautious. The score kept is the
-text's own reading of the chosen candidate. A review that fails, times out or answers for the wrong
-number of lines is logged and changes nothing: matching never fails an order over it.
+text's own reading of the chosen candidate. A line the review settled keeps its other candidates on
+offer even once `MATCHED`, since the choice between them was the model's, and every verdict is
+logged with its reason (`catalog match reviewed`). A code outside a line's candidates voids that
+line's verdict. A review that fails, times out or answers for the wrong number of lines is logged
+and changes nothing: matching never fails an order over it.
 
 ### What the review screen shows
 
@@ -389,7 +396,7 @@ so moving the calibration moves the screen with it.
 Every default above is the calibration a labeled benchmark over a real 879-product corralón
 catalog settled on: 154 tuning queries and 45 held-out ones, each labeled with the statuses and the
 products a seller would accept. On it the text alone decides 92% of the tuning set and 93% of the
-held-out one correctly, the review brings them to 94–97% and 98%, and **no configuration in the
+held-out one correctly, the review brings them to 93–97% and 98%, and **no configuration in the
 chosen region matches a line to a wrong product with confidence** — a margin under 5 or a floor
 under 55 is where those start. Move the settings against the pilot's catalog, not by feel. If
 matching disappoints, the places to look are `product_synonym` and the similarity band, **not** the
