@@ -39,6 +39,7 @@ const PRICED_ITEM: QuoteItemResponse = {
   min_price_snapshot: '700.00',
   subtotal: '390000.00',
   confidence_score: '0.9000',
+  confidence_level: 'HIGH',
   match_status: 'MATCHED',
   alternatives: [],
   pricing_unavailable: false,
@@ -46,7 +47,11 @@ const PRICED_ITEM: QuoteItemResponse = {
   created_at: '2026-09-07T20:45:00.000Z',
 };
 
-function renderItems(activeBranchId: string | null = BRANCH_ID, quoteStatus = 'QUOTED') {
+function renderItems(
+  activeBranchId: string | null = BRANCH_ID,
+  quoteStatus = 'QUOTED',
+  items: QuoteItemResponse[] = [PRICED_ITEM],
+) {
   return render(
     <NextIntlClientProvider
       locale="es"
@@ -64,7 +69,7 @@ function renderItems(activeBranchId: string | null = BRANCH_ID, quoteStatus = 'Q
           quoteId={QUOTE_ID}
           quoteStatus={quoteStatus}
           branchId={BRANCH_ID}
-          items={[PRICED_ITEM]}
+          items={items}
           discounts={[]}
           onItemsChange={vi.fn()}
         />
@@ -174,5 +179,37 @@ describe('RfqItemsTable price input', () => {
     await vi.waitFor(() =>
       expect(deleteQuoteItem).toHaveBeenCalledWith(QUOTE_ID, ITEM_ID, BRANCH_ID),
     );
+  });
+});
+
+describe('RfqItemsTable confidence', () => {
+  // The badge renders the API's level, so a score the old cut-offs read as medium shows whatever
+  // the backend's calibration decided it is.
+  it.each([
+    ['HIGH', '0.7500', 'MATCHED', copy.detail.confidence.high],
+    ['MEDIUM', '0.9900', 'AMBIGUOUS', copy.detail.confidence.medium],
+    ['LOW', '0.5400', 'NO_MATCH', copy.detail.confidence.low],
+  ] as const)('shows %s from the API rather than from the score', (level, score, status, label) => {
+    const view = renderItems(BRANCH_ID, 'DRAFT', [
+      { ...PRICED_ITEM, confidence_level: level, confidence_score: score, match_status: status },
+    ]);
+
+    expect(view.getByText(label)).toBeTruthy();
+  });
+
+  it('marks a line the seller chose the product for as manual', () => {
+    const view = renderItems(BRANCH_ID, 'DRAFT', [
+      { ...PRICED_ITEM, confidence_level: null, confidence_score: null, match_status: 'MATCHED' },
+    ]);
+
+    expect(view.getByText(copy.detail.confidence.manual)).toBeTruthy();
+  });
+
+  it('says there is no data for a line matching never scored', () => {
+    const view = renderItems(BRANCH_ID, 'DRAFT', [
+      { ...PRICED_ITEM, confidence_level: null, confidence_score: null, match_status: 'NO_MATCH' },
+    ]);
+
+    expect(view.getByText(copy.detail.confidence.none)).toBeTruthy();
   });
 });

@@ -655,6 +655,7 @@
         "high": "Alta",
         "medium": "Media",
         "low": "Baja",
+        "manual": "Manual",
         "none": "Sin datos"
       },
       "callouts": {

@@ -122,6 +122,8 @@ export interface QuoteVersionResponse {
   created_at: string;
 }
 
+export type ConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW';
+
 export interface QuoteItemResponse {
   id: string;
   version_id: string;
@@ -136,6 +138,7 @@ export interface QuoteItemResponse {
   min_price_snapshot: string | null;
   subtotal: string | null;
   confidence_score: string | null;
+  confidence_level: ConfidenceLevel | null;
   match_status: string;
   alternatives: QuoteItemAlternativeResponse[];
   pricing_unavailable: boolean | null;

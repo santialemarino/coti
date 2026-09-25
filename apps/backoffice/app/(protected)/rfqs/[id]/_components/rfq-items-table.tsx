@@ -25,7 +25,12 @@ import { AmountInput } from '@/components/amount-input';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { CatalogProduct } from '@/lib/api/catalog';
 import { errorCodeOf } from '@/lib/api/errors';
-import type { CreateDiscountBody, QuoteDiscountResponse, QuoteItemResponse } from '@/lib/api/rfqs';
+import type {
+  ConfidenceLevel,
+  CreateDiscountBody,
+  QuoteDiscountResponse,
+  QuoteItemResponse,
+} from '@/lib/api/rfqs';
 import {
   addDiscount,
   addQuoteItem,
@@ -76,20 +81,25 @@ function toQuantity(value: string): string {
   return String(parsed);
 }
 
-function confidenceTone(score: string | null): 'success' | 'warning' | 'danger' | 'neutral' {
-  if (!score) return 'neutral';
-  const n = Number.parseFloat(score);
-  if (n >= 0.8) return 'success';
-  if (n >= 0.5) return 'warning';
-  return 'danger';
-}
+const CONFIDENCE_TONES: Record<ConfidenceLevel, 'success' | 'warning' | 'danger'> = {
+  HIGH: 'success',
+  MEDIUM: 'warning',
+  LOW: 'danger',
+};
 
-function confidenceLabel(score: string | null): string {
-  if (!score) return 'none';
-  const n = Number.parseFloat(score);
-  if (n >= 0.8) return 'high';
-  if (n >= 0.5) return 'medium';
-  return 'low';
+// The API reads the level off its own calibration, so the badge follows the backend's thresholds.
+// A matched line with no level is one a person chose the product for.
+function confidenceBadge(item: QuoteItemResponse): {
+  tone: 'success' | 'warning' | 'danger' | 'neutral';
+  label: string;
+} {
+  if (item.confidence_level) {
+    return {
+      tone: CONFIDENCE_TONES[item.confidence_level],
+      label: item.confidence_level.toLowerCase(),
+    };
+  }
+  return { tone: 'neutral', label: item.match_status === 'MATCHED' ? 'manual' : 'none' };
 }
 
 // The raw rule a seller-typed discount carries, e.g. "10 %" or "$ 1.500,00"; null when the
@@ -413,6 +423,7 @@ export function RfqItemsTable({
               const priceValue = editingPrice[item.id] ?? item.unit_price_snapshot ?? '';
               const noMatch =
                 !showConfidence && item.match_status === 'NO_MATCH' && !item.product_name;
+              const confidence = confidenceBadge(item);
 
               return (
                 <TableRow key={item.id}>
@@ -472,8 +483,8 @@ export function RfqItemsTable({
                   </TableCell>
                   {showConfidence && (
                     <TableCell>
-                      <Badge tone={confidenceTone(item.confidence_score)} size="sm">
-                        {t(`detail.confidence.${confidenceLabel(item.confidence_score)}`)}
+                      <Badge tone={confidence.tone} size="sm">
+                        {t(`detail.confidence.${confidence.label}`)}
                       </Badge>
                     </TableCell>
                   )}
