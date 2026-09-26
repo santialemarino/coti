@@ -339,9 +339,18 @@ text's. Two taught answers for one phrase are always a rival. So is a product th
 match floor and answers the whole line while the taught one does not: that is what a substitution
 leaves behind. A seller who swapped in what was in stock taught `cemento loma negra` the other
 brand, and the line still names the original. The taught answer still leads, and the seller
-confirms it. Measured on the benchmark catalog, with the phrases taught their right product and
-then a plausible wrong one: confidently wrong answers fall from 159 of 178 to 57, while right
-teachings still decide 155 of 179 against 156 before. What is left are lines no product answers
+settles it one of two ways, both remembered:
+
+- **Choosing another product replaces the answer.** A phrase keeps only its latest taught product,
+  so undoing a substitution leaves one answer, not two that contest the phrase forever.
+- **Keeping the taught product confirms it.** A flagged line sent with the product matching
+  proposed teaches that phrase too; once a phrase's own memory has been taught and kept again,
+  it decides against its words. It only does so for that exact phrase, so a neighbouring phrase's
+  memory (`vigueta 4.50` reaching `vigueta 3,60`) still answers to the text.
+
+Measured once on the benchmark catalog with a one-off harness, teaching every line its right product
+and then a plausible wrong one: confidently wrong answers fell from 159 of 178 to 57, while right
+teachings still decided 155 of 179 against 156 before. What is left are lines no product answers
 fully, where the text has nothing to say against the memory.
 
 Two parts of that are deliberate. **A rejected line keeps its best candidate's score**, because
