@@ -357,7 +357,10 @@ moisture, `cinta aisladora` is the insulating tape the catalog calls `CINTA AISL
 the text left flagged — `AMBIGUOUS`, or `NO_MATCH` with a candidate at or above
 `CATALOG_MATCH_REVIEW_FLOOR_PERCENT` — go to the bound language model, at most
 `CATALOG_MATCH_REVIEW_MAX_LINES` per order, ten to a call and the calls side by side. A line whose
-leader is seller-taught is not sent, and `0` turns the review off.
+leader is seller-taught is not sent. **The review is off by default** (`0`): on the benchmark it
+settled about four lines in two hundred at ~USD 0.11 each, more than the seller time it saves, and
+it adds seconds to every order it reviews. It stays built, behind a global switch
+([feature-switches.md](feature-switches.md)), until pilot data says otherwise.
 
 It is schema-forced like every call in [ai-providers.md](ai-providers.md#schema-forced-generation):
 the model sees the client's
@@ -469,7 +472,7 @@ per scan by default, which recalls too little of the catalog to survive the bran
 | `CATALOG_MATCH_SIMILARITY_CEILING_PERCENT` | 90      | Cosine similarity read as a near-verbatim match                |
 | `CATALOG_MATCH_HIGH_CONFIDENCE_PERCENT`    | 80      | Score a `MATCHED` line clears to read `HIGH`                   |
 | `CATALOG_MATCH_REVIEW_FLOOR_PERCENT`       | 40      | Candidate score a flagged line needs to go to review           |
-| `CATALOG_MATCH_REVIEW_MAX_LINES`           | 30      | Flagged lines one order sends to review; `0` turns it off      |
+| `CATALOG_MATCH_REVIEW_MAX_LINES`           | 0       | Flagged lines one order sends to review; `0` turns it off      |
 
 ## API specification
 
