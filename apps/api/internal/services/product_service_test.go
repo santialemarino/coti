@@ -6,8 +6,10 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
@@ -20,6 +22,8 @@ import (
 var (
 	testProductID     = uuid.MustParse("33333333-3333-4333-8333-333333333333")
 	testAlternativeID = uuid.MustParse("44444444-4444-4444-8444-444444444444")
+	testBranchNorth   = uuid.MustParse("66666666-6666-4666-8666-666666666666")
+	testBranchSouth   = uuid.MustParse("77777777-7777-4777-8777-777777777777")
 )
 
 func testCatalogConfig() config.CatalogConfig {
@@ -148,12 +152,44 @@ func (f *fakeAlternatives) Delete(_ context.Context, _ repository.Querier, _, _,
 	return nil
 }
 
+// fakeNewProductAvailability answers every product with the branches the test set as active.
+type fakeNewProductAvailability struct {
+	activeBranches []uuid.UUID
+	added          []uuid.UUID
+}
+
+func (f *fakeNewProductAvailability) AddToActiveBranches(
+	_ context.Context, _ repository.Querier, _, productID uuid.UUID,
+) ([]uuid.UUID, error) {
+	f.added = append(f.added, productID)
+	return f.activeBranches, nil
+}
+
+type initialPriceCall struct {
+	productID uuid.UUID
+	branchIDs []uuid.UUID
+	userID    *uuid.UUID
+	price     domain.NewProductPrice
+}
+
+type fakeInitialPrices struct{ calls []initialPriceCall }
+
+func (f *fakeInitialPrices) CreateAtBranches(
+	_ context.Context, _ repository.Querier, _, productID uuid.UUID, branchIDs []uuid.UUID,
+	userID *uuid.UUID, in domain.NewProductPrice,
+) error {
+	f.calls = append(f.calls, initialPriceCall{productID, branchIDs, userID, in})
+	return nil
+}
+
 type catalogHarness struct {
 	service      *ProductService
 	db           *fakeDB
 	products     *fakeProducts
 	synonyms     *fakeSynonyms
 	alternatives *fakeAlternatives
+	availability *fakeNewProductAvailability
+	prices       *fakeInitialPrices
 }
 
 func newCatalogHarness(known ...uuid.UUID) *catalogHarness {
@@ -162,8 +198,11 @@ func newCatalogHarness(known ...uuid.UUID) *catalogHarness {
 		products:     newFakeProducts(known...),
 		synonyms:     &fakeSynonyms{},
 		alternatives: &fakeAlternatives{},
+		availability: &fakeNewProductAvailability{activeBranches: []uuid.UUID{testBranchNorth, testBranchSouth}},
+		prices:       &fakeInitialPrices{},
 	}
-	h.service = NewProductService(h.db, h.products, h.synonyms, h.alternatives, testCatalogConfig())
+	h.service = NewProductService(h.db, h.products, h.synonyms, h.alternatives, h.availability,
+		h.prices, testCatalogConfig())
 	return h
 }
 
@@ -216,6 +255,85 @@ func TestProductService_CreateProduct_RejectsABlankName(t *testing.T) {
 	}
 	if len(h.products.created) != 0 {
 		t.Error("Create was called for a blank name; the service must reject it first")
+	}
+}
+
+// A product made by hand is quotable at once: available at every active branch and, when a price
+// came with it, priced at each of them as the caller, in ARS, from now.
+func TestProductService_CreateProduct_PricesItAtEveryBranchItBecomesAvailableAt(t *testing.T) {
+	h := newCatalogHarness()
+	createdAt := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
+	h.service.now = func() time.Time { return createdAt }
+
+	product, err := h.service.CreateProduct(context.Background(), testTenant(), domain.NewProduct{
+		CanonicalName: "Cemento Portland 50kg",
+		InitialPrice: &domain.NewProductPrice{
+			Price:    decimal.RequireFromString("12500.50"),
+			MinPrice: decimal.NewNullDecimal(decimal.RequireFromString("11000")),
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateProduct() = %v, want no error", err)
+	}
+
+	if len(h.availability.added) != 1 || h.availability.added[0] != product.ID {
+		t.Fatalf("made available %v, want only the new product %v", h.availability.added, product.ID)
+	}
+	if len(h.prices.calls) != 1 {
+		t.Fatalf("priced %d times, want once", len(h.prices.calls))
+	}
+	call := h.prices.calls[0]
+	if call.productID != product.ID {
+		t.Errorf("priced product %v, want %v", call.productID, product.ID)
+	}
+	if len(call.branchIDs) != 2 || call.branchIDs[0] != testBranchNorth ||
+		call.branchIDs[1] != testBranchSouth {
+		t.Errorf("priced at %v, want the two branches it became available at", call.branchIDs)
+	}
+	if call.userID == nil || *call.userID != testUserID {
+		t.Errorf("priced by %v, want the caller %v", call.userID, testUserID)
+	}
+	if !call.price.Price.Equal(decimal.RequireFromString("12500.50")) ||
+		!call.price.MinPrice.Decimal.Equal(decimal.RequireFromString("11000")) {
+		t.Errorf("price = %s / min %s, want 12500.50 / 11000", call.price.Price,
+			call.price.MinPrice.Decimal)
+	}
+	if call.price.Currency != domain.DefaultCurrency || !call.price.ValidFrom.Equal(createdAt) {
+		t.Errorf("currency %q from %s, want %q from %s", call.price.Currency,
+			call.price.ValidFrom, domain.DefaultCurrency, createdAt)
+	}
+}
+
+func TestProductService_CreateProduct_WithoutAPriceIsOnlyMadeAvailable(t *testing.T) {
+	h := newCatalogHarness()
+
+	if _, err := h.service.CreateProduct(context.Background(), testTenant(),
+		domain.NewProduct{CanonicalName: "Arena gruesa"}); err != nil {
+		t.Fatalf("CreateProduct() = %v, want no error", err)
+	}
+	if len(h.availability.added) != 1 {
+		t.Errorf("made available %d times, want once", len(h.availability.added))
+	}
+	if len(h.prices.calls) != 0 {
+		t.Errorf("priced %d times, want never without a price", len(h.prices.calls))
+	}
+}
+
+func TestProductService_CreateProduct_RejectsAFloorAboveThePriceBeforeWriting(t *testing.T) {
+	h := newCatalogHarness()
+
+	_, err := h.service.CreateProduct(context.Background(), testTenant(), domain.NewProduct{
+		CanonicalName: "Cal hidratada",
+		InitialPrice: &domain.NewProductPrice{
+			Price:    decimal.RequireFromString("100"),
+			MinPrice: decimal.NewNullDecimal(decimal.RequireFromString("100.01")),
+		},
+	})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("CreateProduct() = %v, want %v", err, domain.ErrInvalidInput)
+	}
+	if len(h.products.created) != 0 || len(h.prices.calls) != 0 {
+		t.Error("a write happened for an invalid price; the service must reject it first")
 	}
 }
 

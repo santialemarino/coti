@@ -28,19 +28,26 @@ type branchChannelWriter interface {
 	CreateManualEntry(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) error
 }
 
+// branchCatalogSeeder makes the account's catalog available at a new branch.
+type branchCatalogSeeder interface {
+	AddActiveProducts(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (int64, error)
+}
+
 // BranchService owns the branches of an account.
 type BranchService struct {
 	db                tenantTxRunner
 	branches          branchReader
 	channels          branchChannelWriter
+	catalog           branchCatalogSeeder
 	defaultExpiryDays int
 }
 
 // NewBranchService builds a BranchService.
 func NewBranchService(
-	db tenantTxRunner, branches branchReader, channels branchChannelWriter, defaultExpiryDays int,
+	db tenantTxRunner, branches branchReader, channels branchChannelWriter,
+	catalog branchCatalogSeeder, defaultExpiryDays int,
 ) *BranchService {
-	return &BranchService{db: db, branches: branches, channels: channels,
+	return &BranchService{db: db, branches: branches, channels: channels, catalog: catalog,
 		defaultExpiryDays: defaultExpiryDays}
 }
 
@@ -96,8 +103,9 @@ func (s *BranchService) GetBranch(
 	return branch, nil
 }
 
-// CreateBranch opens a branch and its manual-entry channel in the same transaction, because a
-// branch without that channel cannot take a counter or phone order.
+// CreateBranch opens a branch with its manual-entry channel and the account's active catalog
+// available, in one transaction: without the channel it cannot take a counter or phone order,
+// and without the catalog it cannot match one. Prices stay per branch, so none are copied.
 func (s *BranchService) CreateBranch(
 	ctx context.Context, tenant domain.Tenant, in domain.NewBranch,
 ) (*domain.Branch, error) {
@@ -115,7 +123,11 @@ func (s *BranchService) CreateBranch(
 		if err != nil {
 			return err
 		}
-		return s.channels.CreateManualEntry(ctx, q, tenant.AccountID, branch.ID)
+		if err := s.channels.CreateManualEntry(ctx, q, tenant.AccountID, branch.ID); err != nil {
+			return err
+		}
+		_, err = s.catalog.AddActiveProducts(ctx, q, tenant.AccountID, branch.ID)
+		return err
 	}); err != nil {
 		return nil, err
 	}

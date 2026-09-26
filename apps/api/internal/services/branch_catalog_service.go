@@ -144,16 +144,8 @@ func (s *BranchCatalogService) SetPrice(
 	if err := requireBranch(tenant, "prices"); err != nil {
 		return nil, err
 	}
-	if err := validateAmount(in.Price, "price"); err != nil {
+	if err := validatePriceAmounts(in); err != nil {
 		return nil, err
-	}
-	if in.MinPrice.Valid {
-		if err := validateAmount(in.MinPrice.Decimal, "min_price"); err != nil {
-			return nil, err
-		}
-		if in.MinPrice.Decimal.GreaterThan(in.Price) {
-			return nil, fmt.Errorf("%w: min_price cannot exceed price", domain.ErrInvalidInput)
-		}
 	}
 	if in.Currency == "" {
 		in.Currency = domain.DefaultCurrency
@@ -205,6 +197,24 @@ func requireBranch(tenant domain.Tenant, what string) error {
 	if !tenant.HasBranch() {
 		return fmt.Errorf("%w: setting %s needs an active branch, sent as the X-Branch-Id header",
 			domain.ErrInvalidInput, what)
+	}
+	return nil
+}
+
+// validatePriceAmounts checks a price period's amounts: each fits NUMERIC(14,2) and the floor
+// never exceeds the price.
+func validatePriceAmounts(in domain.NewProductPrice) error {
+	if err := validateAmount(in.Price, "price"); err != nil {
+		return err
+	}
+	if !in.MinPrice.Valid {
+		return nil
+	}
+	if err := validateAmount(in.MinPrice.Decimal, "min_price"); err != nil {
+		return err
+	}
+	if in.MinPrice.Decimal.GreaterThan(in.Price) {
+		return fmt.Errorf("%w: min_price cannot exceed price", domain.ErrInvalidInput)
 	}
 	return nil
 }
