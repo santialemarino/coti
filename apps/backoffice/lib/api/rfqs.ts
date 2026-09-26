@@ -42,6 +42,8 @@ export interface RfqRecord {
   // The quote the order produced; null until it has one. Archiving is keyed on it.
   quoteId: string | null;
   itemCount: number;
+  // Lines of the current version that matching left for the seller to settle.
+  reviewCount: number;
   /*
    * Decimal string, the wire format money travels as (NUMERIC(14,2)); currency is per-account.
    * Absent until the quote exists — an uncotized request has no amount to show.
@@ -67,6 +69,7 @@ export interface RfqListItem {
   branch_id: string;
   quote_id: string | null;
   item_count: number;
+  review_count: number;
   total: string | null;
   status: string;
   needs_followup: boolean;

@@ -483,6 +483,7 @@
       "resultsTotal": "{total, plural, one {# pedido} other {# pedidos}}",
       "results": "Mostrando {from}–{to} de {total} pedidos",
       "items": "{count, plural, one {# ítem} other {# ítems}}",
+      "toReview": "{count} a revisar",
       "numberPending": "Sin número",
       "unassigned": "Sin asignar",
       "selectAll": "Seleccionar todos los pedidos de esta página",
@@ -509,6 +510,7 @@
         "seller": "Vendedor",
         "branch": "Sucursal",
         "items": "Ítems",
+        "toReview": "A revisar",
         "total": "Monto",
         "status": "Estado",
         "actions": "Acciones"

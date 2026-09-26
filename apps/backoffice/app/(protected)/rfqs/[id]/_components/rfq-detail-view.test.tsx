@@ -87,6 +87,7 @@ function draftRecord(): RfqRecord {
     branch: 'Villa Bosch',
     branchId: BRANCH_ID,
     itemCount: 1,
+    reviewCount: 0,
     status: 'GENERATED',
     needsFollowup: false,
   };
@@ -143,6 +144,7 @@ function makeDetail(quoteStatus: string, rfqStatus: string = quoteStatus): RfqDe
       branch: 'Villa Bosch',
       branch_id: BRANCH_ID,
       item_count: 1,
+      review_count: 0,
       total: draft ? null : '390000.00',
       status: rfqStatus,
       needs_followup: false,

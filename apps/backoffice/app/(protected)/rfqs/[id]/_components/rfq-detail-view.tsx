@@ -84,6 +84,7 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
         updateRecord(detail.rfq.id, {
           archived: result.quote.archived_at != null,
           itemCount: result.items.length,
+          reviewCount: result.items.filter((item) => item.match_status !== 'MATCHED').length,
           needsFollowup: result.quote.needs_followup,
           status,
           total: result.version.total,

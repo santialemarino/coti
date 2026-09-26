@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { InboxIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { EmptyState, MetaList } from '@repo/ui/components';
+import { Badge, EmptyState, MetaList } from '@repo/ui/components';
 import { cn } from '@repo/ui/lib';
 import { RfqStatusBadge } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
 import { ROUTES } from '@/config/routes';
@@ -80,8 +80,13 @@ export function RfqSidebarList({ records, activeRfqId }: RfqSidebarListProps) {
                     ) : null,
                   ]}
                 />
-                <div className="flex items-center gap-x-2">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <RfqStatusBadge status={rfq.status} processing={rfq.processing} size="sm" />
+                  {rfq.reviewCount > 0 ? (
+                    <Badge tone="warning" size="sm">
+                      {t('list.toReview', { count: rfq.reviewCount })}
+                    </Badge>
+                  ) : null}
                   <span className="text-paragraph-mini text-foreground-muted tabular-nums">
                     {fmt.dateNumeric(rfq.createdAt)}
                   </span>

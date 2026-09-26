@@ -74,8 +74,9 @@ import { listSellers, type Seller } from '@/lib/api/sellers';
 import { useFormatters } from '@/lib/i18n/formatters';
 
 const PAGE_SIZE = 10;
-// Checkbox, pedido, fecha, vendedor, ítems, monto, estado, acciones — plus sucursal when shown.
-const BASE_COLUMN_COUNT = 8;
+// Checkbox, pedido, fecha, vendedor, ítems, a revisar, monto, estado, acciones — plus sucursal when
+// shown.
+const BASE_COLUMN_COUNT = 9;
 const UNASSIGNED_SELLER = '__unassigned__';
 
 // Shared read-only empty seller list so unloaded branches never allocate per render.
@@ -109,6 +110,7 @@ type SortKey =
   | 'seller'
   | 'branch'
   | 'itemCount'
+  | 'reviewCount'
   | 'total'
   | 'status';
 
@@ -127,6 +129,9 @@ function compareRfqs(a: RfqRecord, b: RfqRecord, key: SortKey, order: SortOrder)
       break;
     case 'itemCount':
       result = a.itemCount - b.itemCount;
+      break;
+    case 'reviewCount':
+      result = a.reviewCount - b.reviewCount;
       break;
     case 'total':
       // No amount yet (no quote) sorts as the smallest number, not the largest.
@@ -830,6 +835,14 @@ export function RfqDashboard({
                 align="end"
               />
               <SortableTableHead
+                label={t('list.columns.toReview')}
+                column="reviewCount"
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+                align="end"
+              />
+              <SortableTableHead
                 label={t('list.columns.total')}
                 column="total"
                 sortBy={sortBy}
@@ -950,6 +963,13 @@ export function RfqDashboard({
                     ) : null}
                     <TableCell className="text-right tabular-nums">
                       {t('list.items', { count: rfq.itemCount })}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {rfq.reviewCount > 0 ? (
+                        <Badge tone="warning" size="sm">
+                          {t('list.toReview', { count: rfq.reviewCount })}
+                        </Badge>
+                      ) : null}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-right tabular-nums">
                       {hasQuoteTotal(rfq.status) && rfq.total != null ? (
