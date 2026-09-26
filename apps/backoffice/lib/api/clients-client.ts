@@ -1,7 +1,10 @@
 import {
+  clientMatchFromSummary,
   mapClientMatch,
+  mapClientSummary,
   mapClientTag,
   mapQuoteClientAssociation,
+  type ClientListRaw,
   type ClientMatch,
   type ClientMatchRaw,
   type ClientTag,
@@ -20,6 +23,16 @@ export interface AssociateQuoteClientBody {
     email?: string;
   };
   tag_ids: string[];
+}
+
+export async function getClientDirectory(branchId: string): Promise<ClientMatch[]> {
+  const response = await fetch('/api/clients', {
+    headers: { 'X-Branch-Id': branchId },
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwOnError(response);
+  const raw = (await response.json()) as ClientListRaw;
+  return raw.items.map(mapClientSummary).map(clientMatchFromSummary);
 }
 
 export async function getQuoteClientAssociation(

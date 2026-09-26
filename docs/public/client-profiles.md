@@ -2,8 +2,9 @@
 
 Coti turns accepted quotes into a lightweight commercial history without silently creating or
 merging customer records. Once a quote is accepted, the order detail shows a **Sale client** card.
-The seller confirms an existing profile suggested by an exact phone or email match, or creates a
-new profile from the delivery contact details.
+The seller confirms an existing profile suggested by an exact phone or email match, searches the
+account directory for another existing profile, or creates a new profile from the delivery contact
+details. A manual selection associates the sale without overwriting the profile's saved contacts.
 
 The same confirmation can assign reusable tags to the client. Every account starts with
 `Recurrente` and `Obra grande`, and sellers can create additional tags while associating a sale or

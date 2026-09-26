@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  clientMatchFromSummary,
   mapClientProfile,
   mapClientSummary,
   mapQuoteClientAssociation,
@@ -44,6 +45,29 @@ describe('client profile API mapping', () => {
       tags: [{ id: 'tag-1', name: 'Recurrente', createdAt: '2026-09-20T12:00:00Z' }],
       acceptedQuoteCount: 3,
       lastAcceptedAt: '2026-09-22T12:00:00Z',
+    });
+  });
+
+  it('turns a directory summary into an association candidate', () => {
+    const summary = mapClientSummary({
+      ...CLIENT,
+      tags: [TAG],
+      accepted_quote_count: 3,
+      last_accepted_at: '2026-09-22T12:00:00Z',
+    });
+
+    expect(clientMatchFromSummary(summary)).toEqual({
+      client: {
+        id: CLIENT.id,
+        name: CLIENT.name,
+        phone: CLIENT.phone,
+        email: CLIENT.email,
+        originChannel: CLIENT.origin_channel,
+        notes: CLIENT.notes,
+        createdAt: CLIENT.created_at,
+        updatedAt: CLIENT.updated_at,
+      },
+      tags: [{ id: 'tag-1', name: 'Recurrente', createdAt: '2026-09-20T12:00:00Z' }],
     });
   });
 

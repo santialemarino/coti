@@ -9,7 +9,8 @@ Sending a quote stores each destination in `quote_send`; it does not create a `c
 contact data, or set `quote.client_id` or `rfq.client_id`. Once the quote reaches `ACCEPTED`, the
 backoffice requests association context. The API returns the most recent WhatsApp and email
 destinations as hints plus account clients that match either contact exactly after normalization.
-This read has no side effects.
+The seller can also search the account-scoped client directory by name, phone, or email when the
+sale arrived through a different contact. Both reads have no side effects.
 
 The seller then chooses one existing suggestion or provides at least one field for a new client.
 `PUT /v1/quotes/{quoteId}/client-association` locks the accepted quote and, in one tenant
@@ -21,7 +22,8 @@ transaction:
 
 The service rejects quotes outside `ACCEPTED`, client or tag IDs from another account, and a body
 that selects both or neither association option. There is no fuzzy match, automatic merge, or
-automatic contact overwrite.
+automatic contact overwrite. Selecting a directory result sends only its existing `client_id` and
+the seller-confirmed tag set; delivery destinations remain in `quote_send`.
 
 ## Tags
 

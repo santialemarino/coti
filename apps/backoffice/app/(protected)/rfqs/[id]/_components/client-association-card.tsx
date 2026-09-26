@@ -30,9 +30,11 @@ import {
   InlineLink,
   Input,
   Label,
+  MetaList,
   PendingButton,
   RadioGroup,
   RadioGroupItem,
+  SearchInput,
   Spinner,
   ToggleGroup,
   ToggleGroupItem,
@@ -47,6 +49,7 @@ import {
 import {
   associateQuoteClient,
   createClientTag,
+  getClientDirectory,
   getQuoteClientAssociation,
 } from '@/lib/api/clients-client';
 import { errorCodeOf } from '@/lib/api/errors';
@@ -127,11 +130,15 @@ export function ClientAssociationCard({ quoteId, branchId }: ClientAssociationCa
                   {clientDisplayName(association.currentClient.client, t('unnamed'))}
                 </Link>
               </InlineLink>
-              <p className="text-paragraph-sm text-foreground-muted">
-                {[association.currentClient.client.phone, association.currentClient.client.email]
-                  .filter(Boolean)
-                  .join(' · ') || t('noContact')}
-              </p>
+              <MetaList
+                items={[
+                  association.currentClient.client.phone,
+                  association.currentClient.client.email,
+                  !association.currentClient.client.phone && !association.currentClient.client.email
+                    ? t('noContact')
+                    : null,
+                ]}
+              />
             </div>
             <TagList tags={association.currentClient.tags} emptyLabel={t('tags.none')} />
           </div>
@@ -173,7 +180,7 @@ function ClientAssociationDialog({
 }: ClientAssociationDialogProps) {
   const t = useTranslations('clients.association');
   const message = useApiErrorMessage('clients.association.errors');
-  const candidates = useMemo(() => {
+  const exactCandidates = useMemo(() => {
     const values = [association.currentClient, ...association.suggestions].filter(
       (candidate): candidate is ClientMatch => candidate !== null,
     );
@@ -182,8 +189,8 @@ function ClientAssociationDialog({
         values.findIndex((item) => item.client.id === candidate.client.id) === index,
     );
   }, [association.currentClient, association.suggestions]);
-  const initialCandidate = association.currentClient ?? candidates[0] ?? null;
-  const [mode, setMode] = useState<AssociationMode>(initialCandidate ? 'existing' : 'new');
+  const initialCandidate = association.currentClient ?? exactCandidates[0] ?? null;
+  const [mode, setMode] = useState<AssociationMode>('existing');
   const [clientId, setClientId] = useState(initialCandidate?.client.id ?? '');
   const [selectedTags, setSelectedTags] = useState(
     () => new Set(initialCandidate?.tags.map((tag) => tag.id) ?? []),
@@ -192,29 +199,81 @@ function ClientAssociationDialog({
   const [name, setName] = useState('');
   const [phone, setPhone] = useState(association.contactHints.phone ?? '');
   const [email, setEmail] = useState(association.contactHints.email ?? '');
+  const [directory, setDirectory] = useState<ClientMatch[]>([]);
+  const [directoryQuery, setDirectoryQuery] = useState('');
+  const [directoryLoading, setDirectoryLoading] = useState(false);
+  const [directoryError, setDirectoryError] = useState<string | null>(null);
   const [newTag, setNewTag] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [creatingTag, startCreateTag] = useTransition();
   const [saving, startSave] = useTransition();
 
+  const selectableCandidates = useMemo(() => {
+    const values = [...exactCandidates, ...directory];
+    return values.filter(
+      (candidate, index) =>
+        values.findIndex((item) => item.client.id === candidate.client.id) === index,
+    );
+  }, [directory, exactCandidates]);
+  const directoryResults = useMemo(() => {
+    const query = normalizeClientSearch(directoryQuery);
+    if (!query) return [];
+    const exactIDs = new Set(exactCandidates.map((candidate) => candidate.client.id));
+    return directory.filter(
+      (candidate) => !exactIDs.has(candidate.client.id) && clientMatchesSearch(candidate, query),
+    );
+  }, [directory, directoryQuery, exactCandidates]);
+
   useEffect(() => {
     if (!open) return;
-    const candidate = association.currentClient ?? candidates[0] ?? null;
-    setMode(candidate ? 'existing' : 'new');
+    const candidate = association.currentClient ?? exactCandidates[0] ?? null;
+    setMode('existing');
     setClientId(candidate?.client.id ?? '');
     setSelectedTags(new Set(candidate?.tags.map((tag) => tag.id) ?? []));
     setAvailableTags(association.availableTags);
     setName('');
     setPhone(association.contactHints.phone ?? '');
     setEmail(association.contactHints.email ?? '');
+    setDirectoryQuery('');
+    setDirectoryError(null);
     setNewTag('');
     setError(null);
-  }, [association, candidates, open]);
+  }, [association, exactCandidates, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    setDirectory([]);
+    setDirectoryLoading(true);
+    setDirectoryError(null);
+    getClientDirectory(branchId)
+      .then((clients) => {
+        if (active) setDirectory(clients);
+      })
+      .catch((cause) => {
+        if (active) setDirectoryError(message(errorCodeOf(cause)));
+      })
+      .finally(() => {
+        if (active) setDirectoryLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [branchId, message, open]);
 
   function chooseCandidate(id: string) {
     setClientId(id);
-    const candidate = candidates.find((item) => item.client.id === id);
+    const candidate = selectableCandidates.find((item) => item.client.id === id);
     setSelectedTags(new Set(candidate?.tags.map((tag) => tag.id) ?? []));
+  }
+
+  function changeDirectoryQuery(value: string) {
+    setDirectoryQuery(value);
+    const selectedIsExact = exactCandidates.some((candidate) => candidate.client.id === clientId);
+    if (clientId && !selectedIsExact) {
+      setClientId('');
+      setSelectedTags(new Set());
+    }
   }
 
   function chooseMode(value: string) {
@@ -225,7 +284,8 @@ function ClientAssociationDialog({
       setSelectedTags(new Set());
       return;
     }
-    const candidate = candidates.find((item) => item.client.id === clientId) ?? candidates[0];
+    const candidate =
+      selectableCandidates.find((item) => item.client.id === clientId) ?? exactCandidates[0];
     if (candidate) {
       setClientId(candidate.client.id);
       setSelectedTags(new Set(candidate.tags.map((tag) => tag.id)));
@@ -299,7 +359,7 @@ function ClientAssociationDialog({
         {error ? <Callout tone="danger">{error}</Callout> : null}
 
         <ToggleGroup type="single" value={mode} onValueChange={chooseMode} className="w-full">
-          <ToggleGroupItem value="existing" disabled={candidates.length === 0}>
+          <ToggleGroupItem value="existing">
             <UserRoundCheckIcon aria-hidden="true" />
             {t('dialog.existing')}
           </ToggleGroupItem>
@@ -310,33 +370,71 @@ function ClientAssociationDialog({
         </ToggleGroup>
 
         {mode === 'existing' ? (
-          <div className="flex flex-col gap-y-3">
-            <Label>{t('dialog.chooseClient')}</Label>
-            <RadioGroup value={clientId} onValueChange={chooseCandidate}>
-              {candidates.map((candidate) => (
-                <Label
-                  key={candidate.client.id}
-                  className="flex w-full cursor-pointer items-start gap-x-3 rounded-lg border border-border px-3 py-3 transition-[border-color,background-color] duration-200 ease-out-soft hover:border-border-strong hover:bg-muted active:bg-surface-hover"
+          <div className="flex flex-col gap-y-5">
+            {exactCandidates.length > 0 ? (
+              <div className="flex flex-col gap-y-3">
+                <Label>{t('dialog.chooseClient')}</Label>
+                <RadioGroup value={clientId} onValueChange={chooseCandidate}>
+                  {exactCandidates.map((candidate) => (
+                    <ClientOption
+                      key={candidate.client.id}
+                      candidate={candidate}
+                      currentClientId={association.currentClient?.client.id}
+                      unnamedLabel={t('unnamed')}
+                      noContactLabel={t('noContact')}
+                      currentLabel={t('dialog.current')}
+                    />
+                  ))}
+                </RadioGroup>
+              </div>
+            ) : null}
+
+            <div
+              className={
+                exactCandidates.length > 0
+                  ? 'flex flex-col gap-y-3 border-t border-border pt-4'
+                  : 'flex flex-col gap-y-3'
+              }
+            >
+              <Label htmlFor="association-client-search">{t('dialog.searchClient')}</Label>
+              <SearchInput
+                id="association-client-search"
+                value={directoryQuery}
+                onChange={(event) => changeDirectoryQuery(event.target.value)}
+                onClear={() => changeDirectoryQuery('')}
+                clearLabel={t('dialog.clearSearch')}
+                placeholder={t('dialog.searchPlaceholder')}
+                containerClassName="w-full"
+                disabled={saving}
+              />
+              {directoryLoading ? (
+                <div className="flex items-center gap-x-2 text-paragraph-sm text-foreground-muted">
+                  <Spinner size="sm" />
+                  {t('dialog.searchLoading')}
+                </div>
+              ) : directoryError ? (
+                <Callout tone="danger">{directoryError}</Callout>
+              ) : directoryQuery.trim() && directoryResults.length === 0 ? (
+                <p className="text-paragraph-sm text-foreground-muted">{t('dialog.searchEmpty')}</p>
+              ) : directoryResults.length > 0 ? (
+                <RadioGroup
+                  value={clientId}
+                  onValueChange={chooseCandidate}
+                  className="max-h-56 overflow-y-auto pr-1"
                 >
-                  <RadioGroupItem value={candidate.client.id} className="mt-0.5" />
-                  <span className="flex min-w-0 flex-1 flex-col gap-y-1">
-                    <span className="text-paragraph-sm-medium text-foreground">
-                      {clientDisplayName(candidate.client, t('unnamed'))}
-                    </span>
-                    <span className="text-paragraph-xs text-foreground-muted">
-                      {[candidate.client.phone, candidate.client.email]
-                        .filter(Boolean)
-                        .join(' · ') || t('noContact')}
-                    </span>
-                  </span>
-                  {association.currentClient?.client.id === candidate.client.id ? (
-                    <Badge tone="success" size="sm">
-                      {t('dialog.current')}
-                    </Badge>
-                  ) : null}
-                </Label>
-              ))}
-            </RadioGroup>
+                  {directoryResults.map((candidate) => (
+                    <ClientOption
+                      key={candidate.client.id}
+                      candidate={candidate}
+                      currentClientId={association.currentClient?.client.id}
+                      unnamedLabel={t('unnamed')}
+                      noContactLabel={t('noContact')}
+                      currentLabel={t('dialog.current')}
+                    />
+                  ))}
+                </RadioGroup>
+              ) : null}
+            </div>
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
@@ -456,4 +554,60 @@ function TagList({ tags, emptyLabel }: { tags: ClientTag[]; emptyLabel: string }
       ))}
     </div>
   );
+}
+
+interface ClientOptionProps {
+  candidate: ClientMatch;
+  currentClientId?: string;
+  unnamedLabel: string;
+  noContactLabel: string;
+  currentLabel: string;
+}
+
+function ClientOption({
+  candidate,
+  currentClientId,
+  unnamedLabel,
+  noContactLabel,
+  currentLabel,
+}: ClientOptionProps) {
+  const { client } = candidate;
+  return (
+    <Label className="flex w-full cursor-pointer items-start gap-x-3 rounded-lg border border-border px-3 py-3 transition-[border-color,background-color] duration-200 ease-out-soft hover:border-border-strong hover:bg-muted active:bg-surface-hover">
+      <RadioGroupItem value={client.id} className="mt-0.5" />
+      <span className="flex min-w-0 flex-1 flex-col gap-y-1">
+        <span className="text-paragraph-sm-medium text-foreground">
+          {clientDisplayName(client, unnamedLabel)}
+        </span>
+        <MetaList
+          className="text-paragraph-xs"
+          items={[
+            client.phone,
+            client.email,
+            !client.phone && !client.email ? noContactLabel : null,
+          ]}
+        />
+      </span>
+      {currentClientId === client.id ? (
+        <Badge tone="success" size="sm">
+          {currentLabel}
+        </Badge>
+      ) : null}
+    </Label>
+  );
+}
+
+function clientMatchesSearch(candidate: ClientMatch, normalizedQuery: string): boolean {
+  const { client } = candidate;
+  return [client.name, client.phone, client.email].some(
+    (value) => value && normalizeClientSearch(value).includes(normalizedQuery),
+  );
+}
+
+function normalizeClientSearch(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('es-AR')
+    .replace(/[^a-z0-9]/g, '');
 }

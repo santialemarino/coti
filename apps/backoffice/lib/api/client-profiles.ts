@@ -134,6 +134,22 @@ export function mapClientSummary(raw: ClientSummaryRaw): ClientSummary {
   };
 }
 
+export function clientMatchFromSummary(summary: ClientSummary): ClientMatch {
+  return {
+    client: {
+      id: summary.id,
+      name: summary.name,
+      phone: summary.phone,
+      email: summary.email,
+      originChannel: summary.originChannel,
+      notes: summary.notes,
+      createdAt: summary.createdAt,
+      updatedAt: summary.updatedAt,
+    },
+    tags: summary.tags,
+  };
+}
+
 export function mapClientProfile(raw: ClientProfileRaw): ClientProfile {
   return {
     client: mapClient(raw.client),

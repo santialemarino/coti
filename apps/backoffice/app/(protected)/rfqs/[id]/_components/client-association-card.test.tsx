@@ -2,10 +2,11 @@ import { fireEvent, render, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { QuoteClientAssociation } from '@/lib/api/client-profiles';
+import type { ClientMatch, QuoteClientAssociation } from '@/lib/api/client-profiles';
 import {
   associateQuoteClient,
   createClientTag,
+  getClientDirectory,
   getQuoteClientAssociation,
 } from '@/lib/api/clients-client';
 import messages from '@/translations/es.json';
@@ -15,6 +16,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn() } }));
 vi.mock('@/lib/api/clients-client', () => ({
   associateQuoteClient: vi.fn(),
   createClientTag: vi.fn(),
+  getClientDirectory: vi.fn(),
   getQuoteClientAssociation: vi.fn(),
 }));
 
@@ -60,6 +62,7 @@ function renderCard() {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getQuoteClientAssociation).mockResolvedValue(association);
+  vi.mocked(getClientDirectory).mockResolvedValue([]);
   vi.mocked(associateQuoteClient).mockResolvedValue(association.suggestions[0]!);
 });
 
@@ -96,6 +99,45 @@ describe('ClientAssociationCard', () => {
     fireEvent.click(view.getByRole('radio', { name: messages.clients.association.dialog.new }));
     expect(tag.getAttribute('data-state')).toBe('unchecked');
     expect(associateQuoteClient).not.toHaveBeenCalled();
+  });
+
+  it('lets the seller manually select an existing client without a contact match', async () => {
+    const manualClient: ClientMatch = {
+      client: {
+        id: 'c0000000-0000-4000-8000-000000000023',
+        name: 'Constructora del Sur',
+        phone: '+5491144440101',
+        email: 'administracion@delsur.test',
+        originChannel: 'WHATSAPP',
+        notes: null,
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+      tags: [{ id: TAG_ID, name: 'Recurrente', createdAt: NOW }],
+    };
+    vi.mocked(getQuoteClientAssociation).mockResolvedValue({
+      ...association,
+      suggestions: [],
+    });
+    vi.mocked(getClientDirectory).mockResolvedValue([manualClient]);
+
+    const view = renderCard();
+    await view.findByText(messages.clients.association.pending.title);
+    fireEvent.click(view.getByRole('button', { name: messages.clients.association.associate }));
+
+    const search = await view.findByPlaceholderText(
+      messages.clients.association.dialog.searchPlaceholder,
+    );
+    fireEvent.change(search, { target: { value: '4444' } });
+    fireEvent.click(await view.findByRole('radio', { name: /Constructora del Sur/ }));
+    fireEvent.click(view.getByRole('button', { name: messages.clients.association.dialog.save }));
+
+    await waitFor(() =>
+      expect(associateQuoteClient).toHaveBeenCalledWith(QUOTE_ID, BRANCH_ID, {
+        client_id: manualClient.client.id,
+        tag_ids: [TAG_ID],
+      }),
+    );
   });
 
   it('can create a reusable tag inline without associating the sale', async () => {
