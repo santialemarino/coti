@@ -1008,6 +1008,7 @@
         "INVALID_BODY": "Revisá los datos del cliente.",
         "INVALID_INPUT": "Completá al menos un dato válido y elegí tags de esta cuenta.",
         "NOT_FOUND": "La cotización, el cliente o un tag ya no existe. Actualizá la pantalla.",
+        "QUOTE_ARCHIVED": "La cotización está archivada. Desarchivala antes de asociar el cliente.",
         "CONFLICT": "La cotización ya no está aceptada. Actualizá la pantalla antes de asociarla.",
         "FORBIDDEN": "No tenés permiso para consultar esta venta.",
         "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",

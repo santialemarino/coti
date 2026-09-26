@@ -27,7 +27,9 @@ vi.mock('@/lib/api/rfqs-client', () => ({
 // header are stubbed out, with the send dialog and the diff left as spies.
 vi.mock('./rfq-items-table', () => ({ RfqItemsTable: () => null }));
 vi.mock('./rfq-detail-header', () => ({ RfqDetailHeader: () => null }));
-vi.mock('./client-association-card', () => ({ ClientAssociationCard: () => null }));
+vi.mock('./client-association-card', () => ({
+  ClientAssociationCard: () => <div data-testid="client-association-card" />,
+}));
 vi.mock('./send-quote-dialog', () => ({ SendQuoteDialog: vi.fn(() => null) }));
 vi.mock('./rfq-change-diff', () => ({ RfqChangeDiff: vi.fn(() => null) }));
 
@@ -327,6 +329,23 @@ describe('RfqDetailView send flow', () => {
 
     expect(view.getByRole('button', { name: copy.detail.items.generate })).toBeTruthy();
     expect(SendDialog).not.toHaveBeenCalled();
+  });
+});
+
+describe('RfqDetailView client association', () => {
+  it('shows the association card for an active accepted quote', () => {
+    const view = renderView(makeDetail('ACCEPTED'));
+
+    expect(view.getByTestId('client-association-card')).toBeTruthy();
+  });
+
+  it('hides the association card while the accepted quote is archived', () => {
+    const detail = makeDetail('ACCEPTED');
+    detail.rfq = { ...detail.rfq, archived_at: BASE_TIME };
+    detail.quote = { ...detail.quote!, archived_at: BASE_TIME };
+    const view = renderView(detail);
+
+    expect(view.queryByTestId('client-association-card')).toBeNull();
   });
 });
 

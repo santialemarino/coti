@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -240,6 +241,28 @@ func TestClientService_AssociateQuote_RefusesNonAcceptedQuote(t *testing.T) {
 	}
 	if h.quotes.setClient != nil || h.rfqs.setClient != nil {
 		t.Fatal("a non-accepted quote was associated")
+	}
+}
+
+func TestClientService_ClientAssociation_RefusesArchivedQuote(t *testing.T) {
+	h := newClientServiceHarness()
+	archivedAt := time.Now()
+	h.quotes.quote.ArchivedAt = &archivedAt
+
+	_, getErr := h.service.GetQuoteAssociation(context.Background(), branchTenant(), testQuoteID)
+	if domain.CodeOf(getErr) != domain.CodeQuoteArchived {
+		t.Fatalf("GetQuoteAssociation() error = %v, want QUOTE_ARCHIVED", getErr)
+	}
+
+	clientID := uuid.New()
+	h.clients.clients[clientID] = domain.Client{ID: clientID, AccountID: testAccountID}
+	_, associateErr := h.service.AssociateQuote(context.Background(), branchTenant(), testQuoteID,
+		domain.AssociateQuoteClientInput{ClientID: &clientID})
+	if domain.CodeOf(associateErr) != domain.CodeQuoteArchived {
+		t.Fatalf("AssociateQuote() error = %v, want QUOTE_ARCHIVED", associateErr)
+	}
+	if h.quotes.setClient != nil || h.rfqs.setClient != nil {
+		t.Fatal("an archived quote was associated")
 	}
 }
 

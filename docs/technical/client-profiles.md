@@ -20,10 +20,11 @@ transaction:
 2. validates and replaces that profile's selected tags;
 3. sets the same `client_id` on the quote and its source RFQ.
 
-The service rejects quotes outside `ACCEPTED`, client or tag IDs from another account, and a body
-that selects both or neither association option. There is no fuzzy match, automatic merge, or
-automatic contact overwrite. Selecting a directory result sends only its existing `client_id` and
-the seller-confirmed tag set; delivery destinations remain in `quote_send`.
+The service rejects quotes outside `ACCEPTED`, archived quotes, client or tag IDs from another
+account, and a body that selects both or neither association option. An archived accepted quote
+must be unarchived before reading or changing its association. There is no fuzzy match, automatic
+merge, or automatic contact overwrite. Selecting a directory result sends only its existing
+`client_id` and the seller-confirmed tag set; delivery destinations remain in `quote_send`.
 
 ## Tags
 
@@ -60,7 +61,7 @@ confirming an individual quote association.
 
 ## Verification
 
-The service tests pin normalization, accepted-only association, transactional quote/RFQ updates,
-and the no-write suggestion contract. PostgreSQL integration tests cover send without implicit
-client creation through confirmed association and profile history. Backoffice tests cover API
-mapping and the seller confirmation boundary.
+The service tests pin normalization, active accepted-only association, transactional quote/RFQ
+updates, and the no-write suggestion contract. PostgreSQL integration tests cover send without
+implicit client creation through confirmed association and profile history. Backoffice tests cover
+API mapping, the archived boundary, and seller confirmation.

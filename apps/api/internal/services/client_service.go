@@ -160,8 +160,8 @@ func (s *ClientService) GetQuoteAssociation(
 		if err != nil {
 			return err
 		}
-		if quote.CurrentStatus != domain.QuoteStatusAccepted {
-			return fmt.Errorf("%w: only an accepted quote can be associated", domain.ErrConflict)
+		if err := requireClientAssociationAllowed(*quote); err != nil {
+			return err
 		}
 		sends, err := s.sends.ListByQuote(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
 		if err != nil {
@@ -253,8 +253,8 @@ func (s *ClientService) AssociateQuote(
 		if err != nil {
 			return err
 		}
-		if quote.CurrentStatus != domain.QuoteStatusAccepted {
-			return fmt.Errorf("%w: only an accepted quote can be associated", domain.ErrConflict)
+		if err := requireClientAssociationAllowed(*quote); err != nil {
+			return err
 		}
 
 		var client *domain.Client
@@ -290,6 +290,16 @@ func (s *ClientService) AssociateQuote(
 		return nil
 	})
 	return result, err
+}
+
+func requireClientAssociationAllowed(quote domain.Quote) error {
+	if quote.ArchivedAt != nil {
+		return domain.WithCode(domain.CodeQuoteArchived, domain.ErrConflict)
+	}
+	if quote.CurrentStatus != domain.QuoteStatusAccepted {
+		return fmt.Errorf("%w: only an accepted quote can be associated", domain.ErrConflict)
+	}
+	return nil
 }
 
 // ReplaceClientTags validates account ownership and replaces one profile's tag set.

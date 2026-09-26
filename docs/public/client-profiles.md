@@ -5,6 +5,7 @@ merging customer records. Once a quote is accepted, the order detail shows a **S
 The seller confirms an existing profile suggested by an exact phone or email match, searches the
 account directory for another existing profile, or creates a new profile from the delivery contact
 details. A manual selection associates the sale without overwriting the profile's saved contacts.
+An archived accepted quote must be unarchived before this association can be read or changed.
 
 The same confirmation can assign reusable tags to the client. Every account starts with
 `Recurrente` and `Obra grande`, and sellers can create additional tags while associating a sale or

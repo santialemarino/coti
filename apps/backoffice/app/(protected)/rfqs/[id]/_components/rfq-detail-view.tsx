@@ -116,7 +116,9 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
           <Callout tone="success" title={t('detail.callouts.accepted.title')}>
             {t('detail.callouts.accepted.description')}
           </Callout>
-          {quoteId ? <ClientAssociationCard quoteId={quoteId} branchId={branchId} /> : null}
+          {quoteId && detail.quote?.archived_at === null ? (
+            <ClientAssociationCard quoteId={quoteId} branchId={branchId} />
+          ) : null}
         </>
       )}
 
