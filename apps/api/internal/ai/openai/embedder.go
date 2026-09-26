@@ -3,7 +3,6 @@ package openai
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"time"
 
@@ -20,15 +19,15 @@ var _ domain.Embedder = (*Embedder)(nil)
 type Embedder struct {
 	client *http.Client
 	cfg    config.EmbeddingsConfig
-	log    *slog.Logger
+	meter  *ai.Meter
 }
 
 // NewEmbedder builds an Embedder from the embedding settings.
-func NewEmbedder(cfg config.EmbeddingsConfig, log *slog.Logger) *Embedder {
+func NewEmbedder(cfg config.EmbeddingsConfig, meter *ai.Meter) *Embedder {
 	return &Embedder{
 		client: &http.Client{Timeout: cfg.Timeout},
 		cfg:    cfg,
-		log:    log,
+		meter:  meter,
 	}
 }
 
@@ -106,10 +105,10 @@ func (e *Embedder) Embed(ctx context.Context, texts []string) ([]pgvector.Vector
 		}
 	}
 
-	ai.LogCall(ctx, e.log, ai.Call{
-		Provider:  string(config.AIProviderOpenAI),
-		Model:     e.cfg.Model,
-		Operation: "embed",
+	e.meter.Observe(ctx, ai.Call{
+		Provider: string(config.AIProviderOpenAI),
+		Model:    e.cfg.Model,
+		Method:   "embed",
 		// Summed over the batches, so the count reflects the requests actually made.
 		Attempts:    attempts,
 		Elapsed:     time.Since(started),

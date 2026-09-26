@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"reflect"
 	"strings"
 	"time"
@@ -27,11 +26,11 @@ var _ domain.StructuredGenerator = (*Generator)(nil)
 type Generator struct {
 	client *anthropicsdk.Client
 	cfg    config.AnthropicConfig
-	log    *slog.Logger
+	meter  *ai.Meter
 }
 
 // NewGenerator builds a Generator from the language-model settings.
-func NewGenerator(cfg config.AnthropicConfig, log *slog.Logger) *Generator {
+func NewGenerator(cfg config.AnthropicConfig, meter *ai.Meter) *Generator {
 	opts := []option.RequestOption{
 		// The API resolves its own credentials. Left to itself the SDK would also read
 		// ANTHROPIC_* and any OAuth profile on disk, so a developer's own login could end up
@@ -46,7 +45,7 @@ func NewGenerator(cfg config.AnthropicConfig, log *slog.Logger) *Generator {
 		opts = append(opts, option.WithBaseURL(cfg.BaseURL))
 	}
 	client := anthropicsdk.NewClient(opts...)
-	return &Generator{client: &client, cfg: cfg, log: log}
+	return &Generator{client: &client, cfg: cfg, meter: meter}
 }
 
 // Generate sends req to Claude and decodes the answer into out. An answer that does not satisfy
@@ -100,10 +99,10 @@ func (g *Generator) Generate(ctx context.Context, req domain.GenerationRequest, 
 		usage.CacheWriteTokens += int(message.Usage.CacheCreationInputTokens)
 		return decode(message, out)
 	})
-	ai.LogCall(ctx, g.log, ai.Call{
+	g.meter.Observe(ctx, ai.Call{
 		Provider:         usage.Provider,
 		Model:            usage.Model,
-		Operation:        "generate",
+		Method:           "generate",
 		Attempts:         attempts,
 		Elapsed:          time.Since(started),
 		InputTokens:      usage.InputTokens,

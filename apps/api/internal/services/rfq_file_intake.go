@@ -76,7 +76,8 @@ func (s *RFQService) transcribe(
 	if err := audio.Validate(); err != nil {
 		return "", err
 	}
-	text, err := s.transcriber.Transcribe(ctx, audio)
+	text, err := s.transcriber.Transcribe(
+		domain.WithAIOperation(ctx, domain.AIOperationAudioTranscription), audio)
 	if err != nil {
 		return "", err
 	}

@@ -74,7 +74,8 @@ func (s *CatalogSearchService) Search(
 
 	// Outside the transaction on purpose: a provider call is slow and can fail on its own
 	// timeline, and no transaction is held open across it.
-	vectors, err := s.embedder.Embed(ctx, texts)
+	vectors, err := s.embedder.Embed(domain.WithAIOperation(domain.WithAIAccount(ctx, tenant),
+		domain.AIOperationCatalogSearch), texts)
 	if err != nil {
 		return nil, err
 	}

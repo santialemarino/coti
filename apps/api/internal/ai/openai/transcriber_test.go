@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/santialemarino/coti/apps/api/internal/ai"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
@@ -24,7 +25,7 @@ func newTranscriber(srv *httptest.Server, attempts int) *Transcriber {
 		Model:   "whisper-1",
 		Timeout: 5 * time.Second,
 		Retry:   policy(attempts),
-	}, slog.New(slog.DiscardHandler))
+	}, ai.NewMeter(slog.New(slog.DiscardHandler), nil))
 }
 
 func voiceNote() domain.Audio {
@@ -153,6 +154,34 @@ func TestTranscriber_RetriesAnEmptyTranscription(t *testing.T) {
 	}
 	if provider.calls() != 2 {
 		t.Fatalf("calls = %d, want 2", provider.calls())
+	}
+}
+
+// Whisper bills by the recording's duration and says so in the answer. An attempt that came back
+// empty was billed too, so the seconds are summed like tokens are elsewhere.
+func TestTranscriber_MetersTheDurationEveryAttemptWasBilledFor(t *testing.T) {
+	t.Parallel()
+
+	srv, _ := serve(t,
+		reply{http.StatusOK, `{"text":"   ","usage":{"type":"duration","seconds":12.5}}`},
+		reply{http.StatusOK,
+			`{"text":"necesito 300 bolsas","usage":{"type":"duration","seconds":12.5}}`},
+	)
+	ledger := &usageLedger{}
+	transcriber := NewTranscriber(config.TranscriptionConfig{
+		APIKey: "test-key", BaseURL: srv.URL, Model: "whisper-1", Timeout: 5 * time.Second,
+		Retry: policy(3),
+	}, ai.NewMeter(slog.New(slog.DiscardHandler), ledger))
+
+	ctx := domain.WithAIOperation(context.Background(), domain.AIOperationAudioTranscription)
+	if _, err := transcriber.Transcribe(ctx, voiceNote()); err != nil {
+		t.Fatalf("Transcribe() = %v, want nil", err)
+	}
+
+	usage := ledger.only(t)
+	if usage.AudioSeconds != 25 || usage.Attempts != 2 || usage.Model != "whisper-1" ||
+		usage.Operation != domain.AIOperationAudioTranscription {
+		t.Errorf("usage = %+v, want 25 billed seconds over two attempts", usage)
 	}
 }
 

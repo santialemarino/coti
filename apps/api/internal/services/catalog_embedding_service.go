@@ -70,6 +70,8 @@ func (s *CatalogEmbeddingService) Backfill(
 		return report, err
 	}
 
+	embedCtx := domain.WithAIOperation(domain.WithAIAccount(ctx, tenant),
+		domain.AIOperationCatalogEmbedding)
 	cursor := uuid.Nil
 	for {
 		var pending []domain.ProductEmbeddingInput
@@ -90,7 +92,7 @@ func (s *CatalogEmbeddingService) Backfill(
 		for i, p := range pending {
 			texts[i] = p.EmbeddingText()
 		}
-		vectors, err := s.embedder.Embed(ctx, texts)
+		vectors, err := s.embedder.Embed(embedCtx, texts)
 		if err != nil {
 			return report, err
 		}

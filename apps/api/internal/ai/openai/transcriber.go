@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
@@ -23,21 +22,29 @@ var _ domain.Transcriber = (*Transcriber)(nil)
 type Transcriber struct {
 	client *http.Client
 	cfg    config.TranscriptionConfig
-	log    *slog.Logger
+	meter  *ai.Meter
 }
 
 // NewTranscriber builds a Transcriber from the transcription settings.
-func NewTranscriber(cfg config.TranscriptionConfig, log *slog.Logger) *Transcriber {
+func NewTranscriber(cfg config.TranscriptionConfig, meter *ai.Meter) *Transcriber {
 	return &Transcriber{
 		client: &http.Client{Timeout: cfg.Timeout},
 		cfg:    cfg,
-		log:    log,
+		meter:  meter,
 	}
 }
 
 // transcriptionReply is the answer to POST /audio/transcriptions asked for as JSON.
 type transcriptionReply struct {
-	Text string `json:"text"`
+	Text  string              `json:"text"`
+	Usage *transcriptionUsage `json:"usage"`
+}
+
+// transcriptionUsage is billed either by the recording's duration or by tokens, by model.
+type transcriptionUsage struct {
+	Seconds      float64 `json:"seconds"`
+	InputTokens  int     `json:"input_tokens"`
+	OutputTokens int     `json:"output_tokens"`
 }
 
 // Transcribe uploads the recording and returns what was said.
@@ -55,6 +62,7 @@ func (t *Transcriber) Transcribe(ctx context.Context, audio domain.Audio) (strin
 	}
 
 	var text string
+	var usage transcriptionUsage
 	started := time.Now()
 	attempts, err := ai.Retry(ctx, t.cfg.Retry, func(ctx context.Context) error {
 		if _, err := body.Seek(0, io.SeekStart); err != nil {
@@ -70,18 +78,27 @@ func (t *Transcriber) Transcribe(ctx context.Context, audio domain.Audio) (strin
 		if err := send(t.client, request, &reply); err != nil {
 			return err
 		}
+		// Added rather than assigned: an attempt that answered was charged, empty or not.
+		if reply.Usage != nil {
+			usage.Seconds += reply.Usage.Seconds
+			usage.InputTokens += reply.Usage.InputTokens
+			usage.OutputTokens += reply.Usage.OutputTokens
+		}
 		if strings.TrimSpace(reply.Text) == "" {
 			return ai.Retryable(errEmptyReply)
 		}
 		text = reply.Text
 		return nil
 	})
-	ai.LogCall(ctx, t.log, ai.Call{
-		Provider:  string(config.AIProviderOpenAI),
-		Model:     t.cfg.Model,
-		Operation: "transcribe",
-		Attempts:  attempts,
-		Elapsed:   time.Since(started),
+	t.meter.Observe(ctx, ai.Call{
+		Provider:     string(config.AIProviderOpenAI),
+		Model:        t.cfg.Model,
+		Method:       "transcribe",
+		Attempts:     attempts,
+		Elapsed:      time.Since(started),
+		InputTokens:  usage.InputTokens,
+		OutputTokens: usage.OutputTokens,
+		AudioSeconds: usage.Seconds,
 	}, err)
 	if err != nil {
 		return "", ai.Fail(err)

@@ -62,18 +62,20 @@ func run() error {
 		return fmt.Errorf("AI_EMBEDDINGS_PROVIDER is %q, so there is nothing to embed with",
 			config.AIProviderDisabled)
 	}
-	providers, err := provider.Bind(cfg.AI, log)
-	if err != nil {
-		return err
-	}
-	// Which model produced these vectors is the one fact a later --refresh-all decision needs.
-	providers.Describe(log)
-
 	db, err := repository.NewTenantDB(ctx, cfg.Database)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
+
+	usage := services.NewAIUsageService(db, repository.NewAIUsageRepository(),
+		cfg.AI.UsageWriteTimeout, log)
+	providers, err := provider.Bind(cfg.AI, log, usage)
+	if err != nil {
+		return err
+	}
+	// Which model produced these vectors is the one fact a later --refresh-all decision needs.
+	providers.Describe(log)
 
 	embeddings := services.NewCatalogEmbeddingService(db, repository.NewAccountRepository(),
 		repository.NewProductRepository(), providers.Embedder, cfg.Catalog)

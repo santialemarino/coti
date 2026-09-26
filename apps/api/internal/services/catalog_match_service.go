@@ -96,6 +96,7 @@ func (s *CatalogMatchService) Match(
 	if len(descriptions) == 0 {
 		return nil, nil
 	}
+	ctx = domain.WithAIAccount(ctx, tenant)
 	// One search for the whole set: it embeds every line in a single provider call and reads the
 	// catalog in one transaction, neither of which survives being called per line.
 	results, err := s.search.Search(ctx, tenant,

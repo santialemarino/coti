@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -67,7 +68,8 @@ func (s *QuoteCorrectionService) FindInterpretationExamples(ctx context.Context,
 	}); err != nil || !available {
 		return nil, err
 	}
-	vectors, err := s.embedder.Embed(ctx, []string{raw})
+	vectors, err := s.embedder.Embed(domain.WithAIOperation(domain.WithAIAccount(ctx, tenant),
+		domain.AIOperationInterpretationLookup), []string{raw})
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +97,8 @@ func (s *QuoteCorrectionService) Process(ctx context.Context, tenant domain.Tena
 	for i := range memories {
 		texts[i] = memories[i].SourceText
 	}
-	vectors, err := s.embedder.Embed(ctx, texts)
+	vectors, err := s.embedder.Embed(domain.WithAIOperation(domain.WithAIAccount(ctx, tenant),
+		domain.AIOperationCorrectionLearning), texts)
 	if err != nil || len(vectors) != len(memories) {
 		message := fmt.Sprintf("embedding failed: %v", err)
 		if err == nil {
@@ -147,30 +150,58 @@ func (j *QuoteCorrectionJob) Run(ctx context.Context, q repository.Querier) (dom
 		return domain.JobReport{}, err
 	}
 	report := domain.JobReport{Scanned: len(memories)}
-	if len(memories) == 0 {
-		return report, nil
+	var failures error
+	// One provider call per account, so every call's spend belongs to exactly one account.
+	for _, batch := range byAccount(memories) {
+		changed, err := j.embedAccount(ctx, q, batch)
+		report.Changed += changed
+		failures = errors.Join(failures, err)
 	}
+	return report, failures
+}
+
+// embedAccount vectorizes one account's pending memories and publishes them.
+func (j *QuoteCorrectionJob) embedAccount(ctx context.Context, q repository.Querier,
+	memories []domain.QuoteCorrectionMemory) (int, error) {
+	accountID := memories[0].AccountID
 	texts := make([]string, len(memories))
 	for i := range memories {
 		texts[i] = memories[i].SourceText
 	}
-	vectors, err := j.embedder.Embed(ctx, texts)
+	vectors, err := j.embedder.Embed(domain.WithAIOperation(
+		domain.WithAIAccount(ctx, domain.Tenant{AccountID: accountID}),
+		domain.AIOperationCorrectionLearning), texts)
 	if err != nil {
 		for _, memory := range memories {
-			_ = j.repo.RecordFailure(ctx, q, memory.AccountID, memory.ID, err.Error())
+			_ = j.repo.RecordFailure(ctx, q, accountID, memory.ID, err.Error())
 		}
-		return report, err
+		return 0, err
 	}
 	if len(vectors) != len(memories) {
-		return report, fmt.Errorf("embedder returned %d vectors for %d corrections", len(vectors), len(memories))
+		return 0, fmt.Errorf("embedder returned %d vectors for %d corrections", len(vectors), len(memories))
 	}
 	for i, memory := range memories {
-		if err := j.repo.MarkReady(ctx, q, memory.AccountID, memory.ID, vectors[i]); err != nil {
-			return report, err
+		if err := j.repo.MarkReady(ctx, q, accountID, memory.ID, vectors[i]); err != nil {
+			return i, err
 		}
-		report.Changed++
 	}
-	return report, nil
+	return len(memories), nil
+}
+
+// byAccount splits memories into one batch per account, each in the order it was listed.
+func byAccount(memories []domain.QuoteCorrectionMemory) [][]domain.QuoteCorrectionMemory {
+	index := make(map[uuid.UUID]int)
+	var batches [][]domain.QuoteCorrectionMemory
+	for _, memory := range memories {
+		i, ok := index[memory.AccountID]
+		if !ok {
+			i = len(batches)
+			index[memory.AccountID] = i
+			batches = append(batches, nil)
+		}
+		batches[i] = append(batches[i], memory)
+	}
+	return batches
 }
 
 var _ Job = (*QuoteCorrectionJob)(nil)
