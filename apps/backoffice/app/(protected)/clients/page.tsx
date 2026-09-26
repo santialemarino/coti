@@ -1,23 +1,22 @@
-import { UsersIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { SectionPlaceholder } from '@/app/(protected)/_components/section-placeholder';
+import { ClientTable } from '@/app/(protected)/clients/_components/client-table';
+import { getClients } from '@/lib/api/clients';
 import { generatePageMetadata } from '@/lib/utils/page';
 
 export const generateMetadata = () => generatePageMetadata('clients');
 
 export default async function ClientsPage() {
   const t = await getTranslations('clients');
-  const tCommon = await getTranslations('common');
+  const clients = await getClients();
 
   return (
-    <main className="flex flex-col px-6 py-10 gap-y-6">
-      <SectionPlaceholder
-        icon={UsersIcon}
-        title={t('placeholderTitle')}
-        description={t('placeholderDescription')}
-        backLabel={tCommon('actions.back')}
-      />
+    <main className="flex flex-col gap-y-8">
+      <div className="flex flex-col gap-y-1">
+        <h1 className="text-heading-2">{t('title')}</h1>
+        <p className="text-paragraph text-foreground-muted">{t('description')}</p>
+      </div>
+      <ClientTable clients={clients} />
     </main>
   );
 }

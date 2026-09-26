@@ -92,6 +92,7 @@ func run() error {
 	quoteMessageRepo := repository.NewQuoteMessageRepository()
 	quoteRepresentationRepo := repository.NewQuoteRepresentationRepository()
 	clientRepo := repository.NewClientRepository()
+	tagRepo := repository.NewTagRepository()
 	accountRepo := repository.NewAccountRepository()
 	onboardingRepo := repository.NewOnboardingRepository()
 	channelRepo := repository.NewChannelRepository()
@@ -147,6 +148,7 @@ func run() error {
 	branchService := services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)
 	accountService := services.NewAccountService(db, accountRepo, branchRepo, channelRepo,
 		userRepo, onboardingRepo, authService, verificationService, log, cfg.Auth, cfg.Branch).
+		WithDefaultTags(tagRepo).
 		WithLogoStorage(objectStorage.Storage, cfg.Storage.MaxFileSize)
 	onboardingService := services.NewOnboardingService(db, onboardingRepo)
 	productService := services.NewProductService(db, productRepo, productSynonymRepo,
@@ -180,12 +182,14 @@ func run() error {
 		quoteRepresentationRepo, quoteRepo, objectStorage.Storage,
 		branding.NewLogoLoader(cfg.QuoteLogo), quotePDF.NewQuoteRenderer(),
 		cfg.Storage.SignedURLExpiry, nil, log)
-	quoteDeliveryService := services.NewQuoteDeliveryService(db, quoteSendRepo, quoteRepo, rfqRepo,
-		clientRepo, channelRepo, branchRepo, productPriceRepo, whatsapp.DisabledSender{}, quoteMailService,
+	quoteDeliveryService := services.NewQuoteDeliveryService(db, quoteSendRepo, quoteRepo,
+		channelRepo, branchRepo, productPriceRepo, whatsapp.DisabledSender{}, quoteMailService,
 		quoteQualityService, cfg.Web.WebAppURL, nil, log).
 		WithRepresentationService(quoteRepresentationService).
 		WithClientActions(clientActionRepo, userRepo).
 		WithMessages(quoteMessageRepo)
+	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
+		quoteSendRepo)
 	// What a MATCHED line clears to read as HIGH, on the 0..1 scale the item carries its score on.
 	highConfidence := decimal.NewFromInt(int64(cfg.Catalog.MatchHighConfidencePercent)).
 		Div(decimal.NewFromInt(100))
@@ -205,6 +209,7 @@ func run() error {
 			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
 			Quote: handler.NewQuoteHandler(quoteService, quoteDeliveryService,
 				quoteRepresentationService, highConfidence),
+			Client:        handler.NewClientHandler(clientService),
 			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
 			CatalogImport: handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
 			Account:       handler.NewAccountHandler(accountService),

@@ -13,6 +13,7 @@ import type { QuoteDiscountResponse, QuoteItemResponse, RfqDetailResponse } from
 import { normalizeRfqStatus } from '@/lib/api/rfqs';
 import { fetchRfqDetail, generateQuote } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
+import { ClientAssociationCard } from './client-association-card';
 import { QuoteDeliveryCard } from './quote-delivery-card';
 import { RfqChangeDiff } from './rfq-change-diff';
 import { RfqDetailHeader } from './rfq-detail-header';
@@ -111,9 +112,14 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
       <RfqStatusTimeline detail={detail} />
 
       {rfqStatus === 'ACCEPTED' && (
-        <Callout tone="success" title={t('detail.callouts.accepted.title')}>
-          {t('detail.callouts.accepted.description')}
-        </Callout>
+        <>
+          <Callout tone="success" title={t('detail.callouts.accepted.title')}>
+            {t('detail.callouts.accepted.description')}
+          </Callout>
+          {quoteId && detail.quote?.archived_at === null ? (
+            <ClientAssociationCard quoteId={quoteId} branchId={branchId} />
+          ) : null}
+        </>
       )}
 
       {rfqStatus === 'REJECTED' && (

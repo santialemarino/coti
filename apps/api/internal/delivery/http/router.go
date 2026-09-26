@@ -38,6 +38,7 @@ type Handlers struct {
 	RFQ           *handler.RFQHandler
 	RFQAttachment *handler.RFQAttachmentHandler
 	Quote         *handler.QuoteHandler
+	Client        *handler.ClientHandler
 	Account       *handler.AccountHandler
 	AccountLogo   *handler.BrandLogoHandler
 	Prices        *handler.ProductPriceHandler
@@ -167,12 +168,23 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	quotes.POST("/:quoteId/reactivate", h.Quote.Reactivate)
 	quotes.POST("/:quoteId/archive", h.Quote.Archive)
 	quotes.POST("/:quoteId/unarchive", h.Quote.Unarchive)
+	quotes.GET("/:quoteId/client-association", h.Client.GetQuoteAssociation)
+	quotes.PUT("/:quoteId/client-association", h.Client.AssociateQuote)
 	quotes.POST("/:quoteId/items", h.Rfq.AddItem)
 	quotes.PATCH("/:quoteId/items/:itemId", h.Rfq.UpdateItem)
 	quotes.DELETE("/:quoteId/items/:itemId", h.Rfq.DeleteItem)
 	quotes.POST("/:quoteId/discounts", h.Rfq.AddDiscount)
 	quotes.PATCH("/:quoteId/discounts/:discountId", h.Rfq.UpdateDiscount)
 	quotes.DELETE("/:quoteId/discounts/:discountId", h.Rfq.DeleteDiscount)
+
+	clients := verified.Group("/clients")
+	clients.GET("", h.Client.List)
+	clients.GET("/:clientId", h.Client.Get)
+	clients.PUT("/:clientId/tags", h.Client.ReplaceTags)
+
+	tags := verified.Group("/tags")
+	tags.GET("", h.Client.ListTags)
+	tags.POST("", h.Client.CreateTag)
 
 	if !cfg.IsProduction() {
 		verified.POST("/dev/whatsapp/messages", ai, h.RFQ.CreateWhatsAppMockDraft)
