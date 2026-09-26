@@ -395,6 +395,7 @@
       "done": "Listo, tu dirección quedó confirmada.",
       "sentTo": "Te mandamos un correo a {email} para confirmar tu dirección. Abrí el enlace que te llegó y ya está.",
       "continue": "Ir al inicio",
+      "signOut": "Cerrar sesión",
       "goToLogin": "Iniciar sesión",
       "email": {
         "label": "Correo electrónico",
