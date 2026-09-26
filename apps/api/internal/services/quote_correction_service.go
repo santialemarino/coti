@@ -175,14 +175,15 @@ func (j *QuoteCorrectionJob) embedAccount(ctx context.Context, q repository.Quer
 		for _, memory := range memories {
 			_ = j.repo.RecordFailure(ctx, q, accountID, memory.ID, err.Error())
 		}
-		return 0, err
+		return 0, fmt.Errorf("account %s: %w", accountID, err)
 	}
 	if len(vectors) != len(memories) {
-		return 0, fmt.Errorf("embedder returned %d vectors for %d corrections", len(vectors), len(memories))
+		return 0, fmt.Errorf("account %s: embedder returned %d vectors for %d corrections",
+			accountID, len(vectors), len(memories))
 	}
 	for i, memory := range memories {
 		if err := j.repo.MarkReady(ctx, q, accountID, memory.ID, vectors[i]); err != nil {
-			return i, err
+			return i, fmt.Errorf("account %s: %w", accountID, err)
 		}
 	}
 	return len(memories), nil

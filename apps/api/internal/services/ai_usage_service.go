@@ -43,6 +43,7 @@ func (s *AIUsageService) Record(ctx context.Context, usage domain.AIUsage) {
 		s.log.ErrorContext(ctx, "ai usage without attribution",
 			slog.String("account_id", usage.AccountID.String()),
 			slog.String("operation", string(usage.Operation)),
+			slog.String("provider", usage.Provider),
 			slog.String("model", usage.Model))
 		return
 	}

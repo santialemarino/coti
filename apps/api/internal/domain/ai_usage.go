@@ -38,9 +38,13 @@ func AIUsageScopeFrom(ctx context.Context) AIUsageScope {
 	return scope
 }
 
-// WithAIAccount attributes the AI calls made under ctx to the tenant's account and branch.
+// WithAIAccount attributes the AI calls made under ctx to the tenant's account and branch. An order
+// named under another account is dropped: it cannot be this account's.
 func WithAIAccount(ctx context.Context, tenant Tenant) context.Context {
 	scope := AIUsageScopeFrom(ctx)
+	if scope.AccountID != tenant.AccountID {
+		scope.RFQID = nil
+	}
 	scope.AccountID = tenant.AccountID
 	scope.BranchID = nil
 	if tenant.BranchID != uuid.Nil {

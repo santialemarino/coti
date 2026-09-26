@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
@@ -48,7 +50,6 @@ func (m *Meter) Observe(ctx context.Context, call Call, err error) {
 		slog.String("model", call.Model),
 		slog.String("method", call.Method),
 		slog.String("operation", string(scope.Operation)),
-		slog.String("account_id", scope.AccountID.String()),
 		slog.Int("attempts", call.Attempts),
 		slog.Duration("elapsed", call.Elapsed),
 		slog.Int("input_tokens", call.InputTokens),
@@ -56,6 +57,9 @@ func (m *Meter) Observe(ctx context.Context, call Call, err error) {
 		slog.Int("cache_read_tokens", call.CacheReadTokens),
 		slog.Int("cache_write_tokens", call.CacheWriteTokens),
 		slog.Float64("audio_seconds", call.AudioSeconds),
+	}
+	if scope.AccountID != uuid.Nil {
+		fields = append(fields, slog.String("account_id", scope.AccountID.String()))
 	}
 	if scope.RFQID != nil {
 		fields = append(fields, slog.String("rfq_id", scope.RFQID.String()))
@@ -66,7 +70,8 @@ func (m *Meter) Observe(ctx context.Context, call Call, err error) {
 		m.log.InfoContext(ctx, "ai call", fields...)
 	}
 
-	if m.recorder == nil {
+	// A call whose context was done before its first attempt never reached the provider.
+	if m.recorder == nil || call.Attempts == 0 {
 		return
 	}
 	m.recorder.Record(ctx, domain.AIUsage{
