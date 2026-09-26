@@ -10,6 +10,8 @@ import messages from '@/translations/es.json';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
+vi.mock('@/lib/api/catalog', () => ({ searchCatalog: vi.fn().mockResolvedValue([]) }));
+
 vi.mock('@/lib/api/rfqs-client', () => ({
   addQuoteItem: vi.fn(),
   deleteQuoteItem: vi.fn(),
@@ -51,6 +53,7 @@ function renderItems(
   activeBranchId: string | null = BRANCH_ID,
   quoteStatus = 'QUOTED',
   items: QuoteItemResponse[] = [PRICED_ITEM],
+  onItemsChange: (items: QuoteItemResponse[]) => void = vi.fn(),
 ) {
   return render(
     <NextIntlClientProvider
@@ -71,7 +74,7 @@ function renderItems(
           branchId={BRANCH_ID}
           items={items}
           discounts={[]}
-          onItemsChange={vi.fn()}
+          onItemsChange={onItemsChange}
         />
       </RfqListProvider>
     </NextIntlClientProvider>,
@@ -211,5 +214,117 @@ describe('RfqItemsTable confidence', () => {
     ]);
 
     expect(view.getByText(copy.detail.confidence.none)).toBeTruthy();
+  });
+});
+
+describe('RfqItemsTable choosing a product for a flagged line', () => {
+  it('lets an unmatched line pick from the candidates matching offered for it', async () => {
+    const unmatched: QuoteItemResponse = {
+      ...PRICED_ITEM,
+      product_id: null,
+      product_code: null,
+      product_name: null,
+      product_unit: null,
+      unit_price_snapshot: null,
+      min_price_snapshot: null,
+      subtotal: null,
+      confidence_score: '0.4200',
+      confidence_level: 'LOW',
+      match_status: 'NO_MATCH',
+      alternatives: [
+        {
+          id: 'a0000000-0000-4000-8000-000000000001',
+          product_id: 'p0000000-0000-4000-8000-000000000009',
+          combo_id: null,
+          type: 'PRODUCT',
+          origin: 'AI',
+          rank: 1,
+          confidence_score: '0.4200',
+          price_snapshot: null,
+          approved_by_seller: false,
+          chosen_by_client: false,
+          code: 'LAD-HUE-18',
+          canonical_name: 'Ladrillo hueco 18x18x33',
+          unit: 'unidad',
+        },
+      ],
+    };
+    const view = renderItems(BRANCH_ID, 'DRAFT', [unmatched]);
+
+    fireEvent.click(
+      view.getByRole('button', { name: new RegExp(copy.detail.items.chooseProduct) }),
+    );
+
+    expect(await view.findByText('Ladrillo hueco 18x18x33')).toBeTruthy();
+    expect(view.getByText(copy.detail.items.suggested)).toBeTruthy();
+    // A line with no product has nothing to replace yet.
+    expect(view.getByRole('heading', { name: copy.detail.items.chooseProduct })).toBeTruthy();
+  });
+
+  const CANDIDATE = {
+    id: 'a0000000-0000-4000-8000-000000000002',
+    product_id: 'p0000000-0000-4000-8000-000000000008',
+    combo_id: null,
+    type: 'PRODUCT',
+    origin: 'AI',
+    rank: 1,
+    confidence_score: '0.6100',
+    price_snapshot: null,
+    approved_by_seller: false,
+    chosen_by_client: false,
+    code: 'LAD-HUE-08',
+    canonical_name: 'Ladrillo hueco 8x18x33',
+    unit: 'unidad',
+  };
+  const AMBIGUOUS: QuoteItemResponse = {
+    ...PRICED_ITEM,
+    match_status: 'AMBIGUOUS',
+    confidence_level: 'MEDIUM',
+    alternatives: [CANDIDATE],
+  };
+
+  it('offers a flagged line the product it carries first, so confirming it is one click', async () => {
+    const view = renderItems(BRANCH_ID, 'DRAFT', [AMBIGUOUS]);
+
+    fireEvent.click(view.getByRole('button', { name: new RegExp(PRICED_ITEM.product_name ?? '') }));
+
+    const rows = await view.findAllByRole('button', { name: new RegExp(copy.detail.items.select) });
+    expect(rows[0]?.textContent).toContain(PRICED_ITEM.product_name);
+    expect(rows[1]?.textContent).toContain(CANDIDATE.canonical_name);
+  });
+
+  it('lets an unmatched line of a revised quote choose its product too', () => {
+    const view = renderItems(BRANCH_ID, 'CHANGE_REQUESTED', [
+      {
+        ...AMBIGUOUS,
+        product_id: null,
+        product_code: null,
+        product_name: null,
+        match_status: 'NO_MATCH',
+      },
+    ]);
+
+    expect(view.getByText(copy.detail.items.matchStatus.NO_MATCH)).toBeTruthy();
+    expect(
+      view.getByRole('button', { name: new RegExp(copy.detail.items.chooseProduct) }),
+    ).toBeTruthy();
+  });
+
+  it('keeps what matching offered for a line after the seller changes its product', async () => {
+    vi.mocked(updateQuoteItem).mockResolvedValue({
+      ...AMBIGUOUS,
+      product_id: CANDIDATE.product_id,
+      match_status: 'MATCHED',
+      alternatives: [],
+    });
+    const onItemsChange = vi.fn();
+    const view = renderItems(BRANCH_ID, 'DRAFT', [AMBIGUOUS], onItemsChange);
+
+    fireEvent.click(view.getByRole('button', { name: new RegExp(PRICED_ITEM.product_name ?? '') }));
+    fireEvent.click(await view.findByText(CANDIDATE.canonical_name));
+
+    await vi.waitFor(() => expect(onItemsChange).toHaveBeenCalled());
+    const [changed] = onItemsChange.mock.calls[0]?.[0] ?? [];
+    expect(changed?.alternatives).toEqual([CANDIDATE]);
   });
 });
