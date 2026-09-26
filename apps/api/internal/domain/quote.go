@@ -20,6 +20,14 @@ const (
 	QuoteStatusRejected        QuoteStatus = "REJECTED"
 )
 
+// QuoteReactivationMode selects whether a closed quote reuses its frozen version or opens a new draft.
+type QuoteReactivationMode string
+
+const (
+	QuoteReactivationResend QuoteReactivationMode = "RESEND"
+	QuoteReactivationEdit   QuoteReactivationMode = "EDIT"
+)
+
 // Quote is the seller-facing quote created from one RFQ. current_status is a
 // backend-exclusive derived cache, recomputed on each transition, never set by a
 // human or the AI.

@@ -241,6 +241,8 @@ export interface QuoteSendResponse {
   deliveries: QuoteDeliveryResponse[];
 }
 
+export type QuoteReactivationMode = 'RESEND' | 'EDIT';
+
 export interface QuoteDeliveryResponse {
   id: string;
   channel: string;

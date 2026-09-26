@@ -275,12 +275,43 @@ describe('RfqDetailView send flow', () => {
     expect(SendDialog).toHaveBeenCalledWith(dialogPropsFor('QUOTED'), undefined);
   });
 
-  it('keeps the requested change editable until the seller approves it', () => {
+  it('labels a seller-initiated editable reactivation as a new revision', () => {
     const view = renderView(makeDetail('CHANGE_REQUESTED'));
 
     expect(SendDialog).not.toHaveBeenCalled();
     expect(view.getByRole('button', { name: copy.detail.items.generate })).toBeTruthy();
-    expect(ChangeDiff).toHaveBeenCalledTimes(1);
+    expect(view.getByText(copy.detail.callouts.sellerRevision.title)).toBeTruthy();
+    expect(ChangeDiff).toHaveBeenCalledWith(
+      expect.objectContaining({ variant: 'seller-revision' }),
+      undefined,
+    );
+  });
+
+  it('keeps a customer change request distinct from a seller reactivation', () => {
+    const detail = makeDetail('CHANGE_REQUESTED');
+    detail.version = { ...detail.version!, version_number: 2, comment: 'Precio alto' };
+    detail.client_actions = [
+      {
+        id: '70000000-0000-4000-8000-000000000001',
+        version_id: VERSION_ID,
+        version_number: 1,
+        type: 'REQUEST_CHANGE',
+        comment: 'Precio alto',
+        created_at: BASE_TIME,
+      },
+    ];
+
+    const view = renderView(detail);
+
+    expect(
+      view.getByText(
+        copy.detail.callouts.changeRequested.withReason.replace('{reason}', 'Precio alto'),
+      ),
+    ).toBeTruthy();
+    expect(ChangeDiff).toHaveBeenCalledWith(
+      expect.objectContaining({ variant: 'customer-request' }),
+      undefined,
+    );
   });
 
   it('keeps the send button hidden until a quote is review-ready', () => {

@@ -20,6 +20,11 @@ type TransitionQuoteRequest struct {
 	Status string `json:"status" binding:"required"`
 }
 
+// ReactivateQuoteRequest is the body for POST /v1/quotes/{quoteId}/reactivate.
+type ReactivateQuoteRequest struct {
+	Mode string `json:"mode" binding:"required,oneof=RESEND EDIT" enums:"RESEND,EDIT"`
+}
+
 // QuoteResponse represents the quote created from one RFQ.
 type QuoteResponse struct {
 	ID                uuid.UUID  `json:"id"`

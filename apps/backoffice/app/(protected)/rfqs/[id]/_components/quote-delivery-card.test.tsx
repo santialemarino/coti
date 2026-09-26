@@ -41,6 +41,7 @@ interface MakeDetailOptions {
   quoteStatus?: string;
   rfqStatus?: string;
   quoteNumber?: number | null;
+  archived?: boolean;
   withQuote?: boolean;
   withVersion?: boolean;
   deliveries?: QuoteSendTrackingResponse[];
@@ -50,6 +51,7 @@ function makeDetail({
   quoteStatus = 'QUOTED',
   rfqStatus = quoteStatus,
   quoteNumber = 7,
+  archived = false,
   withQuote = true,
   withVersion = true,
   deliveries = [],
@@ -70,7 +72,7 @@ function makeDetail({
       total: '390000.00',
       status: rfqStatus,
       needs_followup: false,
-      archived_at: null,
+      archived_at: archived ? BASE_TIME : null,
     },
     quote: withQuote
       ? {
@@ -82,7 +84,7 @@ function makeDetail({
           current_version_id: VERSION_ID,
           current_status: quoteStatus,
           expires_at: null,
-          archived_at: null,
+          archived_at: archived ? BASE_TIME : null,
           needs_followup: false,
           followup_flagged_at: null,
           created_at: BASE_TIME,
@@ -247,5 +249,18 @@ describe('QuoteDeliveryCard send action', () => {
 
       expect(SendDialog, `send dialog surfaced on ${status}`).not.toHaveBeenCalled();
     }
+  });
+
+  it('keeps send and lifecycle actions hidden while the quote is archived', () => {
+    const quoted = renderCard(makeDetail({ quoteStatus: 'QUOTED', archived: true }));
+    expect(SendDialog).not.toHaveBeenCalled();
+    expect(
+      quoted.queryByRole('button', { name: messages.rfqs.detail.lifecycle.reactivate.button }),
+    ).toBeNull();
+
+    const accepted = renderCard(makeDetail({ quoteStatus: 'ACCEPTED', archived: true }));
+    expect(
+      accepted.queryByRole('button', { name: messages.rfqs.detail.lifecycle.reactivate.button }),
+    ).toBeNull();
   });
 });

@@ -13,7 +13,7 @@
     "check-types": "go build ./...",
     "test": "go test ./...",
     "test:rfq": "go test -v -count=1 -run \"Test(RFQExtractor|RFQExtractionSchema|RFQService_CreateTextDraft|RFQService_CreateWhatsAppMockDraft|CatalogMatchService|QuoteService_AcceptMaterials|RFQHandler_CreateTextDraft|ToTextRFQDraftResponse)\" ./internal/ai ./internal/services ./internal/delivery/http/handler",
-    "test:rfq:integration": "go test -v -count=1 -tags=integration -run \"Test(CatalogMatch|QuoteDelivery|QuoteQualityHook|RFQPipeline|RFQTextDraftRoute|WhatsAppMockRoute|UnmatchedItems|QuotePricing)\" ./internal/integration",
+    "test:rfq:integration": "go test -v -count=1 -tags=integration -run \"Test(CatalogMatch|FirstOperationalFlow|QuoteDelivery|QuoteQualityHook|RFQPipeline|RFQTextDraftRoute|WhatsAppMockRoute|UnmatchedItems|QuotePricing)\" ./internal/integration",
     "test:rfq:response": "go test -v -count=1 -run \"^TestRFQHandler_CreateTextDraft_ReturnsAReviewableDraft$\" ./internal/delivery/http/handler",
     "eval:catalog-match": "CATALOG_MATCH_EVAL=1 CATALOG_MATCH_EVAL_REPORT=\"$(cd ../.. && pwd)/.artifacts/catalog-match-eval/report.json\" go test -v -count=1 -timeout 30m -tags=integration -run '^TestCatalogMatchEvaluation$' ./internal/integration",
     "eval:catalog-match:review": "CATALOG_MATCH_EVAL_REVIEW=1 pnpm run eval:catalog-match",

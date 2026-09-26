@@ -33,6 +33,11 @@ type flowRun struct {
 	publicToken string
 }
 
+type reactivatedQuote struct {
+	CurrentVersionID *uuid.UUID `json:"current_version_id"`
+	CurrentStatus    string     `json:"current_status"`
+}
+
 /*
  * firstOperationalFlow walks a plain-text order through every stage a real one crosses: the
  * pipeline drafts it, the seller corrects a line through the route the backoffice calls, accepts
@@ -156,6 +161,91 @@ func TestFirstOperationalFlow_PlainTextOrderReachesRejection(t *testing.T) {
 	}
 
 	assertFlowLedger(t, e, run, domain.QuoteStatusRejected)
+}
+
+func TestFirstOperationalFlow_AcceptedQuoteReactivatesForResend(t *testing.T) {
+	e := newEnv(t)
+	run := firstOperationalFlow(t, e, "Reactivation resend")
+
+	if _, err := run.service.RecordClientAction(context.Background(), run.publicToken,
+		domain.ClientActionAccept); err != nil {
+		t.Fatalf("RecordClientAction() = %v, want the customer's answer recorded", err)
+	}
+	reactivated := reactivateThroughAPI(t, e, run, domain.QuoteReactivationResend)
+
+	if reactivated.CurrentStatus != string(domain.QuoteStatusQuoted) {
+		t.Errorf("status = %q, want QUOTED", reactivated.CurrentStatus)
+	}
+	if reactivated.CurrentVersionID == nil || *reactivated.CurrentVersionID != run.draft.Version.ID {
+		t.Errorf("current version = %v, want original %v", reactivated.CurrentVersionID,
+			run.draft.Version.ID)
+	}
+	assertLedger(t, e, "quote", `SELECT COALESCE(previous_status::text, '<none>'), new_status::text,
+	          user_id
+	     FROM quote_status_change WHERE quote_id = $1 ORDER BY changed_at`,
+		run.draft.Quote.ID, run.seller.ID,
+		[]string{
+			"<none>->DRAFT by seller",
+			"DRAFT->QUOTED by seller",
+			"QUOTED->SENT by seller",
+			"SENT->ACCEPTED by nobody",
+			"ACCEPTED->QUOTED by seller",
+		})
+}
+
+func TestFirstOperationalFlow_RejectedQuoteReactivatesWithAnEditableVersion(t *testing.T) {
+	e := newEnv(t)
+	run := firstOperationalFlow(t, e, "Reactivation edit")
+
+	if _, err := run.service.RecordClientAction(context.Background(), run.publicToken,
+		domain.ClientActionReject); err != nil {
+		t.Fatalf("RecordClientAction() = %v, want the customer's answer recorded", err)
+	}
+	reactivated := reactivateThroughAPI(t, e, run, domain.QuoteReactivationEdit)
+
+	if reactivated.CurrentStatus != string(domain.QuoteStatusChangeRequested) {
+		t.Errorf("status = %q, want CHANGE_REQUESTED", reactivated.CurrentStatus)
+	}
+	if reactivated.CurrentVersionID == nil || *reactivated.CurrentVersionID == run.draft.Version.ID {
+		t.Fatalf("current version = %v, want a new version", reactivated.CurrentVersionID)
+	}
+	var versionNumber int
+	var immutable bool
+	var authorID *uuid.UUID
+	err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT version_number, is_immutable, author_id
+		 FROM quote_version WHERE id = $1 AND account_id = $2`,
+		*reactivated.CurrentVersionID, run.draft.Quote.AccountID).Scan(
+		&versionNumber, &immutable, &authorID)
+	if err != nil {
+		t.Fatalf("read reactivated version: %v", err)
+	}
+	if versionNumber != 2 || immutable {
+		t.Errorf("version = v%d immutable=%v, want mutable v2", versionNumber, immutable)
+	}
+	if authorID == nil || *authorID != run.seller.ID {
+		t.Errorf("version author = %v, want seller %v", authorID, run.seller.ID)
+	}
+}
+
+func reactivateThroughAPI(t *testing.T, e *env, run flowRun,
+	mode domain.QuoteReactivationMode) reactivatedQuote {
+	t.Helper()
+	rec := e.do(t, request{
+		method: http.MethodPost,
+		path:   "/v1/quotes/" + run.draft.Quote.ID.String() + "/reactivate",
+		token:  e.tokenFor(t, run.seller),
+		branch: run.draft.Quote.BranchID.String(),
+		body:   map[string]any{"mode": mode},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("reactivate POST = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	var quote reactivatedQuote
+	if err := json.Unmarshal(rec.Body.Bytes(), &quote); err != nil {
+		t.Fatalf("decode reactivated quote %s: %v", rec.Body, err)
+	}
+	return quote
 }
 
 /*

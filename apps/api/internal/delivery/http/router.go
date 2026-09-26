@@ -165,6 +165,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	quotes.PATCH("/:quoteId/items/:itemId/alternatives/:alternativeId", h.Quote.ApproveAlternative)
 	quotes.POST("/:quoteId/sends", h.Quote.Send)
 	quotes.POST("/:quoteId/transition", h.Quote.Transition)
+	quotes.POST("/:quoteId/reactivate", h.Quote.Reactivate)
 	quotes.POST("/:quoteId/archive", h.Quote.Archive)
 	quotes.POST("/:quoteId/unarchive", h.Quote.Unarchive)
 	quotes.GET("/:quoteId/client-association", h.Client.GetQuoteAssociation)
