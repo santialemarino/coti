@@ -70,12 +70,12 @@ func (s *CatalogImportService) Template(
 
 // Preview parses and validates a catalog spreadsheet without writing rows.
 func (s *CatalogImportService) Preview(
-	ctx context.Context, tenant domain.Tenant, filename string, src io.Reader,
+	ctx context.Context, tenant domain.Tenant, src io.Reader,
 ) (*domain.CatalogImportPreview, error) {
 	if !tenant.HasBranch() {
 		return nil, fmt.Errorf("%w: select a branch", domain.ErrInvalidInput)
 	}
-	rawRows, err := parseCatalogImport(filename, src)
+	rawRows, err := parseCatalogImport(src)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", domain.ErrInvalidInput, err)
 	}

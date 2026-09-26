@@ -75,6 +75,16 @@ func TestRFQAttachmentService_ReadStoredAttachment_ShapesEachStoredFormatForTheM
 			wantKind:    domain.ContentKindText,
 			wantText:    "Producto\tCantidad\nCemento\t10",
 		},
+		{
+			// Stored under .xls before the type mapped to .csv: the bytes still decide.
+			name:        "a Windows csv stored as .xls reads as the csv it is",
+			kind:        domain.AttachmentTypeSpreadsheet,
+			key:         "accounts/a/rfqs/r/f.xls",
+			contentType: "application/vnd.ms-excel",
+			data:        "Producto;Cantidad\nCemento;10\n",
+			wantKind:    domain.ContentKindText,
+			wantText:    "Producto\tCantidad\nCemento\t10",
+		},
 	}
 
 	for _, tc := range cases {
@@ -162,8 +172,14 @@ func TestRFQAttachmentService_ReadStoredAttachment_RefusesWhatCannotBeReadAsAnOr
 		{
 			name: "a spreadsheet whose bytes are not a sheet", kind: domain.AttachmentTypeSpreadsheet,
 			key: "accounts/a/rfqs/r/f.xlsx", contentType: spreadsheetContentType,
-			data: "this is not a workbook", wantErr: domain.ErrInvalidInput,
+			data: "PK\x03\x04 is a zip signature on no archive", wantErr: domain.ErrInvalidInput,
 			wantMessage: "could not be read",
+		},
+		{
+			name: "a legacy .xls workbook", kind: domain.AttachmentTypeSpreadsheet,
+			key: "accounts/a/rfqs/r/f.xls", contentType: "application/vnd.ms-excel",
+			data: "\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1workbook", wantErr: domain.ErrInvalidInput,
+			wantMessage: "legacy .xls",
 		},
 		{
 			name: "a spreadsheet with no rows in it", kind: domain.AttachmentTypeSpreadsheet,

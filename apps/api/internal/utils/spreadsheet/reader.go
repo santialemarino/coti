@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -15,6 +16,24 @@ import (
 )
 
 const maxXLSXEntryBytes = 64 << 20
+
+var (
+	// oleMagic opens every OLE2 compound file, which is what a legacy .xls workbook is.
+	oleMagic = []byte{0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1}
+	// zipMagic opens every .xlsx, which is a ZIP archive.
+	zipMagic = []byte("PK\x03\x04")
+)
+
+// ErrLegacyExcel refuses a legacy .xls workbook, a format Coti does not read.
+var ErrLegacyExcel = errors.New("legacy .xls workbooks are not supported; save the file as .xlsx or .csv")
+
+// SniffLength is how many leading bytes IsLegacyExcel needs to decide.
+const SniffLength = 8
+
+// IsLegacyExcel reports whether content opens like a legacy .xls workbook.
+func IsLegacyExcel(content []byte) bool {
+	return bytes.HasPrefix(content, oleMagic)
+}
 
 // Column declares one logical import field and its accepted spreadsheet headers.
 type Column struct {
@@ -82,8 +101,8 @@ type xlsxRelationships struct {
 }
 
 // Read parses CSV or XLSX content and maps its first row through the supplied schema.
-func Read(filename string, src io.Reader, schema Schema) ([]Row, error) {
-	records, err := readRecords(filename, src)
+func Read(src io.Reader, schema Schema) ([]Row, error) {
+	records, err := readRecords(src)
 	if err != nil {
 		return nil, err
 	}
@@ -92,8 +111,8 @@ func Read(filename string, src io.Reader, schema Schema) ([]Row, error) {
 
 // ReadRaw parses CSV or XLSX content into its cells, in file order, with no schema. A client's
 // order names its columns however it likes, so there is no header set to map it through.
-func ReadRaw(filename string, src io.Reader) ([][]string, error) {
-	records, err := readRecords(filename, src)
+func ReadRaw(src io.Reader) ([][]string, error) {
+	records, err := readRecords(src)
 	if err != nil {
 		return nil, err
 	}
@@ -107,22 +126,24 @@ func ReadRaw(filename string, src io.Reader) ([][]string, error) {
 	return rows, nil
 }
 
-func readRecords(filename string, src io.Reader) ([]record, error) {
-	switch strings.ToLower(filepath.Ext(filename)) {
-	case ".csv":
-		return readCSV(src)
-	case ".xlsx":
-		return readXLSX(src)
-	default:
-		return nil, fmt.Errorf("unsupported file type %q", strings.ToLower(filepath.Ext(filename)))
-	}
-}
-
-func readCSV(src io.Reader) ([]record, error) {
+// readRecords picks the parser from the content, never the name: Windows labels a .csv with the
+// legacy Excel type, so a name or a type says nothing reliable about the bytes.
+func readRecords(src io.Reader) ([]record, error) {
 	content, err := io.ReadAll(src)
 	if err != nil {
 		return nil, err
 	}
+	switch {
+	case IsLegacyExcel(content):
+		return nil, ErrLegacyExcel
+	case bytes.HasPrefix(content, zipMagic):
+		return readXLSX(content)
+	default:
+		return readCSV(content)
+	}
+}
+
+func readCSV(content []byte) ([]record, error) {
 	comma := ','
 	if firstLine, _, _ := bytes.Cut(content, []byte("\n")); bytes.Count(firstLine, []byte(";")) > bytes.Count(firstLine, []byte(",")) {
 		comma = ';'
@@ -148,11 +169,7 @@ func readCSV(src io.Reader) ([]record, error) {
 	return records, nil
 }
 
-func readXLSX(src io.Reader) ([]record, error) {
-	content, err := io.ReadAll(src)
-	if err != nil {
-		return nil, err
-	}
+func readXLSX(content []byte) ([]record, error) {
 	archive, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
 	if err != nil {
 		return nil, fmt.Errorf("open xlsx: %w", err)

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
+	"github.com/santialemarino/coti/apps/api/internal/utils/spreadsheet"
 )
 
 // rfqAttachmentRepo is the persistence this service needs.
@@ -96,6 +98,12 @@ func (s *RFQAttachmentService) Upload(
 	if err != nil {
 		return nil, err
 	}
+	content := bufio.NewReader(file.Content)
+	head, _ := content.Peek(spreadsheet.SniffLength)
+	if err := refuseLegacyExcel(format, head); err != nil {
+		return nil, err
+	}
+	file.Content = content
 
 	attachmentID := uuid.New()
 	key := attachmentKey(tenant.AccountID, rfqID, attachmentID, format.Extension)

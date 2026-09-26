@@ -23,7 +23,8 @@ import { listChannels, type Channel } from '@/lib/api/channels';
 import { errorCodeOf } from '@/lib/api/errors';
 import { createFileRfqDraft } from '@/lib/api/rfqs-client';
 
-// Mirrors the API's accepted attachment types, so a file it would refuse is not offered.
+// Mirrors the API's accepted attachment types, so a file it would refuse is not offered. The legacy
+// Excel type is left out: the API accepts it only for the CSVs Windows labels that way.
 const ACCEPTED_TYPES = [
   'image/jpeg',
   'image/png',
@@ -31,7 +32,6 @@ const ACCEPTED_TYPES = [
   'image/heic',
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/vnd.ms-excel',
   'text/csv',
   'audio/mpeg',
   'audio/mp4',

@@ -56,8 +56,7 @@ func (s *RFQAttachmentService) ReadStoredAttachment(
 		return domain.Content{}, "", err
 	}
 
-	// The key ends in the extension the format was accepted under, and both text readers below
-	// pick their parser from it.
+	// The key ends in the extension the format was accepted under, which the transcriber decodes by.
 	filename := path.Base(attachment.StorageKey)
 
 	switch attachment.Type {
@@ -71,7 +70,7 @@ func (s *RFQAttachmentService) ReadStoredAttachment(
 		return s.textBlock(string(data))
 
 	case domain.AttachmentTypeSpreadsheet:
-		text, readErr := spreadsheetOrderText(filename, data, s.maxSpreadsheetRows)
+		text, readErr := spreadsheetOrderText(data, s.maxSpreadsheetRows)
 		if readErr != nil {
 			return domain.Content{}, "", readErr
 		}

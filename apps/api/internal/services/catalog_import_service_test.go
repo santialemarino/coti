@@ -81,7 +81,7 @@ func TestCatalogImportService_Preview_ReportsInvalidRowsWithoutBlockingValidOnes
 		"MAL;Cal;;;MATERIALES DE CONSTRUCCION;;abc"
 
 	preview, err := service.Preview(
-		context.Background(), tenant, "catalogo.csv", strings.NewReader(csvFile),
+		context.Background(), tenant, strings.NewReader(csvFile),
 	)
 	if err != nil {
 		t.Fatalf("Preview() = %v, want no error", err)
@@ -138,7 +138,7 @@ func TestCatalogImportService_Preview_RejectsSubgroupFromAnotherFamily(t *testin
 		"ARE-1;Arena;m3;MATERIALES DE CONSTRUCCION;NO PERTENECE;5000"
 
 	preview, err := service.Preview(
-		context.Background(), tenant, "catalogo.csv", strings.NewReader(csvFile),
+		context.Background(), tenant, strings.NewReader(csvFile),
 	)
 	if err != nil {
 		t.Fatalf("Preview() = %v, want no error", err)
@@ -157,7 +157,7 @@ func TestCatalogImportService_Preview_AllowsAnExistingProductWithoutABranchPrice
 		"SIN-PRECIO;Producto editado;unidad;MATERIALES DE CONSTRUCCION;;SI"
 
 	preview, err := service.Preview(
-		context.Background(), tenant, "catalogo.csv", strings.NewReader(csvFile),
+		context.Background(), tenant, strings.NewReader(csvFile),
 	)
 	if err != nil {
 		t.Fatalf("Preview() = %v, want no error", err)

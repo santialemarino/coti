@@ -78,7 +78,7 @@ func TestProductPriceImportService_Preview_ReportsEveryInvalidRow(t *testing.T) 
 	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(), BranchID: uuid.New()}
 	csvFile := "codigo;precio;precio_minimo\nCEM-001;10000;11000\nDESCONOCIDO;abc;"
 
-	preview, err := service.Preview(context.Background(), tenant, "precios.csv", strings.NewReader(csvFile))
+	preview, err := service.Preview(context.Background(), tenant, strings.NewReader(csvFile))
 	if err != nil {
 		t.Fatalf("Preview() = %v, want no error", err)
 	}
@@ -102,7 +102,7 @@ func TestProductPriceImportService_Preview_AllowsValidRowsAlongsideInvalidRows(t
 	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(), BranchID: uuid.New()}
 	csvFile := "codigo;precio\nCEM-001;10000\nDESCONOCIDO;5000"
 
-	preview, err := service.Preview(context.Background(), tenant, "precios.csv", strings.NewReader(csvFile))
+	preview, err := service.Preview(context.Background(), tenant, strings.NewReader(csvFile))
 	if err != nil {
 		t.Fatalf("Preview() = %v, want no error", err)
 	}
@@ -176,7 +176,7 @@ func TestProductPriceImportService_Preview_DefaultsCurrencyWithoutCurrentPrice(t
 	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(), BranchID: uuid.New()}
 	csvFile := "codigo;precio;moneda\nCEM-001;10000;USD"
 
-	preview, err := service.Preview(context.Background(), tenant, "precios.csv", strings.NewReader(csvFile))
+	preview, err := service.Preview(context.Background(), tenant, strings.NewReader(csvFile))
 	if err != nil {
 		t.Fatalf("Preview() = %v, want no error", err)
 	}
@@ -205,7 +205,7 @@ func TestProductPriceImportService_Export_CreatesImportableWorkbook(t *testing.T
 	if file.Filename != "precios-villa-bosch.xlsx" {
 		t.Errorf("Filename = %q, want precios-villa-bosch.xlsx", file.Filename)
 	}
-	rows, err := parsePriceImport("precios.xlsx", bytes.NewReader(file.Content))
+	rows, err := parsePriceImport(bytes.NewReader(file.Content))
 	if err != nil {
 		t.Fatalf("parse exported workbook = %v, want no error", err)
 	}
@@ -238,7 +238,7 @@ func TestParsePriceImport_ReadsXLSXInlineStrings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows, err := parsePriceImport("precios.xlsx", bytes.NewReader(file.Bytes()))
+	rows, err := parsePriceImport(bytes.NewReader(file.Bytes()))
 	if err != nil {
 		t.Fatalf("parsePriceImport() = %v, want no error", err)
 	}

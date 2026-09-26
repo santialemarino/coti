@@ -47,7 +47,8 @@ var attachmentFormats = map[string]AttachmentFormat{
 	"image/heic":      {AttachmentTypeImage, "heic"},
 	"application/pdf": {AttachmentTypePDF, "pdf"},
 	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {AttachmentTypeSpreadsheet, "xlsx"},
-	"application/vnd.ms-excel": {AttachmentTypeSpreadsheet, "xls"},
+	// Windows labels a .csv with the legacy Excel type; a real .xls is refused by its bytes.
+	"application/vnd.ms-excel": {AttachmentTypeSpreadsheet, "csv"},
 	"text/csv":                 {AttachmentTypeSpreadsheet, "csv"},
 	"audio/mpeg":               {AttachmentTypeAudio, "mp3"},
 	"audio/mp4":                {AttachmentTypeAudio, "m4a"},

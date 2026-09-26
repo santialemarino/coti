@@ -12,38 +12,38 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func TestOpenSpreadsheetUpload_ReturnsTheConfiguredFile(t *testing.T) {
+func TestOpenUpload_ReturnsTheConfiguredFile(t *testing.T) {
 	t.Parallel()
-	context, recorder := spreadsheetUploadTestContext(t, "precios.csv", "codigo,precio\nCEM-001,10000")
+	context, recorder := uploadTestContext(t, "precios.csv", "codigo,precio\nCEM-001,10000")
 
-	file, filename, ok := openSpreadsheetUpload(context, 1024)
+	file, header, ok := openUpload(context, 1024)
 	if !ok {
-		t.Fatalf("openSpreadsheetUpload() status = %d, want a file", recorder.Code)
+		t.Fatalf("openUpload() status = %d, want a file", recorder.Code)
 	}
 	defer file.Close()
 	content, err := io.ReadAll(file)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filename != "precios.csv" || !strings.Contains(string(content), "CEM-001") {
-		t.Fatalf("filename, content = %q, %q; want the uploaded spreadsheet", filename, content)
+	if header.Filename != "precios.csv" || !strings.Contains(string(content), "CEM-001") {
+		t.Fatalf("filename, content = %q, %q; want the uploaded spreadsheet", header.Filename, content)
 	}
 }
 
-func TestOpenSpreadsheetUpload_RejectsTheConfiguredLimit(t *testing.T) {
+func TestOpenUpload_RejectsTheConfiguredLimit(t *testing.T) {
 	t.Parallel()
-	context, recorder := spreadsheetUploadTestContext(t, "catalogo.csv", strings.Repeat("x", 128))
+	context, recorder := uploadTestContext(t, "catalogo.csv", strings.Repeat("x", 128))
 
-	file, _, ok := openSpreadsheetUpload(context, 64)
+	file, _, ok := openUpload(context, 64)
 	if ok || file != nil {
-		t.Fatal("openSpreadsheetUpload() accepted a request above the configured limit")
+		t.Fatal("openUpload() accepted a request above the configured limit")
 	}
 	if recorder.Code != http.StatusRequestEntityTooLarge || !strings.Contains(recorder.Body.String(), "file too large") {
 		t.Fatalf("response = %d %q, want a clear 413", recorder.Code, recorder.Body.String())
 	}
 }
 
-func spreadsheetUploadTestContext(t *testing.T, filename, content string) (*gin.Context, *httptest.ResponseRecorder) {
+func uploadTestContext(t *testing.T, filename, content string) (*gin.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)

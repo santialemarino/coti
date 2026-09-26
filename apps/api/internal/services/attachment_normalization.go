@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -16,8 +17,11 @@ const spreadsheetCellSeparator = "\t"
 // spreadsheetOrderText turns an uploaded sheet into the text a model reads. Both doors into the
 // engine share it, so a sheet is an order or a catalog by its own size and never by whether it
 // arrived inline or through the sweep.
-func spreadsheetOrderText(filename string, data []byte, maxRows int) (string, error) {
-	rows, err := spreadsheet.ReadRaw(filename, bytes.NewReader(data))
+func spreadsheetOrderText(data []byte, maxRows int) (string, error) {
+	rows, err := spreadsheet.ReadRaw(bytes.NewReader(data))
+	if errors.Is(err, spreadsheet.ErrLegacyExcel) {
+		return "", legacyExcelRefusal()
+	}
 	if err != nil {
 		return "", fmt.Errorf("%w: the spreadsheet could not be read: %s",
 			domain.ErrInvalidInput, err)
@@ -36,4 +40,18 @@ func spreadsheetOrderText(filename string, data []byte, maxRows int) (string, er
 		lines = append(lines, strings.Join(row, spreadsheetCellSeparator))
 	}
 	return strings.Join(lines, "\n"), nil
+}
+
+// refuseLegacyExcel refuses a spreadsheet upload whose bytes are a legacy .xls workbook. The type
+// alone cannot tell: Windows labels a .csv with the same legacy Excel type.
+func refuseLegacyExcel(format domain.AttachmentFormat, head []byte) error {
+	if format.Type == domain.AttachmentTypeSpreadsheet && spreadsheet.IsLegacyExcel(head) {
+		return legacyExcelRefusal()
+	}
+	return nil
+}
+
+func legacyExcelRefusal() error {
+	return domain.WithCode(domain.CodeLegacyExcelFile,
+		fmt.Errorf("%w: %v", domain.ErrInvalidInput, spreadsheet.ErrLegacyExcel))
 }

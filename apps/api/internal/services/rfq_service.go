@@ -1559,12 +1559,15 @@ func (s *RFQService) normalizeFileRFQDraftInput(
 	if err != nil {
 		return in, empty, nil, err
 	}
+	if err := refuseLegacyExcel(format, data); err != nil {
+		return in, empty, nil, err
+	}
 
 	in.ClientLabel = clientLabel
 	in.WorkType = workType
 	in.Note = note
-	// The extension decides how a spreadsheet is parsed and how a recording is decoded, and the
-	// client's filename may carry neither, so the accepted format's own extension stands in.
+	// The extension decides how a recording is decoded, and the client's filename may carry none,
+	// so the accepted format's own extension stands in.
 	if in.Filename == "" || !strings.Contains(in.Filename, ".") {
 		in.Filename = "pedido." + format.Extension
 	}

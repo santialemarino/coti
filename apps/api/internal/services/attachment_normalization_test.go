@@ -65,7 +65,7 @@ func TestSpreadsheetOrderText_BothDoorsRefuseTheSameCatalog(t *testing.T) {
 	}
 
 	inline := &RFQService{cfg: cfg}
-	if _, err := inline.readSpreadsheet("catalogo.csv", sheet); !errors.Is(err, domain.ErrInvalidInput) {
+	if _, err := inline.readSpreadsheet(sheet); !errors.Is(err, domain.ErrInvalidInput) {
 		t.Fatalf("inline intake err = %v, want ErrInvalidInput", err)
 	}
 
@@ -74,5 +74,18 @@ func TestSpreadsheetOrderText_BothDoorsRefuseTheSameCatalog(t *testing.T) {
 		Type: domain.AttachmentTypeSpreadsheet, StorageKey: "accounts/a/rfqs/r/f.csv"})
 	if !errors.Is(err, domain.ErrInvalidInput) {
 		t.Fatalf("sweep err = %v, want ErrInvalidInput", err)
+	}
+}
+
+// A legacy workbook carries its own code on both doors, so the seller is asked for an .xlsx
+// rather than told the file is unreadable.
+func TestSpreadsheetOrderText_NamesALegacyWorkbook(t *testing.T) {
+	t.Parallel()
+	legacy := []byte("\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1workbook")
+
+	_, err := spreadsheetOrderText(legacy, testRFQConfig().MaxSpreadsheetRows)
+	if !errors.Is(err, domain.ErrInvalidInput) || domain.CodeOf(err) != domain.CodeLegacyExcelFile {
+		t.Fatalf("err = %v (code %q), want ErrInvalidInput coded LEGACY_EXCEL_FILE", err,
+			domain.CodeOf(err))
 	}
 }
