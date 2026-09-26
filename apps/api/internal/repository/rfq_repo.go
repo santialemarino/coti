@@ -156,11 +156,8 @@ func (r *RFQRepository) GetByRFQID(
 		        END,
 		        q.archived_at,
 		        COALESCE(q.needs_followup, FALSE),
-		        (SELECT count(*)
-		         FROM quote_item qi
-		         JOIN quote_version qv ON qv.id = qi.version_id AND qv.account_id = qi.account_id
-		         JOIN quote q2 ON q2.id = qv.quote_id AND q2.account_id = qv.account_id
-		         WHERE qi.account_id = r.account_id AND q2.rfq_id = r.id)
+		        COALESCE(lines.items, 0),
+		        COALESCE(lines.to_review, 0)
 		 FROM rfq r
 		 JOIN branch b ON b.id = r.branch_id AND b.account_id = r.account_id
 		 LEFT JOIN client cl ON cl.id = r.client_id AND cl.account_id = r.account_id
@@ -168,6 +165,7 @@ func (r *RFQRepository) GetByRFQID(
 		 LEFT JOIN channel c ON c.id = r.channel_id AND c.account_id = r.account_id
 		 LEFT JOIN app_user u ON u.id = q.seller_id AND u.account_id = r.account_id
 		 LEFT JOIN quote_version qt ON qt.id = q.current_version_id AND qt.account_id = r.account_id
+		 `+rfqCurrentLineCounts+`
 WHERE r.account_id = $1
 		   AND ($2::uuid[] IS NULL OR r.branch_id = ANY($2::uuid[]))
 		   AND r.id = $3
@@ -180,7 +178,7 @@ WHERE r.account_id = $1
 		&item.BranchID, &item.BranchName,
 		&item.QuoteID, &item.QuoteNumber,
 		&total, &item.Status, &item.ArchivedAt, &item.NeedsFollowup,
-		&item.ItemCount,
+		&item.ItemCount, &item.ReviewCount,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
@@ -196,6 +194,15 @@ WHERE r.account_id = $1
 	}
 	return &item, nil
 }
+
+// rfqCurrentLineCounts counts the lines of the quote's current version, and those matching left
+// for the seller: an earlier version's lines are history, not work.
+const rfqCurrentLineCounts = `LEFT JOIN LATERAL (
+		   SELECT count(*) AS items,
+		          count(*) FILTER (WHERE qi.match_status <> 'MATCHED') AS to_review
+		   FROM quote_item qi
+		   WHERE qi.account_id = r.account_id AND qi.version_id = q.current_version_id
+		 ) lines ON TRUE`
 
 // ListByTenant returns the RFQ list the Backoffice dashboard consumes. needs_followup rows sort
 // first and the client display name falls back to rfq.client_label when no ficha client is linked.
@@ -220,11 +227,8 @@ func (r *RFQRepository) ListByTenant(
 		        END,
 		        q.archived_at,
 		        COALESCE(q.needs_followup, FALSE),
-		        (SELECT count(*)
-		         FROM quote_item qi
-		         JOIN quote_version qv ON qv.id = qi.version_id AND qv.account_id = qi.account_id
-		         JOIN quote q2 ON q2.id = qv.quote_id AND q2.account_id = qv.account_id
-		         WHERE qi.account_id = r.account_id AND q2.rfq_id = r.id)
+		        COALESCE(lines.items, 0),
+		        COALESCE(lines.to_review, 0)
 		 FROM rfq r
 		 JOIN branch b ON b.id = r.branch_id AND b.account_id = r.account_id
 		 LEFT JOIN client cl ON cl.id = r.client_id AND cl.account_id = r.account_id
@@ -232,6 +236,7 @@ func (r *RFQRepository) ListByTenant(
 		 LEFT JOIN channel c ON c.id = r.channel_id AND c.account_id = r.account_id
 		 LEFT JOIN app_user u ON u.id = q.seller_id AND u.account_id = r.account_id
 		 LEFT JOIN quote_version qt ON qt.id = q.current_version_id AND qt.account_id = r.account_id
+		 `+rfqCurrentLineCounts+`
 		 WHERE r.account_id = $1
 		   AND ($2::uuid[] IS NULL OR r.branch_id = ANY($2::uuid[]))
 		   AND ($3::uuid IS NULL OR q.seller_id = $3 OR q.seller_id IS NULL)
@@ -255,7 +260,7 @@ func (r *RFQRepository) ListByTenant(
 			&item.BranchID, &item.BranchName,
 			&item.QuoteID, &item.QuoteNumber,
 			&total, &item.Status, &item.ArchivedAt, &item.NeedsFollowup,
-			&item.ItemCount,
+			&item.ItemCount, &item.ReviewCount,
 		); err != nil {
 			return nil, err
 		}

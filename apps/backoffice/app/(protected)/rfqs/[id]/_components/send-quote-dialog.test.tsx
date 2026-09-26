@@ -42,6 +42,7 @@ function makeDetail(): RfqDetailResponse {
       branch: 'Villa Bosch',
       branch_id: BRANCH_ID,
       item_count: 1,
+      review_count: 0,
       total: '390000.00',
       status: 'QUOTED',
       needs_followup: false,

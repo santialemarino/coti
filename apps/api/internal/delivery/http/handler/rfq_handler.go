@@ -611,6 +611,7 @@ func toListItemResponse(item domain.RfqListItem) dto.RfqListItemResponse {
 		QuoteID:       item.QuoteID,
 		QuoteNumber:   item.QuoteNumber,
 		ItemCount:     item.ItemCount,
+		ReviewCount:   item.ReviewCount,
 		Total:         item.Total,
 		Status:        item.Status,
 		ArchivedAt:    item.ArchivedAt,

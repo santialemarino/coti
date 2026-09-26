@@ -20,6 +20,7 @@ function mapListItem(item: RfqListItem): RfqRecord {
     branchId: item.branch_id,
     quoteId: item.quote_id,
     itemCount: item.item_count,
+    reviewCount: item.review_count,
     total: item.total ?? undefined,
     status: normalizeRfqStatus(item.status),
     needsFollowup: item.needs_followup,

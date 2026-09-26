@@ -92,18 +92,20 @@ type RfqCreation struct {
 // Backoffice list view. The display status merges rfq.status and quote.current_status
 // into a single timeline the UI can render.
 type RfqListItem struct {
-	ID            uuid.UUID
-	ClientID      *uuid.UUID
-	ClientLabel   *string // display name: ficha client name when set, else rfq.client_label.
-	CreatedAt     time.Time
-	Channel       string // lowercase channel_type: whatsapp, email, webapp, manual_entry.
-	SellerID      *uuid.UUID
-	SellerName    string
-	BranchID      uuid.UUID
-	BranchName    string
-	QuoteID       *uuid.UUID // NULL until the RFQ has a quote; the archive endpoints key off it.
-	QuoteNumber   *int64
-	ItemCount     int
+	ID          uuid.UUID
+	ClientID    *uuid.UUID
+	ClientLabel *string // display name: ficha client name when set, else rfq.client_label.
+	CreatedAt   time.Time
+	Channel     string // lowercase channel_type: whatsapp, email, webapp, manual_entry.
+	SellerID    *uuid.UUID
+	SellerName  string
+	BranchID    uuid.UUID
+	BranchName  string
+	QuoteID     *uuid.UUID // NULL until the RFQ has a quote; the archive endpoints key off it.
+	QuoteNumber *int64
+	ItemCount   int
+	// ReviewCount is the current version's lines matching did not settle, which the seller must.
+	ReviewCount   int
 	Total         *string // decimal string from quote_version.total; NULL when no priced version.
 	Status        string  // merged: rfq.status when no quote, otherwise quote.current_status.
 	ArchivedAt    *time.Time

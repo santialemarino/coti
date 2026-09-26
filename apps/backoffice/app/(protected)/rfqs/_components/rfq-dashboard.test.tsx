@@ -45,6 +45,7 @@ const RFQS: RfqRecord[] = [
     branchId: 'b1',
     quoteId: 'quote-b1',
     itemCount: 2,
+    reviewCount: 0,
     status: 'QUOTED',
     total: '100.00',
     needsFollowup: false,
@@ -61,6 +62,7 @@ const RFQS: RfqRecord[] = [
     branchId: 'b2',
     quoteId: 'quote-b2',
     itemCount: 3,
+    reviewCount: 0,
     status: 'SENT',
     total: '200.00',
     needsFollowup: false,
@@ -77,6 +79,7 @@ const RFQS: RfqRecord[] = [
     branchId: 'b1',
     quoteId: 'quote-b1',
     itemCount: 4,
+    reviewCount: 0,
     status: 'QUOTED',
     total: '300.00',
     needsFollowup: false,
@@ -93,6 +96,7 @@ const RFQS: RfqRecord[] = [
     branchId: 'b2',
     quoteId: 'quote-b2',
     itemCount: 5,
+    reviewCount: 0,
     status: 'RECEIVED',
     needsFollowup: false,
   },
@@ -108,6 +112,7 @@ const RFQS: RfqRecord[] = [
     branchId: 'b1',
     quoteId: 'quote-b1',
     itemCount: 6,
+    reviewCount: 0,
     status: 'GENERATED',
     needsFollowup: false,
   },
@@ -371,6 +376,7 @@ describe('RfqDashboard claiming an unassigned order', () => {
     branchId: 'b1',
     quoteId: 'quote-b1',
     itemCount: 1,
+    reviewCount: 0,
     status: 'RECEIVED',
     needsFollowup: false,
   };
@@ -500,6 +506,7 @@ describe('RfqDashboard admin steering the seller', () => {
     branchId: 'b-moron',
     quoteId: 'quote-b-moron',
     itemCount: 1,
+    reviewCount: 0,
     status: 'RECEIVED',
     needsFollowup: false,
   };
@@ -663,6 +670,7 @@ describe('RfqDashboard seller column as the assignment surface', () => {
     branchId: 'b-moron',
     quoteId: 'quote-b-moron',
     itemCount: 1,
+    reviewCount: 0,
     status: 'RECEIVED',
     needsFollowup: false,
   };
@@ -809,5 +817,25 @@ describe('RfqDashboard seller column as the assignment surface', () => {
 
     await vi.waitFor(() => expect(setRfqSeller).toHaveBeenCalledWith('2006', 's-moron'));
     expect(router.push).not.toHaveBeenCalled();
+  });
+});
+
+describe('RfqDashboard lines to review', () => {
+  it('flags only the orders with lines matching left, and sorts by how many', async () => {
+    const counts = [3, 0, 1];
+    const view = renderDashboard(
+      RFQS.slice(0, counts.length).map((rfq, index) => ({
+        ...rfq,
+        reviewCount: counts[index] ?? 0,
+      })),
+    );
+
+    expect(await view.findByText('3 a revisar')).toBeTruthy();
+    expect(view.getByText('1 a revisar')).toBeTruthy();
+    expect(view.queryByText('0 a revisar')).toBeNull();
+
+    fireEvent.click(view.getByRole('button', { name: new RegExp(copy.list.columns.toReview) }));
+    const flagged = view.getAllByText(/a revisar$/).map((badge) => badge.textContent);
+    expect(flagged).toEqual(['1 a revisar', '3 a revisar']);
   });
 });
