@@ -31,7 +31,8 @@ type catalogEmbeddingRepository interface {
 //
 // It runs off the request path. A whole catalog is thousands of texts, each provider call is
 // bounded per attempt rather than per chain, and the two together outrun any HTTP response
-// budget — so this is driven by the catalog-embed command, never by a route.
+// budget — so this is driven by the catalog-embed command and the catalog-embedding job, never
+// by a route.
 type CatalogEmbeddingService struct {
 	db       tenantTxRunner
 	accounts catalogEmbeddingAccounts

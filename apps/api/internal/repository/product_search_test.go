@@ -5,6 +5,7 @@ package repository
 import (
 	"context"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -546,5 +547,25 @@ func TestProductRepository_SearchUsesTheVectorIndex(t *testing.T) {
 
 	if !strings.Contains(plan.String(), "idx_product_embedding") {
 		t.Errorf("the search plan does not read the vector index:\n%s", plan.String())
+	}
+}
+
+// The embedding sweep asks which accounts have work: one whose new product has no vector does, one
+// whose catalog is embedded and unedited does not, and neither needs the other's scope to be seen.
+func TestProductRepository_ListAccountsPendingEmbeddingFindsOnlyAccountsWithWork(t *testing.T) {
+	db := testDB(t)
+	pending := seedAccount(t, db, "Corralon Pendiente")
+	embedded := seedAccount(t, db, "Corralon Embebido")
+	seedCatalogProduct(t, db, pending, "Cemento Portland 50kg", "bolsa")
+	done := seedCatalogProduct(t, db, embedded, "Cal hidratada", "bolsa")
+	writeEmbedding(t, db, embedded, done, alignedVector(1))
+
+	accounts, err := NewProductRepository().ListAccountsPendingEmbedding(context.Background(),
+		db.CrossAccount())
+	if err != nil {
+		t.Fatalf("ListAccountsPendingEmbedding() = %v", err)
+	}
+	if !slices.Contains(accounts, pending) || slices.Contains(accounts, embedded) {
+		t.Errorf("accounts = %v, want %v listed and %v not", accounts, pending, embedded)
 	}
 }

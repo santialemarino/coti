@@ -87,6 +87,24 @@ func (r *ProductRepository) GetByIDForUpdate(
 		accountID, id))
 }
 
+// ListAccountsPendingEmbedding returns every account with an active product whose vector is
+// missing or older than its last edit. It reads across accounts, so it takes the owner's querier.
+func (r *ProductRepository) ListAccountsPendingEmbedding(
+	ctx context.Context, q Querier,
+) ([]uuid.UUID, error) {
+	rows, err := q.Query(ctx,
+		`SELECT DISTINCT account_id
+		 FROM product
+		 WHERE is_active = TRUE
+		   AND (embedding IS NULL OR embedding_updated_at IS NULL
+		        OR embedding_updated_at < updated_at)
+		 ORDER BY account_id`)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+}
+
 // ListPendingEmbedding returns the next products whose vector is missing or older than their
 // last edit, in id order from after cursor. A zero cursor starts at the beginning of the
 // catalog, and refreshAll takes every active product rather than only the stale ones.
