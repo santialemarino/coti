@@ -17,7 +17,8 @@ type ListProductsQuery struct {
 }
 
 // CreateProductRequest is the body for POST /v1/products. The account comes from the
-// tenant context, never the body.
+// tenant context, never the body. Price and min_price are decimal strings that open the first
+// price period at every branch the product becomes available at; min_price needs price.
 type CreateProductRequest struct {
 	Code          *string    `json:"code" binding:"omitempty,max=255"`
 	CanonicalName string     `json:"canonical_name" binding:"required,min=1,max=255"`
@@ -25,6 +26,8 @@ type CreateProductRequest struct {
 	Unit          *string    `json:"unit" binding:"omitempty,max=64"`
 	FamilyID      uuid.UUID  `json:"family_id" binding:"required"`
 	SubgroupID    *uuid.UUID `json:"subgroup_id"`
+	Price         *string    `json:"price" binding:"required_with=MinPrice,omitempty,numeric"`
+	MinPrice      *string    `json:"min_price" binding:"omitempty,numeric"`
 }
 
 // UpdateProductRequest is the body for PUT /v1/products/:productId. It replaces the

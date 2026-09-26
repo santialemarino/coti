@@ -69,7 +69,8 @@ type ProductImageUpload struct {
 	Content     io.Reader
 }
 
-// NewProduct is the input for creating a catalog item.
+// NewProduct is the input for creating a catalog item. A set InitialPrice opens a price period
+// at every branch the product becomes available at.
 type NewProduct struct {
 	Code          *string
 	CanonicalName string
@@ -77,6 +78,7 @@ type NewProduct struct {
 	Unit          *string
 	FamilyID      uuid.UUID
 	SubgroupID    *uuid.UUID
+	InitialPrice  *NewProductPrice
 }
 
 // ProductUpdate replaces a product's editable attributes: a nil nullable field clears

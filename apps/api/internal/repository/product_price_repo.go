@@ -308,6 +308,21 @@ func (r *ProductPriceRepository) Create(
 		accountID, branchID, productID, userID, in.Price, in.Currency, in.MinPrice, in.ValidFrom))
 }
 
+// CreateAtBranches opens the same first price period at each branch, for a product none of them
+// has priced yet, in one statement.
+func (r *ProductPriceRepository) CreateAtBranches(
+	ctx context.Context, q Querier, accountID, productID uuid.UUID, branchIDs []uuid.UUID,
+	userID *uuid.UUID, in domain.NewProductPrice,
+) error {
+	_, err := q.Exec(ctx,
+		`INSERT INTO product_price
+		   (account_id, branch_id, product_id, user_id, price, currency, min_price, valid_from)
+		 SELECT $1, b.id, $2, $4, $5, $6, $7, $8
+		 FROM unnest($3::uuid[]) AS b(id)`,
+		accountID, productID, branchIDs, userID, in.Price, in.Currency, in.MinPrice, in.ValidFrom)
+	return err
+}
+
 // CloseOpenPeriod stamps valid_to on the open period, so the price stops applying at the
 // moment the next one starts. Returns the number of periods it closed.
 func (r *ProductPriceRepository) CloseOpenPeriod(

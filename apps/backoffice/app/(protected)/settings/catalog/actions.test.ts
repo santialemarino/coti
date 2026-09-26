@@ -23,6 +23,8 @@ const VALUES: ProductValues = {
   familyId: '11111111-1111-4111-8111-111111111111',
   subgroupId: '',
   isActive: true,
+  price: '',
+  minPrice: '',
 };
 
 beforeEach(() => vi.clearAllMocks());
@@ -43,8 +45,30 @@ describe('catalog product actions', () => {
         unit: 'bolsa',
         family_id: VALUES.familyId,
         subgroup_id: null,
+        price: null,
+        min_price: null,
       },
     });
+  });
+
+  it('sends an initial price and floor as decimal strings on create', async () => {
+    vi.mocked(apiRequest).mockResolvedValue({ id: 'product-1' });
+
+    await createProduct({ ...VALUES, price: '12500.5', minPrice: '11000' });
+
+    expect(vi.mocked(apiRequest).mock.calls[0]?.[0]).toMatchObject({
+      body: { price: '12500.5', min_price: '11000' },
+    });
+  });
+
+  it('refuses a floor above the price before calling the API', async () => {
+    await expect(createProduct({ ...VALUES, price: '100', minPrice: '100.01' })).resolves.toEqual({
+      error: 'INVALID_BODY',
+    });
+    await expect(createProduct({ ...VALUES, minPrice: '100' })).resolves.toEqual({
+      error: 'INVALID_BODY',
+    });
+    expect(apiRequest).not.toHaveBeenCalled();
   });
 
   it('does not call the API with an invalid product', async () => {

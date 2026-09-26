@@ -94,6 +94,15 @@ func (f *fakeBranchChannels) CreateManualEntry(
 	return nil
 }
 
+type fakeBranchCatalog struct{ seeded []uuid.UUID }
+
+func (f *fakeBranchCatalog) AddActiveProducts(
+	_ context.Context, _ repository.Querier, _, branchID uuid.UUID,
+) (int64, error) {
+	f.seeded = append(f.seeded, branchID)
+	return 0, nil
+}
+
 func newBranchHarness() (*BranchService, *fakeBranchReader) {
 	branches := &fakeBranchReader{
 		all: []domain.Branch{
@@ -104,7 +113,8 @@ func newBranchHarness() (*BranchService, *fakeBranchReader) {
 			{ID: assignedBranch, AccountID: testAccountID, Name: "Villa Bosch", IsActive: true},
 		},
 	}
-	return NewBranchService(&fakeDB{}, branches, &fakeBranchChannels{}, 7), branches
+	return NewBranchService(&fakeDB{}, branches, &fakeBranchChannels{}, &fakeBranchCatalog{}, 7),
+		branches
 }
 
 func sellerTenant() domain.Tenant {
@@ -204,5 +214,21 @@ func TestBranchService_DeactivateBranch_AlreadyClosedIsAllowed(t *testing.T) {
 
 	if err := svc.DeactivateBranch(context.Background(), adminTenant(), closedBranch); err != nil {
 		t.Fatalf("DeactivateBranch: %v", err)
+	}
+}
+
+// A new branch starts with the account's catalog available, so its first order can match.
+func TestBranchService_CreateBranch_MakesTheCatalogAvailableAtTheNewBranch(t *testing.T) {
+	t.Parallel()
+	catalog := &fakeBranchCatalog{}
+	svc := NewBranchService(&fakeDB{}, &fakeBranchReader{}, &fakeBranchChannels{}, catalog, 7)
+
+	branch, err := svc.CreateBranch(context.Background(), adminTenant(),
+		domain.NewBranch{Name: "Sucursal Norte"})
+	if err != nil {
+		t.Fatalf("CreateBranch() = %v, want no error", err)
+	}
+	if len(catalog.seeded) != 1 || catalog.seeded[0] != branch.ID {
+		t.Fatalf("catalog seeded at %v, want only the new branch %v", catalog.seeded, branch.ID)
 	}
 }

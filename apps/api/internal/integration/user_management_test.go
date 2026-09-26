@@ -175,7 +175,8 @@ func newEnvWithRFQProviders(
 		mailService, quiet, cfg.Auth, cfg.Web, nil)
 	productRepo := repository.NewProductRepository()
 	productService := services.NewProductService(db, productRepo,
-		repository.NewProductSynonymRepository(), repository.NewProductAlternativeRepository(), cfg.Catalog)
+		repository.NewProductSynonymRepository(), repository.NewProductAlternativeRepository(),
+		repository.NewBranchProductRepository(), repository.NewProductPriceRepository(), cfg.Catalog)
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo,
 		repository.NewBranchProductRepository(), repository.NewProductPriceRepository(), nil)
 	onboardingRepo := repository.NewOnboardingRepository()
@@ -228,12 +229,13 @@ func newEnvWithRFQProviders(
 		Div(decimal.NewFromInt(100))
 	router := deliveryhttp.NewRouter(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)),
 		deliveryhttp.Handlers{
-			Health:        handler.NewHealthHandler(db),
-			Auth:          handler.NewAuthHandler(authService),
-			Password:      handler.NewPasswordHandler(passwordService, mailTargetLimiter),
-			Verification:  handler.NewVerificationHandler(verificationService, mailTargetLimiter),
-			User:          handler.NewUserHandler(userService),
-			Branch:        handler.NewBranchHandler(services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)),
+			Health:       handler.NewHealthHandler(db),
+			Auth:         handler.NewAuthHandler(authService),
+			Password:     handler.NewPasswordHandler(passwordService, mailTargetLimiter),
+			Verification: handler.NewVerificationHandler(verificationService, mailTargetLimiter),
+			User:         handler.NewUserHandler(userService),
+			Branch: handler.NewBranchHandler(services.NewBranchService(db, branchRepo, channelRepo,
+				repository.NewBranchProductRepository(), cfg.Branch.DefaultExpiryDays)),
 			Rfq:           handler.NewRfqHandler(rfqService, highConfidence),
 			Channel:       handler.NewChannelHandler(channelService),
 			Product:       handler.NewProductHandler(productService, cfg.Storage.MaxFileSize),

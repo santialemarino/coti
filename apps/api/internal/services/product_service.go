@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -40,6 +41,16 @@ type productAlternativeRepository interface {
 	Delete(ctx context.Context, q repository.Querier, accountID, productID, id uuid.UUID) error
 }
 
+// productAvailabilityWriter makes a new product available at the account's branches.
+type productAvailabilityWriter interface {
+	AddToActiveBranches(ctx context.Context, q repository.Querier, accountID, productID uuid.UUID) ([]uuid.UUID, error)
+}
+
+// productInitialPriceWriter opens a new product's first price period at several branches.
+type productInitialPriceWriter interface {
+	CreateAtBranches(ctx context.Context, q repository.Querier, accountID, productID uuid.UUID, branchIDs []uuid.UUID, userID *uuid.UUID, in domain.NewProductPrice) error
+}
+
 // tenantTxRunner is the database surface a tenant-scoped use case needs: one transaction
 // carrying the account scope that row level security reads.
 type tenantTxRunner interface {
@@ -53,18 +64,23 @@ type ProductService struct {
 	products      productRepository
 	synonyms      productSynonymRepository
 	alternatives  productAlternativeRepository
+	availability  productAvailabilityWriter
+	prices        productInitialPriceWriter
 	cfg           config.CatalogConfig
 	imageStorage  domain.ObjectStorage
 	imageMaxBytes int64
+	now           func() time.Time
 }
 
 // NewProductService builds a ProductService.
 func NewProductService(
 	db tenantTxRunner, products productRepository, synonyms productSynonymRepository,
-	alternatives productAlternativeRepository, cfg config.CatalogConfig,
+	alternatives productAlternativeRepository, availability productAvailabilityWriter,
+	prices productInitialPriceWriter, cfg config.CatalogConfig,
 ) *ProductService {
 	return &ProductService{
-		db: db, products: products, synonyms: synonyms, alternatives: alternatives, cfg: cfg,
+		db: db, products: products, synonyms: synonyms, alternatives: alternatives,
+		availability: availability, prices: prices, cfg: cfg, now: time.Now,
 	}
 }
 
@@ -112,10 +128,11 @@ func (s *ProductService) GetProduct(
 	return product, nil
 }
 
-// CreateProduct adds a catalog item to the account.
+// CreateProduct adds a catalog item to the account and makes it available at every active
+// branch, priced there when an initial price came with it, all in one transaction.
 //
 // Returns domain.ErrConflict when the code is already taken within the account, and
-// domain.ErrInvalidInput when the name is blank once trimmed.
+// domain.ErrInvalidInput when the name is blank once trimmed or the price does not hold up.
 func (s *ProductService) CreateProduct(
 	ctx context.Context, tenant domain.Tenant, in domain.NewProduct,
 ) (*domain.Product, error) {
@@ -127,12 +144,32 @@ func (s *ProductService) CreateProduct(
 	in.Code = optionalText(in.Code)
 	in.Description = optionalText(in.Description)
 	in.Unit = optionalText(in.Unit)
+	if in.InitialPrice != nil {
+		if err := validatePriceAmounts(*in.InitialPrice); err != nil {
+			return nil, err
+		}
+		price := *in.InitialPrice
+		price.Currency = domain.DefaultCurrency
+		price.ValidFrom = s.now()
+		in.InitialPrice = &price
+	}
 
 	var product *domain.Product
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		var createErr error
 		product, createErr = s.products.Create(ctx, q, tenant.AccountID, in)
-		return createErr
+		if createErr != nil {
+			return createErr
+		}
+		branchIDs, addErr := s.availability.AddToActiveBranches(ctx, q, tenant.AccountID, product.ID)
+		if addErr != nil {
+			return addErr
+		}
+		if in.InitialPrice == nil || len(branchIDs) == 0 {
+			return nil
+		}
+		return s.prices.CreateAtBranches(ctx, q, tenant.AccountID, product.ID, branchIDs,
+			&tenant.UserID, *in.InitialPrice)
 	}); err != nil {
 		return nil, err
 	}

@@ -145,14 +145,15 @@ func run() error {
 	verificationService := services.NewVerificationService(db, userRepo, authTokenRepo,
 		mailService, log, cfg.Auth, cfg.Web, nil)
 	userService := services.NewUserService(db, userRepo, userBranchRepo, branchRepo, cfg.Auth)
-	branchService := services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)
+	branchService := services.NewBranchService(db, branchRepo, channelRepo, branchProductRepo,
+		cfg.Branch.DefaultExpiryDays)
 	accountService := services.NewAccountService(db, accountRepo, branchRepo, channelRepo,
 		userRepo, onboardingRepo, authService, verificationService, log, cfg.Auth, cfg.Branch).
 		WithDefaultTags(tagRepo).
 		WithLogoStorage(objectStorage.Storage, cfg.Storage.MaxFileSize)
 	onboardingService := services.NewOnboardingService(db, onboardingRepo)
 	productService := services.NewProductService(db, productRepo, productSynonymRepo,
-		productAlternativeRepo, cfg.Catalog).
+		productAlternativeRepo, branchProductRepo, productPriceRepo, cfg.Catalog).
 		WithImageStorage(objectStorage.Storage, cfg.Storage.MaxFileSize)
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo, branchProductRepo,
 		productPriceRepo, nil)

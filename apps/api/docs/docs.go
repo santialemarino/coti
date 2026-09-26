@@ -1800,7 +1800,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Availability, stock and price are set per branch by their own endpoints.",
+                "description": "Makes the product available at every active branch and, when price is sent, prices it at each of them.",
                 "consumes": [
                     "application/json"
                 ],
@@ -6700,6 +6700,12 @@ const docTemplate = `{
                     "maxLength": 512
                 },
                 "family_id": {
+                    "type": "string"
+                },
+                "min_price": {
+                    "type": "string"
+                },
+                "price": {
                     "type": "string"
                 },
                 "subgroup_id": {

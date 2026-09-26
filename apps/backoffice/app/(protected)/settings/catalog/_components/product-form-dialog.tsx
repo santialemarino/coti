@@ -19,6 +19,7 @@ import {
   Dropzone,
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -28,6 +29,7 @@ import {
   Textarea,
 } from '@repo/ui/components';
 import { productSchema, type ProductValues } from '@/app/(protected)/settings/catalog/form-schema';
+import { AmountInput } from '@/components/amount-input';
 import type { Product, ProductFamily } from '@/lib/api/products';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { FORM_VALIDATION } from '@/lib/forms/options';
@@ -77,6 +79,8 @@ export function ProductFormDialog({
       familyId: product?.familyId ?? '',
       subgroupId: product?.subgroupId ?? '',
       isActive: product?.isActive ?? true,
+      price: '',
+      minPrice: '',
     });
     setImage(null);
     setPreviewUrl(product?.imageUrl ?? null);
@@ -224,6 +228,49 @@ export function ProductFormDialog({
               )}
             />
 
+            {copy === 'create' && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="price"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('price.label')}</FormLabel>
+                      <FormControl>
+                        <AmountInput
+                          currency="ARS"
+                          prefix="$"
+                          placeholder={t('price.placeholder')}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>{t('price.hint')}</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="minPrice"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('minPrice.label')}</FormLabel>
+                      <FormControl>
+                        <AmountInput
+                          currency="ARS"
+                          prefix="$"
+                          placeholder={t('minPrice.placeholder')}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>{t('minPrice.hint')}</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
+
             <div className="flex flex-col gap-y-2">
               <span className="text-paragraph-sm-medium">{t('image.label')}</span>
               <Dropzone
@@ -280,5 +327,7 @@ function emptyProduct(): ProductValues {
     familyId: '',
     subgroupId: '',
     isActive: true,
+    price: '',
+    minPrice: '',
   };
 }

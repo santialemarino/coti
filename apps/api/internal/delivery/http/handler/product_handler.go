@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
@@ -166,7 +167,7 @@ func (h *ProductHandler) Get(c *gin.Context) {
 // Create adds a catalog item to the account.
 //
 //	@Summary		Create a product
-//	@Description	Availability, stock and price are set per branch by their own endpoints.
+//	@Description	Makes the product available at every active branch and, when price is sent, prices it at each of them.
 //	@Tags			catalog
 //	@Accept			json
 //	@Produce		json
@@ -190,14 +191,29 @@ func (h *ProductHandler) Create(c *gin.Context) {
 		return
 	}
 
-	product, err := h.products.CreateProduct(c.Request.Context(), tenant, domain.NewProduct{
+	in := domain.NewProduct{
 		Code:          body.Code,
 		CanonicalName: body.CanonicalName,
 		Description:   body.Description,
 		Unit:          body.Unit,
 		FamilyID:      body.FamilyID,
 		SubgroupID:    body.SubgroupID,
-	})
+	}
+	if body.Price != nil {
+		price, err := decimal.NewFromString(*body.Price)
+		if err != nil {
+			RespondBindError(c, fmt.Errorf("price is not a decimal: %w", err))
+			return
+		}
+		minPrice, err := parseNullableAmount(body.MinPrice, "min_price")
+		if err != nil {
+			RespondBindError(c, err)
+			return
+		}
+		in.InitialPrice = &domain.NewProductPrice{Price: price, MinPrice: minPrice}
+	}
+
+	product, err := h.products.CreateProduct(c.Request.Context(), tenant, in)
 	if err != nil {
 		Respond(c, err)
 		return

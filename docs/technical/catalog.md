@@ -111,6 +111,12 @@ does allow it, so the day that changes, the test says so.
 
 ## Per-branch availability
 
+A product created with `POST /v1/products` is available at **every active branch** of the
+account, in the same transaction, because matching and pricing both read only what a branch
+carries. An optional `price` (and `min_price`, which needs `price`) opens the first price period
+at each of those branches, as the caller, in ARS. The catalog import still sets availability for
+the branch it runs against.
+
 `branch_product` says whether the branch sells the product and with how much stock. `PUT`
 upserts against `uq_branch_product`, the schema's own `(branch_id, product_id)` uniqueness,
 so the caller does not have to know whether it is the first time.
