@@ -622,15 +622,40 @@ func TestRFQRepository_ListByTenant_CountsOnlyTheCurrentVersionsLines(t *testing
 	product := seedCatalogProduct(t, db, account, "Cemento Portland 50kg", "bolsa")
 	quoteID, firstVersion, _ := seedQuoteChain(t, db, account, branch, product)
 	seedUnmatchedLine(t, db, account, firstVersion)
+	ctx := context.Background()
+	if _, err := db.CrossAccount().Exec(ctx, `INSERT INTO quote_item (id, account_id, version_id,
+	  product_id, requested_description, quantity, match_status)
+	 VALUES ($1, $2, $3, $4, 'cemento', 5, 'AMBIGUOUS')`,
+		uuid.New(), account, firstVersion, product); err != nil {
+		t.Fatalf("seed an ambiguous line: %v", err)
+	}
 
 	row := listedQuote(t, listByTenant(t, db, account, branch), quoteID)
-	if row.ItemCount != 2 || row.ReviewCount != 1 {
-		t.Errorf("first version counts = %d lines, %d to review; want 2 and 1", row.ItemCount,
+	if row.ItemCount != 3 || row.ReviewCount != 2 {
+		t.Errorf("first version counts = %d lines, %d to review; want 3 and 2", row.ItemCount,
 			row.ReviewCount)
+	}
+	var rfqID uuid.UUID
+	if err := db.CrossAccount().QueryRow(ctx, `SELECT rfq_id FROM quote WHERE id = $1`,
+		quoteID).Scan(&rfqID); err != nil {
+		t.Fatalf("read the order: %v", err)
+	}
+	var single *domain.RfqListItem
+	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: account, BranchID: branch,
+		Role: domain.UserRoleAdmin}, func(q Querier) error {
+		var getErr error
+		single, getErr = NewRFQRepository().GetByRFQID(ctx, q,
+			domain.Tenant{AccountID: account, BranchID: branch, Role: domain.UserRoleAdmin}, rfqID)
+		return getErr
+	}); err != nil {
+		t.Fatalf("GetByRFQID() = %v", err)
+	}
+	if single.ItemCount != 3 || single.ReviewCount != 2 {
+		t.Errorf("the order read alone counts %d lines, %d to review; want 3 and 2",
+			single.ItemCount, single.ReviewCount)
 	}
 
 	secondVersion := uuid.New()
-	ctx := context.Background()
 	for _, stmt := range []struct {
 		sql  string
 		args []any
