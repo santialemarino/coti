@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 
 import {
+  Badge,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -18,6 +19,15 @@ interface ProductSearchDialogProps {
   onOpenChange: (open: boolean) => void;
   onSelect: (product: CatalogProduct) => void;
   title?: string;
+  /* The candidates matching already weighed for the line, listed first while they fit the query. */
+  suggestions?: CatalogProduct[];
+}
+
+function folded(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase();
 }
 
 export function ProductSearchDialog({
@@ -25,6 +35,7 @@ export function ProductSearchDialog({
   onOpenChange,
   onSelect,
   title,
+  suggestions = [],
 }: ProductSearchDialogProps) {
   const t = useTranslations('rfqs.detail.items');
   const [query, setQuery] = useState('');
@@ -51,6 +62,13 @@ export function ProductSearchDialog({
     };
   }, [query, open]);
 
+  const needle = folded(query.trim());
+  const suggested = suggestions.filter(
+    (product) => !needle || folded(`${product.name} ${product.code}`).includes(needle),
+  );
+  const suggestedIds = new Set(suggested.map((product) => product.id));
+  const results = [...suggested, ...catalog.filter((product) => !suggestedIds.has(product.id))];
+
   function handleSelect(product: CatalogProduct) {
     onSelect(product);
     onOpenChange(false);
@@ -74,17 +92,17 @@ export function ProductSearchDialog({
         />
 
         <div className="flex max-h-80 flex-col gap-y-2 overflow-y-auto">
-          {loading ? (
+          {loading && suggested.length === 0 ? (
             <div className="flex items-center justify-center py-8">
               <Spinner size="sm" />
             </div>
-          ) : catalog.length === 0 ? (
+          ) : results.length === 0 ? (
             <p className="py-8 text-center text-paragraph-sm text-foreground-muted">
               {query.trim() ? t('noResults') : t('typeToSearch')}
             </p>
           ) : (
             <ul className="flex flex-col gap-y-1">
-              {catalog.map((product) => (
+              {results.map((product) => (
                 <li key={product.id}>
                   <button
                     type="button"
@@ -99,7 +117,12 @@ export function ProductSearchDialog({
                         {product.code} · {product.unit}
                       </p>
                     </div>
-                    <span className="shrink-0 text-paragraph-xs text-foreground-muted">
+                    <span className="flex shrink-0 items-center gap-x-2 text-paragraph-xs text-foreground-muted">
+                      {suggestedIds.has(product.id) && (
+                        <Badge tone="brand" size="sm">
+                          {t('suggested')}
+                        </Badge>
+                      )}
                       {t('select')}
                     </span>
                   </button>

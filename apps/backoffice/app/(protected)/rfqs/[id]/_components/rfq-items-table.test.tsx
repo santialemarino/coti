@@ -10,6 +10,8 @@ import messages from '@/translations/es.json';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
+vi.mock('@/lib/api/catalog', () => ({ searchCatalog: vi.fn().mockResolvedValue([]) }));
+
 vi.mock('@/lib/api/rfqs-client', () => ({
   addQuoteItem: vi.fn(),
   deleteQuoteItem: vi.fn(),
@@ -211,5 +213,50 @@ describe('RfqItemsTable confidence', () => {
     ]);
 
     expect(view.getByText(copy.detail.confidence.none)).toBeTruthy();
+  });
+});
+
+describe('RfqItemsTable choosing a product for a flagged line', () => {
+  it('lets an unmatched line pick from the candidates matching offered for it', async () => {
+    const unmatched: QuoteItemResponse = {
+      ...PRICED_ITEM,
+      product_id: null,
+      product_code: null,
+      product_name: null,
+      product_unit: null,
+      unit_price_snapshot: null,
+      min_price_snapshot: null,
+      subtotal: null,
+      confidence_score: '0.4200',
+      confidence_level: 'LOW',
+      match_status: 'NO_MATCH',
+      alternatives: [
+        {
+          id: 'a0000000-0000-4000-8000-000000000001',
+          product_id: 'p0000000-0000-4000-8000-000000000009',
+          combo_id: null,
+          type: 'PRODUCT',
+          origin: 'AI',
+          rank: 1,
+          confidence_score: '0.4200',
+          price_snapshot: null,
+          approved_by_seller: false,
+          chosen_by_client: false,
+          code: 'LAD-HUE-18',
+          canonical_name: 'Ladrillo hueco 18x18x33',
+          unit: 'unidad',
+        },
+      ],
+    };
+    const view = renderItems(BRANCH_ID, 'DRAFT', [unmatched]);
+
+    fireEvent.click(
+      view.getByRole('button', { name: new RegExp(copy.detail.items.chooseProduct) }),
+    );
+
+    expect(await view.findByText('Ladrillo hueco 18x18x33')).toBeTruthy();
+    expect(view.getByText(copy.detail.items.suggested)).toBeTruthy();
+    // A line with no product has nothing to replace yet.
+    expect(view.getByRole('heading', { name: copy.detail.items.chooseProduct })).toBeTruthy();
   });
 });

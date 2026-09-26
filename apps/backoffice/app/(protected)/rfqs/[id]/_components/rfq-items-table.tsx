@@ -104,6 +104,20 @@ function confidenceBadge(item: QuoteItemResponse): {
 
 // The raw rule a seller-typed discount carries, e.g. "10 %" or "$ 1.500,00"; null when the
 // row keeps no rule (engine-applied or pre-rule manual discounts).
+// The products matching offered for the line, best first, so the likely fix is the first row.
+function suggestionsFor(item: QuoteItemResponse | undefined): CatalogProduct[] {
+  if (!item) return [];
+  return [...item.alternatives]
+    .filter((alternative) => alternative.product_id && alternative.product_id !== item.product_id)
+    .sort((a, b) => a.rank - b.rank)
+    .map((alternative) => ({
+      id: alternative.product_id as string,
+      code: alternative.code ?? '',
+      name: alternative.canonical_name ?? '',
+      unit: alternative.unit ?? '',
+    }));
+}
+
 function discountRuleLabel(
   discount: QuoteDiscountResponse,
   fmt: ReturnType<typeof useFormatters>,
@@ -328,6 +342,8 @@ export function RfqItemsTable({
     }
   }
 
+  const editingItem = items.find((item) => item.id === editingProductItemId);
+
   async function handleModifyProduct(product: CatalogProduct) {
     if (!quoteId || !editingProductItemId) return;
     const item = items.find((i) => i.id === editingProductItemId);
@@ -477,6 +493,15 @@ export function RfqItemsTable({
                           {item.product_id.slice(0, 8)}…
                         </span>
                       )
+                    ) : canEditProducts ? (
+                      <button
+                        type="button"
+                        onClick={() => openProductSearch(item.id)}
+                        className="flex items-center gap-x-1 text-paragraph-xs text-foreground-muted underline-offset-2 hover:underline"
+                      >
+                        {t('detail.items.chooseProduct')}
+                        <PencilIcon className="size-3" />
+                      </button>
                     ) : (
                       <span className="text-foreground-subtle">—</span>
                     )}
@@ -707,7 +732,16 @@ export function RfqItemsTable({
           setSearchOpen(open);
         }}
         onSelect={editingProductItemId ? handleModifyProduct : handleAddProduct}
-        title={editingProductItemId ? t('detail.items.columns.modifyProduct') : undefined}
+        title={
+          editingItem
+            ? t(
+                editingItem.product_id
+                  ? 'detail.items.columns.modifyProduct'
+                  : 'detail.items.chooseProduct',
+              )
+            : undefined
+        }
+        suggestions={suggestionsFor(editingItem)}
       />
 
       <ConfirmDialog
