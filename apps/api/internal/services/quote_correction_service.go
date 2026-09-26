@@ -60,6 +60,9 @@ func NewQuoteCorrectionService(db tenantTxRunner, repo quoteCorrectionRepository
 // FindInterpretationExamples finds previous seller corrections similar to one new order.
 func (s *QuoteCorrectionService) FindInterpretationExamples(ctx context.Context,
 	tenant domain.Tenant, raw string) ([]domain.RFQInterpretationExample, error) {
+	if s.cfg.MaxInterpretationExamples == 0 {
+		return nil, nil
+	}
 	var available bool
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		var checkErr error

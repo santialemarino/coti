@@ -105,6 +105,20 @@ func TestQuoteCorrectionJob_NamesTheAccountWhoseEmbeddingFailed(t *testing.T) {
 	}
 }
 
+// With examples switched off the lookup is not worth its embedding, so nothing is spent on it.
+func TestQuoteCorrectionService_SpendsNothingWhenExamplesAreOff(t *testing.T) {
+	embedder := &fakeEmbedder{}
+	service := NewQuoteCorrectionService(&fakeDB{}, &fakeCorrectionQueue{}, embedder,
+		config.QuoteCorrectionConfig{SimilarityPercent: 80}, slog.New(slog.DiscardHandler))
+
+	examples, err := service.FindInterpretationExamples(context.Background(), testSearchTenant(),
+		"10 bolsas de cemento")
+	if err != nil || examples != nil || len(embedder.calls) != 0 {
+		t.Errorf("examples = %v, err = %v after %d embeddings, want none looked up", examples,
+			err, len(embedder.calls))
+	}
+}
+
 // Looking up examples for a new order and learning a seller's correction are both paid for by the
 // account, each under its own name.
 func TestQuoteCorrectionService_AttributesTheLookupAndTheLearning(t *testing.T) {
