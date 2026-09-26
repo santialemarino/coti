@@ -383,6 +383,32 @@ func TestCatalogMatchService_LocalMemoryOverridesGenericSearch(t *testing.T) {
 	wantDecision(t, got, domain.ItemMatchStatusMatched, "0.81", &local.ProductID)
 }
 
+// A seller who swapped in what was in stock taught the phrase the substitute. The line still names
+// the original, so the taught answer leads but the seller confirms it rather than it being decided.
+func TestCatalogMatchService_ASubstitutionTheLineContradictsIsConfirmedAgain(t *testing.T) {
+	substitute := learned("Cemento Avellaneda 50kg", 0.05)
+	named := semantic("Cemento Loma Negra 50kg", 0.10)
+
+	got := matchOne(t, "cemento loma negra", []domain.CatalogCandidate{named, substitute})
+
+	wantDecision(t, got, domain.ItemMatchStatusAmbiguous, "0.95", &substitute.ProductID)
+	if got.Candidates[1].ProductID != named.ProductID {
+		t.Errorf("runner-up = %s, want the product the line names offered next",
+			got.Candidates[1].CanonicalName)
+	}
+}
+
+// A taught synonym is exactly what the text cannot say: a rival that answers the line only as
+// partly as the taught product does not contest it.
+func TestCatalogMatchService_ATaughtSynonymStillDecides(t *testing.T) {
+	taught := learned("Durlock placa standard 12.5", 0.05)
+	partial := semantic("Placa cementicia", 0.20)
+
+	got := matchOne(t, "placas de yeso", []domain.CatalogCandidate{partial, taught})
+
+	wantDecision(t, got, domain.ItemMatchStatusMatched, "0.95", &taught.ProductID)
+}
+
 func TestCatalogMatchService_ConflictingLocalMemoriesAreAmbiguous(t *testing.T) {
 	first := learned("First seller choice", 0.05)
 	second := learned("Second seller choice", 0.18)
