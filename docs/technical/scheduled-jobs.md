@@ -109,6 +109,7 @@ No request has any reason to read an audit trail, let alone rewrite one.
 | `quote-correction-learning` | Every 15 minutes      | Retry durable correction memories in PENDING     |
 | `quote-quality-evaluation`  | Every 15 minutes      | Retry evaluations missing after a committed send |
 | `attachment-extraction`     | Every 15 minutes      | Read the files an order arrived with and extract |
+| `catalog-embedding`         | Every 15 minutes      | Embed the products created or edited since       |
 
 App Platform's scheduled jobs accept a cron expression and a timezone, with a **minimum interval of
 every 15 minutes** — a tighter cron is not honoured, and `doctl apps spec validate --schema-only`
