@@ -187,17 +187,23 @@ func newEnvWithRFQProviders(
 	}
 	catalogSearchService := services.NewCatalogSearchService(db, productRepo, embedder, cfg.Catalog)
 	quoteRepo := repository.NewQuoteRepository()
+	rfqRepo := repository.NewRFQRepository()
+	quoteSendRepo := repository.NewQuoteSendRepository()
+	clientRepo := repository.NewClientRepository()
+	tagRepo := repository.NewTagRepository()
 	extractor := providers.extractor
 	if extractor == nil {
 		extractor = ai.NewRFQExtractor(ai.DisabledGenerator{}, cfg.RFQ.MaxItems)
 	}
-	rfqService := services.NewRFQService(db, repository.NewRFQRepository(), quoteRepo,
-		repository.NewQuoteSendRepository(), repository.NewQuoteAIGenerationRepository(),
+	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo,
+		quoteSendRepo, repository.NewQuoteAIGenerationRepository(),
 		channelRepo, repository.NewUserRepository(),
 		extractor,
 		services.NewCatalogMatchService(catalogSearchService, cfg.Catalog), quiet, cfg.RFQ)
 	quoteService := services.NewQuoteService(db, quoteRepo,
 		repository.NewProductPriceRepository(), quiet)
+	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
+		quoteSendRepo)
 	channelSealer, err := secrets.NewAESGCM(cfg.Channel.EncryptionKey)
 	if err != nil {
 		t.Fatalf("NewAESGCM() = %v, want no error", err)
@@ -236,9 +242,10 @@ func newEnvWithRFQProviders(
 			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
 			File:          handler.NewFileHandler(objectStorage.Local),
 			Quote:         handler.NewQuoteHandler(quoteService, nil, nil, highConfidence),
+			Client:        handler.NewClientHandler(clientService),
 			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
 				branchRepo, channelRepo, userRepo, onboardingRepo, authService, verificationService, quiet,
-				cfg.Auth, cfg.Branch)),
+				cfg.Auth, cfg.Branch).WithDefaultTags(tagRepo)),
 			Onboarding: handler.NewOnboardingHandler(onboardingService),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},

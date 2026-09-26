@@ -41,6 +41,10 @@ type signupOnboardingRepository interface {
 	Create(ctx context.Context, q repository.Querier, accountID uuid.UUID) (*domain.Onboarding, error)
 }
 
+type signupTagRepository interface {
+	CreateDefaults(ctx context.Context, q repository.Querier, accountID uuid.UUID) error
+}
+
 type tokenIssuer interface {
 	IssueForUser(ctx context.Context, user domain.AppUser) (*domain.TokenPair, error)
 }
@@ -64,6 +68,7 @@ type AccountService struct {
 	channels          channelRepository
 	users             signupUserRepository
 	onboarding        signupOnboardingRepository
+	tags              signupTagRepository
 	tokens            tokenIssuer
 	verifier          emailVerifier
 	log               *slog.Logger
@@ -87,6 +92,12 @@ func NewAccountService(
 		users: users, onboarding: onboarding, tokens: tokens, verifier: verifier, log: log,
 		policy:            domain.PasswordPolicy{MinLength: cfg.PasswordMinLength},
 		defaultExpiryDays: branchCfg.DefaultExpiryDays}
+}
+
+// WithDefaultTags seeds the reusable client labels that every account starts with.
+func (s *AccountService) WithDefaultTags(tags signupTagRepository) *AccountService {
+	s.tags = tags
+	return s
 }
 
 // WithLogoStorage enables account-logo uploads and public reads.
@@ -161,6 +172,11 @@ func (s *AccountService) Register(
 		in.LegalName, in.TaxID)
 	if err != nil {
 		return nil, nil, err
+	}
+	if s.tags != nil {
+		if err := s.tags.CreateDefaults(ctx, tx, account.ID); err != nil {
+			return nil, nil, err
+		}
 	}
 	if _, err := s.onboarding.Create(ctx, tx, account.ID); err != nil {
 		return nil, nil, err

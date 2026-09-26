@@ -95,6 +95,17 @@ definitions:
       seller_id:
         type: string
     type: object
+  dto.AssociateQuoteClientRequest:
+    properties:
+      client_id:
+        type: string
+      new_client:
+        $ref: '#/definitions/dto.CreateClientRequest'
+      tag_ids:
+        items:
+          type: string
+        type: array
+    type: object
   dto.AvailabilityListResponse:
     properties:
       items:
@@ -303,6 +314,121 @@ definitions:
       version_number:
         type: integer
     type: object
+  dto.ClientContactHintsResponse:
+    properties:
+      email:
+        type: string
+      phone:
+        type: string
+    type: object
+  dto.ClientListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ClientSummaryResponse'
+        type: array
+    type: object
+  dto.ClientMatchResponse:
+    properties:
+      client:
+        $ref: '#/definitions/dto.ClientResponse'
+      tags:
+        items:
+          $ref: '#/definitions/dto.ClientTagResponse'
+        type: array
+    type: object
+  dto.ClientProfileResponse:
+    properties:
+      client:
+        $ref: '#/definitions/dto.ClientResponse'
+      sales:
+        items:
+          $ref: '#/definitions/dto.ClientSaleResponse'
+        type: array
+      tags:
+        items:
+          $ref: '#/definitions/dto.ClientTagResponse'
+        type: array
+    type: object
+  dto.ClientResponse:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      notes:
+        type: string
+      origin_channel:
+        type: string
+      phone:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  dto.ClientSaleResponse:
+    properties:
+      accepted_at:
+        type: string
+      branch_id:
+        type: string
+      branch_name:
+        type: string
+      quote_id:
+        type: string
+      quote_number:
+        type: integer
+      rfq_id:
+        type: string
+      total:
+        type: string
+    type: object
+  dto.ClientSummaryResponse:
+    properties:
+      accepted_quote_count:
+        type: integer
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      last_accepted_at:
+        type: string
+      name:
+        type: string
+      notes:
+        type: string
+      origin_channel:
+        type: string
+      phone:
+        type: string
+      tags:
+        items:
+          $ref: '#/definitions/dto.ClientTagResponse'
+        type: array
+      updated_at:
+        type: string
+    type: object
+  dto.ClientTagListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ClientTagResponse'
+        type: array
+    type: object
+  dto.ClientTagResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
   dto.ConfirmCatalogImportRequest:
     properties:
       rows:
@@ -376,6 +502,26 @@ definitions:
         type: string
     required:
     - type
+    type: object
+  dto.CreateClientRequest:
+    properties:
+      email:
+        maxLength: 255
+        type: string
+      name:
+        maxLength: 255
+        type: string
+      phone:
+        maxLength: 64
+        type: string
+    type: object
+  dto.CreateClientTagRequest:
+    properties:
+      name:
+        maxLength: 128
+        type: string
+    required:
+    - name
     type: object
   dto.CreateDiscountRequest:
     properties:
@@ -844,6 +990,21 @@ definitions:
     required:
     - approved_by_seller
     type: object
+  dto.QuoteClientAssociationResponse:
+    properties:
+      available_tags:
+        items:
+          $ref: '#/definitions/dto.ClientTagResponse'
+        type: array
+      contact_hints:
+        $ref: '#/definitions/dto.ClientContactHintsResponse'
+      current_client:
+        $ref: '#/definitions/dto.ClientMatchResponse'
+      suggestions:
+        items:
+          $ref: '#/definitions/dto.ClientMatchResponse'
+        type: array
+    type: object
   dto.QuoteDeliveryResponse:
     properties:
       channel:
@@ -1297,6 +1458,13 @@ definitions:
         type: string
     required:
     - refresh_token
+    type: object
+  dto.ReplaceClientTagsRequest:
+    properties:
+      tag_ids:
+        items:
+          type: string
+        type: array
     type: object
   dto.ResendVerificationRequest:
     properties:
@@ -2389,6 +2557,122 @@ paths:
       summary: Update an intake channel
       tags:
       - channels
+  /v1/clients:
+    get:
+      description: Returns account-level client profiles. Tags are account-wide; accepted
+        sale counts and dates are limited to the branches and seller assignments the
+        caller may inspect.
+      parameters:
+      - description: Optional branch filter
+        in: header
+        name: X-Branch-Id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List client profiles
+      tags:
+      - clients
+  /v1/clients/{clientId}:
+    get:
+      description: Returns one account-level profile and its currently accepted quotes
+        inside the caller's branch and seller reach.
+      parameters:
+      - description: Optional branch filter
+        in: header
+        name: X-Branch-Id
+        type: string
+      - description: Client id
+        in: path
+        name: clientId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientProfileResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a client profile
+      tags:
+      - clients
+  /v1/clients/{clientId}/tags:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Client id
+        in: path
+        name: clientId
+        required: true
+        type: string
+      - description: Selected tags
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ReplaceClientTagsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientTagListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Replace a client's tags
+      tags:
+      - clients
   /v1/dev/whatsapp/messages:
     post:
       consumes:
@@ -4038,6 +4322,116 @@ paths:
       summary: Archive a quote
       tags:
       - quotes
+  /v1/quotes/{quoteId}/client-association:
+    get:
+      description: Returns the current client, exact contact matches, delivery contact
+        hints, and reusable tags. Suggestions never mutate or merge a profile.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteClientAssociationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Quote is not accepted
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get accepted-sale client association
+      tags:
+      - clients
+    put:
+      consumes:
+      - application/json
+      description: Links the quote and its RFQ to exactly one seller-confirmed profile,
+        and atomically replaces that profile's tags. Contact suggestions are never
+        accepted automatically.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Client selection and tags
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AssociateQuoteClientRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientMatchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Quote is not accepted
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Associate an accepted sale with a client
+      tags:
+      - clients
   /v1/quotes/{quoteId}/discounts:
     post:
       consumes:
@@ -5066,6 +5460,60 @@ paths:
       summary: List sellers
       tags:
       - users
+  /v1/tags:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientTagListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List client tags
+      tags:
+      - clients
+    post:
+      consumes:
+      - application/json
+      description: Creates a reusable account tag. Names that differ only by case
+        or repeated whitespace resolve to the existing tag.
+      parameters:
+      - description: Tag
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateClientTagRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ClientTagResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a client tag
+      tags:
+      - clients
   /v1/users:
     get:
       description: Admin only. Ordered by name, deactivated users included so they

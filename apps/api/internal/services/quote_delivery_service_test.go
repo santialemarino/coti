@@ -308,16 +308,6 @@ func (unusedDeliveryDeps) SetClient(context.Context, repository.Querier, uuid.UU
 	return errors.New("not used by public quote action tests")
 }
 
-func (unusedDeliveryDeps) Create(context.Context, repository.Querier, uuid.UUID,
-	domain.NewClient) (*domain.Client, error) {
-	return nil, errors.New("not used by public quote action tests")
-}
-
-func (unusedDeliveryDeps) UpdateContact(context.Context, repository.Querier, uuid.UUID,
-	uuid.UUID, domain.ClientContact) (*domain.Client, error) {
-	return nil, errors.New("not used by public quote action tests")
-}
-
 func (unusedDeliveryDeps) ListActiveByBranch(context.Context, repository.Querier, uuid.UUID,
 	uuid.UUID) ([]domain.Channel, error) {
 	return nil, errors.New("not used by public quote action tests")
@@ -363,7 +353,7 @@ func newQuoteActionHarness() *quoteActionHarness {
 		now:             fixedNow,
 	}
 	h.service = NewQuoteDeliveryService(h.db, h.sends, h.quotes, unusedDeliveryDeps{},
-		unusedDeliveryDeps{}, unusedDeliveryDeps{}, unusedDeliveryDeps{}, h.prices, unusedDeliveryDeps{},
+		unusedDeliveryDeps{}, h.prices, unusedDeliveryDeps{},
 		unusedDeliveryDeps{}, nil, "https://app.coti.ar", func() time.Time { return h.now }, nil).
 		WithClientActions(h.clientActions, nil).WithRepresentationService(h.representations).
 		WithMessages(h.messages)
@@ -650,7 +640,7 @@ func TestQuoteDeliveryService_RespondPublic_BlankOrUnknownTokenIsNotFound(t *tes
 func TestQuoteDeliveryService_RespondPublic_RequiresWiredActions(t *testing.T) {
 	h := newQuoteActionHarness()
 	service := NewQuoteDeliveryService(h.db, h.sends, h.quotes, unusedDeliveryDeps{},
-		unusedDeliveryDeps{}, unusedDeliveryDeps{}, unusedDeliveryDeps{}, h.prices, unusedDeliveryDeps{},
+		unusedDeliveryDeps{}, h.prices, unusedDeliveryDeps{},
 		unusedDeliveryDeps{}, nil, "https://app.coti.ar", func() time.Time { return h.now }, nil)
 
 	_, err := service.RespondPublic(context.Background(), h.token,
