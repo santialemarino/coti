@@ -162,9 +162,8 @@ func (s *CatalogMatchService) decide(
 // answers the line as fully with no extra spec — then the line never said which of them it wants.
 func (s *CatalogMatchService) contested(ranked []rankedCandidate) bool {
 	leader, runnerUp := ranked[0], ranked[1]
-	// Two seller-taught answers for one phrase are a disagreement only a person settles.
 	if leader.LearnedDistance != nil {
-		return runnerUp.LearnedDistance != nil
+		return s.contradicted(ranked)
 	}
 	if leader.Confidence.Sub(runnerUp.Confidence).LessThan(s.ambiguityMargin) {
 		return true
@@ -176,6 +175,26 @@ func (s *CatalogMatchService) contested(ranked []rankedCandidate) bool {
 		}
 		answersAsFully := rival.coverage >= leader.coverage-coverageTieTolerance
 		if answersAsFully && rival.unasked <= leader.unasked {
+			return true
+		}
+	}
+	return false
+}
+
+// contradicted reports whether a seller-taught leader needs confirming: another taught answer, or a
+// product answering the whole line the taught one does not, which is what a substitution leaves.
+func (s *CatalogMatchService) contradicted(ranked []rankedCandidate) bool {
+	leader := ranked[0]
+	for _, rival := range ranked[1:] {
+		if rival.LearnedDistance != nil {
+			return true
+		}
+		// A choice the seller confirmed for this very phrase outweighs what its words suggest.
+		if leader.LearnedConfirmed || rival.Confidence.LessThan(s.minConfidence) {
+			continue
+		}
+		if rival.coverage >= 1-coverageTieTolerance &&
+			rival.coverage-leader.coverage > coverageTieTolerance {
 			return true
 		}
 	}

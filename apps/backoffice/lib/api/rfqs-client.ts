@@ -4,6 +4,7 @@ import type {
   FileRfqDraftResponse,
   QuoteDiscountResponse,
   QuoteItemResponse,
+  QuoteReactivationMode,
   QuoteResponse,
   QuoteSendBody,
   QuoteSendResponse,
@@ -429,4 +430,42 @@ export async function sendQuote(
     await throwOnError(response);
   }
   return response.json() as Promise<QuoteSendResponse>;
+}
+
+// Record an offline customer outcome from the seller workspace.
+export async function transitionQuote(
+  quoteId: string,
+  branchId: string,
+  status: 'ACCEPTED' | 'REJECTED',
+): Promise<QuoteResponse> {
+  const response = await fetch(`/api/quotes/${quoteId}/transition`, {
+    method: 'POST',
+    headers: branchHeaders(branchId, true),
+    body: JSON.stringify({ status }),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    await throwOnError(response);
+  }
+  return response.json() as Promise<QuoteResponse>;
+}
+
+// Reopen a closed quote with its frozen version or a newly editable one.
+export async function reactivateQuote(
+  quoteId: string,
+  branchId: string,
+  mode: QuoteReactivationMode,
+): Promise<QuoteResponse> {
+  const response = await fetch(`/api/quotes/${quoteId}/reactivate`, {
+    method: 'POST',
+    headers: branchHeaders(branchId, true),
+    body: JSON.stringify({ mode }),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    await throwOnError(response);
+  }
+  return response.json() as Promise<QuoteResponse>;
 }

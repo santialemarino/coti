@@ -753,7 +753,7 @@ func Load() (*Config, error) {
 			MatchSimilarityCeilingPercent: getInt("CATALOG_MATCH_SIMILARITY_CEILING_PERCENT", 90, &problems),
 			MatchHighConfidencePercent:    getInt("CATALOG_MATCH_HIGH_CONFIDENCE_PERCENT", 80, &problems),
 			MatchReviewFloorPercent:       getInt("CATALOG_MATCH_REVIEW_FLOOR_PERCENT", 40, &problems),
-			MatchReviewMaxLines:           getInt("CATALOG_MATCH_REVIEW_MAX_LINES", 30, &problems),
+			MatchReviewMaxLines:           getInt("CATALOG_MATCH_REVIEW_MAX_LINES", 0, &problems),
 			CorrectionSimilarityPercent:   getInt("QUOTE_CORRECTION_SIMILARITY_PERCENT", 80, &problems),
 		},
 		Storage: StorageConfig{
@@ -990,8 +990,8 @@ func Load() (*Config, error) {
 	if cfg.QuoteCorrection.MaxPatternsPerAccount < 1 {
 		problems = append(problems, "QUOTE_CORRECTION_MAX_PATTERNS_PER_ACCOUNT must be greater than zero")
 	}
-	if cfg.QuoteCorrection.MaxInterpretationExamples < 1 {
-		problems = append(problems, "QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES must be greater than zero")
+	if cfg.QuoteCorrection.MaxInterpretationExamples < 0 {
+		problems = append(problems, "QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES must be zero or more")
 	}
 	if cfg.QuoteCorrection.ProcessingBatchSize < 1 {
 		problems = append(problems, "QUOTE_CORRECTION_PROCESSING_BATCH_SIZE must be greater than zero")

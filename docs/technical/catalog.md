@@ -332,8 +332,26 @@ within three margins that covers the line as fully as the leader and carries no 
 not ask for beyond the leader's. The second clause is what makes `piedra partida` against three
 kinds of crushed stone a choice for the seller: the line never said which, and a vector a few
 points closer is not the client choosing. The third keeps `PVC CUPLA RED 110X100`, a reducer, from
-contesting `PVC CUPLA 110` for `cupla pvc 110`. Two seller-taught answers for one phrase are always
-a rival.
+contesting `PVC CUPLA 110` for `cupla pvc 110`.
+
+A seller-taught leader is contested differently, because its score is the memory's, not the
+text's. Two taught answers for one phrase are always a rival. So is a product that clears the
+match floor and answers the whole line while the taught one does not: that is what a substitution
+leaves behind. A seller who swapped in what was in stock taught `cemento loma negra` the other
+brand, and the line still names the original. The taught answer still leads, and the seller
+settles it one of two ways, both remembered:
+
+- **Choosing another product replaces the answer.** A phrase keeps only its latest taught product,
+  so undoing a substitution leaves one answer, not two that contest the phrase forever.
+- **Keeping the taught product confirms it.** A flagged line sent with the product matching
+  proposed teaches that phrase too; once a phrase's own memory has been taught and kept again,
+  it decides against its words. It only does so for that exact phrase, so a neighbouring phrase's
+  memory (`vigueta 4.50` reaching `vigueta 3,60`) still answers to the text.
+
+Measured once on the benchmark catalog with a one-off harness, teaching every line its right product
+and then a plausible wrong one: confidently wrong answers fell from 159 of 178 to 57, while right
+teachings still decided 155 of 179 against 156 before. What is left are lines no product answers
+fully, where the text has nothing to say against the memory.
 
 Two parts of that are deliberate. **A rejected line keeps its best candidate's score**, because
 `0.55` and `0.00` are different problems for whoever reviews the unmatched items. And **an
@@ -357,7 +375,10 @@ moisture, `cinta aisladora` is the insulating tape the catalog calls `CINTA AISL
 the text left flagged — `AMBIGUOUS`, or `NO_MATCH` with a candidate at or above
 `CATALOG_MATCH_REVIEW_FLOOR_PERCENT` — go to the bound language model, at most
 `CATALOG_MATCH_REVIEW_MAX_LINES` per order, ten to a call and the calls side by side. A line whose
-leader is seller-taught is not sent, and `0` turns the review off.
+leader is seller-taught is not sent. **The review is off by default** (`0`): on the benchmark it
+settled about four lines in two hundred at ~USD 0.11 each, more than the seller time it saves, and
+it adds seconds to every order it reviews. It stays built, behind a global switch
+([feature-switches.md](feature-switches.md)), until pilot data says otherwise.
 
 It is schema-forced like every call in [ai-providers.md](ai-providers.md#schema-forced-generation):
 the model sees the client's
@@ -473,7 +494,7 @@ per scan by default, which recalls too little of the catalog to survive the bran
 | `CATALOG_MATCH_SIMILARITY_CEILING_PERCENT` | 90      | Cosine similarity read as a near-verbatim match                |
 | `CATALOG_MATCH_HIGH_CONFIDENCE_PERCENT`    | 80      | Score a `MATCHED` line clears to read `HIGH`                   |
 | `CATALOG_MATCH_REVIEW_FLOOR_PERCENT`       | 40      | Candidate score a flagged line needs to go to review           |
-| `CATALOG_MATCH_REVIEW_MAX_LINES`           | 30      | Flagged lines one order sends to review; `0` turns it off      |
+| `CATALOG_MATCH_REVIEW_MAX_LINES`           | 0       | Flagged lines one order sends to review; `0` turns it off      |
 
 ## API specification
 

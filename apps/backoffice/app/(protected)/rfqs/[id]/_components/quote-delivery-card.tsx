@@ -16,6 +16,7 @@ import {
 import { RfqStatusBadge } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
 import type { RfqDetailResponse } from '@/lib/api/rfqs';
 import { formatRfqReference, normalizeRfqStatus } from '@/lib/api/rfqs';
+import { QuoteLifecycleActions } from './quote-lifecycle-actions';
 import { SendQuoteDialog } from './send-quote-dialog';
 
 // The public endpoint only resolves tokens in these states, so any other state would hand the seller
@@ -40,7 +41,10 @@ export function QuoteDeliveryCard({ detail, onSent }: QuoteDeliveryCardProps) {
   const version = detail.version;
   if (quote === null || version === null) return null;
 
-  const canSendQuote = quote.current_status === 'QUOTED';
+  const canAct = quote.archived_at === null;
+  const canSendQuote = canAct && quote.current_status === 'QUOTED';
+  const hasLifecycleActions =
+    canAct && ['SENT', 'ACCEPTED', 'REJECTED'].includes(quote.current_status);
 
   // The API orders deliveries newest-first, so the first live one is the link the client holds.
   const liveDelivery = (detail.deliveries ?? []).find(
@@ -107,9 +111,18 @@ export function QuoteDeliveryCard({ detail, onSent }: QuoteDeliveryCardProps) {
           <p className="text-paragraph-sm text-foreground-muted">{t('unavailable')}</p>
         )}
       </CardContent>
-      {canSendQuote && (
-        <CardFooter className="justify-end">
-          <SendQuoteDialog detail={detail} branchId={detail.rfq.branch_id} onSent={onSent} />
+      {(canSendQuote || hasLifecycleActions) && (
+        <CardFooter className="justify-end gap-x-2">
+          {canSendQuote ? (
+            <SendQuoteDialog detail={detail} branchId={detail.rfq.branch_id} onSent={onSent} />
+          ) : (
+            <QuoteLifecycleActions
+              quoteId={quote.id}
+              branchId={detail.rfq.branch_id}
+              status={quote.current_status}
+              onChanged={onSent}
+            />
+          )}
         </CardFooter>
       )}
     </Card>

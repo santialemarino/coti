@@ -63,8 +63,6 @@ type quoteDeliveryQuoteRepository interface {
 		alternatives []domain.NewQuoteItemAlternative) error
 	FreezeVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID,
 		versionID uuid.UUID) (*domain.QuoteVersion, error)
-	SetClient(ctx context.Context, q repository.Querier, accountID, branchID, quoteID,
-		clientID uuid.UUID) error
 	SetExpiry(ctx context.Context, q repository.Querier, accountID, branchID,
 		quoteID uuid.UUID, expiresAt time.Time) error
 	UpdateStatus(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID,
@@ -72,18 +70,6 @@ type quoteDeliveryQuoteRepository interface {
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID,
 		previousStatus *domain.QuoteStatus, newStatus domain.QuoteStatus,
 		userID *uuid.UUID) (*domain.QuoteStatusChange, error)
-}
-
-type quoteDeliveryRFQRepository interface {
-	SetClient(ctx context.Context, q repository.Querier, accountID, branchID, rfqID,
-		clientID uuid.UUID) error
-}
-
-type quoteDeliveryClientRepository interface {
-	Create(ctx context.Context, q repository.Querier, accountID uuid.UUID,
-		in domain.NewClient) (*domain.Client, error)
-	UpdateContact(ctx context.Context, q repository.Querier, accountID, clientID uuid.UUID,
-		in domain.ClientContact) (*domain.Client, error)
 }
 
 type quoteDeliveryChannelRepository interface {
@@ -118,8 +104,6 @@ type QuoteDeliveryService struct {
 	db              quotePublicDB
 	sends           quoteDeliveryRepository
 	quotes          quoteDeliveryQuoteRepository
-	rfqs            quoteDeliveryRFQRepository
-	clients         quoteDeliveryClientRepository
 	messages        quoteMessageWriter
 	channels        quoteDeliveryChannelRepository
 	branches        quoteDeliveryBranchRepository
@@ -145,8 +129,7 @@ func (s *QuoteDeliveryService) WithRepresentationService(
 
 // NewQuoteDeliveryService builds the delivery orchestrator.
 func NewQuoteDeliveryService(db quotePublicDB, sends quoteDeliveryRepository,
-	quotes quoteDeliveryQuoteRepository, rfqs quoteDeliveryRFQRepository,
-	clients quoteDeliveryClientRepository, channels quoteDeliveryChannelRepository,
+	quotes quoteDeliveryQuoteRepository, channels quoteDeliveryChannelRepository,
 	branches quoteDeliveryBranchRepository, prices branchPriceReader,
 	whatsapp domain.QuoteWhatsAppSender,
 	email quoteEmailSender, evaluator QuoteQualityEvaluator, webappURL string,
@@ -157,8 +140,8 @@ func NewQuoteDeliveryService(db quotePublicDB, sends quoteDeliveryRepository,
 	if log == nil {
 		log = slog.Default()
 	}
-	return &QuoteDeliveryService{db: db, sends: sends, quotes: quotes, rfqs: rfqs,
-		clients: clients, channels: channels, branches: branches, prices: prices, whatsapp: whatsapp,
+	return &QuoteDeliveryService{db: db, sends: sends, quotes: quotes,
+		channels: channels, branches: branches, prices: prices, whatsapp: whatsapp,
 		email: email, evaluator: evaluator, webappURL: strings.TrimRight(webappURL, "/"),
 		now: now, log: log}
 }
@@ -323,20 +306,6 @@ func (s *QuoteDeliveryService) prepare(ctx context.Context, tenant domain.Tenant
 			return validateReplay(prepared, version.ID, in, validityDays)
 		}
 
-		clientID, err := s.upsertClient(ctx, q, tenant, *quote, in)
-		if err != nil {
-			return err
-		}
-		if err := s.quotes.SetClient(ctx, q, tenant.AccountID, tenant.BranchID, quote.ID,
-			clientID); err != nil {
-			return err
-		}
-		if err := s.rfqs.SetClient(ctx, q, tenant.AccountID, tenant.BranchID, quote.RFQID,
-			clientID); err != nil {
-			return err
-		}
-		quote.ClientID = &clientID
-
 		selected, err := s.selectedChannels(ctx, q, tenant, in)
 		if err != nil {
 			return err
@@ -360,24 +329,6 @@ func (s *QuoteDeliveryService) prepare(ctx context.Context, tenant domain.Tenant
 		return err
 	})
 	return prepared, quote, version, err
-}
-
-func (s *QuoteDeliveryService) upsertClient(ctx context.Context, q repository.Querier,
-	tenant domain.Tenant, quote domain.Quote, in domain.QuoteDeliveryInput) (uuid.UUID, error) {
-	if quote.ClientID == nil {
-		created, err := s.clients.Create(ctx, q, tenant.AccountID,
-			domain.NewClient{Phone: in.Phone, Email: in.Email})
-		if err != nil {
-			return uuid.Nil, err
-		}
-		return created.ID, nil
-	}
-	updated, err := s.clients.UpdateContact(ctx, q, tenant.AccountID, *quote.ClientID,
-		domain.ClientContact{Phone: in.Phone, Email: in.Email})
-	if err != nil {
-		return uuid.Nil, err
-	}
-	return updated.ID, nil
 }
 
 func (s *QuoteDeliveryService) selectedChannels(ctx context.Context, q repository.Querier,

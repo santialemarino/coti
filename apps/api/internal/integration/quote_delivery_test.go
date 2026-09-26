@@ -153,8 +153,7 @@ func (e *env) quoteDeliveryService(t *testing.T, whatsapp domain.QuoteWhatsAppSe
 		repository.NewQuoteRepresentationRepository(), repository.NewQuoteRepository(),
 		objects, nil, pdf.NewQuoteRenderer(), 15*time.Minute, nil, nil)
 	return services.NewQuoteDeliveryService(e.db, repository.NewQuoteSendRepository(),
-		repository.NewQuoteRepository(), repository.NewRFQRepository(),
-		repository.NewClientRepository(), repository.NewChannelRepository(),
+		repository.NewQuoteRepository(), repository.NewChannelRepository(),
 		repository.NewBranchRepository(), repository.NewProductPriceRepository(), whatsapp, email, evaluator,
 		"https://quotes.test", nil, slog.New(slog.NewTextHandler(io.Discard, nil))).
 		WithRepresentationService(representations)
