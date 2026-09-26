@@ -67,7 +67,11 @@ export function ProductSearchDialog({
     (product) => !needle || folded(`${product.name} ${product.code}`).includes(needle),
   );
   const suggestedIds = new Set(suggested.map((product) => product.id));
-  const results = [...suggested, ...catalog.filter((product) => !suggestedIds.has(product.id))];
+  // A search in flight hides the previous one's answer rather than show it under the new query.
+  const results = [
+    ...suggested,
+    ...(loading ? [] : catalog.filter((product) => !suggestedIds.has(product.id))),
+  ];
 
   function handleSelect(product: CatalogProduct) {
     onSelect(product);
@@ -128,6 +132,11 @@ export function ProductSearchDialog({
                   </button>
                 </li>
               ))}
+              {loading && (
+                <li className="flex items-center justify-center py-3">
+                  <Spinner size="sm" />
+                </li>
+              )}
             </ul>
           )}
         </div>

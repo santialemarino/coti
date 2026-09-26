@@ -62,6 +62,12 @@ const QUANTITY_DECIMALS = 2;
 // Quotes are priced in the account's currency; the multi-currency catalogue is a later decision.
 const ACCOUNT_CURRENCY = 'ARS';
 
+// An inline text trigger: a colour shift and the underline mark focus as they mark hover, and the
+// icon's bump confirms it.
+const PRODUCT_TRIGGER =
+  'group/product flex items-center gap-x-1 rounded-sm outline-none transition-colors duration-200 ease-out-soft hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:underline text-paragraph-xs text-foreground-muted underline-offset-2';
+const PRODUCT_TRIGGER_ICON = 'size-3 group-focus-visible/product:animate-focus-bump-soft';
+
 interface RfqItemsTableProps {
   quoteId: string | null;
   quoteStatus: string | null;
@@ -102,12 +108,22 @@ function confidenceBadge(item: QuoteItemResponse): {
   return { tone: 'neutral', label: item.match_status === 'MATCHED' ? 'manual' : 'none' };
 }
 
-// The raw rule a seller-typed discount carries, e.g. "10 %" or "$ 1.500,00"; null when the
-// row keeps no rule (engine-applied or pre-rule manual discounts).
-// The products matching offered for the line, best first, so the likely fix is the first row.
+// The products matching offered for the line, best first. A flagged line leads with the product it
+// already carries, so confirming it is one click rather than a search for what is on screen.
 function suggestionsFor(item: QuoteItemResponse | undefined): CatalogProduct[] {
   if (!item) return [];
-  return [...item.alternatives]
+  const current: CatalogProduct[] =
+    item.product_id && item.match_status !== 'MATCHED'
+      ? [
+          {
+            id: item.product_id,
+            code: item.product_code ?? '',
+            name: item.product_name ?? '',
+            unit: item.product_unit ?? '',
+          },
+        ]
+      : [];
+  const offered = [...item.alternatives]
     .filter((alternative) => alternative.product_id && alternative.product_id !== item.product_id)
     .sort((a, b) => a.rank - b.rank)
     .map((alternative) => ({
@@ -116,8 +132,11 @@ function suggestionsFor(item: QuoteItemResponse | undefined): CatalogProduct[] {
       name: alternative.canonical_name ?? '',
       unit: alternative.unit ?? '',
     }));
+  return [...current, ...offered];
 }
 
+// The raw rule a seller-typed discount carries, e.g. "10 %" or "$ 1.500,00"; null when the
+// row keeps no rule (engine-applied or pre-rule manual discounts).
 function discountRuleLabel(
   discount: QuoteDiscountResponse,
   fmt: ReturnType<typeof useFormatters>,
@@ -354,12 +373,13 @@ export function RfqItemsTable({
         requested_description: product.name,
         unit: product.unit || null,
       });
-      onItemsChange(items.map((i) => (i.id === item.id ? updated : i)));
+      // The write answers with the line alone; what matching offered for it still stands.
+      const kept =
+        updated.alternatives.length > 0 ? updated : { ...updated, alternatives: item.alternatives };
+      onItemsChange(items.map((i) => (i.id === item.id ? kept : i)));
       toast.success(t('detail.items.toast.updated', { name: updated.requested_description }));
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
-    } finally {
-      setEditingProductItemId(null);
     }
   }
 
@@ -458,10 +478,10 @@ export function RfqItemsTable({
                           <button
                             type="button"
                             onClick={() => openProductSearch(item.id)}
-                            className="flex items-center gap-x-1 text-paragraph-sm text-foreground underline-offset-2 hover:underline"
+                            className="group/product flex items-center gap-x-1 rounded-sm outline-none transition-colors duration-200 ease-out-soft hover:underline focus-visible:underline text-paragraph-sm text-foreground underline-offset-2"
                           >
                             {item.product_name}
-                            <PencilIcon className="size-3 text-foreground-muted" />
+                            <PencilIcon className="size-3 text-foreground-muted transition-colors duration-200 ease-out-soft group-hover/product:text-foreground group-focus-visible/product:text-foreground group-focus-visible/product:animate-focus-bump-soft" />
                           </button>
                         ) : (
                           <span className="text-paragraph-sm text-foreground">
@@ -475,18 +495,30 @@ export function RfqItemsTable({
                         )}
                       </div>
                     ) : noMatch ? (
-                      <Badge tone="danger" size="sm">
-                        {t('detail.items.matchStatus.NO_MATCH')}
-                      </Badge>
+                      <div className="flex flex-col items-start gap-y-1">
+                        <Badge tone="danger" size="sm">
+                          {t('detail.items.matchStatus.NO_MATCH')}
+                        </Badge>
+                        {canEditProducts && (
+                          <button
+                            type="button"
+                            onClick={() => openProductSearch(item.id)}
+                            className={PRODUCT_TRIGGER}
+                          >
+                            {t('detail.items.chooseProduct')}
+                            <PencilIcon className={PRODUCT_TRIGGER_ICON} />
+                          </button>
+                        )}
+                      </div>
                     ) : item.product_id ? (
                       canEditProducts ? (
                         <button
                           type="button"
                           onClick={() => openProductSearch(item.id)}
-                          className="flex items-center gap-x-1 text-paragraph-xs text-foreground-muted underline-offset-2 hover:underline"
+                          className={PRODUCT_TRIGGER}
                         >
                           {item.product_id.slice(0, 8)}…
-                          <PencilIcon className="size-3" />
+                          <PencilIcon className={PRODUCT_TRIGGER_ICON} />
                         </button>
                       ) : (
                         <span className="text-paragraph-xs text-foreground-muted">
@@ -497,10 +529,10 @@ export function RfqItemsTable({
                       <button
                         type="button"
                         onClick={() => openProductSearch(item.id)}
-                        className="flex items-center gap-x-1 text-paragraph-xs text-foreground-muted underline-offset-2 hover:underline"
+                        className={PRODUCT_TRIGGER}
                       >
                         {t('detail.items.chooseProduct')}
-                        <PencilIcon className="size-3" />
+                        <PencilIcon className={PRODUCT_TRIGGER_ICON} />
                       </button>
                     ) : (
                       <span className="text-foreground-subtle">—</span>
@@ -727,10 +759,7 @@ export function RfqItemsTable({
 
       <ProductSearchDialog
         open={searchOpen}
-        onOpenChange={(open) => {
-          if (!open) setEditingProductItemId(null);
-          setSearchOpen(open);
-        }}
+        onOpenChange={setSearchOpen}
         onSelect={editingProductItemId ? handleModifyProduct : handleAddProduct}
         title={
           editingItem
