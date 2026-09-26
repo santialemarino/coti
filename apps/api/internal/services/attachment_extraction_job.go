@@ -128,6 +128,7 @@ func (j *AttachmentExtractionJob) earlierReadings(ctx context.Context, q reposit
 func (j *AttachmentExtractionJob) processOrder(ctx context.Context, q repository.Querier,
 	order []domain.ClaimedAttachment, earlier []domain.RFQAttachment) (int, error) {
 	tenant := domain.Tenant{AccountID: order[0].AccountID, BranchID: order[0].BranchID}
+	ctx = domain.WithAIRFQ(domain.WithAIAccount(ctx, tenant), order[0].RFQID)
 
 	var changed int
 	var failures error

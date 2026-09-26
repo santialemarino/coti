@@ -22,13 +22,16 @@ type fakeGenerator struct {
 	err    error
 	calls  int
 	req    domain.GenerationRequest
+	// operation is what the call was attributed to, read off its context.
+	operation domain.AIOperation
 }
 
 func (f *fakeGenerator) Generate(
-	_ context.Context, req domain.GenerationRequest, out any,
+	ctx context.Context, req domain.GenerationRequest, out any,
 ) (*domain.GenerationUsage, error) {
 	f.calls++
 	f.req = req
+	f.operation = domain.AIUsageScopeFrom(ctx).Operation
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -196,6 +199,38 @@ func TestRFQExtractor_Extract_SendsTheOrderAsTheVariableHalf(t *testing.T) {
 	// The cap the service enforces is the number the model is asked to aim under.
 	if !strings.Contains(req.Instructions, "at most 42") {
 		t.Errorf("instructions do not state the 42-item cap:\n%s", req.Instructions)
+	}
+}
+
+// Every way into the extractor spends on the provider as an extraction, whatever the caller named.
+func TestRFQExtractor_AttributesEveryEntryPointToExtraction(t *testing.T) {
+	answer := `{"items":[{"requested_description":"cemento","quantity":"10","unit":null,` +
+		`"quantity_source":"EXPLICIT","quantity_rationale":"pidió 10"}]}`
+	ctx := domain.WithAIOperation(context.Background(), domain.AIOperationCatalogSearch)
+	for name, extract := range map[string]func(*RFQExtractor) error{
+		"text": func(e *RFQExtractor) error {
+			_, err := e.Extract(ctx, "10 bolsas de cemento")
+			return err
+		},
+		"text with examples": func(e *RFQExtractor) error {
+			_, err := e.ExtractWithExamples(ctx, "10 bolsas de cemento", nil)
+			return err
+		},
+		"content": func(e *RFQExtractor) error {
+			_, err := e.ExtractFromContent(ctx,
+				[]domain.Content{domain.TextContent("10 bolsas de cemento")}, nil)
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			generator := &fakeGenerator{answer: answer}
+			if err := extract(NewRFQExtractor(generator, 10)); err != nil {
+				t.Fatalf("extract = %v, want nil", err)
+			}
+			if generator.operation != domain.AIOperationRFQExtraction {
+				t.Errorf("operation = %q, want RFQ_EXTRACTION", generator.operation)
+			}
+		})
 	}
 }
 

@@ -99,6 +99,10 @@ func TestFoldAttachmentsIntoQuote_DraftsAQuoteForAnOrderThatHasNone(t *testing.T
 	if outcome != domain.AttachmentFoldedIntoDraft {
 		t.Errorf("outcome = %q, want the material folded into a draft", outcome)
 	}
+	if scope := h.extractor.scope; scope.AccountID != testAccountID ||
+		scope.RFQID == nil || *scope.RFQID != testRFQID {
+		t.Errorf("extraction scope = %+v, want it under the order being folded", scope)
+	}
 	if len(h.quotes.created) != 1 {
 		t.Fatalf("created %d quotes, want one", len(h.quotes.created))
 	}

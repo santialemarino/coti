@@ -76,6 +76,7 @@ func (e *RFQExtractor) ExtractFromContent(ctx context.Context, blocks []domain.C
 func (e *RFQExtractor) extract(ctx context.Context,
 	input []domain.Content) (*domain.RFQExtraction, error) {
 	var answer rfqExtractionAnswer
+	ctx = domain.WithAIOperation(ctx, domain.AIOperationRFQExtraction)
 	usage, err := e.generator.Generate(ctx, domain.GenerationRequest{
 		Instructions: e.instructions(),
 		Input:        input,

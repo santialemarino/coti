@@ -89,7 +89,8 @@ func (s *RFQAttachmentService) ReadStoredAttachment(
 		if validateErr := audio.Validate(); validateErr != nil {
 			return domain.Content{}, "", validateErr
 		}
-		text, transcribeErr := s.transcriber.Transcribe(ctx, audio)
+		text, transcribeErr := s.transcriber.Transcribe(
+			domain.WithAIOperation(ctx, domain.AIOperationAudioTranscription), audio)
 		if transcribeErr != nil {
 			return domain.Content{}, "", transcribeErr
 		}

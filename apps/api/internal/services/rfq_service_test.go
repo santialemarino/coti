@@ -408,13 +408,15 @@ type fakeRFQExtractor struct {
 	blocks          []domain.Content
 	db              *fakeRFQDB
 	calledOutsideTx bool
+	scope           domain.AIUsageScope
 }
 
 func (f *fakeRFQExtractor) Extract(
-	_ context.Context, raw string,
+	ctx context.Context, raw string,
 ) (*domain.RFQExtraction, error) {
 	f.calls++
 	f.raw = raw
+	f.scope = domain.AIUsageScopeFrom(ctx)
 	if f.db != nil {
 		f.calledOutsideTx = f.db.activeTransactions == 0
 	}

@@ -242,6 +242,9 @@ type AIConfig struct {
 	TranscriptionTimeout  time.Duration
 
 	Retry AIRetryPolicy
+	// UsageWriteTimeout bounds recording one call in the usage ledger, which runs detached from
+	// the request so a cancelled caller still records what it spent.
+	UsageWriteTimeout time.Duration
 }
 
 // AIRetryPolicy is how many times one provider call is attempted, and how long the wait between
@@ -408,6 +411,9 @@ func (a AIConfig) problems() []string {
 	if a.Retry.MaxBackoff > 0 && a.Retry.MaxBackoff < a.Retry.Backoff {
 		problems = append(problems, fmt.Sprintf("AI_MAX_BACKOFF_SECONDS (%s) is below "+
 			"AI_RETRY_BACKOFF_SECONDS (%s)", a.Retry.MaxBackoff, a.Retry.Backoff))
+	}
+	if a.UsageWriteTimeout <= 0 {
+		problems = append(problems, "AI_USAGE_WRITE_TIMEOUT_SECONDS must be greater than zero")
 	}
 	return problems
 }
@@ -724,6 +730,8 @@ func Load() (*Config, error) {
 				Backoff:     getDuration("AI_RETRY_BACKOFF_SECONDS", time.Second, &problems),
 				MaxBackoff:  getDuration("AI_MAX_BACKOFF_SECONDS", 8*time.Second, &problems),
 			},
+			UsageWriteTimeout: getDuration("AI_USAGE_WRITE_TIMEOUT_SECONDS", 5*time.Second,
+				&problems),
 		},
 		Web: WebConfig{
 			BackofficeURL: getString("WEB_BACKOFFICE_URL", "http://localhost:3000"),

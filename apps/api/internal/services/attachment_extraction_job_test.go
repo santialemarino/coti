@@ -85,6 +85,7 @@ type foldCall struct {
 	rfqID     uuid.UUID
 	blocks    []domain.Content
 	extracted string
+	scope     domain.AIUsageScope
 }
 
 type fakeFolder struct {
@@ -93,10 +94,11 @@ type fakeFolder struct {
 	err     error
 }
 
-func (f *fakeFolder) FoldAttachmentsIntoQuote(_ context.Context, _ domain.Tenant,
+func (f *fakeFolder) FoldAttachmentsIntoQuote(ctx context.Context, _ domain.Tenant,
 	rfqID uuid.UUID, blocks []domain.Content,
 	extracted string) (domain.AttachmentFoldOutcome, error) {
-	f.calls = append(f.calls, foldCall{rfqID: rfqID, blocks: blocks, extracted: extracted})
+	f.calls = append(f.calls, foldCall{rfqID: rfqID, blocks: blocks, extracted: extracted,
+		scope: domain.AIUsageScopeFrom(ctx)})
 	if f.err != nil {
 		return "", f.err
 	}
@@ -160,6 +162,12 @@ func TestAttachmentExtractionJob_Run_ExtractsOncePerOrderOverAllItsMaterial(t *t
 	if got := folder.calls[0]; got.rfqID != rfqID || len(got.blocks) != 2 {
 		t.Errorf("extraction = rfq %s with %d blocks, want rfq %s with both files",
 			got.rfqID, len(got.blocks), rfqID)
+	}
+	// Whatever the sweep spends on the order is the order's branch's spend, under the order.
+	if scope := folder.calls[0].scope; scope.AccountID != first.AccountID ||
+		scope.BranchID == nil || *scope.BranchID != first.BranchID ||
+		scope.RFQID == nil || *scope.RFQID != rfqID {
+		t.Errorf("scope = %+v, want the order's account, branch and id", scope)
 	}
 	if report.Changed != 2 {
 		t.Errorf("changed = %d, want both attachments closed out", report.Changed)

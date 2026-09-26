@@ -988,6 +988,8 @@ func (s *RFQService) CreateFileDraft(
 
 	pipelineCtx, cancel := context.WithTimeout(ctx, s.cfg.InlinePipelineTimeout)
 	defer cancel()
+	// A recording is transcribed before its order exists, so that spend carries no rfq_id.
+	pipelineCtx = domain.WithAIAccount(pipelineCtx, tenant)
 	blocks, extractedText, err := s.readFileContent(pipelineCtx, normalized, format, data)
 	if err != nil {
 		return nil, err
@@ -1023,6 +1025,7 @@ func (s *RFQService) CreateFileDraft(
 	}
 
 	sellerID := tenant.UserID
+	pipelineCtx = domain.WithAIRFQ(pipelineCtx, rfq.ID)
 	extraction, items, alternatives, err := s.readMaterialsFromContent(pipelineCtx, tenant,
 		contentExtractor, blocks, extractedText)
 	if err != nil {
@@ -1103,6 +1106,7 @@ func (s *RFQService) createTextDraft(
 		return nil, err
 	}
 
+	ctx = domain.WithAIRFQ(ctx, rfq.ID)
 	extraction, items, alternatives, err := s.readMaterials(ctx, tenant, in.RawText)
 	if err != nil {
 		s.markRFQFailed(ctx, tenant, rfq, sellerID)
@@ -1144,7 +1148,8 @@ func (s *RFQService) readMaterialsFromContent(
 func (s *RFQService) readMaterials(
 	ctx context.Context, tenant domain.Tenant, raw string,
 ) (*domain.RFQExtraction, []domain.NewQuoteItem, []domain.NewQuoteItemAlternative, error) {
-	pipelineCtx, cancel := context.WithTimeout(ctx, s.cfg.InlinePipelineTimeout)
+	pipelineCtx, cancel := context.WithTimeout(domain.WithAIAccount(ctx, tenant),
+		s.cfg.InlinePipelineTimeout)
 	defer cancel()
 
 	var examples []domain.RFQInterpretationExample

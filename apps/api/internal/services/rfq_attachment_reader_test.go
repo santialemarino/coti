@@ -132,6 +132,9 @@ func TestRFQAttachmentService_ReadStoredAttachment_TranscribesAStoredRecording(t
 		t.Errorf("transcribed %q/%q, want the stored object's name and media type",
 			transcriber.audio.Filename, transcriber.audio.MediaType)
 	}
+	if transcriber.scope.Operation != domain.AIOperationAudioTranscription {
+		t.Errorf("operation = %q, want AUDIO_TRANSCRIPTION", transcriber.scope.Operation)
+	}
 }
 
 /*
