@@ -12,8 +12,9 @@ pnpm eval:catalog-match:review   # plus the language model's review of flagged l
 Both need the integration database variables (`TEST_DATABASE_URL`, `TEST_DATABASE_ADMIN_URL`,
 addressed as `127.0.0.1` rather than `localhost`, as the testing skill explains) and
 `AI_EMBEDDINGS_PROVIDER=openai` with its key in `apps/api/.env`; the review also needs
-`AI_LLM_PROVIDER`, and reviews up to 30 lines per order unless `CATALOG_MATCH_REVIEW_MAX_LINES`
-says otherwise, since the API's own default leaves the review off. A run seeds its own account,
+`AI_LLM_PROVIDER`, and reviews up to 30 lines per order, since the API's own default leaves the
+review off. That cap is set by the script itself, so a different one goes on the command line
+(`CATALOG_MATCH_REVIEW_MAX_LINES=10 pnpm eval:catalog-match:review`), not in `apps/api/.env`. A run seeds its own account,
 embeds the whole catalog, and removes both when it ends. It costs a few cents and takes one to three
 minutes, and it varies by a line or two between runs: the embedding model is not deterministic, so
 re-run before trusting a one- or two-line move.
