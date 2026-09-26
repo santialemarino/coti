@@ -1291,6 +1291,16 @@ definitions:
       retry_after_seconds:
         type: integer
     type: object
+  dto.ReactivateQuoteRequest:
+    properties:
+      mode:
+        enum:
+        - RESEND
+        - EDIT
+        type: string
+    required:
+    - mode
+    type: object
   dto.RefreshRequest:
     properties:
       refresh_token:
@@ -3997,8 +4007,7 @@ paths:
       - quotes
   /v1/quotes/{quoteId}/archive:
     post:
-      description: Sets the archived flag. Refuses an archived quote and a terminal
-        one.
+      description: Sets the archived flag without changing the quote status.
       parameters:
       - description: Active branch
         in: header
@@ -4026,7 +4035,7 @@ paths:
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "409":
-          description: QUOTE_ARCHIVED or a terminal status
+          description: QUOTE_ARCHIVED
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "422":
@@ -4415,6 +4424,62 @@ paths:
       security:
       - BearerAuth: []
       summary: Approve or withdraw a quote alternative
+      tags:
+      - quotes
+  /v1/quotes/{quoteId}/reactivate:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Reopens an accepted or rejected quote. RESEND reuses its frozen version; EDIT
+        creates a repriced mutable version for seller review. Records the transition.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Reactivation mode
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ReactivateQuoteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_NOT_REACTIVATABLE or QUOTE_ARCHIVED
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch, or an unknown mode
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Reactivate a closed quote
       tags:
       - quotes
   /v1/quotes/{quoteId}/representations:

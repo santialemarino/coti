@@ -19,6 +19,8 @@ type QuoteService interface {
 	AcceptMaterials(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.PricedQuote, error)
 	ApproveAlternative(ctx context.Context, tenant domain.Tenant, quoteID, itemID,
 		alternativeID uuid.UUID, approved bool) (*domain.QuoteItemAlternative, error)
+	Reactivate(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID,
+		mode domain.QuoteReactivationMode) (*domain.Quote, error)
 	Transition(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID, to domain.QuoteStatus) (*domain.Quote, error)
 	Archive(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error)
 	Unarchive(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error)
@@ -414,10 +416,57 @@ func (h *QuoteHandler) Transition(c *gin.Context) {
 	c.JSON(http.StatusOK, toQuoteResponse(*quote))
 }
 
+// Reactivate reopens an accepted or rejected quote for resend or seller editing.
+//
+//	@Summary		Reactivate a closed quote
+//	@Description	Reopens an accepted or rejected quote. RESEND reuses its frozen version; EDIT
+//	@Description	creates a repriced mutable version for seller review. Records the transition.
+//	@Tags			quotes
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header		string					 true	"Active branch"
+//	@Param			quoteId		path		string					 true	"Quote id"
+//	@Param			body		body		dto.ReactivateQuoteRequest true	"Reactivation mode"
+//	@Success		200			{object}	dto.QuoteResponse
+//	@Failure		400			{object}	dto.ErrorResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse	"No such quote in the selected branch"
+//	@Failure		409			{object}	dto.ErrorResponse	"QUOTE_NOT_REACTIVATABLE or QUOTE_ARCHIVED"
+//	@Failure		422			{object}	dto.ErrorResponse	"No active branch, or an unknown mode"
+//	@Router			/v1/quotes/{quoteId}/reactivate [post]
+func (h *QuoteHandler) Reactivate(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	quoteID, ok := pathUUID(c, "quoteId")
+	if !ok {
+		return
+	}
+	var body dto.ReactivateQuoteRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	mode, err := parseQuoteReactivationMode(body.Mode)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+
+	quote, err := h.quotes.Reactivate(c.Request.Context(), tenant, quoteID, mode)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toQuoteResponse(*quote))
+}
+
 // Archive boxes a quote away without changing its status.
 //
 //	@Summary		Archive a quote
-//	@Description	Sets the archived flag. Refuses an archived quote and a terminal one.
+//	@Description	Sets the archived flag without changing the quote status.
 //	@Tags			quotes
 //	@Produce		json
 //	@Security		BearerAuth
@@ -426,7 +475,7 @@ func (h *QuoteHandler) Transition(c *gin.Context) {
 //	@Success		200			{object}	dto.QuoteResponse
 //	@Failure		401			{object}	dto.ErrorResponse
 //	@Failure		404			{object}	dto.ErrorResponse	"No such quote in the selected branch"
-//	@Failure		409			{object}	dto.ErrorResponse	"QUOTE_ARCHIVED or a terminal status"
+//	@Failure		409			{object}	dto.ErrorResponse	"QUOTE_ARCHIVED"
 //	@Failure		422			{object}	dto.ErrorResponse	"No active branch"
 //	@Router			/v1/quotes/{quoteId}/archive [post]
 func (h *QuoteHandler) Archive(c *gin.Context) {
@@ -487,6 +536,16 @@ func parseQuoteStatus(raw string) (domain.QuoteStatus, error) {
 	default:
 		return "", fmt.Errorf("%w: %q is not a status a seller-action edge may move to",
 			domain.ErrInvalidInput, raw)
+	}
+}
+
+func parseQuoteReactivationMode(raw string) (domain.QuoteReactivationMode, error) {
+	switch domain.QuoteReactivationMode(raw) {
+	case domain.QuoteReactivationResend, domain.QuoteReactivationEdit:
+		return domain.QuoteReactivationMode(raw), nil
+	default:
+		return "", fmt.Errorf("%w: %q is not a quote reactivation mode", domain.ErrInvalidInput,
+			raw)
 	}
 }
 

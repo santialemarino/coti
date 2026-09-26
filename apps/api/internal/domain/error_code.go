@@ -27,15 +27,16 @@ const (
 
 // The refusals a screen has to tell apart from a sibling answering the same status.
 const (
-	CodeEmailTaken       ErrorCode = "EMAIL_TAKEN"
-	CodeLastActiveBranch ErrorCode = "LAST_ACTIVE_BRANCH"
-	CodeSelfDeactivation ErrorCode = "SELF_DEACTIVATION"
-	CodeSelfRoleChange   ErrorCode = "SELF_ROLE_CHANGE"
-	CodePasswordPolicy   ErrorCode = "PASSWORD_POLICY"
-	CodeInvalidLink      ErrorCode = "INVALID_LINK"
-	CodeQuoteArchived    ErrorCode = "QUOTE_ARCHIVED"
-	CodeQuoteNotDraft    ErrorCode = "QUOTE_NOT_DRAFT"
-	CodeLinkExpired      ErrorCode = "LINK_EXPIRED"
+	CodeEmailTaken            ErrorCode = "EMAIL_TAKEN"
+	CodeLastActiveBranch      ErrorCode = "LAST_ACTIVE_BRANCH"
+	CodeSelfDeactivation      ErrorCode = "SELF_DEACTIVATION"
+	CodeSelfRoleChange        ErrorCode = "SELF_ROLE_CHANGE"
+	CodePasswordPolicy        ErrorCode = "PASSWORD_POLICY"
+	CodeInvalidLink           ErrorCode = "INVALID_LINK"
+	CodeQuoteArchived         ErrorCode = "QUOTE_ARCHIVED"
+	CodeQuoteNotDraft         ErrorCode = "QUOTE_NOT_DRAFT"
+	CodeQuoteNotReactivatable ErrorCode = "QUOTE_NOT_REACTIVATABLE"
+	CodeLinkExpired           ErrorCode = "LINK_EXPIRED"
 	// CodeUnsupportedFileType sits beside CodeFileTooLarge: both refuse an upload, and a client
 	// offering a different file needs to know which rule it broke.
 	CodeUnsupportedFileType ErrorCode = "UNSUPPORTED_FILE_TYPE"
