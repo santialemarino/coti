@@ -56,8 +56,7 @@ func (s *RFQAttachmentService) ReadStoredAttachment(
 		return domain.Content{}, "", err
 	}
 
-	// The key ends in the extension the format was accepted under, and both text readers below
-	// pick their parser from it.
+	// The key ends in the extension the format was accepted under, which the transcriber decodes by.
 	filename := path.Base(attachment.StorageKey)
 
 	switch attachment.Type {
