@@ -612,3 +612,67 @@ func containsID(t *testing.T, items []domain.RfqListItem, id uuid.UUID) bool {
 }
 
 func strPtr(s string) *string { return &s }
+
+// The inbox counts the lines of the quote as it stands, and those matching left for the seller: a
+// change request's earlier version is history, not work.
+func TestRFQRepository_ListByTenant_CountsOnlyTheCurrentVersionsLines(t *testing.T) {
+	db := testDB(t)
+	account := seedAccount(t, db, "Corralon Conteo")
+	branch := branchOf(t, db, account)
+	product := seedCatalogProduct(t, db, account, "Cemento Portland 50kg", "bolsa")
+	quoteID, firstVersion, _ := seedQuoteChain(t, db, account, branch, product)
+	seedUnmatchedLine(t, db, account, firstVersion)
+
+	row := listedQuote(t, listByTenant(t, db, account, branch), quoteID)
+	if row.ItemCount != 2 || row.ReviewCount != 1 {
+		t.Errorf("first version counts = %d lines, %d to review; want 2 and 1", row.ItemCount,
+			row.ReviewCount)
+	}
+
+	secondVersion := uuid.New()
+	ctx := context.Background()
+	for _, stmt := range []struct {
+		sql  string
+		args []any
+	}{
+		// A change request freezes the version it revises; only then can a new draft exist.
+		{`UPDATE quote_version SET is_immutable = TRUE, frozen_at = now() WHERE id = $1`,
+			[]any{firstVersion}},
+		{`INSERT INTO quote_version (id, account_id, quote_id, version_number) VALUES ($1, $2, $3, 2)`,
+			[]any{secondVersion, account, quoteID}},
+		{`INSERT INTO quote_item (id, account_id, version_id, product_id, requested_description,
+		                          quantity, match_status)
+		  VALUES ($1, $2, $3, $4, 'cemento', 10, 'MATCHED')`,
+			[]any{uuid.New(), account, secondVersion, product}},
+		{`UPDATE quote SET current_version_id = $2 WHERE id = $1`, []any{quoteID, secondVersion}},
+	} {
+		if _, err := db.CrossAccount().Exec(ctx, stmt.sql, stmt.args...); err != nil {
+			t.Fatalf("seed the second version: %v", err)
+		}
+	}
+	t.Cleanup(func() {
+		mustCleanup(t, db.CrossAccount(),
+			`UPDATE quote SET current_version_id = NULL WHERE id = $1`, quoteID)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM quote_item WHERE version_id = $1`,
+			secondVersion)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM quote_version WHERE id = $1`, secondVersion)
+	})
+
+	row = listedQuote(t, listByTenant(t, db, account, branch), quoteID)
+	if row.ItemCount != 1 || row.ReviewCount != 0 {
+		t.Errorf("current version counts = %d lines, %d to review; want 1 and 0", row.ItemCount,
+			row.ReviewCount)
+	}
+}
+
+// listedQuote finds the inbox row of one quote.
+func listedQuote(t *testing.T, rows []domain.RfqListItem, quoteID uuid.UUID) domain.RfqListItem {
+	t.Helper()
+	for _, row := range rows {
+		if row.QuoteID != nil && *row.QuoteID == quoteID {
+			return row
+		}
+	}
+	t.Fatalf("quote %s is not in the inbox", quoteID)
+	return domain.RfqListItem{}
+}

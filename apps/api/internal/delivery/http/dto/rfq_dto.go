@@ -52,18 +52,20 @@ type CreateRfqResponse struct {
 
 // RfqListItemResponse is one row of the RFQ list the Backoffice dashboard consumes.
 type RfqListItemResponse struct {
-	ID            uuid.UUID  `json:"id"`
-	ClientID      *uuid.UUID `json:"client_id"`
-	Client        *string    `json:"client"`
-	CreatedAt     time.Time  `json:"created_at"`
-	Channel       string     `json:"channel"`
-	SellerID      *uuid.UUID `json:"seller_id"`
-	Seller        string     `json:"seller"`
-	BranchID      uuid.UUID  `json:"branch_id"`
-	Branch        string     `json:"branch"`
-	QuoteID       *uuid.UUID `json:"quote_id"`
-	QuoteNumber   *int64     `json:"quote_number"`
-	ItemCount     int        `json:"item_count"`
+	ID          uuid.UUID  `json:"id"`
+	ClientID    *uuid.UUID `json:"client_id"`
+	Client      *string    `json:"client"`
+	CreatedAt   time.Time  `json:"created_at"`
+	Channel     string     `json:"channel"`
+	SellerID    *uuid.UUID `json:"seller_id"`
+	Seller      string     `json:"seller"`
+	BranchID    uuid.UUID  `json:"branch_id"`
+	Branch      string     `json:"branch"`
+	QuoteID     *uuid.UUID `json:"quote_id"`
+	QuoteNumber *int64     `json:"quote_number"`
+	ItemCount   int        `json:"item_count"`
+	// ReviewCount is how many of the current version's lines matching left for the seller.
+	ReviewCount   int        `json:"review_count"`
 	Total         *string    `json:"total"`
 	Status        string     `json:"status"`
 	ArchivedAt    *time.Time `json:"archived_at"`

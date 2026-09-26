@@ -7402,6 +7402,10 @@ const docTemplate = `{
                 "quote_number": {
                     "type": "integer"
                 },
+                "review_count": {
+                    "description": "ReviewCount is how many of the current version's lines matching left for the seller.",
+                    "type": "integer"
+                },
                 "seller": {
                     "type": "string"
                 },
