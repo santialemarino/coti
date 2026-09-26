@@ -8,6 +8,7 @@ vi.mock('@/app/(auth)/verify-email/_components/resend-verification-form', () => 
   ResendVerificationForm: vi.fn(() => null),
 }));
 vi.mock('@/components/change-email-form', () => ({ ChangeEmailForm: vi.fn(() => null) }));
+vi.mock('@/app/(protected)/actions', () => ({ signOut: vi.fn() }));
 vi.mock('@/lib/auth/session', () => ({ getSession: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getTranslations: vi.fn() }));
 
@@ -118,6 +119,8 @@ describe('with no token', () => {
       undefined,
     );
     expect(view.baseElement.textContent).toContain(EMAIL);
+    expect(view.getByRole('button', { name: 'signOut' })).toBeTruthy();
+    expect(view.queryByRole('link', { name: 'continue' })).toBeNull();
   });
 
   it('asks for an address when there is no session to name one', async () => {

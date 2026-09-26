@@ -3,6 +3,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/app/(auth)/verify-email/actions', () => ({ confirmEmail: vi.fn() }));
+vi.mock('@/app/(protected)/actions', () => ({ signOut: vi.fn() }));
 vi.mock('@/app/(auth)/verify-email/_components/resend-verification-form', () => ({
   ResendVerificationForm: vi.fn(() => null),
 }));
@@ -80,10 +81,11 @@ describe('with the caller address known', () => {
     );
   });
 
-  it('points a known caller home from the prompt instead', () => {
+  it('offers to sign out instead of linking to a protected route from the prompt', () => {
     const view = renderForm(EMAIL);
 
-    expect(linkHrefs(view)).toContain('/');
+    expect(view.getByRole('button', { name: copy.signOut })).toBeTruthy();
+    expect(linkHrefs(view)).not.toContain('/');
     expect(linkHrefs(view)).not.toContain('/login');
   });
 });

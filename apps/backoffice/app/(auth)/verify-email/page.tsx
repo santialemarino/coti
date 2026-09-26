@@ -2,9 +2,10 @@ import Link from 'next/link';
 import { CircleCheckIcon, CircleXIcon, MailCheckIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { Card, Hint, InlineLink, Separator, StatusScreen } from '@repo/ui/components';
+import { Button, Card, Hint, InlineLink, Separator, StatusScreen } from '@repo/ui/components';
 import { ConfirmEmailForm } from '@/app/(auth)/verify-email/_components/confirm-email-form';
 import { ResendVerificationForm } from '@/app/(auth)/verify-email/_components/resend-verification-form';
+import { signOut } from '@/app/(protected)/actions';
 import { ChangeEmailForm } from '@/components/change-email-form';
 import { ROUTES } from '@/config/routes';
 import { getSession } from '@/lib/auth/session';
@@ -96,11 +97,21 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
             <ChangeEmailForm variant="outline" />
           </>
         )}
-        <InlineLink asChild tone="muted" className="self-center">
-          <Link href={registered ? ROUTES.home : ROUTES.login}>
-            {registered ? t('continue') : t('backToLogin')}
-          </Link>
-        </InlineLink>
+        {registered ? (
+          <form action={signOut} className="self-center">
+            <Button
+              type="submit"
+              variant="link"
+              className="text-foreground-muted hover:text-foreground hover:decoration-foreground"
+            >
+              {t('signOut')}
+            </Button>
+          </form>
+        ) : (
+          <InlineLink asChild tone="muted" className="self-center">
+            <Link href={ROUTES.login}>{t('backToLogin')}</Link>
+          </InlineLink>
+        )}
       </div>
     </Card>
   );

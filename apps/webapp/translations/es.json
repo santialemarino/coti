@@ -16,6 +16,10 @@
       "clearSearch": "Limpiar la búsqueda"
     }
   },
+  "home": {
+    "title": "No hay una cotización abierta",
+    "description": "Abrí el enlace que te envió el corralón para ver y responder tu cotización."
+  },
   "rfq": {
     "title": "Solicitá tu presupuesto",
     "intro": "Contanos qué materiales necesitás y te preparamos una cotización.",
