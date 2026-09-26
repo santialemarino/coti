@@ -47,7 +47,7 @@ func TestCatalogEmbeddingJob_EmbedsEveryPendingAccountAndNamesTheOneThatFailed(t
 		fail:     map[uuid.UUID]bool{failing: true},
 	}
 	job := NewCatalogEmbeddingJob(fakePendingAccounts{accounts: []uuid.UUID{failing, working}},
-		backfiller)
+		backfiller, true)
 
 	report, err := job.Run(context.Background(), nil)
 
@@ -60,5 +60,19 @@ func TestCatalogEmbeddingJob_EmbedsEveryPendingAccountAndNamesTheOneThatFailed(t
 	if err == nil || !strings.Contains(err.Error(), failing.String()) ||
 		strings.Contains(err.Error(), working.String()) {
 		t.Errorf("Run() = %v, want only the failing account named", err)
+	}
+}
+
+// With embeddings switched off nothing reads a vector, so the job neither looks nor spends.
+func TestCatalogEmbeddingJob_DoesNothingWhileEmbeddingsAreOff(t *testing.T) {
+	backfiller := &fakeBackfiller{}
+	job := NewCatalogEmbeddingJob(fakePendingAccounts{accounts: []uuid.UUID{uuid.New()}},
+		backfiller, false)
+
+	report, err := job.Run(context.Background(), nil)
+
+	if err != nil || report != (domain.JobReport{}) || len(backfiller.asked) != 0 {
+		t.Errorf("Run() = %+v, %v after %d backfills, want nothing done", report, err,
+			len(backfiller.asked))
 	}
 }

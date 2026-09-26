@@ -568,4 +568,18 @@ func TestProductRepository_ListAccountsPendingEmbeddingFindsOnlyAccountsWithWork
 	if !slices.Contains(accounts, pending) || slices.Contains(accounts, embedded) {
 		t.Errorf("accounts = %v, want %v listed and %v not", accounts, pending, embedded)
 	}
+
+	// A deactivated account keeps its catalog, but nobody quotes from it any more.
+	if _, err := db.CrossAccount().Exec(context.Background(),
+		`UPDATE account SET is_active = FALSE WHERE id = $1`, pending); err != nil {
+		t.Fatalf("deactivate the account: %v", err)
+	}
+	accounts, err = NewProductRepository().ListAccountsPendingEmbedding(context.Background(),
+		db.CrossAccount())
+	if err != nil {
+		t.Fatalf("ListAccountsPendingEmbedding() = %v", err)
+	}
+	if slices.Contains(accounts, pending) {
+		t.Errorf("accounts = %v, want the inactive account left out", accounts)
+	}
 }

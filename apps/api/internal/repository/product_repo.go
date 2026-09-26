@@ -87,18 +87,19 @@ func (r *ProductRepository) GetByIDForUpdate(
 		accountID, id))
 }
 
-// ListAccountsPendingEmbedding returns every account with an active product whose vector is
+// ListAccountsPendingEmbedding returns every active account with an active product whose vector is
 // missing or older than its last edit. It reads across accounts, so it takes the owner's querier.
 func (r *ProductRepository) ListAccountsPendingEmbedding(
 	ctx context.Context, q Querier,
 ) ([]uuid.UUID, error) {
 	rows, err := q.Query(ctx,
-		`SELECT DISTINCT account_id
-		 FROM product
-		 WHERE is_active = TRUE
-		   AND (embedding IS NULL OR embedding_updated_at IS NULL
-		        OR embedding_updated_at < updated_at)
-		 ORDER BY account_id`)
+		`SELECT DISTINCT p.account_id
+		 FROM product p
+		 JOIN account a ON a.id = p.account_id AND a.is_active = TRUE
+		 WHERE p.is_active = TRUE
+		   AND (p.embedding IS NULL OR p.embedding_updated_at IS NULL
+		        OR p.embedding_updated_at < p.updated_at)
+		 ORDER BY p.account_id`)
 	if err != nil {
 		return nil, err
 	}

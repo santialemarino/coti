@@ -25,12 +25,14 @@ type catalogBackfiller interface {
 type CatalogEmbeddingJob struct {
 	accounts   pendingEmbeddingAccounts
 	backfiller catalogBackfiller
+	enabled    bool
 }
 
-// NewCatalogEmbeddingJob builds the scheduled catalog embedding.
-func NewCatalogEmbeddingJob(accounts pendingEmbeddingAccounts,
-	backfiller catalogBackfiller) *CatalogEmbeddingJob {
-	return &CatalogEmbeddingJob{accounts: accounts, backfiller: backfiller}
+// NewCatalogEmbeddingJob builds the scheduled catalog embedding. With embeddings switched off the
+// search reads no vectors, so a disabled job does nothing rather than spend on them or fail.
+func NewCatalogEmbeddingJob(accounts pendingEmbeddingAccounts, backfiller catalogBackfiller,
+	enabled bool) *CatalogEmbeddingJob {
+	return &CatalogEmbeddingJob{accounts: accounts, backfiller: backfiller, enabled: enabled}
 }
 
 // Name identifies the scheduled catalog embedding.
@@ -40,6 +42,9 @@ func (j *CatalogEmbeddingJob) Name() string { return "catalog-embedding" }
 // account that fails is left for the next firing and does not hold up the others.
 func (j *CatalogEmbeddingJob) Run(ctx context.Context,
 	q repository.Querier) (domain.JobReport, error) {
+	if !j.enabled {
+		return domain.JobReport{}, nil
+	}
 	accounts, err := j.accounts.ListAccountsPendingEmbedding(ctx, q)
 	if err != nil {
 		return domain.JobReport{}, err

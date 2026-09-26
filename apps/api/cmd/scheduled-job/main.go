@@ -113,7 +113,8 @@ func run() error {
 		services.NewAttachmentExtractionJob(attachmentRepo, attachmentReader, rfqService,
 			cfg.Attachment, log),
 		services.NewCatalogEmbeddingJob(productRepo, services.NewCatalogEmbeddingService(db,
-			repository.NewAccountRepository(), productRepo, providers.Embedder, cfg.Catalog)))
+			repository.NewAccountRepository(), productRepo, providers.Embedder, cfg.Catalog),
+			cfg.AI.EmbeddingsProvider != config.AIProviderDisabled))
 	if err != nil {
 		return err
 	}
