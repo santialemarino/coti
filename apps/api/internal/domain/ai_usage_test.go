@@ -20,3 +20,14 @@ func TestWithAIAccount_KeepsTheOrderOnlyWithinItsAccount(t *testing.T) {
 		t.Errorf("scope = %+v, want another account's order and branch dropped", other)
 	}
 }
+
+// The text pipeline names the order before the account; naming the account first is not a change.
+func TestWithAIAccount_KeepsAnOrderNamedBeforeAnyAccount(t *testing.T) {
+	account, rfqID := uuid.New(), uuid.New()
+	ctx := WithAIAccount(WithAIRFQ(context.Background(), rfqID), Tenant{AccountID: account})
+
+	scope := AIUsageScopeFrom(ctx)
+	if scope.AccountID != account || scope.RFQID == nil || *scope.RFQID != rfqID {
+		t.Errorf("scope = %+v, want the account set and the order kept", scope)
+	}
+}

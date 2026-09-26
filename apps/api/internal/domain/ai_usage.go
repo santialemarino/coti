@@ -42,7 +42,7 @@ func AIUsageScopeFrom(ctx context.Context) AIUsageScope {
 // named under another account is dropped: it cannot be this account's.
 func WithAIAccount(ctx context.Context, tenant Tenant) context.Context {
 	scope := AIUsageScopeFrom(ctx)
-	if scope.AccountID != tenant.AccountID {
+	if scope.AccountID != uuid.Nil && scope.AccountID != tenant.AccountID {
 		scope.RFQID = nil
 	}
 	scope.AccountID = tenant.AccountID
