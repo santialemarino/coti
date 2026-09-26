@@ -65,7 +65,8 @@
         "passwordTooShort": "Mínimo {min} caracteres.",
         "passwordTooLong": "Máximo {max} caracteres.",
         "passwordMismatch": "Las contraseñas no coinciden.",
-        "passwordRequirements": "La contraseña no cumple con los requisitos."
+        "passwordRequirements": "La contraseña no cumple con los requisitos.",
+        "amountTooHigh": "El monto es demasiado alto."
       }
     },
     "passwordMeter": {
@@ -1323,6 +1324,18 @@
       "label": "Unidad",
       "placeholder": "Ej. bolsa, unidad, metro",
       "required": "Ingresá la unidad de venta."
+    },
+    "price": {
+      "label": "Precio",
+      "placeholder": "Ingresá el precio",
+      "hint": "Se aplica en todas las sucursales. Después se ajusta con la lista de precios.",
+      "requiredWithMin": "Ingresá el precio para cargar un precio mínimo."
+    },
+    "minPrice": {
+      "label": "Precio mínimo",
+      "placeholder": "Ingresá el precio mínimo",
+      "hint": "El piso que respetan los descuentos automáticos.",
+      "abovePrice": "No puede superar el precio."
     },
     "family": {
       "label": "Rubro",

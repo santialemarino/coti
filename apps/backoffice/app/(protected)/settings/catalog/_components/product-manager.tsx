@@ -335,5 +335,7 @@ function valuesOf(product: Product): ProductValues {
     familyId: product.familyId ?? '',
     subgroupId: product.subgroupId ?? '',
     isActive: true,
+    price: '',
+    minPrice: '',
   };
 }

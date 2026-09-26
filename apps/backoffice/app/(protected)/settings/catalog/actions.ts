@@ -25,7 +25,11 @@ export async function createProduct(values: ProductValues): Promise<ProductWrite
       path: '/v1/products',
       method: 'POST',
       branchScoped: false,
-      body: productBody(parsed.data),
+      body: {
+        ...productBody(parsed.data),
+        price: parsed.data.price || null,
+        min_price: parsed.data.minPrice || null,
+      },
     });
     revalidatePath('/settings/catalog');
     return { ok: true, productId: product.id };
