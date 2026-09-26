@@ -115,6 +115,7 @@
     "DELIVERY_CHANNEL": "Esta sucursal no tiene los canales de envío necesarios configurados.",
     "DELIVERY_UNAVAILABLE": "No se pudo entregar por ningún canal. Revisá la configuración de envío o intentá más tarde.",
     "UNSUPPORTED_FILE_TYPE": "Ese tipo de archivo no está soportado.",
+    "LEGACY_EXCEL_FILE": "No podemos leer archivos .xls. Guardalo como .xlsx o .csv y volvé a subirlo.",
     "AI_UNAVAILABLE": "La IA no está disponible en este momento. Probá de nuevo en unos minutos.",
     "NOT_CONFIGURED": "Esa función todavía no está configurada en esta cuenta.",
     "INTERNAL": "Ocurrió un error inesperado. Intentá de nuevo.",
