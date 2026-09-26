@@ -226,7 +226,8 @@ jobs:
         type: SECRET
 
   # Products created, imported or edited carry no vector until embedded; this sweep embeds them so
-  # they match on meaning, not text alone. App Platform's minimum interval is 15 minutes.
+  # they match on meaning, not text alone. It idles until embeddings are on; App Platform's
+  # minimum interval is 15 minutes.
   - name: catalog-embedding
     kind: SCHEDULED
     schedule:
@@ -256,9 +257,11 @@ jobs:
       - key: STORAGE_LOCAL_SIGNING_SECRET
         scope: RUN_TIME
         type: SECRET
+      # Follows the api's: vectors nothing searches are spend for nothing, and the job does no
+      # work while this is off. Turn both on together.
       - key: AI_EMBEDDINGS_PROVIDER
         scope: RUN_TIME
-        value: openai
+        value: disabled
       - key: AI_OPENAI_API_KEY
         scope: RUN_TIME
         type: SECRET
