@@ -201,8 +201,9 @@ provider SDK, so it works behind whichever one is bound and its tests need no pr
 forced schema, and `cmd/api` hands it the bound generator. See
 [rfq-pipeline.md](rfq-pipeline.md) for what it asks for and why. `domain.CatalogMatchReviewer` is
 the second: `ai.NewCatalogMatchReviewer` settles the lines catalog matching flagged, choosing only
-among the candidates it was shown — see
-[catalog.md](catalog.md#the-review-trade-knowledge-the-catalog-text-does-not-carry).
+among the candidates it was shown. It is off by default, behind a global switch — see
+[catalog.md](catalog.md#the-review-trade-knowledge-the-catalog-text-does-not-carry) and
+[feature-switches.md](feature-switches.md).
 
 One thing to know before writing a schema for one: **structured outputs do not enforce
 `minLength`, `maxLength`, `minItems` or `maxItems`**. Length and size are the service's to check, and

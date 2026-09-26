@@ -16,7 +16,7 @@
     "test:rfq:integration": "go test -v -count=1 -tags=integration -run \"Test(CatalogMatch|FirstOperationalFlow|QuoteDelivery|QuoteQualityHook|RFQPipeline|RFQTextDraftRoute|WhatsAppMockRoute|UnmatchedItems|QuotePricing)\" ./internal/integration",
     "test:rfq:response": "go test -v -count=1 -run \"^TestRFQHandler_CreateTextDraft_ReturnsAReviewableDraft$\" ./internal/delivery/http/handler",
     "eval:catalog-match": "CATALOG_MATCH_EVAL=1 CATALOG_MATCH_EVAL_REPORT=\"$(cd ../.. && pwd)/.artifacts/catalog-match-eval/report.json\" go test -v -count=1 -timeout 30m -tags=integration -run '^TestCatalogMatchEvaluation$' ./internal/integration",
-    "eval:catalog-match:review": "CATALOG_MATCH_EVAL_REVIEW=1 pnpm run eval:catalog-match",
+    "eval:catalog-match:review": "CATALOG_MATCH_EVAL_REVIEW=1 CATALOG_MATCH_REVIEW_MAX_LINES=${CATALOG_MATCH_REVIEW_MAX_LINES:-30} pnpm run eval:catalog-match",
     "docs": "go tool swag init --generalInfo main.go --dir cmd/api,internal/delivery/http --output docs --parseInternal",
     "docs:check": "pnpm run docs && test -z \"$(git status --porcelain -- docs)\""
   }

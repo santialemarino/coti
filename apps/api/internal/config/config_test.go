@@ -210,7 +210,7 @@ func TestLoad_Defaults(t *testing.T) {
 		{"Catalog.MatchSimilarityCeilingPercent", cfg.Catalog.MatchSimilarityCeilingPercent, 90},
 		{"Catalog.MatchHighConfidencePercent", cfg.Catalog.MatchHighConfidencePercent, 80},
 		{"Catalog.MatchReviewFloorPercent", cfg.Catalog.MatchReviewFloorPercent, 40},
-		{"Catalog.MatchReviewMaxLines", cfg.Catalog.MatchReviewMaxLines, 30},
+		{"Catalog.MatchReviewMaxLines", cfg.Catalog.MatchReviewMaxLines, 0},
 	} {
 		if tc.got != tc.want {
 			t.Errorf("%s = %d, want %d", tc.name, tc.got, tc.want)
@@ -416,6 +416,24 @@ func TestLoad_QuoteCorrectionKeysLandOnTheirOwnFields(t *testing.T) {
 		cfg.QuoteCorrection.MaxInterpretationExamples != 4 ||
 		cfg.QuoteCorrection.ProcessingBatchSize != 73 {
 		t.Errorf("QuoteCorrection = %+v, want 81/901/4/73", cfg.QuoteCorrection)
+	}
+}
+
+// Examples are a switch: zero turns them off, and only a negative count is a mistake.
+func TestLoad_InterpretationExamplesCanBeTurnedOff(t *testing.T) {
+	env := minimalEnv()
+	env["QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES"] = "0"
+	setEnv(t, env)
+	if cfg, err := Load(); err != nil || cfg.QuoteCorrection.MaxInterpretationExamples != 0 {
+		t.Fatalf("Load() = %v, want zero examples accepted", err)
+	}
+
+	env["QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES"] = "-1"
+	setEnv(t, env)
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(),
+		"QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES must be zero or more") {
+		t.Errorf("Load() = %v, want a negative count refused", err)
 	}
 }
 
