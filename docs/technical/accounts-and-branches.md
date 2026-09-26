@@ -34,6 +34,12 @@ phone or unintegrated-messaging order has no other channel to point at — so a 
 cannot take the most common order in the business. Both paths that create a branch open it in
 the same transaction as the branch itself.
 
+## A new branch starts with the catalog
+
+`POST /v1/branches` also makes every active product of the account available at the new branch,
+in the same transaction, so its first order can be matched. Nothing is priced there: prices are per
+branch and arrive with that branch's price list.
+
 ## Branches
 
 | Route                            | Who                      |
