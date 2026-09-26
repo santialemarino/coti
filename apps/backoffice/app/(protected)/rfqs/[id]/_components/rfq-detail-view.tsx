@@ -23,6 +23,14 @@ interface RfqDetailViewProps {
   detail: RfqDetailResponse;
 }
 
+// What the queue shows for the order's lines, recounted whenever this screen changes them.
+function lineCounts(items: QuoteItemResponse[]): { itemCount: number; reviewCount: number } {
+  return {
+    itemCount: items.length,
+    reviewCount: items.filter((item) => item.match_status !== 'MATCHED').length,
+  };
+}
+
 export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
   const router = useRouter();
   const fmt = useFormatters();
@@ -57,15 +65,20 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
       setDetail(fresh);
       setItems(fresh.items);
       setDiscounts(fresh.discounts ?? []);
+      updateRecord(fresh.rfq.id, lineCounts(fresh.items));
     } catch {
       // The mutation itself succeeded; a failed refetch must not look like the write died.
       toast.error(t('detail.items.toast.error'));
     }
-  }, [detail.rfq.id, quoteId, t]);
+  }, [detail.rfq.id, quoteId, t, updateRecord]);
 
-  const handleItemsChange = useCallback((newItems: QuoteItemResponse[]) => {
-    setItems(newItems);
-  }, []);
+  const handleItemsChange = useCallback(
+    (newItems: QuoteItemResponse[]) => {
+      setItems(newItems);
+      updateRecord(detail.rfq.id, lineCounts(newItems));
+    },
+    [detail.rfq.id, updateRecord],
+  );
 
   function handleGenerate() {
     if (!quoteId) return;
@@ -83,8 +96,7 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
         setItems(result.items);
         updateRecord(detail.rfq.id, {
           archived: result.quote.archived_at != null,
-          itemCount: result.items.length,
-          reviewCount: result.items.filter((item) => item.match_status !== 'MATCHED').length,
+          ...lineCounts(result.items),
           needsFollowup: result.quote.needs_followup,
           status,
           total: result.version.total,

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -25,7 +25,7 @@ vi.mock('@/lib/api/rfqs-client', () => ({
 }));
 // The send button's presence per status is what these tests exercise; the edit surface, diff and
 // header are stubbed out, with the send dialog and the diff left as spies.
-vi.mock('./rfq-items-table', () => ({ RfqItemsTable: () => null }));
+vi.mock('./rfq-items-table', () => ({ RfqItemsTable: vi.fn(() => null) }));
 vi.mock('./rfq-detail-header', () => ({ RfqDetailHeader: () => null }));
 vi.mock('./send-quote-dialog', () => ({ SendQuoteDialog: vi.fn(() => null) }));
 vi.mock('./rfq-change-diff', () => ({ RfqChangeDiff: vi.fn(() => null) }));
@@ -211,6 +211,7 @@ function RecordProbe() {
       <output aria-label="record-status">{record?.status}</output>
       <output aria-label="record-total">{record?.total}</output>
       <output aria-label="record-items">{record?.itemCount}</output>
+      <output aria-label="record-review">{record?.reviewCount}</output>
     </div>
   );
 }
@@ -312,6 +313,23 @@ describe('RfqDetailView quote generation', () => {
     expect(view.getByLabelText('record-total').textContent).toBe('390000.00');
     expect(view.getByLabelText('record-items').textContent).toBe('1');
     expect(router.refresh).toHaveBeenCalled();
+  });
+
+  // The queue beside the detail shows what is left to review, so settling a line has to reach it.
+  it('recounts the queue record when the seller changes the lines', async () => {
+    const { RfqItemsTable } = await import('./rfq-items-table');
+    const view = renderView(makeDetail('DRAFT', 'GENERATED'));
+    const { onItemsChange } = vi.mocked(RfqItemsTable).mock.lastCall?.[0] ?? {};
+
+    act(() =>
+      onItemsChange?.([
+        { ...PRICED_ITEM, match_status: 'AMBIGUOUS' },
+        { ...PRICED_ITEM, id: 'i-second', match_status: 'MATCHED' },
+      ]),
+    );
+
+    expect(view.getByLabelText('record-items').textContent).toBe('2');
+    expect(view.getByLabelText('record-review').textContent).toBe('1');
   });
 
   it("prices through the order's own branch even with no branch selected in the header", async () => {
