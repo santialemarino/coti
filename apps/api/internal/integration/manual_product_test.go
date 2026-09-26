@@ -276,6 +276,11 @@ func TestRepairUnavailableProducts_AddsOnlyProductsNoBranchCarries(t *testing.T)
 		t.Fatalf("begin: %v", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	// The repair scans every account, and other packages' tests delete their products and branches
+	// concurrently; holding both still keeps a row from vanishing between the scan and its FK check.
+	if _, err := tx.Exec(ctx, `LOCK TABLE product, branch IN SHARE MODE`); err != nil {
+		t.Fatalf("lock: %v", err)
+	}
 	if _, err := tx.Exec(ctx, up); err != nil {
 		t.Fatalf("first run: %v", err)
 	}
