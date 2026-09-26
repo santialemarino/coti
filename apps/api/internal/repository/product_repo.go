@@ -248,7 +248,8 @@ const searchCandidatesQuery = `
 	    LIMIT $5
 	),
 	learned AS (
-	    SELECT product_id, min(embedding <=> $4) AS distance
+	    SELECT product_id, min(embedding <=> $4) AS distance,
+	           bool_or(normalized_source = $7 AND support_count > 1) AS confirmed
 	    FROM quote_correction_memory
 	    WHERE account_id = $1 AND kind = 'CATALOG' AND status = 'READY'
 	      AND embedding <=> $4 <= $6
@@ -287,7 +288,7 @@ const searchCandidatesQuery = `
 	    SELECT product_id FROM learned
 	)
 	SELECT p.id, p.code, p.canonical_name, p.description, p.unit, p.embedding <=> $4, lexical.score,
-	       lexical.terms, learned.distance
+	       lexical.terms, learned.distance, COALESCE(learned.confirmed, FALSE)
 	FROM candidate c
 	JOIN product p ON p.id = c.id AND p.account_id = $1 AND p.is_active = TRUE
 	JOIN branch_product bp ON bp.product_id = p.id AND bp.account_id = $1
@@ -306,7 +307,7 @@ func (r *ProductRepository) SearchCandidates(
 	text string, embedding pgvector.Vector, fetch int, correctionMaxDistance float64,
 ) ([]domain.CatalogCandidate, error) {
 	rows, err := q.Query(ctx, searchCandidatesQuery, accountID, branchID, text, embedding, fetch,
-		correctionMaxDistance)
+		correctionMaxDistance, normalizeCorrectionSource(text))
 	if err != nil {
 		return nil, err
 	}
@@ -316,7 +317,8 @@ func (r *ProductRepository) SearchCandidates(
 	for rows.Next() {
 		var c domain.CatalogCandidate
 		if err := rows.Scan(&c.ProductID, &c.Code, &c.CanonicalName, &c.Description, &c.Unit,
-			&c.Distance, &c.LexicalScore, &c.Synonyms, &c.LearnedDistance); err != nil {
+			&c.Distance, &c.LexicalScore, &c.Synonyms, &c.LearnedDistance,
+			&c.LearnedConfirmed); err != nil {
 			return nil, err
 		}
 		candidates = append(candidates, c)

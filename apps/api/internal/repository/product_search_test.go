@@ -526,7 +526,7 @@ func TestProductRepository_SearchUsesTheVectorIndex(t *testing.T) {
 			return err
 		}
 		rows, err := q.Query(ctx, "EXPLAIN "+searchCandidatesQuery,
-			account, branch, "cemento", queryVector(), 10, 0.2)
+			account, branch, "cemento", queryVector(), 10, 0.2, "cemento")
 		if err != nil {
 			return err
 		}
@@ -546,5 +546,46 @@ func TestProductRepository_SearchUsesTheVectorIndex(t *testing.T) {
 
 	if !strings.Contains(plan.String(), "idx_product_embedding") {
 		t.Errorf("the search plan does not read the vector index:\n%s", plan.String())
+	}
+}
+
+// A phrase is confirmed only by a memory taught for that very phrase and kept at least once more;
+// a neighbouring phrase's memory, or one taught once, still has to answer to the line's words.
+func TestProductRepository_SearchCandidatesMarksOnlyAConfirmedMemoryOfThePhrase(t *testing.T) {
+	db := testDB(t)
+	account := seedAccount(t, db, "Corralon Confirmada")
+	branch := branchOf(t, db, account)
+	confirmed := seedCatalogProduct(t, db, account, "Cemento Avellaneda 50kg", "")
+	once := seedCatalogProduct(t, db, account, "Cemento Loma Negra 50kg", "")
+	for _, product := range []uuid.UUID{confirmed, once} {
+		stockBranch(t, db, account, branch, product, true)
+	}
+	for _, seed := range []struct {
+		phrase  string
+		product uuid.UUID
+		support int
+	}{
+		{"cemento del bueno", confirmed, 2},
+		{"cemento del malo", once, 2},
+	} {
+		if _, err := db.CrossAccount().Exec(context.Background(), `INSERT INTO quote_correction_memory
+		  (account_id, kind, source_text, normalized_source, embedding, status, product_id,
+		   support_count)
+		 VALUES ($1, 'CATALOG', $2, $2, $3, 'READY', $4, $5)`,
+			account, seed.phrase, queryVector(), seed.product, seed.support); err != nil {
+			t.Fatalf("seed correction memory: %v", err)
+		}
+	}
+
+	byID := map[uuid.UUID]domain.CatalogCandidate{}
+	for _, c := range searchCandidates(t, db, account, branch, "Cemento  del BUENO", 10) {
+		byID[c.ProductID] = c
+	}
+	if !byID[confirmed].LearnedConfirmed {
+		t.Errorf("the phrase's own twice-kept memory = %+v, want it confirmed", byID[confirmed])
+	}
+	if byID[once].LearnedDistance == nil || byID[once].LearnedConfirmed {
+		t.Errorf("a neighbouring phrase's memory = %+v, want it taught but not confirmed",
+			byID[once])
 	}
 }

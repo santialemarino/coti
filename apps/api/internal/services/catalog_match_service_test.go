@@ -73,6 +73,13 @@ func learned(name string, distance float64) domain.CatalogCandidate {
 		LearnedDistance: &distance}
 }
 
+// strictFloorConfig raises the floor so a candidate can answer a line and still fall under it.
+func strictFloorConfig() config.CatalogConfig {
+	cfg := testMatchConfig()
+	cfg.MatchMinConfidencePercent = 80
+	return cfg
+}
+
 // matchOne runs one line through the service and returns its decision.
 func matchOne(t *testing.T, line string, candidates []domain.CatalogCandidate) domain.LineMatch {
 	t.Helper()
@@ -381,6 +388,64 @@ func TestCatalogMatchService_LocalMemoryOverridesGenericSearch(t *testing.T) {
 
 	// A seller-taught phrase leads whatever the text suggests, at 1 − its distance.
 	wantDecision(t, got, domain.ItemMatchStatusMatched, "0.81", &local.ProductID)
+}
+
+// A seller who swapped in what was in stock taught the phrase the substitute. The line still names
+// the original, so the taught answer leads but the seller confirms it rather than it being decided.
+func TestCatalogMatchService_ASubstitutionTheLineContradictsIsConfirmedAgain(t *testing.T) {
+	substitute := learned("Cemento Avellaneda 50kg", 0.05)
+	named := semantic("Cemento Loma Negra 50kg", 0.10)
+
+	got := matchOne(t, "cemento loma negra", []domain.CatalogCandidate{named, substitute})
+
+	wantDecision(t, got, domain.ItemMatchStatusAmbiguous, "0.95", &substitute.ProductID)
+	if got.Candidates[1].ProductID != named.ProductID {
+		t.Errorf("runner-up = %s, want the product the line names offered next",
+			got.Candidates[1].CanonicalName)
+	}
+}
+
+// A taught synonym is exactly what the text cannot say: a rival that answers the line only as
+// partly as the taught product does not contest it.
+func TestCatalogMatchService_ATaughtSynonymStillDecides(t *testing.T) {
+	taught := learned("Durlock placa standard 12.5", 0.05)
+	partial := semantic("Placa cementicia", 0.20)
+
+	got := matchOne(t, "placas de yeso", []domain.CatalogCandidate{partial, taught})
+
+	wantDecision(t, got, domain.ItemMatchStatusMatched, "0.95", &taught.ProductID)
+}
+
+// A rival that answers the line but would not clear the floor on its own is no answer to weigh.
+func TestCatalogMatchService_ARivalUnderTheFloorDoesNotContestATaughtAnswer(t *testing.T) {
+	taught := learned("Durlock placa standard 12.5", 0.05)
+	weak := semantic("Placas de yeso", 0.95)
+
+	got := matchOneWith(t, strictFloorConfig(), "placas de yeso", []domain.CatalogCandidate{weak, taught})
+
+	wantDecision(t, got, domain.ItemMatchStatusMatched, "0.95", &taught.ProductID)
+}
+
+// When the taught product answers the line as fully as its rival, the words take no side.
+func TestCatalogMatchService_ATaughtAnswerThatCoversTheLineIsNotContested(t *testing.T) {
+	taught := learned("Cemento Loma Negra 50kg", 0.05)
+	rival := semantic("Cemento Loma Negra 25kg", 0.10)
+
+	got := matchOne(t, "cemento loma negra", []domain.CatalogCandidate{rival, taught})
+
+	wantDecision(t, got, domain.ItemMatchStatusMatched, "0.95", &taught.ProductID)
+}
+
+// A seller who taught a phrase and later kept the answer on a flagged line chose it twice: that
+// settles the phrase, whatever else its words fit.
+func TestCatalogMatchService_AConfirmedAnswerForThePhraseDecides(t *testing.T) {
+	confirmed := learned("Cemento Avellaneda 50kg", 0.01)
+	confirmed.LearnedConfirmed = true
+	named := semantic("Cemento Loma Negra 50kg", 0.10)
+
+	got := matchOne(t, "cemento loma negra", []domain.CatalogCandidate{named, confirmed})
+
+	wantDecision(t, got, domain.ItemMatchStatusMatched, "0.99", &confirmed.ProductID)
 }
 
 func TestCatalogMatchService_ConflictingLocalMemoriesAreAmbiguous(t *testing.T) {
