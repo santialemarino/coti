@@ -332,8 +332,17 @@ within three margins that covers the line as fully as the leader and carries no 
 not ask for beyond the leader's. The second clause is what makes `piedra partida` against three
 kinds of crushed stone a choice for the seller: the line never said which, and a vector a few
 points closer is not the client choosing. The third keeps `PVC CUPLA RED 110X100`, a reducer, from
-contesting `PVC CUPLA 110` for `cupla pvc 110`. Two seller-taught answers for one phrase are always
-a rival.
+contesting `PVC CUPLA 110` for `cupla pvc 110`.
+
+A seller-taught leader is contested differently, because its score is the memory's, not the
+text's. Two taught answers for one phrase are always a rival. So is a product that clears the
+match floor and answers the whole line while the taught one does not: that is what a substitution
+leaves behind. A seller who swapped in what was in stock taught `cemento loma negra` the other
+brand, and the line still names the original. The taught answer still leads, and the seller
+confirms it. Measured on the benchmark catalog, with the phrases taught their right product and
+then a plausible wrong one: confidently wrong answers fall from 159 of 178 to 57, while right
+teachings still decide 155 of 179 against 156 before. What is left are lines no product answers
+fully, where the text has nothing to say against the memory.
 
 Two parts of that are deliberate. **A rejected line keeps its best candidate's score**, because
 `0.55` and `0.00` are different problems for whoever reviews the unmatched items. And **an
