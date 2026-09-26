@@ -98,8 +98,9 @@ func run() error {
 	// decision, and a second implementation of it here would be a second one to keep honest.
 	rfqRepo := repository.NewRFQRepository()
 	quoteRepo := repository.NewQuoteRepository()
-	catalogSearch := services.NewCatalogSearchService(db, repository.NewProductRepository(),
-		providers.Embedder, cfg.Catalog)
+	productRepo := repository.NewProductRepository()
+	catalogSearch := services.NewCatalogSearchService(db, productRepo, providers.Embedder,
+		cfg.Catalog)
 	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo, sends,
 		repository.NewQuoteAIGenerationRepository(), repository.NewChannelRepository(),
 		repository.NewUserRepository(), ai.NewRFQExtractor(providers.Generator, cfg.RFQ.MaxItems),
@@ -110,7 +111,10 @@ func run() error {
 		services.NewQuoteCorrectionJob(corrections, providers.Embedder, cfg.QuoteCorrection),
 		services.NewQuoteQualityJob(sends, qualityEvaluator, cfg.QuoteQuality),
 		services.NewAttachmentExtractionJob(attachmentRepo, attachmentReader, rfqService,
-			cfg.Attachment, log))
+			cfg.Attachment, log),
+		services.NewCatalogEmbeddingJob(productRepo, services.NewCatalogEmbeddingService(db,
+			repository.NewAccountRepository(), productRepo, providers.Embedder, cfg.Catalog),
+			cfg.AI.EmbeddingsProvider != config.AIProviderDisabled))
 	if err != nil {
 		return err
 	}

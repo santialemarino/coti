@@ -225,6 +225,47 @@ jobs:
         scope: RUN_TIME
         type: SECRET
 
+  # Products created, imported or edited carry no vector until embedded; this sweep embeds them so
+  # they match on meaning, not text alone. It idles until embeddings are on; App Platform's
+  # minimum interval is 15 minutes.
+  - name: catalog-embedding
+    kind: SCHEDULED
+    schedule:
+      cron: '*/15 * * * *'
+      time_zone: America/Argentina/Buenos_Aires
+    dockerfile_path: docker/api.Dockerfile
+    source_dir: /
+    github:
+      repo: santialemarino/coti
+      branch: main
+      deploy_on_push: true
+    instance_size_slug: apps-s-1vcpu-1gb
+    run_command: /api/bin/scheduled-job --job catalog-embedding
+    envs:
+      - key: ENV
+        scope: RUN_TIME
+        value: production
+      - key: DATABASE_ADMIN_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: AUTH_JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_LOCAL_SIGNING_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      # Follows the api's: vectors nothing searches are spend for nothing, and the job does no
+      # work while this is off. Turn both on together.
+      - key: AI_EMBEDDINGS_PROVIDER
+        scope: RUN_TIME
+        value: disabled
+      - key: AI_OPENAI_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+
   # A send remains successful when its post-commit quality evaluation fails. This bounded sweep
   # recovers those missing labels and then hands correction embeddings to their existing retry.
   - name: quote-quality-evaluation

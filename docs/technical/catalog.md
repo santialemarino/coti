@@ -436,7 +436,11 @@ rather than letting the quality drop silently.
 
 ## Embedding the catalog
 
-Vectors are written by a command, never by a request:
+Vectors are written off the request path, never by a request. The `catalog-embedding` scheduled
+job embeds every account's new and edited products every 15 minutes
+([scheduled-jobs.md](scheduled-jobs.md)), so a product matches on its meaning within a quarter of
+an hour of being created or imported; until then it matches on its text alone. The command does the
+same for one account on demand, and is what a change of embedding model runs with `--refresh-all`:
 
 ```bash
 go run ./cmd/catalog-embed --account <uuid> [--refresh-all]   # from apps/api
