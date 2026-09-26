@@ -109,7 +109,7 @@ per connection rather than once at startup: the pool opens them on its own sched
 What is done with the vectors — the catalog backfill, the hybrid search and the index it reads —
 is in `catalog.md`.
 
-## Retries, timeouts and the usage log
+## Retries and timeouts
 
 One policy, shared by every adapter, in `apps/api/internal/ai/retry.go`.
 
@@ -175,8 +175,11 @@ and no port signature carries it. Two consequences to know:
 
 - **One provider call serves one account.** A job that sweeps several accounts calls the provider
   once per account, as `quote-correction-learning` does, or its spend could not be attributed.
-- **`rfq_id` is null** for spend that served no order (a catalog backfill, a manual search) and for
-  a recording transcribed while its upload is read, before the order exists.
+- **`rfq_id` is null** for spend that serves the account rather than one order (a catalog
+  backfill, learning a seller's correction) and for a recording transcribed while its upload is
+  read, before the order exists.
+- **A call that never reached the provider is not spend.** One whose context was already done
+  made no attempt, so it is logged and not recorded.
 
 **Recording never fails the call it describes.** The spend already happened, so each row is
 written in a transaction of its own, detached from the caller's cancellation and bounded by

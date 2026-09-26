@@ -38,7 +38,7 @@ func NewGenerator(cfg config.AnthropicConfig, meter *ai.Meter) *Generator {
 		option.WithoutEnvironmentDefaults(),
 		option.WithAPIKey(cfg.APIKey),
 		// The retry policy is ours, so the configured attempt count is the real one and the
-		// number in the usage log is not a third of the requests actually made.
+		// number the usage meter records is not a third of the requests actually made.
 		option.WithMaxRetries(0),
 	}
 	if cfg.BaseURL != "" {
