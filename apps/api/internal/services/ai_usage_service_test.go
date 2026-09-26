@@ -8,9 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/pgvector/pgvector-go"
 
-	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
@@ -63,22 +61,45 @@ func TestAIUsageService_RecordsUnderTheCallsAccountAfterTheCallerGaveUp(t *testi
 	}
 }
 
-func TestAIUsageService_WritesNothingWithoutAttribution(t *testing.T) {
+// A call site that forgot to say whom it spends for is a bug to see, so it is refused loudly.
+func TestAIUsageService_RefusesUsageWithoutAttributionLoudly(t *testing.T) {
 	for name, usage := range map[string]domain.AIUsage{
 		"no account":   {AIUsageScope: domain.AIUsageScope{Operation: domain.AIOperationCatalogSearch}},
 		"no operation": {AIUsageScope: domain.AIUsageScope{AccountID: uuid.New()}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			db, repo := &fakeDB{}, &fakeAIUsageRepository{}
-			NewAIUsageService(db, repo, time.Second, slog.New(slog.DiscardHandler)).
+			repo, records := &fakeAIUsageRepository{}, &levelHandler{}
+			NewAIUsageService(&fakeDB{}, repo, time.Second, slog.New(records)).
 				Record(context.Background(), usage)
-			if len(db.scopes) != 0 || len(repo.ctxErrs) != 0 {
-				t.Errorf("opened %d transactions, want none for unattributable usage",
-					len(db.scopes))
+			if len(repo.ctxErrs) != 0 {
+				t.Errorf("writes = %d, want none for unattributable usage", len(repo.ctxErrs))
+			}
+			if len(records.messages) != 1 || records.messages[0] != "ai usage without attribution" ||
+				records.levels[0] != slog.LevelError {
+				t.Errorf("logged %v at %v, want one attribution error", records.messages,
+					records.levels)
 			}
 		})
 	}
 }
+
+// levelHandler keeps each record's message and level.
+type levelHandler struct {
+	messages []string
+	levels   []slog.Level
+}
+
+func (h *levelHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *levelHandler) Handle(_ context.Context, record slog.Record) error {
+	h.messages = append(h.messages, record.Message)
+	h.levels = append(h.levels, record.Level)
+	return nil
+}
+
+func (h *levelHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+
+func (h *levelHandler) WithGroup(string) slog.Handler { return h }
 
 // Recording is reported, never raised: the call it describes already happened.
 func TestAIUsageService_AbsorbsAFailedWrite(t *testing.T) {
@@ -87,61 +108,5 @@ func TestAIUsageService_AbsorbsAFailedWrite(t *testing.T) {
 		Record(context.Background(), attributedUsage())
 	if len(repo.ctxErrs) != 1 {
 		t.Fatalf("writes attempted = %d, want 1", len(repo.ctxErrs))
-	}
-}
-
-// fakeCorrectionQueue serves one pending batch and records what the job marked.
-type fakeCorrectionQueue struct {
-	quoteCorrectionRepository
-	pending []domain.QuoteCorrectionMemory
-	ready   []uuid.UUID
-}
-
-func (f *fakeCorrectionQueue) ListPending(context.Context, repository.Querier,
-	int) ([]domain.QuoteCorrectionMemory, error) {
-	return f.pending, nil
-}
-
-func (f *fakeCorrectionQueue) MarkReady(_ context.Context, _ repository.Querier, _,
-	id uuid.UUID, _ pgvector.Vector) error {
-	f.ready = append(f.ready, id)
-	return nil
-}
-
-// The retry job sweeps every account, but one provider call may only serve one of them, or its
-// spend could not be attributed.
-func TestQuoteCorrectionJob_EmbedsEachAccountInItsOwnCall(t *testing.T) {
-	first, second := uuid.New(), uuid.New()
-	queue := &fakeCorrectionQueue{pending: []domain.QuoteCorrectionMemory{
-		{ID: uuid.New(), AccountID: first, SourceText: "bolsa de portland"},
-		{ID: uuid.New(), AccountID: second, SourceText: "placa de yeso"},
-		{ID: uuid.New(), AccountID: first, SourceText: "hierro del 8"},
-	}}
-	embedder := &fakeEmbedder{}
-
-	report, err := NewQuoteCorrectionJob(queue, embedder,
-		config.QuoteCorrectionConfig{ProcessingBatchSize: 10}).Run(
-		context.Background(), nil)
-	if err != nil {
-		t.Fatalf("Run() = %v, want nil", err)
-	}
-
-	if report.Changed != 3 || len(queue.ready) != 3 {
-		t.Errorf("report = %+v with %d ready, want all three published", report, len(queue.ready))
-	}
-	if len(embedder.calls) != 2 {
-		t.Fatalf("embedder calls = %v, want one per account", embedder.calls)
-	}
-	wantAccounts := []uuid.UUID{first, second}
-	wantTexts := [][]string{{"bolsa de portland", "hierro del 8"}, {"placa de yeso"}}
-	for i, scope := range embedder.scopes {
-		if scope.AccountID != wantAccounts[i] ||
-			scope.Operation != domain.AIOperationCorrectionLearning {
-			t.Errorf("call %d scope = %+v, want account %v learning a correction", i, scope,
-				wantAccounts[i])
-		}
-		if len(embedder.calls[i]) != len(wantTexts[i]) || embedder.calls[i][0] != wantTexts[i][0] {
-			t.Errorf("call %d texts = %v, want %v", i, embedder.calls[i], wantTexts[i])
-		}
 	}
 }

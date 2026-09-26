@@ -82,6 +82,46 @@ func TestMeter_RecordsAFailedCallAsSpend(t *testing.T) {
 	}
 }
 
-func TestMeter_WithoutARecorderOnlyLogs(t *testing.T) {
-	NewMeter(slog.New(slog.DiscardHandler), nil).Observe(context.Background(), Call{}, nil)
+// A call whose context was already done made no attempt, so it cost nothing: logged, not recorded.
+func TestMeter_RecordsNothingForACallThatNeverReachedTheProvider(t *testing.T) {
+	ctx := domain.WithAIOperation(domain.WithAIAccount(context.Background(),
+		domain.Tenant{AccountID: uuid.New()}), domain.AIOperationCatalogMatchReview)
+	ledger, records := &usageLedger{}, &countingHandler{}
+
+	NewMeter(slog.New(records), ledger).Observe(ctx, Call{Provider: "anthropic", Attempts: 0},
+		context.Canceled)
+
+	if len(ledger.entries) != 0 {
+		t.Errorf("recorded %+v, want nothing for a call with no attempt", ledger.entries)
+	}
+	if records.count != 1 {
+		t.Errorf("log records = %d, want the call still logged", records.count)
+	}
 }
+
+func TestMeter_WithoutARecorderStillLogs(t *testing.T) {
+	records := &countingHandler{}
+	NewMeter(slog.New(records), nil).Observe(context.Background(), Call{Attempts: 1}, nil)
+	if records.count != 1 {
+		t.Errorf("log records = %d, want 1", records.count)
+	}
+}
+
+// countingHandler counts the records written to it.
+type countingHandler struct {
+	mu    sync.Mutex
+	count int
+}
+
+func (h *countingHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *countingHandler) Handle(context.Context, slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.count++
+	return nil
+}
+
+func (h *countingHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+
+func (h *countingHandler) WithGroup(string) slog.Handler { return h }

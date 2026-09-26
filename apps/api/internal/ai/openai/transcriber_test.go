@@ -185,6 +185,29 @@ func TestTranscriber_MetersTheDurationEveryAttemptWasBilledFor(t *testing.T) {
 	}
 }
 
+// The GPT transcription models bill by tokens instead, in the same field under another shape.
+func TestTranscriber_MetersTheTokensATokenBilledModelReports(t *testing.T) {
+	t.Parallel()
+
+	srv, _ := serve(t, reply{http.StatusOK, `{"text":"necesito 300 bolsas","usage":{` +
+		`"type":"tokens","input_tokens":140,"output_tokens":12,"total_tokens":152}}`})
+	ledger := &usageLedger{}
+	transcriber := NewTranscriber(config.TranscriptionConfig{
+		APIKey: "test-key", BaseURL: srv.URL, Model: "gpt-4o-transcribe", Timeout: 5 * time.Second,
+		Retry: policy(3),
+	}, ai.NewMeter(slog.New(slog.DiscardHandler), ledger))
+
+	ctx := domain.WithAIOperation(context.Background(), domain.AIOperationAudioTranscription)
+	if _, err := transcriber.Transcribe(ctx, voiceNote()); err != nil {
+		t.Fatalf("Transcribe() = %v, want nil", err)
+	}
+
+	usage := ledger.only(t)
+	if usage.InputTokens != 140 || usage.OutputTokens != 12 || usage.AudioSeconds != 0 {
+		t.Errorf("usage = %+v, want the reported tokens and no duration", usage)
+	}
+}
+
 func TestTranscriber_DoesNotRepeatARejectedRequest(t *testing.T) {
 	t.Parallel()
 

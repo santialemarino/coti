@@ -97,6 +97,18 @@ func TestCatalogMatchReviewer_ForcesAClosedSchema(t *testing.T) {
 	}
 }
 
+func TestCatalogMatchReviewer_AttributesItsCallsToTheReview(t *testing.T) {
+	generator := &fakeGenerator{answer: `{"lines":[]}`}
+	ctx := domain.WithAIOperation(context.Background(), domain.AIOperationCatalogSearch)
+
+	if _, err := NewCatalogMatchReviewer(generator).Review(ctx, reviewLines(1)); err != nil {
+		t.Fatalf("Review() = %v", err)
+	}
+	if generator.operation != domain.AIOperationCatalogMatchReview {
+		t.Errorf("operation = %q, want CATALOG_MATCH_REVIEW", generator.operation)
+	}
+}
+
 // A line the answer skips, repeats or numbers out of range keeps the matcher's own decision.
 func TestCatalogMatchReviewer_LeavesALineTheAnswerDidNotSettleEmpty(t *testing.T) {
 	generator := &fakeGenerator{answer: `{"lines":[
