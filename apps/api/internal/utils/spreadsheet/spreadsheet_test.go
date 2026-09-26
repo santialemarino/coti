@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/xml"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -26,17 +27,16 @@ func TestRead_ReturnsTheSameMappedRowsForCSVAndXLSX(t *testing.T) {
 		t.Fatal(err)
 	}
 	cases := []struct {
-		name     string
-		filename string
-		content  []byte
+		name    string
+		content []byte
 	}{
-		{name: "csv", filename: "stock.csv", content: []byte("código;cantidad\n\n\nARE-001;25\n")},
-		{name: "xlsx", filename: "stock.xlsx", content: xlsx},
+		{name: "csv", content: []byte("código;cantidad\n\n\nARE-001;25\n")},
+		{name: "xlsx", content: xlsx},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			rows, readErr := Read(test.filename, bytes.NewReader(test.content), schema)
+			rows, readErr := Read(bytes.NewReader(test.content), schema)
 			if readErr != nil {
 				t.Fatalf("Read() = %v, want no error", readErr)
 			}
@@ -114,8 +114,38 @@ func TestWrite_RendersDeclarativeSheetsAndValidation(t *testing.T) {
 func TestRead_RejectsMissingRequiredCallerColumn(t *testing.T) {
 	t.Parallel()
 	schema := Schema{Columns: []Column{{Key: "code", Headers: []string{"codigo"}, Required: true}}}
-	_, err := Read("third-import.csv", strings.NewReader("nombre\nArena"), schema)
+	_, err := Read(strings.NewReader("nombre\nArena"), schema)
 	if err == nil || !strings.Contains(err.Error(), "codigo") {
 		t.Fatalf("Read() = %v, want a missing-column error", err)
+	}
+}
+
+// The bytes decide the parser. A legacy workbook is refused by name, so a caller can ask for it
+// as .xlsx instead of reading it as a CSV of binary noise.
+func TestReadRaw_RefusesALegacyWorkbookByItsBytes(t *testing.T) {
+	t.Parallel()
+	legacy := append([]byte{0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1}, "cantidad,producto"...)
+
+	if _, err := ReadRaw(bytes.NewReader(legacy)); !errors.Is(err, ErrLegacyExcel) {
+		t.Fatalf("ReadRaw(legacy) = %v, want ErrLegacyExcel", err)
+	}
+}
+
+func TestIsLegacyExcel_ReadsOnlyTheSignature(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		content []byte
+		want    bool
+	}{
+		{"ole2 signature", []byte{0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0x00}, true},
+		{"xlsx", []byte("PK\x03\x04rest"), false},
+		{"csv", []byte("cantidad;producto\n10;cemento"), false},
+		{"a truncated signature", []byte{0xD0, 0xCF, 0x11}, false},
+	}
+	for _, tc := range cases {
+		if got := IsLegacyExcel(tc.content); got != tc.want {
+			t.Errorf("%s: IsLegacyExcel = %v, want %v", tc.name, got, tc.want)
+		}
 	}
 }

@@ -1,7 +1,9 @@
 package services
 
 import (
+	"context"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -28,6 +30,8 @@ func TestRFQAttachmentService_AcceptedFormat_MapsEachAcceptedTypeToItsStoredKind
 		{"image/jpeg", domain.AttachmentTypeImage, "jpg"},
 		{"image/png", domain.AttachmentTypeImage, "png"},
 		{"text/csv", domain.AttachmentTypeSpreadsheet, "csv"},
+		// Windows labels a .csv this way, and a real .xls is refused by its bytes on upload.
+		{"application/vnd.ms-excel", domain.AttachmentTypeSpreadsheet, "csv"},
 		{"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 			domain.AttachmentTypeSpreadsheet, "xlsx"},
 		{"audio/mpeg", domain.AttachmentTypeAudio, "mp3"},
@@ -158,5 +162,37 @@ func TestNormalizeContentType_DropsTheParametersABrowserAppends(t *testing.T) {
 		if got := normalizeContentType(raw); got != want {
 			t.Errorf("normalizeContentType(%q) = %q, want %q", raw, got, want)
 		}
+	}
+}
+
+// uploadRecorder counts what reached object storage, which is how a refusal proves it stored
+// nothing. It then fails the write, so a file that got past the refusal stops there.
+type uploadRecorder struct {
+	fakeObjectStorage
+	uploads []string
+}
+
+func (u *uploadRecorder) Upload(_ context.Context, key, _ string, _ io.Reader) error {
+	u.uploads = append(u.uploads, key)
+	return errors.New("storage reached")
+}
+
+func TestRFQAttachmentService_Upload_RefusesALegacyWorkbookBeforeStoringIt(t *testing.T) {
+	t.Parallel()
+	storage := &uploadRecorder{}
+	service := &RFQAttachmentService{storage: storage,
+		cfg: config.StorageConfig{MaxFileSize: 1024}}
+	legacy := string([]byte{0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1}) + "workbook"
+	tenant := domain.Tenant{AccountID: uuid.New(), BranchID: uuid.New()}
+
+	_, err := service.Upload(context.Background(), tenant, uuid.New(), domain.AttachmentUpload{
+		ContentType: "application/vnd.ms-excel", Size: int64(len(legacy)),
+		Content: strings.NewReader(legacy),
+	})
+	if domain.CodeOf(err) != domain.CodeLegacyExcelFile {
+		t.Fatalf("code = %q (err %v), want LEGACY_EXCEL_FILE", domain.CodeOf(err), err)
+	}
+	if len(storage.uploads) != 0 {
+		t.Errorf("stored %v, want nothing for a refused workbook", storage.uploads)
 	}
 }

@@ -64,12 +64,12 @@ func (s *ProductPriceImportService) Export(
 
 // Preview parses and validates a spreadsheet without changing prices.
 func (s *ProductPriceImportService) Preview(
-	ctx context.Context, tenant domain.Tenant, filename string, src io.Reader,
+	ctx context.Context, tenant domain.Tenant, src io.Reader,
 ) (*domain.ProductPriceImportPreview, error) {
 	if !tenant.HasBranch() {
 		return nil, fmt.Errorf("%w: select a branch", domain.ErrInvalidInput)
 	}
-	rawRows, err := parsePriceImport(filename, src)
+	rawRows, err := parsePriceImport(src)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", domain.ErrInvalidInput, err)
 	}

@@ -35,7 +35,7 @@ func (s *RFQService) readFileContent(
 		return []domain.Content{domain.TextContent(text)}, text, nil
 
 	case domain.AttachmentTypeSpreadsheet:
-		text, sheetErr := s.readSpreadsheet(in.Filename, data)
+		text, sheetErr := s.readSpreadsheet(data)
 		if sheetErr != nil {
 			return nil, "", sheetErr
 		}
@@ -54,8 +54,8 @@ func (s *RFQService) readFileContent(
 	}
 }
 
-func (s *RFQService) readSpreadsheet(filename string, data []byte) (string, error) {
-	text, err := spreadsheetOrderText(filename, data, s.cfg.MaxSpreadsheetRows)
+func (s *RFQService) readSpreadsheet(data []byte) (string, error) {
+	text, err := spreadsheetOrderText(data, s.cfg.MaxSpreadsheetRows)
 	if err != nil {
 		return "", err
 	}

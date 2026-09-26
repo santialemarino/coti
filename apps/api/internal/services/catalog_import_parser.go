@@ -43,8 +43,8 @@ type catalogImportRawRow struct {
 	active      string
 }
 
-func parseCatalogImport(filename string, src io.Reader) ([]catalogImportRawRow, error) {
-	rows, err := spreadsheet.Read(filename, src, catalogImportSchema)
+func parseCatalogImport(src io.Reader) ([]catalogImportRawRow, error) {
+	rows, err := spreadsheet.Read(src, catalogImportSchema)
 	if err != nil {
 		return nil, err
 	}

@@ -47,7 +47,7 @@ What the format decides is only **how the order reaches the model**:
 | ------------------------------------------ | --------------------------------------------- |
 | Image (`jpeg`, `png`, `webp`, `heic`)      | Straight to the model as an image block       |
 | PDF                                        | Straight to the model as a document block     |
-| Spreadsheet (`xlsx`, `xls`, `csv`)         | Flattened to tab-separated rows, then as text |
+| Spreadsheet (`xlsx`, `csv`)                | Flattened to tab-separated rows, then as text |
 | Audio (`mp3`, `m4a`, `ogg`, `wav`, `webm`) | Transcribed, then as text                     |
 | Plain text                                 | As text                                       |
 
@@ -56,6 +56,13 @@ flattening it first throws away the columns the model reads it by. A recording a
 have no layout a model can use, so they become text first — the transcriber and the spreadsheet
 reader respectively. The accepted set is `domain.AttachmentFormatFor`, the same one the attachment
 upload enforces, so a file the pipeline would refuse cannot be stored either.
+
+A spreadsheet's parser is chosen by its **bytes**, never its name or type: a ZIP signature is read
+as `.xlsx`, anything else as CSV. That matters because Windows labels a `.csv` with the legacy
+Excel type `application/vnd.ms-excel`, which is accepted and stored as `.csv`. A real legacy `.xls`
+workbook (the OLE2 signature) is refused on upload with `LEGACY_EXCEL_FILE`, so the seller is asked
+to save it as `.xlsx`; the Go readers evaluated for it failed on real Excel files and grew without
+bound on malformed ones.
 
 The order is kept before it is read, and the file before the model runs: a provider outage then
 leaves the seller the order the client actually sent, on an RFQ they can work by hand. The
