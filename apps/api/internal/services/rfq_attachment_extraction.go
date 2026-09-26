@@ -33,6 +33,7 @@ func (s *RFQService) FoldAttachmentsIntoQuote(
 	if !ok {
 		return "", domain.ErrNotConfigured
 	}
+	ctx = domain.WithAIRFQ(domain.WithAIAccount(ctx, tenant), rfqID)
 	rfq, quote, err := s.rfqWithQuote(ctx, tenant, rfqID)
 	if err != nil {
 		return "", err

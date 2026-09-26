@@ -18,11 +18,13 @@ type fakeTranscriber struct {
 	err   error
 	calls int
 	audio domain.Audio
+	scope domain.AIUsageScope
 }
 
-func (f *fakeTranscriber) Transcribe(_ context.Context, audio domain.Audio) (string, error) {
+func (f *fakeTranscriber) Transcribe(ctx context.Context, audio domain.Audio) (string, error) {
 	f.calls++
 	f.audio = audio
+	f.scope = domain.AIUsageScopeFrom(ctx)
 	return f.text, f.err
 }
 
@@ -322,6 +324,35 @@ func TestRFQService_CreateFileDraft_KeepsTheFileWhenTheModelReadsNothing(t *test
 	}
 	if draft.Quote != nil || len(draft.Items) != 0 {
 		t.Errorf("draft = %+v, want the RFQ alone when no material was read", draft)
+	}
+}
+
+// A recording is transcribed before its order exists and extracted after, so only the extraction
+// can name the order; both are the uploading branch's spend.
+func TestRFQService_CreateFileDraft_AttributesTheRecordingAndItsExtraction(t *testing.T) {
+	t.Parallel()
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("bolsas de cemento", "30", "bolsa", "pidió 30")})
+	transcriber := &fakeTranscriber{text: "necesito 30 bolsas de cemento"}
+	h.service.WithFileIntake(&fakeAttachmentStore{}, transcriber, 10<<20)
+
+	if _, err := h.service.CreateFileDraft(context.Background(), rfqTenant(),
+		domain.FileRFQDraftInput{
+			ChannelID: testChannelID, Filename: "nota.m4a",
+			File: domain.AttachmentUpload{ContentType: "audio/mp4", Size: 16,
+				Content: strings.NewReader("fake-audio-bytes")},
+		}); err != nil {
+		t.Fatalf("CreateFileDraft returned %v", err)
+	}
+
+	heard := transcriber.scope
+	if heard.AccountID != testAccountID || heard.BranchID == nil || *heard.BranchID != testBranchID ||
+		heard.Operation != domain.AIOperationAudioTranscription || heard.RFQID != nil {
+		t.Errorf("transcription scope = %+v, want the branch's transcription with no order yet", heard)
+	}
+	read := h.extractor.scope
+	if read.AccountID != testAccountID || read.RFQID == nil || *read.RFQID != testRFQID {
+		t.Errorf("extraction scope = %+v, want it under the order it read", read)
 	}
 }
 

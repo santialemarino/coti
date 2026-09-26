@@ -549,12 +549,14 @@ type fakeReviewer struct {
 	decide reviewAnswer
 	err    error
 	asked  [][]domain.MatchReviewLine
+	scopes []domain.AIUsageScope
 }
 
 func (f *fakeReviewer) Review(
-	_ context.Context, lines []domain.MatchReviewLine,
+	ctx context.Context, lines []domain.MatchReviewLine,
 ) ([]domain.MatchReviewDecision, error) {
 	f.asked = append(f.asked, lines)
+	f.scopes = append(f.scopes, domain.AIUsageScopeFrom(ctx))
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -651,6 +653,10 @@ func TestCatalogMatchService_ReviewsOnlyTheLinesTheTextCouldNotSettle(t *testing
 
 	if len(reviewer.asked) != 1 {
 		t.Fatalf("review calls = %d, want one for the order", len(reviewer.asked))
+	}
+	// Match is the account boundary: a caller that named none still spends for the tenant.
+	if reviewer.scopes[0].AccountID != testAccountID {
+		t.Errorf("review scope = %+v, want the tenant's account", reviewer.scopes[0])
 	}
 	shown := reviewer.asked[0]
 	if len(shown) != 2 || shown[0].Description != "placas de yeso" ||

@@ -87,6 +87,18 @@ CREATE TYPE auth_token_type AS ENUM ('PASSWORD_RESET', 'EMAIL_VERIFICATION');
 CREATE TYPE message_author_type AS ENUM ('CLIENT', 'SELLER', 'SYSTEM');
 CREATE TYPE message_batch_status AS ENUM ('OPEN', 'CLOSED', 'PROCESSING', 'PROCESSED', 'FAILED');
 
+-- What an AI provider call was paid for. One value per call site that spends, so a cost report
+-- groups by the work, not by the provider method.
+CREATE TYPE ai_operation AS ENUM (
+  'RFQ_EXTRACTION',
+  'AUDIO_TRANSCRIPTION',
+  'INTERPRETATION_LOOKUP',
+  'CATALOG_SEARCH',
+  'CATALOG_MATCH_REVIEW',
+  'CATALOG_EMBEDDING',
+  'CORRECTION_LEARNING'
+);
+
 -- =============================================================================
 -- FUNCTIONS
 -- =============================================================================
@@ -930,6 +942,32 @@ CREATE TABLE job_run (
 );
 
 -- =============================================================================
+-- AI USAGE
+-- =============================================================================
+
+-- One row per provider call, failed ones included: every attempt was charged. The counts are
+-- summed over the call's attempts, and the two cache figures are not part of input_tokens.
+-- rfq_id is null for spend that served no order, or ran before the order existed.
+CREATE TABLE ai_usage (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id         UUID NOT NULL,
+  branch_id          UUID,
+  rfq_id             UUID,
+  operation          ai_operation NOT NULL,
+  provider           VARCHAR(64) NOT NULL,
+  model              VARCHAR(255) NOT NULL,
+  succeeded          BOOLEAN NOT NULL,
+  attempts           SMALLINT NOT NULL CHECK (attempts >= 0),
+  elapsed_ms         INTEGER NOT NULL CHECK (elapsed_ms >= 0),
+  input_tokens       INTEGER NOT NULL CHECK (input_tokens >= 0),
+  output_tokens      INTEGER NOT NULL CHECK (output_tokens >= 0),
+  cache_read_tokens  INTEGER NOT NULL CHECK (cache_read_tokens >= 0),
+  cache_write_tokens INTEGER NOT NULL CHECK (cache_write_tokens >= 0),
+  audio_seconds      NUMERIC(10,2) NOT NULL CHECK (audio_seconds >= 0),
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- =============================================================================
 -- FOREIGN KEYS
 -- (at the end, to resolve the circular quote <-> quote_version dependency)
 -- =============================================================================
@@ -1076,6 +1114,11 @@ ALTER TABLE notification ADD CONSTRAINT fk_notification_user FOREIGN KEY (user_i
 ALTER TABLE notification ADD CONSTRAINT fk_notification_client FOREIGN KEY (account_id, client_id) REFERENCES client(account_id, id);
 ALTER TABLE notification ADD CONSTRAINT fk_notification_quote FOREIGN KEY (quote_id) REFERENCES quote(id);
 
+ALTER TABLE ai_usage ADD CONSTRAINT fk_ai_usage_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE ai_usage ADD CONSTRAINT fk_ai_usage_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
+-- The spend happened whatever becomes of the order it served.
+ALTER TABLE ai_usage ADD CONSTRAINT fk_ai_usage_rfq FOREIGN KEY (rfq_id) REFERENCES rfq(id) ON DELETE SET NULL;
+
 -- =============================================================================
 -- INDEXES
 -- =============================================================================
@@ -1164,6 +1207,10 @@ CREATE UNIQUE INDEX uq_message_batch_processing ON message_batch(quote_id) WHERE
 -- window, so the history is read newest-first per job.
 CREATE INDEX idx_job_run_name_started ON job_run(job_name, started_at DESC);
 
+-- Spend is read per account over a period, and per order.
+CREATE INDEX idx_ai_usage_account_created ON ai_usage(account_id, created_at);
+CREATE INDEX idx_ai_usage_account_rfq ON ai_usage(account_id, rfq_id) WHERE rfq_id IS NOT NULL;
+
 -- =============================================================================
 -- updated_at TRIGGERS (only tables that mutate in place)
 -- =============================================================================
@@ -1235,6 +1282,9 @@ REVOKE UPDATE, DELETE ON quote_representation FROM coti_app;
 REVOKE UPDATE, DELETE ON quote_ai_generation, quote_ai_generation_item,
   quote_quality_evaluation, quote_quality_difference FROM coti_app;
 
+-- A ledger of what was spent is only a ledger if no request can rewrite it.
+REVOKE UPDATE, DELETE ON ai_usage FROM coti_app;
+
 -- The grant above reaches every table, and job_run is an audit trail no request has any reason to
 -- read, let alone rewrite. Only the owner the scheduled jobs run as touches it.
 REVOKE ALL ON job_run FROM coti_app;
@@ -1264,7 +1314,7 @@ BEGIN
     'message_batch', 'quote_message',
     'promotion', 'promotion_condition_item', 'promotion_tier',
     'quote_discount', 'quote_discount_item',
-    'handler_decision', 'notification'
+    'handler_decision', 'notification', 'ai_usage'
   ] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format(

@@ -35,6 +35,7 @@ func NewCatalogMatchReviewer(generator domain.StructuredGenerator) *CatalogMatch
 func (r *CatalogMatchReviewer) Review(
 	ctx context.Context, lines []domain.MatchReviewLine,
 ) ([]domain.MatchReviewDecision, error) {
+	ctx = domain.WithAIOperation(ctx, domain.AIOperationCatalogMatchReview)
 	decisions := make([]domain.MatchReviewDecision, len(lines))
 	chunks := (len(lines) + reviewChunk - 1) / reviewChunk
 	errs := make([]error, chunks)

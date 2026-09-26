@@ -86,7 +86,7 @@ func RetryAfter(header http.Header) time.Duration {
 // Retry runs call until it succeeds, its error turns out not to be worth retrying, the attempts run
 // out, or ctx ends. The wait doubles from policy.Backoff up to policy.MaxBackoff, and a provider
 // that named its own window in a Retry-After header gets that instead. It returns how many attempts
-// were made, which the usage log records.
+// were made, which the usage meter records.
 func Retry(ctx context.Context, policy config.AIRetryPolicy, call func(context.Context) error) (int, error) {
 	// Retry is exported and config only guards the configured policy, so a zero one still makes
 	// one honest attempt rather than returning an error that wraps nothing.

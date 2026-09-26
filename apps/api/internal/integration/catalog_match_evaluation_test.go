@@ -97,7 +97,7 @@ func TestCatalogMatchEvaluation(t *testing.T) {
 			"embedding model")
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	providers, err := provider.Bind(cfg.AI, log)
+	providers, err := provider.Bind(cfg.AI, log, nil)
 	if err != nil {
 		t.Fatalf("bind providers: %v", err)
 	}

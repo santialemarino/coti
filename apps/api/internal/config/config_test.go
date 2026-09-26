@@ -37,7 +37,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"AI_EMBEDDINGS_PROVIDER", "AI_EMBEDDINGS_MODEL", "AI_EMBEDDINGS_TIMEOUT_SECONDS",
 		"AI_TRANSCRIPTION_PROVIDER", "AI_TRANSCRIPTION_MODEL", "AI_TRANSCRIPTION_TIMEOUT_SECONDS",
 		"AI_MAX_ATTEMPTS", "AI_RETRY_BACKOFF_SECONDS", "AI_MAX_BACKOFF_SECONDS",
-		"AI_EMBEDDINGS_BATCH_SIZE",
+		"AI_EMBEDDINGS_BATCH_SIZE", "AI_USAGE_WRITE_TIMEOUT_SECONDS",
 		"WEB_BACKOFFICE_URL",
 		"CATALOG_DEFAULT_PAGE_SIZE", "CATALOG_MAX_PAGE_SIZE",
 		"CATALOG_SEARCH_TOP_K", "CATALOG_SEARCH_OVER_FETCH_FACTOR",
@@ -874,6 +874,9 @@ func TestLoad_AIProvidersArriveDisabled(t *testing.T) {
 	if cfg.AI.EmbeddingsBatchSize != 100 {
 		t.Errorf("AI.EmbeddingsBatchSize = %d, want 100", cfg.AI.EmbeddingsBatchSize)
 	}
+	if cfg.AI.UsageWriteTimeout != 5*time.Second {
+		t.Errorf("AI.UsageWriteTimeout = %v, want 5s", cfg.AI.UsageWriteTimeout)
+	}
 }
 
 // A capability left disabled must not demand the credentials it would never use.
@@ -1010,6 +1013,11 @@ func TestLoad_AIRejectsUnusableSettings(t *testing.T) {
 				"AI_MAX_BACKOFF_SECONDS":   "5",
 			},
 			want: "AI_MAX_BACKOFF_SECONDS (5s) is below AI_RETRY_BACKOFF_SECONDS (10s)",
+		},
+		{
+			name: "no bound on recording usage",
+			env:  map[string]string{"AI_USAGE_WRITE_TIMEOUT_SECONDS": "0"},
+			want: "AI_USAGE_WRITE_TIMEOUT_SECONDS must be greater than zero",
 		},
 		{
 			name: "no batch size",

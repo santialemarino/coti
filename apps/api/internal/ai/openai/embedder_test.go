@@ -13,6 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/santialemarino/coti/apps/api/internal/ai"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
@@ -89,7 +92,7 @@ func newEmbedderWithBatch(srv *httptest.Server, attempts, batch int) *Embedder {
 		BatchSize: batch,
 		Timeout:   5 * time.Second,
 		Retry:     policy(attempts),
-	}, slog.New(slog.DiscardHandler))
+	}, ai.NewMeter(slog.New(slog.DiscardHandler), nil))
 }
 
 // vector renders one embedding of the given width, filled so the values are distinguishable.
@@ -358,8 +361,8 @@ func TestEmbedder_AFailedBatchFailsTheWholeCall(t *testing.T) {
 }
 
 // Tokens are charged per request, so the figure the pilot measures cost with has to sum every
-// batch. Nothing on the port returns usage, so the log is where it lands.
-func TestEmbedder_UsageLogSumsEveryBatch(t *testing.T) {
+// batch. Nothing on the port returns usage, so the meter is where it lands: the log and the ledger.
+func TestEmbedder_MetersTheSumOfEveryBatch(t *testing.T) {
 	t.Parallel()
 
 	srv, _ := serve(t,
@@ -368,6 +371,7 @@ func TestEmbedder_UsageLogSumsEveryBatch(t *testing.T) {
 	)
 
 	records := &capturingHandler{}
+	ledger := &usageLedger{}
 	embedder := NewEmbedder(config.EmbeddingsConfig{
 		APIKey:    "test-key",
 		BaseURL:   srv.URL,
@@ -375,10 +379,12 @@ func TestEmbedder_UsageLogSumsEveryBatch(t *testing.T) {
 		BatchSize: 2,
 		Timeout:   5 * time.Second,
 		Retry:     policy(3),
-	}, slog.New(records))
+	}, ai.NewMeter(slog.New(records), ledger))
 
+	ctx := domain.WithAIOperation(domain.WithAIAccount(context.Background(),
+		domain.Tenant{AccountID: uuid.New()}), domain.AIOperationCatalogEmbedding)
 	texts := []string{"cemento", "hierro", "arena", "cal"}
-	if _, err := embedder.Embed(context.Background(), texts); err != nil {
+	if _, err := embedder.Embed(ctx, texts); err != nil {
 		t.Fatalf("Embed() = %v, want nil", err)
 	}
 
@@ -390,9 +396,39 @@ func TestEmbedder_UsageLogSumsEveryBatch(t *testing.T) {
 	if got := logged["attempts"]; got != int64(2) {
 		t.Fatalf("attempts = %v, want 2 — one per batch", got)
 	}
-	if got := logged["operation"]; got != "embed" {
-		t.Fatalf("operation = %v, want embed", got)
+	if got := logged["method"]; got != "embed" {
+		t.Fatalf("method = %v, want embed", got)
 	}
+	if got := logged["operation"]; got != string(domain.AIOperationCatalogEmbedding) {
+		t.Fatalf("operation = %v, want the one the context names", got)
+	}
+	recorded := ledger.only(t)
+	if recorded.InputTokens != 24 || recorded.Attempts != 2 || !recorded.Succeeded ||
+		recorded.Operation != domain.AIOperationCatalogEmbedding {
+		t.Fatalf("recorded = %+v, want the same 24 tokens over 2 attempts", recorded)
+	}
+}
+
+// usageLedger keeps what an adapter's meter recorded.
+type usageLedger struct {
+	mu      sync.Mutex
+	entries []domain.AIUsage
+}
+
+func (l *usageLedger) Record(_ context.Context, usage domain.AIUsage) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.entries = append(l.entries, usage)
+}
+
+func (l *usageLedger) only(t *testing.T) domain.AIUsage {
+	t.Helper()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.entries) != 1 {
+		t.Fatalf("recorded %d calls, want exactly 1", len(l.entries))
+	}
+	return l.entries[0]
 }
 
 // capturingHandler keeps the records written to it, so a test can read the usage log the way an

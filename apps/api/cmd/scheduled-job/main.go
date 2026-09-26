@@ -68,7 +68,9 @@ func run() error {
 		return err
 	}
 	defer db.Close()
-	providers, err := aiprovider.Bind(cfg.AI, log)
+	usage := services.NewAIUsageService(db, repository.NewAIUsageRepository(),
+		cfg.AI.UsageWriteTimeout, log)
+	providers, err := aiprovider.Bind(cfg.AI, log, usage)
 	if err != nil {
 		return err
 	}
