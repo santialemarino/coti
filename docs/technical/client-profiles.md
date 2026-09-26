@@ -28,7 +28,7 @@ the seller-confirmed tag set; delivery destinations remain in `quote_send`.
 ## Tags
 
 Tags belong to the account and profiles use the existing `client_tag` many-to-many table. Migration
-`00026_default_client_tags.sql` adds `Recurrente` and `Obra grande` to existing accounts; account
+`00027_default_client_tags.sql` adds `Recurrente` and `Obra grande` to existing accounts; account
 registration seeds the same defaults in its creation transaction.
 
 Sellers can create reusable tags inline. The service trims the name, collapses repeated whitespace,
