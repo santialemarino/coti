@@ -19,6 +19,7 @@ import { useFormatters } from '@/lib/i18n/formatters';
 
 interface RfqChangeDiffProps {
   diff: ChangeRequestDiff;
+  variant: 'customer-request' | 'seller-revision';
 }
 
 interface AlignedRow {
@@ -240,7 +241,7 @@ function DiffPanel({
   );
 }
 
-export function RfqChangeDiff({ diff }: RfqChangeDiffProps) {
+export function RfqChangeDiff({ diff, variant }: RfqChangeDiffProps) {
   const t = useTranslations('rfqs');
   const fmt = useFormatters();
 
@@ -249,7 +250,11 @@ export function RfqChangeDiff({ diff }: RfqChangeDiffProps) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
       <DiffPanel
-        title={t('detail.diff.originalTitle')}
+        title={t(
+          variant === 'customer-request'
+            ? 'detail.diff.originalTitle'
+            : 'detail.diff.previousTitle',
+        )}
         side="original"
         alignedRows={alignedRows}
         discounts={diff.original.discounts}
@@ -257,7 +262,11 @@ export function RfqChangeDiff({ diff }: RfqChangeDiffProps) {
         fmt={fmt}
       />
       <DiffPanel
-        title={t('detail.diff.requestedTitle')}
+        title={t(
+          variant === 'customer-request'
+            ? 'detail.diff.requestedTitle'
+            : 'detail.diff.revisionTitle',
+        )}
         side="requested"
         alignedRows={alignedRows}
         discounts={diff.requested.discounts}

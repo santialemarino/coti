@@ -24,10 +24,12 @@ files an order arrives with are stored beside it and are not read here — see
 | `GET`  | `/v1/channels`                     | The active intake channels of the selected branch                      |
 | `POST` | `/v1/dev/whatsapp/messages`        | Simulates one inbound WhatsApp message. Not registered in production   |
 | `POST` | `/v1/quotes/{id}/accept-materials` | Prices the draft's lines and moves the quote to `QUOTED`               |
+| `POST` | `/v1/quotes/{id}/transition`       | Records an offline acceptance or rejection reported by the seller      |
+| `POST` | `/v1/quotes/{id}/reactivate`       | Reopens an accepted or rejected quote for resend or editing            |
 
 The three that reach a model share **their own rate-limit allowance**, `RATE_LIMIT_AI_MAX` — the global one would let a single seller spend 300 generations a minute, and this is the first surface in the product billed per call. Valorization reaches no provider and spends nothing, so it stays on the global allowance.
 
-All six are branch-scoped and read the branch from `X-Branch-Id`. `channel_id` is required on a
+The authenticated endpoints are branch-scoped and read the branch from `X-Branch-Id`. `channel_id` is required on a
 draft, which is why the channel listing exists: `rfq.channel_id` is `NOT NULL`, and a caller
 has to name the route the order arrived through rather than have one guessed for it. How a channel
 is configured, and where its provider credentials live, is in
@@ -468,6 +470,30 @@ the draft total; accepting materials recalculates current prices and moves to `Q
 sending moves to `SENT`. The second send has its own token. No conversational window or
 AI interpretation is involved in this manual path; those remain future work. Public links resolve
 through `quote_send.public_token`, scoped to the delivery and channel.
+
+### Closing and reactivating a quote
+
+An active public link records `ACCEPT`, `REJECT`, or `REQUEST_CHANGE` as a `client_action`. The
+first two move `SENT` to `ACCEPTED` or `REJECTED`; the seller can record the same closing states
+through `POST /v1/quotes/{quoteId}/transition` when the answer arrived outside Coti. Customer
+actions carry no internal user id, while seller actions credit the authenticated user in
+`quote_status_change`.
+
+`POST /v1/quotes/{quoteId}/reactivate` is the only way out of either terminal state and always
+operates on the same quote:
+
+- `RESEND` moves the quote back to `QUOTED` and retains the current frozen version unchanged.
+- `EDIT` copies the frozen version into the next mutable version, resets alternative approvals,
+  values products and alternatives at the branch's current prices, records the seller as author,
+  and moves the quote to `CHANGE_REQUESTED`. The seller then reviews the draft and accepts its
+  materials before sending it.
+
+The quote row is locked and the version copy, current-version pointer, status update, and
+`quote_status_change` append share one tenant transaction. A quote lifecycle event is written only
+to `quote_status_change`; `rfq_status_change` remains the RFQ ingestion ledger. The backoffice
+tracking view combines both histories chronologically without duplicating one event across tables.
+Archiving remains an orthogonal flag: it can hide a quote in any lifecycle state, including
+`ACCEPTED` and `REJECTED`, and restoring it preserves that status.
 
 ## Where the code lives
 

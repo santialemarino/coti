@@ -44,6 +44,12 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
   // A requested revision remains a mutable draft until the seller accepts its materials.
   const rfqStatus = normalizeRfqStatus(detail.rfq.status);
   const isDraft = quoteStatus === 'DRAFT' || quoteStatus === 'CHANGE_REQUESTED';
+  const latestClientAction = detail.client_actions?.at(-1);
+  const isCustomerChangeRequest =
+    quoteStatus === 'CHANGE_REQUESTED' &&
+    detail.version !== null &&
+    latestClientAction?.type === 'REQUEST_CHANGE' &&
+    latestClientAction.version_number === detail.version.version_number - 1;
 
   /*
    * Reconcile the screen against the backend after a mutation. The discount endpoints
@@ -119,10 +125,19 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
       )}
 
       {rfqStatus === 'CHANGE_REQUESTED' && (
-        <Callout tone="warning" title={t('detail.callouts.changeRequested.title')}>
-          {detail.version?.comment
-            ? t('detail.callouts.changeRequested.withReason', { reason: detail.version.comment })
-            : t('detail.callouts.changeRequested.description')}
+        <Callout
+          tone="warning"
+          title={t(
+            isCustomerChangeRequest
+              ? 'detail.callouts.changeRequested.title'
+              : 'detail.callouts.sellerRevision.title',
+          )}
+        >
+          {isCustomerChangeRequest
+            ? detail.version?.comment
+              ? t('detail.callouts.changeRequested.withReason', { reason: detail.version.comment })
+              : t('detail.callouts.changeRequested.description')
+            : t('detail.callouts.sellerRevision.description')}
         </Callout>
       )}
 
@@ -136,7 +151,10 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
 
       {rfqStatus === 'CHANGE_REQUESTED' && detail.changes_requested ? (
         <>
-          <RfqChangeDiff diff={detail.changes_requested} />
+          <RfqChangeDiff
+            diff={detail.changes_requested}
+            variant={isCustomerChangeRequest ? 'customer-request' : 'seller-revision'}
+          />
           <RfqItemsTable
             quoteId={quoteId}
             quoteStatus={quoteStatus}

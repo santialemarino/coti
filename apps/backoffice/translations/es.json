@@ -110,6 +110,7 @@
     "INVALID_LINK": "El enlace no es válido, ya se usó o venció.",
     "QUOTE_ARCHIVED": "La cotización está archivada y no se puede modificar.",
     "QUOTE_NOT_DRAFT": "La cotización ya no está en un estado que permita esa acción.",
+    "QUOTE_NOT_REACTIVATABLE": "La cotización ya no está cerrada o su versión cambió. Actualizá la pantalla.",
     "QUOTE_NOT_SENDABLE": "La cotización cambió y esta versión ya no es la aprobada.",
     "DELIVERY_CHANNEL": "Esta sucursal no tiene los canales de envío necesarios configurados.",
     "DELIVERY_UNAVAILABLE": "No se pudo entregar por ningún canal. Revisá la configuración de envío o intentá más tarde.",
@@ -662,17 +663,21 @@
       "callouts": {
         "accepted": {
           "title": "Cotización aceptada",
-          "description": "El cliente aprobó esta cotización. El pedido está listo para procesar."
+          "description": "La cotización quedó aceptada. El pedido está listo para procesar."
         },
         "rejected": {
           "title": "Cotización rechazada",
-          "description": "El cliente rechazó esta cotización.",
-          "withReason": "El cliente rechazó esta cotización: {reason}"
+          "description": "La cotización quedó rechazada.",
+          "withReason": "La cotización quedó rechazada: {reason}"
         },
         "changeRequested": {
           "title": "Cambio solicitado",
           "description": "El cliente solicitó cambios en esta cotización. Revisá los ítems y actualizá la propuesta.",
           "withReason": "El cliente solicitó cambios: {reason}"
+        },
+        "sellerRevision": {
+          "title": "Cotización reactivada",
+          "description": "Creaste una versión nueva para editar. Revisá los ítems, actualizá la propuesta y volvé a cotizarla."
         },
         "sent": {
           "title": "Cotización enviada",
@@ -830,10 +835,54 @@
         "copiedLink": "Enlace copiado",
         "unavailable": "La cotización todavía no fue enviada: el enlace va a estar disponible cuando la envíes."
       },
+      "lifecycle": {
+        "accept": {
+          "button": "Marcar aceptada",
+          "title": "¿Marcar la cotización como aceptada?",
+          "description": "Usá esta opción si el cliente confirmó la compra por fuera del enlace de Coti.",
+          "confirm": "Marcar aceptada",
+          "pending": "Marcando…",
+          "success": "La cotización quedó aceptada."
+        },
+        "reject": {
+          "button": "Marcar rechazada",
+          "title": "¿Marcar la cotización como rechazada?",
+          "description": "Usá esta opción si el cliente rechazó la propuesta por fuera del enlace de Coti.",
+          "confirm": "Marcar rechazada",
+          "pending": "Marcando…",
+          "success": "La cotización quedó rechazada."
+        },
+        "reactivate": {
+          "button": "Reactivar cotización",
+          "title": "Reactivar cotización",
+          "description": "Elegí si querés reenviar la misma versión o preparar una nueva.",
+          "resend": {
+            "title": "Reenviar sin cambios",
+            "description": "Conserva los productos y precios de la versión cerrada.",
+            "success": "La cotización quedó lista para reenviar."
+          },
+          "edit": {
+            "title": "Modificar y reenviar",
+            "description": "Crea una versión editable y la revaloriza con los precios vigentes.",
+            "success": "Creamos una versión nueva para editar."
+          }
+        },
+        "errors": {
+          "QUOTE_ARCHIVED": "La cotización está archivada. Desarchivala antes de continuar.",
+          "QUOTE_NOT_DRAFT": "La cotización cambió de estado. Actualizá la pantalla e intentá de nuevo.",
+          "QUOTE_NOT_REACTIVATABLE": "La cotización ya no se puede reactivar desde este estado. Actualizá la pantalla.",
+          "INVALID_INPUT": "La acción elegida no es válida para esta cotización.",
+          "FORBIDDEN": "No tenés permiso para cambiar el estado de esta cotización.",
+          "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
+          "INTERNAL": "No pudimos actualizar la cotización. Intentá de nuevo."
+        }
+      },
       "diff": {
         "title": "Cambios solicitados",
         "originalTitle": "Cotización original",
         "requestedTitle": "Cotización con cambios solicitados",
+        "previousTitle": "Versión cerrada",
+        "revisionTitle": "Nueva versión editable",
         "discountsTitle": "Descuentos aplicados",
         "downloadOriginal": "Descargar pedido original",
         "columns": {
