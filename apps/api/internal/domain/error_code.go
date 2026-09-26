@@ -40,6 +40,8 @@ const (
 	// CodeUnsupportedFileType sits beside CodeFileTooLarge: both refuse an upload, and a client
 	// offering a different file needs to know which rule it broke.
 	CodeUnsupportedFileType ErrorCode = "UNSUPPORTED_FILE_TYPE"
+	// CodeLegacyExcelFile refuses a legacy .xls workbook, so a client can ask for it as .xlsx.
+	CodeLegacyExcelFile ErrorCode = "LEGACY_EXCEL_FILE"
 	// The three a channel write is refused with. A form editing one channel can answer all three
 	// on the same 422, and the field it has to point the administrator at differs per code.
 	CodeChannelConfigShape ErrorCode = "CHANNEL_CONFIG_SHAPE"

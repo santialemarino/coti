@@ -71,7 +71,7 @@ func (s *RFQAttachmentService) ReadStoredAttachment(
 		return s.textBlock(string(data))
 
 	case domain.AttachmentTypeSpreadsheet:
-		text, readErr := spreadsheetOrderText(filename, data, s.maxSpreadsheetRows)
+		text, readErr := spreadsheetOrderText(data, s.maxSpreadsheetRows)
 		if readErr != nil {
 			return domain.Content{}, "", readErr
 		}

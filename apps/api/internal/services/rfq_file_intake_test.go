@@ -272,6 +272,40 @@ func TestRFQService_NormalizeFileRFQDraftInput_RefusesWhatCannotBeRead(t *testin
 		}
 	})
 
+	t.Run("a legacy .xls workbook, whatever it is labelled", func(t *testing.T) {
+		t.Parallel()
+		legacy := string([]byte{0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1}) + "workbook"
+		_, _, _, err := h.service.normalizeFileRFQDraftInput(domain.FileRFQDraftInput{
+			ChannelID: testChannelID,
+			Filename:  "pedido.csv",
+			File: domain.AttachmentUpload{
+				ContentType: "text/csv", Size: int64(len(legacy)), Content: strings.NewReader(legacy),
+			},
+		})
+		if domain.CodeOf(err) != domain.CodeLegacyExcelFile {
+			t.Fatalf("code = %q, want LEGACY_EXCEL_FILE", domain.CodeOf(err))
+		}
+	})
+
+	t.Run("a csv labelled as legacy Excel reads as a csv", func(t *testing.T) {
+		t.Parallel()
+		normalized, format, _, err := h.service.normalizeFileRFQDraftInput(
+			domain.FileRFQDraftInput{
+				ChannelID: testChannelID,
+				File: domain.AttachmentUpload{
+					ContentType: "application/vnd.ms-excel", Size: 13,
+					Content: strings.NewReader("10;cemento\n"),
+				},
+			})
+		if err != nil {
+			t.Fatalf("normalizeFileRFQDraftInput returned %v", err)
+		}
+		if format.Type != domain.AttachmentTypeSpreadsheet || normalized.Filename != "pedido.csv" {
+			t.Errorf("format %q named %q, want a SPREADSHEET named pedido.csv", format.Type,
+				normalized.Filename)
+		}
+	})
+
 	t.Run("a filename with no extension takes the format's own", func(t *testing.T) {
 		t.Parallel()
 		normalized, format, _, err := h.service.normalizeFileRFQDraftInput(

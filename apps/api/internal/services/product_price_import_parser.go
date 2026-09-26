@@ -25,8 +25,8 @@ type priceImportRawRow struct {
 	minPrice  string
 }
 
-func parsePriceImport(filename string, src io.Reader) ([]priceImportRawRow, error) {
-	rows, err := spreadsheet.Read(filename, src, priceImportSchema)
+func parsePriceImport(src io.Reader) ([]priceImportRawRow, error) {
+	rows, err := spreadsheet.Read(src, priceImportSchema)
 	if err != nil {
 		return nil, err
 	}

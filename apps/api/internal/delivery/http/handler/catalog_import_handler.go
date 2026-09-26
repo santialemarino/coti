@@ -14,7 +14,7 @@ import (
 // CatalogImportService is the bulk catalog editing surface the handler needs.
 type CatalogImportService interface {
 	Template(ctx context.Context, tenant domain.Tenant) (*domain.CatalogImportFile, error)
-	Preview(ctx context.Context, tenant domain.Tenant, filename string, src io.Reader) (*domain.CatalogImportPreview, error)
+	Preview(ctx context.Context, tenant domain.Tenant, src io.Reader) (*domain.CatalogImportPreview, error)
 	Confirm(ctx context.Context, tenant domain.Tenant, inputs []domain.CatalogImportInput) (*domain.CatalogImportResult, error)
 	Taxonomy(ctx context.Context, tenant domain.Tenant) ([]domain.ProductFamily, error)
 }
@@ -79,13 +79,13 @@ func (h *CatalogImportHandler) Preview(c *gin.Context) {
 	if !ok {
 		return
 	}
-	file, filename, ok := openSpreadsheetUpload(c, h.maxBytes)
+	file, _, ok := openUpload(c, h.maxBytes)
 	if !ok {
 		return
 	}
 	defer file.Close()
 
-	preview, err := h.imports.Preview(c.Request.Context(), tenant, filename, file)
+	preview, err := h.imports.Preview(c.Request.Context(), tenant, file)
 	if err != nil {
 		Respond(c, err)
 		return

@@ -1559,6 +1559,9 @@ func (s *RFQService) normalizeFileRFQDraftInput(
 	if err != nil {
 		return in, empty, nil, err
 	}
+	if err := refuseLegacyExcel(format, data); err != nil {
+		return in, empty, nil, err
+	}
 
 	in.ClientLabel = clientLabel
 	in.WorkType = workType
