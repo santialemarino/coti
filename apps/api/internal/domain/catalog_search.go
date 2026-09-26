@@ -32,6 +32,9 @@ type CatalogCandidate struct {
 	LexicalScore *float64
 	// LearnedDistance is cosine distance to a seller-approved phrase for this product.
 	LearnedDistance *float64
+	// LearnedConfirmed is true when the seller taught this product for this very phrase and later
+	// kept it on a line that was flagged: a choice made twice.
+	LearnedConfirmed bool
 	// Score is the fused rank the candidates are ordered by, best first.
 	Score float64
 }

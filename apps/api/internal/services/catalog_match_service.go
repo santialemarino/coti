@@ -189,7 +189,8 @@ func (s *CatalogMatchService) contradicted(ranked []rankedCandidate) bool {
 		if rival.LearnedDistance != nil {
 			return true
 		}
-		if rival.Confidence.LessThan(s.minConfidence) {
+		// A choice the seller confirmed for this very phrase outweighs what its words suggest.
+		if leader.LearnedConfirmed || rival.Confidence.LessThan(s.minConfidence) {
 			continue
 		}
 		if rival.coverage >= 1-coverageTieTolerance &&

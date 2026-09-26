@@ -54,6 +54,15 @@ func (r *QuoteCorrectionRepository) Enqueue(ctx context.Context, q Querier, acco
 		if err != nil {
 			return nil, err
 		}
+		// The seller's latest answer for a phrase replaces the ones before it, so a correction
+		// undone later, as a stock substitution is, leaves no rival to keep the phrase open.
+		if pattern.Kind == domain.QuoteCorrectionMemoryCatalog {
+			if _, err := q.Exec(ctx, `DELETE FROM quote_correction_memory
+			 WHERE account_id = $1 AND kind = 'CATALOG' AND normalized_source = $2
+			   AND product_id <> $3`, accountID, normalized, pattern.ProductID); err != nil {
+				return nil, err
+			}
+		}
 		var inserted int
 		err = q.QueryRow(ctx, `WITH added AS (
 		  INSERT INTO quote_correction_memory_source (account_id, evaluation_id, memory_id, source_key)
