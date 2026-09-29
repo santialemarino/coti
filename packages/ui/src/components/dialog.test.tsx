@@ -1,7 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from './dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from './dialog';
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from './sheet';
 
 /*
  * jsdom runs no animations, so Radix would unmount a closing dialog at once and there would be no
@@ -62,5 +63,42 @@ describe('DialogContent', () => {
     expect(dialog?.getAttribute('data-state')).toBe('closed');
     expect(dialog?.textContent).toContain('Editar sucursal');
     expect(dialog?.textContent).not.toContain('Crear sucursal');
+  });
+});
+
+// With no `open` prop the root keeps its own state, and still tells the caller about each change.
+describe('an uncontrolled overlay', () => {
+  it('opens from its trigger and closes from its close button', () => {
+    const onOpenChange = vi.fn();
+    render(
+      <Dialog onOpenChange={onOpenChange}>
+        <DialogTrigger>Abrir</DialogTrigger>
+        <DialogContent>
+          <DialogTitle>Método de envío</DialogTitle>
+          <DialogDescription>Descripción</DialogDescription>
+        </DialogContent>
+      </Dialog>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir' }));
+    expect(screen.getByRole('dialog').textContent).toContain('Método de envío');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(onOpenChange.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('opens a sheet from its trigger', () => {
+    render(
+      <Sheet>
+        <SheetTrigger>Filtros</SheetTrigger>
+        <SheetContent aria-describedby={undefined}>
+          <SheetTitle>Filtros del listado</SheetTitle>
+        </SheetContent>
+      </Sheet>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filtros' }));
+    expect(screen.getByRole('dialog').textContent).toContain('Filtros del listado');
   });
 });
