@@ -8,6 +8,8 @@ interface MetaListProps {
    * with the separator that would have preceded it.
    */
   items: React.ReactNode[];
+  /* Keep to one line: every fact holds its width and only the last one truncates. */
+  singleLine?: boolean;
   className?: string;
 }
 
@@ -20,7 +22,7 @@ interface MetaListProps {
  * Emptiness has to reach this list unwrapped. An element around an empty string is still an element,
  * so `<span>{name}</span>` with no name keeps its separator; pass `name ? <span>…</span> : null`.
  */
-function MetaList({ items, className }: MetaListProps) {
+function MetaList({ items, singleLine = false, className }: MetaListProps) {
   const shown = items.filter(
     (item) => item !== null && item !== undefined && item !== false && item !== '',
   );
@@ -29,20 +31,34 @@ function MetaList({ items, className }: MetaListProps) {
     <div
       data-slot="meta-list"
       className={cn(
-        'flex flex-wrap items-center gap-x-1.5 gap-y-1 text-paragraph-sm text-foreground-muted',
+        'flex items-center gap-x-1.5 gap-y-1 text-paragraph-sm text-foreground-muted',
+        singleLine ? 'min-w-0 flex-nowrap' : 'flex-wrap',
         className,
       )}
     >
-      {shown.map((item, index) => (
-        <React.Fragment key={index}>
-          {index > 0 ? (
-            <span aria-hidden="true" className="text-foreground-subtle">
-              ·
+      {shown.map((item, index) => {
+        const last = index === shown.length - 1;
+        return (
+          <React.Fragment key={index}>
+            {index > 0 ? (
+              <span
+                aria-hidden="true"
+                className={cn('text-foreground-subtle', singleLine && 'shrink-0')}
+              >
+                ·
+              </span>
+            ) : null}
+            <span
+              className={cn(
+                'inline-flex items-center gap-x-1',
+                singleLine && (last ? 'min-w-0' : 'shrink-0 whitespace-nowrap'),
+              )}
+            >
+              {singleLine && last ? <span className="truncate">{item}</span> : item}
             </span>
-          ) : null}
-          <span className="inline-flex items-center gap-x-1">{item}</span>
-        </React.Fragment>
-      ))}
+          </React.Fragment>
+        );
+      })}
     </div>
   );
 }

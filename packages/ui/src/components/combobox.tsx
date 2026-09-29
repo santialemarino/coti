@@ -48,6 +48,10 @@ interface ComboboxSharedProps {
   id?: string;
   className?: string;
   contentClassName?: string;
+  /* Gap between trigger and panel, for a trigger that sits inside a taller bar it must clear. */
+  sideOffset?: number;
+  /* A floor for the panel's width, for a compact trigger whose options need more room. */
+  contentMinWidth?: number;
   /* The trigger names itself after the current selection, so a standalone one needs this. */
   'aria-label'?: string;
   'aria-invalid'?: boolean;
@@ -63,6 +67,8 @@ interface ComboboxProps extends ComboboxSharedProps {
    * from one actually narrowed to something, and the control looks like it is doing work it is not.
    */
   resetValue?: string;
+  /* How the chosen option reads on the trigger, when that differs from its row in the list. */
+  triggerLabel?: (option: ComboboxOption) => React.ReactNode;
 }
 
 /* Accent-insensitive, so typing "arena" still reaches "Árena" and vice versa. */
@@ -91,12 +97,15 @@ function groupOptions(options: ComboboxOption[]): [string, ComboboxOption[]][] {
  * impossible to miss when the pointer is held down on the trigger. Measuring the trigger in the same
  * event that opens the panel puts the real width in the first render instead.
  */
-function useTriggerWidth() {
+function useTriggerWidth(minWidth?: number) {
   const ref = React.useRef<HTMLButtonElement>(null);
   const [width, setWidth] = React.useState<number>();
+  const style: React.CSSProperties = {};
+  if (width) style.width = width;
+  if (minWidth) style.minWidth = minWidth;
   return {
     ref,
-    style: width ? ({ width } as React.CSSProperties) : undefined,
+    style: width || minWidth ? style : undefined,
     measure: () => setWidth(ref.current?.getBoundingClientRect().width),
   };
 }
@@ -163,6 +172,7 @@ function Combobox({
   value,
   onValueChange,
   resetValue,
+  triggerLabel,
   placeholder,
   emptyLabel,
   searchPlaceholder,
@@ -172,6 +182,8 @@ function Combobox({
   id,
   className,
   contentClassName,
+  sideOffset,
+  contentMinWidth,
   'aria-label': ariaLabel,
   'aria-invalid': ariaInvalid,
   'aria-describedby': ariaDescribedBy,
@@ -181,7 +193,7 @@ function Combobox({
   const [highlighted, setHighlighted] = React.useState<string>('');
   const typeahead = React.useRef({ buffer: '', timer: 0 });
   const listRef = React.useRef<HTMLDivElement>(null);
-  const trigger = useTriggerWidth();
+  const trigger = useTriggerWidth(contentMinWidth);
 
   const selected = options.find((option) => option.value === value) ?? null;
   const unset = selected === null || selected.value === resetValue;
@@ -228,7 +240,13 @@ function Combobox({
           unset={unset}
           invalid={ariaInvalid}
           icon={unset ? icon : (selected?.icon ?? icon)}
-          label={unset ? placeholder : (selected?.label ?? placeholder)}
+          label={
+            unset || !selected
+              ? placeholder
+              : triggerLabel
+                ? triggerLabel(selected)
+                : selected.label
+          }
           aria-label={ariaLabel}
           aria-describedby={ariaDescribedBy}
           disabled={disabled}
@@ -237,6 +255,7 @@ function Combobox({
       </PopoverTrigger>
       <PopoverContent
         align="start"
+        sideOffset={sideOffset}
         /*
          * Without a search box there is no focusable descendant, so Radix parks focus on the popover
          * itself and cmdk — which only sees keys that originate inside its own root — never receives
@@ -325,13 +344,15 @@ function MultiCombobox({
   id,
   className,
   contentClassName,
+  sideOffset,
+  contentMinWidth,
   'aria-label': ariaLabel,
   'aria-invalid': ariaInvalid,
   'aria-describedby': ariaDescribedBy,
 }: MultiComboboxProps) {
   const [open, setOpen] = React.useState(false);
   const listRef = React.useRef<HTMLDivElement>(null);
-  const trigger = useTriggerWidth();
+  const trigger = useTriggerWidth(contentMinWidth);
 
   const groups = React.useMemo(() => groupOptions(options), [options]);
   const selectedSet = React.useMemo(() => new Set(values), [values]);
@@ -370,6 +391,7 @@ function MultiCombobox({
       </PopoverTrigger>
       <PopoverContent
         align="start"
+        sideOffset={sideOffset}
         onOpenAutoFocus={
           searchable
             ? undefined
