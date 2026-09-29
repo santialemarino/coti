@@ -9,6 +9,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  ScrollArea,
   SearchInput,
   Spinner,
 } from '@repo/ui/components';
@@ -41,13 +42,19 @@ export function ProductSearchDialog({
   const [query, setQuery] = useState('');
   const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
   const [loading, setLoading] = useState(false);
+  const [wasOpen, setWasOpen] = useState(open);
 
-  useEffect(() => {
-    if (!open) {
+  // Each opening starts a fresh search; clearing on close would empty the list mid-exit.
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
       setQuery('');
       setCatalog([]);
-      return;
     }
+  }
+
+  useEffect(() => {
+    if (!open) return;
     let cancelled = false;
     setLoading(true);
     const timer = window.setTimeout(async () => {
@@ -80,7 +87,7 @@ export function ProductSearchDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{title ?? t('searchProduct')}</DialogTitle>
         </DialogHeader>
@@ -95,7 +102,8 @@ export function ProductSearchDialog({
           autoFocus
         />
 
-        <div className="flex max-h-80 flex-col gap-y-2 overflow-y-auto">
+        {/* A fixed height: the results land after the dialog opens and must not grow it. */}
+        <ScrollArea className="flex h-80 flex-col gap-y-2">
           {loading && suggested.length === 0 ? (
             <div className="flex items-center justify-center py-8">
               <Spinner size="sm" />
@@ -110,7 +118,7 @@ export function ProductSearchDialog({
                 <li key={product.id}>
                   <button
                     type="button"
-                    className="flex w-full items-center justify-between gap-x-3 rounded-lg border border-border bg-card p-3 text-left transition-colors hover:bg-accent"
+                    className="flex w-full items-center justify-between p-3 gap-x-3 bg-card border border-border rounded-lg outline-none transition-[background-color,border-color,box-shadow] duration-150 ease-out-soft hover:bg-accent active:bg-accent-strong focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45 text-left"
                     onClick={() => handleSelect(product)}
                   >
                     <div className="min-w-0">
@@ -139,7 +147,7 @@ export function ProductSearchDialog({
               )}
             </ul>
           )}
-        </div>
+        </ScrollArea>
       </DialogContent>
     </Dialog>
   );

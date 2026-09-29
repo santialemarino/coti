@@ -23,6 +23,9 @@ import { getEffectiveBranchId } from '@/lib/auth/branch';
 import type { SessionUser } from '@/lib/auth/session';
 import { ADMIN_ROLE } from '@/lib/constants/auth';
 
+// Clears the 64px header's bottom border: the trigger is ~51px tall, so it ends ~6px above it.
+const PROFILE_MENU_OFFSET = 14;
+
 interface AppHeaderProps {
   session: SessionUser;
 }
@@ -83,7 +86,7 @@ export async function AppHeader({ session }: AppHeaderProps) {
               </span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="min-w-52">
+          <DropdownMenuContent sideOffset={PROFILE_MENU_OFFSET} className="min-w-52">
             <DropdownMenuLabel>{t(`roles.${session.role}`)}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {session.role === ADMIN_ROLE ? (

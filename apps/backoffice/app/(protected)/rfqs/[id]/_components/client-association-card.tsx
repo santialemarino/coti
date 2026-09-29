@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useTransition } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import {
   BadgePlusIcon,
@@ -224,7 +224,8 @@ function ClientAssociationDialog({
     );
   }, [directory, directoryQuery, exactCandidates]);
 
-  useEffect(() => {
+  // Before paint, so a reopened dialog never shows the previous one's values for a frame.
+  useLayoutEffect(() => {
     if (!open) return;
     const candidate = association.currentClient ?? exactCandidates[0] ?? null;
     setMode('existing');
@@ -420,7 +421,7 @@ function ClientAssociationDialog({
                 <RadioGroup
                   value={clientId}
                   onValueChange={chooseCandidate}
-                  className="max-h-56 overflow-y-auto pr-1"
+                  className="max-h-56 p-1 pe-2 scroll-area"
                 >
                   {directoryResults.map((candidate) => (
                     <ClientOption

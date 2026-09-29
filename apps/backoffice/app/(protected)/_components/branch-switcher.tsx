@@ -11,6 +11,8 @@ import { ALL_BRANCHES } from '@/lib/constants/branch';
 
 // From here a list stops being scannable and the search box earns the click it costs.
 const SEARCHABLE_FROM = 8;
+// The 36px trigger sits 14px above the 64px header's border; the list opens 6px past it.
+const BRANCH_MENU_OFFSET = 20;
 
 interface BranchSwitcherProps {
   branches: Branch[];
@@ -56,6 +58,7 @@ export function BranchSwitcher({ branches, activeBranchId, isAdmin }: BranchSwit
       emptyLabel={t('empty')}
       disabled={locked || pending}
       aria-label={t('label')}
+      sideOffset={BRANCH_MENU_OFFSET}
       className="w-44 sm:w-56"
     />
   );

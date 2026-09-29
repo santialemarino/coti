@@ -1,20 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import {
-  CheckIcon,
-  CopyIcon,
-  ExternalLinkIcon,
-  MailIcon,
-  MessageCircleIcon,
-  SendIcon,
-} from 'lucide-react';
+import { ExternalLinkIcon, MailIcon, MessageCircleIcon, SendIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import {
   Button,
   Checkbox,
+  CopyButton,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -43,6 +37,11 @@ interface SendQuoteDialogProps {
   detail: RfqDetailResponse;
   branchId: string;
   onSent: () => Promise<void>;
+  /*
+   * The send moves the quote out of QUOTED, which is what offers the trigger. The dialog stays
+   * mounted without it, so the delivered links remain on screen after the card behind has moved on.
+   */
+  showTrigger?: boolean;
 }
 
 /*
@@ -50,7 +49,12 @@ interface SendQuoteDialogProps {
  * is an independent extra rather than an alternative — the backend attempts each on its own
  * and reports both, so the dialog reports both too.
  */
-export function SendQuoteDialog({ detail, branchId, onSent }: SendQuoteDialogProps) {
+export function SendQuoteDialog({
+  detail,
+  branchId,
+  onSent,
+  showTrigger = true,
+}: SendQuoteDialogProps) {
   const fmt = useFormatters();
   const t = useTranslations('rfqs.detail.send');
   const tChannel = useTranslations('rfqs.channels');
@@ -61,7 +65,6 @@ export function SendQuoteDialog({ detail, branchId, onSent }: SendQuoteDialogPro
   const [email, setEmail] = useState('');
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<QuoteSendResponse | null>(null);
-  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
 
   const quoteId = detail.quote?.id ?? null;
   const phoneValid = E164.test(phone.trim());
@@ -74,22 +77,11 @@ export function SendQuoteDialog({ detail, branchId, onSent }: SendQuoteDialogPro
     (delivery) => delivery.tracking_status !== 'FAILED',
   );
 
+  // Reset on the way in: resetting on the way out would swap the success view for the form mid-exit.
   function handleOpenChange(next: boolean) {
     if (sending) return;
+    if (next) setResult(null);
     setOpen(next);
-    if (!next) {
-      setResult(null);
-      setCopiedUrl(null);
-    }
-  }
-
-  async function copyLink(url: string) {
-    try {
-      await navigator.clipboard.writeText(url);
-    } catch {
-      return;
-    }
-    setCopiedUrl(url);
   }
 
   async function handleSend() {
@@ -133,10 +125,12 @@ export function SendQuoteDialog({ detail, branchId, onSent }: SendQuoteDialogPro
 
   return (
     <>
-      <Button type="button" onClick={() => handleOpenChange(true)}>
-        <SendIcon className="size-4" />
-        {t('button')}
-      </Button>
+      {showTrigger ? (
+        <Button type="button" onClick={() => handleOpenChange(true)}>
+          <SendIcon className="size-4" />
+          {t('button')}
+        </Button>
+      ) : null}
 
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-lg" closeOnClickOutside={!sending}>
@@ -158,32 +152,28 @@ export function SendQuoteDialog({ detail, branchId, onSent }: SendQuoteDialogPro
               {successfulDeliveries.map((delivery) => (
                 <div
                   key={delivery.id}
-                  className="flex flex-col gap-y-1.5 rounded-lg border border-border bg-sunken p-3"
+                  className="flex flex-col p-3 gap-y-3 border border-border bg-sunken rounded-lg"
                 >
-                  <span className="text-paragraph-xs-medium text-foreground-muted">
-                    {tChannel(delivery.channel.toLowerCase())}
-                  </span>
-                  <span className="text-paragraph-sm text-foreground">{delivery.destination}</span>
-                  <span
-                    aria-label={t('linkLabel')}
-                    className="text-paragraph-xs text-foreground-muted break-all"
-                  >
-                    {delivery.public_url}
-                  </span>
-                  <div className="flex gap-x-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => copyLink(delivery.public_url)}
+                  <div className="flex flex-col gap-y-1">
+                    <span className="text-paragraph-xs-medium text-foreground-muted">
+                      {tChannel(delivery.channel.toLowerCase())}
+                    </span>
+                    <span className="text-paragraph-sm text-foreground">
+                      {delivery.destination}
+                    </span>
+                    <span
+                      aria-label={t('linkLabel')}
+                      className="text-paragraph-xs text-foreground-muted break-all"
                     >
-                      {copiedUrl === delivery.public_url ? (
-                        <CheckIcon className="size-3.5" />
-                      ) : (
-                        <CopyIcon className="size-3.5" />
-                      )}
-                      {copiedUrl === delivery.public_url ? t('copiedLink') : t('copyLink')}
-                    </Button>
+                      {delivery.public_url}
+                    </span>
+                  </div>
+                  <div className="flex gap-x-2">
+                    <CopyButton
+                      value={delivery.public_url}
+                      labels={{ copy: t('copyLink'), copied: t('copiedLink') }}
+                      onCopyError={() => toast.error(t('copyFailed'))}
+                    />
                     <Button asChild variant="outline" size="sm">
                       <a href={delivery.public_url} target="_blank" rel="noopener noreferrer">
                         <ExternalLinkIcon className="size-3.5" />

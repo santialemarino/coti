@@ -19,10 +19,12 @@ export function RfqSplitView({ activeRfqId, children }: RfqSplitViewProps) {
 
   return (
     <div className="flex flex-1 items-stretch bg-body-background">
-      <aside className="w-[22%] min-w-[240px] max-w-[320px] shrink-0 overflow-y-auto border-r border-border bg-background">
+      {/* Held to the viewport under the 64px header and scrolled on its own, so a queue longer than
+          the order never stretches the page past the detail and leaves it facing blank space. */}
+      <aside className="w-[22%] min-w-[240px] max-w-[320px] h-[calc(100dvh-4rem)] shrink-0 self-start bg-background border-r border-border sticky top-16 scroll-area">
         <RfqSidebarList records={records} activeRfqId={activeRfqId} />
       </aside>
-      <main className="min-w-0 flex-1 overflow-y-auto px-6 py-6 lg:px-8">{children}</main>
+      <main className="min-w-0 flex-1 px-6 py-6 lg:px-8">{children}</main>
     </div>
   );
 }
