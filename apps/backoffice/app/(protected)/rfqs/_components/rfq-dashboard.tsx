@@ -54,6 +54,7 @@ import {
 } from '@repo/ui/components';
 import { cn } from '@repo/ui/lib';
 import { CreateRfqDialog } from '@/app/(protected)/rfqs/_components/create-rfq-dialog';
+import { FollowupBadge, followupDue } from '@/app/(protected)/rfqs/_components/followup-badge';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import {
   hasQuoteTotal,
@@ -909,8 +910,11 @@ export function RfqDashboard({
                     interactive
                     className={cn(
                       'outline-none active:bg-accent focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45',
-                      rfq.id === activeRfqId && 'bg-accent',
-                      rfq.needsFollowup && 'bg-warning-subtle',
+                      /* The active row is listed last so it wins over the follow-up tint; the bell
+                         in the reference cell still marks a flagged row that is also active. */
+                      followupDue(rfq.needsFollowup, rfq.status, Boolean(rfq.archived)) &&
+                        'bg-followup-subtle hover:bg-followup-hover',
+                      rfq.id === activeRfqId && 'bg-accent hover:bg-accent',
                     )}
                   >
                     <TableCell>
@@ -936,8 +940,13 @@ export function RfqDashboard({
                           <TooltipContent>{t(`channels.${rfq.channel}`)}</TooltipContent>
                         </Tooltip>
                         <div className="min-w-0">
-                          <span className="block truncate text-paragraph-sm-medium text-foreground">
-                            {reference ?? t('list.numberPending')}
+                          <span className="flex items-center gap-x-1.5">
+                            <span className="truncate text-paragraph-sm-medium text-foreground">
+                              {reference ?? t('list.numberPending')}
+                            </span>
+                            {followupDue(rfq.needsFollowup, rfq.status, Boolean(rfq.archived)) ? (
+                              <FollowupBadge flaggedAt={rfq.followupFlaggedAt} compact />
+                            ) : null}
                           </span>
                           <span className="block truncate text-paragraph-mini text-foreground-muted">
                             {rfq.client}

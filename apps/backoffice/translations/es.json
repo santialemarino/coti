@@ -478,6 +478,11 @@
       "webapp": "Web",
       "manual_entry": "Carga manual"
     },
+    "followup": {
+      "badge": "Seguimiento",
+      "description": "Requiere seguimiento",
+      "since": "Requiere seguimiento · desde el {date}"
+    },
     "list": {
       "title": "Pedidos",
       "caption": "Pedidos de cotización recibidos",
@@ -686,6 +691,13 @@
         "sent": {
           "title": "Cotización enviada",
           "description": "La cotización fue enviada al cliente. Vence el {date}."
+        },
+        "followup": {
+          "title": "Requiere seguimiento",
+          "customer": "El cliente no respondió desde el {date}. Escribile para retomar la cotización.",
+          "customerUndated": "El cliente todavía no respondió. Escribile para retomar la cotización.",
+          "seller": "La cotización no avanza desde el {date}. Revisala y enviala al cliente.",
+          "sellerUndated": "La cotización no avanza. Revisala y enviala al cliente."
         }
       },
       "items": {
@@ -809,6 +821,7 @@
         "linkLabel": "Enlace de la cotización",
         "copyLink": "Copiar enlace",
         "copiedLink": "Enlace copiado",
+        "copyFailed": "No pudimos copiar el enlace. Seleccionalo y copialo a mano.",
         "openQuote": "Abrir",
         "resend": "Enviar a otro destino",
         "done": "Listo",
@@ -839,6 +852,7 @@
         "openQuote": "Ver cotización",
         "copyLink": "Copiar enlace",
         "copiedLink": "Enlace copiado",
+        "copyFailed": "No pudimos copiar el enlace. Seleccionalo y copialo a mano.",
         "unavailable": "La cotización todavía no fue enviada: el enlace va a estar disponible cuando la envíes."
       },
       "lifecycle": {

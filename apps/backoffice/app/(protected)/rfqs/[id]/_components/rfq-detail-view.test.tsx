@@ -93,6 +93,7 @@ function draftRecord(): RfqRecord {
     reviewCount: 0,
     status: 'GENERATED',
     needsFollowup: false,
+    followupFlaggedAt: null,
   };
 }
 
@@ -151,6 +152,7 @@ function makeDetail(quoteStatus: string, rfqStatus: string = quoteStatus): RfqDe
       total: draft ? null : '390000.00',
       status: rfqStatus,
       needs_followup: false,
+      followup_flagged_at: null,
       archived_at: null,
     },
     quote: {
@@ -220,7 +222,11 @@ function RecordProbe() {
 }
 
 function renderView(detail: RfqDetailResponse, activeBranchId: string | null = BRANCH_ID) {
-  return render(
+  return render(viewTree(detail, activeBranchId));
+}
+
+function viewTree(detail: RfqDetailResponse, activeBranchId: string | null = BRANCH_ID) {
+  return (
     <NextIntlClientProvider
       locale="es"
       messages={messages}
@@ -236,16 +242,22 @@ function renderView(detail: RfqDetailResponse, activeBranchId: string | null = B
         <RfqDetailView detail={detail} />
         <RecordProbe />
       </RfqListProvider>
-    </NextIntlClientProvider>,
+    </NextIntlClientProvider>
   );
 }
 
 function dialogPropsFor(status: string) {
   return expect.objectContaining({
+    showTrigger: true,
     detail: expect.objectContaining({
       quote: expect.objectContaining({ current_status: status }),
     }),
   });
+}
+
+// The dialog stays mounted through every status; what a status decides is whether it offers a send.
+function sendOffered() {
+  return vi.mocked(SendQuoteDialog).mock.lastCall?.[0].showTrigger ?? false;
 }
 
 beforeEach(() => {
@@ -283,7 +295,7 @@ describe('RfqDetailView send flow', () => {
   it('labels a seller-initiated editable reactivation as a new revision', () => {
     const view = renderView(makeDetail('CHANGE_REQUESTED'));
 
-    expect(SendDialog).not.toHaveBeenCalled();
+    expect(sendOffered()).toBe(false);
     expect(view.getByRole('button', { name: copy.detail.items.generate })).toBeTruthy();
     expect(view.getByText(copy.detail.callouts.sellerRevision.title)).toBeTruthy();
     expect(ChangeDiff).toHaveBeenCalledWith(
@@ -323,7 +335,7 @@ describe('RfqDetailView send flow', () => {
     for (const status of ['SENT', 'ACCEPTED', 'REJECTED', 'GENERATED']) {
       vi.clearAllMocks();
       renderView(makeDetail(status));
-      expect(SendDialog, `send dialog surfaced on ${status}`).not.toHaveBeenCalled();
+      expect(sendOffered(), `send offered on ${status}`).toBe(false);
     }
   });
 
@@ -331,7 +343,7 @@ describe('RfqDetailView send flow', () => {
     const view = renderView(makeDetail('DRAFT', 'GENERATED'));
 
     expect(view.getByRole('button', { name: copy.detail.items.generate })).toBeTruthy();
-    expect(SendDialog).not.toHaveBeenCalled();
+    expect(sendOffered()).toBe(false);
   });
 });
 
@@ -390,5 +402,85 @@ describe('RfqDetailView quote generation', () => {
 
     await vi.waitFor(() => expect(generateQuote).toHaveBeenCalledWith(QUOTE_ID, BRANCH_ID));
     expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+// Matches a catalog sentence whatever the formatter renders for its date.
+function withDate(sentence: string) {
+  const [before, after] = sentence
+    .split('{date}')
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return new RegExp(`^${before}\\S.*${after}$`);
+}
+
+function flagged(status: string, flaggedAt: string | null = BASE_TIME): RfqDetailResponse {
+  const detail = makeDetail(status);
+  detail.rfq = { ...detail.rfq, needs_followup: true, followup_flagged_at: flaggedAt };
+  return detail;
+}
+
+describe('RfqDetailView follow-up', () => {
+  const callouts = copy.detail.callouts.followup;
+
+  it('says the customer went quiet on a sent quote, and since when', () => {
+    const view = renderView(flagged('SENT'));
+
+    expect(view.getByText(callouts.title)).toBeTruthy();
+    expect(view.getByText(withDate(callouts.customer))).toBeTruthy();
+  });
+
+  it('says the quote stalled on the seller while it has not been sent', () => {
+    const view = renderView(flagged('QUOTED', null));
+
+    expect(view.getByText(callouts.sellerUndated)).toBeTruthy();
+    expect(view.queryByText(callouts.customerUndated)).toBeNull();
+  });
+
+  it('stays quiet on a quote that is not flagged', () => {
+    const view = renderView(makeDetail('SENT'));
+
+    expect(view.queryByText(callouts.title)).toBeNull();
+  });
+
+  // Nothing clears the flag once the client answers, so the status decides whether it still applies.
+  it('stays quiet once the client has answered', () => {
+    const view = renderView(flagged('ACCEPTED'));
+
+    expect(view.queryByText(callouts.title)).toBeNull();
+  });
+
+  it('stays quiet once the quote is archived', () => {
+    const detail = flagged('SENT');
+    detail.rfq = { ...detail.rfq, archived_at: BASE_TIME };
+    const view = renderView(detail);
+
+    expect(view.queryByText(callouts.title)).toBeNull();
+  });
+});
+
+describe('RfqDetailView after a transition', () => {
+  const scrollIntoView = vi.fn();
+
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = scrollIntoView;
+  });
+
+  it('adopts a refreshed detail and brings the top of the order back into view', () => {
+    const view = renderView(makeDetail('QUOTED'));
+    const sent = makeDetail('SENT');
+    sent.quote = { ...sent.quote!, expires_at: BASE_TIME };
+    view.rerender(viewTree(sent));
+
+    expect(view.getByText(copy.detail.callouts.sent.title)).toBeTruthy();
+    expect(scrollIntoView).toHaveBeenCalledOnce();
+  });
+
+  it('never scrolls for a change that keeps the status', () => {
+    const view = renderView(makeDetail('QUOTED'));
+    const edited = makeDetail('QUOTED');
+    edited.items = [{ ...PRICED_ITEM, quantity: '600.00' }];
+    view.rerender(viewTree(edited));
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
   });
 });

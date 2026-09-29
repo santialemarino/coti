@@ -52,6 +52,8 @@ export interface RfqRecord {
   status: RfqStatus;
   // Backend-set flag: the seller must chase this quote; it surfaces first and is highlighted.
   needsFollowup: boolean;
+  // When the flag was raised; null while the quote is not flagged.
+  followupFlaggedAt: string | null;
   processing?: boolean;
   archived?: boolean;
 }
@@ -73,6 +75,7 @@ export interface RfqListItem {
   total: string | null;
   status: string;
   needs_followup: boolean;
+  followup_flagged_at: string | null;
   archived_at: string | null;
 }
 
