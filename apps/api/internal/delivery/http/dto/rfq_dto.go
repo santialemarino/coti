@@ -70,6 +70,8 @@ type RfqListItemResponse struct {
 	Status        string     `json:"status"`
 	ArchivedAt    *time.Time `json:"archived_at"`
 	NeedsFollowup bool       `json:"needs_followup"`
+	// FollowupFlaggedAt is when the quote was flagged for follow-up; null while it is not.
+	FollowupFlaggedAt *time.Time `json:"followup_flagged_at"`
 }
 
 // CreateTextRFQDraftRequest is the body for POST /v1/rfqs/text-drafts.

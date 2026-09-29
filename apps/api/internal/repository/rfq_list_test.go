@@ -22,6 +22,7 @@ type listingSpec struct {
 	quoteStatus   *domain.QuoteStatus
 	sellerID      *uuid.UUID
 	needsFollowup bool
+	flaggedAt     *time.Time
 	archived      bool
 	createdAt     time.Time
 }
@@ -50,10 +51,10 @@ func seedListingRFQ(
 		}
 		if _, err := db.CrossAccount().Exec(ctx,
 			`INSERT INTO quote (id, account_id, number, branch_id, rfq_id, seller_id, current_status,
-			                    needs_followup, archived_at)
-			 VALUES ($1, $2, (('x'||substr(replace($1::uuid::text,'-',''),1,15))::bit(60)::bigint), $3, $4, $5, $6, $7, $8)`,
+			                    needs_followup, followup_flagged_at, archived_at)
+			 VALUES ($1, $2, (('x'||substr(replace($1::uuid::text,'-',''),1,15))::bit(60)::bigint), $3, $4, $5, $6, $7, $8, $9)`,
 			quoteID, accountID, branchID, spec.rfqID, spec.sellerID, *spec.quoteStatus,
-			spec.needsFollowup, archivedAt); err != nil {
+			spec.needsFollowup, spec.flaggedAt, archivedAt); err != nil {
 			t.Fatalf("seed listing quote: %v", err)
 		}
 		t.Cleanup(func() {
@@ -112,6 +113,7 @@ func TestRFQRepository_ListByTenant_FollowupFirstArchivedOut(t *testing.T) {
 	clientID := seedClient(t, db, accountID)
 
 	now := time.Now()
+	flaggedAt := now.Add(-30 * time.Hour).Truncate(time.Microsecond)
 	draft := domain.QuoteStatusDraft
 	sent := domain.QuoteStatusSent
 	accepted := domain.QuoteStatusAccepted
@@ -126,7 +128,7 @@ func TestRFQRepository_ListByTenant_FollowupFirstArchivedOut(t *testing.T) {
 	})
 	seedListingRFQ(t, db, accountID, branchID, channelID, listingSpec{
 		rfqID: followupID, clientID: &clientID, quoteStatus: &sent,
-		needsFollowup: true, createdAt: now.Add(-3 * time.Hour),
+		needsFollowup: true, flaggedAt: &flaggedAt, createdAt: now.Add(-3 * time.Hour),
 	})
 	seedListingRFQ(t, db, accountID, branchID, channelID, listingSpec{
 		rfqID: archivedID, clientID: &clientID, quoteStatus: &accepted,
@@ -147,6 +149,22 @@ func TestRFQRepository_ListByTenant_FollowupFirstArchivedOut(t *testing.T) {
 	}
 	if !items[0].NeedsFollowup {
 		t.Error("follow-up row is not flagged needs_followup")
+	}
+	// The screen words the flag by how long the quote has been quiet, so the date has to travel.
+	if got := items[0].FollowupFlaggedAt; got == nil || !got.Equal(flaggedAt) {
+		t.Errorf("follow-up flagged at = %v, want %v", got, flaggedAt)
+	}
+	if items[2].FollowupFlaggedAt != nil {
+		t.Errorf("unflagged row flagged at = %v, want nil", *items[2].FollowupFlaggedAt)
+	}
+	detail, err := getByRFQID(t, db, domain.Tenant{
+		AccountID: accountID, BranchID: branchID, Role: domain.UserRoleAdmin,
+	}, followupID)
+	if err != nil {
+		t.Fatalf("GetByRFQID(follow-up) = %v, want the row", err)
+	}
+	if got := detail.FollowupFlaggedAt; got == nil || !got.Equal(flaggedAt) {
+		t.Errorf("single-row follow-up flagged at = %v, want %v", got, flaggedAt)
 	}
 	if items[0].QuoteNumber == nil || *items[0].QuoteNumber <= 0 {
 		t.Errorf("follow-up quote number = %v, want its account sequence", items[0].QuoteNumber)

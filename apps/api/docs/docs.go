@@ -8175,6 +8175,10 @@ const docTemplate = `{
                 "created_at": {
                     "type": "string"
                 },
+                "followup_flagged_at": {
+                    "description": "FollowupFlaggedAt is when the quote was flagged for follow-up; null while it is not.",
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
