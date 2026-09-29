@@ -62,13 +62,13 @@ composes components. Put UI and interactivity in components.
 `@repo/ui` is a real design system now — check it before writing markup. The
 catalogue:
 
-| Group    | Components                                                                                                                                                                                    |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Controls | `Button` `PendingButton` `Badge` `Input` `SearchInput` `Textarea` `Label` `Checkbox` `RadioGroup` `Switch` `ToggleGroup` `Combobox` `MultiCombobox` `Pagination` `RowActionButton` `Dropzone` |
-| Surfaces | `Card` `Separator` `Table` `Skeleton` `Spinner` `Progress` `Avatar` `Hint` `Callout`                                                                                                          |
-| Overlays | `Dialog` `Sheet` `Popover` `DropdownMenu` `Tooltip` `Collapsible` `Command` `ConfirmDialog`                                                                                                   |
-| Patterns | `StatusScreen` `Stepper` `StepList` `EmptyState` `TableEmptyRow` `SortableTableHead` `MetaList` `InlineLink` `DropdownChevron`                                                                |
-| Forms    | `Form` `FormField` `FormItem` `FormLabel` `FormControl` `FormDescription` `FormMessage` `FormRootMessage`                                                                                     |
+| Group    | Components                                                                                                                                                                                                 |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Controls | `Button` `PendingButton` `CopyButton` `Badge` `Input` `SearchInput` `Textarea` `Label` `Checkbox` `RadioGroup` `Switch` `ToggleGroup` `Combobox` `MultiCombobox` `Pagination` `RowActionButton` `Dropzone` |
+| Surfaces | `Card` `Separator` `Table` `ScrollArea` `Skeleton` `Spinner` `Progress` `Avatar` `Hint` `Callout`                                                                                                          |
+| Overlays | `Dialog` `Sheet` `Popover` `DropdownMenu` `Tooltip` `Collapsible` `Command` `ConfirmDialog`                                                                                                                |
+| Patterns | `StatusScreen` `Stepper` `StepList` `EmptyState` `TableEmptyRow` `SortableTableHead` `MetaList` `InlineLink` `DropdownChevron`                                                                             |
+| Forms    | `Form` `FormField` `FormItem` `FormLabel` `FormControl` `FormDescription` `FormMessage` `FormRootMessage`                                                                                                  |
 
 - **Reuse-first, in search order.** Look in this order: (1) the page's
   `_components/`, (2) the app's `components/`, (3) `@repo/ui`. Restyle through the
@@ -95,6 +95,12 @@ catalogue:
   ever correct as a function of what survived, so a call site that writes its own renders
   `10 de sept · · Morón` the first time a seller is unassigned. Emptiness has to reach the list
   unwrapped — an element around an empty string is still an element.
+- **A list that scrolls inside a card or a dialog is `ScrollArea`,** never a bare `overflow-y-auto`.
+  An overlay scrollbar otherwise draws its thumb over the cards' edges, and the box clips their focus
+  rings; the component insets its content and gives the thumb a lane. The `scroll-area` utility is
+  the same behaviour without the inset, for a surface that owns its own padding.
+- **Copying a value is `CopyButton`.** It resets itself, keeps its width between "copy" and
+  "copied", and announces the result; hand it `onCopyError` so the app can toast a refused write.
 - **A file intake is `Dropzone`,** wherever it appears: the onboarding logo, the catalogue import,
   the price list. The whole dashed box is one control, so there is one hit target and one focus ring;
   anything it cannot own (removing what was chosen) goes under the box, because a button inside a
