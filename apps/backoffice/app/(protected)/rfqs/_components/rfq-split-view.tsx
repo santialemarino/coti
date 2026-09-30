@@ -24,7 +24,7 @@ export function RfqSplitView({ activeRfqId, children }: RfqSplitViewProps) {
       <aside className="w-[22%] min-w-[240px] max-w-[320px] h-[calc(100dvh-4rem)] shrink-0 self-start bg-background border-r border-border sticky top-16 scroll-area">
         <RfqSidebarList records={records} activeRfqId={activeRfqId} />
       </aside>
-      <main className="min-w-0 flex-1 px-6 py-6 lg:px-8">{children}</main>
+      <main className="min-w-0 flex-1 px-6 py-6 lg:px-10">{children}</main>
     </div>
   );
 }

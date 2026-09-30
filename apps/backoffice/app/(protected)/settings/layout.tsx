@@ -35,7 +35,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
   ];
 
   return (
-    <div className="flex flex-col px-6 py-10 gap-y-8 lg:flex-row lg:px-12 lg:gap-x-12">
+    <div className="flex flex-col px-6 py-10 gap-y-8 lg:flex-row lg:px-10 lg:gap-x-12">
       <SettingsNav title={t('title')} items={items} />
       <div className="min-w-0 flex-1">{children}</div>
     </div>

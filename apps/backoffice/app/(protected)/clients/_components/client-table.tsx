@@ -23,6 +23,7 @@ import {
   TableRow,
 } from '@repo/ui/components';
 import { cn } from '@repo/ui/lib';
+import { ROUTES } from '@/config/routes';
 import { clientDisplayName, type ClientSummary } from '@/lib/api/client-profiles';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { useFormatters } from '@/lib/i18n/formatters';
@@ -50,7 +51,7 @@ export function ClientTable({ clients }: ClientTableProps) {
     <Card className="gap-y-0 overflow-hidden py-0">
       <CardHeader className="flex-row items-center justify-between py-6">
         <div className="flex items-center gap-x-3">
-          <CardTitle className="text-heading-3">{t('title')}</CardTitle>
+          <CardTitle className="text-heading-3">{t('table.title')}</CardTitle>
           <Badge tone="neutral">{t('total', { total: clients.length })}</Badge>
         </div>
       </CardHeader>
@@ -136,7 +137,7 @@ export function ClientTable({ clients }: ClientTableProps) {
                 <TableCell align="center">
                   <div className="flex justify-center">
                     <InlineLink asChild tone="muted">
-                      <Link href={`/clients/${client.id}`}>
+                      <Link href={ROUTES.clientDetail(client.id)}>
                         {t('viewProfile')}
                         <ArrowUpRightIcon aria-hidden="true" />
                       </Link>

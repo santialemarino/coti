@@ -941,7 +941,8 @@
       "tags": "Tags",
       "sales": "Ventas aceptadas",
       "lastSale": "Última venta",
-      "actions": "Acciones"
+      "actions": "Acciones",
+      "title": "Fichas de clientes"
     },
     "empty": {
       "title": "Todavía no hay clientes asociados",
@@ -968,7 +969,8 @@
       "emptySales": {
         "title": "No hay ventas visibles",
         "description": "No hay cotizaciones aceptadas dentro de las sucursales que podés consultar."
-      }
+      },
+      "numberPending": "Sin número"
     },
     "tags": {
       "title": "Tags",
@@ -1283,6 +1285,7 @@
     "title": "Productos",
     "total": "{total, plural, one {# producto} other {# productos}}",
     "add": "Agregar producto",
+    "bulkEdit": "Edición masiva",
     "cancel": "Cancelar",
     "search": "Buscar por nombre o código",
     "table": {

@@ -4,6 +4,7 @@ export const ROUTES = {
   rfqs: '/rfqs',
   rfqsDetail: (id: string) => `/rfqs/${id}`,
   clients: '/clients',
+  clientDetail: (id: string) => `/clients/${id}`,
   reports: '/reports',
   administration: '/administration',
   login: '/login',
