@@ -12,7 +12,6 @@ import {
   ConfirmDialog,
   RowActionButton,
   Table,
-  TABLE_COL,
   TableBody,
   TableCaption,
   TableCell,
@@ -182,15 +181,13 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
         <TableCaption className="sr-only">{t('table.caption')}</TableCaption>
         <TableHeader>
           <TableRow>
-            <TableHead>{t('table.name')}</TableHead>
-            <TableHead>{t('table.email')}</TableHead>
-            <TableHead>{t('table.role')}</TableHead>
-            <TableHead>{t('table.branches')}</TableHead>
-            <TableHead>{t('table.status')}</TableHead>
-            <TableHead className={TABLE_COL.date}>{t('table.lastLogin')}</TableHead>
-            <TableHead align="center" className={TABLE_COL.actionsWide}>
-              {t('table.actions')}
-            </TableHead>
+            <TableHead kind="text">{t('table.name')}</TableHead>
+            <TableHead kind="text">{t('table.email')}</TableHead>
+            <TableHead kind="short">{t('table.role')}</TableHead>
+            <TableHead kind="text">{t('table.branches')}</TableHead>
+            <TableHead kind="status">{t('table.status')}</TableHead>
+            <TableHead kind="date">{t('table.lastLogin')}</TableHead>
+            <TableHead kind="actionsWide">{t('table.actions')}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -228,25 +225,23 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
                     ) : null}
                   </span>
                 </TableCell>
-                <TableCell>{user.email}</TableCell>
-                <TableCell>{tCommon(`roles.${user.role}`)}</TableCell>
+                <TableCell className="wrap-anywhere">{user.email}</TableCell>
+                <TableCell kind="short">{tCommon(`roles.${user.role}`)}</TableCell>
                 <TableCell className={reach ? undefined : 'text-foreground-subtle'}>
                   {reach ?? t('table.noBranches')}
                 </TableCell>
-                <TableCell>
+                <TableCell kind="status">
                   <Badge tone={user.isActive ? 'success' : 'neutral'}>
                     {t(user.isActive ? 'status.active' : 'status.inactive')}
                   </Badge>
                 </TableCell>
                 <TableCell
-                  className={cn(
-                    'whitespace-nowrap tabular-nums',
-                    !user.lastLoginAt && 'text-foreground-subtle',
-                  )}
+                  kind="date"
+                  className={cn(!user.lastLoginAt && 'text-foreground-subtle')}
                 >
                   {user.lastLoginAt ? fmt.dateNumeric(user.lastLoginAt) : t('table.neverLoggedIn')}
                 </TableCell>
-                <TableCell align="center">
+                <TableCell kind="actionsWide">
                   <div className="flex justify-center gap-x-1">
                     <RowActionButton
                       icon={PencilIcon}

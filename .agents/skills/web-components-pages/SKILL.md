@@ -301,11 +301,30 @@ A table is the densest thing in the product, so every column has to earn its wid
   centred copy gives every row a different starting x, and centred numbers line up on nothing.
   Applying this per table is how one screen ends up with three conventions; apply it to every table
   in the app at once.
-- **Alignment is a prop, never a class.** `TableHead` and `TableCell` take `align`: `end` is right
-  with `tabular-nums`, `center` is for a one-control column, `start` is the default. **Every actions
-  column is centred**, under a centred heading, whatever else the table holds — right-aligned in one
-  table and centred in the next is the drift this exists to stop. A date in a column is
-  `fmt.dateNumeric` with `tabular-nums`, left: zero-padded, it lines up without being moved.
+- **Every column declares its kind, and the kind sets width and alignment.** `TableHead` requires
+  `kind` and `TableCell` takes the same one (`text` by default); never an `align`, a `w-*` or a
+  `tabular-nums` class for what the kind already says. The kinds, from `TABLE_COLUMNS`:
+
+  | Kind                                 | Width                  | Holds                                         |
+  | ------------------------------------ | ---------------------- | --------------------------------------------- |
+  | `text`                               | the slack              | names, descriptions, addresses, emails, lists |
+  | `short`                              | 128px, left            | a code, a reference, a unit, a role           |
+  | `date`                               | 128px, left            | a `fmt.dateNumeric` date                      |
+  | `status`                             | 144px, left            | one status badge                              |
+  | `index` · `count`                    | 48 · 112, right        | a row number · "3 ventas", "7 días"           |
+  | `quantity` · `money`                 | 128 · 144, right       | a quantity with its unit · an amount          |
+  | `quantityInput` · `moneyInput`       | 176px, right           | the same figure, edited inline                |
+  | `select` · `actions` · `actionsWide` | 48 · 96 · 128, centred | a checkbox · one row action · two or three    |
+
+  The table keeps its automatic layout and every sized kind carries a matching `min-width`, so the
+  slack goes to the `text` columns only: figures keep their width and hug their edge, and a squeezed
+  table shrinks its text to the longest word and then scrolls instead of crushing a column. A
+  `text` cell whose content must truncate (the queue's reference) needs a zero-width inner box
+  (`w-0 min-w-full`) and a `min-w-*` on the cell, or its full length becomes the column's minimum.
+  An unbreakable string that may be long (an email) takes `wrap-anywhere`. **Every actions column
+  is centred**, under a centred heading, whatever else the table holds. Every table uses the
+  component's own cell padding; a table that wants taller rows changes only the vertical padding.
+
 - **A quantity and its unit are one figure, in one right-aligned cell** (`500 bolsas`, or the unit as
   the `AmountInput` suffix when it is editable). A right-aligned number beside a left-aligned unit
   leaves a gap that changes width with every row.
@@ -313,13 +332,13 @@ A table is the densest thing in the product, so every column has to earn its wid
   and the press; every other row has none, because a hover on a row that does nothing promises an
   action that is not there. A tinted row (an import error, a diff) just sets its `bg-*`; there is no
   hover to cancel.
-- **Tables that must line up share fixed widths.** `layout="fixed"` plus the `TABLE_COL` presets
-  (`select`, `index`, `actions`, `actionsWide`, `badge`, `date`, `quantity`, `status`, `money`) gives
-  two side-by-side tables the same columns; a text column takes no preset and shares what is left.
+- **Tables that must line up get it from the kinds.** Two side-by-side tables with the same kinds
+  have the same columns; a table without a heading row sizes its columns with a `<colgroup>` of
+  `TABLE_COLUMNS[kind].width`.
 - **A sortable header follows its column's alignment.** `SortableTableHead` renders a full-width
   flex trigger, so `text-right` on the cell alone leaves the label pinned left inside a right-aligned
-  header — pass `align="end"`. This is the one place a table's numbers and their heading visibly
-  disagree, and it reads as carelessness rather than as a bug.
+  header — it takes the same `kind`, which aligns its trigger. This is the one place a table's
+  numbers and their heading visibly disagree, and it reads as carelessness rather than as a bug.
 - **A clickable row tests containment, not the target.** React sends a portalled child's events up
   the **React** tree, so a click on a dropdown item rendered from inside a row arrives at that row's
   `onClick` with a target that is nowhere near it in the DOM. `event.currentTarget.contains(target)`

@@ -4,7 +4,7 @@ import * as React from 'react';
 import { ArrowDownIcon, ArrowUpIcon, ChevronsUpDownIcon } from 'lucide-react';
 
 import { cn } from '../lib/utils';
-import { TableHead, type TableAlign } from './table';
+import { TABLE_COLUMNS, TableHead, type TableColumnKind } from './table';
 
 export type SortOrder = 'asc' | 'desc';
 
@@ -51,11 +51,10 @@ interface SortableTableHeadProps<TColumn extends string> {
   sortOrder: SortOrder;
   onSort: (column: TColumn) => void;
   /*
-   * Follows the column's own alignment. The trigger is a flex box filling the cell, so `text-right`
-   * on the cell alone leaves the label pinned left inside a right-aligned header — the one place
-   * where a table's numbers and their heading visibly disagree.
+   * The column's kind, whose alignment the trigger follows. The trigger is a flex box filling the
+   * cell, so `text-right` on the cell alone would leave the label pinned left in a figure column.
    */
-  align?: TableAlign;
+  kind: TableColumnKind;
   className?: string;
 }
 
@@ -70,15 +69,16 @@ function SortableTableHead<TColumn extends string>({
   sortBy,
   sortOrder,
   onSort,
-  align = 'start',
+  kind,
   className,
 }: SortableTableHeadProps<TColumn>) {
   const active = sortBy === column;
+  const align = TABLE_COLUMNS[kind].align;
 
   return (
     <TableHead
       aria-sort={active ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
-      align={align}
+      kind={kind}
       className={className}
     >
       <button

@@ -15,7 +15,6 @@ import {
   EmptyState,
   RowActionButton,
   Table,
-  TABLE_COL,
   TableBody,
   TableCell,
   TableHead,
@@ -180,6 +179,8 @@ export function RfqItemsTable({
   // Confidence belongs to the pre-quote review: visible before pricing is set, hidden once a
   // quote exists and the seller reasons about products and money.
   const showConfidence = !showPricing;
+  const quantityKind = canEditProducts ? 'quantityInput' : 'quantity';
+  const priceKind = canEditPrices ? 'moneyInput' : 'money';
   const hasDiscounts = discounts.length > 0;
 
   const itemsSubtotal = useMemo(
@@ -429,24 +430,22 @@ export function RfqItemsTable({
         <Table className="[&_th]:h-10 [&_td]:py-3">
           <TableHeader>
             <TableRow>
-              <TableHead align="end" className="w-8">
-                #
-              </TableHead>
-              <TableHead>{t('detail.items.columns.description')}</TableHead>
-              <TableHead>{t('detail.items.columns.product')}</TableHead>
-              {showConfidence && <TableHead>{t('detail.items.columns.confidence')}</TableHead>}
+              <TableHead kind="index">#</TableHead>
+              <TableHead kind="text">{t('detail.items.columns.description')}</TableHead>
+              <TableHead kind="text">{t('detail.items.columns.product')}</TableHead>
+              {showConfidence && (
+                <TableHead kind="status">{t('detail.items.columns.confidence')}</TableHead>
+              )}
               {/* Quantity and unit are one figure, so the unit never opens a gap beside the number. */}
-              <TableHead align="end">{t('detail.items.columns.quantity')}</TableHead>
+              <TableHead kind={quantityKind}>{t('detail.items.columns.quantity')}</TableHead>
               {showPricing && (
-                <TableHead align="end">{t('detail.items.columns.unitPrice')}</TableHead>
+                <TableHead kind={priceKind}>{t('detail.items.columns.unitPrice')}</TableHead>
               )}
               {showPricing && (
-                <TableHead align="end">{t('detail.items.columns.subtotal')}</TableHead>
+                <TableHead kind="money">{t('detail.items.columns.subtotal')}</TableHead>
               )}
               {(canEditProducts || canEditPrices) && (
-                <TableHead align="center" className={TABLE_COL.actions}>
-                  {t('detail.items.columns.actions')}
-                </TableHead>
+                <TableHead kind="actions">{t('detail.items.columns.actions')}</TableHead>
               )}
             </TableRow>
           </TableHeader>
@@ -461,7 +460,7 @@ export function RfqItemsTable({
 
               return (
                 <TableRow key={item.id}>
-                  <TableCell align="end" className="text-foreground-subtle">
+                  <TableCell kind="index" className="text-foreground-subtle">
                     {index + 1}
                   </TableCell>
                   <TableCell>
@@ -537,13 +536,13 @@ export function RfqItemsTable({
                     )}
                   </TableCell>
                   {showConfidence && (
-                    <TableCell>
+                    <TableCell kind="status">
                       <Badge tone={confidence.tone} size="sm">
                         {t(`detail.confidence.${confidence.label}`)}
                       </Badge>
                     </TableCell>
                   )}
-                  <TableCell align="end">
+                  <TableCell kind={quantityKind}>
                     {canEditProducts ? (
                       <AmountInput
                         aria-label={t('detail.items.columns.quantity')}
@@ -559,18 +558,17 @@ export function RfqItemsTable({
                           }
                         }}
                         suffix={unit}
-                        containerClassName="w-36 ml-auto"
                         className="text-right tabular-nums"
                       />
                     ) : (
-                      <span className="whitespace-nowrap text-paragraph-sm">
+                      <span className="text-paragraph-sm">
                         {fmt.value(Number(item.quantity))}
                         {unit ? <span className="text-foreground-muted"> {unit}</span> : null}
                       </span>
                     )}
                   </TableCell>
                   {showPricing && (
-                    <TableCell align="end" className="text-paragraph-sm">
+                    <TableCell kind={priceKind} className="text-paragraph-sm">
                       {canEditPrices &&
                       (item.unit_price_snapshot != null || item.match_status === 'NO_MATCH') ? (
                         <AmountInput
@@ -587,7 +585,6 @@ export function RfqItemsTable({
                               (event.target as HTMLInputElement).blur();
                             }
                           }}
-                          containerClassName="w-36 ml-auto"
                           className="text-right tabular-nums"
                         />
                       ) : item.unit_price_snapshot != null ? (
@@ -598,7 +595,7 @@ export function RfqItemsTable({
                     </TableCell>
                   )}
                   {showPricing && (
-                    <TableCell align="end" className="text-paragraph-sm-medium">
+                    <TableCell kind="money" className="text-paragraph-sm-medium">
                       {item.subtotal ? (
                         fmt.currency(item.subtotal)
                       ) : (
@@ -607,7 +604,7 @@ export function RfqItemsTable({
                     </TableCell>
                   )}
                   {(canEditProducts || canEditPrices) && (
-                    <TableCell align="center">
+                    <TableCell kind="actions">
                       <div className="flex justify-center">
                         {/* Danger tone, like every other destructive row action — and unlike
                             archiving, removing a line is not something the screen can undo. */}

@@ -11,7 +11,6 @@ import {
   CardTitle,
   InlineLink,
   Table,
-  TABLE_COL,
   TableBody,
   TableCaption,
   TableCell,
@@ -110,10 +109,10 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
           <TableCaption className="sr-only">{t('profile.salesCaption')}</TableCaption>
           <TableHeader>
             <TableRow>
-              <TableHead>{t('profile.table.quote')}</TableHead>
-              <TableHead>{t('profile.table.branch')}</TableHead>
-              <TableHead className={TABLE_COL.date}>{t('profile.table.date')}</TableHead>
-              <TableHead align="end">{t('profile.table.total')}</TableHead>
+              <TableHead kind="short">{t('profile.table.quote')}</TableHead>
+              <TableHead kind="text">{t('profile.table.branch')}</TableHead>
+              <TableHead kind="date">{t('profile.table.date')}</TableHead>
+              <TableHead kind="money">{t('profile.table.total')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -127,7 +126,7 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
             ) : (
               profile.sales.map((sale) => (
                 <TableRow key={sale.quoteId}>
-                  <TableCell>
+                  <TableCell kind="short">
                     <InlineLink asChild>
                       <Link href={ROUTES.rfqsDetail(sale.rfqId)}>
                         {formatRfqReference(sale.quoteNumber) ?? t('profile.numberPending')}
@@ -135,10 +134,8 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
                     </InlineLink>
                   </TableCell>
                   <TableCell>{sale.branchName}</TableCell>
-                  <TableCell className="whitespace-nowrap tabular-nums">
-                    {fmt.dateNumeric(sale.acceptedAt)}
-                  </TableCell>
-                  <TableCell align="end" className="text-paragraph-sm-medium">
+                  <TableCell kind="date">{fmt.dateNumeric(sale.acceptedAt)}</TableCell>
+                  <TableCell kind="money" className="text-paragraph-sm-medium">
                     {fmt.currency(sale.total)}
                   </TableCell>
                 </TableRow>

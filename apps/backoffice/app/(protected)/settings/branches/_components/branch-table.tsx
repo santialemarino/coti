@@ -12,7 +12,6 @@ import {
   ConfirmDialog,
   RowActionButton,
   Table,
-  TABLE_COL,
   TableBody,
   TableCaption,
   TableCell,
@@ -118,13 +117,11 @@ export function BranchTable({ branches }: BranchTableProps) {
         <TableCaption className="sr-only">{t('table.caption')}</TableCaption>
         <TableHeader>
           <TableRow>
-            <TableHead>{t('table.name')}</TableHead>
-            <TableHead>{t('table.address')}</TableHead>
-            <TableHead align="end">{t('table.expiry')}</TableHead>
-            <TableHead>{t('table.status')}</TableHead>
-            <TableHead align="center" className={TABLE_COL.actionsWide}>
-              {t('table.actions')}
-            </TableHead>
+            <TableHead kind="text">{t('table.name')}</TableHead>
+            <TableHead kind="text">{t('table.address')}</TableHead>
+            <TableHead kind="count">{t('table.expiry')}</TableHead>
+            <TableHead kind="status">{t('table.status')}</TableHead>
+            <TableHead kind="actionsWide">{t('table.actions')}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -144,15 +141,15 @@ export function BranchTable({ branches }: BranchTableProps) {
                 <TableCell className={branch.address ? undefined : 'text-foreground-subtle'}>
                   {branch.address ?? t('table.noAddress')}
                 </TableCell>
-                <TableCell align="end">
+                <TableCell kind="count">
                   {t('expiryDays', { count: branch.defaultExpiryDays })}
                 </TableCell>
-                <TableCell>
+                <TableCell kind="status">
                   <Badge tone={branch.isActive ? 'success' : 'neutral'}>
                     {t(branch.isActive ? 'status.active' : 'status.closed')}
                   </Badge>
                 </TableCell>
-                <TableCell align="center">
+                <TableCell kind="actionsWide">
                   <div className="flex justify-center gap-x-1">
                     <RowActionButton
                       icon={PencilIcon}

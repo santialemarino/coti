@@ -7,7 +7,7 @@ import {
   CardHeader,
   CardTitle,
   Table,
-  TABLE_COL,
+  TABLE_COLUMNS,
   TableBody,
   TableCell,
   TableHead,
@@ -73,10 +73,10 @@ function DiffItemCell({
     return (
       <TableRow className="bg-muted/30">
         <TableCell className="text-foreground-subtle">—</TableCell>
-        <TableCell align="end" className="text-foreground-subtle">
+        <TableCell kind="quantity" className="text-foreground-subtle">
           —
         </TableCell>
-        <TableCell align="end" className="text-foreground-subtle">
+        <TableCell kind="money" className="text-foreground-subtle">
           —
         </TableCell>
       </TableRow>
@@ -124,7 +124,7 @@ function DiffItemCell({
         </span>
         {changeLabel}
       </TableCell>
-      <TableCell align="end" className="whitespace-nowrap">
+      <TableCell kind="quantity">
         {isRemoved ? (
           <span className="text-foreground-muted">—</span>
         ) : (
@@ -133,7 +133,7 @@ function DiffItemCell({
           </span>
         )}
       </TableCell>
-      <TableCell align="end" className="text-paragraph-sm-medium">
+      <TableCell kind="money" className="text-paragraph-sm-medium">
         {isRemoved ? (
           <span className="text-foreground-muted">—</span>
         ) : item.unit_price != null ? (
@@ -165,7 +165,7 @@ function DiffDiscountRow({
           </span>
         ) : null}
       </TableCell>
-      <TableCell align="end" className="text-paragraph-xs text-foreground-muted">
+      <TableCell kind="money" className="text-paragraph-xs text-foreground-muted">
         −{fmt.currency(discount.amount)}
       </TableCell>
     </TableRow>
@@ -195,17 +195,12 @@ function DiffPanel({
         <CardTitle className="text-heading-5">{title}</CardTitle>
       </CardHeader>
 
-      {/* Fixed widths, the same on both panels, so a line sits at the same x on either side. */}
-      <Table layout="fixed">
+      <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>{t('detail.diff.columns.product')}</TableHead>
-            <TableHead align="end" className={TABLE_COL.quantity}>
-              {t('detail.diff.columns.quantity')}
-            </TableHead>
-            <TableHead align="end" className={TABLE_COL.money}>
-              {t('detail.diff.columns.price')}
-            </TableHead>
+            <TableHead kind="text">{t('detail.diff.columns.product')}</TableHead>
+            <TableHead kind="quantity">{t('detail.diff.columns.quantity')}</TableHead>
+            <TableHead kind="money">{t('detail.diff.columns.price')}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -222,11 +217,11 @@ function DiffPanel({
               {t('detail.diff.discountsTitle')}
             </span>
           </div>
-          <Table layout="fixed">
+          <Table>
             <colgroup>
               <col />
-              <col className={TABLE_COL.quantity} />
-              <col className={TABLE_COL.money} />
+              <col className={TABLE_COLUMNS.quantity.width} />
+              <col className={TABLE_COLUMNS.money.width} />
             </colgroup>
             <TableBody>
               {discounts.map((d, i) => (

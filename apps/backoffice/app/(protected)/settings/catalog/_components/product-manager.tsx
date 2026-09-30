@@ -29,7 +29,6 @@ import {
   RowActionButton,
   SearchInput,
   Table,
-  TABLE_COL,
   TableBody,
   TableCaption,
   TableCell,
@@ -233,14 +232,12 @@ export function ProductManager({ page, families, query, bulkEditTargetId }: Prod
         <TableCaption className="sr-only">{t('table.caption')}</TableCaption>
         <TableHeader>
           <TableRow>
-            <TableHead>{t('table.product')}</TableHead>
-            <TableHead>{t('table.code')}</TableHead>
-            <TableHead>{t('table.family')}</TableHead>
-            <TableHead>{t('table.unit')}</TableHead>
-            <TableHead>{t('table.status')}</TableHead>
-            <TableHead align="center" className={TABLE_COL.actionsWide}>
-              {t('table.actions')}
-            </TableHead>
+            <TableHead kind="text">{t('table.product')}</TableHead>
+            <TableHead kind="short">{t('table.code')}</TableHead>
+            <TableHead kind="text">{t('table.family')}</TableHead>
+            <TableHead kind="short">{t('table.unit')}</TableHead>
+            <TableHead kind="status">{t('table.status')}</TableHead>
+            <TableHead kind="actionsWide">{t('table.actions')}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -273,21 +270,27 @@ export function ProductManager({ page, families, query, bulkEditTargetId }: Prod
                     <span className="text-paragraph-sm-medium text-foreground">{product.name}</span>
                   </div>
                 </TableCell>
-                <TableCell className={product.code ? undefined : 'text-foreground-subtle'}>
+                <TableCell
+                  kind="short"
+                  className={product.code ? undefined : 'text-foreground-subtle'}
+                >
                   {product.code ?? '—'}
                 </TableCell>
                 <TableCell className={product.familyId ? undefined : 'text-foreground-subtle'}>
                   {product.familyId ? (familyNames.get(product.familyId) ?? '—') : '—'}
                 </TableCell>
-                <TableCell className={product.unit ? undefined : 'text-foreground-subtle'}>
+                <TableCell
+                  kind="short"
+                  className={product.unit ? undefined : 'text-foreground-subtle'}
+                >
                   {product.unit ?? '—'}
                 </TableCell>
-                <TableCell>
+                <TableCell kind="status">
                   <Badge tone={product.isActive ? 'success' : 'neutral'}>
                     {t(product.isActive ? 'status.active' : 'status.inactive')}
                   </Badge>
                 </TableCell>
-                <TableCell align="center">
+                <TableCell kind="actionsWide">
                   <div className="flex justify-center gap-x-1">
                     <RowActionButton
                       icon={PencilIcon}
