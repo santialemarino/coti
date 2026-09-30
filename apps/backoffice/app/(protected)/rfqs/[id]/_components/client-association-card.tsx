@@ -421,7 +421,7 @@ function ClientAssociationDialog({
                 <RadioGroup
                   value={clientId}
                   onValueChange={chooseCandidate}
-                  className="max-h-56 p-1 pe-2 scroll-area"
+                  className="-ms-1 -me-4 max-h-56 p-1 pe-4 scroll-area"
                 >
                   {directoryResults.map((candidate) => (
                     <ClientOption
