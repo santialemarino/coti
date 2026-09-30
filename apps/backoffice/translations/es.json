@@ -89,6 +89,12 @@
       "label": "Paginación",
       "previous": "Anterior",
       "next": "Siguiente"
+    },
+    "phone": {
+      "country": "País",
+      "countrySearch": "Buscá un país",
+      "countryEmpty": "No encontramos ese país.",
+      "invalid": "Revisá el número: no parece un celular válido."
     }
   },
   "errors": {
@@ -802,8 +808,8 @@
         "title": "Enviar cotización",
         "description": "La cotización se envía por WhatsApp con un enlace al detalle. Podés mandar además una copia por correo.",
         "phoneLabel": "WhatsApp del cliente",
-        "phonePlaceholder": "+5491122334455",
-        "phoneHint": "Con código de país, sin espacios ni guiones.",
+        "phonePlaceholder": "Ingresá el celular",
+        "phoneHint": "Con código de área y el 15, como 11 15 5555-0101.",
         "alsoEmail": "Enviar también una copia por correo",
         "emailLabel": "Correo del cliente",
         "emailPlaceholder": "cliente@empresa.com",
@@ -831,7 +837,7 @@
         },
         "errors": {
           "NOT_FOUND": "No encontramos esta cotización. Actualizá la pantalla e intentá de nuevo.",
-          "INVALID_INPUT": "Revisá el teléfono y el correo: el teléfono va con código de país.",
+          "INVALID_INPUT": "Revisá el teléfono y el correo.",
           "DELIVERY_CHANNEL": "Falta un canal activo de WhatsApp o correo en esta sucursal. Pedile a un administrador que lo configure.",
           "DELIVERY_UNAVAILABLE": "No pudimos entregar la cotización por ningún canal. Revisá la configuración de envío o intentá más tarde.",
           "CONFLICT": "La cotización cambió mientras la enviabas. Actualizá la pantalla y revisala antes de enviar.",
@@ -1011,7 +1017,9 @@
         "newHint": "Alcanza con completar el nombre, el teléfono o el correo. Podés corregir los datos sugeridos antes de guardar.",
         "cancel": "Cancelar",
         "save": "Confirmar asociación",
-        "saving": "Asociando…"
+        "saving": "Asociando…",
+        "phonePlaceholder": "Ingresá el celular",
+        "phoneHint": "Con código de área y el 15, como 11 15 5555-0101."
       },
       "tags": {
         "title": "Tags del cliente",

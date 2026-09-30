@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { isValidPhoneNumber } from 'libphonenumber-js/min';
 import { ExternalLinkIcon, MailIcon, MessageCircleIcon, SendIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -19,6 +20,7 @@ import {
   Label,
   PendingButton,
 } from '@repo/ui/components';
+import { PhoneInput } from '@/components/phone-input';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { errorCodeOf } from '@/lib/api/errors';
 import {
@@ -29,9 +31,6 @@ import {
 } from '@/lib/api/rfqs';
 import { sendQuote } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
-
-// Same shape the API enforces, so a malformed number is caught before the round trip.
-const E164 = /^\+[1-9]\d{7,14}$/;
 
 interface SendQuoteDialogProps {
   detail: RfqDetailResponse;
@@ -58,6 +57,7 @@ export function SendQuoteDialog({
   const fmt = useFormatters();
   const t = useTranslations('rfqs.detail.send');
   const tChannel = useTranslations('rfqs.channels');
+  const tPhone = useTranslations('common.phone');
   const message = useApiErrorMessage('rfqs.detail.send');
   const [open, setOpen] = useState(false);
   const [phone, setPhone] = useState('');
@@ -67,7 +67,7 @@ export function SendQuoteDialog({
   const [result, setResult] = useState<QuoteSendResponse | null>(null);
 
   const quoteId = detail.quote?.id ?? null;
-  const phoneValid = E164.test(phone.trim());
+  const phoneValid = isValidPhoneNumber(phone);
   const emailValid = !alsoEmail || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const canSend = !!quoteId && phoneValid && emailValid;
 
@@ -89,7 +89,7 @@ export function SendQuoteDialog({
     setSending(true);
     try {
       const result = await sendQuote(quoteId, branchId, {
-        recipient_phone: phone.trim(),
+        recipient_phone: phone,
         email_delivery: alsoEmail ? { address: email.trim() } : null,
       });
       reportOutcome(result.deliveries);
@@ -191,16 +191,20 @@ export function SendQuoteDialog({
                   <MessageCircleIcon aria-hidden="true" className="size-4 text-foreground-muted" />
                   {t('phoneLabel')}
                 </Label>
-                <Input
+                <PhoneInput
                   id="send-phone"
-                  type="tel"
-                  inputMode="tel"
                   value={phone}
-                  onChange={(event) => setPhone(event.target.value)}
+                  onChange={setPhone}
                   placeholder={t('phonePlaceholder')}
+                  countryLabel={tPhone('country')}
+                  countrySearchPlaceholder={tPhone('countrySearch')}
+                  countryEmptyLabel={tPhone('countryEmpty')}
+                  aria-describedby="send-phone-hint"
                   autoFocus
                 />
-                <p className="text-paragraph-xs text-foreground-muted">{t('phoneHint')}</p>
+                <p id="send-phone-hint" className="text-paragraph-xs text-foreground-muted">
+                  {t('phoneHint')}
+                </p>
               </div>
 
               <div className="flex flex-col gap-y-2">

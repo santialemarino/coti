@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
+import { isValidPhoneNumber } from 'libphonenumber-js/min';
 import {
   BadgePlusIcon,
   Building2Icon,
@@ -39,6 +40,8 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from '@repo/ui/components';
+import { cn } from '@repo/ui/lib';
+import { PhoneInput } from '@/components/phone-input';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import {
   clientDisplayName,
@@ -179,6 +182,7 @@ function ClientAssociationDialog({
   onAssociated,
 }: ClientAssociationDialogProps) {
   const t = useTranslations('clients.association');
+  const tPhone = useTranslations('common.phone');
   const message = useApiErrorMessage('clients.association.errors');
   const exactCandidates = useMemo(() => {
     const values = [association.currentClient, ...association.suggestions].filter(
@@ -332,7 +336,7 @@ function ClientAssociationDialog({
             : {
                 new_client: {
                   name: name.trim() || undefined,
-                  phone: phone.trim() || undefined,
+                  phone: phone || undefined,
                   email: email.trim() || undefined,
                 },
                 tag_ids: [...selectedTags],
@@ -346,8 +350,11 @@ function ClientAssociationDialog({
     });
   }
 
+  const phoneInvalid = phone !== '' && !isValidPhoneNumber(phone);
   const canSubmit =
-    mode === 'existing' ? Boolean(clientId) : Boolean(name.trim() || phone.trim() || email.trim());
+    mode === 'existing'
+      ? Boolean(clientId)
+      : !phoneInvalid && Boolean(name.trim() || phone || email.trim());
 
   return (
     <Dialog open={open} onOpenChange={(next) => !saving && onOpenChange(next)}>
@@ -452,14 +459,27 @@ function ClientAssociationDialog({
             </div>
             <div className="flex flex-col gap-y-2">
               <Label htmlFor="association-client-phone">{t('dialog.phone')}</Label>
-              <Input
+              <PhoneInput
                 id="association-client-phone"
                 value={phone}
-                onChange={(event) => setPhone(event.target.value)}
-                maxLength={64}
-                placeholder="+5491122334455"
+                onChange={setPhone}
+                placeholder={t('dialog.phonePlaceholder')}
+                countryLabel={tPhone('country')}
+                countrySearchPlaceholder={tPhone('countrySearch')}
+                countryEmptyLabel={tPhone('countryEmpty')}
                 disabled={saving}
+                aria-invalid={phoneInvalid}
+                aria-describedby="association-client-phone-hint"
               />
+              <p
+                id="association-client-phone-hint"
+                className={cn(
+                  'text-paragraph-xs',
+                  phoneInvalid ? 'text-danger-foreground' : 'text-foreground-muted',
+                )}
+              >
+                {phoneInvalid ? tPhone('invalid') : t('dialog.phoneHint')}
+              </p>
             </div>
             <div className="flex flex-col gap-y-2">
               <Label htmlFor="association-client-email">{t('dialog.email')}</Label>

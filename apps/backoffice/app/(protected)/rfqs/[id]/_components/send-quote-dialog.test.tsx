@@ -252,7 +252,8 @@ describe('SendQuoteDialog', () => {
     const view = renderDialog();
     openDialog(view);
 
-    fireEvent.change(phoneField(view), { target: { value: '1155550101' } });
+    // Too short to be a number anywhere, whatever the country picker says.
+    fireEvent.change(phoneField(view), { target: { value: '1234' } });
     fireEvent.click(view.getByRole('button', { name: /^Enviar$/ }));
 
     expect(sendQuote).not.toHaveBeenCalled();
