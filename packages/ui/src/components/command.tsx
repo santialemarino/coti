@@ -47,21 +47,31 @@ function CommandInput({
  * That makes it match `:focus-visible` and paint the browser's outline, which the highlighted item
  * already replaces — the list is a container, not the control.
  */
+function assignRef<T>(ref: React.Ref<T> | undefined, value: T | null) {
+  if (typeof ref === 'function') ref(value);
+  else if (ref) ref.current = value;
+}
+
 function CommandList({
   className,
   ref,
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.List>) {
   const lane = useScrollLane<HTMLDivElement>();
+  const node = React.useRef<HTMLDivElement | null>(null);
+  const setRef = React.useCallback(
+    (element: HTMLDivElement | null) => {
+      node.current = element;
+      assignRef(ref, element);
+    },
+    [ref],
+  );
+  // cmdk merges refs with a fresh callback every render, so the observers mount here, once.
+  React.useEffect(() => lane(node.current), [lane]);
 
   return (
     <CommandPrimitive.List
-      ref={(node) => {
-        const release = lane(node);
-        if (typeof ref === 'function') ref(node);
-        else if (ref) ref.current = node;
-        return release;
-      }}
+      ref={setRef}
       data-slot="command-list"
       onWheel={(e) => e.stopPropagation()}
       className={cn(
