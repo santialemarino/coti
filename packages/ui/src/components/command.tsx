@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Command as CommandPrimitive } from 'cmdk';
 import { SearchIcon } from 'lucide-react';
 
+import { useScrollLane } from '../hooks/use-scroll-lane';
 import { cn } from '../lib/utils';
 
 function Command({ className, ...props }: React.ComponentProps<typeof CommandPrimitive>) {
@@ -46,9 +47,21 @@ function CommandInput({
  * That makes it match `:focus-visible` and paint the browser's outline, which the highlighted item
  * already replaces — the list is a container, not the control.
  */
-function CommandList({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.List>) {
+function CommandList({
+  className,
+  ref,
+  ...props
+}: React.ComponentProps<typeof CommandPrimitive.List>) {
+  const lane = useScrollLane<HTMLDivElement>();
+
   return (
     <CommandPrimitive.List
+      ref={(node) => {
+        const release = lane(node);
+        if (typeof ref === 'function') ref(node);
+        else if (ref) ref.current = node;
+        return release;
+      }}
       data-slot="command-list"
       onWheel={(e) => e.stopPropagation()}
       className={cn(
