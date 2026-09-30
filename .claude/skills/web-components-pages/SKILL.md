@@ -182,7 +182,9 @@ The stack is **react-hook-form + zod** with the shared `Form` primitives from
   Argentina first, beside the national number, emitting E.164 or `''`. Validate with
   `isValidPhoneNumber` from `libphonenumber-js/min`, never a regex — the country supplies the code the
   regex used to demand, and only the library knows each country's lengths. A pasted `+…` number moves
-  the picker to its country.
+  the picker to its country. **It never guesses a mobile:** an Argentine number without a 9 or a 15
+  is a valid landline, and WhatsApp Business can run on one, so the field keeps it and offers the
+  `+54 9` form under the input (`landlineNotice`) for the seller to take with one click.
 - **A label is `w-fit`.** A label forwards its click to the control it names, so a block-level one
   spans the whole field row and a click in the empty space far to its right focuses an input the
   pointer is nowhere near — or opens a select. `Label` carries this; don't override it with `w-full`.

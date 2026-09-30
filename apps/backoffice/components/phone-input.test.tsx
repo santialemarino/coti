@@ -26,6 +26,7 @@ function Harness({
         countryLabel="País"
         countrySearchPlaceholder="Buscá un país"
         countryEmptyLabel="Nada"
+        landlineNotice={{ message: 'Parece un fijo.', action: (mobile) => `Usar ${mobile}` }}
       />
       <button type="button" onClick={() => setValue('')}>
         Vaciar
@@ -79,5 +80,53 @@ describe('PhoneInput', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Vaciar' }));
 
     expect(national().value).toBe('');
+  });
+
+  describe('an Argentine number without a 9 or a 15', () => {
+    it('keeps the landline it reads as and offers the mobile instead of applying it', () => {
+      const onValue = vi.fn();
+      render(<Harness onValue={onValue} />);
+
+      fireEvent.change(national(), { target: { value: '11 5555-0101' } });
+
+      expect(onValue).toHaveBeenLastCalledWith('+541155550101');
+      expect(screen.getByRole('status').textContent).toContain('Parece un fijo.');
+    });
+
+    it('switches to the mobile when the seller takes the offer', () => {
+      const onValue = vi.fn();
+      render(<Harness onValue={onValue} />);
+      fireEvent.change(national(), { target: { value: '11 5555-0101' } });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Usar +54 9 11 5555 0101' }));
+
+      expect(onValue).toHaveBeenLastCalledWith('+5491155550101');
+      expect(national().value).toBe('9 11 5555 0101');
+      expect(screen.getByRole('status').textContent).toBe('');
+    });
+
+    it('offers nothing once the number is already a mobile', () => {
+      render(<Harness onValue={vi.fn()} />);
+
+      fireEvent.change(national(), { target: { value: '351 15 555 0101' } });
+
+      expect(screen.getByRole('status').textContent).toBe('');
+    });
+
+    it('offers nothing outside Argentina, where the 9 means nothing', () => {
+      render(<Harness onValue={vi.fn()} />);
+
+      fireEvent.change(national(), { target: { value: '+598 423 1234' } });
+
+      expect(screen.getByRole('status').textContent).toBe('');
+    });
+
+    it('offers nothing for a number that is not valid either way', () => {
+      render(<Harness onValue={vi.fn()} />);
+
+      fireEvent.change(national(), { target: { value: '15 5555-0101' } });
+
+      expect(screen.getByRole('status').textContent).toBe('');
+    });
   });
 });
