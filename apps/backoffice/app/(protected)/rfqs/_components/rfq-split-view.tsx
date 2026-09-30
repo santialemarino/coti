@@ -29,7 +29,7 @@ export function RfqSplitView({ activeRfqId, children }: RfqSplitViewProps) {
       >
         <RfqSidebarList records={records} activeRfqId={activeRfqId} />
       </aside>
-      <main className="min-w-0 flex-1 px-6 py-6 lg:px-8">{children}</main>
+      <main className="min-w-0 flex-1 px-6 py-6 lg:px-10">{children}</main>
     </div>
   );
 }

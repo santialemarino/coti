@@ -20,10 +20,14 @@ import {
   TableHeader,
   TableRow,
 } from '@repo/ui/components';
+import { PageHeader } from '@/app/(protected)/_components/page-header';
+import { PageShell } from '@/app/(protected)/_components/page-shell';
 import { ClientTagEditor } from '@/app/(protected)/clients/[id]/_components/client-tag-editor';
+import { ROUTES } from '@/config/routes';
 import { clientDisplayName, type ClientProfile, type ClientTag } from '@/lib/api/client-profiles';
 import { getClient, getClientTags } from '@/lib/api/clients';
 import { ApiError, errorCodeOf } from '@/lib/api/errors';
+import { formatRfqReference } from '@/lib/api/rfqs';
 import { getFormatters } from '@/lib/i18n/formatters-server';
 import { generatePageMetadata } from '@/lib/utils/page';
 
@@ -44,21 +48,19 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
   const name = clientDisplayName(profile.client, t('unnamed'));
 
   return (
-    <main className="flex flex-col gap-y-8">
+    <PageShell>
       <div className="flex flex-col gap-y-4">
         <InlineLink asChild tone="muted">
-          <Link href="/clients">
+          <Link href={ROUTES.clients}>
             <ArrowLeftIcon aria-hidden="true" />
             {t('backToList')}
           </Link>
         </InlineLink>
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-          <div className="flex flex-col gap-y-1">
-            <h1 className="text-heading-2">{name}</h1>
-            <p className="text-paragraph text-foreground-muted">{t('profile.description')}</p>
-          </div>
-          <Badge tone="success">{t('salesCount', { total: profile.sales.length })}</Badge>
-        </div>
+        <PageHeader
+          title={name}
+          description={t('profile.description')}
+          actions={<Badge tone="success">{t('salesCount', { total: profile.sales.length })}</Badge>}
+        />
       </div>
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
@@ -127,7 +129,9 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
                 <TableRow key={sale.quoteId}>
                   <TableCell>
                     <InlineLink asChild>
-                      <Link href={`/rfqs/${sale.rfqId}`}>#{sale.quoteNumber}</Link>
+                      <Link href={ROUTES.rfqsDetail(sale.rfqId)}>
+                        {formatRfqReference(sale.quoteNumber) ?? t('profile.numberPending')}
+                      </Link>
                     </InlineLink>
                   </TableCell>
                   <TableCell>{sale.branchName}</TableCell>
@@ -143,6 +147,6 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
           </TableBody>
         </Table>
       </Card>
-    </main>
+    </PageShell>
   );
 }

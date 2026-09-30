@@ -1,6 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 
 import { Callout } from '@repo/ui/components';
+import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { PriceImport } from '@/app/(protected)/settings/prices/_components/price-import';
 import { getBranches } from '@/lib/api/branches';
 import { getEffectiveBranchId } from '@/lib/auth/branch';
@@ -18,7 +19,7 @@ export default async function PriceSettingsPage() {
 
   return (
     <main className="flex flex-col gap-y-8">
-      <h1 className="text-heading-2">{t('title')}</h1>
+      <PageHeader title={t('title')} />
       {branch ? (
         <PriceImport branch={branch} />
       ) : (

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from 'react'
 import Image from 'next/image';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
+  FileSpreadsheetIcon,
   ImageIcon,
   PackageOpenIcon,
   PencilIcon,
@@ -12,6 +13,7 @@ import {
   SearchXIcon,
   Trash2Icon,
 } from 'lucide-react';
+import { animate, useReducedMotion } from 'motion/react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
@@ -36,6 +38,7 @@ import {
   TableHeader,
   TableRow,
 } from '@repo/ui/components';
+import { EASE, MOTION } from '@repo/ui/lib';
 import { ProductFormDialog } from '@/app/(protected)/settings/catalog/_components/product-form-dialog';
 import {
   createProduct,
@@ -55,14 +58,17 @@ interface ProductManagerProps {
   page: ProductPage;
   families: ProductFamily[];
   query: string;
+  // The bulk-edit section's id, present only while there is a branch to import into.
+  bulkEditTargetId?: string;
 }
 
-export function ProductManager({ page, families, query }: ProductManagerProps) {
+export function ProductManager({ page, families, query, bulkEditTargetId }: ProductManagerProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const t = useTranslations('products');
   const tCommon = useTranslations('common');
+  const reduced = useReducedMotion();
   const message = useApiErrorMessage('products');
   const [search, setSearch] = useState(query);
   const [form, setForm] = useState<{ mode: 'create' | 'edit'; product: Product | null } | null>(
@@ -165,6 +171,25 @@ export function ProductManager({ page, families, query }: ProductManagerProps) {
     });
   }
 
+  /*
+   * Eased with motion rather than native smooth scrolling, whose curve and length the browser picks.
+   * Focus lands on the section's heading afterwards, so a keyboard caller continues from there.
+   */
+  function jumpTo(targetId: string) {
+    const target = document.getElementById(targetId);
+    if (!target) return;
+    const margin = Number.parseFloat(getComputedStyle(target).scrollMarginTop) || 0;
+    // Held to the page's last scroll position, or the curve would run on past where the page stops.
+    const bottom = document.documentElement.scrollHeight - window.innerHeight;
+    const top = Math.min(target.getBoundingClientRect().top + window.scrollY - margin, bottom);
+    animate(window.scrollY, top, {
+      duration: reduced ? 0 : MOTION.slower,
+      ease: EASE.inOutSoft,
+      onUpdate: (y) => window.scrollTo(0, y),
+      onComplete: () => target.querySelector<HTMLElement>('h2')?.focus({ preventScroll: true }),
+    });
+  }
+
   return (
     <Card className="gap-y-0 overflow-hidden py-0">
       <CardHeader className="flex-row items-center justify-between py-6">
@@ -172,10 +197,18 @@ export function ProductManager({ page, families, query }: ProductManagerProps) {
           <CardTitle className="text-heading-3">{t('title')}</CardTitle>
           <Badge tone="neutral">{t('total', { total: page.total })}</Badge>
         </div>
-        <Button disabled={busy} onClick={() => setForm({ mode: 'create', product: null })}>
-          <PlusIcon aria-hidden="true" />
-          {t('add')}
-        </Button>
+        <div className="flex items-center gap-x-2">
+          {bulkEditTargetId ? (
+            <Button variant="outline" onClick={() => jumpTo(bulkEditTargetId)}>
+              <FileSpreadsheetIcon aria-hidden="true" />
+              {t('bulkEdit')}
+            </Button>
+          ) : null}
+          <Button disabled={busy} onClick={() => setForm({ mode: 'create', product: null })}>
+            <PlusIcon aria-hidden="true" />
+            {t('add')}
+          </Button>
+        </div>
       </CardHeader>
 
       <div className="border-y border-border px-6 py-5">

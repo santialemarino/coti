@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 
+import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { UserTable } from '@/app/(protected)/settings/users/_components/user-table';
 import { getBranches } from '@/lib/api/branches';
 import { getUsers } from '@/lib/api/users';
@@ -17,7 +18,7 @@ export default async function UserSettingsPage() {
 
   return (
     <main className="flex flex-col gap-y-8">
-      <h1 className="text-heading-2">{t('title')}</h1>
+      <PageHeader title={t('title')} />
       <UserTable users={users} branches={branches} currentUserId={session.userId} />
     </main>
   );

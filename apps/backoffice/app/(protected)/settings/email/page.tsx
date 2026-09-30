@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 
+import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { ChangeEmailForm } from '@/components/change-email-form';
 import { ROUTES } from '@/config/routes';
 import { getSession } from '@/lib/auth/session';
@@ -13,8 +14,8 @@ export default async function EmailSettingsPage() {
   const t = await getTranslations('auth.changeEmail');
 
   return (
-    <main className="flex flex-col max-w-xl gap-y-6">
-      <h1 className="text-heading-2">{t('title')}</h1>
+    <main className="flex flex-col max-w-xl gap-y-8">
+      <PageHeader title={t('title')} />
       <ChangeEmailForm />
     </main>
   );

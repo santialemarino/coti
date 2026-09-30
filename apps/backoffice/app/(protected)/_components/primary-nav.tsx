@@ -8,8 +8,7 @@ import { ROUTES } from '@/config/routes';
 
 /*
  * The seller's main navigation, rendered on every protected screen. All four sections are links;
- * Clientes, Reportes and Administración currently land on placeholder screens and are swapped for
- * the real ones the day their routes exist.
+ * Reportes and Administración land on placeholder screens until their real ones exist.
  */
 export function PrimaryNav() {
   const t = useTranslations('common');

@@ -54,6 +54,7 @@ import {
   TooltipTrigger,
 } from '@repo/ui/components';
 import { cn } from '@repo/ui/lib';
+import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { CreateRfqDialog } from '@/app/(protected)/rfqs/_components/create-rfq-dialog';
 import { FollowupBadge, followupDue } from '@/app/(protected)/rfqs/_components/followup-badge';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
@@ -668,9 +669,7 @@ export function RfqDashboard({
   return (
     <>
       {/* The greeting belongs to the home screen; this one is the section, so it says so once. */}
-      <div className="pb-6">
-        <h1 className="text-heading-2">{t('list.title')}</h1>
-      </div>
+      <PageHeader title={t('list.title')} />
       <Card className="gap-y-0 overflow-hidden py-0">
         <CardHeader className="flex-row items-center justify-between py-6">
           <CardTitle className="text-heading-3">{t('list.caption')}</CardTitle>

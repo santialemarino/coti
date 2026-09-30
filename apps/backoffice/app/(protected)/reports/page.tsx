@@ -1,6 +1,7 @@
 import { ChartColumnIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
+import { PageShell } from '@/app/(protected)/_components/page-shell';
 import { SectionPlaceholder } from '@/app/(protected)/_components/section-placeholder';
 import { generatePageMetadata } from '@/lib/utils/page';
 
@@ -11,13 +12,13 @@ export default async function ReportsPage() {
   const tCommon = await getTranslations('common');
 
   return (
-    <main className="flex flex-col px-6 py-10 gap-y-6">
+    <PageShell>
       <SectionPlaceholder
         icon={ChartColumnIcon}
         title={t('placeholderTitle')}
         description={t('placeholderDescription')}
         backLabel={tCommon('actions.back')}
       />
-    </main>
+    </PageShell>
   );
 }

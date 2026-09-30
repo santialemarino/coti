@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 
+import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { BranchTable } from '@/app/(protected)/settings/branches/_components/branch-table';
 import { getAccountBranches } from '@/lib/api/branches';
 import { requireAdmin } from '@/lib/auth/session';
@@ -16,7 +17,7 @@ export default async function BranchSettingsPage() {
 
   return (
     <main className="flex flex-col gap-y-8">
-      <h1 className="text-heading-2">{t('title')}</h1>
+      <PageHeader title={t('title')} />
       <BranchTable branches={branches} />
     </main>
   );

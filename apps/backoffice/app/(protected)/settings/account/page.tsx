@@ -3,6 +3,7 @@ import { KeyRoundIcon, MailIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 import { Button, Separator } from '@repo/ui/components';
+import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { AccountForm } from '@/app/(protected)/settings/account/_components/account-form';
 import { ROUTES } from '@/config/routes';
 import { getAccount } from '@/lib/api/account';
@@ -18,7 +19,7 @@ export default async function AccountSettingsPage() {
 
   return (
     <main className="flex flex-col gap-y-8">
-      <h1 className="text-heading-2">{t('title')}</h1>
+      <PageHeader title={t('title')} />
       <AccountForm account={account} />
       <section className="flex flex-col max-w-md gap-y-4">
         <Separator />
