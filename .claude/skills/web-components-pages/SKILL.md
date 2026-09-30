@@ -296,6 +296,21 @@ A table is the densest thing in the product, so every column has to earn its wid
   centred copy gives every row a different starting x, and centred numbers line up on nothing.
   Applying this per table is how one screen ends up with three conventions; apply it to every table
   in the app at once.
+- **Alignment is a prop, never a class.** `TableHead` and `TableCell` take `align`: `end` is right
+  with `tabular-nums`, `center` is for a one-control column, `start` is the default. **Every actions
+  column is centred**, under a centred heading, whatever else the table holds — right-aligned in one
+  table and centred in the next is the drift this exists to stop. A date in a column is
+  `fmt.dateNumeric` with `tabular-nums`, left: zero-padded, it lines up without being moved.
+- **A quantity and its unit are one figure, in one right-aligned cell** (`500 bolsas`, or the unit as
+  the `AmountInput` suffix when it is editable). A right-aligned number beside a left-aligned unit
+  leaves a gap that changes width with every row.
+- **Only a row that acts on click hovers.** `TableRow interactive` carries the pointer, the hover
+  and the press; every other row has none, because a hover on a row that does nothing promises an
+  action that is not there. A tinted row (an import error, a diff) just sets its `bg-*`; there is no
+  hover to cancel.
+- **Tables that must line up share fixed widths.** `layout="fixed"` plus the `TABLE_COL` presets
+  (`select`, `index`, `actions`, `actionsWide`, `badge`, `date`, `quantity`, `status`, `money`) gives
+  two side-by-side tables the same columns; a text column takes no preset and shares what is left.
 - **A sortable header follows its column's alignment.** `SortableTableHead` renders a full-width
   flex trigger, so `text-right` on the cell alone leaves the label pinned left inside a right-aligned
   header — pass `align="end"`. This is the one place a table's numbers and their heading visibly

@@ -21,8 +21,9 @@ export async function QuoteSummary({ items, discounts, total, currency }: QuoteS
 
   const itemsSubtotal = items.reduce((sum, item) => sum + Number(item.subtotal), 0);
 
+  // A stronger rule than the row hairlines, so the summary reads as apart from the lines.
   return (
-    <div className="flex flex-col gap-y-3 border-t border-border px-4 py-4 sm:px-6">
+    <div className="flex flex-col px-4 py-4 gap-y-3 border-t border-border-strong sm:px-6">
       <div className="flex items-baseline justify-between gap-x-4">
         <p className="text-paragraph-sm text-foreground-muted">{t('subtotal')}</p>
         <p className="text-paragraph-sm text-foreground tabular-nums">

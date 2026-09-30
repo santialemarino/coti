@@ -11,6 +11,7 @@ import {
   CardTitle,
   InlineLink,
   Table,
+  TABLE_COL,
   TableBody,
   TableCaption,
   TableCell,
@@ -109,8 +110,8 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
             <TableRow>
               <TableHead>{t('profile.table.quote')}</TableHead>
               <TableHead>{t('profile.table.branch')}</TableHead>
-              <TableHead>{t('profile.table.date')}</TableHead>
-              <TableHead className="text-right">{t('profile.table.total')}</TableHead>
+              <TableHead className={TABLE_COL.date}>{t('profile.table.date')}</TableHead>
+              <TableHead align="end">{t('profile.table.total')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -130,8 +131,10 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
                     </InlineLink>
                   </TableCell>
                   <TableCell>{sale.branchName}</TableCell>
-                  <TableCell>{fmt.date(sale.acceptedAt)}</TableCell>
-                  <TableCell className="text-right text-paragraph-sm-medium">
+                  <TableCell className="whitespace-nowrap tabular-nums">
+                    {fmt.dateNumeric(sale.acceptedAt)}
+                  </TableCell>
+                  <TableCell align="end" className="text-paragraph-sm-medium">
                     {fmt.currency(sale.total)}
                   </TableCell>
                 </TableRow>

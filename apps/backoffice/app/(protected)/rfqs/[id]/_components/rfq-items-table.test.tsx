@@ -328,3 +328,21 @@ describe('RfqItemsTable choosing a product for a flagged line', () => {
     expect(changed?.alternatives).toEqual([CANDIDATE]);
   });
 });
+
+describe('RfqItemsTable quantity', () => {
+  // One figure in one cell: a separate unit column opens a gap that changes width every row.
+  it('reads the quantity and its unit together, under one heading', () => {
+    const view = renderItems(BRANCH_ID, 'SENT');
+
+    const quantity = view.getAllByRole('cell').find((cell) => cell.textContent?.startsWith('500'));
+    expect(quantity?.textContent).toBe('500 unidad');
+    expect(view.queryByRole('columnheader', { name: 'Unidad' })).toBeNull();
+  });
+
+  it('carries the unit on the input while the quantity is editable', () => {
+    const view = renderItems(BRANCH_ID, 'DRAFT');
+
+    const input = view.getByRole('textbox', { name: copy.detail.items.columns.quantity });
+    expect(input.closest('[data-slot=input-container], div')?.textContent).toContain('unidad');
+  });
+});

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import {
   CheckCircle2Icon,
   CheckIcon,
-  CircleXIcon,
+  CircleCheckIcon,
   MessageCircleIcon,
   PencilIcon,
   XIcon,
@@ -38,16 +38,17 @@ interface QuoteActionsProps {
   customerStatus?: CustomerActionType;
 }
 
-const RESULT_TONE: Record<CustomerActionType, 'success' | 'info' | 'danger'> = {
+// Declining is a legitimate answer, not a failure, so it is confirmed in neutral rather than red.
+const RESULT_TONE: Record<CustomerActionType, 'success' | 'info' | 'neutral'> = {
   ACCEPT: 'success',
   REQUEST_CHANGE: 'info',
-  REJECT: 'danger',
+  REJECT: 'neutral',
 };
 
 const RESULT_ICON = {
   ACCEPT: CheckCircle2Icon,
   REQUEST_CHANGE: MessageCircleIcon,
-  REJECT: CircleXIcon,
+  REJECT: CircleCheckIcon,
 } as const;
 
 const DIALOG_TITLE_KEY: Record<ActionChoice, string> = {
@@ -97,12 +98,10 @@ export function QuoteActions({ token, customerStatus }: QuoteActionsProps) {
     setSubmitError(false);
   }
 
+  // The form resets on open, so a closing dialog keeps what it showed through its exit.
   function closeDialog() {
     if (busy) return;
     setChoice(null);
-    setMessage('');
-    setMessageTouched(false);
-    setSubmitError(false);
   }
 
   async function handleConfirm() {
@@ -126,59 +125,48 @@ export function QuoteActions({ token, customerStatus }: QuoteActionsProps) {
     }
   }
 
-  if (result) {
-    return (
-      <section className="flex flex-col gap-y-4">
-        <h2 className="text-heading-6 text-foreground">{t('heading')}</h2>
-        <Card>
-          <StatusScreen
-            icon={RESULT_ICON[result.customerStatus]}
-            tone={RESULT_TONE[result.customerStatus]}
-            title={t('resultTitle')}
-            description={t(RESULT_DESCRIPTION_KEY[result.customerStatus])}
-          />
-        </Card>
-      </section>
-    );
-  }
+  const answered = result?.customerStatus ?? customerStatus;
 
-  if (customerStatus) {
-    return (
-      <section className="flex flex-col gap-y-4">
-        <h2 className="text-heading-6 text-foreground">{t('heading')}</h2>
-        <Card>
-          <StatusScreen
-            icon={RESULT_ICON[customerStatus]}
-            tone={RESULT_TONE[customerStatus]}
-            title={t('respondedTitle')}
-            description={t(RESPONDED_DESCRIPTION_KEY[customerStatus])}
-          />
-        </Card>
-      </section>
-    );
-  }
-
+  // The dialog stays mounted once the answer lands, so it can play its exit over the result.
   return (
     <section className="flex flex-col gap-y-4">
-      <div className="flex flex-col gap-y-1 text-center">
-        <h2 className="text-heading-6 text-foreground">{t('heading')}</h2>
-        <p className="text-paragraph text-foreground-muted">{t('intro')}</p>
-      </div>
+      {answered ? (
+        <>
+          <h2 className="text-heading-6 text-foreground">{t('heading')}</h2>
+          <Card>
+            <StatusScreen
+              icon={RESULT_ICON[answered]}
+              tone={RESULT_TONE[answered]}
+              title={t(result ? 'resultTitle' : 'respondedTitle')}
+              description={t(
+                result ? RESULT_DESCRIPTION_KEY[answered] : RESPONDED_DESCRIPTION_KEY[answered],
+              )}
+            />
+          </Card>
+        </>
+      ) : (
+        <>
+          <div className="flex flex-col gap-y-1 text-center">
+            <h2 className="text-heading-6 text-foreground">{t('heading')}</h2>
+            <p className="text-paragraph text-foreground-muted">{t('intro')}</p>
+          </div>
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-center sm:gap-x-3">
-        <Button type="button" onClick={() => openDialog('ACCEPT')}>
-          <CheckIcon />
-          {t('acceptLabel')}
-        </Button>
-        <Button type="button" variant="outline" onClick={() => openDialog('REQUEST_CHANGE')}>
-          <PencilIcon />
-          {t('requestChangesLabel')}
-        </Button>
-        <Button type="button" variant="destructive" onClick={() => openDialog('REJECT')}>
-          <XIcon />
-          {t('rejectLabel')}
-        </Button>
-      </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-center sm:gap-x-3">
+            <Button type="button" onClick={() => openDialog('ACCEPT')}>
+              <CheckIcon />
+              {t('acceptLabel')}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => openDialog('REQUEST_CHANGE')}>
+              <PencilIcon />
+              {t('requestChangesLabel')}
+            </Button>
+            <Button type="button" variant="destructive" onClick={() => openDialog('REJECT')}>
+              <XIcon />
+              {t('rejectLabel')}
+            </Button>
+          </div>
+        </>
+      )}
 
       <Dialog open={choice !== null} onOpenChange={(open) => !open && closeDialog()}>
         <DialogContent className="sm:max-w-md" closeOnClickOutside={!busy} showCloseButton={!busy}>

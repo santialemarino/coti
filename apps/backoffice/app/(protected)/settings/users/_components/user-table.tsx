@@ -12,6 +12,7 @@ import {
   ConfirmDialog,
   RowActionButton,
   Table,
+  TABLE_COL,
   TableBody,
   TableCaption,
   TableCell,
@@ -22,6 +23,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@repo/ui/components';
+import { cn } from '@repo/ui/lib';
 import {
   createUser,
   deactivateUser,
@@ -185,8 +187,10 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
             <TableHead>{t('table.role')}</TableHead>
             <TableHead>{t('table.branches')}</TableHead>
             <TableHead>{t('table.status')}</TableHead>
-            <TableHead>{t('table.lastLogin')}</TableHead>
-            <TableHead className="text-right">{t('table.actions')}</TableHead>
+            <TableHead className={TABLE_COL.date}>{t('table.lastLogin')}</TableHead>
+            <TableHead align="center" className={TABLE_COL.actionsWide}>
+              {t('table.actions')}
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -234,11 +238,16 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
                     {t(user.isActive ? 'status.active' : 'status.inactive')}
                   </Badge>
                 </TableCell>
-                <TableCell className={user.lastLoginAt ? undefined : 'text-foreground-subtle'}>
-                  {user.lastLoginAt ? fmt.date(user.lastLoginAt) : t('table.neverLoggedIn')}
+                <TableCell
+                  className={cn(
+                    'whitespace-nowrap tabular-nums',
+                    !user.lastLoginAt && 'text-foreground-subtle',
+                  )}
+                >
+                  {user.lastLoginAt ? fmt.dateNumeric(user.lastLoginAt) : t('table.neverLoggedIn')}
                 </TableCell>
-                <TableCell>
-                  <div className="flex justify-end gap-x-1">
+                <TableCell align="center">
+                  <div className="flex justify-center gap-x-1">
                     <RowActionButton
                       icon={PencilIcon}
                       label={t('edit.action')}

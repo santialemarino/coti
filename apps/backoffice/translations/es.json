@@ -726,7 +726,6 @@
           "product": "Producto",
           "modifyProduct": "Reemplazar producto",
           "quantity": "Cantidad",
-          "unit": "Unidad",
           "unitPrice": "Precio Unitario",
           "subtotal": "Subtotal",
           "matchStatus": "Estado",

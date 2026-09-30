@@ -12,6 +12,7 @@ import {
   ConfirmDialog,
   RowActionButton,
   Table,
+  TABLE_COL,
   TableBody,
   TableCaption,
   TableCell,
@@ -119,9 +120,11 @@ export function BranchTable({ branches }: BranchTableProps) {
           <TableRow>
             <TableHead>{t('table.name')}</TableHead>
             <TableHead>{t('table.address')}</TableHead>
-            <TableHead>{t('table.expiry')}</TableHead>
+            <TableHead align="end">{t('table.expiry')}</TableHead>
             <TableHead>{t('table.status')}</TableHead>
-            <TableHead className="text-right">{t('table.actions')}</TableHead>
+            <TableHead align="center" className={TABLE_COL.actionsWide}>
+              {t('table.actions')}
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -141,14 +144,16 @@ export function BranchTable({ branches }: BranchTableProps) {
                 <TableCell className={branch.address ? undefined : 'text-foreground-subtle'}>
                   {branch.address ?? t('table.noAddress')}
                 </TableCell>
-                <TableCell>{t('expiryDays', { count: branch.defaultExpiryDays })}</TableCell>
+                <TableCell align="end">
+                  {t('expiryDays', { count: branch.defaultExpiryDays })}
+                </TableCell>
                 <TableCell>
                   <Badge tone={branch.isActive ? 'success' : 'neutral'}>
                     {t(branch.isActive ? 'status.active' : 'status.closed')}
                   </Badge>
                 </TableCell>
-                <TableCell>
-                  <div className="flex justify-end gap-x-1">
+                <TableCell align="center">
+                  <div className="flex justify-center gap-x-1">
                     <RowActionButton
                       icon={PencilIcon}
                       label={t('edit.action')}
