@@ -55,25 +55,22 @@ export async function QuoteItems({ items, discounts, total, currency }: QuoteIte
       <div data-testid="items-table-desktop" className="hidden md:block">
         <Table className="[&_th]:h-10 [&_td]:py-3">
           <TableHeader>
-            {/*
-             * The same alignment rule the backoffice follows: copy reads from a common left edge,
-             * figures line up on the right with tabular figures.
-             */}
             <TableRow>
-              <TableHead className="w-8 text-right">#</TableHead>
+              <TableHead align="end" className="w-8">
+                #
+              </TableHead>
               <TableHead>{t('product')}</TableHead>
               <TableHead>{t('code')}</TableHead>
-              <TableHead className="text-right">{t('quantity')}</TableHead>
-              <TableHead className="text-right">{t('unit')}</TableHead>
-              <TableHead className="text-right">{t('unitPrice')}</TableHead>
-              <TableHead className="text-right">{t('subtotal')}</TableHead>
+              <TableHead align="end">{t('quantity')}</TableHead>
+              <TableHead align="end">{t('unitPrice')}</TableHead>
+              <TableHead align="end">{t('subtotal')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {items.map((item, index) => (
               <Fragment key={`${item.productCode ?? item.productName}-${index}`}>
                 <TableRow>
-                  <TableCell className="text-right tabular-nums text-foreground-subtle">
+                  <TableCell align="end" className="text-foreground-subtle">
                     {index + 1}
                   </TableCell>
                   <TableCell className="max-w-md">
@@ -89,16 +86,15 @@ export async function QuoteItems({ items, discounts, total, currency }: QuoteIte
                   <TableCell className="text-paragraph-xs text-foreground-muted tabular-nums">
                     {item.productCode ?? '—'}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums text-foreground">
+                  {/* Quantity and unit are one figure, so the unit never opens a gap beside it. */}
+                  <TableCell align="end" className="whitespace-nowrap text-foreground">
                     {quantityOf(item)}
+                    {item.unit ? <span className="text-foreground-muted"> {item.unit}</span> : null}
                   </TableCell>
-                  <TableCell className="text-right text-paragraph-sm text-foreground-muted">
-                    {item.unit ?? '—'}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums text-foreground">
+                  <TableCell align="end" className="text-foreground">
                     {fmt.currency(item.unitPrice, currency)}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums text-paragraph-sm-medium text-foreground">
+                  <TableCell align="end" className="text-paragraph-sm-medium text-foreground">
                     {fmt.currency(item.subtotal, currency)}
                   </TableCell>
                 </TableRow>
@@ -110,7 +106,7 @@ export async function QuoteItems({ items, discounts, total, currency }: QuoteIte
                 {item.alternatives.map((alternative, altIndex) => (
                   <TableRow
                     key={`${alternative.code ?? alternative.name}-${altIndex}`}
-                    className="bg-muted/30 hover:bg-muted/40"
+                    className="bg-muted/30"
                   >
                     <TableCell />
                     <TableCell>
@@ -127,8 +123,7 @@ export async function QuoteItems({ items, discounts, total, currency }: QuoteIte
                       {alternative.code ?? '—'}
                     </TableCell>
                     <TableCell />
-                    <TableCell />
-                    <TableCell className="text-right tabular-nums text-foreground-muted">
+                    <TableCell align="end" className="text-foreground-muted">
                       {fmt.currency(alternative.unitPrice, currency)}
                       {alternative.unit ? (
                         <span className="ml-1 text-paragraph-xs text-foreground-subtle">

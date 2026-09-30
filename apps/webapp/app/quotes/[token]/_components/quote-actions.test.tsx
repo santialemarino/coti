@@ -151,4 +151,40 @@ describe('QuoteActions', () => {
     expect(view.getByText(copy.respondedAccept)).toBeTruthy();
     expect(view.queryByRole('button', { name: copy.acceptLabel })).toBeNull();
   });
+
+  /*
+   * The answer replaces the buttons with the result the moment it lands. The dialog must stay
+   * mounted through that swap to play its exit, holding the decision it asked about. jsdom plays no
+   * animation, so Radix is told one is running, the way a browser reports it mid-fade.
+   */
+  it('lets the dialog play its exit over the result, still showing the decision', async () => {
+    const real = window.getComputedStyle.bind(window);
+    const spy = vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+      const styles = real(element, pseudo);
+      return new Proxy(styles, {
+        get(target, property) {
+          if (property === 'animationName') {
+            const state = element.getAttribute('data-state');
+            return state === 'open' ? 'enter' : state === 'closed' ? 'exit' : 'none';
+          }
+          const value = Reflect.get(target, property, target);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+    });
+    vi.stubGlobal(
+      'fetch',
+      fetchResolving({ customerStatus: 'REJECT', createdAt: '2026-09-16T12:00:00Z' }),
+    );
+    const view = renderActions({ token: 'tok-abc' });
+
+    fireEvent.click(view.getByRole('button', { name: copy.rejectLabel }));
+    fireEvent.click(view.getByRole('button', { name: copy.confirm }));
+    await waitFor(() => expect(view.getByText(copy.resultTitle)).toBeTruthy());
+
+    const dialog = document.querySelector('[data-slot=dialog-content]');
+    expect(dialog?.getAttribute('data-state')).toBe('closed');
+    expect(dialog?.textContent).toContain(copy.rejectTitle);
+    spy.mockRestore();
+  });
 });

@@ -9,7 +9,7 @@ import { Skeleton } from '@repo/ui/components';
 export default function PublicQuoteLoading() {
   return (
     <main className="flex flex-col min-h-screen items-center px-4 py-8 sm:py-12">
-      <div className="flex flex-col w-full max-w-5xl gap-y-6">
+      <div className="flex flex-col w-full max-w-6xl gap-y-6">
         <span aria-hidden="true" className="h-1 w-16 rounded-full bg-border" />
         <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
           <div className="flex flex-col min-w-0 gap-y-2">

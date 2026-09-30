@@ -55,6 +55,27 @@ describe('QuoteItems', () => {
     expect(within(calRow).getByText(money(fmt, payload.currency, '150.00'))).toBeTruthy();
   });
 
+  // One figure in one right-aligned cell: a unit column of its own opens a gap beside the number.
+  it('reads the quantity and its unit together, under one heading', async () => {
+    const payload = makeQuotePayload();
+    const view = render(
+      await QuoteItems({
+        items: payload.items,
+        discounts: payload.discounts,
+        total: payload.total,
+        currency: payload.currency,
+      }),
+    );
+
+    const desktop = within(view.getByTestId('items-table-desktop'));
+    const cementRow = desktop.getByText('Cemento Portland 50kg').closest('tr')!;
+    const cells = within(cementRow)
+      .getAllByRole('cell')
+      .map((cell) => cell.textContent);
+    expect(cells).toContain('2 bolsa');
+    expect(desktop.queryByRole('columnheader', { name: 'Unidad' })).toBeNull();
+  });
+
   it('renders the same lines as compact blocks on a phone', async () => {
     const payload = makeQuotePayload();
     const fmt = await getFormatters();

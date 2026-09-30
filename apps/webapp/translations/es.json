@@ -48,7 +48,6 @@
     "code": "Código",
     "requested": "Pediste: {text}",
     "quantity": "Cantidad",
-    "unit": "Unidad",
     "unitPrice": "Precio unitario",
     "subtotal": "Subtotal",
     "itemCount": "({count})",
