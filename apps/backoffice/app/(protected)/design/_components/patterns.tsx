@@ -42,6 +42,7 @@ import {
   StatusScreen,
   Stepper,
   Table,
+  TABLE_COL,
   TableBody,
   TableCell,
   TableEmptyRow,
@@ -279,8 +280,10 @@ export function Patterns() {
                     }}
                   />
                   <TableHead>Confianza</TableHead>
-                  <TableHead>Cantidad</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
+                  <TableHead align="end">Cantidad</TableHead>
+                  <TableHead align="center" className={TABLE_COL.actions}>
+                    Acciones
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -305,9 +308,9 @@ export function Patterns() {
                           {row.confidence}%
                         </Badge>
                       </TableCell>
-                      <TableCell>{row.qty}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-x-1">
+                      <TableCell align="end">{row.qty}</TableCell>
+                      <TableCell align="center">
+                        <div className="flex justify-center gap-x-1">
                           <RowActionButton
                             icon={PencilIcon}
                             label="Editar"

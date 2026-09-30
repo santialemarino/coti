@@ -8,6 +8,7 @@ import {
   Dropzone,
   PendingButton,
   Table,
+  TABLE_COL,
   TableBody,
   TableCell,
   TableHead,
@@ -181,12 +182,14 @@ export function PriceImport({ branch }: PriceImportProps) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{t('table.row')}</TableHead>
+                  <TableHead align="end" className={TABLE_COL.index}>
+                    {t('table.row')}
+                  </TableHead>
                   <TableHead>{t('table.code')}</TableHead>
                   <TableHead>{t('table.product')}</TableHead>
-                  <TableHead className="text-right">{t('table.currentPrice')}</TableHead>
-                  <TableHead className="text-right">{t('table.newPrice')}</TableHead>
-                  <TableHead className="text-right">{t('table.minPrice')}</TableHead>
+                  <TableHead align="end">{t('table.currentPrice')}</TableHead>
+                  <TableHead align="end">{t('table.newPrice')}</TableHead>
+                  <TableHead align="end">{t('table.minPrice')}</TableHead>
                   <TableHead>{t('table.result')}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -194,20 +197,20 @@ export function PriceImport({ branch }: PriceImportProps) {
                 {preview.rows.map((row) => (
                   <TableRow
                     key={`${row.rowNumber}-${row.code}`}
-                    className={
-                      row.errors.length > 0 ? 'bg-danger-subtle hover:bg-danger-subtle' : undefined
-                    }
+                    className={row.errors.length > 0 ? 'bg-danger-subtle' : undefined}
                   >
-                    <TableCell>{row.rowNumber}</TableCell>
+                    <TableCell align="end" className="text-foreground-subtle">
+                      {row.rowNumber}
+                    </TableCell>
                     <TableCell className="text-paragraph-sm-medium">{row.code || '—'}</TableCell>
                     <TableCell>{row.productName || '—'}</TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell align="end">
                       {row.currentPrice ? fmt.currency(row.currentPrice, row.currency) : '—'}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell align="end">
                       {row.price ? fmt.currency(row.price, row.currency) : '—'}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell align="end">
                       {row.minPrice ? fmt.currency(row.minPrice, row.currency) : '—'}
                     </TableCell>
                     <TableCell>

@@ -41,6 +41,7 @@ import {
   SearchInput,
   SortableTableHead,
   Table,
+  TABLE_COL,
   TableBody,
   TableCaption,
   TableCell,
@@ -784,11 +785,11 @@ export function RfqDashboard({
           </div>
         ) : null}
 
-        <Table className="[&_th]:h-12 [&_th]:px-4 [&_th:has([role=checkbox])]:pr-0 [&_td]:px-4 [&_td]:py-3.5 [&_td:last-child]:border-l [&_td:last-child]:border-border [&_td:last-child]:pl-6">
+        <Table className="[&_th]:h-12 [&_th]:px-4 [&_td]:px-4 [&_td]:py-3.5">
           <TableCaption className="sr-only">{t('list.caption')}</TableCaption>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10 text-center">
+              <TableHead align="center" className={TABLE_COL.select}>
                 <Checkbox
                   checked={pageSomeSelected ? 'indeterminate' : pageAllSelected}
                   onCheckedChange={togglePageSelection}
@@ -864,7 +865,10 @@ export function RfqDashboard({
                * rule is a column the reader has to decode — and archiving one order should not cost
                * the two interactions that going through the bulk bar does.
                */}
-              <TableHead className="w-28 border-l border-border pl-6 text-center">
+              <TableHead
+                align="center"
+                className={cn(TABLE_COL.actionsWide, 'border-l border-border')}
+              >
                 {t('list.columns.actions')}
               </TableHead>
             </TableRow>
@@ -917,7 +921,7 @@ export function RfqDashboard({
                       rfq.id === activeRfqId && 'bg-accent hover:bg-accent',
                     )}
                   >
-                    <TableCell>
+                    <TableCell align="center">
                       <Checkbox
                         checked={selected.has(rfq.id)}
                         onCheckedChange={() => toggleSelected(rfq.id)}
@@ -971,17 +975,15 @@ export function RfqDashboard({
                     {showBranchColumn ? (
                       <TableCell className="whitespace-nowrap">{rfq.branch}</TableCell>
                     ) : null}
-                    <TableCell className="text-right tabular-nums">
-                      {t('list.items', { count: rfq.itemCount })}
-                    </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell align="end">{t('list.items', { count: rfq.itemCount })}</TableCell>
+                    <TableCell align="end">
                       {rfq.reviewCount > 0 ? (
                         <Badge tone="warning" size="sm">
                           {t('list.toReview', { count: rfq.reviewCount })}
                         </Badge>
                       ) : null}
                     </TableCell>
-                    <TableCell className="whitespace-nowrap text-right tabular-nums">
+                    <TableCell align="end" className="whitespace-nowrap">
                       {hasQuoteTotal(rfq.status) && rfq.total != null ? (
                         fmt.currency(rfq.total)
                       ) : (
@@ -997,7 +999,7 @@ export function RfqDashboard({
                         archived={rfq.archived}
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell align="center" className="border-l border-border">
                       <div className="flex justify-center">
                         <RowActions
                           rfq={rfq}

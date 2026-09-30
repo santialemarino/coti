@@ -14,6 +14,7 @@ import {
   PendingButton,
   StepList,
   Table,
+  TABLE_COL,
   TableBody,
   TableCell,
   TableHead,
@@ -188,11 +189,13 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>{t('table.row')}</TableHead>
+              <TableHead align="end" className={TABLE_COL.index}>
+                {t('table.row')}
+              </TableHead>
               <TableHead>{t('table.code')}</TableHead>
               <TableHead>{t('table.product')}</TableHead>
               <TableHead>{t('table.family')}</TableHead>
-              <TableHead>{t('table.price')}</TableHead>
+              <TableHead align="end">{t('table.price')}</TableHead>
               <TableHead>{t('table.status')}</TableHead>
               <TableHead>{t('table.result')}</TableHead>
             </TableRow>
@@ -201,15 +204,15 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
             {preview.rows.map((row) => (
               <TableRow
                 key={`${row.rowNumber}-${row.code}`}
-                className={
-                  row.errors.length > 0 ? 'bg-danger-subtle hover:bg-danger-subtle' : undefined
-                }
+                className={row.errors.length > 0 ? 'bg-danger-subtle' : undefined}
               >
-                <TableCell>{row.rowNumber}</TableCell>
+                <TableCell align="end" className="text-foreground-subtle">
+                  {row.rowNumber}
+                </TableCell>
                 <TableCell className="text-paragraph-sm-medium">{row.code || '—'}</TableCell>
                 <TableCell>{row.name || '—'}</TableCell>
                 <TableCell>{row.family || '—'}</TableCell>
-                <TableCell>{row.price ? fmt.currency(row.price) : '—'}</TableCell>
+                <TableCell align="end">{row.price ? fmt.currency(row.price) : '—'}</TableCell>
                 <TableCell>
                   <Badge tone={row.isActive ? 'success' : 'neutral'}>
                     {t(row.isActive ? 'status.active' : 'status.inactive')}

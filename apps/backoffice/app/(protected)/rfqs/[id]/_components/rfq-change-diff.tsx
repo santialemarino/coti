@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
   Table,
+  TABLE_COL,
   TableBody,
   TableCell,
   TableHead,
@@ -70,10 +71,14 @@ function DiffItemCell({
   // A line the other side does not have: the row is held so both panels stay in step.
   if (!item) {
     return (
-      <TableRow className="bg-muted/30 hover:bg-muted/30">
+      <TableRow className="bg-muted/30">
         <TableCell className="text-foreground-subtle">—</TableCell>
-        <TableCell className="text-right text-foreground-subtle">—</TableCell>
-        <TableCell className="text-right text-foreground-subtle">—</TableCell>
+        <TableCell align="end" className="text-foreground-subtle">
+          —
+        </TableCell>
+        <TableCell align="end" className="text-foreground-subtle">
+          —
+        </TableCell>
       </TableRow>
     );
   }
@@ -83,11 +88,11 @@ function DiffItemCell({
   const isModified = changeType === 'modified';
 
   const rowTone = isRemoved
-    ? 'bg-danger-subtle hover:bg-danger-subtle'
+    ? 'bg-danger-subtle'
     : isAdded
-      ? 'bg-success-subtle hover:bg-success-subtle'
+      ? 'bg-success-subtle'
       : isModified
-        ? 'bg-warning-subtle hover:bg-warning-subtle'
+        ? 'bg-warning-subtle'
         : undefined;
 
   /* `-foreground`, not `-base`: the base steps are tuned for fills and carry no text contrast. */
@@ -119,7 +124,7 @@ function DiffItemCell({
         </span>
         {changeLabel}
       </TableCell>
-      <TableCell className="text-right tabular-nums">
+      <TableCell align="end" className="whitespace-nowrap">
         {isRemoved ? (
           <span className="text-foreground-muted">—</span>
         ) : (
@@ -128,7 +133,7 @@ function DiffItemCell({
           </span>
         )}
       </TableCell>
-      <TableCell className="text-right text-paragraph-sm-medium tabular-nums">
+      <TableCell align="end" className="text-paragraph-sm-medium">
         {isRemoved ? (
           <span className="text-foreground-muted">—</span>
         ) : item.unit_price != null ? (
@@ -151,12 +156,7 @@ function DiffDiscountRow({
   const t = useTranslations('rfqs');
 
   return (
-    <TableRow
-      className={cn(
-        '[&>td]:py-1.5',
-        discount.changed && 'bg-warning-subtle hover:bg-warning-subtle',
-      )}
-    >
+    <TableRow className={cn('[&>td]:py-1.5', discount.changed && 'bg-warning-subtle')}>
       <TableCell colSpan={2} className="text-paragraph-xs text-foreground-muted">
         {discount.name}
         {discount.changed ? (
@@ -165,7 +165,7 @@ function DiffDiscountRow({
           </span>
         ) : null}
       </TableCell>
-      <TableCell className="text-right text-paragraph-xs text-foreground-muted tabular-nums">
+      <TableCell align="end" className="text-paragraph-xs text-foreground-muted">
         −{fmt.currency(discount.amount)}
       </TableCell>
     </TableRow>
@@ -195,12 +195,17 @@ function DiffPanel({
         <CardTitle className="text-heading-5">{title}</CardTitle>
       </CardHeader>
 
-      <Table>
+      {/* Fixed widths, the same on both panels, so a line sits at the same x on either side. */}
+      <Table layout="fixed">
         <TableHeader>
           <TableRow>
             <TableHead>{t('detail.diff.columns.product')}</TableHead>
-            <TableHead className="text-right">{t('detail.diff.columns.quantity')}</TableHead>
-            <TableHead className="text-right">{t('detail.diff.columns.price')}</TableHead>
+            <TableHead align="end" className={TABLE_COL.quantity}>
+              {t('detail.diff.columns.quantity')}
+            </TableHead>
+            <TableHead align="end" className={TABLE_COL.money}>
+              {t('detail.diff.columns.price')}
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -217,7 +222,12 @@ function DiffPanel({
               {t('detail.diff.discountsTitle')}
             </span>
           </div>
-          <Table>
+          <Table layout="fixed">
+            <colgroup>
+              <col />
+              <col className={TABLE_COL.quantity} />
+              <col className={TABLE_COL.money} />
+            </colgroup>
             <TableBody>
               {discounts.map((d, i) => (
                 <DiffDiscountRow key={i} discount={d} fmt={fmt} />

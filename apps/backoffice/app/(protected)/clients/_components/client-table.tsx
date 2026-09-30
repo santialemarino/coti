@@ -13,6 +13,7 @@ import {
   InlineLink,
   SearchInput,
   Table,
+  TABLE_COL,
   TableBody,
   TableCaption,
   TableCell,
@@ -21,6 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from '@repo/ui/components';
+import { cn } from '@repo/ui/lib';
 import { clientDisplayName, type ClientSummary } from '@/lib/api/client-profiles';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { useFormatters } from '@/lib/i18n/formatters';
@@ -72,9 +74,11 @@ export function ClientTable({ clients }: ClientTableProps) {
             <TableHead>{t('table.client')}</TableHead>
             <TableHead>{t('table.contact')}</TableHead>
             <TableHead>{t('table.tags')}</TableHead>
-            <TableHead>{t('table.sales')}</TableHead>
-            <TableHead>{t('table.lastSale')}</TableHead>
-            <TableHead className="text-right">{t('table.actions')}</TableHead>
+            <TableHead align="end">{t('table.sales')}</TableHead>
+            <TableHead className={TABLE_COL.date}>{t('table.lastSale')}</TableHead>
+            <TableHead align="center" className={TABLE_COL.actionsWide}>
+              {t('table.actions')}
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -118,12 +122,19 @@ export function ClientTable({ clients }: ClientTableProps) {
                     )}
                   </div>
                 </TableCell>
-                <TableCell>{t('salesCount', { total: client.acceptedQuoteCount })}</TableCell>
-                <TableCell className={client.lastAcceptedAt ? undefined : 'text-foreground-subtle'}>
-                  {client.lastAcceptedAt ? fmt.date(client.lastAcceptedAt) : t('noSales')}
+                <TableCell align="end">
+                  {t('salesCount', { total: client.acceptedQuoteCount })}
                 </TableCell>
-                <TableCell>
-                  <div className="flex justify-end">
+                <TableCell
+                  className={cn(
+                    'whitespace-nowrap tabular-nums',
+                    !client.lastAcceptedAt && 'text-foreground-subtle',
+                  )}
+                >
+                  {client.lastAcceptedAt ? fmt.dateNumeric(client.lastAcceptedAt) : t('noSales')}
+                </TableCell>
+                <TableCell align="center">
+                  <div className="flex justify-center">
                     <InlineLink asChild tone="muted">
                       <Link href={`/clients/${client.id}`}>
                         {t('viewProfile')}

@@ -27,6 +27,7 @@ import {
   RowActionButton,
   SearchInput,
   Table,
+  TABLE_COL,
   TableBody,
   TableCaption,
   TableCell,
@@ -204,7 +205,9 @@ export function ProductManager({ page, families, query }: ProductManagerProps) {
             <TableHead>{t('table.family')}</TableHead>
             <TableHead>{t('table.unit')}</TableHead>
             <TableHead>{t('table.status')}</TableHead>
-            <TableHead className="text-right">{t('table.actions')}</TableHead>
+            <TableHead align="center" className={TABLE_COL.actionsWide}>
+              {t('table.actions')}
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -251,8 +254,8 @@ export function ProductManager({ page, families, query }: ProductManagerProps) {
                     {t(product.isActive ? 'status.active' : 'status.inactive')}
                   </Badge>
                 </TableCell>
-                <TableCell>
-                  <div className="flex justify-end gap-x-1">
+                <TableCell align="center">
+                  <div className="flex justify-center gap-x-1">
                     <RowActionButton
                       icon={PencilIcon}
                       label={t('edit.action')}
