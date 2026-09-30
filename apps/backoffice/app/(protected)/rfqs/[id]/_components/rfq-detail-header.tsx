@@ -11,6 +11,7 @@ import {
 import { useTranslations } from 'next-intl';
 
 import { MetaList } from '@repo/ui/components';
+import { FollowupBadge, followupDue } from '@/app/(protected)/rfqs/_components/followup-badge';
 import { RfqStatusBadge } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
 import { ROUTES } from '@/config/routes';
 import type { RfqChannel, RfqDetailResponse } from '@/lib/api/rfqs';
@@ -58,10 +59,19 @@ export function RfqDetailHeader({ detail }: RfqDetailHeaderProps) {
         <h2 className="min-w-0 truncate text-heading-3 text-foreground">
           {formatRfqReference(rfq.quote_number) ?? t('list.numberPending')}
         </h2>
-        <RfqStatusBadge
-          status={normalizeRfqStatus(rfq.status)}
-          archived={rfq.archived_at != null}
-        />
+        <div className="flex shrink-0 items-center gap-x-2">
+          {followupDue(
+            rfq.needs_followup,
+            normalizeRfqStatus(rfq.status),
+            rfq.archived_at != null,
+          ) ? (
+            <FollowupBadge flaggedAt={rfq.followup_flagged_at} />
+          ) : null}
+          <RfqStatusBadge
+            status={normalizeRfqStatus(rfq.status)}
+            archived={rfq.archived_at != null}
+          />
+        </div>
       </div>
 
       <MetaList

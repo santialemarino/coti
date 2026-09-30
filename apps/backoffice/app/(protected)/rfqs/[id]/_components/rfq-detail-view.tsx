@@ -1,11 +1,13 @@
 'use client';
 
-import { useCallback, useState, useTransition } from 'react';
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { useReducedMotion } from 'motion/react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import { Callout, PendingButton } from '@repo/ui/components';
+import { followupDue } from '@/app/(protected)/rfqs/_components/followup-badge';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { errorCodeOf } from '@/lib/api/errors';
@@ -38,12 +40,15 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
   const t = useTranslations('rfqs');
   const message = useApiErrorMessage('rfqs.detail.items');
   const { updateRecord } = useRfqList();
+  const reduced = useReducedMotion();
   const [detail, setDetail] = useState(initialDetail);
   const [items, setItems] = useState<QuoteItemResponse[]>(initialDetail.items);
   const [discounts, setDiscounts] = useState<QuoteDiscountResponse[]>(
     initialDetail.discounts ?? [],
   );
+  const [shownInitial, setShownInitial] = useState(initialDetail);
   const [generating, startGenerate] = useTransition();
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const quoteId = detail.quote?.id ?? null;
   // The order's own branch, which is what every write on this screen is scoped to.
@@ -59,6 +64,32 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
     detail.version !== null &&
     latestClientAction?.type === 'REQUEST_CHANGE' &&
     latestClientAction.version_number === detail.version.version_number - 1;
+  const followupOrigin = rfqStatus === 'SENT' ? 'customer' : 'seller';
+  const showFollowup = followupDue(
+    detail.rfq.needs_followup,
+    rfqStatus,
+    detail.rfq.archived_at != null,
+  );
+  const statusKey = `${rfqStatus}:${quoteStatus}`;
+  const shownStatusKey = useRef(statusKey);
+
+  // A server refresh hands down a new detail; adopt it rather than keep the first one forever.
+  if (initialDetail !== shownInitial) {
+    setShownInitial(initialDetail);
+    setDetail(initialDetail);
+    setItems(initialDetail.items);
+    setDiscounts(initialDetail.discounts ?? []);
+  }
+
+  /*
+   * A transition swaps the cards above the items in place, so a seller who acted from the bottom of
+   * the page is left facing blank space. Only a status change scrolls; editing lines never does.
+   */
+  useEffect(() => {
+    if (shownStatusKey.current === statusKey) return;
+    shownStatusKey.current = statusKey;
+    rootRef.current?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+  }, [statusKey, reduced]);
 
   /*
    * Reconcile the screen against the backend after a mutation. The discount endpoints
@@ -105,6 +136,7 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
           archived: result.quote.archived_at != null,
           ...lineCounts(result.items),
           needsFollowup: result.quote.needs_followup,
+          followupFlaggedAt: result.quote.followup_flagged_at,
           status,
           total: result.version.total,
         });
@@ -117,12 +149,22 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
   }
 
   return (
-    <div className="flex flex-col gap-y-4">
+    <div ref={rootRef} className="flex flex-col gap-y-4 scroll-mt-20">
       <RfqDetailHeader detail={detail} />
 
       <QuoteDeliveryCard detail={detail} onSent={refreshDetail} />
 
       <RfqStatusTimeline detail={detail} />
+
+      {showFollowup ? (
+        <Callout tone="followup" title={t('detail.callouts.followup.title')}>
+          {detail.rfq.followup_flagged_at
+            ? t(`detail.callouts.followup.${followupOrigin}`, {
+                date: fmt.date(detail.rfq.followup_flagged_at),
+              })
+            : t(`detail.callouts.followup.${followupOrigin}Undated`)}
+        </Callout>
+      ) : null}
 
       {rfqStatus === 'ACCEPTED' && (
         <>

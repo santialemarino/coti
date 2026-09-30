@@ -156,6 +156,7 @@ func (r *RFQRepository) GetByRFQID(
 		        END,
 		        q.archived_at,
 		        COALESCE(q.needs_followup, FALSE),
+		        q.followup_flagged_at,
 		        COALESCE(lines.items, 0),
 		        COALESCE(lines.to_review, 0)
 		 FROM rfq r
@@ -177,7 +178,7 @@ WHERE r.account_id = $1
 		&item.Channel, &item.SellerID, &item.SellerName,
 		&item.BranchID, &item.BranchName,
 		&item.QuoteID, &item.QuoteNumber,
-		&total, &item.Status, &item.ArchivedAt, &item.NeedsFollowup,
+		&total, &item.Status, &item.ArchivedAt, &item.NeedsFollowup, &item.FollowupFlaggedAt,
 		&item.ItemCount, &item.ReviewCount,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -227,6 +228,7 @@ func (r *RFQRepository) ListByTenant(
 		        END,
 		        q.archived_at,
 		        COALESCE(q.needs_followup, FALSE),
+		        q.followup_flagged_at,
 		        COALESCE(lines.items, 0),
 		        COALESCE(lines.to_review, 0)
 		 FROM rfq r
@@ -259,7 +261,7 @@ func (r *RFQRepository) ListByTenant(
 			&item.Channel, &item.SellerID, &item.SellerName,
 			&item.BranchID, &item.BranchName,
 			&item.QuoteID, &item.QuoteNumber,
-			&total, &item.Status, &item.ArchivedAt, &item.NeedsFollowup,
+			&total, &item.Status, &item.ArchivedAt, &item.NeedsFollowup, &item.FollowupFlaggedAt,
 			&item.ItemCount, &item.ReviewCount,
 		); err != nil {
 			return nil, err

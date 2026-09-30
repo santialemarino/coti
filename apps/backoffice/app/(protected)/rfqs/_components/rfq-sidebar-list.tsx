@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 
 import { Badge, EmptyState, MetaList } from '@repo/ui/components';
 import { cn } from '@repo/ui/lib';
+import { FollowupBadge, followupDue } from '@/app/(protected)/rfqs/_components/followup-badge';
 import { RfqStatusBadge } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
 import { ROUTES } from '@/config/routes';
 import { formatRfqReference, type RfqRecord } from '@/lib/api/rfqs';
@@ -67,14 +68,15 @@ export function RfqSidebarList({ records, activeRfqId }: RfqSidebarListProps) {
                     The client is wrapped only when there is one — a wrapper around an empty string
                     is not empty, and the separator would survive it. */}
                 <MetaList
+                  singleLine
                   className={cn(
-                    'min-w-0 flex-nowrap text-paragraph-sm-medium',
+                    'text-paragraph-sm-medium',
                     isActive ? 'text-accent-foreground' : 'text-foreground',
                   )}
                   items={[
                     reference,
                     rfq.client ? (
-                      <span key="client" className="truncate">
+                      <span key="client" title={rfq.client}>
                         {rfq.client}
                       </span>
                     ) : null,
@@ -82,12 +84,15 @@ export function RfqSidebarList({ records, activeRfqId }: RfqSidebarListProps) {
                 />
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <RfqStatusBadge status={rfq.status} processing={rfq.processing} size="sm" />
+                  {followupDue(rfq.needsFollowup, rfq.status, Boolean(rfq.archived)) ? (
+                    <FollowupBadge flaggedAt={rfq.followupFlaggedAt} size="sm" />
+                  ) : null}
                   {rfq.reviewCount > 0 ? (
                     <Badge tone="warning" size="sm">
                       {t('list.toReview', { count: rfq.reviewCount })}
                     </Badge>
                   ) : null}
-                  <span className="text-paragraph-mini text-foreground-muted tabular-nums">
+                  <span className="whitespace-nowrap text-paragraph-mini text-foreground-muted tabular-nums">
                     {fmt.dateNumeric(rfq.createdAt)}
                   </span>
                 </div>

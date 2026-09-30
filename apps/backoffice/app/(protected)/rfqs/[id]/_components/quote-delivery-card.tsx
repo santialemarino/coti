@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { CheckIcon, CopyIcon, ExternalLinkIcon } from 'lucide-react';
+import { ExternalLinkIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { toast } from 'sonner';
 
 import {
   Button,
@@ -12,6 +12,7 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
+  CopyButton,
 } from '@repo/ui/components';
 import { RfqStatusBadge } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
 import type { RfqDetailResponse } from '@/lib/api/rfqs';
@@ -35,7 +36,6 @@ interface QuoteDeliveryCardProps {
  */
 export function QuoteDeliveryCard({ detail, onSent }: QuoteDeliveryCardProps) {
   const t = useTranslations('rfqs.detail.quoteCard');
-  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
 
   const quote = detail.quote;
   const version = detail.version;
@@ -43,22 +43,11 @@ export function QuoteDeliveryCard({ detail, onSent }: QuoteDeliveryCardProps) {
 
   const canAct = quote.archived_at === null;
   const canSendQuote = canAct && quote.current_status === 'QUOTED';
-  const hasLifecycleActions =
-    canAct && ['SENT', 'ACCEPTED', 'REJECTED'].includes(quote.current_status);
 
   // The API orders deliveries newest-first, so the first live one is the link the client holds.
   const liveDelivery = (detail.deliveries ?? []).find(
     (delivery) => LIVE_TRACKING_STATUSES.has(delivery.tracking_status) && delivery.public_url,
   );
-
-  async function copyLink(url: string) {
-    try {
-      await navigator.clipboard.writeText(url);
-    } catch {
-      return;
-    }
-    setCopiedUrl(url);
-  }
 
   return (
     <Card>
@@ -75,30 +64,26 @@ export function QuoteDeliveryCard({ detail, onSent }: QuoteDeliveryCardProps) {
           <RfqStatusBadge status={normalizeRfqStatus(quote.current_status)} size="sm" />
         </div>
       </CardHeader>
-      <CardContent className="flex flex-col gap-y-2">
+      <CardContent className="flex flex-col gap-y-4">
         {liveDelivery ? (
           <>
-            <span className="text-paragraph-xs-medium text-foreground-muted">{t('linkLabel')}</span>
-            <span
-              aria-label={t('linkLabel')}
-              className="break-all text-paragraph-sm text-foreground"
-            >
-              {liveDelivery.public_url}
-            </span>
-            <div className="flex gap-x-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => copyLink(liveDelivery.public_url)}
+            <div className="flex flex-col gap-y-1">
+              <span className="text-paragraph-xs-medium text-foreground-muted">
+                {t('linkLabel')}
+              </span>
+              <span
+                aria-label={t('linkLabel')}
+                className="break-all text-paragraph-sm text-foreground"
               >
-                {copiedUrl === liveDelivery.public_url ? (
-                  <CheckIcon className="size-3.5" />
-                ) : (
-                  <CopyIcon className="size-3.5" />
-                )}
-                {copiedUrl === liveDelivery.public_url ? t('copiedLink') : t('copyLink')}
-              </Button>
+                {liveDelivery.public_url}
+              </span>
+            </div>
+            <div className="flex gap-x-2">
+              <CopyButton
+                value={liveDelivery.public_url}
+                labels={{ copy: t('copyLink'), copied: t('copiedLink') }}
+                onCopyError={() => toast.error(t('copyFailed'))}
+              />
               <Button asChild variant="outline" size="sm">
                 <a href={liveDelivery.public_url} target="_blank" rel="noopener noreferrer">
                   <ExternalLinkIcon className="size-3.5" />
@@ -111,20 +96,24 @@ export function QuoteDeliveryCard({ detail, onSent }: QuoteDeliveryCardProps) {
           <p className="text-paragraph-sm text-foreground-muted">{t('unavailable')}</p>
         )}
       </CardContent>
-      {(canSendQuote || hasLifecycleActions) && (
-        <CardFooter className="justify-end gap-x-2">
-          {canSendQuote ? (
-            <SendQuoteDialog detail={detail} branchId={detail.rfq.branch_id} onSent={onSent} />
-          ) : (
-            <QuoteLifecycleActions
-              quoteId={quote.id}
-              branchId={detail.rfq.branch_id}
-              status={quote.current_status}
-              onChanged={onSent}
-            />
-          )}
+      {canAct ? (
+        /* Both action sets stay mounted across every transition, so a dialog outlives the status
+           that offered it; the footer hides itself while neither has a button to show. */
+        <CardFooter className="justify-end gap-x-2 empty:hidden">
+          <SendQuoteDialog
+            detail={detail}
+            branchId={detail.rfq.branch_id}
+            onSent={onSent}
+            showTrigger={canSendQuote}
+          />
+          <QuoteLifecycleActions
+            quoteId={quote.id}
+            branchId={detail.rfq.branch_id}
+            status={quote.current_status}
+            onChanged={onSent}
+          />
         </CardFooter>
-      )}
+      ) : null}
     </Card>
   );
 }

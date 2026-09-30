@@ -110,6 +110,8 @@ type RfqListItem struct {
 	Status        string  // merged: rfq.status when no quote, otherwise quote.current_status.
 	ArchivedAt    *time.Time
 	NeedsFollowup bool
+	// FollowupFlaggedAt is when the quote was flagged for follow-up; NULL while it is not.
+	FollowupFlaggedAt *time.Time
 }
 
 // RFQStatusChange records an RFQ lifecycle transition.

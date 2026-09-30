@@ -631,7 +631,8 @@ export function RfqItemsTable({
         </Table>
 
         {showPricing && (
-          <div className="border-t border-border px-4 py-3">
+          /* A stronger rule than the row hairlines, so the summary reads as apart from the lines. */
+          <div className="px-4 py-3 border-t border-border-strong">
             <div className="flex flex-col gap-y-1.5">
               <div className="flex items-center justify-between text-paragraph-sm">
                 <span className="text-foreground-muted">{t('detail.items.summary.subtotal')}</span>

@@ -215,10 +215,13 @@ export function RfqStatusTimeline({ detail }: RfqStatusTimelineProps) {
             <ol className="flex flex-col gap-y-3">
               {events.map((event) => (
                 <li key={`${event.source}-${event.id}`} className="flex gap-x-3">
+                  {/* A box one line of the label tall centres the dot on that line's middle. */}
                   <span
                     aria-hidden="true"
-                    className="mt-1 size-2 shrink-0 bg-primary rounded-full"
-                  />
+                    className="flex h-lh shrink-0 items-center text-paragraph-sm"
+                  >
+                    <span className="size-2 bg-primary rounded-full" />
+                  </span>
                   <div className="min-w-0">
                     <p className="text-paragraph-sm text-foreground">
                       {t(`status.${statusLabelKey(event.newStatus)}`)}

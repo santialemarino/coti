@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useLayoutEffect, useState } from 'react';
 import { ClipboardListIcon, UploadIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
@@ -46,8 +46,8 @@ export function CreateRfqDialog({
    */
   const [dirty, setDirty] = useState(false);
 
-  /* A fresh dialog always starts at the choice, whatever step closed it last. */
-  useEffect(() => {
+  /* A fresh dialog starts at the choice, reset before paint so the last step never flashes. */
+  useLayoutEffect(() => {
     if (open) {
       setStep('choose');
       setDirty(false);

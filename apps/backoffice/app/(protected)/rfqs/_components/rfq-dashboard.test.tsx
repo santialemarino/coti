@@ -49,6 +49,7 @@ const RFQS: RfqRecord[] = [
     status: 'QUOTED',
     total: '100.00',
     needsFollowup: false,
+    followupFlaggedAt: null,
   },
   {
     id: '2002',
@@ -66,6 +67,7 @@ const RFQS: RfqRecord[] = [
     status: 'SENT',
     total: '200.00',
     needsFollowup: false,
+    followupFlaggedAt: null,
   },
   {
     id: '2003',
@@ -83,6 +85,7 @@ const RFQS: RfqRecord[] = [
     status: 'QUOTED',
     total: '300.00',
     needsFollowup: false,
+    followupFlaggedAt: null,
   },
   {
     id: '2004',
@@ -99,6 +102,7 @@ const RFQS: RfqRecord[] = [
     reviewCount: 0,
     status: 'RECEIVED',
     needsFollowup: false,
+    followupFlaggedAt: null,
   },
   {
     id: '2005',
@@ -115,6 +119,7 @@ const RFQS: RfqRecord[] = [
     reviewCount: 0,
     status: 'GENERATED',
     needsFollowup: false,
+    followupFlaggedAt: null,
   },
 ];
 
@@ -379,6 +384,7 @@ describe('RfqDashboard claiming an unassigned order', () => {
     reviewCount: 0,
     status: 'RECEIVED',
     needsFollowup: false,
+    followupFlaggedAt: null,
   };
 
   beforeEach(() => {
@@ -509,6 +515,7 @@ describe('RfqDashboard admin steering the seller', () => {
     reviewCount: 0,
     status: 'RECEIVED',
     needsFollowup: false,
+    followupFlaggedAt: null,
   };
   const villaOrder: RfqRecord = {
     ...moronOrder,
@@ -673,6 +680,7 @@ describe('RfqDashboard seller column as the assignment surface', () => {
     reviewCount: 0,
     status: 'RECEIVED',
     needsFollowup: false,
+    followupFlaggedAt: null,
   };
 
   beforeEach(() => {
@@ -837,5 +845,30 @@ describe('RfqDashboard lines to review', () => {
     fireEvent.click(view.getByRole('button', { name: new RegExp(copy.list.columns.toReview) }));
     const flagged = view.getAllByText(/a revisar$/).map((badge) => badge.textContent);
     expect(flagged).toEqual(['1 a revisar', '3 a revisar']);
+  });
+});
+
+describe('RfqDashboard follow-up', () => {
+  const followup = copy.followup;
+
+  it('marks a flagged order in its reference cell, and only that one', () => {
+    const records = RFQS.map((rfq) =>
+      rfq.id === '2001'
+        ? { ...rfq, needsFollowup: true, followupFlaggedAt: '2026-09-01T12:00:00.000Z' }
+        : rfq,
+    );
+    const view = renderDashboard(records);
+
+    expect(rowOf(view, '#01').getByText(new RegExp(`^${followup.description} · `))).toBeTruthy();
+    expect(view.getAllByText(new RegExp(`^${followup.description}`))).toHaveLength(1);
+  });
+
+  it('leaves an answered quote unmarked even while its flag is still set', () => {
+    const records = RFQS.map((rfq) =>
+      rfq.id === '2001' ? { ...rfq, status: 'ACCEPTED' as const, needsFollowup: true } : rfq,
+    );
+    const view = renderDashboard(records);
+
+    expect(view.queryByText(new RegExp(`^${copy.followup.description}`))).toBeNull();
   });
 });

@@ -46,6 +46,7 @@ function makeDetail(): RfqDetailResponse {
       total: '390000.00',
       status: 'QUOTED',
       needs_followup: false,
+      followup_flagged_at: null,
       archived_at: null,
     },
     quote: {
@@ -160,7 +161,7 @@ describe('SendQuoteDialog', () => {
     expect(view.getByRole('link', { name: /Abrir/ }).getAttribute('href')).toBe(WHATSAPP_URL);
   });
 
-  it('copies a delivered link, then says so on the button', async () => {
+  it('copies a delivered link, then announces it', async () => {
     vi.mocked(sendQuote).mockResolvedValue(sentResult([delivery({})]));
     const view = renderDialog();
     openDialog(view);
@@ -169,7 +170,7 @@ describe('SendQuoteDialog', () => {
     fireEvent.click(view.getByRole('button', { name: copy.copyLink }));
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(WHATSAPP_URL));
-    expect(view.getByRole('button', { name: copy.copiedLink })).toBeTruthy();
+    expect(view.getAllByRole('status').map((node) => node.textContent)).toContain(copy.copiedLink);
   });
 
   /*

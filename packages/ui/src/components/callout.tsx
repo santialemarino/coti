@@ -1,5 +1,11 @@
 import * as React from 'react';
-import { AlertTriangleIcon, CheckCircle2Icon, InfoIcon, XCircleIcon } from 'lucide-react';
+import {
+  AlertTriangleIcon,
+  BellRingIcon,
+  CheckCircle2Icon,
+  InfoIcon,
+  XCircleIcon,
+} from 'lucide-react';
 
 import { cn } from '../lib/utils';
 
@@ -19,6 +25,11 @@ const TONES = {
     surface: 'bg-danger-subtle border-danger-border',
     icon: 'text-danger-foreground',
     Icon: XCircleIcon,
+  },
+  followup: {
+    surface: 'bg-followup-subtle border-followup-border',
+    icon: 'text-followup-foreground',
+    Icon: BellRingIcon,
   },
 } as const;
 

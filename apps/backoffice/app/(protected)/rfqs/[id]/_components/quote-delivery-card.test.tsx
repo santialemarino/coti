@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -73,6 +74,7 @@ function makeDetail({
       total: '390000.00',
       status: rfqStatus,
       needs_followup: false,
+      followup_flagged_at: null,
       archived_at: archived ? BASE_TIME : null,
     },
     quote: withQuote
@@ -114,14 +116,18 @@ function makeDetail({
 }
 
 function renderCard(detail: RfqDetailResponse) {
-  return render(
+  return render(cardTree(detail));
+}
+
+function cardTree(detail: RfqDetailResponse) {
+  return (
     <NextIntlClientProvider
       locale="es"
       messages={messages}
       timeZone="America/Argentina/Buenos_Aires"
     >
       <QuoteDeliveryCard detail={detail} onSent={vi.fn().mockResolvedValue(undefined)} />
-    </NextIntlClientProvider>,
+    </NextIntlClientProvider>
   );
 }
 
@@ -175,7 +181,7 @@ describe('QuoteDeliveryCard live link', () => {
     fireEvent.click(view.getByRole('button', { name: copy.copyLink }));
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(PUBLIC_URL));
-    expect(view.getByText(copy.copiedLink)).toBeTruthy();
+    expect(view.getByRole('status').textContent).toBe(copy.copiedLink);
   });
 
   it('ignores failed and empty-url attempts and shows the newest successful link', () => {
@@ -227,6 +233,7 @@ describe('QuoteDeliveryCard send action', () => {
 
       expect(SendDialog, `send dialog surfaced on ${status}`).toHaveBeenCalledWith(
         expect.objectContaining({
+          showTrigger: true,
           detail: expect.objectContaining({
             quote: expect.objectContaining({ current_status: status }),
           }),
@@ -236,7 +243,8 @@ describe('QuoteDeliveryCard send action', () => {
     }
   });
 
-  it('keeps the dialog hidden unless the quote is review-ready', () => {
+  // Mounted on every status so its success view outlives the send; only QUOTED offers the button.
+  it('offers the send only while the quote is review-ready', () => {
     for (const status of [
       'DRAFT',
       'GENERATED',
@@ -248,8 +256,22 @@ describe('QuoteDeliveryCard send action', () => {
       vi.clearAllMocks();
       renderCard(makeDetail({ quoteStatus: status }));
 
-      expect(SendDialog, `send dialog surfaced on ${status}`).not.toHaveBeenCalled();
+      expect(SendDialog.mock.lastCall?.[0].showTrigger, `send offered on ${status}`).toBe(false);
     }
+  });
+
+  // The send moves the quote to SENT while the dialog still shows the links it just delivered.
+  it('keeps the send dialog mounted when the send moves the quote on', () => {
+    const unmounted = vi.fn();
+    SendDialog.mockImplementation(() => {
+      useEffect(() => unmounted, []);
+      return <></>;
+    });
+    const view = renderCard(makeDetail({ quoteStatus: 'QUOTED' }));
+    view.rerender(cardTree(makeDetail({ quoteStatus: 'SENT' })));
+
+    expect(unmounted).not.toHaveBeenCalled();
+    SendDialog.mockImplementation(() => <></>);
   });
 
   it('keeps send and lifecycle actions hidden while the quote is archived', () => {

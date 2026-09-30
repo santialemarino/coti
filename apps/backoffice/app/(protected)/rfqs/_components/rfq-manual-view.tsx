@@ -15,6 +15,7 @@ import {
   Label,
   MetaList,
   PendingButton,
+  ScrollArea,
   SearchInput,
   Skeleton,
 } from '@repo/ui/components';
@@ -228,7 +229,7 @@ export function RfqManualView({
           <p className="text-paragraph-xs-medium text-foreground-muted uppercase">
             {t('catalogLabel')}
           </p>
-          <div className="h-80 overflow-y-auto pr-1">
+          <ScrollArea className="h-80">
             {loadingCatalog ? (
               <ul aria-busy="true" aria-label={t('loading')} className="flex flex-col gap-y-2">
                 {Array.from({ length: CATALOG_SKELETON_ROWS }, (_, index) => (
@@ -277,14 +278,14 @@ export function RfqManualView({
                 ))}
               </ul>
             )}
-          </div>
+          </ScrollArea>
         </section>
 
         <section className="flex min-w-0 flex-col gap-y-3">
           <p className="text-paragraph-xs-medium text-foreground-muted uppercase">
             {t('itemsLabel', { count: items.length })}
           </p>
-          <div className="h-80 overflow-y-auto pr-1">
+          <ScrollArea className="h-80">
             {items.length === 0 ? (
               <EmptyState icon={ShoppingCartIcon} title={t('itemsEmpty')} />
             ) : (
@@ -324,7 +325,7 @@ export function RfqManualView({
                 ))}
               </ul>
             )}
-          </div>
+          </ScrollArea>
         </section>
       </div>
 

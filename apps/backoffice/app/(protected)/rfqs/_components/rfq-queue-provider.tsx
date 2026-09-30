@@ -7,7 +7,7 @@ import { getEffectiveBranchId } from '@/lib/auth/branch';
 import { getSession } from '@/lib/auth/session';
 import { ADMIN_ROLE } from '@/lib/constants/auth';
 
-function mapListItem(item: RfqListItem): RfqRecord {
+export function mapListItem(item: RfqListItem): RfqRecord {
   return {
     id: item.id,
     quoteNumber: item.quote_number,
@@ -24,6 +24,7 @@ function mapListItem(item: RfqListItem): RfqRecord {
     total: item.total ?? undefined,
     status: normalizeRfqStatus(item.status),
     needsFollowup: item.needs_followup,
+    followupFlaggedAt: item.followup_flagged_at,
     archived: item.archived_at != null,
   };
 }

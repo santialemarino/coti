@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useMemo, useRef } from 'react';
+import { useId, useLayoutEffect, useMemo, useRef } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { useForm, useWatch } from 'react-hook-form';
@@ -108,7 +108,7 @@ export function UserFormDialog({
    * Reset on open, not on mount: the dialog outlives every user it edits, so without this the
    * second row opened would still be showing the first row's values.
    */
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return;
     form.reset({
       name: user?.name ?? '',
@@ -130,11 +130,7 @@ export function UserFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && !pending && onOpenChange(false)}>
-      <DialogContent
-        className="sm:max-w-lg [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        closeOnClickOutside={!pending}
-        showCloseButton={false}
-      >
+      <DialogContent className="sm:max-w-lg" closeOnClickOutside={!pending} showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>{t(`${shown.mode}.title`)}</DialogTitle>
           <DialogDescription>{t(`${shown.mode}.description`)}</DialogDescription>

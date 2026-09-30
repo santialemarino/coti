@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ImageIcon } from 'lucide-react';
@@ -69,7 +69,7 @@ export function ProductFormDialog({
   const familyId = form.watch('familyId');
   const subgroups = families.find((family) => family.id === familyId)?.subgroups ?? [];
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return;
     form.reset({
       code: product?.code ?? '',

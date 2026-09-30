@@ -25,19 +25,23 @@ const CEMENTO_25: CatalogProduct = {
 const CAL: CatalogProduct = { id: 'p3', code: 'CAL-25', name: 'Cal hidratada 25kg', unit: 'bolsa' };
 
 function renderDialog(suggestions: CatalogProduct[]) {
-  return render(
+  return render(dialogTree(suggestions, true));
+}
+
+function dialogTree(suggestions: CatalogProduct[], open: boolean) {
+  return (
     <NextIntlClientProvider
       locale="es"
       messages={messages}
       timeZone="America/Argentina/Buenos_Aires"
     >
       <ProductSearchDialog
-        open
+        open={open}
         onOpenChange={() => {}}
         onSelect={() => {}}
         suggestions={suggestions}
       />
-    </NextIntlClientProvider>,
+    </NextIntlClientProvider>
   );
 }
 
@@ -74,5 +78,16 @@ describe('ProductSearchDialog', () => {
     await settle();
 
     expect(listedNames()).toEqual([CAL.name]);
+  });
+
+  // Cleared when it opens, not when it closes, so the list does not empty while it fades out.
+  it('starts every opening from an empty search', async () => {
+    const view = renderDialog([]);
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'cal' } });
+    await settle();
+    view.rerender(dialogTree([], false));
+    view.rerender(dialogTree([], true));
+
+    expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('');
   });
 });

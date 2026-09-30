@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
@@ -73,7 +73,7 @@ export function BranchFormDialog({
    * Reset on open, not on mount: the dialog outlives every branch it edits, so without this the
    * second row opened would still be showing the first row's values.
    */
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return;
     form.reset({
       name: branch?.name ?? '',

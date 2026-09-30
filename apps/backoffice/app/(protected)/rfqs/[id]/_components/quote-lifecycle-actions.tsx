@@ -83,8 +83,8 @@ export function QuoteLifecycleActions({
     }
   }
 
-  if (!canClose && !canReactivate) return null;
-
+  // The dialogs stay mounted whatever the status: a transition that retires the trigger must not
+  // cut the dialog that caused it off mid-exit.
   return (
     <>
       {canClose ? (
@@ -98,12 +98,12 @@ export function QuoteLifecycleActions({
             {t('accept.button')}
           </Button>
         </div>
-      ) : (
+      ) : canReactivate ? (
         <Button type="button" variant="outline" onClick={() => setReactivateOpen(true)}>
           <RotateCcwIcon />
           {t('reactivate.button')}
         </Button>
-      )}
+      ) : null}
 
       <ConfirmDialog
         open={closure !== null}

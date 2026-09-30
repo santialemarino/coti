@@ -17,19 +17,20 @@ const BRANCH_ID = 'b0000000-0000-4000-8000-000000000001';
 const copy = messages.rfqs.detail.lifecycle;
 
 function renderActions(status: string, onChanged = vi.fn().mockResolvedValue(undefined)) {
-  return {
-    onChanged,
-    view: render(
-      <NextIntlClientProvider locale="es" messages={messages}>
-        <QuoteLifecycleActions
-          quoteId={QUOTE_ID}
-          branchId={BRANCH_ID}
-          status={status}
-          onChanged={onChanged}
-        />
-      </NextIntlClientProvider>,
-    ),
-  };
+  return { onChanged, view: render(actionsTree(status, onChanged)) };
+}
+
+function actionsTree(status: string, onChanged: () => Promise<void>) {
+  return (
+    <NextIntlClientProvider locale="es" messages={messages}>
+      <QuoteLifecycleActions
+        quoteId={QUOTE_ID}
+        branchId={BRANCH_ID}
+        status={status}
+        onChanged={onChanged}
+      />
+    </NextIntlClientProvider>
+  );
 }
 
 beforeEach(() => {
@@ -70,5 +71,15 @@ describe('QuoteLifecycleActions', () => {
     fireEvent.click(view.getByRole('button', { name: new RegExp(copy.reactivate.edit.title) }));
 
     await waitFor(() => expect(reactivateQuote).toHaveBeenCalledWith(QUOTE_ID, BRANCH_ID, 'EDIT'));
+  });
+
+  // A resend lands the quote back on QUOTED, which retires the trigger that opened this dialog.
+  it('keeps the reactivation dialog mounted through a status that retires its trigger', () => {
+    const { view, onChanged } = renderActions('ACCEPTED');
+    fireEvent.click(view.getByRole('button', { name: copy.reactivate.button }));
+    view.rerender(actionsTree('QUOTED', onChanged));
+
+    expect(view.getByRole('dialog').textContent).toContain(copy.reactivate.title);
+    expect(view.queryByRole('button', { name: copy.reactivate.button })).toBeNull();
   });
 });
