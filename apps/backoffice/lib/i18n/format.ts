@@ -1,4 +1,9 @@
-import { dateTimeFormat, listFormat, numberFormat } from '@/lib/i18n/intl-cache';
+import {
+  dateTimeFormat,
+  displayNamesFormat,
+  listFormat,
+  numberFormat,
+} from '@/lib/i18n/intl-cache';
 import { getLocaleTag } from '@/lib/i18n/locales';
 
 export interface FormatValueOptions {
@@ -87,4 +92,9 @@ export function formatTimestamp(iso: string, locale?: string, timeZone?: string)
 // "cemento, arena y cal".
 export function formatList(items: Iterable<string>, locale?: string): string {
   return listFormat(getLocaleTag(locale), { style: 'long', type: 'conjunction' }).format(items);
+}
+
+// "Argentina" for "AR"; Intl answers an unknown code with the code itself.
+export function formatRegion(code: string, locale?: string): string {
+  return displayNamesFormat(getLocaleTag(locale), { type: 'region' }).of(code) ?? code;
 }

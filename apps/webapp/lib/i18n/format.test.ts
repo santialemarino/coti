@@ -5,6 +5,7 @@ import {
   formatDateNumeric,
   formatList,
   formatRatePct,
+  formatRegion,
   formatSignedValue,
   formatTimestamp,
   formatValue,
@@ -133,5 +134,12 @@ describe('formatList', () => {
     [[], ''],
   ])('handles the %p case', (items, expected) => {
     expect(formatList(items)).toBe(expected);
+  });
+});
+
+describe('formatRegion', () => {
+  // The phone picker lists countries by name, in the product's language.
+  it('names a country in Spanish', () => {
+    expect(formatRegion('BR')).toBe('Brasil');
   });
 });

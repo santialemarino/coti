@@ -101,6 +101,35 @@ describe('ClientAssociationCard', () => {
     expect(associateQuoteClient).not.toHaveBeenCalled();
   });
 
+  // The contact hint arrives as E.164 and the picker splits it; a number no country can read blocks.
+  it('saves a new client with the hinted phone, and refuses one that is not a phone', async () => {
+    const copy = messages.clients.association.dialog;
+    const view = renderCard();
+    await view.findByText(messages.clients.association.pending.title);
+    fireEvent.click(view.getByRole('button', { name: messages.clients.association.associate }));
+    fireEvent.click(await view.findByRole('radio', { name: copy.new }));
+
+    const phone = view.getByLabelText(copy.phone) as HTMLInputElement;
+    expect(phone.value).toBe('91155550101');
+
+    fireEvent.change(phone, { target: { value: '1234' } });
+    expect(view.getByText(messages.common.phone.invalid)).toBeTruthy();
+    expect(view.getByRole('button', { name: copy.save }).hasAttribute('disabled')).toBe(true);
+
+    fireEvent.change(phone, { target: { value: '11 15 5555-0101' } });
+    fireEvent.click(view.getByRole('button', { name: copy.save }));
+
+    await waitFor(() =>
+      expect(associateQuoteClient).toHaveBeenCalledWith(
+        QUOTE_ID,
+        BRANCH_ID,
+        expect.objectContaining({
+          new_client: expect.objectContaining({ phone: '+5491155550101' }),
+        }),
+      ),
+    );
+  });
+
   it('lets the seller manually select an existing client without a contact match', async () => {
     const manualClient: ClientMatch = {
       client: {

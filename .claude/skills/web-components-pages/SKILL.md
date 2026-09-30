@@ -178,6 +178,11 @@ The stack is **react-hook-form + zod** with the shared `Form` primitives from
   rejects that keystroke. The keystroke rules, the paste normaliser and the caret mapper live in
   `lib/i18n/numeric-input.ts` — compose from there rather than writing a third masker. The caret is
   mapped by counting digits, not characters, because the group separators are exactly what moved.
+- **A phone number is `PhoneInput`** (backoffice `components/`): a searchable country `Combobox`,
+  Argentina first, beside the national number, emitting E.164 or `''`. Validate with
+  `isValidPhoneNumber` from `libphonenumber-js/min`, never a regex — the country supplies the code the
+  regex used to demand, and only the library knows each country's lengths. A pasted `+…` number moves
+  the picker to its country.
 - **A label is `w-fit`.** A label forwards its click to the control it names, so a block-level one
   spans the whole field row and a click in the empty space far to its right focuses an input the
   pointer is nowhere near — or opens a select. `Label` carries this; don't override it with `w-full`.
