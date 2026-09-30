@@ -52,6 +52,8 @@ function onboarding(overrides: Partial<Onboarding>): Onboarding {
     status: 'IN_PROGRESS',
     currentStep: 'TEAM',
     steps: {},
+    checklist: [],
+    checklistHiddenAt: null,
     completedAt: null,
     ...overrides,
   };

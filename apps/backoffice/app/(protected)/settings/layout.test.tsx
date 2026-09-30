@@ -31,7 +31,7 @@ beforeEach(() => {
     emailVerified: true,
     role: 'ADMIN',
   });
-  vi.mocked(getOnboarding).mockResolvedValue({ status: 'COMPLETED' } as never);
+  vi.mocked(getOnboarding).mockResolvedValue({ status: 'COMPLETED', checklist: [] } as never);
   vi.mocked(getTranslations).mockResolvedValue(((key: string) => key) as never);
 });
 
@@ -43,5 +43,38 @@ describe('SettingsLayout', () => {
     expect(hrefs?.[0]).toBe(ROUTES.accountSettings);
     expect(hrefs).not.toContain(ROUTES.emailSettings);
     expect(hrefs).not.toContain(ROUTES.changePassword);
+  });
+
+  it('lists the initial setup with its progress while a step is pending', async () => {
+    vi.mocked(getOnboarding).mockResolvedValue({
+      status: 'COMPLETED',
+      checklistHiddenAt: '2026-09-30T12:00:00Z',
+      checklist: [
+        { step: 'BRAND', done: true },
+        { step: 'CATALOG_UPLOAD', done: false },
+        { step: 'TEAM', done: true },
+      ],
+    } as never);
+    const t = Object.assign(
+      vi.fn((key: string) => key),
+      { has: () => true },
+    );
+    vi.mocked(getTranslations).mockResolvedValue(t as never);
+
+    render(await SettingsLayout({ children: null }));
+
+    expect(renderedItems()?.map((item) => item.href)).toContain(ROUTES.onboardingSettings);
+    expect(t).toHaveBeenCalledWith('nav.onboarding', { done: 2, total: 3 });
+  });
+
+  it('drops the initial setup once every step is done', async () => {
+    vi.mocked(getOnboarding).mockResolvedValue({
+      status: 'DISMISSED',
+      checklist: [{ step: 'BRAND', done: true }],
+    } as never);
+
+    render(await SettingsLayout({ children: null }));
+
+    expect(renderedItems()?.map((item) => item.href)).not.toContain(ROUTES.onboardingSettings);
   });
 });

@@ -1,6 +1,8 @@
 import { render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { Onboarding } from '@/lib/api/onboarding';
+
 vi.mock('@/app/(protected)/_components/app-header', () => ({ AppHeader: vi.fn(() => null) }));
 vi.mock('@/lib/api/onboarding', () => ({ getOnboarding: vi.fn() }));
 vi.mock('@/lib/api/branches', () => ({ getBranches: vi.fn() }));
@@ -49,13 +51,15 @@ async function redirectedTo(): Promise<string | null> {
   }
 }
 
-const FINISHED_ONBOARDING = {
+const FINISHED_ONBOARDING: Onboarding = {
   flowVersion: 1,
   status: 'COMPLETED',
   currentStep: 'COMPLETE',
   steps: {},
+  checklist: [],
+  checklistHiddenAt: null,
   completedAt: '2026-08-01T00:00:00Z',
-} as const;
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -97,6 +101,8 @@ describe('ProtectedLayout', () => {
       status: 'IN_PROGRESS',
       currentStep: 'WELCOME',
       steps: {},
+      checklist: [],
+      checklistHiddenAt: null,
       completedAt: null,
     });
 
@@ -119,6 +125,8 @@ describe('ProtectedLayout', () => {
       status: 'IN_PROGRESS',
       currentStep: 'WELCOME',
       steps: {},
+      checklist: [],
+      checklistHiddenAt: null,
       completedAt: null,
     });
     vi.mocked(getBranches).mockResolvedValue([{ isActive: false }] as never);

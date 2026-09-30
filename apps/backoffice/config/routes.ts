@@ -21,6 +21,7 @@ export const ROUTES = {
   catalogSettings: '/settings/catalog',
   branchSettings: '/settings/branches',
   userSettings: '/settings/users',
+  onboardingSettings: '/settings/onboarding',
 } as const;
 
 // Reachable without a session. Anything else is behind the gate.

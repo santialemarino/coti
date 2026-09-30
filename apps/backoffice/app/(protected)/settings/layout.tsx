@@ -8,6 +8,7 @@ import { ROUTES } from '@/config/routes';
 import { getOnboarding } from '@/lib/api/onboarding';
 import { getSession } from '@/lib/auth/session';
 import { ADMIN_ROLE } from '@/lib/constants/auth';
+import { hasPendingChecklist } from '@/lib/utils/onboarding-checklist';
 
 /*
  * The frame every settings page shares. The gate above already guarantees a session; this
@@ -27,8 +28,16 @@ export default async function SettingsLayout({ children }: { children: React.Rea
           { href: ROUTES.userSettings, label: t('nav.users') },
           { href: ROUTES.catalogSettings, label: t('nav.catalog') },
           { href: ROUTES.priceSettings, label: t('nav.prices') },
-          ...(onboarding?.status === 'DISMISSED'
-            ? [{ href: ROUTES.onboarding, label: t('nav.onboarding') }]
+          ...(onboarding && hasPendingChecklist(onboarding)
+            ? [
+                {
+                  href: ROUTES.onboardingSettings,
+                  label: t('nav.onboarding', {
+                    done: onboarding.checklist.filter((item) => item.done).length,
+                    total: onboarding.checklist.length,
+                  }),
+                },
+              ]
             : []),
         ]
       : []),
