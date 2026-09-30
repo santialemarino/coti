@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 
 import { AppHeader } from '@/app/(protected)/_components/app-header';
 import { ROUTES } from '@/config/routes';
+import { getBranches } from '@/lib/api/branches';
 import { getOnboarding } from '@/lib/api/onboarding';
 import { getSession } from '@/lib/auth/session';
 import { ADMIN_ROLE } from '@/lib/constants/auth';
@@ -15,8 +16,10 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   // first would answer 403 and throw, where the confirmation screen belonged.
   if (!session.emailVerified) redirect(ROUTES.verifyEmail);
   if (session.role === ADMIN_ROLE) {
-    const onboarding = await getOnboarding();
-    if (onboarding.status === 'IN_PROGRESS') redirect(ROUTES.onboarding);
+    const [onboarding, branches] = await Promise.all([getOnboarding(), getBranches()]);
+    // Onboarding sends an account with no active branch to Sucursales; sending it back would loop.
+    const canOnboard = branches.some((branch) => branch.isActive);
+    if (onboarding.status === 'IN_PROGRESS' && canOnboard) redirect(ROUTES.onboarding);
   }
 
   return (

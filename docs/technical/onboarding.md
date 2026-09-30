@@ -34,9 +34,8 @@ positions. `flow_version` is available for future migrations when a new flow can
 the existing order.
 
 The brand screen does not ask for the account data collected at registration. It shows that data as
-read-only context and updates only the optional brand colour. Its logo dropzone creates an in-browser
-object URL for visual feedback; it never sends the file to a server and never persists it. A future
-object-storage implementation can replace that boundary without changing onboarding progress.
+read-only context and updates the optional brand colour and logo. A chosen logo is uploaded through
+the same account-logo path Cuenta uses, and its stored URL is saved on the account with the colour.
 
 The first-branch screen edits the branch already created during registration. Default expiry days are
 the suggested validity period for new quotes, not a branch expiry date, and remain editable per quote.
@@ -47,7 +46,13 @@ preview, and invalid rows are never silently imported. The same import component
 
 The team screen reuses account user creation. It creates a real user with an initial password; there
 is no invitation token or invitation email. The UI states that the administrator must share the
-password securely instead of presenting the operation as an invitation.
+password securely instead of presenting the operation as an invitation. The administrator is listed
+first, as themselves, and finishing with nobody else on the account resolves the step as skipped.
+
+The completion screen reports each step as done only when it was completed; a skipped one names the
+settings page where it is waiting. While onboarding is open, the protected shell sends the
+administrator back to it only when the account has an active branch: onboarding sends an account
+without one to Sucursales, and bouncing it back from there would loop.
 
 User preferences are intentionally absent from version 1. They can be introduced as another stable
 step without coupling them to registration or rewriting existing progress.
