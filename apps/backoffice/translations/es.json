@@ -1498,7 +1498,7 @@
         "FIRST_BRANCH": "Sucursal",
         "CATALOG_UPLOAD": "Carga",
         "CATALOG_REVIEW": "Revisión",
-        "TEAM": "Equipo",
+        "TEAM": "Usuarios",
         "COMPLETE": "Cuenta lista"
       },
       "statuses": {
@@ -1539,7 +1539,7 @@
           "description": "Importación masiva de productos."
         },
         "team": {
-          "title": "Sumá al Equipo",
+          "title": "Sumá usuarios",
           "description": "Creá usuarios que trabajen con vos."
         }
       }
@@ -1575,14 +1575,15 @@
       "returnToUpload": "Volver a cargar el archivo"
     },
     "team": {
-      "title": "Sumá a quienes van a Cotizar",
+      "title": "Sumá a los usuarios que van a cotizar",
       "description": "Elegí rol, sucursales y una contraseña inicial.",
+      "you": "Vos",
       "passwordNotice": "Esto crea un usuario real, no envía una invitación. Vas a tener que compartirle la contraseña inicial por un canal seguro.",
-      "add": "Agregar integrante",
+      "add": "Agregar usuario",
       "created": "Creamos a «{name}». Ya puede ingresar con la contraseña inicial.",
       "finish": "Finalizar configuración",
       "empty": {
-        "title": "Todavía no agregaste integrantes",
+        "title": "Todavía no agregaste usuarios",
         "description": "Podés hacerlo ahora o continuar y administrarlos más adelante desde Configuración."
       }
     },
@@ -1591,11 +1592,20 @@
       "description": "Todo lo que hayas dejado pendiente sigue disponible en Configuración.",
       "readyTitle": "Configuración completada",
       "readyDescription": "Ya podés empezar a trabajar con tu cuenta.",
+      "partialTitle": "Quedaron pasos pendientes",
+      "partialDescription": "Ya podés trabajar. Lo que falta lo completás cuando quieras desde Configuración.",
       "action": "Ir al inicio",
       "items": {
         "brand": "Marca revisada",
         "branch": "Sucursal configurada",
-        "catalog": "Catálogo disponible"
+        "catalog": "Catálogo disponible",
+        "team": "Usuarios agregados"
+      },
+      "pending": {
+        "brand": "Marca pendiente: la completás en Cuenta",
+        "branch": "Sucursal pendiente: la revisás en Sucursales",
+        "catalog": "Catálogo pendiente: lo importás en Catálogo",
+        "team": "Usuarios pendientes: los sumás en Usuarios"
       }
     },
     "errors": {

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/app/(protected)/_components/app-header', () => ({ AppHeader: vi.fn(() => null) }));
 vi.mock('@/lib/api/onboarding', () => ({ getOnboarding: vi.fn() }));
+vi.mock('@/lib/api/branches', () => ({ getBranches: vi.fn() }));
 vi.mock('@/lib/auth/session', () => ({ getSession: vi.fn() }));
 /*
  * Thrown rather than recorded, the way the real one behaves: a no-op mock would let the layout run
@@ -21,6 +22,7 @@ class RedirectError extends Error {
 }
 
 const { getOnboarding } = await import('@/lib/api/onboarding');
+const { getBranches } = await import('@/lib/api/branches');
 const { getSession } = await import('@/lib/auth/session');
 const { ROUTES } = await import('@/config/routes');
 const { default: ProtectedLayout } = await import('@/app/(protected)/layout');
@@ -60,6 +62,7 @@ beforeEach(() => {
   // Answered by default so a layout that reads it out of turn fails on the assertion rather than
   // on an undefined, which reads as a crash instead of as the ordering it is about.
   vi.mocked(getOnboarding).mockResolvedValue(FINISHED_ONBOARDING);
+  vi.mocked(getBranches).mockResolvedValue([{ isActive: true }] as never);
 });
 
 describe('ProtectedLayout', () => {
@@ -105,5 +108,21 @@ describe('ProtectedLayout', () => {
 
     await expect(redirectedTo()).resolves.toBeNull();
     expect(getOnboarding).not.toHaveBeenCalled();
+  });
+
+  // Onboarding itself sends an account without an active branch to Sucursales; bouncing it back
+  // from there would loop between the two for good.
+  it('lets an admin with no active branch reach the app while onboarding is open', async () => {
+    vi.mocked(getSession).mockResolvedValue(session(true));
+    vi.mocked(getOnboarding).mockResolvedValue({
+      flowVersion: 1,
+      status: 'IN_PROGRESS',
+      currentStep: 'WELCOME',
+      steps: {},
+      completedAt: null,
+    });
+    vi.mocked(getBranches).mockResolvedValue([{ isActive: false }] as never);
+
+    await expect(redirectedTo()).resolves.toBeNull();
   });
 });
