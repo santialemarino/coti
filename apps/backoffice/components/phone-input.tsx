@@ -109,12 +109,17 @@ export function PhoneInput({
         searchable
         searchPlaceholder={countrySearchPlaceholder}
         emptyLabel={countryEmptyLabel}
-        // The option's flag already rides as the trigger's icon; the label is only the code.
-        triggerLabel={(option) => `+${getCountryCallingCode(option.value as CountryCode)}`}
+        // The flag rides as the trigger's icon; the code gets room for "+" and three digits, the
+        // longest there is, so the trigger keeps one width whatever the country.
+        triggerLabel={(option) => (
+          <span className="inline-block min-w-[4ch] tabular-nums">
+            +{getCountryCallingCode(option.value as CountryCode)}
+          </span>
+        )}
         contentMinWidth={COUNTRY_LIST_MIN_WIDTH}
         disabled={disabled}
         aria-label={countryLabel}
-        className="w-32 shrink-0"
+        className="w-auto shrink-0 px-3"
       />
       <Input
         id={id}

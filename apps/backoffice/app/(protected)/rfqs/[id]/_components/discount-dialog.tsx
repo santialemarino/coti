@@ -202,7 +202,7 @@ export function DiscountDialog({
           {coversItems && (
             <div className="flex flex-col gap-y-1.5">
               <Label required>{t('itemsLabel')}</Label>
-              <div className="flex max-h-44 flex-col p-2 gap-y-1 border border-border rounded-lg scroll-area">
+              <div className="flex max-h-44 flex-col p-2 gap-y-1 border border-border rounded-lg scroll-area scroll-lane">
                 {items.map((item) => {
                   const checked = linkedItemIds.includes(item.id);
                   return (
