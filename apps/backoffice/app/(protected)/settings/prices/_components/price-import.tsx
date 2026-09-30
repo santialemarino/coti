@@ -178,7 +178,7 @@ export function PriceImport({ branch }: PriceImportProps) {
             </Callout>
           ) : null}
           <div className="overflow-hidden border border-border rounded-1.5xl shadow-e1">
-            <Table>
+            <Table figures="end">
               <TableHeader>
                 <TableRow>
                   <TableHead kind="index">{t('table.row')}</TableHead>

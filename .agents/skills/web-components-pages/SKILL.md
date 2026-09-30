@@ -296,16 +296,19 @@ A table is the densest thing in the product, so every column has to earn its wid
   switcher is on one branch, every row's Sucursal is the same word — render the column only when the
   switcher is on "todas". The same test retires a column whose value is better carried as an icon
   beside the row's identifier than as a word in a column of its own.
-- **One alignment rule, and it is not "centre everything".** Copy is **left**, so the eye follows a
-  common edge down the column — which is most of what a table buys over a list. Figures are **right**
-  with `tabular-nums`, so digits line up by place value. A column whose entire content is one control
-  — a checkbox, a row action — is **centred**, under a centred heading. Nothing else is centred:
-  centred copy gives every row a different starting x, and centred numbers line up on nothing.
-  Applying this per table is how one screen ends up with three conventions; apply it to every table
-  in the app at once.
+- **One alignment rule, and it is not "centre everything".** Every value starts on the **left**,
+  figures included, so each column starts where its heading does and the eye follows a common edge
+  down it — which is most of what a table buys over a list. Figures carry `tabular-nums`. A table
+  whose job is comparing amounts row by row — a quote's lines, a version diff, a price import that
+  sets the new price beside the current one — passes **`figures="end"`**, and there every figure
+  column is **right**-aligned so digits line up by place value. A column whose entire content is one
+  control — a checkbox, a row action — is **centred**, under a centred heading. Nothing else is
+  centred: centred copy gives every row a different starting x. Applying this per table is how one
+  screen ends up with three conventions; the component applies it to every table at once.
 - **Every column declares its kind, and the kind sets width and alignment.** `TableHead` requires
   `kind` and `TableCell` takes the same one (`text` by default); never an `align`, a `w-*` or a
-  `tabular-nums` class for what the kind already says. The kinds, from `TABLE_COLUMNS`:
+  `tabular-nums` class for what the kind already says. "Figure" is left, or right under
+  `figures="end"`. The kinds, from `TABLE_COLUMNS`:
 
   | Kind                                 | Width                  | Holds                                         |
   | ------------------------------------ | ---------------------- | --------------------------------------------- |
@@ -313,23 +316,24 @@ A table is the densest thing in the product, so every column has to earn its wid
   | `short`                              | 128px, left            | a code, a reference, a unit, a role           |
   | `date`                               | 128px, left            | a `fmt.dateNumeric` date                      |
   | `status`                             | 144px, left            | one status badge                              |
-  | `index` · `count`                    | 48 · 112, right        | a row number · "3 ventas", "7 días"           |
-  | `quantity` · `money`                 | 128 · 144, right       | a quantity with its unit · an amount          |
-  | `quantityInput` · `moneyInput`       | 176px, right           | the same figure, edited inline                |
+  | `index` · `count`                    | 48 · 112, figure       | a row number · "3 ventas", "7 días"           |
+  | `quantity` · `money`                 | 128 · 144, figure      | a quantity with its unit · an amount          |
+  | `quantityInput` · `moneyInput`       | 176px, figure          | the same figure, edited inline                |
   | `select` · `actions` · `actionsWide` | 48 · 96 · 128, centred | a checkbox · one row action · two or three    |
 
   The table keeps its automatic layout and every sized kind carries a matching `min-width`, so the
-  slack goes to the `text` columns only: figures keep their width and hug their edge, and a squeezed
-  table shrinks its text to the longest word and then scrolls instead of crushing a column. A
+  slack goes to the `text` columns only: figures keep their width and never float between columns,
+  and a squeezed table shrinks its text to the longest word and then scrolls instead of crushing a
+  column. A
   `text` cell whose content must truncate (the queue's reference) needs a zero-width inner box
   (`w-0 min-w-full`) and a `min-w-*` on the cell, or its full length becomes the column's minimum.
   An unbreakable string that may be long (an email) takes `wrap-anywhere`. **Every actions column
   is centred**, under a centred heading, whatever else the table holds. Every table uses the
   component's own cell padding; a table that wants taller rows changes only the vertical padding.
 
-- **A quantity and its unit are one figure, in one right-aligned cell** (`500 bolsas`, or the unit as
-  the `AmountInput` suffix when it is editable). A right-aligned number beside a left-aligned unit
-  leaves a gap that changes width with every row.
+- **A quantity and its unit are one figure, in one cell** (`500 bolsas`, or the unit as the
+  `AmountInput` suffix when it is editable). A right-aligned number beside a left-aligned unit leaves
+  a gap that changes width with every row.
 - **Only a row that acts on click hovers.** `TableRow interactive` carries the pointer, the hover
   and the press; every other row has none, because a hover on a row that does nothing promises an
   action that is not there. A tinted row (an import error, a diff) just sets its `bg-*`; there is no
@@ -339,7 +343,7 @@ A table is the densest thing in the product, so every column has to earn its wid
   `TABLE_COLUMNS[kind].width`.
 - **A sortable header follows its column's alignment.** `SortableTableHead` renders a full-width
   flex trigger, so `text-right` on the cell alone leaves the label pinned left inside a right-aligned
-  header — it takes the same `kind`, which aligns its trigger. This is the one place a table's
+  header — it takes the same `kind`, and its trigger follows the table's `figures`. This is the one place a table's
   numbers and their heading visibly disagree, and it reads as carelessness rather than as a bug.
 - **A clickable row tests containment, not the target.** React sends a portalled child's events up
   the **React** tree, so a click on a dropdown item rendered from inside a row arrives at that row's

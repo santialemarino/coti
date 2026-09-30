@@ -346,3 +346,12 @@ describe('RfqItemsTable quantity', () => {
     expect(input.closest('[data-slot=input-container], div')?.textContent).toContain('unidad');
   });
 });
+
+describe('RfqItemsTable layout', () => {
+  // A quote's lines are where amounts are compared row by row, so its figures line up on the right.
+  it('right-aligns its figures, unlike a list', () => {
+    const view = renderItems();
+
+    expect(view.getByRole('table').dataset.figures).toBe('end');
+  });
+});
