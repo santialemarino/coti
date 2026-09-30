@@ -4,6 +4,7 @@ import {
   formatDateNumeric,
   formatList,
   formatRatePct,
+  formatRegion,
   formatSignedValue,
   formatTimestamp,
   formatValue,
@@ -27,6 +28,7 @@ export function createFormatters(locale: string, timeZone?: string) {
     dateNumeric: (iso: string) => formatDateNumeric(iso, locale),
     timestamp: (iso: string) => formatTimestamp(iso, locale, timeZone),
     list: (items: Iterable<string>) => formatList(items, locale),
+    region: (code: string) => formatRegion(code, locale),
   };
 }
 
