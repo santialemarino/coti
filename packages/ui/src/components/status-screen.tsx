@@ -8,6 +8,8 @@ const TONES = {
   success: { circle: 'bg-success-subtle', icon: 'text-success-foreground', halo: 'bg-success' },
   warning: { circle: 'bg-warning-subtle', icon: 'text-warning-foreground', halo: 'bg-warning' },
   danger: { circle: 'bg-danger-subtle', icon: 'text-danger-foreground', halo: 'bg-danger' },
+  /* An outcome that is neither good nor bad news — a declined quote, a withdrawn request. */
+  neutral: { circle: 'bg-muted', icon: 'text-foreground-muted', halo: 'bg-border-strong' },
 } as const;
 
 interface StatusScreenProps {

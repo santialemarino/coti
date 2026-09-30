@@ -4,7 +4,7 @@ import * as React from 'react';
 import { ArrowDownIcon, ArrowUpIcon, ChevronsUpDownIcon } from 'lucide-react';
 
 import { cn } from '../lib/utils';
-import { TableHead } from './table';
+import { TableHead, type TableAlign } from './table';
 
 export type SortOrder = 'asc' | 'desc';
 
@@ -55,7 +55,7 @@ interface SortableTableHeadProps<TColumn extends string> {
    * on the cell alone leaves the label pinned left inside a right-aligned header — the one place
    * where a table's numbers and their heading visibly disagree.
    */
-  align?: 'start' | 'end';
+  align?: TableAlign;
   className?: string;
 }
 
@@ -78,7 +78,8 @@ function SortableTableHead<TColumn extends string>({
   return (
     <TableHead
       aria-sort={active ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
-      className={cn(align === 'end' && 'text-right', className)}
+      align={align}
+      className={className}
     >
       <button
         type="button"
@@ -86,6 +87,7 @@ function SortableTableHead<TColumn extends string>({
         className={cn(
           'group/sort flex w-full items-center gap-x-1.5 rounded-sm outline-none',
           align === 'end' && 'justify-end',
+          align === 'center' && 'justify-center',
           'transition-colors duration-150 ease-out-soft',
           active ? 'text-foreground' : 'hover:text-foreground focus-visible:text-foreground',
         )}

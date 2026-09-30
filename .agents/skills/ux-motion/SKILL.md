@@ -193,9 +193,13 @@ panel enters from the trigger and then dissolves in place.
   name, so `animation: none` unmounts it at once instead of stranding it.
 - **Radix `Select` is deliberately not in the design system.** It has no exit presence, so it snaps
   shut. `Combobox` is the one dropdown; reach for it every time.
-- **A dialog must keep its content mounted through the exit.** Toggle only `open` and pass the row or
-  entity as a stable prop; nulling it on close blanks the body and the dialog visibly empties before
-  it fades. `ConfirmDialog` already holds the last entity in a ref — copy that if you build another.
+- **A dialog must keep its content mounted through the exit.** `DialogContent` and `SheetContent`
+  render the children they had when last open for as long as they are closing, so a caller that
+  closes and resets in one commit — clears the row, drops `pending`, flips a mode — does not relabel
+  the dialog mid-fade. That covers what renders _inside_ the content; a value read outside it (a
+  dialog chosen by a nulled mode, a parent that unmounts the whole `Dialog`) still has to be held by
+  the caller, with `useHeldWhileClosed(value, open)` from `@repo/ui/hooks`. Reset a form when the
+  dialog **opens**, never when it closes.
 - **Crossfade between mutually exclusive stages** (a form and its result, a loading state and its
   content) with `AnimatePresence mode="wait"`, so the incoming stage waits for the outgoing one.
   `AuthStage` is the reference.

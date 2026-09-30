@@ -95,6 +95,12 @@
   --color-status-draft-border: var(--status-draft-border);
   --color-status-draft-foreground: var(--status-draft-foreground);
 
+  /* Follow-up: a quote that needs a nudge. */
+  --color-followup-subtle: var(--followup-subtle);
+  --color-followup-hover: var(--followup-hover);
+  --color-followup-border: var(--followup-border);
+  --color-followup-foreground: var(--followup-foreground);
+
   /* Brand ramp — reach for a semantic token first; these are for brand surfaces only. */
   --color-brand-50: var(--brand-50);
   --color-brand-100: var(--brand-100);

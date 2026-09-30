@@ -906,8 +906,9 @@ export function RfqDashboard({
                       router.push(ROUTES.rfqsDetail(rfq.id));
                     }}
                     data-state={selected.has(rfq.id) ? 'selected' : undefined}
+                    interactive
                     className={cn(
-                      'cursor-pointer outline-none active:bg-accent focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45',
+                      'outline-none active:bg-accent focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45',
                       rfq.id === activeRfqId && 'bg-accent',
                       rfq.needsFollowup && 'bg-warning-subtle',
                     )}

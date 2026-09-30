@@ -132,6 +132,13 @@
   --status-draft-border: oklch(0.9 0.012 250);
   --status-draft-foreground: oklch(0.5 0.015 250);
 
+  /* Follow-up: a quote gone quiet. Indigo, so it reads apart from the azure active row and the
+     sent badge. Foreground 5.36:1 on the subtle wash, 5.01:1 on its hover. */
+  --followup-subtle: oklch(0.952 0.03 265);
+  --followup-hover: oklch(0.93 0.042 265);
+  --followup-border: oklch(0.87 0.07 265);
+  --followup-foreground: oklch(0.5 0.16 265);
+
   /* Semantic tokens — what components actually consume. */
   --radius: 0.625rem;
 
@@ -361,18 +368,47 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+}
 
-  /* Thin scrollbar for scrollable dropdown and command lists. */
-  .thin-scrollbar {
-    scrollbar-width: thin;
+/*
+ * A thin scrollbar in the border colour. Chrome 121+ ignores every `::-webkit-scrollbar` rule once
+ * the standard properties are set, so the webkit fallback only applies where those are unsupported.
+ */
+@utility thin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+
+  @supports not (scrollbar-color: auto) {
+    &::-webkit-scrollbar {
+      width: 0.375rem;
+      height: 0.375rem;
+    }
+    &::-webkit-scrollbar-thumb {
+      border-radius: var(--radius-lg);
+      background-color: var(--border-strong);
+    }
+    &::-webkit-scrollbar-track {
+      background-color: transparent;
+    }
   }
-  .thin-scrollbar::-webkit-scrollbar {
-    width: 0.25rem;
+}
+
+/*
+ * For a list whose padding is visible, like a popover's: its children step clear of an overlay
+ * scrollbar's thumb only while `useScrollLane` reports that it scrolls, so a short list stays even.
+ */
+@utility scroll-lane {
+  &[data-scroll-lane] > * {
+    margin-inline-end: 0.75rem;
   }
-  .thin-scrollbar::-webkit-scrollbar-thumb {
-    border-radius: var(--radius-lg);
-    background-color: var(--border-strong);
-  }
+}
+
+/* A vertical scroll region that never chains to the page; a classic scrollbar reserves its lane. */
+@utility scroll-area {
+  @apply thin-scrollbar;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 /* ---------------------------------------------------------------------------------------------

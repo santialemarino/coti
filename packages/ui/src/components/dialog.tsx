@@ -4,10 +4,32 @@ import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { XIcon } from 'lucide-react';
 
+import { useHeldWhileClosed } from '../hooks/use-held-while-closed';
 import { cn } from '../lib/utils';
+import { OverlayOpenContext, useOverlayRootState } from './overlay-open';
 
-function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />;
+function Dialog({
+  open: openProp,
+  defaultOpen,
+  onOpenChange,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Root>) {
+  const { open, onOpenChange: handleOpenChange } = useOverlayRootState({
+    open: openProp,
+    defaultOpen,
+    onOpenChange,
+  });
+
+  return (
+    <OverlayOpenContext.Provider value={open}>
+      <DialogPrimitive.Root
+        data-slot="dialog"
+        open={open}
+        onOpenChange={handleOpenChange}
+        {...props}
+      />
+    </OverlayOpenContext.Provider>
+  );
 }
 
 function DialogTrigger({ ...props }: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
@@ -41,6 +63,11 @@ function DialogOverlay({
   );
 }
 
+/*
+ * The rounded shell clips and the body inside it scrolls, so the scrollbar stays inside the corners
+ * and the close button stays put. While closing, the body shows the children it had when last open:
+ * a caller that closes and resets in one commit would otherwise relabel the dialog mid-exit.
+ */
 function DialogContent({
   className,
   children,
@@ -52,18 +79,20 @@ function DialogContent({
   /* Set false for a dialog with unsaved input, so a stray click outside can't discard it. */
   closeOnClickOutside?: boolean;
 }) {
+  const open = React.useContext(OverlayOpenContext);
+  const shown = useHeldWhileClosed(children, open);
+
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          'fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] sm:max-w-xl -translate-x-1/2 -translate-y-1/2',
-          /* A form taller than the viewport would otherwise push its own footer off-screen with no
-             way to reach it. dvh, not vh, so mobile browser chrome is accounted for. */
-          'max-h-[90dvh] overflow-y-auto',
-          'gap-y-4 px-4 py-6 sm:px-6 bg-background border border-border rounded-2xl shadow-e4',
-          'focus:outline-none',
+          'fixed top-1/2 left-1/2 z-50 flex w-full max-w-[calc(100%-2rem)] sm:max-w-xl -translate-x-1/2 -translate-y-1/2 flex-col',
+          /* dvh, not vh, so mobile browser chrome is accounted for. */
+          'max-h-[90dvh] overflow-hidden',
+          'bg-background border border-border rounded-2xl shadow-e4',
+          'focus:outline-none data-[state=closed]:pointer-events-none',
           /* A multi-step dialog widens as it advances. Both widths are concrete values, so the step
              can travel instead of cutting — and the entrance is unaffected, since there is no
              previous value to interpolate from on the first frame. */
@@ -83,7 +112,9 @@ function DialogContent({
         }}
         {...props}
       >
-        {children}
+        <div data-slot="dialog-body" className="grid min-h-0 px-4 py-6 gap-y-4 sm:px-6 scroll-area">
+          {shown}
+        </div>
         {showCloseButton ? (
           /* Icon-only trigger: no rectangular ring. Focus is a colour shift plus the icon bump, so
              the affordance survives when reduced motion removes the bump. */
