@@ -395,16 +395,11 @@
 
 /*
  * For a list whose padding is visible, like a popover's: its children step clear of an overlay
- * scrollbar's thumb only while the list actually scrolls, so a short list stays symmetric. Browsers
- * without scroll-state queries keep the plain padding.
+ * scrollbar's thumb only while `useScrollLane` reports that it scrolls, so a short list stays even.
  */
 @utility scroll-lane {
-  container-type: scroll-state;
-
-  @container scroll-state(scrollable: y) {
-    & > * {
-      margin-inline-end: 0.75rem;
-    }
+  &[data-scroll-lane] > * {
+    margin-inline-end: 0.75rem;
   }
 }
 
