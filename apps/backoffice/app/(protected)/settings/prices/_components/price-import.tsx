@@ -8,7 +8,6 @@ import {
   Dropzone,
   PendingButton,
   Table,
-  TABLE_COL,
   TableBody,
   TableCell,
   TableHead,
@@ -182,15 +181,13 @@ export function PriceImport({ branch }: PriceImportProps) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead align="end" className={TABLE_COL.index}>
-                    {t('table.row')}
-                  </TableHead>
-                  <TableHead>{t('table.code')}</TableHead>
-                  <TableHead>{t('table.product')}</TableHead>
-                  <TableHead align="end">{t('table.currentPrice')}</TableHead>
-                  <TableHead align="end">{t('table.newPrice')}</TableHead>
-                  <TableHead align="end">{t('table.minPrice')}</TableHead>
-                  <TableHead>{t('table.result')}</TableHead>
+                  <TableHead kind="index">{t('table.row')}</TableHead>
+                  <TableHead kind="short">{t('table.code')}</TableHead>
+                  <TableHead kind="text">{t('table.product')}</TableHead>
+                  <TableHead kind="money">{t('table.currentPrice')}</TableHead>
+                  <TableHead kind="money">{t('table.newPrice')}</TableHead>
+                  <TableHead kind="money">{t('table.minPrice')}</TableHead>
+                  <TableHead kind="text">{t('table.result')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -199,18 +196,20 @@ export function PriceImport({ branch }: PriceImportProps) {
                     key={`${row.rowNumber}-${row.code}`}
                     className={row.errors.length > 0 ? 'bg-danger-subtle' : undefined}
                   >
-                    <TableCell align="end" className="text-foreground-subtle">
+                    <TableCell kind="index" className="text-foreground-subtle">
                       {row.rowNumber}
                     </TableCell>
-                    <TableCell className="text-paragraph-sm-medium">{row.code || '—'}</TableCell>
+                    <TableCell kind="short" className="text-paragraph-sm-medium">
+                      {row.code || '—'}
+                    </TableCell>
                     <TableCell>{row.productName || '—'}</TableCell>
-                    <TableCell align="end">
+                    <TableCell kind="money">
                       {row.currentPrice ? fmt.currency(row.currentPrice, row.currency) : '—'}
                     </TableCell>
-                    <TableCell align="end">
+                    <TableCell kind="money">
                       {row.price ? fmt.currency(row.price, row.currency) : '—'}
                     </TableCell>
-                    <TableCell align="end">
+                    <TableCell kind="money">
                       {row.minPrice ? fmt.currency(row.minPrice, row.currency) : '—'}
                     </TableCell>
                     <TableCell>

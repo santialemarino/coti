@@ -94,7 +94,9 @@
       "country": "País",
       "countrySearch": "Buscá un país",
       "countryEmpty": "No encontramos ese país.",
-      "invalid": "Revisá el número: no parece un celular válido."
+      "invalid": "Revisá el número: no parece un teléfono válido.",
+      "landline": "Parece un número fijo. Si es un celular,",
+      "useMobile": "usá {number}"
     }
   },
   "errors": {
@@ -185,6 +187,10 @@
     "branchSettings": {
       "title": "Sucursales",
       "description": "Alta y administración de las sucursales del corralón."
+    },
+    "onboardingSettings": {
+      "title": "Configuración inicial",
+      "description": "Los pasos que faltan para terminar de configurar la cuenta."
     },
     "userSettings": {
       "title": "Usuarios",
@@ -732,7 +738,7 @@
           "product": "Producto",
           "modifyProduct": "Reemplazar producto",
           "quantity": "Cantidad",
-          "unitPrice": "Precio Unitario",
+          "unitPrice": "Precio unitario",
           "subtotal": "Subtotal",
           "matchStatus": "Estado",
           "confidence": "Confianza",
@@ -809,7 +815,7 @@
         "description": "La cotización se envía por WhatsApp con un enlace al detalle. Podés mandar además una copia por correo.",
         "phoneLabel": "WhatsApp del cliente",
         "phonePlaceholder": "Ingresá el celular",
-        "phoneHint": "Con código de área y el 15, como 11 15 5555-0101.",
+        "phoneHint": "Código de área sin 0; si es celular, con 9 o 15. Ej.: 11 15 5555-0101.",
         "alsoEmail": "Enviar también una copia por correo",
         "emailLabel": "Correo del cliente",
         "emailPlaceholder": "cliente@empresa.com",
@@ -930,7 +936,7 @@
     "search": "Buscar por cliente, contacto o tag",
     "unnamed": "Cliente sin nombre",
     "noPhone": "Sin teléfono",
-    "noSales": "Sin ventas aceptadas",
+    "noSales": "Sin ventas",
     "salesCount": "{total, plural, one {# venta} other {# ventas}}",
     "viewProfile": "Ver ficha",
     "backToList": "Volver a clientes",
@@ -939,7 +945,7 @@
       "client": "Cliente",
       "contact": "Teléfono",
       "tags": "Tags",
-      "sales": "Ventas aceptadas",
+      "sales": "Ventas",
       "lastSale": "Última venta",
       "actions": "Acciones",
       "title": "Fichas de clientes"
@@ -1021,7 +1027,7 @@
         "save": "Confirmar asociación",
         "saving": "Asociando…",
         "phonePlaceholder": "Ingresá el celular",
-        "phoneHint": "Con código de área y el 15, como 11 15 5555-0101."
+        "phoneHint": "Código de área sin 0; si es celular, con 9 o 15. Ej.: 11 15 5555-0101."
       },
       "tags": {
         "title": "Tags del cliente",
@@ -1067,7 +1073,7 @@
       "users": "Usuarios",
       "catalog": "Catálogo",
       "prices": "Precios",
-      "onboarding": "Configuración inicial"
+      "onboarding": "Configuración inicial · {done}/{total}"
     }
   },
   "branches": {
@@ -1614,6 +1620,45 @@
       "NOT_FOUND": "No encontramos la configuración inicial de esta cuenta.",
       "EMAIL_TAKEN": "Ya existe un usuario con ese correo.",
       "INTERNAL": "No pudimos guardar el avance. Intentá de nuevo."
+    },
+    "checklist": {
+      "title": "Terminá de configurar tu cuenta",
+      "description": "Cada paso se marca solo cuando lo hacés, desde acá o desde Configuración.",
+      "progressLabel": "Pasos de la configuración inicial completados",
+      "progress": "{done} de {total}",
+      "done": "Listo",
+      "configure": "Configurar",
+      "items": {
+        "BRAND": {
+          "title": "Marca",
+          "description": "Logo y color que ve tu cliente en cada cotización."
+        },
+        "CATALOG_UPLOAD": {
+          "title": "Catálogo",
+          "description": "Tus productos, para que Coti los encuentre en cada pedido."
+        },
+        "TEAM": {
+          "title": "Equipo",
+          "description": "Los vendedores que atienden los pedidos con vos."
+        }
+      },
+      "resume": {
+        "action": "Retomar asistente",
+        "pending": "Retomando…"
+      },
+      "hide": {
+        "action": "No mostrar más",
+        "title": "Ocultar la configuración inicial",
+        "description": "Deja de aparecer en el inicio. La seguís encontrando en Configuración mientras quede algún paso pendiente.",
+        "confirm": "Ocultar",
+        "pending": "Ocultando…",
+        "cancel": "Cancelar"
+      },
+      "show": {
+        "action": "Volver a mostrar en el inicio",
+        "pending": "Mostrando…"
+      },
+      "settingsTitle": "Configuración inicial"
     }
   },
   "priceImport": {

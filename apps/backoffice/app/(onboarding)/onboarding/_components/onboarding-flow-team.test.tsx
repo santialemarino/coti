@@ -48,6 +48,8 @@ describe('OnboardingFlow team step', () => {
             status: 'IN_PROGRESS',
             currentStep: 'TEAM',
             steps: {},
+            checklist: [],
+            checklistHiddenAt: null,
             completedAt: null,
           }}
           account={{} as never}

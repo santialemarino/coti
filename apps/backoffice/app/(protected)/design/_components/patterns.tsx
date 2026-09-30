@@ -42,7 +42,6 @@ import {
   StatusScreen,
   Stepper,
   Table,
-  TABLE_COL,
   TableBody,
   TableCell,
   TableEmptyRow,
@@ -272,6 +271,7 @@ export function Patterns() {
                   <SortableTableHead
                     label="Producto"
                     column="product"
+                    kind="text"
                     sortBy={sortBy}
                     sortOrder={sortOrder}
                     onSort={(c) => {
@@ -279,11 +279,9 @@ export function Patterns() {
                       else setSortBy(c);
                     }}
                   />
-                  <TableHead>Confianza</TableHead>
-                  <TableHead align="end">Cantidad</TableHead>
-                  <TableHead align="center" className={TABLE_COL.actions}>
-                    Acciones
-                  </TableHead>
+                  <TableHead kind="status">Confianza</TableHead>
+                  <TableHead kind="quantity">Cantidad</TableHead>
+                  <TableHead kind="actions">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -303,13 +301,13 @@ export function Patterns() {
                           {editing === row.product ? <Badge size="sm">Editando</Badge> : null}
                         </span>
                       </TableCell>
-                      <TableCell>
+                      <TableCell kind="status">
                         <Badge tone={row.tone} dot>
                           {row.confidence}%
                         </Badge>
                       </TableCell>
-                      <TableCell align="end">{row.qty}</TableCell>
-                      <TableCell align="center">
+                      <TableCell kind="quantity">{row.qty}</TableCell>
+                      <TableCell kind="actions">
                         <div className="flex justify-center gap-x-1">
                           <RowActionButton
                             icon={PencilIcon}

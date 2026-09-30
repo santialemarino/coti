@@ -14,7 +14,6 @@ import {
   PendingButton,
   StepList,
   Table,
-  TABLE_COL,
   TableBody,
   TableCell,
   TableHead,
@@ -189,15 +188,13 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead align="end" className={TABLE_COL.index}>
-                {t('table.row')}
-              </TableHead>
-              <TableHead>{t('table.code')}</TableHead>
-              <TableHead>{t('table.product')}</TableHead>
-              <TableHead>{t('table.family')}</TableHead>
-              <TableHead align="end">{t('table.price')}</TableHead>
-              <TableHead>{t('table.status')}</TableHead>
-              <TableHead>{t('table.result')}</TableHead>
+              <TableHead kind="index">{t('table.row')}</TableHead>
+              <TableHead kind="short">{t('table.code')}</TableHead>
+              <TableHead kind="text">{t('table.product')}</TableHead>
+              <TableHead kind="text">{t('table.family')}</TableHead>
+              <TableHead kind="money">{t('table.price')}</TableHead>
+              <TableHead kind="status">{t('table.status')}</TableHead>
+              <TableHead kind="text">{t('table.result')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -206,14 +203,16 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
                 key={`${row.rowNumber}-${row.code}`}
                 className={row.errors.length > 0 ? 'bg-danger-subtle' : undefined}
               >
-                <TableCell align="end" className="text-foreground-subtle">
+                <TableCell kind="index" className="text-foreground-subtle">
                   {row.rowNumber}
                 </TableCell>
-                <TableCell className="text-paragraph-sm-medium">{row.code || '—'}</TableCell>
+                <TableCell kind="short" className="text-paragraph-sm-medium">
+                  {row.code || '—'}
+                </TableCell>
                 <TableCell>{row.name || '—'}</TableCell>
                 <TableCell>{row.family || '—'}</TableCell>
-                <TableCell align="end">{row.price ? fmt.currency(row.price) : '—'}</TableCell>
-                <TableCell>
+                <TableCell kind="money">{row.price ? fmt.currency(row.price) : '—'}</TableCell>
+                <TableCell kind="status">
                   <Badge tone={row.isActive ? 'success' : 'neutral'}>
                     {t(row.isActive ? 'status.active' : 'status.inactive')}
                   </Badge>

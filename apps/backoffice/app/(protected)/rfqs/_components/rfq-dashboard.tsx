@@ -41,7 +41,6 @@ import {
   SearchInput,
   SortableTableHead,
   Table,
-  TABLE_COL,
   TableBody,
   TableCaption,
   TableCell,
@@ -248,11 +247,11 @@ function SellerCell({
   );
 
   if (!managesSeller) {
-    return <TableCell className="whitespace-nowrap">{content}</TableCell>;
+    return <TableCell>{content}</TableCell>;
   }
 
   return (
-    <TableCell className="whitespace-nowrap">
+    <TableCell>
       <DropdownMenu onOpenChange={(open) => open && isAdmin && onLoadSellers(rfq.branchId)}>
         <DropdownMenuTrigger asChild>
           <button
@@ -784,11 +783,11 @@ export function RfqDashboard({
           </div>
         ) : null}
 
-        <Table className="[&_th]:h-12 [&_th]:px-4 [&_td]:px-4 [&_td]:py-3.5">
+        <Table className="[&_th]:h-12 [&_td]:py-3.5">
           <TableCaption className="sr-only">{t('list.caption')}</TableCaption>
           <TableHeader>
             <TableRow>
-              <TableHead align="center" className={TABLE_COL.select}>
+              <TableHead kind="select">
                 <Checkbox
                   checked={pageSomeSelected ? 'indeterminate' : pageAllSelected}
                   onCheckedChange={togglePageSelection}
@@ -799,14 +798,15 @@ export function RfqDashboard({
               <SortableTableHead
                 label={t('list.columns.id')}
                 column="quoteNumber"
+                kind="text"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onSort={handleSort}
-                className="w-48"
               />
               <SortableTableHead
                 label={t('list.columns.date')}
                 column="createdAt"
+                kind="date"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onSort={handleSort}
@@ -814,6 +814,7 @@ export function RfqDashboard({
               <SortableTableHead
                 label={t('list.columns.seller')}
                 column="seller"
+                kind="text"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onSort={handleSort}
@@ -822,6 +823,7 @@ export function RfqDashboard({
                 <SortableTableHead
                   label={t('list.columns.branch')}
                   column="branch"
+                  kind="text"
                   sortBy={sortBy}
                   sortOrder={sortOrder}
                   onSort={handleSort}
@@ -830,30 +832,31 @@ export function RfqDashboard({
               <SortableTableHead
                 label={t('list.columns.items')}
                 column="itemCount"
+                kind="count"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onSort={handleSort}
-                align="end"
               />
               <SortableTableHead
                 label={t('list.columns.toReview')}
                 column="reviewCount"
+                kind="count"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onSort={handleSort}
-                align="end"
               />
               <SortableTableHead
                 label={t('list.columns.total')}
                 column="total"
+                kind="money"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onSort={handleSort}
-                align="end"
               />
               <SortableTableHead
                 label={t('list.columns.status')}
                 column="status"
+                kind="status"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onSort={handleSort}
@@ -864,10 +867,7 @@ export function RfqDashboard({
                * rule is a column the reader has to decode — and archiving one order should not cost
                * the two interactions that going through the bulk bar does.
                */}
-              <TableHead
-                align="center"
-                className={cn(TABLE_COL.actionsWide, 'border-l border-border')}
-              >
+              <TableHead kind="actionsWide" className="border-l border-border">
                 {t('list.columns.actions')}
               </TableHead>
             </TableRow>
@@ -920,7 +920,7 @@ export function RfqDashboard({
                       rfq.id === activeRfqId && 'bg-accent hover:bg-accent',
                     )}
                   >
-                    <TableCell align="center">
+                    <TableCell kind="select">
                       <Checkbox
                         checked={selected.has(rfq.id)}
                         onCheckedChange={() => toggleSelected(rfq.id)}
@@ -929,10 +929,11 @@ export function RfqDashboard({
                         })}
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="min-w-40">
                       {/* The channel rides with the reference as an icon: it tells the seller how
-                          the order arrived without spending a column on a word per row. */}
-                      <div className="flex w-full items-center gap-x-2.5">
+                          the order arrived without spending a column on a word per row. A zero
+                          width lets the reference truncate instead of widening the column. */}
+                      <div className="flex w-0 min-w-full items-center gap-x-2.5">
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <span className="grid size-7 shrink-0 place-items-center bg-muted rounded-md text-foreground-subtle">
@@ -957,9 +958,7 @@ export function RfqDashboard({
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="whitespace-nowrap tabular-nums">
-                      {fmt.dateNumeric(rfq.createdAt)}
-                    </TableCell>
+                    <TableCell kind="date">{fmt.dateNumeric(rfq.createdAt)}</TableCell>
                     <SellerCell
                       rfq={rfq}
                       canAssign={rfq.sellerId === null && !isAdmin}
@@ -971,18 +970,16 @@ export function RfqDashboard({
                       onAssign={assignOne}
                       onSellerChange={steeredSeller}
                     />
-                    {showBranchColumn ? (
-                      <TableCell className="whitespace-nowrap">{rfq.branch}</TableCell>
-                    ) : null}
-                    <TableCell align="end">{t('list.items', { count: rfq.itemCount })}</TableCell>
-                    <TableCell align="end">
+                    {showBranchColumn ? <TableCell>{rfq.branch}</TableCell> : null}
+                    <TableCell kind="count">{t('list.items', { count: rfq.itemCount })}</TableCell>
+                    <TableCell kind="count">
                       {rfq.reviewCount > 0 ? (
                         <Badge tone="warning" size="sm">
                           {t('list.toReview', { count: rfq.reviewCount })}
                         </Badge>
                       ) : null}
                     </TableCell>
-                    <TableCell align="end" className="whitespace-nowrap">
+                    <TableCell kind="money">
                       {hasQuoteTotal(rfq.status) && rfq.total != null ? (
                         fmt.currency(rfq.total)
                       ) : (
@@ -991,14 +988,14 @@ export function RfqDashboard({
                         </span>
                       )}
                     </TableCell>
-                    <TableCell>
+                    <TableCell kind="status">
                       <RfqStatusBadge
                         status={rfq.status}
                         processing={rfq.processing}
                         archived={rfq.archived}
                       />
                     </TableCell>
-                    <TableCell align="center" className="border-l border-border">
+                    <TableCell kind="actionsWide" className="border-l border-border">
                       <div className="flex justify-center">
                         <RowActions
                           rfq={rfq}

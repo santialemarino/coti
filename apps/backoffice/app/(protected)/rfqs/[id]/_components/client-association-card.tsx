@@ -467,6 +467,10 @@ function ClientAssociationDialog({
                 countryLabel={tPhone('country')}
                 countrySearchPlaceholder={tPhone('countrySearch')}
                 countryEmptyLabel={tPhone('countryEmpty')}
+                landlineNotice={{
+                  message: tPhone('landline'),
+                  action: (mobile) => tPhone('useMobile', { number: mobile }),
+                }}
                 disabled={saving}
                 aria-invalid={phoneInvalid}
                 aria-describedby="association-client-phone-hint"

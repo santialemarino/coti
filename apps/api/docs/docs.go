@@ -1392,6 +1392,66 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/onboarding/checklist/hide": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "onboarding"
+                ],
+                "summary": "Hide the onboarding checklist",
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/onboarding/checklist/show": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "onboarding"
+                ],
+                "summary": "Show the onboarding checklist",
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/onboarding/complete": {
             "post": {
                 "security": [
@@ -7006,9 +7066,34 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.OnboardingChecklistItemResponse": {
+            "type": "object",
+            "properties": {
+                "done": {
+                    "type": "boolean"
+                },
+                "step": {
+                    "type": "string",
+                    "enum": [
+                        "BRAND",
+                        "CATALOG_UPLOAD",
+                        "TEAM"
+                    ]
+                }
+            }
+        },
         "dto.OnboardingResponse": {
             "type": "object",
             "properties": {
+                "checklist": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.OnboardingChecklistItemResponse"
+                    }
+                },
+                "checklist_hidden_at": {
+                    "type": "string"
+                },
                 "completed_at": {
                     "type": "string"
                 },

@@ -203,6 +203,8 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	onboarding.POST("/complete", h.Onboarding.Complete)
 	onboarding.POST("/dismiss", h.Onboarding.Dismiss)
 	onboarding.POST("/resume", h.Onboarding.Resume)
+	onboarding.POST("/checklist/hide", h.Onboarding.HideChecklist)
+	onboarding.POST("/checklist/show", h.Onboarding.ShowChecklist)
 
 	// The branch switcher needs the list before it can send X-Branch-Id, so reading is not
 	// admin-only: the repository already narrows a seller to their assignments. Writing is.

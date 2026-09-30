@@ -23,6 +23,8 @@ var onboardingSteps = map[domain.OnboardingStepKey]struct{}{
 type onboardingRepository interface {
 	GetByAccountID(ctx context.Context, q repository.Querier, accountID uuid.UUID) (*domain.Onboarding, error)
 	ListSteps(ctx context.Context, q repository.Querier, accountID, onboardingID uuid.UUID) (map[domain.OnboardingStepKey]domain.OnboardingStepStatus, error)
+	GetEvidence(ctx context.Context, q repository.Querier, accountID uuid.UUID) (domain.OnboardingEvidence, error)
+	UpdateChecklistHidden(ctx context.Context, q repository.Querier, accountID uuid.UUID, hidden bool) error
 	UpdateCurrentStep(ctx context.Context, q repository.Querier, accountID uuid.UUID, step domain.OnboardingStepKey) error
 	UpdateStatus(ctx context.Context, q repository.Querier, accountID uuid.UUID, status domain.OnboardingStatus, step domain.OnboardingStepKey) error
 	UpsertStep(ctx context.Context, q repository.Querier, accountID, onboardingID uuid.UUID, step domain.OnboardingStepKey, status domain.OnboardingStepStatus) error
@@ -39,7 +41,8 @@ func NewOnboardingService(db tenantScoper, onboarding onboardingRepository) *Onb
 	return &OnboardingService{db: db, onboarding: onboarding}
 }
 
-// Get returns the account's onboarding state and resolved steps.
+// Get returns the account's onboarding state and resolved steps. Every checklist step the account's
+// data proves is recorded as done first, so setup done outside the wizard counts and stays counted.
 func (s *OnboardingService) Get(
 	ctx context.Context, tenant domain.Tenant,
 ) (*domain.Onboarding, error) {
@@ -51,7 +54,10 @@ func (s *OnboardingService) Get(
 			return err
 		}
 		onboarding.Steps, err = s.onboarding.ListSteps(ctx, q, tenant.AccountID, onboarding.ID)
-		return err
+		if err != nil {
+			return err
+		}
+		return s.recordEvidence(ctx, q, tenant.AccountID, onboarding)
 	})
 	if err != nil {
 		return nil, err
@@ -118,6 +124,54 @@ func (s *OnboardingService) Resume(ctx context.Context, tenant domain.Tenant) er
 		return s.onboarding.UpdateStatus(ctx, q, tenant.AccountID,
 			domain.OnboardingStatusInProgress, onboarding.CurrentStep)
 	})
+}
+
+// SetChecklistHidden hides the checklist's card or shows it again; the settings entry stays either way.
+func (s *OnboardingService) SetChecklistHidden(
+	ctx context.Context, tenant domain.Tenant, hidden bool,
+) error {
+	return s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		return s.onboarding.UpdateChecklistHidden(ctx, q, tenant.AccountID, hidden)
+	})
+}
+
+// recordEvidence marks proven checklist steps done and closes a dismissed setup with nothing left.
+func (s *OnboardingService) recordEvidence(
+	ctx context.Context, q repository.Querier, accountID uuid.UUID, onboarding *domain.Onboarding,
+) error {
+	evidence, err := s.onboarding.GetEvidence(ctx, q, accountID)
+	if err != nil {
+		return err
+	}
+	done := true
+	for _, step := range domain.OnboardingChecklistSteps {
+		if onboarding.Steps[step] == domain.OnboardingStepStatusCompleted {
+			continue
+		}
+		if !evidence[step] {
+			done = false
+			continue
+		}
+		if err := s.onboarding.UpsertStep(ctx, q, accountID, onboarding.ID, step,
+			domain.OnboardingStepStatusCompleted); err != nil {
+			return err
+		}
+		onboarding.Steps[step] = domain.OnboardingStepStatusCompleted
+	}
+	if !done || onboarding.Status != domain.OnboardingStatusDismissed {
+		return nil
+	}
+	if err := s.onboarding.UpdateStatus(ctx, q, accountID,
+		domain.OnboardingStatusCompleted, domain.OnboardingStepComplete); err != nil {
+		return err
+	}
+	closed, err := s.onboarding.GetByAccountID(ctx, q, accountID)
+	if err != nil {
+		return err
+	}
+	closed.Steps = onboarding.Steps
+	*onboarding = *closed
+	return nil
 }
 
 func validOnboardingStep(step domain.OnboardingStepKey) bool {

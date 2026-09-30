@@ -199,6 +199,10 @@ export function SendQuoteDialog({
                   countryLabel={tPhone('country')}
                   countrySearchPlaceholder={tPhone('countrySearch')}
                   countryEmptyLabel={tPhone('countryEmpty')}
+                  landlineNotice={{
+                    message: tPhone('landline'),
+                    action: (mobile) => tPhone('useMobile', { number: mobile }),
+                  }}
                   aria-describedby="send-phone-hint"
                   autoFocus
                 />

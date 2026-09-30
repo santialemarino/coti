@@ -56,24 +56,22 @@ export async function QuoteItems({ items, discounts, total, currency }: QuoteIte
         <Table className="[&_th]:h-10 [&_td]:py-3">
           <TableHeader>
             <TableRow>
-              <TableHead align="end" className="w-8">
-                #
-              </TableHead>
-              <TableHead>{t('product')}</TableHead>
-              <TableHead>{t('code')}</TableHead>
-              <TableHead align="end">{t('quantity')}</TableHead>
-              <TableHead align="end">{t('unitPrice')}</TableHead>
-              <TableHead align="end">{t('subtotal')}</TableHead>
+              <TableHead kind="index">#</TableHead>
+              <TableHead kind="text">{t('product')}</TableHead>
+              <TableHead kind="short">{t('code')}</TableHead>
+              <TableHead kind="quantity">{t('quantity')}</TableHead>
+              <TableHead kind="money">{t('unitPrice')}</TableHead>
+              <TableHead kind="money">{t('subtotal')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {items.map((item, index) => (
               <Fragment key={`${item.productCode ?? item.productName}-${index}`}>
                 <TableRow>
-                  <TableCell align="end" className="text-foreground-subtle">
+                  <TableCell kind="index" className="text-foreground-subtle">
                     {index + 1}
                   </TableCell>
-                  <TableCell className="max-w-md">
+                  <TableCell>
                     <div className="flex flex-col items-start gap-y-0.5">
                       <span className="text-paragraph-sm-medium text-foreground">
                         {item.productName}
@@ -83,18 +81,18 @@ export async function QuoteItems({ items, discounts, total, currency }: QuoteIte
                       </span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-paragraph-xs text-foreground-muted tabular-nums">
+                  <TableCell kind="short" className="text-paragraph-xs text-foreground-muted">
                     {item.productCode ?? '—'}
                   </TableCell>
                   {/* Quantity and unit are one figure, so the unit never opens a gap beside it. */}
-                  <TableCell align="end" className="whitespace-nowrap text-foreground">
+                  <TableCell kind="quantity" className="text-foreground">
                     {quantityOf(item)}
                     {item.unit ? <span className="text-foreground-muted"> {item.unit}</span> : null}
                   </TableCell>
-                  <TableCell align="end" className="text-foreground">
+                  <TableCell kind="money" className="text-foreground">
                     {fmt.currency(item.unitPrice, currency)}
                   </TableCell>
-                  <TableCell align="end" className="text-paragraph-sm-medium text-foreground">
+                  <TableCell kind="money" className="text-paragraph-sm-medium text-foreground">
                     {fmt.currency(item.subtotal, currency)}
                   </TableCell>
                 </TableRow>
@@ -119,11 +117,11 @@ export async function QuoteItems({ items, discounts, total, currency }: QuoteIte
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-paragraph-xs text-foreground-muted tabular-nums">
+                    <TableCell kind="short" className="text-paragraph-xs text-foreground-muted">
                       {alternative.code ?? '—'}
                     </TableCell>
                     <TableCell />
-                    <TableCell align="end" className="text-foreground-muted">
+                    <TableCell kind="money" className="text-foreground-muted">
                       {fmt.currency(alternative.unitPrice, currency)}
                       {alternative.unit ? (
                         <span className="ml-1 text-paragraph-xs text-foreground-subtle">

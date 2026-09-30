@@ -13,7 +13,6 @@ import {
   InlineLink,
   SearchInput,
   Table,
-  TABLE_COL,
   TableBody,
   TableCaption,
   TableCell,
@@ -72,14 +71,12 @@ export function ClientTable({ clients }: ClientTableProps) {
         <TableCaption className="sr-only">{t('table.caption')}</TableCaption>
         <TableHeader>
           <TableRow>
-            <TableHead>{t('table.client')}</TableHead>
-            <TableHead>{t('table.contact')}</TableHead>
-            <TableHead>{t('table.tags')}</TableHead>
-            <TableHead align="end">{t('table.sales')}</TableHead>
-            <TableHead className={TABLE_COL.date}>{t('table.lastSale')}</TableHead>
-            <TableHead align="center" className={TABLE_COL.actionsWide}>
-              {t('table.actions')}
-            </TableHead>
+            <TableHead kind="text">{t('table.client')}</TableHead>
+            <TableHead kind="text">{t('table.contact')}</TableHead>
+            <TableHead kind="text">{t('table.tags')}</TableHead>
+            <TableHead kind="count">{t('table.sales')}</TableHead>
+            <TableHead kind="date">{t('table.lastSale')}</TableHead>
+            <TableHead kind="actionsWide">{t('table.actions')}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -123,18 +120,16 @@ export function ClientTable({ clients }: ClientTableProps) {
                     )}
                   </div>
                 </TableCell>
-                <TableCell align="end">
+                <TableCell kind="count">
                   {t('salesCount', { total: client.acceptedQuoteCount })}
                 </TableCell>
                 <TableCell
-                  className={cn(
-                    'whitespace-nowrap tabular-nums',
-                    !client.lastAcceptedAt && 'text-foreground-subtle',
-                  )}
+                  kind="date"
+                  className={cn(!client.lastAcceptedAt && 'text-foreground-subtle')}
                 >
                   {client.lastAcceptedAt ? fmt.dateNumeric(client.lastAcceptedAt) : t('noSales')}
                 </TableCell>
-                <TableCell align="center">
+                <TableCell kind="actionsWide">
                   <div className="flex justify-center">
                     <InlineLink asChild tone="muted">
                       <Link href={ROUTES.clientDetail(client.id)}>
