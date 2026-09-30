@@ -142,6 +142,7 @@ CREATE TABLE account_onboarding (
   completed_at   TIMESTAMPTZ,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  checklist_hidden_at TIMESTAMPTZ,
   CONSTRAINT uq_account_onboarding_account UNIQUE (account_id)
 );
 

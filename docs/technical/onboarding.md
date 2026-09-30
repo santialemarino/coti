@@ -13,17 +13,20 @@ identifier.
 
 The lifecycle is `IN_PROGRESS`, `COMPLETED`, or `DISMISSED`. Dismissal is not completion: it lets
 the administrator enter the backoffice without losing the resume point. Existing accounts are
-seeded as dismissed so deploying the feature does not interrupt their work.
+seeded as dismissed so deploying the feature does not interrupt their work, and the checklist
+migration records every step their data already proves (see below).
 
 The admin-only API is:
 
-| Route                          | Purpose                                      |
-| ------------------------------ | -------------------------------------------- |
-| `GET /v1/onboarding`           | Read lifecycle, resume point, and step state |
-| `PUT /v1/onboarding`           | Resolve one step and store the next one      |
-| `POST /v1/onboarding/complete` | Finish setup                                 |
-| `POST /v1/onboarding/dismiss`  | Leave setup without blocking the account     |
-| `POST /v1/onboarding/resume`   | Continue a dismissed setup                   |
+| Route                                | Purpose                                        |
+| ------------------------------------ | ---------------------------------------------- |
+| `GET /v1/onboarding`                 | Read lifecycle, resume point, and step state   |
+| `PUT /v1/onboarding`                 | Resolve one step and store the next one        |
+| `POST /v1/onboarding/complete`       | Finish setup                                   |
+| `POST /v1/onboarding/dismiss`        | Leave setup without blocking the account       |
+| `POST /v1/onboarding/resume`         | Continue a dismissed setup                     |
+| `POST /v1/onboarding/checklist/hide` | Take the checklist card off the home screen    |
+| `POST /v1/onboarding/checklist/show` | Put the checklist card back on the home screen |
 
 ## Current flow
 
@@ -53,6 +56,26 @@ The completion screen reports each step as done only when it was completed; a sk
 settings page where it is waiting. While onboarding is open, the protected shell sends the
 administrator back to it only when the account has an active branch: onboarding sends an account
 without one to Sucursales, and bouncing it back from there would loop.
+
+## Checklist
+
+Once the wizard is closed — dismissed, or finished with steps skipped — what is left of the setup
+is a checklist of three steps: brand, catalog (`CATALOG_UPLOAD`) and team. The first branch is not
+on it: registration creates that branch with its name and address, so the step only confirms data
+that always exists. A skipped step is pending; only real completion counts.
+
+Completion is read from the account's own data as well as from the wizard. `GET /v1/onboarding`
+checks a brand logo or colour, an active product, and a second active user, and records each proven
+step as `COMPLETED` before answering, so setup done from Configuración counts the same and stays
+done if the data later changes. A dismissed onboarding with nothing left pending becomes
+`COMPLETED`. The wizard's own `IN_PROGRESS` state is never changed by this.
+
+The checklist appears in two places for an administrator while a step is pending: a card in the home
+screen's empty detail pane, and a "Configuración inicial" entry in the settings rail that opens the
+same checklist. "No mostrar más" stamps `account_onboarding.checklist_hidden_at` and hides only the
+card; the rail entry stays as the place to see it again or bring the card back, and disappears when
+every step is done. Each item links to the settings screen that does the work; "Retomar asistente"
+is offered only for a dismissed wizard.
 
 User preferences are intentionally absent from version 1. They can be introduced as another stable
 step without coupling them to registration or rewriting existing progress.

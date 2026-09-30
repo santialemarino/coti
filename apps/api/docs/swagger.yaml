@@ -779,8 +779,25 @@ definitions:
       role:
         type: string
     type: object
+  dto.OnboardingChecklistItemResponse:
+    properties:
+      done:
+        type: boolean
+      step:
+        enum:
+        - BRAND
+        - CATALOG_UPLOAD
+        - TEAM
+        type: string
+    type: object
   dto.OnboardingResponse:
     properties:
+      checklist:
+        items:
+          $ref: '#/definitions/dto.OnboardingChecklistItemResponse'
+        type: array
+      checklist_hidden_at:
+        type: string
       completed_at:
         type: string
       current_step:
@@ -2877,6 +2894,42 @@ paths:
       security:
       - BearerAuth: []
       summary: Save onboarding progress
+      tags:
+      - onboarding
+  /v1/onboarding/checklist/hide:
+    post:
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Hide the onboarding checklist
+      tags:
+      - onboarding
+  /v1/onboarding/checklist/show:
+    post:
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Show the onboarding checklist
       tags:
       - onboarding
   /v1/onboarding/complete:

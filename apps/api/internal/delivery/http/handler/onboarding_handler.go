@@ -17,6 +17,7 @@ type OnboardingService interface {
 	Complete(ctx context.Context, tenant domain.Tenant) error
 	Dismiss(ctx context.Context, tenant domain.Tenant) error
 	Resume(ctx context.Context, tenant domain.Tenant) error
+	SetChecklistHidden(ctx context.Context, tenant domain.Tenant, hidden bool) error
 }
 
 // OnboardingHandler serves the account's resumable setup flow.
@@ -155,16 +156,63 @@ func (h *OnboardingHandler) Resume(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// HideChecklist hides the setup checklist's card from the home screen.
+//
+//	@Summary	Hide the onboarding checklist
+//	@Tags		onboarding
+//	@Security	BearerAuth
+//	@Success	204
+//	@Failure	401	{object}	dto.ErrorResponse
+//	@Failure	403	{object}	dto.ErrorResponse
+//	@Router		/v1/onboarding/checklist/hide [post]
+func (h *OnboardingHandler) HideChecklist(c *gin.Context) {
+	h.setChecklistHidden(c, true)
+}
+
+// ShowChecklist shows the setup checklist's card on the home screen again.
+//
+//	@Summary	Show the onboarding checklist
+//	@Tags		onboarding
+//	@Security	BearerAuth
+//	@Success	204
+//	@Failure	401	{object}	dto.ErrorResponse
+//	@Failure	403	{object}	dto.ErrorResponse
+//	@Router		/v1/onboarding/checklist/show [post]
+func (h *OnboardingHandler) ShowChecklist(c *gin.Context) {
+	h.setChecklistHidden(c, false)
+}
+
+func (h *OnboardingHandler) setChecklistHidden(c *gin.Context, hidden bool) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	if err := h.onboarding.SetChecklistHidden(c.Request.Context(), tenant, hidden); err != nil {
+		Respond(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func toOnboardingResponse(onboarding domain.Onboarding) dto.OnboardingResponse {
 	steps := make(map[string]string, len(onboarding.Steps))
 	for key, status := range onboarding.Steps {
 		steps[string(key)] = string(status)
 	}
+	checklist := make([]dto.OnboardingChecklistItemResponse, 0, len(domain.OnboardingChecklistSteps))
+	for _, step := range domain.OnboardingChecklistSteps {
+		checklist = append(checklist, dto.OnboardingChecklistItemResponse{
+			Step: string(step),
+			Done: onboarding.Steps[step] == domain.OnboardingStepStatusCompleted,
+		})
+	}
 	return dto.OnboardingResponse{
-		FlowVersion: onboarding.FlowVersion,
-		Status:      string(onboarding.Status),
-		CurrentStep: string(onboarding.CurrentStep),
-		Steps:       steps,
-		CompletedAt: onboarding.CompletedAt,
+		FlowVersion:       onboarding.FlowVersion,
+		Status:            string(onboarding.Status),
+		CurrentStep:       string(onboarding.CurrentStep),
+		Steps:             steps,
+		Checklist:         checklist,
+		ChecklistHiddenAt: onboarding.ChecklistHiddenAt,
+		CompletedAt:       onboarding.CompletedAt,
 	}
 }
