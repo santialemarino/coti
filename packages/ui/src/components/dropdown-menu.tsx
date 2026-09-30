@@ -35,7 +35,7 @@ const CONTENT_SURFACE = cn(
   'z-50 min-w-40 max-h-(--radix-dropdown-menu-content-available-height) overflow-x-hidden',
   'origin-(--radix-dropdown-menu-content-transform-origin) p-1',
   'bg-popover border border-border rounded-xl shadow-e3 text-popover-foreground',
-  'scroll-area',
+  'scroll-area scroll-lane',
 );
 
 function DropdownMenuContent({
