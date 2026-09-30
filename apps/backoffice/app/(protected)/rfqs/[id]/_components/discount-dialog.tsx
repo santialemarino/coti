@@ -17,6 +17,7 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from '@repo/ui/components';
+import { useScrollLane } from '@repo/ui/hooks';
 import { AmountInput } from '@/components/amount-input';
 import type {
   CreateDiscountBody,
@@ -58,6 +59,7 @@ export function DiscountDialog({
   const [scope, setScope] = useState<DiscountScope>('TOTAL');
   const [linkedItemIds, setLinkedItemIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const lane = useScrollLane<HTMLDivElement>();
 
   // Before paint, so a reopened dialog never shows the previous one's values for a frame.
   useLayoutEffect(() => {
@@ -202,7 +204,10 @@ export function DiscountDialog({
           {coversItems && (
             <div className="flex flex-col gap-y-1.5">
               <Label required>{t('itemsLabel')}</Label>
-              <div className="flex max-h-44 flex-col p-2 gap-y-1 border border-border rounded-lg scroll-area scroll-lane">
+              <div
+                ref={lane}
+                className="flex max-h-44 flex-col p-2 gap-y-1 border border-border rounded-lg scroll-area scroll-lane"
+              >
                 {items.map((item) => {
                   const checked = linkedItemIds.includes(item.id);
                   return (
