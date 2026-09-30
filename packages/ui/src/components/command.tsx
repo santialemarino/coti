@@ -51,7 +51,10 @@ function CommandList({ className, ...props }: React.ComponentProps<typeof Comman
     <CommandPrimitive.List
       data-slot="command-list"
       onWheel={(e) => e.stopPropagation()}
-      className={cn('max-h-64 overflow-x-hidden p-1 outline-none scroll-area', className)}
+      className={cn(
+        'max-h-64 overflow-x-hidden p-1 outline-none scroll-area scroll-lane',
+        className,
+      )}
       {...props}
     />
   );
