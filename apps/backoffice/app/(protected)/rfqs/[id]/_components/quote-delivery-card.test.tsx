@@ -265,13 +265,13 @@ describe('QuoteDeliveryCard send action', () => {
     const unmounted = vi.fn();
     SendDialog.mockImplementation(() => {
       useEffect(() => unmounted, []);
-      return null;
+      return <></>;
     });
     const view = renderCard(makeDetail({ quoteStatus: 'QUOTED' }));
     view.rerender(cardTree(makeDetail({ quoteStatus: 'SENT' })));
 
     expect(unmounted).not.toHaveBeenCalled();
-    SendDialog.mockImplementation(() => null);
+    SendDialog.mockImplementation(() => <></>);
   });
 
   it('keeps send and lifecycle actions hidden while the quote is archived', () => {
