@@ -427,7 +427,7 @@ export function RfqItemsTable({
           )}
         </CardHeader>
 
-        <Table className="[&_th]:h-10 [&_td]:py-3">
+        <Table figures="end" className="[&_th]:h-10 [&_td]:py-3">
           <TableHeader>
             <TableRow>
               <TableHead kind="index">#</TableHead>

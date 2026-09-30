@@ -195,7 +195,7 @@ function DiffPanel({
         <CardTitle className="text-heading-5">{title}</CardTitle>
       </CardHeader>
 
-      <Table>
+      <Table figures="end">
         <TableHeader>
           <TableRow>
             <TableHead kind="text">{t('detail.diff.columns.product')}</TableHead>
@@ -217,7 +217,7 @@ function DiffPanel({
               {t('detail.diff.discountsTitle')}
             </span>
           </div>
-          <Table>
+          <Table figures="end">
             <colgroup>
               <col />
               <col className={TABLE_COLUMNS.quantity.width} />

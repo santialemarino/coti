@@ -52,7 +52,8 @@ interface SortableTableHeadProps<TColumn extends string> {
   onSort: (column: TColumn) => void;
   /*
    * The column's kind, whose alignment the trigger follows. The trigger is a flex box filling the
-   * cell, so `text-right` on the cell alone would leave the label pinned left in a figure column.
+   * cell, so `text-right` on the cell alone would leave the label pinned left in a right-aligned
+   * table.
    */
   kind: TableColumnKind;
   className?: string;
@@ -86,7 +87,7 @@ function SortableTableHead<TColumn extends string>({
         onClick={() => onSort(column)}
         className={cn(
           'group/sort flex w-full items-center gap-x-1.5 rounded-sm outline-none',
-          align === 'end' && 'justify-end',
+          align === 'figure' && 'group-data-[figures=end]/table:justify-end',
           align === 'center' && 'justify-center',
           'transition-colors duration-150 ease-out-soft',
           active ? 'text-foreground' : 'hover:text-foreground focus-visible:text-foreground',

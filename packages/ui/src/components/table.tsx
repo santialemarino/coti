@@ -2,12 +2,16 @@ import * as React from 'react';
 
 import { cn } from '../lib/utils';
 
-type TableAlign = 'start' | 'end' | 'center';
+type TableAlign = 'start' | 'figure' | 'center';
 
-/* Copy reads from a common left edge, figures line up by place value, a one-control column centres. */
+/*
+ * Copy reads from a common left edge and a one-control column centres. Figures start on the left
+ * too, like every other value in a list; a table whose job is comparing amounts row by row sets
+ * `figures="end"`, and there they line up by place value.
+ */
 const ALIGN_CLASSES: Record<TableAlign, string> = {
   start: 'text-left',
-  end: 'text-right',
+  figure: 'text-left group-data-[figures=end]/table:text-right',
   center: 'text-center',
 };
 
@@ -17,38 +21,49 @@ const ALIGN_CLASSES: Record<TableAlign, string> = {
  * hands its slack to the text columns, so the figures keep their width and hug their edge.
  */
 const TABLE_COLUMNS = {
-  text: { width: '', align: 'start', figure: false },
-  short: { width: 'w-32 min-w-32', align: 'start', figure: false },
-  date: { width: 'w-32 min-w-32', align: 'start', figure: true },
-  status: { width: 'w-36 min-w-36', align: 'start', figure: false },
-  index: { width: 'w-12 min-w-12', align: 'end', figure: true },
-  count: { width: 'w-28 min-w-28', align: 'end', figure: true },
-  quantity: { width: 'w-32 min-w-32', align: 'end', figure: true },
-  money: { width: 'w-36 min-w-36', align: 'end', figure: true },
-  quantityInput: { width: 'w-44 min-w-44', align: 'end', figure: true },
-  moneyInput: { width: 'w-44 min-w-44', align: 'end', figure: true },
-  select: { width: 'w-12 min-w-12', align: 'center', figure: false },
-  actions: { width: 'w-24 min-w-24', align: 'center', figure: false },
-  actionsWide: { width: 'w-32 min-w-32', align: 'center', figure: false },
-} as const satisfies Record<string, { width: string; align: TableAlign; figure: boolean }>;
+  text: { width: '', align: 'start', tabular: false },
+  short: { width: 'w-32 min-w-32', align: 'start', tabular: false },
+  date: { width: 'w-32 min-w-32', align: 'start', tabular: true },
+  status: { width: 'w-36 min-w-36', align: 'start', tabular: false },
+  index: { width: 'w-12 min-w-12', align: 'figure', tabular: true },
+  count: { width: 'w-28 min-w-28', align: 'figure', tabular: true },
+  quantity: { width: 'w-32 min-w-32', align: 'figure', tabular: true },
+  money: { width: 'w-36 min-w-36', align: 'figure', tabular: true },
+  quantityInput: { width: 'w-44 min-w-44', align: 'figure', tabular: true },
+  moneyInput: { width: 'w-44 min-w-44', align: 'figure', tabular: true },
+  select: { width: 'w-12 min-w-12', align: 'center', tabular: false },
+  actions: { width: 'w-24 min-w-24', align: 'center', tabular: false },
+  actionsWide: { width: 'w-32 min-w-32', align: 'center', tabular: false },
+} as const satisfies Record<string, { width: string; align: TableAlign; tabular: boolean }>;
 
 type TableColumnKind = keyof typeof TABLE_COLUMNS;
 
 function columnClasses(kind: TableColumnKind) {
   const column = TABLE_COLUMNS[kind];
-  return cn(ALIGN_CLASSES[column.align], column.figure && 'whitespace-nowrap tabular-nums');
+  return cn(ALIGN_CLASSES[column.align], column.tabular && 'whitespace-nowrap tabular-nums');
 }
 
 /*
  * Auto layout on purpose: a squeezed table shrinks its text columns to their longest word and then
  * scrolls, where a fixed layout would crush them. `min-w` on every sized column is what holds it.
  */
-function Table({ className, ...props }: React.ComponentProps<'table'>) {
+function Table({
+  className,
+  figures = 'start',
+  ...props
+}: React.ComponentProps<'table'> & {
+  /* `end` right-aligns every figure column: quote lines, a version diff, a price comparison. */
+  figures?: 'start' | 'end';
+}) {
   return (
     <div data-slot="table-container" className="relative w-full overflow-x-auto">
       <table
         data-slot="table"
-        className={cn('w-full caption-bottom border-collapse text-paragraph-sm', className)}
+        data-figures={figures}
+        className={cn(
+          'group/table w-full caption-bottom border-collapse text-paragraph-sm',
+          className,
+        )}
         {...props}
       />
     </div>

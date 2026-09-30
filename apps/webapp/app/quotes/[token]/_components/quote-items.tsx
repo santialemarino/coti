@@ -53,7 +53,7 @@ export async function QuoteItems({ items, discounts, total, currency }: QuoteIte
       </CardHeader>
 
       <div data-testid="items-table-desktop" className="hidden md:block">
-        <Table className="[&_th]:h-10 [&_td]:py-3">
+        <Table figures="end" className="[&_th]:h-10 [&_td]:py-3">
           <TableHeader>
             <TableRow>
               <TableHead kind="index">#</TableHead>

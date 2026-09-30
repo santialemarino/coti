@@ -55,6 +55,22 @@ describe('QuoteItems', () => {
     expect(within(calRow).getByText(money(fmt, payload.currency, '150.00'))).toBeTruthy();
   });
 
+  // The customer compares prices and subtotals line by line, so they line up on the right.
+  it('right-aligns the figures of the desktop table', async () => {
+    const payload = makeQuotePayload();
+    const view = render(
+      await QuoteItems({
+        items: payload.items,
+        discounts: payload.discounts,
+        total: payload.total,
+        currency: payload.currency,
+      }),
+    );
+
+    const table = within(view.getByTestId('items-table-desktop')).getByRole('table');
+    expect(table.dataset.figures).toBe('end');
+  });
+
   // One figure in one right-aligned cell: a unit column of its own opens a gap beside the number.
   it('reads the quantity and its unit together, under one heading', async () => {
     const payload = makeQuotePayload();
