@@ -112,14 +112,14 @@ export function PhoneInput({
         // The flag rides as the trigger's icon; the code gets room for "+" and three digits, the
         // longest there is, so the trigger keeps one width whatever the country.
         triggerLabel={(option) => (
-          <span className="inline-block min-w-[4ch] tabular-nums">
+          <span className="inline-block w-[4.5ch] tabular-nums">
             +{getCountryCallingCode(option.value as CountryCode)}
           </span>
         )}
         contentMinWidth={COUNTRY_LIST_MIN_WIDTH}
         disabled={disabled}
         aria-label={countryLabel}
-        className="w-auto shrink-0 px-3"
+        className="w-auto shrink-0 px-2.5 gap-x-1.5"
       />
       <Input
         id={id}
