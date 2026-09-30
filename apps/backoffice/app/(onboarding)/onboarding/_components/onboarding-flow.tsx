@@ -97,6 +97,8 @@ export function OnboardingFlow({
   const [error, setError] = useState<string | null>(null);
   const [dismissOpen, setDismissOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  // Set on a successful create, so finishing does not wait on the refresh that brings the user in.
+  const [addedUser, setAddedUser] = useState(false);
   const teammates = users.filter((user) => user.id !== currentUserId && user.isActive).length;
   const currentStepRef = useRef(step);
   currentStepRef.current = step;
@@ -416,7 +418,11 @@ export function OnboardingFlow({
               branches={branches}
               currentUserId={currentUserId}
               users={users}
-              onCreate={(values: UserValues) => createOnboardingUser(values)}
+              onCreate={async (values: UserValues) => {
+                const result = await createOnboardingUser(values);
+                if (result.ok) setAddedUser(true);
+                return result;
+              }}
             />
             <Footer
               pending={pending}
@@ -424,7 +430,7 @@ export function OnboardingFlow({
               pendingLabel={t('saving')}
               back={() => move('CATALOG_UPLOAD')}
               // Finishing with nobody added resolves the step as skipped, not as done.
-              onPrimary={() => finishTeam(teammates > 0 ? 'COMPLETED' : 'SKIPPED')}
+              onPrimary={() => finishTeam(teammates > 0 || addedUser ? 'COMPLETED' : 'SKIPPED')}
             />
           </>
         );
