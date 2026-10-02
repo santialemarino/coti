@@ -31,6 +31,7 @@ const (
 	CodeLastActiveBranch      ErrorCode = "LAST_ACTIVE_BRANCH"
 	CodeSelfDeactivation      ErrorCode = "SELF_DEACTIVATION"
 	CodeSelfRoleChange        ErrorCode = "SELF_ROLE_CHANGE"
+	CodeSelfEmailChange       ErrorCode = "SELF_EMAIL_CHANGE"
 	CodePasswordPolicy        ErrorCode = "PASSWORD_POLICY"
 	CodeInvalidLink           ErrorCode = "INVALID_LINK"
 	CodeInviteNotPending      ErrorCode = "INVITE_NOT_PENDING"

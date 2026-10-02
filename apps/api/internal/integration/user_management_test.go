@@ -229,6 +229,7 @@ func newEnvWithRFQProviders(
 
 	highConfidence := decimal.NewFromInt(int64(matchConfig().MatchHighConfidencePercent)).
 		Div(decimal.NewFromInt(100))
+	rateLimit := deliveryhttp.RateLimit{Limiter: limiter}
 	router := deliveryhttp.NewRouter(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)),
 		deliveryhttp.Handlers{
 			Health:       handler.NewHealthHandler(db),
@@ -238,7 +239,7 @@ func newEnvWithRFQProviders(
 			User: handler.NewUserHandler(userService, handler.SessionPolicy{
 				RequireVerifiedEmail: cfg.Auth.RequireVerifiedEmail,
 				MailDelivers:         cfg.Mail.Delivers(),
-			}),
+			}, deliveryhttp.MailAllowance(cfg, rateLimit)),
 			Branch: handler.NewBranchHandler(services.NewBranchService(db, branchRepo, channelRepo,
 				repository.NewBranchProductRepository(), cfg.Branch.DefaultExpiryDays)),
 			Rfq:           handler.NewRfqHandler(rfqService, highConfidence),
@@ -256,7 +257,7 @@ func newEnvWithRFQProviders(
 			Onboarding: handler.NewOnboardingHandler(onboardingService),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
-		deliveryhttp.RateLimit{Limiter: limiter})
+		rateLimit)
 
 	return &env{router: router, db: db, tokens: tokenService, mail: mailer}
 }
@@ -557,8 +558,8 @@ func TestUsers_ListSellersNarrowsByActiveBranch(t *testing.T) {
 // dropped the moment the address changes — a stamp proves one mailbox, not the next one.
 func TestMe_ReportsWhetherTheAddressIsVerified(t *testing.T) {
 	e := newEnv(t)
-	accountID, branchID := e.seedAccount(t, "Corralón")
-	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	accountID, _ := e.seedAccount(t, "Corralón")
+	admin := e.seedUserWithPassword(t, accountID, domain.UserRoleAdmin, seedPassword)
 	token := e.tokenFor(t, admin)
 
 	verified := func(t *testing.T) bool {
@@ -591,12 +592,12 @@ func TestMe_ReportsWhetherTheAddressIsVerified(t *testing.T) {
 	}
 
 	// Changing the address through the real endpoint has to drop it again.
-	rec := e.do(t, request{method: http.MethodPut, path: "/v1/users/" + admin.ID.String(),
-		token: token,
-		body: map[string]any{"name": "Admin", "email": "otra+" + uuid.NewString() + "@corralon.test",
-			"role": string(domain.UserRoleAdmin), "branch_ids": []uuid.UUID{branchID}}})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("PUT /v1/users: status = %d, want %d; body = %s", rec.Code, http.StatusOK, rec.Body)
+	rec := e.do(t, request{method: http.MethodPost, path: "/v1/auth/change-email", token: token,
+		body: map[string]any{"new_email": "otra+" + uuid.NewString() + "@corralon.test",
+			"current_password": seedPassword}})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("POST /v1/auth/change-email: status = %d, want %d; body = %s", rec.Code,
+			http.StatusNoContent, rec.Body)
 	}
 	if verified(t) {
 		t.Error("email_verified stayed true after the address changed")
@@ -981,5 +982,48 @@ func TestPrices_SellerCannotReadAnUnassignedBranchByOmittingTheHeader(t *testing
 	}
 	if got[0] == unassigned {
 		t.Error("a seller read a branch they are not assigned to by omitting X-Branch-Id")
+	}
+}
+
+// An admin's own address moves only where the password is asked for again.
+func TestUsers_AnAdminCannotChangeTheirOwnEmailThroughAdministration(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "Corralón Propio")
+	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
+
+	rec := e.do(t, request{method: http.MethodPut, path: "/v1/users/" + admin.ID.String(),
+		token: e.tokenFor(t, admin),
+		body: map[string]any{"name": admin.Name, "email": "otra+" + uuid.NewString() + "@corralon.test",
+			"role": string(domain.UserRoleAdmin), "branch_ids": []uuid.UUID{branchID}}})
+	if rec.Code != http.StatusUnprocessableEntity || errorCode(t, rec) != string(domain.CodeSelfEmailChange) {
+		t.Fatalf("PUT /v1/users/:self with a new email: status = %d, code = %s; want 422 %s",
+			rec.Code, errorCode(t, rec), domain.CodeSelfEmailChange)
+	}
+	var email string
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT email FROM app_user WHERE id = $1`, admin.ID).Scan(&email); err != nil {
+		t.Fatalf("read the admin: %v", err)
+	}
+	if email != admin.Email {
+		t.Errorf("email = %q after the refusal, want %q", email, admin.Email)
+	}
+}
+
+// A lockout started elsewhere reaches a session already open, and says what it is.
+func TestMe_ALockedAccountAnswersAccountLocked(t *testing.T) {
+	e := newEnv(t)
+	accountID, _ := e.seedAccount(t, "Corralón Bloqueado")
+	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	token := e.tokenFor(t, admin)
+
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`UPDATE app_user SET locked_until = now() + interval '10 minutes' WHERE id = $1`, admin.ID); err != nil {
+		t.Fatalf("lock the admin: %v", err)
+	}
+
+	rec := e.do(t, request{method: http.MethodGet, path: "/v1/me", token: token})
+	if rec.Code != http.StatusTooManyRequests || errorCode(t, rec) != string(domain.CodeLocked) {
+		t.Fatalf("GET /v1/me while locked: status = %d, code = %s; want 429 %s",
+			rec.Code, errorCode(t, rec), domain.CodeLocked)
 	}
 }

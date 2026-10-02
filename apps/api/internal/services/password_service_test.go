@@ -118,9 +118,9 @@ func (f *fakeAuthTokens) Consume(_ context.Context, _ repository.Querier, _, id 
 
 func (f *fakeAuthTokens) InvalidateActive(
 	_ context.Context, _ repository.Querier, _, userID uuid.UUID, tokenType domain.AuthTokenType,
-) error {
+) (int64, error) {
 	f.invalidated = append(f.invalidated, invalidatedLink{userID: userID, tokenType: tokenType})
-	return nil
+	return 0, nil
 }
 
 func (f *fakeAuthTokens) InvalidateAllForUser(_ context.Context, _ repository.Querier, _, userID uuid.UUID) error {

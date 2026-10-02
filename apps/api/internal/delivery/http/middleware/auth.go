@@ -33,7 +33,7 @@ type TenantResolver interface {
 //
 // An absent branch header means account-wide. A present but inaccessible branch is a 403,
 // never a silent downgrade: the caller must not read every branch while believing they are
-// scoped to one. A malformed one is a 400.
+// scoped to one. A malformed one is a 400. A user inside a lockout window is a 429.
 func Authenticate(verifier AccessVerifier, resolver TenantResolver) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		raw := bearerToken(c)
@@ -65,6 +65,14 @@ func Authenticate(verifier AccessVerifier, resolver TenantResolver) gin.HandlerF
 				c.AbortWithStatusJSON(http.StatusForbidden, dto.ErrorResponse{
 					Error: "branch not accessible",
 					Code:  string(domain.CodeBranchNotAccessible),
+				})
+				return
+			}
+			// Said plainly, as login says it: the session is sound, the account is not usable yet.
+			if errors.Is(err, domain.ErrLocked) {
+				c.AbortWithStatusJSON(http.StatusTooManyRequests, dto.ErrorResponse{
+					Error: "account temporarily locked",
+					Code:  string(domain.CodeLocked),
 				})
 				return
 			}

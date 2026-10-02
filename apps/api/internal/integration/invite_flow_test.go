@@ -130,6 +130,58 @@ func TestInvite_TheLinkSetsThePasswordAndVerifiesTheAddress(t *testing.T) {
 	}
 }
 
+// Creating an invited user mails someone, so it spends the caller's mail allowance; handing over
+// a password mails nobody and spends nothing.
+func TestInvite_CreationSpendsTheCallersMailAllowance(t *testing.T) {
+	e := newEnv(t, func(c *config.Config) {
+		c.Mail.Provider = config.MailProviderSMTP
+		c.RateLimit = config.RateLimitConfig{
+			Enabled: true, Window: time.Minute, Global: 1000,
+			Credentials: 1000, Signup: 1000, Mail: 1, MailPerAddress: 1000,
+		}
+	})
+	accountID, branchID := e.seedAccount(t, "Corralón Cupo")
+	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	adminToken := e.tokenFor(t, admin)
+	create := func(invite bool) (int, string) {
+		t.Helper()
+		body := map[string]any{"name": "Nueva", "email": "cupo+" + uuid.NewString() + "@corralon.test",
+			"invite": invite, "role": string(domain.UserRoleSeller), "branch_ids": []uuid.UUID{branchID}}
+		if !invite {
+			body["password"] = "Una-clave-larga1"
+		}
+		rec := e.do(t, request{method: http.MethodPost, path: "/v1/users", token: adminToken, body: body})
+		return rec.Code, errorCode(t, rec)
+	}
+
+	if code, _ := create(true); code != http.StatusCreated {
+		t.Fatalf("the first invite: status = %d, want 201", code)
+	}
+	if code, errCode := create(true); code != http.StatusTooManyRequests ||
+		errCode != string(domain.CodeRateLimited) {
+		t.Fatalf("an invite past the allowance: status = %d, code = %s; want 429 %s",
+			code, errCode, domain.CodeRateLimited)
+	}
+	// The resend route counts into the same bucket, so it is spent too.
+	rec := e.do(t, request{method: http.MethodPost,
+		path: "/v1/users/" + uuid.NewString() + "/invite", token: adminToken})
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("a resend after the creation spent the allowance: status = %d, want 429", rec.Code)
+	}
+	if code, _ := create(false); code != http.StatusCreated {
+		t.Fatalf("a password creation past the mail allowance: status = %d, want 201", code)
+	}
+	var invited int
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT count(*) FROM auth_token WHERE account_id = $1 AND type = 'INVITE'`, accountID,
+	).Scan(&invited); err != nil {
+		t.Fatalf("count invites: %v", err)
+	}
+	if invited != 1 {
+		t.Errorf("%d invites stored, want only the one inside the allowance", invited)
+	}
+}
+
 // Under the console transport nobody could ever redeem the link, so the API refuses the invite
 // instead of creating a user with no way in.
 func TestInvite_IsRefusedWhileMailOnlyReachesTheLog(t *testing.T) {

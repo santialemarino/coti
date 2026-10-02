@@ -23,6 +23,9 @@ import (
 // apiPrefix is where every versioned route is mounted.
 const apiPrefix = "/v1"
 
+// mailScope is the per-caller allowance for every route that mails someone.
+const mailScope = "mail"
+
 // Handlers carries every handler the router mounts.
 type Handlers struct {
 	Health        *handler.HealthHandler
@@ -77,15 +80,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	}
 
 	limit := func(scope string, max int) gin.HandlerFunc {
-		return middleware.RateLimit(rl.Limiter, middleware.RateLimitOptions{
-			Scope:            scope,
-			Limit:            max,
-			Window:           cfg.RateLimit.Window,
-			Enabled:          cfg.RateLimit.Enabled,
-			TrustedProxyHops: cfg.RateLimit.TrustedProxyHops,
-			TrustedProxies:   cfg.RateLimit.TrustedProxies,
-			Identify:         rl.Identify,
-		})
+		return middleware.RateLimit(rl.Limiter, rateLimitOptions(cfg, rl, scope, max))
 	}
 
 	v1 := r.Group(apiPrefix,
@@ -97,7 +92,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	}
 
 	public := v1.Group("/public")
-	mail := limit("mail", cfg.RateLimit.Mail)
+	mail := limit(mailScope, cfg.RateLimit.Mail)
 
 	public.POST("/auth/login", limit("login", cfg.RateLimit.Credentials), h.Auth.Login)
 	public.POST("/auth/refresh", h.Auth.Refresh)
@@ -266,4 +261,22 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	products.POST("/:productId/prices", h.BranchCatalog.SetPrice)
 
 	return r
+}
+
+// MailAllowance is the per-caller mail allowance for a handler that mails only on some requests,
+// counting into the same bucket as the mail routes.
+func MailAllowance(cfg *config.Config, rl RateLimit) middleware.Allowance {
+	return middleware.NewAllowance(rl.Limiter, rateLimitOptions(cfg, rl, mailScope, cfg.RateLimit.Mail))
+}
+
+func rateLimitOptions(cfg *config.Config, rl RateLimit, scope string, max int) middleware.RateLimitOptions {
+	return middleware.RateLimitOptions{
+		Scope:            scope,
+		Limit:            max,
+		Window:           cfg.RateLimit.Window,
+		Enabled:          cfg.RateLimit.Enabled,
+		TrustedProxyHops: cfg.RateLimit.TrustedProxyHops,
+		TrustedProxies:   cfg.RateLimit.TrustedProxies,
+		Identify:         rl.Identify,
+	}
 }

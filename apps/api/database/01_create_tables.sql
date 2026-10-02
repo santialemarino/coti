@@ -1140,6 +1140,9 @@ CREATE INDEX idx_refresh_token_user ON refresh_token(user_id);
 CREATE INDEX idx_refresh_token_family ON refresh_token(family_id);
 -- Asking for a new link invalidates the outstanding ones, which is the only hot read.
 CREATE INDEX idx_auth_token_user_type ON auth_token(user_id, type) WHERE consumed_at IS NULL;
+-- The users screen reads each user's newest invite, id breaking a created_at tie.
+CREATE INDEX idx_auth_token_latest_invite ON auth_token (account_id, user_id, created_at DESC, id DESC)
+  WHERE type = 'INVITE';
 
 CREATE INDEX idx_product_account ON product(account_id);
 -- A code identifies one row per account, so "update the price by code" has a single target.

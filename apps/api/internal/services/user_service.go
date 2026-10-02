@@ -247,9 +247,19 @@ func (s *UserService) ResendInvite(ctx context.Context, tenant domain.Tenant, id
 				fmt.Errorf("%w: the user has no outstanding invite", domain.ErrInvalidInput))
 		}
 		user = u
-		var mintErr error
-		invite, mintErr = s.invites.mint(ctx, q, *u, domain.AuthTokenTypeInvite, s.inviteTTL)
-		return mintErr
+		// The read above can predate a redeem still in flight; retiring waits on that row, and
+		// nothing left to retire means the user has just chosen a password.
+		retired, retireErr := s.tokens.InvalidateActive(ctx, q, tenant.AccountID, id, domain.AuthTokenTypeInvite)
+		if retireErr != nil {
+			return retireErr
+		}
+		if retired == 0 {
+			return domain.WithCode(domain.CodeInviteNotPending,
+				fmt.Errorf("%w: the invite was redeemed meanwhile", domain.ErrInvalidInput))
+		}
+		var storeErr error
+		invite, storeErr = s.invites.store(ctx, q, *u, domain.AuthTokenTypeInvite, s.inviteTTL)
+		return storeErr
 	}); err != nil {
 		return err
 	}
@@ -286,6 +296,11 @@ func (s *UserService) UpdateUser(
 		if isSelf && in.Role != current.Role {
 			return domain.WithCode(domain.CodeSelfRoleChange,
 				fmt.Errorf("%w: an admin cannot change their own role", domain.ErrInvalidInput))
+		}
+		// Their own address changes through the self-service flow, which re-checks the password.
+		if isSelf && emailChanged(current.Email, in.Email) {
+			return domain.WithCode(domain.CodeSelfEmailChange,
+				fmt.Errorf("%w: an admin changes their own email from their account settings", domain.ErrInvalidInput))
 		}
 		if assignErr := s.assertBranchesInAccount(ctx, q, tenant.AccountID, branchIDs); assignErr != nil {
 			return assignErr

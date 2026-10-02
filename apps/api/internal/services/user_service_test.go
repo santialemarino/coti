@@ -189,10 +189,25 @@ func (f *fakeBranchExistence) ExistAllInAccount(
 }
 
 // fakeUserLinks is the link surface plus the latest invite per user, which a test seeds to
-// put a user in a given invite state.
+// put a user in a given invite state. redeemedMeanwhile stands for a redeem that committed
+// between the read of the latest invite and the retiring of it.
 type fakeUserLinks struct {
 	fakeAuthTokens
-	latest map[uuid.UUID]domain.AuthToken
+	latest            map[uuid.UUID]domain.AuthToken
+	redeemedMeanwhile bool
+}
+
+func (f *fakeUserLinks) InvalidateActive(
+	ctx context.Context, q repository.Querier, accountID, userID uuid.UUID, tokenType domain.AuthTokenType,
+) (int64, error) {
+	if _, err := f.fakeAuthTokens.InvalidateActive(ctx, q, accountID, userID, tokenType); err != nil {
+		return 0, err
+	}
+	latest, ok := f.latest[userID]
+	if !ok || latest.Type != tokenType || latest.ConsumedAt != nil || f.redeemedMeanwhile {
+		return 0, nil
+	}
+	return 1, nil
 }
 
 func (f *fakeUserLinks) LatestInvitesByUsers(
@@ -467,7 +482,25 @@ func TestUserService_AnAdminCannotChangeTheirOwnRole(t *testing.T) {
 	}
 }
 
-// Editing your own profile stays allowed — only the role and the active flag are guarded.
+// Their own address goes through the self-service change, which re-checks the password; an admin
+// session left open must not be enough to move the account's way back in to another mailbox.
+func TestUserService_AnAdminCannotChangeTheirOwnEmail(t *testing.T) {
+	h := newUserHarness(storedAdmin())
+
+	_, err := h.svc.UpdateUser(context.Background(), adminTenant(), testUserID, domain.UserUpdate{
+		Name: "Admin", Email: "otra@corralon.test", Role: domain.UserRoleAdmin,
+	})
+	if !errors.Is(err, domain.ErrInvalidInput) || domain.CodeOf(err) != domain.CodeSelfEmailChange {
+		t.Fatalf("UpdateUser(self, new email) = %v (%s), want %s", err, domain.CodeOf(err),
+			domain.CodeSelfEmailChange)
+	}
+	if len(h.users.updated) != 0 || len(h.links.invalidatedAll) != 0 {
+		t.Error("the self email change reached the repository")
+	}
+}
+
+// Editing your own profile stays allowed — only the role, the address and the active flag are
+// guarded.
 func TestUserService_AnAdminMayEditTheirOwnProfile(t *testing.T) {
 	h := newUserHarness(storedAdmin())
 
@@ -749,6 +782,10 @@ func TestUserService_ResendInvite(t *testing.T) {
 		{"a deactivated user", func(h *userHarness) {
 			h.users.stored[otherUserID].IsActive = false
 			h.links.latest[otherUserID] = outstandingInvite(otherUserID, fixedNow.Add(time.Hour))
+		}, domain.CodeInviteNotPending, domain.ErrInvalidInput},
+		{"an invite redeemed while the resend waited on it", func(h *userHarness) {
+			h.links.latest[otherUserID] = outstandingInvite(otherUserID, fixedNow.Add(time.Hour))
+			h.links.redeemedMeanwhile = true
 		}, domain.CodeInviteNotPending, domain.ErrInvalidInput},
 	}
 	for _, tc := range refusals {

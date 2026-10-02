@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
+	"github.com/santialemarino/coti/apps/api/internal/delivery/http/middleware"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
@@ -31,13 +32,15 @@ type SessionPolicy struct {
 
 // UserHandler serves the admin-only user administration routes.
 type UserHandler struct {
-	users  UserService
-	policy SessionPolicy
+	users       UserService
+	policy      SessionPolicy
+	mailAllowed middleware.Allowance
 }
 
-// NewUserHandler builds a UserHandler.
-func NewUserHandler(users UserService, policy SessionPolicy) *UserHandler {
-	return &UserHandler{users: users, policy: policy}
+// NewUserHandler builds a UserHandler. mailAllowed is the caller's mail allowance, spent only by
+// a creation that mails an invite.
+func NewUserHandler(users UserService, policy SessionPolicy, mailAllowed middleware.Allowance) *UserHandler {
+	return &UserHandler{users: users, policy: policy, mailAllowed: mailAllowed}
 }
 
 // List returns the account's users.
@@ -146,6 +149,7 @@ func (h *UserHandler) Get(c *gin.Context) {
 //	@Failure		403		{object}	dto.ErrorResponse
 //	@Failure		409		{object}	dto.ErrorResponse
 //	@Failure		422		{object}	dto.ErrorResponse
+//	@Failure		429		{object}	dto.RateLimitResponse	"An invite past the caller's mail allowance"
 //	@Failure		503		{object}	dto.ErrorResponse
 //	@Router			/v1/users [post]
 func (h *UserHandler) Create(c *gin.Context) {
@@ -157,6 +161,9 @@ func (h *UserHandler) Create(c *gin.Context) {
 	var body dto.CreateUserRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
 		RespondBindError(c, err)
+		return
+	}
+	if body.Invite && !h.mailAllowed(c) {
 		return
 	}
 

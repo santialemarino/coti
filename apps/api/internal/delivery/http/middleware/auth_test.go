@@ -142,3 +142,33 @@ func TestAuthenticate_AnInaccessibleBranchCarriesItsOwnCode(t *testing.T) {
 		t.Errorf("code = %q, want %q", body.Code, domain.CodeBranchNotAccessible)
 	}
 }
+
+// A lockout started by someone guessing the password reaches every open session too, and the
+// screen has to say so rather than read it as an expired session.
+func TestAuthenticate_ALockedAccountIsTooManyRequestsWithItsOwnCode(t *testing.T) {
+	r := gin.New()
+	handlerRan := false
+	r.GET("/scoped", Authenticate(staticVerifier{}, refusingResolver{err: domain.ErrLocked}),
+		func(c *gin.Context) { handlerRan = true })
+
+	req := httptest.NewRequest(http.MethodGet, "/scoped", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusTooManyRequests)
+	}
+	var body struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body %q: %v", rec.Body.String(), err)
+	}
+	if body.Code != string(domain.CodeLocked) {
+		t.Errorf("code = %q, want %q", body.Code, domain.CodeLocked)
+	}
+	if handlerRan {
+		t.Error("the handler ran for a locked account")
+	}
+}
