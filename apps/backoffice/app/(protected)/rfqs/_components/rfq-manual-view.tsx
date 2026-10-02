@@ -19,11 +19,13 @@ import {
   SearchInput,
   Skeleton,
 } from '@repo/ui/components';
+import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { AmountInput } from '@/components/amount-input';
 import { searchCatalog, type CatalogProduct } from '@/lib/api/catalog';
 import { createRfq } from '@/lib/api/rfqs-client';
 import { listSellers } from '@/lib/api/sellers';
 import { useFormatters } from '@/lib/i18n/formatters';
+import { stepCanonical } from '@/lib/i18n/numeric-input';
 
 interface RfqManualViewProps {
   onBack: () => void;
@@ -68,6 +70,7 @@ export function RfqManualView({
   const t = useTranslations('rfqs.create.manual');
   const tToast = useTranslations('rfqs.create.toast');
   const fmt = useFormatters();
+  const { isAdmin, userId, userName } = useRfqList();
 
   const [client, setClient] = useState('');
   const [query, setQuery] = useState('');
@@ -112,13 +115,25 @@ export function RfqManualView({
     };
   }, [activeBranchId]);
 
+  // Nothing to choose: a seller's order is theirs, and a branch with one seller has only them.
+  const fixedSeller = !isAdmin
+    ? { id: userId, name: userName, note: t('sellerSelf') }
+    : !loadingSellers && sellers.length === 1 && sellers[0]
+      ? { id: sellers[0].id, name: sellers[0].name, note: t('sellerOnly') }
+      : null;
+
   function addProduct(product: CatalogProduct) {
     setItems((current) => {
       const existing = current.find((item) => item.product.id === product.id);
       if (existing) {
         return current.map((item) =>
           item.product.id === product.id
-            ? { ...item, quantity: String(Number(item.quantity || 0) + 1) }
+            ? {
+                ...item,
+                quantity:
+                  stepCanonical('ArrowUp', item.quantity, { maxDecimals: QUANTITY_DECIMALS }) ??
+                  item.quantity,
+              }
             : item,
         );
       }
@@ -142,7 +157,7 @@ export function RfqManualView({
       try {
         await createRfq({
           client_label: client.trim() || null,
-          seller_id: seller ?? null,
+          seller_id: fixedSeller?.id ?? seller ?? null,
           items: items.map((item) => ({
             product_id: item.product.id,
             requested_description: item.product.name,
@@ -188,26 +203,36 @@ export function RfqManualView({
           />
         </div>
 
-        <div className="flex flex-col gap-y-1">
-          <Label htmlFor="rfq-manual-seller">{t('sellerLabel')}</Label>
-          <Combobox
-            id="rfq-manual-seller"
-            options={[
-              { value: '', label: t('unassigned') },
-              ...sellers.map((seller) => ({ value: seller.id, label: seller.name })),
-            ]}
-            value={seller}
-            onValueChange={(value) => setSeller(value === '' ? null : value)}
-            placeholder={t('sellerPlaceholder')}
-            aria-label={t('sellerLabel')}
-            className="min-w-64"
-          />
-          {activeBranchId && loadingSellers ? (
-            <p className="text-paragraph-xs text-foreground-muted">{t('sellersLoading')}</p>
-          ) : activeBranchId && sellers.length === 0 ? (
-            <p className="text-paragraph-xs text-foreground-muted">{t('noSellers')}</p>
-          ) : null}
-        </div>
+        {fixedSeller ? (
+          <div className="flex flex-col gap-y-1">
+            <span className="text-paragraph-sm-medium text-foreground">{t('sellerLabel')}</span>
+            <p className="flex h-9 items-center text-paragraph-sm text-foreground">
+              {fixedSeller.name}
+            </p>
+            <p className="text-paragraph-xs text-foreground-muted">{fixedSeller.note}</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-y-1">
+            <Label htmlFor="rfq-manual-seller">{t('sellerLabel')}</Label>
+            <Combobox
+              id="rfq-manual-seller"
+              options={[
+                { value: '', label: t('unassigned') },
+                ...sellers.map((seller) => ({ value: seller.id, label: seller.name })),
+              ]}
+              value={seller}
+              onValueChange={(value) => setSeller(value === '' ? null : value)}
+              placeholder={t('sellerPlaceholder')}
+              aria-label={t('sellerLabel')}
+              className="min-w-64"
+            />
+            {activeBranchId && loadingSellers ? (
+              <p className="text-paragraph-xs text-foreground-muted">{t('sellersLoading')}</p>
+            ) : activeBranchId && sellers.length === 0 ? (
+              <p className="text-paragraph-xs text-foreground-muted">{t('noSellers')}</p>
+            ) : null}
+          </div>
+        )}
 
         <SearchInput
           value={query}

@@ -2964,3 +2964,51 @@ func TestAlternativesFromMatch_KeepsTheOffersOfALineTheReviewSettled(t *testing.
 		t.Fatalf("offers of a reviewed line = %+v, want the other candidate at rank 2", got)
 	}
 }
+
+func manualSellerTenant() domain.Tenant {
+	return domain.Tenant{AccountID: testAccountID, UserID: testUserID, Role: domain.UserRoleSeller,
+		BranchID: testBranchID}
+}
+
+// A seller claims orders for themselves everywhere else, so one they create is theirs as well.
+func TestRfqService_CreateManual_AssignsASellersOrderToThem(t *testing.T) {
+	repo := &fakeRfqRepoManual{channelID: manualChannelID, owned: 1}
+	svc, _ := manualHarness(repo)
+
+	if _, err := svc.CreateManual(context.Background(), manualSellerTenant(),
+		domain.NewRfq{Items: manualItems()}); err != nil {
+		t.Fatalf("CreateManual() = %v, want no error", err)
+	}
+	if len(repo.created) != 1 || repo.created[0].SellerID == nil ||
+		*repo.created[0].SellerID != testUserID {
+		t.Fatalf("order created for %v, want the seller who created it", repo.created)
+	}
+}
+
+func TestRfqService_CreateManual_RefusesASellerAssigningAnotherSeller(t *testing.T) {
+	repo := &fakeRfqRepoManual{channelID: manualChannelID, owned: 1}
+	svc, _ := manualHarness(repo)
+	other := uuid.New()
+
+	_, err := svc.CreateManual(context.Background(), manualSellerTenant(),
+		domain.NewRfq{Items: manualItems(), SellerID: &other})
+	if !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("CreateManual() = %v, want ErrForbidden", err)
+	}
+	if len(repo.created) != 0 {
+		t.Fatal("the order was created for another seller")
+	}
+}
+
+func TestRfqService_CreateManual_LetsAnAdminLeaveTheOrderUnassigned(t *testing.T) {
+	repo := &fakeRfqRepoManual{channelID: manualChannelID, owned: 1}
+	svc, _ := manualHarness(repo)
+
+	if _, err := svc.CreateManual(context.Background(), branchTenant(),
+		domain.NewRfq{Items: manualItems()}); err != nil {
+		t.Fatalf("CreateManual() = %v, want no error", err)
+	}
+	if repo.created[0].SellerID != nil {
+		t.Fatalf("seller = %v, want an admin's order left unassigned", *repo.created[0].SellerID)
+	}
+}

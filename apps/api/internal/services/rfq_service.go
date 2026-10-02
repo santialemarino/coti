@@ -845,6 +845,15 @@ func (s *RFQService) CreateManual(
 	if err != nil {
 		return nil, err
 	}
+	// A seller's order is theirs: they claim for themselves everywhere else, never for another.
+	if !tenant.IsAdmin() {
+		if in.SellerID != nil && *in.SellerID != tenant.UserID {
+			return nil, fmt.Errorf("%w: a seller can only assign an order to themselves",
+				domain.ErrForbidden)
+		}
+		self := tenant.UserID
+		in.SellerID = &self
+	}
 
 	var creation *domain.RfqCreation
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
