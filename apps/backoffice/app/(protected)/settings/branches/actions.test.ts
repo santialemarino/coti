@@ -64,6 +64,7 @@ describe('createBranch', () => {
     expect(requestSent()?.body).toEqual({
       name: 'Casa Central',
       address: 'Av. Siempre Viva 742',
+      email: '',
       default_expiry_days: 14,
     });
   });
