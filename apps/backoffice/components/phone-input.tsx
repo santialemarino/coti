@@ -58,7 +58,7 @@ function mobileAlternative(country: CountryCode, national: string) {
   return { international: mobile.formatInternational(), national: mobile.nationalNumber };
 }
 
-// Whatever the seller types with — spaces, dashes, dots, brackets — only the digits are kept.
+// What a phone is typed with: digits and the usual separators. The number settles to digits on blur.
 const PHONE_CHARACTERS = /[^\d\s+\-().]/g;
 
 /*
