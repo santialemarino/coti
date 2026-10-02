@@ -20,7 +20,9 @@ deployed one will. There is no stand-in that accepts a file and stores it nowher
 adapter exists only inside `fake_test.go`, where no binary can reach it.
 
 Selecting `spaces` with a credential missing fails at startup, every blank key named in the same
-pass rather than one restart per problem.
+pass rather than one restart per problem. A deployment needs `spaces` as soon as it takes file
+orders: the attachment sweep runs in its own container, which a `local` disk does not reach — see
+[deployment.md](deployment.md).
 
 ## The content type travels with the object
 

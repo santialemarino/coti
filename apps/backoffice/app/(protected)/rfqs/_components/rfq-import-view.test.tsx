@@ -7,7 +7,10 @@ import { RfqListProvider } from '@/app/(protected)/rfqs/_components/rfq-list-con
 import type { Channel } from '@/lib/api/channels';
 import messages from '@/translations/es.json';
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock('next/navigation', () => ({
+  unstable_rethrow: vi.fn(),
+  useRouter: () => ({ push: vi.fn() }),
+}));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 vi.mock('@/lib/api/channels', () => ({ listChannels: vi.fn() }));
 vi.mock('@/lib/api/rfqs-client', () => ({ createFileRfqDraft: vi.fn() }));

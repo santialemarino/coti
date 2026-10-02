@@ -1,16 +1,33 @@
 import { NextRequest } from 'next/server';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-vi.mock('@/lib/auth/branch', () => ({ clearActiveBranch: vi.fn() }));
+import { GET } from '@/app/branch-reset/route';
+import { BRANCH_COOKIE } from '@/lib/auth/tokens';
 
-const { clearActiveBranch } = await import('@/lib/auth/branch');
-const { GET } = await import('@/app/branch-reset/route');
+function expectBranchCookieCleared(response: Response) {
+  const cleared = response.headers.get('set-cookie') ?? '';
+  expect(cleared).toContain(`${BRANCH_COOKIE}=;`);
+  expect(cleared).toContain('Path=/');
+  expect(cleared).toMatch(/Expires=Thu, 01 Jan 1970/);
+}
 
 describe('GET /branch-reset', () => {
   it('drops the branch cookie and sends the caller home', async () => {
     const response = await GET(new NextRequest('https://backoffice.test/branch-reset'));
 
-    expect(clearActiveBranch).toHaveBeenCalledTimes(1);
-    expect(response.headers.get('location')).toBe('https://backoffice.test/');
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('/');
+    expectBranchCookieCleared(response);
+  });
+
+  // Followed home as flight data, the shell the router keeps would still name the dropped branch.
+  it('answers a client navigation with no flight data, so the page loads in full', async () => {
+    const response = await GET(
+      new NextRequest('https://backoffice.test/branch-reset', { headers: { rsc: '1' } }),
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('location')).toBeNull();
+    expectBranchCookieCleared(response);
   });
 });

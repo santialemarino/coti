@@ -1,9 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 import {
+  LOCKED_REASON,
   LOGIN_ROUTE,
   NEXT_PARAM,
   PUBLIC_ROUTES,
+  REASON_PARAM,
   ROUTES,
   SIGNED_OUT_ONLY_ROUTES,
 } from '@/config/routes';
@@ -66,14 +68,18 @@ export async function proxy(request: NextRequest) {
       return response;
     }
     if (renewed.status === 0) return NextResponse.next();
+    if (renewed.code === 'ACCOUNT_LOCKED') {
+      return redirectToLogin(request, pathname + search, LOCKED_REASON);
+    }
   }
 
   return redirectToLogin(request, pathname + search);
 }
 
-function redirectToLogin(request: NextRequest, from: string) {
+function redirectToLogin(request: NextRequest, from: string, reason?: string) {
   const target = new URL(LOGIN_ROUTE, request.url);
   if (from !== ROUTES.home) target.searchParams.set(NEXT_PARAM, from);
+  if (reason) target.searchParams.set(REASON_PARAM, reason);
 
   const response = NextResponse.redirect(target);
   // Clearing is what stops the bounce: a surviving unexpired token would send the

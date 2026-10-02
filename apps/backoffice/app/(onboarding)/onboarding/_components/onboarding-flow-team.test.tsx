@@ -8,6 +8,7 @@ import type { AccountUser } from '@/lib/api/users';
 import messages from '@/translations/es.json';
 
 vi.mock('next/navigation', () => ({
+  unstable_rethrow: vi.fn(),
   useRouter: () => ({ refresh: vi.fn(), replace: vi.fn(), push: vi.fn() }),
 }));
 vi.mock('@/components/catalog-import', () => ({

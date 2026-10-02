@@ -189,10 +189,40 @@ func (f *fakeBranchExistence) ExistAllInAccount(
 }
 
 // fakeUserLinks is the link surface plus the latest invite per user, which a test seeds to
-// put a user in a given invite state.
+// put a user in a given invite state. redeemedMeanwhile and resentMeanwhile stand for a redeem or
+// another resend that committed between the read of the latest invite and the retiring of it.
 type fakeUserLinks struct {
 	fakeAuthTokens
-	latest map[uuid.UUID]domain.AuthToken
+	latest            map[uuid.UUID]domain.AuthToken
+	redeemedMeanwhile bool
+	resentMeanwhile   bool
+	// onRetire runs as the outstanding invites are retired, for a write that committed just before.
+	onRetire func()
+}
+
+func (f *fakeUserLinks) InvalidateActive(
+	ctx context.Context, q repository.Querier, accountID, userID uuid.UUID, tokenType domain.AuthTokenType,
+) (int64, error) {
+	if _, err := f.fakeAuthTokens.InvalidateActive(ctx, q, accountID, userID, tokenType); err != nil {
+		return 0, err
+	}
+	if f.onRetire != nil {
+		f.onRetire()
+	}
+	latest, ok := f.latest[userID]
+	switch {
+	case !ok || latest.Type != tokenType || latest.ConsumedAt != nil:
+		return 0, nil
+	case f.redeemedMeanwhile:
+		at := fixedNow
+		latest.ConsumedAt = &at
+		f.latest[userID] = latest
+		return 0, nil
+	case f.resentMeanwhile:
+		f.latest[userID] = outstandingInvite(userID, fixedNow.Add(testInviteTTL))
+		return 0, nil
+	}
+	return 1, nil
 }
 
 func (f *fakeUserLinks) LatestInvitesByUsers(
@@ -467,7 +497,25 @@ func TestUserService_AnAdminCannotChangeTheirOwnRole(t *testing.T) {
 	}
 }
 
-// Editing your own profile stays allowed — only the role and the active flag are guarded.
+// Their own address goes through the self-service change, which re-checks the password; an admin
+// session left open must not be enough to move the account's way back in to another mailbox.
+func TestUserService_AnAdminCannotChangeTheirOwnEmail(t *testing.T) {
+	h := newUserHarness(storedAdmin())
+
+	_, err := h.svc.UpdateUser(context.Background(), adminTenant(), testUserID, domain.UserUpdate{
+		Name: "Admin", Email: "otra@corralon.test", Role: domain.UserRoleAdmin,
+	})
+	if !errors.Is(err, domain.ErrInvalidInput) || domain.CodeOf(err) != domain.CodeSelfEmailChange {
+		t.Fatalf("UpdateUser(self, new email) = %v (%s), want %s", err, domain.CodeOf(err),
+			domain.CodeSelfEmailChange)
+	}
+	if len(h.users.updated) != 0 || len(h.links.invalidatedAll) != 0 {
+		t.Error("the self email change reached the repository")
+	}
+}
+
+// Editing your own profile stays allowed — only the role, the address and the active flag are
+// guarded.
 func TestUserService_AnAdminMayEditTheirOwnProfile(t *testing.T) {
 	h := newUserHarness(storedAdmin())
 
@@ -750,6 +798,10 @@ func TestUserService_ResendInvite(t *testing.T) {
 			h.users.stored[otherUserID].IsActive = false
 			h.links.latest[otherUserID] = outstandingInvite(otherUserID, fixedNow.Add(time.Hour))
 		}, domain.CodeInviteNotPending, domain.ErrInvalidInput},
+		{"an invite redeemed while the resend waited on it", func(h *userHarness) {
+			h.links.latest[otherUserID] = outstandingInvite(otherUserID, fixedNow.Add(time.Hour))
+			h.links.redeemedMeanwhile = true
+		}, domain.CodeInviteNotPending, domain.ErrInvalidInput},
 	}
 	for _, tc := range refusals {
 		t.Run(tc.name+" is refused", func(t *testing.T) {
@@ -765,6 +817,34 @@ func TestUserService_ResendInvite(t *testing.T) {
 			}
 		})
 	}
+
+	// A second admin moved the address after the resend read the user: the new link follows it.
+	t.Run("a resend mails the address the user holds once the old invite is retired", func(t *testing.T) {
+		h := newUserHarness(storedAdmin(), storedSeller())
+		h.links.latest[otherUserID] = outstandingInvite(otherUserID, fixedNow.Add(time.Hour))
+		h.links.onRetire = func() { h.users.stored[otherUserID].Email = "movida@corralon.test" }
+
+		if err := h.svc.ResendInvite(context.Background(), adminTenant(), otherUserID); err != nil {
+			t.Fatalf("ResendInvite() = %v, want no error", err)
+		}
+		if len(h.mail.sent) != 1 || h.mail.sent[0].To != "movida@corralon.test" {
+			t.Fatalf("mailed %v, want one invite to the current address", h.mail.sent)
+		}
+	})
+
+	// A double click or a second admin: the other resend has already mailed a live link.
+	t.Run("a resend that loses to another resend mails nothing and succeeds", func(t *testing.T) {
+		h := newUserHarness(storedAdmin(), storedSeller())
+		h.links.latest[otherUserID] = outstandingInvite(otherUserID, fixedNow.Add(time.Hour))
+		h.links.resentMeanwhile = true
+
+		if err := h.svc.ResendInvite(context.Background(), adminTenant(), otherUserID); err != nil {
+			t.Fatalf("ResendInvite() = %v, want no error", err)
+		}
+		if len(h.links.created) != 0 || len(h.mail.sent) != 0 {
+			t.Errorf("minted %d and mailed %d, want neither", len(h.links.created), len(h.mail.sent))
+		}
+	})
 
 	t.Run("console mail is refused before anything is read", func(t *testing.T) {
 		h := newUserHarnessDelivering(false, storedAdmin(), storedSeller())

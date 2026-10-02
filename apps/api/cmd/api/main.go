@@ -195,6 +195,7 @@ func run() error {
 	// What a MATCHED line clears to read as HIGH, on the 0..1 scale the item carries its score on.
 	highConfidence := decimal.NewFromInt(int64(cfg.Catalog.MatchHighConfidencePercent)).
 		Div(decimal.NewFromInt(100))
+	rateLimit := deliveryhttp.RateLimit{Limiter: limiter, Identify: identifyForRateLimit(tokenService)}
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
 			Health:       handler.NewHealthHandler(db),
@@ -204,7 +205,7 @@ func run() error {
 			User: handler.NewUserHandler(userService, handler.SessionPolicy{
 				RequireVerifiedEmail: cfg.Auth.RequireVerifiedEmail,
 				MailDelivers:         cfg.Mail.Delivers(),
-			}),
+			}, deliveryhttp.MailAllowance(cfg, rateLimit)),
 			Branch:        handler.NewBranchHandler(branchService),
 			Rfq:           handler.NewRfqHandler(rfqService, highConfidence),
 			Channel:       handler.NewChannelHandler(channelService),
@@ -223,7 +224,7 @@ func run() error {
 			File:          fileHandler(objectStorage),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
-		deliveryhttp.RateLimit{Limiter: limiter, Identify: identifyForRateLimit(tokenService)},
+		rateLimit,
 	)
 
 	server := &http.Server{

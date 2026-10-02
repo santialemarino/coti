@@ -20,7 +20,7 @@ type authTokenRepository interface {
 	GetByHashCrossAccount(ctx context.Context, q repository.Querier, hash string) (*domain.AuthToken, error)
 	Create(ctx context.Context, q repository.Querier, t domain.AuthToken) error
 	Consume(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) error
-	InvalidateActive(ctx context.Context, q repository.Querier, accountID, userID uuid.UUID, tokenType domain.AuthTokenType) error
+	InvalidateActive(ctx context.Context, q repository.Querier, accountID, userID uuid.UUID, tokenType domain.AuthTokenType) (int64, error)
 	InvalidateAllForUser(ctx context.Context, q repository.Querier, accountID, userID uuid.UUID) error
 }
 
@@ -68,11 +68,20 @@ func (i *authLinkIssuer) mint(
 	ctx context.Context, q repository.Querier, user domain.AppUser,
 	tokenType domain.AuthTokenType, ttl time.Duration,
 ) (string, error) {
-	raw, err := i.newSecret()
-	if err != nil {
+	if _, err := i.tokens.InvalidateActive(ctx, q, user.AccountID, user.ID, tokenType); err != nil {
 		return "", err
 	}
-	if err := i.tokens.InvalidateActive(ctx, q, user.AccountID, user.ID, tokenType); err != nil {
+	return i.store(ctx, q, user, tokenType, ttl)
+}
+
+// store saves a fresh link in the caller's transaction without retiring anything, for a caller
+// that has already retired the previous ones itself.
+func (i *authLinkIssuer) store(
+	ctx context.Context, q repository.Querier, user domain.AppUser,
+	tokenType domain.AuthTokenType, ttl time.Duration,
+) (string, error) {
+	raw, err := i.newSecret()
+	if err != nil {
 		return "", err
 	}
 	if err := i.tokens.Create(ctx, q, domain.AuthToken{

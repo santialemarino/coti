@@ -10,7 +10,7 @@ import messages from '@/translations/es.json';
 
 const router = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
 
-vi.mock('next/navigation', () => ({ useRouter: () => router }));
+vi.mock('next/navigation', () => ({ unstable_rethrow: vi.fn(), useRouter: () => router }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 // The create dialog pulls in the import/manual views; it is not what these tests exercise.
 vi.mock('@/app/(protected)/rfqs/_components/create-rfq-dialog', () => ({

@@ -1,5 +1,8 @@
 import 'server-only';
 
+import { redirect } from 'next/navigation';
+
+import { ROUTES } from '@/config/routes';
 import { ApiError, codeForStatus, knownErrorCode } from '@/lib/api/errors';
 import { getActiveBranchId } from '@/lib/auth/branch';
 import { clientAddress } from '@/lib/auth/client-address';
@@ -37,7 +40,11 @@ export interface ApiRequest {
 
 export async function apiRequest<T>(request: ApiRequest): Promise<T> {
   const response = await apiFetch(request);
-  if (!response.ok) throw await toApiError(response);
+  if (!response.ok) {
+    const error = await toApiError(response);
+    if (isStaleBranchRead(request, error)) redirect(ROUTES.branchReset);
+    throw error;
+  }
 
   // Emptiness is read off the body rather than off the status: the API answers 204
   // for a completed write and 202 for an accepted one, and neither carries a body.
@@ -115,6 +122,16 @@ export async function toApiError(response: Response): Promise<ApiError> {
     response.status,
     detail || undefined,
   );
+}
+
+/*
+ * A read scoped to the cookie's branch, refused because that branch is gone: on a soft navigation
+ * the layout that checks the cookie does not run again, so the page drops it here instead. A write
+ * still throws, so the action that made it can say why.
+ */
+function isStaleBranchRead(request: ApiRequest, error: ApiError): boolean {
+  const { method = 'GET', branchScoped = true, branchId } = request;
+  return error.code === 'BRANCH_NOT_ACCESSIBLE' && method === 'GET' && branchScoped && !branchId;
 }
 
 function buildQuery(query: ApiRequest['query']): string {

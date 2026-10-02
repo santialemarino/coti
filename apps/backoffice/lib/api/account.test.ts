@@ -78,6 +78,6 @@ describe('getAccount', () => {
 
     await getAccount();
 
-    expect(apiRequest).toHaveBeenCalledWith({ path: '/v1/account' });
+    expect(apiRequest).toHaveBeenCalledWith({ path: '/v1/account', branchScoped: false });
   });
 });

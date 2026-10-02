@@ -20,8 +20,8 @@ function translator(namespace: string) {
       .reduce<unknown>((node, segment) => (node as Record<string, unknown>)?.[segment], messages);
 }
 
-async function renderPage() {
-  return render(await LoginPage({ searchParams: Promise.resolve({}) }));
+async function renderPage(params: Record<string, string> = {}) {
+  return render(await LoginPage({ searchParams: Promise.resolve(params) }));
 }
 
 beforeEach(() => {
@@ -49,5 +49,18 @@ describe('LoginPage', () => {
     const link = view.getByRole('link', { name: copy.forgotPassword });
 
     expect(link.getAttribute('href')).toBe(ROUTES.forgotPassword);
+  });
+
+  // A session ended by a lockout arrives here with the reason, and the screen says it.
+  it('says the account is locked when the session ended for that', async () => {
+    const view = await renderPage({ reason: 'locked' });
+
+    expect(view.getByText(copy.locked)).toBeTruthy();
+  });
+
+  it('says nothing about a lock otherwise', async () => {
+    const view = await renderPage({ reason: 'other' });
+
+    expect(view.queryByText(copy.locked)).toBeNull();
   });
 });

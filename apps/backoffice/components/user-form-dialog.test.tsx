@@ -3,6 +3,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, it, vi } from 'vitest';
 
 import { UserFormDialog } from '@/components/user-form-dialog';
+import { ROUTES } from '@/config/routes';
 import messages from '@/translations/es.json';
 
 describe('UserFormDialog', () => {
@@ -56,5 +57,71 @@ describe('UserFormDialog', () => {
     expect(screen.queryByRole('radio', { name: 'Mandarle una invitación' })).toBeNull();
     expect(screen.getByText(messages.users.access.passwordOnly)).toBeTruthy();
     expect(document.querySelector('input[name="password"]')).toBeTruthy();
+  });
+
+  // The API refuses an admin's own address change from here, so the field is not offered at all.
+  it('shows an admin their own address as text, with the way to change it', () => {
+    render(
+      <NextIntlClientProvider locale="es" messages={messages}>
+        <UserFormDialog
+          open
+          onOpenChange={vi.fn()}
+          mode="edit"
+          user={{
+            id: 'u1',
+            name: 'Ana Admin',
+            email: 'ana@corralon.test',
+            role: 'ADMIN',
+            isActive: true,
+            branchIds: [],
+            inviteStatus: null,
+            lastLoginAt: null,
+          }}
+          assigned={[]}
+          branches={[]}
+          isSelf
+          mailDelivery
+          onSubmit={vi.fn()}
+        />
+      </NextIntlClientProvider>,
+    );
+
+    expect(screen.queryByRole('textbox', { name: /Correo electrónico/ })).toBeNull();
+    expect(screen.getByText('ana@corralon.test')).toBeTruthy();
+    expect(
+      screen.getByRole('link', { name: messages.users.email.ownAddressLink }).getAttribute('href'),
+    ).toBe(ROUTES.emailSettings);
+  });
+
+  it("lets an admin edit another user's address", () => {
+    render(
+      <NextIntlClientProvider locale="es" messages={messages}>
+        <UserFormDialog
+          open
+          onOpenChange={vi.fn()}
+          mode="edit"
+          user={{
+            id: 'u2',
+            name: 'Vera Vendedora',
+            email: 'vera@corralon.test',
+            role: 'SELLER',
+            isActive: true,
+            branchIds: [],
+            inviteStatus: null,
+            lastLoginAt: null,
+          }}
+          assigned={[]}
+          branches={[]}
+          isSelf={false}
+          mailDelivery
+          onSubmit={vi.fn()}
+        />
+      </NextIntlClientProvider>,
+    );
+
+    expect(
+      (screen.getByRole('textbox', { name: /Correo electrónico/ }) as HTMLInputElement).value,
+    ).toBe('vera@corralon.test');
+    expect(screen.queryByRole('link', { name: messages.users.email.ownAddressLink })).toBeNull();
   });
 });

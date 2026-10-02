@@ -173,6 +173,11 @@ func (s *PasswordService) Reset(ctx context.Context, rawToken, next string) erro
 		if invalidateErr := s.tokens.InvalidateAllForUser(ctx, q, stored.AccountID, stored.UserID); invalidateErr != nil {
 			return invalidateErr
 		}
+		// An invite resend that held a link the statement above waited on committed its new invite
+		// outside that statement's snapshot; a second statement sees it.
+		if _, retireErr := s.tokens.InvalidateActive(ctx, q, stored.AccountID, stored.UserID, domain.AuthTokenTypeInvite); retireErr != nil {
+			return retireErr
+		}
 		_, endErr := s.endSessions(ctx, q, stored.AccountID, stored.UserID)
 		return endErr
 	})

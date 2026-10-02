@@ -233,6 +233,7 @@ func (s *UserService) ResendInvite(ctx context.Context, tenant domain.Tenant, id
 
 	var user *domain.AppUser
 	var invite string
+	resentMeanwhile := false
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		u, getErr := s.users.GetByID(ctx, q, tenant.AccountID, id)
 		if getErr != nil {
@@ -247,11 +248,40 @@ func (s *UserService) ResendInvite(ctx context.Context, tenant domain.Tenant, id
 				fmt.Errorf("%w: the user has no outstanding invite", domain.ErrInvalidInput))
 		}
 		user = u
-		var mintErr error
-		invite, mintErr = s.invites.mint(ctx, q, *u, domain.AuthTokenTypeInvite, s.inviteTTL)
-		return mintErr
+		// The read above can predate a redeem or another resend still in flight; retiring waits on
+		// that row, and nothing left to retire means one of them won. A fresh read tells which.
+		retired, retireErr := s.tokens.InvalidateActive(ctx, q, tenant.AccountID, id, domain.AuthTokenTypeInvite)
+		if retireErr != nil {
+			return retireErr
+		}
+		if retired == 0 {
+			latest, latestErr := s.tokens.LatestInvitesByUsers(ctx, q, tenant.AccountID, []uuid.UUID{id})
+			if latestErr != nil {
+				return latestErr
+			}
+			if s.inviteStatus(id, latest) != domain.InviteStatusNone {
+				resentMeanwhile = true
+				return nil
+			}
+			return domain.WithCode(domain.CodeInviteNotPending,
+				fmt.Errorf("%w: the invite was redeemed meanwhile", domain.ErrInvalidInput))
+		}
+		// An address change committed before the retire minted the invite just retired; the link
+		// goes to whatever address the user holds now.
+		current, getErr := s.users.GetByID(ctx, q, tenant.AccountID, id)
+		if getErr != nil {
+			return getErr
+		}
+		user = current
+		var storeErr error
+		invite, storeErr = s.invites.store(ctx, q, *current, domain.AuthTokenTypeInvite, s.inviteTTL)
+		return storeErr
 	}); err != nil {
 		return err
+	}
+	// The concurrent resend already mailed a live link; a second one would only retire it.
+	if resentMeanwhile {
+		return nil
 	}
 	s.invites.deliver(ctx, *user, domain.AuthTokenTypeInvite, s.inviteMail(*user, invite))
 	return nil
@@ -286,6 +316,11 @@ func (s *UserService) UpdateUser(
 		if isSelf && in.Role != current.Role {
 			return domain.WithCode(domain.CodeSelfRoleChange,
 				fmt.Errorf("%w: an admin cannot change their own role", domain.ErrInvalidInput))
+		}
+		// Their own address changes through the self-service flow, which re-checks the password.
+		if isSelf && emailChanged(current.Email, in.Email) {
+			return domain.WithCode(domain.CodeSelfEmailChange,
+				fmt.Errorf("%w: an admin changes their own email from their account settings", domain.ErrInvalidInput))
 		}
 		if assignErr := s.assertBranchesInAccount(ctx, q, tenant.AccountID, branchIDs); assignErr != nil {
 			return assignErr

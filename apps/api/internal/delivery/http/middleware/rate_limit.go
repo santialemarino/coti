@@ -43,19 +43,33 @@ type RateLimitOptions struct {
 	Identify func(token string) (string, bool)
 }
 
+// Allowance reports whether a caller may go on, and has already answered 429 when not. It is
+// the RateLimit check for a handler that only counts some requests, once it has read the body.
+type Allowance func(c *gin.Context) bool
+
 // RateLimit counts a caller's requests and refuses them past the limit. The key is the
 // authenticated user when a bearer is readable, and the client address when it is not.
 func RateLimit(limiter Limiter, opts RateLimitOptions) gin.HandlerFunc {
+	allow := NewAllowance(limiter, opts)
+	return func(c *gin.Context) {
+		if allow(c) {
+			c.Next()
+		}
+	}
+}
+
+// NewAllowance builds the check RateLimit runs, counting into the same bucket for the same
+// scope.
+func NewAllowance(limiter Limiter, opts RateLimitOptions) Allowance {
 	if !opts.Enabled || opts.Limit <= 0 {
-		return func(c *gin.Context) { c.Next() }
+		return func(*gin.Context) bool { return true }
 	}
 
-	return func(c *gin.Context) {
+	return func(c *gin.Context) bool {
 		key := opts.Scope + ":" + callerKey(c, opts)
 		allowed, retryIn := limiter.Allow(c.Request.Context(), key, opts.Limit, opts.Window)
 		if allowed {
-			c.Next()
-			return
+			return true
 		}
 
 		retryAfter := int(math.Ceil(retryIn.Seconds()))
@@ -71,6 +85,7 @@ func RateLimit(limiter Limiter, opts RateLimitOptions) gin.HandlerFunc {
 			Code:              string(domain.CodeRateLimited),
 			RetryAfterSeconds: retryAfter,
 		})
+		return false
 	}
 }
 

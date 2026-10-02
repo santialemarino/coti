@@ -18,6 +18,7 @@ vi.mock('@/lib/auth/session', async (importOriginal) => ({
  * on past the redirect, and the assertion that matters here is what it never reaches.
  */
 vi.mock('next/navigation', () => ({
+  unstable_rethrow: vi.fn(),
   redirect: vi.fn((path: string) => {
     throw new RedirectError(path);
   }),

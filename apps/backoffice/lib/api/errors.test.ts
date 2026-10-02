@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -20,6 +21,18 @@ describe('errorCodeOf', () => {
       expect(errorCodeOf(thrown)).toBe('INTERNAL');
     },
   );
+
+  // An action words a refusal from inside a catch; a redirect thrown there has to keep going.
+  it('rethrows a redirect rather than calling it INTERNAL', () => {
+    let thrown: unknown;
+    try {
+      redirect('/session-ended?reason=locked');
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(() => errorCodeOf(thrown)).toThrow(thrown as Error);
+  });
 });
 
 describe('knownErrorCode', () => {

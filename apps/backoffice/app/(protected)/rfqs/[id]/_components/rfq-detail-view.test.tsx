@@ -15,6 +15,7 @@ const router = vi.hoisted(() => ({
 }));
 
 vi.mock('next/navigation', () => ({
+  unstable_rethrow: vi.fn(),
   useRouter: () => router,
 }));
 

@@ -110,6 +110,7 @@ a code from the sentinel an error wraps — `NOT_FOUND`, `CONFLICT`, `INVALID_IN
 | `LAST_ACTIVE_BRANCH`      | 422    | closing the account's only active branch                                                |
 | `SELF_DEACTIVATION`       | 422    | an admin deactivating themselves                                                        |
 | `SELF_ROLE_CHANGE`        | 422    | an admin changing their own role                                                        |
+| `SELF_EMAIL_CHANGE`       | 422    | an admin changing their own email from user administration, not their account settings  |
 | `PASSWORD_POLICY`         | 422    | a password that does not clear `domain.PasswordPolicy`                                  |
 | `INVALID_LINK`            | 401    | a mailed link that is unknown, expired, used or wrong-typed                             |
 | `INVITE_NOT_PENDING`      | 422    | resending an invite to a user who has already chosen a password, or is deactivated      |

@@ -16,11 +16,14 @@ before the first deploy and the rest are not; see
 | -------------------- | ----------------------------------------------------- | --------------------------------------------- |
 | **App Platform**     | Compute. Runs the Docker images.                      | **Yes** — this is the hosting.                |
 | **Managed Postgres** | The database.                                         | **Yes**                                       |
-| **Spaces**           | S3-compatible object storage for RFQ attachment files | Only once `STORAGE_PROVIDER=spaces` is chosen |
+| **Spaces**           | S3-compatible object storage for RFQ attachment files | **Yes, for any order that arrives as a file** |
 
-Spaces is not on the critical path: `STORAGE_PROVIDER` defaults to `local`, the local adapter
-works, and the Spaces adapter exists but has never run against a real bucket. See
-[file-storage.md](file-storage.md).
+Spaces is on the critical path for file orders. Under `local` a file lands on the disk of the `api`
+container that received it, which a redeploy wipes and which `attachment-extraction` — a container
+of its own that downloads every file it reads — never sees. The spec still ships
+`STORAGE_PROVIDER=local` on both, so the app boots on its boot secrets alone and text orders work;
+switch both to `spaces` together once the bucket's five keys are in. The Spaces adapter has never
+run against a real bucket. See [file-storage.md](file-storage.md).
 
 ## Nine components, one app
 
@@ -211,17 +214,18 @@ is a cross-account leak rather than a misconfiguration. Give the two roles genui
 
 ## Secrets the deploy has to supply
 
-Each is a `type: SECRET` entry in the spec with no committed value, except the last two: nothing
-selects Spaces, so the spec declares neither them nor the three non-secret keys that come with them.
-Choosing `spaces` means adding all five.
+Each is a `type: SECRET` entry in the spec with no committed value. The five `STORAGE_*` bucket keys
+are declared on `api` and on `attachment-extraction`, two of them credentials and the other three
+kept out of a public file: `STORAGE_ENDPOINT`, `STORAGE_REGION` (`us-east-1` whichever datacenter
+holds the Space) and `STORAGE_BUCKET`.
 
 **The API needs the first four; the correction-learning job also needs the OpenAI key.**
-`config.Load()` refuses to start when
-a capability is switched on and its credential is empty, so the committed spec ships every optional
-one **off** — `AI_*_PROVIDER` at `disabled`, `MAIL_PROVIDER` at `console`,
-`RATE_LIMIT_TRUSTED_PROXY_HOPS` at `0`. Fill a secret, then turn its capability on; doing it the
-other way round produces a deploy that never starts, and `ci.deploy-spec.yml` boots the image on the
-spec's own settings to keep that true.
+`config.Load()` refuses to start when a capability is switched on and its credential is empty, so
+the committed spec ships every optional one **off** — `AI_*_PROVIDER` at `disabled`,
+`MAIL_PROVIDER` at `console`, `STORAGE_PROVIDER` at `local`, `RATE_LIMIT_TRUSTED_PROXY_HOPS` at
+`0`. Fill a secret, then turn its capability on; doing it the other way round produces a deploy
+that never starts, and `ci.deploy-spec.yml` boots the image on the spec's own settings to keep that
+true.
 
 | Key                             | Needed when                                                        | Shape                               |
 | ------------------------------- | ------------------------------------------------------------------ | ----------------------------------- |
@@ -234,8 +238,8 @@ spec's own settings to keep that true.
 | `AI_OPENAI_API_KEY`             | `AI_EMBEDDINGS_PROVIDER` or `AI_TRANSCRIPTION_PROVIDER` = `openai` | Provider key                        |
 | `MAIL_SMTP_USERNAME`            | `MAIL_PROVIDER=smtp`                                               | The mailbox                         |
 | `MAIL_SMTP_PASSWORD`            | `MAIL_PROVIDER=smtp`                                               | A Google App Password               |
-| `STORAGE_ACCESS_KEY`            | `STORAGE_PROVIDER=spaces`                                          | Spaces key                          |
-| `STORAGE_SECRET_KEY`            | `STORAGE_PROVIDER=spaces`                                          | Spaces secret                       |
+| `STORAGE_ACCESS_KEY`            | `STORAGE_PROVIDER=spaces`, on `api` and `attachment-extraction`    | Spaces key                          |
+| `STORAGE_SECRET_KEY`            | `STORAGE_PROVIDER=spaces`, on `api` and `attachment-extraction`    | Spaces secret                       |
 
 Three more are marked `SECRET` in the spec without being credentials, purely to keep a value out of
 a public file: `MAIL_SMTP_HOST`, `MAIL_FROM_ADDRESS` — which must be the mailbox itself or Google
@@ -252,6 +256,7 @@ Three of them behave differently from the rest and it is worth knowing which:
   link being forged, so a deployment that shares it shares every stored file.
 
 The switches to flip once their secrets are in, none of which the first deploy needs:
+`STORAGE_PROVIDER=spaces` on `api` and `attachment-extraction` together,
 `AI_LLM_PROVIDER=anthropic`, `AI_EMBEDDINGS_PROVIDER` and `AI_TRANSCRIPTION_PROVIDER` to `openai`,
 `MAIL_PROVIDER=smtp` with `MAIL_FROM_ADDRESS` (which must be the mailbox itself or Google rewrites
 the `From` header), and `RATE_LIMIT_TRUSTED_PROXY_HOPS=1`.
@@ -290,9 +295,13 @@ The full list of keys, with defaults and what each bounds, is in the four `.env.
    it on one leaves the other calling `http://localhost:8000` from the visitor's browser.
    `STORAGE_LOCAL_API_BASE_URL` and `WEB_BACKOFFICE_URL` need no second pass — they are bound to
    `${APP_URL}` and resolve at runtime.
-8. Fill the optional secrets and flip their switches: mail, then the two AI vendors, then the
-   rate-limit proxy pair. Each is a restart, not a rebuild. `AI_EMBEDDINGS_PROVIDER` is declared
-   on `api` and on `catalog-embedding`: turn it on on both, or the job embeds nothing.
+8. Fill the optional secrets and flip their switches: the Spaces bucket (before the first file
+   order), mail, then the two AI vendors, then the rate-limit proxy pair. Each is a restart, not a
+   rebuild. `AI_EMBEDDINGS_PROVIDER` is declared on `api` and on `catalog-embedding`: turn it on on
+   both, or the job embeds nothing.
+   `attachment-extraction` declares no AI keys at all and runs on the defaults, which are off: the
+   language model, embeddings and their keys have to be added to it too, or a file order the sweep
+   picks up fails at extraction even with AI on everywhere else.
 9. Register the first account and let `catalog-embedding` embed its catalog within 15 minutes, or
    run `/api/bin/catalog-embed --account <uuid>` from a console on the api component to do it now
    (it is also what `--refresh-all` after a model change needs), and build the vector index once
