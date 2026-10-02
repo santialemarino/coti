@@ -51,7 +51,14 @@ function jar(initial: Record<string, string> = {}) {
 
 function reachable(...ids: string[]) {
   vi.mocked(getBranches).mockResolvedValue(
-    ids.map((id) => ({ id, name: id, address: null, defaultExpiryDays: 7, isActive: true })),
+    ids.map((id) => ({
+      id,
+      name: id,
+      address: null,
+      email: null,
+      defaultExpiryDays: 7,
+      isActive: true,
+    })),
   );
 }
 
@@ -93,6 +100,17 @@ describe('the active branch cookie', () => {
    * resolved for them: with no cookie the API would read account-wide-set for them anyway, and
    * this is what makes the disabled switcher name it and X-Branch-Id travel on their reads.
    */
+  // The branch list sits behind the verified-email gate, so asking for it would answer
+  // EMAIL_NOT_VERIFIED and fail the very action meant to resend the verification mail.
+  it('never asks for the branches of a seller who has not verified their email', async () => {
+    jar();
+    reachable(VILLA_BOSCH);
+    vi.mocked(getSession).mockResolvedValue({ ...seller(), emailVerified: false });
+
+    await expect(getActiveBranchId()).resolves.toBeUndefined();
+    expect(getBranches).not.toHaveBeenCalled();
+  });
+
   it('resolves the one reachable branch for a seller who never chose', async () => {
     jar();
     reachable(VILLA_BOSCH);

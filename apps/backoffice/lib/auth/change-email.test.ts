@@ -42,6 +42,7 @@ describe('changeEmail', () => {
     expect(apiRequest).toHaveBeenCalledWith({
       path: '/v1/auth/change-email',
       method: 'POST',
+      branchScoped: false,
       body: { new_email: VALUES.newEmail, current_password: VALUES.currentPassword },
     });
   });

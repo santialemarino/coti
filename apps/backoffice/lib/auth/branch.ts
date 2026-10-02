@@ -27,7 +27,8 @@ export async function getActiveBranchId(): Promise<string | undefined> {
   if (selected) return selected;
 
   const session = await getSession();
-  if (session?.role !== SELLER_ROLE) return undefined;
+  // An unverified seller cannot read their branches yet, and nothing they can do needs one.
+  if (session?.role !== SELLER_ROLE || !session.emailVerified) return undefined;
 
   const branches = await getBranches();
   return branches.length === 1 ? branches[0]?.id : undefined;

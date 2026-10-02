@@ -34,6 +34,7 @@ export async function changeEmail(values: ChangeEmailValues): Promise<ChangeEmai
     await apiRequest({
       path: '/v1/auth/change-email',
       method: 'POST',
+      branchScoped: false,
       body: { new_email: parsed.data.newEmail, current_password: parsed.data.currentPassword },
     });
     return { done: true };

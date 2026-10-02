@@ -20,6 +20,7 @@ export async function confirmEmail(
       path: '/v1/public/auth/verify-email',
       method: 'POST',
       authenticated: false,
+      branchScoped: false,
       body: { token },
     });
     return { done: true };
@@ -47,6 +48,7 @@ export async function resendVerification(email: string): Promise<ResendVerificat
       path: '/v1/public/auth/resend-verification',
       method: 'POST',
       authenticated: false,
+      branchScoped: false,
       body: { email },
     });
     return { sent: true };
