@@ -90,10 +90,8 @@ describe('ProtectedLayout', () => {
     await expect(redirectedTo()).resolves.toBe(ROUTES.sessionEnded);
   });
 
-  /*
-   * The production deadlock: the API leaves the requirement off (mail is console there), but the
-   * layout used to send every unconfirmed caller to a screen whose link only ever reached a log.
-   */
+  // With the requirement off — always the case under console mail — the confirmation screen is a
+  // suggestion, and holding the caller there would strand them behind a link that cannot arrive.
   it('lets an unconfirmed caller in while the installation does not require a confirmation', async () => {
     vi.mocked(getSession).mockResolvedValue(session(false, 'ADMIN', false));
 

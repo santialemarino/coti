@@ -20,8 +20,8 @@ describe('reachability', () => {
     expect(SIGNED_OUT_ONLY_ROUTES).not.toContain(ROUTES.verifyEmail);
   });
 
-  // A recovery or invite link opened in a browser that is signed in — often the admin's own,
-  // testing the invite — used to bounce home and swallow the link.
+  // A recovery or invite link may open in a browser that is signed in — often the admin's own,
+  // trying the invite — and bouncing home would swallow the link.
   it('lets a mailed reset or invite link open with a session', () => {
     expect(PUBLIC_ROUTES).toContain(ROUTES.resetPassword);
     expect(SIGNED_OUT_ONLY_ROUTES).not.toContain(ROUTES.resetPassword);
