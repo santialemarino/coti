@@ -1,7 +1,8 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import type { NextRequest } from 'next/server';
 
-import { LOGIN_ROUTE } from '@/config/routes';
+import { LOCKED_REASON, LOGIN_ROUTE, REASON_PARAM } from '@/config/routes';
 import { clearSession } from '@/lib/auth/session';
+import { redirectTo } from '@/lib/utils/redirect';
 
 /*
  * Where the protected layout sends a caller whose session the API has ended — a
@@ -11,5 +12,6 @@ import { clearSession } from '@/lib/auth/session';
  */
 export async function GET(request: NextRequest) {
   await clearSession();
-  return NextResponse.redirect(new URL(LOGIN_ROUTE, request.url));
+  const locked = request.nextUrl.searchParams.get(REASON_PARAM) === LOCKED_REASON;
+  return redirectTo(locked ? `${LOGIN_ROUTE}?${REASON_PARAM}=${LOCKED_REASON}` : LOGIN_ROUTE);
 }

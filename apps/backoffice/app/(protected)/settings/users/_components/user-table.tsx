@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useMemo, useState, useTransition, type ComponentProps } from 'react';
 import {
   KeyRoundIcon,
   MailIcon,
@@ -259,10 +259,20 @@ export function UserTable({ users, branches, currentUserId, mailDelivery }: User
                   {reach ?? t('table.noBranches')}
                 </TableCell>
                 <TableCell kind="status">
-                  {invite ? (
-                    <Badge tone={invite === 'EXPIRED' ? 'danger' : 'warning'}>
-                      {t(invite === 'EXPIRED' ? 'status.inviteExpired' : 'status.invitePending')}
-                    </Badge>
+                  {invite && !mailDelivery ? (
+                    // The resend this row cannot offer is explained on the badge it would follow.
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <InviteBadge
+                          status={invite}
+                          tabIndex={0}
+                          className="outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45 cursor-default"
+                        />
+                      </TooltipTrigger>
+                      <TooltipContent>{t('invite.needsMail')}</TooltipContent>
+                    </Tooltip>
+                  ) : invite ? (
+                    <InviteBadge status={invite} />
                   ) : (
                     <Badge tone={user.isActive ? 'success' : 'neutral'}>
                       {t(user.isActive ? 'status.active' : 'status.inactive')}
@@ -367,5 +377,18 @@ export function UserTable({ users, branches, currentUserId, mailDelivery }: User
         }}
       />
     </div>
+  );
+}
+
+interface InviteBadgeProps extends ComponentProps<typeof Badge> {
+  status: NonNullable<AccountUser['inviteStatus']>;
+}
+
+function InviteBadge({ status, ...props }: InviteBadgeProps) {
+  const t = useTranslations('users');
+  return (
+    <Badge tone={status === 'EXPIRED' ? 'danger' : 'warning'} {...props}>
+      {t(status === 'EXPIRED' ? 'status.inviteExpired' : 'status.invitePending')}
+    </Badge>
   );
 }

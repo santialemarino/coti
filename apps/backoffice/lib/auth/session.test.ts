@@ -49,6 +49,18 @@ describe('getSession', () => {
   });
 });
 
+describe('getSession on a locked account', () => {
+  // The lock outlives the access token, so the session ends and the login screen says why.
+  it('ends the session with the locked reason', async () => {
+    jar();
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('ACCOUNT_LOCKED', 429));
+
+    await expect(getSession()).rejects.toThrow(
+      `NEXT_REDIRECT:${ROUTES.sessionEnded}?reason=locked`,
+    );
+  });
+});
+
 describe('requireAdmin', () => {
   it('hands the session back to an admin', async () => {
     jar();

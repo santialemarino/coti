@@ -135,6 +135,7 @@
     "LAST_ACTIVE_BRANCH": "Es la única sucursal activa del corralón. Abrí otra antes de cerrarla, porque la cuenta necesita al menos una para operar.",
     "SELF_DEACTIVATION": "No podés desactivar tu propio usuario. Pedíselo a otro administrador.",
     "SELF_ROLE_CHANGE": "No podés cambiar tu propio rol. Pedíselo a otro administrador.",
+    "SELF_EMAIL_CHANGE": "Tu propio correo se cambia desde «Cambiar correo», que te pide la contraseña.",
     "PASSWORD_POLICY": "La contraseña no cumple con los requisitos.",
     "INVALID_LINK": "El enlace no es válido, ya se usó o venció.",
     "INVITE_NOT_PENDING": "Ese usuario ya eligió su contraseña, así que no tiene una invitación para reenviar.",
@@ -267,6 +268,7 @@
       "forgotPassword": "¿Olvidaste tu contraseña?",
       "noAccount": "¿Todavía no tenés cuenta?",
       "signup": "Registrá tu corralón",
+      "locked": "Tu cuenta quedó bloqueada por intentos fallidos. Probá de nuevo en unos minutos.",
       "errors": {
         "UNAUTHENTICATED": "Correo o contraseña inválidos.",
         "INTERNAL": "No pudimos iniciar sesión. Intentá de nuevo."
@@ -1312,7 +1314,9 @@
     "email": {
       "label": "Correo electrónico",
       "placeholder": "Ingresá el correo con el que va a entrar",
-      "required": "Ingresá el correo del usuario."
+      "required": "Ingresá el correo del usuario.",
+      "ownAddress": "Tu propio correo se cambia aparte, porque te pide la contraseña.",
+      "ownAddressLink": "Cambiar correo"
     },
     "password": {
       "label": "Contraseña inicial",
@@ -1355,6 +1359,7 @@
     },
     "invite": {
       "action": "Reenviar invitación",
+      "needsMail": "Para reenviarla hace falta el envío de correos.",
       "sent": "Le reenviamos la invitación a {email}.",
       "errors": {
         "INVITE_NOT_PENDING": "Ese usuario ya eligió su contraseña. Si la olvidó, mandale el enlace de contraseña.",

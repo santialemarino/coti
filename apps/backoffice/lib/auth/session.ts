@@ -4,7 +4,7 @@ import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 
-import { ROUTES } from '@/config/routes';
+import { LOCKED_REASON, REASON_PARAM, ROUTES } from '@/config/routes';
 import { apiRequest } from '@/lib/api/client';
 import { errorCodeOf } from '@/lib/api/errors';
 import {
@@ -72,6 +72,9 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
   } catch (error) {
     const code = errorCodeOf(error);
     if (code === 'UNAUTHENTICATED' || code === 'FORBIDDEN') return null;
+    // Someone guessing the password locked the account; the session is ended and the screen says why.
+    if (code === 'ACCOUNT_LOCKED')
+      redirect(`${ROUTES.sessionEnded}?${REASON_PARAM}=${LOCKED_REASON}`);
     throw error;
   }
 });

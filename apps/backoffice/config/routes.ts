@@ -54,6 +54,11 @@ export const LOGIN_ROUTE = ROUTES.login;
 
 export const NEXT_PARAM = 'next';
 
+// Why a session ended, carried through session-ended to the login screen so it can say so. Only
+// the known value is ever forwarded.
+export const REASON_PARAM = 'reason';
+export const LOCKED_REASON = 'locked';
+
 /*
  * Where to send the caller after they log in, accepting same-origin paths only.
  * Resolving against a throwaway origin is what makes it sound: `/\evil.com` and

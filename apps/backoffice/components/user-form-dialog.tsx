@@ -1,6 +1,7 @@
 'use client';
 
 import { useId, useLayoutEffect, useMemo, useRef } from 'react';
+import Link from 'next/link';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { useForm, useWatch } from 'react-hook-form';
@@ -23,6 +24,7 @@ import {
   FormLabel,
   FormMessage,
   Hint,
+  InlineLink,
   Input,
   Label,
   PendingButton,
@@ -38,6 +40,7 @@ import {
   type UserValues,
 } from '@/app/(protected)/settings/users/form-schema';
 import { PasswordField } from '@/components/password-field';
+import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Branch } from '@/lib/api/branches';
 import type { AccountUser } from '@/lib/api/users';
@@ -115,6 +118,7 @@ export function UserFormDialog({
   });
   const role = useWatch({ control: form.control, name: 'role' });
   const access = useWatch({ control: form.control, name: 'access' });
+  const email = useWatch({ control: form.control, name: 'email' });
   // A new user in an account with one branch has one obvious assignment, so it is made. An id, not
   // the list: a re-render hands over a fresh array, and resetting on it would wipe what was typed.
   const soleBranchId = mode === 'create' && branches.length === 1 ? branches[0]?.id : undefined;
@@ -174,25 +178,39 @@ export function UserFormDialog({
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel required>{t('email.label')}</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="email"
-                      autoComplete="email"
-                      maxLength={TEXT_FIELD_MAX_LENGTH}
-                      placeholder={t('email.placeholder')}
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {/* Their own address changes where the password is asked for again, never here. */}
+            {shown.isSelf ? (
+              <div className="flex flex-col gap-y-1">
+                <span className="text-paragraph-sm-medium text-foreground">{t('email.label')}</span>
+                <p className="text-paragraph-sm text-foreground">{email}</p>
+                <Hint>
+                  {t('email.ownAddress')}{' '}
+                  <InlineLink asChild tone="muted">
+                    <Link href={ROUTES.emailSettings}>{t('email.ownAddressLink')}</Link>
+                  </InlineLink>
+                </Hint>
+              </div>
+            ) : (
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel required>{t('email.label')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="email"
+                        autoComplete="email"
+                        maxLength={TEXT_FIELD_MAX_LENGTH}
+                        placeholder={t('email.placeholder')}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             {shown.mode === 'create' && mailDelivery ? (
               <FormField
