@@ -101,6 +101,15 @@ describe('BranchTable listing', () => {
     expect(view.getByText('30 días')).toBeTruthy();
   });
 
+  // The table has no mailbox column, so the badge is the only place the gap shows.
+  it('marks an open branch without a mailbox, and only that one', () => {
+    const view = renderTable([{ ...CENTRAL, email: 'centro@corralon.test' }, MORON, CLOSED]);
+
+    expect(within(rowOf(view, MORON.name)).queryByText(copy.table.noEmail)).toBeTruthy();
+    expect(within(rowOf(view, CENTRAL.name)).queryByText(copy.table.noEmail)).toBeNull();
+    expect(within(rowOf(view, CLOSED.name)).queryByText(copy.table.noEmail)).toBeNull();
+  });
+
   // A branch with no address must read as one, not as an empty cell that looks like a render bug.
   it('names the absence of an address', () => {
     const view = renderTable();
@@ -160,6 +169,7 @@ describe('BranchTable dialogs', () => {
     expect(updateBranch).toHaveBeenCalledWith(MORON.id, {
       name: 'Morón Centro',
       address: '',
+      email: '',
       defaultExpiryDays: String(MORON.defaultExpiryDays),
     });
     expect(createBranch).not.toHaveBeenCalled();

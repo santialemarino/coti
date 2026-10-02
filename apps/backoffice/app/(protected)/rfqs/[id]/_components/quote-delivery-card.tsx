@@ -14,7 +14,9 @@ import {
   CardTitle,
   CopyButton,
 } from '@repo/ui/components';
+import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { RfqStatusBadge } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
+import { SetupNotice } from '@/components/setup-notice';
 import type { RfqDetailResponse } from '@/lib/api/rfqs';
 import { formatRfqReference, normalizeRfqStatus } from '@/lib/api/rfqs';
 import { QuoteLifecycleActions } from './quote-lifecycle-actions';
@@ -27,6 +29,8 @@ const LIVE_TRACKING_STATUSES = new Set(['SENT', 'DELIVERED', 'VIEWED']);
 interface QuoteDeliveryCardProps {
   detail: RfqDetailResponse;
   onSent: () => Promise<void>;
+  /* Whether the order's branch has no mailbox for a customer's reply to reach. */
+  branchMissesEmail?: boolean;
 }
 
 /*
@@ -34,8 +38,13 @@ interface QuoteDeliveryCardProps {
  * and the link the customer actually received. The link is the last one the public app will serve —
  * a FAILED or PENDING attempt never reached the client, and a re-send mints a token of its own.
  */
-export function QuoteDeliveryCard({ detail, onSent }: QuoteDeliveryCardProps) {
+export function QuoteDeliveryCard({
+  detail,
+  onSent,
+  branchMissesEmail = false,
+}: QuoteDeliveryCardProps) {
   const t = useTranslations('rfqs.detail.quoteCard');
+  const { isAdmin } = useRfqList();
 
   const quote = detail.quote;
   const version = detail.version;
@@ -65,6 +74,9 @@ export function QuoteDeliveryCard({ detail, onSent }: QuoteDeliveryCardProps) {
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-y-4">
+        {canSendQuote && branchMissesEmail ? (
+          <SetupNotice issue="BRANCH_EMAIL" isAdmin={isAdmin} />
+        ) : null}
         {liveDelivery ? (
           <>
             <div className="flex flex-col gap-y-1">
@@ -105,6 +117,7 @@ export function QuoteDeliveryCard({ detail, onSent }: QuoteDeliveryCardProps) {
             branchId={detail.rfq.branch_id}
             onSent={onSent}
             showTrigger={canSendQuote}
+            branchMissesEmail={branchMissesEmail}
           />
           <QuoteLifecycleActions
             quoteId={quote.id}

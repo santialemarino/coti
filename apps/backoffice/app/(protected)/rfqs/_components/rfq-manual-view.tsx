@@ -21,9 +21,10 @@ import {
 } from '@repo/ui/components';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { AmountInput } from '@/components/amount-input';
+import { SetupNotice } from '@/components/setup-notice';
 import { searchCatalog, type CatalogProduct } from '@/lib/api/catalog';
 import { createRfq } from '@/lib/api/rfqs-client';
-import { listSellers } from '@/lib/api/sellers';
+import { listSellers, type Seller } from '@/lib/api/sellers';
 import { useFormatters } from '@/lib/i18n/formatters';
 import { stepCanonical } from '@/lib/i18n/numeric-input';
 
@@ -45,6 +46,11 @@ interface LineItem {
   product: CatalogProduct;
   quantity: string;
 }
+
+type SellerList =
+  | { status: 'loading' }
+  | { status: 'failed' }
+  | { status: 'ready'; items: Seller[] };
 
 /*
  * A line quantity is a measured figure — half a cubic metre of sand is a real order line — so it
@@ -77,9 +83,9 @@ export function RfqManualView({
   const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [items, setItems] = useState<LineItem[]>([]);
-  const [seller, setSeller] = useState<string | null>(null);
-  const [sellers, setSellers] = useState<Array<{ id: string; name: string }>>([]);
-  const [loadingSellers, setLoadingSellers] = useState(true);
+  // Undefined until the caller picks, so the preselection below still applies.
+  const [sellerChoice, setSellerChoice] = useState<string | null | undefined>(undefined);
+  const [sellerList, setSellerList] = useState<SellerList>({ status: 'loading' });
   const [submitting, startSubmit] = useTransition();
 
   /* Debounced search through the async seam, so a swap to the real endpoint changes nothing here. */
@@ -98,29 +104,39 @@ export function RfqManualView({
     };
   }, [query]);
 
-  /* Fetch the active branch's sellers so the new order can be assigned up front. */
+  /* An administrator assigns the new order up front, from the active branch's sellers. */
   useEffect(() => {
+    if (!isAdmin) return;
     let cancelled = false;
-    setLoadingSellers(true);
+    setSellerList({ status: 'loading' });
+    setSellerChoice(undefined);
     (async () => {
-      // A seller without an active branch cannot create a manual RFQ at all (the submit is
-      // disabled), so there is nobody to offer on that path.
-      const results = await listSellers(activeBranchId);
-      if (cancelled) return;
-      setSellers(results);
-      setLoadingSellers(false);
+      try {
+        const items = await listSellers(activeBranchId);
+        if (!cancelled) setSellerList({ status: 'ready', items });
+      } catch {
+        if (!cancelled) setSellerList({ status: 'failed' });
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [activeBranchId]);
+  }, [activeBranchId, isAdmin]);
 
-  // Nothing to choose: a seller's order is theirs, and a branch with one seller has only them.
-  const fixedSeller = !isAdmin
-    ? { id: userId, name: userName, note: t('sellerSelf') }
-    : !loadingSellers && sellers.length === 1 && sellers[0]
-      ? { id: sellers[0].id, name: sellers[0].name, note: t('sellerOnly') }
+  /*
+   * A branch with one seller still has two outcomes, that seller or nobody, so the control stays and
+   * the obvious one is preselected. Only inside one branch: account-wide, one seller is not "the"
+   * seller of the order's branch.
+   */
+  const soleSeller =
+    activeBranchId && sellerList.status === 'ready' && sellerList.items.length === 1
+      ? (sellerList.items[0] ?? null)
       : null;
+  const seller = !isAdmin
+    ? userId
+    : sellerChoice === undefined
+      ? (soleSeller?.id ?? null)
+      : sellerChoice;
 
   function addProduct(product: CatalogProduct) {
     setItems((current) => {
@@ -157,7 +173,7 @@ export function RfqManualView({
       try {
         await createRfq({
           client_label: client.trim() || null,
-          seller_id: fixedSeller?.id ?? seller ?? null,
+          seller_id: seller,
           items: items.map((item) => ({
             product_id: item.product.id,
             requested_description: item.product.name,
@@ -176,7 +192,10 @@ export function RfqManualView({
 
   const disabled = items.length === 0 || !activeBranchId;
   // What a stray click outside the dialog would throw away.
-  const dirty = items.length > 0 || client.trim() !== '' || seller !== null;
+  const dirty =
+    items.length > 0 ||
+    client.trim() !== '' ||
+    (sellerChoice !== undefined && sellerChoice !== (soleSeller?.id ?? null));
 
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
 
@@ -203,36 +222,15 @@ export function RfqManualView({
           />
         </div>
 
-        {fixedSeller ? (
-          <div className="flex flex-col gap-y-1">
-            <span className="text-paragraph-sm-medium text-foreground">{t('sellerLabel')}</span>
-            <p className="flex h-9 items-center text-paragraph-sm text-foreground">
-              {fixedSeller.name}
-            </p>
-            <p className="text-paragraph-xs text-foreground-muted">{fixedSeller.note}</p>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-y-1">
-            <Label htmlFor="rfq-manual-seller">{t('sellerLabel')}</Label>
-            <Combobox
-              id="rfq-manual-seller"
-              options={[
-                { value: '', label: t('unassigned') },
-                ...sellers.map((seller) => ({ value: seller.id, label: seller.name })),
-              ]}
-              value={seller}
-              onValueChange={(value) => setSeller(value === '' ? null : value)}
-              placeholder={t('sellerPlaceholder')}
-              aria-label={t('sellerLabel')}
-              className="min-w-64"
-            />
-            {activeBranchId && loadingSellers ? (
-              <p className="text-paragraph-xs text-foreground-muted">{t('sellersLoading')}</p>
-            ) : activeBranchId && sellers.length === 0 ? (
-              <p className="text-paragraph-xs text-foreground-muted">{t('noSellers')}</p>
-            ) : null}
-          </div>
-        )}
+        <SellerField
+          isAdmin={isAdmin}
+          selfName={userName}
+          activeBranchId={activeBranchId}
+          list={sellerList}
+          value={seller}
+          soleSellerId={soleSeller?.id ?? null}
+          onChange={setSellerChoice}
+        />
 
         <SearchInput
           value={query}
@@ -368,5 +366,83 @@ export function RfqManualView({
         </PendingButton>
       </DialogFooter>
     </form>
+  );
+}
+
+interface SellerFieldProps {
+  isAdmin: boolean;
+  selfName: string;
+  activeBranchId: string | null;
+  list: SellerList;
+  value: string | null;
+  soleSellerId: string | null;
+  onChange: (value: string | null) => void;
+}
+
+/*
+ * Who the new order belongs to, offered only when there is a choice. A seller's order is theirs;
+ * a branch with no seller leaves it unassigned and says why; a load that failed says so rather
+ * than passing for an empty branch.
+ */
+function SellerField({
+  isAdmin,
+  selfName,
+  activeBranchId,
+  list,
+  value,
+  soleSellerId,
+  onChange,
+}: SellerFieldProps) {
+  const t = useTranslations('rfqs.create.manual');
+
+  if (!isAdmin) {
+    return (
+      <div className="flex flex-col gap-y-1">
+        <span className="text-paragraph-sm-medium text-foreground">{t('sellerLabel')}</span>
+        <p className="flex h-9 items-center text-paragraph-sm text-foreground">{selfName}</p>
+        <p className="text-paragraph-xs text-foreground-muted">{t('sellerSelf')}</p>
+      </div>
+    );
+  }
+
+  if (list.status === 'ready' && list.items.length === 0 && activeBranchId) {
+    return <SetupNotice issue="BRANCH_NO_SELLERS" isAdmin />;
+  }
+
+  return (
+    <div className="flex flex-col gap-y-1">
+      {/* A label names a control, which only a loaded list has. */}
+      {list.status === 'ready' ? (
+        <Label htmlFor="rfq-manual-seller">{t('sellerLabel')}</Label>
+      ) : (
+        <span className="text-paragraph-sm-medium text-foreground">{t('sellerLabel')}</span>
+      )}
+      {list.status === 'loading' ? (
+        <div role="status">
+          <Skeleton className="h-9 w-full min-w-64 rounded-lg" />
+          <span className="sr-only">{t('sellersLoading')}</span>
+        </div>
+      ) : list.status === 'failed' ? (
+        <p className="flex h-9 items-center text-paragraph-sm text-foreground-muted">
+          {t('sellersFailed')}
+        </p>
+      ) : (
+        <Combobox
+          id="rfq-manual-seller"
+          options={[
+            { value: '', label: t('unassigned') },
+            ...list.items.map((seller) => ({ value: seller.id, label: seller.name })),
+          ]}
+          value={value ?? ''}
+          onValueChange={(next) => onChange(next === '' ? null : next)}
+          placeholder={t('sellerPlaceholder')}
+          aria-label={t('sellerLabel')}
+          className="min-w-64"
+        />
+      )}
+      {soleSellerId && value === soleSellerId ? (
+        <p className="text-paragraph-xs text-foreground-muted">{t('sellerOnly')}</p>
+      ) : null}
+    </div>
   );
 }

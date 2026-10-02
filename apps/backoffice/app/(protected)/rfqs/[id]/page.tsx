@@ -1,10 +1,12 @@
 import { getTranslations } from 'next-intl/server';
 
 import { RfqDetailSplitView } from '@/app/(protected)/rfqs/[id]/_components/rfq-detail-split-view';
+import { getBranches } from '@/lib/api/branches';
 import { apiRequest } from '@/lib/api/client';
 import { ApiError, errorCodeOf } from '@/lib/api/errors';
 import type { RfqDetailResponse } from '@/lib/api/rfqs';
 import { generatePageMetadata } from '@/lib/utils/page';
+import { missesBranchEmail } from '@/lib/utils/setup-issues';
 
 export const generateMetadata = () => generatePageMetadata('rfqs');
 
@@ -22,7 +24,7 @@ async function fetchRfqDetail(id: string): Promise<RfqDetailResponse | null> {
 export default async function RfqDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const t = await getTranslations('rfqs');
-  const detail = await fetchRfqDetail(id);
+  const [detail, branches] = await Promise.all([fetchRfqDetail(id), getBranches()]);
 
   if (!detail) {
     return (
@@ -39,5 +41,9 @@ export default async function RfqDetailPage({ params }: { params: Promise<{ id: 
     );
   }
 
-  return <RfqDetailSplitView detail={detail} />;
+  // A branch the caller no longer reaches is not theirs to report on.
+  const branch = branches.find((candidate) => candidate.id === detail.rfq.branch_id);
+  return (
+    <RfqDetailSplitView detail={detail} branchMissesEmail={!!branch && missesBranchEmail(branch)} />
+  );
 }

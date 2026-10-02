@@ -360,8 +360,8 @@ export function RfqDashboard({
   }, [initialRecords]);
 
   /*
-   * Fetches the sellers of one branch, once. A failure keeps an empty list (the backend
-   * already refuses cross-branch picks), so the menu shows only self + clear.
+   * Fetches the sellers of one branch, once. A failure leaves the branch unloaded so the next open
+   * retries; meanwhile the menu shows only self + clear, and the backend refuses cross-branch picks.
    */
   async function loadSellersForBranch(branchId: string) {
     if (loadedSellerBranches.current.has(branchId) || sellersLoadingBranches.has(branchId)) return;
@@ -370,6 +370,8 @@ export function RfqDashboard({
       const items = await listSellers(branchId);
       setSellersByBranch((previous) => ({ ...previous, [branchId]: items }));
       loadedSellerBranches.current = new Set(loadedSellerBranches.current).add(branchId);
+    } catch {
+      // Nothing to add: the menu already offers what needs no list.
     } finally {
       setSellersLoadingBranches((previous) => {
         const next = new Set(previous);

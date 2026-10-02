@@ -8,11 +8,13 @@ vi.mock('@/app/(protected)/settings/_components/settings-nav', () => ({
   SettingsNav: vi.fn(() => null),
 }));
 vi.mock('@/lib/api/onboarding', () => ({ getOnboarding: vi.fn() }));
+vi.mock('@/lib/api/branches', () => ({ getBranches: vi.fn() }));
 vi.mock('@/lib/auth/session', () => ({ getSession: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getTranslations: vi.fn() }));
 
 const { SettingsNav } = await import('@/app/(protected)/settings/_components/settings-nav');
 const { getOnboarding } = await import('@/lib/api/onboarding');
+const { getBranches } = await import('@/lib/api/branches');
 const { getSession } = await import('@/lib/auth/session');
 const { getTranslations } = await import('next-intl/server');
 const { default: SettingsLayout } = await import('@/app/(protected)/settings/layout');
@@ -30,12 +32,32 @@ beforeEach(() => {
     email: 'ana@corralon.test',
     emailVerified: true,
     role: 'ADMIN',
+    emailVerificationRequired: true,
+    mailDelivery: true,
   });
   vi.mocked(getOnboarding).mockResolvedValue({ status: 'COMPLETED', checklist: [] } as never);
+  vi.mocked(getBranches).mockResolvedValue([
+    { id: 'b1', email: 'centro@corralon.test', isActive: true },
+  ] as never);
   vi.mocked(getTranslations).mockResolvedValue(((key: string) => key) as never);
 });
 
 describe('SettingsLayout', () => {
+  // The dot is the trail from the shell to the fix, and it must not cry wolf.
+  it('marks Sucursales only while an open branch has no mailbox', async () => {
+    render(await SettingsLayout({ children: null }));
+    const branchesItem = () => renderedItems()?.find((item) => item.href === ROUTES.branchSettings);
+    expect(branchesItem()?.attention).toBeUndefined();
+
+    vi.mocked(SettingsNav).mockClear();
+    vi.mocked(getBranches).mockResolvedValue([
+      { id: 'b1', email: 'centro@corralon.test', isActive: true },
+      { id: 'b2', email: null, isActive: true },
+    ] as never);
+    render(await SettingsLayout({ children: null }));
+    expect(branchesItem()?.attention).toBe('attention');
+  });
+
   it('starts with account and keeps email and password out of the section list', async () => {
     render(await SettingsLayout({ children: null }));
 

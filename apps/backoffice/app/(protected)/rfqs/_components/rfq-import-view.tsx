@@ -15,8 +15,11 @@ import {
   Input,
   Label,
   PendingButton,
+  Skeleton,
   Textarea,
 } from '@repo/ui/components';
+import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
+import { SetupNotice } from '@/components/setup-notice';
 import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { listChannels, type Channel } from '@/lib/api/channels';
@@ -40,6 +43,11 @@ const ACCEPTED_TYPES = [
   'audio/webm',
   'text/plain',
 ];
+
+type ChannelList =
+  | { status: 'loading' }
+  | { status: 'failed' }
+  | { status: 'ready'; items: Channel[] };
 
 interface RfqImportViewProps {
   onBack: () => void;
@@ -70,21 +78,28 @@ export function RfqImportView({
   const message = useApiErrorMessage('rfqs.create.import');
 
   const [file, setFile] = useState<File | null>(null);
-  const [channels, setChannels] = useState<Channel[]>([]);
+  const { isAdmin } = useRfqList();
+  const [channels, setChannels] = useState<ChannelList>({ status: 'loading' });
   const [channelId, setChannelId] = useState<string | null>(null);
   const [client, setClient] = useState('');
   const [note, setNote] = useState('');
   const [processing, startProcessing] = useTransition();
 
-  /* The order has to name the channel it arrived through, so the branch's open ones are offered. */
+  // Only a sole channel is preselected, and a choice made for one branch means nothing in the next.
   useEffect(() => {
+    setChannelId(null);
     if (!activeBranchId) return;
     let cancelled = false;
+    setChannels({ status: 'loading' });
     (async () => {
-      const results = await listChannels(activeBranchId);
-      if (cancelled) return;
-      setChannels(results);
-      setChannelId((current) => current ?? results[0]?.id ?? null);
+      try {
+        const items = await listChannels(activeBranchId);
+        if (cancelled) return;
+        setChannels({ status: 'ready', items });
+        if (items.length === 1) setChannelId(items[0]?.id ?? null);
+      } catch {
+        if (!cancelled) setChannels({ status: 'failed' });
+      }
     })();
     return () => {
       cancelled = true;
@@ -98,6 +113,11 @@ export function RfqImportView({
   const dirty = file !== null || client.trim() !== '' || note.trim() !== '';
 
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
+
+  function channelLabel(channel: Channel) {
+    const type = tChannel(channel.type.toLowerCase());
+    return channel.identifier ? `${type} · ${channel.identifier}` : type;
+  }
 
   function onSubmit() {
     if (!file || !channelId) return;
@@ -136,6 +156,9 @@ export function RfqImportView({
       className="flex flex-col gap-y-5"
     >
       {activeBranchId ? null : <Callout tone="warning">{t('noBranch')}</Callout>}
+      {activeBranchId && channels.status === 'ready' && channels.items.length === 0 ? (
+        <SetupNotice issue="NO_INTAKE_CHANNELS" isAdmin={isAdmin} />
+      ) : null}
 
       <Dropzone
         accept={ACCEPTED_TYPES.join(',')}
@@ -153,23 +176,46 @@ export function RfqImportView({
       />
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-y-1">
-          <Label htmlFor="rfq-import-channel">{t('channelLabel')}</Label>
-          <Combobox
-            id="rfq-import-channel"
-            options={channels.map((channel) => ({
-              value: channel.id,
-              label: channel.identifier
-                ? `${tChannel(channel.type.toLowerCase())} · ${channel.identifier}`
-                : tChannel(channel.type.toLowerCase()),
-            }))}
-            value={channelId ?? ''}
-            onValueChange={setChannelId}
-            placeholder={t('channelPlaceholder')}
-            emptyLabel={t('channelEmpty')}
-            aria-label={t('channelLabel')}
-          />
-        </div>
+        {/* With no channel the notice above says why; there is nothing to show here. */}
+        {channels.status === 'ready' && channels.items.length === 0 ? null : (
+          <div className="flex flex-col gap-y-1">
+            {/* A label names a control, and only a choice between several channels has one. */}
+            {channels.status === 'ready' && channels.items.length > 1 ? (
+              <Label htmlFor="rfq-import-channel">{t('channelLabel')}</Label>
+            ) : (
+              <span className="text-paragraph-sm-medium text-foreground">{t('channelLabel')}</span>
+            )}
+            {!activeBranchId ? null : channels.status === 'loading' ? (
+              <div role="status">
+                <Skeleton className="h-9 w-full rounded-lg" />
+                <span className="sr-only">{t('channelsLoading')}</span>
+              </div>
+            ) : channels.status === 'failed' ? (
+              <p className="flex h-9 items-center text-paragraph-sm text-foreground-muted">
+                {t('channelsFailed')}
+              </p>
+            ) : channels.items.length === 1 && channels.items[0] ? (
+              <>
+                <p className="flex h-9 items-center text-paragraph-sm text-foreground">
+                  {channelLabel(channels.items[0])}
+                </p>
+                <p className="text-paragraph-xs text-foreground-muted">{t('channelOnly')}</p>
+              </>
+            ) : (
+              <Combobox
+                id="rfq-import-channel"
+                options={channels.items.map((channel) => ({
+                  value: channel.id,
+                  label: channelLabel(channel),
+                }))}
+                value={channelId ?? ''}
+                onValueChange={setChannelId}
+                placeholder={t('channelPlaceholder')}
+                aria-label={t('channelLabel')}
+              />
+            )}
+          </div>
+        )}
 
         <div className="flex flex-col gap-y-1">
           <Label htmlFor="rfq-import-client">{t('clientLabel')}</Label>

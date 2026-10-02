@@ -42,12 +42,17 @@ beforeEach(() => {
 });
 
 describe('BranchSwitcher', () => {
-  it('shows the only reachable branch as the selected context without requiring a choice', () => {
-    const view = renderSwitcher([BRANCHES[0]!], BRANCHES[0]!.id);
-    const switcher = view.getByRole('combobox', { name: messages.common.branch.label });
+  // A disabled menu is a control that explains nothing; one branch is shown as the context it is.
+  it.each([
+    ['a seller', false],
+    ['an admin, whose "todas" reaches the same branch', true],
+  ])('shows the only branch of %s as context, not as a menu', (_, isAdmin) => {
+    const view = renderSwitcher([BRANCHES[0]!], BRANCHES[0]!.id, isAdmin);
 
-    expect(switcher.textContent).toContain(BRANCHES[0]!.name);
-    expect((switcher as HTMLButtonElement).disabled).toBe(true);
+    expect(view.queryByRole('combobox', { name: messages.common.branch.label })).toBeNull();
+    expect(view.getByText(BRANCHES[0]!.name).parentElement?.textContent).toBe(
+      `${messages.common.branch.label}: ${BRANCHES[0]!.name}`,
+    );
   });
 
   it('lets the caller choose when several branches are reachable', async () => {

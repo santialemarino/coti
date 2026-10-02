@@ -22,7 +22,8 @@ export async function listChannels(branchId: string | null): Promise<Channel[]> 
     headers: branchId ? { 'X-Branch-Id': branchId } : undefined,
   });
 
-  if (!response.ok) return [];
+  // A failed load is not a branch without channels; the caller has to tell the two apart.
+  if (!response.ok) throw new Error(`GET /api/channels answered ${response.status}`);
 
   const data = (await response.json()) as ChannelListRaw;
   return data.items
