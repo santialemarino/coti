@@ -117,9 +117,11 @@ the same transaction). That is deliberate.
    enumerated either.
 4. A wrong password increments `failed_attempts`; reaching `AUTH_MAX_FAILED_ATTEMPTS` sets
    `locked_until`.
-5. A locked account returns **429**, not 401 — that one is exposed on purpose: the client
-   needs to tell "wrong password" from "stop trying for a while". While locked, the correct
-   password also returns 429.
+5. A locked account returns **429** `ACCOUNT_LOCKED`, not 401 — that one is exposed on purpose:
+   the client needs to tell "wrong password" from "stop trying for a while". While locked, the
+   correct password also returns 429, and so do a refresh and every authenticated request of a
+   session already open: `ResolveTenant` reads the lock, and `Authenticate` answers it as login does.
+   The backoffice ends that session and says why on the login screen.
 
 ## A deactivated account cuts every way in
 
@@ -257,13 +259,17 @@ A global allowance over all of `/v1`, plus tighter ones on the surfaces a strang
 flood the database or someone's mailbox, and on the ones a **provider bills per call**. It sits
 **ahead of `Authenticate`**, so a flood is refused before it costs a query.
 
-| Scope         | Setting                      | Routes                                                          |
-| ------------- | ---------------------------- | --------------------------------------------------------------- |
-| `global`      | `RATE_LIMIT_GLOBAL_MAX`      | all of `/v1`                                                    |
-| `credentials` | `RATE_LIMIT_CREDENTIALS_MAX` | login, reset-password, verify-email                             |
-| `signup`      | `RATE_LIMIT_SIGNUP_MAX`      | public account registration                                     |
-| `mail`        | `RATE_LIMIT_MAIL_MAX`        | forgot-password, resend-verification, change-email, admin reset |
-| `ai`          | `RATE_LIMIT_AI_MAX`          | the RFQ text draft and the development intake                   |
+| Scope         | Setting                      | Routes                                                                                    |
+| ------------- | ---------------------------- | ----------------------------------------------------------------------------------------- |
+| `global`      | `RATE_LIMIT_GLOBAL_MAX`      | all of `/v1`                                                                              |
+| `credentials` | `RATE_LIMIT_CREDENTIALS_MAX` | login, reset-password, verify-email                                                       |
+| `signup`      | `RATE_LIMIT_SIGNUP_MAX`      | public account registration                                                               |
+| `mail`        | `RATE_LIMIT_MAIL_MAX`        | forgot-password, resend-verification, change-email, admin reset, invite create and resend |
+| `ai`          | `RATE_LIMIT_AI_MAX`          | the RFQ text draft and the development intake                                             |
+
+Creating a user spends the `mail` allowance only with `"invite": true`, since a password handed over
+mails nobody. The route cannot carry the middleware for that, so the handler runs the same check
+(`middleware.Allowance`) once the body is bound, counting into the same bucket.
 
 Refresh is deliberately left on the global allowance alone: the backoffice renews on a
 schedule the user does not control, and a tighter limit there would log people out.
@@ -383,7 +389,10 @@ seller reaching any of it gets **403**.
   already holds stop working immediately instead of lasting until they expire.
 - **An admin cannot deactivate themselves or change their own role.** Either would drop the
   last admin out of their own account, and there is no recovery path. Editing their own name
-  and email stays allowed.
+  stays allowed.
+- **An admin cannot change their own email here either** — 422 `SELF_EMAIL_CHANGE`. Their own
+  address moves through `POST /v1/auth/change-email`, which asks for the current password, so a
+  session left open is not enough to move the account's way back in to another mailbox.
 - **Branch assignments are written in the same transaction as the user**, and every branch id
   is checked to belong to the account first: a foreign key does not confine a child row to its
   account, because referential integrity bypasses row level security.
@@ -411,7 +420,12 @@ lifetime, `AUTH_INVITE_TTL_HOURS` (168).
   `invite_status`.
 - **`POST /v1/users/:userId/invite` resends** to a user whose invite is still outstanding, live or
   expired. Anyone else — a password already chosen, a deactivated user — is a 422
-  `INVITE_NOT_PENDING`.
+  `INVITE_NOT_PENDING`. The resend has to retire at least one outstanding invite before it stores
+  the new one: a redeem in flight holds that row, the resend's `UPDATE` waits on it and then
+  matches nothing, so it is refused too rather than mailing a live link to someone who has just
+  chosen a password.
+- **The newest invite is read through `idx_auth_token_latest_invite`**, with the id breaking a tie
+  between two rows created in one transaction.
 - **Both refuse while mail does not deliver**: 503 `MAIL_NOT_CONFIGURED`. Under `console` the link
   only reaches a log, so an invited user would exist with no way in at all; the password path is
   what an installation without mail uses, and the backoffice offers only that one there.

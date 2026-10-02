@@ -70,6 +70,7 @@ about it changed:
 | Protected route, token unexpired                     | through                                                    |
 | Protected route, token expired, refresh token held   | renewed, then through                                      |
 | Protected route, refresh rejected                    | cookies cleared, redirected to login with `?next=`         |
+| Protected route, refresh answers `ACCOUNT_LOCKED`    | the same, plus `?reason=locked`                            |
 | Protected route, API unreachable                     | through — the cookies survive and the next request retries |
 
 `/reset-password` is public but **not** bounced: a mailed recovery or invite link has to open in
@@ -112,6 +113,13 @@ the proxy bounce the caller back to a page that rejects them, forever. The route
 clears the cookies and then sends them to login. `/session-ended` is public and, unlike the
 other public routes, is exempt from the signed-in bounce for the same reason.
 
+**A locked account ends the session too, and says so.** Someone guessing the password locks the
+account under every open session as well: `/v1/me` answers 429 `ACCOUNT_LOCKED`, and `getSession`
+redirects to `/session-ended?reason=locked` rather than throwing to an error boundary. The route
+handler forwards that one reason — and no other value — to `/login?reason=locked`, where a callout
+says the account is locked for a few minutes. The cookies are already gone by then, so the login
+screen cannot bounce anyone back.
+
 ## The active branch
 
 A fourth cookie, `coti_branch`, holds the branch the caller is working in. `lib/auth/branch.ts`
@@ -131,8 +139,21 @@ Two rules make it safe, and both are the opposite of the obvious thing:
 - **A cookie the caller no longer reaches is dropped by the layout, not by a reader.** A branch
   closed or unassigned after it was chosen would make every scoped read answer 403
   (`BRANCH_NOT_ACCESSIBLE`). The layout compares the cookie with `GET /v1/branches` and sends a
-  mismatch to **`/branch-reset`**, a route handler that clears it and goes home — a layout cannot
-  write cookies, the same reason `/session-ended` exists.
+  mismatch to **`/branch-reset`**, a route handler that deletes it on its own redirect response
+  and goes home — a layout cannot write cookies, the same reason `/session-ended` exists.
+- **A soft navigation does not run the layout again**, so a page read can still meet the stale
+  cookie. `apiRequest` sends a `GET` scoped to the cookie's branch that answers
+  `BRANCH_NOT_ACCESSIBLE` to `/branch-reset` as well. A write still throws the code, so the action
+  that made it can say why, and a request pinned with `branchId` named its branch on purpose. That
+  redirect reaches `/branch-reset` as the router's flight fetch, and following it home would keep the
+  shell — switcher included — naming the dropped branch, so the handler answers a flight fetch with
+  an empty 204: the router then loads the page in full and the header renders without it.
+
+**Both route handlers answer with a relative `Location`.** Next builds a route handler's
+`request.url` on the server's own hostname rather than the browser's `Host`, so an absolute target
+made from it would send the caller to `localhost` — off the app and away from its cookies.
+`redirectTo` in `lib/utils/redirect.ts` is the one way they redirect.
+
 - **`GET /v1/me` and `GET /v1/branches` opt out of the header** via `branchScoped: false` on the
   client. A stale cookie on identity would 403 the session itself and sign the caller out
   instead of failing one screen; a stale cookie on the branch list would 403 the very list
