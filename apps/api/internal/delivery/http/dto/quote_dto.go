@@ -14,9 +14,21 @@ type PricedQuoteResponse struct {
 	Items   []QuoteItemResponse  `json:"items"`
 }
 
+// TransitionQuoteRequest is the body for POST /v1/quotes/{quoteId}/transition. status names the
+// seller-action edge to move to; it is validated against the state machine by the service.
+type TransitionQuoteRequest struct {
+	Status string `json:"status" binding:"required"`
+}
+
+// ReactivateQuoteRequest is the body for POST /v1/quotes/{quoteId}/reactivate.
+type ReactivateQuoteRequest struct {
+	Mode string `json:"mode" binding:"required,oneof=RESEND EDIT" enums:"RESEND,EDIT"`
+}
+
 // QuoteResponse represents the quote created from one RFQ.
 type QuoteResponse struct {
 	ID                uuid.UUID  `json:"id"`
+	Number            int64      `json:"number"`
 	BranchID          uuid.UUID  `json:"branch_id"`
 	ClientID          *uuid.UUID `json:"client_id"`
 	RFQID             uuid.UUID  `json:"rfq_id"`
@@ -37,8 +49,10 @@ type QuoteVersionResponse struct {
 	QuoteID       uuid.UUID  `json:"quote_id"`
 	AuthorID      *uuid.UUID `json:"author_id"`
 	VersionNumber int        `json:"version_number"`
+	Currency      string     `json:"currency"`
 	Total         string     `json:"total"`
 	IsImmutable   bool       `json:"is_immutable"`
+	FrozenAt      *time.Time `json:"frozen_at"`
 	Comment       *string    `json:"comment"`
 	CreatedAt     time.Time  `json:"created_at"`
 }
@@ -48,6 +62,9 @@ type QuoteItemResponse struct {
 	ID                   uuid.UUID  `json:"id"`
 	VersionID            uuid.UUID  `json:"version_id"`
 	ProductID            *uuid.UUID `json:"product_id"`
+	ProductCode          *string    `json:"product_code"`
+	ProductName          *string    `json:"product_name"`
+	ProductUnit          *string    `json:"product_unit"`
 	RequestedDescription string     `json:"requested_description"`
 	Quantity             string     `json:"quantity"`
 	Unit                 *string    `json:"unit"`
@@ -55,7 +72,10 @@ type QuoteItemResponse struct {
 	MinPriceSnapshot     *string    `json:"min_price_snapshot"`
 	Subtotal             *string    `json:"subtotal"`
 	ConfidenceScore      *string    `json:"confidence_score"`
-	MatchStatus          string     `json:"match_status"`
+	// ConfidenceLevel is how settled the match reads: HIGH, MEDIUM or LOW, or null when the line
+	// was never scored because matching did not run or a person chose the product.
+	ConfidenceLevel *string `json:"confidence_level" enums:"HIGH,MEDIUM,LOW"`
+	MatchStatus     string  `json:"match_status"`
 	// Alternatives are the candidates a flagged line was decided from, best first. A decided line
 	// carries none: there is nothing for the seller to choose between.
 	Alternatives []QuoteItemAlternativeResponse `json:"alternatives"`
@@ -83,4 +103,139 @@ type QuoteItemAlternativeResponse struct {
 	Code             *string    `json:"code"`
 	CanonicalName    *string    `json:"canonical_name"`
 	Unit             *string    `json:"unit"`
+}
+
+// QuoteAlternativeApprovalRequest records the seller's explicit publication decision.
+type QuoteAlternativeApprovalRequest struct {
+	ApprovedBySeller *bool `json:"approved_by_seller" binding:"required"`
+}
+
+// QuoteSendRequest selects the optional email copy and validity override. WhatsApp and the
+// public webapp link are always included by the backend.
+type QuoteSendRequest struct {
+	RecipientPhone string                     `json:"recipient_phone" binding:"required"`
+	EmailDelivery  *QuoteEmailDeliveryRequest `json:"email_delivery"`
+	ExpiryDays     *int                       `json:"expiry_days"`
+}
+
+// QuoteEmailDeliveryRequest is the optional independent email destination.
+type QuoteEmailDeliveryRequest struct {
+	Address string `json:"address" binding:"required"`
+}
+
+// QuoteSendResponse reports each independent channel outcome after the database commit.
+type QuoteSendResponse struct {
+	QuoteID       uuid.UUID               `json:"quote_id"`
+	VersionID     uuid.UUID               `json:"version_id"`
+	CurrentStatus string                  `json:"current_status"`
+	ExpiresAt     *time.Time              `json:"expires_at"`
+	Deliveries    []QuoteDeliveryResponse `json:"deliveries"`
+}
+
+// QuoteDeliveryResponse reports one channel-specific send.
+type QuoteDeliveryResponse struct {
+	ID             uuid.UUID  `json:"id"`
+	Channel        string     `json:"channel"`
+	Destination    string     `json:"destination"`
+	TrackingStatus string     `json:"tracking_status"`
+	PublicURL      string     `json:"public_url"`
+	SentAt         *time.Time `json:"sent_at"`
+}
+
+// PublicQuoteSendResponse exposes immutable content only while the delivery token is active.
+type PublicQuoteSendResponse struct {
+	Status    string                              `json:"status"`
+	ExpiresAt time.Time                           `json:"expires_at"`
+	Quote     *QuoteRepresentationPayloadResponse `json:"quote,omitempty"`
+	Message   *string                             `json:"message,omitempty"`
+	PDFURL    *string                             `json:"pdf_url,omitempty"`
+	// CustomerStatus is the answer this token already received, present only when the
+	// customer responded through the link.
+	CustomerStatus *string `json:"customer_status,omitempty"`
+}
+
+// PublicQuoteActionRequest is the customer's response to the frozen quote.
+type PublicQuoteActionRequest struct {
+	Type    string  `json:"type" binding:"required"`
+	Message *string `json:"message"`
+}
+
+// PublicQuoteActionResponse reports the recorded answer and the status the quote settled on. When
+// the answer did not move the quote (version already superseded), quote_status stays unchanged.
+type PublicQuoteActionResponse struct {
+	CustomerStatus string    `json:"customer_status"`
+	CreatedAt      time.Time `json:"created_at"`
+	QuoteStatus    *string   `json:"quote_status"`
+}
+
+// QuoteRepresentationResponse is one authenticated immutable output bundle.
+type QuoteRepresentationResponse struct {
+	ID             uuid.UUID                          `json:"representation_id"`
+	QuoteID        uuid.UUID                          `json:"quote_id"`
+	VersionID      uuid.UUID                          `json:"version_id"`
+	CreatedAt      time.Time                          `json:"created_at"`
+	Quote          QuoteRepresentationPayloadResponse `json:"quote"`
+	MessagePreview string                             `json:"message_preview"`
+	PDFURL         string                             `json:"pdf_url"`
+}
+
+// QuoteRepresentationPayloadResponse is the versioned client-safe quote document.
+type QuoteRepresentationPayloadResponse struct {
+	Reference     string                                `json:"reference"`
+	VersionNumber int                                   `json:"version_number"`
+	ApprovedAt    time.Time                             `json:"approved_at"`
+	Currency      string                                `json:"currency"`
+	Supplier      QuoteRepresentationSupplierResponse   `json:"supplier"`
+	Branch        QuoteRepresentationBranchResponse     `json:"branch"`
+	Customer      QuoteRepresentationCustomerResponse   `json:"customer"`
+	Items         []QuoteRepresentationItemResponse     `json:"items"`
+	Discounts     []QuoteRepresentationDiscountResponse `json:"discounts"`
+	Total         string                                `json:"total"`
+	ValidityNote  string                                `json:"validity_note"`
+}
+
+// QuoteRepresentationSupplierResponse is the public supplier identity.
+type QuoteRepresentationSupplierResponse struct {
+	Name       string  `json:"name"`
+	LegalName  *string `json:"legal_name,omitempty"`
+	TaxID      *string `json:"tax_id,omitempty"`
+	BrandColor string  `json:"brand_color"`
+	LogoURL    *string `json:"logo_url,omitempty"`
+}
+
+// QuoteRepresentationBranchResponse is the public branch identity.
+type QuoteRepresentationBranchResponse struct {
+	Name    string  `json:"name"`
+	Address *string `json:"address,omitempty"`
+}
+
+// QuoteRepresentationCustomerResponse is the minimal public customer identity.
+type QuoteRepresentationCustomerResponse struct {
+	Name *string `json:"name,omitempty"`
+}
+
+// QuoteRepresentationItemResponse is one priced public line.
+type QuoteRepresentationItemResponse struct {
+	RequestedDescription string                                   `json:"requested_description"`
+	ProductCode          *string                                  `json:"product_code,omitempty"`
+	ProductName          string                                   `json:"product_name"`
+	Quantity             string                                   `json:"quantity"`
+	Unit                 *string                                  `json:"unit,omitempty"`
+	UnitPrice            string                                   `json:"unit_price"`
+	Subtotal             string                                   `json:"subtotal"`
+	Alternatives         []QuoteRepresentationAlternativeResponse `json:"alternatives"`
+}
+
+// QuoteRepresentationAlternativeResponse is one approved public alternative.
+type QuoteRepresentationAlternativeResponse struct {
+	Code      *string `json:"code,omitempty"`
+	Name      string  `json:"name"`
+	Unit      *string `json:"unit,omitempty"`
+	UnitPrice string  `json:"unit_price"`
+}
+
+// QuoteRepresentationDiscountResponse is one applied public discount.
+type QuoteRepresentationDiscountResponse struct {
+	Description string `json:"description"`
+	Amount      string `json:"amount"`
 }

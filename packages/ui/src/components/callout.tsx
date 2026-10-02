@@ -1,5 +1,11 @@
 import * as React from 'react';
-import { AlertTriangleIcon, CheckCircle2Icon, InfoIcon, XCircleIcon } from 'lucide-react';
+import {
+  AlertTriangleIcon,
+  BellRingIcon,
+  CheckCircle2Icon,
+  InfoIcon,
+  XCircleIcon,
+} from 'lucide-react';
 
 import { cn } from '../lib/utils';
 
@@ -20,6 +26,11 @@ const TONES = {
     icon: 'text-danger-foreground',
     Icon: XCircleIcon,
   },
+  followup: {
+    surface: 'bg-followup-subtle border-followup-border',
+    icon: 'text-followup-foreground',
+    Icon: BellRingIcon,
+  },
 } as const;
 
 interface CalloutProps extends React.ComponentProps<'div'> {
@@ -27,6 +38,8 @@ interface CalloutProps extends React.ComponentProps<'div'> {
   title?: string;
   /* Overrides the tone's default glyph. */
   icon?: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
+  /* What the reader can do about the message — a link or a button, at the end of the box. */
+  action?: React.ReactNode;
 }
 
 /*
@@ -37,7 +50,15 @@ interface CalloutProps extends React.ComponentProps<'div'> {
  * `danger` announces itself to assistive tech, because a message the user must not miss should not
  * depend on them looking at it.
  */
-function Callout({ className, tone = 'info', title, icon, children, ...props }: CalloutProps) {
+function Callout({
+  className,
+  tone = 'info',
+  title,
+  icon,
+  action,
+  children,
+  ...props
+}: CalloutProps) {
   const { surface, icon: iconColor, Icon: DefaultIcon } = TONES[tone];
   const Icon = icon ?? DefaultIcon;
 
@@ -54,10 +75,15 @@ function Callout({ className, tone = 'info', title, icon, children, ...props }: 
       {...props}
     >
       <Icon aria-hidden className={cn('mt-0.5 size-4 shrink-0', iconColor)} />
-      <div className="flex flex-col min-w-0 gap-y-0.5">
+      <div className="flex flex-col flex-1 min-w-0 gap-y-0.5">
         {title ? <p className="text-paragraph-sm-semibold text-foreground">{title}</p> : null}
         <div className="text-paragraph-sm text-foreground-muted">{children}</div>
       </div>
+      {action ? (
+        <div data-slot="callout-action" className="flex shrink-0 self-center">
+          {action}
+        </div>
+      ) : null}
     </div>
   );
 }

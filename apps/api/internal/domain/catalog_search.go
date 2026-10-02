@@ -20,14 +20,21 @@ type CatalogCandidate struct {
 	ProductID     uuid.UUID
 	Code          *string
 	CanonicalName string
+	Description   *string
 	Unit          *string
-	// Distance is the cosine distance to the line's vector, and is nil when only the lexical
-	// half found the product.
+	// Synonyms are the account's trade terms for this product that the line contained, so a
+	// match through "portland" reads as covered even though the name says "cemento".
+	Synonyms []string
+	// Distance is the cosine distance to the line's vector, and is nil when the product has no
+	// vector yet.
 	Distance *float64
 	// LexicalScore ranks the full-text match, and is nil when only the semantic half found it.
 	LexicalScore *float64
 	// LearnedDistance is cosine distance to a seller-approved phrase for this product.
 	LearnedDistance *float64
+	// LearnedConfirmed is true when the seller taught this product for this very phrase and later
+	// kept it on a line that was flagged: a choice made twice.
+	LearnedConfirmed bool
 	// Score is the fused rank the candidates are ordered by, best first.
 	Score float64
 }

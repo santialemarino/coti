@@ -24,7 +24,9 @@ type Set struct {
 
 // Bind selects an adapter per capability. No provider covers all three, so each is chosen on
 // its own and any of them can be left unbound. config.Load rejects a provider with no adapter.
-func Bind(cfg config.AIConfig, log *slog.Logger) (Set, error) {
+// Every call is metered to recorder, which may be nil to leave the log as the only record.
+func Bind(cfg config.AIConfig, log *slog.Logger, recorder domain.AIUsageRecorder) (Set, error) {
+	meter := ai.NewMeter(log, recorder)
 	set := Set{
 		Generator:   ai.DisabledGenerator{},
 		Embedder:    ai.DisabledEmbedder{},
@@ -35,7 +37,7 @@ func Bind(cfg config.AIConfig, log *slog.Logger) (Set, error) {
 	case config.AIProviderDisabled:
 		log.Warn("no language model is bound: extraction and the change handler will refuse")
 	case config.AIProviderAnthropic:
-		set.Generator = anthropic.NewGenerator(cfg.Anthropic(), log)
+		set.Generator = anthropic.NewGenerator(cfg.Anthropic(), meter)
 	default:
 		return set, fmt.Errorf("no language model adapter for provider %q", cfg.LLMProvider)
 	}
@@ -44,7 +46,7 @@ func Bind(cfg config.AIConfig, log *slog.Logger) (Set, error) {
 	case config.AIProviderDisabled:
 		log.Warn("no embedding provider is bound: semantic catalog search will refuse")
 	case config.AIProviderOpenAI:
-		set.Embedder = openai.NewEmbedder(cfg.Embeddings(), log)
+		set.Embedder = openai.NewEmbedder(cfg.Embeddings(), meter)
 	default:
 		return set, fmt.Errorf("no embedding adapter for provider %q", cfg.EmbeddingsProvider)
 	}
@@ -53,7 +55,7 @@ func Bind(cfg config.AIConfig, log *slog.Logger) (Set, error) {
 	case config.AIProviderDisabled:
 		log.Warn("no transcription provider is bound: audio ingest will refuse")
 	case config.AIProviderOpenAI:
-		set.Transcriber = openai.NewTranscriber(cfg.Transcription(), log)
+		set.Transcriber = openai.NewTranscriber(cfg.Transcription(), meter)
 	default:
 		return set, fmt.Errorf("no transcription adapter for provider %q", cfg.TranscriptionProvider)
 	}

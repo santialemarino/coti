@@ -4,6 +4,7 @@ import {
   createUser,
   deactivateUser,
   reactivateUser,
+  resendInvite,
   sendPasswordReset,
   updateUser,
 } from '@/app/(protected)/settings/users/actions';
@@ -30,6 +31,7 @@ const VALUES: UserValues = {
   email: 'ana@corralon.test',
   role: SELLER_ROLE,
   branchIds: [BRANCH_ID],
+  access: 'PASSWORD',
   password: 'Coti-1234-larga',
 };
 
@@ -61,6 +63,22 @@ describe('createUser', () => {
       role: SELLER_ROLE,
       branch_ids: [BRANCH_ID],
       password: 'Coti-1234-larga',
+    });
+  });
+
+  // The API refuses a body that both invites and sets a password, and an invited user must never
+  // carry one the admin typed and then switched away from.
+  it('sends an invite and no password when the user is invited', async () => {
+    vi.mocked(apiRequest).mockResolvedValue(undefined);
+
+    await createUser({ ...VALUES, access: 'INVITE', password: 'Coti-1234-larga' });
+
+    expect(requestSent()?.body).toEqual({
+      name: 'Ana Gómez',
+      email: 'ana@corralon.test',
+      role: SELLER_ROLE,
+      branch_ids: [BRANCH_ID],
+      invite: true,
     });
   });
 
@@ -203,6 +221,21 @@ describe('reactivateUser', () => {
       branch_ids: [BRANCH_ID],
       is_active: true,
     });
+  });
+});
+
+describe('resendInvite', () => {
+  it('asks the API to mail a fresh invite', async () => {
+    vi.mocked(apiRequest).mockResolvedValue(undefined);
+
+    await expect(resendInvite(USER_ID)).resolves.toEqual({ ok: true });
+    expect(requestSent()).toMatchObject({ path: `/v1/users/${USER_ID}/invite`, method: 'POST' });
+  });
+
+  it('carries a refusal for a user who already chose a password through', async () => {
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('INVITE_NOT_PENDING', 422));
+
+    await expect(resendInvite(USER_ID)).resolves.toEqual({ error: 'INVITE_NOT_PENDING' });
   });
 });
 

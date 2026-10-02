@@ -1,7 +1,8 @@
 # File storage
 
-Attachments and quote documents are bytes the database only points at. They go through one port,
-and the adapter behind it is a startup decision; nothing above the port knows which one answered.
+Attachments, quote documents, account logos, and product images are bytes the database only points at. They go
+through one port, and the adapter behind it is a startup decision; nothing above the port knows
+which one answered.
 
 ## The port and its adapters
 
@@ -36,6 +37,8 @@ layout is the caller's contract — the adapters enforce the shape of a key, not
 
 ```
 accounts/<account_id>/rfqs/<rfq_id>/<object_id>.<ext>
+accounts/<account_id>/brand/<logo_id>
+accounts/<account_id>/products/<product_id>/<image_id>
 ```
 
 One key cannot be a prefix of another on the local adapter: a filesystem cannot hold both a file
@@ -108,8 +111,44 @@ The stored extension comes from the accepted format, never from the client's fil
 a file is called cannot decide what the object is called. `file_url` holds the **key**, not a
 URL: every link expires and the reference must not.
 
-**Nothing here reads the file.** Turning an attachment into text is the multi-format engine's
-job; this layer stores bytes and hands back links, and every row starts at `PENDING`.
+**Nothing here reads the file.** Turning an attachment into text is the pipeline's job — see
+[rfq-pipeline.md](rfq-pipeline.md#an-order-that-arrived-as-a-file) — and this layer stores bytes
+and hands back links. A file uploaded on its own leaves its row at `PENDING`; one the pipeline
+read arrives with its `extracted_text` already set and closes at `DONE`.
+
+## What uses it: account logos
+
+`POST /v1/account/logo` stores a logo for the authenticated administrator's account. The upload
+must be a PNG or JPEG, its declared content type must match the detected bytes, and its size is
+limited by `STORAGE_MAX_FILE_SIZE_BYTES`. The response contains a stable public API path; the
+backoffice resolves it against `API_URL` and stores the resulting URL in the account's existing
+`brand_logo_url` field when the account form is saved.
+
+`GET /v1/public/account-logos/{accountId}/{logoId}` intentionally needs no session because the
+logo appears on client-facing quotes. The API proxies the private object from either storage
+adapter and serves it inline with `nosniff` and an immutable public cache policy. The random logo
+identifier makes each replacement a new URL, so an old cached image cannot mask a newer one.
+
+The object key has no extension because the stored content type is authoritative:
+
+```
+accounts/<account_id>/brand/<logo_id>
+```
+
+## What uses it: product images
+
+`POST /v1/products/{productId}/image` stores one primary product image after proving the product
+belongs to the authenticated account. PNG, JPEG, and WebP are accepted; the declared type must match
+the detected bytes and the shared storage size limit applies. A successful replacement writes a new
+random `image_id` on the product, so a cached older image cannot mask it.
+
+`GET /v1/public/product-images/{accountId}/{productId}/{imageId}` serves the object inline with
+`nosniff` and an immutable public cache policy. It needs no session because product photos can appear
+on client-facing material. Its unguessable identifier is part of the path:
+
+```
+accounts/<account_id>/products/<product_id>/<image_id>
+```
 
 ## Configuration
 

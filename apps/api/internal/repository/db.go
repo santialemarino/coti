@@ -120,10 +120,23 @@ func (db *TenantDB) InTenantTx(ctx context.Context, tenant domain.Tenant, fn fun
 
 // CrossAccount returns a Querier on the owner pool, which bypasses row level security.
 //
-// Three callers are legitimate: the follow-up cron, login by email, and resolving a
-// quote_send.public_token. Every other use is a cross-tenant data leak.
+// Legitimate callers are cross-account jobs, pre-auth identity lookups, and discovery of the
+// account behind an opaque public token. Every other use is a cross-tenant data leak.
 func (db *DB) CrossAccount() Querier {
 	return db.admin
+}
+
+// WithAdvisoryLock serializes one external side effect without holding a business transaction.
+func (db *DB) WithAdvisoryLock(ctx context.Context, key string, fn func() error) error {
+	tx, err := db.admin.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin advisory lock: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, key); err != nil {
+		return fmt.Errorf("acquire advisory lock: %w", err)
+	}
+	return fn()
 }
 
 // AdminTx begins a transaction on the owner pool for multi-step writes that

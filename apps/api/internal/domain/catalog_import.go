@@ -20,10 +20,29 @@ type ProductSubgroup struct {
 	Name     string
 }
 
-// CatalogImportFile is the Spanish XLSX template for an initial catalog load.
+// CatalogImportFile is the Spanish XLSX used for bulk catalog creation and editing.
 type CatalogImportFile struct {
 	Filename string
 	Content  []byte
+}
+
+// CatalogExport is the account catalog together with values scoped to one branch.
+type CatalogExport struct {
+	BranchName string
+	Rows       []CatalogExportRow
+}
+
+// CatalogExportRow is one product written to the bulk-edit workbook.
+type CatalogExportRow struct {
+	Code        string
+	Name        string
+	Description string
+	Unit        string
+	Family      string
+	Subgroup    *string
+	Price       *string
+	MinPrice    *string
+	IsActive    bool
 }
 
 // CatalogImportRow is one spreadsheet row prepared for human review.
@@ -39,6 +58,8 @@ type CatalogImportRow struct {
 	Subgroup    *string
 	Price       string
 	MinPrice    *string
+	IsActive    bool
+	Action      string
 	Errors      []string
 }
 
@@ -52,6 +73,7 @@ type CatalogImportInput struct {
 	Subgroup    *string
 	Price       string
 	MinPrice    *string
+	IsActive    bool
 }
 
 // CatalogImportPreview summarizes a catalog spreadsheet before confirmation.
@@ -63,8 +85,9 @@ type CatalogImportPreview struct {
 	PreviewedAt time.Time
 }
 
-// CatalogImportResult reports the rows created and skipped after confirmation.
+// CatalogImportResult reports the rows created, updated, and skipped after confirmation.
 type CatalogImportResult struct {
-	ImportedRows int
-	SkippedRows  int
+	CreatedRows int
+	UpdatedRows int
+	SkippedRows int
 }

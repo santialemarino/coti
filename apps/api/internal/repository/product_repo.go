@@ -16,7 +16,7 @@ import (
 // productColumns keeps the SELECT list, the scan order, and the struct in one place.
 // embedding is left out on purpose: 1536 floats that no catalog read needs.
 const productColumns = `id, account_id, code, canonical_name, description, unit, family_id, subgroup_id,
-	is_active, created_at, updated_at`
+	image_id, is_active, created_at, updated_at`
 
 // productCodeIndex is the partial unique index behind "one code per account". Partial
 // because code is nullable, so unnamed products do not collide with each other.
@@ -56,7 +56,8 @@ func (r *ProductRepository) List(
 	for rows.Next() {
 		var p domain.Product
 		if err := rows.Scan(&p.ID, &p.AccountID, &p.Code, &p.CanonicalName, &p.Description,
-			&p.Unit, &p.FamilyID, &p.SubgroupID, &p.IsActive, &p.CreatedAt, &p.UpdatedAt, &page.Total); err != nil {
+			&p.Unit, &p.FamilyID, &p.SubgroupID, &p.ImageID, &p.IsActive, &p.CreatedAt, &p.UpdatedAt,
+			&page.Total); err != nil {
 			return domain.ProductPage{}, err
 		}
 		page.Items = append(page.Items, p)
@@ -84,6 +85,25 @@ func (r *ProductRepository) GetByIDForUpdate(
 		 WHERE account_id = $1 AND id = $2
 		 FOR UPDATE`,
 		accountID, id))
+}
+
+// ListAccountsPendingEmbedding returns every active account with an active product whose vector is
+// missing or older than its last edit. It reads across accounts, so it takes the owner's querier.
+func (r *ProductRepository) ListAccountsPendingEmbedding(
+	ctx context.Context, q Querier,
+) ([]uuid.UUID, error) {
+	rows, err := q.Query(ctx,
+		`SELECT DISTINCT p.account_id
+		 FROM product p
+		 JOIN account a ON a.id = p.account_id AND a.is_active = TRUE
+		 WHERE p.is_active = TRUE
+		   AND (p.embedding IS NULL OR p.embedding_updated_at IS NULL
+		        OR p.embedding_updated_at < p.updated_at)
+		 ORDER BY p.account_id`)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
 }
 
 // ListPendingEmbedding returns the next products whose vector is missing or older than their
@@ -154,6 +174,18 @@ func (r *ProductRepository) Update(
 	return p, err
 }
 
+// SetImage replaces the product's primary image reference.
+func (r *ProductRepository) SetImage(
+	ctx context.Context, q Querier, accountID, id, imageID uuid.UUID,
+) (*domain.Product, error) {
+	return scanProduct(q.QueryRow(ctx,
+		`UPDATE product
+		 SET image_id = $3
+		 WHERE account_id = $1 AND id = $2
+		 RETURNING `+productColumns,
+		accountID, id, imageID))
+}
+
 // SetEmbeddings stores a batch of vectors in one statement and stamps when each was computed,
 // so an edit made afterwards reads as stale on the next backfill. Returns the rows written.
 //
@@ -210,7 +242,9 @@ func (r *ProductRepository) SetSearchProbes(ctx context.Context, q Querier, prob
 }
 
 // searchCandidatesQuery is the hybrid catalog search: the closest vectors and the full-text
-// matches over product names and their synonyms, narrowed to what the branch carries.
+// matches over product names and their synonyms, narrowed to what the branch carries. Every
+// candidate that has a vector is measured against the line, whichever half found it, so a missing
+// distance means the product has no vector rather than that it was not among the closest.
 //
 // Kept as a const so the test that reads its execution plan measures this statement rather than
 // a copy of it.
@@ -233,21 +267,24 @@ const searchCandidatesQuery = `
 	    LIMIT $5
 	),
 	learned AS (
-	    SELECT product_id, min(embedding <=> $4) AS distance
+	    SELECT product_id, min(embedding <=> $4) AS distance,
+	           bool_or(normalized_source = $7 AND support_count > 1) AS confirmed
 	    FROM quote_correction_memory
 	    WHERE account_id = $1 AND kind = 'CATALOG' AND status = 'READY'
 	      AND embedding <=> $4 <= $6
 	    GROUP BY product_id
 	),
 	lexical_hit AS (
-	    SELECT p.id AS product_id, ts_rank(p.search_document, ask.query)::float8 AS score
+	    SELECT p.id AS product_id, ts_rank(p.search_document, ask.query)::float8 AS score,
+	           NULL::text AS term
 	    FROM product p, ask
 	    WHERE p.account_id = $1 AND p.is_active = TRUE
 	      AND p.search_document @@ ask.query
 	    UNION ALL
 	    SELECT s.product_id,
 	           ts_rank(ask.document,
-	               plainto_tsquery('spanish_unaccent'::regconfig, s.term))::float8 AS score
+	               plainto_tsquery('spanish_unaccent'::regconfig, s.term))::float8 AS score,
+	           s.term
 	    FROM product_synonym s
 	    JOIN product sp ON sp.id = s.product_id AND sp.account_id = $1 AND sp.is_active = TRUE
 	    CROSS JOIN ask
@@ -256,7 +293,7 @@ const searchCandidatesQuery = `
 	      AND ask.document @@ plainto_tsquery('spanish_unaccent'::regconfig, s.term)
 	),
 	lexical AS (
-	    SELECT product_id, max(score)::float8 AS score
+	    SELECT product_id, max(score)::float8 AS score, array_remove(array_agg(term), NULL) AS terms
 	    FROM lexical_hit
 	    GROUP BY product_id
 	    ORDER BY score DESC
@@ -269,13 +306,12 @@ const searchCandidatesQuery = `
 	    UNION
 	    SELECT product_id FROM learned
 	)
-	SELECT p.id, p.code, p.canonical_name, p.unit, semantic.distance, lexical.score,
-	       learned.distance
+	SELECT p.id, p.code, p.canonical_name, p.description, p.unit, p.embedding <=> $4, lexical.score,
+	       lexical.terms, learned.distance, COALESCE(learned.confirmed, FALSE)
 	FROM candidate c
-	JOIN product p ON p.id = c.id AND p.account_id = $1
+	JOIN product p ON p.id = c.id AND p.account_id = $1 AND p.is_active = TRUE
 	JOIN branch_product bp ON bp.product_id = p.id AND bp.account_id = $1
 	  AND bp.branch_id = $2 AND bp.is_active = TRUE
-	LEFT JOIN semantic ON semantic.id = p.id
 	LEFT JOIN learned ON learned.product_id = p.id
 	LEFT JOIN lexical ON lexical.product_id = p.id`
 
@@ -290,7 +326,7 @@ func (r *ProductRepository) SearchCandidates(
 	text string, embedding pgvector.Vector, fetch int, correctionMaxDistance float64,
 ) ([]domain.CatalogCandidate, error) {
 	rows, err := q.Query(ctx, searchCandidatesQuery, accountID, branchID, text, embedding, fetch,
-		correctionMaxDistance)
+		correctionMaxDistance, normalizeCorrectionSource(text))
 	if err != nil {
 		return nil, err
 	}
@@ -299,8 +335,9 @@ func (r *ProductRepository) SearchCandidates(
 	var candidates []domain.CatalogCandidate
 	for rows.Next() {
 		var c domain.CatalogCandidate
-		if err := rows.Scan(&c.ProductID, &c.Code, &c.CanonicalName, &c.Unit,
-			&c.Distance, &c.LexicalScore, &c.LearnedDistance); err != nil {
+		if err := rows.Scan(&c.ProductID, &c.Code, &c.CanonicalName, &c.Description, &c.Unit,
+			&c.Distance, &c.LexicalScore, &c.Synonyms, &c.LearnedDistance,
+			&c.LearnedConfirmed); err != nil {
 			return nil, err
 		}
 		candidates = append(candidates, c)
@@ -311,7 +348,7 @@ func (r *ProductRepository) SearchCandidates(
 func scanProduct(row pgx.Row) (*domain.Product, error) {
 	var p domain.Product
 	err := row.Scan(&p.ID, &p.AccountID, &p.Code, &p.CanonicalName, &p.Description, &p.Unit,
-		&p.FamilyID, &p.SubgroupID, &p.IsActive, &p.CreatedAt, &p.UpdatedAt)
+		&p.FamilyID, &p.SubgroupID, &p.ImageID, &p.IsActive, &p.CreatedAt, &p.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

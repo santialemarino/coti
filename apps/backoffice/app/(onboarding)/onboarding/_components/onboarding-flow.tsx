@@ -5,7 +5,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   CheckCircle2Icon,
+  CircleDashedIcon,
   FileSpreadsheetIcon,
+  ListTodoIcon,
   PaletteIcon,
   StoreIcon,
   UsersIcon,
@@ -21,7 +23,7 @@ import {
   PendingButton,
   StatusScreen,
 } from '@repo/ui/components';
-import { MOTION } from '@repo/ui/lib';
+import { cn, MOTION } from '@repo/ui/lib';
 import { BranchStep } from '@/app/(onboarding)/onboarding/_components/branch-step';
 import { BrandStep } from '@/app/(onboarding)/onboarding/_components/brand-step';
 import { OnboardingProgress } from '@/app/(onboarding)/onboarding/_components/onboarding-progress';
@@ -52,6 +54,14 @@ const BRAND_FORM_ID = 'onboarding-brand-form';
 const BRANCH_FORM_ID = 'onboarding-branch-form';
 const CATALOG_UPLOAD_FORM_ID = 'onboarding-catalog-upload-form';
 
+// What the completion screen reports on, each read from the step that sets it up.
+const READY_ITEMS = [
+  { key: 'brand', step: 'BRAND', icon: PaletteIcon },
+  { key: 'branch', step: 'FIRST_BRANCH', icon: StoreIcon },
+  { key: 'catalog', step: 'CATALOG_UPLOAD', icon: FileSpreadsheetIcon },
+  { key: 'team', step: 'TEAM', icon: UsersIcon },
+] as const;
+
 interface OnboardingFlowProps {
   onboarding: Onboarding;
   account: Account;
@@ -59,6 +69,7 @@ interface OnboardingFlowProps {
   branches: Branch[];
   users: AccountUser[];
   currentUserId: string;
+  mailDelivery: boolean;
 }
 
 export function OnboardingFlow({
@@ -68,10 +79,12 @@ export function OnboardingFlow({
   branches,
   users,
   currentUserId,
+  mailDelivery,
 }: OnboardingFlowProps) {
   const router = useRouter();
   const t = useTranslations('onboarding');
   const tCatalog = useTranslations('catalogImport');
+  const tCommon = useTranslations('common');
   const message = useApiErrorMessage('onboarding');
   const reduced = useReducedMotion();
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -86,6 +99,9 @@ export function OnboardingFlow({
   const [error, setError] = useState<string | null>(null);
   const [dismissOpen, setDismissOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  // Set on a successful create, so finishing does not wait on the refresh that brings the user in.
+  const [addedUser, setAddedUser] = useState(false);
+  const teammates = users.filter((user) => user.id !== currentUserId && user.isActive).length;
   const currentStepRef = useRef(step);
   currentStepRef.current = step;
 
@@ -114,9 +130,9 @@ export function OnboardingFlow({
     startTransition(task);
   }
 
-  function submitBrand(values: OnboardingBrandValues) {
+  function submitBrand(values: OnboardingBrandValues, logo?: File | null) {
     run(async () => {
-      const result = await updateOnboardingBrand(values);
+      const result = await updateOnboardingBrand(values, logo);
       if (!result.ok) {
         setError(message(result.error));
         return;
@@ -226,7 +242,7 @@ export function OnboardingFlow({
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-5 py-6 gap-y-8 sm:px-8 sm:py-10">
       <header className="flex items-center justify-between gap-x-4">
         <Link href={ROUTES.home} className="text-heading-4 focus-visible:focus-ring rounded-sm">
-          Coti
+          {tCommon('appName')}
         </Link>
         {step !== 'COMPLETE' ? (
           <Button
@@ -404,36 +420,54 @@ export function OnboardingFlow({
               branches={branches}
               currentUserId={currentUserId}
               users={users}
-              onCreate={(values: UserValues) => createOnboardingUser(values)}
+              mailDelivery={mailDelivery}
+              onCreate={async (values: UserValues) => {
+                const result = await createOnboardingUser(values);
+                if (result.ok) setAddedUser(true);
+                return result;
+              }}
             />
             <Footer
               pending={pending}
               primary={t('team.finish')}
               pendingLabel={t('saving')}
               back={() => move('CATALOG_UPLOAD')}
-              onPrimary={() => finishTeam('COMPLETED')}
+              // Finishing with nobody added resolves the step as skipped, not as done.
+              onPrimary={() => finishTeam(teammates > 0 || addedUser ? 'COMPLETED' : 'SKIPPED')}
             />
           </>
         );
-      case 'COMPLETE':
+      case 'COMPLETE': {
+        // Only what was actually done reads as done; a skipped step says where it is waiting.
+        const outcomes = READY_ITEMS.map((item) => ({
+          ...item,
+          done: resolved[item.step] === 'COMPLETED',
+        }));
+        const allDone = outcomes.every((item) => item.done);
         return (
           <div className="flex flex-1 flex-col gap-y-8">
             <StatusScreen
-              icon={CheckCircle2Icon}
-              tone="success"
-              title={t('complete.readyTitle')}
-              description={t('complete.readyDescription')}
+              icon={allDone ? CheckCircle2Icon : ListTodoIcon}
+              tone={allDone ? 'success' : 'info'}
+              title={t(allDone ? 'complete.readyTitle' : 'complete.partialTitle')}
+              description={t(allDone ? 'complete.readyDescription' : 'complete.partialDescription')}
             />
-            <div className="grid w-full max-w-3xl gap-4 sm:grid-cols-3">
-              <ReadyItem icon={PaletteIcon} text={t('complete.items.brand')} />
-              <ReadyItem icon={StoreIcon} text={t('complete.items.branch')} />
-              <ReadyItem icon={FileSpreadsheetIcon} text={t('complete.items.catalog')} />
+            <div className="grid w-full max-w-3xl gap-4 sm:grid-cols-2">
+              {outcomes.map((item) => (
+                <ReadyItem
+                  key={item.key}
+                  icon={item.done ? item.icon : CircleDashedIcon}
+                  done={item.done}
+                  text={t(`complete.${item.done ? 'items' : 'pending'}.${item.key}`)}
+                />
+              ))}
             </div>
             <Button asChild size="lg" className="mt-auto w-full sm:ml-auto sm:w-auto">
               <Link href={ROUTES.home}>{t('complete.action')}</Link>
             </Button>
           </div>
         );
+      }
       default:
         return null;
     }
@@ -520,11 +554,24 @@ function Footer({
   );
 }
 
-function ReadyItem({ icon: Icon, text }: { icon: typeof UsersIcon; text: string }) {
+function ReadyItem({
+  icon: Icon,
+  text,
+  done,
+}: {
+  icon: typeof UsersIcon;
+  text: string;
+  done: boolean;
+}) {
   return (
-    <Card className="min-h-36 items-center justify-center p-6 gap-y-4 bg-muted shadow-e1">
-      <Icon aria-hidden="true" className="size-8 text-primary" />
-      <span className="text-heading-6">{text}</span>
+    <Card className="min-h-36 items-center justify-center p-6 gap-y-4 bg-muted shadow-e1 text-center">
+      <Icon
+        aria-hidden="true"
+        className={cn('size-8', done ? 'text-primary' : 'text-foreground-subtle')}
+      />
+      <span className={done ? 'text-heading-6' : 'text-paragraph-medium text-foreground-muted'}>
+        {text}
+      </span>
     </Card>
   );
 }

@@ -5,11 +5,12 @@ import Link from 'next/link';
 import { CircleCheckIcon, CircleXIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { Card, Hint, InlineLink, PendingButton, StatusScreen } from '@repo/ui/components';
+import { Button, Card, Hint, InlineLink, PendingButton, StatusScreen } from '@repo/ui/components';
 import { AuthCard } from '@/app/(auth)/_components/auth-card';
 import { AuthStage } from '@/app/(auth)/_components/auth-stage';
 import { ResendVerificationForm } from '@/app/(auth)/verify-email/_components/resend-verification-form';
 import { confirmEmail, type ConfirmEmailResult } from '@/app/(auth)/verify-email/actions';
+import { signOut } from '@/app/(protected)/actions';
 import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 
@@ -72,11 +73,21 @@ export function ConfirmEmailForm({ token, address }: ConfirmEmailFormProps) {
           title={t('title')}
           description={t('prompt')}
           footer={
-            <InlineLink asChild tone="muted">
-              <Link href={address ? ROUTES.home : ROUTES.login}>
-                {address ? t('continue') : t('backToLogin')}
-              </Link>
-            </InlineLink>
+            address ? (
+              <form action={signOut}>
+                <Button
+                  type="submit"
+                  variant="link"
+                  className="text-foreground-muted hover:text-foreground hover:decoration-foreground"
+                >
+                  {t('signOut')}
+                </Button>
+              </form>
+            ) : (
+              <InlineLink asChild tone="muted">
+                <Link href={ROUTES.login}>{t('backToLogin')}</Link>
+              </InlineLink>
+            )
           }
         >
           <form action={formAction} className="flex flex-col">

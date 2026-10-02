@@ -17,7 +17,7 @@ interface TableEmptyRowProps {
  */
 function TableEmptyRow({ colSpan, icon, title, description }: TableEmptyRowProps) {
   return (
-    <TableRow className="hover:bg-transparent">
+    <TableRow>
       <TableCell colSpan={colSpan} className="p-0">
         <EmptyState icon={icon} title={title} description={description} />
       </TableCell>

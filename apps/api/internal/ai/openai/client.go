@@ -2,7 +2,7 @@
 // Transcriber ports. Anthropic exposes neither, which is why a second provider exists at all.
 //
 // The two endpoints are called over net/http rather than through a provider SDK: the retry policy,
-// the timeouts and the usage log are shared with the other adapter and belong to internal/ai, so an
+// the timeouts and the usage meter are shared with the other adapter and belong to internal/ai, so an
 // SDK would contribute request signing and little else.
 package openai
 

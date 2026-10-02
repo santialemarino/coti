@@ -48,6 +48,7 @@ function ToggleGroup({
 /*
  * A segmented item is a surface, so its focus indicator is the ring — not the icon bump, which is
  * for icon-only triggers. `z-10` on focus keeps the ring from being clipped by the next segment.
+ * The press is a colour step and never a scale, for the reason spelled out in `Button`.
  */
 function ToggleGroupItem({
   className,
@@ -61,20 +62,21 @@ function ToggleGroupItem({
       data-slot="toggle-group-item"
       className={cn(
         'relative inline-flex shrink-0 items-center justify-center gap-x-1.5 whitespace-nowrap border border-transparent outline-none',
-        'transition-[color,background-color,border-color,box-shadow,scale] duration-200 ease-out-soft',
+        'transition-[color,background-color,border-color,box-shadow] duration-200 ease-out-soft',
         'focus-visible:z-10 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45',
-        'active:scale-[0.97]',
         'disabled:pointer-events-none disabled:opacity-50',
         "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         size === 'sm' ? 'h-7 px-2.5 text-paragraph-xs-medium' : 'h-8 px-3 text-paragraph-sm-medium',
         variant === 'segmented'
           ? cn(
-              'flex-1 rounded-lg text-foreground-muted hover:text-foreground',
+              'flex-1 rounded-lg text-foreground-muted hover:bg-surface-hover hover:text-foreground active:bg-surface-active',
               'data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-e1',
+              'data-[state=on]:hover:bg-background data-[state=on]:active:bg-secondary',
             )
           : cn(
-              'rounded-full border-border bg-background text-foreground-muted shadow-e1 hover:border-border-strong hover:text-foreground',
+              'rounded-full border-border bg-background text-foreground-muted shadow-e1 hover:border-border-strong hover:bg-muted hover:text-foreground active:bg-surface-hover',
               'data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground',
+              'data-[state=on]:hover:bg-primary-hover data-[state=on]:active:bg-primary-active',
             ),
         className,
       )}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
@@ -24,8 +24,9 @@ import {
   PendingButton,
 } from '@repo/ui/components';
 import { branchSchema, type BranchValues } from '@/app/(protected)/settings/branches/form-schema';
+import { QuantityInput } from '@/components/quantity-input';
 import type { Branch } from '@/lib/api/branches';
-import { DEFAULT_EXPIRY_DAYS, EXPIRY_MAX_DAYS, EXPIRY_MIN_DAYS } from '@/lib/constants/branch';
+import { DEFAULT_EXPIRY_DAYS, EXPIRY_MIN_DAYS } from '@/lib/constants/branch';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 
@@ -65,18 +66,24 @@ export function BranchFormDialog({
   const form = useForm<BranchValues>({
     ...FORM_VALIDATION,
     resolver: zodResolver(schema),
-    defaultValues: { name: '', address: '', defaultExpiryDays: String(DEFAULT_EXPIRY_DAYS) },
+    defaultValues: {
+      name: '',
+      address: '',
+      email: '',
+      defaultExpiryDays: String(DEFAULT_EXPIRY_DAYS),
+    },
   });
 
   /*
    * Reset on open, not on mount: the dialog outlives every branch it edits, so without this the
    * second row opened would still be showing the first row's values.
    */
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return;
     form.reset({
       name: branch?.name ?? '',
       address: branch?.address ?? '',
+      email: branch?.email ?? '',
       defaultExpiryDays: String(branch?.defaultExpiryDays ?? DEFAULT_EXPIRY_DAYS),
     });
   }, [open, branch, form]);
@@ -130,16 +137,34 @@ export function BranchFormDialog({
 
             <FormField
               control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('email.label')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="email"
+                      autoComplete="email"
+                      maxLength={TEXT_FIELD_MAX_LENGTH}
+                      placeholder={t('email.placeholder')}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>{t('email.hint')}</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
               name="defaultExpiryDays"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel required>{t('defaultExpiryDays.label')}</FormLabel>
                   <FormControl>
-                    <Input
-                      type="number"
-                      inputMode="numeric"
+                    <QuantityInput
                       min={EXPIRY_MIN_DAYS}
-                      max={EXPIRY_MAX_DAYS}
                       placeholder={String(DEFAULT_EXPIRY_DAYS)}
                       {...field}
                     />

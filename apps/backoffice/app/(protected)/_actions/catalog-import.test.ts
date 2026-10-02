@@ -22,7 +22,7 @@ beforeEach(() => vi.clearAllMocks());
 
 describe('confirmCatalogImport', () => {
   it('submits reviewed rows and keeps preview rejections in the result', async () => {
-    vi.mocked(apiRequest).mockResolvedValue({ imported_rows: 2, skipped_rows: 0 });
+    vi.mocked(apiRequest).mockResolvedValue({ created_rows: 1, updated_rows: 1, skipped_rows: 0 });
     const preview: CatalogImportPreview = {
       branchId: BRANCH_ID,
       rows: [
@@ -44,7 +44,8 @@ describe('confirmCatalogImport', () => {
 
     await expect(confirmCatalogImport(preview)).resolves.toEqual({
       ok: true,
-      importedRows: 2,
+      createdRows: 1,
+      updatedRows: 1,
       skippedRows: 1,
     });
     expect(requestSent()?.body).toEqual({
@@ -58,6 +59,7 @@ describe('confirmCatalogImport', () => {
           subgroup: null,
           price: '100.00',
           min_price: null,
+          is_active: true,
         },
         {
           code: 'ARE-001',
@@ -68,13 +70,14 @@ describe('confirmCatalogImport', () => {
           subgroup: null,
           price: '100.00',
           min_price: null,
+          is_active: true,
         },
       ],
     });
   });
 
   it('adds rows rejected by backend revalidation to preview rejections', async () => {
-    vi.mocked(apiRequest).mockResolvedValue({ imported_rows: 1, skipped_rows: 1 });
+    vi.mocked(apiRequest).mockResolvedValue({ created_rows: 1, updated_rows: 0, skipped_rows: 1 });
     const preview: CatalogImportPreview = {
       branchId: BRANCH_ID,
       rows: [
@@ -90,7 +93,8 @@ describe('confirmCatalogImport', () => {
 
     await expect(confirmCatalogImport(preview)).resolves.toEqual({
       ok: true,
-      importedRows: 1,
+      createdRows: 1,
+      updatedRows: 0,
       skippedRows: 2,
     });
   });
@@ -107,6 +111,8 @@ function row(overrides: Partial<CatalogImportPreview['rows'][number]>) {
     subgroup: null,
     price: '100.00',
     minPrice: null,
+    isActive: true,
+    action: 'CREATE' as const,
     errors: [],
     ...overrides,
   };

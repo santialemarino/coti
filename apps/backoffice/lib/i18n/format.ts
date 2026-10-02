@@ -1,16 +1,23 @@
-import { dateTimeFormat, listFormat, numberFormat } from '@/lib/i18n/intl-cache';
+import {
+  dateTimeFormat,
+  displayNamesFormat,
+  listFormat,
+  numberFormat,
+} from '@/lib/i18n/intl-cache';
 import { getLocaleTag } from '@/lib/i18n/locales';
 
 export interface FormatValueOptions {
   locale?: string;
   compact?: boolean;
+  // Min fraction digits for non-compact output.
+  minDecimals?: number;
   // Max fraction digits for non-compact output.
   maxDecimals?: number;
 }
 
-// Thousand separators, stripping .00 for integers. `compact: true` abbreviates ("1,5 M").
+// Thousand separators with configurable decimals. `compact: true` abbreviates ("1,5 M").
 export function formatValue(value: number, options: FormatValueOptions = {}): string {
-  const { locale, compact = false, maxDecimals = 2 } = options;
+  const { locale, compact = false, minDecimals = 0, maxDecimals = 2 } = options;
   if (compact) {
     return numberFormat(getLocaleTag(locale), {
       notation: 'compact',
@@ -20,8 +27,8 @@ export function formatValue(value: number, options: FormatValueOptions = {}): st
   }
   const hasDecimals = value % 1 !== 0;
   return numberFormat(getLocaleTag(locale), {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: hasDecimals ? maxDecimals : 0,
+    minimumFractionDigits: minDecimals,
+    maximumFractionDigits: Math.max(minDecimals, hasDecimals ? maxDecimals : 0),
   }).format(value);
 }
 
@@ -45,15 +52,28 @@ export function formatRatePct(ratio: number, locale?: string): string {
   }).format(ratio);
 }
 
-// "2 de ene de 2025". Date-only input (YYYY-MM-DD) is anchored at local midnight so it never
-// timezone-shifts to the previous day.
+// Date-only input (YYYY-MM-DD) is anchored at local midnight so it never timezone-shifts to the
+// previous day. Both date formatters parse through here.
+function parseDate(iso: string): Date {
+  return iso.length === 10 ? new Date(iso + 'T00:00:00') : new Date(iso);
+}
+
+// "2 de ene de 2025", for prose: a sentence, a subtitle, a callout. Reads as a date, not as a value.
 export function formatDate(iso: string, locale?: string): string {
-  const date = iso.length === 10 ? new Date(iso + 'T00:00:00') : new Date(iso);
   return dateTimeFormat(getLocaleTag(locale), {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
-  }).format(date);
+  }).format(parseDate(iso));
+}
+
+// "02/01/2025", for a column of dates: same width on every row, scanned rather than read.
+export function formatDateNumeric(iso: string, locale?: string): string {
+  return dateTimeFormat(getLocaleTag(locale), {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(parseDate(iso));
 }
 
 // "2 de ene de 2025, 11:30 p. m.", rendered in `timeZone` so the calendar day is right for
@@ -72,4 +92,9 @@ export function formatTimestamp(iso: string, locale?: string, timeZone?: string)
 // "cemento, arena y cal".
 export function formatList(items: Iterable<string>, locale?: string): string {
   return listFormat(getLocaleTag(locale), { style: 'long', type: 'conjunction' }).format(items);
+}
+
+// "Argentina" for "AR"; Intl answers an unknown code with the code itself.
+export function formatRegion(code: string, locale?: string): string {
+  return displayNamesFormat(getLocaleTag(locale), { type: 'region' }).of(code) ?? code;
 }

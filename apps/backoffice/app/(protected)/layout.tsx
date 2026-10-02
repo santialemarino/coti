@@ -2,8 +2,10 @@ import { redirect } from 'next/navigation';
 
 import { AppHeader } from '@/app/(protected)/_components/app-header';
 import { ROUTES } from '@/config/routes';
+import { getBranches } from '@/lib/api/branches';
 import { getOnboarding } from '@/lib/api/onboarding';
-import { getSession } from '@/lib/auth/session';
+import { getSelectedBranchId } from '@/lib/auth/branch';
+import { getSession, mustVerifyEmail } from '@/lib/auth/session';
 import { ADMIN_ROLE } from '@/lib/constants/auth';
 
 // Middleware answers whether a token exists; this answers whether the session
@@ -11,12 +13,26 @@ import { ADMIN_ROLE } from '@/lib/constants/auth';
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
   if (!session) redirect(ROUTES.sessionEnded);
-  // Ahead of the onboarding read, which is itself a closed route and does not catch: asking it
+  // Ahead of every other read, which is itself a closed route and does not catch: asking one
   // first would answer 403 and throw, where the confirmation screen belonged.
-  if (!session.emailVerified) redirect(ROUTES.verifyEmail);
-  if (session.role === ADMIN_ROLE) {
-    const onboarding = await getOnboarding();
-    if (onboarding.status === 'IN_PROGRESS') redirect(ROUTES.onboarding);
+  if (mustVerifyEmail(session)) redirect(ROUTES.verifyEmail);
+
+  const isAdmin = session.role === ADMIN_ROLE;
+  const [branches, onboarding] = await Promise.all([
+    getBranches(),
+    isAdmin ? getOnboarding() : null,
+  ]);
+  // A cookie naming a branch the caller no longer reaches makes every scoped read answer 403; a
+  // layout cannot write cookies, so a route handler drops it.
+  const selected = await getSelectedBranchId();
+  if (selected && !branches.some((branch) => branch.id === selected)) {
+    redirect(ROUTES.branchReset);
+  }
+
+  if (onboarding) {
+    // Onboarding sends an account with no active branch to Sucursales; sending it back would loop.
+    const canOnboard = branches.some((branch) => branch.isActive);
+    if (onboarding.status === 'IN_PROGRESS' && canOnboard) redirect(ROUTES.onboarding);
   }
 
   return (

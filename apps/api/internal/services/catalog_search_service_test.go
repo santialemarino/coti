@@ -52,14 +52,17 @@ func testSearchConfig() config.CatalogConfig {
 // fakeEmbedder answers with a vector per text and records what it was asked to embed.
 type fakeEmbedder struct {
 	calls [][]string
-	err   error
+	// scopes is the usage attribution each call arrived with.
+	scopes []domain.AIUsageScope
+	err    error
 	// short makes the answer one vector shorter than the request, the contract break the
 	// service has to catch rather than pass on.
 	short bool
 }
 
-func (f *fakeEmbedder) Embed(_ context.Context, texts []string) ([]pgvector.Vector, error) {
+func (f *fakeEmbedder) Embed(ctx context.Context, texts []string) ([]pgvector.Vector, error) {
 	f.calls = append(f.calls, texts)
+	f.scopes = append(f.scopes, domain.AIUsageScopeFrom(ctx))
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -150,6 +153,28 @@ func TestCatalogSearchService_TrimsToTheRequestedLimit(t *testing.T) {
 	// because the branch filter runs after the vector ordering.
 	if len(search.fetches) != 1 || search.fetches[0] != 8 {
 		t.Errorf("fetch widths = %v, want a single 8", search.fetches)
+	}
+}
+
+// The embedding a search pays for is the searching branch's spend, whoever asked for it.
+func TestCatalogSearchService_AttributesTheEmbeddingToTheBranchSearching(t *testing.T) {
+	embedder := &fakeEmbedder{}
+	service := NewCatalogSearchService(&fakeDB{}, &fakeSearch{byFetch: map[int]int{1: 1}},
+		embedder, testSearchConfig())
+	tenant := testSearchTenant()
+
+	if _, err := service.Search(context.Background(), tenant,
+		domain.CatalogSearch{Texts: []string{"cemento"}}); err != nil {
+		t.Fatalf("Search() = %v, want no error", err)
+	}
+
+	if len(embedder.scopes) != 1 {
+		t.Fatalf("embedder calls = %d, want 1", len(embedder.scopes))
+	}
+	scope := embedder.scopes[0]
+	if scope.AccountID != tenant.AccountID || scope.BranchID == nil ||
+		*scope.BranchID != tenant.BranchID || scope.Operation != domain.AIOperationCatalogSearch {
+		t.Errorf("scope = %+v, want the tenant's account and branch, as a catalog search", scope)
 	}
 }
 

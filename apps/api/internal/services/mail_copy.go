@@ -1,6 +1,10 @@
 package services
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/santialemarino/coti/apps/api/internal/domain"
+)
 
 // Product copy, not documentation: an Argentine corralón reads it. This file is the API's
 // counterpart to the web apps' es-AR catalog and the only Spanish in the backend.
@@ -21,6 +25,13 @@ const (
 	emailChangedHeading = "Cambió la dirección de tu cuenta"
 	// The old mailbox gets no other warning, so it says what the change implies and who to tell.
 	emailChangedWarning = "Si no fuiste vos, quien lo hizo tenía tu contraseña: avisale al administrador de tu corralón para que revise el acceso a la cuenta."
+	// An administrator made the change, so the warning says who to ask rather than what leaked.
+	emailChangedByAdminWarning = "El cambio lo hizo un administrador de tu corralón. Si no lo esperabas, consultalo con él."
+
+	inviteSubject = "Te invitaron a Coti"
+	inviteHeading = "Te invitaron a Coti"
+	inviteAction  = "Elegir mi contraseña"
+	inviteIgnore  = "Si no esperabas esta invitación, ignorá este correo: nadie puede entrar con tu dirección sin este enlace."
 )
 
 // passwordResetIntro greets the user by name and states what the link is for.
@@ -45,6 +56,31 @@ func emailVerificationIntro(name string) string {
 	return fmt.Sprintf("Hola %s, gracias por registrar tu corralón en Coti. Confirmá tu dirección para que podamos usarla con seguridad.", name)
 }
 
+// inviteIntro greets the invited user and says what the link is for.
+func inviteIntro(name string) string {
+	return fmt.Sprintf("Hola %s, te crearon una cuenta en Coti para trabajar con tu corralón. Elegí tu contraseña para entrar.", name)
+}
+
+// inviteValidity states how long the invite lasts, in whole days or hours, and that it works once.
+func inviteValidity(hours int) string {
+	const tail = " y se puede usar una sola vez. Si se vence, pedile a un administrador que te la reenvíe."
+	switch {
+	case hours == 24:
+		return "La invitación vence en 1 día" + tail
+	case hours%24 == 0 && hours > 24:
+		return fmt.Sprintf("La invitación vence en %d días", hours/24) + tail
+	case hours == 1:
+		return "La invitación vence en 1 hora" + tail
+	default:
+		return fmt.Sprintf("La invitación vence en %d horas", hours) + tail
+	}
+}
+
+// emailVerificationNewAddressIntro greets the user at the address their account just moved to.
+func emailVerificationNewAddressIntro(name string) string {
+	return fmt.Sprintf("Hola %s, la dirección de tu cuenta de Coti pasó a ser esta. Confirmala para que podamos usarla con seguridad.", name)
+}
+
 // emailChangedIntro tells the old address which address replaced it.
 func emailChangedIntro(name, newEmail string) string {
 	return fmt.Sprintf("Hola %s, la dirección de tu cuenta de Coti pasó a ser %s. Esta casilla ya no recibe los avisos de la cuenta.", name, newEmail)
@@ -60,4 +96,19 @@ func emailVerificationValidity(hours int) string {
 		return fmt.Sprintf("El enlace vence en %d días y se puede usar una sola vez.", days)
 	}
 	return fmt.Sprintf("El enlace vence en %d horas y se puede usar una sola vez.", hours)
+}
+
+// quoteOutcomeCopy words what a customer decided, for the seller who sent the quote. The reference
+// carries the subject because a seller with several quotes out reads the list, not the mail.
+func quoteOutcomeCopy(outcome domain.ClientQuoteOutcome) (subject, heading, body string) {
+	if outcome.Action == domain.ClientActionAccept {
+		return fmt.Sprintf("%s: el cliente aceptó la cotización", outcome.Reference),
+			"Te aceptaron la cotización",
+			fmt.Sprintf("El cliente aceptó %s. Entrá al backoffice para coordinar la entrega.",
+				outcome.Reference)
+	}
+	return fmt.Sprintf("%s: el cliente rechazó la cotización", outcome.Reference),
+		"Te rechazaron la cotización",
+		fmt.Sprintf("El cliente rechazó %s. Si querés retomarla, reactivala desde el backoffice.",
+			outcome.Reference)
 }

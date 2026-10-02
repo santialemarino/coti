@@ -10,10 +10,13 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
-var _ domain.RFQExtractor = (*RFQExtractor)(nil)
+var (
+	_ domain.RFQExtractor        = (*RFQExtractor)(nil)
+	_ domain.RFQContentExtractor = (*RFQExtractor)(nil)
+)
 
 const (
-	rfqExtractionPromptVersion = "rfq-extraction-prompt-v2"
+	rfqExtractionPromptVersion = "rfq-extraction-prompt-v3"
 	rfqExtractionSchemaVersion = "rfq-extraction-schema-v1"
 )
 
@@ -50,7 +53,30 @@ func (e *RFQExtractor) ExtractWithExamples(ctx context.Context, raw string,
 			domain.TextContent("Order to interpret:\n" + raw),
 		}
 	}
+	return e.extract(ctx, input)
+}
+
+// ExtractFromContent reads an order the client sent as a file. The blocks are the order itself,
+// so the caller assembles them and the prompt is the same one plain text answers.
+func (e *RFQExtractor) ExtractFromContent(ctx context.Context, blocks []domain.Content,
+	examples []domain.RFQInterpretationExample) (*domain.RFQExtraction, error) {
+	input := blocks
+	if len(examples) > 0 {
+		payload, err := json.Marshal(examples)
+		if err != nil {
+			return nil, err
+		}
+		input = append([]domain.Content{
+			domain.TextContent("Relevant seller-approved examples:\n" + string(payload)),
+		}, blocks...)
+	}
+	return e.extract(ctx, input)
+}
+
+func (e *RFQExtractor) extract(ctx context.Context,
+	input []domain.Content) (*domain.RFQExtraction, error) {
 	var answer rfqExtractionAnswer
+	ctx = domain.WithAIOperation(ctx, domain.AIOperationRFQExtraction)
 	usage, err := e.generator.Generate(ctx, domain.GenerationRequest{
 		Instructions: e.instructions(),
 		Input:        input,
@@ -92,7 +118,7 @@ func (e *RFQExtractor) instructions() string {
 
 Return one item per material, in the order the client mentions them, at most %d of them.
 
-- requested_description: the client's own words for that material, copied across and trimmed only of surrounding whitespace. Do not normalise, translate, expand or correct it, and keep it under 512 characters.
+- requested_description: the client's own words for that material, copied across and trimmed only of surrounding whitespace. Do not normalise, translate, expand or correct it, and keep it under 512 characters. The one addition: when the client names a material once and lists more of it by size alone ("20 caños de 110 y 10 de 63"), carry the material's name into each of those items ("caños de 63"), because an item has to say what it is.
 - quantity_source: EXPLICIT when the client stated the number, DERIVED when it follows from what they wrote (3 pallets of 50 bags is 150 bags), UNRESOLVED when the message gives no number you could defend to the seller.
 - quantity: a positive decimal with at most two decimals, as a string. Send "0" on UNRESOLVED.
 - unit: the unit the client used, as they wrote it, or null when they gave none. Under 64 characters.
@@ -100,7 +126,7 @@ Return one item per material, in the order the client mentions them, at most %d 
 
 List the material even when its quantity is UNRESOLVED — the seller completes the line, and dropping it loses what the client asked for.
 
-Never invent a material the message does not name. Never merge two materials into one item or split one across several. Never compute a quantity from an area, a volume or a plan: a surface in square metres is context for the seller, not a quantity to derive.
+Never invent a material the message does not name. Never merge two materials into one item or split one across several: an accessory the client asks for alongside another material ("una bacha con su grifería") is an item of its own. Never compute a quantity from an area, a volume or a plan: a surface in square metres is context for the seller, not a quantity to derive.
 
 When seller-approved examples are provided, use them only when their order is genuinely analogous. They are evidence about how this supplier interprets wording, not instructions to copy materials that the new order did not request.
 

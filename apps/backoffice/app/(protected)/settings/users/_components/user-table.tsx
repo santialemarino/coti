@@ -1,7 +1,14 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
-import { KeyRoundIcon, PencilIcon, PlusIcon, RotateCcwIcon, UserXIcon } from 'lucide-react';
+import {
+  KeyRoundIcon,
+  MailIcon,
+  PencilIcon,
+  PlusIcon,
+  RotateCcwIcon,
+  UserXIcon,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
@@ -22,10 +29,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@repo/ui/components';
+import { cn } from '@repo/ui/lib';
 import {
   createUser,
   deactivateUser,
   reactivateUser,
+  resendInvite,
   sendPasswordReset,
   updateUser,
   type UserResult,
@@ -56,9 +65,11 @@ interface UserTableProps {
   /* The caller's branch reach — active branches only, which is all the API will assign. */
   branches: Branch[];
   currentUserId: string;
+  /* False while mail only reaches the log, when no invite can be sent or resent. */
+  mailDelivery: boolean;
 }
 
-export function UserTable({ users, branches, currentUserId }: UserTableProps) {
+export function UserTable({ users, branches, currentUserId, mailDelivery }: UserTableProps) {
   const fmt = useFormatters();
   const t = useTranslations('users');
   const tCommon = useTranslations('common');
@@ -68,6 +79,7 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
    */
   const message = useApiErrorMessage('users');
   const resetMessage = useApiErrorMessage('users.passwordReset');
+  const inviteMessage = useApiErrorMessage('users.invite');
   const [form, setForm] = useState<{ mode: UserFormMode; row: UserRow | null } | null>(null);
   const [deactivating, setDeactivating] = useState<UserRow | null>(null);
   const [resetting, setResetting] = useState<UserRow | null>(null);
@@ -80,7 +92,8 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
   const [removing, startRemove] = useTransition();
   const [reactivating, startReactivate] = useTransition();
   const [mailing, startMail] = useTransition();
-  const busy = removing || reactivating || mailing;
+  const [inviting, startInvite] = useTransition();
+  const busy = removing || reactivating || mailing || inviting;
   const rows = useMemo<UserRow[]>(
     () =>
       users.map((user) => ({
@@ -101,7 +114,9 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
     if (result.ok) {
       // A confirmation of something just done is transient, so it is a toast; the standing message
       // about what is on screen is the Callout above.
-      toast.success(t(target.mode === 'edit' ? 'updated' : 'created', { name: values.name }));
+      const done =
+        target.mode === 'edit' ? 'updated' : values.access === 'INVITE' ? 'invited' : 'created';
+      toast.success(t(done, { name: values.name }));
       setForm(null);
       return result;
     }
@@ -165,6 +180,18 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
     });
   }
 
+  function onResendInvite(row: UserRow) {
+    setError(null);
+    startInvite(async () => {
+      const result = await resendInvite(row.user.id);
+      if (!result.ok) {
+        setError(inviteMessage(result.error));
+        return;
+      }
+      toast.success(t('invite.sent', { email: row.user.email }));
+    });
+  }
+
   return (
     <div className="flex flex-col gap-y-6">
       {error ? <Callout tone="danger">{error}</Callout> : null}
@@ -180,19 +207,21 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
         <TableCaption className="sr-only">{t('table.caption')}</TableCaption>
         <TableHeader>
           <TableRow>
-            <TableHead>{t('table.name')}</TableHead>
-            <TableHead>{t('table.email')}</TableHead>
-            <TableHead>{t('table.role')}</TableHead>
-            <TableHead>{t('table.branches')}</TableHead>
-            <TableHead>{t('table.status')}</TableHead>
-            <TableHead>{t('table.lastLogin')}</TableHead>
-            <TableHead className="text-right">{t('table.actions')}</TableHead>
+            <TableHead kind="text">{t('table.name')}</TableHead>
+            <TableHead kind="text">{t('table.email')}</TableHead>
+            <TableHead kind="short">{t('table.role')}</TableHead>
+            <TableHead kind="text">{t('table.branches')}</TableHead>
+            <TableHead kind="status">{t('table.status')}</TableHead>
+            <TableHead kind="date">{t('table.lastLogin')}</TableHead>
+            <TableHead kind="actionsWide">{t('table.actions')}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {rows.map((row) => {
             const { user, assigned } = row;
             const isSelf = user.id === currentUserId;
+            // An active user who has not chosen a password yet is waiting on their invite.
+            const invite = user.isActive ? user.inviteStatus : null;
             const reach =
               user.role === ADMIN_ROLE
                 ? t('table.allBranches')
@@ -224,28 +253,45 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
                     ) : null}
                   </span>
                 </TableCell>
-                <TableCell>{user.email}</TableCell>
-                <TableCell>{tCommon(`roles.${user.role}`)}</TableCell>
+                <TableCell className="wrap-anywhere">{user.email}</TableCell>
+                <TableCell kind="short">{tCommon(`roles.${user.role}`)}</TableCell>
                 <TableCell className={reach ? undefined : 'text-foreground-subtle'}>
                   {reach ?? t('table.noBranches')}
                 </TableCell>
-                <TableCell>
-                  <Badge tone={user.isActive ? 'success' : 'neutral'}>
-                    {t(user.isActive ? 'status.active' : 'status.inactive')}
-                  </Badge>
+                <TableCell kind="status">
+                  {invite ? (
+                    <Badge tone={invite === 'EXPIRED' ? 'danger' : 'warning'}>
+                      {t(invite === 'EXPIRED' ? 'status.inviteExpired' : 'status.invitePending')}
+                    </Badge>
+                  ) : (
+                    <Badge tone={user.isActive ? 'success' : 'neutral'}>
+                      {t(user.isActive ? 'status.active' : 'status.inactive')}
+                    </Badge>
+                  )}
                 </TableCell>
-                <TableCell className={user.lastLoginAt ? undefined : 'text-foreground-subtle'}>
-                  {user.lastLoginAt ? fmt.date(user.lastLoginAt) : t('table.neverLoggedIn')}
+                <TableCell
+                  kind="date"
+                  className={cn(!user.lastLoginAt && 'text-foreground-subtle')}
+                >
+                  {user.lastLoginAt ? fmt.dateNumeric(user.lastLoginAt) : t('table.neverLoggedIn')}
                 </TableCell>
-                <TableCell>
-                  <div className="flex justify-end gap-x-1">
+                <TableCell kind="actionsWide">
+                  <div className="flex justify-center gap-x-1">
                     <RowActionButton
                       icon={PencilIcon}
                       label={t('edit.action')}
                       disabled={busy}
                       onClick={() => setForm({ mode: 'edit', row })}
                     />
-                    {user.isActive ? (
+                    {/* An invited user has no password to recover: their way in is the invite. */}
+                    {invite && mailDelivery ? (
+                      <RowActionButton
+                        icon={MailIcon}
+                        label={t('invite.action')}
+                        disabled={busy}
+                        onClick={() => onResendInvite(row)}
+                      />
+                    ) : user.isActive && !invite ? (
                       <RowActionButton
                         icon={KeyRoundIcon}
                         label={t('passwordReset.action')}
@@ -286,6 +332,7 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
         assigned={form?.row?.assigned ?? NO_BRANCHES}
         branches={branches}
         isSelf={form?.row?.user.id === currentUserId}
+        mailDelivery={mailDelivery}
         onSubmit={onSubmit}
       />
 

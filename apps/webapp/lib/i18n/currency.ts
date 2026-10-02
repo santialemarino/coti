@@ -1,8 +1,9 @@
 import { numberFormat } from '@/lib/i18n/intl-cache';
 import { getLocaleTag } from '@/lib/i18n/locales';
 
-// Extend before quoting in a 0-decimal (JPY) or 3-decimal currency.
-const CURRENCY_DECIMALS: Record<string, number> = { ARS: 2, USD: 2 };
+// Extend before quoting in a 0-decimal (JPY) or 3-decimal currency. Also caps what an amount field
+// lets someone type, so display and entry can never disagree about a currency's precision.
+export const CURRENCY_DECIMALS: Record<string, number> = { ARS: 2, USD: 2 };
 
 function currencyDecimals(currency: string): number {
   return CURRENCY_DECIMALS[currency] ?? 2;

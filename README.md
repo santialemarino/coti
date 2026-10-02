@@ -77,18 +77,33 @@ pnpm dev
 | webapp     | http://localhost:3001 |
 | api        | http://localhost:8000 |
 
-Outbound mail goes to the log by default. To read a real message — a password-reset or
-address-verification link — start the Mailpit sandbox, set `MAIL_PROVIDER=smtp` in
-`apps/api/.env` (its `MAIL_SMTP_*` keys already point at Mailpit), and open the inbox:
+Outbound mail goes to the log by default. To read a captured message — a password-reset or
+address-verification link — start the Mailpit sandbox, set these values in `apps/api/.env`,
+restart the API, and open the inbox:
 
 ```bash
 docker compose up -d mailpit   # included in pnpm dev:docker
+```
+
+```dotenv
+MAIL_PROVIDER=smtp
+MAIL_FROM_ADDRESS=dev@coti.test
+MAIL_SMTP_HOST=127.0.0.1
+MAIL_SMTP_PORT=1025
+MAIL_SMTP_USERNAME=local
+MAIL_SMTP_PASSWORD=local
+MAIL_SMTP_STARTTLS=false
 ```
 
 | Service      | URL                   |
 | ------------ | --------------------- |
 | mailpit UI   | http://localhost:8025 |
 | mailpit SMTP | localhost:1025        |
+
+To test quote delivery in development, run `pnpm db:seed` so both seeded branches have
+outbound channels. Use `MAIL_PROVIDER=smtp` with Mailpit and select the email copy in the
+send dialog; the WhatsApp adapter is not connected yet. A console mailer does not count as
+delivery, and Mailpit captures messages locally without contacting the recipient.
 
 ## Common scripts
 

@@ -23,19 +23,23 @@ import (
 	"syscall"
 
 	"github.com/joho/godotenv"
+	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/ai"
 	aiprovider "github.com/santialemarino/coti/apps/api/internal/ai/provider"
+	"github.com/santialemarino/coti/apps/api/internal/branding"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/mail"
+	quotePDF "github.com/santialemarino/coti/apps/api/internal/pdf"
 	"github.com/santialemarino/coti/apps/api/internal/ratelimit"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 	"github.com/santialemarino/coti/apps/api/internal/secrets"
 	"github.com/santialemarino/coti/apps/api/internal/services"
 	storageprovider "github.com/santialemarino/coti/apps/api/internal/storage/provider"
+	"github.com/santialemarino/coti/apps/api/internal/whatsapp"
 )
 
 func main() {
@@ -79,8 +83,16 @@ func run() error {
 	rfqRepo := repository.NewRFQRepository()
 	rfqAttachmentRepo := repository.NewRFQAttachmentRepository()
 	quoteRepo := repository.NewQuoteRepository()
+	quoteDiscountRepo := repository.NewQuoteDiscountRepository()
 	quoteAIGenerationRepo := repository.NewQuoteAIGenerationRepository()
 	quoteCorrectionRepo := repository.NewQuoteCorrectionRepository()
+	quoteQualityRepo := repository.NewQuoteQualityRepository()
+	quoteSendRepo := repository.NewQuoteSendRepository()
+	clientActionRepo := repository.NewClientActionRepository()
+	quoteMessageRepo := repository.NewQuoteMessageRepository()
+	quoteRepresentationRepo := repository.NewQuoteRepresentationRepository()
+	clientRepo := repository.NewClientRepository()
+	tagRepo := repository.NewTagRepository()
 	accountRepo := repository.NewAccountRepository()
 	onboardingRepo := repository.NewOnboardingRepository()
 	channelRepo := repository.NewChannelRepository()
@@ -98,7 +110,9 @@ func run() error {
 		return err
 	}
 
-	providers, err := aiprovider.Bind(cfg.AI, log)
+	usage := services.NewAIUsageService(db, repository.NewAIUsageRepository(),
+		cfg.AI.UsageWriteTimeout, log)
+	providers, err := aiprovider.Bind(cfg.AI, log, usage)
 	if err != nil {
 		return err
 	}
@@ -121,17 +135,27 @@ func run() error {
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
 	authService := services.NewAuthService(db, userRepo, branchRepo, refreshTokenRepo, tokenService, cfg.Auth, nil)
 	mailService := services.NewMailService(db, mailer, notificationRepo, accountRepo, nil)
+	quoteMailService := mailService
+	if cfg.Mail.Provider == config.MailProviderConsole {
+		quoteMailService = services.NewMailService(db, mail.DisabledMailer{}, notificationRepo,
+			accountRepo, nil)
+	}
 	passwordService := services.NewPasswordService(db, userRepo, authTokenRepo, refreshTokenRepo,
 		mailService, authService, log, cfg.Auth, cfg.Web, nil)
 	verificationService := services.NewVerificationService(db, userRepo, authTokenRepo,
 		mailService, log, cfg.Auth, cfg.Web, nil)
-	userService := services.NewUserService(db, userRepo, userBranchRepo, branchRepo, cfg.Auth)
-	branchService := services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)
+	userService := services.NewUserService(db, userRepo, userBranchRepo, branchRepo, authTokenRepo,
+		mailService, verificationService, log, cfg.Auth, cfg.Web, cfg.Mail.Delivers(), nil)
+	branchService := services.NewBranchService(db, branchRepo, channelRepo, branchProductRepo,
+		cfg.Branch.DefaultExpiryDays)
 	accountService := services.NewAccountService(db, accountRepo, branchRepo, channelRepo,
-		userRepo, onboardingRepo, authService, verificationService, log, cfg.Auth, cfg.Branch)
+		userRepo, onboardingRepo, authService, verificationService, log, cfg.Auth, cfg.Branch).
+		WithDefaultTags(tagRepo).
+		WithLogoStorage(objectStorage.Storage, cfg.Storage.MaxFileSize)
 	onboardingService := services.NewOnboardingService(db, onboardingRepo)
 	productService := services.NewProductService(db, productRepo, productSynonymRepo,
-		productAlternativeRepo, cfg.Catalog)
+		productAlternativeRepo, branchProductRepo, productPriceRepo, cfg.Catalog).
+		WithImageStorage(objectStorage.Storage, cfg.Storage.MaxFileSize)
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo, branchProductRepo,
 		productPriceRepo, nil)
 	productPriceImportService := services.NewProductPriceImportService(db, productPriceRepo, nil)
@@ -139,34 +163,62 @@ func run() error {
 	channelService := services.NewChannelService(db, channelRepo, channelSealer)
 	catalogSearchService := services.NewCatalogSearchService(db, productRepo, providers.Embedder,
 		cfg.Catalog)
-	catalogMatchService := services.NewCatalogMatchService(catalogSearchService, cfg.Catalog)
+	catalogMatchService := services.NewCatalogMatchService(catalogSearchService, cfg.Catalog).
+		WithReviewer(ai.NewCatalogMatchReviewer(providers.Generator), log)
 	quoteCorrectionService := services.NewQuoteCorrectionService(db, quoteCorrectionRepo,
 		providers.Embedder, cfg.QuoteCorrection, log)
 	rfqExtractor := ai.NewRFQExtractor(providers.Generator, cfg.RFQ.MaxItems)
-	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo, quoteAIGenerationRepo,
-		channelRepo, rfqExtractor, catalogMatchService, log, cfg.RFQ).
-		WithCorrectionMemory(quoteCorrectionService)
-	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, log)
 	rfqAttachmentService := services.NewRFQAttachmentService(db, rfqAttachmentRepo,
 		objectStorage.Storage, cfg.Storage, nil)
-
+	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo, quoteSendRepo,
+		quoteAIGenerationRepo, channelRepo, userRepo, rfqExtractor, catalogMatchService, log, cfg.RFQ).
+		WithCorrectionMemory(quoteCorrectionService).
+		WithDiscounts(quoteDiscountRepo).
+		WithClientActions(clientActionRepo).
+		WithWebAppURL(cfg.Web.WebAppURL).
+		WithFileIntake(rfqAttachmentService, providers.Transcriber, cfg.Storage.MaxFileSize)
+	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, log)
+	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
+		WithCorrectionLearning(quoteCorrectionService)
+	quoteRepresentationService := services.NewQuoteRepresentationService(db,
+		quoteRepresentationRepo, quoteRepo, objectStorage.Storage,
+		branding.NewLogoLoader(cfg.QuoteLogo), quotePDF.NewQuoteRenderer(),
+		cfg.Storage.SignedURLExpiry, nil, log)
+	quoteDeliveryService := services.NewQuoteDeliveryService(db, quoteSendRepo, quoteRepo,
+		channelRepo, branchRepo, productPriceRepo, whatsapp.DisabledSender{}, quoteMailService,
+		quoteQualityService, cfg.Web.WebAppURL, nil, log).
+		WithRepresentationService(quoteRepresentationService).
+		WithClientActions(clientActionRepo, userRepo).
+		WithMessages(quoteMessageRepo)
+	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
+		quoteSendRepo)
+	// What a MATCHED line clears to read as HIGH, on the 0..1 scale the item carries its score on.
+	highConfidence := decimal.NewFromInt(int64(cfg.Catalog.MatchHighConfidencePercent)).
+		Div(decimal.NewFromInt(100))
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
-			Health:        handler.NewHealthHandler(db),
-			Auth:          handler.NewAuthHandler(authService),
-			Password:      handler.NewPasswordHandler(passwordService, mailTargetLimiter),
-			Verification:  handler.NewVerificationHandler(verificationService, mailTargetLimiter),
-			User:          handler.NewUserHandler(userService),
+			Health:       handler.NewHealthHandler(db),
+			Auth:         handler.NewAuthHandler(authService),
+			Password:     handler.NewPasswordHandler(passwordService, mailTargetLimiter),
+			Verification: handler.NewVerificationHandler(verificationService, mailTargetLimiter),
+			User: handler.NewUserHandler(userService, handler.SessionPolicy{
+				RequireVerifiedEmail: cfg.Auth.RequireVerifiedEmail,
+				MailDelivers:         cfg.Mail.Delivers(),
+			}),
 			Branch:        handler.NewBranchHandler(branchService),
+			Rfq:           handler.NewRfqHandler(rfqService, highConfidence),
 			Channel:       handler.NewChannelHandler(channelService),
-			Product:       handler.NewProductHandler(productService),
+			Product:       handler.NewProductHandler(productService, cfg.Storage.MaxFileSize),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
-			RFQ:           handler.NewRFQHandler(rfqService),
+			RFQ:           handler.NewRFQHandler(rfqService, cfg.Storage.MaxFileSize, highConfidence),
 			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
-			Quote:         handler.NewQuoteHandler(quoteService),
+			Quote: handler.NewQuoteHandler(quoteService, quoteDeliveryService,
+				quoteRepresentationService, highConfidence),
+			Client:        handler.NewClientHandler(clientService),
 			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
 			CatalogImport: handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
 			Account:       handler.NewAccountHandler(accountService),
+			AccountLogo:   handler.NewBrandLogoHandler(accountService, cfg.Storage.MaxFileSize),
 			Onboarding:    handler.NewOnboardingHandler(onboardingService),
 			File:          fileHandler(objectStorage),
 		},
@@ -202,8 +254,6 @@ func run() error {
 	return server.Shutdown(shutdownCtx)
 }
 
-// identifyForRateLimit reads a caller id out of a bearer so two users cannot spend each
-// other's allowance. Signature only: the session check is ResolveTenant's job.
 func identifyForRateLimit(tokens *services.TokenService) func(string) (string, bool) {
 	return func(raw string) (string, bool) {
 		claims, err := tokens.ParseAccessToken(raw)
@@ -214,8 +264,6 @@ func identifyForRateLimit(tokens *services.TokenService) func(string) (string, b
 	}
 }
 
-// newMailer binds the domain.Mailer port to the transport configuration selected, and is the
-// only place a provider is chosen. config.Load rejects a provider with no adapter.
 func newMailer(cfg *config.Config, log *slog.Logger) (domain.Mailer, error) {
 	switch cfg.Mail.Provider {
 	case config.MailProviderConsole:
@@ -229,8 +277,6 @@ func newMailer(cfg *config.Config, log *slog.Logger) (domain.Mailer, error) {
 	}
 }
 
-// newLogger returns a JSON logger in production and a text one in development, where
-// a human reads it directly.
 func newLogger(cfg *config.Config) *slog.Logger {
 	opts := &slog.HandlerOptions{Level: parseLevel(cfg.LogLevel)}
 	if cfg.IsProduction() {
@@ -252,8 +298,6 @@ func parseLevel(raw string) slog.Level {
 	}
 }
 
-// fileHandler serves the links the local adapter signs. A bucket signs and serves its own, so
-// there is nothing to mount beside one and the route stays absent.
 func fileHandler(set storageprovider.Set) *handler.FileHandler {
 	if set.Local == nil {
 		return nil

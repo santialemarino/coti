@@ -5,8 +5,9 @@ package dto
 type ErrorResponse struct {
 	Error string `json:"error"`
 	// Code is the stable identifier a client branches on; `error` is English prose for a log.
-	Code   string `json:"code"`
-	Detail string `json:"detail,omitempty"` // set when a body failed binding or validation.
+	Code   string   `json:"code"`
+	Detail string   `json:"detail,omitempty"` // set when a body failed binding or validation.
+	Issues []string `json:"issues,omitempty"`
 }
 
 // RateLimitResponse is returned when a caller has spent its allowance. It names no limit —
@@ -23,4 +24,9 @@ type RateLimitResponse struct {
 type HealthResponse struct {
 	Status string `json:"status"`
 	Detail string `json:"detail,omitempty"`
+}
+
+// SuccessResponse is a minimal acknowledgement for void operations.
+type SuccessResponse struct {
+	OK bool `json:"ok"`
 }

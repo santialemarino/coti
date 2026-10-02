@@ -49,6 +49,8 @@ func (e *env) dropAccountByAdminEmail(t *testing.T, email string) {
 			`DELETE FROM refresh_token WHERE account_id = $1`,
 			`DELETE FROM auth_token WHERE account_id = $1`,
 			`DELETE FROM notification WHERE account_id = $1`,
+			`DELETE FROM client_tag WHERE account_id = $1`,
+			`DELETE FROM tag WHERE account_id = $1`,
 			`DELETE FROM user_branch WHERE account_id = $1`,
 			`DELETE FROM app_user WHERE account_id = $1`,
 			`DELETE FROM channel WHERE account_id = $1`,
@@ -117,6 +119,17 @@ func TestSignup_CreatesAccountBranchChannelAndAdmin(t *testing.T) {
 	}
 	if onboardingStatus != "IN_PROGRESS" || onboardingStep != "WELCOME" {
 		t.Errorf("onboarding = %s/%s, want IN_PROGRESS/WELCOME", onboardingStatus, onboardingStep)
+	}
+
+	var tagNames []string
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT array_agg(name ORDER BY lower(name)) FROM tag WHERE account_id = $1`,
+		body.Account.ID,
+	).Scan(&tagNames); err != nil {
+		t.Fatalf("read default client tags: %v", err)
+	}
+	if len(tagNames) != 2 || tagNames[0] != "Obra grande" || tagNames[1] != "Recurrente" {
+		t.Errorf("default client tags = %v, want [Obra grande Recurrente]", tagNames)
 	}
 
 	// The session the signup returned must actually reach the account it created.

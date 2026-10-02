@@ -31,7 +31,8 @@ type catalogEmbeddingRepository interface {
 //
 // It runs off the request path. A whole catalog is thousands of texts, each provider call is
 // bounded per attempt rather than per chain, and the two together outrun any HTTP response
-// budget — so this is driven by the catalog-embed command, never by a route.
+// budget — so this is driven by the catalog-embed command and the catalog-embedding job, never
+// by a route.
 type CatalogEmbeddingService struct {
 	db       tenantTxRunner
 	accounts catalogEmbeddingAccounts
@@ -70,6 +71,8 @@ func (s *CatalogEmbeddingService) Backfill(
 		return report, err
 	}
 
+	embedCtx := domain.WithAIOperation(domain.WithAIAccount(ctx, tenant),
+		domain.AIOperationCatalogEmbedding)
 	cursor := uuid.Nil
 	for {
 		var pending []domain.ProductEmbeddingInput
@@ -90,7 +93,7 @@ func (s *CatalogEmbeddingService) Backfill(
 		for i, p := range pending {
 			texts[i] = p.EmbeddingText()
 		}
-		vectors, err := s.embedder.Embed(ctx, texts)
+		vectors, err := s.embedder.Embed(embedCtx, texts)
 		if err != nil {
 			return report, err
 		}

@@ -51,15 +51,25 @@ func (s AuthSubject) IsUsable() bool {
 // admin screens read and write.
 type UserWithBranches struct {
 	AppUser
-	BranchIDs []uuid.UUID
+	BranchIDs    []uuid.UUID
+	InviteStatus InviteStatus
+}
+
+// Seller is the picklist a manual RFQ offers as possible assignees: active sellers only,
+// because nobody should be able to assign an order to someone who cannot take it.
+type Seller struct {
+	ID   uuid.UUID
+	Name string
 }
 
 // NewUser is an admin-created user. The account comes from the tenant scope, never the
-// request, and Password is the plaintext the service hashes.
+// request. Password is the plaintext the service hashes, and stays empty when Invite mails the
+// user a link to choose their own instead.
 type NewUser struct {
 	Name      string
 	Email     string
 	Password  string
+	Invite    bool
 	Role      UserRole
 	BranchIDs []uuid.UUID
 }

@@ -8,8 +8,14 @@ vi.mock('@/app/(auth)/verify-email/_components/resend-verification-form', () => 
   ResendVerificationForm: vi.fn(() => null),
 }));
 vi.mock('@/components/change-email-form', () => ({ ChangeEmailForm: vi.fn(() => null) }));
+vi.mock('@/app/(protected)/actions', () => ({ signOut: vi.fn() }));
 vi.mock('@/lib/auth/session', () => ({ getSession: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getTranslations: vi.fn() }));
+vi.mock('next/navigation', () => ({
+  redirect: vi.fn((path: string) => {
+    throw new Error(`NEXT_REDIRECT ${path}`);
+  }),
+}));
 
 const { ConfirmEmailForm } =
   await import('@/app/(auth)/verify-email/_components/confirm-email-form');
@@ -22,7 +28,7 @@ const { default: VerifyEmailPage } = await import('@/app/(auth)/verify-email/pag
 
 const EMAIL = 'ana@corralonsanmartin.test';
 
-function session(emailVerified: boolean) {
+function session(emailVerified: boolean, emailVerificationRequired = true, mailDelivery = true) {
   return {
     userId: 'u1',
     accountId: 'a1',
@@ -30,6 +36,8 @@ function session(emailVerified: boolean) {
     email: EMAIL,
     emailVerified,
     role: 'ADMIN',
+    emailVerificationRequired,
+    mailDelivery,
   };
 }
 
@@ -118,6 +126,25 @@ describe('with no token', () => {
       undefined,
     );
     expect(view.baseElement.textContent).toContain(EMAIL);
+    expect(view.getByRole('button', { name: 'signOut' })).toBeTruthy();
+    expect(view.queryByRole('link', { name: 'continue' })).toBeNull();
+    expect(view.queryByRole('link', { name: 'continueUnverified' })).toBeNull();
+  });
+
+  // Signup lands here; with mail going only to a log, "we sent you a link" would be untrue.
+  it('sends a fresh registrant straight in when no mail can reach them', async () => {
+    vi.mocked(getSession).mockResolvedValue(session(false, false, false));
+
+    await expect(renderPage({})).rejects.toThrow('NEXT_REDIRECT /');
+  });
+
+  // While the installation does not require it, this screen is a suggestion, never a wall.
+  it('offers the way into the product when confirming is not required', async () => {
+    vi.mocked(getSession).mockResolvedValue(session(false, false));
+
+    const view = await renderPage({});
+
+    expect(view.getByRole('link', { name: 'continueUnverified' }).getAttribute('href')).toBe('/');
   });
 
   it('asks for an address when there is no session to name one', async () => {

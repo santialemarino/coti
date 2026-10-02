@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -173,5 +174,433 @@ func TestRFQAttachmentRepository_CreateThenList_RoundTripsOneAttachment(t *testi
 	}
 	if len(listed) != 1 || listed[0].ID != in.ID {
 		t.Fatalf("listed = %#v, want the one created attachment", listed)
+	}
+}
+
+// insertAttachment writes one attachment directly, so a test can choose the status and the claim
+// timestamp the sweep is supposed to react to.
+func insertAttachment(
+	t *testing.T, db *DB, accountID, rfqID uuid.UUID, status string, startedAt *time.Time,
+) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	if _, err := db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO rfq_attachment (id, account_id, rfq_id, type, file_url, processing_status,
+		                             processing_started_at)
+		 VALUES ($1, $2, $3, 'PDF', $4, $5::attachment_processing_status, $6)`,
+		id, accountID, rfqID, "accounts/x/"+id.String()+".pdf", status, startedAt); err != nil {
+		t.Fatalf("seed attachment: %v", err)
+	}
+	return id
+}
+
+func statusOf(t *testing.T, db *DB, attachmentID uuid.UUID) string {
+	t.Helper()
+	var status string
+	if err := db.CrossAccount().QueryRow(context.Background(),
+		`SELECT processing_status FROM rfq_attachment WHERE id = $1`,
+		attachmentID).Scan(&status); err != nil {
+		t.Fatalf("read status: %v", err)
+	}
+	return status
+}
+
+// everyPendingOrder is a limit no test can be crowded out of. The package shares a database, so a
+// test asserting on its OWN rows must not compete for a bounded number of slots — the limit's
+// semantics are pinned by the two tests that exist for them.
+const everyPendingOrder = 1000
+
+// pendingCountFor reports how many of one order's attachments are still waiting to be claimed.
+func pendingCountFor(t *testing.T, db *DB, rfqID uuid.UUID) int {
+	t.Helper()
+	var pending int
+	if err := db.CrossAccount().QueryRow(context.Background(),
+		`SELECT count(*) FROM rfq_attachment WHERE rfq_id = $1 AND processing_status = 'PENDING'`,
+		rfqID).Scan(&pending); err != nil {
+		t.Fatalf("count pending: %v", err)
+	}
+	return pending
+}
+
+// The claim is the whole contract of the sweep: it must take a pending row, mark it PROCESSING in
+// the same statement, and carry the branch its RFQ belongs to — the attachment row has none, and
+// every service the sweep calls is branch-scoped.
+func TestRFQAttachmentRepository_ClaimPendingByRFQ_TakesPendingRowsAndCarriesTheirBranch(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Attachment claim pending")
+	branchID := branchOf(t, db, accountID)
+	rfqID := seedRFQFor(t, db, accountID, branchID)
+	pendingID := insertAttachment(t, db, accountID, rfqID, "PENDING", nil)
+	doneID := insertAttachment(t, db, accountID, rfqID, "DONE", nil)
+
+	now := time.Now()
+	claimed, err := NewRFQAttachmentRepository().ClaimPendingByRFQ(ctx, db.CrossAccount(), everyPendingOrder,
+		15*time.Minute, now)
+	if err != nil {
+		t.Fatalf("ClaimPendingByRFQ() = %v, want no error", err)
+	}
+
+	var got *domain.ClaimedAttachment
+	for i := range claimed {
+		if claimed[i].ID == pendingID {
+			got = &claimed[i]
+		}
+		if claimed[i].ID == doneID {
+			t.Errorf("ClaimPendingByRFQ() took a DONE attachment")
+		}
+	}
+	if got == nil {
+		t.Fatalf("ClaimPendingByRFQ() did not take the pending attachment")
+	}
+	if got.AccountID != accountID || got.BranchID != branchID || got.RFQID != rfqID {
+		t.Errorf("claimed = account %v branch %v rfq %v, want %v / %v / %v",
+			got.AccountID, got.BranchID, got.RFQID, accountID, branchID, rfqID)
+	}
+	if got.StorageKey == "" {
+		t.Errorf("claimed storage key is empty, want the stored object key")
+	}
+	if status := statusOf(t, db, pendingID); status != "PROCESSING" {
+		t.Errorf("claimed row status = %q, want PROCESSING", status)
+	}
+	if status := statusOf(t, db, doneID); status != "DONE" {
+		t.Errorf("untouched row status = %q, want DONE", status)
+	}
+}
+
+/*
+ * A run killed between claiming a row and finishing it leaves that row PROCESSING. Without an
+ * expiring claim the queue leaks exactly the way it leaks at PENDING, so a stale claim is taken
+ * again and a fresh one is left alone. Both halves are asserted here: pinning only the reclaim
+ * would pass on a query that ignores processing_started_at entirely and re-claims everything.
+ */
+func TestRFQAttachmentRepository_ClaimPendingByRFQ_ReclaimsAStaleClaimAndLeavesAFreshOne(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Attachment claim reclaim")
+	branchID := branchOf(t, db, accountID)
+	rfqID := seedRFQFor(t, db, accountID, branchID)
+
+	now := time.Now()
+	stale := now.Add(-30 * time.Minute)
+	fresh := now.Add(-1 * time.Minute)
+	staleID := insertAttachment(t, db, accountID, rfqID, "PROCESSING", &stale)
+	freshID := insertAttachment(t, db, accountID, rfqID, "PROCESSING", &fresh)
+
+	claimed, err := NewRFQAttachmentRepository().ClaimPendingByRFQ(ctx, db.CrossAccount(), everyPendingOrder,
+		15*time.Minute, now)
+	if err != nil {
+		t.Fatalf("ClaimPendingByRFQ() = %v, want no error", err)
+	}
+
+	took := map[uuid.UUID]bool{}
+	for _, a := range claimed {
+		took[a.ID] = true
+	}
+	if !took[staleID] {
+		t.Errorf("ClaimPendingByRFQ() left a claim older than the window, want it reclaimed")
+	}
+	if took[freshID] {
+		t.Errorf("ClaimPendingByRFQ() took a claim inside the window, want it left to its worker")
+	}
+}
+
+// The batch size is what keeps one firing bounded, so a queue longer than the limit is drained
+// across runs rather than in one that outlives its own timeout. It counts ORDERS.
+func TestRFQAttachmentRepository_ClaimPendingByRFQ_TakesNoMoreOrdersThanTheLimit(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Attachment claim limit")
+	branchID := branchOf(t, db, accountID)
+	for range 5 {
+		insertAttachment(t, db, accountID, seedRFQFor(t, db, accountID, branchID), "PENDING", nil)
+	}
+
+	claimed, err := NewRFQAttachmentRepository().ClaimPendingByRFQ(ctx, db.CrossAccount(), 2,
+		15*time.Minute, time.Now())
+	if err != nil {
+		t.Fatalf("ClaimPendingByRFQ() = %v, want no error", err)
+	}
+	orders := map[uuid.UUID]bool{}
+	for _, a := range claimed {
+		orders[a.RFQID] = true
+	}
+	if len(orders) != 2 {
+		t.Fatalf("ClaimPendingByRFQ(limit 2) took %d orders, want 2", len(orders))
+	}
+}
+
+/*
+ * A whole order is claimed at once, however many files it is holding and whatever the limit is. An
+ * order is extracted a single time over everything it arrived with, so a limit that cut across one
+ * would send the model half a client's message and close the other half out as read.
+ *
+ * The assertion is on whichever order the limit picks rather than on this test's own: the package
+ * shares a database, so which order is oldest is not this test's to decide — but no order may come
+ * back half-claimed.
+ */
+func TestRFQAttachmentRepository_ClaimPendingByRFQ_TakesEveryFileOfAnOrder(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Attachment claim whole order")
+	branchID := branchOf(t, db, accountID)
+	rfqID := seedRFQFor(t, db, accountID, branchID)
+	for range 3 {
+		insertAttachment(t, db, accountID, rfqID, "PENDING", nil)
+	}
+
+	claimed, err := NewRFQAttachmentRepository().ClaimPendingByRFQ(ctx, db.CrossAccount(), 1,
+		15*time.Minute, time.Now())
+	if err != nil {
+		t.Fatalf("ClaimPendingByRFQ() = %v, want no error", err)
+	}
+	if len(claimed) == 0 {
+		t.Fatal("ClaimPendingByRFQ(limit 1) took nothing, want one whole order")
+	}
+
+	orders := map[uuid.UUID]bool{}
+	for _, a := range claimed {
+		orders[a.RFQID] = true
+	}
+	if len(orders) != 1 {
+		t.Fatalf("ClaimPendingByRFQ(limit 1) spanned %d orders, want exactly one", len(orders))
+	}
+	for taken := range orders {
+		if left := pendingCountFor(t, db, taken); left != 0 {
+			t.Errorf("order %s kept %d files pending, want the whole order claimed", taken, left)
+		}
+	}
+}
+
+// Claimed with a limit that cannot crowd it out, an order hands over every file it is holding.
+func TestRFQAttachmentRepository_ClaimPendingByRFQ_LeavesNoFileOfAnOrderBehind(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Attachment claim no file behind")
+	branchID := branchOf(t, db, accountID)
+	rfqID := seedRFQFor(t, db, accountID, branchID)
+	for range 3 {
+		insertAttachment(t, db, accountID, rfqID, "PENDING", nil)
+	}
+
+	claimed, err := NewRFQAttachmentRepository().ClaimPendingByRFQ(ctx, db.CrossAccount(),
+		everyPendingOrder, 15*time.Minute, time.Now())
+	if err != nil {
+		t.Fatalf("ClaimPendingByRFQ() = %v, want no error", err)
+	}
+	var mine int
+	for _, a := range claimed {
+		if a.RFQID == rfqID {
+			mine++
+		}
+	}
+	if mine != 3 {
+		t.Errorf("ClaimPendingByRFQ() took %d of the order's files, want all 3", mine)
+	}
+	if left := pendingCountFor(t, db, rfqID); left != 0 {
+		t.Errorf("the order kept %d files pending, want none", left)
+	}
+}
+
+// insertReadAttachment seeds an attachment that has already been read, with what it yielded.
+func insertReadAttachment(
+	t *testing.T, db *DB, accountID, rfqID uuid.UUID, status, extracted string,
+) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	var text *string
+	if extracted != "" {
+		text = &extracted
+	}
+	if _, err := db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO rfq_attachment (id, account_id, rfq_id, type, file_url, extracted_text,
+		                             processing_status)
+		 VALUES ($1, $2, $3, 'TEXT', $4, $5, $6::attachment_processing_status)`,
+		id, accountID, rfqID, "accounts/x/"+id.String()+".txt", text, status); err != nil {
+		t.Fatalf("seed read attachment: %v", err)
+	}
+	return id
+}
+
+/*
+ * A later file is extracted alongside what the order's earlier ones yielded, so this returns only
+ * the readings that exist: a row still PENDING has not been read, and a DONE row with no text is
+ * an image or a PDF, whose content is the file itself rather than anything stored here. Returning
+ * either would hand the model an empty block and count a file nothing has read.
+ */
+func TestRFQAttachmentRepository_ListReadByRFQIDs_ReturnsOnlyStoredReadings(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Attachment earlier readings")
+	branchID := branchOf(t, db, accountID)
+	rfqID := seedRFQFor(t, db, accountID, branchID)
+
+	readID := insertReadAttachment(t, db, accountID, rfqID, "DONE", "20 bolsas de cemento")
+	pendingID := insertReadAttachment(t, db, accountID, rfqID, "PENDING", "not read yet")
+	noTextID := insertReadAttachment(t, db, accountID, rfqID, "DONE", "")
+
+	byRFQ, err := NewRFQAttachmentRepository().ListReadByRFQIDs(ctx, db.CrossAccount(),
+		[]uuid.UUID{rfqID}, []uuid.UUID{accountID})
+	if err != nil {
+		t.Fatalf("ListReadByRFQIDs() = %v, want no error", err)
+	}
+
+	got := map[uuid.UUID]bool{}
+	for _, a := range byRFQ[rfqID] {
+		got[a.ID] = true
+	}
+	if !got[readID] {
+		t.Errorf("ListReadByRFQIDs() dropped the attachment that was read")
+	}
+	if got[pendingID] {
+		t.Errorf("ListReadByRFQIDs() returned a PENDING attachment, want only what was read")
+	}
+	if got[noTextID] {
+		t.Errorf("ListReadByRFQIDs() returned a DONE attachment with no text")
+	}
+}
+
+/*
+ * The orders are matched by the (rfq_id, account_id) pair. rfq_attachment.rfq_id references
+ * rfq(id) alone and the sweep runs as the owner, so matching on the order alone would let one
+ * account's extraction be fed another account's material.
+ */
+func TestRFQAttachmentRepository_ListReadByRFQIDs_RefusesAnotherAccountsMaterial(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	victimAccount := seedAccount(t, db, "Earlier readings victim")
+	intruderAccount := seedAccount(t, db, "Earlier readings intruder")
+	victimRFQ := seedRFQFor(t, db, victimAccount, branchOf(t, db, victimAccount))
+	insertReadAttachment(t, db, victimAccount, victimRFQ, "DONE", "cemento del vecino")
+
+	// The intruder asks for the victim's order under its own account.
+	byRFQ, err := NewRFQAttachmentRepository().ListReadByRFQIDs(ctx, db.CrossAccount(),
+		[]uuid.UUID{victimRFQ}, []uuid.UUID{intruderAccount})
+	if err != nil {
+		t.Fatalf("ListReadByRFQIDs() = %v, want no error", err)
+	}
+	if len(byRFQ) != 0 {
+		t.Errorf("ListReadByRFQIDs() returned %d orders, want none for a mismatched pair",
+			len(byRFQ))
+	}
+}
+
+/*
+ * The inline intake closes a file out as read the moment it stores it, which is right when the
+ * request goes on to interpret it and wrong when the request runs out of budget first. Handing it
+ * back has to make it claimable again — both timestamps cleared, or a row carrying a stale
+ * processing_started_at reads as a claim somebody else is working.
+ */
+func TestRFQAttachmentRepository_MarkPending_MakesADoneAttachmentClaimableAgain(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Attachment returned to the queue")
+	branchID := branchOf(t, db, accountID)
+	rfqID := seedRFQFor(t, db, accountID, branchID)
+	attachmentID := insertReadAttachment(t, db, accountID, rfqID, "DONE", "20 bolsas de cemento")
+	// A DONE row in the wild carries both timestamps — the claim wrote one and the close-out the
+	// other. Starting from NULLs would let a MarkPending that clears neither pass this.
+	if _, err := db.CrossAccount().Exec(ctx,
+		`UPDATE rfq_attachment SET processing_started_at = now(), processed_at = now()
+		  WHERE id = $1`, attachmentID); err != nil {
+		t.Fatalf("seed timestamps: %v", err)
+	}
+
+	repo := NewRFQAttachmentRepository()
+	if err := repo.MarkPending(ctx, db.CrossAccount(), accountID, attachmentID); err != nil {
+		t.Fatalf("MarkPending() = %v, want no error", err)
+	}
+	if status := statusOf(t, db, attachmentID); status != "PENDING" {
+		t.Fatalf("status = %q, want PENDING", status)
+	}
+
+	var startedAt, processedAt *time.Time
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT processing_started_at, processed_at FROM rfq_attachment WHERE id = $1`,
+		attachmentID).Scan(&startedAt, &processedAt); err != nil {
+		t.Fatalf("read timestamps: %v", err)
+	}
+	if startedAt != nil || processedAt != nil {
+		t.Errorf("timestamps = %v/%v, want both cleared", startedAt, processedAt)
+	}
+
+	claimed, err := repo.ClaimPendingByRFQ(ctx, db.CrossAccount(), everyPendingOrder,
+		15*time.Minute, time.Now())
+	if err != nil {
+		t.Fatalf("ClaimPendingByRFQ() = %v, want no error", err)
+	}
+	took := false
+	for _, a := range claimed {
+		if a.ID == attachmentID {
+			took = true
+		}
+	}
+	if !took {
+		t.Error("the sweep did not claim the attachment that was handed back to it")
+	}
+}
+
+// A row belonging to another account is not this account's to hand back.
+func TestRFQAttachmentRepository_MarkPending_RefusesAnotherAccountsAttachment(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	ownerAccount := seedAccount(t, db, "Requeue owner")
+	otherAccount := seedAccount(t, db, "Requeue intruder")
+	rfqID := seedRFQFor(t, db, ownerAccount, branchOf(t, db, ownerAccount))
+	attachmentID := insertReadAttachment(t, db, ownerAccount, rfqID, "DONE", "cemento")
+
+	err := NewRFQAttachmentRepository().MarkPending(ctx, db.CrossAccount(), otherAccount,
+		attachmentID)
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("MarkPending() = %v, want ErrNotFound across accounts", err)
+	}
+	if status := statusOf(t, db, attachmentID); status != "DONE" {
+		t.Errorf("status = %q, want the row untouched", status)
+	}
+}
+
+/*
+ * A file closed FAILED is never claimed again. That is what makes FAILED the end of the line for
+ * an unreadable attachment: its bytes will not change, so a queue that took it back would pay for
+ * the same refusal every reclaim window, forever, while the order looked like it was still being
+ * worked. The DONE row alongside it is the control — without one, a query that claims nothing at
+ * all would pass this too.
+ */
+func TestRFQAttachmentRepository_ClaimPendingByRFQ_NeverTakesAClosedAttachmentAgain(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Attachment claim closed")
+	branchID := branchOf(t, db, accountID)
+	rfqID := seedRFQFor(t, db, accountID, branchID)
+	long := time.Now().Add(-24 * time.Hour)
+	failedID := insertAttachment(t, db, accountID, rfqID, "FAILED", &long)
+	doneID := insertAttachment(t, db, accountID, rfqID, "DONE", &long)
+	pendingID := insertAttachment(t, db, accountID, rfqID, "PENDING", nil)
+
+	claimed, err := NewRFQAttachmentRepository().ClaimPendingByRFQ(ctx, db.CrossAccount(),
+		everyPendingOrder, 15*time.Minute, time.Now())
+	if err != nil {
+		t.Fatalf("ClaimPendingByRFQ() = %v, want no error", err)
+	}
+
+	var tookPending bool
+	for _, a := range claimed {
+		switch a.ID {
+		case failedID:
+			t.Errorf("ClaimPendingByRFQ() took a FAILED attachment back")
+		case doneID:
+			t.Errorf("ClaimPendingByRFQ() took a DONE attachment back")
+		case pendingID:
+			tookPending = true
+		}
+	}
+	if !tookPending {
+		t.Fatal("ClaimPendingByRFQ() did not take the pending attachment of the same order")
+	}
+	if status := statusOf(t, db, failedID); status != "FAILED" {
+		t.Errorf("closed row status = %q, want FAILED left alone", status)
+	}
+	if status := statusOf(t, db, doneID); status != "DONE" {
+		t.Errorf("closed row status = %q, want DONE left alone", status)
 	}
 }

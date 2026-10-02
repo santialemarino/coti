@@ -11,6 +11,8 @@ interface OnboardingRaw {
   status: OnboardingStatus;
   current_step: OnboardingStepKey;
   steps: Partial<Record<OnboardingStepKey, OnboardingStepStatus>>;
+  checklist: { step: OnboardingChecklistStep; done: boolean }[];
+  checklist_hidden_at: string | null;
   completed_at: string | null;
 }
 
@@ -26,12 +28,23 @@ export type OnboardingStepKey =
   | 'CATALOG_REVIEW'
   | 'TEAM'
   | 'COMPLETE';
+export type OnboardingChecklistStep = Extract<
+  OnboardingStepKey,
+  'BRAND' | 'CATALOG_UPLOAD' | 'TEAM'
+>;
+
+export interface OnboardingChecklistItem {
+  step: OnboardingChecklistStep;
+  done: boolean;
+}
 
 export interface Onboarding {
   flowVersion: number;
   status: OnboardingStatus;
   currentStep: OnboardingStepKey;
   steps: Partial<Record<OnboardingStepKey, OnboardingStepStatus>>;
+  checklist: OnboardingChecklistItem[];
+  checklistHiddenAt: string | null;
   completedAt: string | null;
 }
 
@@ -43,6 +56,8 @@ function mapOnboarding(raw: OnboardingRaw): Onboarding {
     status: raw.status,
     currentStep: raw.current_step,
     steps: raw.steps,
+    checklist: raw.checklist,
+    checklistHiddenAt: raw.checklist_hidden_at,
     completedAt: raw.completed_at,
   };
 }

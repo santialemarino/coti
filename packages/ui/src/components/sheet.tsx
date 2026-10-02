@@ -5,10 +5,32 @@ import * as SheetPrimitive from '@radix-ui/react-dialog';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { XIcon } from 'lucide-react';
 
+import { useHeldWhileClosed } from '../hooks/use-held-while-closed';
 import { cn } from '../lib/utils';
+import { OverlayOpenContext, useOverlayRootState } from './overlay-open';
 
-function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />;
+function Sheet({
+  open: openProp,
+  defaultOpen,
+  onOpenChange,
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Root>) {
+  const { open, onOpenChange: handleOpenChange } = useOverlayRootState({
+    open: openProp,
+    defaultOpen,
+    onOpenChange,
+  });
+
+  return (
+    <OverlayOpenContext.Provider value={open}>
+      <SheetPrimitive.Root
+        data-slot="sheet"
+        open={open}
+        onOpenChange={handleOpenChange}
+        {...props}
+      />
+    </OverlayOpenContext.Provider>
+  );
 }
 
 function SheetTrigger({ ...props }: React.ComponentProps<typeof SheetPrimitive.Trigger>) {
@@ -25,19 +47,19 @@ function SheetClose({ ...props }: React.ComponentProps<typeof SheetPrimitive.Clo
  */
 const sheetVariants = cva(
   cn(
-    'fixed z-50 flex flex-col gap-y-4 bg-background shadow-e4',
+    'fixed z-50 flex flex-col bg-background shadow-e4 data-[state=closed]:pointer-events-none',
     'data-[state=open]:animate-in data-[state=closed]:animate-out',
     'data-[state=open]:duration-300 data-[state=closed]:duration-200 ease-out-soft',
   ),
   {
     variants: {
       side: {
-        top: 'inset-x-0 top-0 border-b border-border p-6 data-[state=open]:slide-in-from-top data-[state=closed]:slide-out-to-top',
+        top: 'inset-x-0 top-0 max-h-[90dvh] border-b border-border data-[state=open]:slide-in-from-top data-[state=closed]:slide-out-to-top',
         bottom:
-          'inset-x-0 bottom-0 border-t border-border p-6 data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom',
-        left: 'inset-y-0 left-0 h-full w-3/4 sm:max-w-sm border-r border-border p-6 data-[state=open]:slide-in-from-left data-[state=closed]:slide-out-to-left',
+          'inset-x-0 bottom-0 max-h-[90dvh] border-t border-border data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom',
+        left: 'inset-y-0 left-0 h-full w-3/4 sm:max-w-sm border-r border-border data-[state=open]:slide-in-from-left data-[state=closed]:slide-out-to-left',
         right:
-          'inset-y-0 right-0 h-full w-3/4 sm:max-w-sm border-l border-border p-6 data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right',
+          'inset-y-0 right-0 h-full w-3/4 sm:max-w-sm border-l border-border data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right',
       },
     },
     defaultVariants: { side: 'right' },
@@ -52,6 +74,9 @@ function SheetContent({
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> &
   VariantProps<typeof sheetVariants> & { showCloseButton?: boolean }) {
+  const open = React.useContext(OverlayOpenContext);
+  const shown = useHeldWhileClosed(children, open);
+
   return (
     <SheetPrimitive.Portal>
       <SheetPrimitive.Overlay
@@ -68,7 +93,13 @@ function SheetContent({
         className={cn(sheetVariants({ side }), className)}
         {...props}
       >
-        {children}
+        {/* The panel stays put and its body scrolls, so the close button never scrolls away. */}
+        <div
+          data-slot="sheet-body"
+          className="flex flex-col flex-1 min-h-0 p-6 gap-y-4 scroll-area"
+        >
+          {shown}
+        </div>
         {showCloseButton ? (
           <SheetPrimitive.Close
             className={cn(

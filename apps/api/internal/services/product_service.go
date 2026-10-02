@@ -1,9 +1,13 @@
 package services
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"net/http"
+	"path"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -19,6 +23,7 @@ type productRepository interface {
 	GetByID(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) (*domain.Product, error)
 	Create(ctx context.Context, q repository.Querier, accountID uuid.UUID, in domain.NewProduct) (*domain.Product, error)
 	Update(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, in domain.ProductUpdate) (*domain.Product, error)
+	SetImage(ctx context.Context, q repository.Querier, accountID, id, imageID uuid.UUID) (*domain.Product, error)
 	Delete(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) error
 }
 
@@ -36,6 +41,16 @@ type productAlternativeRepository interface {
 	Delete(ctx context.Context, q repository.Querier, accountID, productID, id uuid.UUID) error
 }
 
+// productAvailabilityWriter makes a new product available at the account's branches.
+type productAvailabilityWriter interface {
+	AddToActiveBranches(ctx context.Context, q repository.Querier, accountID, productID uuid.UUID) ([]uuid.UUID, error)
+}
+
+// productInitialPriceWriter opens a new product's first price period at several branches.
+type productInitialPriceWriter interface {
+	CreateAtBranches(ctx context.Context, q repository.Querier, accountID, productID uuid.UUID, branchIDs []uuid.UUID, userID *uuid.UUID, in domain.NewProductPrice) error
+}
+
 // tenantTxRunner is the database surface a tenant-scoped use case needs: one transaction
 // carrying the account scope that row level security reads.
 type tenantTxRunner interface {
@@ -45,21 +60,35 @@ type tenantTxRunner interface {
 // ProductService owns the account-level catalog: products, their synonyms, and the
 // alternative links between them.
 type ProductService struct {
-	db           tenantTxRunner
-	products     productRepository
-	synonyms     productSynonymRepository
-	alternatives productAlternativeRepository
-	cfg          config.CatalogConfig
+	db            tenantTxRunner
+	products      productRepository
+	synonyms      productSynonymRepository
+	alternatives  productAlternativeRepository
+	availability  productAvailabilityWriter
+	prices        productInitialPriceWriter
+	cfg           config.CatalogConfig
+	imageStorage  domain.ObjectStorage
+	imageMaxBytes int64
+	now           func() time.Time
 }
 
 // NewProductService builds a ProductService.
 func NewProductService(
 	db tenantTxRunner, products productRepository, synonyms productSynonymRepository,
-	alternatives productAlternativeRepository, cfg config.CatalogConfig,
+	alternatives productAlternativeRepository, availability productAvailabilityWriter,
+	prices productInitialPriceWriter, cfg config.CatalogConfig,
 ) *ProductService {
 	return &ProductService{
-		db: db, products: products, synonyms: synonyms, alternatives: alternatives, cfg: cfg,
+		db: db, products: products, synonyms: synonyms, alternatives: alternatives,
+		availability: availability, prices: prices, cfg: cfg, now: time.Now,
 	}
+}
+
+// WithImageStorage enables product-image uploads and public reads.
+func (s *ProductService) WithImageStorage(storage domain.ObjectStorage, maxBytes int64) *ProductService {
+	s.imageStorage = storage
+	s.imageMaxBytes = maxBytes
+	return s
 }
 
 // ListProducts returns one page of the account's catalog, with the page size resolved
@@ -99,10 +128,11 @@ func (s *ProductService) GetProduct(
 	return product, nil
 }
 
-// CreateProduct adds a catalog item to the account.
+// CreateProduct adds a catalog item to the account and makes it available at every active
+// branch, priced there when an initial price came with it, all in one transaction.
 //
 // Returns domain.ErrConflict when the code is already taken within the account, and
-// domain.ErrInvalidInput when the name is blank once trimmed.
+// domain.ErrInvalidInput when the name is blank once trimmed or the price does not hold up.
 func (s *ProductService) CreateProduct(
 	ctx context.Context, tenant domain.Tenant, in domain.NewProduct,
 ) (*domain.Product, error) {
@@ -114,12 +144,32 @@ func (s *ProductService) CreateProduct(
 	in.Code = optionalText(in.Code)
 	in.Description = optionalText(in.Description)
 	in.Unit = optionalText(in.Unit)
+	if in.InitialPrice != nil {
+		if err := validatePriceAmounts(*in.InitialPrice); err != nil {
+			return nil, err
+		}
+		price := *in.InitialPrice
+		price.Currency = domain.DefaultCurrency
+		price.ValidFrom = s.now()
+		in.InitialPrice = &price
+	}
 
 	var product *domain.Product
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		var createErr error
 		product, createErr = s.products.Create(ctx, q, tenant.AccountID, in)
-		return createErr
+		if createErr != nil {
+			return createErr
+		}
+		branchIDs, addErr := s.availability.AddToActiveBranches(ctx, q, tenant.AccountID, product.ID)
+		if addErr != nil {
+			return addErr
+		}
+		if in.InitialPrice == nil || len(branchIDs) == 0 {
+			return nil
+		}
+		return s.prices.CreateAtBranches(ctx, q, tenant.AccountID, product.ID, branchIDs,
+			&tenant.UserID, *in.InitialPrice)
 	}); err != nil {
 		return nil, err
 	}
@@ -148,6 +198,69 @@ func (s *ProductService) UpdateProduct(
 		return nil, err
 	}
 	return product, nil
+}
+
+// UploadImage validates, stores, and assigns one product's primary photo.
+func (s *ProductService) UploadImage(
+	ctx context.Context, tenant domain.Tenant, productID uuid.UUID, file domain.ProductImageUpload,
+) (*domain.Product, error) {
+	if s.imageStorage == nil {
+		return nil, fmt.Errorf("product image storage is unavailable")
+	}
+	file.ContentType = normalizeContentType(file.ContentType)
+	if file.Size <= 0 {
+		return nil, fmt.Errorf("%w: the product image is empty", domain.ErrInvalidInput)
+	}
+	if file.Size > s.imageMaxBytes {
+		return nil, fmt.Errorf("%w: the product image exceeds %d bytes", domain.ErrTooLarge, s.imageMaxBytes)
+	}
+	if file.ContentType != "image/png" && file.ContentType != "image/jpeg" && file.ContentType != "image/webp" {
+		return nil, domain.WithCode(domain.CodeUnsupportedFileType,
+			fmt.Errorf("%w: product images must be PNG, JPEG, or WebP", domain.ErrInvalidInput))
+	}
+
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		_, err := s.products.GetByID(ctx, q, tenant.AccountID, productID)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+
+	content := bufio.NewReader(file.Content)
+	head, err := content.Peek(512)
+	if err != nil && len(head) == 0 {
+		return nil, fmt.Errorf("%w: read product image header", domain.ErrInvalidInput)
+	}
+	if detected := http.DetectContentType(head); detected != file.ContentType {
+		return nil, domain.WithCode(domain.CodeUnsupportedFileType,
+			fmt.Errorf("%w: image bytes are %s, not %s", domain.ErrInvalidInput, detected, file.ContentType))
+	}
+
+	imageID := uuid.New()
+	if err := s.imageStorage.Upload(ctx, productImageKey(tenant.AccountID, productID, imageID),
+		file.ContentType, content); err != nil {
+		return nil, err
+	}
+
+	var product *domain.Product
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		var updateErr error
+		product, updateErr = s.products.SetImage(ctx, q, tenant.AccountID, productID, imageID)
+		return updateErr
+	}); err != nil {
+		return nil, err
+	}
+	return product, nil
+}
+
+// DownloadImage returns one public product image by its unguessable identifier.
+func (s *ProductService) DownloadImage(
+	ctx context.Context, accountID, productID, imageID uuid.UUID,
+) (*domain.StoredObject, error) {
+	if s.imageStorage == nil {
+		return nil, fmt.Errorf("product image storage is unavailable")
+	}
+	return s.imageStorage.Download(ctx, productImageKey(accountID, productID, imageID))
 }
 
 // DeleteProduct deactivates the item. The row survives because quote history and price
@@ -290,6 +403,10 @@ func (s *ProductService) resolveLimit(requested int) int {
 		return s.cfg.MaxPageSize
 	}
 	return requested
+}
+
+func productImageKey(accountID, productID, imageID uuid.UUID) string {
+	return path.Join("accounts", accountID.String(), "products", productID.String(), imageID.String())
 }
 
 // requiredText trims a mandatory field and rejects it when nothing is left, so a value of

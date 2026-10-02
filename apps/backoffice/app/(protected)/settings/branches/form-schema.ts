@@ -1,7 +1,13 @@
 import { z } from 'zod';
 
 import { EXPIRY_MAX_DAYS, EXPIRY_MIN_DAYS } from '@/lib/constants/branch';
-import { optionalText, rawText, requiredText, type SchemaText } from '@/lib/forms/validators';
+import {
+  optionalEmailAddress,
+  optionalText,
+  rawText,
+  requiredText,
+  type SchemaText,
+} from '@/lib/forms/validators';
 
 /*
  * The expiry stays a string all the way to the action, which is the one place it becomes a number.
@@ -27,6 +33,7 @@ export function branchSchema(t: SchemaText = rawText) {
   return z.object({
     name: requiredText(t, 'name.required'),
     address: optionalText(t),
+    email: optionalEmailAddress(t),
     defaultExpiryDays: expiryDays(t),
   });
 }

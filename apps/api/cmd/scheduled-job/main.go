@@ -23,10 +23,12 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"github.com/santialemarino/coti/apps/api/internal/ai"
 	aiprovider "github.com/santialemarino/coti/apps/api/internal/ai/provider"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 	"github.com/santialemarino/coti/apps/api/internal/services"
+	storageprovider "github.com/santialemarino/coti/apps/api/internal/storage/provider"
 )
 
 func main() {
@@ -66,16 +68,53 @@ func run() error {
 		return err
 	}
 	defer db.Close()
-	providers, err := aiprovider.Bind(cfg.AI, log)
+	usage := services.NewAIUsageService(db, repository.NewAIUsageRepository(),
+		cfg.AI.UsageWriteTimeout, log)
+	providers, err := aiprovider.Bind(cfg.AI, log, usage)
 	if err != nil {
 		return err
 	}
 
-	// Each of the four planned tasks — pending attachments, quote expiry, the follow-up sweep and
-	// closing message windows — registers itself here from its own feature's ticket.
+	// Each scheduled task registers here from its own feature's ticket.
 	corrections := repository.NewQuoteCorrectionRepository()
+	correctionService := services.NewQuoteCorrectionService(db, corrections, providers.Embedder,
+		cfg.QuoteCorrection, log)
+	quality := repository.NewQuoteQualityRepository()
+	qualityEvaluator := services.NewQuoteQualityService(db, quality).
+		WithCorrectionLearning(correctionService)
+	sends := repository.NewQuoteSendRepository()
+	// The attachment sweep reads files, so it needs storage — the only job that does.
+	objectStorage, err := storageprovider.Bind(cfg.Storage, log)
+	if err != nil {
+		return err
+	}
+	attachmentRepo := repository.NewRFQAttachmentRepository()
+	attachmentReader := services.NewRFQAttachmentService(db, attachmentRepo,
+		objectStorage.Storage, cfg.Storage, nil).
+		WithStoredReading(providers.Transcriber, cfg.RFQ.MaxTextCharacters,
+			cfg.RFQ.MaxSpreadsheetRows)
+	// The sweep extracts, so it needs the RFQ engine the request path uses — the same extractor,
+	// the same catalog matching, the same persistence. Reading a file and interpreting it are one
+	// decision, and a second implementation of it here would be a second one to keep honest.
+	rfqRepo := repository.NewRFQRepository()
+	quoteRepo := repository.NewQuoteRepository()
+	productRepo := repository.NewProductRepository()
+	catalogSearch := services.NewCatalogSearchService(db, productRepo, providers.Embedder,
+		cfg.Catalog)
+	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo, sends,
+		repository.NewQuoteAIGenerationRepository(), repository.NewChannelRepository(),
+		repository.NewUserRepository(), ai.NewRFQExtractor(providers.Generator, cfg.RFQ.MaxItems),
+		services.NewCatalogMatchService(catalogSearch, cfg.Catalog).
+			WithReviewer(ai.NewCatalogMatchReviewer(providers.Generator), log), log, cfg.RFQ).
+		WithCorrectionMemory(correctionService)
 	jobs, err := services.NewJobService(db, repository.NewJobRunRepository(), log,
-		services.NewQuoteCorrectionJob(corrections, providers.Embedder, cfg.QuoteCorrection))
+		services.NewQuoteCorrectionJob(corrections, providers.Embedder, cfg.QuoteCorrection),
+		services.NewQuoteQualityJob(sends, qualityEvaluator, cfg.QuoteQuality),
+		services.NewAttachmentExtractionJob(attachmentRepo, attachmentReader, rfqService,
+			cfg.Attachment, log),
+		services.NewCatalogEmbeddingJob(productRepo, services.NewCatalogEmbeddingService(db,
+			repository.NewAccountRepository(), productRepo, providers.Embedder, cfg.Catalog),
+			cfg.AI.EmbeddingsProvider != config.AIProviderDisabled))
 	if err != nil {
 		return err
 	}

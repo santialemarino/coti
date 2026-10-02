@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   formatDate,
+  formatDateNumeric,
   formatList,
   formatRatePct,
+  formatRegion,
   formatSignedValue,
   formatTimestamp,
   formatValue,
@@ -33,6 +35,11 @@ describe('formatValue', () => {
 
   it('honours a tighter maxDecimals', () => {
     expect(formatValue(1234.567, { maxDecimals: 1 })).toBe('1.234,6');
+  });
+
+  it('keeps the requested fraction width', () => {
+    expect(formatValue(132467.89, { minDecimals: 2, maxDecimals: 2 })).toBe('132.467,89');
+    expect(formatValue(780, { minDecimals: 2, maxDecimals: 2 })).toBe('780,00');
   });
 
   // \s rather than a literal space: ICU separates the unit with a non-breaking one.
@@ -93,6 +100,17 @@ describe('formatDate', () => {
   });
 });
 
+describe('formatDateNumeric', () => {
+  // Zero-padded on both fields, so a column of dates is one width and scans as a column.
+  it('pads the day and the month to two digits', () => {
+    expect(formatDateNumeric('2025-01-02')).toBe('02/01/2025');
+  });
+
+  it('anchors a date-only value at local midnight, like the long form', () => {
+    expect(formatDateNumeric('2025-01-02')).not.toContain('01/01');
+  });
+});
+
 describe('formatTimestamp', () => {
   /*
    * Rendered in the given zone so the calendar day is right for the viewer: 02:30 UTC on the
@@ -116,5 +134,12 @@ describe('formatList', () => {
     [[], ''],
   ])('handles the %p case', (items, expected) => {
     expect(formatList(items)).toBe(expected);
+  });
+});
+
+describe('formatRegion', () => {
+  // The phone picker lists countries by name, in the product's language.
+  it('names a country in Spanish', () => {
+    expect(formatRegion('BR')).toBe('Brasil');
   });
 });

@@ -51,6 +51,11 @@ type AccountResponse struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
+// BrandLogoResponse is returned by POST /v1/account/logo.
+type BrandLogoResponse struct {
+	Path string `json:"path"`
+}
+
 // MeResponse is the authenticated caller's own identity and reach.
 type MeResponse struct {
 	ID    uuid.UUID `json:"id"`
@@ -61,4 +66,8 @@ type MeResponse struct {
 	Role          string      `json:"role"`
 	AccountID     uuid.UUID   `json:"account_id"`
 	BranchIDs     []uuid.UUID `json:"branch_ids"`
+	// EmailVerificationRequired says whether an unconfirmed address closes the product.
+	EmailVerificationRequired bool `json:"email_verification_required"`
+	// MailDelivery is false while mail only reaches the log, so nothing that needs a link can work.
+	MailDelivery bool `json:"mail_delivery"`
 }

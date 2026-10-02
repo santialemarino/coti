@@ -71,6 +71,8 @@ function bodyOf(values: BranchValues) {
     // Omitted rather than empty: the API's optional fields are pointers with `omitempty`, which
     // only skips a nil one, so an empty string would reach the column.
     address: values.address || undefined,
+    // Sent even when empty: a blank address clears the branch mailbox, an absent one keeps it.
+    email: values.email,
     default_expiry_days: Number(values.defaultExpiryDays),
   };
 }

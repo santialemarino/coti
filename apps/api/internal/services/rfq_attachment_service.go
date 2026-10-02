@@ -1,6 +1,8 @@
 package services
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"mime"
@@ -13,12 +15,15 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
+	"github.com/santialemarino/coti/apps/api/internal/utils/spreadsheet"
 )
 
 // rfqAttachmentRepo is the persistence this service needs.
 type rfqAttachmentRepo interface {
 	ListByRFQ(ctx context.Context, q repository.Querier, accountID, branchID, rfqID uuid.UUID) ([]domain.RFQAttachment, error)
 	Create(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, in domain.NewRFQAttachment) (*domain.RFQAttachment, error)
+	MarkProcessed(ctx context.Context, q repository.Querier, accountID, attachmentID uuid.UUID, extractedText *string, status domain.AttachmentProcessingStatus, processedAt time.Time) error
+	MarkPending(ctx context.Context, q repository.Querier, accountID, attachmentID uuid.UUID) error
 }
 
 // RFQAttachmentService stores the files an RFQ arrived with and hands back links to them.
@@ -28,6 +33,11 @@ type RFQAttachmentService struct {
 	storage     domain.ObjectStorage
 	cfg         config.StorageConfig
 	now         func() time.Time
+	// These are only needed by the sweep that reads stored files, so they arrive through
+	// WithStoredReading rather than the constructor every caller uses.
+	transcriber        domain.Transcriber
+	maxTextCharacters  int
+	maxSpreadsheetRows int
 }
 
 // NewRFQAttachmentService builds an RFQAttachmentService. A nil now means time.Now.
@@ -88,6 +98,12 @@ func (s *RFQAttachmentService) Upload(
 	if err != nil {
 		return nil, err
 	}
+	content := bufio.NewReader(file.Content)
+	head, _ := content.Peek(spreadsheet.SniffLength)
+	if err := refuseLegacyExcel(format, head); err != nil {
+		return nil, err
+	}
+	file.Content = content
 
 	attachmentID := uuid.New()
 	key := attachmentKey(tenant.AccountID, rfqID, attachmentID, format.Extension)
@@ -118,6 +134,66 @@ func (s *RFQAttachmentService) Upload(
 		return nil, err
 	}
 	return &link, nil
+}
+
+/*
+ * StoreForRFQ keeps the file an order arrived as, already read into memory by the intake, and
+ * records what was read out of it. The intake has validated the type and the size and needs
+ * the same bytes for the model, so this takes the buffer rather than a reader and skips the
+ * checks Upload makes for a file arriving on its own.
+ */
+func (s *RFQAttachmentService) StoreForRFQ(
+	ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID, file domain.AttachmentUpload,
+	data []byte, extractedText string,
+) (uuid.UUID, error) {
+	format, ok := domain.AttachmentFormatFor(normalizeContentType(file.ContentType))
+	if !ok {
+		return uuid.Nil, domain.WithCode(domain.CodeUnsupportedFileType, fmt.Errorf(
+			"%w: %q is not an accepted file type", domain.ErrInvalidInput, file.ContentType))
+	}
+
+	attachmentID := uuid.New()
+	key := attachmentKey(tenant.AccountID, rfqID, attachmentID, format.Extension)
+	if err := s.storage.Upload(ctx, key, file.ContentType, bytes.NewReader(data)); err != nil {
+		return uuid.Nil, err
+	}
+
+	var text *string
+	if trimmed := strings.TrimSpace(extractedText); trimmed != "" {
+		text = &trimmed
+	}
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		if _, err := s.attachments.Create(ctx, q, tenant.AccountID, tenant.BranchID,
+			domain.NewRFQAttachment{
+				ID:         attachmentID,
+				RFQID:      rfqID,
+				Type:       format.Type,
+				StorageKey: key,
+			}); err != nil {
+			return err
+		}
+		return s.attachments.MarkProcessed(ctx, q, tenant.AccountID, attachmentID, text,
+			domain.AttachmentProcessingDone, s.now())
+	})
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return attachmentID, nil
+}
+
+/*
+ * ReturnToQueue hands a stored attachment back to the sweep. The intake closes a file out as read
+ * the moment it stores it, which is right when the request goes on to interpret it — and wrong
+ * when the request runs out of budget first. The file is stored and readable either way, so the
+ * order is not failed: it waits for the sweep, which has the longer budget and no caller holding
+ * a connection open.
+ */
+func (s *RFQAttachmentService) ReturnToQueue(
+	ctx context.Context, tenant domain.Tenant, attachmentID uuid.UUID,
+) error {
+	return s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		return s.attachments.MarkPending(ctx, q, tenant.AccountID, attachmentID)
+	})
 }
 
 // acceptedFormat refuses a file whose type is not accepted or whose size is over the limit,

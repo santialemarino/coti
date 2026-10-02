@@ -5,7 +5,6 @@ import { useFormContext } from 'react-hook-form';
 
 import {
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -73,7 +72,6 @@ export function AccountStep() {
                 {...field}
               />
             </FormControl>
-            <FormDescription>{t('taxId.hint')}</FormDescription>
             <FormMessage />
           </FormItem>
         )}

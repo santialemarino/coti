@@ -55,7 +55,7 @@ func (f *fakePasswordUsers) GetAuthSubjectByEmailCrossAccount(context.Context, r
 	return &domain.AuthSubject{AppUser: copied, AccountIsActive: f.accountIsActive}, nil
 }
 
-func (f *fakePasswordUsers) UpdatePassword(_ context.Context, _ repository.Querier, _, _ uuid.UUID, hash string) error {
+func (f *fakePasswordUsers) SetPasswordFromLink(_ context.Context, _ repository.Querier, _, _ uuid.UUID, hash string) error {
 	f.writtenHash = hash
 	return nil
 }
@@ -83,12 +83,13 @@ type invalidatedLink struct {
 }
 
 type fakeAuthTokens struct {
-	stored       *domain.AuthToken
-	created      []domain.AuthToken
-	consumed     []uuid.UUID
-	invalidated  []invalidatedLink
-	consumeErr   error
-	getByHashErr error
+	stored         *domain.AuthToken
+	created        []domain.AuthToken
+	consumed       []uuid.UUID
+	invalidated    []invalidatedLink
+	invalidatedAll []uuid.UUID
+	consumeErr     error
+	getByHashErr   error
 }
 
 func (f *fakeAuthTokens) GetByHashCrossAccount(context.Context, repository.Querier, string) (*domain.AuthToken, error) {
@@ -119,6 +120,11 @@ func (f *fakeAuthTokens) InvalidateActive(
 	_ context.Context, _ repository.Querier, _, userID uuid.UUID, tokenType domain.AuthTokenType,
 ) error {
 	f.invalidated = append(f.invalidated, invalidatedLink{userID: userID, tokenType: tokenType})
+	return nil
+}
+
+func (f *fakeAuthTokens) InvalidateAllForUser(_ context.Context, _ repository.Querier, _, userID uuid.UUID) error {
+	f.invalidatedAll = append(f.invalidatedAll, userID)
 	return nil
 }
 
@@ -370,6 +376,29 @@ func TestPasswordService_Reset_RedeemsTheLinkAndEndsEverySession(t *testing.T) {
 	}
 	if len(f.sessions.revoked) != 1 {
 		t.Fatal("refresh tokens survived the reset, so another device stays logged in")
+	}
+	// An invite or a second recovery link mailed earlier must not set the password again.
+	if len(f.tokens.invalidatedAll) != 1 || f.tokens.invalidatedAll[0] != testUserID {
+		t.Fatalf("links retired for %v, want every outstanding link of the user", f.tokens.invalidatedAll)
+	}
+}
+
+// An invited user chooses their first password through the same screen and the same redemption.
+func TestPasswordService_Reset_RedeemsAnInviteLink(t *testing.T) {
+	t.Parallel()
+	f := newPasswordFixture(t, passwordUser(t))
+	invite := storedResetToken(fixedNow.Add(time.Hour))
+	invite.Type = domain.AuthTokenTypeInvite
+	f.tokens.stored = invite
+
+	if err := f.svc.Reset(context.Background(), testRawResetToken, testNewPassword); err != nil {
+		t.Fatalf("Reset with an invite link: %v", err)
+	}
+	if bcrypt.CompareHashAndPassword([]byte(f.users.writtenHash), []byte(testNewPassword)) != nil {
+		t.Fatal("the invite link did not set the chosen password")
+	}
+	if len(f.tokens.consumed) != 1 {
+		t.Fatal("the invite was not redeemed, so it would work a second time")
 	}
 }
 

@@ -20,6 +20,7 @@ const BRANCH: Branch = {
   id: '11111111-1111-4111-8111-111111111111',
   name: 'Villa Bosch',
   address: null,
+  email: null,
   defaultExpiryDays: 7,
   isActive: true,
 };
@@ -49,6 +50,15 @@ function renderImport() {
   if (!form) throw new Error('no form rendered');
 
   return { ...view, form, preview: button(copy.form.preview), export: button(copy.export.submit) };
+}
+
+/* Picks a file through the dropzone's own input, which is what the preview needs before it runs. */
+function chooseFile(view: { container: HTMLElement }) {
+  const input = view.container.querySelector<HTMLInputElement>('input[type="file"]');
+  if (!input) throw new Error('no file input rendered');
+  fireEvent.change(input, {
+    target: { files: [new File(['code,price'], 'precios.csv', { type: 'text/csv' })] },
+  });
 }
 
 /*
@@ -95,6 +105,7 @@ describe('PriceImport pending state', () => {
     );
 
     const view = renderImport();
+    chooseFile(view);
     submitPreview(view.form);
 
     await waitFor(() => expect(view.preview.getAttribute('aria-busy')).toBe('true'));
@@ -116,6 +127,7 @@ describe('PriceImport pending state', () => {
     await waitFor(() => expect(exportPrices).toHaveBeenCalledWith(BRANCH.id));
 
     vi.mocked(previewPriceImport).mockResolvedValue({ ok: false, error: 'INVALID_INPUT' });
+    chooseFile(view);
     submitPreview(view.form);
 
     await waitFor(() =>
@@ -162,6 +174,7 @@ describe('PriceImport partial confirmation', () => {
     });
 
     const view = renderImport();
+    chooseFile(view);
     submitPreview(view.form);
 
     await waitFor(() => expect(view.container.textContent).toContain('se omitirán 1 fila'));

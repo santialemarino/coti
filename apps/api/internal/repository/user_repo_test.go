@@ -395,3 +395,52 @@ func createUser(t *testing.T, db *DB, accountID uuid.UUID, repo *UserRepository,
 	})
 	return created, err
 }
+
+func TestUserRepository_SetPasswordFromLinkSettlesLockoutAndVerification(t *testing.T) {
+	db := testDB(t)
+	repo := NewUserRepository()
+	ctx := context.Background()
+
+	accountID := seedAccount(t, db, "Corralón")
+	userID := seedUser(t, db, accountID, "SELLER")
+	tenant := domain.Tenant{AccountID: accountID}
+	if _, err := db.CrossAccount().Exec(ctx,
+		`UPDATE app_user SET failed_attempts = 5, locked_until = now() + interval '1 hour'
+		 WHERE id = $1`, userID); err != nil {
+		t.Fatalf("lock the seeded user: %v", err)
+	}
+
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		return repo.SetPasswordFromLink(ctx, q, accountID, userID, "nuevo-hash")
+	}); err != nil {
+		t.Fatalf("SetPasswordFromLink() = %v, want no error", err)
+	}
+
+	var hash string
+	var attempts int
+	var lockedUntil, verifiedAt *time.Time
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT password_hash, failed_attempts, locked_until, email_verified_at
+		 FROM app_user WHERE id = $1`, userID).Scan(&hash, &attempts, &lockedUntil, &verifiedAt); err != nil {
+		t.Fatalf("read the user: %v", err)
+	}
+	if hash != "nuevo-hash" {
+		t.Errorf("password_hash = %q, want the new hash", hash)
+	}
+	if attempts != 0 || lockedUntil != nil {
+		t.Errorf("failed_attempts = %d, locked_until = %v, want 0 and null", attempts, lockedUntil)
+	}
+	if verifiedAt == nil {
+		t.Error("email_verified_at is null after redeeming a mailed link, want it stamped")
+	}
+
+	t.Run("a user of another account is not found", func(t *testing.T) {
+		other := seedAccount(t, db, "Corralón Vecino")
+		err := db.InTenantTx(ctx, domain.Tenant{AccountID: other}, func(q Querier) error {
+			return repo.SetPasswordFromLink(ctx, q, other, userID, "ajeno")
+		})
+		if !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("SetPasswordFromLink across accounts = %v, want %v", err, domain.ErrNotFound)
+		}
+	})
+}

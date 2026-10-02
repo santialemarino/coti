@@ -9,39 +9,55 @@ type ErrorCode string
 
 // What an error of each kind carries unless a call site tags something more specific.
 const (
-	CodeNotFound         ErrorCode = "NOT_FOUND"
-	CodeConflict         ErrorCode = "CONFLICT"
-	CodeInvalidInput     ErrorCode = "INVALID_INPUT"
-	CodeUnauthenticated  ErrorCode = "UNAUTHENTICATED"
-	CodeForbidden        ErrorCode = "FORBIDDEN"
-	CodeImmutable        ErrorCode = "IMMUTABLE"
-	CodeLocked           ErrorCode = "ACCOUNT_LOCKED"
-	CodeEmailNotVerified ErrorCode = "EMAIL_NOT_VERIFIED"
-	CodeRateLimited      ErrorCode = "RATE_LIMITED"
-	CodeAIUnavailable    ErrorCode = "AI_UNAVAILABLE"
-	CodeNotConfigured    ErrorCode = "NOT_CONFIGURED"
-	CodeInternal         ErrorCode = "INTERNAL"
+	CodeNotFound                  ErrorCode = "NOT_FOUND"
+	CodeConflict                  ErrorCode = "CONFLICT"
+	CodeInvalidInput              ErrorCode = "INVALID_INPUT"
+	CodeUnauthenticated           ErrorCode = "UNAUTHENTICATED"
+	CodeForbidden                 ErrorCode = "FORBIDDEN"
+	CodeImmutable                 ErrorCode = "IMMUTABLE"
+	CodeLocked                    ErrorCode = "ACCOUNT_LOCKED"
+	CodeEmailNotVerified          ErrorCode = "EMAIL_NOT_VERIFIED"
+	CodeRateLimited               ErrorCode = "RATE_LIMITED"
+	CodeAIUnavailable             ErrorCode = "AI_UNAVAILABLE"
+	CodeNotConfigured             ErrorCode = "NOT_CONFIGURED"
+	CodeDeliveryUnavailable       ErrorCode = "DELIVERY_UNAVAILABLE"
+	CodeRepresentationUnavailable ErrorCode = "REPRESENTATION_UNAVAILABLE"
+	CodeInternal                  ErrorCode = "INTERNAL"
 )
 
 // The refusals a screen has to tell apart from a sibling answering the same status.
 const (
-	CodeEmailTaken       ErrorCode = "EMAIL_TAKEN"
-	CodeLastActiveBranch ErrorCode = "LAST_ACTIVE_BRANCH"
-	CodeSelfDeactivation ErrorCode = "SELF_DEACTIVATION"
-	CodeSelfRoleChange   ErrorCode = "SELF_ROLE_CHANGE"
-	CodePasswordPolicy   ErrorCode = "PASSWORD_POLICY"
-	CodeInvalidLink      ErrorCode = "INVALID_LINK"
-	CodeQuoteArchived    ErrorCode = "QUOTE_ARCHIVED"
-	CodeQuoteNotDraft    ErrorCode = "QUOTE_NOT_DRAFT"
-	CodeLinkExpired      ErrorCode = "LINK_EXPIRED"
+	CodeEmailTaken            ErrorCode = "EMAIL_TAKEN"
+	CodeLastActiveBranch      ErrorCode = "LAST_ACTIVE_BRANCH"
+	CodeSelfDeactivation      ErrorCode = "SELF_DEACTIVATION"
+	CodeSelfRoleChange        ErrorCode = "SELF_ROLE_CHANGE"
+	CodePasswordPolicy        ErrorCode = "PASSWORD_POLICY"
+	CodeInvalidLink           ErrorCode = "INVALID_LINK"
+	CodeInviteNotPending      ErrorCode = "INVITE_NOT_PENDING"
+	CodeMailNotConfigured     ErrorCode = "MAIL_NOT_CONFIGURED"
+	CodeBranchNotAccessible   ErrorCode = "BRANCH_NOT_ACCESSIBLE"
+	CodeBranchMailboxRequired ErrorCode = "BRANCH_MAILBOX_REQUIRED"
+	CodeQuoteArchived         ErrorCode = "QUOTE_ARCHIVED"
+	CodeQuoteNotDraft         ErrorCode = "QUOTE_NOT_DRAFT"
+	CodeQuoteNotReactivatable ErrorCode = "QUOTE_NOT_REACTIVATABLE"
+	CodeLinkExpired           ErrorCode = "LINK_EXPIRED"
 	// CodeUnsupportedFileType sits beside CodeFileTooLarge: both refuse an upload, and a client
 	// offering a different file needs to know which rule it broke.
 	CodeUnsupportedFileType ErrorCode = "UNSUPPORTED_FILE_TYPE"
+	// CodeLegacyExcelFile refuses a legacy .xls workbook, so a client can ask for it as .xlsx.
+	CodeLegacyExcelFile ErrorCode = "LEGACY_EXCEL_FILE"
 	// The three a channel write is refused with. A form editing one channel can answer all three
 	// on the same 422, and the field it has to point the administrator at differs per code.
 	CodeChannelConfigShape ErrorCode = "CHANNEL_CONFIG_SHAPE"
 	CodeChannelIdentifier  ErrorCode = "CHANNEL_IDENTIFIER"
 	CodeManualEntryChannel ErrorCode = "MANUAL_ENTRY_CHANNEL"
+	CodeQuoteNotSendable   ErrorCode = "QUOTE_NOT_SENDABLE"
+	// CodeQuoteNotSent refuses a customer answering a quote that is not out for an answer.
+	CodeQuoteNotSent               ErrorCode = "QUOTE_NOT_SENT"
+	CodeQuoteSendExpired           ErrorCode = "QUOTE_SEND_EXPIRED"
+	CodeDeliveryChannel            ErrorCode = "DELIVERY_CHANNEL"
+	CodeIdempotencyMismatch        ErrorCode = "IDEMPOTENCY_MISMATCH"
+	CodeQuoteRepresentationInvalid ErrorCode = "QUOTE_REPRESENTATION_INVALID"
 )
 
 // The two an upload is refused with. The delivery layer raises both on its own, before any
@@ -100,6 +116,10 @@ func CodeOf(err error) ErrorCode {
 		return CodeAIUnavailable
 	case errors.Is(err, ErrNotConfigured):
 		return CodeNotConfigured
+	case errors.Is(err, ErrDeliveryUnavailable):
+		return CodeDeliveryUnavailable
+	case errors.Is(err, ErrRepresentationUnavailable):
+		return CodeRepresentationUnavailable
 	default:
 		return CodeInternal
 	}

@@ -46,6 +46,7 @@ type BranchPrice struct {
 	ProductID uuid.UUID
 	Price     decimal.Decimal     // NUMERIC(14,2).
 	MinPrice  decimal.NullDecimal // NUMERIC(14,2); null means no floor.
+	Currency  string
 }
 
 // ProductPriceLookup is a catalog product with its price currently in force for a branch.

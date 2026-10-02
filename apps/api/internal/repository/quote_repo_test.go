@@ -40,8 +40,8 @@ func seedQuoteChain(
 		{"rfq", `INSERT INTO rfq (id, account_id, branch_id, channel_id, status)
 		         VALUES ($1, $2, $3, $4, 'GENERATED')`,
 			[]any{rfqID, accountID, branchID, channelID}},
-		{"quote", `INSERT INTO quote (id, account_id, branch_id, rfq_id, current_status)
-		           VALUES ($1, $2, $3, $4, 'DRAFT')`,
+		{"quote", `INSERT INTO quote (id, account_id, number, branch_id, rfq_id, current_status)
+		           VALUES ($1::uuid, $2, (('x'||substr(replace($1::uuid::text,'-',''),1,15))::bit(60)::bigint), $3, $4, 'DRAFT')`,
 			[]any{quoteID, accountID, branchID, rfqID}},
 		{"quote_version", `INSERT INTO quote_version (id, account_id, quote_id, version_number)
 		                   VALUES ($1, $2, $3, 1)`,
@@ -73,6 +73,69 @@ func seedQuoteChain(
 		mustCleanup(t, db.CrossAccount(), `DELETE FROM channel WHERE id = $1`, channelID)
 	})
 	return quoteID, versionID, itemID
+}
+
+func TestQuoteRepository_Create_AllocatesAccountSequenceWithoutRollbackGaps(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Quote numbering "+uuid.NewString())
+	var branchID uuid.UUID
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT id FROM branch WHERE account_id = $1`, accountID).Scan(&branchID); err != nil {
+		t.Fatal(err)
+	}
+	channelID := uuid.New()
+	rfqIDs := []uuid.UUID{uuid.New(), uuid.New(), uuid.New()}
+	if _, err := db.CrossAccount().Exec(ctx, `INSERT INTO channel
+	  (id, account_id, branch_id, type, identifier) VALUES ($1, $2, $3, 'WHATSAPP', $4)`,
+		channelID, accountID, branchID, uuid.NewString()); err != nil {
+		t.Fatal(err)
+	}
+	for _, rfqID := range rfqIDs {
+		if _, err := db.CrossAccount().Exec(ctx, `INSERT INTO rfq
+		  (id, account_id, branch_id, channel_id, status) VALUES ($1, $2, $3, $4, 'GENERATED')`,
+			rfqID, accountID, branchID, channelID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() {
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM quote WHERE account_id = $1`, accountID)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM rfq WHERE account_id = $1`, accountID)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM channel WHERE id = $1`, channelID)
+	})
+
+	repo := NewQuoteRepository()
+	rollback := errors.New("force rollback")
+	err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID}, func(q Querier) error {
+		if _, err := repo.Create(ctx, q, accountID, domain.NewQuote{
+			BranchID: branchID, RFQID: rfqIDs[0], CurrentStatus: domain.QuoteStatusDraft,
+		}); err != nil {
+			return err
+		}
+		return rollback
+	})
+	if !errors.Is(err, rollback) {
+		t.Fatalf("rolled-back Create() = %v, want forced rollback", err)
+	}
+
+	numbers := make([]int64, 0, 2)
+	for _, rfqID := range rfqIDs[1:] {
+		err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID}, func(q Querier) error {
+			quote, err := repo.Create(ctx, q, accountID, domain.NewQuote{
+				BranchID: branchID, RFQID: rfqID, CurrentStatus: domain.QuoteStatusDraft,
+			})
+			if err == nil {
+				numbers = append(numbers, quote.Number)
+			}
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if numbers[0] != 1 || numbers[1] != 2 {
+		t.Fatalf("committed numbers = %v, want [1 2]", numbers)
+	}
 }
 
 // carryAtBranch makes the branch stock the product, which every current-price query requires: a
@@ -349,6 +412,61 @@ func TestQuoteRepository_UpdateStatus_OnlyMovesFromTheStatusRead(t *testing.T) {
 	}
 	if status != string(domain.QuoteStatusQuoted) {
 		t.Errorf("status = %q, want QUOTED", status)
+	}
+}
+
+func TestQuoteRepository_ListStatusChanges_OrdersAndNarrowsToBranch(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Quote status history")
+	branchID := branchOf(t, db, accountID)
+	otherBranchID := seedExtraBranch(t, db, accountID, "Sucursal Sur")
+	productID := seedProduct(t, db, accountID, "Cemento Portland 50kg")
+	priceCleanup(t, db, productID)
+	quoteID, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+	otherQuoteID, _, _ := seedQuoteChain(t, db, accountID, otherBranchID, productID)
+	repo := NewQuoteRepository()
+
+	firstAt := time.Date(2026, time.September, 4, 9, 0, 0, 0, time.UTC)
+	secondAt := firstAt.Add(time.Hour)
+	if _, err := db.CrossAccount().Exec(ctx,
+		`INSERT INTO quote_status_change (account_id, quote_id, previous_status, new_status, changed_at)
+		 VALUES ($1, $2, 'DRAFT', 'QUOTED', $3),
+		        ($1, $2, NULL, 'DRAFT', $4),
+		        ($1, $5, NULL, 'DRAFT', $4)`,
+		accountID, quoteID, secondAt, firstAt, otherQuoteID); err != nil {
+		t.Fatalf("seed quote status history: %v", err)
+	}
+
+	var changes []domain.QuoteStatusChange
+	if err := db.InTenantTx(ctx,
+		domain.Tenant{AccountID: accountID, BranchID: branchID, Role: domain.UserRoleAdmin},
+		func(q Querier) error {
+			var readErr error
+			changes, readErr = repo.ListStatusChanges(ctx, q, accountID, branchID, quoteID)
+			return readErr
+		}); err != nil {
+		t.Fatalf("ListStatusChanges() = %v, want no error", err)
+	}
+	if len(changes) != 2 {
+		t.Fatalf("changes = %d, want 2 for the selected quote", len(changes))
+	}
+	if changes[0].NewStatus != domain.QuoteStatusDraft ||
+		changes[1].NewStatus != domain.QuoteStatusQuoted {
+		t.Errorf("changes = %+v, want chronological DRAFT then QUOTED", changes)
+	}
+
+	if err := db.InTenantTx(ctx,
+		domain.Tenant{AccountID: accountID, BranchID: otherBranchID, Role: domain.UserRoleAdmin},
+		func(q Querier) error {
+			var readErr error
+			changes, readErr = repo.ListStatusChanges(ctx, q, accountID, otherBranchID, quoteID)
+			return readErr
+		}); err != nil {
+		t.Fatalf("wrong-branch ListStatusChanges() = %v, want no error", err)
+	}
+	if len(changes) != 0 {
+		t.Errorf("wrong branch read %d changes, want none", len(changes))
 	}
 }
 
@@ -742,5 +860,240 @@ func TestQuoteRepository_CreateItems_RefusesALineWithNoID(t *testing.T) {
 	}
 	if written != 0 {
 		t.Errorf("the all-zeros uuid is a real quote_item key %d times over", written)
+	}
+}
+
+// ListItemsWithProduct joins product's catalog identity onto a version's lines. The projection is
+// table-prefixed because product shares the id and unit column names with quote_item; an
+// unqualified one makes the join ambiguous and the detail view reads no items at all.
+func TestQuoteRepository_ListItemsWithProduct_RoundTripsCatalogIdentity(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "List items with product")
+	branchID := branchOf(t, db, accountID)
+	productID := seedProduct(t, db, accountID, "Cemento Portland 50kg")
+	priceCleanup(t, db, productID)
+	_, versionID, itemID := seedQuoteChain(t, db, accountID, branchID, productID)
+
+	repo := NewQuoteRepository()
+	var items []domain.QuoteItem
+	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID, Role: domain.UserRoleAdmin},
+		func(q Querier) error {
+			var readErr error
+			items, readErr = repo.ListItemsWithProduct(ctx, q, accountID, versionID)
+			return readErr
+		}); err != nil {
+		t.Fatalf("ListItemsWithProduct: %v", err)
+	}
+
+	if len(items) != 1 {
+		t.Fatalf("items = %d, want 1", len(items))
+	}
+	item := items[0]
+	if item.ID != itemID {
+		t.Errorf("item ID = %v, want %v", item.ID, itemID)
+	}
+	if item.VersionID != versionID {
+		t.Errorf("item version = %v, want %v", item.VersionID, versionID)
+	}
+	if item.ProductID == nil || *item.ProductID != productID {
+		t.Errorf("item product = %v, want %v", item.ProductID, productID)
+	}
+	if item.RequestedDescription != "cemento" || !item.Quantity.Equal(decimal.RequireFromString("10")) {
+		t.Errorf("item line = (%q, %v), want (cemento, 10)", item.RequestedDescription, item.Quantity)
+	}
+	if item.MatchStatus != domain.ItemMatchStatusMatched {
+		t.Errorf("item match = %q, want MATCHED", item.MatchStatus)
+	}
+	// The seeded product carries a canonical name; the other two catalog fields stay null and the
+	// join must map that as null rather than an error.
+	if item.ProductName == nil || *item.ProductName != "Cemento Portland 50kg" {
+		t.Errorf("item product name = %v, want the catalog's", item.ProductName)
+	}
+}
+
+// CreateSingleItem appends a line to a mutable version. Its SELECT-form insert targets the product
+// and quantity parameters into a CASE, so they must carry explicit casts — without them the planner
+// cannot infer $3's data type and answers 42P08. This keeps that from regressing.
+func TestQuoteRepository_CreateSingleItem_AddsMatchedAndUnmatchedLines(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "CreateSingleItem")
+	branchID := branchOf(t, db, accountID)
+	productID := seedProduct(t, db, accountID, "Cemento Portland 50kg")
+	priceCleanup(t, db, productID)
+	_, versionID, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+
+	repo := NewQuoteRepository()
+	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID, Role: domain.UserRoleAdmin},
+		func(q Querier) error {
+			matched, matchErr := repo.CreateSingleItem(ctx, q, accountID, versionID,
+				domain.QuoteItemCreate{
+					ProductID:            &productID,
+					RequestedDescription: "cemento hidrófugo",
+					Quantity:             decimal.RequireFromString("2"),
+					Unit:                 strPtr("bolsa"),
+				})
+			if matchErr != nil {
+				return matchErr
+			}
+			if matched.MatchStatus != domain.ItemMatchStatusMatched {
+				t.Errorf("matched line match = %q, want MATCHED", matched.MatchStatus)
+			}
+
+			unmatched, noMatchErr := repo.CreateSingleItem(ctx, q, accountID, versionID,
+				domain.QuoteItemCreate{
+					RequestedDescription: "un material sin emparejar",
+					Quantity:             decimal.RequireFromString("3"),
+				})
+			if noMatchErr != nil {
+				return noMatchErr
+			}
+			if unmatched.ProductID != nil || unmatched.MatchStatus != domain.ItemMatchStatusNoMatch {
+				t.Errorf("unmatched line = (product %v, match %q), want (nil, NO_MATCH)",
+					unmatched.ProductID, unmatched.MatchStatus)
+			}
+			return nil
+		}); err != nil {
+		t.Fatalf("CreateSingleItem: %v", err)
+	}
+
+	var lines int
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT count(*) FROM quote_item WHERE version_id = $1`, versionID).Scan(&lines); err != nil {
+		t.Fatalf("count the appended lines: %v", err)
+	}
+	if lines != 3 {
+		t.Errorf("lines on the version = %d, want 3", lines)
+	}
+}
+
+// UpdateItem's UPDATE joins quote_item against quote_version. Its RETURNING must read the row
+// from the item table alone; the unqualified projection collides with the version's id and
+// account_id and answers 42702. Updating quantity exercises the join, the RETURNING, and the
+// subtotal recalculation together.
+func TestQuoteRepository_UpdateItem_ChangesQuantityAndSubtotal(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "UpdateItem")
+	branchID := branchOf(t, db, accountID)
+	productID := seedProduct(t, db, accountID, "Cemento Portland 50kg")
+	priceCleanup(t, db, productID)
+	_, versionID, itemID := seedQuoteChain(t, db, accountID, branchID, productID)
+
+	newQuantity := decimal.NewFromInt(12)
+	price := decimal.NewFromInt(18900)
+
+	repo := NewQuoteRepository()
+	var updated *domain.QuoteItem
+	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID, Role: domain.UserRoleAdmin},
+		func(q Querier) error {
+			var updateErr error
+			updated, updateErr = repo.UpdateItem(ctx, q, accountID, versionID, itemID,
+				domain.QuoteItemUpdate{
+					Quantity:          &newQuantity,
+					UnitPriceSnapshot: &price,
+				})
+			return updateErr
+		}); err != nil {
+		t.Fatalf("UpdateItem: %v", err)
+	}
+
+	if updated.ID != itemID {
+		t.Errorf("updated item id = %v, want %v", updated.ID, itemID)
+	}
+	if !updated.Quantity.Equal(newQuantity) {
+		t.Errorf("quantity = %v, want %v", updated.Quantity, newQuantity)
+	}
+	if !updated.UnitPriceSnapshot.Valid || !updated.UnitPriceSnapshot.Decimal.Equal(price) {
+		t.Errorf("unit price = %v, want %v", updated.UnitPriceSnapshot, price)
+	}
+	wantSubtotal := newQuantity.Mul(price)
+	if !updated.Subtotal.Valid || !updated.Subtotal.Decimal.Equal(wantSubtotal) {
+		t.Errorf("subtotal = %v, want quantity × price = %v", updated.Subtotal, wantSubtotal)
+	}
+}
+
+// GetPreviousVersion feeds the change-request diff: the newest frozen version older than a
+// mutable draft. The seed creates v1; freezing it and appending a mutable v2 must make the
+// call answer v1, and a second call for v1 itself must answer ErrNotFound (nothing older).
+func TestQuoteRepository_GetPreviousVersion_UsesNewestFrozenPredecessor(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "GetPreviousVersion")
+	branchID := branchOf(t, db, accountID)
+	productID := seedProduct(t, db, accountID, "Cemento Portland 50kg")
+	priceCleanup(t, db, productID)
+	quoteID, versionID, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+
+	// Only one mutable draft per quote (uq_quote_version_draft), so v1 freezes first and v2
+	// is born as the draft — exactly the sequence the change-request flow follows.
+	draftID := uuid.New()
+	if _, err := db.CrossAccount().Exec(ctx,
+		`UPDATE quote_version SET is_immutable = TRUE, frozen_at = now() WHERE id = $1`, versionID); err != nil {
+		t.Fatalf("freeze v1: %v", err)
+	}
+	if _, err := db.CrossAccount().Exec(ctx,
+		`INSERT INTO quote_version (id, account_id, quote_id, version_number, is_immutable)
+		 VALUES ($1, $2, $3, 2, FALSE)`, draftID, accountID, quoteID); err != nil {
+		t.Fatalf("seed draft version: %v", err)
+	}
+	if _, err := db.CrossAccount().Exec(ctx,
+		`UPDATE quote SET current_version_id = $2 WHERE id = $1`, quoteID, draftID); err != nil {
+		t.Fatalf("point quote at draft: %v", err)
+	}
+	t.Cleanup(func() {
+		mustCleanup(t, db.CrossAccount(), `UPDATE quote SET current_version_id = NULL WHERE id = $1`, quoteID)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM quote_version WHERE id = $1`, draftID)
+	})
+
+	repo := NewQuoteRepository()
+	var previous *domain.QuoteVersion
+	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID, BranchID: branchID,
+		Role: domain.UserRoleAdmin}, func(q Querier) error {
+		var readErr error
+		previous, readErr = repo.GetPreviousVersion(ctx, q, accountID, branchID, quoteID, 2)
+		return readErr
+	}); err != nil {
+		t.Fatalf("GetPreviousVersion: %v", err)
+	}
+
+	if previous == nil || previous.ID != versionID {
+		t.Fatalf("previous version = %v, want the frozen v1 %v", previous, versionID)
+	}
+	if !previous.IsImmutable {
+		t.Error("previous version not frozen")
+	}
+
+	var missing *domain.QuoteVersion
+	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID, BranchID: branchID,
+		Role: domain.UserRoleAdmin}, func(q Querier) error {
+		var readErr error
+		missing, readErr = repo.GetPreviousVersion(ctx, q, accountID, branchID, quoteID, 1)
+		return readErr
+	}); err != nil && !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("GetPreviousVersion for v1 = %v, want ErrNotFound", err)
+	}
+	if missing != nil {
+		t.Errorf("previous version for v1 = %v, want none", missing)
+	}
+
+	// Once v2 is frozen too, asking from v3 answers v2: newest frozen below the number.
+	if _, err := db.CrossAccount().Exec(ctx,
+		`UPDATE quote_version SET is_immutable = TRUE, frozen_at = now() WHERE id = $1`, draftID); err != nil {
+		t.Fatalf("freeze draft: %v", err)
+	}
+
+	var newest *domain.QuoteVersion
+	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID, BranchID: branchID,
+		Role: domain.UserRoleAdmin}, func(q Querier) error {
+		var readErr error
+		newest, readErr = repo.GetPreviousVersion(ctx, q, accountID, branchID, quoteID, 3)
+		return readErr
+	}); err != nil {
+		t.Fatalf("GetPreviousVersion: %v", err)
+	}
+	if newest == nil || newest.ID != draftID {
+		t.Errorf("previous version = %v, want the frozen draft %v", newest, draftID)
 	}
 }

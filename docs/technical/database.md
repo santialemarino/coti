@@ -1,6 +1,6 @@
 # Database
 
-PostgreSQL 16 + pgvector. The model is 46 tables with UUID v4 primary keys, native enums, and
+PostgreSQL 16 + pgvector. The model is 51 tables with UUID v4 primary keys, native enums, and
 money in `NUMERIC(14,2)`.
 
 ## What is the source and what is the reference
@@ -41,6 +41,13 @@ pnpm db:seed      # the seed only (idempotent)
 pnpm db:reset     # drop the volume and rebuild
 pnpm db:create-migration <name>
 ```
+
+**Every one of these connects by `DATABASE_ADMIN_URL`** — none of them shells into a container, so
+they reach whatever database that URL names: a differently named container, a Postgres installed on
+the host, a remote development instance. Only the first step of `db:init` is Docker-specific (it runs
+`docker compose up -d postgres`); readiness and the seed are plain connections. The `POSTGRES_*`
+variables provision the compose container, so they and the URLs have to agree — the URLs are what
+everything actually connects by.
 
 **One index is not in the chain, on purpose.** The catalog's approximate vector index is
 degenerate when built on an empty table, so it is a start-up step run once the catalog is loaded
@@ -211,7 +218,7 @@ Whatever can be expressed in the schema is expressed in the schema:
 | `uq_channel_branch_type_no_identifier`   | one identifier-less channel per branch and type    |
 | `uq_product_price_open_period`           | one open price period per branch and product       |
 | `uq_app_user_email_global`               | an address identifies one user, case-insensitively |
-| `uq_auth_token_hash`                     | a recovery or verification link is unique          |
+| `uq_auth_token_hash`                     | a recovery, verification or invite link is unique  |
 | `uq_tag_account_name`                    | one tag name per account, case-insensitively       |
 | `uq_promotion_tier_from_quantity`        | one tier per promotion and starting quantity       |
 | `uq_promotion_condition_item_target`     | one condition row per promotion and target         |

@@ -15,6 +15,7 @@ type quoteValuation struct {
 	pricings []domain.QuoteItemPricing
 	items    []domain.QuoteItem
 	total    decimal.Decimal
+	currency string
 	// unpricedProducts carries one product per line whose product the branch cannot price — never
 	// priced, the period ended, deactivated, or no longer carried there. Those lines stay empty,
 	// so the gap has to be reported rather than left for the seller to notice.
@@ -38,6 +39,15 @@ func valueQuoteItems(
 	for i, item := range items {
 		pricing := domain.QuoteItemPricing{ItemID: item.ID}
 		if price, ok := priceFor(item, prices); ok {
+			currency := price.Currency
+			if currency == "" {
+				currency = domain.DefaultCurrency
+			}
+			if valuation.currency != "" && valuation.currency != currency {
+				return quoteValuation{}, fmt.Errorf("%w: quote items use mixed currencies",
+					domain.ErrInvalidInput)
+			}
+			valuation.currency = currency
 			subtotal := item.Quantity.Mul(price.Price).Round(domain.MoneyScale)
 			if err := validateAmount(subtotal, fmt.Sprintf("items[%d].subtotal", i)); err != nil {
 				return quoteValuation{}, err
@@ -58,6 +68,9 @@ func valueQuoteItems(
 		item.Subtotal = pricing.Subtotal
 		valuation.pricings = append(valuation.pricings, pricing)
 		valuation.items = append(valuation.items, item)
+	}
+	if valuation.currency == "" {
+		valuation.currency = domain.DefaultCurrency
 	}
 
 	// quote_version.total is the sum of the line subtotals less the sum of the version's
@@ -108,4 +121,72 @@ func quoteItemProductIDs(items []domain.QuoteItem) []uuid.UUID {
 		productIDs = append(productIDs, *item.ProductID)
 	}
 	return productIDs
+}
+
+func quoteProductIDs(
+	items []domain.QuoteItem, alternatives map[uuid.UUID][]domain.QuoteItemAlternative,
+) []uuid.UUID {
+	productIDs := quoteItemProductIDs(items)
+	seen := make(map[uuid.UUID]struct{}, len(productIDs))
+	for _, id := range productIDs {
+		seen[id] = struct{}{}
+	}
+	for _, offered := range alternatives {
+		for _, alternative := range offered {
+			if alternative.ProductID == nil {
+				continue
+			}
+			if _, duplicate := seen[*alternative.ProductID]; duplicate {
+				continue
+			}
+			seen[*alternative.ProductID] = struct{}{}
+			productIDs = append(productIDs, *alternative.ProductID)
+		}
+	}
+	return productIDs
+}
+
+func valueQuoteAlternatives(
+	alternatives map[uuid.UUID][]domain.QuoteItemAlternative,
+	prices map[uuid.UUID]domain.BranchPrice, currency string,
+) ([]domain.QuoteItemAlternativePricing, error) {
+	var valued []domain.QuoteItemAlternativePricing
+	for _, offered := range alternatives {
+		for _, alternative := range offered {
+			pricing := domain.QuoteItemAlternativePricing{AlternativeID: alternative.ID}
+			if alternative.ProductID != nil {
+				if price, ok := prices[*alternative.ProductID]; ok {
+					priceCurrency := price.Currency
+					if priceCurrency == "" {
+						priceCurrency = domain.DefaultCurrency
+					}
+					if priceCurrency == currency {
+						pricing.PriceSnapshot = decimal.NewNullDecimal(price.Price)
+					}
+				}
+			}
+			if alternative.ApprovedBySeller && !pricing.PriceSnapshot.Valid {
+				return nil, fmt.Errorf("%w: an approved alternative has no price in the quote currency",
+					domain.ErrInvalidInput)
+			}
+			valued = append(valued, pricing)
+		}
+	}
+	return valued, nil
+}
+
+func applyAlternativePricing(
+	alternatives map[uuid.UUID][]domain.QuoteItemAlternative,
+	pricings []domain.QuoteItemAlternativePricing,
+) {
+	byID := make(map[uuid.UUID]decimal.NullDecimal, len(pricings))
+	for _, pricing := range pricings {
+		byID[pricing.AlternativeID] = pricing.PriceSnapshot
+	}
+	for itemID, offered := range alternatives {
+		for i := range offered {
+			offered[i].PriceSnapshot = byID[offered[i].ID]
+		}
+		alternatives[itemID] = offered
+	}
 }

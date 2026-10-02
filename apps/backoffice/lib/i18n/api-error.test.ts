@@ -78,6 +78,7 @@ describe('apiErrorMessage', () => {
       'auth.verifyEmail.resend',
       'account',
       'branches',
+      'rfqs.detail.items',
       'users',
       'users.passwordReset',
       'priceImport',

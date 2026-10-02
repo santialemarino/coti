@@ -39,6 +39,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       suffix,
       type,
       passwordToggleLabel,
+      onWheel,
       ...props
     },
     ref,
@@ -97,6 +98,15 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             suffix && 'pr-2',
             className,
           )}
+          /* A focused number field treats the wheel as a stepper, so scrolling a form past one
+             silently rewrites the value that was under the pointer. Blurring hands the scroll back
+             to the page; the keyboard arrows still step. */
+          onWheel={(event) => {
+            if (type === 'number' && event.currentTarget === document.activeElement) {
+              event.currentTarget.blur();
+            }
+            onWheel?.(event);
+          }}
           {...props}
         />
 

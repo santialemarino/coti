@@ -8,8 +8,9 @@ import { ROUTES } from '@/config/routes';
 import { generatePageMetadata } from '@/lib/utils/page';
 
 // The route the API mails, so its shape is a contract: WEB_BACKOFFICE_URL plus
-// /reset-password?token=…
+// /reset-password?token=…, and &invite=1 when the link is an invite.
 const TOKEN_PARAM = 'token';
+const INVITE_PARAM = 'invite';
 
 export const generateMetadata = () => generatePageMetadata('resetPassword');
 
@@ -21,6 +22,21 @@ export default async function ResetPasswordPage({ searchParams }: ResetPasswordP
   const t = await getTranslations('auth.resetPassword');
   const params = await searchParams;
   const token = typeof params[TOKEN_PARAM] === 'string' ? params[TOKEN_PARAM] : '';
+  const invite = params[INVITE_PARAM] === '1';
+
+  // An invited user has no password to recover, so the way back is the admin, not a new link.
+  if (!token && invite) {
+    return (
+      <Card>
+        <StatusScreen
+          icon={CircleXIcon}
+          tone="danger"
+          title={t('invite.title')}
+          description={t('invite.invalidLink')}
+        />
+      </Card>
+    );
+  }
 
   // A missing token is the same dead end as an expired one, so it gets the same screen.
   if (!token) {
@@ -40,5 +56,5 @@ export default async function ResetPasswordPage({ searchParams }: ResetPasswordP
     );
   }
 
-  return <ResetPasswordForm token={token} />;
+  return <ResetPasswordForm token={token} invite={invite} />;
 }

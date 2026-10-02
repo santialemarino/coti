@@ -19,7 +19,7 @@ import (
 type passwordUserRepository interface {
 	GetAuthSubjectByID(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) (*domain.AuthSubject, error)
 	GetAuthSubjectByEmailCrossAccount(ctx context.Context, q repository.Querier, email string) (*domain.AuthSubject, error)
-	UpdatePassword(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, passwordHash string) error
+	SetPasswordFromLink(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, passwordHash string) error
 	UpdatePasswordIfCurrent(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, currentHash, passwordHash string) error
 	BumpSessionEpoch(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) (int, error)
 }
@@ -135,14 +135,15 @@ func (s *PasswordService) Forgot(ctx context.Context, email string) error {
 	return s.issueResetLink(ctx, user.AppUser)
 }
 
-// Reset redeems a recovery link and sets the new password. An unknown, expired, already-used
-// or wrong-type token all answer domain.ErrUnauthenticated alike.
+// Reset redeems a recovery or invite link and sets the new password. An unknown, expired,
+// already-used or wrong-type token all answer domain.ErrUnauthenticated alike.
 func (s *PasswordService) Reset(ctx context.Context, rawToken, next string) error {
 	if err := s.policy.Validate(next); err != nil {
 		return err
 	}
 
-	stored, err := s.links.redeem(ctx, rawToken, domain.AuthTokenTypePasswordReset)
+	stored, err := s.links.redeem(ctx, rawToken,
+		domain.AuthTokenTypePasswordReset, domain.AuthTokenTypeInvite)
 	if err != nil {
 		return err
 	}
@@ -165,8 +166,12 @@ func (s *PasswordService) Reset(ctx context.Context, rawToken, next string) erro
 		if !user.IsUsable() {
 			return domain.WithCode(domain.CodeInvalidLink, domain.ErrUnauthenticated)
 		}
-		if updateErr := s.users.UpdatePassword(ctx, q, stored.AccountID, stored.UserID, hash); updateErr != nil {
+		if updateErr := s.users.SetPasswordFromLink(ctx, q, stored.AccountID, stored.UserID, hash); updateErr != nil {
 			return updateErr
+		}
+		// The other links the user still holds were minted for the credential just replaced.
+		if invalidateErr := s.tokens.InvalidateAllForUser(ctx, q, stored.AccountID, stored.UserID); invalidateErr != nil {
+			return invalidateErr
 		}
 		_, endErr := s.endSessions(ctx, q, stored.AccountID, stored.UserID)
 		return endErr

@@ -2,10 +2,12 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
@@ -18,6 +20,8 @@ type ProductService interface {
 	CreateProduct(ctx context.Context, tenant domain.Tenant, in domain.NewProduct) (*domain.Product, error)
 	UpdateProduct(ctx context.Context, tenant domain.Tenant, id uuid.UUID, in domain.ProductUpdate) (*domain.Product, error)
 	DeleteProduct(ctx context.Context, tenant domain.Tenant, id uuid.UUID) error
+	UploadImage(ctx context.Context, tenant domain.Tenant, productID uuid.UUID, file domain.ProductImageUpload) (*domain.Product, error)
+	DownloadImage(ctx context.Context, accountID, productID, imageID uuid.UUID) (*domain.StoredObject, error)
 	ListSynonyms(ctx context.Context, tenant domain.Tenant, productID uuid.UUID) ([]domain.ProductSynonym, error)
 	AddSynonym(ctx context.Context, tenant domain.Tenant, productID uuid.UUID, term string, source domain.SynonymSource) (*domain.ProductSynonym, error)
 	RemoveSynonym(ctx context.Context, tenant domain.Tenant, productID, synonymID uuid.UUID) error
@@ -28,12 +32,52 @@ type ProductService interface {
 
 // ProductHandler serves the account-level catalog: products, synonyms, and alternatives.
 type ProductHandler struct {
-	products ProductService
+	products      ProductService
+	maxImageBytes int64
 }
 
 // NewProductHandler builds a ProductHandler.
-func NewProductHandler(products ProductService) *ProductHandler {
-	return &ProductHandler{products: products}
+func NewProductHandler(products ProductService, maxImageBytes int64) *ProductHandler {
+	return &ProductHandler{products: products, maxImageBytes: maxImageBytes}
+}
+
+// GetImage streams one public product image.
+//
+//	@Summary		Get a product image
+//	@Description	Serves one product image by its public, unguessable identifier.
+//	@Tags			catalog
+//	@Produce		png
+//	@Param			accountId	path		string	true	"Account id"
+//	@Param			productId	path		string	true	"Product id"
+//	@Param			imageId		path		string	true	"Image id"
+//	@Success		200			{file}		binary
+//	@Failure		400			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse
+//	@Router			/v1/public/product-images/{accountId}/{productId}/{imageId} [get]
+func (h *ProductHandler) GetImage(c *gin.Context) {
+	accountID, ok := pathUUID(c, "accountId")
+	if !ok {
+		return
+	}
+	productID, ok := pathUUID(c, "productId")
+	if !ok {
+		return
+	}
+	imageID, ok := pathUUID(c, "imageId")
+	if !ok {
+		return
+	}
+	image, err := h.products.DownloadImage(c.Request.Context(), accountID, productID, imageID)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	defer image.Body.Close()
+
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("Content-Disposition", "inline")
+	c.Header("Cache-Control", "public, max-age=31536000, immutable")
+	c.DataFromReader(http.StatusOK, image.Size, image.ContentType, image.Body, nil)
 }
 
 // List returns one page of the account's catalog.
@@ -123,7 +167,7 @@ func (h *ProductHandler) Get(c *gin.Context) {
 // Create adds a catalog item to the account.
 //
 //	@Summary		Create a product
-//	@Description	Availability, stock and price are set per branch by their own endpoints.
+//	@Description	Makes the product available at every active branch and, when price is sent, prices it at each of them.
 //	@Tags			catalog
 //	@Accept			json
 //	@Produce		json
@@ -147,14 +191,29 @@ func (h *ProductHandler) Create(c *gin.Context) {
 		return
 	}
 
-	product, err := h.products.CreateProduct(c.Request.Context(), tenant, domain.NewProduct{
+	in := domain.NewProduct{
 		Code:          body.Code,
 		CanonicalName: body.CanonicalName,
 		Description:   body.Description,
 		Unit:          body.Unit,
 		FamilyID:      body.FamilyID,
 		SubgroupID:    body.SubgroupID,
-	})
+	}
+	if body.Price != nil {
+		price, err := decimal.NewFromString(*body.Price)
+		if err != nil {
+			RespondBindError(c, fmt.Errorf("price is not a decimal: %w", err))
+			return
+		}
+		minPrice, err := parseNullableAmount(body.MinPrice, "min_price")
+		if err != nil {
+			RespondBindError(c, err)
+			return
+		}
+		in.InitialPrice = &domain.NewProductPrice{Price: price, MinPrice: minPrice}
+	}
+
+	product, err := h.products.CreateProduct(c.Request.Context(), tenant, in)
 	if err != nil {
 		Respond(c, err)
 		return
@@ -204,6 +263,48 @@ func (h *ProductHandler) Update(c *gin.Context) {
 		SubgroupID:    body.SubgroupID,
 		IsActive:      body.IsActive,
 	})
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toProductResponse(*product))
+}
+
+// UploadImage stores and assigns a product's primary image.
+//
+//	@Summary		Upload a product image
+//	@Description	Stores one PNG, JPEG, or WebP image and assigns it as the product's primary photo.
+//	@Tags			catalog
+//	@Accept			multipart/form-data
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			productId	path		string	true	"Product id"
+//	@Param			file		formData	file	true	"PNG, JPEG, or WebP image"
+//	@Success		200			{object}	dto.ProductResponse
+//	@Failure		400			{object}	dto.ErrorResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		403			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse
+//	@Failure		413			{object}	dto.ErrorResponse
+//	@Failure		422			{object}	dto.ErrorResponse
+//	@Router			/v1/products/{productId}/image [post]
+func (h *ProductHandler) UploadImage(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	productID, ok := pathUUID(c, "productId")
+	if !ok {
+		return
+	}
+	file, header, ok := openUpload(c, h.maxImageBytes)
+	if !ok {
+		return
+	}
+	defer file.Close()
+
+	product, err := h.products.UploadImage(c.Request.Context(), tenant, productID,
+		domain.ProductImageUpload{ContentType: header.Header.Get("Content-Type"), Size: header.Size, Content: file})
 	if err != nil {
 		Respond(c, err)
 		return
@@ -492,7 +593,7 @@ func (h *ProductHandler) RemoveAlternative(c *gin.Context) {
 }
 
 func toProductResponse(p domain.Product) dto.ProductResponse {
-	return dto.ProductResponse{
+	response := dto.ProductResponse{
 		ID:            p.ID,
 		Code:          p.Code,
 		CanonicalName: p.CanonicalName,
@@ -504,6 +605,11 @@ func toProductResponse(p domain.Product) dto.ProductResponse {
 		CreatedAt:     p.CreatedAt,
 		UpdatedAt:     p.UpdatedAt,
 	}
+	if p.ImageID != nil {
+		imagePath := fmt.Sprintf("/v1/public/product-images/%s/%s/%s", p.AccountID, p.ID, *p.ImageID)
+		response.ImagePath = &imagePath
+	}
+	return response
 }
 
 func toSynonymResponse(s domain.ProductSynonym) dto.SynonymResponse {

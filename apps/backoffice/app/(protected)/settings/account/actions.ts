@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 
 import { accountSchema, type AccountValues } from '@/app/(protected)/settings/account/form-schema';
 import { ROUTES } from '@/config/routes';
+import { uploadAccountLogo } from '@/lib/api/account-logo';
 import { apiRequest } from '@/lib/api/client';
 import { errorCodeOf, type ApiErrorCode } from '@/lib/api/errors';
 
@@ -12,15 +13,22 @@ export interface AccountResult {
   error?: ApiErrorCode;
 }
 
-export async function updateAccount(values: AccountValues): Promise<AccountResult> {
+export async function updateAccount(
+  values: AccountValues,
+  logo?: File | null,
+): Promise<AccountResult> {
   // Re-validated server-side: the client's schema is a courtesy, not a guarantee.
   const parsed = accountSchema().safeParse(values);
   if (!parsed.success) return { error: 'INVALID_BODY' };
 
-  // Built before the try, so a mapping bug here surfaces as itself instead of as the same
-  // 'INTERNAL' the API path answers with.
-  const body = bodyOf(parsed.data);
   try {
+    const brandLogoUrl =
+      logo === undefined
+        ? parsed.data.brandLogoUrl
+        : logo === null
+          ? ''
+          : await uploadAccountLogo(logo);
+    const body = bodyOf({ ...parsed.data, brandLogoUrl });
     await apiRequest({ path: '/v1/account', method: 'PUT', body });
   } catch (error) {
     return { error: errorCodeOf(error) };
@@ -41,6 +49,6 @@ function bodyOf(values: AccountValues) {
     legal_name: values.legalName || undefined,
     tax_id: values.taxId || undefined,
     brand_logo_url: values.brandLogoUrl || undefined,
-    brand_color: values.brandColor || undefined,
+    brand_color: values.brandColor ? `#${values.brandColor}` : undefined,
   };
 }

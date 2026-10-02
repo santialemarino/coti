@@ -35,6 +35,23 @@ definitions:
     - alternative_product_id
     - type
     type: object
+  dto.AddQuoteItemRequest:
+    properties:
+      product_id:
+        type: string
+      quantity:
+        type: string
+      requested_description:
+        maxLength: 512
+        minLength: 1
+        type: string
+      unit:
+        maxLength: 64
+        type: string
+    required:
+    - quantity
+    - requested_description
+    type: object
   dto.AddSynonymRequest:
     properties:
       source:
@@ -72,6 +89,22 @@ definitions:
         $ref: '#/definitions/dto.ProductResponse'
       type:
         type: string
+    type: object
+  dto.AssignSellerRequest:
+    properties:
+      seller_id:
+        type: string
+    type: object
+  dto.AssociateQuoteClientRequest:
+    properties:
+      client_id:
+        type: string
+      new_client:
+        $ref: '#/definitions/dto.CreateClientRequest'
+      tag_ids:
+        items:
+          type: string
+        type: array
     type: object
   dto.AvailabilityListResponse:
     properties:
@@ -113,6 +146,8 @@ definitions:
         type: string
       default_expiry_days:
         type: integer
+      email:
+        type: string
       id:
         type: string
       is_active:
@@ -120,6 +155,11 @@ definitions:
       name:
         type: string
       updated_at:
+        type: string
+    type: object
+  dto.BrandLogoResponse:
+    properties:
+      path:
         type: string
     type: object
   dto.CatalogImportInput:
@@ -130,6 +170,8 @@ definitions:
         type: string
       family:
         type: string
+      is_active:
+        type: boolean
       min_price:
         type: string
       name:
@@ -158,6 +200,8 @@ definitions:
     type: object
   dto.CatalogImportRowResponse:
     properties:
+      action:
+        type: string
       code:
         type: string
       description:
@@ -168,6 +212,8 @@ definitions:
         type: array
       family:
         type: string
+      is_active:
+        type: boolean
       min_price:
         type: string
       name:
@@ -206,6 +252,29 @@ definitions:
     - current_password
     - new_password
     type: object
+  dto.ChangeRequestDiffResponse:
+    properties:
+      original:
+        $ref: '#/definitions/dto.ChangeRequestSideResponse'
+      reason:
+        type: string
+      requested:
+        $ref: '#/definitions/dto.ChangeRequestSideResponse'
+    type: object
+  dto.ChangeRequestSideResponse:
+    properties:
+      discounts:
+        items:
+          $ref: '#/definitions/dto.DiffDiscountLineResponse'
+        type: array
+      items:
+        items:
+          $ref: '#/definitions/dto.DiffLineItemResponse'
+        type: array
+      total:
+        description: decimal string, never float.
+        type: string
+    type: object
   dto.ChannelListResponse:
     properties:
       items:
@@ -232,6 +301,136 @@ definitions:
       updated_at:
         type: string
     type: object
+  dto.ClientActionResponse:
+    properties:
+      comment:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      type:
+        type: string
+      version_id:
+        type: string
+      version_number:
+        type: integer
+    type: object
+  dto.ClientContactHintsResponse:
+    properties:
+      email:
+        type: string
+      phone:
+        type: string
+    type: object
+  dto.ClientListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ClientSummaryResponse'
+        type: array
+    type: object
+  dto.ClientMatchResponse:
+    properties:
+      client:
+        $ref: '#/definitions/dto.ClientResponse'
+      tags:
+        items:
+          $ref: '#/definitions/dto.ClientTagResponse'
+        type: array
+    type: object
+  dto.ClientProfileResponse:
+    properties:
+      client:
+        $ref: '#/definitions/dto.ClientResponse'
+      sales:
+        items:
+          $ref: '#/definitions/dto.ClientSaleResponse'
+        type: array
+      tags:
+        items:
+          $ref: '#/definitions/dto.ClientTagResponse'
+        type: array
+    type: object
+  dto.ClientResponse:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      notes:
+        type: string
+      origin_channel:
+        type: string
+      phone:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  dto.ClientSaleResponse:
+    properties:
+      accepted_at:
+        type: string
+      branch_id:
+        type: string
+      branch_name:
+        type: string
+      quote_id:
+        type: string
+      quote_number:
+        type: integer
+      rfq_id:
+        type: string
+      total:
+        type: string
+    type: object
+  dto.ClientSummaryResponse:
+    properties:
+      accepted_quote_count:
+        type: integer
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      last_accepted_at:
+        type: string
+      name:
+        type: string
+      notes:
+        type: string
+      origin_channel:
+        type: string
+      phone:
+        type: string
+      tags:
+        items:
+          $ref: '#/definitions/dto.ClientTagResponse'
+        type: array
+      updated_at:
+        type: string
+    type: object
+  dto.ClientTagListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ClientTagResponse'
+        type: array
+    type: object
+  dto.ClientTagResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
   dto.ConfirmCatalogImportRequest:
     properties:
       rows:
@@ -244,9 +443,11 @@ definitions:
     type: object
   dto.ConfirmCatalogImportResponse:
     properties:
-      imported_rows:
+      created_rows:
         type: integer
       skipped_rows:
+        type: integer
+      updated_rows:
         type: integer
     type: object
   dto.ConfirmEmailRequest:
@@ -280,6 +481,9 @@ definitions:
         maximum: 365
         minimum: 1
         type: integer
+      email:
+        maxLength: 255
+        type: string
       name:
         maxLength: 255
         minLength: 1
@@ -304,6 +508,55 @@ definitions:
     required:
     - type
     type: object
+  dto.CreateClientRequest:
+    properties:
+      email:
+        maxLength: 255
+        type: string
+      name:
+        maxLength: 255
+        type: string
+      phone:
+        maxLength: 64
+        type: string
+    type: object
+  dto.CreateClientTagRequest:
+    properties:
+      name:
+        maxLength: 128
+        type: string
+    required:
+    - name
+    type: object
+  dto.CreateDiscountRequest:
+    properties:
+      action_type:
+        enum:
+        - FIXED_AMOUNT
+        - PERCENTAGE
+        type: string
+      description:
+        maxLength: 512
+        minLength: 1
+        type: string
+      item_ids:
+        items:
+          type: string
+        type: array
+      scope:
+        enum:
+        - TOTAL
+        - ITEM
+        - ITEM_SET
+        type: string
+      value:
+        type: string
+    required:
+    - action_type
+    - description
+    - scope
+    - value
+    type: object
   dto.CreateProductRequest:
     properties:
       canonical_name:
@@ -318,6 +571,10 @@ definitions:
         type: string
       family_id:
         type: string
+      min_price:
+        type: string
+      price:
+        type: string
       subgroup_id:
         type: string
       unit:
@@ -326,6 +583,45 @@ definitions:
     required:
     - canonical_name
     - family_id
+    type: object
+  dto.CreateRfqItemRequest:
+    properties:
+      product_id:
+        type: string
+      quantity:
+        type: string
+      requested_description:
+        maxLength: 512
+        minLength: 1
+        type: string
+      unit:
+        maxLength: 64
+        type: string
+    required:
+    - quantity
+    - requested_description
+    type: object
+  dto.CreateRfqRequest:
+    properties:
+      client_label:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/dto.CreateRfqItemRequest'
+        type: array
+      raw_text:
+        type: string
+      seller_id:
+        type: string
+      work_type:
+        type: string
+    type: object
+  dto.CreateRfqResponse:
+    properties:
+      quote:
+        $ref: '#/definitions/dto.QuoteResponse'
+      rfq:
+        $ref: '#/definitions/dto.RfqResponse'
     type: object
   dto.CreateTextRFQDraftRequest:
     properties:
@@ -355,6 +651,8 @@ definitions:
       email:
         maxLength: 255
         type: string
+      invite:
+        type: boolean
       name:
         maxLength: 255
         minLength: 1
@@ -371,7 +669,6 @@ definitions:
     - branch_ids
     - email
     - name
-    - password
     - role
     type: object
   dto.CreateWhatsAppMockRFQDraftRequest:
@@ -392,6 +689,30 @@ definitions:
     - from
     - text
     type: object
+  dto.DiffDiscountLineResponse:
+    properties:
+      amount:
+        type: string
+      changed:
+        type: boolean
+      name:
+        type: string
+    type: object
+  dto.DiffLineItemResponse:
+    properties:
+      change_type:
+        type: string
+      changed:
+        type: boolean
+      description:
+        type: string
+      quantity:
+        type: string
+      unit:
+        type: string
+      unit_price:
+        type: string
+    type: object
   dto.ErrorResponse:
     properties:
       code:
@@ -403,6 +724,10 @@ definitions:
         type: string
       error:
         type: string
+      issues:
+        items:
+          type: string
+        type: array
     type: object
   dto.ForgotPasswordRequest:
     properties:
@@ -449,19 +774,44 @@ definitions:
         type: array
       email:
         type: string
+      email_verification_required:
+        description: EmailVerificationRequired says whether an unconfirmed address
+          closes the product.
+        type: boolean
       email_verified:
         description: EmailVerified is what lets a screen tell "confirm your address"
           from "already done".
         type: boolean
       id:
         type: string
+      mail_delivery:
+        description: MailDelivery is false while mail only reaches the log, so nothing
+          that needs a link can work.
+        type: boolean
       name:
         type: string
       role:
         type: string
     type: object
+  dto.OnboardingChecklistItemResponse:
+    properties:
+      done:
+        type: boolean
+      step:
+        enum:
+        - BRAND
+        - CATALOG_UPLOAD
+        - TEAM
+        type: string
+    type: object
   dto.OnboardingResponse:
     properties:
+      checklist:
+        items:
+          $ref: '#/definitions/dto.OnboardingChecklistItemResponse'
+        type: array
+      checklist_hidden_at:
+        type: string
       completed_at:
         type: string
       current_step:
@@ -517,6 +867,17 @@ definitions:
         $ref: '#/definitions/dto.QuoteResponse'
       version:
         $ref: '#/definitions/dto.QuoteVersionResponse'
+    type: object
+  dto.ProductFamilyResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      subgroups:
+        items:
+          $ref: '#/definitions/dto.ProductSubgroupResponse'
+        type: array
     type: object
   dto.ProductListResponse:
     properties:
@@ -596,6 +957,8 @@ definitions:
         type: string
       id:
         type: string
+      image_path:
+        type: string
       is_active:
         type: boolean
       subgroup_id:
@@ -604,6 +967,133 @@ definitions:
         type: string
       updated_at:
         type: string
+    type: object
+  dto.ProductSubgroupResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  dto.ProductTaxonomyResponse:
+    properties:
+      families:
+        items:
+          $ref: '#/definitions/dto.ProductFamilyResponse'
+        type: array
+    type: object
+  dto.PublicQuoteActionRequest:
+    properties:
+      message:
+        type: string
+      type:
+        type: string
+    required:
+    - type
+    type: object
+  dto.PublicQuoteActionResponse:
+    properties:
+      created_at:
+        type: string
+      customer_status:
+        type: string
+      quote_status:
+        type: string
+    type: object
+  dto.PublicQuoteSendResponse:
+    properties:
+      customer_status:
+        description: |-
+          CustomerStatus is the answer this token already received, present only when the
+          customer responded through the link.
+        type: string
+      expires_at:
+        type: string
+      message:
+        type: string
+      pdf_url:
+        type: string
+      quote:
+        $ref: '#/definitions/dto.QuoteRepresentationPayloadResponse'
+      status:
+        type: string
+    type: object
+  dto.QuoteAlternativeApprovalRequest:
+    properties:
+      approved_by_seller:
+        type: boolean
+    required:
+    - approved_by_seller
+    type: object
+  dto.QuoteClientAssociationResponse:
+    properties:
+      available_tags:
+        items:
+          $ref: '#/definitions/dto.ClientTagResponse'
+        type: array
+      contact_hints:
+        $ref: '#/definitions/dto.ClientContactHintsResponse'
+      current_client:
+        $ref: '#/definitions/dto.ClientMatchResponse'
+      suggestions:
+        items:
+          $ref: '#/definitions/dto.ClientMatchResponse'
+        type: array
+    type: object
+  dto.QuoteDeliveryResponse:
+    properties:
+      channel:
+        type: string
+      destination:
+        type: string
+      id:
+        type: string
+      public_url:
+        type: string
+      sent_at:
+        type: string
+      tracking_status:
+        type: string
+    type: object
+  dto.QuoteDiscountResponse:
+    properties:
+      action_type:
+        type: string
+      action_value:
+        type: string
+      amount:
+        type: string
+      condition_type:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      item_ids:
+        items:
+          type: string
+        type: array
+      origin:
+        type: string
+      promotion_id:
+        type: string
+      promotion_name:
+        type: string
+      quote_version_id:
+        type: string
+      scope:
+        type: string
+      suppressed_by_seller:
+        type: boolean
+    type: object
+  dto.QuoteEmailDeliveryRequest:
+    properties:
+      address:
+        type: string
+    required:
+    - address
     type: object
   dto.QuoteItemAlternativeResponse:
     properties:
@@ -643,6 +1133,15 @@ definitions:
         items:
           $ref: '#/definitions/dto.QuoteItemAlternativeResponse'
         type: array
+      confidence_level:
+        description: |-
+          ConfidenceLevel is how settled the match reads: HIGH, MEDIUM or LOW, or null when the line
+          was never scored because matching did not run or a person chose the product.
+        enum:
+        - HIGH
+        - MEDIUM
+        - LOW
+        type: string
       confidence_score:
         type: string
       created_at:
@@ -658,7 +1157,13 @@ definitions:
           PricingUnavailable names a line that matched a product the branch cannot price. It is null
           until the materials are accepted, because until then no line has been priced at all.
         type: boolean
+      product_code:
+        type: string
       product_id:
+        type: string
+      product_name:
+        type: string
+      product_unit:
         type: string
       quantity:
         type: string
@@ -673,6 +1178,116 @@ definitions:
       unit_price_snapshot:
         type: string
       version_id:
+        type: string
+    type: object
+  dto.QuoteRepresentationAlternativeResponse:
+    properties:
+      code:
+        type: string
+      name:
+        type: string
+      unit:
+        type: string
+      unit_price:
+        type: string
+    type: object
+  dto.QuoteRepresentationBranchResponse:
+    properties:
+      address:
+        type: string
+      name:
+        type: string
+    type: object
+  dto.QuoteRepresentationCustomerResponse:
+    properties:
+      name:
+        type: string
+    type: object
+  dto.QuoteRepresentationDiscountResponse:
+    properties:
+      amount:
+        type: string
+      description:
+        type: string
+    type: object
+  dto.QuoteRepresentationItemResponse:
+    properties:
+      alternatives:
+        items:
+          $ref: '#/definitions/dto.QuoteRepresentationAlternativeResponse'
+        type: array
+      product_code:
+        type: string
+      product_name:
+        type: string
+      quantity:
+        type: string
+      requested_description:
+        type: string
+      subtotal:
+        type: string
+      unit:
+        type: string
+      unit_price:
+        type: string
+    type: object
+  dto.QuoteRepresentationPayloadResponse:
+    properties:
+      approved_at:
+        type: string
+      branch:
+        $ref: '#/definitions/dto.QuoteRepresentationBranchResponse'
+      currency:
+        type: string
+      customer:
+        $ref: '#/definitions/dto.QuoteRepresentationCustomerResponse'
+      discounts:
+        items:
+          $ref: '#/definitions/dto.QuoteRepresentationDiscountResponse'
+        type: array
+      items:
+        items:
+          $ref: '#/definitions/dto.QuoteRepresentationItemResponse'
+        type: array
+      reference:
+        type: string
+      supplier:
+        $ref: '#/definitions/dto.QuoteRepresentationSupplierResponse'
+      total:
+        type: string
+      validity_note:
+        type: string
+      version_number:
+        type: integer
+    type: object
+  dto.QuoteRepresentationResponse:
+    properties:
+      created_at:
+        type: string
+      message_preview:
+        type: string
+      pdf_url:
+        type: string
+      quote:
+        $ref: '#/definitions/dto.QuoteRepresentationPayloadResponse'
+      quote_id:
+        type: string
+      representation_id:
+        type: string
+      version_id:
+        type: string
+    type: object
+  dto.QuoteRepresentationSupplierResponse:
+    properties:
+      brand_color:
+        type: string
+      legal_name:
+        type: string
+      logo_url:
+        type: string
+      name:
+        type: string
+      tax_id:
         type: string
     type: object
   dto.QuoteResponse:
@@ -697,11 +1312,79 @@ definitions:
         type: string
       needs_followup:
         type: boolean
+      number:
+        type: integer
       rfq_id:
         type: string
       seller_id:
         type: string
       updated_at:
+        type: string
+    type: object
+  dto.QuoteSendRequest:
+    properties:
+      email_delivery:
+        $ref: '#/definitions/dto.QuoteEmailDeliveryRequest'
+      expiry_days:
+        type: integer
+      recipient_phone:
+        type: string
+    required:
+    - recipient_phone
+    type: object
+  dto.QuoteSendResponse:
+    properties:
+      current_status:
+        type: string
+      deliveries:
+        items:
+          $ref: '#/definitions/dto.QuoteDeliveryResponse'
+        type: array
+      expires_at:
+        type: string
+      quote_id:
+        type: string
+      version_id:
+        type: string
+    type: object
+  dto.QuoteSendTrackingResponse:
+    properties:
+      channel:
+        type: string
+      created_at:
+        type: string
+      destination:
+        type: string
+      expires_at:
+        type: string
+      format:
+        type: string
+      id:
+        type: string
+      public_url:
+        type: string
+      sent_at:
+        type: string
+      tracking_status:
+        type: string
+      version_id:
+        type: string
+    type: object
+  dto.QuoteStatusChangeResponse:
+    properties:
+      changed_at:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      new_status:
+        type: string
+      previous_status:
+        type: string
+      quote_id:
+        type: string
+      user_id:
         type: string
     type: object
   dto.QuoteVersionResponse:
@@ -711,6 +1394,10 @@ definitions:
       comment:
         type: string
       created_at:
+        type: string
+      currency:
+        type: string
+      frozen_at:
         type: string
       id:
         type: string
@@ -772,6 +1459,23 @@ definitions:
       work_type:
         type: string
     type: object
+  dto.RFQStatusChangeResponse:
+    properties:
+      changed_at:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      new_status:
+        type: string
+      previous_status:
+        type: string
+      rfq_id:
+        type: string
+      user_id:
+        type: string
+    type: object
   dto.RateLimitResponse:
     properties:
       code:
@@ -783,12 +1487,29 @@ definitions:
       retry_after_seconds:
         type: integer
     type: object
+  dto.ReactivateQuoteRequest:
+    properties:
+      mode:
+        enum:
+        - RESEND
+        - EDIT
+        type: string
+    required:
+    - mode
+    type: object
   dto.RefreshRequest:
     properties:
       refresh_token:
         type: string
     required:
     - refresh_token
+    type: object
+  dto.ReplaceClientTagsRequest:
+    properties:
+      tag_ids:
+        items:
+          type: string
+        type: array
     type: object
   dto.ResendVerificationRequest:
     properties:
@@ -809,6 +1530,111 @@ definitions:
     required:
     - new_password
     - token
+    type: object
+  dto.RfqDetailResponse:
+    properties:
+      alternatives:
+        additionalProperties:
+          items:
+            $ref: '#/definitions/dto.QuoteItemAlternativeResponse'
+          type: array
+        type: object
+      changes_requested:
+        $ref: '#/definitions/dto.ChangeRequestDiffResponse'
+      client_actions:
+        items:
+          $ref: '#/definitions/dto.ClientActionResponse'
+        type: array
+      deliveries:
+        items:
+          $ref: '#/definitions/dto.QuoteSendTrackingResponse'
+        type: array
+      discounts:
+        items:
+          $ref: '#/definitions/dto.QuoteDiscountResponse'
+        type: array
+      items:
+        items:
+          $ref: '#/definitions/dto.QuoteItemResponse'
+        type: array
+      quote:
+        $ref: '#/definitions/dto.QuoteResponse'
+      quote_status_history:
+        items:
+          $ref: '#/definitions/dto.QuoteStatusChangeResponse'
+        type: array
+      rfq:
+        $ref: '#/definitions/dto.RfqListItemResponse'
+      rfq_status_history:
+        items:
+          $ref: '#/definitions/dto.RFQStatusChangeResponse'
+        type: array
+      version:
+        $ref: '#/definitions/dto.QuoteVersionResponse'
+    type: object
+  dto.RfqListItemResponse:
+    properties:
+      archived_at:
+        type: string
+      branch:
+        type: string
+      branch_id:
+        type: string
+      channel:
+        type: string
+      client:
+        type: string
+      client_id:
+        type: string
+      created_at:
+        type: string
+      followup_flagged_at:
+        description: FollowupFlaggedAt is when the quote was flagged for follow-up;
+          null while it is not.
+        type: string
+      id:
+        type: string
+      item_count:
+        type: integer
+      needs_followup:
+        type: boolean
+      quote_id:
+        type: string
+      quote_number:
+        type: integer
+      review_count:
+        description: ReviewCount is how many of the current version's lines matching
+          left for the seller.
+        type: integer
+      seller:
+        type: string
+      seller_id:
+        type: string
+      status:
+        type: string
+      total:
+        type: string
+    type: object
+  dto.RfqResponse:
+    properties:
+      branch_id:
+        type: string
+      channel_id:
+        type: string
+      client_label:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      raw_text:
+        type: string
+      received_at:
+        type: string
+      status:
+        type: string
+      work_type:
+        type: string
     type: object
   dto.SaveOnboardingProgressRequest:
     properties:
@@ -841,6 +1667,20 @@ definitions:
     - current_step
     - step
     - step_status
+    type: object
+  dto.SellerListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.SellerResponse'
+        type: array
+    type: object
+  dto.SellerResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
     type: object
   dto.SetAvailabilityRequest:
     properties:
@@ -908,6 +1748,11 @@ definitions:
       tokens:
         $ref: '#/definitions/dto.TokenResponse'
     type: object
+  dto.SuccessResponse:
+    properties:
+      ok:
+        type: boolean
+    type: object
   dto.SynonymListResponse:
     properties:
       items:
@@ -952,6 +1797,13 @@ definitions:
       user:
         $ref: '#/definitions/dto.UserBrief'
     type: object
+  dto.TransitionQuoteRequest:
+    properties:
+      status:
+        type: string
+    required:
+    - status
+    type: object
   dto.UpdateAccountRequest:
     properties:
       brand_color:
@@ -985,6 +1837,9 @@ definitions:
         maximum: 365
         minimum: 1
         type: integer
+      email:
+        maxLength: 255
+        type: string
       is_active:
         type: boolean
       name:
@@ -1004,6 +1859,32 @@ definitions:
         type: string
       is_active:
         type: boolean
+    type: object
+  dto.UpdateDiscountRequest:
+    properties:
+      action_type:
+        enum:
+        - FIXED_AMOUNT
+        - PERCENTAGE
+        type: string
+      description:
+        maxLength: 512
+        minLength: 1
+        type: string
+      item_ids:
+        items:
+          type: string
+        type: array
+      scope:
+        enum:
+        - TOTAL
+        - ITEM
+        - ITEM_SET
+        type: string
+      suppressed_by_seller:
+        type: boolean
+      value:
+        type: string
     type: object
   dto.UpdateProductRequest:
     properties:
@@ -1029,6 +1910,21 @@ definitions:
     required:
     - canonical_name
     - family_id
+    type: object
+  dto.UpdateQuoteItemRequest:
+    properties:
+      product_id:
+        type: string
+      quantity:
+        type: string
+      requested_description:
+        maxLength: 512
+        type: string
+      unit:
+        maxLength: 64
+        type: string
+      unit_price_snapshot:
+        type: string
     type: object
   dto.UpdateUserRequest:
     properties:
@@ -1083,6 +1979,13 @@ definitions:
       email:
         type: string
       id:
+        type: string
+      invite_status:
+        description: InviteStatus is PENDING or EXPIRED while the user has not chosen
+          a password yet, else null.
+        enum:
+        - PENDING
+        - EXPIRED
         type: string
       is_active:
         type: boolean
@@ -1199,6 +2102,49 @@ paths:
       security:
       - BearerAuth: []
       summary: Update the current account
+      tags:
+      - accounts
+  /v1/account/logo:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Stores one PNG or JPEG logo and returns its permanent public path.
+      parameters:
+      - description: PNG or JPEG logo
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.BrandLogoResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "413":
+          description: FILE_TOO_LARGE
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: UNSUPPORTED_FILE_TYPE
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Upload an account logo
       tags:
       - accounts
   /v1/auth/change-email:
@@ -1674,6 +2620,122 @@ paths:
       summary: Update an intake channel
       tags:
       - channels
+  /v1/clients:
+    get:
+      description: Returns account-level client profiles. Tags are account-wide; accepted
+        sale counts and dates are limited to the branches and seller assignments the
+        caller may inspect.
+      parameters:
+      - description: Optional branch filter
+        in: header
+        name: X-Branch-Id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List client profiles
+      tags:
+      - clients
+  /v1/clients/{clientId}:
+    get:
+      description: Returns one account-level profile and its currently accepted quotes
+        inside the caller's branch and seller reach.
+      parameters:
+      - description: Optional branch filter
+        in: header
+        name: X-Branch-Id
+        type: string
+      - description: Client id
+        in: path
+        name: clientId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientProfileResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a client profile
+      tags:
+      - clients
+  /v1/clients/{clientId}/tags:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Client id
+        in: path
+        name: clientId
+        required: true
+        type: string
+      - description: Selected tags
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ReplaceClientTagsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientTagListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Replace a client's tags
+      tags:
+      - clients
   /v1/dev/whatsapp/messages:
     post:
       consumes:
@@ -1708,19 +2770,19 @@ paths:
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "404":
-          description: No active WhatsApp channel
+          description: Not Found
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "422":
-          description: Ambiguous channel, or an answer the model could not shape
+          description: Unprocessable Entity
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "429":
-          description: Rate limit spent; retry_after_seconds says when
+          description: Too Many Requests
           schema:
             $ref: '#/definitions/dto.RateLimitResponse'
         "503":
-          description: No language model is bound, or it could not answer
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
@@ -1768,8 +2830,9 @@ paths:
       - files
   /v1/me:
     get:
-      description: Returns the caller's identity and branch reach, so the frontend
-        never has to read the access token itself.
+      description: Returns the caller's identity and branch reach, plus whether an
+        unconfirmed address closes the product and whether mail reaches a mailbox,
+        so the frontend never has to read the access token or guess the installation.
       produces:
       - application/json
       responses:
@@ -1856,6 +2919,42 @@ paths:
       security:
       - BearerAuth: []
       summary: Save onboarding progress
+      tags:
+      - onboarding
+  /v1/onboarding/checklist/hide:
+    post:
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Hide the onboarding checklist
+      tags:
+      - onboarding
+  /v1/onboarding/checklist/show:
+    post:
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Show the onboarding checklist
       tags:
       - onboarding
   /v1/onboarding/complete:
@@ -2045,6 +3144,28 @@ paths:
       summary: Preview a price import
       tags:
       - catalog
+  /v1/product-taxonomy:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProductTaxonomyResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List product taxonomy
+      tags:
+      - catalog
   /v1/products:
     get:
       description: Ordered by name. Soft-deleted items are hidden unless include_inactive
@@ -2098,7 +3219,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Availability, stock and price are set per branch by their own endpoints.
+      description: Makes the product available at every active branch and, when price
+        is sent, prices it at each of them.
       parameters:
       - description: Product to create
         in: body
@@ -2460,6 +3582,59 @@ paths:
       summary: Set per-branch availability
       tags:
       - catalog
+  /v1/products/{productId}/image:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Stores one PNG, JPEG, or WebP image and assigns it as the product's
+        primary photo.
+      parameters:
+      - description: Product id
+        in: path
+        name: productId
+        required: true
+        type: string
+      - description: PNG, JPEG, or WebP image
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProductResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Upload a product image
+      tags:
+      - catalog
   /v1/products/{productId}/prices:
     get:
       description: Every validity period, open and closed. Scoped to X-Branch-Id when
@@ -2668,8 +3843,8 @@ paths:
       - catalog
   /v1/products/export:
     get:
-      description: Returns a Spanish XLSX with the catalog columns and a second sheet
-        of instructions.
+      description: Returns a Spanish XLSX populated with current products, prices,
+        and editing instructions.
       parameters:
       - description: Active branch
         in: header
@@ -2697,15 +3872,15 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Download the initial catalog template
+      summary: Download the bulk catalog workbook
       tags:
       - catalog
   /v1/products/import/confirm:
     post:
       consumes:
       - application/json
-      description: Revalidates all rows, skips invalid ones, and creates valid products,
-        availability, and prices atomically.
+      description: Revalidates all rows, skips invalid ones, and atomically upserts
+        products, availability, and changed prices.
       parameters:
       - description: Active branch
         in: header
@@ -2747,7 +3922,7 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Confirm an initial catalog import
+      summary: Confirm bulk catalog changes
       tags:
       - catalog
   /v1/products/import/preview:
@@ -2796,9 +3971,41 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Preview an initial catalog import
+      summary: Preview bulk catalog changes
       tags:
       - catalog
+  /v1/public/account-logos/{accountId}/{logoId}:
+    get:
+      description: Serves one account logo by its public, unguessable identifier.
+      parameters:
+      - description: Account id
+        in: path
+        name: accountId
+        required: true
+        type: string
+      - description: Logo id
+        in: path
+        name: logoId
+        required: true
+        type: string
+      produces:
+      - image/png
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Get an account logo
+      tags:
+      - accounts
   /v1/public/accounts:
     post:
       consumes:
@@ -2965,7 +4172,8 @@ paths:
       consumes:
       - application/json
       description: The link works once and expires. Unknown, expired and already-used
-        tokens all answer 401 alike. Every session the user had is ended.
+        tokens all answer 401 alike. Marks the address verified, clears a lockout,
+        and ends every session the user had.
       parameters:
       - description: Recovery token and new password
         in: body
@@ -2990,7 +4198,7 @@ paths:
           description: New password below the configured minimum length
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
-      summary: Reset a password with a recovery link
+      summary: Set a password with a recovery or invite link
       tags:
       - auth
   /v1/public/auth/verify-email:
@@ -3023,6 +4231,103 @@ paths:
       summary: Confirm an email address
       tags:
       - auth
+  /v1/public/product-images/{accountId}/{productId}/{imageId}:
+    get:
+      description: Serves one product image by its public, unguessable identifier.
+      parameters:
+      - description: Account id
+        in: path
+        name: accountId
+        required: true
+        type: string
+      - description: Product id
+        in: path
+        name: productId
+        required: true
+        type: string
+      - description: Image id
+        in: path
+        name: imageId
+        required: true
+        type: string
+      produces:
+      - image/png
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Get a product image
+      tags:
+      - catalog
+  /v1/public/quote-sends/{token}:
+    get:
+      parameters:
+      - description: Public delivery token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.PublicQuoteSendResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Resolve a public quote delivery token
+      tags:
+      - public quote sends
+  /v1/public/quote-sends/{token}/action:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Public delivery token
+        in: path
+        name: token
+        required: true
+        type: string
+      - description: Customer answer
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.PublicQuoteActionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.PublicQuoteActionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Record a customer response on a public quote
+      tags:
+      - public quote sends
   /v1/quotes/{quoteId}/accept-materials:
     post:
       description: 'Freezes each line''s unit price and discount floor from the prices
@@ -3076,6 +4381,946 @@ paths:
       summary: Accept a quote's materials
       tags:
       - quotes
+  /v1/quotes/{quoteId}/archive:
+    post:
+      description: Sets the archived flag without changing the quote status.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_ARCHIVED
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Archive a quote
+      tags:
+      - quotes
+  /v1/quotes/{quoteId}/client-association:
+    get:
+      description: Returns the current client, exact contact matches, delivery contact
+        hints, and reusable tags. Suggestions never mutate or merge a profile.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteClientAssociationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Quote is not accepted
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get accepted-sale client association
+      tags:
+      - clients
+    put:
+      consumes:
+      - application/json
+      description: Links the quote and its RFQ to exactly one seller-confirmed profile,
+        and atomically replaces that profile's tags. Contact suggestions are never
+        accepted automatically.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Client selection and tags
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AssociateQuoteClientRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientMatchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Quote is not accepted
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Associate an accepted sale with a client
+      tags:
+      - clients
+  /v1/quotes/{quoteId}/discounts:
+    post:
+      consumes:
+      - application/json
+      description: Applies a seller-typed discount — fixed amount or percentage, scoped
+        to the total, one item, or a set — and recomputes the total.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: New discount data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateDiscountRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.QuoteDiscountResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Add a discount
+      tags:
+      - rfqs
+  /v1/quotes/{quoteId}/discounts/{discountId}:
+    delete:
+      description: Removes one seller-typed discount application and recomputes the
+        total.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Discount id
+        in: path
+        name: discountId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a discount
+      tags:
+      - rfqs
+    patch:
+      consumes:
+      - application/json
+      description: Patches a discount's rule (value, action type, scope, covered items),
+        description, or suppressed flag.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Discount id
+        in: path
+        name: discountId
+        required: true
+        type: string
+      - description: Fields to patch
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateDiscountRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteDiscountResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a discount
+      tags:
+      - rfqs
+  /v1/quotes/{quoteId}/items:
+    post:
+      consumes:
+      - application/json
+      description: Appends a new material line to a draft quote version.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: RFQ id
+        in: path
+        name: rfqId
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: New item data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AddQuoteItemRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.QuoteItemResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Add a quote item
+      tags:
+      - rfqs
+  /v1/quotes/{quoteId}/items/{itemId}:
+    delete:
+      description: Removes a line from a draft quote version.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: RFQ id
+        in: path
+        name: rfqId
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Item id
+        in: path
+        name: itemId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a quote item
+      tags:
+      - rfqs
+    patch:
+      consumes:
+      - application/json
+      description: Patches a mutable field on a draft quote item.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: RFQ id
+        in: path
+        name: rfqId
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Item id
+        in: path
+        name: itemId
+        required: true
+        type: string
+      - description: Fields to patch
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateQuoteItemRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteItemResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a quote item
+      tags:
+      - rfqs
+  /v1/quotes/{quoteId}/items/{itemId}/alternatives/{alternativeId}:
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Item id
+        in: path
+        name: itemId
+        required: true
+        type: string
+      - description: Alternative id
+        in: path
+        name: alternativeId
+        required: true
+        type: string
+      - description: Seller approval
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.QuoteAlternativeApprovalRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteItemAlternativeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Approve or withdraw a quote alternative
+      tags:
+      - quotes
+  /v1/quotes/{quoteId}/reactivate:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Reopens an accepted or rejected quote. RESEND reuses its frozen version; EDIT
+        creates a repriced mutable version for seller review. Records the transition.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Reactivation mode
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ReactivateQuoteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_NOT_REACTIVATABLE or QUOTE_ARCHIVED
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch, or an unknown mode
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Reactivate a closed quote
+      tags:
+      - quotes
+  /v1/quotes/{quoteId}/representations:
+    post:
+      description: Validates and freezes the current QUOTED version, then returns
+        its stored PDF and canonical content; SENT permits replay only.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Existing bundle
+          schema:
+            $ref: '#/definitions/dto.QuoteRepresentationResponse'
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.QuoteRepresentationResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Generate the approved quote representations
+      tags:
+      - quotes
+  /v1/quotes/{quoteId}/sends:
+    post:
+      consumes:
+      - application/json
+      description: Freezes the current seller-approved version, always attempts WhatsApp
+        with a public webapp link, optionally attempts email independently, and moves
+        QUOTED to SENT when at least one selected channel succeeds.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Delivery operation UUID
+        in: header
+        name: Idempotency-Key
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Delivery destinations and validity
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.QuoteSendRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Idempotent replay
+          schema:
+            $ref: '#/definitions/dto.QuoteSendResponse'
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.QuoteSendResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: Every selected channel failed
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Send a quote to its client
+      tags:
+      - quotes
+  /v1/quotes/{quoteId}/transition:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Moves the quote to the asked status, refusing a status its current one cannot
+        reach or an archived quote. Records the move in the status history.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Target status
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.TransitionQuoteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_NOT_DRAFT when the edge is not allowed, QUOTE_ARCHIVED
+            on an archived quote
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch, or an unknown status
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Transition a quote's status
+      tags:
+      - quotes
+  /v1/quotes/{quoteId}/unarchive:
+    post:
+      description: Clears the archived flag.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote or not archived
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Unarchive a quote
+      tags:
+      - quotes
+  /v1/rfqs:
+    get:
+      description: Returns the RFQ list scoped to the tenant and, when set, the active
+        branch.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        type: string
+      - description: Include archived quotes
+        in: query
+        name: include_archived
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.RfqListItemResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List RFQs
+      tags:
+      - rfqs
+    post:
+      consumes:
+      - application/json
+      description: Records a counter or phone order.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Manual RFQ
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateRfqRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.CreateRfqResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a manual RFQ
+      tags:
+      - rfqs
+  /v1/rfqs/{rfqId}:
+    get:
+      description: Returns the RFQ header, associated quote, version, items, and alternatives.
+      parameters:
+      - description: RFQ id
+        in: path
+        name: rfqId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.RfqDetailResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get RFQ detail
+      tags:
+      - rfqs
+  /v1/rfqs/{rfqId}/assign:
+    post:
+      description: Claims an unassigned order in the seller's branch. Self-assignment
+        only; admins see the whole account and cannot draw from the unclaimed pool.
+      parameters:
+      - description: RFQ id
+        in: path
+        name: rfqId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Assign an RFQ to yourself
+      tags:
+      - rfqs
   /v1/rfqs/{rfqId}/attachments:
     get:
       description: Returns each stored file with a freshly signed link. The link expires,
@@ -3170,14 +5415,139 @@ paths:
       summary: Upload an RFQ attachment
       tags:
       - rfq
+  /v1/rfqs/{rfqId}/seller:
+    put:
+      consumes:
+      - application/json
+      description: Assigns, reassigns or clears the seller on an order. Admin-only.
+        A null seller_id clears the assignment; a non-null id must be the admin themself
+        or a seller who serves the order's branch.
+      parameters:
+      - description: RFQ id
+        in: path
+        name: rfqId
+        required: true
+        type: string
+      - description: Seller to assign, or null to clear
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AssignSellerRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Set an RFQ's seller
+      tags:
+      - rfqs
+  /v1/rfqs/file-drafts:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Reads an order that arrived as a photo, PDF, spreadsheet, voice
+        note or text file, stores the file against the RFQ, and returns the same seller-reviewable
+        quote DRAFT as the text flow.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: The order file
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: Channel the order arrived through
+        in: formData
+        name: channel_id
+        required: true
+        type: string
+      - description: Known client
+        in: formData
+        name: client_id
+        type: string
+      - description: Client name when there is no client record
+        in: formData
+        name: client_label
+        type: string
+      - description: Work type
+        in: formData
+        name: work_type
+        type: string
+      - description: Seller's note about the order
+        in: formData
+        name: note
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.TextRFQDraftResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/dto.RateLimitResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create an RFQ draft from a file
+      tags:
+      - rfq
   /v1/rfqs/text-drafts:
     post:
       consumes:
       - application/json
       description: Persists the original text before reading it, then returns a quote
         DRAFT with one line per material, each carrying its catalog match, its confidence,
-        and the candidates a flagged line was decided against. It does not price or
-        send the quote, so pricing_unavailable is null on every line.
+        and the candidates a flagged line was decided against.
       parameters:
       - description: Active branch
         in: header
@@ -3206,15 +5576,15 @@ paths:
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "422":
-          description: No active branch, or an answer the model could not shape
+          description: Unprocessable Entity
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "429":
-          description: Rate limit spent; retry_after_seconds says when
+          description: Too Many Requests
           schema:
             $ref: '#/definitions/dto.RateLimitResponse'
         "503":
-          description: No language model is bound, or it could not answer
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
@@ -3222,6 +5592,85 @@ paths:
       summary: Create an RFQ text draft
       tags:
       - rfq
+  /v1/sellers:
+    get:
+      description: 'The manual RFQ assignee picklist: active sellers, narrowed to
+        the active branch when one is set.'
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SellerListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List sellers
+      tags:
+      - users
+  /v1/tags:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientTagListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List client tags
+      tags:
+      - clients
+    post:
+      consumes:
+      - application/json
+      description: Creates a reusable account tag. Names that differ only by case
+        or repeated whitespace resolve to the existing tag.
+      parameters:
+      - description: Tag
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateClientTagRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ClientTagResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a client tag
+      tags:
+      - clients
   /v1/users:
     get:
       description: Admin only. Ordered by name, deactivated users included so they
@@ -3249,8 +5698,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Admin only. The account comes from the session; a duplicate email
-        inside it is a 409.
+      description: Admin only. Either sets the password or, with invite, mails a link
+        to choose one (503 MAIL_NOT_CONFIGURED while mail only reaches the log). A
+        duplicate email is a 409.
       parameters:
       - description: User to create
         in: body
@@ -3283,6 +5733,10 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
         "422":
           description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
@@ -3416,6 +5870,51 @@ paths:
       security:
       - BearerAuth: []
       summary: Update a user
+      tags:
+      - users
+  /v1/users/{userId}/invite:
+    post:
+      description: Admin only. Retires the previous link. 422 INVITE_NOT_PENDING once
+        the user has chosen a password; 503 MAIL_NOT_CONFIGURED while mail only reaches
+        the log.
+      parameters:
+      - description: User id
+        in: path
+        name: userId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Invite sent
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Resend a user's invite
       tags:
       - users
   /v1/users/{userId}/password-reset:

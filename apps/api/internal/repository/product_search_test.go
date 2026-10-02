@@ -5,6 +5,7 @@ package repository
 import (
 	"context"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -200,6 +201,31 @@ func TestProductRepository_SearchCandidatesUsesAccountLocalCatalogCorrection(t *
 	}
 }
 
+// A seller-taught phrase keeps pointing at a product after it is deactivated; the search must
+// still not offer a product the account stopped selling.
+func TestProductRepository_SearchCandidatesSkipsADeactivatedProductASellerTaught(t *testing.T) {
+	db := testDB(t)
+	account := seedAccount(t, db, "Corralon Memoria Inactiva")
+	branch := branchOf(t, db, account)
+	product := seedCatalogProduct(t, db, account, "Producto discontinuado", "")
+	stockBranch(t, db, account, branch, product, true)
+	if _, err := db.CrossAccount().Exec(context.Background(), `INSERT INTO quote_correction_memory
+	  (account_id, kind, source_text, normalized_source, embedding, status, product_id,
+	   support_count)
+	 VALUES ($1, 'CATALOG', 'el coso gris', 'el coso gris', $2, 'READY', $3, 1)`,
+		account, queryVector(), product); err != nil {
+		t.Fatalf("seed correction memory: %v", err)
+	}
+	if _, err := db.CrossAccount().Exec(context.Background(),
+		`UPDATE product SET is_active = FALSE WHERE id = $1`, product); err != nil {
+		t.Fatalf("deactivate the product: %v", err)
+	}
+
+	if candidates := searchCandidates(t, db, account, branch, "words absent from catalog", 10); len(candidates) != 0 {
+		t.Errorf("candidates = %v, want none: the product is no longer sold", nameOf(candidates))
+	}
+}
+
 // updated_at says a person changed the product. A backfill over a loaded catalog would otherwise
 // stamp every row as edited at once, and leave the staleness comparison with nothing to measure.
 func TestProductRepository_SetEmbeddingsDoesNotMarkTheProductEdited(t *testing.T) {
@@ -305,6 +331,13 @@ func TestProductRepository_SearchCandidatesFindsATradeTermThroughASynonym(t *tes
 		t.Errorf("distance = %v, want nil: the product carries no embedding",
 			*candidates[0].Distance)
 	}
+	// The term that matched rides along, so the matcher can read it as the line's own word.
+	if len(candidates[0].Synonyms) != 1 || candidates[0].Synonyms[0] != "telagoma" {
+		t.Errorf("synonyms = %v, want the one the line used", candidates[0].Synonyms)
+	}
+	if candidates[0].Description == nil || *candidates[0].Description != "rollo de 10m" {
+		t.Errorf("description = %v, want the product's own", candidates[0].Description)
+	}
 }
 
 // Extracted descriptions often keep a generic product word around the trade term. A synonym is
@@ -331,6 +364,43 @@ func TestProductRepository_SearchCandidatesFindsASynonymInsideALongerDescription
 	}
 	if candidates[0].Distance == nil {
 		t.Error("distance = nil, want the embedded product reached by both halves")
+	}
+	if len(candidates[0].Synonyms) != 1 || candidates[0].Synonyms[0] != "durlock" {
+		t.Errorf("synonyms = %v, want the one inside the description", candidates[0].Synonyms)
+	}
+}
+
+// A product only the text half reached is still measured against the line when it has a vector,
+// so a missing distance always means a missing vector — never "not among the nearest".
+func TestProductRepository_SearchCandidatesMeasuresEveryEmbeddedCandidate(t *testing.T) {
+	db := testDB(t)
+	account := seedAccount(t, db, "Corralon Distancias")
+	branch := branchOf(t, db, account)
+
+	nearest := seedCatalogProduct(t, db, account, "Pintura latex 20L", "balde")
+	named := seedCatalogProduct(t, db, account, "Cemento Portland 50kg", "bolsa")
+	stockBranch(t, db, account, branch, nearest, true)
+	stockBranch(t, db, account, branch, named, true)
+	writeEmbedding(t, db, account, nearest, alignedVector(1))
+	writeEmbedding(t, db, account, named, alignedVector(0.25))
+
+	// A fetch of one: the vector half keeps only the paint, so the cement arrives by its name.
+	candidates := searchCandidates(t, db, account, branch, "cemento", 1)
+
+	var cement *domain.CatalogCandidate
+	for i := range candidates {
+		if candidates[i].ProductID == named {
+			cement = &candidates[i]
+		}
+	}
+	if cement == nil {
+		t.Fatalf("candidates = %v, want the cement reached by its name", nameOf(candidates))
+	}
+	if cement.LexicalScore == nil {
+		t.Error("the cement carries no lexical score, but only the text half could reach it")
+	}
+	if cement.Distance == nil || math.Abs(*cement.Distance-0.75) > 1e-6 {
+		t.Errorf("cement distance = %v, want the 0.75 its vector sits at", cement.Distance)
 	}
 }
 
@@ -439,8 +509,11 @@ func TestProductRepository_SearchUsesTheVectorIndex(t *testing.T) {
 	stockBranch(t, db, account, branch, product, true)
 	writeEmbedding(t, db, account, product, alignedVector(1))
 
+	// Concurrently, because a plain build over a table with rows updated in place is marked
+	// indcheckxmin: while any older transaction is open — another package's test, in CI — the
+	// planner may not use it yet, and the plan would depend on who else is running.
 	if _, err := db.CrossAccount().Exec(ctx,
-		`CREATE INDEX idx_product_embedding ON product
+		`CREATE INDEX CONCURRENTLY idx_product_embedding ON product
 		 USING ivfflat (embedding vector_cosine_ops) WITH (lists = 1)`); err != nil {
 		t.Fatalf("create vector index: %v", err)
 	}
@@ -454,7 +527,7 @@ func TestProductRepository_SearchUsesTheVectorIndex(t *testing.T) {
 			return err
 		}
 		rows, err := q.Query(ctx, "EXPLAIN "+searchCandidatesQuery,
-			account, branch, "cemento", queryVector(), 10, 0.2)
+			account, branch, "cemento", queryVector(), 10, 0.2, "cemento")
 		if err != nil {
 			return err
 		}
@@ -474,5 +547,80 @@ func TestProductRepository_SearchUsesTheVectorIndex(t *testing.T) {
 
 	if !strings.Contains(plan.String(), "idx_product_embedding") {
 		t.Errorf("the search plan does not read the vector index:\n%s", plan.String())
+	}
+}
+
+// The embedding sweep asks which accounts have work: one whose new product has no vector does, one
+// whose catalog is embedded and unedited does not, and neither needs the other's scope to be seen.
+func TestProductRepository_ListAccountsPendingEmbeddingFindsOnlyAccountsWithWork(t *testing.T) {
+	db := testDB(t)
+	pending := seedAccount(t, db, "Corralon Pendiente")
+	embedded := seedAccount(t, db, "Corralon Embebido")
+	seedCatalogProduct(t, db, pending, "Cemento Portland 50kg", "bolsa")
+	done := seedCatalogProduct(t, db, embedded, "Cal hidratada", "bolsa")
+	writeEmbedding(t, db, embedded, done, alignedVector(1))
+
+	accounts, err := NewProductRepository().ListAccountsPendingEmbedding(context.Background(),
+		db.CrossAccount())
+	if err != nil {
+		t.Fatalf("ListAccountsPendingEmbedding() = %v", err)
+	}
+	if !slices.Contains(accounts, pending) || slices.Contains(accounts, embedded) {
+		t.Errorf("accounts = %v, want %v listed and %v not", accounts, pending, embedded)
+	}
+
+	// A deactivated account keeps its catalog, but nobody quotes from it any more.
+	if _, err := db.CrossAccount().Exec(context.Background(),
+		`UPDATE account SET is_active = FALSE WHERE id = $1`, pending); err != nil {
+		t.Fatalf("deactivate the account: %v", err)
+	}
+	accounts, err = NewProductRepository().ListAccountsPendingEmbedding(context.Background(),
+		db.CrossAccount())
+	if err != nil {
+		t.Fatalf("ListAccountsPendingEmbedding() = %v", err)
+	}
+	if slices.Contains(accounts, pending) {
+		t.Errorf("accounts = %v, want the inactive account left out", accounts)
+	}
+}
+
+// A phrase is confirmed only by a memory taught for that very phrase and kept at least once more;
+// a neighbouring phrase's memory, or one taught once, still has to answer to the line's words.
+func TestProductRepository_SearchCandidatesMarksOnlyAConfirmedMemoryOfThePhrase(t *testing.T) {
+	db := testDB(t)
+	account := seedAccount(t, db, "Corralon Confirmada")
+	branch := branchOf(t, db, account)
+	confirmed := seedCatalogProduct(t, db, account, "Cemento Avellaneda 50kg", "")
+	once := seedCatalogProduct(t, db, account, "Cemento Loma Negra 50kg", "")
+	for _, product := range []uuid.UUID{confirmed, once} {
+		stockBranch(t, db, account, branch, product, true)
+	}
+	for _, seed := range []struct {
+		phrase  string
+		product uuid.UUID
+		support int
+	}{
+		{"cemento del bueno", confirmed, 2},
+		{"cemento del malo", once, 2},
+	} {
+		if _, err := db.CrossAccount().Exec(context.Background(), `INSERT INTO quote_correction_memory
+		  (account_id, kind, source_text, normalized_source, embedding, status, product_id,
+		   support_count)
+		 VALUES ($1, 'CATALOG', $2, $2, $3, 'READY', $4, $5)`,
+			account, seed.phrase, queryVector(), seed.product, seed.support); err != nil {
+			t.Fatalf("seed correction memory: %v", err)
+		}
+	}
+
+	byID := map[uuid.UUID]domain.CatalogCandidate{}
+	for _, c := range searchCandidates(t, db, account, branch, "Cemento  del BUENO", 10) {
+		byID[c.ProductID] = c
+	}
+	if !byID[confirmed].LearnedConfirmed {
+		t.Errorf("the phrase's own twice-kept memory = %+v, want it confirmed", byID[confirmed])
+	}
+	if byID[once].LearnedDistance == nil || byID[once].LearnedConfirmed {
+		t.Errorf("a neighbouring phrase's memory = %+v, want it taught but not confirmed",
+			byID[once])
 	}
 }

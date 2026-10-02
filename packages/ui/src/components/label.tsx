@@ -8,6 +8,10 @@ import { cn } from '../lib/utils';
  * identically and the marker's colour and spacing live in one place. It is brand-tinted, not red:
  * red is reserved for something having gone wrong, and a form of red asterisks reads as a form full
  * of errors before the user has typed anything.
+ *
+ * `w-fit` is what keeps the hit target honest. A label forwards its click to the control it names,
+ * and a block-level one spans the whole field row — so a click in the empty space to the right of a
+ * three-letter label focuses an input the pointer is nowhere near, or opens a select.
  */
 function Label({
   className,
@@ -19,7 +23,7 @@ function Label({
     <LabelPrimitive.Root
       data-slot="label"
       className={cn(
-        'flex items-center gap-x-1 select-none text-paragraph-sm-medium text-foreground',
+        'flex w-fit items-center gap-x-1 select-none text-paragraph-sm-medium text-foreground',
         'group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50',
         'peer-disabled:cursor-not-allowed peer-disabled:opacity-50',
         className,

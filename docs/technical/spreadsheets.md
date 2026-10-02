@@ -9,7 +9,8 @@ declarative contracts.
 An import declares a `spreadsheet.Schema`. Each column has a logical key, accepted header aliases,
 and a required flag. `spreadsheet.Read` then:
 
-1. selects the CSV or XLSX reader from the filename;
+1. selects the reader from the file's first bytes — a ZIP signature is XLSX, the OLE2 signature
+   of a legacy `.xls` is refused with `spreadsheet.ErrLegacyExcel`, anything else is CSV;
 2. reads the first XLSX worksheet or the CSV body into the same internal representation;
 3. normalizes headers and maps them to the schema's logical keys;
 4. skips empty rows while preserving the source row number; and

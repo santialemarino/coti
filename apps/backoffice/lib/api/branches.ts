@@ -16,6 +16,7 @@ interface BranchRaw {
   id: string;
   name: string;
   address: string | null;
+  email: string | null;
   default_expiry_days: number;
   is_active: boolean;
   created_at: string;
@@ -28,6 +29,7 @@ export interface Branch {
   id: string;
   name: string;
   address: string | null;
+  email: string | null;
   defaultExpiryDays: number;
   isActive: boolean;
 }
@@ -39,6 +41,7 @@ function mapBranch(raw: BranchRaw): Branch {
     id: raw.id,
     name: raw.name,
     address: raw.address,
+    email: raw.email,
     defaultExpiryDays: raw.default_expiry_days,
     isActive: raw.is_active,
   };

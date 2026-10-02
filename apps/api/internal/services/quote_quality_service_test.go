@@ -49,6 +49,30 @@ func TestCorrectionPatterns_LearnsOnlyInterpretationAndCatalogCorrections(t *tes
 	}
 }
 
+// Keeping the proposed product on a flagged line confirms it; on a line already decided it says
+// nothing new.
+func TestCorrectionPatterns_LearnsAFlaggedLineKeptAsProposed(t *testing.T) {
+	t.Parallel()
+	flaggedID, decidedID := uuid.New(), uuid.New()
+	flaggedProduct, decidedProduct := uuid.New(), uuid.New()
+	proposed := []domain.QuoteAIGenerationItem{
+		{ID: uuid.New(), SourceQuoteItemID: flaggedID, RequestedDescription: "cemento loma negra",
+			ProductID: &flaggedProduct, MatchStatus: domain.ItemMatchStatusAmbiguous},
+		{ID: uuid.New(), SourceQuoteItemID: decidedID, RequestedDescription: "arena fina",
+			ProductID: &decidedProduct, MatchStatus: domain.ItemMatchStatusMatched},
+	}
+	final := []domain.QuoteItem{
+		{ID: flaggedID, RequestedDescription: "cemento loma negra", ProductID: &flaggedProduct},
+		{ID: decidedID, RequestedDescription: "arena fina", ProductID: &decidedProduct},
+	}
+
+	patterns := correctionPatterns("", proposed, final, nil)
+	if len(patterns) != 1 || patterns[0].SourceText != "cemento loma negra" ||
+		*patterns[0].ProductID != flaggedProduct {
+		t.Fatalf("patterns = %+v, want the flagged line's kept product learned alone", patterns)
+	}
+}
+
 func TestCorrectionPatterns_SentAsProposedTeachesNothing(t *testing.T) {
 	t.Parallel()
 	if got := correctionPatterns("cemento", nil, nil, nil); len(got) != 0 {

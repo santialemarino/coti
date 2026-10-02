@@ -24,6 +24,7 @@ const badgeVariants = cva(
         success: 'border-success-border bg-success-subtle text-success-foreground',
         warning: 'border-warning-border bg-warning-subtle text-warning-foreground',
         danger: 'border-danger-border bg-danger-subtle text-danger-foreground',
+        followup: 'border-followup-border bg-followup-subtle text-followup-foreground',
         solid: 'border-transparent bg-primary text-primary-foreground',
         outline: 'border-border-strong bg-transparent text-foreground-muted',
       },
@@ -45,6 +46,7 @@ const DOT_TONES: Record<string, string> = {
   success: 'bg-success',
   warning: 'bg-warning',
   danger: 'bg-danger',
+  followup: 'bg-followup-foreground',
   solid: 'bg-primary-foreground',
   outline: 'bg-foreground-subtle',
 };

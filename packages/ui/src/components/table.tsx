@@ -2,13 +2,68 @@ import * as React from 'react';
 
 import { cn } from '../lib/utils';
 
-/* The scroll container is part of the component so a wide table never widens the page itself. */
-function Table({ className, ...props }: React.ComponentProps<'table'>) {
+type TableAlign = 'start' | 'figure' | 'center';
+
+/*
+ * Copy reads from a common left edge and a one-control column centres. Figures start on the left
+ * too, like every other value in a list; a table whose job is comparing amounts row by row sets
+ * `figures="end"`, and there they line up by place value.
+ */
+const ALIGN_CLASSES: Record<TableAlign, string> = {
+  start: 'text-left',
+  figure: 'text-left group-data-[figures=end]/table:text-right',
+  center: 'text-center',
+};
+
+/*
+ * Every column declares what it holds, and the kind decides its width and alignment, so the same
+ * kind of column looks the same in every table. `text` is the only kind without a width: the table
+ * hands its slack to the text columns, so the figures keep their width and hug their edge.
+ */
+const TABLE_COLUMNS = {
+  text: { width: '', align: 'start', tabular: false },
+  short: { width: 'w-32 min-w-32', align: 'start', tabular: false },
+  date: { width: 'w-32 min-w-32', align: 'start', tabular: true },
+  status: { width: 'w-36 min-w-36', align: 'start', tabular: false },
+  index: { width: 'w-12 min-w-12', align: 'figure', tabular: true },
+  count: { width: 'w-28 min-w-28', align: 'figure', tabular: true },
+  quantity: { width: 'w-32 min-w-32', align: 'figure', tabular: true },
+  money: { width: 'w-36 min-w-36', align: 'figure', tabular: true },
+  quantityInput: { width: 'w-44 min-w-44', align: 'figure', tabular: true },
+  moneyInput: { width: 'w-44 min-w-44', align: 'figure', tabular: true },
+  select: { width: 'w-12 min-w-12', align: 'center', tabular: false },
+  actions: { width: 'w-24 min-w-24', align: 'center', tabular: false },
+  actionsWide: { width: 'w-32 min-w-32', align: 'center', tabular: false },
+} as const satisfies Record<string, { width: string; align: TableAlign; tabular: boolean }>;
+
+type TableColumnKind = keyof typeof TABLE_COLUMNS;
+
+function columnClasses(kind: TableColumnKind) {
+  const column = TABLE_COLUMNS[kind];
+  return cn(ALIGN_CLASSES[column.align], column.tabular && 'whitespace-nowrap tabular-nums');
+}
+
+/*
+ * Auto layout on purpose: a squeezed table shrinks its text columns to their longest word and then
+ * scrolls, where a fixed layout would crush them. `min-w` on every sized column is what holds it.
+ */
+function Table({
+  className,
+  figures = 'start',
+  ...props
+}: React.ComponentProps<'table'> & {
+  /* `end` right-aligns every figure column: quote lines, a version diff, a price comparison. */
+  figures?: 'start' | 'end';
+}) {
   return (
     <div data-slot="table-container" className="relative w-full overflow-x-auto">
       <table
         data-slot="table"
-        className={cn('w-full caption-bottom border-collapse text-paragraph-sm', className)}
+        data-figures={figures}
+        className={cn(
+          'group/table w-full caption-bottom border-collapse text-paragraph-sm',
+          className,
+        )}
         {...props}
       />
     </div>
@@ -45,12 +100,20 @@ function TableFooter({ className, ...props }: React.ComponentProps<'tfoot'>) {
   );
 }
 
-function TableRow({ className, ...props }: React.ComponentProps<'tr'>) {
+function TableRow({
+  className,
+  interactive = false,
+  ...props
+}: React.ComponentProps<'tr'> & {
+  /* Only a row that does something on click gets a hover; on any other row it promises an action. */
+  interactive?: boolean;
+}) {
   return (
     <tr
       data-slot="table-row"
       className={cn(
-        'border-b border-border transition-colors duration-150 ease-out-soft hover:bg-muted/60 data-[state=selected]:bg-accent',
+        'border-b border-border transition-colors duration-150 ease-out-soft data-[state=selected]:bg-accent',
+        interactive && 'cursor-pointer hover:bg-muted/60 active:bg-muted',
         className,
       )}
       {...props}
@@ -58,12 +121,19 @@ function TableRow({ className, ...props }: React.ComponentProps<'tr'>) {
   );
 }
 
-function TableHead({ className, ...props }: React.ComponentProps<'th'>) {
+function TableHead({
+  className,
+  kind,
+  ...props
+}: Omit<React.ComponentProps<'th'>, 'align'> & { kind: TableColumnKind }) {
   return (
     <th
       data-slot="table-head"
+      data-kind={kind}
       className={cn(
-        'h-10 px-3 text-left align-middle whitespace-nowrap text-paragraph-xs-semibold text-foreground-muted [&:has([role=checkbox])]:pr-0',
+        'h-10 px-3 align-middle whitespace-nowrap text-paragraph-xs-semibold text-foreground-muted',
+        TABLE_COLUMNS[kind].width,
+        columnClasses(kind),
         className,
       )}
       {...props}
@@ -71,14 +141,17 @@ function TableHead({ className, ...props }: React.ComponentProps<'th'>) {
   );
 }
 
-function TableCell({ className, ...props }: React.ComponentProps<'td'>) {
+/* A cell takes its column's kind so it aligns with its heading. */
+function TableCell({
+  className,
+  kind = 'text',
+  ...props
+}: Omit<React.ComponentProps<'td'>, 'align'> & { kind?: TableColumnKind }) {
   return (
     <td
       data-slot="table-cell"
-      className={cn(
-        'px-3 py-2.5 align-middle text-foreground [&:has([role=checkbox])]:pr-0',
-        className,
-      )}
+      data-kind={kind}
+      className={cn('px-3 py-2.5 align-middle text-foreground', columnClasses(kind), className)}
       {...props}
     />
   );
@@ -94,4 +167,15 @@ function TableCaption({ className, ...props }: React.ComponentProps<'caption'>) 
   );
 }
 
-export { Table, TableBody, TableCaption, TableCell, TableFooter, TableHead, TableHeader, TableRow };
+export {
+  TABLE_COLUMNS,
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+};
+export type { TableColumnKind };

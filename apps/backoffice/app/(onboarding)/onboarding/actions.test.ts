@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { updateOnboardingBrand } from '@/app/(onboarding)/onboarding/actions';
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+vi.mock('@/lib/api/account-logo', () => ({ uploadAccountLogo: vi.fn() }));
 vi.mock('@/lib/api/account', () => ({
   getAccount: vi.fn(() =>
     Promise.resolve({
@@ -19,6 +20,7 @@ vi.mock('@/lib/api/client', async (importOriginal) => ({
 }));
 
 const { apiRequest } = await import('@/lib/api/client');
+const { uploadAccountLogo } = await import('@/lib/api/account-logo');
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -42,6 +44,23 @@ describe('updateOnboardingBrand', () => {
     expect(apiRequest).toHaveBeenCalledWith(
       expect.objectContaining({
         body: expect.not.objectContaining({ brand_color: expect.anything() }),
+      }),
+    );
+  });
+
+  it('stores a selected logo with the rest of the brand', async () => {
+    const logo = new File(['logo'], 'logo.png', { type: 'image/png' });
+    vi.mocked(uploadAccountLogo).mockResolvedValue('https://api.coti.test/v1/public/logo');
+    vi.mocked(apiRequest).mockResolvedValue(undefined);
+
+    await updateOnboardingBrand({ brandColor: '' }, logo);
+
+    expect(uploadAccountLogo).toHaveBeenCalledWith(logo);
+    expect(apiRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          brand_logo_url: 'https://api.coti.test/v1/public/logo',
+        }),
       }),
     );
   });

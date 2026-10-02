@@ -22,7 +22,7 @@ Spaces is not on the critical path: `STORAGE_PROVIDER` defaults to `local`, the 
 works, and the Spaces adapter exists but has never run against a real bucket. See
 [file-storage.md](file-storage.md).
 
-## Six components, one app
+## Nine components, one app
 
 | Component                   | Type                    | Dockerfile                     | Port |
 | --------------------------- | ----------------------- | ------------------------------ | ---- |
@@ -31,6 +31,9 @@ works, and the Spaces adapter exists but has never run against a real bucket. Se
 | `webapp`                    | Web Service             | `docker/webapp.Dockerfile`     | 3001 |
 | `migrate`                   | Job, `kind: PRE_DEPLOY` | `docker/api.Dockerfile`        | —    |
 | `quote-correction-learning` | Job, `kind: SCHEDULED`  | `docker/api.Dockerfile`        | —    |
+| `quote-quality-evaluation`  | Job, `kind: SCHEDULED`  | `docker/api.Dockerfile`        | —    |
+| `attachment-extraction`     | Job, `kind: SCHEDULED`  | `docker/api.Dockerfile`        | —    |
+| `catalog-embedding`         | Job, `kind: SCHEDULED`  | `docker/api.Dockerfile`        | —    |
 | the database                | Managed Postgres        | —                              | —    |
 
 **Every component takes `source_dir: /`.** All three Dockerfiles build with the repository root as
@@ -40,7 +43,7 @@ is the most likely first failure and it is the cheapest one to avoid.
 
 The api image carries **four** binaries and the migration chain: `/api/bin/api`,
 `/api/bin/scheduled-job`, `/api/bin/catalog-embed`, `/api/bin/goose`, and `/api/migrations`. That is
-why one Dockerfile serves three components.
+why one Dockerfile serves six components.
 
 **Instance sizing.** The spec uses `apps-s-1vcpu-1gb` (1 shared vCPU, 1 GiB, $12/month). Nothing has
 been load-tested; it is the smallest size worth starting a Next.js server on, and the number the
@@ -268,7 +271,7 @@ The full list of keys, with defaults and what each bounds, is in the four `.env.
 1. Create the **Managed Postgres** cluster (PG 16 or 17). Nothing else can be done first.
 2. `CREATE ROLE coti_app …` on it, as above. Doing this **before** anything deploys is what makes
    the first deploy succeed rather than fail at the api component.
-3. **Merge `dev` into `main`** — repo-side, so any time before the app is created. All five
+3. **Merge `dev` into `main`** — repo-side, so any time before the app is created. All eight
    components built from the repository carry `github.branch: main` with `deploy_on_push: true`, so
    the platform builds whatever `main` holds: the spec you apply and the code that gets built come
    from different places, and between releases `main` trails `dev`.
@@ -288,13 +291,16 @@ The full list of keys, with defaults and what each bounds, is in the four `.env.
    `STORAGE_LOCAL_API_BASE_URL` and `WEB_BACKOFFICE_URL` need no second pass — they are bound to
    `${APP_URL}` and resolve at runtime.
 8. Fill the optional secrets and flip their switches: mail, then the two AI vendors, then the
-   rate-limit proxy pair. Each is a restart, not a rebuild.
-9. Register the first account, then embed its catalog — `/api/bin/catalog-embed --account <uuid>`
-   from a console on the api component — and build the vector index once there are rows
+   rate-limit proxy pair. Each is a restart, not a rebuild. `AI_EMBEDDINGS_PROVIDER` is declared
+   on `api` and on `catalog-embedding`: turn it on on both, or the job embeds nothing.
+9. Register the first account and let `catalog-embedding` embed its catalog within 15 minutes, or
+   run `/api/bin/catalog-embed --account <uuid>` from a console on the api component to do it now
+   (it is also what `--refresh-all` after a model change needs), and build the vector index once
+   there are rows
    (`pnpm db:vector-index`, see [catalog.md](catalog.md)). It is deliberately not in the chain: on
    an empty table an ivfflat index is degenerate.
-10. Confirm that `quote-correction-learning` runs every 15 minutes and that an empty run exits
-    successfully without calling the embedding provider.
+10. Confirm that each scheduled job runs every 15 minutes and that an empty run exits successfully
+    without calling a provider.
 
 ## What CI already proves
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -14,6 +15,7 @@ import (
 type fakeOnboardingRepository struct {
 	onboarding domain.Onboarding
 	steps      map[domain.OnboardingStepKey]domain.OnboardingStepStatus
+	evidence   domain.OnboardingEvidence
 }
 
 func (f *fakeOnboardingRepository) GetByAccountID(
@@ -37,6 +39,29 @@ func (f *fakeOnboardingRepository) ListSteps(
 		copy[step] = status
 	}
 	return copy, nil
+}
+
+func (f *fakeOnboardingRepository) GetEvidence(
+	_ context.Context, _ repository.Querier, accountID uuid.UUID,
+) (domain.OnboardingEvidence, error) {
+	if accountID != f.onboarding.AccountID {
+		return nil, domain.ErrNotFound
+	}
+	return f.evidence, nil
+}
+
+func (f *fakeOnboardingRepository) UpdateChecklistHidden(
+	_ context.Context, _ repository.Querier, accountID uuid.UUID, hidden bool,
+) error {
+	if accountID != f.onboarding.AccountID {
+		return domain.ErrNotFound
+	}
+	f.onboarding.ChecklistHiddenAt = nil
+	if hidden {
+		now := time.Now()
+		f.onboarding.ChecklistHiddenAt = &now
+	}
+	return nil
 }
 
 func (f *fakeOnboardingRepository) UpdateCurrentStep(
@@ -140,5 +165,112 @@ func TestOnboardingService_DismissAndResumeKeepTheCurrentStep(t *testing.T) {
 	if repo.onboarding.Status != domain.OnboardingStatusInProgress ||
 		repo.onboarding.CurrentStep != domain.OnboardingStepCatalogUpload {
 		t.Fatal("resume did not restore the saved step")
+	}
+}
+
+func TestOnboardingService_GetRecordsStepsTheDataProvesAndKeepsThem(t *testing.T) {
+	t.Parallel()
+	svc, repo := newOnboardingHarness()
+	repo.onboarding.Status = domain.OnboardingStatusCompleted
+	repo.steps[domain.OnboardingStepCatalogUpload] = domain.OnboardingStepStatusSkipped
+	repo.evidence = domain.OnboardingEvidence{domain.OnboardingStepCatalogUpload: true}
+
+	got, err := svc.Get(context.Background(), adminTenant())
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Steps[domain.OnboardingStepCatalogUpload] != domain.OnboardingStepStatusCompleted {
+		t.Fatalf("a catalog imported outside the wizard still reads %q",
+			got.Steps[domain.OnboardingStepCatalogUpload])
+	}
+	if _, ok := got.Steps[domain.OnboardingStepBrand]; ok {
+		t.Fatal("an unproven step was recorded")
+	}
+
+	repo.evidence = domain.OnboardingEvidence{}
+	again, err := svc.Get(context.Background(), adminTenant())
+	if err != nil {
+		t.Fatalf("Get again: %v", err)
+	}
+	if again.Steps[domain.OnboardingStepCatalogUpload] != domain.OnboardingStepStatusCompleted {
+		t.Fatal("a done step came undone when its evidence went away")
+	}
+}
+
+func TestOnboardingService_GetClosesADismissedSetupWithNothingPending(t *testing.T) {
+	t.Parallel()
+	svc, repo := newOnboardingHarness()
+	repo.onboarding.Status = domain.OnboardingStatusDismissed
+	repo.onboarding.CurrentStep = domain.OnboardingStepBrand
+	repo.steps[domain.OnboardingStepBrand] = domain.OnboardingStepStatusCompleted
+	repo.evidence = domain.OnboardingEvidence{
+		domain.OnboardingStepCatalogUpload: true,
+		domain.OnboardingStepTeam:          true,
+	}
+
+	got, err := svc.Get(context.Background(), adminTenant())
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status != domain.OnboardingStatusCompleted || got.CurrentStep != domain.OnboardingStepComplete {
+		t.Fatalf("got %s at %s, want COMPLETED at COMPLETE", got.Status, got.CurrentStep)
+	}
+}
+
+func TestOnboardingService_GetLeavesADismissedSetupOpenWhileAStepIsPending(t *testing.T) {
+	t.Parallel()
+	svc, repo := newOnboardingHarness()
+	repo.onboarding.Status = domain.OnboardingStatusDismissed
+	repo.steps[domain.OnboardingStepTeam] = domain.OnboardingStepStatusSkipped
+	repo.evidence = domain.OnboardingEvidence{
+		domain.OnboardingStepBrand:         true,
+		domain.OnboardingStepCatalogUpload: true,
+	}
+
+	got, err := svc.Get(context.Background(), adminTenant())
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status != domain.OnboardingStatusDismissed {
+		t.Fatalf("a skipped step counted as done: status %s", got.Status)
+	}
+	if got.Steps[domain.OnboardingStepBrand] != domain.OnboardingStepStatusCompleted {
+		t.Fatal("the proven steps were not recorded")
+	}
+}
+
+func TestOnboardingService_GetNeverClosesTheWizardWhileItIsOpen(t *testing.T) {
+	t.Parallel()
+	svc, repo := newOnboardingHarness()
+	repo.evidence = domain.OnboardingEvidence{
+		domain.OnboardingStepBrand:         true,
+		domain.OnboardingStepCatalogUpload: true,
+		domain.OnboardingStepTeam:          true,
+	}
+
+	got, err := svc.Get(context.Background(), adminTenant())
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status != domain.OnboardingStatusInProgress {
+		t.Fatalf("got %s, want the wizard left IN_PROGRESS", got.Status)
+	}
+}
+
+func TestOnboardingService_SetChecklistHiddenTogglesTheCard(t *testing.T) {
+	t.Parallel()
+	svc, repo := newOnboardingHarness()
+
+	if err := svc.SetChecklistHidden(context.Background(), adminTenant(), true); err != nil {
+		t.Fatalf("hide: %v", err)
+	}
+	if repo.onboarding.ChecklistHiddenAt == nil {
+		t.Fatal("the checklist was not hidden")
+	}
+	if err := svc.SetChecklistHidden(context.Background(), adminTenant(), false); err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	if repo.onboarding.ChecklistHiddenAt != nil {
+		t.Fatal("the checklist was not shown again")
 	}
 }

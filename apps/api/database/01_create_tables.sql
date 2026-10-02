@@ -21,7 +21,9 @@ ALTER TEXT SEARCH CONFIGURATION spanish_unaccent
 -- ENUMS
 -- =============================================================================
 
-CREATE TYPE rfq_status AS ENUM ('RECEIVED', 'GENERATED');
+-- FAILED is terminal and never produces a quote: it is where an RFQ lands when reading it
+-- never finished, so a seller can tell one apart from an order still being read.
+CREATE TYPE rfq_status AS ENUM ('RECEIVED', 'GENERATED', 'FAILED');
 
 -- DRAFT: the quote exists with matched materials but no accepted prices. It is the state
 -- while the RFQ is GENERATED, and what lets the state x intention matrix evaluate on one
@@ -79,11 +81,23 @@ CREATE TYPE notification_status AS ENUM ('PENDING', 'SENT', 'FAILED');
 CREATE TYPE job_run_status AS ENUM ('RUNNING', 'SUCCEEDED', 'FAILED');
 
 -- What a single-use link entitles its bearer to do without a session.
-CREATE TYPE auth_token_type AS ENUM ('PASSWORD_RESET', 'EMAIL_VERIFICATION');
+CREATE TYPE auth_token_type AS ENUM ('PASSWORD_RESET', 'EMAIL_VERIFICATION', 'INVITE');
 
 -- Conversational engine. The seller and the system are context, not a trigger.
 CREATE TYPE message_author_type AS ENUM ('CLIENT', 'SELLER', 'SYSTEM');
 CREATE TYPE message_batch_status AS ENUM ('OPEN', 'CLOSED', 'PROCESSING', 'PROCESSED', 'FAILED');
+
+-- What an AI provider call was paid for. One value per call site that spends, so a cost report
+-- groups by the work, not by the provider method.
+CREATE TYPE ai_operation AS ENUM (
+  'RFQ_EXTRACTION',
+  'AUDIO_TRANSCRIPTION',
+  'INTERPRETATION_LOOKUP',
+  'CATALOG_SEARCH',
+  'CATALOG_MATCH_REVIEW',
+  'CATALOG_EMBEDDING',
+  'CORRECTION_LEARNING'
+);
 
 -- =============================================================================
 -- FUNCTIONS
@@ -128,6 +142,7 @@ CREATE TABLE account_onboarding (
   completed_at   TIMESTAMPTZ,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  checklist_hidden_at TIMESTAMPTZ,
   CONSTRAINT uq_account_onboarding_account UNIQUE (account_id)
 );
 
@@ -198,9 +213,9 @@ CREATE TABLE refresh_token (
   CONSTRAINT uq_refresh_token_hash UNIQUE (token_hash)
 );
 
--- Single-use tokens a user presents instead of a session: the password-recovery link and the
--- address-verification link. consumed_at is what makes them single use, and the row survives
--- its use so a replay is a rejection rather than a miss.
+-- Single-use tokens a user presents instead of a session: the password-recovery link, the
+-- address-verification link and the invite link. consumed_at is what makes them single use,
+-- and the row survives its use so a replay is a rejection rather than a miss.
 CREATE TABLE auth_token (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id  UUID NOT NULL,
@@ -251,6 +266,7 @@ CREATE TABLE product (
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   family_id      UUID,
   subgroup_id    UUID,
+  image_id       UUID,
   -- Older than updated_at means the row was edited after it was embedded, which is how the
   -- backfill knows what to re-embed without re-embedding the whole catalog.
   embedding_updated_at TIMESTAMPTZ,
@@ -351,6 +367,8 @@ CREATE TABLE branch_combo (
 
 -- Contact details are nullable: a counter sale with none is allowed and enriched later.
 -- Missing contact never blocks creation.
+-- uq_client_account exists so a child can reference the (account, client) pair rather than the id
+-- alone: the id alone would let another account's client be attached.
 CREATE TABLE client (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id     UUID NOT NULL,
@@ -360,7 +378,8 @@ CREATE TABLE client (
   origin_channel client_origin,
   notes          VARCHAR(512),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_client_account UNIQUE (account_id, id)
 );
 
 CREATE TABLE tag (
@@ -368,7 +387,8 @@ CREATE TABLE tag (
   account_id UUID NOT NULL,
   name       VARCHAR(128) NOT NULL,
   color      VARCHAR(32),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_tag_account UNIQUE (account_id, id)
 );
 
 CREATE TABLE client_tag (
@@ -421,16 +441,20 @@ CREATE TABLE rfq (
 
 -- The original input is persisted before it is processed: a quote must always be
 -- reconstructible from its source. The files live in object storage.
+-- The two process timestamps answer different questions and neither substitutes for the other:
+-- processing_started_at is when the sweep claimed the row, which is what lets a claim expire after
+-- a run dies mid-work; processed_at is the transition that finished it.
 CREATE TABLE rfq_attachment (
-  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  account_id        UUID NOT NULL,
-  rfq_id            UUID NOT NULL,
-  type              attachment_type NOT NULL,
-  file_url          VARCHAR(512),
-  extracted_text    TEXT,
-  processing_status attachment_processing_status NOT NULL DEFAULT 'PENDING',
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  processed_at      TIMESTAMPTZ
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id            UUID NOT NULL,
+  rfq_id                UUID NOT NULL,
+  type                  attachment_type NOT NULL,
+  file_url              VARCHAR(512),
+  extracted_text        TEXT,
+  processing_status     attachment_processing_status NOT NULL DEFAULT 'PENDING',
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  processing_started_at TIMESTAMPTZ,
+  processed_at          TIMESTAMPTZ
 );
 
 CREATE TABLE rfq_status_change (
@@ -456,6 +480,7 @@ CREATE TABLE rfq_status_change (
 CREATE TABLE quote (
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id          UUID NOT NULL,
+  number              BIGINT NOT NULL,
   branch_id           UUID NOT NULL,
   client_id           UUID,
   rfq_id              UUID NOT NULL,
@@ -468,7 +493,15 @@ CREATE TABLE quote (
   followup_flagged_at TIMESTAMPTZ,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT uq_quote_rfq UNIQUE (rfq_id)
+  CONSTRAINT uq_quote_rfq UNIQUE (rfq_id),
+  CONSTRAINT uq_quote_account_number UNIQUE (account_id, number),
+  CONSTRAINT ck_quote_number CHECK (number > 0)
+);
+
+CREATE TABLE quote_number_counter (
+  account_id  UUID PRIMARY KEY,
+  last_number BIGINT NOT NULL CHECK (last_number > 0),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- A snapshot of the quote. Immutable once frozen.
@@ -478,11 +511,42 @@ CREATE TABLE quote_version (
   quote_id       UUID NOT NULL,
   author_id      UUID,
   version_number INTEGER NOT NULL,
+  currency       VARCHAR(8) NOT NULL DEFAULT 'ARS',
   total          NUMERIC(14,2) NOT NULL DEFAULT 0,
   is_immutable   BOOLEAN NOT NULL DEFAULT FALSE,
+  frozen_at      TIMESTAMPTZ,
   comment        VARCHAR(512),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT uq_quote_version UNIQUE (quote_id, version_number)
+  CONSTRAINT uq_quote_version UNIQUE (quote_id, version_number),
+  CONSTRAINT ck_quote_version_currency CHECK (currency ~ '^[A-Z]{3}$'),
+  CONSTRAINT ck_quote_version_frozen_at CHECK (
+    (is_immutable = TRUE AND frozen_at IS NOT NULL)
+    OR (is_immutable = FALSE AND frozen_at IS NULL)
+  )
+);
+
+CREATE TABLE quote_representation (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id         UUID NOT NULL,
+  branch_id          UUID NOT NULL,
+  quote_id           UUID NOT NULL,
+  version_id         UUID NOT NULL,
+  schema_version     SMALLINT NOT NULL DEFAULT 1,
+  payload            JSONB NOT NULL,
+  message            TEXT NOT NULL,
+  pdf_storage_key    TEXT NOT NULL,
+  pdf_content_type   VARCHAR(64) NOT NULL,
+  pdf_size_bytes     BIGINT NOT NULL,
+  pdf_sha256         CHAR(64) NOT NULL,
+  logo_fallback_used BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_quote_representation_version UNIQUE (account_id, version_id),
+  CONSTRAINT ck_quote_representation_schema CHECK (schema_version = 1),
+  CONSTRAINT ck_quote_representation_payload CHECK (jsonb_typeof(payload) = 'object'),
+  CONSTRAINT ck_quote_representation_message CHECK (length(message) > 0),
+  CONSTRAINT ck_quote_representation_pdf_type CHECK (pdf_content_type = 'application/pdf'),
+  CONSTRAINT ck_quote_representation_pdf_size CHECK (pdf_size_bytes > 0),
+  CONSTRAINT ck_quote_representation_pdf_sha256 CHECK (pdf_sha256 ~ '^[0-9a-f]{64}$')
 );
 
 -- The item does NOT carry its discount: a discount is its own entity. min_price_snapshot is
@@ -663,14 +727,25 @@ CREATE TABLE quote_send (
   account_id      UUID NOT NULL,
   version_id      UUID NOT NULL,
   channel_id      UUID NOT NULL,
+  idempotency_key UUID NOT NULL DEFAULT gen_random_uuid(),
+  destination     VARCHAR(255),
+  provider_reference VARCHAR(255),
   public_token    VARCHAR(255),
   format          send_format NOT NULL,
+  validity_days   INTEGER NOT NULL DEFAULT 7,
   sent_at         TIMESTAMPTZ,
   expires_at      TIMESTAMPTZ,
   tracking_status send_tracking_status NOT NULL DEFAULT 'PENDING',
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT uq_quote_send_public_token UNIQUE (public_token)
+  CONSTRAINT uq_quote_send_public_token UNIQUE (public_token),
+  CONSTRAINT ck_quote_send_validity_days CHECK (validity_days BETWEEN 1 AND 365),
+  CONSTRAINT uq_quote_send_idempotency_channel
+    UNIQUE (account_id, idempotency_key, channel_id)
 );
+
+CREATE UNIQUE INDEX uq_quote_send_channel_provider_reference
+  ON quote_send (channel_id, provider_reference)
+  WHERE provider_reference IS NOT NULL;
 
 -- Rejection is an explicit client or seller action, never inferred by the AI.
 CREATE TABLE client_action (
@@ -777,7 +852,9 @@ CREATE TABLE promotion_tier (
 
 -- One application of a discount to a version. The amount is computed by the deterministic
 -- engine, NEVER by the AI. suppressed_by_seller stops the sweep re-applying it: suppressing
--- an AUTOMATIC is reversible, deleting a MANUAL_SELLER is not.
+-- an AUTOMATIC is reversible, deleting a MANUAL_SELLER is not. A MANUAL_SELLER row also
+-- carries the rule it was typed with — action_type (FIXED_AMOUNT | PERCENTAGE) and the raw
+-- action_value — while amount always holds the computed money.
 CREATE TABLE quote_discount (
   id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id           UUID NOT NULL,
@@ -787,9 +864,19 @@ CREATE TABLE quote_discount (
   scope                discount_scope NOT NULL,
   origin               discount_origin NOT NULL,
   amount               NUMERIC(14,2) NOT NULL,
+  action_type          promotion_action_type NOT NULL DEFAULT 'FIXED_AMOUNT',
+  action_value         NUMERIC(14,2),
   description          VARCHAR(512),
   suppressed_by_seller BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT ck_quote_discount_manual_action CHECK (
+    origin <> 'MANUAL_SELLER'::discount_origin
+    OR (action_value > 0)
+  ),
+  CONSTRAINT ck_quote_discount_percentage_bounds CHECK (
+    action_type <> 'PERCENTAGE'::promotion_action_type
+    OR (action_value > 0 AND action_value <= 100)
+  )
 );
 
 CREATE TABLE quote_discount_item (
@@ -856,6 +943,32 @@ CREATE TABLE job_run (
 );
 
 -- =============================================================================
+-- AI USAGE
+-- =============================================================================
+
+-- One row per provider call, failed ones included: every attempt was charged. The counts are
+-- summed over the call's attempts, and the two cache figures are not part of input_tokens.
+-- rfq_id is null for spend that served no order, or ran before the order existed.
+CREATE TABLE ai_usage (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id         UUID NOT NULL,
+  branch_id          UUID,
+  rfq_id             UUID,
+  operation          ai_operation NOT NULL,
+  provider           VARCHAR(64) NOT NULL,
+  model              VARCHAR(255) NOT NULL,
+  succeeded          BOOLEAN NOT NULL,
+  attempts           SMALLINT NOT NULL CHECK (attempts >= 0),
+  elapsed_ms         INTEGER NOT NULL CHECK (elapsed_ms >= 0),
+  input_tokens       INTEGER NOT NULL CHECK (input_tokens >= 0),
+  output_tokens      INTEGER NOT NULL CHECK (output_tokens >= 0),
+  cache_read_tokens  INTEGER NOT NULL CHECK (cache_read_tokens >= 0),
+  cache_write_tokens INTEGER NOT NULL CHECK (cache_write_tokens >= 0),
+  audio_seconds      NUMERIC(10,2) NOT NULL CHECK (audio_seconds >= 0),
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- =============================================================================
 -- FOREIGN KEYS
 -- (at the end, to resolve the circular quote <-> quote_version dependency)
 -- =============================================================================
@@ -900,14 +1013,14 @@ ALTER TABLE branch_combo ADD CONSTRAINT fk_branch_combo_combo FOREIGN KEY (combo
 ALTER TABLE client ADD CONSTRAINT fk_client_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE tag ADD CONSTRAINT fk_tag_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE client_tag ADD CONSTRAINT fk_client_tag_account FOREIGN KEY (account_id) REFERENCES account(id);
-ALTER TABLE client_tag ADD CONSTRAINT fk_client_tag_client FOREIGN KEY (client_id) REFERENCES client(id);
-ALTER TABLE client_tag ADD CONSTRAINT fk_client_tag_tag FOREIGN KEY (tag_id) REFERENCES tag(id);
+ALTER TABLE client_tag ADD CONSTRAINT fk_client_tag_client FOREIGN KEY (account_id, client_id) REFERENCES client(account_id, id);
+ALTER TABLE client_tag ADD CONSTRAINT fk_client_tag_tag FOREIGN KEY (account_id, tag_id) REFERENCES tag(account_id, id);
 
 ALTER TABLE channel ADD CONSTRAINT fk_channel_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE channel ADD CONSTRAINT fk_channel_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
-ALTER TABLE rfq ADD CONSTRAINT fk_rfq_client FOREIGN KEY (client_id) REFERENCES client(id);
+ALTER TABLE rfq ADD CONSTRAINT fk_rfq_client FOREIGN KEY (account_id, client_id) REFERENCES client(account_id, id);
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_channel FOREIGN KEY (channel_id) REFERENCES channel(id);
 ALTER TABLE rfq_attachment ADD CONSTRAINT fk_rfq_attachment_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE rfq_attachment ADD CONSTRAINT fk_rfq_attachment_rfq FOREIGN KEY (rfq_id) REFERENCES rfq(id);
@@ -917,13 +1030,20 @@ ALTER TABLE rfq_status_change ADD CONSTRAINT fk_rfq_status_change_user FOREIGN K
 
 ALTER TABLE quote ADD CONSTRAINT fk_quote_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE quote ADD CONSTRAINT fk_quote_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
-ALTER TABLE quote ADD CONSTRAINT fk_quote_client FOREIGN KEY (client_id) REFERENCES client(id);
+ALTER TABLE quote ADD CONSTRAINT fk_quote_client FOREIGN KEY (account_id, client_id) REFERENCES client(account_id, id);
 ALTER TABLE quote ADD CONSTRAINT fk_quote_rfq FOREIGN KEY (rfq_id) REFERENCES rfq(id);
 ALTER TABLE quote ADD CONSTRAINT fk_quote_seller FOREIGN KEY (seller_id) REFERENCES app_user(id);
 ALTER TABLE quote ADD CONSTRAINT fk_quote_current_version FOREIGN KEY (current_version_id) REFERENCES quote_version(id);
+ALTER TABLE quote_number_counter ADD CONSTRAINT fk_quote_number_counter_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE quote_version ADD CONSTRAINT fk_quote_version_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE quote_version ADD CONSTRAINT fk_quote_version_quote FOREIGN KEY (quote_id) REFERENCES quote(id);
 ALTER TABLE quote_version ADD CONSTRAINT fk_quote_version_author FOREIGN KEY (author_id) REFERENCES app_user(id);
+ALTER TABLE quote_representation ADD CONSTRAINT fk_quote_representation_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE quote_representation ADD CONSTRAINT fk_quote_representation_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
+ALTER TABLE quote ADD CONSTRAINT uq_quote_tenant_branch_id UNIQUE (account_id, branch_id, id);
+ALTER TABLE quote_version ADD CONSTRAINT uq_quote_version_tenant_quote_id UNIQUE (account_id, quote_id, id);
+ALTER TABLE quote_representation ADD CONSTRAINT fk_quote_representation_quote FOREIGN KEY (account_id, branch_id, quote_id) REFERENCES quote(account_id, branch_id, id);
+ALTER TABLE quote_representation ADD CONSTRAINT fk_quote_representation_version FOREIGN KEY (account_id, quote_id, version_id) REFERENCES quote_version(account_id, quote_id, id);
 ALTER TABLE quote_item ADD CONSTRAINT fk_quote_item_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE quote_item ADD CONSTRAINT fk_quote_item_version FOREIGN KEY (version_id) REFERENCES quote_version(id);
 ALTER TABLE quote_item ADD CONSTRAINT fk_quote_item_product FOREIGN KEY (product_id) REFERENCES product(id);
@@ -992,8 +1112,13 @@ ALTER TABLE handler_decision ADD CONSTRAINT fk_handler_decision_batch FOREIGN KE
 ALTER TABLE handler_decision ADD CONSTRAINT fk_handler_decision_user FOREIGN KEY (user_id) REFERENCES app_user(id);
 ALTER TABLE notification ADD CONSTRAINT fk_notification_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE notification ADD CONSTRAINT fk_notification_user FOREIGN KEY (user_id) REFERENCES app_user(id);
-ALTER TABLE notification ADD CONSTRAINT fk_notification_client FOREIGN KEY (client_id) REFERENCES client(id);
+ALTER TABLE notification ADD CONSTRAINT fk_notification_client FOREIGN KEY (account_id, client_id) REFERENCES client(account_id, id);
 ALTER TABLE notification ADD CONSTRAINT fk_notification_quote FOREIGN KEY (quote_id) REFERENCES quote(id);
+
+ALTER TABLE ai_usage ADD CONSTRAINT fk_ai_usage_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE ai_usage ADD CONSTRAINT fk_ai_usage_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
+-- The spend happened whatever becomes of the order it served.
+ALTER TABLE ai_usage ADD CONSTRAINT fk_ai_usage_rfq FOREIGN KEY (rfq_id) REFERENCES rfq(id) ON DELETE SET NULL;
 
 -- =============================================================================
 -- INDEXES
@@ -1043,6 +1168,7 @@ CREATE INDEX idx_quote_branch_status ON quote(branch_id, current_status);
 CREATE INDEX idx_quote_expires ON quote(expires_at) WHERE expires_at IS NOT NULL AND archived_at IS NULL;
 CREATE INDEX idx_quote_needs_followup ON quote(needs_followup) WHERE needs_followup = TRUE;
 CREATE INDEX idx_quote_version_quote ON quote_version(quote_id);
+CREATE INDEX idx_quote_representation_quote ON quote_representation(account_id, branch_id, quote_id);
 CREATE INDEX idx_quote_item_version ON quote_item(version_id);
 CREATE INDEX idx_quote_item_alternative_account_item ON quote_item_alternative(account_id, quote_item_id);
 CREATE INDEX idx_quote_ai_generation_account_quote ON quote_ai_generation(account_id, quote_id);
@@ -1081,6 +1207,10 @@ CREATE UNIQUE INDEX uq_message_batch_processing ON message_batch(quote_id) WHERE
 -- "Which run changed this row?" is answered by the row's own timestamp falling inside a run's
 -- window, so the history is read newest-first per job.
 CREATE INDEX idx_job_run_name_started ON job_run(job_name, started_at DESC);
+
+-- Spend is read per account over a period, and per order.
+CREATE INDEX idx_ai_usage_account_created ON ai_usage(account_id, created_at);
+CREATE INDEX idx_ai_usage_account_rfq ON ai_usage(account_id, rfq_id) WHERE rfq_id IS NOT NULL;
 
 -- =============================================================================
 -- updated_at TRIGGERS (only tables that mutate in place)
@@ -1147,10 +1277,14 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE O
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO coti_app;
 
 REVOKE INSERT, UPDATE, DELETE ON product_family, product_subgroup FROM coti_app;
+REVOKE UPDATE, DELETE ON quote_representation FROM coti_app;
 
 -- The baseline AI proposal is evidence for later evaluation, never live state to rewrite.
 REVOKE UPDATE, DELETE ON quote_ai_generation, quote_ai_generation_item,
   quote_quality_evaluation, quote_quality_difference FROM coti_app;
+
+-- A ledger of what was spent is only a ledger if no request can rewrite it.
+REVOKE UPDATE, DELETE ON ai_usage FROM coti_app;
 
 -- The grant above reaches every table, and job_run is an audit trail no request has any reason to
 -- read, let alone rewrite. Only the owner the scheduled jobs run as touches it.
@@ -1172,7 +1306,8 @@ BEGIN
     'combo', 'combo_item', 'branch_combo',
     'client', 'tag', 'client_tag',
     'channel', 'rfq', 'rfq_attachment', 'rfq_status_change',
-    'quote', 'quote_version', 'quote_item', 'quote_item_alternative',
+    'quote', 'quote_number_counter', 'quote_version', 'quote_representation',
+    'quote_item', 'quote_item_alternative',
     'quote_ai_generation', 'quote_ai_generation_item',
     'quote_quality_evaluation', 'quote_quality_difference',
     'quote_correction_memory', 'quote_correction_memory_source', 'quote_status_change',
@@ -1180,7 +1315,7 @@ BEGIN
     'message_batch', 'quote_message',
     'promotion', 'promotion_condition_item', 'promotion_tier',
     'quote_discount', 'quote_discount_item',
-    'handler_decision', 'notification'
+    'handler_decision', 'notification', 'ai_usage'
   ] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format(

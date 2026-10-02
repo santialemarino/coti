@@ -61,6 +61,16 @@ func NewVerificationService(
 
 // Send mails a confirmation link to a freshly registered user.
 func (s *VerificationService) Send(ctx context.Context, user domain.AppUser) error {
+	return s.sendWith(ctx, user, emailVerificationIntro(user.Name))
+}
+
+// SendForNewAddress mails a confirmation link to the address an account just moved to.
+func (s *VerificationService) SendForNewAddress(ctx context.Context, user domain.AppUser) error {
+	return s.sendWith(ctx, user, emailVerificationNewAddressIntro(user.Name))
+}
+
+// sendWith mails a confirmation link opened by the given greeting.
+func (s *VerificationService) sendWith(ctx context.Context, user domain.AppUser, intro string) error {
 	return s.links.issue(ctx, user, domain.AuthTokenTypeEmailVerification, s.ttl,
 		func(link string) OutboundMail {
 			return OutboundMail{
@@ -72,7 +82,7 @@ func (s *VerificationService) Send(ctx context.Context, user domain.AppUser) err
 				Subject:   emailVerificationSubject,
 				Heading:   emailVerificationHeading,
 				Paragraphs: []string{
-					emailVerificationIntro(user.Name),
+					intro,
 					emailVerificationValidity(int(s.ttl.Hours())),
 				},
 				ActionLabel: emailVerificationAction,
@@ -172,10 +182,9 @@ func (s *VerificationService) ChangeOwnEmail(
 			return updateErr
 		}
 		updated = u
-		// A recovery link already mailed to the old address stays redeemable, and that mailbox
-		// is not the account's any more.
-		return s.links.tokens.InvalidateActive(ctx, q, tenant.AccountID, tenant.UserID,
-			domain.AuthTokenTypePasswordReset)
+		// Every link already mailed went to the old address, and that mailbox is not the
+		// account's any more.
+		return s.links.tokens.InvalidateAllForUser(ctx, q, tenant.AccountID, tenant.UserID)
 	})
 	// The write carries the hash this call verified, so no row means the credential moved inside
 	// the bcrypt window and the password just compared is no longer the account's.
@@ -188,15 +197,23 @@ func (s *VerificationService) ChangeOwnEmail(
 
 	// The warning goes first, and ahead of an error that would return: the link can be asked for
 	// again from the confirmation screen, and this message cannot.
-	s.notifyPreviousAddress(ctx, user.AppUser, updated.Email)
-	return s.Send(ctx, *updated)
+	s.notifyPreviousAddress(ctx, user.AppUser, updated.Email, emailChangedWarning)
+	return s.SendForNewAddress(ctx, *updated)
+}
+
+// NotifyAddressChangedByAdmin tells the old mailbox that an administrator moved the account to
+// newEmail.
+func (s *VerificationService) NotifyAddressChangedByAdmin(
+	ctx context.Context, previous domain.AppUser, newEmail string,
+) {
+	s.notifyPreviousAddress(ctx, previous, newEmail, emailChangedByAdminWarning)
 }
 
 // notifyPreviousAddress tells the old mailbox that the account left it, because a silent change
 // is how a takeover goes unnoticed. A failed delivery does not fail the change: the address has
 // already moved and there is nothing here to undo.
 func (s *VerificationService) notifyPreviousAddress(
-	ctx context.Context, previous domain.AppUser, newEmail string,
+	ctx context.Context, previous domain.AppUser, newEmail, warning string,
 ) {
 	if err := s.mail.Send(ctx, OutboundMail{
 		AccountID: previous.AccountID,
@@ -208,7 +225,7 @@ func (s *VerificationService) notifyPreviousAddress(
 		Heading:   emailChangedHeading,
 		Paragraphs: []string{
 			emailChangedIntro(previous.Name, newEmail),
-			emailChangedWarning,
+			warning,
 		},
 	}); err != nil {
 		s.log.ErrorContext(ctx, "outbound mail not delivered",

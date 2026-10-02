@@ -52,7 +52,8 @@ func (s stagedExtractor) Extract(
 }
 
 func rfqConfig() config.RFQConfig {
-	return config.RFQConfig{MaxTextCharacters: 20000, MaxItems: 200, PipelineTimeout: time.Minute}
+	return config.RFQConfig{MaxTextCharacters: 20000, MaxItems: 200, PipelineTimeout: time.Minute,
+		InlinePipelineTimeout: time.Minute}
 }
 
 // pipeline wires the RFQ service over the real repositories, the real matching stack, and the
@@ -62,8 +63,9 @@ func (e *env) pipeline(
 ) *services.RFQService {
 	t.Helper()
 	return services.NewRFQService(e.db, repository.NewRFQRepository(),
-		repository.NewQuoteRepository(), repository.NewQuoteAIGenerationRepository(),
-		repository.NewChannelRepository(), extractor,
+		repository.NewQuoteRepository(), repository.NewQuoteSendRepository(),
+		repository.NewQuoteAIGenerationRepository(),
+		repository.NewChannelRepository(), repository.NewUserRepository(), extractor,
 		e.matcher(t, matchConfig(), axes),
 		slog.New(slog.NewTextHandler(io.Discard, nil)), rfqConfig())
 }
@@ -112,10 +114,19 @@ func (e *env) dropDraft(t *testing.T, rfqID uuid.UUID) {
 		e.mustCleanup(t, `DELETE FROM quote_item WHERE version_id IN (
 		  SELECT v.id FROM quote_version v JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`,
 			rfqID)
+		e.mustCleanup(t, `DELETE FROM quote_message WHERE quote_id IN (
+		  SELECT id FROM quote WHERE rfq_id = $1)`, rfqID)
+		// A customer's answer points at both the version and the send it came back through, so it
+		// goes before either of them.
+		e.mustCleanup(t, `DELETE FROM client_action WHERE version_id IN (
+		  SELECT v.id FROM quote_version v JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`,
+			rfqID)
 		e.mustCleanup(t, `DELETE FROM quote_send WHERE version_id IN (
 		  SELECT v.id FROM quote_version v JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`,
 			rfqID)
 		e.mustCleanup(t, `UPDATE quote SET current_version_id = NULL WHERE rfq_id = $1`, rfqID)
+		e.mustCleanup(t, `DELETE FROM quote_representation WHERE quote_id IN (
+		  SELECT id FROM quote WHERE rfq_id = $1)`, rfqID)
 		e.mustCleanup(t, `DELETE FROM quote_version WHERE quote_id IN (
 		  SELECT id FROM quote WHERE rfq_id = $1)`, rfqID)
 		e.mustCleanup(t, `DELETE FROM quote_status_change WHERE quote_id IN (
@@ -162,7 +173,7 @@ func TestQuoteQualityHook_PersistsOneIdempotentLabelAfterTheVersionIsSent(t *tes
 	// The send feature does not exist yet. These writes are its future committed outcome, and the
 	// hook deliberately refuses to evaluate before the frozen version and durable send both exist.
 	if _, err := e.db.CrossAccount().Exec(context.Background(),
-		`UPDATE quote_version SET is_immutable = TRUE WHERE id = $1`, draft.Version.ID); err != nil {
+		`UPDATE quote_version SET is_immutable = TRUE, frozen_at = now() WHERE id = $1`, draft.Version.ID); err != nil {
 		t.Fatalf("freeze version as the future send flow would: %v", err)
 	}
 	if _, err := e.db.CrossAccount().Exec(context.Background(),
@@ -447,8 +458,9 @@ func TestRFQPipeline_PersistsTheMatchRealSearchDecided(t *testing.T) {
 	if matched.productID == nil || *matched.productID != cement {
 		t.Errorf("cement product = %v, want %v", matched.productID, cement)
 	}
-	// The alignment is the similarity, so the stored score is arithmetic rather than a guess.
-	want := decimal.RequireFromString("0.9500")
+	// The count opening the line is dropped, "cemento" is all of it and the name carries it, so
+	// the stored score is 0.5 × 1 + 0.5 × the 0.95 alignment: arithmetic rather than a guess.
+	want := decimal.RequireFromString("0.9750")
 	if !matched.confidence.Valid || !matched.confidence.Decimal.Equal(want) {
 		t.Errorf("cement confidence = %v, want %s", matched.confidence, want)
 	}
@@ -474,9 +486,10 @@ func TestRFQPipeline_PersistsTheMatchRealSearchDecided(t *testing.T) {
 	if !flagged.quantity.IsZero() {
 		t.Errorf("sand quantity = %s, want zero", flagged.quantity)
 	}
-	// It kept the score of the candidate it rejected — 0.20 is the alignment the product was
-	// embedded at — which is what tells a near miss from a line nothing was offered for.
-	wantRejected := decimal.RequireFromString("0.2000")
+	// It kept the score of the candidate it rejected — half the 0.20 alignment the product was
+	// embedded at, its name sharing no word with the line — which is what tells a near miss from a
+	// line nothing was offered for.
+	wantRejected := decimal.RequireFromString("0.1000")
 	if !flagged.confidence.Valid || !flagged.confidence.Decimal.Equal(wantRejected) {
 		t.Errorf("flagged confidence = %v, want the rejected candidate's %s", flagged.confidence,
 			wantRejected)
@@ -656,8 +669,10 @@ func TestRFQTextDraftRoute_KeepsTheOrderWhenNoModelIsBound(t *testing.T) {
 		t.Fatalf("the order was not stored: %v", err)
 	}
 	e.dropDraft(t, rfqID)
-	if status != string(domain.RFQStatusReceived) {
-		t.Errorf("rfq status = %q, want RECEIVED", status)
+	// The order survives so the seller can work it by hand, but the read is over: left RECEIVED
+	// the backoffice would show it as still being processed and the spinner would never resolve.
+	if status != string(domain.RFQStatusFailed) {
+		t.Errorf("rfq status = %q, want FAILED", status)
 	}
 
 	var quotes int

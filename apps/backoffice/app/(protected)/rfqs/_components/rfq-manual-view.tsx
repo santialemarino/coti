@@ -1,0 +1,448 @@
+'use client';
+
+import { useEffect, useState, useTransition } from 'react';
+import { PackageSearchIcon, PlusIcon, ShoppingCartIcon, XIcon } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { toast } from 'sonner';
+
+import {
+  Button,
+  Callout,
+  Combobox,
+  DialogFooter,
+  EmptyState,
+  Input,
+  Label,
+  MetaList,
+  PendingButton,
+  ScrollArea,
+  SearchInput,
+  Skeleton,
+} from '@repo/ui/components';
+import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
+import { AmountInput } from '@/components/amount-input';
+import { SetupNotice } from '@/components/setup-notice';
+import { searchCatalog, type CatalogProduct } from '@/lib/api/catalog';
+import { createRfq } from '@/lib/api/rfqs-client';
+import { listSellers, type Seller } from '@/lib/api/sellers';
+import { useFormatters } from '@/lib/i18n/formatters';
+import { stepCanonical } from '@/lib/i18n/numeric-input';
+
+interface RfqManualViewProps {
+  onBack: () => void;
+  onClose: () => void;
+  onCreated: () => void;
+  activeBranchId: string | null;
+  /* Lets the dialog refuse a click outside once there is work a stray click would throw away. */
+  onDirtyChange?: (dirty: boolean) => void;
+}
+
+/* How many placeholder rows stand in for the catalogue while it loads. */
+const CATALOG_SKELETON_ROWS = 4;
+// A line quantity is NUMERIC(14,2) on the wire, so entry is capped where storage is.
+const QUANTITY_DECIMALS = 2;
+
+interface LineItem {
+  product: CatalogProduct;
+  quantity: string;
+}
+
+type SellerList =
+  | { status: 'loading' }
+  | { status: 'failed' }
+  | { status: 'ready'; items: Seller[] };
+
+/*
+ * A line quantity is a measured figure — half a cubic metre of sand is a real order line — so it
+ * keeps its decimals and only the empty and non-positive cases fall back to one unit.
+ */
+function toQuantity(value: string): string {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return '1';
+  return value;
+}
+
+/*
+ * The "cargar manualmente" step: the seller optionally names the client, searches the catalog and
+ * builds the order line by line. Submitting calls POST /v1/rfqs.
+ */
+export function RfqManualView({
+  onBack,
+  onClose,
+  onCreated,
+  activeBranchId,
+  onDirtyChange,
+}: RfqManualViewProps) {
+  const t = useTranslations('rfqs.create.manual');
+  const tToast = useTranslations('rfqs.create.toast');
+  const fmt = useFormatters();
+  const { isAdmin, userId, userName } = useRfqList();
+
+  const [client, setClient] = useState('');
+  const [query, setQuery] = useState('');
+  const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
+  const [loadingCatalog, setLoadingCatalog] = useState(true);
+  const [items, setItems] = useState<LineItem[]>([]);
+  // Undefined until the caller picks, so the preselection below still applies.
+  const [sellerChoice, setSellerChoice] = useState<string | null | undefined>(undefined);
+  const [sellerList, setSellerList] = useState<SellerList>({ status: 'loading' });
+  const [submitting, startSubmit] = useTransition();
+
+  /* Debounced search through the async seam, so a swap to the real endpoint changes nothing here. */
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingCatalog(true);
+    const timer = window.setTimeout(async () => {
+      const results = await searchCatalog(query);
+      if (cancelled) return;
+      setCatalog(results);
+      setLoadingCatalog(false);
+    }, 150);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [query]);
+
+  /* An administrator assigns the new order up front, from the active branch's sellers. */
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    setSellerList({ status: 'loading' });
+    setSellerChoice(undefined);
+    (async () => {
+      try {
+        const items = await listSellers(activeBranchId);
+        if (!cancelled) setSellerList({ status: 'ready', items });
+      } catch {
+        if (!cancelled) setSellerList({ status: 'failed' });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeBranchId, isAdmin]);
+
+  /*
+   * A branch with one seller still has two outcomes, that seller or nobody, so the control stays and
+   * the obvious one is preselected. Only inside one branch: account-wide, one seller is not "the"
+   * seller of the order's branch.
+   */
+  const soleSeller =
+    activeBranchId && sellerList.status === 'ready' && sellerList.items.length === 1
+      ? (sellerList.items[0] ?? null)
+      : null;
+  const seller = !isAdmin
+    ? userId
+    : sellerChoice === undefined
+      ? (soleSeller?.id ?? null)
+      : sellerChoice;
+
+  function addProduct(product: CatalogProduct) {
+    setItems((current) => {
+      const existing = current.find((item) => item.product.id === product.id);
+      if (existing) {
+        return current.map((item) =>
+          item.product.id === product.id
+            ? {
+                ...item,
+                quantity:
+                  stepCanonical('ArrowUp', item.quantity, { maxDecimals: QUANTITY_DECIMALS }) ??
+                  item.quantity,
+              }
+            : item,
+        );
+      }
+      return [...current, { product, quantity: '1' }];
+    });
+  }
+
+  function setQuantity(productId: string, value: string) {
+    setItems((current) =>
+      current.map((item) => (item.product.id === productId ? { ...item, quantity: value } : item)),
+    );
+  }
+
+  function removeProduct(productId: string) {
+    setItems((current) => current.filter((item) => item.product.id !== productId));
+  }
+
+  function onSubmit() {
+    if (items.length === 0) return;
+    startSubmit(async () => {
+      try {
+        await createRfq({
+          client_label: client.trim() || null,
+          seller_id: seller,
+          items: items.map((item) => ({
+            product_id: item.product.id,
+            requested_description: item.product.name,
+            quantity: item.quantity,
+            unit: item.product.unit,
+          })),
+        });
+        toast.success(tToast('created'));
+        onCreated();
+        onClose();
+      } catch {
+        toast.error(tToast('error'));
+      }
+    });
+  }
+
+  const disabled = items.length === 0 || !activeBranchId;
+  // What a stray click outside the dialog would throw away.
+  const dirty =
+    items.length > 0 ||
+    client.trim() !== '' ||
+    (sellerChoice !== undefined && sellerChoice !== (soleSeller?.id ?? null));
+
+  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+      noValidate
+      className="flex flex-col gap-y-5"
+    >
+      {activeBranchId ? null : <Callout tone="warning">{t('noBranch')}</Callout>}
+
+      <div className="flex flex-col gap-y-4">
+        <div className="flex flex-col gap-y-1">
+          <Label htmlFor="rfq-manual-client">{t('clientLabel')}</Label>
+          <Input
+            id="rfq-manual-client"
+            value={client}
+            onChange={(event) => setClient(event.target.value)}
+            placeholder={t('clientPlaceholder')}
+            autoComplete="off"
+          />
+        </div>
+
+        <SellerField
+          isAdmin={isAdmin}
+          selfName={userName}
+          activeBranchId={activeBranchId}
+          list={sellerList}
+          value={seller}
+          soleSellerId={soleSeller?.id ?? null}
+          onChange={setSellerChoice}
+        />
+
+        <SearchInput
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onClear={() => setQuery('')}
+          clearLabel={t('clearSearch')}
+          placeholder={t('search')}
+          containerClassName="w-full"
+        />
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        {/*
+         * Both columns are a fixed height whatever they hold. The catalogue arrives a moment after
+         * the dialog does, and a column that grows into its result drags the dialog's own size with
+         * it — which is the resize that reads as the dialog assembling itself on screen.
+         */}
+        <section className="flex min-w-0 flex-col gap-y-3">
+          <p className="text-paragraph-xs-medium text-foreground-muted uppercase">
+            {t('catalogLabel')}
+          </p>
+          <ScrollArea className="h-80">
+            {loadingCatalog ? (
+              <ul aria-busy="true" aria-label={t('loading')} className="flex flex-col gap-y-2">
+                {Array.from({ length: CATALOG_SKELETON_ROWS }, (_, index) => (
+                  <li key={index} className="flex h-[62px] items-center gap-x-3 p-3">
+                    <div className="flex min-w-0 flex-1 flex-col gap-y-1.5">
+                      <Skeleton className="h-3.5 w-2/3" />
+                      <Skeleton className="h-2.5 w-1/3" />
+                    </div>
+                    <Skeleton className="h-8 w-20 shrink-0 rounded-lg" />
+                  </li>
+                ))}
+              </ul>
+            ) : catalog.length === 0 ? (
+              <EmptyState icon={PackageSearchIcon} title={t('catalogEmpty')} />
+            ) : (
+              <ul className="flex flex-col gap-y-2">
+                {catalog.map((product) => (
+                  <li
+                    key={product.id}
+                    className="flex items-center justify-between gap-x-3 p-3 bg-card border border-border rounded-lg"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-paragraph-sm-medium text-foreground">
+                        {product.name}
+                      </p>
+                      <MetaList
+                        className="text-paragraph-mini text-foreground-subtle"
+                        items={[
+                          product.code,
+                          product.unit,
+                          product.price ? fmt.currency(product.price) : null,
+                        ]}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => addProduct(product)}
+                      className="shrink-0"
+                    >
+                      <PlusIcon aria-hidden="true" />
+                      {t('add')}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </ScrollArea>
+        </section>
+
+        <section className="flex min-w-0 flex-col gap-y-3">
+          <p className="text-paragraph-xs-medium text-foreground-muted uppercase">
+            {t('itemsLabel', { count: items.length })}
+          </p>
+          <ScrollArea className="h-80">
+            {items.length === 0 ? (
+              <EmptyState icon={ShoppingCartIcon} title={t('itemsEmpty')} />
+            ) : (
+              <ul className="flex flex-col gap-y-2">
+                {items.map(({ product, quantity }) => (
+                  <li
+                    key={product.id}
+                    className="flex items-center gap-x-3 p-3 bg-card border border-border rounded-lg"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-paragraph-sm-medium text-foreground">
+                        {product.name}
+                      </p>
+                      <p className="text-paragraph-mini text-foreground-subtle">
+                        {product.price ? `${fmt.currency(product.price)} ${t('each')}` : t('each')}
+                      </p>
+                    </div>
+                    <AmountInput
+                      maxDecimals={QUANTITY_DECIMALS}
+                      aria-label={t('quantityLabel', { name: product.name })}
+                      value={quantity}
+                      onChange={(next) => setQuantity(product.id, next)}
+                      onBlur={() => setQuantity(product.id, toQuantity(quantity))}
+                      containerClassName="w-24 flex-none"
+                      className="text-right tabular-nums"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t('remove', { name: product.name })}
+                      onClick={() => removeProduct(product.id)}
+                    >
+                      <XIcon aria-hidden="true" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </ScrollArea>
+        </section>
+      </div>
+
+      <DialogFooter>
+        <Button type="button" variant="outline" disabled={submitting} onClick={onBack}>
+          {t('back')}
+        </Button>
+        <PendingButton
+          type="submit"
+          disabled={disabled}
+          pending={submitting}
+          pendingLabel={t('creating')}
+        >
+          {t('submit')}
+        </PendingButton>
+      </DialogFooter>
+    </form>
+  );
+}
+
+interface SellerFieldProps {
+  isAdmin: boolean;
+  selfName: string;
+  activeBranchId: string | null;
+  list: SellerList;
+  value: string | null;
+  soleSellerId: string | null;
+  onChange: (value: string | null) => void;
+}
+
+/*
+ * Who the new order belongs to, offered only when there is a choice. A seller's order is theirs;
+ * a branch with no seller leaves it unassigned and says why; a load that failed says so rather
+ * than passing for an empty branch.
+ */
+function SellerField({
+  isAdmin,
+  selfName,
+  activeBranchId,
+  list,
+  value,
+  soleSellerId,
+  onChange,
+}: SellerFieldProps) {
+  const t = useTranslations('rfqs.create.manual');
+
+  if (!isAdmin) {
+    return (
+      <div className="flex flex-col gap-y-1">
+        <span className="text-paragraph-sm-medium text-foreground">{t('sellerLabel')}</span>
+        <p className="flex h-9 items-center text-paragraph-sm text-foreground">{selfName}</p>
+        <p className="text-paragraph-xs text-foreground-muted">{t('sellerSelf')}</p>
+      </div>
+    );
+  }
+
+  if (list.status === 'ready' && list.items.length === 0 && activeBranchId) {
+    return <SetupNotice issue="BRANCH_NO_SELLERS" isAdmin />;
+  }
+
+  return (
+    <div className="flex flex-col gap-y-1">
+      {/* A label names a control, which only a loaded list has. */}
+      {list.status === 'ready' ? (
+        <Label htmlFor="rfq-manual-seller">{t('sellerLabel')}</Label>
+      ) : (
+        <span className="text-paragraph-sm-medium text-foreground">{t('sellerLabel')}</span>
+      )}
+      {list.status === 'loading' ? (
+        <div role="status">
+          <Skeleton className="h-9 w-full min-w-64 rounded-lg" />
+          <span className="sr-only">{t('sellersLoading')}</span>
+        </div>
+      ) : list.status === 'failed' ? (
+        <p className="flex h-9 items-center text-paragraph-sm text-foreground-muted">
+          {t('sellersFailed')}
+        </p>
+      ) : (
+        <Combobox
+          id="rfq-manual-seller"
+          options={[
+            { value: '', label: t('unassigned') },
+            ...list.items.map((seller) => ({ value: seller.id, label: seller.name })),
+          ]}
+          value={value ?? ''}
+          onValueChange={(next) => onChange(next === '' ? null : next)}
+          placeholder={t('sellerPlaceholder')}
+          aria-label={t('sellerLabel')}
+          className="min-w-64"
+        />
+      )}
+      {soleSellerId && value === soleSellerId ? (
+        <p className="text-paragraph-xs text-foreground-muted">{t('sellerOnly')}</p>
+      ) : null}
+    </div>
+  );
+}

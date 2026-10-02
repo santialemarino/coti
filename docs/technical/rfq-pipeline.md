@@ -15,20 +15,67 @@ files an order arrives with are stored beside it and are not read here — see
 
 ## Endpoints
 
-| Method | Path                               | What it does                                                         |
-| ------ | ---------------------------------- | -------------------------------------------------------------------- |
-| `POST` | `/v1/rfqs/text-drafts`             | Runs an order the seller pasted or typed through the pipeline        |
-| `GET`  | `/v1/channels`                     | The active intake channels of the selected branch                    |
-| `POST` | `/v1/dev/whatsapp/messages`        | Simulates one inbound WhatsApp message. Not registered in production |
-| `POST` | `/v1/quotes/{id}/accept-materials` | Prices the draft's lines and moves the quote to `QUOTED`             |
+| Method | Path                               | What it does                                                           |
+| ------ | ---------------------------------- | ---------------------------------------------------------------------- |
+| `POST` | `/v1/rfqs/text-drafts`             | Runs an order the seller pasted or typed through the pipeline          |
+| `POST` | `/v1/rfqs/file-drafts`             | Runs an order that arrived as a file through the same pipeline         |
+| `GET`  | `/v1/rfqs`                         | The dashboard queue; `?include_archived=true` keeps archived quotes in |
+| `GET`  | `/v1/rfqs/{id}`                    | Returns the detail with quote state history and delivery tracking      |
+| `GET`  | `/v1/channels`                     | The active intake channels of the selected branch                      |
+| `POST` | `/v1/dev/whatsapp/messages`        | Simulates one inbound WhatsApp message. Not registered in production   |
+| `POST` | `/v1/quotes/{id}/accept-materials` | Prices the draft's lines and moves the quote to `QUOTED`               |
+| `POST` | `/v1/quotes/{id}/transition`       | Records an offline acceptance or rejection reported by the seller      |
+| `POST` | `/v1/quotes/{id}/reactivate`       | Reopens an accepted or rejected quote for resend or editing            |
 
-The two that reach a model share **their own rate-limit allowance**, `RATE_LIMIT_AI_MAX` — the global one would let a single seller spend 300 generations a minute, and this is the first surface in the product billed per call. Valorization reaches no provider and spends nothing, so it stays on the global allowance.
+The three that reach a model share **their own rate-limit allowance**, `RATE_LIMIT_AI_MAX` — the global one would let a single seller spend 300 generations a minute, and this is the first surface in the product billed per call. Valorization reaches no provider and spends nothing, so it stays on the global allowance.
 
-All four are branch-scoped and read the branch from `X-Branch-Id`. `channel_id` is required on a
-text draft, which is why the channel listing exists: `rfq.channel_id` is `NOT NULL`, and a caller
+The authenticated endpoints are branch-scoped and read the branch from `X-Branch-Id`. `channel_id` is required on a
+draft, which is why the channel listing exists: `rfq.channel_id` is `NOT NULL`, and a caller
 has to name the route the order arrived through rather than have one guessed for it. How a channel
 is configured, and where its provider credentials live, is in
 [accounts-and-branches.md](accounts-and-branches.md#channels).
+
+## An order that arrived as a file
+
+`POST /v1/rfqs/file-drafts` is a multipart request: the file on the `file` part, and the same
+envelope the text route takes beside it (`channel_id`, `client_id`, `client_label`, `work_type`,
+plus an optional `note` the seller adds for the model). It answers with the same reviewable draft.
+
+What the format decides is only **how the order reaches the model**:
+
+| Kind                                       | How it is read                                |
+| ------------------------------------------ | --------------------------------------------- |
+| Image (`jpeg`, `png`, `webp`, `heic`)      | Straight to the model as an image block       |
+| PDF                                        | Straight to the model as a document block     |
+| Spreadsheet (`xlsx`, `csv`)                | Flattened to tab-separated rows, then as text |
+| Audio (`mp3`, `m4a`, `ogg`, `wav`, `webm`) | Transcribed, then as text                     |
+| Plain text                                 | As text                                       |
+
+A photo and a PDF go to the model **as they are**, because a materials list is laid out and
+flattening it first throws away the columns the model reads it by. A recording and a spreadsheet
+have no layout a model can use, so they become text first — the transcriber and the spreadsheet
+reader respectively. The accepted set is `domain.AttachmentFormatFor`, the same one the attachment
+upload enforces, so a file the pipeline would refuse cannot be stored either.
+
+A spreadsheet's parser is chosen by its **bytes**, never its name or type: a ZIP signature is read
+as `.xlsx`, anything else as CSV. That matters because Windows labels a `.csv` with the legacy
+Excel type `application/vnd.ms-excel`, which is accepted and stored as `.csv`. A real legacy `.xls`
+workbook (the OLE2 signature) is refused on upload with `LEGACY_EXCEL_FILE`, so the seller is asked
+to save it as `.xlsx`; the Go readers evaluated for it failed on real Excel files and grew without
+bound on malformed ones.
+
+The order is kept before it is read, and the file before the model runs: a provider outage then
+leaves the seller the order the client actually sent, on an RFQ they can work by hand. The
+attachment row keeps whatever text the file yielded in `extracted_text` and closes at `DONE`; an
+image and a PDF yield none, so the RFQ's `raw_text` names the file instead of inventing content
+for it.
+
+`RFQ_MAX_ITEMS` bounds what the model may return; a spreadsheet is bounded on the way in too, by
+`RFQ_MAX_SPREADSHEET_ROWS` (default 500), so a price list uploaded by mistake is refused before it
+is paid for. Both doors into the engine apply that limit over the same reader, so a sheet is an
+order or a catalog by its own size and never by whether it arrived inline or through the sweep.
+The file's own size is capped by `STORAGE_MAX_FILE_SIZE_BYTES`, the same limit the attachment
+upload uses.
 
 The development route resolves the branch's WhatsApp channel and then calls the same service method
 the production route does. It is a different way in, not a second pipeline — a copy would drift from
@@ -93,17 +140,18 @@ schema is English.
 ## An order that names no material
 
 The extractor reads nothing a supplier sells — the message was a greeting, or a question about
-opening hours. Then **no quote is created and the `rfq` stays `RECEIVED`**, and the route answers
-`201` with the order alone: the text was stored, which is the part that matters.
+opening hours. Then **no quote is created and the `rfq` moves to `FAILED`**, and the route answers
+`201` with the order alone: the text was stored, which is the part that matters, and the seller
+works it by hand. A later run would read the same nothing, so there is nothing to wait for.
 
-This is not an error case. `GENERATED` means the engine produced materials, so an order that
-produced none has not reached it, and a `quote` with no lines would be indistinguishable from an
-order for nothing. The response carries `quote` and `version` as `null` for exactly this case.
+`GENERATED` means the engine produced materials, so an order that produced none has not reached
+it, and a `quote` with no lines would be indistinguishable from an order for nothing. The response
+carries `quote` and `version` as `null` for exactly this case.
 
 ## What a failed match does
 
 Matching is asked for a decision per line and may not be able to give one — the embedding provider
-is `disabled`, the catalog has no vectors yet, the provider is down. **Every line then stays
+is `disabled` or down, so no line can be embedded to search with. **Every line then stays
 `NO_MATCH` with no product and a null `confidence_score`, and the draft is still written.** Losing
 an extraction over a match would discard what the client asked for, and a flagged line is the state
 the seller resolves anyway.
@@ -128,25 +176,25 @@ do about it. So the candidates the matcher weighed are kept, as `quote_item_alte
 `origin = 'AI'` and `type = 'PRODUCT'`, and they come back attached to the line on both the draft
 and the priced response.
 
-| Line status | What it offers                      | Why                                                             |
-| ----------- | ----------------------------------- | --------------------------------------------------------------- |
-| `MATCHED`   | Nothing                             | The line is decided; there is nothing to choose between         |
-| `AMBIGUOUS` | Every candidate but the one it kept | It kept the leader, so the offers are the products it might be  |
-| `NO_MATCH`  | Every candidate                     | It points at nothing, so the closest near miss is the first one |
+| Line status | What it offers                        | Why                                                             |
+| ----------- | ------------------------------------- | --------------------------------------------------------------- |
+| `MATCHED`   | Nothing, unless the review decided it | The text decided it; a line the review settled keeps its offers |
+| `AMBIGUOUS` | Every candidate but the one it kept   | It kept the leader, so the offers are the products it might be  |
+| `NO_MATCH`  | Every candidate                       | It points at nothing, so the closest near miss is the first one |
 
 **A candidate that scored zero is dropped from both**, which is the one exception to that table.
 
 **`rank` is the candidate's place in the matcher's ranking, not a renumbering.** An `AMBIGUOUS`
-line's offers therefore start at two: rank one is the product on the line. Ranks can also skip,
-because the candidates are ordered by the fused rank rather than by score, so a dropped zero can
-sit between two offers. `confidence_score` is what the candidate scored, on
+line's offers therefore start at two: rank one is the product on the line. The ranking is the
+matcher's own order by confidence — or the review's, when it settled the line — so the dropped zeros
+are always its tail. `confidence_score` is what the candidate scored, on
 `quote_item.confidence_score`'s own scale, so a 59% near miss reads differently from a 12% long
 shot. Neither figure exists anywhere else on the row — `created_at` is the transaction's timestamp,
 shared by every row of one insert — which is why the table carries both columns.
 
-A zero means no similarity at all: the search reached the product because the top-K is wider than
-the catalog, or because it shares a word with the line. Offering those would bury the near miss
-under everything the account sells.
+A zero means the product shares no word with the line and its vector sits under the calibration
+band: the search reached it only because the pool is wider than what resembles the line. Offering
+those would bury the near miss under everything the account sells.
 
 **`price_snapshot` stays empty.** Nothing is priced when matching runs, and the price a seller would
 freeze is the one in force when they choose. Freezing prices belongs to valorization.
@@ -282,11 +330,11 @@ deletes `product_price` when a product is withdrawn.
 - **It does not freeze the version.** `is_immutable` stays `false`. `QUOTED` and a frozen version
   are correlated but different things — the seller still edits the draft, and freezing belongs to
   sending it.
-- **It does not touch `rfq.status`,** which only has `RECEIVED` and `GENERATED`.
-- **It does not price a second time.** Only an unarchived quote at `DRAFT` may be valued; anything
-  else answers `409` with `QUOTE_NOT_DRAFT`, or `QUOTE_ARCHIVED` on an archived one. Re-pricing an
-  already-valued version is an explicit act of the seller's, not the side effect of a repeated
-  request — a double-clicked button must not quietly re-value a quote at today's prices.
+- **It does not touch `rfq.status`,** which reached `GENERATED` when the draft was born.
+- **It does not price an already-valued version twice.** An unarchived `DRAFT` or
+  `CHANGE_REQUESTED` quote with a mutable current version may be valued. Other states answer
+  `409` with `QUOTE_NOT_DRAFT`, or `QUOTE_ARCHIVED` on an archived one. A repeated request
+  cannot quietly re-value a quote at today's prices.
 - **No model is involved, not even to suggest an amount.** The arithmetic is deterministic and it
   is the backend's.
 
@@ -323,7 +371,16 @@ Three settings, all in `apps/api/.env.example`:
   order past the cap is **refused, not truncated**, because keeping the first two hundred lines of a
   three-hundred-line list reads as a complete quote and is not one. A list that long is a
   spreadsheet, and spreadsheets have their own ingest path.
-- **`RFQ_PIPELINE_TIMEOUT_SECONDS`** (25) bounds extraction and matching together.
+- **`RFQ_PIPELINE_TIMEOUT_SECONDS`** (165) bounds reading, extraction and matching **where nothing
+  is waiting on an HTTP response** — the scheduled attachment sweep. It is sized off what a
+  generation actually costs: the answer is one forced-schema object of roughly seventy tokens per
+  line, so a sixty-item order takes about two minutes to write and a budget under that refuses
+  orders nothing is wrong with.
+- **`RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS`** (75) is the same pass **with a seller's request still
+  open**, and it is a separate, shorter value because it answers to a deadline the sweep does not
+  have: `SERVER_EDGE_TIMEOUT_SECONDS`. One shared number would either let a request outlive the edge
+  or cut the sweep short for a limit that does not apply to it. **It is deliberately smaller than
+  what a large order costs** — see below.
 - **`RATE_LIMIT_AI_MAX`** (10) is the fourth, and it lives with the other allowances rather than
   here: it bounds calls per caller per window on the routes that reach a provider. Startup refuses
   a value above `RATE_LIMIT_GLOBAL_MAX`, which could never bite.
@@ -331,12 +388,119 @@ Three settings, all in `apps/api/.env.example`:
 That last one exists because the AI timeouts are **per attempt**: `AI_LLM_TIMEOUT_SECONDS` times
 `AI_MAX_ATTEMPTS` plus backoff is several times `SERVER_WRITE_TIMEOUT_SECONDS`. Left alone, the
 server would cut the response off while it was being written, and the client would read a broken
-connection rather than a model that ran out of time. Startup refuses a pipeline timeout at or above
-the write budget, so the two cannot drift apart.
+connection rather than a model that ran out of time. Startup refuses an inline pipeline timeout at or
+above the write budget, so the two cannot drift apart.
 
-This bounds the symptom. The wider answer is to move extraction off the request path, which is its
-own piece of work: there is no queue in the API today, and `cmd/scheduled-job` runs work on the
-platform's cron rather than on demand.
+### The chain, and why the edge is the outer bound
+
+`RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS` (75) < `SERVER_WRITE_TIMEOUT_SECONDS` (90) <
+`SERVER_EDGE_TIMEOUT_SECONDS` (100). Startup refuses any ordering but that one.
+
+The edge is **not ours** — it is how long the platform in front waits before it gives up on us, and
+nothing in this config can extend it. Whichever deadline fires first decides what the caller sees,
+and the difference is not cosmetic: ours produces an answer, the platform's severs the connection
+mid-handler. That cancellation takes `markRFQFailed` with it — it runs on the **request** context by
+design, so that a pipeline timeout can still record the failure — which leaves the order at
+`RECEIVED` and the seller watching a queue that says "in progress" over a pipeline that already
+died. None of it reproduces locally, where nothing is in front of the server. Set the edge to `0`
+when that is genuinely true.
+
+### A large order outruns the inline budget, and is handed over rather than failed
+
+**A 75-second inline budget cannot finish a large order** — by the sizing above a sixty-item order
+needs roughly two minutes — so `CreateFileDraft` hands it to the sweep instead of failing it. The
+file is already stored by then, so the intake returns the attachment to the queue (`PENDING`, both
+timestamps cleared) and answers with the order at **`RECEIVED`**, which is the truth: it is still
+being worked. `attachment-extraction` reads it on its next firing with the longer budget and no
+caller holding a connection open, and drafts the quote exactly as the inline path would have.
+
+**Only an interruption is handed over.** A budget that ran out or a provider that was not there says
+nothing about the file, and a later run may well succeed. A model that answered and found no
+materials, or a failure about the file itself, still moves the order to `FAILED` — the bytes do not
+change, so a later run reads the same nothing, and the order is the seller's to load by hand. A
+hand-off that cannot itself be written falls back to `FAILED` for the same reason.
+
+So the three outcomes a caller sees are `rfq.status`: **`GENERATED`** with a draft, **`RECEIVED`**
+with none (the sweep has it), **`FAILED`** (yours to load). No new field, and nothing to poll that
+the queue does not already show.
+
+## Client delivery
+
+`POST /v1/quotes/{quoteId}/sends` is the seller-owned transition from `QUOTED` to `SENT`.
+`Idempotency-Key` is a UUID. The body always names an E.164 WhatsApp destination, may add one
+email destination, and may override the branch validity with `expiry_days` from 1 through 365.
+The service first ensures the immutable representation bundle, then creates one `PENDING` `quote_send` per selected
+channel before calling a provider. WhatsApp and email run independently; at least one successful
+channel commits the transition and all selected outcomes are retained. Each channel receives its
+own opaque token and `/quotes/{token}` webapp URL.
+
+Provider calls happen outside business transactions. A PostgreSQL advisory lock serializes the
+same account, quote and idempotency key across API instances, while separate tenant transactions
+prepare and confirm the operation. A replay with the same payload returns the stored result; a
+different payload under the same key is a conflict. A new key is an explicit resend and opens a
+new validity window without changing older tokens.
+
+The seller-facing detail endpoint exposes the current view and the audit trail together:
+`rfq_status_history` comes from `rfq_status_change`, `quote_status_history` comes from
+`quote_status_change`, and `deliveries` lists the `quote_send` attempts for the quote. Delivery
+rows include the channel, destination, format, `tracking_status`, `public_url`, `sent_at`,
+`expires_at`, and `created_at`, including failed attempts so the backoffice can explain why a
+quote is still not visible to the client. `public_url` mirrors the exact link the webapp serves
+for the send's `public_token`, so the backoffice can offer the client the address he actually
+received without ever minting a token of its own.
+
+After the successful confirmation commits, `QuoteQualityEvaluator.EvaluateFinalQuote` compares
+the original AI proposal with the frozen version. Evaluation or embedding failures never change
+the delivery response. The `quote-quality-evaluation` scheduled job finds missing evaluations
+from durable successful sends; the existing `quote-correction-learning` job continues retrying
+pending embeddings.
+
+`GET /v1/public/quote-sends/{token}` first resolves only the owning account through the owner
+pool, then verifies the completed send under an RLS-scoped transaction. Active tokens expose
+the frozen quote, message and a short-lived PDF URL; expired tokens expose only `EXPIRED`
+and `expires_at`. See [quote representations](quote-representations.md). The current
+WhatsApp composition-root adapter is deliberately disabled until the Meta transport ticket lands,
+and the console mailer is never treated as a successful client delivery.
+
+### Customer change requests
+
+An active send can receive one public answer. `REQUEST_CHANGE` requires a message of at most
+512 characters. Under one tenant transaction, the service locks the quote, records the
+`client_action`, links a `quote_message` to it, copies the frozen version's items and alternatives
+into a mutable v2, values the copied lines and alternatives at the quote branch's current catalog
+prices, and moves `SENT` to `CHANGE_REQUESTED`. Products with no current branch price remain
+unpriced for seller review. The old send and public link remain pinned to v1. A stale send for
+another version cannot change the quote.
+
+The seller edits v2 manually. Replacing a product clears that line's previous price and updates
+the draft total; accepting materials recalculates current prices and moves to `QUOTED`, then
+sending moves to `SENT`. The second send has its own token. No conversational window or
+AI interpretation is involved in this manual path; those remain future work. Public links resolve
+through `quote_send.public_token`, scoped to the delivery and channel.
+
+### Closing and reactivating a quote
+
+An active public link records `ACCEPT`, `REJECT`, or `REQUEST_CHANGE` as a `client_action`. The
+first two move `SENT` to `ACCEPTED` or `REJECTED`; the seller can record the same closing states
+through `POST /v1/quotes/{quoteId}/transition` when the answer arrived outside Coti. Customer
+actions carry no internal user id, while seller actions credit the authenticated user in
+`quote_status_change`.
+
+`POST /v1/quotes/{quoteId}/reactivate` is the only way out of either terminal state and always
+operates on the same quote:
+
+- `RESEND` moves the quote back to `QUOTED` and retains the current frozen version unchanged.
+- `EDIT` copies the frozen version into the next mutable version, resets alternative approvals,
+  values products and alternatives at the branch's current prices, records the seller as author,
+  and moves the quote to `CHANGE_REQUESTED`. The seller then reviews the draft and accepts its
+  materials before sending it.
+
+The quote row is locked and the version copy, current-version pointer, status update, and
+`quote_status_change` append share one tenant transaction. A quote lifecycle event is written only
+to `quote_status_change`; `rfq_status_change` remains the RFQ ingestion ledger. The backoffice
+tracking view combines both histories chronologically without duplicating one event across tables.
+Archiving remains an orthogonal flag: it can hide a quote in any lifecycle state, including
+`ACCEPTED` and `REJECTED`, and restoring it preserves that status.
 
 ## Where the code lives
 
@@ -350,6 +514,10 @@ platform's cron rather than on demand.
 | Candidates per line         | `internal/services/rfq_service.go` (`alternativesFromMatch`) |
 | SQL                         | `internal/repository/{rfq,quote,channel}_repo.go`            |
 | Routes and DTOs             | `internal/delivery/http/{handler,dto}/{rfq,quote}_*.go`      |
+| Client delivery             | `internal/services/quote_delivery_service.go`                |
+| Delivery persistence        | `internal/repository/quote_send_repo.go`                     |
+| Change request persistence  | `internal/repository/quote_message_repo.go`                  |
+| Evaluation retry            | `internal/services/quote_quality_job.go`                     |
 
 `RFQExtractor` is a **feature port**: its adapter owns the prompt and the schema and reaches the
 model through `StructuredGenerator`, so it names no provider and works behind whichever one is

@@ -75,3 +75,50 @@ func (r *BranchProductRepository) Save(
 	}
 	return &bp, nil
 }
+
+// AddToActiveBranches makes the product available, stock untracked, at every active branch of
+// the account that does not carry it yet. Returns the branches it was added to.
+func (r *BranchProductRepository) AddToActiveBranches(
+	ctx context.Context, q Querier, accountID, productID uuid.UUID,
+) ([]uuid.UUID, error) {
+	rows, err := q.Query(ctx,
+		`INSERT INTO branch_product (account_id, branch_id, product_id)
+		 SELECT b.account_id, b.id, $2
+		 FROM branch b
+		 WHERE b.account_id = $1 AND b.is_active = TRUE
+		 ON CONFLICT (branch_id, product_id) DO NOTHING
+		 RETURNING branch_id`,
+		accountID, productID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var branchIDs []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		branchIDs = append(branchIDs, id)
+	}
+	return branchIDs, rows.Err()
+}
+
+// AddActiveProducts makes every active product of the account available at the branch, stock
+// untracked. A product the branch already has a row for keeps it untouched.
+func (r *BranchProductRepository) AddActiveProducts(
+	ctx context.Context, q Querier, accountID, branchID uuid.UUID,
+) (int64, error) {
+	tag, err := q.Exec(ctx,
+		`INSERT INTO branch_product (account_id, branch_id, product_id)
+		 SELECT p.account_id, $2, p.id
+		 FROM product p
+		 WHERE p.account_id = $1 AND p.is_active = TRUE
+		 ON CONFLICT (branch_id, product_id) DO NOTHING`,
+		accountID, branchID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}

@@ -23,9 +23,17 @@ type branchReader interface {
 	Deactivate(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) error
 }
 
-// branchChannelWriter opens the manual-entry channel a new branch needs.
+// branchChannelWriter opens a new branch's channels and keeps its email channel's mailbox.
 type branchChannelWriter interface {
-	CreateManualEntry(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) error
+	ListActiveByType(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, channelType domain.ChannelType) ([]domain.Channel, error)
+	Create(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, in domain.NewChannel) (*domain.Channel, error)
+	CreateDefaults(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, email *string) error
+	Update(ctx context.Context, q repository.Querier, accountID, branchID, channelID uuid.UUID, in domain.ChannelUpdate) (*domain.Channel, error)
+}
+
+// branchCatalogSeeder makes the account's catalog available at a new branch.
+type branchCatalogSeeder interface {
+	AddActiveProducts(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (int64, error)
 }
 
 // BranchService owns the branches of an account.
@@ -33,14 +41,16 @@ type BranchService struct {
 	db                tenantTxRunner
 	branches          branchReader
 	channels          branchChannelWriter
+	catalog           branchCatalogSeeder
 	defaultExpiryDays int
 }
 
 // NewBranchService builds a BranchService.
 func NewBranchService(
-	db tenantTxRunner, branches branchReader, channels branchChannelWriter, defaultExpiryDays int,
+	db tenantTxRunner, branches branchReader, channels branchChannelWriter,
+	catalog branchCatalogSeeder, defaultExpiryDays int,
 ) *BranchService {
-	return &BranchService{db: db, branches: branches, channels: channels,
+	return &BranchService{db: db, branches: branches, channels: channels, catalog: catalog,
 		defaultExpiryDays: defaultExpiryDays}
 }
 
@@ -96,8 +106,9 @@ func (s *BranchService) GetBranch(
 	return branch, nil
 }
 
-// CreateBranch opens a branch and its manual-entry channel in the same transaction, because a
-// branch without that channel cannot take a counter or phone order.
+// CreateBranch opens a branch with its default channels and the account's active catalog
+// available, in one transaction: without the channels it cannot take a counter order or send a
+// quote, and without the catalog it cannot match one. Prices stay per branch, so none are copied.
 func (s *BranchService) CreateBranch(
 	ctx context.Context, tenant domain.Tenant, in domain.NewBranch,
 ) (*domain.Branch, error) {
@@ -107,6 +118,10 @@ func (s *BranchService) CreateBranch(
 	if in.DefaultExpiryDays <= 0 {
 		in.DefaultExpiryDays = s.defaultExpiryDays
 	}
+	email, err := normalizeBranchEmail(in.Email)
+	if err != nil {
+		return nil, err
+	}
 
 	var branch *domain.Branch
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
@@ -115,7 +130,12 @@ func (s *BranchService) CreateBranch(
 		if err != nil {
 			return err
 		}
-		return s.channels.CreateManualEntry(ctx, q, tenant.AccountID, branch.ID)
+		if err := s.channels.CreateDefaults(ctx, q, tenant.AccountID, branch.ID, email); err != nil {
+			return err
+		}
+		branch.Email = email
+		_, err = s.catalog.AddActiveProducts(ctx, q, tenant.AccountID, branch.ID)
+		return err
 	}); err != nil {
 		return nil, err
 	}
@@ -142,7 +162,24 @@ func (s *BranchService) UpdateBranch(
 			}
 		}
 		var err error
+		// The update goes first: it is what proves the branch is this account's, and a channel
+		// written before that check could hang off another account's branch.
 		branch, err = s.branches.Update(ctx, q, tenant.AccountID, branchID, in)
+		if err != nil || in.Email == nil {
+			return err
+		}
+		email, err := normalizeBranchEmail(in.Email)
+		if err != nil {
+			return err
+		}
+		// A form sends the mailbox on every save; one it did not change touches no channel.
+		if sameMailbox(email, branch.Email) {
+			return nil
+		}
+		if err := s.syncBranchEmail(ctx, q, tenant.AccountID, branchID, email); err != nil {
+			return err
+		}
+		branch, err = s.branches.GetByID(ctx, q, tenant.AccountID, branchID)
 		return err
 	}); err != nil {
 		return nil, err
@@ -160,6 +197,38 @@ func (s *BranchService) DeactivateBranch(
 		}
 		return s.branches.Deactivate(ctx, q, tenant.AccountID, branchID)
 	})
+}
+
+// syncBranchEmail writes the branch mailbox onto its email channel, opening the channel when the
+// branch has none. A blank address clears it, unless the channel's credentials send from it.
+func (s *BranchService) syncBranchEmail(
+	ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, email *string,
+) error {
+	channels, err := s.channels.ListActiveByType(ctx, q, accountID, branchID, domain.ChannelTypeEmail)
+	if err != nil {
+		return err
+	}
+	switch len(channels) {
+	case 0:
+		_, err = s.channels.Create(ctx, q, accountID, branchID,
+			domain.NewChannel{Type: domain.ChannelTypeEmail, Identifier: email})
+		return err
+	case 1:
+		if channels[0].IsConfigured && email == nil {
+			return domain.WithCode(domain.CodeBranchMailboxRequired, fmt.Errorf(
+				"%w: the branch's email channel sends from this mailbox", domain.ErrInvalidInput))
+		}
+		if err := domain.ValidateChannelIdentifier(domain.ChannelTypeEmail, email,
+			channels[0].IsConfigured); err != nil {
+			return err
+		}
+		_, err = s.channels.Update(ctx, q, accountID, branchID, channels[0].ID,
+			domain.ChannelUpdate{Identifier: email})
+		return err
+	default:
+		return domain.WithCode(domain.CodeDeliveryChannel,
+			fmt.Errorf("%w: branch has more than one active email channel", domain.ErrInvalidInput))
+	}
 }
 
 // assertNotLastActive refuses to leave an account with nowhere to operate. Counted inside the
@@ -183,4 +252,26 @@ func (s *BranchService) assertNotLastActive(
 			fmt.Errorf("%w: an account needs at least one active branch", domain.ErrInvalidInput))
 	}
 	return nil
+}
+
+// sameMailbox reports whether two mailboxes, already normalised, are the same one or both absent.
+func sameMailbox(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
+}
+
+// normalizeBranchEmail reads a branch mailbox the way an email channel stores it: lowercase, and
+// absent when blank.
+func normalizeBranchEmail(raw *string) (*string, error) {
+	email := domain.NormalizeChannelIdentifier(raw)
+	if email == nil {
+		return nil, nil
+	}
+	normalized := domain.NormalizeEmail(*email)
+	if err := domain.ValidateChannelIdentifier(domain.ChannelTypeEmail, &normalized, false); err != nil {
+		return nil, err
+	}
+	return &normalized, nil
 }

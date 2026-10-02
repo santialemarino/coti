@@ -1,9 +1,10 @@
 import { fireEvent, render, waitFor, type RenderResult } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AccountForm } from '@/app/(protected)/settings/account/_components/account-form';
 import type { Account } from '@/lib/api/account';
+import { BRAND_COLOR_PRESETS } from '@/lib/constants/brand';
 import messages from '@/translations/es.json';
 
 vi.mock('@/app/(protected)/settings/account/actions', () => ({ updateAccount: vi.fn() }));
@@ -49,13 +50,8 @@ function submit(view: RenderResult) {
   fireEvent.submit(form);
 }
 
-function swatch(view: RenderResult): HTMLElement {
-  const found = view.baseElement.querySelector('[data-slot="brand-swatch"]');
-  if (!(found instanceof HTMLElement)) throw new Error('no swatch on screen');
-  return found;
-}
-
 beforeEach(() => vi.clearAllMocks());
+afterEach(() => vi.unstubAllGlobals());
 
 describe('AccountForm', () => {
   it('opens on the values the account already has', () => {
@@ -64,8 +60,8 @@ describe('AccountForm', () => {
     expect(field(view, 'name').value).toBe(ACCOUNT.name);
     expect(field(view, 'legalName').value).toBe(ACCOUNT.legalName);
     expect(field(view, 'taxId').value).toBe(ACCOUNT.taxId);
-    expect(field(view, 'brandLogoUrl').value).toBe(ACCOUNT.brandLogoUrl);
-    expect(field(view, 'brandColor').value).toBe(ACCOUNT.brandColor);
+    expect(view.getByRole('img', { name: messages.common.logoUpload.previewAlt })).toBeTruthy();
+    expect(field(view, 'brandColor').value).toBe('C2410C');
   });
 
   // Null is "never set"; a text input can only hold a string, and the empty one is what the action
@@ -96,13 +92,16 @@ describe('AccountForm', () => {
     submit(view);
 
     await waitFor(() => expect(updateAccount).toHaveBeenCalledOnce());
-    expect(updateAccount).toHaveBeenCalledWith({
-      name: ACCOUNT.name,
-      legalName: '',
-      taxId: '',
-      brandLogoUrl: '',
-      brandColor: '',
-    });
+    expect(updateAccount).toHaveBeenCalledWith(
+      {
+        name: ACCOUNT.name,
+        legalName: '',
+        taxId: '',
+        brandLogoUrl: '',
+        brandColor: '',
+      },
+      undefined,
+    );
   });
 
   it('sends what is on screen and says it saved', async () => {
@@ -113,13 +112,16 @@ describe('AccountForm', () => {
     submit(view);
 
     await waitFor(() => expect(updateAccount).toHaveBeenCalledOnce());
-    expect(updateAccount).toHaveBeenCalledWith({
-      name: 'Corralón San Martín Sur',
-      legalName: ACCOUNT.legalName,
-      taxId: ACCOUNT.taxId,
-      brandLogoUrl: ACCOUNT.brandLogoUrl,
-      brandColor: ACCOUNT.brandColor,
-    });
+    expect(updateAccount).toHaveBeenCalledWith(
+      {
+        name: 'Corralón San Martín Sur',
+        legalName: ACCOUNT.legalName,
+        taxId: ACCOUNT.taxId,
+        brandLogoUrl: ACCOUNT.brandLogoUrl,
+        brandColor: 'C2410C',
+      },
+      undefined,
+    );
     // A confirmation of something just done is transient, so it is a toast.
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.saved));
   });
@@ -175,58 +177,53 @@ describe('AccountForm', () => {
   });
 });
 
-/*
- * The brand preview is the only feedback on a colour before saving, and it is deliberately driven
- * by the same shape the API accepts: a swatch that goes blank is what says the value is malformed.
- */
-describe('AccountForm brand preview', () => {
-  it('paints the swatch with the colour on screen', () => {
+describe('AccountForm brand controls', () => {
+  it('keeps the hash outside the editable colour value', () => {
     const view = renderForm();
 
-    expect(swatch(view).style.backgroundColor).toBe('rgb(194, 65, 12)');
+    expect(field(view, 'brandColor').value).toBe('C2410C');
+    expect(view.getByText('#')).toBeTruthy();
   });
 
-  // Five digits, not four: `#C241` is a valid four-digit hex with an alpha channel, which the API
-  // accepts and this mirror therefore must too.
-  it('leaves the swatch unpainted while the colour is malformed', async () => {
+  // The picker writes into the same field the hex input owns, and the hash stays a prefix.
+  it('copies a picked colour into the text field without its hash', async () => {
     const view = renderForm();
 
-    fireEvent.change(field(view, 'brandColor'), { target: { value: '#C2410' } });
+    fireEvent.click(view.getByLabelText(copy.brandColor.pickerLabel));
+    const preset = await waitFor(() => view.getByLabelText(`#${BRAND_COLOR_PRESETS[4]}`));
+    fireEvent.click(preset);
 
-    await waitFor(() => expect(swatch(view).style.backgroundColor).toBe(''));
+    expect(field(view, 'brandColor').value).toBe(BRAND_COLOR_PRESETS[4]);
   });
 
-  it('paints it again as soon as the colour is one the API would store', async () => {
-    const view = renderForm({ ...ACCOUNT, brandColor: null });
-
-    fireEvent.change(field(view, 'brandColor'), { target: { value: '#0F0' } });
-
-    await waitFor(() => expect(swatch(view).style.backgroundColor).toBe('rgb(0, 255, 0)'));
-  });
-
-  // Opened rather than rendered: the backoffice does not load an address someone pasted into a
-  // field, and one click is enough to confirm it is the right image.
-  it('offers the logo as a link once the address is a complete one', async () => {
-    const view = renderForm({ ...ACCOUNT, brandLogoUrl: null });
-    expect(view.queryByRole('link', { name: copy.brandLogoUrl.open })).toBeNull();
-
-    fireEvent.change(field(view, 'brandLogoUrl'), {
-      target: { value: 'https://tucorralon.com/logo.png' },
-    });
-
-    const link = await waitFor(() => view.getByRole('link', { name: copy.brandLogoUrl.open }));
-    expect(link.getAttribute('href')).toBe('https://tucorralon.com/logo.png');
-    expect(link.getAttribute('target')).toBe('_blank');
-    expect(link.getAttribute('rel')).toContain('noreferrer');
-  });
-
-  it('offers no link while the address is incomplete', async () => {
-    const view = renderForm();
-
-    fireEvent.change(field(view, 'brandLogoUrl'), { target: { value: 'tucorralon.com/logo.png' } });
-
-    await waitFor(() =>
-      expect(view.queryByRole('link', { name: copy.brandLogoUrl.open })).toBeNull(),
+  it('hands the selected logo file to the save action', async () => {
+    vi.stubGlobal(
+      'URL',
+      class extends URL {
+        static createObjectURL = vi.fn(() => 'blob:logo');
+        static revokeObjectURL = vi.fn();
+      },
     );
+    vi.mocked(updateAccount).mockResolvedValue({ ok: true });
+    const view = renderForm();
+    const logo = new File(['logo'], 'logo.png', { type: 'image/png' });
+    const input = view.container.querySelector<HTMLInputElement>('input[type="file"]');
+
+    fireEvent.change(input!, { target: { files: [logo] } });
+    submit(view);
+
+    await waitFor(() => expect(updateAccount).toHaveBeenCalledOnce());
+    expect(updateAccount).toHaveBeenCalledWith(expect.any(Object), logo);
+  });
+
+  it('clears the stored logo when it is removed', async () => {
+    vi.mocked(updateAccount).mockResolvedValue({ ok: true });
+    const view = renderForm();
+
+    fireEvent.click(view.getByRole('button', { name: messages.common.logoUpload.remove }));
+    submit(view);
+
+    await waitFor(() => expect(updateAccount).toHaveBeenCalledOnce());
+    expect(updateAccount).toHaveBeenCalledWith(expect.any(Object), null);
   });
 });

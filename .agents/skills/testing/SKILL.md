@@ -60,6 +60,10 @@ go test -cover ./...                            # coverage summary
 TEST_DATABASE_URL=postgres://coti_app:coti_app@127.0.0.1:5432/coti?sslmode=disable \
 TEST_DATABASE_ADMIN_URL=postgres://coti:coti@127.0.0.1:5432/coti?sslmode=disable \
   go test -tags=integration ./...
+# The catalog match evaluation is opt-in: it runs the live embedding model over a labeled catalog
+# and costs a few cents (internal/integration/testdata/catalog_match/README.md). Same two
+# variables, and a provider key in apps/api/.env. The suite above compiles it and skips it.
+pnpm eval:catalog-match                         # from repo root; :review adds the model's review
 
 # From repo root
 pnpm test:api                                   # go test ./... in apps/api

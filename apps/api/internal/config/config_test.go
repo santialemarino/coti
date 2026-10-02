@@ -22,7 +22,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"AUTH_REFRESH_REMEMBER_DAYS", "AUTH_REFRESH_REUSE_GRACE_SECONDS",
 		"AUTH_MAX_FAILED_ATTEMPTS", "AUTH_LOCKOUT_MINUTES", "AUTH_PASSWORD_MIN_LENGTH",
 		"AUTH_PASSWORD_RESET_TTL_MINUTES", "AUTH_EMAIL_VERIFICATION_TTL_HOURS",
-		"AUTH_REQUIRE_VERIFIED_EMAIL",
+		"AUTH_REQUIRE_VERIFIED_EMAIL", "AUTH_INVITE_TTL_HOURS",
 		"RATE_LIMIT_ENABLED", "RATE_LIMIT_WINDOW_SECONDS", "RATE_LIMIT_GLOBAL_MAX",
 		"RATE_LIMIT_CREDENTIALS_MAX", "RATE_LIMIT_SIGNUP_MAX", "RATE_LIMIT_MAIL_MAX",
 		"RATE_LIMIT_AI_MAX",
@@ -37,20 +37,25 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"AI_EMBEDDINGS_PROVIDER", "AI_EMBEDDINGS_MODEL", "AI_EMBEDDINGS_TIMEOUT_SECONDS",
 		"AI_TRANSCRIPTION_PROVIDER", "AI_TRANSCRIPTION_MODEL", "AI_TRANSCRIPTION_TIMEOUT_SECONDS",
 		"AI_MAX_ATTEMPTS", "AI_RETRY_BACKOFF_SECONDS", "AI_MAX_BACKOFF_SECONDS",
-		"AI_EMBEDDINGS_BATCH_SIZE",
+		"AI_EMBEDDINGS_BATCH_SIZE", "AI_USAGE_WRITE_TIMEOUT_SECONDS",
 		"WEB_BACKOFFICE_URL",
 		"CATALOG_DEFAULT_PAGE_SIZE", "CATALOG_MAX_PAGE_SIZE",
 		"CATALOG_SEARCH_TOP_K", "CATALOG_SEARCH_OVER_FETCH_FACTOR",
 		"CATALOG_SEARCH_MAX_FETCH", "CATALOG_SEARCH_IVFFLAT_PROBES", "CATALOG_SEARCH_RRF_K",
 		"CATALOG_EMBEDDING_BATCH_SIZE",
 		"CATALOG_MATCH_MIN_CONFIDENCE_PERCENT", "CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT",
-		"CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT",
+		"CATALOG_MATCH_COVERAGE_WEIGHT_PERCENT", "CATALOG_MATCH_SIMILARITY_FLOOR_PERCENT",
+		"CATALOG_MATCH_SIMILARITY_CEILING_PERCENT", "CATALOG_MATCH_HIGH_CONFIDENCE_PERCENT",
+		"CATALOG_MATCH_REVIEW_FLOOR_PERCENT", "CATALOG_MATCH_REVIEW_MAX_LINES",
 		"CATALOG_IMPORT_MAX_BYTES",
 		"PRICE_IMPORT_MAX_BYTES",
 		"JOB_TIMEOUT_MINUTES",
-		"RFQ_MAX_TEXT_CHARACTERS", "RFQ_MAX_ITEMS", "RFQ_PIPELINE_TIMEOUT_SECONDS",
+		"RFQ_MAX_TEXT_CHARACTERS", "RFQ_MAX_ITEMS", "RFQ_MAX_SPREADSHEET_ROWS",
+		"RFQ_PIPELINE_TIMEOUT_SECONDS",
 		"QUOTE_CORRECTION_SIMILARITY_PERCENT", "QUOTE_CORRECTION_MAX_PATTERNS_PER_ACCOUNT",
 		"QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES", "QUOTE_CORRECTION_PROCESSING_BATCH_SIZE",
+		"QUOTE_LOGO_FETCH_TIMEOUT_SECONDS", "QUOTE_LOGO_MAX_SIZE_BYTES",
+		"QUOTE_LOGO_MAX_PIXELS", "QUOTE_LOGO_MAX_REDIRECTS",
 		"STORAGE_PROVIDER", "STORAGE_LOCAL_DIR", "STORAGE_LOCAL_API_BASE_URL",
 		"STORAGE_LOCAL_SIGNING_SECRET", "STORAGE_ENDPOINT", "STORAGE_REGION", "STORAGE_BUCKET",
 		"STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY",
@@ -90,8 +95,20 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Server.Port != "8000" {
 		t.Errorf("Server.Port = %q, want %q", cfg.Server.Port, "8000")
 	}
+	if cfg.Server.ReadTimeout != 15*time.Second || cfg.Server.WriteTimeout != 90*time.Second ||
+		cfg.Server.ShutdownTimeout != 10*time.Second {
+		t.Errorf("Server timeouts = %v/%v/%v, want 15s/90s/10s",
+			cfg.Server.ReadTimeout, cfg.Server.WriteTimeout, cfg.Server.ShutdownTimeout)
+	}
+	if cfg.Server.EdgeTimeout != 100*time.Second {
+		t.Errorf("Server.EdgeTimeout = %v, want 100s", cfg.Server.EdgeTimeout)
+	}
 	if cfg.Database.MaxConns != 10 {
 		t.Errorf("Database.MaxConns = %d, want 10", cfg.Database.MaxConns)
+	}
+	if cfg.QuoteLogo.FetchTimeout != 3*time.Second || cfg.QuoteLogo.MaxSizeBytes != 2*1024*1024 ||
+		cfg.QuoteLogo.MaxPixels != 12_000_000 || cfg.QuoteLogo.MaxRedirects != 3 {
+		t.Errorf("QuoteLogo = %+v, want documented defaults", cfg.QuoteLogo)
 	}
 	if cfg.Auth.AccessTTL != 15*time.Minute {
 		t.Errorf("Auth.AccessTTL = %v, want 15m", cfg.Auth.AccessTTL)
@@ -113,8 +130,8 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.RFQ.MaxItems != 200 {
 		t.Errorf("RFQ.MaxItems = %d, want 200", cfg.RFQ.MaxItems)
 	}
-	if cfg.RFQ.PipelineTimeout != 25*time.Second {
-		t.Errorf("RFQ.PipelineTimeout = %v, want 25s", cfg.RFQ.PipelineTimeout)
+	if cfg.RFQ.PipelineTimeout != 165*time.Second {
+		t.Errorf("RFQ.PipelineTimeout = %v, want 165s", cfg.RFQ.PipelineTimeout)
 	}
 	if cfg.QuoteCorrection.SimilarityPercent != 80 ||
 		cfg.QuoteCorrection.MaxPatternsPerAccount != 1000 ||
@@ -122,11 +139,12 @@ func TestLoad_Defaults(t *testing.T) {
 		cfg.QuoteCorrection.ProcessingBatchSize != 100 {
 		t.Errorf("QuoteCorrection defaults = %+v, want 80/1000/3/100", cfg.QuoteCorrection)
 	}
-	// The pipeline has to answer inside the response budget, or its reply is cut off mid-write
-	// and the client reads a broken connection instead of a model that ran out of time.
-	if cfg.RFQ.PipelineTimeout >= cfg.Server.WriteTimeout {
-		t.Errorf("RFQ.PipelineTimeout = %v, want it below Server.WriteTimeout %v",
-			cfg.RFQ.PipelineTimeout, cfg.Server.WriteTimeout)
+	// The pipeline that runs with a request open has to answer inside the response budget, or its
+	// reply is cut off mid-write and the client reads a broken connection instead of a model that
+	// ran out of time. The sweep's own budget answers to the job and is deliberately longer.
+	if cfg.RFQ.InlinePipelineTimeout >= cfg.Server.WriteTimeout {
+		t.Errorf("RFQ.InlinePipelineTimeout = %v, want it below Server.WriteTimeout %v",
+			cfg.RFQ.InlinePipelineTimeout, cfg.Server.WriteTimeout)
 	}
 	if cfg.Mail.Provider != MailProviderConsole {
 		t.Errorf("Mail.Provider = %q, want %q", cfg.Mail.Provider, MailProviderConsole)
@@ -138,6 +156,9 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.Auth.PasswordResetTTL != time.Hour {
 		t.Errorf("Auth.PasswordResetTTL = %v, want 1h", cfg.Auth.PasswordResetTTL)
+	}
+	if cfg.Auth.InviteTTL != 168*time.Hour {
+		t.Errorf("Auth.InviteTTL = %v, want 168h", cfg.Auth.InviteTTL)
 	}
 	// The requirement has to arrive off, or a fresh environment locks everyone out.
 	if cfg.Auth.RequireVerifiedEmail {
@@ -177,26 +198,37 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Catalog.EmbeddingBatchSize != 200 {
 		t.Errorf("Catalog.EmbeddingBatchSize = %d, want 200", cfg.Catalog.EmbeddingBatchSize)
 	}
-	// Pinned exactly, because .env.example and the catalog documentation both quote these three
-	// and nothing else would notice them drifting apart.
+	// Pinned exactly, because .env.example and the catalog documentation both quote these and
+	// nothing else would notice them drifting apart. They are the calibration the benchmark over a
+	// real 879-product catalog settled on, so moving one is a measurement, not a preference.
 	for _, tc := range []struct {
 		name string
 		got  int
 		want int
 	}{
-		{"Catalog.MatchMinConfidencePercent", cfg.Catalog.MatchMinConfidencePercent, 60},
+		{"Catalog.MatchMinConfidencePercent", cfg.Catalog.MatchMinConfidencePercent, 55},
 		{"Catalog.MatchAmbiguityMarginPercent", cfg.Catalog.MatchAmbiguityMarginPercent, 5},
-		{"Catalog.MatchLexicalConfidencePercent", cfg.Catalog.MatchLexicalConfidencePercent, 75},
+		{"Catalog.MatchCoverageWeightPercent", cfg.Catalog.MatchCoverageWeightPercent, 75},
+		{"Catalog.MatchSimilarityFloorPercent", cfg.Catalog.MatchSimilarityFloorPercent, 25},
+		{"Catalog.MatchSimilarityCeilingPercent", cfg.Catalog.MatchSimilarityCeilingPercent, 90},
+		{"Catalog.MatchHighConfidencePercent", cfg.Catalog.MatchHighConfidencePercent, 80},
+		{"Catalog.MatchReviewFloorPercent", cfg.Catalog.MatchReviewFloorPercent, 40},
+		{"Catalog.MatchReviewMaxLines", cfg.Catalog.MatchReviewMaxLines, 0},
 	} {
 		if tc.got != tc.want {
 			t.Errorf("%s = %d, want %d", tc.name, tc.got, tc.want)
 		}
 	}
-	// A trade term loaded as a synonym has to resolve to its product out of the box, and the
-	// lexical half is the only half that reaches an unembedded row.
-	if cfg.Catalog.MatchLexicalConfidencePercent < cfg.Catalog.MatchMinConfidencePercent {
-		t.Errorf("Catalog.MatchLexicalConfidencePercent = %d, want at least the floor of %d",
-			cfg.Catalog.MatchLexicalConfidencePercent, cfg.Catalog.MatchMinConfidencePercent)
+	// A line whose words a product's name carries in full has to match it out of the box, however
+	// far its vector sits: the coverage share alone must clear the floor.
+	if cfg.Catalog.MatchCoverageWeightPercent < cfg.Catalog.MatchMinConfidencePercent {
+		t.Errorf("Catalog.MatchCoverageWeightPercent = %d, want at least the floor of %d",
+			cfg.Catalog.MatchCoverageWeightPercent, cfg.Catalog.MatchMinConfidencePercent)
+	}
+	// The review settles only lines the floor already refused, so its own floor sits under it.
+	if cfg.Catalog.MatchReviewFloorPercent >= cfg.Catalog.MatchMinConfidencePercent {
+		t.Errorf("Catalog.MatchReviewFloorPercent = %d, want it under the floor of %d",
+			cfg.Catalog.MatchReviewFloorPercent, cfg.Catalog.MatchMinConfidencePercent)
 	}
 	// At zero every leading candidate is decided, whatever sits behind it.
 	if cfg.Catalog.MatchAmbiguityMarginPercent < 1 {
@@ -219,6 +251,7 @@ func TestLoad_RFQKeysLandOnTheirOwnFields(t *testing.T) {
 	env := minimalEnv()
 	env["RFQ_MAX_TEXT_CHARACTERS"] = "1234"
 	env["RFQ_MAX_ITEMS"] = "77"
+	env["RFQ_MAX_SPREADSHEET_ROWS"] = "321"
 	env["RFQ_PIPELINE_TIMEOUT_SECONDS"] = "9"
 	setEnv(t, env)
 
@@ -232,8 +265,141 @@ func TestLoad_RFQKeysLandOnTheirOwnFields(t *testing.T) {
 	if cfg.RFQ.MaxItems != 77 {
 		t.Errorf("RFQ.MaxItems = %d, want 77", cfg.RFQ.MaxItems)
 	}
+	if cfg.RFQ.MaxSpreadsheetRows != 321 {
+		t.Errorf("RFQ.MaxSpreadsheetRows = %d, want 321", cfg.RFQ.MaxSpreadsheetRows)
+	}
 	if cfg.RFQ.PipelineTimeout != 9*time.Second {
 		t.Errorf("RFQ.PipelineTimeout = %v, want 9s", cfg.RFQ.PipelineTimeout)
+	}
+}
+
+/*
+ * A batch of orders costs a model call each, so a full batch can run for the batch size times the
+ * pipeline budget. Past the reclaim window the run's own claims expire while it still holds them
+ * and the next firing extracts the same orders again, paying twice and writing two drafts.
+ * Nothing at runtime would report that, so startup refuses the combination.
+ */
+func TestLoad_RejectsAnAttachmentBatchThatOutlastsItsClaim(t *testing.T) {
+	env := minimalEnv()
+	env["ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE"] = "10"
+	env["RFQ_PIPELINE_TIMEOUT_SECONDS"] = "165"
+	env["ATTACHMENT_EXTRACTION_RECLAIM_MINUTES"] = "15"
+	setEnv(t, env)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() = nil, want the batch refused for outlasting its own claim")
+	}
+	if !strings.Contains(err.Error(), "ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE") {
+		t.Errorf("error = %v, want it to name the key that has to give way", err)
+	}
+}
+
+// The same three keys in a combination that fits must load, or the check above is just a ban.
+func TestLoad_AcceptsAnAttachmentBatchThatFitsItsClaim(t *testing.T) {
+	env := minimalEnv()
+	env["ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE"] = "5"
+	env["RFQ_PIPELINE_TIMEOUT_SECONDS"] = "165"
+	env["ATTACHMENT_EXTRACTION_RECLAIM_MINUTES"] = "15"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.Attachment.ExtractionRFQBatchSize != 5 {
+		t.Errorf("Attachment.ExtractionRFQBatchSize = %d, want 5",
+			cfg.Attachment.ExtractionRFQBatchSize)
+	}
+}
+
+/*
+ * The whole chain in one assertion, on the DEFAULTS, because the defaults are what a deployment
+ * that sets none of these runs on: the inline pass has to finish before this server's own write
+ * deadline, which has to fire before the platform in front gives up on us.
+ *
+ * The sweep's budget is deliberately NOT in that chain — nothing is waiting on a response there.
+ */
+func TestLoad_DefaultTimeoutsFitInsideTheEdge(t *testing.T) {
+	setEnv(t, minimalEnv())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if !(cfg.RFQ.InlinePipelineTimeout < cfg.Server.WriteTimeout) {
+		t.Errorf("inline pipeline %s is not below the write budget %s",
+			cfg.RFQ.InlinePipelineTimeout, cfg.Server.WriteTimeout)
+	}
+	if !(cfg.Server.WriteTimeout < cfg.Server.EdgeTimeout) {
+		t.Errorf("write budget %s is not below the edge %s", cfg.Server.WriteTimeout,
+			cfg.Server.EdgeTimeout)
+	}
+	if cfg.RFQ.PipelineTimeout <= cfg.RFQ.InlinePipelineTimeout {
+		t.Errorf("sweep budget %s is not longer than the inline one %s — splitting them is the "+
+			"point", cfg.RFQ.PipelineTimeout, cfg.RFQ.InlinePipelineTimeout)
+	}
+}
+
+/*
+ * A write budget above the edge never fires: the platform severs the connection first, so the
+ * caller reads a broken connection instead of an answer AND the handler is cancelled mid-flight,
+ * which takes the code that records the failure with it. Nothing at runtime reports that, and it
+ * cannot happen locally, where nothing is in front of the server.
+ */
+func TestLoad_RejectsAWriteBudgetTheEdgeWouldCutFirst(t *testing.T) {
+	env := minimalEnv()
+	env["SERVER_WRITE_TIMEOUT_SECONDS"] = "180"
+	env["SERVER_EDGE_TIMEOUT_SECONDS"] = "100"
+	env["RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS"] = "75"
+	setEnv(t, env)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() = nil, want the write budget refused for outlasting the edge")
+	}
+	if !strings.Contains(err.Error(), "SERVER_EDGE_TIMEOUT_SECONDS") {
+		t.Errorf("error = %v, want it to name the ceiling being exceeded", err)
+	}
+}
+
+// Nothing in front is the local case, and a bare container is a real deployment shape, so zero
+// turns the check off rather than being refused as nonsense.
+func TestLoad_AnEdgeOfZeroMeansNothingIsInFront(t *testing.T) {
+	env := minimalEnv()
+	env["SERVER_WRITE_TIMEOUT_SECONDS"] = "600"
+	env["SERVER_EDGE_TIMEOUT_SECONDS"] = "0"
+	env["RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS"] = "75"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error with no edge in front", err)
+	}
+	if cfg.Server.EdgeTimeout != 0 {
+		t.Errorf("Server.EdgeTimeout = %v, want zero", cfg.Server.EdgeTimeout)
+	}
+}
+
+// The sweep's budget answers to the job, not to a request, so it may exceed the write budget that
+// bounds a handler. Checking it against the response budget would cut it short for no reason.
+func TestLoad_TheSweepBudgetMayExceedTheResponseBudget(t *testing.T) {
+	env := minimalEnv()
+	env["RFQ_PIPELINE_TIMEOUT_SECONDS"] = "165"
+	env["RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS"] = "75"
+	env["SERVER_WRITE_TIMEOUT_SECONDS"] = "90"
+	env["SERVER_EDGE_TIMEOUT_SECONDS"] = "100"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want the sweep budget accepted above the write budget", err)
+	}
+	if cfg.RFQ.PipelineTimeout != 165*time.Second {
+		t.Errorf("RFQ.PipelineTimeout = %v, want 165s", cfg.RFQ.PipelineTimeout)
+	}
+	if cfg.RFQ.InlinePipelineTimeout != 75*time.Second {
+		t.Errorf("RFQ.InlinePipelineTimeout = %v, want 75s", cfg.RFQ.InlinePipelineTimeout)
 	}
 }
 
@@ -253,6 +419,41 @@ func TestLoad_QuoteCorrectionKeysLandOnTheirOwnFields(t *testing.T) {
 		cfg.QuoteCorrection.MaxInterpretationExamples != 4 ||
 		cfg.QuoteCorrection.ProcessingBatchSize != 73 {
 		t.Errorf("QuoteCorrection = %+v, want 81/901/4/73", cfg.QuoteCorrection)
+	}
+}
+
+// Examples are a switch: zero turns them off, and only a negative count is a mistake.
+func TestLoad_InterpretationExamplesCanBeTurnedOff(t *testing.T) {
+	env := minimalEnv()
+	env["QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES"] = "0"
+	setEnv(t, env)
+	if cfg, err := Load(); err != nil || cfg.QuoteCorrection.MaxInterpretationExamples != 0 {
+		t.Fatalf("Load() = %v, want zero examples accepted", err)
+	}
+
+	env["QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES"] = "-1"
+	setEnv(t, env)
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(),
+		"QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES must be zero or more") {
+		t.Errorf("Load() = %v, want a negative count refused", err)
+	}
+}
+
+func TestLoad_QuoteLogoKeysLandOnTheirOwnFields(t *testing.T) {
+	env := minimalEnv()
+	env["QUOTE_LOGO_FETCH_TIMEOUT_SECONDS"] = "7"
+	env["QUOTE_LOGO_MAX_SIZE_BYTES"] = "123456"
+	env["QUOTE_LOGO_MAX_PIXELS"] = "7654321"
+	env["QUOTE_LOGO_MAX_REDIRECTS"] = "2"
+	setEnv(t, env)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.QuoteLogo.FetchTimeout != 7*time.Second || cfg.QuoteLogo.MaxSizeBytes != 123456 ||
+		cfg.QuoteLogo.MaxPixels != 7654321 || cfg.QuoteLogo.MaxRedirects != 2 {
+		t.Errorf("QuoteLogo = %+v, want 7s/123456/7654321/2", cfg.QuoteLogo)
 	}
 }
 
@@ -396,6 +597,11 @@ func TestLoad_Invalid(t *testing.T) {
 			wantSub: "AUTH_PASSWORD_RESET_TTL_MINUTES must be greater than zero",
 		},
 		{
+			name:    "invite ttl of zero",
+			mutate:  func(e map[string]string) { e["AUTH_INVITE_TTL_HOURS"] = "0" },
+			wantSub: "AUTH_INVITE_TTL_HOURS must be greater than zero",
+		},
+		{
 			// A run bounded at nothing holds its lock until the process is killed, and every
 			// later firing then does nothing while it waits.
 			name:    "a scheduled run bounded at nothing",
@@ -485,11 +691,50 @@ func TestLoad_Invalid(t *testing.T) {
 			wantSub: "CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT must be between 0 and 100",
 		},
 		{
-			name: "a lexical confidence off the scale",
+			name: "a coverage weight off the scale",
 			mutate: func(e map[string]string) {
-				e["CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT"] = "140"
+				e["CATALOG_MATCH_COVERAGE_WEIGHT_PERCENT"] = "140"
 			},
-			wantSub: "CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT must be between 0 and 100",
+			wantSub: "CATALOG_MATCH_COVERAGE_WEIGHT_PERCENT must be between 0 and 100",
+		},
+		{
+			// Calibration divides by the band's width, so an empty or inverted band has no scale.
+			name: "a similarity band with no width",
+			mutate: func(e map[string]string) {
+				e["CATALOG_MATCH_SIMILARITY_FLOOR_PERCENT"] = "90"
+				e["CATALOG_MATCH_SIMILARITY_CEILING_PERCENT"] = "90"
+			},
+			wantSub: "CATALOG_MATCH_SIMILARITY_FLOOR_PERCENT (90) must be below " +
+				"CATALOG_MATCH_SIMILARITY_CEILING_PERCENT (90)",
+		},
+		{
+			// A MATCHED line always clears the floor, so a high mark under it would call every
+			// match high.
+			name: "a high-confidence mark under the match floor",
+			mutate: func(e map[string]string) {
+				e["CATALOG_MATCH_HIGH_CONFIDENCE_PERCENT"] = "50"
+			},
+			wantSub: "CATALOG_MATCH_HIGH_CONFIDENCE_PERCENT (50) must not be below " +
+				"CATALOG_MATCH_MIN_CONFIDENCE_PERCENT (55)",
+		},
+		{
+			name:    "a review floor off the scale",
+			mutate:  func(e map[string]string) { e["CATALOG_MATCH_REVIEW_FLOOR_PERCENT"] = "-5" },
+			wantSub: "CATALOG_MATCH_REVIEW_FLOOR_PERCENT must be between 0 and 100",
+		},
+		{
+			// The review settles lines the match floor refused; above it, near misses never reach it.
+			name: "a review floor over the match floor",
+			mutate: func(e map[string]string) {
+				e["CATALOG_MATCH_REVIEW_FLOOR_PERCENT"] = "60"
+			},
+			wantSub: "CATALOG_MATCH_REVIEW_FLOOR_PERCENT (60) must not exceed " +
+				"CATALOG_MATCH_MIN_CONFIDENCE_PERCENT (55)",
+		},
+		{
+			name:    "a negative review cap",
+			mutate:  func(e map[string]string) { e["CATALOG_MATCH_REVIEW_MAX_LINES"] = "-1" },
+			wantSub: "CATALOG_MATCH_REVIEW_MAX_LINES must be zero or more, got -1",
 		},
 	}
 
@@ -638,6 +883,12 @@ func TestLoad_AIProvidersArriveDisabled(t *testing.T) {
 	if cfg.AI.LLMEffort != "low" {
 		t.Errorf("AI.LLMEffort = %q, want low", cfg.AI.LLMEffort)
 	}
+	// One attempt has to be able to finish an extraction: the answer runs ~70 tokens per line
+	// item, so a full order takes minutes, and a cap under that retries a call nothing was
+	// wrong with. It also has to leave room inside RFQ_PIPELINE_TIMEOUT_SECONDS.
+	if cfg.AI.LLMTimeout != 150*time.Second {
+		t.Errorf("AI.LLMTimeout = %v, want 150s", cfg.AI.LLMTimeout)
+	}
 	if cfg.AI.Retry.MaxAttempts != 3 || cfg.AI.Retry.Backoff != time.Second {
 		t.Errorf("AI.Retry = %+v, want 3 attempts from 1s", cfg.AI.Retry)
 	}
@@ -648,6 +899,9 @@ func TestLoad_AIProvidersArriveDisabled(t *testing.T) {
 	}
 	if cfg.AI.EmbeddingsBatchSize != 100 {
 		t.Errorf("AI.EmbeddingsBatchSize = %d, want 100", cfg.AI.EmbeddingsBatchSize)
+	}
+	if cfg.AI.UsageWriteTimeout != 5*time.Second {
+		t.Errorf("AI.UsageWriteTimeout = %v, want 5s", cfg.AI.UsageWriteTimeout)
 	}
 }
 
@@ -785,6 +1039,11 @@ func TestLoad_AIRejectsUnusableSettings(t *testing.T) {
 				"AI_MAX_BACKOFF_SECONDS":   "5",
 			},
 			want: "AI_MAX_BACKOFF_SECONDS (5s) is below AI_RETRY_BACKOFF_SECONDS (10s)",
+		},
+		{
+			name: "no bound on recording usage",
+			env:  map[string]string{"AI_USAGE_WRITE_TIMEOUT_SECONDS": "0"},
+			want: "AI_USAGE_WRITE_TIMEOUT_SECONDS must be greater than zero",
 		},
 		{
 			name: "no batch size",
@@ -1176,5 +1435,16 @@ func TestLoad_ChannelEncryptionKeyRejectsAnUnusableValue(t *testing.T) {
 				t.Errorf("Load() = %q, want the key value left out of the message", err)
 			}
 		})
+	}
+}
+
+// Only a transport that reaches a mailbox delivers; an unset provider is not one.
+func TestMailConfig_DeliversOnlyOverSMTP(t *testing.T) {
+	for provider, want := range map[MailProvider]bool{
+		MailProviderSMTP: true, MailProviderConsole: false, "": false,
+	} {
+		if got := (MailConfig{Provider: provider}).Delivers(); got != want {
+			t.Errorf("Delivers() for %q = %v, want %v", provider, got, want)
+		}
 	}
 }

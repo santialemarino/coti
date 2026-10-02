@@ -29,6 +29,7 @@ const minSigningSecretLength = 32
 const channelKeyLength = 32
 const defaultCatalogImportMaxBytes = 5 * 1024 * 1024
 const defaultPriceImportMaxBytes = 5 * 1024 * 1024
+const maxBranchExpiryDays = 365
 
 // Environment is the deployment environment the process runs in.
 type Environment string
@@ -79,6 +80,9 @@ type Config struct {
 	Catalog         CatalogConfig
 	RFQ             RFQConfig
 	QuoteCorrection QuoteCorrectionConfig
+	QuoteQuality    QuoteQualityConfig
+	Attachment      AttachmentConfig
+	QuoteLogo       QuoteLogoConfig
 	RateLimit       RateLimitConfig
 	Branch          BranchConfig
 	Job             JobConfig
@@ -86,6 +90,31 @@ type Config struct {
 	PriceImport     SpreadsheetImportConfig
 	Storage         StorageConfig
 	Channel         ChannelConfig
+}
+
+// QuoteLogoConfig bounds retrieval of untrusted branding images.
+type QuoteLogoConfig struct {
+	FetchTimeout time.Duration
+	MaxSizeBytes int64
+	MaxPixels    int64
+	MaxRedirects int
+}
+
+func (c QuoteLogoConfig) problems() []string {
+	var problems []string
+	if c.FetchTimeout <= 0 {
+		problems = append(problems, "QUOTE_LOGO_FETCH_TIMEOUT_SECONDS must be greater than zero")
+	}
+	if c.MaxSizeBytes <= 0 {
+		problems = append(problems, "QUOTE_LOGO_MAX_SIZE_BYTES must be greater than zero")
+	}
+	if c.MaxPixels <= 0 {
+		problems = append(problems, "QUOTE_LOGO_MAX_PIXELS must be greater than zero")
+	}
+	if c.MaxRedirects < 0 {
+		problems = append(problems, "QUOTE_LOGO_MAX_REDIRECTS must not be negative")
+	}
+	return problems
 }
 
 // ChannelConfig holds what protects an intake channel's stored credentials.
@@ -119,9 +148,20 @@ type RateLimitConfig struct {
 
 // ServerConfig holds the HTTP listener settings.
 type ServerConfig struct {
-	Port            string
-	ReadTimeout     time.Duration
-	WriteTimeout    time.Duration
+	Port        string
+	ReadTimeout time.Duration
+	// WriteTimeout bounds one handler. It has to stay under EdgeTimeout: whichever deadline
+	// fires first decides what the caller sees, and ours produces an answer where the platform's
+	// produces a severed connection.
+	WriteTimeout time.Duration
+	/*
+	 * EdgeTimeout is how long the platform in front of the API waits for a response before it
+	 * gives up on us. It is not ours to enforce — nothing here can extend it — and it is here so
+	 * the settings that ARE ours can be checked against it at startup.
+	 *
+	 * Zero means nothing is in front (a bare container, a local run) and the checks are skipped.
+	 */
+	EdgeTimeout     time.Duration
 	ShutdownTimeout time.Duration
 }
 
@@ -152,6 +192,7 @@ type AuthConfig struct {
 	PasswordResetTTL     time.Duration
 	RequireVerifiedEmail bool
 	VerificationTTL      time.Duration
+	InviteTTL            time.Duration
 }
 
 // MailConfig holds the outbound-mail transport settings. One account per environment: the SMTP
@@ -168,6 +209,12 @@ type MailConfig struct {
 	// STARTTLS fails the send instead of quietly downgrading it to plaintext.
 	SMTPStartTLS bool
 	SMTPTimeout  time.Duration
+}
+
+// Delivers reports whether outbound mail reaches a mailbox. The console transport only writes
+// to the log, so a link sent through it can never be redeemed.
+func (m MailConfig) Delivers() bool {
+	return m.Provider == MailProviderSMTP
 }
 
 // AIConfig holds the provider selection, credentials and limits for the three external AI
@@ -202,6 +249,9 @@ type AIConfig struct {
 	TranscriptionTimeout  time.Duration
 
 	Retry AIRetryPolicy
+	// UsageWriteTimeout bounds recording one call in the usage ledger, which runs detached from
+	// the request so a cancelled caller still records what it spent.
+	UsageWriteTimeout time.Duration
 }
 
 // AIRetryPolicy is how many times one provider call is attempted, and how long the wait between
@@ -369,6 +419,9 @@ func (a AIConfig) problems() []string {
 		problems = append(problems, fmt.Sprintf("AI_MAX_BACKOFF_SECONDS (%s) is below "+
 			"AI_RETRY_BACKOFF_SECONDS (%s)", a.Retry.MaxBackoff, a.Retry.Backoff))
 	}
+	if a.UsageWriteTimeout <= 0 {
+		problems = append(problems, "AI_USAGE_WRITE_TIMEOUT_SECONDS must be greater than zero")
+	}
 	return problems
 }
 
@@ -376,6 +429,7 @@ func (a AIConfig) problems() []string {
 // those routes, so it cannot derive them from its own address.
 type WebConfig struct {
 	BackofficeURL string
+	WebAppURL     string
 }
 
 // SpreadsheetImportConfig holds operational limits for spreadsheet imports.
@@ -404,10 +458,23 @@ type RFQConfig struct {
 	// MaxItems caps the lines one order may produce. Matching runs a query per line, so a
 	// spreadsheet pasted as text would turn one request into hundreds of them.
 	MaxItems int
-	// PipelineTimeout bounds the whole extract-and-match pass. The AI timeouts are per attempt,
-	// so a retrying chain outruns the response budget; this makes the route answer 503 instead
-	// of having its response cut off mid-write.
+	// MaxSpreadsheetRows caps the rows read out of an uploaded spreadsheet. MaxItems bounds
+	// what the model may answer; this bounds what it is asked to read, so a price list
+	// uploaded by mistake is refused before it is paid for.
+	MaxSpreadsheetRows int
+	// PipelineTimeout bounds the whole read-extract-and-match pass where nothing is waiting on an
+	// HTTP response — the scheduled sweep. Its ceiling is the job's own budget, which is minutes.
 	PipelineTimeout time.Duration
+	/*
+	 * InlinePipelineTimeout is the same pass with a seller's request still open, and it is a
+	 * separate, shorter budget because it answers to a deadline the sweep does not have: the
+	 * platform's edge. The AI timeouts are per attempt, so a retrying chain outruns any of these;
+	 * this is what makes the route answer rather than have its response cut off mid-write.
+	 *
+	 * Splitting the two is the point. One value would either let a request outlive the edge or
+	 * cut the sweep short for a limit that does not apply to it.
+	 */
+	InlinePipelineTimeout time.Duration
 }
 
 // QuoteCorrectionConfig bounds account-local correction learning.
@@ -416,6 +483,22 @@ type QuoteCorrectionConfig struct {
 	MaxPatternsPerAccount     int
 	MaxInterpretationExamples int
 	ProcessingBatchSize       int
+}
+
+// QuoteQualityConfig bounds the durable post-send evaluation retry.
+type QuoteQualityConfig struct {
+	ProcessingBatchSize int
+}
+
+// AttachmentConfig bounds the sweep that reads the files an order arrived with. The reclaim
+// window is how long a claim stands: past it the row is taken again, so a run killed mid-work
+// releases its attachments instead of parking them at PROCESSING forever.
+type AttachmentConfig struct {
+	// ExtractionRFQBatchSize counts orders, not files: an order with several attachments is
+	// extracted once over all of them, so the model call — not the file read — is what a batch
+	// costs. Startup keeps the batch short enough to finish inside the reclaim window.
+	ExtractionRFQBatchSize int
+	ExtractionReclaimAfter time.Duration
 }
 
 // CatalogConfig holds the catalog listing limits and the knobs behind the hybrid search. The
@@ -446,9 +529,20 @@ type CatalogConfig struct {
 	// MatchAmbiguityMarginPercent is how far the leading candidate sits above the runner-up
 	// before the line counts as decided. Two cements a point apart are a choice, not a match.
 	MatchAmbiguityMarginPercent int
-	// MatchLexicalConfidencePercent is the confidence floor for lexical evidence.
-	// It keeps exact vocabulary useful when semantic similarity alone is weak.
-	MatchLexicalConfidencePercent int
+	// MatchCoverageWeightPercent is the share of a candidate's confidence that comes from how
+	// much of the line its name accounts for; the rest comes from the calibrated similarity.
+	MatchCoverageWeightPercent int
+	// MatchSimilarityFloorPercent and MatchSimilarityCeilingPercent are the cosine similarities
+	// that read as no resemblance and as a near-verbatim one. They belong to the embedding model.
+	MatchSimilarityFloorPercent   int
+	MatchSimilarityCeilingPercent int
+	// MatchHighConfidencePercent is what a MATCHED line clears to be shown as high confidence.
+	MatchHighConfidencePercent int
+	// MatchReviewFloorPercent is the confidence a flagged line's candidate needs for the language
+	// model's review to settle the line on it. Below it the catalog text does not back the pick.
+	MatchReviewFloorPercent int
+	// MatchReviewMaxLines caps the flagged lines one order sends to review. Zero turns it off.
+	MatchReviewMaxLines int
 	// CorrectionSimilarityPercent is the fixed semantic floor for seller-taught product choices.
 	CorrectionSimilarityPercent int
 }
@@ -577,7 +671,8 @@ func Load() (*Config, error) {
 		Server: ServerConfig{
 			Port:            getString("API_PORT", "8000"),
 			ReadTimeout:     getDuration("SERVER_READ_TIMEOUT_SECONDS", 15*time.Second, &problems),
-			WriteTimeout:    getDuration("SERVER_WRITE_TIMEOUT_SECONDS", 30*time.Second, &problems),
+			WriteTimeout:    getDuration("SERVER_WRITE_TIMEOUT_SECONDS", 90*time.Second, &problems),
+			EdgeTimeout:     getDuration("SERVER_EDGE_TIMEOUT_SECONDS", 100*time.Second, &problems),
 			ShutdownTimeout: getDuration("SERVER_SHUTDOWN_TIMEOUT_SECONDS", 10*time.Second, &problems),
 		},
 		Database: DatabaseConfig{
@@ -601,6 +696,7 @@ func Load() (*Config, error) {
 			PasswordResetTTL:     getDuration("AUTH_PASSWORD_RESET_TTL_MINUTES", 60*time.Minute, &problems),
 			RequireVerifiedEmail: getBool("AUTH_REQUIRE_VERIFIED_EMAIL", false, &problems),
 			VerificationTTL:      getDuration("AUTH_EMAIL_VERIFICATION_TTL_HOURS", 48*time.Hour, &problems),
+			InviteTTL:            getDuration("AUTH_INVITE_TTL_HOURS", 7*24*time.Hour, &problems),
 		},
 		Mail: MailConfig{
 			Provider:     MailProvider(getString("MAIL_PROVIDER", string(MailProviderConsole))),
@@ -623,7 +719,7 @@ func Load() (*Config, error) {
 			LLMModel:     getString("AI_LLM_MODEL", "claude-opus-5"),
 			LLMEffort:    getString("AI_LLM_EFFORT", "low"),
 			LLMMaxTokens: getInt("AI_LLM_MAX_TOKENS", 16000, &problems),
-			LLMTimeout:   getDuration("AI_LLM_TIMEOUT_SECONDS", 60*time.Second, &problems),
+			LLMTimeout:   getDuration("AI_LLM_TIMEOUT_SECONDS", 150*time.Second, &problems),
 
 			EmbeddingsProvider: AIProvider(getString("AI_EMBEDDINGS_PROVIDER",
 				string(AIProviderDisabled))),
@@ -642,9 +738,12 @@ func Load() (*Config, error) {
 				Backoff:     getDuration("AI_RETRY_BACKOFF_SECONDS", time.Second, &problems),
 				MaxBackoff:  getDuration("AI_MAX_BACKOFF_SECONDS", 8*time.Second, &problems),
 			},
+			UsageWriteTimeout: getDuration("AI_USAGE_WRITE_TIMEOUT_SECONDS", 5*time.Second,
+				&problems),
 		},
 		Web: WebConfig{
 			BackofficeURL: getString("WEB_BACKOFFICE_URL", "http://localhost:3000"),
+			WebAppURL:     getString("WEB_WEBAPP_URL", "http://localhost:3001"),
 		},
 		Catalog: CatalogConfig{
 			DefaultPageSize:               getInt("CATALOG_DEFAULT_PAGE_SIZE", 50, &problems),
@@ -655,9 +754,14 @@ func Load() (*Config, error) {
 			SearchProbes:                  getInt("CATALOG_SEARCH_IVFFLAT_PROBES", 10, &problems),
 			SearchRRFK:                    getInt("CATALOG_SEARCH_RRF_K", 60, &problems),
 			EmbeddingBatchSize:            getInt("CATALOG_EMBEDDING_BATCH_SIZE", 200, &problems),
-			MatchMinConfidencePercent:     getInt("CATALOG_MATCH_MIN_CONFIDENCE_PERCENT", 60, &problems),
+			MatchMinConfidencePercent:     getInt("CATALOG_MATCH_MIN_CONFIDENCE_PERCENT", 55, &problems),
 			MatchAmbiguityMarginPercent:   getInt("CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT", 5, &problems),
-			MatchLexicalConfidencePercent: getInt("CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT", 75, &problems),
+			MatchCoverageWeightPercent:    getInt("CATALOG_MATCH_COVERAGE_WEIGHT_PERCENT", 75, &problems),
+			MatchSimilarityFloorPercent:   getInt("CATALOG_MATCH_SIMILARITY_FLOOR_PERCENT", 25, &problems),
+			MatchSimilarityCeilingPercent: getInt("CATALOG_MATCH_SIMILARITY_CEILING_PERCENT", 90, &problems),
+			MatchHighConfidencePercent:    getInt("CATALOG_MATCH_HIGH_CONFIDENCE_PERCENT", 80, &problems),
+			MatchReviewFloorPercent:       getInt("CATALOG_MATCH_REVIEW_FLOOR_PERCENT", 40, &problems),
+			MatchReviewMaxLines:           getInt("CATALOG_MATCH_REVIEW_MAX_LINES", 0, &problems),
 			CorrectionSimilarityPercent:   getInt("QUOTE_CORRECTION_SIMILARITY_PERCENT", 80, &problems),
 		},
 		Storage: StorageConfig{
@@ -686,15 +790,32 @@ func Load() (*Config, error) {
 			TrustedProxies:   getCIDRs("RATE_LIMIT_TRUSTED_PROXY_CIDRS", &problems),
 		},
 		RFQ: RFQConfig{
-			MaxTextCharacters: getInt("RFQ_MAX_TEXT_CHARACTERS", 20000, &problems),
-			MaxItems:          getInt("RFQ_MAX_ITEMS", 200, &problems),
-			PipelineTimeout:   getDuration("RFQ_PIPELINE_TIMEOUT_SECONDS", 25*time.Second, &problems),
+			MaxTextCharacters:  getInt("RFQ_MAX_TEXT_CHARACTERS", 20000, &problems),
+			MaxItems:           getInt("RFQ_MAX_ITEMS", 200, &problems),
+			MaxSpreadsheetRows: getInt("RFQ_MAX_SPREADSHEET_ROWS", 500, &problems),
+			PipelineTimeout:    getDuration("RFQ_PIPELINE_TIMEOUT_SECONDS", 165*time.Second, &problems),
+			InlinePipelineTimeout: getDuration("RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS",
+				75*time.Second, &problems),
 		},
 		QuoteCorrection: QuoteCorrectionConfig{
 			SimilarityPercent:         getInt("QUOTE_CORRECTION_SIMILARITY_PERCENT", 80, &problems),
 			MaxPatternsPerAccount:     getInt("QUOTE_CORRECTION_MAX_PATTERNS_PER_ACCOUNT", 1000, &problems),
 			MaxInterpretationExamples: getInt("QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES", 3, &problems),
 			ProcessingBatchSize:       getInt("QUOTE_CORRECTION_PROCESSING_BATCH_SIZE", 100, &problems),
+		},
+		QuoteLogo: QuoteLogoConfig{
+			FetchTimeout: getDuration("QUOTE_LOGO_FETCH_TIMEOUT_SECONDS", 3*time.Second, &problems),
+			MaxSizeBytes: int64(getInt("QUOTE_LOGO_MAX_SIZE_BYTES", 2*1024*1024, &problems)),
+			MaxPixels:    int64(getInt("QUOTE_LOGO_MAX_PIXELS", 12_000_000, &problems)),
+			MaxRedirects: getInt("QUOTE_LOGO_MAX_REDIRECTS", 3, &problems),
+		},
+		QuoteQuality: QuoteQualityConfig{
+			ProcessingBatchSize: getInt("QUOTE_QUALITY_PROCESSING_BATCH_SIZE", 100, &problems),
+		},
+		Attachment: AttachmentConfig{
+			ExtractionRFQBatchSize: getInt("ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE", 5, &problems),
+			ExtractionReclaimAfter: getDuration("ATTACHMENT_EXTRACTION_RECLAIM_MINUTES",
+				15*time.Minute, &problems),
 		},
 		Job: JobConfig{
 			Timeout: getDuration("JOB_TIMEOUT_MINUTES", 30*time.Minute, &problems),
@@ -729,6 +850,8 @@ func Load() (*Config, error) {
 	}
 	if cfg.Branch.DefaultExpiryDays <= 0 {
 		problems = append(problems, "BRANCH_DEFAULT_EXPIRY_DAYS must be greater than zero")
+	} else if cfg.Branch.DefaultExpiryDays > maxBranchExpiryDays {
+		problems = append(problems, "BRANCH_DEFAULT_EXPIRY_DAYS must not exceed 365")
 	}
 	if cfg.CatalogImport.MaxBytes <= 0 {
 		problems = append(problems, "CATALOG_IMPORT_MAX_BYTES must be greater than zero")
@@ -746,6 +869,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.Auth.VerificationTTL <= 0 {
 		problems = append(problems, "AUTH_EMAIL_VERIFICATION_TTL_HOURS must be greater than zero")
+	}
+	if cfg.Auth.InviteTTL <= 0 {
+		problems = append(problems, "AUTH_INVITE_TTL_HOURS must be greater than zero")
 	}
 	// Demanding a confirmed address while the only transport writes to a log would lock
 	// every user out of an environment nobody can receive mail in.
@@ -786,6 +912,7 @@ func Load() (*Config, error) {
 	}
 
 	problems = append(problems, cfg.AI.problems()...)
+	problems = append(problems, cfg.QuoteLogo.problems()...)
 	problems = append(problems, cfg.Storage.problems()...)
 
 	// A base URL missing its scheme or host yields recovery links that go nowhere, and the
@@ -794,6 +921,11 @@ func Load() (*Config, error) {
 		problems = append(problems, fmt.Sprintf(
 			"WEB_BACKOFFICE_URL must be an absolute URL with a scheme and host, got %q",
 			cfg.Web.BackofficeURL))
+	}
+	if u, err := url.Parse(cfg.Web.WebAppURL); err != nil || u.Scheme == "" || u.Host == "" {
+		problems = append(problems, fmt.Sprintf(
+			"WEB_WEBAPP_URL must be an absolute URL with a scheme and host, got %q",
+			cfg.Web.WebAppURL))
 	}
 
 	if cfg.Catalog.DefaultPageSize < 1 {
@@ -837,23 +969,67 @@ func Load() (*Config, error) {
 	if cfg.RFQ.MaxItems <= 0 {
 		problems = append(problems, "RFQ_MAX_ITEMS must be greater than zero")
 	}
+	if cfg.RFQ.MaxSpreadsheetRows <= 0 {
+		problems = append(problems, "RFQ_MAX_SPREADSHEET_ROWS must be greater than zero")
+	}
 	if cfg.RFQ.PipelineTimeout <= 0 {
 		problems = append(problems, "RFQ_PIPELINE_TIMEOUT_SECONDS must be greater than zero")
-	} else if cfg.RFQ.PipelineTimeout >= cfg.Server.WriteTimeout {
+	}
+	if cfg.RFQ.InlinePipelineTimeout <= 0 {
+		problems = append(problems, "RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS must be greater than zero")
+	} else if cfg.RFQ.InlinePipelineTimeout >= cfg.Server.WriteTimeout {
 		// A pipeline allowed to outlast the response budget has its answer cut off mid-write,
 		// which the client reads as a broken connection rather than as a model that timed out.
 		problems = append(problems, fmt.Sprintf(
-			"RFQ_PIPELINE_TIMEOUT_SECONDS (%s) must be below SERVER_WRITE_TIMEOUT_SECONDS (%s)",
-			cfg.RFQ.PipelineTimeout, cfg.Server.WriteTimeout))
+			"RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS (%s) must be below SERVER_WRITE_TIMEOUT_SECONDS (%s)",
+			cfg.RFQ.InlinePipelineTimeout, cfg.Server.WriteTimeout))
+	}
+	/*
+	 * The platform in front gives up on us at EdgeTimeout, and nothing here can extend it. If our
+	 * own budget is the larger one it never fires: the caller gets a severed connection instead of
+	 * an answer, and — worse — the handler is cancelled mid-flight, so the code that records the
+	 * failure cannot run either. An order is then left looking like it is still being worked.
+	 *
+	 * Zero means nothing is in front of us, which is the local case.
+	 */
+	if cfg.Server.EdgeTimeout > 0 && cfg.Server.WriteTimeout >= cfg.Server.EdgeTimeout {
+		problems = append(problems, fmt.Sprintf(
+			"SERVER_WRITE_TIMEOUT_SECONDS (%s) must be below SERVER_EDGE_TIMEOUT_SECONDS (%s), "+
+				"or the platform cuts the connection before this server can answer",
+			cfg.Server.WriteTimeout, cfg.Server.EdgeTimeout))
 	}
 	if cfg.QuoteCorrection.MaxPatternsPerAccount < 1 {
 		problems = append(problems, "QUOTE_CORRECTION_MAX_PATTERNS_PER_ACCOUNT must be greater than zero")
 	}
-	if cfg.QuoteCorrection.MaxInterpretationExamples < 1 {
-		problems = append(problems, "QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES must be greater than zero")
+	if cfg.QuoteCorrection.MaxInterpretationExamples < 0 {
+		problems = append(problems, "QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES must be zero or more")
 	}
 	if cfg.QuoteCorrection.ProcessingBatchSize < 1 {
 		problems = append(problems, "QUOTE_CORRECTION_PROCESSING_BATCH_SIZE must be greater than zero")
+	}
+	if cfg.QuoteQuality.ProcessingBatchSize < 1 {
+		problems = append(problems, "QUOTE_QUALITY_PROCESSING_BATCH_SIZE must be greater than zero")
+	}
+	if cfg.Attachment.ExtractionRFQBatchSize < 1 {
+		problems = append(problems, "ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE must be greater than zero")
+	}
+	if cfg.Attachment.ExtractionReclaimAfter <= 0 {
+		problems = append(problems, "ATTACHMENT_EXTRACTION_RECLAIM_MINUTES must be greater than zero")
+	}
+	// Every order in a batch costs a model call, so a full batch can run for the batch size times
+	// the pipeline budget. Past the reclaim window the run's own claims expire while it still
+	// holds them, and the next firing extracts the same orders again — paying twice and writing
+	// two drafts. The batch is what gives way, because the other two are bounded elsewhere.
+	if cfg.Attachment.ExtractionRFQBatchSize > 0 && cfg.RFQ.PipelineTimeout > 0 &&
+		cfg.Attachment.ExtractionReclaimAfter > 0 {
+		worst := time.Duration(cfg.Attachment.ExtractionRFQBatchSize) * cfg.RFQ.PipelineTimeout
+		if worst > cfg.Attachment.ExtractionReclaimAfter {
+			problems = append(problems, fmt.Sprintf(
+				"ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE (%d) times RFQ_PIPELINE_TIMEOUT_SECONDS (%s) "+
+					"is %s, which must not exceed ATTACHMENT_EXTRACTION_RECLAIM_MINUTES (%s)",
+				cfg.Attachment.ExtractionRFQBatchSize, cfg.RFQ.PipelineTimeout, worst,
+				cfg.Attachment.ExtractionReclaimAfter))
+		}
 	}
 
 	catalogPercents := []struct {
@@ -862,7 +1038,11 @@ func Load() (*Config, error) {
 	}{
 		{"CATALOG_MATCH_MIN_CONFIDENCE_PERCENT", cfg.Catalog.MatchMinConfidencePercent},
 		{"CATALOG_MATCH_AMBIGUITY_MARGIN_PERCENT", cfg.Catalog.MatchAmbiguityMarginPercent},
-		{"CATALOG_MATCH_LEXICAL_CONFIDENCE_PERCENT", cfg.Catalog.MatchLexicalConfidencePercent},
+		{"CATALOG_MATCH_COVERAGE_WEIGHT_PERCENT", cfg.Catalog.MatchCoverageWeightPercent},
+		{"CATALOG_MATCH_SIMILARITY_FLOOR_PERCENT", cfg.Catalog.MatchSimilarityFloorPercent},
+		{"CATALOG_MATCH_SIMILARITY_CEILING_PERCENT", cfg.Catalog.MatchSimilarityCeilingPercent},
+		{"CATALOG_MATCH_HIGH_CONFIDENCE_PERCENT", cfg.Catalog.MatchHighConfidencePercent},
+		{"CATALOG_MATCH_REVIEW_FLOOR_PERCENT", cfg.Catalog.MatchReviewFloorPercent},
 		{"QUOTE_CORRECTION_SIMILARITY_PERCENT", cfg.QuoteCorrection.SimilarityPercent},
 	}
 	for _, p := range catalogPercents {
@@ -870,6 +1050,28 @@ func Load() (*Config, error) {
 			problems = append(problems, fmt.Sprintf("%s must be between 0 and 100, got %d",
 				p.key, p.value))
 		}
+	}
+	if cfg.Catalog.MatchSimilarityFloorPercent >= cfg.Catalog.MatchSimilarityCeilingPercent {
+		problems = append(problems, fmt.Sprintf(
+			"CATALOG_MATCH_SIMILARITY_FLOOR_PERCENT (%d) must be below "+
+				"CATALOG_MATCH_SIMILARITY_CEILING_PERCENT (%d)",
+			cfg.Catalog.MatchSimilarityFloorPercent, cfg.Catalog.MatchSimilarityCeilingPercent))
+	}
+	if cfg.Catalog.MatchHighConfidencePercent < cfg.Catalog.MatchMinConfidencePercent {
+		problems = append(problems, fmt.Sprintf(
+			"CATALOG_MATCH_HIGH_CONFIDENCE_PERCENT (%d) must not be below "+
+				"CATALOG_MATCH_MIN_CONFIDENCE_PERCENT (%d)",
+			cfg.Catalog.MatchHighConfidencePercent, cfg.Catalog.MatchMinConfidencePercent))
+	}
+	if cfg.Catalog.MatchReviewFloorPercent > cfg.Catalog.MatchMinConfidencePercent {
+		problems = append(problems, fmt.Sprintf(
+			"CATALOG_MATCH_REVIEW_FLOOR_PERCENT (%d) must not exceed "+
+				"CATALOG_MATCH_MIN_CONFIDENCE_PERCENT (%d): the review settles lines under that floor",
+			cfg.Catalog.MatchReviewFloorPercent, cfg.Catalog.MatchMinConfidencePercent))
+	}
+	if cfg.Catalog.MatchReviewMaxLines < 0 {
+		problems = append(problems, fmt.Sprintf(
+			"CATALOG_MATCH_REVIEW_MAX_LINES must be zero or more, got %d", cfg.Catalog.MatchReviewMaxLines))
 	}
 	if cfg.QuoteCorrection.SimilarityPercent == 0 {
 		problems = append(problems, "QUOTE_CORRECTION_SIMILARITY_PERCENT must be greater than zero")

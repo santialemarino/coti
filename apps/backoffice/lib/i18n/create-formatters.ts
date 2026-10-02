@@ -1,8 +1,10 @@
 import { formatCurrency } from '@/lib/i18n/currency';
 import {
   formatDate,
+  formatDateNumeric,
   formatList,
   formatRatePct,
+  formatRegion,
   formatSignedValue,
   formatTimestamp,
   formatValue,
@@ -23,8 +25,10 @@ export function createFormatters(locale: string, timeZone?: string) {
     signedValue: (value: number) => formatSignedValue(value, locale),
     ratePct: (ratio: number) => formatRatePct(ratio, locale),
     date: (iso: string) => formatDate(iso, locale),
+    dateNumeric: (iso: string) => formatDateNumeric(iso, locale),
     timestamp: (iso: string) => formatTimestamp(iso, locale, timeZone),
     list: (items: Iterable<string>) => formatList(items, locale),
+    region: (code: string) => formatRegion(code, locale),
   };
 }
 

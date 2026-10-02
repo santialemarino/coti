@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { HEX_COLOR } from '@/lib/constants/brand';
+import { HEX_COLOR_DIGITS } from '@/lib/constants/brand';
 import { URL_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { optionalText, rawText, requiredText, type SchemaText } from '@/lib/forms/validators';
 
@@ -21,7 +21,7 @@ export function accountSchema(t: SchemaText = rawText) {
     brandColor: z
       .string()
       .trim()
-      .refine((raw) => raw === '' || HEX_COLOR.test(raw), t.field('brandColor.invalid')),
+      .refine((raw) => raw === '' || HEX_COLOR_DIGITS.test(raw), t.field('brandColor.invalid')),
   });
 }
 

@@ -337,9 +337,9 @@ func TestVerificationService_ChangeOwnEmail_WarnsTheAddressItLeft(t *testing.T) 
 	}
 }
 
-// A recovery link already sitting in the old mailbox would let whoever reads it take the
-// account back, so changing the address retires it.
-func TestVerificationService_ChangeOwnEmail_RetiresOutstandingRecoveryLinks(t *testing.T) {
+// A link already sitting in the old mailbox would let whoever reads it back into the account,
+// so changing the address retires every one of them.
+func TestVerificationService_ChangeOwnEmail_RetiresEveryOutstandingLink(t *testing.T) {
 	t.Parallel()
 	f := newVerificationFixture(t, passwordUser(t))
 
@@ -347,16 +347,30 @@ func TestVerificationService_ChangeOwnEmail_RetiresOutstandingRecoveryLinks(t *t
 		testCurrentPassword, testNewAddress); err != nil {
 		t.Fatalf("ChangeOwnEmail: %v", err)
 	}
-	var retiredResets int
-	for _, link := range f.tokens.invalidated {
-		if link.tokenType == domain.AuthTokenTypePasswordReset && link.userID == testUserID {
-			retiredResets++
+	if len(f.tokens.invalidatedAll) != 1 || f.tokens.invalidatedAll[0] != testUserID {
+		t.Fatalf("links retired for %v, want every link of the caller", f.tokens.invalidatedAll)
+	}
+}
+
+// The link at the new address is not a welcome: the account already exists.
+func TestVerificationService_ChangeOwnEmail_WordsTheLinkForAMovedAddress(t *testing.T) {
+	t.Parallel()
+	f := newVerificationFixture(t, passwordUser(t))
+
+	if err := f.svc.ChangeOwnEmail(context.Background(), testTenant(),
+		testCurrentPassword, testNewAddress); err != nil {
+		t.Fatalf("ChangeOwnEmail: %v", err)
+	}
+	for _, sent := range f.mail.sent {
+		if sent.Event != domain.NotificationEventEmailVerification {
+			continue
 		}
+		if strings.Contains(sent.Paragraphs[0], "registrar") {
+			t.Fatalf("the new address was greeted as a registration: %q", sent.Paragraphs[0])
+		}
+		return
 	}
-	if retiredResets != 1 {
-		t.Fatalf("retired %d recovery links for the caller, want 1 (all: %v)",
-			retiredResets, f.tokens.invalidated)
-	}
+	t.Fatal("no confirmation link was mailed to the new address")
 }
 
 func TestVerificationService_ChangeOwnEmail_RefusesAWrongPassword(t *testing.T) {

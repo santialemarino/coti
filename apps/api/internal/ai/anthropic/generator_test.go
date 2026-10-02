@@ -13,6 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/santialemarino/coti/apps/api/internal/ai"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
@@ -101,6 +104,14 @@ func message(stopReason, text string) string {
 func newGenerator(t *testing.T, srv *httptest.Server, attempts int) *Generator {
 	t.Helper()
 
+	return newMeteredGenerator(t, srv, attempts, nil)
+}
+
+// newMeteredGenerator is newGenerator reporting its calls to recorder.
+func newMeteredGenerator(t *testing.T, srv *httptest.Server, attempts int,
+	recorder domain.AIUsageRecorder) *Generator {
+	t.Helper()
+
 	return NewGenerator(config.AnthropicConfig{
 		APIKey:    "test-key",
 		BaseURL:   srv.URL,
@@ -113,7 +124,7 @@ func newGenerator(t *testing.T, srv *httptest.Server, attempts int) *Generator {
 			Backoff:     time.Microsecond,
 			MaxBackoff:  time.Millisecond,
 		},
-	}, slog.New(slog.DiscardHandler))
+	}, ai.NewMeter(slog.New(slog.DiscardHandler), recorder))
 }
 
 func serve(t *testing.T, replies ...reply) (*httptest.Server, *recorder) {
@@ -505,6 +516,60 @@ func TestGenerator_UsageSumsEveryAttempt(t *testing.T) {
 	if usage.OutputTokens != 84 {
 		t.Fatalf("OutputTokens = %d, want 84", usage.OutputTokens)
 	}
+}
+
+// A generation that never produced a valid answer still spent every attempt, and the ledger is
+// where that spend has to land, since the caller only sees the error.
+func TestGenerator_MetersAFailedCallWithWhatItsAttemptsSpent(t *testing.T) {
+	t.Parallel()
+
+	missesTheSchema := reply{http.StatusOK,
+		message("end_turn", `{"description":"cemento","cantidad":"300"}`)}
+	srv, _ := serve(t, missesTheSchema, missesTheSchema, missesTheSchema)
+	ledger := &usageLedger{}
+	accountID := uuid.New()
+	ctx := domain.WithAIOperation(domain.WithAIAccount(context.Background(),
+		domain.Tenant{AccountID: accountID}), domain.AIOperationRFQExtraction)
+
+	var got extraction
+	if _, err := newMeteredGenerator(t, srv, 3, ledger).Generate(ctx, request(), &got); err == nil {
+		t.Fatal("Generate() = nil, want the schema failure")
+	}
+
+	usage := ledger.only(t)
+	if usage.Succeeded || usage.Attempts != 3 {
+		t.Errorf("usage = %+v, want a failed call of three attempts", usage)
+	}
+	if usage.InputTokens != 360 || usage.OutputTokens != 126 || usage.CacheReadTokens != 300 ||
+		usage.CacheWriteTokens != 180 {
+		t.Errorf("usage = %+v, want every figure summed over the three attempts", usage)
+	}
+	if usage.AccountID != accountID || usage.Operation != domain.AIOperationRFQExtraction ||
+		usage.Provider != "anthropic" || usage.Model != "claude-opus-5" {
+		t.Errorf("usage = %+v, want it attributed to the scope and the model", usage)
+	}
+}
+
+// usageLedger keeps what the generator's meter recorded.
+type usageLedger struct {
+	mu      sync.Mutex
+	entries []domain.AIUsage
+}
+
+func (l *usageLedger) Record(_ context.Context, usage domain.AIUsage) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.entries = append(l.entries, usage)
+}
+
+func (l *usageLedger) only(t *testing.T) domain.AIUsage {
+	t.Helper()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.entries) != 1 {
+		t.Fatalf("recorded %d calls, want exactly 1", len(l.entries))
+	}
+	return l.entries[0]
 }
 
 // The env key is the operational ceiling, so a caller may ask for less but never for more.

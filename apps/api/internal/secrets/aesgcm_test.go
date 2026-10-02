@@ -1,6 +1,7 @@
 package secrets
 
 import (
+	"encoding/base64"
 	"errors"
 	"strings"
 	"testing"
@@ -86,7 +87,7 @@ func TestAESGCM_OpenRefusesWhatItDidNotSeal(t *testing.T) {
 		{name: "no prefix", sealer: sealer, value: strings.TrimPrefix(sealed, "v1.")},
 		{name: "not base64", sealer: sealer, value: "v1.not base64!!"},
 		{name: "shorter than a nonce", sealer: sealer, value: "v1.AAAA"},
-		{name: "tampered", sealer: sealer, value: sealed[:len(sealed)-1] + "A"},
+		{name: "tampered", sealer: sealer, value: tamper(t, sealed)},
 		{name: "another key", sealer: otherSealer, value: sealed},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -95,6 +96,23 @@ func TestAESGCM_OpenRefusesWhatItDidNotSeal(t *testing.T) {
 			}
 		})
 	}
+}
+
+/*
+ * tamper flips a bit of the ciphertext itself, decoding and re-encoding rather than editing the
+ * base64 text. Two things make the textual version wrong: substituting a fixed character is a
+ * no-op whenever the envelope already ends in it, and a trailing character can differ without the
+ * bytes differing at all, because the last one carries fewer than six significant bits. Either way
+ * the envelope opens and the test fails for a reason that has nothing to do with the code.
+ */
+func tamper(t *testing.T, sealed string) string {
+	t.Helper()
+	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(sealed, "v1."))
+	if err != nil {
+		t.Fatalf("decode sealed envelope: %v", err)
+	}
+	raw[len(raw)-1] ^= 0xFF
+	return "v1." + base64.RawURLEncoding.EncodeToString(raw)
 }
 
 func TestAESGCM_WithoutAKeyRefusesEveryCall(t *testing.T) {

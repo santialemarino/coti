@@ -20,6 +20,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/ai"
 	"github.com/santialemarino/coti/apps/api/internal/config"
@@ -115,10 +116,12 @@ func newEnvWithRFQProviders(
 			PasswordMinLength: 8,
 			PasswordResetTTL:  time.Hour,
 			VerificationTTL:   48 * time.Hour,
+			InviteTTL:         168 * time.Hour,
 		},
 		Catalog: config.CatalogConfig{DefaultPageSize: 50, MaxPageSize: 200},
 		RFQ: config.RFQConfig{
 			MaxTextCharacters: 20000, MaxItems: 200, PipelineTimeout: 25 * time.Second,
+			InlinePipelineTimeout: 25 * time.Second,
 		},
 		Branch:  config.BranchConfig{DefaultExpiryDays: 7},
 		Channel: config.ChannelConfig{EncryptionKey: testChannelKey},
@@ -132,7 +135,8 @@ func newEnvWithRFQProviders(
 			MaxFileSize:     10 * 1024 * 1024,
 			SignedURLExpiry: 15 * time.Minute,
 		},
-		Web: config.WebConfig{BackofficeURL: "https://backoffice.test"},
+		Web: config.WebConfig{BackofficeURL: "https://backoffice.test",
+			WebAppURL: "https://quotes.test"},
 		// Off for the suite at large, so an unrelated test cannot trip an allowance. The two
 		// that exercise it build their own env.
 		RateLimit: config.RateLimitConfig{Enabled: false},
@@ -160,7 +164,6 @@ func newEnvWithRFQProviders(
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
 	authService := services.NewAuthService(db, userRepo, branchRepo,
 		refreshTokenRepo, tokenService, cfg.Auth, nil)
-	userService := services.NewUserService(db, userRepo, userBranchRepo, branchRepo, cfg.Auth)
 	mailer := &captureMailer{}
 	mailService := services.NewMailService(db, mailer, repository.NewNotificationRepository(),
 		accountRepo, nil)
@@ -170,9 +173,12 @@ func newEnvWithRFQProviders(
 		refreshTokenRepo, mailService, authService, quiet, cfg.Auth, cfg.Web, nil)
 	verificationService := services.NewVerificationService(db, userRepo, authTokenRepo,
 		mailService, quiet, cfg.Auth, cfg.Web, nil)
+	userService := services.NewUserService(db, userRepo, userBranchRepo, branchRepo, authTokenRepo,
+		mailService, verificationService, quiet, cfg.Auth, cfg.Web, cfg.Mail.Delivers(), nil)
 	productRepo := repository.NewProductRepository()
 	productService := services.NewProductService(db, productRepo,
-		repository.NewProductSynonymRepository(), repository.NewProductAlternativeRepository(), cfg.Catalog)
+		repository.NewProductSynonymRepository(), repository.NewProductAlternativeRepository(),
+		repository.NewBranchProductRepository(), repository.NewProductPriceRepository(), cfg.Catalog)
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo,
 		repository.NewBranchProductRepository(), repository.NewProductPriceRepository(), nil)
 	onboardingRepo := repository.NewOnboardingRepository()
@@ -184,15 +190,23 @@ func newEnvWithRFQProviders(
 	}
 	catalogSearchService := services.NewCatalogSearchService(db, productRepo, embedder, cfg.Catalog)
 	quoteRepo := repository.NewQuoteRepository()
+	rfqRepo := repository.NewRFQRepository()
+	quoteSendRepo := repository.NewQuoteSendRepository()
+	clientRepo := repository.NewClientRepository()
+	tagRepo := repository.NewTagRepository()
 	extractor := providers.extractor
 	if extractor == nil {
 		extractor = ai.NewRFQExtractor(ai.DisabledGenerator{}, cfg.RFQ.MaxItems)
 	}
-	rfqService := services.NewRFQService(db, repository.NewRFQRepository(), quoteRepo,
-		repository.NewQuoteAIGenerationRepository(), channelRepo, extractor,
+	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo,
+		quoteSendRepo, repository.NewQuoteAIGenerationRepository(),
+		channelRepo, repository.NewUserRepository(),
+		extractor,
 		services.NewCatalogMatchService(catalogSearchService, cfg.Catalog), quiet, cfg.RFQ)
 	quoteService := services.NewQuoteService(db, quoteRepo,
 		repository.NewProductPriceRepository(), quiet)
+	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
+		quoteSendRepo)
 	channelSealer, err := secrets.NewAESGCM(cfg.Channel.EncryptionKey)
 	if err != nil {
 		t.Fatalf("NewAESGCM() = %v, want no error", err)
@@ -213,24 +227,32 @@ func newEnvWithRFQProviders(
 		Enabled: cfg.RateLimit.Enabled,
 	})
 
+	highConfidence := decimal.NewFromInt(int64(matchConfig().MatchHighConfidencePercent)).
+		Div(decimal.NewFromInt(100))
 	router := deliveryhttp.NewRouter(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)),
 		deliveryhttp.Handlers{
-			Health:        handler.NewHealthHandler(db),
-			Auth:          handler.NewAuthHandler(authService),
-			Password:      handler.NewPasswordHandler(passwordService, mailTargetLimiter),
-			Verification:  handler.NewVerificationHandler(verificationService, mailTargetLimiter),
-			User:          handler.NewUserHandler(userService),
-			Branch:        handler.NewBranchHandler(services.NewBranchService(db, branchRepo, channelRepo, cfg.Branch.DefaultExpiryDays)),
+			Health:       handler.NewHealthHandler(db),
+			Auth:         handler.NewAuthHandler(authService),
+			Password:     handler.NewPasswordHandler(passwordService, mailTargetLimiter),
+			Verification: handler.NewVerificationHandler(verificationService, mailTargetLimiter),
+			User: handler.NewUserHandler(userService, handler.SessionPolicy{
+				RequireVerifiedEmail: cfg.Auth.RequireVerifiedEmail,
+				MailDelivers:         cfg.Mail.Delivers(),
+			}),
+			Branch: handler.NewBranchHandler(services.NewBranchService(db, branchRepo, channelRepo,
+				repository.NewBranchProductRepository(), cfg.Branch.DefaultExpiryDays)),
+			Rfq:           handler.NewRfqHandler(rfqService, highConfidence),
 			Channel:       handler.NewChannelHandler(channelService),
-			Product:       handler.NewProductHandler(productService),
+			Product:       handler.NewProductHandler(productService, cfg.Storage.MaxFileSize),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
-			RFQ:           handler.NewRFQHandler(rfqService),
+			RFQ:           handler.NewRFQHandler(rfqService, cfg.Storage.MaxFileSize, highConfidence),
 			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
 			File:          handler.NewFileHandler(objectStorage.Local),
-			Quote:         handler.NewQuoteHandler(quoteService),
+			Quote:         handler.NewQuoteHandler(quoteService, nil, nil, highConfidence),
+			Client:        handler.NewClientHandler(clientService),
 			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
 				branchRepo, channelRepo, userRepo, onboardingRepo, authService, verificationService, quiet,
-				cfg.Auth, cfg.Branch)),
+				cfg.Auth, cfg.Branch).WithDefaultTags(tagRepo)),
 			Onboarding: handler.NewOnboardingHandler(onboardingService),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
@@ -268,16 +290,59 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 	}
 
 	t.Cleanup(func() {
+		// Children before parents, mirroring the migrations' drop order. quote_item has no
+		// quote_id column: lines hang off quote_version. quote.current_version_id keeps a circular
+		// link into quote_version, so it is lifted before the versions go.
 		for _, stmt := range []string{
+			`DELETE FROM ai_usage WHERE account_id = $1`,
+			`DELETE FROM quote_correction_memory_source WHERE account_id = $1`,
+			`DELETE FROM quote_correction_memory WHERE account_id = $1`,
+			`DELETE FROM quote_quality_difference WHERE account_id = $1`,
+			`DELETE FROM quote_quality_evaluation WHERE account_id = $1`,
+			`DELETE FROM quote_ai_generation_item WHERE account_id = $1`,
+			`DELETE FROM quote_ai_generation WHERE account_id = $1`,
+			`DELETE FROM quote_discount_item WHERE account_id = $1`,
+			`DELETE FROM quote_discount WHERE account_id = $1`,
+			`DELETE FROM handler_decision WHERE account_id = $1`,
+			`DELETE FROM quote_message WHERE account_id = $1`,
+			`DELETE FROM message_batch WHERE account_id = $1`,
+			`DELETE FROM client_action WHERE account_id = $1`,
+			`DELETE FROM quote_send WHERE account_id = $1`,
+			`DELETE FROM quote_representation WHERE account_id = $1`,
+			`DELETE FROM quote_status_change WHERE account_id = $1`,
+			`DELETE FROM notification WHERE account_id = $1`,
+			`DELETE FROM promotion_tier WHERE account_id = $1`,
+			`DELETE FROM promotion_condition_item WHERE account_id = $1`,
+			`DELETE FROM promotion WHERE account_id = $1`,
+			`DELETE FROM quote_item_alternative WHERE account_id = $1`,
+			`DELETE FROM quote_item WHERE version_id IN (SELECT id FROM quote_version WHERE account_id = $1)`,
+			`UPDATE quote SET current_version_id = NULL WHERE account_id = $1`,
+			`DELETE FROM quote_version WHERE quote_id IN (SELECT id FROM quote WHERE account_id = $1)`,
+			`DELETE FROM quote WHERE account_id = $1`,
+			`DELETE FROM rfq_status_change WHERE account_id = $1`,
+			`DELETE FROM rfq_attachment WHERE account_id = $1`,
+			`DELETE FROM rfq WHERE account_id = $1`,
 			`DELETE FROM onboarding_step_progress WHERE account_id = $1`,
 			`DELETE FROM account_onboarding WHERE account_id = $1`,
-			`DELETE FROM user_branch WHERE account_id = $1`,
-			`DELETE FROM auth_token WHERE account_id = $1`,
-			`DELETE FROM notification WHERE account_id = $1`,
+			`DELETE FROM branch_combo WHERE account_id = $1`,
+			`DELETE FROM combo_item WHERE account_id = $1`,
+			`DELETE FROM combo WHERE account_id = $1`,
+			`DELETE FROM client_tag WHERE account_id = $1`,
+			`DELETE FROM tag WHERE account_id = $1`,
+			`DELETE FROM client WHERE account_id = $1`,
+			`DELETE FROM product_price WHERE account_id = $1`,
+			`DELETE FROM product_synonym WHERE account_id = $1`,
+			`DELETE FROM product_alternative WHERE account_id = $1`,
+			`DELETE FROM branch_product WHERE account_id = $1`,
+			`DELETE FROM product WHERE account_id = $1`,
 			`DELETE FROM refresh_token WHERE account_id = $1`,
+			`DELETE FROM auth_token WHERE account_id = $1`,
+			`DELETE FROM user_branch WHERE account_id = $1`,
 			`DELETE FROM app_user WHERE account_id = $1`,
 			`DELETE FROM channel WHERE account_id = $1`,
+			`DELETE FROM client WHERE account_id = $1`,
 			`DELETE FROM branch WHERE account_id = $1`,
+			`DELETE FROM quote_number_counter WHERE account_id = $1`,
 			`DELETE FROM account WHERE id = $1`,
 		} {
 			e.mustCleanup(t, stmt, accountID)
@@ -410,6 +475,80 @@ func TestUsers_SellerIsForbidden(t *testing.T) {
 				t.Errorf("status = %d, want %d; body = %s", rec.Code, http.StatusForbidden, rec.Body)
 			}
 		})
+	}
+}
+
+type sellerRow struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+// The sellers picklist is not admin-only: it feeds the manual RFQ screen, where any caller
+// who can create an order names who carries it. It narrows to the active branch and to active
+// sellers, so nobody is offered a seller their branch cannot use.
+func TestUsers_ListSellersNarrowsByActiveBranch(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchA := e.seedAccount(t, "Corralón A")
+	branchB := e.seedBranch(t, accountID, "Sucursal B")
+	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	sellerA := e.seedUser(t, accountID, domain.UserRoleSeller)
+	sellerB := e.seedUser(t, accountID, domain.UserRoleSeller)
+	gone := e.seedUser(t, accountID, domain.UserRoleSeller)
+
+	for _, a := range []struct {
+		user   uuid.UUID
+		branch uuid.UUID
+	}{{sellerA.ID, branchA}, {sellerB.ID, branchB}, {gone.ID, branchA}} {
+		if _, err := e.db.CrossAccount().Exec(context.Background(),
+			`INSERT INTO user_branch (account_id, user_id, branch_id) VALUES ($1, $2, $3)`,
+			accountID, a.user, a.branch); err != nil {
+			t.Fatalf("assign %s to a branch: %v", a.user, err)
+		}
+	}
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`UPDATE app_user SET is_active = FALSE WHERE id = $1`, gone.ID); err != nil {
+		t.Fatalf("deactivate seller: %v", err)
+	}
+
+	list := func(t *testing.T, token, branch string) []sellerRow {
+		t.Helper()
+		rec := e.do(t, request{method: http.MethodGet, path: "/v1/sellers", token: token, branch: branch})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET /v1/sellers: status = %d, want %d; body = %s", rec.Code, http.StatusOK, rec.Body)
+		}
+		var body struct {
+			Items []sellerRow `json:"items"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("decode /v1/sellers: %v", err)
+		}
+		return body.Items
+	}
+	ids := func(rows []sellerRow) map[uuid.UUID]bool {
+		out := map[uuid.UUID]bool{}
+		for _, r := range rows {
+			out[r.ID] = true
+		}
+		return out
+	}
+
+	adminToken := e.tokenFor(t, admin)
+	if got := ids(list(t, adminToken, "")); !got[sellerA.ID] || !got[sellerB.ID] || got[gone.ID] || got[admin.ID] {
+		t.Errorf("admin's whole-account picklist = %v, want sellers A and B only", got)
+	}
+	if got := ids(list(t, adminToken, branchA.String())); !got[sellerA.ID] || got[sellerB.ID] {
+		t.Errorf("admin's branch-A picklist = %v, want only seller A", got)
+	}
+	if got := ids(list(t, adminToken, branchB.String())); !got[sellerB.ID] || got[sellerA.ID] {
+		t.Errorf("admin's branch-B picklist = %v, want only seller B", got)
+	}
+
+	sellerAToken := e.tokenFor(t, sellerA)
+	if got := ids(list(t, sellerAToken, "")); !got[sellerA.ID] || got[sellerB.ID] || got[admin.ID] {
+		t.Errorf("seller A's own picklist = %v, want only seller A", got)
+	}
+	if got := ids(list(t, sellerAToken, branchA.String())); !got[sellerA.ID] || got[sellerB.ID] {
+		t.Errorf("seller A's explicit branch-A picklist = %v, want only seller A", got)
 	}
 }
 

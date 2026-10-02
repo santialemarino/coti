@@ -21,21 +21,30 @@ interface TeamStepProps {
   branches: Branch[];
   currentUserId: string;
   users: AccountUser[];
+  /* False while mail only reaches the log, when the only way to add someone is a password. */
+  mailDelivery: boolean;
   onCreate: (values: UserValues) => Promise<OnboardingActionResult>;
 }
 
-export function TeamStep({ branches, currentUserId, users, onCreate }: TeamStepProps) {
+export function TeamStep({
+  branches,
+  currentUserId,
+  users,
+  mailDelivery,
+  onCreate,
+}: TeamStepProps) {
   const router = useRouter();
   const t = useTranslations('onboarding.team');
   const tCommon = useTranslations('common');
   const reduced = useReducedMotion();
   const [open, setOpen] = useState(false);
+  const self = users.find((user) => user.id === currentUserId);
   const teammates = users.filter((user) => user.id !== currentUserId && user.isActive);
 
   async function onSubmit(values: UserValues): Promise<OnboardingActionResult> {
     const result = await onCreate(values);
     if (result.ok) {
-      toast.success(t('created', { name: values.name }));
+      toast.success(t(values.access === 'INVITE' ? 'invited' : 'created', { name: values.name }));
       setOpen(false);
       router.refresh();
     }
@@ -44,7 +53,12 @@ export function TeamStep({ branches, currentUserId, users, onCreate }: TeamStepP
 
   return (
     <div className="flex flex-col gap-y-6">
-      <Callout tone="info">{t('passwordNotice')}</Callout>
+      <Callout tone="info">{mailDelivery ? t('inviteNotice') : t('passwordNotice')}</Callout>
+
+      {/* The admin is a user too; showing them first makes "usuarios" mean everyone, them included. */}
+      {self ? (
+        <UserCard name={self.name} detail={t('you')} role={tCommon(`roles.${self.role}`)} />
+      ) : null}
 
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
@@ -57,23 +71,12 @@ export function TeamStep({ branches, currentUserId, users, onCreate }: TeamStepP
           {teammates.length > 0 ? (
             <div className="grid gap-3 md:grid-cols-2">
               {teammates.map((user) => (
-                <Card
+                <UserCard
                   key={user.id}
-                  className="flex-row items-center justify-between p-4 gap-y-0 gap-x-3 rounded-lg shadow-e1"
-                >
-                  <div className="flex min-w-0 items-center gap-x-3">
-                    <span className="flex size-9 shrink-0 items-center justify-center bg-accent rounded-full text-accent-foreground">
-                      <UsersIcon aria-hidden="true" className="size-4" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="truncate text-paragraph-sm-medium">{user.name}</p>
-                      <p className="truncate text-paragraph-xs text-foreground-muted">
-                        {user.email}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge tone="neutral">{tCommon(`roles.${user.role}`)}</Badge>
-                </Card>
+                  name={user.name}
+                  detail={user.email}
+                  role={tCommon(`roles.${user.role}`)}
+                />
               ))}
             </div>
           ) : (
@@ -106,8 +109,26 @@ export function TeamStep({ branches, currentUserId, users, onCreate }: TeamStepP
         assigned={NO_BRANCHES}
         branches={branches}
         isSelf={false}
+        mailDelivery={mailDelivery}
         onSubmit={onSubmit}
       />
     </div>
+  );
+}
+
+function UserCard({ name, detail, role }: { name: string; detail: string; role: string }) {
+  return (
+    <Card className="flex-row items-center justify-between p-4 gap-y-0 gap-x-3 rounded-lg shadow-e1">
+      <div className="flex min-w-0 items-center gap-x-3">
+        <span className="flex size-9 shrink-0 items-center justify-center bg-accent rounded-full text-accent-foreground">
+          <UsersIcon aria-hidden="true" className="size-4" />
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-paragraph-sm-medium">{name}</p>
+          <p className="truncate text-paragraph-xs text-foreground-muted">{detail}</p>
+        </div>
+      </div>
+      <Badge tone="neutral">{role}</Badge>
+    </Card>
   );
 }

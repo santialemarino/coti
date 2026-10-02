@@ -12,7 +12,10 @@ import (
 type RFQStatus string
 
 const (
-	RFQStatusReceived  RFQStatus = "RECEIVED"
+	RFQStatusReceived RFQStatus = "RECEIVED"
+	// RFQStatusFailed is terminal and never carries a quote: reading the order never finished,
+	// so the seller works it by hand instead of waiting on a pipeline that already gave up.
+	RFQStatusFailed    RFQStatus = "FAILED"
 	RFQStatusGenerated RFQStatus = "GENERATED"
 )
 
@@ -37,6 +40,7 @@ type RFQ struct {
 	AccountID   uuid.UUID
 	BranchID    uuid.UUID
 	ClientID    *uuid.UUID
+	ClientLabel *string
 	ChannelID   uuid.UUID
 	RawText     *string
 	Status      RFQStatus
@@ -44,7 +48,6 @@ type RFQ struct {
 	ReceivedAt  time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
-	ClientLabel *string
 }
 
 // NewRFQ is the input for creating an RFQ source record.
@@ -56,6 +59,59 @@ type NewRFQ struct {
 	Status      RFQStatus
 	WorkType    *string
 	ClientLabel *string
+}
+
+// NewRfq is the input for a manual entry: free text, structured lines, or both. At
+// least one must be present, enforced by the service.
+type NewRfq struct {
+	RawText     *string
+	WorkType    *string
+	ClientLabel *string
+	SellerID    *uuid.UUID
+	Items       []NewRfqItem
+}
+
+// NewRfqItem is one structured line the seller typed. Quantity is a decimal carried
+// end to end; the price snapshots stay NULL until the pricing step runs.
+type NewRfqItem struct {
+	ProductID            *uuid.UUID // a catalog product the seller picked.
+	RequestedDescription string
+	Quantity             decimal.Decimal // NUMERIC(14,2), greater than zero.
+	Unit                 *string
+}
+
+// RfqCreation is what the manual-entry endpoint persists as one atomic unit: the RFQ
+// born GENERATED, its quote born DRAFT, and version v1 of the quote.
+type RfqCreation struct {
+	Rfq     RFQ
+	Quote   Quote
+	Version QuoteVersion
+}
+
+// RfqListItem is a denormalized projection of rfq + quote + branch + seller for the
+// Backoffice list view. The display status merges rfq.status and quote.current_status
+// into a single timeline the UI can render.
+type RfqListItem struct {
+	ID          uuid.UUID
+	ClientID    *uuid.UUID
+	ClientLabel *string // display name: ficha client name when set, else rfq.client_label.
+	CreatedAt   time.Time
+	Channel     string // lowercase channel_type: whatsapp, email, webapp, manual_entry.
+	SellerID    *uuid.UUID
+	SellerName  string
+	BranchID    uuid.UUID
+	BranchName  string
+	QuoteID     *uuid.UUID // NULL until the RFQ has a quote; the archive endpoints key off it.
+	QuoteNumber *int64
+	ItemCount   int
+	// ReviewCount is the current version's lines matching did not settle, which the seller must.
+	ReviewCount   int
+	Total         *string // decimal string from quote_version.total; NULL when no priced version.
+	Status        string  // merged: rfq.status when no quote, otherwise quote.current_status.
+	ArchivedAt    *time.Time
+	NeedsFollowup bool
+	// FollowupFlaggedAt is when the quote was flagged for follow-up; NULL while it is not.
+	FollowupFlaggedAt *time.Time
 }
 
 // RFQStatusChange records an RFQ lifecycle transition.
@@ -101,6 +157,14 @@ type RFQExtractor interface {
 	Extract(ctx context.Context, raw string) (*RFQExtraction, error)
 }
 
+// RFQContentExtractor reads an order that arrived as a file. A photographed list and a PDF go
+// to the model as they are, so they are blocks rather than text: flattening them first would
+// throw away the layout the model reads a materials table from.
+type RFQContentExtractor interface {
+	ExtractFromContent(ctx context.Context, blocks []Content,
+		examples []RFQInterpretationExample) (*RFQExtraction, error)
+}
+
 // TextRFQDraftInput is one plain-text order to run through the RFQ pipeline.
 type TextRFQDraftInput struct {
 	ChannelID   uuid.UUID
@@ -108,6 +172,22 @@ type TextRFQDraftInput struct {
 	ClientLabel *string
 	RawText     string
 	WorkType    *string
+}
+
+// FileRFQDraftInput is one order that arrived as a file — a photo of a handwritten list, a PDF,
+// a spreadsheet, a voice note — to run through the RFQ pipeline.
+type FileRFQDraftInput struct {
+	ChannelID   uuid.UUID
+	ClientID    *uuid.UUID
+	ClientLabel *string
+	WorkType    *string
+	// Note is what the seller typed alongside the file, and is optional. It reaches the model
+	// as context, never as a replacement for what the file says.
+	Note *string
+	File AttachmentUpload
+	// Filename is the client's own, kept because the transcriber reads its extension to pick
+	// a decoder and the spreadsheet reader to pick a parser.
+	Filename string
 }
 
 // WhatsAppMockRFQInput simulates one inbound WhatsApp text message outside production.
@@ -127,4 +207,26 @@ type TextRFQDraft struct {
 	Items   []QuoteItem
 	// Alternatives are the candidates each flagged line was decided from, keyed by line id.
 	Alternatives map[uuid.UUID][]QuoteItemAlternative
+}
+
+// RfqDetail is the full detail view projection of one RFQ plus its associated
+// quote data, items, and alternatives. This is what the detail endpoint returns.
+type RfqDetail struct {
+	Rfq                RfqListItem
+	Quote              *Quote
+	Version            *QuoteVersion
+	Items              []QuoteItem
+	Alternatives       map[uuid.UUID][]QuoteItemAlternative
+	RFQStatusChanges   []RFQStatusChange
+	QuoteStatusChanges []QuoteStatusChange
+	Deliveries         []QuoteSend
+	// Discounts are the current version's discount applications; empty when the version
+	// has none or the discount surface is not wired.
+	Discounts []QuoteDiscount
+	// ChangesRequested is the frozen-vs-draft comparison for a CHANGE_REQUESTED quote;
+	// nil until a frozen predecessor exists.
+	ChangesRequested *ChangeRequestDiff
+	// ClientActions are the customer responses recorded against the quote's versions,
+	// oldest first; empty when none were recorded or the surface is not wired.
+	ClientActions []ClientAction
 }

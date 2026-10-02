@@ -28,7 +28,7 @@ An environment can run the language model with the transcriber off.
 | Transcription               | `AI_TRANSCRIPTION_PROVIDER` | `disabled`, `openai`    |
 
 Adding a fourth provider is a new subpackage plus one `case` in the composition root. The retry
-policy, the usage log and the error wrapping are provider-agnostic and already shared, so nothing
+policy, the usage meter and the error wrapping are provider-agnostic and already shared, so nothing
 in `domain`, `services` or another adapter changes.
 
 ### Every capability arrives disabled
@@ -109,7 +109,7 @@ per connection rather than once at startup: the pool opens them on its own sched
 What is done with the vectors — the catalog backfill, the hybrid search and the index it reads —
 is in `catalog.md`.
 
-## Retries, timeouts and the usage log
+## Retries and timeouts
 
 One policy, shared by every adapter, in `apps/api/internal/ai/retry.go`.
 
@@ -127,17 +127,15 @@ One policy, shared by every adapter, in `apps/api/internal/ai/retry.go`.
   so adding one is one edit rather than one per provider.
 - **Timeouts are per attempt**, not per chain: `AI_LLM_TIMEOUT_SECONDS` and its two siblings cap one
   call, and `AI_MAX_ATTEMPTS` bounds how many there are. **The whole chain can therefore run far
-  longer than `SERVER_WRITE_TIMEOUT_SECONDS` allows a response** — 60s × 3 for one generation
-  against a 30s server budget. The first AI-backed route cannot simply wait for a call inline: it
-  belongs off the request path, or that budget has to be raised deliberately for it.
+  longer than `SERVER_WRITE_TIMEOUT_SECONDS` allows a response** — 150s × 3 for one generation
+  against a 90s server budget. A route that waits for a call inline therefore bounds itself:
+  `RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS` (75s) leaves room for one short generation and no more, so
+  a retry there helps a fast failure only. The per-attempt caps are left long because the scheduled
+  sweep uses the same providers with no response to hold open. Off the request path is the wider
+  answer, and since the attachment sweep it is an available one.
 
-Every call is logged once, on success and on failure alike, with provider, model, operation,
-attempt count, elapsed time and token counts. **The counts are summed over every attempt**, because
-each attempt submitted the prompt and was charged for it — a call that succeeds on its third try
-cost three prompts, and one that failed after three still cost something. Both cache figures are
-recorded separately: writing the instruction prefix costs more than an ordinary input token and
-reading it costs a fraction, and neither is included in the input count, so total input is the
-three added together. Transcription reports no token count, and logs zero rather than a guess.
+What every call cost is metered once, on success and on failure alike — see
+[the next section](#what-every-call-costs).
 
 Failures are told apart by whether retrying could ever help:
 
@@ -152,6 +150,47 @@ The middle row is the one worth naming: a malformed schema, a wrong model or a b
 fault, and reporting it as an outage would point monitoring at a healthy provider and invite a
 client to retry a request that can never succeed.
 
+## What every call costs
+
+Every adapter reports each call to one `ai.Meter`, which the binder builds for all three, so no
+call can reach a provider unmetered. The meter writes the call to the log and appends it to
+`ai_usage`, the append-only ledger of AI spend: one row per call, per account.
+
+- **The counts are summed over every attempt**, because each attempt submitted the prompt and was
+  charged for it: a call that succeeds on its third try cost three prompts, and one that failed
+  after three still cost something, so a failed call is a row too, with `succeeded = false`.
+- **Both cache figures are kept apart.** Writing the instruction prefix costs more than an ordinary
+  input token and reading it costs a fraction, and neither is in `input_tokens`, so total input is
+  the three added together.
+- **Transcription is billed by duration**, and `audio_seconds` is what the provider reported for
+  it. A model billed by tokens fills the token columns instead.
+- **The ledger holds tokens, not money.** Tokens are what was consumed; a price is a rate that
+  changes, so cost is computed when the ledger is read.
+
+**Attribution travels in the context.** The service that holds the tenant sets the account and
+branch (`domain.WithAIAccount`), the pipeline adds the order once it exists
+(`domain.WithAIRFQ`), and the component nearest the call names the work (`domain.WithAIOperation`:
+the extractor, the reviewer, the search, the backfill). Nothing is passed by hand between stages,
+and no port signature carries it. Two consequences to know:
+
+- **One provider call serves one account.** A job that sweeps several accounts calls the provider
+  once per account, as `quote-correction-learning` does, or its spend could not be attributed.
+- **`rfq_id` is null** for spend that serves the account rather than one order (a catalog
+  backfill, learning a seller's correction) and for a recording transcribed while its upload is
+  read, before the order exists.
+- **A call that never reached the provider is not spend.** One whose context was already done
+  made no attempt, so it is logged and not recorded.
+
+**Recording never fails the call it describes.** The spend already happened, so each row is
+written in a transaction of its own, detached from the caller's cancellation and bounded by
+`AI_USAGE_WRITE_TIMEOUT_SECONDS`. A pipeline that rolls back still records what it spent, and a row
+that cannot be written is logged as an error next to the call's own log line, which carries the
+same figures. A call with no account or no operation is refused the same way: loudly, because it
+means a call site forgot to say whom it spends for.
+
+`quote_ai_generation` keeps its own token counts: those are the provenance of one AI proposal,
+while `ai_usage` is the spend, extraction included.
+
 ## Feature ports sit on top
 
 A feature port is the domain's vocabulary for something the engine does, and its adapter owns the
@@ -160,7 +199,11 @@ provider SDK, so it works behind whichever one is bound and its tests need no pr
 
 `domain.RFQExtractor` is the first of them: `ai.NewRFQExtractor` builds the extraction prompt and its
 forced schema, and `cmd/api` hands it the bound generator. See
-[rfq-pipeline.md](rfq-pipeline.md) for what it asks for and why.
+[rfq-pipeline.md](rfq-pipeline.md) for what it asks for and why. `domain.CatalogMatchReviewer` is
+the second: `ai.NewCatalogMatchReviewer` settles the lines catalog matching flagged, choosing only
+among the candidates it was shown. It is off by default, behind a global switch — see
+[catalog.md](catalog.md#the-review-trade-knowledge-the-catalog-text-does-not-carry) and
+[feature-switches.md](feature-switches.md).
 
 One thing to know before writing a schema for one: **structured outputs do not enforce
 `minLength`, `maxLength`, `minItems` or `maxItems`**. Length and size are the service's to check, and

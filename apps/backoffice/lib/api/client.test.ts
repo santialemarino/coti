@@ -64,6 +64,17 @@ describe('apiRequest bodies', () => {
 });
 
 describe('apiRequest error vocabulary', () => {
+  it.each([
+    ['DELIVERY_CHANNEL', 422],
+    ['DELIVERY_UNAVAILABLE', 503],
+  ])('preserves quote delivery code %s', async (code, status) => {
+    vi.mocked(fetch).mockImplementation(responds(JSON.stringify({ code }), status));
+    await expect(apiRequest({ path: '/v1/quotes/x/sends' })).rejects.toMatchObject({
+      code,
+      status,
+    });
+  });
+
   /*
    * The envelope's code is the contract, and it is what tells apart two rules answering one
    * status: a 422 is the password policy on one route and the last active branch on another.

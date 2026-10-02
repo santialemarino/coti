@@ -7,6 +7,7 @@
 const numberFormats = new Map<string, Intl.NumberFormat>();
 const dateTimeFormats = new Map<string, Intl.DateTimeFormat>();
 const listFormats = new Map<string, Intl.ListFormat>();
+const displayNames = new Map<string, Intl.DisplayNames>();
 
 // `JSON.stringify` drops `undefined`-valued options, so an ambient-zone formatter shares a key
 // with one built without the option — correct, they behave identically.
@@ -46,6 +47,19 @@ export function listFormat(locale: string, options: Intl.ListFormatOptions = {})
   if (!formatter) {
     formatter = new Intl.ListFormat(locale, options);
     listFormats.set(key, formatter);
+  }
+  return formatter;
+}
+
+export function displayNamesFormat(
+  locale: string,
+  options: Intl.DisplayNamesOptions,
+): Intl.DisplayNames {
+  const key = cacheKey(locale, options);
+  let formatter = displayNames.get(key);
+  if (!formatter) {
+    formatter = new Intl.DisplayNames(locale, options);
+    displayNames.set(key, formatter);
   }
   return formatter;
 }

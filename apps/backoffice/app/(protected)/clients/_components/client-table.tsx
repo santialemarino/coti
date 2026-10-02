@@ -1,0 +1,149 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import Link from 'next/link';
+import { ArrowUpRightIcon, SearchXIcon, UsersIcon } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+
+import {
+  Badge,
+  Card,
+  CardHeader,
+  CardTitle,
+  InlineLink,
+  SearchInput,
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableEmptyRow,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@repo/ui/components';
+import { cn } from '@repo/ui/lib';
+import { ROUTES } from '@/config/routes';
+import { clientDisplayName, type ClientSummary } from '@/lib/api/client-profiles';
+import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
+import { useFormatters } from '@/lib/i18n/formatters';
+
+interface ClientTableProps {
+  clients: ClientSummary[];
+}
+
+export function ClientTable({ clients }: ClientTableProps) {
+  const t = useTranslations('clients');
+  const tCommon = useTranslations('common');
+  const fmt = useFormatters();
+  const [search, setSearch] = useState('');
+  const filtered = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase('es-AR');
+    if (!query) return clients;
+    return clients.filter((client) =>
+      [client.name, client.phone, client.email, ...client.tags.map((tag) => tag.name)]
+        .filter(Boolean)
+        .some((value) => value?.toLocaleLowerCase('es-AR').includes(query)),
+    );
+  }, [clients, search]);
+
+  return (
+    <Card className="gap-y-0 overflow-hidden py-0">
+      <CardHeader className="flex-row items-center justify-between py-6">
+        <div className="flex items-center gap-x-3">
+          <CardTitle className="text-heading-3">{t('table.title')}</CardTitle>
+          <Badge tone="neutral">{t('total', { total: clients.length })}</Badge>
+        </div>
+      </CardHeader>
+
+      <div className="border-y border-border px-6 py-5">
+        <SearchInput
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          onClear={() => setSearch('')}
+          clearLabel={tCommon('form.clearSearch')}
+          placeholder={t('search')}
+          maxLength={TEXT_FIELD_MAX_LENGTH}
+          containerClassName="w-full"
+        />
+      </div>
+
+      <Table>
+        <TableCaption className="sr-only">{t('table.caption')}</TableCaption>
+        <TableHeader>
+          <TableRow>
+            <TableHead kind="text">{t('table.client')}</TableHead>
+            <TableHead kind="text">{t('table.contact')}</TableHead>
+            <TableHead kind="text">{t('table.tags')}</TableHead>
+            <TableHead kind="count">{t('table.sales')}</TableHead>
+            <TableHead kind="date">{t('table.lastSale')}</TableHead>
+            <TableHead kind="actionsWide">{t('table.actions')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {filtered.length === 0 ? (
+            <TableEmptyRow
+              colSpan={6}
+              icon={search ? SearchXIcon : UsersIcon}
+              title={t(search ? 'noResults.title' : 'empty.title')}
+              description={t(search ? 'noResults.description' : 'empty.description')}
+            />
+          ) : (
+            filtered.map((client) => (
+              <TableRow key={client.id}>
+                <TableCell>
+                  <div className="flex flex-col gap-y-0.5">
+                    <span className="text-paragraph-sm-medium text-foreground">
+                      {clientDisplayName(client, t('unnamed'))}
+                    </span>
+                    {client.name && (client.email || client.phone) ? (
+                      <span className="text-paragraph-xs text-foreground-subtle">
+                        {client.email ?? client.phone}
+                      </span>
+                    ) : null}
+                  </div>
+                </TableCell>
+                <TableCell className={client.phone ? undefined : 'text-foreground-subtle'}>
+                  {client.phone ?? t('noPhone')}
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1.5">
+                    {client.tags.length ? (
+                      client.tags.map((tag) => (
+                        <Badge key={tag.id} tone="outline" size="sm">
+                          {tag.name}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-paragraph-sm text-foreground-subtle">
+                        {t('tags.none')}
+                      </span>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell kind="count">
+                  {t('salesCount', { total: client.acceptedQuoteCount })}
+                </TableCell>
+                <TableCell
+                  kind="date"
+                  className={cn(!client.lastAcceptedAt && 'text-foreground-subtle')}
+                >
+                  {client.lastAcceptedAt ? fmt.dateNumeric(client.lastAcceptedAt) : t('noSales')}
+                </TableCell>
+                <TableCell kind="actionsWide">
+                  <div className="flex justify-center">
+                    <InlineLink asChild tone="muted">
+                      <Link href={ROUTES.clientDetail(client.id)}>
+                        {t('viewProfile')}
+                        <ArrowUpRightIcon aria-hidden="true" />
+                      </Link>
+                    </InlineLink>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
+    </Card>
+  );
+}

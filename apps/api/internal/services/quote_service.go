@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/google/uuid"
@@ -14,14 +15,20 @@ import (
 
 // quoteRepository is the quote persistence surface the lifecycle needs.
 type quoteRepository interface {
+	quoteVersionCloneRepository
 	GetByID(ctx context.Context, q repository.Querier, accountID, branchID, id uuid.UUID) (*domain.Quote, error)
+	GetByIDForUpdate(ctx context.Context, q repository.Querier, accountID, branchID, id uuid.UUID) (*domain.Quote, error)
 	UpdateStatus(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID, from, to domain.QuoteStatus) (*domain.Quote, error)
 	GetCurrentVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.QuoteVersion, error)
-	UpdateVersionTotal(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, total decimal.Decimal) (*domain.QuoteVersion, error)
-	ListItems(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID) ([]domain.QuoteItem, error)
-	ListAlternativesByItemIDs(ctx context.Context, q repository.Querier, accountID uuid.UUID, itemIDs []uuid.UUID) (map[uuid.UUID][]domain.QuoteItemAlternative, error)
+	UpdateVersionValuation(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
+		total decimal.Decimal, currency string) (*domain.QuoteVersion, error)
+	GetAlternative(ctx context.Context, q repository.Querier, accountID, versionID, itemID, alternativeID uuid.UUID) (*domain.QuoteItemAlternative, error)
 	ApplyPricing(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, pricings []domain.QuoteItemPricing) error
+	ApplyAlternativePricing(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, pricings []domain.QuoteItemAlternativePricing) error
+	UpdateAlternativeApproval(ctx context.Context, q repository.Querier, accountID, versionID, itemID, alternativeID uuid.UUID, approved bool) (*domain.QuoteItemAlternative, error)
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID, previousStatus *domain.QuoteStatus, newStatus domain.QuoteStatus, userID *uuid.UUID) (*domain.QuoteStatusChange, error)
+	Archive(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
+	Unarchive(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
 }
 
 // branchPriceReader is the price-in-force surface valuation needs. One call carries every
@@ -49,7 +56,7 @@ func NewQuoteService(
 }
 
 // AcceptMaterials values a draft quote and moves it to QUOTED for human review. Returns
-// domain.ErrConflict unless the quote is an unarchived DRAFT. See docs/technical/rfq-pipeline.md.
+// domain.ErrConflict unless the quote is an unarchived DRAFT or CHANGE_REQUESTED.
 func (s *QuoteService) AcceptMaterials(
 	ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID,
 ) (*domain.PricedQuote, error) {
@@ -73,6 +80,9 @@ func (s *QuoteService) AcceptMaterials(
 		if err != nil {
 			return err
 		}
+		if version.IsImmutable {
+			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrConflict)
+		}
 		items, err := s.quotes.ListItems(ctx, q, tenant.AccountID, version.ID)
 		if err != nil {
 			return err
@@ -88,7 +98,7 @@ func (s *QuoteService) AcceptMaterials(
 		// The quote's own branch, not the caller's selection: the price a line freezes belongs to
 		// the branch the order arrived at. GetByID has already proved the two are the same.
 		prices, err := s.prices.GetCurrentByProductIDs(ctx, q, tenant.AccountID, quote.BranchID,
-			quoteItemProductIDs(items))
+			quoteProductIDs(items, candidates))
 		if err != nil {
 			return err
 		}
@@ -101,8 +111,17 @@ func (s *QuoteService) AcceptMaterials(
 			valuation.pricings); err != nil {
 			return err
 		}
-		version, err = s.quotes.UpdateVersionTotal(ctx, q, tenant.AccountID, version.ID,
-			valuation.total)
+		alternativePricings, err := valueQuoteAlternatives(candidates, prices, valuation.currency)
+		if err != nil {
+			return err
+		}
+		if err := s.quotes.ApplyAlternativePricing(ctx, q, tenant.AccountID, version.ID,
+			alternativePricings); err != nil {
+			return err
+		}
+		applyAlternativePricing(candidates, alternativePricings)
+		version, err = s.quotes.UpdateVersionValuation(ctx, q, tenant.AccountID, version.ID,
+			valuation.total, valuation.currency)
 		if err != nil {
 			return err
 		}
@@ -149,14 +168,236 @@ func (s *QuoteService) AcceptMaterials(
 	return &priced, nil
 }
 
+// ApproveAlternative records a seller decision on a priced candidate of the current version.
+func (s *QuoteService) ApproveAlternative(
+	ctx context.Context, tenant domain.Tenant, quoteID, itemID, alternativeID uuid.UUID,
+	approved bool,
+) (*domain.QuoteItemAlternative, error) {
+	if err := requireBranch(tenant, "a quote alternative"); err != nil {
+		return nil, err
+	}
+	var result *domain.QuoteItemAlternative
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, err := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if err != nil {
+			return err
+		}
+		if quote.ArchivedAt != nil || quote.CurrentStatus != domain.QuoteStatusQuoted {
+			return domain.ErrConflict
+		}
+		version, err := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if err != nil {
+			return err
+		}
+		if version.IsImmutable {
+			return domain.ErrConflict
+		}
+		alternative, err := s.quotes.GetAlternative(ctx, q, tenant.AccountID, version.ID,
+			itemID, alternativeID)
+		if err != nil {
+			return err
+		}
+		if approved && (!alternative.PriceSnapshot.Valid || alternative.CanonicalName == nil) {
+			return fmt.Errorf("%w: an approved alternative needs a frozen price and catalog identity",
+				domain.ErrInvalidInput)
+		}
+		result, err = s.quotes.UpdateAlternativeApproval(ctx, q, tenant.AccountID, version.ID,
+			itemID, alternativeID, approved)
+		return err
+	})
+	return result, err
+}
+
 // requireMaterialsPendingAcceptance is the state×intention check, run before anything is written.
 // The two refusals share a status, so each carries the code that tells them apart.
 func requireMaterialsPendingAcceptance(quote domain.Quote) error {
 	if quote.ArchivedAt != nil {
 		return domain.WithCode(domain.CodeQuoteArchived, domain.ErrConflict)
 	}
-	if quote.CurrentStatus != domain.QuoteStatusDraft {
+	if quote.CurrentStatus != domain.QuoteStatusDraft &&
+		quote.CurrentStatus != domain.QuoteStatusChangeRequested {
 		return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrConflict)
 	}
 	return nil
+}
+
+// sellerTransitions is the seller-action surface of the state machine, per docs/internal/domain/estados.md.
+// It names seller-only status changes; a change request needs a message and a new draft in the
+// customer action transaction before AcceptMaterials can price it.
+var sellerTransitions = map[domain.QuoteStatus]map[domain.QuoteStatus]struct{}{
+	domain.QuoteStatusQuoted: {
+		domain.QuoteStatusSent: {},
+	},
+	domain.QuoteStatusSent: {
+		domain.QuoteStatusAccepted: {},
+		domain.QuoteStatusRejected: {},
+	},
+}
+
+// Reactivate reopens an accepted or rejected quote. RESEND keeps the frozen version and returns
+// to QUOTED; EDIT creates a repriced mutable version and returns to CHANGE_REQUESTED.
+func (s *QuoteService) Reactivate(
+	ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID, mode domain.QuoteReactivationMode,
+) (*domain.Quote, error) {
+	if err := requireBranch(tenant, "a quote reactivation"); err != nil {
+		return nil, err
+	}
+	if mode != domain.QuoteReactivationResend && mode != domain.QuoteReactivationEdit {
+		return nil, fmt.Errorf("%w: unknown quote reactivation mode %q", domain.ErrInvalidInput,
+			mode)
+	}
+
+	var moved *domain.Quote
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, err := s.quotes.GetByIDForUpdate(ctx, q, tenant.AccountID, tenant.BranchID,
+			quoteID)
+		if err != nil {
+			return err
+		}
+		if quote.ArchivedAt != nil {
+			return domain.WithCode(domain.CodeQuoteArchived, domain.ErrConflict)
+		}
+		if quote.CurrentStatus != domain.QuoteStatusAccepted &&
+			quote.CurrentStatus != domain.QuoteStatusRejected {
+			return domain.WithCode(domain.CodeQuoteNotReactivatable, domain.ErrConflict)
+		}
+
+		version, err := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, quote.BranchID,
+			quote.ID)
+		if err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				return domain.WithCode(domain.CodeQuoteNotReactivatable, domain.ErrConflict)
+			}
+			return err
+		}
+		if !version.IsImmutable {
+			return domain.WithCode(domain.CodeQuoteNotReactivatable, domain.ErrConflict)
+		}
+
+		target := domain.QuoteStatusQuoted
+		if mode == domain.QuoteReactivationEdit {
+			authorID := tenant.UserID
+			if _, err := cloneQuoteVersionForEditing(ctx, q, s.quotes, s.prices,
+				tenant.AccountID, quote.BranchID, quote.ID, *version, &authorID, nil); err != nil {
+				return err
+			}
+			target = domain.QuoteStatusChangeRequested
+		}
+
+		previousStatus := quote.CurrentStatus
+		moved, err = s.quotes.UpdateStatus(ctx, q, tenant.AccountID, quote.BranchID, quote.ID,
+			previousStatus, target)
+		if err != nil {
+			if errors.Is(err, domain.ErrConflict) {
+				return domain.WithCode(domain.CodeQuoteNotReactivatable, err)
+			}
+			return err
+		}
+		if _, err := s.quotes.AppendStatusChange(ctx, q, tenant.AccountID, quote.ID,
+			&previousStatus, target, &tenant.UserID); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return moved, nil
+}
+
+// Transition moves a quote to the given status along a seller-action edge of the state machine. It
+// refuses an already archived quote or one whose current status does not allow the move: the
+// WriteUpdate predicate makes that refusal atomic, so a status read just before is not enough.
+// Every step records the transition history.
+func (s *QuoteService) Transition(
+	ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID, to domain.QuoteStatus,
+) (*domain.Quote, error) {
+	if err := requireBranch(tenant, "a quote transition"); err != nil {
+		return nil, err
+	}
+
+	var moved *domain.Quote
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, err := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if err != nil {
+			return err
+		}
+		if quote.ArchivedAt != nil {
+			return domain.WithCode(domain.CodeQuoteArchived, domain.ErrConflict)
+		}
+		targets, ok := sellerTransitions[quote.CurrentStatus]
+		if !ok {
+			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrConflict)
+		}
+		if _, ok := targets[to]; !ok {
+			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrConflict)
+		}
+
+		previousStatus := quote.CurrentStatus
+		moved, err = s.quotes.UpdateStatus(ctx, q, tenant.AccountID, tenant.BranchID, quoteID,
+			previousStatus, to)
+		if err != nil {
+			if errors.Is(err, domain.ErrConflict) {
+				return domain.WithCode(domain.CodeQuoteNotDraft, err)
+			}
+			return err
+		}
+		if _, err := s.quotes.AppendStatusChange(ctx, q, tenant.AccountID, quoteID,
+			&previousStatus, to, &tenant.UserID); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return moved, nil
+}
+
+// Archive boxes a quote away without changing its status. Archived is an orthogonal flag, so this
+// is not a transition and records no status change.
+func (s *QuoteService) Archive(
+	ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID,
+) (*domain.Quote, error) {
+	if err := requireBranch(tenant, "archiving a quote"); err != nil {
+		return nil, err
+	}
+
+	var archived *domain.Quote
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, err := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if err != nil {
+			return err
+		}
+		if quote.ArchivedAt != nil {
+			return domain.WithCode(domain.CodeQuoteArchived, domain.ErrConflict)
+		}
+		var archiveErr error
+		archived, archiveErr = s.quotes.Archive(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		return archiveErr
+	})
+	if err != nil {
+		return nil, err
+	}
+	return archived, nil
+}
+
+// Unarchive brings a boxed-away quote back to the list.
+func (s *QuoteService) Unarchive(
+	ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID,
+) (*domain.Quote, error) {
+	if err := requireBranch(tenant, "unarchiving a quote"); err != nil {
+		return nil, err
+	}
+
+	var restored *domain.Quote
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		var err error
+		restored, err = s.quotes.Unarchive(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return restored, nil
 }

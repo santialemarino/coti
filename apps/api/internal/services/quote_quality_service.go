@@ -316,6 +316,20 @@ func correctionPatterns(raw string, proposed []domain.QuoteAIGenerationItem,
 		finalByID[item.ID] = item
 	}
 	var patterns []domain.NewQuoteCorrectionMemory
+	// Keeping the proposed product on a line matching flagged is a choice too: it confirms what a
+	// seller taught, which is what lets a taught answer settle a line its words keep contesting.
+	for _, generated := range proposed {
+		approved, ok := finalByID[generated.SourceQuoteItemID]
+		if !ok || generated.MatchStatus == domain.ItemMatchStatusMatched ||
+			generated.ProductID == nil || approved.ProductID == nil ||
+			*approved.ProductID != *generated.ProductID {
+			continue
+		}
+		patterns = append(patterns, domain.NewQuoteCorrectionMemory{
+			Kind: domain.QuoteCorrectionMemoryCatalog, SourceText: generated.RequestedDescription,
+			ProductID: approved.ProductID, SourceKey: "catalog:" + generated.ID.String(),
+		})
+	}
 	for _, difference := range differences {
 		if difference.Kind == domain.QuoteQualityDifferenceItemAdded ||
 			difference.Kind == domain.QuoteQualityDifferenceItemRemoved ||

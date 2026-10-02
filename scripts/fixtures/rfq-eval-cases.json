@@ -126,7 +126,7 @@
     "description": "Un mensaje que no es un pedido se guarda sin inventar una cotización",
     "message": "Hola, me pasas la direccion y el horario de hoy?",
     "expected": {
-      "rfq_status": "RECEIVED",
+      "rfq_status": "FAILED",
       "quote_status": null,
       "item_count": 0,
       "items": []

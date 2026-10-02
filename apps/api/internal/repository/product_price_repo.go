@@ -127,7 +127,7 @@ func (r *ProductPriceRepository) GetCurrentByProductIDs(
 	ctx context.Context, q Querier, accountID, branchID uuid.UUID, productIDs []uuid.UUID,
 ) (map[uuid.UUID]domain.BranchPrice, error) {
 	rows, err := q.Query(ctx,
-		`SELECT DISTINCT ON (p.id) p.id, pp.price, pp.min_price
+		`SELECT DISTINCT ON (p.id) p.id, pp.price, pp.min_price, pp.currency
 		 FROM product p
 		 JOIN branch_product bp
 		   ON bp.account_id = $1
@@ -152,7 +152,7 @@ func (r *ProductPriceRepository) GetCurrentByProductIDs(
 	prices := make(map[uuid.UUID]domain.BranchPrice, len(productIDs))
 	for rows.Next() {
 		var price domain.BranchPrice
-		if err := rows.Scan(&price.ProductID, &price.Price, &price.MinPrice); err != nil {
+		if err := rows.Scan(&price.ProductID, &price.Price, &price.MinPrice, &price.Currency); err != nil {
 			return nil, err
 		}
 		prices[price.ProductID] = price
@@ -306,6 +306,21 @@ func (r *ProductPriceRepository) Create(
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		 RETURNING `+productPriceColumns,
 		accountID, branchID, productID, userID, in.Price, in.Currency, in.MinPrice, in.ValidFrom))
+}
+
+// CreateAtBranches opens the same first price period at each branch, for a product none of them
+// has priced yet, in one statement.
+func (r *ProductPriceRepository) CreateAtBranches(
+	ctx context.Context, q Querier, accountID, productID uuid.UUID, branchIDs []uuid.UUID,
+	userID *uuid.UUID, in domain.NewProductPrice,
+) error {
+	_, err := q.Exec(ctx,
+		`INSERT INTO product_price
+		   (account_id, branch_id, product_id, user_id, price, currency, min_price, valid_from)
+		 SELECT $1, b.id, $2, $4, $5, $6, $7, $8
+		 FROM unnest($3::uuid[]) AS b(id)`,
+		accountID, productID, branchIDs, userID, in.Price, in.Currency, in.MinPrice, in.ValidFrom)
+	return err
 }
 
 // CloseOpenPeriod stamps valid_to on the open period, so the price stops applying at the

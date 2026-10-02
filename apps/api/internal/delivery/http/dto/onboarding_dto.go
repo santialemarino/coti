@@ -11,9 +11,17 @@ type SaveOnboardingProgressRequest struct {
 
 // OnboardingResponse is returned by onboarding reads and progress writes.
 type OnboardingResponse struct {
-	FlowVersion int               `json:"flow_version"`
-	Status      string            `json:"status"`
-	CurrentStep string            `json:"current_step"`
-	Steps       map[string]string `json:"steps"`
-	CompletedAt *time.Time        `json:"completed_at"`
+	FlowVersion       int                               `json:"flow_version"`
+	Status            string                            `json:"status"`
+	CurrentStep       string                            `json:"current_step"`
+	Steps             map[string]string                 `json:"steps"`
+	Checklist         []OnboardingChecklistItemResponse `json:"checklist"`
+	ChecklistHiddenAt *time.Time                        `json:"checklist_hidden_at"`
+	CompletedAt       *time.Time                        `json:"completed_at"`
+}
+
+// OnboardingChecklistItemResponse is one setup step the checklist tracks; a skipped step is not done.
+type OnboardingChecklistItemResponse struct {
+	Step string `json:"step" enums:"BRAND,CATALOG_UPLOAD,TEAM"`
+	Done bool   `json:"done"`
 }

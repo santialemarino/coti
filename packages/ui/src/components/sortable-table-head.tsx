@@ -4,7 +4,7 @@ import * as React from 'react';
 import { ArrowDownIcon, ArrowUpIcon, ChevronsUpDownIcon } from 'lucide-react';
 
 import { cn } from '../lib/utils';
-import { TableHead } from './table';
+import { TABLE_COLUMNS, TableHead, type TableColumnKind } from './table';
 
 export type SortOrder = 'asc' | 'desc';
 
@@ -50,6 +50,12 @@ interface SortableTableHeadProps<TColumn extends string> {
   sortBy: TColumn | null;
   sortOrder: SortOrder;
   onSort: (column: TColumn) => void;
+  /*
+   * The column's kind, whose alignment the trigger follows. The trigger is a flex box filling the
+   * cell, so `text-right` on the cell alone would leave the label pinned left in a right-aligned
+   * table.
+   */
+  kind: TableColumnKind;
   className?: string;
 }
 
@@ -64,20 +70,25 @@ function SortableTableHead<TColumn extends string>({
   sortBy,
   sortOrder,
   onSort,
+  kind,
   className,
 }: SortableTableHeadProps<TColumn>) {
   const active = sortBy === column;
+  const align = TABLE_COLUMNS[kind].align;
 
   return (
     <TableHead
       aria-sort={active ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+      kind={kind}
       className={className}
     >
       <button
         type="button"
         onClick={() => onSort(column)}
         className={cn(
-          'group/sort flex items-center gap-x-1.5 rounded-sm outline-none',
+          'group/sort flex w-full items-center gap-x-1.5 rounded-sm outline-none',
+          align === 'figure' && 'group-data-[figures=end]/table:justify-end',
+          align === 'center' && 'justify-center',
           'transition-colors duration-150 ease-out-soft',
           active ? 'text-foreground' : 'hover:text-foreground focus-visible:text-foreground',
         )}

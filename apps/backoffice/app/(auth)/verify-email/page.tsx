@@ -1,10 +1,12 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { CircleCheckIcon, CircleXIcon, MailCheckIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { Card, Hint, InlineLink, Separator, StatusScreen } from '@repo/ui/components';
+import { Button, Card, Hint, InlineLink, Separator, StatusScreen } from '@repo/ui/components';
 import { ConfirmEmailForm } from '@/app/(auth)/verify-email/_components/confirm-email-form';
 import { ResendVerificationForm } from '@/app/(auth)/verify-email/_components/resend-verification-form';
+import { signOut } from '@/app/(protected)/actions';
 import { ChangeEmailForm } from '@/components/change-email-form';
 import { ROUTES } from '@/config/routes';
 import { getSession } from '@/lib/auth/session';
@@ -61,6 +63,10 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
     );
   }
 
+  // While mail only reaches the log no link can arrive, so there is nothing to do here. The API
+  // refuses to require a confirmation in that state, so the product is open.
+  if (session && !session.mailDelivery) redirect(ROUTES.home);
+
   /*
    * A session with an unconfirmed address means they just registered: signup opens one and sends
    * them here, so this is the notice that the mail is on its way rather than a broken link.
@@ -96,11 +102,30 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
             <ChangeEmailForm variant="outline" />
           </>
         )}
-        <InlineLink asChild tone="muted" className="self-center">
-          <Link href={registered ? ROUTES.home : ROUTES.login}>
-            {registered ? t('continue') : t('backToLogin')}
-          </Link>
-        </InlineLink>
+        {/*
+         * Confirming is a suggestion here unless the installation requires it, and then the product
+         * is one click away rather than behind a mail that may never come.
+         */}
+        {registered && !session.emailVerificationRequired ? (
+          <Button asChild variant="outline">
+            <Link href={ROUTES.home}>{t('continueUnverified')}</Link>
+          </Button>
+        ) : null}
+        {registered ? (
+          <form action={signOut} className="self-center">
+            <Button
+              type="submit"
+              variant="link"
+              className="text-foreground-muted hover:text-foreground hover:decoration-foreground"
+            >
+              {t('signOut')}
+            </Button>
+          </form>
+        ) : (
+          <InlineLink asChild tone="muted" className="self-center">
+            <Link href={ROUTES.login}>{t('backToLogin')}</Link>
+          </InlineLink>
+        )}
       </div>
     </Card>
   );

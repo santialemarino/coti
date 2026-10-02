@@ -11,7 +11,7 @@ import (
 )
 
 const onboardingColumns = `id, account_id, flow_version, status, current_step, completed_at,
-	created_at, updated_at`
+	checklist_hidden_at, created_at, updated_at`
 
 // OnboardingRepository owns persistence for account onboarding progress.
 type OnboardingRepository struct{}
@@ -60,6 +60,29 @@ func (r *OnboardingRepository) ListSteps(
 		steps[key] = status
 	}
 	return steps, rows.Err()
+}
+
+// GetEvidence reports which checklist steps the account's data proves: a brand, an active product, a
+// second active user.
+func (r *OnboardingRepository) GetEvidence(
+	ctx context.Context, q Querier, accountID uuid.UUID,
+) (domain.OnboardingEvidence, error) {
+	var brand, catalog, team bool
+	err := q.QueryRow(ctx,
+		`SELECT
+		   EXISTS (SELECT 1 FROM account
+		           WHERE id = $1 AND (brand_logo_url IS NOT NULL OR brand_color IS NOT NULL)),
+		   EXISTS (SELECT 1 FROM product WHERE account_id = $1 AND is_active),
+		   (SELECT count(*) FROM app_user WHERE account_id = $1 AND is_active) > 1`,
+		accountID).Scan(&brand, &catalog, &team)
+	if err != nil {
+		return nil, err
+	}
+	return domain.OnboardingEvidence{
+		domain.OnboardingStepBrand:         brand,
+		domain.OnboardingStepCatalogUpload: catalog,
+		domain.OnboardingStepTeam:          team,
+	}, nil
 }
 
 // Create starts onboarding for a newly registered account.
@@ -111,6 +134,24 @@ func (r *OnboardingRepository) UpdateStatus(
 	return nil
 }
 
+// UpdateChecklistHidden hides the checklist card or shows it again.
+func (r *OnboardingRepository) UpdateChecklistHidden(
+	ctx context.Context, q Querier, accountID uuid.UUID, hidden bool,
+) error {
+	tag, err := q.Exec(ctx,
+		`UPDATE account_onboarding
+		 SET checklist_hidden_at = CASE WHEN $2 THEN COALESCE(checklist_hidden_at, now()) END
+		 WHERE account_id = $1`,
+		accountID, hidden)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 // UpsertStep records whether one stable step was completed or skipped.
 func (r *OnboardingRepository) UpsertStep(
 	ctx context.Context, q Querier, accountID, onboardingID uuid.UUID,
@@ -129,7 +170,7 @@ func scanOnboarding(row pgx.Row) (*domain.Onboarding, error) {
 	var onboarding domain.Onboarding
 	if err := row.Scan(&onboarding.ID, &onboarding.AccountID, &onboarding.FlowVersion,
 		&onboarding.Status, &onboarding.CurrentStep, &onboarding.CompletedAt,
-		&onboarding.CreatedAt, &onboarding.UpdatedAt); err != nil {
+		&onboarding.ChecklistHiddenAt, &onboarding.CreatedAt, &onboarding.UpdatedAt); err != nil {
 		return nil, err
 	}
 	onboarding.Steps = make(map[domain.OnboardingStepKey]domain.OnboardingStepStatus)

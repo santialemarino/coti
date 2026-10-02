@@ -7,7 +7,8 @@
       "delete": "Eliminar",
       "confirm": "Confirmar",
       "edit": "Editar",
-      "search": "Buscar"
+      "search": "Buscar",
+      "back": "Volver"
     },
     "states": {
       "loading": "Cargando…",
@@ -16,8 +17,13 @@
     },
     "nav": {
       "signOut": "Cerrar sesión",
-      "changePassword": "Cambiar contraseña",
-      "settings": "Configuración"
+      "orders": "Pedidos",
+      "clients": "Clientes",
+      "reports": "Reportes",
+      "administration": "Administración",
+      "settings": "Configuración",
+      "confirmEmail": "Confirmar tu correo",
+      "pending": "Hay algo pendiente"
     },
     "roles": {
       "ADMIN": "Administrador",
@@ -30,6 +36,27 @@
       "search": "Buscá una sucursal...",
       "empty": "No encontramos esa sucursal."
     },
+    "logoUpload": {
+      "title": "Logo",
+      "release": "Soltá la imagen para usarla",
+      "choose": "Elegir imagen",
+      "replace": "Cambiar imagen",
+      "remove": "Quitar imagen",
+      "invalidType": "Elegí una imagen PNG o JPG.",
+      "previewAlt": "Vista previa del logo"
+    },
+    "fileUpload": {
+      "title": "Arrastrá tu archivo hasta acá",
+      "release": "Soltá el archivo para cargarlo",
+      "choose": "Elegir archivo",
+      "replace": "Cambiar archivo",
+      "spreadsheetFormats": "Aceptamos Excel (.xlsx) y CSV."
+    },
+    "colorPicker": {
+      "shade": "Saturación y brillo",
+      "hue": "Tono",
+      "presets": "Colores sugeridos"
+    },
     "retry": "Reintentar",
     "form": {
       "togglePassword": "Mostrar u ocultar la contraseña",
@@ -40,7 +67,8 @@
         "passwordTooShort": "Mínimo {min} caracteres.",
         "passwordTooLong": "Máximo {max} caracteres.",
         "passwordMismatch": "Las contraseñas no coinciden.",
-        "passwordRequirements": "La contraseña no cumple con los requisitos."
+        "passwordRequirements": "La contraseña no cumple con los requisitos.",
+        "amountTooHigh": "El monto es demasiado alto."
       }
     },
     "passwordMeter": {
@@ -63,6 +91,32 @@
       "label": "Paginación",
       "previous": "Anterior",
       "next": "Siguiente"
+    },
+    "phone": {
+      "country": "País",
+      "countrySearch": "Buscá un país",
+      "countryEmpty": "No encontramos ese país.",
+      "invalid": "Revisá el número: no parece un teléfono válido.",
+      "landline": "Parece un número fijo. Si es un celular,",
+      "useMobile": "usá {number}"
+    },
+    "setup": {
+      "askAdmin": "Pedile a un administrador que lo configure.",
+      "attention": "Falta configurar algo",
+      "BRANCH_EMAIL": {
+        "title": "Esta sucursal no tiene correo",
+        "body": "La cotización sale igual por correo, pero si el cliente la responde, la respuesta no le llega a nadie.",
+        "fix": "Configurar correo"
+      },
+      "BRANCH_NO_SELLERS": {
+        "title": "Esta sucursal no tiene vendedores",
+        "body": "El pedido queda sin asignar hasta que la sucursal tenga un vendedor.",
+        "fix": "Sumar un vendedor"
+      },
+      "NO_INTAKE_CHANNELS": {
+        "title": "Esta sucursal no tiene canales abiertos",
+        "body": "Para importar un pedido hace falta al menos un canal abierto en la sucursal. Escribinos a soporte para habilitarlo."
+      }
     }
   },
   "errors": {
@@ -83,6 +137,21 @@
     "SELF_ROLE_CHANGE": "No podés cambiar tu propio rol. Pedíselo a otro administrador.",
     "PASSWORD_POLICY": "La contraseña no cumple con los requisitos.",
     "INVALID_LINK": "El enlace no es válido, ya se usó o venció.",
+    "INVITE_NOT_PENDING": "Ese usuario ya eligió su contraseña, así que no tiene una invitación para reenviar.",
+    "MAIL_NOT_CONFIGURED": "El envío de correos no está configurado, así que no podemos mandar el enlace.",
+    "BRANCH_NOT_ACCESSIBLE": "Esa sucursal ya no está disponible para vos. Elegí otra.",
+    "BRANCH_MAILBOX_REQUIRED": "La sucursal envía sus correos desde esa casilla, así que no se puede dejar vacía.",
+    "QUOTE_ARCHIVED": "La cotización está archivada y no se puede modificar.",
+    "QUOTE_NOT_DRAFT": "La cotización ya no está en un estado que permita esa acción.",
+    "QUOTE_NOT_REACTIVATABLE": "La cotización ya no está cerrada o su versión cambió. Actualizá la pantalla.",
+    "QUOTE_NOT_SENDABLE": "La cotización cambió y esta versión ya no es la aprobada.",
+    "DELIVERY_CHANNEL": "Esta sucursal no tiene los canales de envío necesarios configurados.",
+    "CHANNEL_IDENTIFIER": "Revisá la dirección: no es un correo válido.",
+    "DELIVERY_UNAVAILABLE": "No se pudo entregar por ningún canal. Revisá la configuración de envío o intentá más tarde.",
+    "UNSUPPORTED_FILE_TYPE": "Ese tipo de archivo no está soportado.",
+    "LEGACY_EXCEL_FILE": "No podemos leer archivos .xls. Guardalo como .xlsx o .csv y volvé a subirlo.",
+    "AI_UNAVAILABLE": "La IA no está disponible en este momento. Probá de nuevo en unos minutos.",
+    "NOT_CONFIGURED": "Esa función todavía no está configurada en esta cuenta.",
     "INTERNAL": "Ocurrió un error inesperado. Intentá de nuevo.",
     "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
     "SESSION_EXPIRED": "Tu sesión expiró. Volvé a iniciar sesión."
@@ -91,6 +160,26 @@
     "home": {
       "title": "Inicio",
       "description": "Workspace del corralón."
+    },
+    "rfqs": {
+      "title": "Pedidos",
+      "description": "Seguimiento de los pedidos de cotización en proceso."
+    },
+    "rfqsDetail": {
+      "title": "Detalle del pedido",
+      "description": "Revisión de la cotización del pedido."
+    },
+    "clients": {
+      "title": "Clientes",
+      "description": "Listado y detalle de clientes del corralón."
+    },
+    "reports": {
+      "title": "Reportes",
+      "description": "Reportes de pedidos y cotizaciones."
+    },
+    "administration": {
+      "title": "Administración",
+      "description": "Administración de la cuenta."
     },
     "login": {
       "title": "Iniciar sesión",
@@ -123,6 +212,10 @@
     "branchSettings": {
       "title": "Sucursales",
       "description": "Alta y administración de las sucursales del corralón."
+    },
+    "onboardingSettings": {
+      "title": "Configuración inicial",
+      "description": "Los pasos que faltan para terminar de configurar la cuenta."
     },
     "userSettings": {
       "title": "Usuarios",
@@ -206,8 +299,7 @@
       },
       "taxId": {
         "label": "CUIT",
-        "placeholder": "Ingresá el CUIT",
-        "hint": "Son 11 dígitos, con guiones o sin ellos: 30-70123456-8."
+        "placeholder": "Ingresá el CUIT"
       },
       "branchName": {
         "label": "Nombre de la sucursal",
@@ -286,11 +378,21 @@
       "errors": {
         "INVALID_LINK": "El enlace no es válido, ya se usó o venció. Pedí uno nuevo.",
         "INTERNAL": "No pudimos cambiar la contraseña. Intentá de nuevo."
+      },
+      "invite": {
+        "title": "Elegí tu contraseña",
+        "intro": "Con esta contraseña vas a entrar a Coti. Después podés cambiarla cuando quieras.",
+        "submit": "Activar mi cuenta",
+        "submitting": "Activando…",
+        "done": "Listo, tu cuenta está activa. Entrá con tu correo y la contraseña que elegiste.",
+        "invalidLink": "Falta el enlace de la invitación. Abrí el que te llegó por correo o pedile a un administrador que te la reenvíe.",
+        "errors": {
+          "INVALID_LINK": "La invitación no es válida, ya se usó o venció. Pedile a un administrador que te la reenvíe."
+        }
       }
     },
     "changePassword": {
       "title": "Cambiar contraseña",
-      "description": "Para cambiarla necesitás ingresar la contraseña actual. Al cambiarla se cierran las demás sesiones abiertas.",
       "currentPassword": {
         "label": "Contraseña actual",
         "placeholder": "Ingresá tu contraseña actual",
@@ -316,7 +418,6 @@
     },
     "changeEmail": {
       "title": "Cambiar tu correo",
-      "description": "Ahora usás {email}. Para cambiar tu dirección necesitás ingresar tu contraseña actual, y la nueva queda sin confirmar hasta que abras el enlace que te enviamos.",
       "newEmail": {
         "label": "Correo electrónico nuevo",
         "placeholder": "Ingresá tu dirección de correo",
@@ -345,6 +446,8 @@
       "done": "Listo, tu dirección quedó confirmada.",
       "sentTo": "Te mandamos un correo a {email} para confirmar tu dirección. Abrí el enlace que te llegó y ya está.",
       "continue": "Ir al inicio",
+      "continueUnverified": "Seguir a Coti sin confirmar",
+      "signOut": "Cerrar sesión",
       "goToLogin": "Iniciar sesión",
       "email": {
         "label": "Correo electrónico",
@@ -377,11 +480,11 @@
   },
   "home": {
     "title": "Coti",
-    "signedInAs": "Sesión iniciada como {role}.",
-    "links": {
-      "prices": "Precios",
-      "catalog": "Catálogo",
-      "onboarding": "Configuración inicial"
+    "queueHint": "Elegí un pedido de la lista para trabajarlo, o creá uno nuevo.",
+    "seeAllOrders": "Ver todos los pedidos",
+    "noBranch": {
+      "title": "Todavía no tenés una sucursal asignada",
+      "description": "Pedile a un administrador que te asigne al menos una sucursal para ver y cargar pedidos."
     }
   },
   "quotes": {
@@ -390,6 +493,616 @@
     "itemCount": "{count, plural, =0 {Sin ítems} one {# ítem} other {# ítems}}",
     "total": "Total: {amount}",
     "createdAt": "Creada el {date}"
+  },
+  "rfqs": {
+    "title": "Pedidos",
+    "greeting": "¡Hola, {name}!",
+    "status": {
+      "RECEIVED": "Recibido",
+      "FAILED": "Falló la lectura",
+      "GENERATED": "Generado",
+      "DRAFT": "Borrador",
+      "QUOTED": "Cotizado",
+      "SENT": "Enviado",
+      "CHANGE_REQUESTED": "Cambio solicitado",
+      "ACCEPTED": "Aceptado",
+      "REJECTED": "Rechazado",
+      "ARCHIVED": "Archivado"
+    },
+    "sendTracking": {
+      "PENDING": "Pendiente",
+      "SENT": "Enviado",
+      "DELIVERED": "Entregado",
+      "VIEWED": "Visto",
+      "FAILED": "Fallido"
+    },
+    "processing": {
+      "ingestion": "Procesando pedido…",
+      "quote": "Generando cotización…"
+    },
+    "errors": {
+      "CONFLICT": "Ese pedido ya tiene un vendedor asignado.",
+      "FORBIDDEN": "Solo los vendedores pueden asignarse pedidos.",
+      "INVALID_INPUT": "Ese vendedor no trabaja en la sucursal del pedido."
+    },
+    "channels": {
+      "whatsapp": "WhatsApp",
+      "email": "Email",
+      "webapp": "Web",
+      "manual_entry": "Carga manual"
+    },
+    "followup": {
+      "badge": "Seguimiento",
+      "description": "Requiere seguimiento",
+      "since": "Requiere seguimiento · desde el {date}"
+    },
+    "list": {
+      "title": "Pedidos",
+      "caption": "Pedidos de cotización recibidos",
+      "create": "Crear pedido",
+      "search": "Buscar por pedido, cliente, vendedor…",
+      "resultsTotal": "{total, plural, one {# pedido} other {# pedidos}}",
+      "results": "Mostrando {from}–{to} de {total} pedidos",
+      "items": "{count, plural, one {# ítem} other {# ítems}}",
+      "toReview": "{count} a revisar",
+      "numberPending": "Sin número",
+      "unassigned": "Sin asignar",
+      "selectAll": "Seleccionar todos los pedidos de esta página",
+      "selectRow": "Seleccionar el pedido {id}",
+      "openRow": "Abrir el pedido {id}",
+      "selected": "{count, plural, one {# pedido seleccionado} other {# pedidos seleccionados}}",
+      "filters": {
+        "status": "Estado",
+        "statusCount": "{count} estados",
+        "clearStatus": "Limpiar estados",
+        "channel": "Canal",
+        "branch": "Sucursal",
+        "seller": "Vendedor",
+        "allChannel": "Todos los canales",
+        "allBranch": "Todas las sucursales",
+        "allSeller": "Todos los vendedores",
+        "unassigned": "Sin vendedor",
+        "clear": "Limpiar filtros"
+      },
+      "columns": {
+        "id": "Pedido",
+        "date": "Fecha",
+        "channel": "Canal",
+        "seller": "Vendedor",
+        "branch": "Sucursal",
+        "items": "Ítems",
+        "toReview": "A revisar",
+        "total": "Monto",
+        "status": "Estado",
+        "actions": "Acciones"
+      },
+      "bulk": {
+        "clear": "Limpiar selección",
+        "archive": "Archivar"
+      },
+      "actions": {
+        "assign": "Asignarme",
+        "unassignSeller": "Quitar vendedor",
+        "sellersLoading": "Cargando vendedores…",
+        "archive": "Archivar pedido",
+        "unarchive": "Desarchivar pedido"
+      },
+      "empty": {
+        "title": "Todavía no hay pedidos"
+      },
+      "noResults": {
+        "title": "No encontramos pedidos",
+        "description": "Probá con otra búsqueda o quitá algún filtro."
+      },
+      "error": {
+        "title": "No pudimos cargar los pedidos",
+        "description": "Revisá tu conexión e intentá de nuevo.",
+        "retry": "Reintentar"
+      },
+      "toast": {
+        "archived": "El pedido {id} se archivó.",
+        "unarchived": "El pedido {id} volvió a la lista.",
+        "archivedMany": "{count, plural, one {# pedido archivado} other {# pedidos archivados}}.",
+        "archiveFailed": "No pudimos archivar {count, plural, one {# pedido} other {# pedidos}}. Intentá de nuevo.",
+        "assigned": "Tomaste el pedido {id}, {name}. Lo vas a encontrar en tu lista.",
+        "sellerAssigned": "El pedido {id} quedó asignado a {seller}.",
+        "sellerUnassigned": "Al pedido {id} le quitamos el vendedor."
+      }
+    },
+    "create": {
+      "title": "Crear pedido",
+      "description": "Elegí cómo querés armar el pedido.",
+      "importOption": {
+        "title": "Importar archivo",
+        "description": "La IA lee el archivo (PDF, Excel, foto o audio) y arma el pedido automáticamente."
+      },
+      "manualOption": {
+        "title": "Cargar manualmente",
+        "description": "Elegís los productos del catálogo y definís las cantidades."
+      },
+      "import": {
+        "dropzone": {
+          "title": "Arrastrá el archivo del pedido o elegilo",
+          "release": "Soltá el archivo acá",
+          "choose": "Elegir archivo",
+          "replace": "Cambiar archivo",
+          "selected": "{size} KB"
+        },
+        "acceptHint": "PDF, Excel, CSV, foto o audio con el pedido del cliente.",
+        "noBranch": "Seleccioná una sucursal en el selector del encabezado para crear un pedido.",
+        "channelLabel": "¿Por dónde llegó?",
+        "channelPlaceholder": "Elegí el canal",
+        "clientLabel": "Cliente (opcional)",
+        "clientPlaceholder": "Nombre del cliente",
+        "noteLabel": "Nota para la IA (opcional)",
+        "notePlaceholder": "Algo que ayude a interpretar el pedido.",
+        "back": "Volver",
+        "processing": "Leyendo el pedido…",
+        "submit": "Crear pedido con IA",
+        "errors": {
+          "INVALID_INPUT": "No pudimos leer un pedido en ese archivo. Revisá que se entienda el listado de materiales.",
+          "UNSUPPORTED_FILE_TYPE": "Ese tipo de archivo no está soportado. Subí un PDF, un Excel, un CSV, una imagen o un audio.",
+          "FILE_TOO_LARGE": "El archivo es muy grande. Subí uno más liviano.",
+          "NOT_FOUND": "No encontramos el canal seleccionado. Actualizá la pantalla e intentá de nuevo.",
+          "FORBIDDEN": "No tenés permiso para crear pedidos en esta sucursal.",
+          "NOT_CONFIGURED": "La lectura de este tipo de archivo todavía no está configurada en esta cuenta.",
+          "AI_UNAVAILABLE": "La IA no está disponible en este momento. Probá de nuevo en unos minutos.",
+          "RATE_LIMITED": "Hiciste muchos pedidos con IA seguidos. Esperá un momento y volvé a intentar.",
+          "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
+          "INTERNAL": "No pudimos procesar el archivo. Intentá de nuevo."
+        },
+        "channelsLoading": "Cargando canales…",
+        "channelsFailed": "No pudimos cargar los canales de la sucursal. Cerrá y volvé a intentar.",
+        "channelOnly": "Es el único canal abierto de la sucursal."
+      },
+      "manual": {
+        "clientLabel": "Cliente",
+        "clientPlaceholder": "Nombre del cliente",
+        "sellerLabel": "Vendedor",
+        "unassigned": "Sin asignar",
+        "sellerSelf": "El pedido queda a tu nombre.",
+        "sellerOnly": "Es el único vendedor de esta sucursal.",
+        "sellersLoading": "Cargando vendedores…",
+        "sellersFailed": "No pudimos cargar los vendedores. El pedido queda sin asignar.",
+        "sellerPlaceholder": "Seleccioná un vendedor",
+        "clearSearch": "Limpiar búsqueda",
+        "search": "Buscar producto por nombre, código o categoría…",
+        "loading": "Cargando catálogo…",
+        "catalogEmpty": "No hay productos que coincidan con la búsqueda.",
+        "catalogLabel": "Catálogo",
+        "add": "Agregar",
+        "itemsLabel": "{count, plural, one {# ítem} other {# ítems}}",
+        "itemsEmpty": "Todavía no agregaste productos.",
+        "each": "c/u",
+        "quantityLabel": "Cantidad de {name}",
+        "remove": "Quitar {name}",
+        "subtotal": "Subtotal",
+        "noBranch": "Seleccioná una sucursal en el selector del encabezado para crear un pedido.",
+        "back": "Volver",
+        "creating": "Creando pedido…",
+        "submit": "Crear pedido"
+      },
+      "toast": {
+        "imported": "{count, plural, one {La IA leyó # ítem del archivo.} other {La IA leyó # ítems del archivo.}}",
+        "importedEmpty": "No encontramos materiales en el archivo. Revisá el pedido y cargalos a mano.",
+        "created": "El pedido se creó correctamente.",
+        "error": "No se pudo crear el pedido. Intentá de nuevo."
+      }
+    },
+    "sidebar": {
+      "search": "Buscar pedidos",
+      "filter": "Filtros",
+      "noResults": "No encontramos pedidos que coincidan con la búsqueda."
+    },
+    "detail": {
+      "title": "Detalle del pedido",
+      "backToList": "Volver al listado",
+      "notFound": "Pedido no encontrado",
+      "notFoundDescription": "No pudimos encontrar el pedido que buscás.",
+      "quoteStatus": "Estado de la cotización",
+      "expiresAt": "Vence el",
+      "timeline": {
+        "title": "Tracking",
+        "current": "Estado actual",
+        "completed": "Completado",
+        "createdAt": "Fecha de creación",
+        "version": "Versión",
+        "total": "Total",
+        "statusHistory": "Historial de estados",
+        "deliveries": "Envíos",
+        "noStatusHistory": "Todavía no hay cambios registrados.",
+        "noDeliveries": "Todavía no hay envíos registrados.",
+        "sentAt": "Registrado",
+        "expiresAt": "Vence",
+        "sources": {
+          "rfq": "Pedido",
+          "quote": "Cotización"
+        }
+      },
+      "confidence": {
+        "high": "Alta",
+        "medium": "Media",
+        "low": "Baja",
+        "manual": "Manual",
+        "none": "Sin datos"
+      },
+      "callouts": {
+        "accepted": {
+          "title": "Cotización aceptada",
+          "description": "La cotización quedó aceptada. El pedido está listo para procesar."
+        },
+        "rejected": {
+          "title": "Cotización rechazada",
+          "description": "La cotización quedó rechazada.",
+          "withReason": "La cotización quedó rechazada: {reason}"
+        },
+        "changeRequested": {
+          "title": "Cambio solicitado",
+          "description": "El cliente solicitó cambios en esta cotización. Revisá los ítems y actualizá la propuesta.",
+          "withReason": "El cliente solicitó cambios: {reason}"
+        },
+        "sellerRevision": {
+          "title": "Cotización reactivada",
+          "description": "Creaste una versión nueva para editar. Revisá los ítems, actualizá la propuesta y volvé a cotizarla."
+        },
+        "sent": {
+          "title": "Cotización enviada",
+          "description": "La cotización fue enviada al cliente. Vence el {date}."
+        },
+        "followup": {
+          "title": "Requiere seguimiento",
+          "customer": "El cliente no respondió desde el {date}. Escribile para retomar la cotización.",
+          "customerUndated": "El cliente todavía no respondió. Escribile para retomar la cotización.",
+          "seller": "La cotización no avanza desde el {date}. Revisala y enviala al cliente.",
+          "sellerUndated": "La cotización no avanza. Revisala y enviala al cliente."
+        }
+      },
+      "items": {
+        "title": "Ítems",
+        "empty": "Este pedido no tiene ítems.",
+        "emptyHint": "Agregá productos del catálogo para armar la cotización.",
+        "add": "Agregar producto",
+        "delete": "Eliminar ítem",
+        "deleteConfirm": {
+          "title": "¿Quitar el ítem?",
+          "description": "Se va a quitar “{name}” de la cotización. No se puede deshacer.",
+          "confirm": "Quitar ítem",
+          "pending": "Quitando…"
+        },
+        "generate": "Generar cotización",
+        "generating": "Generando cotización…",
+        "chooseProduct": "Elegir producto",
+        "select": "Seleccionar",
+        "suggested": "Sugerido",
+        "searchProduct": "Buscar producto",
+        "searchProductPlaceholder": "Código o nombre del producto…",
+        "noResults": "No encontramos productos con esa búsqueda.",
+        "typeToSearch": "Escribí para buscar productos del catálogo.",
+        "columns": {
+          "description": "Descripción",
+          "product": "Producto",
+          "modifyProduct": "Reemplazar producto",
+          "quantity": "Cantidad",
+          "unitPrice": "Precio unitario",
+          "subtotal": "Subtotal",
+          "matchStatus": "Estado",
+          "confidence": "Confianza",
+          "rationale": "Razón",
+          "actions": "Acciones"
+        },
+        "total": "Total",
+        "summary": {
+          "subtotal": "Subtotal",
+          "discounts": "Descuentos"
+        },
+        "matchStatus": {
+          "MATCHED": "Emparejado",
+          "AMBIGUOUS": "Ambiguo",
+          "NO_MATCH": "Sin emparejar"
+        },
+        "discounts": {
+          "title": "Descuentos y promociones",
+          "empty": "No hay descuentos aplicados.",
+          "adHoc": "Ad-hoc",
+          "suppressed": "Suprimido",
+          "suppress": "Suprimir descuento",
+          "restore": "Restaurar",
+          "remove": "Eliminar descuento",
+          "edit": "Editar descuento",
+          "add": "Agregar descuento",
+          "addTitle": "Agregar descuento",
+          "editTitle": "Editar descuento",
+          "nameLabel": "Nombre",
+          "namePlaceholder": "Ej.: Descuento por volumen…",
+          "amountLabel": "Monto",
+          "valueLabel": "Valor",
+          "typeLabel": "Tipo",
+          "fixedAmount": "Monto fijo",
+          "percentage": "Porcentaje",
+          "scopeLabel": "Alcance",
+          "itemsLabel": "Ítems incluidos",
+          "cancel": "Cancelar",
+          "save": "Guardar",
+          "saving": "Guardando…",
+          "scope": {
+            "TOTAL": "Global",
+            "ITEM": "Por ítem",
+            "ITEM_SET": "Por combo"
+          },
+          "toast": {
+            "added": "Agregamos el descuento «{name}».",
+            "updated": "Actualizamos el descuento «{name}».",
+            "removed": "Quitamos el descuento «{name}».",
+            "suppressed": "Suprimimos el descuento «{name}»; no se aplica a esta cotización.",
+            "restored": "Restauramos el descuento «{name}»."
+          }
+        },
+        "toast": {
+          "updated": "Actualizamos «{name}».",
+          "deleted": "Quitamos «{name}» de la cotización.",
+          "added": "Agregamos «{name}» a la cotización.",
+          "generated": "La cotización quedó generada y lista para revisar.",
+          "error": "No pudimos guardar el cambio. Intentá de nuevo."
+        },
+        "errors": {
+          "NOT_FOUND": "No encontramos ese ítem o cotización. Actualizá la pantalla e intentá de nuevo.",
+          "INVALID_INPUT": "Revisá el dato ingresado: la cantidad debe ser mayor a cero y los precios pueden tener hasta dos decimales.",
+          "QUOTE_ARCHIVED": "Esta cotización está archivada. Desarchivala antes de modificarla.",
+          "QUOTE_NOT_DRAFT": "Esta cotización ya cambió de estado. Actualizá la pantalla antes de volver a editarla.",
+          "FORBIDDEN": "No tenés permiso para modificar esta cotización.",
+          "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
+          "INTERNAL": "No pudimos guardar el cambio. Intentá de nuevo."
+        }
+      },
+      "send": {
+        "button": "Enviar cotización",
+        "title": "Enviar cotización",
+        "description": "La cotización se envía por WhatsApp con un enlace al detalle. Podés mandar además una copia por correo.",
+        "phoneLabel": "WhatsApp del cliente",
+        "phonePlaceholder": "Ingresá el celular",
+        "phoneHint": "Código de área sin 0; si es celular, con 9 o 15. Ej.: 11 15 5555-0101.",
+        "alsoEmail": "Enviar también una copia por correo",
+        "emailLabel": "Correo del cliente",
+        "emailPlaceholder": "cliente@empresa.com",
+        "summaryLabel": "Qué se envía",
+        "summaryQuote": "Cotización",
+        "summaryTotal": "Total",
+        "summaryLink": "Incluye un enlace para que el cliente vea el detalle y responda.",
+        "numberPending": "sin número",
+        "cancel": "Cancelar",
+        "send": "Enviar",
+        "sending": "Enviando…",
+        "successTitle": "Cotización enviada",
+        "successDescription": "El enlace ya llegó con el mensaje. Copialo o abrílo si necesitás reenviarlo.",
+        "linkLabel": "Enlace de la cotización",
+        "copyLink": "Copiar enlace",
+        "copiedLink": "Enlace copiado",
+        "copyFailed": "No pudimos copiar el enlace. Seleccionalo y copialo a mano.",
+        "openQuote": "Abrir",
+        "resend": "Enviar a otro destino",
+        "done": "Listo",
+        "toast": {
+          "sent": "Cotización enviada",
+          "partial": "Enviamos la cotización, pero falló {channels}. Reintentá ese envío.",
+          "failed": "No pudimos enviar la cotización por ningún canal. Intentá de nuevo."
+        },
+        "errors": {
+          "NOT_FOUND": "No encontramos esta cotización. Actualizá la pantalla e intentá de nuevo.",
+          "INVALID_INPUT": "Revisá el teléfono y el correo.",
+          "DELIVERY_CHANNEL": "Falta un canal activo de WhatsApp o correo en esta sucursal. Pedile a un administrador que lo configure.",
+          "DELIVERY_UNAVAILABLE": "No pudimos entregar la cotización por ningún canal. Revisá la configuración de envío o intentá más tarde.",
+          "CONFLICT": "La cotización cambió mientras la enviabas. Actualizá la pantalla y revisala antes de enviar.",
+          "QUOTE_NOT_SENDABLE": "Esta versión ya no es la aprobada. Actualizá la pantalla y volvé a intentar.",
+          "QUOTE_ARCHIVED": "Esta cotización está archivada. Desarchivala antes de enviarla.",
+          "FORBIDDEN": "No tenés permiso para enviar esta cotización.",
+          "NOT_CONFIGURED": "El envío al cliente todavía no está configurado en esta cuenta.",
+          "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
+          "INTERNAL": "No pudimos enviar la cotización. Intentá de nuevo."
+        }
+      },
+      "quoteCard": {
+        "title": "Cotización {reference}",
+        "version": "Versión {version}",
+        "numberPending": "sin número",
+        "linkLabel": "Enlace del cliente",
+        "openQuote": "Ver cotización",
+        "copyLink": "Copiar enlace",
+        "copiedLink": "Enlace copiado",
+        "copyFailed": "No pudimos copiar el enlace. Seleccionalo y copialo a mano.",
+        "unavailable": "La cotización todavía no fue enviada: el enlace va a estar disponible cuando la envíes."
+      },
+      "lifecycle": {
+        "accept": {
+          "button": "Marcar aceptada",
+          "title": "¿Marcar la cotización como aceptada?",
+          "description": "Usá esta opción si el cliente confirmó la compra por fuera del enlace de Coti.",
+          "confirm": "Marcar aceptada",
+          "pending": "Marcando…",
+          "success": "La cotización quedó aceptada."
+        },
+        "reject": {
+          "button": "Marcar rechazada",
+          "title": "¿Marcar la cotización como rechazada?",
+          "description": "Usá esta opción si el cliente rechazó la propuesta por fuera del enlace de Coti.",
+          "confirm": "Marcar rechazada",
+          "pending": "Marcando…",
+          "success": "La cotización quedó rechazada."
+        },
+        "reactivate": {
+          "button": "Reactivar cotización",
+          "title": "Reactivar cotización",
+          "description": "Elegí si querés reenviar la misma versión o preparar una nueva.",
+          "resend": {
+            "title": "Reenviar sin cambios",
+            "description": "Conserva los productos y precios de la versión cerrada.",
+            "success": "La cotización quedó lista para reenviar."
+          },
+          "edit": {
+            "title": "Modificar y reenviar",
+            "description": "Crea una versión editable y la revaloriza con los precios vigentes.",
+            "success": "Creamos una versión nueva para editar."
+          }
+        },
+        "errors": {
+          "QUOTE_ARCHIVED": "La cotización está archivada. Desarchivala antes de continuar.",
+          "QUOTE_NOT_DRAFT": "La cotización cambió de estado. Actualizá la pantalla e intentá de nuevo.",
+          "QUOTE_NOT_REACTIVATABLE": "La cotización ya no se puede reactivar desde este estado. Actualizá la pantalla.",
+          "INVALID_INPUT": "La acción elegida no es válida para esta cotización.",
+          "FORBIDDEN": "No tenés permiso para cambiar el estado de esta cotización.",
+          "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
+          "INTERNAL": "No pudimos actualizar la cotización. Intentá de nuevo."
+        }
+      },
+      "diff": {
+        "title": "Cambios solicitados",
+        "originalTitle": "Cotización original",
+        "requestedTitle": "Cotización con cambios solicitados",
+        "previousTitle": "Versión cerrada",
+        "revisionTitle": "Nueva versión editable",
+        "discountsTitle": "Descuentos aplicados",
+        "downloadOriginal": "Descargar pedido original",
+        "columns": {
+          "product": "Producto",
+          "quantity": "Cantidad",
+          "price": "Precio en el catálogo"
+        },
+        "changeTypes": {
+          "added": "agregado",
+          "removed": "eliminado",
+          "modified": "modificado"
+        }
+      }
+    }
+  },
+  "clients": {
+    "title": "Clientes",
+    "description": "Perfiles asociados a ventas aceptadas y su historial comercial.",
+    "total": "{total, plural, one {# cliente} other {# clientes}}",
+    "search": "Buscar por cliente, contacto o tag",
+    "unnamed": "Cliente sin nombre",
+    "noPhone": "Sin teléfono",
+    "noSales": "Sin ventas",
+    "salesCount": "{total, plural, one {# venta} other {# ventas}}",
+    "viewProfile": "Ver ficha",
+    "backToList": "Volver a clientes",
+    "table": {
+      "caption": "Clientes del corralón",
+      "client": "Cliente",
+      "contact": "Teléfono",
+      "tags": "Tags",
+      "sales": "Ventas",
+      "lastSale": "Última venta",
+      "actions": "Acciones",
+      "title": "Fichas de clientes"
+    },
+    "empty": {
+      "title": "Todavía no hay clientes asociados",
+      "description": "Cuando una cotización sea aceptada, vas a poder asociarla a una ficha desde el pedido."
+    },
+    "noResults": {
+      "title": "No encontramos clientes",
+      "description": "Probá con otro nombre, contacto o tag."
+    },
+    "profile": {
+      "description": "Contacto, tags e historial de ventas aceptadas.",
+      "contactTitle": "Datos de contacto",
+      "phone": "Teléfono",
+      "email": "Correo electrónico",
+      "notRegistered": "Sin registrar",
+      "salesTitle": "Ventas aceptadas",
+      "salesCaption": "Ventas aceptadas asociadas al cliente",
+      "table": {
+        "quote": "Cotización",
+        "branch": "Sucursal",
+        "date": "Aceptada",
+        "total": "Total"
+      },
+      "emptySales": {
+        "title": "No hay ventas visibles",
+        "description": "No hay cotizaciones aceptadas dentro de las sucursales que podés consultar."
+      },
+      "numberPending": "Sin número"
+    },
+    "tags": {
+      "title": "Tags",
+      "none": "Sin tags",
+      "selected": "{total, plural, one {# seleccionado} other {# seleccionados}}",
+      "newPlaceholder": "Crear un tag reutilizable",
+      "create": "Crear",
+      "creating": "Creando…",
+      "save": "Guardar tags",
+      "saving": "Guardando…",
+      "saved": "Guardamos los tags del cliente.",
+      "errors": {
+        "INVALID_BODY": "Ingresá un nombre válido para el tag.",
+        "INVALID_INPUT": "El tag debe tener entre 1 y 128 caracteres.",
+        "NOT_FOUND": "El cliente o uno de los tags ya no existe. Actualizá la pantalla.",
+        "INTERNAL": "No pudimos guardar los tags. Intentá de nuevo."
+      }
+    },
+    "association": {
+      "title": "Cliente de la venta",
+      "loading": "Buscando la ficha asociada…",
+      "associate": "Asociar cliente",
+      "edit": "Editar asociación",
+      "unnamed": "Cliente sin nombre",
+      "noContact": "Sin datos de contacto",
+      "pending": {
+        "title": "Falta asociar esta venta",
+        "description": "Confirmá una ficha existente o creá una nueva. Las coincidencias por teléfono o correo son solo sugerencias."
+      },
+      "dialog": {
+        "title": "Asociar la venta a un cliente",
+        "description": "Elegí la ficha correcta o creá una nueva. Coti nunca une clientes automáticamente.",
+        "existing": "Ficha existente",
+        "new": "Cliente nuevo",
+        "chooseClient": "Coincidencias por contacto",
+        "searchClient": "Buscar otra ficha",
+        "searchPlaceholder": "Buscar por nombre, teléfono o correo",
+        "clearSearch": "Limpiar búsqueda de clientes",
+        "searchLoading": "Cargando clientes…",
+        "searchEmpty": "No encontramos clientes con esa búsqueda.",
+        "current": "Actual",
+        "name": "Nombre o razón social",
+        "namePlaceholder": "Ej. Constructora Horizonte",
+        "phone": "WhatsApp",
+        "email": "Correo electrónico",
+        "newHint": "Alcanza con completar el nombre, el teléfono o el correo. Podés corregir los datos sugeridos antes de guardar.",
+        "cancel": "Cancelar",
+        "save": "Confirmar asociación",
+        "saving": "Asociando…",
+        "phonePlaceholder": "Ingresá el celular",
+        "phoneHint": "Código de área sin 0; si es celular, con 9 o 15. Ej.: 11 15 5555-0101."
+      },
+      "tags": {
+        "title": "Tags del cliente",
+        "none": "Sin tags",
+        "newPlaceholder": "Crear un tag reutilizable",
+        "create": "Crear",
+        "creating": "Creando…"
+      },
+      "toast": {
+        "saved": "Asociamos la venta a «{name}»."
+      },
+      "errors": {
+        "INVALID_BODY": "Revisá los datos del cliente.",
+        "INVALID_INPUT": "Completá al menos un dato válido y elegí tags de esta cuenta.",
+        "NOT_FOUND": "La cotización, el cliente o un tag ya no existe. Actualizá la pantalla.",
+        "QUOTE_ARCHIVED": "La cotización está archivada. Desarchivala antes de asociar el cliente.",
+        "CONFLICT": "La cotización ya no está aceptada. Actualizá la pantalla antes de asociarla.",
+        "FORBIDDEN": "No tenés permiso para consultar esta venta.",
+        "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
+        "INTERNAL": "No pudimos asociar el cliente. Intentá de nuevo."
+      }
+    }
+  },
+  "reports": {
+    "placeholderTitle": "Reportes",
+    "placeholderDescription": "Los reportes de pedidos y cotizaciones se van a mostrar acá."
+  },
+  "administration": {
+    "placeholderTitle": "Administración",
+    "placeholderDescription": "La administración de la cuenta se va a mostrar acá."
   },
   "catalog": {
     "title": "Catálogo",
@@ -400,19 +1113,16 @@
   "settings": {
     "title": "Configuración",
     "nav": {
-      "password": "Contraseña",
-      "email": "Correo",
       "account": "Cuenta",
       "branches": "Sucursales",
       "users": "Usuarios",
       "catalog": "Catálogo",
       "prices": "Precios",
-      "onboarding": "Configuración inicial"
+      "onboarding": "Configuración inicial · {done}/{total}"
     }
   },
   "branches": {
     "title": "Sucursales",
-    "description": "Cada sucursal opera con su propia disponibilidad, sus precios y sus canales. El catálogo de productos es de toda la cuenta.",
     "add": "Agregar sucursal",
     "cancel": "Cancelar",
     "table": {
@@ -422,7 +1132,8 @@
       "expiry": "Vencimiento",
       "status": "Estado",
       "actions": "Acciones",
-      "noAddress": "Sin dirección"
+      "noAddress": "Sin dirección",
+      "noEmail": "Sin correo"
     },
     "expiryDays": "{count, plural, one {# día} other {# días}}",
     "status": {
@@ -465,6 +1176,11 @@
       "label": "Dirección",
       "placeholder": "Ingresá la dirección de la sucursal"
     },
+    "email": {
+      "label": "Correo de la sucursal",
+      "placeholder": "ventas@tucorralon.com",
+      "hint": "Las respuestas de tus clientes a una cotización llegan a esta dirección."
+    },
     "defaultExpiryDays": {
       "label": "Días de vencimiento de las cotizaciones",
       "hint": "Por defecto {count} días. Cada sucursal puede usar el suyo.",
@@ -478,16 +1194,21 @@
     "errors": {
       "NOT_FOUND": "Esa sucursal ya no existe. Actualizá el listado.",
       "INVALID_INPUT": "Revisá los datos de la sucursal e intentá de nuevo.",
-      "INTERNAL": "No pudimos guardar la sucursal. Intentá de nuevo."
+      "INTERNAL": "No pudimos guardar la sucursal. Intentá de nuevo.",
+      "CHANNEL_IDENTIFIER": "Revisá el correo de la sucursal: no es una dirección válida.",
+      "CONFLICT": "Ese correo ya está en otro canal de la sucursal."
     }
   },
   "account": {
     "title": "Cuenta",
-    "description": "Los datos del corralón y la marca con la que tu cliente ve una cotización. Valen para toda la cuenta, no para una sucursal.",
+    "access": {
+      "title": "Acceso",
+      "changeEmail": "Cambiar correo",
+      "changePassword": "Cambiar contraseña"
+    },
     "name": {
       "label": "Nombre del corralón",
       "placeholder": "Ingresá el nombre del corralón",
-      "hint": "Es el nombre que aparece en el backoffice y en lo que enviamos a tu cliente.",
       "required": "Ingresá el nombre del corralón."
     },
     "legalName": {
@@ -496,24 +1217,18 @@
     },
     "taxId": {
       "label": "CUIT",
-      "placeholder": "Ingresá el CUIT",
-      "hint": "Son 11 dígitos, con guiones o sin ellos: 30-70123456-8."
+      "placeholder": "Ingresá el CUIT"
     },
     "brand": {
-      "title": "Marca",
-      "description": "Con esto armamos las cotizaciones que ve tu cliente. Si lo dejás vacío usamos el diseño de Coti."
+      "title": "Marca"
     },
     "brandLogoUrl": {
-      "label": "Logo",
-      "placeholder": "Ingresá la dirección de la imagen",
-      "hint": "Tiene que ser una imagen accesible desde internet, como https://tucorralon.com/logo.png.",
-      "open": "Verla",
       "invalid": "Ingresá una dirección web completa, con https:// adelante."
     },
     "brandColor": {
       "label": "Color de la marca",
-      "placeholder": "Ingresá el color de tu marca",
-      "hint": "En hexadecimal, como lo escribís en un diseño: #C2410C.",
+      "placeholder": "C2410C",
+      "pickerLabel": "Elegir color de marca",
       "invalid": "Ingresá un color hexadecimal válido."
     },
     "submit": "Guardar cambios",
@@ -527,7 +1242,6 @@
   },
   "users": {
     "title": "Usuarios",
-    "description": "Quiénes entran al backoffice, con qué rol y en qué sucursales trabajan. El catálogo y los precios son de toda la cuenta.",
     "add": "Agregar usuario",
     "cancel": "Cancelar",
     "you": "Vos",
@@ -551,11 +1265,13 @@
     },
     "status": {
       "active": "Activo",
-      "inactive": "Desactivado"
+      "inactive": "Desactivado",
+      "invitePending": "Invitación pendiente",
+      "inviteExpired": "Invitación vencida"
     },
     "create": {
       "title": "Agregar usuario",
-      "description": "Le vamos a pedir esta contraseña la primera vez que entre y la puede cambiar cuando quiera.",
+      "description": "Cargá sus datos, su rol y las sucursales donde trabaja.",
       "submit": "Crear usuario",
       "submitting": "Creando…"
     },
@@ -601,8 +1317,19 @@
     "password": {
       "label": "Contraseña inicial",
       "placeholder": "Elegí una contraseña",
-      "required": "Elegí una contraseña inicial.",
-      "hint": "Se la tenés que pasar vos."
+      "required": "Elegí una contraseña inicial."
+    },
+    "access": {
+      "label": "Cómo va a entrar",
+      "INVITE": {
+        "label": "Mandarle una invitación",
+        "hint": "Le llega un correo para elegir su propia contraseña. Si se le vence, se la podés reenviar."
+      },
+      "PASSWORD": {
+        "label": "Ponerle una contraseña inicial",
+        "hint": "Se la pasás vos y la puede cambiar cuando quiera."
+      },
+      "passwordOnly": "El envío de correos no está configurado, así que entra con esta contraseña. Se la tenés que pasar vos."
     },
     "role": {
       "label": "Rol",
@@ -615,6 +1342,7 @@
       "closedAssignments": "{count, plural, one {Tiene una sucursal cerrada asignada y al guardar se la vamos a quitar.} other {Tiene # sucursales cerradas asignadas y al guardar se las vamos a quitar.}}"
     },
     "created": "Creamos a «{name}». Acordate de pasarle la contraseña: nosotros no se la mandamos.",
+    "invited": "Invitamos a «{name}». Le mandamos un correo para que elija su contraseña.",
     "updated": "Guardamos los cambios de «{name}». Rigen desde su próxima pantalla.",
     "deactivated": "Desactivamos a «{name}». Ya no puede entrar, y podés reactivarlo cuando quieras.",
     "reactivated": "Reactivamos a «{name}». Ya puede volver a entrar.",
@@ -624,36 +1352,157 @@
       "NOT_FOUND": "Ese usuario ya no existe. Actualizá el listado.",
       "INVALID_INPUT": "Revisá los datos del usuario e intentá de nuevo.",
       "INTERNAL": "No pudimos guardar el usuario. Intentá de nuevo."
+    },
+    "invite": {
+      "action": "Reenviar invitación",
+      "sent": "Le reenviamos la invitación a {email}.",
+      "errors": {
+        "INVITE_NOT_PENDING": "Ese usuario ya eligió su contraseña. Si la olvidó, mandale el enlace de contraseña.",
+        "RATE_LIMITED": "Enviamos demasiados correos en poco tiempo. Esperá unos minutos e intentá de nuevo.",
+        "INTERNAL": "No pudimos reenviar la invitación. Intentá de nuevo."
+      }
+    }
+  },
+  "products": {
+    "title": "Productos",
+    "total": "{total, plural, one {# producto} other {# productos}}",
+    "add": "Agregar producto",
+    "bulkEdit": "Edición masiva",
+    "cancel": "Cancelar",
+    "search": "Buscar por nombre o código",
+    "table": {
+      "caption": "Productos del catálogo",
+      "product": "Producto",
+      "code": "Código",
+      "family": "Rubro",
+      "unit": "Unidad",
+      "status": "Estado",
+      "actions": "Acciones"
+    },
+    "status": {
+      "active": "Activo",
+      "inactive": "Desactivado"
+    },
+    "empty": {
+      "title": "Todavía no hay productos",
+      "description": "Agregá el primero o importá una planilla para armar el catálogo."
+    },
+    "noResults": {
+      "title": "No encontramos productos",
+      "description": "Probá con otro nombre o código."
+    },
+    "create": {
+      "title": "Agregar producto",
+      "description": "Cargá los datos del producto y, si querés, una foto para reconocerlo más rápido.",
+      "submit": "Crear producto",
+      "submitting": "Creando…"
+    },
+    "edit": {
+      "action": "Editar",
+      "title": "Editar producto",
+      "description": "Los cambios se aplican al catálogo de toda la cuenta.",
+      "submit": "Guardar cambios",
+      "submitting": "Guardando…"
+    },
+    "deactivate": {
+      "action": "Desactivar",
+      "title": "Desactivar el producto",
+      "description": "«{name}» deja de estar disponible para nuevas cotizaciones. Su historial se conserva y podés reactivarlo cuando quieras.",
+      "confirm": "Desactivar producto",
+      "confirming": "Desactivando…"
+    },
+    "reactivate": {
+      "action": "Reactivar"
+    },
+    "name": {
+      "label": "Nombre",
+      "placeholder": "Ej. Cemento Portland 50 kg",
+      "required": "Ingresá el nombre del producto."
+    },
+    "code": {
+      "label": "Código",
+      "placeholder": "Ej. CEM-001"
+    },
+    "description": {
+      "label": "Descripción",
+      "placeholder": "Agregá detalles útiles para identificarlo"
+    },
+    "unit": {
+      "label": "Unidad",
+      "placeholder": "Ej. bolsa, unidad, metro",
+      "required": "Ingresá la unidad de venta."
+    },
+    "price": {
+      "label": "Precio",
+      "placeholder": "Ingresá el precio",
+      "hint": "Se aplica en todas las sucursales. Después se ajusta con la lista de precios.",
+      "requiredWithMin": "Ingresá el precio para cargar un precio mínimo."
+    },
+    "minPrice": {
+      "label": "Precio mínimo",
+      "placeholder": "Ingresá el precio mínimo",
+      "hint": "El piso que respetan los descuentos automáticos.",
+      "abovePrice": "No puede superar el precio."
+    },
+    "family": {
+      "label": "Rubro",
+      "placeholder": "Elegí un rubro",
+      "search": "Buscar rubro",
+      "empty": "No hay rubros que coincidan.",
+      "required": "Elegí un rubro."
+    },
+    "subgroup": {
+      "label": "Subgrupo",
+      "placeholder": "Elegí un subgrupo"
+    },
+    "image": {
+      "label": "Foto del producto",
+      "title": "Arrastrá una foto hasta acá",
+      "release": "Soltá la foto para cargarla",
+      "choose": "Elegir foto",
+      "replace": "Cambiar foto",
+      "hint": "PNG, JPG o WebP."
+    },
+    "created": "Creamos «{name}».",
+    "updated": "Guardamos los cambios de «{name}».",
+    "deactivated": "Desactivamos «{name}».",
+    "reactivated": "Reactivamos «{name}».",
+    "errors": {
+      "CONFLICT": "Ya existe un producto con ese código.",
+      "NOT_FOUND": "Ese producto ya no existe. Actualizá el listado.",
+      "INVALID_BODY": "Revisá los datos del producto e intentá de nuevo.",
+      "INVALID_INPUT": "Revisá los datos del producto e intentá de nuevo.",
+      "FILE_TOO_LARGE": "La foto supera el tamaño permitido.",
+      "INTERNAL": "No pudimos guardar el producto. Intentá de nuevo."
     }
   },
   "catalogImport": {
     "title": "Catálogo",
-    "description": "Cargá productos y precios desde una planilla. Primero revisás el contenido y recién después confirmás la importación.",
+    "bulk": {
+      "title": "Edición masiva"
+    },
     "noBranch": {
       "title": "Elegí una sucursal",
-      "description": "Seleccioná una sucursal desde el encabezado para cargar el catálogo y sus precios iniciales."
+      "description": "Seleccioná una sucursal desde el encabezado para editar el catálogo y sus precios."
     },
     "steps": {
       "download": {
-        "title": "Descargá la plantilla",
-        "description": "Usá las columnas y formatos esperados."
+        "title": "Descargá la plantilla"
       },
       "complete": {
-        "title": "Completá tus productos",
-        "description": "Incluí códigos, nombres, rubros y precios."
+        "title": "Editá o agregá productos"
       },
       "upload": {
-        "title": "Subí y revisá",
-        "description": "Nada se importa hasta tu confirmación."
+        "title": "Subí y revisá"
       }
     },
     "dropzone": {
       "title": "Arrastrá tu archivo hasta acá",
-      "hint": "Formato .xlsx o .csv.",
       "release": "Soltá el archivo para cargarlo",
       "selected": "Archivo seleccionado: {size, number} KB",
       "choose": "Elegir archivo",
-      "replace": "Cambiar archivo"
+      "replace": "Cambiar archivo",
+      "formats": "Aceptamos Excel (.xlsx) y CSV."
     },
     "fileRequired": "Elegí un archivo para continuar.",
     "template": {
@@ -664,7 +1513,7 @@
     "continue": "Continuar",
     "summary": {
       "total": "Filas leídas",
-      "valid": "Listas para importar",
+      "valid": "Listas para aplicar",
       "invalid": "Con errores"
     },
     "invalidRowsSkipped": "Al confirmar se omitirán {count, plural, one {# fila con errores} other {# filas con errores}}.",
@@ -674,14 +1523,24 @@
       "product": "Producto",
       "family": "Rubro",
       "price": "Precio",
+      "status": "Estado",
       "result": "Validación"
     },
-    "valid": "Lista para importar",
+    "status": {
+      "active": "Activo",
+      "inactive": "Desactivado"
+    },
+    "action": {
+      "CREATE": "Nuevo",
+      "UPDATE": "Actualización"
+    },
+    "valid": "Lista para aplicar",
     "chooseAnother": "Elegir otro archivo",
-    "confirm": "Importar {count, plural, one {# producto} other {# productos}}",
-    "confirming": "Importando…",
-    "noValidRows": "Corregí la planilla: no hay filas válidas para importar.",
-    "success": "Importamos {imported, plural, one {# producto} other {# productos}}. Omitimos {skipped, plural, one {# fila} other {# filas}}.",
+    "confirm": "Aplicar {count, plural, one {# cambio} other {# cambios}}",
+    "confirming": "Aplicando…",
+    "noValidRows": "Corregí la planilla: no hay filas válidas para aplicar.",
+    "success": "Creamos {created, plural, one {# producto} other {# productos}} y actualizamos {updated, plural, one {# producto} other {# productos}}. Omitimos {skipped, plural, one {# fila} other {# filas}}.",
+    "importAnother": "Editar otro archivo",
     "errors": {
       "INVALID_BODY": "Seleccioná un archivo válido con el formato indicado.",
       "INVALID_INPUT": "Revisá el archivo y volvé a intentarlo.",
@@ -692,7 +1551,7 @@
       "missing_code": "El código es obligatorio.",
       "code_too_long": "El código es demasiado largo.",
       "duplicate_code": "El código está repetido en el archivo.",
-      "existing_code": "El código ya existe en el catálogo.",
+      "invalid_active": "El estado debe ser SI o NO.",
       "description_too_long": "La descripción es demasiado larga.",
       "missing_name": "El nombre es obligatorio.",
       "name_too_long": "El nombre es demasiado largo.",
@@ -721,7 +1580,7 @@
         "FIRST_BRANCH": "Sucursal",
         "CATALOG_UPLOAD": "Carga",
         "CATALOG_REVIEW": "Revisión",
-        "TEAM": "Equipo",
+        "TEAM": "Usuarios",
         "COMPLETE": "Cuenta lista"
       },
       "statuses": {
@@ -762,7 +1621,7 @@
           "description": "Importación masiva de productos."
         },
         "team": {
-          "title": "Sumá al Equipo",
+          "title": "Sumá usuarios",
           "description": "Creá usuarios que trabajen con vos."
         }
       }
@@ -780,20 +1639,6 @@
         "pickerLabel": "Elegir color de marca",
         "hint": "Usamos este color en detalles de las cotizaciones.",
         "invalid": "Ingresá un color hexadecimal válido."
-      },
-      "logo": {
-        "title": "Logo",
-        "description": "Arrastrá una imagen para probar cómo se vería. Por ahora la vista previa queda sólo en este navegador y no se guarda.",
-        "drop": "Arrastrá el logo hasta acá",
-        "hint": "PNG, JPG o SVG. Sólo vista previa local.",
-        "release": "Soltá la imagen para usarla",
-        "choose": "Elegir imagen",
-        "replace": "Cambiar imagen",
-        "remove": "Quitar imagen",
-        "invalid": "Elegí una imagen PNG, JPG o SVG.",
-        "invalidType": "Elegí una imagen PNG, JPG o SVG.",
-        "previewAlt": "Vista previa local del logo",
-        "localOnly": "Esta imagen no se va a subir ni guardar."
       }
     },
     "branch": {
@@ -812,27 +1657,39 @@
       "returnToUpload": "Volver a cargar el archivo"
     },
     "team": {
-      "title": "Sumá a quienes van a Cotizar",
-      "description": "Elegí rol, sucursales y una contraseña inicial.",
+      "title": "Sumá a los usuarios que van a cotizar",
+      "description": "Elegí su rol, sus sucursales y cómo va a entrar.",
+      "you": "Vos",
       "passwordNotice": "Esto crea un usuario real, no envía una invitación. Vas a tener que compartirle la contraseña inicial por un canal seguro.",
-      "add": "Agregar integrante",
+      "add": "Agregar usuario",
       "created": "Creamos a «{name}». Ya puede ingresar con la contraseña inicial.",
       "finish": "Finalizar configuración",
       "empty": {
-        "title": "Todavía no agregaste integrantes",
+        "title": "Todavía no agregaste usuarios",
         "description": "Podés hacerlo ahora o continuar y administrarlos más adelante desde Configuración."
-      }
+      },
+      "inviteNotice": "Cada usuario recibe una invitación por correo para elegir su contraseña. Si preferís, le podés poner una inicial y pasársela vos.",
+      "invited": "Invitamos a «{name}». Le mandamos un correo para que elija su contraseña."
     },
     "complete": {
       "title": "Tu cuenta está lista",
       "description": "Todo lo que hayas dejado pendiente sigue disponible en Configuración.",
       "readyTitle": "Configuración completada",
       "readyDescription": "Ya podés empezar a trabajar con tu cuenta.",
+      "partialTitle": "Quedaron pasos pendientes",
+      "partialDescription": "Ya podés trabajar. Lo que falta lo completás cuando quieras desde Configuración.",
       "action": "Ir al inicio",
       "items": {
         "brand": "Marca revisada",
         "branch": "Sucursal configurada",
-        "catalog": "Catálogo disponible"
+        "catalog": "Catálogo disponible",
+        "team": "Usuarios agregados"
+      },
+      "pending": {
+        "brand": "Marca pendiente: la completás en Cuenta",
+        "branch": "Sucursal pendiente: la revisás en Sucursales",
+        "catalog": "Catálogo pendiente: lo importás en Catálogo",
+        "team": "Usuarios pendientes: los sumás en Usuarios"
       }
     },
     "errors": {
@@ -841,11 +1698,49 @@
       "NOT_FOUND": "No encontramos la configuración inicial de esta cuenta.",
       "EMAIL_TAKEN": "Ya existe un usuario con ese correo.",
       "INTERNAL": "No pudimos guardar el avance. Intentá de nuevo."
+    },
+    "checklist": {
+      "title": "Terminá de configurar tu cuenta",
+      "description": "Cada paso se marca solo cuando lo hacés, desde acá o desde Configuración.",
+      "progressLabel": "Pasos de la configuración inicial completados",
+      "progress": "{done} de {total}",
+      "done": "Listo",
+      "configure": "Configurar",
+      "items": {
+        "BRAND": {
+          "title": "Marca",
+          "description": "Logo y color que ve tu cliente en cada cotización."
+        },
+        "CATALOG_UPLOAD": {
+          "title": "Catálogo",
+          "description": "Tus productos, para que Coti los encuentre en cada pedido."
+        },
+        "TEAM": {
+          "title": "Equipo",
+          "description": "Los vendedores que atienden los pedidos con vos."
+        }
+      },
+      "resume": {
+        "action": "Retomar asistente",
+        "pending": "Retomando…"
+      },
+      "hide": {
+        "action": "No mostrar más",
+        "title": "Ocultar la configuración inicial",
+        "description": "Deja de aparecer en el inicio. La seguís encontrando en Configuración mientras quede algún paso pendiente.",
+        "confirm": "Ocultar",
+        "pending": "Ocultando…",
+        "cancel": "Cancelar"
+      },
+      "show": {
+        "action": "Volver a mostrar en el inicio",
+        "pending": "Mostrando…"
+      },
+      "settingsTitle": "Configuración inicial"
     }
   },
   "priceImport": {
     "title": "Precios",
-    "description": "Actualizá los precios vigentes de una sucursal. Primero revisás el archivo y después confirmás los cambios.",
     "targetBranch": "Los cambios se aplican en la sucursal {name}. Cambiala desde el selector del encabezado.",
     "noBranch": {
       "title": "Elegí una sucursal",
@@ -866,7 +1761,6 @@
         "INTERNAL": "No pudimos exportar los precios. Intentá de nuevo."
       }
     },
-    "formatHint": "Usá un archivo .xlsx o .csv con las columnas codigo y precio. También podés incluir precio_minimo.",
     "summary": "Filas válidas: {valid}. Filas con errores: {invalid}.",
     "confirm": "Confirmar actualización",
     "confirming": "Actualizando…",

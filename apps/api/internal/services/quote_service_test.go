@@ -55,17 +55,21 @@ type fakeQuoteRepo struct {
 	updateStatusErr error
 	applyPricingErr error
 
-	branchesAskedFor []uuid.UUID
-	versionBranches  []uuid.UUID
-	listedVersionIDs []uuid.UUID
-	alternativeReads [][]uuid.UUID
-	pricedVersionIDs []uuid.UUID
-	appliedPricings  [][]domain.QuoteItemPricing
-	writtenTotals    []decimal.Decimal
-	statusUpdates    []quoteStatusUpdate
-	statusChanges    []quoteStatusChangeCall
-	inTransaction    *fakeQuoteDB
-	writesInsideTx   []bool
+	branchesAskedFor      []uuid.UUID
+	versionBranches       []uuid.UUID
+	listedVersionIDs      []uuid.UUID
+	alternativeReads      [][]uuid.UUID
+	pricedVersionIDs      []uuid.UUID
+	appliedPricings       [][]domain.QuoteItemPricing
+	createdVersions       []domain.NewQuoteVersion
+	createdItems          [][]domain.NewQuoteItem
+	createdAlternatives   [][]domain.NewQuoteItemAlternative
+	currentVersionUpdates []uuid.UUID
+	writtenTotals         []decimal.Decimal
+	statusUpdates         []quoteStatusUpdate
+	statusChanges         []quoteStatusChangeCall
+	inTransaction         *fakeQuoteDB
+	writesInsideTx        []bool
 }
 
 func (f *fakeQuoteRepo) GetByID(
@@ -77,6 +81,61 @@ func (f *fakeQuoteRepo) GetByID(
 	}
 	quote := *f.quote
 	return &quote, nil
+}
+
+func (f *fakeQuoteRepo) GetByIDForUpdate(
+	ctx context.Context, q repository.Querier, accountID, branchID, id uuid.UUID,
+) (*domain.Quote, error) {
+	return f.GetByID(ctx, q, accountID, branchID, id)
+}
+
+func (f *fakeQuoteRepo) CreateVersion(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, in domain.NewQuoteVersion,
+) (*domain.QuoteVersion, error) {
+	f.createdVersions = append(f.createdVersions, in)
+	version := &domain.QuoteVersion{
+		ID: uuid.New(), QuoteID: in.QuoteID, AuthorID: in.AuthorID,
+		VersionNumber: in.VersionNumber, Currency: in.Currency, Total: in.Total,
+		IsImmutable: in.IsImmutable, Comment: in.Comment,
+	}
+	f.version = version
+	return version, nil
+}
+
+func (f *fakeQuoteRepo) CreateItems(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, versionID uuid.UUID,
+	items []domain.NewQuoteItem,
+) ([]domain.QuoteItem, error) {
+	f.createdItems = append(f.createdItems, items)
+	created := make([]domain.QuoteItem, 0, len(items))
+	for _, item := range items {
+		created = append(created, domain.QuoteItem{
+			ID: item.ID, VersionID: versionID, ProductID: item.ProductID,
+			RequestedDescription: item.RequestedDescription, Quantity: item.Quantity,
+			Unit: item.Unit, UnitPriceSnapshot: item.UnitPriceSnapshot,
+			MinPriceSnapshot: item.MinPriceSnapshot, Subtotal: item.Subtotal,
+			ConfidenceScore: item.ConfidenceScore, MatchStatus: item.MatchStatus,
+			QuantityRationale: item.QuantityRationale,
+		})
+	}
+	return created, nil
+}
+
+func (f *fakeQuoteRepo) CreateAlternatives(
+	_ context.Context, _ repository.Querier, _ uuid.UUID,
+	alternatives []domain.NewQuoteItemAlternative,
+) error {
+	f.createdAlternatives = append(f.createdAlternatives, alternatives)
+	return nil
+}
+
+func (f *fakeQuoteRepo) UpdateCurrentVersion(
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID, versionID uuid.UUID,
+) (*domain.Quote, error) {
+	f.currentVersionUpdates = append(f.currentVersionUpdates, versionID)
+	updated := *f.quote
+	updated.CurrentVersionID = &versionID
+	return &updated, nil
 }
 
 func (f *fakeQuoteRepo) UpdateStatus(
@@ -115,6 +174,18 @@ func (f *fakeQuoteRepo) UpdateVersionTotal(
 	return &updated, nil
 }
 
+func (f *fakeQuoteRepo) UpdateVersionValuation(
+	_ context.Context, _ repository.Querier, _, versionID uuid.UUID, total decimal.Decimal,
+	currency string,
+) (*domain.QuoteVersion, error) {
+	f.writtenTotals = append(f.writtenTotals, total)
+	updated := *f.version
+	updated.ID = versionID
+	updated.Total = total
+	updated.Currency = currency
+	return &updated, nil
+}
+
 func (f *fakeQuoteRepo) ListItems(
 	_ context.Context, _ repository.Querier, _, versionID uuid.UUID,
 ) ([]domain.QuoteItem, error) {
@@ -137,6 +208,18 @@ func (f *fakeQuoteRepo) ListAlternativesByItemIDs(
 	return byItem, nil
 }
 
+func (f *fakeQuoteRepo) GetAlternative(
+	_ context.Context, _ repository.Querier, _, _, itemID, alternativeID uuid.UUID,
+) (*domain.QuoteItemAlternative, error) {
+	for _, alternative := range f.alternatives[itemID] {
+		if alternative.ID == alternativeID {
+			copy := alternative
+			return &copy, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+
 func (f *fakeQuoteRepo) ApplyPricing(
 	_ context.Context, _ repository.Querier, _, versionID uuid.UUID,
 	pricings []domain.QuoteItemPricing,
@@ -149,6 +232,26 @@ func (f *fakeQuoteRepo) ApplyPricing(
 	return f.applyPricingErr
 }
 
+func (f *fakeQuoteRepo) ApplyAlternativePricing(
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID,
+	_ []domain.QuoteItemAlternativePricing,
+) error {
+	return nil
+}
+
+func (f *fakeQuoteRepo) UpdateAlternativeApproval(
+	_ context.Context, _ repository.Querier, _, _, itemID, alternativeID uuid.UUID,
+	approved bool,
+) (*domain.QuoteItemAlternative, error) {
+	alternative, err := f.GetAlternative(context.Background(), nil, uuid.Nil, uuid.Nil,
+		itemID, alternativeID)
+	if err != nil {
+		return nil, err
+	}
+	alternative.ApprovedBySeller = approved
+	return alternative, nil
+}
+
 func (f *fakeQuoteRepo) AppendStatusChange(
 	_ context.Context, _ repository.Querier, _, quoteID uuid.UUID,
 	previousStatus *domain.QuoteStatus, newStatus domain.QuoteStatus, userID *uuid.UUID,
@@ -157,6 +260,24 @@ func (f *fakeQuoteRepo) AppendStatusChange(
 		quoteID: quoteID, previousStatus: previousStatus, newStatus: newStatus, userID: userID,
 	})
 	return &domain.QuoteStatusChange{QuoteID: quoteID, NewStatus: newStatus}, nil
+}
+
+func (f *fakeQuoteRepo) Archive(
+	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID,
+) (*domain.Quote, error) {
+	if f.quote == nil || f.quote.ArchivedAt != nil {
+		return nil, domain.ErrConflict
+	}
+	return f.quote, nil
+}
+
+func (f *fakeQuoteRepo) Unarchive(
+	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID,
+) (*domain.Quote, error) {
+	if f.quote == nil || f.quote.ArchivedAt == nil {
+		return nil, domain.ErrConflict
+	}
+	return f.quote, nil
 }
 
 type fakeBranchPrices struct {
@@ -300,6 +421,32 @@ func TestQuoteService_AcceptMaterials_FreezesPricesAndMovesToQuoted(t *testing.T
 	}
 }
 
+func TestQuoteService_AcceptMaterials_PricesRequestedChanges(t *testing.T) {
+	t.Parallel()
+	product := uuid.New()
+	f := newQuoteFixture([]domain.QuoteItem{pricedLine(product, "2")},
+		map[uuid.UUID]domain.BranchPrice{product: branchPrice(product, "30.00", nil)})
+	f.quotes.quote.CurrentStatus = domain.QuoteStatusChangeRequested
+
+	priced, err := f.service.AcceptMaterials(context.Background(), f.tenant, f.quoteID)
+	if err != nil {
+		t.Fatalf("AcceptMaterials() = %v", err)
+	}
+	if priced.Quote.CurrentStatus != domain.QuoteStatusQuoted ||
+		!priced.Version.Total.Equal(decimal.RequireFromString("60.00")) {
+		t.Errorf("priced quote = %+v, want QUOTED with total 60.00", priced)
+	}
+	if len(f.quotes.statusUpdates) != 1 ||
+		f.quotes.statusUpdates[0].from != domain.QuoteStatusChangeRequested ||
+		f.quotes.statusUpdates[0].to != domain.QuoteStatusQuoted {
+		t.Errorf("status updates = %+v, want CHANGE_REQUESTED to QUOTED", f.quotes.statusUpdates)
+	}
+	if len(f.quotes.statusChanges) != 1 || f.quotes.statusChanges[0].previousStatus == nil ||
+		*f.quotes.statusChanges[0].previousStatus != domain.QuoteStatusChangeRequested {
+		t.Errorf("status history = %+v, want CHANGE_REQUESTED as previous", f.quotes.statusChanges)
+	}
+}
+
 func TestQuoteService_AcceptMaterials_PricesEveryLineInOneQuery(t *testing.T) {
 	t.Parallel()
 	first, second := uuid.New(), uuid.New()
@@ -355,7 +502,6 @@ func TestQuoteService_AcceptMaterials_RefusesAQuoteThatIsNotADraft(t *testing.T)
 	}{
 		{"already quoted", domain.QuoteStatusQuoted, false, domain.CodeQuoteNotDraft},
 		{"sent", domain.QuoteStatusSent, false, domain.CodeQuoteNotDraft},
-		{"change requested", domain.QuoteStatusChangeRequested, false, domain.CodeQuoteNotDraft},
 		{"accepted", domain.QuoteStatusAccepted, false, domain.CodeQuoteNotDraft},
 		{"rejected", domain.QuoteStatusRejected, false, domain.CodeQuoteNotDraft},
 		{"archived draft", domain.QuoteStatusDraft, true, domain.CodeQuoteArchived},
@@ -617,7 +763,10 @@ func TestQuoteService_AcceptMaterials_CarriesTheFlaggedLinesCandidates(t *testin
 	flagged := flaggedLine("2")
 	name := "Membrana asfáltica 4mm"
 	f := newQuoteFixture([]domain.QuoteItem{pricedLine(product, "1"), flagged},
-		map[uuid.UUID]domain.BranchPrice{product: branchPrice(product, "10.00", nil)})
+		map[uuid.UUID]domain.BranchPrice{
+			product:   branchPrice(product, "10.00", nil),
+			candidate: branchPrice(candidate, "8.50", nil),
+		})
 	f.quotes.alternatives = map[uuid.UUID][]domain.QuoteItemAlternative{
 		flagged.ID: {{
 			ID: uuid.New(), QuoteItemID: flagged.ID, ProductID: &candidate,
@@ -644,6 +793,10 @@ func TestQuoteService_AcceptMaterials_CarriesTheFlaggedLinesCandidates(t *testin
 		t.Errorf("offer name = %v, want %q: a bare id is barely better than a bare flag",
 			offered[0].CanonicalName, name)
 	}
+	if !offered[0].PriceSnapshot.Valid ||
+		!offered[0].PriceSnapshot.Decimal.Equal(decimal.RequireFromString("8.50")) {
+		t.Errorf("offer price = %v, want frozen 8.50", offered[0].PriceSnapshot)
+	}
 	// One read for every line, not one per line.
 	if len(f.quotes.alternativeReads) != 1 {
 		t.Fatalf("read candidates %d times, want once for the whole version",
@@ -651,5 +804,285 @@ func TestQuoteService_AcceptMaterials_CarriesTheFlaggedLinesCandidates(t *testin
 	}
 	if got := len(f.quotes.alternativeReads[0]); got != 2 {
 		t.Errorf("asked for %d lines, want both of them", got)
+	}
+}
+
+// quoteFixtureAt builds a fixture around a quote in an arbitrary state, for the state-machine
+// surface (transition and archive) that does not care about the version or its lines.
+func quoteFixtureAt(quote *domain.Quote) quoteFixture {
+	accountID, branchID, sellerID := uuid.New(), uuid.New(), uuid.New()
+	quote.AccountID = accountID
+	quote.BranchID = branchID
+	db := &fakeQuoteDB{}
+	quotes := &fakeQuoteRepo{quote: quote, inTransaction: db}
+	prices := &fakeBranchPrices{}
+	service := NewQuoteService(db, quotes, prices,
+		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return quoteFixture{
+		service: service,
+		db:      db,
+		quotes:  quotes,
+		prices:  prices,
+		tenant: domain.Tenant{
+			AccountID: accountID, BranchID: branchID, UserID: sellerID,
+			Role: domain.UserRoleSeller,
+		},
+		quoteID:  quote.ID,
+		branchID: branchID,
+	}
+}
+
+func TestQuoteService_Transition_MovesAlongAValidEdge(t *testing.T) {
+	t.Parallel()
+	quote := &domain.Quote{ID: uuid.New(), AccountID: uuid.New(), BranchID: uuid.New(),
+		CurrentStatus: domain.QuoteStatusQuoted}
+	f := quoteFixtureAt(quote)
+
+	moved, err := f.service.Transition(context.Background(), f.tenant, quote.ID, domain.QuoteStatusSent)
+	if err != nil {
+		t.Fatalf("Transition() = %v, want no error", err)
+	}
+	if moved.CurrentStatus != domain.QuoteStatusSent {
+		t.Errorf("status = %q, want SENT", moved.CurrentStatus)
+	}
+	if f.db.transactions != 1 {
+		t.Errorf("transactions = %d, want 1", f.db.transactions)
+	}
+	if len(f.quotes.statusUpdates) != 1 {
+		t.Fatalf("status updates = %d, want 1", len(f.quotes.statusUpdates))
+	}
+	update := f.quotes.statusUpdates[0]
+	if update.from != domain.QuoteStatusQuoted || update.to != domain.QuoteStatusSent {
+		t.Errorf("update = %q to %q, want QUOTED to SENT", update.from, update.to)
+	}
+	if len(f.quotes.statusChanges) != 1 {
+		t.Fatalf("status changes = %d, want 1", len(f.quotes.statusChanges))
+	}
+	change := f.quotes.statusChanges[0]
+	if change.previousStatus == nil || *change.previousStatus != domain.QuoteStatusQuoted {
+		t.Errorf("history previous = %v, want QUOTED", change.previousStatus)
+	}
+	if change.newStatus != domain.QuoteStatusSent {
+		t.Errorf("history new = %q, want SENT", change.newStatus)
+	}
+	if change.userID == nil || *change.userID != f.tenant.UserID {
+		t.Errorf("history user = %v, want the caller %v", change.userID, f.tenant.UserID)
+	}
+}
+
+func TestQuoteService_ReactivateForResend_ReusesTheFrozenVersion(t *testing.T) {
+	t.Parallel()
+	versionID := uuid.New()
+	quote := &domain.Quote{ID: uuid.New(), CurrentVersionID: &versionID,
+		CurrentStatus: domain.QuoteStatusAccepted}
+	f := quoteFixtureAt(quote)
+	f.quotes.version = &domain.QuoteVersion{ID: versionID, QuoteID: quote.ID,
+		VersionNumber: 2, IsImmutable: true}
+
+	moved, err := f.service.Reactivate(context.Background(), f.tenant, quote.ID,
+		domain.QuoteReactivationResend)
+	if err != nil {
+		t.Fatalf("Reactivate() = %v, want no error", err)
+	}
+	if moved.CurrentStatus != domain.QuoteStatusQuoted {
+		t.Errorf("status = %q, want QUOTED", moved.CurrentStatus)
+	}
+	if len(f.quotes.createdVersions) != 0 || len(f.quotes.currentVersionUpdates) != 0 {
+		t.Errorf("resend created or selected a version: creates=%d updates=%d",
+			len(f.quotes.createdVersions), len(f.quotes.currentVersionUpdates))
+	}
+	if len(f.quotes.statusChanges) != 1 {
+		t.Fatalf("status changes = %d, want 1", len(f.quotes.statusChanges))
+	}
+	change := f.quotes.statusChanges[0]
+	if change.previousStatus == nil || *change.previousStatus != domain.QuoteStatusAccepted ||
+		change.newStatus != domain.QuoteStatusQuoted {
+		t.Errorf("history = %v -> %s, want ACCEPTED -> QUOTED", change.previousStatus,
+			change.newStatus)
+	}
+}
+
+func TestQuoteService_ReactivateForEditing_CreatesARepricedMutableVersion(t *testing.T) {
+	t.Parallel()
+	productID := uuid.New()
+	versionID := uuid.New()
+	quote := &domain.Quote{ID: uuid.New(), CurrentVersionID: &versionID,
+		CurrentStatus: domain.QuoteStatusRejected}
+	f := quoteFixtureAt(quote)
+	f.quotes.version = &domain.QuoteVersion{ID: versionID, QuoteID: quote.ID,
+		VersionNumber: 3, Currency: "ARS", IsImmutable: true}
+	item := pricedLine(productID, "2")
+	item.VersionID = versionID
+	f.quotes.items = []domain.QuoteItem{item}
+	f.prices.prices = map[uuid.UUID]domain.BranchPrice{
+		productID: branchPrice(productID, "125.00", nil),
+	}
+
+	moved, err := f.service.Reactivate(context.Background(), f.tenant, quote.ID,
+		domain.QuoteReactivationEdit)
+	if err != nil {
+		t.Fatalf("Reactivate() = %v, want no error", err)
+	}
+	if moved.CurrentStatus != domain.QuoteStatusChangeRequested {
+		t.Errorf("status = %q, want CHANGE_REQUESTED", moved.CurrentStatus)
+	}
+	if len(f.quotes.createdVersions) != 1 {
+		t.Fatalf("created versions = %d, want 1", len(f.quotes.createdVersions))
+	}
+	createdVersion := f.quotes.createdVersions[0]
+	if createdVersion.VersionNumber != 4 || createdVersion.IsImmutable {
+		t.Errorf("created version = %+v, want mutable v4", createdVersion)
+	}
+	if createdVersion.AuthorID == nil || *createdVersion.AuthorID != f.tenant.UserID {
+		t.Errorf("version author = %v, want seller %v", createdVersion.AuthorID, f.tenant.UserID)
+	}
+	if !createdVersion.Total.Equal(decimal.RequireFromString("250.00")) {
+		t.Errorf("version total = %s, want current-price total 250.00", createdVersion.Total)
+	}
+	if len(f.quotes.createdItems) != 1 || len(f.quotes.createdItems[0]) != 1 {
+		t.Fatalf("created items = %v, want one cloned line", f.quotes.createdItems)
+	}
+	createdItem := f.quotes.createdItems[0][0]
+	assertAmount(t, "reactivated unit price", createdItem.UnitPriceSnapshot, "125.00")
+	assertAmount(t, "reactivated subtotal", createdItem.Subtotal, "250.00")
+	if len(f.quotes.currentVersionUpdates) != 1 {
+		t.Errorf("current version updates = %d, want 1", len(f.quotes.currentVersionUpdates))
+	}
+}
+
+func TestQuoteService_Reactivate_RefusesAnOpenOrInconsistentQuote(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		status    domain.QuoteStatus
+		immutable bool
+	}{
+		{name: "still sent", status: domain.QuoteStatusSent, immutable: true},
+		{name: "closed with mutable version", status: domain.QuoteStatusAccepted, immutable: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			versionID := uuid.New()
+			quote := &domain.Quote{ID: uuid.New(), CurrentVersionID: &versionID,
+				CurrentStatus: tc.status}
+			f := quoteFixtureAt(quote)
+			f.quotes.version = &domain.QuoteVersion{ID: versionID, QuoteID: quote.ID,
+				VersionNumber: 1, IsImmutable: tc.immutable}
+
+			_, err := f.service.Reactivate(context.Background(), f.tenant, quote.ID,
+				domain.QuoteReactivationResend)
+			if domain.CodeOf(err) != domain.CodeQuoteNotReactivatable {
+				t.Fatalf("Reactivate() error = %v, want QUOTE_NOT_REACTIVATABLE", err)
+			}
+			if len(f.quotes.statusChanges) != 0 {
+				t.Errorf("status changes = %d, want none", len(f.quotes.statusChanges))
+			}
+		})
+	}
+}
+
+func TestQuoteService_Transition_RefusesAnEdgeTheStateMachineDoesNotAllow(t *testing.T) {
+	t.Parallel()
+	quote := &domain.Quote{ID: uuid.New(), AccountID: uuid.New(), BranchID: uuid.New(),
+		CurrentStatus: domain.QuoteStatusQuoted}
+	f := quoteFixtureAt(quote)
+
+	_, err := f.service.Transition(context.Background(), f.tenant, quote.ID, domain.QuoteStatusAccepted)
+	if domain.CodeOf(err) != domain.CodeQuoteNotDraft {
+		t.Fatalf("Transition() error = %v, want QUOTE_NOT_DRAFT", err)
+	}
+	if len(f.quotes.statusUpdates) != 0 {
+		t.Errorf("status updates = %d, want none on a refused edge", len(f.quotes.statusUpdates))
+	}
+	if len(f.quotes.statusChanges) != 0 {
+		t.Errorf("status changes = %d, want none on a refused edge", len(f.quotes.statusChanges))
+	}
+}
+
+func TestQuoteService_Transition_RefusesAnArchivedQuote(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	quote := &domain.Quote{ID: uuid.New(), AccountID: uuid.New(), BranchID: uuid.New(),
+		CurrentStatus: domain.QuoteStatusSent, ArchivedAt: &now}
+	f := quoteFixtureAt(quote)
+
+	_, err := f.service.Transition(context.Background(), f.tenant, quote.ID, domain.QuoteStatusAccepted)
+	if domain.CodeOf(err) != domain.CodeQuoteArchived {
+		t.Fatalf("Transition() error = %v, want QUOTE_ARCHIVED", err)
+	}
+}
+
+func TestQuoteService_Archive_BoxesAwayAnActiveQuote(t *testing.T) {
+	t.Parallel()
+	quote := &domain.Quote{ID: uuid.New(), AccountID: uuid.New(), BranchID: uuid.New(),
+		CurrentStatus: domain.QuoteStatusSent}
+	f := quoteFixtureAt(quote)
+
+	archived, err := f.service.Archive(context.Background(), f.tenant, quote.ID)
+	if err != nil {
+		t.Fatalf("Archive() = %v, want no error", err)
+	}
+	if archived.ID != quote.ID {
+		t.Errorf("archived %v, want the same quote id %v", archived.ID, quote.ID)
+	}
+	if f.db.transactions != 1 {
+		t.Errorf("transactions = %d, want 1", f.db.transactions)
+	}
+	// Archive is a flag, not a transition: it never appends history.
+	if len(f.quotes.statusChanges) != 0 {
+		t.Errorf("status changes = %d, want none for archiving", len(f.quotes.statusChanges))
+	}
+}
+
+func TestQuoteService_Archive_RefusesAlreadyArchived(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	quote := &domain.Quote{ID: uuid.New(), AccountID: uuid.New(), BranchID: uuid.New(),
+		CurrentStatus: domain.QuoteStatusSent, ArchivedAt: &now}
+	f := quoteFixtureAt(quote)
+
+	_, err := f.service.Archive(context.Background(), f.tenant, quote.ID)
+	if domain.CodeOf(err) != domain.CodeQuoteArchived {
+		t.Fatalf("Archive() error = %v, want QUOTE_ARCHIVED", err)
+	}
+}
+
+func TestQuoteService_Archive_PreservesATerminalStatus(t *testing.T) {
+	t.Parallel()
+	for _, status := range []domain.QuoteStatus{
+		domain.QuoteStatusAccepted, domain.QuoteStatusRejected,
+	} {
+		status := status
+		t.Run(string(status), func(t *testing.T) {
+			t.Parallel()
+			quote := &domain.Quote{ID: uuid.New(), AccountID: uuid.New(), BranchID: uuid.New(),
+				CurrentStatus: status}
+			f := quoteFixtureAt(quote)
+
+			archived, err := f.service.Archive(context.Background(), f.tenant, quote.ID)
+			if err != nil {
+				t.Fatalf("Archive() = %v, want no error on %s", err, status)
+			}
+			if archived.CurrentStatus != status {
+				t.Fatalf("Archive() status = %s, want %s", archived.CurrentStatus, status)
+			}
+		})
+	}
+}
+
+func TestQuoteService_Unarchive_RestoresABoxedQuote(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	quote := &domain.Quote{ID: uuid.New(), AccountID: uuid.New(), BranchID: uuid.New(),
+		CurrentStatus: domain.QuoteStatusSent, ArchivedAt: &now}
+	f := quoteFixtureAt(quote)
+
+	restored, err := f.service.Unarchive(context.Background(), f.tenant, quote.ID)
+	if err != nil {
+		t.Fatalf("Unarchive() = %v, want no error", err)
+	}
+	if restored.ID != quote.ID {
+		t.Errorf("restored %v, want the same quote id %v", restored.ID, quote.ID)
 	}
 }

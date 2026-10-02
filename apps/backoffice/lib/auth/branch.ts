@@ -3,21 +3,46 @@ import 'server-only';
 import { cookies } from 'next/headers';
 
 import { getBranches } from '@/lib/api/branches';
-import { isRemembered } from '@/lib/auth/session';
+import { getSession, isRemembered, mustVerifyEmail } from '@/lib/auth/session';
 import { BRANCH_COOKIE, sessionCookieOptions } from '@/lib/auth/tokens';
+import { SELLER_ROLE } from '@/lib/constants/auth';
 
 /*
- * The branch the caller is working in. A cookie because it outlives a navigation and no
+ * The branch the caller explicitly chose. A cookie because it outlives a navigation and no
  * client code reads it — the shell renders the switcher from the server.
  *
  * Nothing here validates the cookie on read, deliberately: no branch header means
  * account-wide for an admin, so discarding one that looks wrong widens their scope instead
  * of narrowing it. The API checks the branch against the account and the caller's
  * assignments on every request and answers 403, which is the check that matters.
+ *
+ * A seller with exactly one reachable branch never gets a branch to choose, so their choice
+ * is resolved for them: with no cookie they are pinned to the assigned set anyway, and this
+ * makes that set visible (the switcher) and sends X-Branch-Id on branch-scoped reads instead
+ * of leaving the header silent. A seller with several keeps picking; an admin changes nothing.
  */
 export async function getActiveBranchId(): Promise<string | undefined> {
-  // Blank is no selection: a delete leaves the entry empty for the rest of the request.
+  const selected = await getSelectedBranchId();
+  if (selected) return selected;
+
+  const session = await getSession();
+  // A seller held at the confirmation screen cannot read their branches, and needs none there.
+  if (session?.role !== SELLER_ROLE || mustVerifyEmail(session)) return undefined;
+
+  const branches = await getBranches();
+  return branches.length === 1 ? branches[0]?.id : undefined;
+}
+
+// The branch the cookie names, unchecked. Blank is no selection: a delete leaves the entry empty
+// for the rest of the request.
+export async function getSelectedBranchId(): Promise<string | undefined> {
   return (await cookies()).get(BRANCH_COOKIE)?.value || undefined;
+}
+
+export async function getEffectiveBranchId(
+  branches: ReadonlyArray<{ id: string }>,
+): Promise<string | undefined> {
+  return (await getActiveBranchId()) ?? (branches.length === 1 ? branches[0]?.id : undefined);
 }
 
 /*

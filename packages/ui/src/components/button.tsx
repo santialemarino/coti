@@ -10,13 +10,15 @@ import { cn } from '../lib/utils';
  * ring reads as destructive. Transitions enumerate their properties rather than using
  * `transition-all`, which would also animate a width change and make resizes look wobbly.
  *
- * The list names `scale`, not `transform`: Tailwind v4's `scale-*` sets the CSS `scale` property, so
- * a `transform`-only transition leaves `active:scale-*` snapping and the press reads as a dead key.
+ * A press is a colour step, never a scale. A control that shrinks under the pointer moves its own
+ * edges away from it, so a press that started a few pixels inside the border releases outside the
+ * shrunken box and the browser dispatches the click on the parent instead — the button lights up and
+ * does nothing. Every variant therefore steps one rung deeper than its hover and stays put.
  */
 const buttonVariants = cva(
   cn(
     'group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap border border-transparent',
-    'transition-[color,background-color,border-color,box-shadow,scale,text-decoration-color] duration-200 ease-out-soft',
+    'transition-[color,background-color,border-color,box-shadow,text-decoration-color] duration-200 ease-out-soft',
     'outline-none select-none',
     'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45',
     'disabled:pointer-events-none disabled:opacity-50',
@@ -27,15 +29,15 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          'bg-primary text-primary-foreground shadow-e1 hover:bg-primary-hover active:bg-primary-active active:scale-[0.98]',
+          'bg-primary text-primary-foreground shadow-e1 hover:bg-primary-hover active:bg-primary-active',
         secondary:
-          'bg-secondary text-secondary-foreground hover:bg-secondary-hover active:bg-border-strong active:scale-[0.98] aria-expanded:bg-secondary-hover',
+          'bg-secondary text-secondary-foreground hover:bg-secondary-hover active:bg-surface-active aria-expanded:bg-secondary-hover',
         outline:
-          'border-border bg-background text-foreground shadow-e1 hover:border-border-strong hover:bg-muted active:bg-secondary-hover active:scale-[0.98] aria-expanded:border-border-strong aria-expanded:bg-muted',
+          'border-border bg-background text-foreground shadow-e1 hover:border-border-strong hover:bg-muted active:bg-surface-hover aria-expanded:border-border-strong aria-expanded:bg-muted',
         ghost:
-          'text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent-strong active:scale-[0.98] aria-expanded:bg-accent aria-expanded:text-accent-foreground',
+          'text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent-strong aria-expanded:bg-accent aria-expanded:text-accent-foreground',
         destructive:
-          'bg-danger text-white shadow-e1 hover:bg-danger-foreground active:scale-[0.98] focus-visible:border-danger focus-visible:ring-danger/40',
+          'bg-danger text-white shadow-e1 hover:bg-danger-hover active:bg-danger-active focus-visible:border-danger focus-visible:ring-danger/40',
         link: 'text-primary underline decoration-transparent underline-offset-4 hover:decoration-primary focus-visible:border-transparent focus-visible:ring-0 focus-visible:animate-focus-bump-subtle',
       },
       size: {

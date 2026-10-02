@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
-import { CheckCircle2Icon, DownloadIcon, FileSpreadsheetIcon, UploadCloudIcon } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { CheckCircle2Icon, DownloadIcon, FileSpreadsheetIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import {
@@ -9,7 +10,9 @@ import {
   Button,
   Callout,
   Card,
+  Dropzone,
   PendingButton,
+  StepList,
   Table,
   TableBody,
   TableCell,
@@ -23,7 +26,6 @@ import {
   previewCatalogImport,
   type CatalogImportPreview,
 } from '@/app/(protected)/_actions/catalog-import';
-import { FileDropzone } from '@/components/file-dropzone';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Branch } from '@/lib/api/branches';
 import { useFormatters } from '@/lib/i18n/formatters';
@@ -92,52 +94,27 @@ export function CatalogUpload({
 
   return (
     <div className="flex flex-col gap-y-5">
-      <div className="grid gap-4 md:grid-cols-3">
-        {(['download', 'complete', 'upload'] as const).map((key, index) => (
-          <div key={key} className="flex items-start p-4 gap-x-3 bg-muted border rounded-lg">
-            <span className="flex size-7 shrink-0 items-center justify-center bg-primary rounded-full text-paragraph-sm-medium text-primary-foreground">
-              {index + 1}
-            </span>
-            <div className="flex flex-col gap-y-1">
-              <p className="text-paragraph-sm-medium">{t(`steps.${key}.title`)}</p>
-              <p className="text-paragraph-xs text-foreground-muted">
-                {t(`steps.${key}.description`)}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
+      <StepList
+        steps={(['download', 'complete', 'upload'] as const).map((key) => t(`steps.${key}.title`))}
+      />
 
       <form id={formId} onSubmit={onSubmit} noValidate className="flex flex-col gap-y-4">
-        <FileDropzone accept=".xlsx,.csv" disabled={busy} onFile={choose} className="min-h-56">
-          {({ dragging, openFileDialog }) => (
-            <>
-              <span
-                data-dragging={dragging}
-                className="flex size-12 items-center justify-center bg-accent rounded-full text-accent-foreground transition-[scale,translate] duration-200 ease-out-soft data-[dragging=true]:scale-110 data-[dragging=true]:-translate-y-1"
-              >
-                {file ? (
-                  <FileSpreadsheetIcon aria-hidden="true" className="size-6" />
-                ) : (
-                  <UploadCloudIcon aria-hidden="true" className="size-6" />
-                )}
-              </span>
-              <div className="flex flex-col items-center gap-y-1 text-center">
-                <p className="break-all text-paragraph-medium">
-                  {dragging ? t('dropzone.release') : file ? file.name : t('dropzone.title')}
-                </p>
-                <p className="text-paragraph-sm text-foreground-muted">
-                  {file
-                    ? t('dropzone.selected', { size: Math.max(1, Math.round(file.size / 1024)) })
-                    : t('dropzone.hint')}
-                </p>
-              </div>
-              <Button type="button" variant="outline" disabled={busy} onClick={openFileDialog}>
-                {file ? t('dropzone.replace') : t('dropzone.choose')}
-              </Button>
-            </>
-          )}
-        </FileDropzone>
+        <Dropzone
+          accept=".xlsx,.csv"
+          disabled={busy}
+          onFile={choose}
+          icon={file ? FileSpreadsheetIcon : undefined}
+          title={t('dropzone.title')}
+          releaseLabel={t('dropzone.release')}
+          chooseLabel={file ? t('dropzone.replace') : t('dropzone.choose')}
+          hint={t('dropzone.formats')}
+          fileName={file?.name}
+          fileMeta={
+            file
+              ? t('dropzone.selected', { size: Math.max(1, Math.round(file.size / 1024)) })
+              : null
+          }
+        />
 
         {error ? <Callout tone="danger">{error}</Callout> : null}
 
@@ -172,7 +149,7 @@ export function CatalogUpload({
 interface CatalogReviewProps {
   preview: CatalogImportPreview;
   onBack: () => void;
-  onConfirmed: (importedRows: number, skippedRows: number) => void;
+  onConfirmed: (createdRows: number, updatedRows: number, skippedRows: number) => void;
 }
 
 export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewProps) {
@@ -190,7 +167,7 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
         setError(message(result.error));
         return;
       }
-      onConfirmed(result.importedRows, result.skippedRows);
+      onConfirmed(result.createdRows, result.updatedRows, result.skippedRows);
     });
   }
 
@@ -207,36 +184,44 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
       ) : null}
       {error ? <Callout tone="danger">{error}</Callout> : null}
 
-      <div className="overflow-hidden border rounded-1.5xl shadow-e1">
+      <div className="overflow-hidden border border-border rounded-1.5xl shadow-e1">
         <Table>
           <TableHeader>
-            <tr>
-              <TableHead>{t('table.row')}</TableHead>
-              <TableHead>{t('table.code')}</TableHead>
-              <TableHead>{t('table.product')}</TableHead>
-              <TableHead>{t('table.family')}</TableHead>
-              <TableHead>{t('table.price')}</TableHead>
-              <TableHead>{t('table.result')}</TableHead>
-            </tr>
+            <TableRow>
+              <TableHead kind="index">{t('table.row')}</TableHead>
+              <TableHead kind="short">{t('table.code')}</TableHead>
+              <TableHead kind="text">{t('table.product')}</TableHead>
+              <TableHead kind="text">{t('table.family')}</TableHead>
+              <TableHead kind="money">{t('table.price')}</TableHead>
+              <TableHead kind="status">{t('table.status')}</TableHead>
+              <TableHead kind="text">{t('table.result')}</TableHead>
+            </TableRow>
           </TableHeader>
           <TableBody>
             {preview.rows.map((row) => (
               <TableRow
                 key={`${row.rowNumber}-${row.code}`}
-                className={
-                  row.errors.length > 0 ? 'bg-danger-subtle hover:bg-danger-subtle' : undefined
-                }
+                className={row.errors.length > 0 ? 'bg-danger-subtle' : undefined}
               >
-                <TableCell>{row.rowNumber}</TableCell>
-                <TableCell className="text-paragraph-sm-medium">{row.code || '—'}</TableCell>
+                <TableCell kind="index" className="text-foreground-subtle">
+                  {row.rowNumber}
+                </TableCell>
+                <TableCell kind="short" className="text-paragraph-sm-medium">
+                  {row.code || '—'}
+                </TableCell>
                 <TableCell>{row.name || '—'}</TableCell>
                 <TableCell>{row.family || '—'}</TableCell>
-                <TableCell>{row.price ? fmt.currency(row.price) : '—'}</TableCell>
+                <TableCell kind="money">{row.price ? fmt.currency(row.price) : '—'}</TableCell>
+                <TableCell kind="status">
+                  <Badge tone={row.isActive ? 'success' : 'neutral'}>
+                    {t(row.isActive ? 'status.active' : 'status.inactive')}
+                  </Badge>
+                </TableCell>
                 <TableCell>
                   {row.errors.length === 0 ? (
-                    <Badge tone="success">
+                    <Badge tone={row.action === 'CREATE' ? 'success' : 'brand'}>
                       <CheckCircle2Icon aria-hidden="true" />
-                      {t('valid')}
+                      {t(`action.${row.action}`)}
                     </Badge>
                   ) : (
                     <ul className="flex flex-col gap-y-1 text-paragraph-xs-medium text-danger-foreground">
@@ -278,19 +263,40 @@ interface CatalogImportProps {
 }
 
 export function CatalogImport({ branch }: CatalogImportProps) {
+  const router = useRouter();
   const t = useTranslations('catalogImport');
   const [preview, setPreview] = useState<CatalogImportPreview | null>(null);
-  const [result, setResult] = useState<{ imported: number; skipped: number } | null>(null);
+  const [result, setResult] = useState<{
+    created: number;
+    updated: number;
+    skipped: number;
+  } | null>(null);
 
   if (result) {
-    return <Callout tone="success">{t('success', result)}</Callout>;
+    return (
+      <div className="flex flex-col items-start gap-y-4">
+        <Callout tone="success">{t('success', result)}</Callout>
+        <Button
+          variant="outline"
+          onClick={() => {
+            setResult(null);
+            setPreview(null);
+          }}
+        >
+          {t('importAnother')}
+        </Button>
+      </div>
+    );
   }
   if (preview) {
     return (
       <CatalogReview
         preview={preview}
         onBack={() => setPreview(null)}
-        onConfirmed={(imported, skipped) => setResult({ imported, skipped })}
+        onConfirmed={(created, updated, skipped) => {
+          setResult({ created, updated, skipped });
+          router.refresh();
+        }}
       />
     );
   }

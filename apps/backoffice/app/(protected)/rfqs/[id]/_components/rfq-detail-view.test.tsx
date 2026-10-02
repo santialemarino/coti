@@ -1,0 +1,486 @@
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { NextIntlClientProvider } from 'next-intl';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { RfqListProvider, useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
+import type { QuoteItemResponse, RfqDetailResponse, RfqRecord } from '@/lib/api/rfqs';
+import messages from '@/translations/es.json';
+import { RfqChangeDiff } from './rfq-change-diff';
+import { RfqDetailView } from './rfq-detail-view';
+import { SendQuoteDialog } from './send-quote-dialog';
+
+const router = vi.hoisted(() => ({
+  refresh: vi.fn(),
+  push: vi.fn(),
+}));
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => router,
+}));
+
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
+vi.mock('@/lib/api/rfqs-client', () => ({
+  fetchRfqDetail: vi.fn(),
+  generateQuote: vi.fn(),
+}));
+// The send button's presence per status is what these tests exercise; the edit surface, diff and
+// header are stubbed out, with the send dialog and the diff left as spies.
+vi.mock('./rfq-items-table', () => ({ RfqItemsTable: vi.fn(() => null) }));
+vi.mock('./rfq-detail-header', () => ({ RfqDetailHeader: () => null }));
+vi.mock('./client-association-card', () => ({
+  ClientAssociationCard: () => <div data-testid="client-association-card" />,
+}));
+vi.mock('./send-quote-dialog', () => ({ SendQuoteDialog: vi.fn(() => null) }));
+vi.mock('./rfq-change-diff', () => ({ RfqChangeDiff: vi.fn(() => null) }));
+
+const { toast } = await import('sonner');
+const { generateQuote } = await import('@/lib/api/rfqs-client');
+
+const copy = messages.rfqs;
+
+const BASE_TIME = '2026-09-07T20:45:00.000Z';
+const BRANCH_ID = 'b0000000-0000-4000-8000-000000000001';
+const RFQ_ID = '10000000-0000-4000-8000-000000000002';
+const QUOTE_ID = '20000000-0000-4000-8000-000000000002';
+const VERSION_ID = '30000000-0000-4000-8000-000000000002';
+const SELLER_ID = '50000000-0000-4000-8000-000000000001';
+
+const DRAFT_ITEM: QuoteItemResponse = {
+  id: '40000000-0000-4000-8000-000000000001',
+  version_id: VERSION_ID,
+  product_id: '60000000-0000-4000-8000-000000000001',
+  product_code: 'LAD-HUE-12',
+  product_name: 'Ladrillo hueco 12x18x33',
+  product_unit: 'unidad',
+  requested_description: 'ladrillos huecos del 12',
+  quantity: '500.00',
+  unit: 'unidad',
+  unit_price_snapshot: null,
+  min_price_snapshot: null,
+  subtotal: null,
+  confidence_score: '0.9000',
+  confidence_level: 'HIGH',
+  match_status: 'MATCHED',
+  alternatives: [],
+  pricing_unavailable: null,
+  quantity_rationale: null,
+  created_at: BASE_TIME,
+};
+
+const PRICED_ITEM: QuoteItemResponse = {
+  ...DRAFT_ITEM,
+  unit_price_snapshot: '780.00',
+  min_price_snapshot: '700.00',
+  subtotal: '390000.00',
+  confidence_score: null,
+  confidence_level: null,
+  pricing_unavailable: false,
+};
+
+function draftRecord(): RfqRecord {
+  return {
+    id: RFQ_ID,
+    quoteId: QUOTE_ID,
+    quoteNumber: 1,
+    client: 'Constructora',
+    createdAt: BASE_TIME,
+    channel: 'manual_entry',
+    seller: 'Admin Dev',
+    sellerId: SELLER_ID,
+    branch: 'Villa Bosch',
+    branchId: BRANCH_ID,
+    itemCount: 1,
+    reviewCount: 0,
+    status: 'GENERATED',
+    needsFollowup: false,
+    followupFlaggedAt: null,
+  };
+}
+
+function makeDetail(quoteStatus: string, rfqStatus: string = quoteStatus): RfqDetailResponse {
+  const changesRequested =
+    quoteStatus === 'CHANGE_REQUESTED'
+      ? {
+          reason: 'Precio alto',
+          original: {
+            items: [
+              {
+                description: 'Ladrillo hueco 12x18x33',
+                quantity: '500.00',
+                unit: 'unidad',
+                unit_price: '780.00',
+                changed: true,
+                change_type: 'modified' as const,
+              },
+            ],
+            discounts: [],
+            total: '390000.00',
+          },
+          requested: {
+            items: [
+              {
+                description: 'Ladrillo hueco 12x18x33',
+                quantity: '500.00',
+                unit: 'unidad',
+                unit_price: '760.00',
+                changed: true,
+                change_type: 'modified' as const,
+              },
+            ],
+            discounts: [],
+            total: '380000.00',
+          },
+        }
+      : undefined;
+
+  const draft = quoteStatus === 'DRAFT';
+
+  return {
+    rfq: {
+      id: RFQ_ID,
+      quote_id: QUOTE_ID,
+      quote_number: 1,
+      client: 'Constructora',
+      created_at: BASE_TIME,
+      channel: 'manual_entry',
+      seller_id: SELLER_ID,
+      seller: 'Admin Dev',
+      branch: 'Villa Bosch',
+      branch_id: BRANCH_ID,
+      item_count: 1,
+      review_count: 0,
+      total: draft ? null : '390000.00',
+      status: rfqStatus,
+      needs_followup: false,
+      followup_flagged_at: null,
+      archived_at: null,
+    },
+    quote: {
+      id: QUOTE_ID,
+      branch_id: BRANCH_ID,
+      client_id: null,
+      rfq_id: RFQ_ID,
+      seller_id: SELLER_ID,
+      current_version_id: VERSION_ID,
+      current_status: quoteStatus,
+      expires_at: null,
+      archived_at: null,
+      needs_followup: false,
+      followup_flagged_at: null,
+      created_at: BASE_TIME,
+      updated_at: BASE_TIME,
+    },
+    version: {
+      id: VERSION_ID,
+      quote_id: QUOTE_ID,
+      author_id: SELLER_ID,
+      version_number: 1,
+      total: draft ? '0.00' : '390000.00',
+      is_immutable: false,
+      comment: null,
+      created_at: BASE_TIME,
+    },
+    items: [draft ? DRAFT_ITEM : PRICED_ITEM],
+    alternatives: {},
+    rfq_status_history: [],
+    quote_status_history: [],
+    deliveries: [],
+    discounts: [],
+    changes_requested: changesRequested,
+  };
+}
+
+function pricedResponse() {
+  const detail = makeDetail('DRAFT', 'GENERATED');
+
+  return {
+    quote: {
+      ...detail.quote!,
+      current_status: 'QUOTED',
+      updated_at: '2026-09-07T20:46:00.000Z',
+    },
+    version: {
+      ...detail.version!,
+      total: '390000.00',
+    },
+    items: [PRICED_ITEM],
+  };
+}
+
+function RecordProbe() {
+  const { records } = useRfqList();
+  const record = records.find((candidate) => candidate.id === RFQ_ID);
+
+  return (
+    <div>
+      <output aria-label="record-status">{record?.status}</output>
+      <output aria-label="record-total">{record?.total}</output>
+      <output aria-label="record-items">{record?.itemCount}</output>
+      <output aria-label="record-review">{record?.reviewCount}</output>
+    </div>
+  );
+}
+
+function renderView(detail: RfqDetailResponse, activeBranchId: string | null = BRANCH_ID) {
+  return render(viewTree(detail, activeBranchId));
+}
+
+function viewTree(detail: RfqDetailResponse, activeBranchId: string | null = BRANCH_ID) {
+  return (
+    <NextIntlClientProvider
+      locale="es"
+      messages={messages}
+      timeZone="America/Argentina/Buenos_Aires"
+    >
+      <RfqListProvider
+        records={[draftRecord()]}
+        activeBranchId={activeBranchId}
+        userName="Admin"
+        userId="u-admin"
+        isAdmin={true}
+      >
+        <RfqDetailView detail={detail} />
+        <RecordProbe />
+      </RfqListProvider>
+    </NextIntlClientProvider>
+  );
+}
+
+function dialogPropsFor(status: string) {
+  return expect.objectContaining({
+    showTrigger: true,
+    detail: expect.objectContaining({
+      quote: expect.objectContaining({ current_status: status }),
+    }),
+  });
+}
+
+// The dialog stays mounted through every status; what a status decides is whether it offers a send.
+function sendOffered() {
+  return vi.mocked(SendQuoteDialog).mock.lastCall?.[0].showTrigger ?? false;
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe('RfqDetailView tracking', () => {
+  /*
+   * The records fold away: the rail answers "where is this order", and these two answer "how did it
+   * get here", which is not what the screen is opened for.
+   */
+  it('folds the delivery history away and reports it empty once opened', () => {
+    const view = renderView(makeDetail('QUOTED'));
+
+    expect(view.queryByText(copy.detail.timeline.noDeliveries)).toBeNull();
+
+    fireEvent.click(
+      view.getByRole('button', { name: new RegExp(copy.detail.timeline.deliveries) }),
+    );
+
+    expect(view.getAllByText(copy.detail.timeline.noDeliveries)).toHaveLength(1);
+  });
+});
+
+describe('RfqDetailView send flow', () => {
+  const SendDialog = vi.mocked(SendQuoteDialog);
+  const ChangeDiff = vi.mocked(RfqChangeDiff);
+
+  it('mounts the shared send dialog on a QUOTED quote', () => {
+    renderView(makeDetail('QUOTED'));
+
+    expect(SendDialog).toHaveBeenCalledWith(dialogPropsFor('QUOTED'), undefined);
+  });
+
+  it('labels a seller-initiated editable reactivation as a new revision', () => {
+    const view = renderView(makeDetail('CHANGE_REQUESTED'));
+
+    expect(sendOffered()).toBe(false);
+    expect(view.getByRole('button', { name: copy.detail.items.generate })).toBeTruthy();
+    expect(view.getByText(copy.detail.callouts.sellerRevision.title)).toBeTruthy();
+    expect(ChangeDiff).toHaveBeenCalledWith(
+      expect.objectContaining({ variant: 'seller-revision' }),
+      undefined,
+    );
+  });
+
+  it('keeps a customer change request distinct from a seller reactivation', () => {
+    const detail = makeDetail('CHANGE_REQUESTED');
+    detail.version = { ...detail.version!, version_number: 2, comment: 'Precio alto' };
+    detail.client_actions = [
+      {
+        id: '70000000-0000-4000-8000-000000000001',
+        version_id: VERSION_ID,
+        version_number: 1,
+        type: 'REQUEST_CHANGE',
+        comment: 'Precio alto',
+        created_at: BASE_TIME,
+      },
+    ];
+
+    const view = renderView(detail);
+
+    expect(
+      view.getByText(
+        copy.detail.callouts.changeRequested.withReason.replace('{reason}', 'Precio alto'),
+      ),
+    ).toBeTruthy();
+    expect(ChangeDiff).toHaveBeenCalledWith(
+      expect.objectContaining({ variant: 'customer-request' }),
+      undefined,
+    );
+  });
+
+  it('keeps the send button hidden until a quote is review-ready', () => {
+    for (const status of ['SENT', 'ACCEPTED', 'REJECTED', 'GENERATED']) {
+      vi.clearAllMocks();
+      renderView(makeDetail(status));
+      expect(sendOffered(), `send offered on ${status}`).toBe(false);
+    }
+  });
+
+  it('leaves the DRAFT generate action in place', () => {
+    const view = renderView(makeDetail('DRAFT', 'GENERATED'));
+
+    expect(view.getByRole('button', { name: copy.detail.items.generate })).toBeTruthy();
+    expect(sendOffered()).toBe(false);
+  });
+});
+
+describe('RfqDetailView client association', () => {
+  it('shows the association card for an active accepted quote', () => {
+    const view = renderView(makeDetail('ACCEPTED'));
+
+    expect(view.getByTestId('client-association-card')).toBeTruthy();
+  });
+
+  it('hides the association card while the accepted quote is archived', () => {
+    const detail = makeDetail('ACCEPTED');
+    detail.rfq = { ...detail.rfq, archived_at: BASE_TIME };
+    detail.quote = { ...detail.quote!, archived_at: BASE_TIME };
+    const view = renderView(detail);
+
+    expect(view.queryByTestId('client-association-card')).toBeNull();
+  });
+});
+
+describe('RfqDetailView quote generation', () => {
+  it('updates the shared RFQ list record when the draft reaches QUOTED', async () => {
+    vi.mocked(generateQuote).mockResolvedValue(pricedResponse());
+
+    const view = renderView(makeDetail('DRAFT', 'GENERATED'));
+
+    fireEvent.click(view.getByRole('button', { name: copy.detail.items.generate }));
+
+    await vi.waitFor(() => expect(view.getByLabelText('record-status').textContent).toBe('QUOTED'));
+    expect(view.getByLabelText('record-total').textContent).toBe('390000.00');
+    expect(view.getByLabelText('record-items').textContent).toBe('1');
+    expect(router.refresh).toHaveBeenCalled();
+  });
+
+  // The queue beside the detail shows what is left to review, so settling a line has to reach it.
+  it('recounts the queue record when the seller changes the lines', async () => {
+    const { RfqItemsTable } = await import('./rfq-items-table');
+    const view = renderView(makeDetail('DRAFT', 'GENERATED'));
+    const { onItemsChange } = vi.mocked(RfqItemsTable).mock.lastCall?.[0] ?? {};
+
+    act(() =>
+      onItemsChange?.([
+        { ...PRICED_ITEM, match_status: 'AMBIGUOUS' },
+        { ...PRICED_ITEM, id: 'i-second', match_status: 'MATCHED' },
+      ]),
+    );
+
+    expect(view.getByLabelText('record-items').textContent).toBe('2');
+    expect(view.getByLabelText('record-review').textContent).toBe('1');
+  });
+
+  it("prices through the order's own branch even with no branch selected in the header", async () => {
+    renderView(makeDetail('DRAFT', 'GENERATED'), null);
+
+    fireEvent.click(screen.getByRole('button', { name: copy.detail.items.generate }));
+
+    await vi.waitFor(() => expect(generateQuote).toHaveBeenCalledWith(QUOTE_ID, BRANCH_ID));
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+// Matches a catalog sentence whatever the formatter renders for its date.
+function withDate(sentence: string) {
+  const [before, after] = sentence
+    .split('{date}')
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return new RegExp(`^${before}\\S.*${after}$`);
+}
+
+function flagged(status: string, flaggedAt: string | null = BASE_TIME): RfqDetailResponse {
+  const detail = makeDetail(status);
+  detail.rfq = { ...detail.rfq, needs_followup: true, followup_flagged_at: flaggedAt };
+  return detail;
+}
+
+describe('RfqDetailView follow-up', () => {
+  const callouts = copy.detail.callouts.followup;
+
+  it('says the customer went quiet on a sent quote, and since when', () => {
+    const view = renderView(flagged('SENT'));
+
+    expect(view.getByText(callouts.title)).toBeTruthy();
+    expect(view.getByText(withDate(callouts.customer))).toBeTruthy();
+  });
+
+  it('says the quote stalled on the seller while it has not been sent', () => {
+    const view = renderView(flagged('QUOTED', null));
+
+    expect(view.getByText(callouts.sellerUndated)).toBeTruthy();
+    expect(view.queryByText(callouts.customerUndated)).toBeNull();
+  });
+
+  it('stays quiet on a quote that is not flagged', () => {
+    const view = renderView(makeDetail('SENT'));
+
+    expect(view.queryByText(callouts.title)).toBeNull();
+  });
+
+  // Nothing clears the flag once the client answers, so the status decides whether it still applies.
+  it('stays quiet once the client has answered', () => {
+    const view = renderView(flagged('ACCEPTED'));
+
+    expect(view.queryByText(callouts.title)).toBeNull();
+  });
+
+  it('stays quiet once the quote is archived', () => {
+    const detail = flagged('SENT');
+    detail.rfq = { ...detail.rfq, archived_at: BASE_TIME };
+    const view = renderView(detail);
+
+    expect(view.queryByText(callouts.title)).toBeNull();
+  });
+});
+
+describe('RfqDetailView after a transition', () => {
+  const scrollIntoView = vi.fn();
+
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = scrollIntoView;
+  });
+
+  it('adopts a refreshed detail and brings the top of the order back into view', () => {
+    const view = renderView(makeDetail('QUOTED'));
+    const sent = makeDetail('SENT');
+    sent.quote = { ...sent.quote!, expires_at: BASE_TIME };
+    view.rerender(viewTree(sent));
+
+    expect(view.getByText(copy.detail.callouts.sent.title)).toBeTruthy();
+    expect(scrollIntoView).toHaveBeenCalledOnce();
+  });
+
+  it('never scrolls for a change that keeps the status', () => {
+    const view = renderView(makeDetail('QUOTED'));
+    const edited = makeDetail('QUOTED');
+    edited.items = [{ ...PRICED_ITEM, quantity: '600.00' }];
+    view.rerender(viewTree(edited));
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+});

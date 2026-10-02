@@ -97,6 +97,11 @@ func TestCatalogEmbeddingService_PagesThroughTheCatalog(t *testing.T) {
 	if embedder.calls[0][0] != "Cemento Portland 50kg" {
 		t.Errorf("embedded text = %q, want the product's own text", embedder.calls[0][0])
 	}
+	for i, scope := range embedder.scopes {
+		if scope.AccountID != testAccountID || scope.Operation != domain.AIOperationCatalogEmbedding {
+			t.Errorf("call %d spent for %+v, want the account's catalog embedding", i, scope)
+		}
+	}
 }
 
 func TestCatalogEmbeddingService_PassesRefreshAllThrough(t *testing.T) {
