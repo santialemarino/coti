@@ -425,7 +425,9 @@ lifetime, `AUTH_INVITE_TTL_HOURS` (168).
   the new one: a redeem or a second resend in flight holds that row, so the resend's `UPDATE` waits
   on it and then matches nothing. A fresh read then tells the two apart — a resend that lost to
   another one succeeds and mails nothing, since a live link is already out, and one that lost to a
-  redeem is refused rather than mailing a link to someone who has just chosen a password.
+  redeem is refused rather than mailing a link to someone who has just chosen a password. Once it
+  has retired one, it reads the user again, so an address change that committed meanwhile gets the
+  link at its new address.
 - **Setting a password retires the user's invites once more after retiring every link.** A resend
   holding the old invite makes that sweep wait, and the invite it commits is outside the sweep's
   snapshot; the second statement sees it, so a password set through a recovery link leaves no

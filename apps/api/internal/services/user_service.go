@@ -266,8 +266,15 @@ func (s *UserService) ResendInvite(ctx context.Context, tenant domain.Tenant, id
 			return domain.WithCode(domain.CodeInviteNotPending,
 				fmt.Errorf("%w: the invite was redeemed meanwhile", domain.ErrInvalidInput))
 		}
+		// An address change committed before the retire minted the invite just retired; the link
+		// goes to whatever address the user holds now.
+		current, getErr := s.users.GetByID(ctx, q, tenant.AccountID, id)
+		if getErr != nil {
+			return getErr
+		}
+		user = current
 		var storeErr error
-		invite, storeErr = s.invites.store(ctx, q, *u, domain.AuthTokenTypeInvite, s.inviteTTL)
+		invite, storeErr = s.invites.store(ctx, q, *current, domain.AuthTokenTypeInvite, s.inviteTTL)
 		return storeErr
 	}); err != nil {
 		return err

@@ -196,6 +196,8 @@ type fakeUserLinks struct {
 	latest            map[uuid.UUID]domain.AuthToken
 	redeemedMeanwhile bool
 	resentMeanwhile   bool
+	// onRetire runs as the outstanding invites are retired, for a write that committed just before.
+	onRetire func()
 }
 
 func (f *fakeUserLinks) InvalidateActive(
@@ -203,6 +205,9 @@ func (f *fakeUserLinks) InvalidateActive(
 ) (int64, error) {
 	if _, err := f.fakeAuthTokens.InvalidateActive(ctx, q, accountID, userID, tokenType); err != nil {
 		return 0, err
+	}
+	if f.onRetire != nil {
+		f.onRetire()
 	}
 	latest, ok := f.latest[userID]
 	switch {
@@ -812,6 +817,20 @@ func TestUserService_ResendInvite(t *testing.T) {
 			}
 		})
 	}
+
+	// A second admin moved the address after the resend read the user: the new link follows it.
+	t.Run("a resend mails the address the user holds once the old invite is retired", func(t *testing.T) {
+		h := newUserHarness(storedAdmin(), storedSeller())
+		h.links.latest[otherUserID] = outstandingInvite(otherUserID, fixedNow.Add(time.Hour))
+		h.links.onRetire = func() { h.users.stored[otherUserID].Email = "movida@corralon.test" }
+
+		if err := h.svc.ResendInvite(context.Background(), adminTenant(), otherUserID); err != nil {
+			t.Fatalf("ResendInvite() = %v, want no error", err)
+		}
+		if len(h.mail.sent) != 1 || h.mail.sent[0].To != "movida@corralon.test" {
+			t.Fatalf("mailed %v, want one invite to the current address", h.mail.sent)
+		}
+	})
 
 	// A double click or a second admin: the other resend has already mailed a live link.
 	t.Run("a resend that loses to another resend mails nothing and succeeds", func(t *testing.T) {
