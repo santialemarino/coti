@@ -7,6 +7,7 @@ import type { Product, ProductFamily } from '@/lib/api/products';
 import messages from '@/translations/es.json';
 
 vi.mock('next/navigation', () => ({
+  unstable_rethrow: vi.fn(),
   useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }),
   usePathname: () => '/settings/catalog',
   useSearchParams: () => new URLSearchParams(),

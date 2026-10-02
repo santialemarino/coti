@@ -1,3 +1,5 @@
+import { unstable_rethrow } from 'next/navigation';
+
 /*
  * The error vocabulary the interface renders. It is the API's own `code` — the contract in
  * docs/technical/api-specification.md, "The error envelope" — plus the two the client decides
@@ -60,7 +62,10 @@ export class ApiError extends Error {
   }
 }
 
+// A redirect or a notFound thrown under an action's try is rethrown, so the catch that words a
+// refusal cannot swallow the navigation instead.
 export function errorCodeOf(error: unknown): ApiErrorCode {
+  unstable_rethrow(error);
   return error instanceof ApiError ? error.code : 'INTERNAL';
 }
 

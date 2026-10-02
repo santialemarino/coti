@@ -58,7 +58,7 @@ interface UserFormDialogProps {
   /* The active branches they hold — the only ones an update may send back. */
   assigned: Branch[];
   branches: Branch[];
-  /* True when the caller is editing themselves, which the API refuses to let change their role. */
+  /* True when the caller is editing themselves: the API refuses their own role and email changes. */
   isSelf: boolean;
   /* False while mail only reaches the log, when an invite could never be redeemed. */
   mailDelivery: boolean;

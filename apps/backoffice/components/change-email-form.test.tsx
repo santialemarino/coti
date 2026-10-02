@@ -7,7 +7,7 @@ import { ChangeEmailForm } from '@/components/change-email-form';
 import messages from '@/translations/es.json';
 
 const refresh = vi.fn();
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }));
+vi.mock('next/navigation', () => ({ unstable_rethrow: vi.fn(), useRouter: () => ({ refresh }) }));
 vi.mock('@/lib/auth/change-email', () => ({ changeEmail: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn() } }));
 

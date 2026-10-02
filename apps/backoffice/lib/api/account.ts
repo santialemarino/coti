@@ -50,5 +50,5 @@ function mapAccount(raw: AccountRaw): Account {
  * session at all, so every caller who gets this far belongs to an active one.
  */
 export const getAccount = cache(async (): Promise<Account> => {
-  return mapAccount(await apiRequest<AccountRaw>({ path: '/v1/account' }));
+  return mapAccount(await apiRequest<AccountRaw>({ path: '/v1/account', branchScoped: false }));
 });

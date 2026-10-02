@@ -12,6 +12,7 @@ vi.mock('@/app/(protected)/actions', () => ({ signOut: vi.fn() }));
 vi.mock('@/lib/auth/session', () => ({ getSession: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getTranslations: vi.fn() }));
 vi.mock('next/navigation', () => ({
+  unstable_rethrow: vi.fn(),
   redirect: vi.fn((path: string) => {
     throw new Error(`NEXT_REDIRECT ${path}`);
   }),

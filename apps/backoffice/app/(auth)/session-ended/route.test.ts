@@ -30,4 +30,14 @@ describe('GET /session-ended', () => {
 
     expect(response.headers.get('location')).toBe('/login');
   });
+
+  // An action's redirect arrives as a flight fetch, which would drop the cookie clearing on the floor.
+  it('answers a flight fetch with no flight data, so the route loads as a document', async () => {
+    const response = await GET(
+      new NextRequest('https://backoffice.test/session-ended', { headers: { rsc: '1' } }),
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('location')).toBeNull();
+  });
 });

@@ -7,6 +7,7 @@ import { LoginForm } from '@/app/(auth)/login/_components/login-form';
 import messages from '@/translations/es.json';
 
 vi.mock('next/navigation', () => ({
+  unstable_rethrow: vi.fn(),
   useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }),
 }));
 vi.mock('@/app/(auth)/login/actions', () => ({ login: vi.fn() }));

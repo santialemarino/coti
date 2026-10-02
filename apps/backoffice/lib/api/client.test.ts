@@ -4,6 +4,7 @@ import { ROUTES } from '@/config/routes';
 import { apiRequest } from '@/lib/api/client';
 
 vi.mock('next/navigation', () => ({
+  unstable_rethrow: vi.fn(),
   redirect: vi.fn((path: string) => {
     throw new Error(`NEXT_REDIRECT:${path}`);
   }),

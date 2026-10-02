@@ -8,6 +8,7 @@ import { ACCESS_COOKIE, BRANCH_COOKIE, REFRESH_COOKIE, REMEMBER_COOKIE } from '@
 
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('next/navigation', () => ({
+  unstable_rethrow: vi.fn(),
   notFound: vi.fn(() => {
     throw new Error('NEXT_NOT_FOUND');
   }),
