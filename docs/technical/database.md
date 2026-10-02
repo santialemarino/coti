@@ -248,7 +248,7 @@ the redeem, which is a deadlock.
 
 `idx_auth_token_latest_invite` (`account_id, user_id, created_at DESC, id DESC`, partial on
 `type = 'INVITE'`) answers the users screen's newest-invite read without a sort, and the `id`
-breaks the tie between two invites created in one transaction.
+breaks the tie between two invites created in the same microsecond.
 
 ## Catalog
 

@@ -298,6 +298,9 @@ The full list of keys, with defaults and what each bounds, is in the four `.env.
 8. Fill the optional secrets and flip their switches: the Spaces bucket (before the first file
    order), mail, then the two AI vendors, then the rate-limit proxy pair. Each is a restart, not a rebuild. `AI_EMBEDDINGS_PROVIDER` is declared
    on `api` and on `catalog-embedding`: turn it on on both, or the job embeds nothing.
+   `attachment-extraction` declares no AI keys at all and runs on the defaults, which are off: the
+   language model, embeddings and their keys have to be added to it too, or a file order the sweep
+   picks up fails at extraction even with AI on everywhere else.
 9. Register the first account and let `catalog-embedding` embed its catalog within 15 minutes, or
    run `/api/bin/catalog-embed --account <uuid>` from a console on the api component to do it now
    (it is also what `--refresh-all` after a model change needs), and build the vector index once

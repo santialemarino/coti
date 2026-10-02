@@ -189,12 +189,13 @@ func (f *fakeBranchExistence) ExistAllInAccount(
 }
 
 // fakeUserLinks is the link surface plus the latest invite per user, which a test seeds to
-// put a user in a given invite state. redeemedMeanwhile stands for a redeem that committed
-// between the read of the latest invite and the retiring of it.
+// put a user in a given invite state. redeemedMeanwhile and resentMeanwhile stand for a redeem or
+// another resend that committed between the read of the latest invite and the retiring of it.
 type fakeUserLinks struct {
 	fakeAuthTokens
 	latest            map[uuid.UUID]domain.AuthToken
 	redeemedMeanwhile bool
+	resentMeanwhile   bool
 }
 
 func (f *fakeUserLinks) InvalidateActive(
@@ -204,7 +205,16 @@ func (f *fakeUserLinks) InvalidateActive(
 		return 0, err
 	}
 	latest, ok := f.latest[userID]
-	if !ok || latest.Type != tokenType || latest.ConsumedAt != nil || f.redeemedMeanwhile {
+	switch {
+	case !ok || latest.Type != tokenType || latest.ConsumedAt != nil:
+		return 0, nil
+	case f.redeemedMeanwhile:
+		at := fixedNow
+		latest.ConsumedAt = &at
+		f.latest[userID] = latest
+		return 0, nil
+	case f.resentMeanwhile:
+		f.latest[userID] = outstandingInvite(userID, fixedNow.Add(testInviteTTL))
 		return 0, nil
 	}
 	return 1, nil
@@ -802,6 +812,20 @@ func TestUserService_ResendInvite(t *testing.T) {
 			}
 		})
 	}
+
+	// A double click or a second admin: the other resend has already mailed a live link.
+	t.Run("a resend that loses to another resend mails nothing and succeeds", func(t *testing.T) {
+		h := newUserHarness(storedAdmin(), storedSeller())
+		h.links.latest[otherUserID] = outstandingInvite(otherUserID, fixedNow.Add(time.Hour))
+		h.links.resentMeanwhile = true
+
+		if err := h.svc.ResendInvite(context.Background(), adminTenant(), otherUserID); err != nil {
+			t.Fatalf("ResendInvite() = %v, want no error", err)
+		}
+		if len(h.links.created) != 0 || len(h.mail.sent) != 0 {
+			t.Errorf("minted %d and mailed %d, want neither", len(h.links.created), len(h.mail.sent))
+		}
+	})
 
 	t.Run("console mail is refused before anything is read", func(t *testing.T) {
 		h := newUserHarnessDelivering(false, storedAdmin(), storedSeller())

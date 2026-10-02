@@ -269,7 +269,8 @@ flood the database or someone's mailbox, and on the ones a **provider bills per 
 
 Creating a user spends the `mail` allowance only with `"invite": true`, since a password handed over
 mails nobody. The route cannot carry the middleware for that, so the handler runs the same check
-(`middleware.Allowance`) once the body is bound, counting into the same bucket.
+(`middleware.Allowance`) once the body is bound, counting into the same bucket. Like the mail routes,
+it counts before the service validates, so a refused invite still spends its slot.
 
 Refresh is deliberately left on the global allowance alone: the backoffice renews on a
 schedule the user does not control, and a tighter limit there would log people out.
@@ -421,11 +422,16 @@ lifetime, `AUTH_INVITE_TTL_HOURS` (168).
 - **`POST /v1/users/:userId/invite` resends** to a user whose invite is still outstanding, live or
   expired. Anyone else — a password already chosen, a deactivated user — is a 422
   `INVITE_NOT_PENDING`. The resend has to retire at least one outstanding invite before it stores
-  the new one: a redeem in flight holds that row, the resend's `UPDATE` waits on it and then
-  matches nothing, so it is refused too rather than mailing a live link to someone who has just
-  chosen a password.
+  the new one: a redeem or a second resend in flight holds that row, so the resend's `UPDATE` waits
+  on it and then matches nothing. A fresh read then tells the two apart — a resend that lost to
+  another one succeeds and mails nothing, since a live link is already out, and one that lost to a
+  redeem is refused rather than mailing a link to someone who has just chosen a password.
+- **Setting a password retires the user's invites once more after retiring every link.** A resend
+  holding the old invite makes that sweep wait, and the invite it commits is outside the sweep's
+  snapshot; the second statement sees it, so a password set through a recovery link leaves no
+  invite live.
 - **The newest invite is read through `idx_auth_token_latest_invite`**, with the id breaking a tie
-  between two rows created in one transaction.
+  between two rows created in the same microsecond.
 - **Both refuse while mail does not deliver**: 503 `MAIL_NOT_CONFIGURED`. Under `console` the link
   only reaches a log, so an invited user would exist with no way in at all; the password path is
   what an installation without mail uses, and the backoffice offers only that one there.

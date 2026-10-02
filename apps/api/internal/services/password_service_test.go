@@ -381,6 +381,11 @@ func TestPasswordService_Reset_RedeemsTheLinkAndEndsEverySession(t *testing.T) {
 	if len(f.tokens.invalidatedAll) != 1 || f.tokens.invalidatedAll[0] != testUserID {
 		t.Fatalf("links retired for %v, want every outstanding link of the user", f.tokens.invalidatedAll)
 	}
+	// A resend committing while the statement above waited leaves an invite it never saw.
+	want := invalidatedLink{userID: testUserID, tokenType: domain.AuthTokenTypeInvite}
+	if len(f.tokens.invalidated) != 1 || f.tokens.invalidated[0] != want {
+		t.Fatalf("retired %v after the sweep, want the user's invites once more", f.tokens.invalidated)
+	}
 }
 
 // An invited user chooses their first password through the same screen and the same redemption.

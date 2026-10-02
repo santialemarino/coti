@@ -352,6 +352,7 @@ func TestAuthTokenRepository_InvalidateActiveRetiresNothingARedeemInFlightConsum
 		err     error
 	}
 	done := make(chan outcome, 1)
+	competitor := make(chan int, 1)
 	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
 		if consumeErr := repo.Consume(ctx, q, account, invite.ID); consumeErr != nil {
 			return consumeErr
@@ -359,13 +360,18 @@ func TestAuthTokenRepository_InvalidateActiveRetiresNothingARedeemInFlightConsum
 		go func() {
 			var o outcome
 			o.err = db.InTenantTx(ctx, tenant, func(q Querier) error {
+				var pid int
+				if pidErr := q.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&pid); pidErr != nil {
+					return pidErr
+				}
+				competitor <- pid
 				var retireErr error
 				o.retired, retireErr = repo.InvalidateActive(ctx, q, account, user, domain.AuthTokenTypeInvite)
 				return retireErr
 			})
 			done <- o
 		}()
-		return waitForLockWait(ctx, db)
+		return waitForLockWait(ctx, db, <-competitor)
 	}); err != nil {
 		t.Fatalf("redeem: %v", err)
 	}
@@ -379,15 +385,15 @@ func TestAuthTokenRepository_InvalidateActiveRetiresNothingARedeemInFlightConsum
 	}
 }
 
-// waitForLockWait returns once a backend is blocked on a row lock, which is the point where the
-// competing statement has read the row and must re-check it after the holder commits.
-func waitForLockWait(ctx context.Context, db *DB) error {
+// waitForLockWait returns once the competing backend is blocked on a lock, which is the point
+// where its statement has read the row and must re-check it after the holder commits.
+func waitForLockWait(ctx context.Context, db *DB, pid int) error {
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		var waiting bool
 		if err := db.CrossAccount().QueryRow(ctx,
-			`SELECT EXISTS (SELECT 1 FROM pg_stat_activity
-			 WHERE wait_event_type = 'Lock' AND query LIKE 'UPDATE auth_token%')`,
+			`SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid = $1 AND wait_event_type = 'Lock')`,
+			pid,
 		).Scan(&waiting); err != nil {
 			return err
 		}
@@ -399,7 +405,8 @@ func waitForLockWait(ctx context.Context, db *DB) error {
 	return errors.New("the competing UPDATE never waited on the redeem's lock")
 }
 
-// Two invites created in one transaction share created_at, and the newest must still be one row.
+// Two invites created in the same microsecond share created_at, and the newest must still be one
+// row. The lower id goes in first, so insertion order cannot pick the right one by accident.
 func TestAuthTokenRepository_LatestInvitesByUsersBreaksATieByID(t *testing.T) {
 	db := testDB(t)
 	repo := NewAuthTokenRepository()
@@ -417,8 +424,8 @@ func TestAuthTokenRepository_LatestInvitesByUsersBreaksATieByID(t *testing.T) {
 		hash     string
 		consumed *time.Time
 	}{
-		{high, hashOf("tiehigh"), nil},
 		{low, hashOf("tielow"), &at},
+		{high, hashOf("tiehigh"), nil},
 	} {
 		if _, err := db.CrossAccount().Exec(ctx,
 			`INSERT INTO auth_token (id, account_id, user_id, type, token_hash, expires_at, consumed_at, created_at)
