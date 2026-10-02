@@ -18,17 +18,26 @@ type UserService interface {
 	CreateUser(ctx context.Context, tenant domain.Tenant, in domain.NewUser) (*domain.UserWithBranches, error)
 	UpdateUser(ctx context.Context, tenant domain.Tenant, id uuid.UUID, in domain.UserUpdate) (*domain.UserWithBranches, error)
 	DeactivateUser(ctx context.Context, tenant domain.Tenant, id uuid.UUID) error
+	ResendInvite(ctx context.Context, tenant domain.Tenant, id uuid.UUID) error
 	ListSellers(ctx context.Context, tenant domain.Tenant) ([]domain.Seller, error)
+}
+
+// SessionPolicy is what the installation decides about every session, which /me reports so a
+// screen never has to guess it.
+type SessionPolicy struct {
+	RequireVerifiedEmail bool
+	MailDelivers         bool
 }
 
 // UserHandler serves the admin-only user administration routes.
 type UserHandler struct {
-	users UserService
+	users  UserService
+	policy SessionPolicy
 }
 
 // NewUserHandler builds a UserHandler.
-func NewUserHandler(users UserService) *UserHandler {
-	return &UserHandler{users: users}
+func NewUserHandler(users UserService, policy SessionPolicy) *UserHandler {
+	return &UserHandler{users: users, policy: policy}
 }
 
 // List returns the account's users.
@@ -125,7 +134,7 @@ func (h *UserHandler) Get(c *gin.Context) {
 // Create adds a user to the caller's account.
 //
 //	@Summary		Create a user
-//	@Description	Admin only. The account comes from the session; a duplicate email inside it is a 409.
+//	@Description	Admin only. Either sets the password or, with invite, mails a link to choose one (503 MAIL_NOT_CONFIGURED while mail only reaches the log). A duplicate email is a 409.
 //	@Tags			users
 //	@Accept			json
 //	@Produce		json
@@ -137,6 +146,7 @@ func (h *UserHandler) Get(c *gin.Context) {
 //	@Failure		403		{object}	dto.ErrorResponse
 //	@Failure		409		{object}	dto.ErrorResponse
 //	@Failure		422		{object}	dto.ErrorResponse
+//	@Failure		503		{object}	dto.ErrorResponse
 //	@Router			/v1/users [post]
 func (h *UserHandler) Create(c *gin.Context) {
 	tenant, ok := tenantOf(c)
@@ -154,6 +164,7 @@ func (h *UserHandler) Create(c *gin.Context) {
 		Name:      body.Name,
 		Email:     body.Email,
 		Password:  body.Password,
+		Invite:    body.Invite,
 		Role:      domain.UserRole(body.Role),
 		BranchIDs: body.BranchIDs,
 	})
@@ -244,24 +255,63 @@ func (h *UserHandler) Delete(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// ResendInvite mails an invited user a fresh link to choose their password. Returns 204.
+//
+//	@Summary		Resend a user's invite
+//	@Description	Admin only. Retires the previous link. 422 INVITE_NOT_PENDING once the user has chosen a password; 503 MAIL_NOT_CONFIGURED while mail only reaches the log.
+//	@Tags			users
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			userId	path	string	true	"User id"
+//	@Success		204		"Invite sent"
+//	@Failure		400		{object}	dto.ErrorResponse
+//	@Failure		401		{object}	dto.ErrorResponse
+//	@Failure		403		{object}	dto.ErrorResponse
+//	@Failure		404		{object}	dto.ErrorResponse
+//	@Failure		422		{object}	dto.ErrorResponse
+//	@Failure		503		{object}	dto.ErrorResponse
+//	@Router			/v1/users/{userId}/invite [post]
+func (h *UserHandler) ResendInvite(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	userID, ok := pathUUID(c, "userId")
+	if !ok {
+		return
+	}
+
+	if err := h.users.ResendInvite(c.Request.Context(), tenant, userID); err != nil {
+		Respond(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func toUserResponse(u domain.UserWithBranches) dto.UserResponse {
+	var inviteStatus *string
+	if u.InviteStatus != domain.InviteStatusNone {
+		status := string(u.InviteStatus)
+		inviteStatus = &status
+	}
 	return dto.UserResponse{
-		ID:          u.ID,
-		Name:        u.Name,
-		Email:       u.Email,
-		Role:        string(u.Role),
-		IsActive:    u.IsActive,
-		BranchIDs:   u.BranchIDs,
-		LastLoginAt: u.LastLoginAt,
-		CreatedAt:   u.CreatedAt,
-		UpdatedAt:   u.UpdatedAt,
+		ID:           u.ID,
+		Name:         u.Name,
+		Email:        u.Email,
+		Role:         string(u.Role),
+		IsActive:     u.IsActive,
+		BranchIDs:    u.BranchIDs,
+		InviteStatus: inviteStatus,
+		LastLoginAt:  u.LastLoginAt,
+		CreatedAt:    u.CreatedAt,
+		UpdatedAt:    u.UpdatedAt,
 	}
 }
 
 // Me returns the authenticated caller's own identity.
 //
 //	@Summary		Get the current user
-//	@Description	Returns the caller's identity and branch reach, so the frontend never has to read the access token itself.
+//	@Description	Returns the caller's identity and branch reach, plus whether an unconfirmed address closes the product and whether mail reaches a mailbox, so the frontend never has to read the access token or guess the installation.
 //	@Tags			users
 //	@Produce		json
 //	@Security		BearerAuth
@@ -291,5 +341,8 @@ func (h *UserHandler) Me(c *gin.Context) {
 		Role:          string(user.Role),
 		AccountID:     user.AccountID,
 		BranchIDs:     branchIDs,
+
+		EmailVerificationRequired: h.policy.RequireVerifiedEmail,
+		MailDelivery:              h.policy.MailDelivers,
 	})
 }

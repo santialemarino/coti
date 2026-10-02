@@ -146,6 +146,46 @@ func TestSMTPMailer_Send_DeliversBothPartsWithEveryHeaderEncoded(t *testing.T) {
 	}
 }
 
+// A client answering the quote should reach the branch mailbox, while the message still comes
+// from the platform's own sender, the only address the provider lets us send as.
+func TestSMTPMailer_Send_AddsReplyToOnlyWhenOneIsGiven(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		replyTo string
+	}{{name: "with a branch mailbox", replyTo: "ventas@moron.test"}, {name: "without one"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			server := startFakeSMTP(t, nil)
+			err := NewSMTPMailer(smtpConfig(t, server.addr, false)).Send(context.Background(),
+				domain.EmailMessage{To: testTo, Subject: smtpSubject, TextBody: smtpText,
+					HTMLBody: smtpHTML, ReplyTo: tc.replyTo, ReplyToName: "Corralón San Martín — Morón"})
+			if err != nil {
+				t.Fatalf("Send() = %v, want no error", err)
+			}
+			got := server.delivered(t)
+			msg, err := netmail.ReadMessage(strings.NewReader(got.data))
+			if err != nil {
+				t.Fatalf("the adapter wrote no parseable message: %v", err)
+			}
+			header := msg.Header.Get("Reply-To")
+			if tc.replyTo == "" {
+				if header != "" {
+					t.Fatalf("Reply-To = %q, want none", header)
+				}
+				return
+			}
+			reply, err := netmail.ParseAddress(header)
+			if err != nil || reply.Address != tc.replyTo || reply.Name != "Corralón San Martín — Morón" {
+				t.Fatalf("Reply-To = %q (%v), want the branch named, at %s", header, err, tc.replyTo)
+			}
+			if got.from != testFrom {
+				t.Fatalf("MAIL FROM = %q, want the platform sender %q", got.from, testFrom)
+			}
+		})
+	}
+}
+
 func TestSMTPMailer_Send_AuthenticatesWhenTheServerOffersIt(t *testing.T) {
 	t.Parallel()
 	server := startFakeSMTP(t, []string{"AUTH PLAIN"})

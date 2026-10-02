@@ -7,6 +7,7 @@ import { NavLink } from '@/app/(protected)/_components/nav-link';
 export interface SettingsNavItem {
   href: string;
   label: string;
+  attention?: string;
 }
 
 interface SettingsNavProps {
@@ -26,6 +27,7 @@ export function SettingsNav({ title, items }: SettingsNavProps) {
           href={item.href}
           label={item.label}
           active={pathname === item.href}
+          attention={item.attention}
         />
       ))}
     </nav>

@@ -62,8 +62,10 @@ func Authenticate(verifier AccessVerifier, resolver TenantResolver) gin.HandlerF
 		tenant, err := resolver.ResolveTenant(c.Request.Context(), claims, requestedBranch)
 		if err != nil {
 			if errors.Is(err, domain.ErrForbidden) {
-				c.AbortWithStatusJSON(http.StatusForbidden,
-					gin.H{"error": "branch not accessible"})
+				c.AbortWithStatusJSON(http.StatusForbidden, dto.ErrorResponse{
+					Error: "branch not accessible",
+					Code:  string(domain.CodeBranchNotAccessible),
+				})
 				return
 			}
 			abortUnauthenticated(c)

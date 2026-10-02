@@ -22,6 +22,7 @@ export const ROUTES = {
   branchSettings: '/settings/branches',
   userSettings: '/settings/users',
   onboardingSettings: '/settings/onboarding',
+  branchReset: '/branch-reset',
 } as const;
 
 // Reachable without a session. Anything else is behind the gate.
@@ -43,11 +44,11 @@ export const SIGNED_OUT_ONLY_ROUTES: readonly string[] = [
   ROUTES.login,
   ROUTES.signup,
   ROUTES.forgotPassword,
-  ROUTES.resetPassword,
 ];
 
 // verify-email is public but not signed-out-only: signup hands the caller a session, so the
-// most common way to reach it is already logged in.
+// most common way to reach it is already logged in. reset-password is neither: a mailed link
+// (a recovery, an invite) has to open in whatever browser the mail is read in.
 
 export const LOGIN_ROUTE = ROUTES.login;
 

@@ -3,10 +3,11 @@ package services
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
@@ -36,24 +37,60 @@ type branchExistence interface {
 	ExistAllInAccount(ctx context.Context, q repository.Querier, accountID uuid.UUID, ids []uuid.UUID) (bool, error)
 }
 
+// userLinkRepository is the single-use-link surface user administration needs: the invite it
+// mints and the links an address change retires.
+type userLinkRepository interface {
+	authTokenRepository
+	LatestInvitesByUsers(ctx context.Context, q repository.Querier, accountID uuid.UUID, userIDs []uuid.UUID) (map[uuid.UUID]domain.AuthToken, error)
+}
+
+// addressVerifier mails what an address change owes both mailboxes.
+type addressVerifier interface {
+	SendForNewAddress(ctx context.Context, user domain.AppUser) error
+	NotifyAddressChangedByAdmin(ctx context.Context, previous domain.AppUser, newEmail string)
+}
+
 // UserService owns the account's users: who exists, what role they carry, and which branches
 // they may operate on.
 type UserService struct {
-	db          tenantTxRunner
-	users       userAdminRepository
-	assignments userBranchRepository
-	branches    branchExistence
-	policy      domain.PasswordPolicy
+	db           tenantScoper
+	users        userAdminRepository
+	assignments  userBranchRepository
+	branches     branchExistence
+	tokens       userLinkRepository
+	invites      *authLinkIssuer
+	verifier     addressVerifier
+	policy       domain.PasswordPolicy
+	inviteTTL    time.Duration
+	mailDelivers bool
+	now          func() time.Time
 }
 
-// NewUserService builds a UserService.
+// NewUserService builds a UserService. mailDelivers is false while mail only reaches the log,
+// which is when nobody could redeem an invite.
 func NewUserService(
-	db tenantTxRunner, users userAdminRepository, assignments userBranchRepository,
-	branches branchExistence, cfg config.AuthConfig,
+	db tenantScoper, users userAdminRepository, assignments userBranchRepository,
+	branches branchExistence, tokens userLinkRepository, mail mailSender, verifier addressVerifier,
+	log *slog.Logger, cfg config.AuthConfig, web config.WebConfig, mailDelivers bool,
+	now func() time.Time,
 ) *UserService {
+	if now == nil {
+		now = time.Now
+	}
+	if log == nil {
+		log = slog.Default()
+	}
 	return &UserService{
-		db: db, users: users, assignments: assignments, branches: branches,
-		policy: domain.PasswordPolicy{MinLength: cfg.PasswordMinLength},
+		db: db, users: users, assignments: assignments, branches: branches, tokens: tokens,
+		invites: &authLinkIssuer{
+			db: db, tokens: tokens, mail: mail, log: log,
+			baseURL: web.BackofficeURL, now: now, newSecret: newTokenSecret,
+		},
+		verifier:     verifier,
+		policy:       domain.PasswordPolicy{MinLength: cfg.PasswordMinLength},
+		inviteTTL:    cfg.InviteTTL,
+		mailDelivers: mailDelivers,
+		now:          now,
 	}
 }
 
@@ -74,10 +111,14 @@ func (s *UserService) ListUsers(ctx context.Context, tenant domain.Tenant) ([]do
 		if assignErr != nil {
 			return assignErr
 		}
+		invites, inviteErr := s.tokens.LatestInvitesByUsers(ctx, q, tenant.AccountID, ids)
+		if inviteErr != nil {
+			return inviteErr
+		}
 
 		out = make([]domain.UserWithBranches, 0, len(users))
 		for _, u := range users {
-			out = append(out, withBranches(u, assignments[u.ID]))
+			out = append(out, s.withInvite(withBranches(u, assignments[u.ID]), invites))
 		}
 		return nil
 	})
@@ -99,7 +140,11 @@ func (s *UserService) GetUser(ctx context.Context, tenant domain.Tenant, id uuid
 		if assignErr != nil {
 			return assignErr
 		}
-		result := withBranches(*user, assignments[id])
+		invites, inviteErr := s.tokens.LatestInvitesByUsers(ctx, q, tenant.AccountID, []uuid.UUID{id})
+		if inviteErr != nil {
+			return inviteErr
+		}
+		result := s.withInvite(withBranches(*user, assignments[id]), invites)
 		out = &result
 		return nil
 	})
@@ -123,7 +168,8 @@ func (s *UserService) ListSellers(ctx context.Context, tenant domain.Tenant) ([]
 }
 
 // CreateUser adds a user to the caller's account, assigning their branches in the same
-// transaction. Returns domain.ErrConflict when the address is already in use.
+// transaction. An invited user gets a link to choose their own password instead of one chosen
+// for them. Returns domain.ErrConflict when the address is already in use.
 func (s *UserService) CreateUser(
 	ctx context.Context, tenant domain.Tenant, in domain.NewUser,
 ) (*domain.UserWithBranches, error) {
@@ -131,44 +177,84 @@ func (s *UserService) CreateUser(
 	if err := s.validateProfile(in.Name, in.Email, in.Role); err != nil {
 		return nil, err
 	}
-	if err := s.policy.Validate(in.Password); err != nil {
+	secret, err := s.initialSecret(in)
+	if err != nil {
 		return nil, err
 	}
 	branchIDs := dedupeUUIDs(in.BranchIDs)
 	in.BranchIDs = branchIDs
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
+	hash, err := HashPassword(secret)
 	if err != nil {
 		return nil, err
 	}
 
 	var out *domain.UserWithBranches
+	var invite string
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		if assignErr := s.assertBranchesInAccount(ctx, q, tenant.AccountID, branchIDs); assignErr != nil {
 			return assignErr
 		}
-		user, createErr := s.users.Create(ctx, q, tenant.AccountID, in, string(hash))
+		user, createErr := s.users.Create(ctx, q, tenant.AccountID, in, hash)
 		if createErr != nil {
 			return createErr
-		}
-		// The address is trusted on the admin's word. Verification exists to stop someone
-		// reserving an address they cannot read, which is a public-registration threat: an admin
-		// works inside their own account and can squat nothing. Mailing a link instead would turn
-		// a mistyped address into a permanent lockout once a verified address is required, rather
-		// than a recoverable one that only bites at password recovery.
-		if verifyErr := s.users.MarkEmailVerified(ctx, q, tenant.AccountID, user.ID); verifyErr != nil {
-			return verifyErr
 		}
 		if replaceErr := s.assignments.Replace(ctx, q, tenant.AccountID, user.ID, branchIDs); replaceErr != nil {
 			return replaceErr
 		}
 		result := withBranches(*user, branchIDs)
 		out = &result
-		return nil
+
+		// An invited address is proved when the link is redeemed. A password handed over is
+		// trusted on the admin's word: verification stops someone reserving an address they cannot
+		// read, which an admin inside their own account cannot do.
+		if in.Invite {
+			var mintErr error
+			invite, mintErr = s.invites.mint(ctx, q, *user, domain.AuthTokenTypeInvite, s.inviteTTL)
+			out.InviteStatus = domain.InviteStatusPending
+			return mintErr
+		}
+		return s.users.MarkEmailVerified(ctx, q, tenant.AccountID, user.ID)
 	}); err != nil {
 		return nil, err
 	}
+	if in.Invite {
+		s.invites.deliver(ctx, out.AppUser, domain.AuthTokenTypeInvite, s.inviteMail(out.AppUser, invite))
+	}
 	return out, nil
+}
+
+// ResendInvite mails an invited user a fresh link, retiring the previous one. Only a user who
+// has not chosen a password yet has an invite to resend.
+func (s *UserService) ResendInvite(ctx context.Context, tenant domain.Tenant, id uuid.UUID) error {
+	if !s.mailDelivers {
+		return domain.WithCode(domain.CodeMailNotConfigured, domain.ErrNotConfigured)
+	}
+
+	var user *domain.AppUser
+	var invite string
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		u, getErr := s.users.GetByID(ctx, q, tenant.AccountID, id)
+		if getErr != nil {
+			return getErr
+		}
+		invites, inviteErr := s.tokens.LatestInvitesByUsers(ctx, q, tenant.AccountID, []uuid.UUID{id})
+		if inviteErr != nil {
+			return inviteErr
+		}
+		if !u.IsActive || s.inviteStatus(id, invites) == domain.InviteStatusNone {
+			return domain.WithCode(domain.CodeInviteNotPending,
+				fmt.Errorf("%w: the user has no outstanding invite", domain.ErrInvalidInput))
+		}
+		user = u
+		var mintErr error
+		invite, mintErr = s.invites.mint(ctx, q, *u, domain.AuthTokenTypeInvite, s.inviteTTL)
+		return mintErr
+	}); err != nil {
+		return err
+	}
+	s.invites.deliver(ctx, *user, domain.AuthTokenTypeInvite, s.inviteMail(*user, invite))
+	return nil
 }
 
 // UpdateUser replaces the user's profile, role and branch assignments. An admin may not demote
@@ -189,11 +275,14 @@ func (s *UserService) UpdateUser(
 	in.BranchIDs = branchIDs
 
 	var out *domain.UserWithBranches
+	var previous *domain.AppUser
+	var invite string
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		current, getErr := s.users.GetByID(ctx, q, tenant.AccountID, id)
 		if getErr != nil {
 			return getErr
 		}
+		previous = current
 		if isSelf && in.Role != current.Role {
 			return domain.WithCode(domain.CodeSelfRoleChange,
 				fmt.Errorf("%w: an admin cannot change their own role", domain.ErrInvalidInput))
@@ -214,11 +303,46 @@ func (s *UserService) UpdateUser(
 				return bumpErr
 			}
 		}
-		result := withBranches(*user, branchIDs)
+		invites, inviteErr := s.tokens.LatestInvitesByUsers(ctx, q, tenant.AccountID, []uuid.UUID{id})
+		if inviteErr != nil {
+			return inviteErr
+		}
+		result := s.withInvite(withBranches(*user, branchIDs), invites)
 		out = &result
-		return nil
+		if !emailChanged(current.Email, user.Email) {
+			return nil
+		}
+
+		// Every link already mailed went to a mailbox that is no longer the account's. An invite
+		// still outstanding follows the address, since it is the only way in the user has.
+		if invalidateErr := s.tokens.InvalidateAllForUser(ctx, q, tenant.AccountID, id); invalidateErr != nil {
+			return invalidateErr
+		}
+		if result.InviteStatus == domain.InviteStatusNone {
+			return nil
+		}
+		var mintErr error
+		invite, mintErr = s.invites.mint(ctx, q, *user, domain.AuthTokenTypeInvite, s.inviteTTL)
+		out.InviteStatus = domain.InviteStatusPending
+		return mintErr
 	}); err != nil {
 		return nil, err
+	}
+
+	// A deactivated user could redeem nothing, so they are mailed nothing; the invite stays on
+	// record for a resend once they are back.
+	if emailChanged(previous.Email, out.Email) && out.IsActive {
+		// An address never proved is no one's to warn, and the notice would name the new one.
+		if previous.EmailVerifiedAt != nil {
+			s.verifier.NotifyAddressChangedByAdmin(ctx, *previous, out.Email)
+		}
+		if invite != "" {
+			s.invites.deliver(ctx, out.AppUser, domain.AuthTokenTypeInvite, s.inviteMail(out.AppUser, invite))
+		} else if err := s.verifier.SendForNewAddress(ctx, out.AppUser); err != nil {
+			// The change has committed; the user can ask for the link again from the confirmation screen.
+			s.invites.log.ErrorContext(ctx, "verification link not issued after an address change",
+				slog.String("user_id", out.ID.String()), slog.Any("error", err))
+		}
 	}
 	return out, nil
 }
@@ -238,6 +362,61 @@ func (s *UserService) DeactivateUser(ctx context.Context, tenant domain.Tenant, 
 		_, err := s.users.BumpSessionEpoch(ctx, q, tenant.AccountID, id)
 		return err
 	})
+}
+
+// initialSecret is the password the new user is stored with: the admin's choice, or a random
+// one nobody holds when the user is invited to choose their own.
+func (s *UserService) initialSecret(in domain.NewUser) (string, error) {
+	if !in.Invite {
+		if err := s.policy.Validate(in.Password); err != nil {
+			return "", err
+		}
+		return in.Password, nil
+	}
+	if in.Password != "" {
+		return "", fmt.Errorf("%w: an invited user chooses their own password", domain.ErrInvalidInput)
+	}
+	if !s.mailDelivers {
+		return "", domain.WithCode(domain.CodeMailNotConfigured, domain.ErrNotConfigured)
+	}
+	return newTokenSecret()
+}
+
+// inviteMail is the message carrying an invite link.
+func (s *UserService) inviteMail(user domain.AppUser, link string) OutboundMail {
+	return OutboundMail{
+		AccountID: user.AccountID,
+		UserID:    &user.ID,
+		Event:     domain.NotificationEventInvite,
+		To:        user.Email,
+		ToName:    user.Name,
+		Subject:   inviteSubject,
+		Heading:   inviteHeading,
+		Paragraphs: []string{
+			inviteIntro(user.Name),
+			inviteValidity(int(s.inviteTTL.Hours())),
+			inviteIgnore,
+		},
+		ActionLabel: inviteAction,
+		ActionURL:   link,
+	}
+}
+
+// inviteStatus derives where a user stands from the latest invites loaded for them.
+func (s *UserService) inviteStatus(id uuid.UUID, invites map[uuid.UUID]domain.AuthToken) domain.InviteStatus {
+	latest, ok := invites[id]
+	if !ok {
+		return domain.InviteStatusNone
+	}
+	return domain.InviteStatusOf(&latest, s.now())
+}
+
+// withInvite stamps a user with where their invite stands.
+func (s *UserService) withInvite(
+	u domain.UserWithBranches, invites map[uuid.UUID]domain.AuthToken,
+) domain.UserWithBranches {
+	u.InviteStatus = s.inviteStatus(u.ID, invites)
+	return u
 }
 
 // assertBranchesInAccount rejects a branch id from another account, read inside the tenant
@@ -281,6 +460,11 @@ func withBranches(u domain.AppUser, branchIDs []uuid.UUID) domain.UserWithBranch
 		branchIDs = []uuid.UUID{}
 	}
 	return domain.UserWithBranches{AppUser: u, BranchIDs: branchIDs}
+}
+
+// emailChanged compares two addresses the way the unique index does.
+func emailChanged(before, after string) bool {
+	return domain.NormalizeEmail(before) != domain.NormalizeEmail(after)
 }
 
 // dedupeUUIDs returns the distinct ids, order preserved, never nil.

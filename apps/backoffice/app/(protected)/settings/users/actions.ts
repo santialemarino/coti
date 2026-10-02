@@ -25,10 +25,13 @@ export async function createUser(values: UserValues): Promise<UserResult> {
   const parsed = userSchema('create').safeParse(values);
   if (!parsed.success) return { error: 'INVALID_BODY' };
 
+  // An invited user is sent no password at all: the API mails them a link to choose one.
+  const access =
+    parsed.data.access === 'INVITE' ? { invite: true } : { password: parsed.data.password };
   return write({
     path: '/v1/users',
     method: 'POST',
-    body: { ...profileOf(parsed.data), password: parsed.data.password },
+    body: { ...profileOf(parsed.data), ...access },
   });
 }
 
@@ -69,6 +72,11 @@ export async function reactivateUser(user: ReactivatableUser): Promise<UserResul
 // have asked for themselves.
 export async function sendPasswordReset(userId: string): Promise<UserResult> {
   return write({ path: `/v1/users/${userId}/password-reset`, method: 'POST' });
+}
+
+// A fresh link, retiring the previous one, for a user who has not chosen a password yet.
+export async function resendInvite(userId: string): Promise<UserResult> {
+  return write({ path: `/v1/users/${userId}/invite`, method: 'POST' });
 }
 
 function profileOf(values: UserValues) {

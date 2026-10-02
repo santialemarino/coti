@@ -242,6 +242,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	users.PUT("/:userId", h.User.Update)
 	users.DELETE("/:userId", h.User.Delete)
 	users.POST("/:userId/password-reset", mail, h.Password.AdminReset)
+	users.POST("/:userId/invite", mail, h.User.ResendInvite)
 
 	// The catalog itself is account-scoped, so those routes need no active branch. The
 	// per-branch ones below take it from the X-Branch-Id header the middleware validated.

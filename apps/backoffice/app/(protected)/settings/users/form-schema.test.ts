@@ -11,6 +11,7 @@ const VALID: UserValues = {
   email: 'ana@corralon.test',
   role: ADMIN_ROLE,
   branchIds: [],
+  access: 'PASSWORD',
   password: 'Coti-1234-larga',
 };
 
@@ -106,5 +107,20 @@ describe('userSchema and the initial password', () => {
 
   it('asks for none when editing', () => {
     expect(userSchema('edit').safeParse({ ...VALID, password: '' }).success).toBe(true);
+  });
+
+  // The invited user chooses their own, so the field the admin never filled cannot block them.
+  it('asks for none when the user is invited', () => {
+    expect(
+      userSchema('create').safeParse({ ...VALID, access: 'INVITE', password: '' }).success,
+    ).toBe(true);
+  });
+
+  // Reported beside the other fields' messages, not after they are fixed.
+  it('reports the password together with another missing field', () => {
+    const issues = messagesFor({ name: '', password: '' });
+
+    expect(issues.name).toBe('name.required');
+    expect(issues.password).toBe('password.required');
   });
 });

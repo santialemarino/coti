@@ -3,7 +3,7 @@ import 'server-only';
 import { cookies } from 'next/headers';
 
 import { getBranches } from '@/lib/api/branches';
-import { getSession, isRemembered } from '@/lib/auth/session';
+import { getSession, isRemembered, mustVerifyEmail } from '@/lib/auth/session';
 import { BRANCH_COOKIE, sessionCookieOptions } from '@/lib/auth/tokens';
 import { SELLER_ROLE } from '@/lib/constants/auth';
 
@@ -22,15 +22,21 @@ import { SELLER_ROLE } from '@/lib/constants/auth';
  * of leaving the header silent. A seller with several keeps picking; an admin changes nothing.
  */
 export async function getActiveBranchId(): Promise<string | undefined> {
-  // Blank is no selection: a delete leaves the entry empty for the rest of the request.
-  const selected = (await cookies()).get(BRANCH_COOKIE)?.value || undefined;
+  const selected = await getSelectedBranchId();
   if (selected) return selected;
 
   const session = await getSession();
-  if (session?.role !== SELLER_ROLE) return undefined;
+  // A seller held at the confirmation screen cannot read their branches, and needs none there.
+  if (session?.role !== SELLER_ROLE || mustVerifyEmail(session)) return undefined;
 
   const branches = await getBranches();
   return branches.length === 1 ? branches[0]?.id : undefined;
+}
+
+// The branch the cookie names, unchecked. Blank is no selection: a delete leaves the entry empty
+// for the rest of the request.
+export async function getSelectedBranchId(): Promise<string | undefined> {
+  return (await cookies()).get(BRANCH_COOKIE)?.value || undefined;
 }
 
 export async function getEffectiveBranchId(

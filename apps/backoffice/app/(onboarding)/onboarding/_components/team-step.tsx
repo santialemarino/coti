@@ -21,10 +21,18 @@ interface TeamStepProps {
   branches: Branch[];
   currentUserId: string;
   users: AccountUser[];
+  /* False while mail only reaches the log, when the only way to add someone is a password. */
+  mailDelivery: boolean;
   onCreate: (values: UserValues) => Promise<OnboardingActionResult>;
 }
 
-export function TeamStep({ branches, currentUserId, users, onCreate }: TeamStepProps) {
+export function TeamStep({
+  branches,
+  currentUserId,
+  users,
+  mailDelivery,
+  onCreate,
+}: TeamStepProps) {
   const router = useRouter();
   const t = useTranslations('onboarding.team');
   const tCommon = useTranslations('common');
@@ -36,7 +44,7 @@ export function TeamStep({ branches, currentUserId, users, onCreate }: TeamStepP
   async function onSubmit(values: UserValues): Promise<OnboardingActionResult> {
     const result = await onCreate(values);
     if (result.ok) {
-      toast.success(t('created', { name: values.name }));
+      toast.success(t(values.access === 'INVITE' ? 'invited' : 'created', { name: values.name }));
       setOpen(false);
       router.refresh();
     }
@@ -45,7 +53,7 @@ export function TeamStep({ branches, currentUserId, users, onCreate }: TeamStepP
 
   return (
     <div className="flex flex-col gap-y-6">
-      <Callout tone="info">{t('passwordNotice')}</Callout>
+      <Callout tone="info">{mailDelivery ? t('inviteNotice') : t('passwordNotice')}</Callout>
 
       {/* The admin is a user too; showing them first makes "usuarios" mean everyone, them included. */}
       {self ? (
@@ -101,6 +109,7 @@ export function TeamStep({ branches, currentUserId, users, onCreate }: TeamStepP
         assigned={NO_BRANCHES}
         branches={branches}
         isSelf={false}
+        mailDelivery={mailDelivery}
         onSubmit={onSubmit}
       />
     </div>

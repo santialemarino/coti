@@ -5,10 +5,12 @@ import {
   type SettingsNavItem,
 } from '@/app/(protected)/settings/_components/settings-nav';
 import { ROUTES } from '@/config/routes';
+import { getBranches } from '@/lib/api/branches';
 import { getOnboarding } from '@/lib/api/onboarding';
 import { getSession } from '@/lib/auth/session';
 import { ADMIN_ROLE } from '@/lib/constants/auth';
 import { hasPendingChecklist } from '@/lib/utils/onboarding-checklist';
+import { anyBranchMissesEmail } from '@/lib/utils/setup-issues';
 
 /*
  * The frame every settings page shares. The gate above already guarantees a session; this
@@ -17,14 +19,22 @@ import { hasPendingChecklist } from '@/lib/utils/onboarding-checklist';
  */
 export default async function SettingsLayout({ children }: { children: React.ReactNode }) {
   const t = await getTranslations('settings');
+  const tSetup = await getTranslations('common.setup');
   const session = await getSession();
-  const onboarding = session?.role === ADMIN_ROLE ? await getOnboarding() : null;
+  const isAdmin = session?.role === ADMIN_ROLE;
+  const [onboarding, branches] = isAdmin
+    ? await Promise.all([getOnboarding(), getBranches()])
+    : [null, []];
 
   const items: SettingsNavItem[] = [
-    ...(session?.role === ADMIN_ROLE
+    ...(isAdmin
       ? [
           { href: ROUTES.accountSettings, label: t('nav.account') },
-          { href: ROUTES.branchSettings, label: t('nav.branches') },
+          {
+            href: ROUTES.branchSettings,
+            label: t('nav.branches'),
+            attention: anyBranchMissesEmail(branches) ? tSetup('attention') : undefined,
+          },
           { href: ROUTES.userSettings, label: t('nav.users') },
           { href: ROUTES.catalogSettings, label: t('nav.catalog') },
           { href: ROUTES.priceSettings, label: t('nav.prices') },

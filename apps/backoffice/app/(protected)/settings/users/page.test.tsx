@@ -23,11 +23,14 @@ const SESSION = {
   email: 'ana@corralon.test',
   emailVerified: true,
   role: 'ADMIN',
+  emailVerificationRequired: true,
+  mailDelivery: true,
 };
 const CENTRAL = {
   id: 'b1',
   name: 'Casa Central',
   address: null,
+  email: null,
   defaultExpiryDays: 7,
   isActive: true,
 };

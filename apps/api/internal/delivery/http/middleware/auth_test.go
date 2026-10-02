@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -100,5 +101,44 @@ func TestRequireVerifiedEmail_NoTenantIsUnauthenticated(t *testing.T) {
 	}
 	if handlerRan {
 		t.Error("handler ran with no tenant at all")
+	}
+}
+
+type staticVerifier struct{}
+
+func (staticVerifier) ParseAccessToken(string) (domain.AccessClaims, error) {
+	return domain.AccessClaims{AccountID: uuid.New(), UserID: uuid.New()}, nil
+}
+
+type refusingResolver struct{ err error }
+
+func (r refusingResolver) ResolveTenant(context.Context, domain.AccessClaims, uuid.UUID) (domain.Tenant, error) {
+	return domain.Tenant{}, r.err
+}
+
+// A branch the caller no longer reaches is a 403 like a seller on an admin route, and the frontend
+// answers it differently — drop the stale branch, not the session — so it needs a code of its own.
+func TestAuthenticate_AnInaccessibleBranchCarriesItsOwnCode(t *testing.T) {
+	r := gin.New()
+	r.GET("/scoped", Authenticate(staticVerifier{}, refusingResolver{err: domain.ErrForbidden}),
+		func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	req := httptest.NewRequest(http.MethodGet, "/scoped", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	req.Header.Set(branchHeader, uuid.NewString())
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
+	}
+	var body struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body %q: %v", rec.Body.String(), err)
+	}
+	if body.Code != string(domain.CodeBranchNotAccessible) {
+		t.Errorf("code = %q, want %q", body.Code, domain.CodeBranchNotAccessible)
 	}
 }

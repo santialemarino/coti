@@ -13,6 +13,7 @@ type BranchResponse struct {
 	Address           *string   `json:"address"`
 	DefaultExpiryDays int       `json:"default_expiry_days"`
 	IsActive          bool      `json:"is_active"`
+	Email             *string   `json:"email"`
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
 }
@@ -34,13 +35,15 @@ type CreateBranchRequest struct {
 	Name              string  `json:"name" binding:"required,min=1,max=255"`
 	Address           *string `json:"address" binding:"omitempty,max=255"`
 	DefaultExpiryDays int     `json:"default_expiry_days" binding:"omitempty,min=1,max=365"`
+	Email             *string `json:"email" binding:"omitempty,max=255"`
 }
 
-// UpdateBranchRequest is the body for PUT /v1/branches/:branchId. is_active omitted leaves the
-// flag alone.
+// UpdateBranchRequest is the body for PUT /v1/branches/:branchId. is_active or email omitted
+// leaves it alone; a blank email clears the branch mailbox.
 type UpdateBranchRequest struct {
 	Name              string  `json:"name" binding:"required,min=1,max=255"`
 	Address           *string `json:"address" binding:"omitempty,max=255"`
 	DefaultExpiryDays int     `json:"default_expiry_days" binding:"required,min=1,max=365"`
 	IsActive          *bool   `json:"is_active"`
+	Email             *string `json:"email" binding:"omitempty,max=255"`
 }

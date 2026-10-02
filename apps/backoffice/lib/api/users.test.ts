@@ -14,6 +14,7 @@ function rawUser(overrides: Record<string, unknown> = {}) {
     role: 'SELLER',
     is_active: true,
     branch_ids: ['b1', 'b2'],
+    invite_status: 'PENDING',
     last_login_at: '2026-08-01T13:05:00Z',
     created_at: '2026-07-01T10:00:00Z',
     updated_at: '2026-07-02T10:00:00Z',
@@ -40,6 +41,7 @@ describe('getUsers', () => {
         role: 'SELLER',
         isActive: true,
         branchIds: ['b1', 'b2'],
+        inviteStatus: 'PENDING',
         lastLoginAt: '2026-08-01T13:05:00Z',
       },
     ]);

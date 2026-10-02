@@ -29,6 +29,7 @@ describe('confirmEmail', () => {
       path: '/v1/public/auth/verify-email',
       method: 'POST',
       authenticated: false,
+      branchScoped: false,
     });
   });
 
@@ -58,6 +59,12 @@ describe('resendVerification', () => {
     vi.mocked(apiRequest).mockResolvedValue(undefined);
 
     await expect(resendVerification('ana@corralonsanmartin.test')).resolves.toEqual({ sent: true });
+    // Not branch-scoped: resolving a branch would hit the verified-email gate it exists to clear.
+    expect(vi.mocked(apiRequest).mock.calls[0]?.[0]).toMatchObject({
+      path: '/v1/public/auth/resend-verification',
+      authenticated: false,
+      branchScoped: false,
+    });
   });
 
   it('reports the mail allowance running out as itself', async () => {

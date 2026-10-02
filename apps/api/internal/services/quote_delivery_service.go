@@ -438,8 +438,14 @@ func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenan
 				clientID := quote.ClientID
 				subject := "Tu cotización está lista"
 				paragraphs := []string{"Revisá el detalle y la vigencia en la web."}
+				// The client's answer goes to the branch mailbox, not to the platform's sender.
+				replyTo, replyToName := "", ""
+				if send.ChannelIdentifier != nil {
+					replyTo = *send.ChannelIdentifier
+				}
 				if bundle != nil {
 					payload := bundle.Representation.Payload
+					replyToName = payload.Supplier.Name + " — " + payload.Branch.Name
 					subject = "Cotización " + payload.Reference + " de " + payload.Supplier.Name
 					paragraphs = []string{"Total: " + formatCommercialMoney(payload.Currency, payload.Total),
 						payload.ValidityNote}
@@ -447,6 +453,7 @@ func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenan
 				err = s.email.Send(ctx, OutboundMail{AccountID: tenant.AccountID,
 					UserID: &tenant.UserID, ClientID: clientID, QuoteID: &quote.ID,
 					Event: domain.NotificationEventQuoteSent, To: send.Destination,
+					ReplyTo: replyTo, ReplyToName: replyToName,
 					Subject: subject, Heading: "Tu cotización está lista",
 					Paragraphs:  paragraphs,
 					ActionLabel: "Ver cotización", ActionURL: publicURL})

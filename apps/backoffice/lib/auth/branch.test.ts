@@ -12,7 +12,11 @@ import { BRANCH_COOKIE } from '@/lib/auth/tokens';
 
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('@/lib/api/branches', () => ({ getBranches: vi.fn() }));
-vi.mock('@/lib/auth/session', () => ({ getSession: vi.fn(), isRemembered: vi.fn() }));
+vi.mock('@/lib/auth/session', async (importOriginal) => ({
+  mustVerifyEmail: (await importOriginal<typeof import('@/lib/auth/session')>()).mustVerifyEmail,
+  getSession: vi.fn(),
+  isRemembered: vi.fn(),
+}));
 
 const { cookies } = await import('next/headers');
 const { getBranches } = await import('@/lib/api/branches');
@@ -29,6 +33,8 @@ function seller(): SessionUser {
     email: 'n@x',
     emailVerified: true,
     role: 'SELLER',
+    emailVerificationRequired: true,
+    mailDelivery: true,
   };
 }
 
@@ -40,6 +46,8 @@ function admin(): SessionUser {
     email: 'n@x',
     emailVerified: true,
     role: 'ADMIN',
+    emailVerificationRequired: true,
+    mailDelivery: true,
   };
 }
 
@@ -51,7 +59,14 @@ function jar(initial: Record<string, string> = {}) {
 
 function reachable(...ids: string[]) {
   vi.mocked(getBranches).mockResolvedValue(
-    ids.map((id) => ({ id, name: id, address: null, defaultExpiryDays: 7, isActive: true })),
+    ids.map((id) => ({
+      id,
+      name: id,
+      address: null,
+      email: null,
+      defaultExpiryDays: 7,
+      isActive: true,
+    })),
   );
 }
 
@@ -88,10 +103,34 @@ describe('the active branch cookie', () => {
     ).resolves.toBeUndefined();
   });
 
+  // The branch list sits behind the verified-email gate, so asking for it would answer
+  // EMAIL_NOT_VERIFIED and fail the very action meant to resend the verification mail.
+  it('never asks for the branches of a seller held at the confirmation screen', async () => {
+    jar();
+    reachable(VILLA_BOSCH);
+    vi.mocked(getSession).mockResolvedValue({ ...seller(), emailVerified: false });
+
+    await expect(getActiveBranchId()).resolves.toBeUndefined();
+    expect(getBranches).not.toHaveBeenCalled();
+  });
+
+  // Unconfirmed but not held: the product is open to them, so their branch resolves as usual.
+  it('resolves the branch of an unconfirmed seller the installation does not hold', async () => {
+    jar();
+    reachable(VILLA_BOSCH);
+    vi.mocked(getSession).mockResolvedValue({
+      ...seller(),
+      emailVerified: false,
+      emailVerificationRequired: false,
+    });
+
+    await expect(getActiveBranchId()).resolves.toBe(VILLA_BOSCH);
+  });
+
   /*
    * A single-branch seller never gets a shelf to pick from, so the one branch they reach is
    * resolved for them: with no cookie the API would read account-wide-set for them anyway, and
-   * this is what makes the disabled switcher name it and X-Branch-Id travel on their reads.
+   * this is what makes the switcher name it and X-Branch-Id travel on their reads.
    */
   it('resolves the one reachable branch for a seller who never chose', async () => {
     jar();

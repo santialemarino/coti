@@ -14,7 +14,8 @@ import (
 const quoteSendColumns = `send.id, send.account_id, send.version_id, send.channel_id,
 	channel.type, send.idempotency_key, COALESCE(send.destination, ''),
 	send.provider_reference, COALESCE(send.public_token, ''), send.format,
-	send.validity_days, send.sent_at, send.expires_at, send.tracking_status, send.created_at`
+	send.validity_days, send.sent_at, send.expires_at, send.tracking_status, send.created_at,
+	channel.identifier`
 
 const quoteSendIdempotencyIndex = "uq_quote_send_idempotency_channel"
 
@@ -210,7 +211,7 @@ func scanQuoteSend(row pgx.Row) (*domain.QuoteSend, error) {
 	err := row.Scan(&send.ID, &send.AccountID, &send.VersionID, &send.ChannelID,
 		&send.ChannelType, &send.IdempotencyKey, &send.Destination, &send.ProviderReference,
 		&send.PublicToken, &send.Format, &send.ValidityDays, &send.SentAt, &send.ExpiresAt,
-		&send.TrackingStatus, &send.CreatedAt)
+		&send.TrackingStatus, &send.CreatedAt, &send.ChannelIdentifier)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

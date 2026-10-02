@@ -3,6 +3,7 @@ import { fireEvent, render, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { RfqListProvider } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import type { QuoteSendTrackingResponse, RfqDetailResponse } from '@/lib/api/rfqs';
 import messages from '@/translations/es.json';
 import { QuoteDeliveryCard } from './quote-delivery-card';
@@ -285,5 +286,46 @@ describe('QuoteDeliveryCard send action', () => {
     expect(
       accepted.queryByRole('button', { name: messages.rfqs.detail.lifecycle.reactivate.button }),
     ).toBeNull();
+  });
+});
+
+describe('QuoteDeliveryCard without a branch mailbox', () => {
+  const NOTICE = messages.common.setup.BRANCH_EMAIL.title;
+
+  function renderWithoutMailbox(quoteStatus: string) {
+    return render(
+      <NextIntlClientProvider
+        locale="es"
+        messages={messages}
+        timeZone="America/Argentina/Buenos_Aires"
+      >
+        <RfqListProvider
+          records={[]}
+          activeBranchId={BRANCH_ID}
+          userName="Ana"
+          userId={SELLER_ID}
+          isAdmin
+        >
+          <QuoteDeliveryCard
+            detail={makeDetail({ quoteStatus })}
+            onSent={vi.fn().mockResolvedValue(undefined)}
+            branchMissesEmail
+          />
+        </RfqListProvider>
+      </NextIntlClientProvider>,
+    );
+  }
+
+  it('warns while the quote is still to be sent', () => {
+    const view = renderWithoutMailbox('QUOTED');
+
+    expect(view.getByText(NOTICE)).toBeTruthy();
+  });
+
+  // The notice is about a send; on a quote already out, won or lost there is none to warn about.
+  it.each(['SENT', 'ACCEPTED', 'REJECTED'])('says nothing on a %s quote', (quoteStatus) => {
+    const view = renderWithoutMailbox(quoteStatus);
+
+    expect(view.queryByText(NOTICE)).toBeNull();
   });
 });

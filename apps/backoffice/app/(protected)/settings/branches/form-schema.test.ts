@@ -5,7 +5,12 @@ import { branchSchema, type BranchValues } from '@/app/(protected)/settings/bran
 import { EXPIRY_MAX_DAYS, EXPIRY_MIN_DAYS } from '@/lib/constants/branch';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 
-const VALID: BranchValues = { name: 'Casa Central', address: '', defaultExpiryDays: '7' };
+const VALID: BranchValues = {
+  name: 'Casa Central',
+  address: '',
+  email: '',
+  defaultExpiryDays: '7',
+};
 
 function messagesFor(values: Partial<BranchValues>): Record<string, string> {
   const result = branchSchema().safeParse({ ...VALID, ...values });

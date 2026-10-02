@@ -27,12 +27,13 @@ user by email alone and an address therefore has to identify exactly one row.
 `uq_app_user_email_global` on `lower(email)` enforces that; registration also checks it inside
 its own transaction so the caller gets a precise `409` instead of a bare constraint violation.
 
-## The manual-entry channel is not optional
+## Every branch opens with its channels
 
-Every branch has one, created with the branch. `rfq.channel_id` is `NOT NULL`, and a counter,
-phone or unintegrated-messaging order has no other channel to point at — so a branch without it
-cannot take the most common order in the business. Both paths that create a branch open it in
-the same transaction as the branch itself.
+Both paths that create a branch — registration and `POST /v1/branches` — open three channels in the
+same transaction as the branch: MANUAL_ENTRY, WHATSAPP and EMAIL. **The manual-entry one is not
+optional**: `rfq.channel_id` is `NOT NULL`, and a counter, phone or unintegrated-messaging order has
+no other channel to point at. The other two are what a quote is delivered through, so a new branch
+can send one without first configuring anything.
 
 ## A new branch starts with the catalog
 
@@ -68,6 +69,12 @@ closes cannot both pass the check.
 carries the name and expiry, and the last-active guard does not apply — it only runs when the flag
 is being turned off. A closed branch stays fetchable by id, which is what keeps a quote that came in
 through it explainable, but it is absent from the switcher and refused by the branch-access check.
+
+**The branch mailbox is the EMAIL channel's identifier**, exposed as `email` on the branch. On
+`POST`/`PUT` an omitted `email` leaves it alone and a blank one clears it — except on a configured
+channel, whose credentials send from that address (422 `BRANCH_MAILBOX_REQUIRED`). A value equal to
+the current one touches no channel. It is the `Reply-To` of the quote email, so a branch without one
+sends quotes whose replies reach nobody, which the backoffice reports where it matters.
 
 Omitting `default_expiry_days` on create takes `BRANCH_DEFAULT_EXPIRY_DAYS`. It lives on the
 branch, not the account, because tolerance to inflation differs between locations.

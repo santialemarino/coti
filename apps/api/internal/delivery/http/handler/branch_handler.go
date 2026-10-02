@@ -108,6 +108,7 @@ func (h *BranchHandler) Create(c *gin.Context) {
 		Name:              body.Name,
 		Address:           body.Address,
 		DefaultExpiryDays: body.DefaultExpiryDays,
+		Email:             body.Email,
 	})
 	if err != nil {
 		Respond(c, err)
@@ -154,6 +155,7 @@ func (h *BranchHandler) Update(c *gin.Context) {
 			Address:           body.Address,
 			DefaultExpiryDays: body.DefaultExpiryDays,
 			IsActive:          body.IsActive,
+			Email:             body.Email,
 		})
 	if err != nil {
 		Respond(c, err)
@@ -200,6 +202,7 @@ func toBranchResponse(b domain.Branch) dto.BranchResponse {
 		Address:           b.Address,
 		DefaultExpiryDays: b.DefaultExpiryDays,
 		IsActive:          b.IsActive,
+		Email:             b.Email,
 		CreatedAt:         b.CreatedAt,
 		UpdatedAt:         b.UpdatedAt,
 	}

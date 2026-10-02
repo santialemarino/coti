@@ -12,11 +12,12 @@ vi.mock('@/app/(protected)/settings/users/actions', () => ({
   updateUser: vi.fn(),
   deactivateUser: vi.fn(),
   reactivateUser: vi.fn(),
+  resendInvite: vi.fn(),
   sendPasswordReset: vi.fn(),
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-const { createUser, deactivateUser, reactivateUser, sendPasswordReset, updateUser } =
+const { createUser, deactivateUser, reactivateUser, resendInvite, sendPasswordReset, updateUser } =
   await import('@/app/(protected)/settings/users/actions');
 const { toast } = await import('sonner');
 
@@ -26,6 +27,7 @@ const CENTRAL: Branch = {
   id: 'b1',
   name: 'Casa Central',
   address: 'Av. Siempre Viva 742',
+  email: null,
   defaultExpiryDays: 7,
   isActive: true,
 };
@@ -33,6 +35,7 @@ const MORON: Branch = {
   id: 'b2',
   name: 'Morón',
   address: null,
+  email: null,
   defaultExpiryDays: 30,
   isActive: true,
 };
@@ -44,6 +47,7 @@ const ME: AccountUser = {
   role: 'ADMIN',
   isActive: true,
   branchIds: [],
+  inviteStatus: null,
   lastLoginAt: '2026-08-01T13:05:00Z',
 };
 const SELLER: AccountUser = {
@@ -53,6 +57,7 @@ const SELLER: AccountUser = {
   role: 'SELLER',
   isActive: true,
   branchIds: [CENTRAL.id],
+  inviteStatus: null,
   lastLoginAt: null,
 };
 const DEACTIVATED: AccountUser = {
@@ -62,18 +67,29 @@ const DEACTIVATED: AccountUser = {
   role: 'SELLER',
   isActive: false,
   branchIds: [MORON.id],
+  inviteStatus: null,
   lastLoginAt: '2026-07-01T09:00:00Z',
 };
 
 // The real catalog, so a renamed or missing key fails here rather than rendering its own name.
-function renderTable(users: AccountUser[] = [ME, SELLER], branches: Branch[] = [CENTRAL, MORON]) {
+// Mail off by default, so the password is the one way in and its field is always on screen.
+function renderTable(
+  users: AccountUser[] = [ME, SELLER],
+  branches: Branch[] = [CENTRAL, MORON],
+  mailDelivery = false,
+) {
   return render(
     <NextIntlClientProvider
       locale="es"
       messages={messages}
       timeZone="America/Argentina/Buenos_Aires"
     >
-      <UserTable users={users} branches={branches} currentUserId={ME.id} />
+      <UserTable
+        users={users}
+        branches={branches}
+        currentUserId={ME.id}
+        mailDelivery={mailDelivery}
+      />
     </NextIntlClientProvider>,
   );
 }
@@ -264,6 +280,7 @@ describe('UserTable dialogs', () => {
       email: SELLER.email,
       role: SELLER.role,
       branchIds: [CENTRAL.id],
+      access: 'PASSWORD',
       password: '',
     });
     expect(createUser).not.toHaveBeenCalled();
@@ -339,7 +356,12 @@ describe('UserTable dialogs', () => {
         messages={messages}
         timeZone="America/Argentina/Buenos_Aires"
       >
-        <UserTable users={[ME, SELLER]} branches={[CENTRAL, MORON]} currentUserId={ME.id} />
+        <UserTable
+          users={[ME, SELLER]}
+          branches={[CENTRAL, MORON]}
+          currentUserId={ME.id}
+          mailDelivery={false}
+        />
       </NextIntlClientProvider>,
     );
 
@@ -575,5 +597,98 @@ describe('UserTable mailing a recovery link', () => {
     await waitFor(() =>
       expect(view.getByText(copy.passwordReset.errors.RATE_LIMITED)).toBeTruthy(),
     );
+  });
+});
+
+describe('UserTable invites', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const INVITED: AccountUser = { ...SELLER, id: 'u4', name: 'Dana López', inviteStatus: 'PENDING' };
+  const EXPIRED: AccountUser = { ...SELLER, id: 'u5', name: 'Eva Paz', inviteStatus: 'EXPIRED' };
+
+  it('marks a user still waiting on their invite, and one whose invite ran out', () => {
+    const view = renderTable([ME, INVITED, EXPIRED], [CENTRAL, MORON], true);
+
+    expect(within(rowOf(view, INVITED.name)).getByText(copy.status.invitePending)).toBeTruthy();
+    expect(within(rowOf(view, EXPIRED.name)).getByText(copy.status.inviteExpired)).toBeTruthy();
+  });
+
+  // Their way in is the invite: a recovery link would answer a password nobody ever chose.
+  it('offers resending the invite instead of a recovery link', async () => {
+    vi.mocked(resendInvite).mockResolvedValue({ ok: true });
+    const view = renderTable([ME, EXPIRED], [CENTRAL, MORON], true);
+
+    const actions = actionsOf(view, EXPIRED.name);
+    expect(actions.queryByRole('button', { name: copy.passwordReset.action })).toBeNull();
+    fireEvent.click(actions.getByRole('button', { name: copy.invite.action }));
+
+    await waitFor(() => expect(resendInvite).toHaveBeenCalledWith(EXPIRED.id));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(expect.stringContaining(EXPIRED.email)),
+    );
+  });
+
+  // Nor a recovery link in its place: that would answer a password nobody chose, and could not
+  // arrive either.
+  it('offers no resend while mail only reaches the log', () => {
+    const view = renderTable([ME, INVITED], [CENTRAL, MORON], false);
+
+    const actions = actionsOf(view, INVITED.name);
+    expect(actions.queryByRole('button', { name: copy.invite.action })).toBeNull();
+    expect(actions.queryByRole('button', { name: copy.passwordReset.action })).toBeNull();
+  });
+
+  it('invites by default and asks for no password', async () => {
+    vi.mocked(createUser).mockResolvedValue({ ok: true });
+    const view = renderTable([ME], [CENTRAL, MORON], true);
+
+    fireEvent.click(view.getByRole('button', { name: copy.add }));
+    await waitFor(() => expect(within(dialog(view)).getByText(copy.create.title)).toBeTruthy());
+    expect(view.baseElement.querySelector('input[name="password"]')).toBeNull();
+    fireEvent.change(field(view, 'name'), { target: { value: 'Dana López' } });
+    fireEvent.change(field(view, 'email'), { target: { value: 'dana@corralon.test' } });
+    submitDialog(view);
+
+    await waitFor(() => expect(createUser).toHaveBeenCalledOnce());
+    expect(vi.mocked(createUser).mock.calls[0]?.[0]).toMatchObject({ access: 'INVITE' });
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(copy.invited.replace('{name}', 'Dana López')),
+    );
+  });
+
+  it('asks for the password once the admin chooses to set one', async () => {
+    const view = renderTable([ME], [CENTRAL, MORON], true);
+
+    fireEvent.click(view.getByRole('button', { name: copy.add }));
+    await waitFor(() => expect(within(dialog(view)).getByText(copy.create.title)).toBeTruthy());
+    fireEvent.click(within(dialog(view)).getByRole('radio', { name: copy.access.PASSWORD.label }));
+
+    await waitFor(() =>
+      expect(view.baseElement.querySelector('input[name="password"]')).toBeTruthy(),
+    );
+  });
+
+  // One branch is one obvious assignment for a new user; with two, ticking one is a guess.
+  it('ticks the only branch of the account for a new user', async () => {
+    const view = renderTable([ME], [CENTRAL], true);
+
+    fireEvent.click(view.getByRole('button', { name: copy.add }));
+    await waitFor(() => expect(within(dialog(view)).getByText(copy.create.title)).toBeTruthy());
+
+    expect(
+      within(dialog(view))
+        .getByRole('checkbox', { name: CENTRAL.name })
+        .getAttribute('aria-checked'),
+    ).toBe('true');
+  });
+
+  it('ticks nothing for a new user when there are several branches', async () => {
+    const view = renderTable([ME], [CENTRAL, MORON], true);
+
+    fireEvent.click(view.getByRole('button', { name: copy.add }));
+    await waitFor(() => expect(within(dialog(view)).getByText(copy.create.title)).toBeTruthy());
+
+    const boxes = within(dialog(view)).getAllByRole('checkbox');
+    expect(boxes.every((box) => box.getAttribute('aria-checked') === 'false')).toBe(true);
   });
 });

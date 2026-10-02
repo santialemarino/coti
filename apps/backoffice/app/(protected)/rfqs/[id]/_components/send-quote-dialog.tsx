@@ -20,7 +20,9 @@ import {
   Label,
   PendingButton,
 } from '@repo/ui/components';
+import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { PhoneInput } from '@/components/phone-input';
+import { SetupNotice } from '@/components/setup-notice';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { errorCodeOf } from '@/lib/api/errors';
 import {
@@ -41,6 +43,8 @@ interface SendQuoteDialogProps {
    * mounted without it, so the delivered links remain on screen after the card behind has moved on.
    */
   showTrigger?: boolean;
+  /* Whether the order's branch has no mailbox for a reply to the email copy to reach. */
+  branchMissesEmail?: boolean;
 }
 
 /*
@@ -53,12 +57,14 @@ export function SendQuoteDialog({
   branchId,
   onSent,
   showTrigger = true,
+  branchMissesEmail = false,
 }: SendQuoteDialogProps) {
   const fmt = useFormatters();
   const t = useTranslations('rfqs.detail.send');
   const tChannel = useTranslations('rfqs.channels');
   const tPhone = useTranslations('common.phone');
   const message = useApiErrorMessage('rfqs.detail.send');
+  const { isAdmin } = useRfqList();
   const [open, setOpen] = useState(false);
   const [phone, setPhone] = useState('');
   const [alsoEmail, setAlsoEmail] = useState(false);
@@ -235,6 +241,10 @@ export function SendQuoteDialog({
                     aria-label={t('emailLabel')}
                   />
                 )}
+                {/* Said where it bites: the copy goes out, and its reply has nowhere to land. */}
+                {alsoEmail && branchMissesEmail ? (
+                  <SetupNotice issue="BRANCH_EMAIL" isAdmin={isAdmin} />
+                ) : null}
               </div>
 
               <div className="flex flex-col gap-y-1.5 rounded-lg border border-border bg-sunken p-3">

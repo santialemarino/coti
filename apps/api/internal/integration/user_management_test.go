@@ -116,6 +116,7 @@ func newEnvWithRFQProviders(
 			PasswordMinLength: 8,
 			PasswordResetTTL:  time.Hour,
 			VerificationTTL:   48 * time.Hour,
+			InviteTTL:         168 * time.Hour,
 		},
 		Catalog: config.CatalogConfig{DefaultPageSize: 50, MaxPageSize: 200},
 		RFQ: config.RFQConfig{
@@ -163,7 +164,6 @@ func newEnvWithRFQProviders(
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
 	authService := services.NewAuthService(db, userRepo, branchRepo,
 		refreshTokenRepo, tokenService, cfg.Auth, nil)
-	userService := services.NewUserService(db, userRepo, userBranchRepo, branchRepo, cfg.Auth)
 	mailer := &captureMailer{}
 	mailService := services.NewMailService(db, mailer, repository.NewNotificationRepository(),
 		accountRepo, nil)
@@ -173,6 +173,8 @@ func newEnvWithRFQProviders(
 		refreshTokenRepo, mailService, authService, quiet, cfg.Auth, cfg.Web, nil)
 	verificationService := services.NewVerificationService(db, userRepo, authTokenRepo,
 		mailService, quiet, cfg.Auth, cfg.Web, nil)
+	userService := services.NewUserService(db, userRepo, userBranchRepo, branchRepo, authTokenRepo,
+		mailService, verificationService, quiet, cfg.Auth, cfg.Web, cfg.Mail.Delivers(), nil)
 	productRepo := repository.NewProductRepository()
 	productService := services.NewProductService(db, productRepo,
 		repository.NewProductSynonymRepository(), repository.NewProductAlternativeRepository(),
@@ -233,7 +235,10 @@ func newEnvWithRFQProviders(
 			Auth:         handler.NewAuthHandler(authService),
 			Password:     handler.NewPasswordHandler(passwordService, mailTargetLimiter),
 			Verification: handler.NewVerificationHandler(verificationService, mailTargetLimiter),
-			User:         handler.NewUserHandler(userService),
+			User: handler.NewUserHandler(userService, handler.SessionPolicy{
+				RequireVerifiedEmail: cfg.Auth.RequireVerifiedEmail,
+				MailDelivers:         cfg.Mail.Delivers(),
+			}),
 			Branch: handler.NewBranchHandler(services.NewBranchService(db, branchRepo, channelRepo,
 				repository.NewBranchProductRepository(), cfg.Branch.DefaultExpiryDays)),
 			Rfq:           handler.NewRfqHandler(rfqService, highConfidence),

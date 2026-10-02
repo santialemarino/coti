@@ -27,6 +27,7 @@ const (
 	NotificationEventPasswordReset     NotificationEvent = "PASSWORD_RESET"
 	NotificationEventEmailVerification NotificationEvent = "EMAIL_VERIFICATION"
 	NotificationEventEmailChanged      NotificationEvent = "EMAIL_CHANGED"
+	NotificationEventInvite            NotificationEvent = "INVITE"
 	NotificationEventQuoteSent         NotificationEvent = "QUOTE_SENT"
 	NotificationEventQuoteAccepted     NotificationEvent = "QUOTE_ACCEPTED"
 	NotificationEventQuoteRejected     NotificationEvent = "QUOTE_REJECTED"

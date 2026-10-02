@@ -81,7 +81,7 @@ CREATE TYPE notification_status AS ENUM ('PENDING', 'SENT', 'FAILED');
 CREATE TYPE job_run_status AS ENUM ('RUNNING', 'SUCCEEDED', 'FAILED');
 
 -- What a single-use link entitles its bearer to do without a session.
-CREATE TYPE auth_token_type AS ENUM ('PASSWORD_RESET', 'EMAIL_VERIFICATION');
+CREATE TYPE auth_token_type AS ENUM ('PASSWORD_RESET', 'EMAIL_VERIFICATION', 'INVITE');
 
 -- Conversational engine. The seller and the system are context, not a trigger.
 CREATE TYPE message_author_type AS ENUM ('CLIENT', 'SELLER', 'SYSTEM');
@@ -213,9 +213,9 @@ CREATE TABLE refresh_token (
   CONSTRAINT uq_refresh_token_hash UNIQUE (token_hash)
 );
 
--- Single-use tokens a user presents instead of a session: the password-recovery link and the
--- address-verification link. consumed_at is what makes them single use, and the row survives
--- its use so a replay is a rejection rather than a miss.
+-- Single-use tokens a user presents instead of a session: the password-recovery link, the
+-- address-verification link and the invite link. consumed_at is what makes them single use,
+-- and the row survives its use so a replay is a rejection rather than a miss.
 CREATE TABLE auth_token (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id  UUID NOT NULL,

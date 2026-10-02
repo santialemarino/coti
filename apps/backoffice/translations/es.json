@@ -21,7 +21,9 @@
       "clients": "Clientes",
       "reports": "Reportes",
       "administration": "Administración",
-      "settings": "Configuración"
+      "settings": "Configuración",
+      "confirmEmail": "Confirmar tu correo",
+      "pending": "Hay algo pendiente"
     },
     "roles": {
       "ADMIN": "Administrador",
@@ -97,6 +99,24 @@
       "invalid": "Revisá el número: no parece un teléfono válido.",
       "landline": "Parece un número fijo. Si es un celular,",
       "useMobile": "usá {number}"
+    },
+    "setup": {
+      "askAdmin": "Pedile a un administrador que lo configure.",
+      "attention": "Falta configurar algo",
+      "BRANCH_EMAIL": {
+        "title": "Esta sucursal no tiene correo",
+        "body": "La cotización sale igual por correo, pero si el cliente la responde, la respuesta no le llega a nadie.",
+        "fix": "Configurar correo"
+      },
+      "BRANCH_NO_SELLERS": {
+        "title": "Esta sucursal no tiene vendedores",
+        "body": "El pedido queda sin asignar hasta que la sucursal tenga un vendedor.",
+        "fix": "Sumar un vendedor"
+      },
+      "NO_INTAKE_CHANNELS": {
+        "title": "Esta sucursal no tiene canales abiertos",
+        "body": "Para importar un pedido hace falta al menos un canal abierto en la sucursal. Escribinos a soporte para habilitarlo."
+      }
     }
   },
   "errors": {
@@ -117,11 +137,16 @@
     "SELF_ROLE_CHANGE": "No podés cambiar tu propio rol. Pedíselo a otro administrador.",
     "PASSWORD_POLICY": "La contraseña no cumple con los requisitos.",
     "INVALID_LINK": "El enlace no es válido, ya se usó o venció.",
+    "INVITE_NOT_PENDING": "Ese usuario ya eligió su contraseña, así que no tiene una invitación para reenviar.",
+    "MAIL_NOT_CONFIGURED": "El envío de correos no está configurado, así que no podemos mandar el enlace.",
+    "BRANCH_NOT_ACCESSIBLE": "Esa sucursal ya no está disponible para vos. Elegí otra.",
+    "BRANCH_MAILBOX_REQUIRED": "La sucursal envía sus correos desde esa casilla, así que no se puede dejar vacía.",
     "QUOTE_ARCHIVED": "La cotización está archivada y no se puede modificar.",
     "QUOTE_NOT_DRAFT": "La cotización ya no está en un estado que permita esa acción.",
     "QUOTE_NOT_REACTIVATABLE": "La cotización ya no está cerrada o su versión cambió. Actualizá la pantalla.",
     "QUOTE_NOT_SENDABLE": "La cotización cambió y esta versión ya no es la aprobada.",
     "DELIVERY_CHANNEL": "Esta sucursal no tiene los canales de envío necesarios configurados.",
+    "CHANNEL_IDENTIFIER": "Revisá la dirección: no es un correo válido.",
     "DELIVERY_UNAVAILABLE": "No se pudo entregar por ningún canal. Revisá la configuración de envío o intentá más tarde.",
     "UNSUPPORTED_FILE_TYPE": "Ese tipo de archivo no está soportado.",
     "LEGACY_EXCEL_FILE": "No podemos leer archivos .xls. Guardalo como .xlsx o .csv y volvé a subirlo.",
@@ -353,6 +378,17 @@
       "errors": {
         "INVALID_LINK": "El enlace no es válido, ya se usó o venció. Pedí uno nuevo.",
         "INTERNAL": "No pudimos cambiar la contraseña. Intentá de nuevo."
+      },
+      "invite": {
+        "title": "Elegí tu contraseña",
+        "intro": "Con esta contraseña vas a entrar a Coti. Después podés cambiarla cuando quieras.",
+        "submit": "Activar mi cuenta",
+        "submitting": "Activando…",
+        "done": "Listo, tu cuenta está activa. Entrá con tu correo y la contraseña que elegiste.",
+        "invalidLink": "Falta el enlace de la invitación. Abrí el que te llegó por correo o pedile a un administrador que te la reenvíe.",
+        "errors": {
+          "INVALID_LINK": "La invitación no es válida, ya se usó o venció. Pedile a un administrador que te la reenvíe."
+        }
       }
     },
     "changePassword": {
@@ -410,6 +446,7 @@
       "done": "Listo, tu dirección quedó confirmada.",
       "sentTo": "Te mandamos un correo a {email} para confirmar tu dirección. Abrí el enlace que te llegó y ya está.",
       "continue": "Ir al inicio",
+      "continueUnverified": "Seguir a Coti sin confirmar",
       "signOut": "Cerrar sesión",
       "goToLogin": "Iniciar sesión",
       "email": {
@@ -444,7 +481,11 @@
   "home": {
     "title": "Coti",
     "queueHint": "Elegí un pedido de la lista para trabajarlo, o creá uno nuevo.",
-    "seeAllOrders": "Ver todos los pedidos"
+    "seeAllOrders": "Ver todos los pedidos",
+    "noBranch": {
+      "title": "Todavía no tenés una sucursal asignada",
+      "description": "Pedile a un administrador que te asigne al menos una sucursal para ver y cargar pedidos."
+    }
   },
   "quotes": {
     "title": "Cotizaciones",
@@ -591,7 +632,6 @@
         "noBranch": "Seleccioná una sucursal en el selector del encabezado para crear un pedido.",
         "channelLabel": "¿Por dónde llegó?",
         "channelPlaceholder": "Elegí el canal",
-        "channelEmpty": "Esta sucursal no tiene canales activos.",
         "clientLabel": "Cliente (opcional)",
         "clientPlaceholder": "Nombre del cliente",
         "noteLabel": "Nota para la IA (opcional)",
@@ -610,15 +650,20 @@
           "RATE_LIMITED": "Hiciste muchos pedidos con IA seguidos. Esperá un momento y volvé a intentar.",
           "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
           "INTERNAL": "No pudimos procesar el archivo. Intentá de nuevo."
-        }
+        },
+        "channelsLoading": "Cargando canales…",
+        "channelsFailed": "No pudimos cargar los canales de la sucursal. Cerrá y volvé a intentar.",
+        "channelOnly": "Es el único canal abierto de la sucursal."
       },
       "manual": {
         "clientLabel": "Cliente",
         "clientPlaceholder": "Nombre del cliente",
         "sellerLabel": "Vendedor",
         "unassigned": "Sin asignar",
+        "sellerSelf": "El pedido queda a tu nombre.",
+        "sellerOnly": "Es el único vendedor de esta sucursal.",
         "sellersLoading": "Cargando vendedores…",
-        "noSellers": "No hay vendedores disponibles para esta sucursal.",
+        "sellersFailed": "No pudimos cargar los vendedores. El pedido queda sin asignar.",
         "sellerPlaceholder": "Seleccioná un vendedor",
         "clearSearch": "Limpiar búsqueda",
         "search": "Buscar producto por nombre, código o categoría…",
@@ -1087,7 +1132,8 @@
       "expiry": "Vencimiento",
       "status": "Estado",
       "actions": "Acciones",
-      "noAddress": "Sin dirección"
+      "noAddress": "Sin dirección",
+      "noEmail": "Sin correo"
     },
     "expiryDays": "{count, plural, one {# día} other {# días}}",
     "status": {
@@ -1130,6 +1176,11 @@
       "label": "Dirección",
       "placeholder": "Ingresá la dirección de la sucursal"
     },
+    "email": {
+      "label": "Correo de la sucursal",
+      "placeholder": "ventas@tucorralon.com",
+      "hint": "Las respuestas de tus clientes a una cotización llegan a esta dirección."
+    },
     "defaultExpiryDays": {
       "label": "Días de vencimiento de las cotizaciones",
       "hint": "Por defecto {count} días. Cada sucursal puede usar el suyo.",
@@ -1143,7 +1194,9 @@
     "errors": {
       "NOT_FOUND": "Esa sucursal ya no existe. Actualizá el listado.",
       "INVALID_INPUT": "Revisá los datos de la sucursal e intentá de nuevo.",
-      "INTERNAL": "No pudimos guardar la sucursal. Intentá de nuevo."
+      "INTERNAL": "No pudimos guardar la sucursal. Intentá de nuevo.",
+      "CHANNEL_IDENTIFIER": "Revisá el correo de la sucursal: no es una dirección válida.",
+      "CONFLICT": "Ese correo ya está en otro canal de la sucursal."
     }
   },
   "account": {
@@ -1212,11 +1265,13 @@
     },
     "status": {
       "active": "Activo",
-      "inactive": "Desactivado"
+      "inactive": "Desactivado",
+      "invitePending": "Invitación pendiente",
+      "inviteExpired": "Invitación vencida"
     },
     "create": {
       "title": "Agregar usuario",
-      "description": "Le vamos a pedir esta contraseña la primera vez que entre y la puede cambiar cuando quiera.",
+      "description": "Cargá sus datos, su rol y las sucursales donde trabaja.",
       "submit": "Crear usuario",
       "submitting": "Creando…"
     },
@@ -1262,8 +1317,19 @@
     "password": {
       "label": "Contraseña inicial",
       "placeholder": "Elegí una contraseña",
-      "required": "Elegí una contraseña inicial.",
-      "hint": "Se la tenés que pasar vos."
+      "required": "Elegí una contraseña inicial."
+    },
+    "access": {
+      "label": "Cómo va a entrar",
+      "INVITE": {
+        "label": "Mandarle una invitación",
+        "hint": "Le llega un correo para elegir su propia contraseña. Si se le vence, se la podés reenviar."
+      },
+      "PASSWORD": {
+        "label": "Ponerle una contraseña inicial",
+        "hint": "Se la pasás vos y la puede cambiar cuando quiera."
+      },
+      "passwordOnly": "El envío de correos no está configurado, así que entra con esta contraseña. Se la tenés que pasar vos."
     },
     "role": {
       "label": "Rol",
@@ -1276,6 +1342,7 @@
       "closedAssignments": "{count, plural, one {Tiene una sucursal cerrada asignada y al guardar se la vamos a quitar.} other {Tiene # sucursales cerradas asignadas y al guardar se las vamos a quitar.}}"
     },
     "created": "Creamos a «{name}». Acordate de pasarle la contraseña: nosotros no se la mandamos.",
+    "invited": "Invitamos a «{name}». Le mandamos un correo para que elija su contraseña.",
     "updated": "Guardamos los cambios de «{name}». Rigen desde su próxima pantalla.",
     "deactivated": "Desactivamos a «{name}». Ya no puede entrar, y podés reactivarlo cuando quieras.",
     "reactivated": "Reactivamos a «{name}». Ya puede volver a entrar.",
@@ -1285,6 +1352,15 @@
       "NOT_FOUND": "Ese usuario ya no existe. Actualizá el listado.",
       "INVALID_INPUT": "Revisá los datos del usuario e intentá de nuevo.",
       "INTERNAL": "No pudimos guardar el usuario. Intentá de nuevo."
+    },
+    "invite": {
+      "action": "Reenviar invitación",
+      "sent": "Le reenviamos la invitación a {email}.",
+      "errors": {
+        "INVITE_NOT_PENDING": "Ese usuario ya eligió su contraseña. Si la olvidó, mandale el enlace de contraseña.",
+        "RATE_LIMITED": "Enviamos demasiados correos en poco tiempo. Esperá unos minutos e intentá de nuevo.",
+        "INTERNAL": "No pudimos reenviar la invitación. Intentá de nuevo."
+      }
     }
   },
   "products": {
@@ -1582,7 +1658,7 @@
     },
     "team": {
       "title": "Sumá a los usuarios que van a cotizar",
-      "description": "Elegí rol, sucursales y una contraseña inicial.",
+      "description": "Elegí su rol, sus sucursales y cómo va a entrar.",
       "you": "Vos",
       "passwordNotice": "Esto crea un usuario real, no envía una invitación. Vas a tener que compartirle la contraseña inicial por un canal seguro.",
       "add": "Agregar usuario",
@@ -1591,7 +1667,9 @@
       "empty": {
         "title": "Todavía no agregaste usuarios",
         "description": "Podés hacerlo ahora o continuar y administrarlos más adelante desde Configuración."
-      }
+      },
+      "inviteNotice": "Cada usuario recibe una invitación por correo para elegir su contraseña. Si preferís, le podés poner una inicial y pasársela vos.",
+      "invited": "Invitamos a «{name}». Le mandamos un correo para que elija su contraseña."
     },
     "complete": {
       "title": "Tu cuenta está lista",

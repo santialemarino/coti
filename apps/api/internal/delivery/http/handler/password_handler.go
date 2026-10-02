@@ -96,10 +96,10 @@ func (h *PasswordHandler) Forgot(c *gin.Context) {
 	c.Status(http.StatusAccepted)
 }
 
-// Reset redeems a recovery link and sets the new password. Returns 204.
+// Reset redeems a recovery or invite link and sets the new password. Returns 204.
 //
-//	@Summary		Reset a password with a recovery link
-//	@Description	The link works once and expires. Unknown, expired and already-used tokens all answer 401 alike. Every session the user had is ended.
+//	@Summary		Set a password with a recovery or invite link
+//	@Description	The link works once and expires. Unknown, expired and already-used tokens all answer 401 alike. Marks the address verified, clears a lockout, and ends every session the user had.
 //	@Tags			auth
 //	@Accept			json
 //	@Produce		json

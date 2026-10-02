@@ -1,7 +1,14 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
-import { KeyRoundIcon, PencilIcon, PlusIcon, RotateCcwIcon, UserXIcon } from 'lucide-react';
+import {
+  KeyRoundIcon,
+  MailIcon,
+  PencilIcon,
+  PlusIcon,
+  RotateCcwIcon,
+  UserXIcon,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
@@ -27,6 +34,7 @@ import {
   createUser,
   deactivateUser,
   reactivateUser,
+  resendInvite,
   sendPasswordReset,
   updateUser,
   type UserResult,
@@ -57,9 +65,11 @@ interface UserTableProps {
   /* The caller's branch reach — active branches only, which is all the API will assign. */
   branches: Branch[];
   currentUserId: string;
+  /* False while mail only reaches the log, when no invite can be sent or resent. */
+  mailDelivery: boolean;
 }
 
-export function UserTable({ users, branches, currentUserId }: UserTableProps) {
+export function UserTable({ users, branches, currentUserId, mailDelivery }: UserTableProps) {
   const fmt = useFormatters();
   const t = useTranslations('users');
   const tCommon = useTranslations('common');
@@ -69,6 +79,7 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
    */
   const message = useApiErrorMessage('users');
   const resetMessage = useApiErrorMessage('users.passwordReset');
+  const inviteMessage = useApiErrorMessage('users.invite');
   const [form, setForm] = useState<{ mode: UserFormMode; row: UserRow | null } | null>(null);
   const [deactivating, setDeactivating] = useState<UserRow | null>(null);
   const [resetting, setResetting] = useState<UserRow | null>(null);
@@ -81,7 +92,8 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
   const [removing, startRemove] = useTransition();
   const [reactivating, startReactivate] = useTransition();
   const [mailing, startMail] = useTransition();
-  const busy = removing || reactivating || mailing;
+  const [inviting, startInvite] = useTransition();
+  const busy = removing || reactivating || mailing || inviting;
   const rows = useMemo<UserRow[]>(
     () =>
       users.map((user) => ({
@@ -102,7 +114,9 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
     if (result.ok) {
       // A confirmation of something just done is transient, so it is a toast; the standing message
       // about what is on screen is the Callout above.
-      toast.success(t(target.mode === 'edit' ? 'updated' : 'created', { name: values.name }));
+      const done =
+        target.mode === 'edit' ? 'updated' : values.access === 'INVITE' ? 'invited' : 'created';
+      toast.success(t(done, { name: values.name }));
       setForm(null);
       return result;
     }
@@ -166,6 +180,18 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
     });
   }
 
+  function onResendInvite(row: UserRow) {
+    setError(null);
+    startInvite(async () => {
+      const result = await resendInvite(row.user.id);
+      if (!result.ok) {
+        setError(inviteMessage(result.error));
+        return;
+      }
+      toast.success(t('invite.sent', { email: row.user.email }));
+    });
+  }
+
   return (
     <div className="flex flex-col gap-y-6">
       {error ? <Callout tone="danger">{error}</Callout> : null}
@@ -194,6 +220,8 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
           {rows.map((row) => {
             const { user, assigned } = row;
             const isSelf = user.id === currentUserId;
+            // An active user who has not chosen a password yet is waiting on their invite.
+            const invite = user.isActive ? user.inviteStatus : null;
             const reach =
               user.role === ADMIN_ROLE
                 ? t('table.allBranches')
@@ -231,9 +259,15 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
                   {reach ?? t('table.noBranches')}
                 </TableCell>
                 <TableCell kind="status">
-                  <Badge tone={user.isActive ? 'success' : 'neutral'}>
-                    {t(user.isActive ? 'status.active' : 'status.inactive')}
-                  </Badge>
+                  {invite ? (
+                    <Badge tone={invite === 'EXPIRED' ? 'danger' : 'warning'}>
+                      {t(invite === 'EXPIRED' ? 'status.inviteExpired' : 'status.invitePending')}
+                    </Badge>
+                  ) : (
+                    <Badge tone={user.isActive ? 'success' : 'neutral'}>
+                      {t(user.isActive ? 'status.active' : 'status.inactive')}
+                    </Badge>
+                  )}
                 </TableCell>
                 <TableCell
                   kind="date"
@@ -249,7 +283,15 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
                       disabled={busy}
                       onClick={() => setForm({ mode: 'edit', row })}
                     />
-                    {user.isActive ? (
+                    {/* An invited user has no password to recover: their way in is the invite. */}
+                    {invite && mailDelivery ? (
+                      <RowActionButton
+                        icon={MailIcon}
+                        label={t('invite.action')}
+                        disabled={busy}
+                        onClick={() => onResendInvite(row)}
+                      />
+                    ) : user.isActive && !invite ? (
                       <RowActionButton
                         icon={KeyRoundIcon}
                         label={t('passwordReset.action')}
@@ -290,6 +332,7 @@ export function UserTable({ users, branches, currentUserId }: UserTableProps) {
         assigned={form?.row?.assigned ?? NO_BRANCHES}
         branches={branches}
         isSelf={form?.row?.user.id === currentUserId}
+        mailDelivery={mailDelivery}
         onSubmit={onSubmit}
       />
 

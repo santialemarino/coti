@@ -19,7 +19,12 @@ export default async function UserSettingsPage() {
   return (
     <main className="flex flex-col gap-y-8">
       <PageHeader title={t('title')} />
-      <UserTable users={users} branches={branches} currentUserId={session.userId} />
+      <UserTable
+        users={users}
+        branches={branches}
+        currentUserId={session.userId}
+        mailDelivery={session.mailDelivery}
+      />
     </main>
   );
 }

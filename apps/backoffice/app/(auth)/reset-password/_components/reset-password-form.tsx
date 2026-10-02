@@ -29,12 +29,14 @@ import { FORM_VALIDATION } from '@/lib/forms/options';
 
 interface ResetPasswordFormProps {
   token: string;
+  /* The same redemption words itself as choosing a first password rather than replacing one. */
+  invite?: boolean;
 }
 
-export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
+export function ResetPasswordForm({ token, invite = false }: ResetPasswordFormProps) {
   const t = useTranslations('auth.resetPassword');
   const tErrors = useTranslations('common.form.errors');
-  const message = useApiErrorMessage('auth.resetPassword');
+  const message = useApiErrorMessage(invite ? 'auth.resetPassword.invite' : 'auth.resetPassword');
   const schema = useMemo(() => resetPasswordSchema({ field: t, shared: tErrors }), [t, tErrors]);
   const [done, setDone] = useState(false);
   const form = useForm<ResetPasswordValues>({
@@ -59,8 +61,8 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
           <StatusScreen
             icon={CircleCheckIcon}
             tone="success"
-            title={t('title')}
-            description={t('done')}
+            title={invite ? t('invite.title') : t('title')}
+            description={invite ? t('invite.done') : t('done')}
           >
             <InlineLink asChild>
               <Link href={ROUTES.login}>{t('goToLogin')}</Link>
@@ -68,7 +70,10 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
           </StatusScreen>
         </Card>
       ) : (
-        <AuthCard title={t('title')}>
+        <AuthCard
+          title={invite ? t('invite.title') : t('title')}
+          description={invite ? t('invite.intro') : undefined}
+        >
           <Form {...form}>
             <form
               onSubmit={form.handleSubmit(onSubmit)}
@@ -96,9 +101,9 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
                 type="submit"
                 size="lg"
                 pending={form.formState.isSubmitting}
-                pendingLabel={t('submitting')}
+                pendingLabel={invite ? t('invite.submitting') : t('submitting')}
               >
-                {t('submit')}
+                {invite ? t('invite.submit') : t('submit')}
               </PendingButton>
             </form>
           </Form>

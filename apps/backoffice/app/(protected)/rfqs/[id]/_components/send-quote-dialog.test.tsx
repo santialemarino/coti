@@ -2,6 +2,7 @@ import { fireEvent, render, waitFor, type RenderResult } from '@testing-library/
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { RfqListProvider } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { ApiError } from '@/lib/api/errors';
 import type { QuoteDeliveryResponse, QuoteSendResponse, RfqDetailResponse } from '@/lib/api/rfqs';
 import { sendQuote } from '@/lib/api/rfqs-client';
@@ -257,5 +258,67 @@ describe('SendQuoteDialog', () => {
     fireEvent.click(view.getByRole('button', { name: /^Enviar$/ }));
 
     expect(sendQuote).not.toHaveBeenCalled();
+  });
+});
+
+describe('SendQuoteDialog without a branch mailbox', () => {
+  const NOTICE = messages.common.setup.BRANCH_EMAIL.title;
+  const FIX = messages.common.setup.BRANCH_EMAIL.fix;
+
+  function openWith(branchMissesEmail: boolean, isAdmin: boolean) {
+    const view = render(
+      <NextIntlClientProvider
+        locale="es"
+        messages={messages}
+        timeZone="America/Argentina/Buenos_Aires"
+      >
+        <RfqListProvider
+          records={[]}
+          activeBranchId={BRANCH_ID}
+          userName="Ana"
+          userId={SELLER_ID}
+          isAdmin={isAdmin}
+        >
+          <SendQuoteDialog
+            detail={makeDetail()}
+            branchId={BRANCH_ID}
+            onSent={vi.fn().mockResolvedValue(undefined)}
+            branchMissesEmail={branchMissesEmail}
+          />
+        </RfqListProvider>
+      </NextIntlClientProvider>,
+    );
+    openDialog(view);
+    return Object.assign(view, {
+      emailCopy: view.getByRole('checkbox', { name: copy.alsoEmail }),
+    });
+  }
+
+  // Only the email copy has a reply to lose, so the notice waits for it to be chosen.
+  it('says so once the email copy is ticked, and sends an admin to the fix', () => {
+    const view = openWith(true, true);
+    expect(view.queryByText(NOTICE)).toBeNull();
+
+    fireEvent.click(view.emailCopy);
+
+    expect(view.getByText(NOTICE)).toBeTruthy();
+    expect(view.getByRole('link', { name: FIX })).toBeTruthy();
+  });
+
+  it('tells a seller who can fix it', () => {
+    const view = openWith(true, false);
+
+    fireEvent.click(view.emailCopy);
+
+    expect(view.getByText(NOTICE)).toBeTruthy();
+    expect(view.queryByRole('link', { name: FIX })).toBeNull();
+  });
+
+  it('says nothing when the branch has its mailbox', () => {
+    const view = openWith(false, true);
+
+    fireEvent.click(view.emailCopy);
+
+    expect(view.queryByText(NOTICE)).toBeNull();
   });
 });

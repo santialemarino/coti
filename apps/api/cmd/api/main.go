@@ -144,7 +144,8 @@ func run() error {
 		mailService, authService, log, cfg.Auth, cfg.Web, nil)
 	verificationService := services.NewVerificationService(db, userRepo, authTokenRepo,
 		mailService, log, cfg.Auth, cfg.Web, nil)
-	userService := services.NewUserService(db, userRepo, userBranchRepo, branchRepo, cfg.Auth)
+	userService := services.NewUserService(db, userRepo, userBranchRepo, branchRepo, authTokenRepo,
+		mailService, verificationService, log, cfg.Auth, cfg.Web, cfg.Mail.Delivers(), nil)
 	branchService := services.NewBranchService(db, branchRepo, channelRepo, branchProductRepo,
 		cfg.Branch.DefaultExpiryDays)
 	accountService := services.NewAccountService(db, accountRepo, branchRepo, channelRepo,
@@ -196,11 +197,14 @@ func run() error {
 		Div(decimal.NewFromInt(100))
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
-			Health:        handler.NewHealthHandler(db),
-			Auth:          handler.NewAuthHandler(authService),
-			Password:      handler.NewPasswordHandler(passwordService, mailTargetLimiter),
-			Verification:  handler.NewVerificationHandler(verificationService, mailTargetLimiter),
-			User:          handler.NewUserHandler(userService),
+			Health:       handler.NewHealthHandler(db),
+			Auth:         handler.NewAuthHandler(authService),
+			Password:     handler.NewPasswordHandler(passwordService, mailTargetLimiter),
+			Verification: handler.NewVerificationHandler(verificationService, mailTargetLimiter),
+			User: handler.NewUserHandler(userService, handler.SessionPolicy{
+				RequireVerifiedEmail: cfg.Auth.RequireVerifiedEmail,
+				MailDelivers:         cfg.Mail.Delivers(),
+			}),
 			Branch:        handler.NewBranchHandler(branchService),
 			Rfq:           handler.NewRfqHandler(rfqService, highConfidence),
 			Channel:       handler.NewChannelHandler(channelService),

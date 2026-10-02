@@ -21,6 +21,8 @@ type OutboundMail struct {
 	Event       domain.NotificationEvent
 	To          string
 	ToName      string
+	ReplyTo     string
+	ReplyToName string
 	Subject     string
 	Heading     string
 	Paragraphs  []string

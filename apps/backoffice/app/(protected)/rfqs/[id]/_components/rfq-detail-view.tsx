@@ -24,6 +24,8 @@ import { RfqStatusTimeline } from './rfq-status-timeline';
 
 interface RfqDetailViewProps {
   detail: RfqDetailResponse;
+  /* Whether the order's branch has no mailbox for a customer's reply to reach. */
+  branchMissesEmail?: boolean;
 }
 
 // What the queue shows for the order's lines, recounted whenever this screen changes them.
@@ -34,7 +36,10 @@ function lineCounts(items: QuoteItemResponse[]): { itemCount: number; reviewCoun
   };
 }
 
-export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
+export function RfqDetailView({
+  detail: initialDetail,
+  branchMissesEmail = false,
+}: RfqDetailViewProps) {
   const router = useRouter();
   const fmt = useFormatters();
   const t = useTranslations('rfqs');
@@ -152,7 +157,11 @@ export function RfqDetailView({ detail: initialDetail }: RfqDetailViewProps) {
     <div ref={rootRef} className="flex flex-col gap-y-4 scroll-mt-20">
       <RfqDetailHeader detail={detail} />
 
-      <QuoteDeliveryCard detail={detail} onSent={refreshDetail} />
+      <QuoteDeliveryCard
+        detail={detail}
+        onSent={refreshDetail}
+        branchMissesEmail={branchMissesEmail}
+      />
 
       <RfqStatusTimeline detail={detail} />
 

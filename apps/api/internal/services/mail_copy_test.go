@@ -51,7 +51,29 @@ func TestEmailVerificationValidity_ReadsAsASentence(t *testing.T) {
 	}
 }
 
-// Both links are single-use and both mails say so; a recipient who has already used one needs to
+func TestInviteValidity_ReadsAsASentence(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name  string
+		hours int
+		want  string
+	}{
+		{"one hour", 1, "La invitación vence en 1 hora y se puede usar una sola vez. Si se vence, pedile a un administrador que te la reenvíe."},
+		{"exactly one day", 24, "La invitación vence en 1 día y se puede usar una sola vez. Si se vence, pedile a un administrador que te la reenvíe."},
+		{"a week", 168, "La invitación vence en 7 días y se puede usar una sola vez. Si se vence, pedile a un administrador que te la reenvíe."},
+		{"not a whole day", 36, "La invitación vence en 36 horas y se puede usar una sola vez. Si se vence, pedile a un administrador que te la reenvíe."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := inviteValidity(tc.hours); got != tc.want {
+				t.Fatalf("inviteValidity(%d) = %q, want %q", tc.hours, got, tc.want)
+			}
+		})
+	}
+}
+
+// Every link is single-use and every mail says so; a recipient who has already used one needs to
 // know that is why it stopped working, not that something broke.
 func TestValidity_AlwaysStatesSingleUse(t *testing.T) {
 	t.Parallel()
@@ -60,6 +82,8 @@ func TestValidity_AlwaysStatesSingleUse(t *testing.T) {
 		passwordResetValidity(60),
 		emailVerificationValidity(24),
 		emailVerificationValidity(36),
+		inviteValidity(24),
+		inviteValidity(36),
 	} {
 		if !strings.Contains(got, "una sola vez") {
 			t.Errorf("validity copy does not state single use: %q", got)

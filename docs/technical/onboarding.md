@@ -1,7 +1,7 @@
 # Account onboarding
 
 Onboarding is an account-scoped, admin-only setup flow shown after the first verified sign-in.
-Registration remains atomic and limited to the account, first branch, manual-entry channel, first
+Registration remains atomic and limited to the account, first branch and its channels, first
 administrator, and the onboarding record. Setup is a separate resumable concern.
 
 ## Lifecycle and API
@@ -47,9 +47,9 @@ Catalog upload uses the production preview and confirmation endpoints. Nothing i
 preview, and invalid rows are never silently imported. The same import component remains available at
 `/settings/catalog`, so dismissing onboarding cannot make the initial catalog operation unreachable.
 
-The team screen reuses account user creation. It creates a real user with an initial password; there
-is no invitation token or invitation email. The UI states that the administrator must share the
-password securely instead of presenting the operation as an invitation. The administrator is listed
+The team screen reuses account user creation, with the same two ways in: an invitation by mail, the
+default, or an initial password the administrator shares — the only way offered while mail only
+reaches the log (see [authentication.md](authentication.md#invitations)). The administrator is listed
 first, as themselves, and finishing with nobody else on the account resolves the step as skipped.
 
 The completion screen reports each step as done only when it was completed; a skipped one names the

@@ -82,11 +82,13 @@ func renderEmail(account domain.Account, out OutboundMail) (domain.EmailMessage,
 	}
 
 	return domain.EmailMessage{
-		To:       out.To,
-		ToName:   out.ToName,
-		Subject:  out.Subject,
-		TextBody: renderEmailText(view),
-		HTMLBody: html.String(),
+		To:          out.To,
+		ToName:      out.ToName,
+		Subject:     out.Subject,
+		TextBody:    renderEmailText(view),
+		HTMLBody:    html.String(),
+		ReplyTo:     out.ReplyTo,
+		ReplyToName: out.ReplyToName,
 	}, nil
 }
 

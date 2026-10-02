@@ -25,6 +25,13 @@ const (
 	emailChangedHeading = "Cambió la dirección de tu cuenta"
 	// The old mailbox gets no other warning, so it says what the change implies and who to tell.
 	emailChangedWarning = "Si no fuiste vos, quien lo hizo tenía tu contraseña: avisale al administrador de tu corralón para que revise el acceso a la cuenta."
+	// An administrator made the change, so the warning says who to ask rather than what leaked.
+	emailChangedByAdminWarning = "El cambio lo hizo un administrador de tu corralón. Si no lo esperabas, consultalo con él."
+
+	inviteSubject = "Te invitaron a Coti"
+	inviteHeading = "Te invitaron a Coti"
+	inviteAction  = "Elegir mi contraseña"
+	inviteIgnore  = "Si no esperabas esta invitación, ignorá este correo: nadie puede entrar con tu dirección sin este enlace."
 )
 
 // passwordResetIntro greets the user by name and states what the link is for.
@@ -47,6 +54,31 @@ func passwordResetValidity(minutes int) string {
 // emailVerificationIntro greets the user and says what confirming is for.
 func emailVerificationIntro(name string) string {
 	return fmt.Sprintf("Hola %s, gracias por registrar tu corralón en Coti. Confirmá tu dirección para que podamos usarla con seguridad.", name)
+}
+
+// inviteIntro greets the invited user and says what the link is for.
+func inviteIntro(name string) string {
+	return fmt.Sprintf("Hola %s, te crearon una cuenta en Coti para trabajar con tu corralón. Elegí tu contraseña para entrar.", name)
+}
+
+// inviteValidity states how long the invite lasts, in whole days or hours, and that it works once.
+func inviteValidity(hours int) string {
+	const tail = " y se puede usar una sola vez. Si se vence, pedile a un administrador que te la reenvíe."
+	switch {
+	case hours == 24:
+		return "La invitación vence en 1 día" + tail
+	case hours%24 == 0 && hours > 24:
+		return fmt.Sprintf("La invitación vence en %d días", hours/24) + tail
+	case hours == 1:
+		return "La invitación vence en 1 hora" + tail
+	default:
+		return fmt.Sprintf("La invitación vence en %d horas", hours) + tail
+	}
+}
+
+// emailVerificationNewAddressIntro greets the user at the address their account just moved to.
+func emailVerificationNewAddressIntro(name string) string {
+	return fmt.Sprintf("Hola %s, la dirección de tu cuenta de Coti pasó a ser esta. Confirmala para que podamos usarla con seguridad.", name)
 }
 
 // emailChangedIntro tells the old address which address replaced it.

@@ -6,6 +6,7 @@ import {
 } from '@/app/(auth)/reset-password/form-schema';
 import { apiRequest } from '@/lib/api/client';
 import { errorCodeOf, type ApiErrorCode } from '@/lib/api/errors';
+import { endSession } from '@/lib/auth/session';
 
 export interface ResetPasswordResult {
   done?: boolean;
@@ -33,9 +34,12 @@ export async function resetPassword(values: ResetPasswordValues): Promise<ResetP
       authenticated: false,
       body: { token: parsed.data.token, new_password: parsed.data.newPassword },
     });
-    return { done: true };
   } catch (error) {
     const code = errorCodeOf(error);
     return { error: code, field: FIELD_FOR[code] };
   }
+  // The link may have opened in a browser signed in as someone else — an admin trying the invite
+  // they sent. Whoever chose this password logs in with it next, so that session goes too.
+  await endSession();
+  return { done: true };
 }

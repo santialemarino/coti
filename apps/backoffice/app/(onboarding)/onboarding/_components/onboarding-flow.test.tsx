@@ -73,6 +73,7 @@ function renderFlow(state: Onboarding, users: AccountUser[] = [ADMIN], catalog =
         branches={[]}
         users={users}
         currentUserId={ADMIN_ID}
+        mailDelivery
       />
     </NextIntlClientProvider>,
   );

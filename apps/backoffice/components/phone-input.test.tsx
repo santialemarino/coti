@@ -101,7 +101,7 @@ describe('PhoneInput', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Usar +54 9 11 5555 0101' }));
 
       expect(onValue).toHaveBeenLastCalledWith('+5491155550101');
-      expect(national().value).toBe('9 11 5555 0101');
+      expect(national().value).toBe('91155550101');
       expect(screen.getByRole('status').textContent).toBe('');
     });
 
@@ -127,6 +127,36 @@ describe('PhoneInput', () => {
       fireEvent.change(national(), { target: { value: '15 5555-0101' } });
 
       expect(screen.getByRole('status').textContent).toBe('');
+    });
+  });
+
+  describe('what the field shows', () => {
+    it('settles a valid number to its bare digits when the seller leaves the field', () => {
+      const onValue = vi.fn();
+      render(<Harness onValue={onValue} />);
+
+      fireEvent.change(national(), { target: { value: '(011) 15-5555.0101' } });
+      fireEvent.blur(national());
+
+      expect(national().value).toBe('91155550101');
+      expect(onValue).toHaveBeenLastCalledWith('+5491155550101');
+    });
+
+    it('leaves a number it cannot read as the seller wrote it', () => {
+      render(<Harness onValue={vi.fn()} />);
+
+      fireEvent.change(national(), { target: { value: '15 5555' } });
+      fireEvent.blur(national());
+
+      expect(national().value).toBe('15 5555');
+    });
+
+    it('drops anything that cannot be part of a phone number', () => {
+      render(<Harness onValue={vi.fn()} />);
+
+      fireEvent.change(national(), { target: { value: '11 ab5555-0101x' } });
+
+      expect(national().value).toBe('11 5555-0101');
     });
   });
 });

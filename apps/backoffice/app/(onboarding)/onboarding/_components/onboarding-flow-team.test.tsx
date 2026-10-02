@@ -57,6 +57,7 @@ describe('OnboardingFlow team step', () => {
           branches={[]}
           users={[ADMIN as AccountUser]}
           currentUserId="u-admin"
+          mailDelivery
         />
       </NextIntlClientProvider>,
     );

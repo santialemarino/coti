@@ -37,14 +37,26 @@ export function BranchSwitcher({ branches, activeBranchId, isAdmin }: BranchSwit
     })),
   ];
 
-  // A seller on a single branch has nowhere to switch to, so the control reads as context
-  // rather than a menu: locked, but naming the branch they are working in.
-  const locked = !isAdmin && branches.length <= 1;
+  /*
+   * One branch is one outcome: a seller has nowhere to switch to, and an admin's "todas" reaches the
+   * same single branch. A choice with one outcome is not a choice, so it is shown, not offered.
+   */
+  const sole = branches.length === 1 ? branches[0] : undefined;
 
   function onValueChange(value: string) {
     startTransition(async () => {
       await selectBranch(value);
     });
+  }
+
+  if (sole) {
+    return (
+      <p className="flex h-9 w-44 sm:w-56 items-center px-3 gap-x-2 text-paragraph-sm text-foreground">
+        <StoreIcon aria-hidden="true" className="size-4 shrink-0 text-foreground-muted" />
+        <span className="sr-only">{t('label')}: </span>
+        <span className="truncate">{sole.name}</span>
+      </p>
+    );
   }
 
   return (
@@ -56,7 +68,7 @@ export function BranchSwitcher({ branches, activeBranchId, isAdmin }: BranchSwit
       searchable={branches.length >= SEARCHABLE_FROM}
       searchPlaceholder={t('search')}
       emptyLabel={t('empty')}
-      disabled={locked || pending}
+      disabled={pending}
       aria-label={t('label')}
       sideOffset={BRANCH_MENU_OFFSET}
       className="w-44 sm:w-56"

@@ -220,5 +220,15 @@ export function stepCanonical(
   const current = Number(canonical || '0');
   if (!Number.isFinite(current)) return null;
   const next = Math.max(min, current + (key === 'ArrowUp' ? step : -step));
-  return maxDecimals === undefined ? String(next) : next.toFixed(maxDecimals);
+  // Keeps the precision already written (1 → 2, 1,5 → 2,5), never more than the field allows.
+  const places = Math.min(
+    maxDecimals ?? Infinity,
+    Math.max(decimalPlaces(canonical), decimalPlaces(String(step))),
+  );
+  return next.toFixed(places);
+}
+
+function decimalPlaces(canonical: string): number {
+  const separator = canonical.indexOf('.');
+  return separator === -1 ? 0 : canonical.length - separator - 1;
 }

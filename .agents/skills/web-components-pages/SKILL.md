@@ -222,6 +222,18 @@ The stack is **react-hook-form + zod** with the shared `Form` primitives from
 - **A disabled submit button stops a second click, not a second submit.** Enter still reaches the
   form, so a handler behind a write that must happen once refuses to re-enter while one is in
   flight.
+- **A choice with one outcome is not a choice.** Count the outcomes valid for _this_ caller,
+  counting "nobody" when a null is valid: an order's seller among one seller is still two outcomes
+  (that seller, or unassigned), a channel the order must name among one channel is one. **Zero** →
+  no control, and say why — a `SetupNotice` when configuration is missing — and never let a failed
+  load pass for "none": a reader that turns a refused request into `[]` makes the two
+  indistinguishable, so it throws and the screen says the list could not be loaded. **One** → the
+  value as plain text with a one-line reason, never a disabled control (a disabled control explains
+  nothing and fires no tooltip). **Two or more** → the control, preselecting only the obvious
+  default (the sole real option beside "nobody", inside the branch it belongs to) and never the
+  first of several, which is a guess the caller has to notice and undo. A preselection made for one
+  branch is dropped when the branch changes. A skeleton stands where the control will be while the
+  options load. Filters are exempt: "all" is always a real outcome.
 - **Wizard actions have one responsive contract.** On narrow screens, stack navigation controls at
   full width with Back above the primary action; from `sm` onwards, place Back at the start and the
   primary action at the end at their intrinsic widths. A skip/defer action is secondary and keeps
@@ -264,6 +276,12 @@ Three different things — using the wrong one is a common drift:
   match en el catálogo."
 - **`FormMessage` / `FormRootMessage`** — a field's or a form's rejection. Never a
   toast for a validation error; it belongs next to the input.
+- **`SetupNotice`** (backoffice `components/`) — missing configuration, reported **inline where it
+  bites**: what is missing, what that changes, and who fixes it. An admin gets a link to the screen
+  that fixes it; anyone else is told to ask an administrator. It is a `Callout` with an `action`,
+  never dismissible, never a global banner, and never replaced by a silent fallback the reader
+  cannot see. The issues and their fix routes live in `lib/utils/setup-issues.ts`; the way to the
+  fix carries an `AttentionDot` at every step (the avatar, Configuración, the settings rail entry).
 
 ### What a confirmation has to say
 

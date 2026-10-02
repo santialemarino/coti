@@ -1,11 +1,14 @@
 import Link from 'next/link';
 
 import { cn } from '@repo/ui/lib';
+import { AttentionDot } from '@/components/attention-dot';
 
 interface NavLinkProps {
   href: string;
   label: string;
   active: boolean;
+  /* Names what needs attention behind this entry; the entry then carries a dot. */
+  attention?: string;
   className?: string;
 }
 
@@ -21,7 +24,7 @@ interface NavLinkProps {
  * Hover and press stay in one family and one step apart — a press that jumps from a neutral hover to
  * a brand tint reads as a different control answering, not as the one under the finger.
  */
-export function NavLink({ href, label, active, className }: NavLinkProps) {
+export function NavLink({ href, label, active, attention, className }: NavLinkProps) {
   return (
     <Link
       href={href}
@@ -37,6 +40,7 @@ export function NavLink({ href, label, active, className }: NavLinkProps) {
       )}
     >
       {label}
+      {attention ? <AttentionDot label={attention} className="ml-auto" /> : null}
     </Link>
   );
 }

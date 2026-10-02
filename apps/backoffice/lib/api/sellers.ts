@@ -24,7 +24,8 @@ export async function listSellers(branchId: string | null): Promise<Seller[]> {
     cache: 'no-store',
   });
 
-  if (!response.ok) return [];
+  // A failed load is not an empty branch: the caller has to tell "no sellers" from "unknown".
+  if (!response.ok) throw new Error(`GET /api/users answered ${response.status}`);
 
   const data = (await response.json()) as SellerListRaw;
   return data.items.map((item) => ({ id: item.id, name: item.name }));

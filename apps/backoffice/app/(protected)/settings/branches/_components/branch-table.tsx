@@ -30,6 +30,7 @@ import {
 import type { BranchValues } from '@/app/(protected)/settings/branches/form-schema';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Branch } from '@/lib/api/branches';
+import { missesBranchEmail } from '@/lib/utils/setup-issues';
 
 const COLUMN_COUNT = 5;
 
@@ -136,7 +137,15 @@ export function BranchTable({ branches }: BranchTableProps) {
             branches.map((branch) => (
               <TableRow key={branch.id}>
                 <TableCell className="text-paragraph-sm-medium text-foreground">
-                  {branch.name}
+                  <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    {branch.name}
+                    {/* A closed branch sends nothing, so its missing mailbox is not news. */}
+                    {branch.isActive && missesBranchEmail(branch) ? (
+                      <Badge tone="warning" size="sm" dot>
+                        {t('table.noEmail')}
+                      </Badge>
+                    ) : null}
+                  </span>
                 </TableCell>
                 <TableCell className={branch.address ? undefined : 'text-foreground-subtle'}>
                   {branch.address ?? t('table.noAddress')}
