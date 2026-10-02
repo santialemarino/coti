@@ -1258,7 +1258,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Returns the caller's identity and branch reach, so the frontend never has to read the access token itself.",
+                "description": "Returns the caller's identity and branch reach, plus whether an unconfirmed address closes the product and whether mail reaches a mailbox, so the frontend never has to read the access token or guess the installation.",
                 "produces": [
                     "application/json"
                 ],
@@ -3295,7 +3295,7 @@ const docTemplate = `{
         },
         "/v1/public/auth/reset-password": {
             "post": {
-                "description": "The link works once and expires. Unknown, expired and already-used tokens all answer 401 alike. Every session the user had is ended.",
+                "description": "The link works once and expires. Unknown, expired and already-used tokens all answer 401 alike. Marks the address verified, clears a lockout, and ends every session the user had.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3305,7 +3305,7 @@ const docTemplate = `{
                 "tags": [
                     "auth"
                 ],
-                "summary": "Reset a password with a recovery link",
+                "summary": "Set a password with a recovery or invite link",
                 "parameters": [
                     {
                         "description": "Recovery token and new password",
@@ -5590,7 +5590,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Admin only. The account comes from the session; a duplicate email inside it is a 409.",
+                "description": "Admin only. Either sets the password or, with invite, mails a link to choose one (503 MAIL_NOT_CONFIGURED while mail only reaches the log). A duplicate email is a 409.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5645,6 +5645,12 @@ const docTemplate = `{
                     },
                     "422": {
                         "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -5841,6 +5847,73 @@ const docTemplate = `{
                     },
                     "422": {
                         "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/users/{userId}/invite": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Admin only. Retires the previous link. 422 INVITE_NOT_PENDING once the user has chosen a password; 503 MAIL_NOT_CONFIGURED while mail only reaches the log.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Resend a user's invite",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User id",
+                        "name": "userId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Invite sent"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -6875,7 +6948,6 @@ const docTemplate = `{
                 "branch_ids",
                 "email",
                 "name",
-                "password",
                 "role"
             ],
             "properties": {
@@ -6888,6 +6960,9 @@ const docTemplate = `{
                 "email": {
                     "type": "string",
                     "maxLength": 255
+                },
+                "invite": {
+                    "type": "boolean"
                 },
                 "name": {
                     "type": "string",
@@ -7058,12 +7133,20 @@ const docTemplate = `{
                 "email": {
                     "type": "string"
                 },
+                "email_verification_required": {
+                    "description": "EmailVerificationRequired says whether an unconfirmed address closes the product.",
+                    "type": "boolean"
+                },
                 "email_verified": {
                     "description": "EmailVerified is what lets a screen tell \"confirm your address\" from \"already done\".",
                     "type": "boolean"
                 },
                 "id": {
                     "type": "string"
+                },
+                "mail_delivery": {
+                    "description": "MailDelivery is false while mail only reaches the log, so nothing that needs a link can work.",
+                    "type": "boolean"
                 },
                 "name": {
                     "type": "string"
@@ -8826,6 +8909,14 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "string"
+                },
+                "invite_status": {
+                    "description": "InviteStatus is PENDING or EXPIRED while the user has not chosen a password yet, else null.",
+                    "type": "string",
+                    "enum": [
+                        "PENDING",
+                        "EXPIRED"
+                    ]
                 },
                 "is_active": {
                     "type": "boolean"

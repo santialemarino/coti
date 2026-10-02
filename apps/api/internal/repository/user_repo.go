@@ -222,13 +222,17 @@ func (r *UserRepository) UpdateEmail(
 	return user, err
 }
 
-// UpdatePassword replaces the stored hash. Returns domain.ErrNotFound if the user is not in
-// the account.
-func (r *UserRepository) UpdatePassword(
+// SetPasswordFromLink stores the password chosen through a mailed link. Redeeming the link
+// proved the mailbox, and a lockout no longer protects a credential that was just replaced, so
+// both are settled in the same write. Returns domain.ErrNotFound if the user is not in the account.
+func (r *UserRepository) SetPasswordFromLink(
 	ctx context.Context, q Querier, accountID, id uuid.UUID, passwordHash string,
 ) error {
 	tag, err := q.Exec(ctx,
-		`UPDATE app_user SET password_hash = $3 WHERE account_id = $1 AND id = $2`,
+		`UPDATE app_user
+		 SET password_hash = $3, failed_attempts = 0, locked_until = NULL,
+		     email_verified_at = COALESCE(email_verified_at, now())
+		 WHERE account_id = $1 AND id = $2`,
 		accountID, id, passwordHash)
 	if err != nil {
 		return err

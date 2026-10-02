@@ -111,8 +111,8 @@ copy goes there rather than inline at the call site.
 `event`, a `medium`, a `status` and `sent_at`. It is append-only and account-scoped like every
 other tenant table.
 
-Today the events are `PASSWORD_RESET`, `EMAIL_VERIFICATION` and `EMAIL_CHANGED`, all over
-`EMAIL`. The column is a `VARCHAR`, not a native enum, so adding an event is a constant rather
+The account events are `PASSWORD_RESET`, `EMAIL_VERIFICATION`, `INVITE` and `EMAIL_CHANGED`, all
+over `EMAIL`. The column is a `VARCHAR`, not a native enum, so adding an event is a constant rather
 than a migration. The quote magic link and the follow-up messages land here as they are built.
 
 `EMAIL_CHANGED` is the odd one out in carrying **no link**: it goes to the address an account just

@@ -218,7 +218,7 @@ Whatever can be expressed in the schema is expressed in the schema:
 | `uq_channel_branch_type_no_identifier`   | one identifier-less channel per branch and type    |
 | `uq_product_price_open_period`           | one open price period per branch and product       |
 | `uq_app_user_email_global`               | an address identifies one user, case-insensitively |
-| `uq_auth_token_hash`                     | a recovery or verification link is unique          |
+| `uq_auth_token_hash`                     | a recovery, verification or invite link is unique  |
 | `uq_tag_account_name`                    | one tag name per account, case-insensitively       |
 | `uq_promotion_tier_from_quantity`        | one tier per promotion and starting quantity       |
 | `uq_promotion_condition_item_target`     | one condition row per promotion and target         |

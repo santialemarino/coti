@@ -25,6 +25,7 @@ session, gates its routes and renews the token is in
 | `PUT`    | `/v1/users/:userId`                   | yes, admin                               |
 | `DELETE` | `/v1/users/:userId`                   | yes, admin                               |
 | `POST`   | `/v1/users/:userId/password-reset`    | yes, admin                               |
+| `POST`   | `/v1/users/:userId/invite`            | yes, admin                               |
 
 `login` and `refresh` return the same body: `access_token`, `access_expires_at`,
 `refresh_token`, and a `user` with `id`, `account_id` and `role`. **The refresh token is
@@ -167,14 +168,18 @@ the route the link lands on.
   environment. That is also why `false` is the default rather than a soft start — under `console`
   it is the only value that boots. Under `smtp` the flag is free to be turned on — see
   [Outbound email](./outbound-email.md).
-- **An admin-created user is verified on creation, in the same transaction.** No path mails
-  them a link — only public registration does — so without this they would carry a null
+- **A user an admin hands a password to is verified on creation, in the same transaction.** No
+  path mails them a confirmation link, so without this they would carry a null
   `email_verified_at` forever and the flag would lock them out of an account they were
   deliberately given access to. Trusting the admin's word is the right reading of the threat:
   verification exists to stop someone reserving an address they cannot read, which is a
   **public-registration** problem, and an admin works inside their own account and can squat
-  nothing. Mailing a link instead would make a mistyped address a permanent lockout rather than
-  a recoverable one that surfaces at password recovery.
+  nothing. **An invited user is the other case**: they are left unverified, and redeeming the
+  invite is what proves the mailbox — see [Invitations](#invitations).
+- **Redeeming any mailed password link stamps the address verified.** A recovery or an invite link
+  reached the mailbox it was sent to, which is exactly what a confirmation proves. That is only
+  sound because every address change retires every outstanding link first (below), so a link can
+  never prove a mailbox the account has since left.
 - **Changing the address drops the confirmation.** The stamp proved one mailbox reachable and
   says nothing about the next, so both write paths null `email_verified_at`: `UserRepository.Update`
   whenever an admin edit actually changes the address — compared folded, like the unique index, so
@@ -183,7 +188,11 @@ the route the link lands on.
   this an account could be pointed at a mailbox nobody proved while still reading as verified,
   which is the one thing this flag exists to prevent.
 - **`GET /v1/me` reports `email_verified`**, which is what lets a screen tell "confirm your
-  address" from "already done" instead of guessing.
+  address" from "already done" instead of guessing — and, beside it, the installation's policy:
+  `email_verification_required` (the flag) and `mail_delivery` (false under `console`). The
+  backoffice holds an unconfirmed caller at the confirmation screen **only when the flag is on**;
+  otherwise the screen is a suggestion with a way into the product, and while mail does not deliver
+  it is skipped altogether, because no link can arrive.
 - **Enforced on use, not at the door.** Login does not look at the flag: issuing a session is not
   using the product, and refusing at the door left whoever mistyped their address at signup with a
   session that expired and no screen to correct it from. Instead the flag rides `Tenant`, and
@@ -226,9 +235,10 @@ this exists to rescue stays shut in.
   password they already used to reach this route — and it would sign the caller out of their other
   devices in the middle of fixing a typo. The account is behind the 403 wall again either way,
   since the change drops the confirmation.
-- **It retires any outstanding recovery link**, which is the one thing revocation would have
-  covered: a `PASSWORD_RESET` token already mailed to the old address stays redeemable, and after
-  the write that mailbox belongs to somebody else.
+- **It retires every outstanding link**, which is the one thing revocation would have covered: a
+  recovery link already mailed to the old address stays redeemable, and after the write that
+  mailbox belongs to somebody else. The new address then gets a confirmation link worded for a moved
+  address, not a registration.
 - **The old address is told.** A silent change is how a takeover goes unnoticed, and the previous
   mailbox is the only place it can surface, so it receives an `EMAIL_CHANGED` notification naming
   the address that replaced it. It carries no link, and it is sent **before** the confirmation link
@@ -357,8 +367,9 @@ seller reaching any of it gets **403**.
 
 - **The account comes from the session**, never the body — there is no account field on the
   wire, so an admin cannot create a user anywhere but their own account.
-- **An admin sets the initial password.** There is no invitation flow, so this is the only way
-  a user gets credentials. It clears the same policy as every other password.
+- **An admin invites the user or sets their initial password.** Invite is the default; a password
+  the admin hands over is the fallback, and clears the same policy as every other password. See
+  [Invitations](#invitations).
 - **An admin may create either role.** `ADMIN` and `SELLER` are both accepted.
 - **A duplicate email is a 409**, raised by a constraint rather than a read-then-write. Two
   back it: `uq_app_user_email` per account, and `uq_app_user_email_global` on `lower(email)`
@@ -376,7 +387,34 @@ seller reaching any of it gets **403**.
 - **Branch assignments are written in the same transaction as the user**, and every branch id
   is checked to belong to the account first: a foreign key does not confine a child row to its
   account, because referential integrity bypasses row level security.
+- **An admin changing a user's address retires every link that user holds** — recovery, invite and
+  confirmation alike — because each was mailed to a mailbox that is no longer the account's. The old
+  address is told (`EMAIL_CHANGED`) and the new one is mailed a confirmation link, or, for a user
+  whose invite is still outstanding, a fresh invite, since that is the only way in they have. A
+  deactivated user is mailed nothing: they could redeem neither.
 - **`password_hash` is never on the wire**, in any response.
+
+## Invitations
+
+`POST /v1/users` with `"invite": true` and no `password` creates the user with a random password
+nobody holds, leaves the address unverified, and mails an `INVITE` link to
+`WEB_BACKOFFICE_URL` + `/reset-password?token=…&invite=1`. It is the same `auth_token` machinery
+as recovery — hash-only storage, single use, a resend retiring the previous link — with its own
+lifetime, `AUTH_INVITE_TTL_HOURS` (168).
+
+- **Redeeming it is the recovery redemption.** `reset-password` accepts both token types; the
+  screen only words itself differently. It sets the chosen password, stamps the address verified,
+  clears any lockout, retires every other link the user holds and ends their sessions.
+- **Where an invite stands is derived, not stored.** The latest `INVITE` row decides it: unconsumed
+  and live is `PENDING`, unconsumed and past its expiry is `EXPIRED`, and consumed — by redemption,
+  or by any other link that set the password — is nothing. `GET /v1/users` reports it as
+  `invite_status`.
+- **`POST /v1/users/:userId/invite` resends** to a user whose invite is still outstanding, live or
+  expired. Anyone else — a password already chosen, a deactivated user — is a 422
+  `INVITE_NOT_PENDING`.
+- **Both refuse while mail does not deliver**: 503 `MAIL_NOT_CONFIGURED`. Under `console` the link
+  only reaches a log, so an invited user would exist with no way in at all; the password path is
+  what an installation without mail uses, and the backoffice offers only that one there.
 
 ## Passwords
 
@@ -433,6 +471,8 @@ job, not this route's.
 - 32 bytes of entropy, kept only as a hex SHA-256. The mailed value never touches the table.
 - `expires_at` is `AUTH_PASSWORD_RESET_TTL_MINUTES` after it was minted.
 - Requesting a new link retires the outstanding ones for that user and type.
+- Redeeming one retires every other link the user holds, and clears `failed_attempts` and
+  `locked_until`: the lockout protected the credential that was just replaced.
 - Redemption is `UPDATE ... WHERE consumed_at IS NULL` **first**, inside the transaction. That
   predicate is what makes it single-use under concurrency: two simultaneous redemptions of the
   same link, and the loser's update matches no row.
@@ -457,7 +497,7 @@ In `apps/api/.env.example`, with defaults in `internal/config`: `AUTH_JWT_SECRET
 (required, at least 32 characters), `AUTH_ACCESS_TTL_MINUTES`, `AUTH_REFRESH_TTL_HOURS`,
 `AUTH_REFRESH_REMEMBER_DAYS`, `AUTH_REFRESH_REUSE_GRACE_SECONDS`,
 `AUTH_MAX_FAILED_ATTEMPTS`, `AUTH_LOCKOUT_MINUTES`, `AUTH_PASSWORD_MIN_LENGTH`,
-`AUTH_PASSWORD_RESET_TTL_MINUTES`, `AUTH_EMAIL_VERIFICATION_TTL_HOURS`,
+`AUTH_PASSWORD_RESET_TTL_MINUTES`, `AUTH_EMAIL_VERIFICATION_TTL_HOURS`, `AUTH_INVITE_TTL_HOURS`,
 `AUTH_REQUIRE_VERIFIED_EMAIL`, `WEB_BACKOFFICE_URL`, and the `RATE_LIMIT_*` group above
 (including `RATE_LIMIT_MAIL_PER_ADDRESS_MAX`, default 3).
 
@@ -466,10 +506,15 @@ it could mint a token for any account — the frontends forward the token and ne
 The backoffice's own settings are in
 [backoffice-session.md](backoffice-session.md#configuration).
 
-## Not built yet
+## Support: the one case with no way back in
 
-User invitations are not implemented: an admin sets a user's initial password, which is what
-lets US-05 close without them.
+An account whose **only admin** registered with a mistyped address and then forgot the password has
+no in-product recovery: the recovery link goes to the mistyped mailbox, and no other admin exists to
+correct the address or hand over a password. It is recovered by support, by hand, against the
+database: correct `app_user.email` for that user and have them use "¿Olvidaste tu contraseña?".
+Adding a second admin early is what keeps an account out of this case.
+
+## Not built yet
 
 No endpoint writes `account.is_active`, by design — see above.
 

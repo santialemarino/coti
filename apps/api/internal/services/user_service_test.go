@@ -3,13 +3,17 @@ package services
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
@@ -184,26 +188,75 @@ func (f *fakeBranchExistence) ExistAllInAccount(
 	return true, nil
 }
 
+// fakeUserLinks is the link surface plus the latest invite per user, which a test seeds to
+// put a user in a given invite state.
+type fakeUserLinks struct {
+	fakeAuthTokens
+	latest map[uuid.UUID]domain.AuthToken
+}
+
+func (f *fakeUserLinks) LatestInvitesByUsers(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, userIDs []uuid.UUID,
+) (map[uuid.UUID]domain.AuthToken, error) {
+	out := map[uuid.UUID]domain.AuthToken{}
+	for _, id := range userIDs {
+		if t, ok := f.latest[id]; ok {
+			out[id] = t
+		}
+	}
+	return out, nil
+}
+
+// fakeAddressVerifier records what an address change mailed to each mailbox.
+type fakeAddressVerifier struct {
+	verificationsTo []string
+	noticesTo       []string
+}
+
+func (f *fakeAddressVerifier) SendForNewAddress(_ context.Context, user domain.AppUser) error {
+	f.verificationsTo = append(f.verificationsTo, user.Email)
+	return nil
+}
+
+func (f *fakeAddressVerifier) NotifyAddressChangedByAdmin(_ context.Context, previous domain.AppUser, _ string) {
+	f.noticesTo = append(f.noticesTo, previous.Email)
+}
+
+const testInviteTTL = 168 * time.Hour
+
 type userHarness struct {
 	svc         *UserService
 	db          *fakeDB
 	users       *fakeAdminUsers
 	assignments *fakeAssignments
 	branches    *fakeBranchExistence
+	links       *fakeUserLinks
+	mail        *fakeMail
+	verifier    *fakeAddressVerifier
 }
 
 func newUserHarness(stored ...*domain.AppUser) *userHarness {
-	db := &fakeDB{}
-	users := newFakeAdminUsers(stored...)
-	assignments := newFakeAssignments()
-	branches := &fakeBranchExistence{known: []uuid.UUID{assignedBranch}}
-	return &userHarness{
-		svc:         NewUserService(db, users, assignments, branches, testAuthConfig()),
-		db:          db,
-		users:       users,
-		assignments: assignments,
-		branches:    branches,
+	return newUserHarnessDelivering(true, stored...)
+}
+
+func newUserHarnessDelivering(mailDelivers bool, stored ...*domain.AppUser) *userHarness {
+	h := &userHarness{
+		db:          &fakeDB{},
+		users:       newFakeAdminUsers(stored...),
+		assignments: newFakeAssignments(),
+		branches:    &fakeBranchExistence{known: []uuid.UUID{assignedBranch}},
+		links:       &fakeUserLinks{latest: map[uuid.UUID]domain.AuthToken{}},
+		mail:        &fakeMail{},
+		verifier:    &fakeAddressVerifier{},
 	}
+	cfg := testAuthConfig()
+	cfg.InviteTTL = testInviteTTL
+	h.svc = NewUserService(h.db, h.users, h.assignments, h.branches, h.links, h.mail, h.verifier,
+		slog.New(slog.NewTextHandler(io.Discard, nil)), cfg,
+		config.WebConfig{BackofficeURL: "https://backoffice.example"}, mailDelivers,
+		func() time.Time { return fixedNow })
+	h.svc.invites.newSecret = func() (string, error) { return testRawResetToken, nil }
+	return h
 }
 
 func adminTenant() domain.Tenant {
@@ -251,7 +304,7 @@ func TestUserService_CreateUsesTheTenantAccount(t *testing.T) {
 	}
 }
 
-// An admin-created user is trusted on the admin's word, in the same transaction that created
+// A user handed a password is trusted on the admin's word, in the same transaction that created
 // them. Nothing else ever would: no path mails these users a confirmation link, so without this
 // they carry a null email_verified_at forever and AUTH_REQUIRE_VERIFIED_EMAIL locks them out of
 // an account they were deliberately given access to.
@@ -535,5 +588,323 @@ func TestUserService_ListSellersSellersFailsClosedWithoutBranch(t *testing.T) {
 	}
 	if len(sellers) != 0 {
 		t.Errorf("ListSellers() returned %d sellers, want 0", len(sellers))
+	}
+}
+
+func invitedNewUser() domain.NewUser {
+	in := validNewUser()
+	in.Password = ""
+	in.Invite = true
+	return in
+}
+
+// An invited user gets no password anyone knows and no confirmation yet: redeeming the link is
+// what sets the first and proves the second.
+func TestUserService_CreateWithInviteMailsALinkInsteadOfSettingAPassword(t *testing.T) {
+	h := newUserHarness(storedAdmin())
+
+	created, err := h.svc.CreateUser(context.Background(), adminTenant(), invitedNewUser())
+	if err != nil {
+		t.Fatalf("CreateUser(invite) = %v, want no error", err)
+	}
+	if created.InviteStatus != domain.InviteStatusPending {
+		t.Errorf("invite status = %q, want %q", created.InviteStatus, domain.InviteStatusPending)
+	}
+	if len(h.users.verified) != 0 {
+		t.Error("an invited address was marked verified before anyone redeemed the link")
+	}
+	if bcrypt.CompareHashAndPassword([]byte(h.users.createdHash), []byte("")) == nil {
+		t.Error("the invited user can log in with an empty password")
+	}
+	if len(h.links.created) != 1 {
+		t.Fatalf("minted %d links, want 1", len(h.links.created))
+	}
+	token := h.links.created[0]
+	if token.Type != domain.AuthTokenTypeInvite || token.UserID != created.ID {
+		t.Errorf("minted a %s link for %v, want an invite for %v", token.Type, token.UserID, created.ID)
+	}
+	if !token.ExpiresAt.Equal(fixedNow.Add(testInviteTTL)) {
+		t.Errorf("invite expires at %v, want %v", token.ExpiresAt, fixedNow.Add(testInviteTTL))
+	}
+	if token.TokenHash == testRawResetToken || token.TokenHash != hashToken(testRawResetToken) {
+		t.Error("the invite is not stored as the hash of the mailed secret")
+	}
+	if len(h.mail.sent) != 1 {
+		t.Fatalf("sent %d mails, want 1", len(h.mail.sent))
+	}
+	sent := h.mail.sent[0]
+	if sent.Event != domain.NotificationEventInvite || sent.To != created.Email {
+		t.Errorf("mailed a %s to %s, want an INVITE to %s", sent.Event, sent.To, created.Email)
+	}
+	want := "https://backoffice.example/reset-password?token=" + testRawResetToken + "&invite=1"
+	if sent.ActionURL != want {
+		t.Errorf("link = %q, want %q", sent.ActionURL, want)
+	}
+}
+
+func TestUserService_CreateWithInviteRefusesAPasswordToo(t *testing.T) {
+	h := newUserHarness(storedAdmin())
+	in := invitedNewUser()
+	in.Password = "Una-clave-larga1"
+
+	_, err := h.svc.CreateUser(context.Background(), adminTenant(), in)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("CreateUser(invite + password) = %v, want %v", err, domain.ErrInvalidInput)
+	}
+	if !strings.Contains(err.Error(), "chooses their own password") {
+		t.Errorf("refused for %q, want the invite-and-password rule", err)
+	}
+	if len(h.users.createdIn) != 0 {
+		t.Error("a user was created")
+	}
+}
+
+// While mail only reaches the log nobody could redeem the link, so the user would exist with no
+// way in at all.
+func TestUserService_CreateWithInviteNeedsMailThatDelivers(t *testing.T) {
+	h := newUserHarnessDelivering(false, storedAdmin())
+
+	_, err := h.svc.CreateUser(context.Background(), adminTenant(), invitedNewUser())
+	if !errors.Is(err, domain.ErrNotConfigured) || domain.CodeOf(err) != domain.CodeMailNotConfigured {
+		t.Fatalf("CreateUser(invite) on console mail = %v (%s), want %s", err, domain.CodeOf(err),
+			domain.CodeMailNotConfigured)
+	}
+	if len(h.users.createdIn) != 0 || len(h.mail.sent) != 0 {
+		t.Error("a user was created or mailed")
+	}
+	// The password path is untouched by the transport.
+	if _, err := h.svc.CreateUser(context.Background(), adminTenant(), validNewUser()); err != nil {
+		t.Fatalf("CreateUser(password) on console mail = %v, want no error", err)
+	}
+}
+
+func outstandingInvite(userID uuid.UUID, expiresAt time.Time) domain.AuthToken {
+	return domain.AuthToken{
+		ID: uuid.New(), AccountID: testAccountID, UserID: userID, Type: domain.AuthTokenTypeInvite,
+		ExpiresAt: expiresAt, CreatedAt: expiresAt.Add(-testInviteTTL),
+	}
+}
+
+func TestUserService_ListDerivesTheInviteStatus(t *testing.T) {
+	pending, expired, redeemed := storedSeller(), storedSeller(), storedSeller()
+	pending.ID, expired.ID, redeemed.ID = uuid.New(), uuid.New(), uuid.New()
+	h := newUserHarness(storedAdmin(), pending, expired, redeemed)
+	h.links.latest[pending.ID] = outstandingInvite(pending.ID, fixedNow.Add(time.Hour))
+	h.links.latest[expired.ID] = outstandingInvite(expired.ID, fixedNow.Add(-time.Hour))
+	used := outstandingInvite(redeemed.ID, fixedNow.Add(time.Hour))
+	consumedAt := fixedNow.Add(-time.Minute)
+	used.ConsumedAt = &consumedAt
+	h.links.latest[redeemed.ID] = used
+
+	users, err := h.svc.ListUsers(context.Background(), adminTenant())
+	if err != nil {
+		t.Fatalf("ListUsers() = %v, want no error", err)
+	}
+	want := map[uuid.UUID]domain.InviteStatus{
+		testUserID:  domain.InviteStatusNone,
+		pending.ID:  domain.InviteStatusPending,
+		expired.ID:  domain.InviteStatusExpired,
+		redeemed.ID: domain.InviteStatusNone,
+	}
+	for _, u := range users {
+		if u.InviteStatus != want[u.ID] {
+			t.Errorf("%v invite status = %q, want %q", u.ID, u.InviteStatus, want[u.ID])
+		}
+	}
+}
+
+func TestUserService_ResendInvite(t *testing.T) {
+	t.Run("an expired invite is replaced and mailed", func(t *testing.T) {
+		h := newUserHarness(storedAdmin(), storedSeller())
+		h.links.latest[otherUserID] = outstandingInvite(otherUserID, fixedNow.Add(-time.Hour))
+
+		if err := h.svc.ResendInvite(context.Background(), adminTenant(), otherUserID); err != nil {
+			t.Fatalf("ResendInvite() = %v, want no error", err)
+		}
+		if len(h.links.invalidated) != 1 || h.links.invalidated[0].tokenType != domain.AuthTokenTypeInvite {
+			t.Errorf("retired %v, want the previous invite", h.links.invalidated)
+		}
+		if len(h.links.created) != 1 || h.links.created[0].Type != domain.AuthTokenTypeInvite {
+			t.Fatalf("minted %v, want one invite", h.links.created)
+		}
+		if len(h.mail.sent) != 1 || h.mail.sent[0].Event != domain.NotificationEventInvite {
+			t.Fatalf("mailed %v, want one invite", h.mail.sent)
+		}
+	})
+
+	refusals := []struct {
+		name   string
+		setup  func(h *userHarness)
+		code   domain.ErrorCode
+		sentry error
+	}{
+		{"a user who never had an invite", func(*userHarness) {},
+			domain.CodeInviteNotPending, domain.ErrInvalidInput},
+		{"a user who already chose a password", func(h *userHarness) {
+			used := outstandingInvite(otherUserID, fixedNow.Add(time.Hour))
+			at := fixedNow
+			used.ConsumedAt = &at
+			h.links.latest[otherUserID] = used
+		}, domain.CodeInviteNotPending, domain.ErrInvalidInput},
+		{"a deactivated user", func(h *userHarness) {
+			h.users.stored[otherUserID].IsActive = false
+			h.links.latest[otherUserID] = outstandingInvite(otherUserID, fixedNow.Add(time.Hour))
+		}, domain.CodeInviteNotPending, domain.ErrInvalidInput},
+	}
+	for _, tc := range refusals {
+		t.Run(tc.name+" is refused", func(t *testing.T) {
+			h := newUserHarness(storedAdmin(), storedSeller())
+			tc.setup(h)
+
+			err := h.svc.ResendInvite(context.Background(), adminTenant(), otherUserID)
+			if !errors.Is(err, tc.sentry) || domain.CodeOf(err) != tc.code {
+				t.Fatalf("ResendInvite() = %v (%s), want %s", err, domain.CodeOf(err), tc.code)
+			}
+			if len(h.links.created) != 0 || len(h.mail.sent) != 0 {
+				t.Error("a link was minted or mailed")
+			}
+		})
+	}
+
+	t.Run("console mail is refused before anything is read", func(t *testing.T) {
+		h := newUserHarnessDelivering(false, storedAdmin(), storedSeller())
+		h.links.latest[otherUserID] = outstandingInvite(otherUserID, fixedNow.Add(time.Hour))
+
+		err := h.svc.ResendInvite(context.Background(), adminTenant(), otherUserID)
+		if domain.CodeOf(err) != domain.CodeMailNotConfigured {
+			t.Fatalf("ResendInvite() on console mail = %v, want %s", err, domain.CodeMailNotConfigured)
+		}
+		if len(h.links.created) != 0 {
+			t.Error("a link was minted")
+		}
+	})
+}
+
+func sellerUpdate(email string) domain.UserUpdate {
+	return domain.UserUpdate{
+		Name: "Vendedor", Email: email, Role: domain.UserRoleSeller,
+		BranchIDs: []uuid.UUID{assignedBranch},
+	}
+}
+
+// A link mailed to the old address would let whoever reads that mailbox back into the account.
+func TestUserService_UpdateEmailRetiresEveryLinkAndWritesToBothMailboxes(t *testing.T) {
+	h := newUserHarness(storedAdmin(), storedSeller())
+
+	if _, err := h.svc.UpdateUser(context.Background(), adminTenant(), otherUserID,
+		sellerUpdate("nueva@corralon.test")); err != nil {
+		t.Fatalf("UpdateUser() = %v, want no error", err)
+	}
+	if len(h.links.invalidatedAll) != 1 || h.links.invalidatedAll[0] != otherUserID {
+		t.Errorf("links retired for %v, want every link of the edited user", h.links.invalidatedAll)
+	}
+	if !reflect.DeepEqual(h.verifier.noticesTo, []string{"v@corralon.test"}) {
+		t.Errorf("old-address notices = %v, want the previous address", h.verifier.noticesTo)
+	}
+	if !reflect.DeepEqual(h.verifier.verificationsTo, []string{"nueva@corralon.test"}) {
+		t.Errorf("verification links = %v, want the new address", h.verifier.verificationsTo)
+	}
+	if len(h.links.created) != 0 {
+		t.Error("an invite was minted for a user who never had one")
+	}
+}
+
+// The invite is the only way in an invited user has, so it follows the address rather than
+// being retired with the rest.
+func TestUserService_UpdateEmailOfAnInvitedUserSendsTheInviteToTheNewAddress(t *testing.T) {
+	h := newUserHarness(storedAdmin(), storedSeller())
+	h.links.latest[otherUserID] = outstandingInvite(otherUserID, fixedNow.Add(-time.Hour))
+
+	updated, err := h.svc.UpdateUser(context.Background(), adminTenant(), otherUserID,
+		sellerUpdate("nueva@corralon.test"))
+	if err != nil {
+		t.Fatalf("UpdateUser() = %v, want no error", err)
+	}
+	if updated.InviteStatus != domain.InviteStatusPending {
+		t.Errorf("invite status = %q, want %q", updated.InviteStatus, domain.InviteStatusPending)
+	}
+	if len(h.links.created) != 1 || h.links.created[0].Type != domain.AuthTokenTypeInvite {
+		t.Fatalf("minted %v, want a fresh invite", h.links.created)
+	}
+	if len(h.mail.sent) != 1 || h.mail.sent[0].To != "nueva@corralon.test" {
+		t.Fatalf("mailed %v, want the invite at the new address", h.mail.sent)
+	}
+	if len(h.verifier.verificationsTo) != 0 {
+		t.Error("a separate verification link was sent beside the invite")
+	}
+	if len(h.verifier.noticesTo) != 1 {
+		t.Error("the old address was not told")
+	}
+}
+
+// Compared folded, like the unique index: a row stored before addresses were normalised still
+// reads as the same mailbox.
+func TestUserService_UpdateThatKeepsTheAddressMailsNothing(t *testing.T) {
+	legacy := storedSeller()
+	legacy.Email = "V@Corralon.test"
+	h := newUserHarness(storedAdmin(), legacy)
+
+	if _, err := h.svc.UpdateUser(context.Background(), adminTenant(), otherUserID,
+		sellerUpdate("v@corralon.test")); err != nil {
+		t.Fatalf("UpdateUser() = %v, want no error", err)
+	}
+	if len(h.links.invalidatedAll) != 0 || len(h.verifier.noticesTo) != 0 ||
+		len(h.verifier.verificationsTo) != 0 {
+		t.Error("an edit that kept the address (in another case) retired links or sent mail")
+	}
+}
+
+// A deactivated user can redeem neither an invite nor a confirmation, so the change retires their
+// links and mails nothing.
+func TestUserService_UpdateEmailOfADeactivatedUserMailsNothing(t *testing.T) {
+	inactive := storedSeller()
+	inactive.IsActive = false
+	h := newUserHarness(storedAdmin(), inactive)
+	h.links.latest[otherUserID] = outstandingInvite(otherUserID, fixedNow.Add(time.Hour))
+
+	updated, err := h.svc.UpdateUser(context.Background(), adminTenant(), otherUserID,
+		sellerUpdate("nueva@corralon.test"))
+	if err != nil {
+		t.Fatalf("UpdateUser() = %v, want no error", err)
+	}
+	if len(h.links.invalidatedAll) != 1 {
+		t.Error("the deactivated user's links were not retired")
+	}
+	if len(h.links.created) != 0 || len(h.mail.sent) != 0 ||
+		len(h.verifier.verificationsTo) != 0 || len(h.verifier.noticesTo) != 0 {
+		t.Error("a deactivated user was minted a link or mailed")
+	}
+	if updated.InviteStatus != domain.InviteStatusNone {
+		t.Errorf("invite status = %q, want none", updated.InviteStatus)
+	}
+}
+
+func TestUserService_UpdateEmailOfAPendingInviteSendsItToTheNewAddress(t *testing.T) {
+	h := newUserHarness(storedAdmin(), storedSeller())
+	h.links.latest[otherUserID] = outstandingInvite(otherUserID, fixedNow.Add(time.Hour))
+
+	if _, err := h.svc.UpdateUser(context.Background(), adminTenant(), otherUserID,
+		sellerUpdate("nueva@corralon.test")); err != nil {
+		t.Fatalf("UpdateUser() = %v, want no error", err)
+	}
+	if len(h.mail.sent) != 1 || h.mail.sent[0].Event != domain.NotificationEventInvite ||
+		h.mail.sent[0].To != "nueva@corralon.test" {
+		t.Fatalf("mailed %v, want the invite at the new address", h.mail.sent)
+	}
+}
+
+// The link is stored before the mail goes out, so a delivery that fails leaves an invite the admin
+// can resend, not a failed creation.
+func TestUserService_CreateWithInviteSurvivesAMailThatFails(t *testing.T) {
+	h := newUserHarness(storedAdmin())
+	h.mail.sendErr = errors.New("smtp: connection refused")
+
+	created, err := h.svc.CreateUser(context.Background(), adminTenant(), invitedNewUser())
+	if err != nil {
+		t.Fatalf("CreateUser(invite) with failing mail = %v, want no error", err)
+	}
+	if created.InviteStatus != domain.InviteStatusPending || len(h.links.created) != 1 {
+		t.Errorf("status %q with %d links, want a pending invite on record", created.InviteStatus,
+			len(h.links.created))
 	}
 }

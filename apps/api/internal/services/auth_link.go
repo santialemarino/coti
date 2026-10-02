@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ type authTokenRepository interface {
 	Create(ctx context.Context, q repository.Querier, t domain.AuthToken) error
 	Consume(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) error
 	InvalidateActive(ctx context.Context, q repository.Querier, accountID, userID uuid.UUID, tokenType domain.AuthTokenType) error
+	InvalidateAllForUser(ctx context.Context, q repository.Querier, accountID, userID uuid.UUID) error
 }
 
 // mailSender is the outbound-mail surface.
@@ -48,38 +50,59 @@ func (i *authLinkIssuer) issue(
 	ttl time.Duration,
 	compose func(link string) OutboundMail,
 ) error {
-	raw, err := i.newSecret()
-	if err != nil {
-		return err
-	}
-
+	var link string
 	if err := i.db.InTenantTx(ctx, domain.Tenant{AccountID: user.AccountID}, func(q repository.Querier) error {
-		if invalidateErr := i.tokens.InvalidateActive(ctx, q, user.AccountID, user.ID, tokenType); invalidateErr != nil {
-			return invalidateErr
-		}
-		return i.tokens.Create(ctx, q, domain.AuthToken{
-			AccountID: user.AccountID,
-			UserID:    user.ID,
-			Type:      tokenType,
-			TokenHash: hashToken(raw),
-			ExpiresAt: i.now().Add(ttl),
-		})
+		var mintErr error
+		link, mintErr = i.mint(ctx, q, user, tokenType, ttl)
+		return mintErr
 	}); err != nil {
 		return err
 	}
+	i.deliver(ctx, user, tokenType, compose(link))
+	return nil
+}
 
-	if err := i.mail.Send(ctx, compose(i.link(tokenType, raw))); err != nil {
+// mint retires the user's outstanding links of the type and stores a fresh one in the caller's
+// transaction, returning the link to mail once that transaction commits.
+func (i *authLinkIssuer) mint(
+	ctx context.Context, q repository.Querier, user domain.AppUser,
+	tokenType domain.AuthTokenType, ttl time.Duration,
+) (string, error) {
+	raw, err := i.newSecret()
+	if err != nil {
+		return "", err
+	}
+	if err := i.tokens.InvalidateActive(ctx, q, user.AccountID, user.ID, tokenType); err != nil {
+		return "", err
+	}
+	if err := i.tokens.Create(ctx, q, domain.AuthToken{
+		AccountID: user.AccountID,
+		UserID:    user.ID,
+		Type:      tokenType,
+		TokenHash: hashToken(raw),
+		ExpiresAt: i.now().Add(ttl),
+	}); err != nil {
+		return "", err
+	}
+	return i.link(tokenType, raw), nil
+}
+
+// deliver sends a message carrying a minted link. A failure is logged, not returned: the link
+// is already stored and can be mailed again.
+func (i *authLinkIssuer) deliver(
+	ctx context.Context, user domain.AppUser, tokenType domain.AuthTokenType, out OutboundMail,
+) {
+	if err := i.mail.Send(ctx, out); err != nil {
 		i.log.ErrorContext(ctx, "outbound mail not delivered",
 			slog.String("token_type", string(tokenType)),
 			slog.String("user_id", user.ID.String()), slog.Any("error", err))
 	}
-	return nil
 }
 
 // redeem resolves a presented link and reports the token behind it. An unknown, expired,
 // already-used or wrong-type token is domain.ErrUnauthenticated alike.
 func (i *authLinkIssuer) redeem(
-	ctx context.Context, rawToken string, tokenType domain.AuthTokenType,
+	ctx context.Context, rawToken string, tokenTypes ...domain.AuthTokenType,
 ) (*domain.AuthToken, error) {
 	stored, err := i.tokens.GetByHashCrossAccount(ctx, i.db.CrossAccount(), hashToken(rawToken))
 	if err != nil {
@@ -88,16 +111,21 @@ func (i *authLinkIssuer) redeem(
 		}
 		return nil, err
 	}
-	if stored.Type != tokenType || !stored.IsUsable(i.now()) {
+	if !slices.Contains(tokenTypes, stored.Type) || !stored.IsUsable(i.now()) {
 		return nil, domain.WithCode(domain.CodeInvalidLink, domain.ErrUnauthenticated)
 	}
 	return stored, nil
 }
 
-// link is a backoffice route, not an API one: the user clicks it and lands on a screen.
+// link is a backoffice route, not an API one: the user clicks it and lands on a screen. An
+// invite shares the reset screen, which only words itself differently for it.
 func (i *authLinkIssuer) link(tokenType domain.AuthTokenType, rawToken string) string {
-	return strings.TrimSuffix(i.baseURL, "/") + routeFor(tokenType) +
+	link := strings.TrimSuffix(i.baseURL, "/") + routeFor(tokenType) +
 		"?token=" + url.QueryEscape(rawToken)
+	if tokenType == domain.AuthTokenTypeInvite {
+		link += "&invite=1"
+	}
+	return link
 }
 
 func routeFor(tokenType domain.AuthTokenType) string {

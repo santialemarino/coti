@@ -63,14 +63,18 @@ and hides exactly this.
 convention Next 16 renamed from `middleware`; the exported function is `proxy` and nothing else
 about it changed:
 
-| Situation                                           | Result                                                     |
-| --------------------------------------------------- | ---------------------------------------------------------- |
-| Public route, no usable token                       | through                                                    |
-| Login / forgot / reset, token present and unexpired | redirected home                                            |
-| Protected route, token unexpired                    | through                                                    |
-| Protected route, token expired, refresh token held  | renewed, then through                                      |
-| Protected route, refresh rejected                   | cookies cleared, redirected to login with `?next=`         |
-| Protected route, API unreachable                    | through — the cookies survive and the next request retries |
+| Situation                                            | Result                                                     |
+| ---------------------------------------------------- | ---------------------------------------------------------- |
+| Public route, no usable token                        | through                                                    |
+| Login / signup / forgot, token present and unexpired | redirected home                                            |
+| Protected route, token unexpired                     | through                                                    |
+| Protected route, token expired, refresh token held   | renewed, then through                                      |
+| Protected route, refresh rejected                    | cookies cleared, redirected to login with `?next=`         |
+| Protected route, API unreachable                     | through — the cookies survive and the next request retries |
+
+`/reset-password` is public but **not** bounced: a mailed recovery or invite link has to open in
+whatever browser the mail is read in, signed in or not. Setting the password clears that browser's
+session, since whoever chose it logs in with it next.
 
 **The proxy is the only place a session is renewed.** Next allows a cookie write from a server
 action, a route handler or the proxy, and only the proxy runs before the page renders — so
@@ -95,7 +99,9 @@ not expired, while this asks the API whether the session is still good.
 
 **The confirmed-address check lives here too, and it goes first.** The proxy cannot make this
 decision at all: it reads the token and never calls the API, so it has no way to know whether an
-address is confirmed. Order matters within the layout as well — the onboarding read that follows is
+address is confirmed. It holds the caller only when `/v1/me` says the installation requires a
+confirmation (`mustVerifyEmail`); otherwise an unconfirmed caller reaches the product, and the
+account menu offers "Confirmar tu correo" as long as mail can actually bring the link. Order matters within the layout as well — the onboarding read that follows is
 itself a closed route, and it does not catch, so asking it before the address would answer 403 and
 throw out of the layout, handing the caller an error boundary where the confirmation screen
 belonged. Registration creates an admin with an unconfirmed address, so that is the common path.
@@ -122,13 +128,20 @@ Two rules make it safe, and both are the opposite of the obvious thing:
   assignments on every request — answers 403. Validation happens once, on the **write**:
   `setActiveBranch` refuses a branch outside `GET /v1/branches`, so the cookie can never name
   one the caller never had.
+- **A cookie the caller no longer reaches is dropped by the layout, not by a reader.** A branch
+  closed or unassigned after it was chosen would make every scoped read answer 403
+  (`BRANCH_NOT_ACCESSIBLE`). The layout compares the cookie with `GET /v1/branches` and sends a
+  mismatch to **`/branch-reset`**, a route handler that clears it and goes home — a layout cannot
+  write cookies, the same reason `/session-ended` exists.
 - **`GET /v1/me` and `GET /v1/branches` opt out of the header** via `branchScoped: false` on the
   client. A stale cookie on identity would 403 the session itself and sign the caller out
   instead of failing one screen; a stale cookie on the branch list would 403 the very list
   needed to switch away from it, with no way back. Everything else inherits by default.
 
-A caller reaching a single branch is shown no switcher: that branch is their whole reach and the
-API scopes to it with or without the header. A screen that genuinely needs one branch named — the
+A caller reaching a single branch is shown that branch as plain context, not a switcher: it is their
+whole reach — for an admin "todas" reaches the same branch — and the API scopes to it with or
+without the header. A seller reaching no branch at all gets one explanatory screen in place of the
+queue, while their own settings stay reachable. A screen that genuinely needs one branch named — the
 price import — resolves the active branch, falling back to the sole reachable one.
 
 `requireAdmin()` guards an admin-only page with **`notFound()`**, not a 403 screen, so a seller

@@ -161,13 +161,17 @@ func (s *BranchService) UpdateBranch(
 				return err
 			}
 		}
-		if in.Email != nil {
-			if err := s.syncBranchEmail(ctx, q, tenant.AccountID, branchID, in.Email); err != nil {
-				return err
-			}
-		}
 		var err error
+		// The update goes first: it is what proves the branch is this account's, and a channel
+		// written before that check could hang off another account's branch.
 		branch, err = s.branches.Update(ctx, q, tenant.AccountID, branchID, in)
+		if err != nil || in.Email == nil {
+			return err
+		}
+		if err := s.syncBranchEmail(ctx, q, tenant.AccountID, branchID, in.Email); err != nil {
+			return err
+		}
+		branch, err = s.branches.GetByID(ctx, q, tenant.AccountID, branchID)
 		return err
 	}); err != nil {
 		return nil, err

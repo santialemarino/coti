@@ -192,6 +192,7 @@ type AuthConfig struct {
 	PasswordResetTTL     time.Duration
 	RequireVerifiedEmail bool
 	VerificationTTL      time.Duration
+	InviteTTL            time.Duration
 }
 
 // MailConfig holds the outbound-mail transport settings. One account per environment: the SMTP
@@ -208,6 +209,12 @@ type MailConfig struct {
 	// STARTTLS fails the send instead of quietly downgrading it to plaintext.
 	SMTPStartTLS bool
 	SMTPTimeout  time.Duration
+}
+
+// Delivers reports whether outbound mail reaches a mailbox. The console transport only writes
+// to the log, so a link sent through it can never be redeemed.
+func (m MailConfig) Delivers() bool {
+	return m.Provider == MailProviderSMTP
 }
 
 // AIConfig holds the provider selection, credentials and limits for the three external AI
@@ -689,6 +696,7 @@ func Load() (*Config, error) {
 			PasswordResetTTL:     getDuration("AUTH_PASSWORD_RESET_TTL_MINUTES", 60*time.Minute, &problems),
 			RequireVerifiedEmail: getBool("AUTH_REQUIRE_VERIFIED_EMAIL", false, &problems),
 			VerificationTTL:      getDuration("AUTH_EMAIL_VERIFICATION_TTL_HOURS", 48*time.Hour, &problems),
+			InviteTTL:            getDuration("AUTH_INVITE_TTL_HOURS", 7*24*time.Hour, &problems),
 		},
 		Mail: MailConfig{
 			Provider:     MailProvider(getString("MAIL_PROVIDER", string(MailProviderConsole))),
@@ -861,6 +869,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.Auth.VerificationTTL <= 0 {
 		problems = append(problems, "AUTH_EMAIL_VERIFICATION_TTL_HOURS must be greater than zero")
+	}
+	if cfg.Auth.InviteTTL <= 0 {
+		problems = append(problems, "AUTH_INVITE_TTL_HOURS must be greater than zero")
 	}
 	// Demanding a confirmed address while the only transport writes to a log would lock
 	// every user out of an environment nobody can receive mail in.

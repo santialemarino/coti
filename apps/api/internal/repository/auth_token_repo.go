@@ -40,6 +40,34 @@ func (r *AuthTokenRepository) GetByHashCrossAccount(
 	return &t, nil
 }
 
+// LatestInvitesByUsers returns each user's most recent invite link, keyed by user. A user never
+// invited has no entry.
+func (r *AuthTokenRepository) LatestInvitesByUsers(
+	ctx context.Context, q Querier, accountID uuid.UUID, userIDs []uuid.UUID,
+) (map[uuid.UUID]domain.AuthToken, error) {
+	rows, err := q.Query(ctx,
+		`SELECT DISTINCT ON (user_id) `+authTokenColumns+`
+		 FROM auth_token
+		 WHERE account_id = $1 AND user_id = ANY($2) AND type = 'INVITE'
+		 ORDER BY user_id, created_at DESC`,
+		accountID, userIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[uuid.UUID]domain.AuthToken, len(userIDs))
+	for rows.Next() {
+		var t domain.AuthToken
+		if err := rows.Scan(&t.ID, &t.AccountID, &t.UserID, &t.Type, &t.TokenHash, &t.ExpiresAt,
+			&t.ConsumedAt, &t.CreatedAt); err != nil {
+			return nil, err
+		}
+		out[t.UserID] = t
+	}
+	return out, rows.Err()
+}
+
 // Create stores a freshly minted token.
 func (r *AuthTokenRepository) Create(ctx context.Context, q Querier, t domain.AuthToken) error {
 	_, err := q.Exec(ctx,
@@ -74,5 +102,17 @@ func (r *AuthTokenRepository) InvalidateActive(
 		`UPDATE auth_token SET consumed_at = now()
 		 WHERE account_id = $1 AND user_id = $2 AND type = $3 AND consumed_at IS NULL`,
 		accountID, userID, tokenType)
+	return err
+}
+
+// InvalidateAllForUser burns every outstanding link of every type for one user, for the changes
+// that make any link already mailed point at the wrong mailbox or the wrong credential.
+func (r *AuthTokenRepository) InvalidateAllForUser(
+	ctx context.Context, q Querier, accountID, userID uuid.UUID,
+) error {
+	_, err := q.Exec(ctx,
+		`UPDATE auth_token SET consumed_at = now()
+		 WHERE account_id = $1 AND user_id = $2 AND consumed_at IS NULL`,
+		accountID, userID)
 	return err
 }

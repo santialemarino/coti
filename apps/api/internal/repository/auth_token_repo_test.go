@@ -209,3 +209,110 @@ func getToken(t *testing.T, db *DB, tenant domain.Tenant, hash string) (*domain.
 	})
 	return token, err
 }
+
+// seedTokenAt writes a token straight through the owner pool, so a test can fix its type,
+// creation time and state.
+func seedTokenAt(
+	t *testing.T, db *DB, accountID, userID uuid.UUID, tokenType domain.AuthTokenType,
+	hash string, createdAt time.Time, consumed bool,
+) {
+	t.Helper()
+	var consumedAt *time.Time
+	if consumed {
+		consumedAt = &createdAt
+	}
+	if _, err := db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO auth_token (account_id, user_id, type, token_hash, expires_at, consumed_at, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		accountID, userID, tokenType, hash, createdAt.Add(time.Hour), consumedAt, createdAt); err != nil {
+		t.Fatalf("seed %s token: %v", tokenType, err)
+	}
+}
+
+func TestAuthTokenRepository_InvalidateAllForUserRetiresEveryType(t *testing.T) {
+	db := testDB(t)
+	repo := NewAuthTokenRepository()
+	ctx := context.Background()
+
+	account := seedAccount(t, db, "Corralón Invalidate All")
+	user := seedUser(t, db, account, "SELLER")
+	other := seedUser(t, db, account, "SELLER")
+	now := time.Now()
+	hashes := map[domain.AuthTokenType]string{
+		domain.AuthTokenTypePasswordReset:     hashOf("allreset"),
+		domain.AuthTokenTypeEmailVerification: hashOf("allverify"),
+		domain.AuthTokenTypeInvite:            hashOf("allinvite"),
+	}
+	for tokenType, hash := range hashes {
+		seedTokenAt(t, db, account, user, tokenType, hash, now, false)
+	}
+	otherHash := hashOf("allother")
+	seedTokenAt(t, db, account, other, domain.AuthTokenTypeInvite, otherHash, now, false)
+	tenant := domain.Tenant{AccountID: account}
+
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		return repo.InvalidateAllForUser(ctx, q, account, user)
+	}); err != nil {
+		t.Fatalf("InvalidateAllForUser() = %v, want no error", err)
+	}
+
+	for tokenType, hash := range hashes {
+		token, err := getToken(t, db, tenant, hash)
+		if err != nil {
+			t.Fatalf("read the %s token: %v", tokenType, err)
+		}
+		if token.IsUsable(now) {
+			t.Errorf("the %s link is still usable", tokenType)
+		}
+	}
+	untouched, err := getToken(t, db, tenant, otherHash)
+	if err != nil {
+		t.Fatalf("read the other user's token: %v", err)
+	}
+	if !untouched.IsUsable(now) {
+		t.Fatal("InvalidateAllForUser retired a link belonging to a different user")
+	}
+}
+
+func TestAuthTokenRepository_LatestInvitesByUsersReadsTheNewestInviteOnly(t *testing.T) {
+	db := testDB(t)
+	repo := NewAuthTokenRepository()
+	ctx := context.Background()
+
+	account := seedAccount(t, db, "Corralón Latest Invite")
+	invited := seedUser(t, db, account, "SELLER")
+	neverInvited := seedUser(t, db, account, "SELLER")
+	base := time.Now().Add(-time.Hour)
+	// The older invite was retired by a resend; the newer one is the one that counts. A recovery
+	// link newer still must not be read as an invite.
+	seedTokenAt(t, db, account, invited, domain.AuthTokenTypeInvite, hashOf("oldinvite"), base, true)
+	seedTokenAt(t, db, account, invited, domain.AuthTokenTypeInvite, hashOf("newinvite"),
+		base.Add(time.Minute), false)
+	seedTokenAt(t, db, account, invited, domain.AuthTokenTypePasswordReset, hashOf("newerreset"),
+		base.Add(2*time.Minute), true)
+	seedTokenAt(t, db, account, neverInvited, domain.AuthTokenTypePasswordReset, hashOf("onlyreset"),
+		base, false)
+
+	var latest map[uuid.UUID]domain.AuthToken
+	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: account}, func(q Querier) error {
+		var err error
+		latest, err = repo.LatestInvitesByUsers(ctx, q, account, []uuid.UUID{invited, neverInvited})
+		return err
+	}); err != nil {
+		t.Fatalf("LatestInvitesByUsers() = %v, want no error", err)
+	}
+
+	got, ok := latest[invited]
+	if !ok {
+		t.Fatal("the invited user has no latest invite")
+	}
+	if got.TokenHash != hashOf("newinvite") {
+		t.Errorf("latest invite = %s, want the newest invite", got.TokenHash)
+	}
+	if got.ConsumedAt != nil {
+		t.Error("the latest invite reads as consumed, want the outstanding one")
+	}
+	if _, ok := latest[neverInvited]; ok {
+		t.Error("a user with only a recovery link has an invite entry")
+	}
+}

@@ -25,6 +25,8 @@ type fakeBranchReader struct {
 	reachCalls  int
 	updated     *domain.BranchUpdate
 	activeOther int
+	// missing is a branch the account does not hold, so writing it matches no row.
+	missing uuid.UUID
 }
 
 func (f *fakeBranchReader) ListForUser(
@@ -69,6 +71,9 @@ func (f *fakeBranchReader) Create(
 func (f *fakeBranchReader) Update(
 	_ context.Context, _ repository.Querier, accountID, branchID uuid.UUID, in domain.BranchUpdate,
 ) (*domain.Branch, error) {
+	if f.missing == branchID {
+		return nil, domain.ErrNotFound
+	}
 	update := in
 	f.updated = &update
 	active := true
@@ -371,4 +376,24 @@ func newBranchReaderWith() *fakeBranchReader {
 	return &fakeBranchReader{all: []domain.Branch{
 		{ID: assignedBranch, AccountID: testAccountID, Name: "Villa Bosch", IsActive: true},
 	}}
+}
+
+// The update is what proves the branch is the account's: a mailbox synced before it would open a
+// channel on a branch that is not there, or that belongs to another account.
+func TestBranchService_UpdateBranch_WritesNoChannelForABranchTheAccountLacks(t *testing.T) {
+	t.Parallel()
+	foreign := uuid.New()
+	branches := newBranchReaderWith()
+	branches.missing = foreign
+	channels := &fakeBranchChannels{}
+	svc := NewBranchService(&fakeDB{}, branches, channels, &fakeBranchCatalog{}, 7)
+
+	_, err := svc.UpdateBranch(context.Background(), adminTenant(), foreign,
+		domain.BranchUpdate{Name: "Ajena", DefaultExpiryDays: 7, Email: strptr("ajena@corralon.test")})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("UpdateBranch(foreign) = %v, want %v", err, domain.ErrNotFound)
+	}
+	if len(channels.email) != 0 {
+		t.Fatalf("email channels = %+v, want none written", channels.email)
+	}
 }

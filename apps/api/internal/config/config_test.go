@@ -22,7 +22,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"AUTH_REFRESH_REMEMBER_DAYS", "AUTH_REFRESH_REUSE_GRACE_SECONDS",
 		"AUTH_MAX_FAILED_ATTEMPTS", "AUTH_LOCKOUT_MINUTES", "AUTH_PASSWORD_MIN_LENGTH",
 		"AUTH_PASSWORD_RESET_TTL_MINUTES", "AUTH_EMAIL_VERIFICATION_TTL_HOURS",
-		"AUTH_REQUIRE_VERIFIED_EMAIL",
+		"AUTH_REQUIRE_VERIFIED_EMAIL", "AUTH_INVITE_TTL_HOURS",
 		"RATE_LIMIT_ENABLED", "RATE_LIMIT_WINDOW_SECONDS", "RATE_LIMIT_GLOBAL_MAX",
 		"RATE_LIMIT_CREDENTIALS_MAX", "RATE_LIMIT_SIGNUP_MAX", "RATE_LIMIT_MAIL_MAX",
 		"RATE_LIMIT_AI_MAX",
@@ -156,6 +156,9 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.Auth.PasswordResetTTL != time.Hour {
 		t.Errorf("Auth.PasswordResetTTL = %v, want 1h", cfg.Auth.PasswordResetTTL)
+	}
+	if cfg.Auth.InviteTTL != 168*time.Hour {
+		t.Errorf("Auth.InviteTTL = %v, want 168h", cfg.Auth.InviteTTL)
 	}
 	// The requirement has to arrive off, or a fresh environment locks everyone out.
 	if cfg.Auth.RequireVerifiedEmail {
@@ -592,6 +595,11 @@ func TestLoad_Invalid(t *testing.T) {
 			name:    "password reset ttl of zero",
 			mutate:  func(e map[string]string) { e["AUTH_PASSWORD_RESET_TTL_MINUTES"] = "0" },
 			wantSub: "AUTH_PASSWORD_RESET_TTL_MINUTES must be greater than zero",
+		},
+		{
+			name:    "invite ttl of zero",
+			mutate:  func(e map[string]string) { e["AUTH_INVITE_TTL_HOURS"] = "0" },
+			wantSub: "AUTH_INVITE_TTL_HOURS must be greater than zero",
 		},
 		{
 			// A run bounded at nothing holds its lock until the process is killed, and every
@@ -1427,5 +1435,16 @@ func TestLoad_ChannelEncryptionKeyRejectsAnUnusableValue(t *testing.T) {
 				t.Errorf("Load() = %q, want the key value left out of the message", err)
 			}
 		})
+	}
+}
+
+// Only a transport that reaches a mailbox delivers; an unset provider is not one.
+func TestMailConfig_DeliversOnlyOverSMTP(t *testing.T) {
+	for provider, want := range map[MailProvider]bool{
+		MailProviderSMTP: true, MailProviderConsole: false, "": false,
+	} {
+		if got := (MailConfig{Provider: provider}).Delivers(); got != want {
+			t.Errorf("Delivers() for %q = %v, want %v", provider, got, want)
+		}
 	}
 }
