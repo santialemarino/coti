@@ -118,6 +118,7 @@ export function UserFormDialog({
   });
   const role = useWatch({ control: form.control, name: 'role' });
   const access = useWatch({ control: form.control, name: 'access' });
+  // The form's copy, not the prop: the user goes null while the dialog fades out.
   const email = useWatch({ control: form.control, name: 'email' });
   // A new user in an account with one branch has one obvious assignment, so it is made. An id, not
   // the list: a re-render hands over a fresh array, and resetting on it would wipe what was typed.
