@@ -789,7 +789,10 @@ func sellerUpdate(email string) domain.UserUpdate {
 
 // A link mailed to the old address would let whoever reads that mailbox back into the account.
 func TestUserService_UpdateEmailRetiresEveryLinkAndWritesToBothMailboxes(t *testing.T) {
-	h := newUserHarness(storedAdmin(), storedSeller())
+	proved := storedSeller()
+	verifiedAt := fixedNow.Add(-24 * time.Hour)
+	proved.EmailVerifiedAt = &verifiedAt
+	h := newUserHarness(storedAdmin(), proved)
 
 	if _, err := h.svc.UpdateUser(context.Background(), adminTenant(), otherUserID,
 		sellerUpdate("nueva@corralon.test")); err != nil {
@@ -832,8 +835,8 @@ func TestUserService_UpdateEmailOfAnInvitedUserSendsTheInviteToTheNewAddress(t *
 	if len(h.verifier.verificationsTo) != 0 {
 		t.Error("a separate verification link was sent beside the invite")
 	}
-	if len(h.verifier.noticesTo) != 1 {
-		t.Error("the old address was not told")
+	if len(h.verifier.noticesTo) != 0 {
+		t.Error("an address never proved was told the new one")
 	}
 }
 
@@ -854,8 +857,8 @@ func TestUserService_UpdateThatKeepsTheAddressMailsNothing(t *testing.T) {
 	}
 }
 
-// A deactivated user can redeem neither an invite nor a confirmation, so the change retires their
-// links and mails nothing.
+// A deactivated user can redeem neither an invite nor a confirmation, so the change mails nothing;
+// the invite still follows the address, ready to resend once they are back.
 func TestUserService_UpdateEmailOfADeactivatedUserMailsNothing(t *testing.T) {
 	inactive := storedSeller()
 	inactive.IsActive = false
@@ -870,12 +873,29 @@ func TestUserService_UpdateEmailOfADeactivatedUserMailsNothing(t *testing.T) {
 	if len(h.links.invalidatedAll) != 1 {
 		t.Error("the deactivated user's links were not retired")
 	}
-	if len(h.links.created) != 0 || len(h.mail.sent) != 0 ||
-		len(h.verifier.verificationsTo) != 0 || len(h.verifier.noticesTo) != 0 {
-		t.Error("a deactivated user was minted a link or mailed")
+	if len(h.mail.sent) != 0 || len(h.verifier.verificationsTo) != 0 || len(h.verifier.noticesTo) != 0 {
+		t.Error("a deactivated user was mailed")
 	}
-	if updated.InviteStatus != domain.InviteStatusNone {
-		t.Errorf("invite status = %q, want none", updated.InviteStatus)
+	if len(h.links.created) != 1 || updated.InviteStatus != domain.InviteStatusPending {
+		t.Errorf("minted %d invites, status %q; want the invite kept on record as pending",
+			len(h.links.created), updated.InviteStatus)
+	}
+}
+
+// The notice warns a mailbox the user proved; an address never proved — a typo an admin is
+// correcting — would only be told the real one.
+func TestUserService_UpdateEmailWarnsOnlyAnAddressThatWasProved(t *testing.T) {
+	h := newUserHarness(storedAdmin(), storedSeller())
+
+	if _, err := h.svc.UpdateUser(context.Background(), adminTenant(), otherUserID,
+		sellerUpdate("nueva@corralon.test")); err != nil {
+		t.Fatalf("UpdateUser() = %v, want no error", err)
+	}
+	if len(h.verifier.noticesTo) != 0 {
+		t.Errorf("notices = %v, want none for an unproved address", h.verifier.noticesTo)
+	}
+	if len(h.verifier.verificationsTo) != 1 {
+		t.Error("the new address got no confirmation link")
 	}
 }
 

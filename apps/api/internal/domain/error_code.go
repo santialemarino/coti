@@ -36,6 +36,7 @@ const (
 	CodeInviteNotPending      ErrorCode = "INVITE_NOT_PENDING"
 	CodeMailNotConfigured     ErrorCode = "MAIL_NOT_CONFIGURED"
 	CodeBranchNotAccessible   ErrorCode = "BRANCH_NOT_ACCESSIBLE"
+	CodeBranchMailboxRequired ErrorCode = "BRANCH_MAILBOX_REQUIRED"
 	CodeQuoteArchived         ErrorCode = "QUOTE_ARCHIVED"
 	CodeQuoteNotDraft         ErrorCode = "QUOTE_NOT_DRAFT"
 	CodeQuoteNotReactivatable ErrorCode = "QUOTE_NOT_REACTIVATABLE"

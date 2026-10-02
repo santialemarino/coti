@@ -27,6 +27,8 @@ type fakeBranchReader struct {
 	activeOther int
 	// missing is a branch the account does not hold, so writing it matches no row.
 	missing uuid.UUID
+	// mailbox is what the branch's email channel holds, which the update reads back.
+	mailbox func() *string
 }
 
 func (f *fakeBranchReader) ListForUser(
@@ -80,8 +82,12 @@ func (f *fakeBranchReader) Update(
 	if in.IsActive != nil {
 		active = *in.IsActive
 	}
-	return &domain.Branch{ID: branchID, AccountID: accountID, Name: in.Name,
-		DefaultExpiryDays: in.DefaultExpiryDays, IsActive: active}, nil
+	branch := &domain.Branch{ID: branchID, AccountID: accountID, Name: in.Name,
+		DefaultExpiryDays: in.DefaultExpiryDays, IsActive: active}
+	if f.mailbox != nil {
+		branch.Email = f.mailbox()
+	}
+	return branch, nil
 }
 
 func (f *fakeBranchReader) Deactivate(
@@ -311,7 +317,7 @@ func TestBranchService_UpdateBranch_WritesTheMailboxOntoTheEmailChannel(t *testi
 	channels := &fakeBranchChannels{email: []domain.Channel{
 		{ID: uuid.New(), Type: domain.ChannelTypeEmail, IsActive: true},
 	}}
-	svc := NewBranchService(&fakeDB{}, newBranchReaderWith(), channels, &fakeBranchCatalog{}, 7)
+	svc := NewBranchService(&fakeDB{}, channels.reader(), channels, &fakeBranchCatalog{}, 7)
 	update := domain.BranchUpdate{Name: "Villa Bosch", DefaultExpiryDays: 7}
 
 	update.Email = strptr("ventas@villabosch.test")
@@ -360,16 +366,31 @@ func TestBranchService_UpdateBranch_KeepsTheMailboxAConfiguredChannelSendsFrom(t
 	channels := &fakeBranchChannels{email: []domain.Channel{{ID: uuid.New(),
 		Type: domain.ChannelTypeEmail, IsActive: true, IsConfigured: true,
 		Identifier: strptr("ventas@villabosch.test")}}}
-	svc := NewBranchService(&fakeDB{}, newBranchReaderWith(), channels, &fakeBranchCatalog{}, 7)
+	svc := NewBranchService(&fakeDB{}, channels.reader(), channels, &fakeBranchCatalog{}, 7)
 
 	_, err := svc.UpdateBranch(context.Background(), adminTenant(), assignedBranch,
 		domain.BranchUpdate{Name: "Villa Bosch", DefaultExpiryDays: 7, Email: strptr("")})
-	if !errors.Is(err, domain.ErrInvalidInput) {
-		t.Fatalf("UpdateBranch() = %v, want ErrInvalidInput", err)
+	if !errors.Is(err, domain.ErrInvalidInput) || domain.CodeOf(err) != domain.CodeBranchMailboxRequired {
+		t.Fatalf("UpdateBranch() = %v (%s), want %s", err, domain.CodeOf(err),
+			domain.CodeBranchMailboxRequired)
 	}
 	if channels.email[0].Identifier == nil {
 		t.Fatal("the configured channel lost its mailbox")
 	}
+}
+
+// reader is a branch reader whose branch reads its mailbox back from these channels.
+func (f *fakeBranchChannels) reader() *fakeBranchReader {
+	r := newBranchReaderWith()
+	r.mailbox = func() *string {
+		for _, c := range f.email {
+			if c.IsActive {
+				return c.Identifier
+			}
+		}
+		return nil
+	}
+	return r
 }
 
 func newBranchReaderWith() *fakeBranchReader {
@@ -395,5 +416,37 @@ func TestBranchService_UpdateBranch_WritesNoChannelForABranchTheAccountLacks(t *
 	}
 	if len(channels.email) != 0 {
 		t.Fatalf("email channels = %+v, want none written", channels.email)
+	}
+}
+
+// The form sends the mailbox on every save, so a rename must not touch a channel the mailbox did not
+// change — or a branch whose email channel cannot be written could never be renamed.
+func TestBranchService_UpdateBranch_LeavesTheChannelAloneWhenTheMailboxIsUnchanged(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		channels []domain.Channel
+		email    string
+	}{
+		{"the same address, differently cased", []domain.Channel{{ID: uuid.New(),
+			Type: domain.ChannelTypeEmail, IsActive: true, Identifier: strptr("ventas@villabosch.test")},
+			{ID: uuid.New(), Type: domain.ChannelTypeEmail, IsActive: true}}, " Ventas@VillaBosch.test "},
+		{"blank with no active email channel", nil, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			channels := &fakeBranchChannels{email: tc.channels}
+			svc := NewBranchService(&fakeDB{}, channels.reader(), channels, &fakeBranchCatalog{}, 7)
+
+			if _, err := svc.UpdateBranch(context.Background(), adminTenant(), assignedBranch,
+				domain.BranchUpdate{Name: "Villa Bosch Norte", DefaultExpiryDays: 7,
+					Email: strptr(tc.email)}); err != nil {
+				t.Fatalf("UpdateBranch() = %v, want the rename to go through", err)
+			}
+			if len(channels.email) != len(tc.channels) {
+				t.Fatalf("email channels = %+v, want them untouched", channels.email)
+			}
+		})
 	}
 }

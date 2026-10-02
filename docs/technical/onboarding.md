@@ -1,7 +1,7 @@
 # Account onboarding
 
 Onboarding is an account-scoped, admin-only setup flow shown after the first verified sign-in.
-Registration remains atomic and limited to the account, first branch, manual-entry channel, first
+Registration remains atomic and limited to the account, first branch and its channels, first
 administrator, and the onboarding record. Setup is a separate resumable concern.
 
 ## Lifecycle and API

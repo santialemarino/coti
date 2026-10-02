@@ -168,7 +168,15 @@ func (s *BranchService) UpdateBranch(
 		if err != nil || in.Email == nil {
 			return err
 		}
-		if err := s.syncBranchEmail(ctx, q, tenant.AccountID, branchID, in.Email); err != nil {
+		email, err := normalizeBranchEmail(in.Email)
+		if err != nil {
+			return err
+		}
+		// A form sends the mailbox on every save; one it did not change touches no channel.
+		if sameMailbox(email, branch.Email) {
+			return nil
+		}
+		if err := s.syncBranchEmail(ctx, q, tenant.AccountID, branchID, email); err != nil {
 			return err
 		}
 		branch, err = s.branches.GetByID(ctx, q, tenant.AccountID, branchID)
@@ -194,12 +202,8 @@ func (s *BranchService) DeactivateBranch(
 // syncBranchEmail writes the branch mailbox onto its email channel, opening the channel when the
 // branch has none. A blank address clears it, unless the channel's credentials send from it.
 func (s *BranchService) syncBranchEmail(
-	ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, raw *string,
+	ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, email *string,
 ) error {
-	email, err := normalizeBranchEmail(raw)
-	if err != nil {
-		return err
-	}
 	channels, err := s.channels.ListActiveByType(ctx, q, accountID, branchID, domain.ChannelTypeEmail)
 	if err != nil {
 		return err
@@ -210,6 +214,10 @@ func (s *BranchService) syncBranchEmail(
 			domain.NewChannel{Type: domain.ChannelTypeEmail, Identifier: email})
 		return err
 	case 1:
+		if channels[0].IsConfigured && email == nil {
+			return domain.WithCode(domain.CodeBranchMailboxRequired, fmt.Errorf(
+				"%w: the branch's email channel sends from this mailbox", domain.ErrInvalidInput))
+		}
 		if err := domain.ValidateChannelIdentifier(domain.ChannelTypeEmail, email,
 			channels[0].IsConfigured); err != nil {
 			return err
@@ -244,6 +252,14 @@ func (s *BranchService) assertNotLastActive(
 			fmt.Errorf("%w: an account needs at least one active branch", domain.ErrInvalidInput))
 	}
 	return nil
+}
+
+// sameMailbox reports whether two mailboxes, already normalised, are the same one or both absent.
+func sameMailbox(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 // normalizeBranchEmail reads a branch mailbox the way an email channel stores it: lowercase, and

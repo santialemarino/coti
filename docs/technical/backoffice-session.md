@@ -163,7 +163,7 @@ Zero locally, where nothing is in front, and the API then falls back to its peer
 
 `/signup` is three steps — the corralón, its first branch, the administrator — on **one**
 `react-hook-form`, because registration is a single request. Either the account, that branch, the
-branch's manual-entry channel and the administrator all exist or none do, so a caller who
+branch's channels and the administrator all exist or none do, so a caller who
 abandons the wizard has created nothing.
 
 - **Each step gates on its own fields** (`form.trigger([...stepFields])`), never the whole form.

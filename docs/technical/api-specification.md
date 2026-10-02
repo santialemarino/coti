@@ -104,17 +104,18 @@ a code from the sentinel an error wraps — `NOT_FOUND`, `CONFLICT`, `INVALID_IN
 `RATE_LIMITED`, `AI_UNAVAILABLE`, `INTERNAL` — and a service tags a more specific one with
 `domain.WithCode` where a caller has to tell siblings apart:
 
-| Code                    | Status | Raised when                                                                             |
-| ----------------------- | ------ | --------------------------------------------------------------------------------------- |
-| `EMAIL_TAKEN`           | 409    | the address is already registered, in this account or any other, or is the caller's own |
-| `LAST_ACTIVE_BRANCH`    | 422    | closing the account's only active branch                                                |
-| `SELF_DEACTIVATION`     | 422    | an admin deactivating themselves                                                        |
-| `SELF_ROLE_CHANGE`      | 422    | an admin changing their own role                                                        |
-| `PASSWORD_POLICY`       | 422    | a password that does not clear `domain.PasswordPolicy`                                  |
-| `INVALID_LINK`          | 401    | a mailed link that is unknown, expired, used or wrong-typed                             |
-| `INVITE_NOT_PENDING`    | 422    | resending an invite to a user who has already chosen a password, or is deactivated      |
-| `MAIL_NOT_CONFIGURED`   | 503    | inviting a user while mail only reaches the log                                         |
-| `BRANCH_NOT_ACCESSIBLE` | 403    | an `X-Branch-Id` the caller does not reach — closed, or not assigned to them            |
+| Code                      | Status | Raised when                                                                             |
+| ------------------------- | ------ | --------------------------------------------------------------------------------------- |
+| `EMAIL_TAKEN`             | 409    | the address is already registered, in this account or any other, or is the caller's own |
+| `LAST_ACTIVE_BRANCH`      | 422    | closing the account's only active branch                                                |
+| `SELF_DEACTIVATION`       | 422    | an admin deactivating themselves                                                        |
+| `SELF_ROLE_CHANGE`        | 422    | an admin changing their own role                                                        |
+| `PASSWORD_POLICY`         | 422    | a password that does not clear `domain.PasswordPolicy`                                  |
+| `INVALID_LINK`            | 401    | a mailed link that is unknown, expired, used or wrong-typed                             |
+| `INVITE_NOT_PENDING`      | 422    | resending an invite to a user who has already chosen a password, or is deactivated      |
+| `MAIL_NOT_CONFIGURED`     | 503    | inviting a user while mail only reaches the log                                         |
+| `BRANCH_NOT_ACCESSIBLE`   | 403    | an `X-Branch-Id` the caller does not reach — closed, or not assigned to them            |
+| `BRANCH_MAILBOX_REQUIRED` | 422    | clearing the mailbox a configured email channel sends from                              |
 
 `AI_UNAVAILABLE` is the **503** whose status says "come back later":
 no AI provider is bound, or the one that is could not answer. A request the provider _rejected_ is

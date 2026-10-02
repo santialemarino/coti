@@ -318,11 +318,6 @@ func (s *UserService) UpdateUser(
 		if invalidateErr := s.tokens.InvalidateAllForUser(ctx, q, tenant.AccountID, id); invalidateErr != nil {
 			return invalidateErr
 		}
-		// A deactivated user could redeem neither an invite nor a confirmation.
-		if !user.IsActive {
-			out.InviteStatus = domain.InviteStatusNone
-			return nil
-		}
 		if result.InviteStatus == domain.InviteStatusNone {
 			return nil
 		}
@@ -334,8 +329,13 @@ func (s *UserService) UpdateUser(
 		return nil, err
 	}
 
+	// A deactivated user could redeem nothing, so they are mailed nothing; the invite stays on
+	// record for a resend once they are back.
 	if emailChanged(previous.Email, out.Email) && out.IsActive {
-		s.verifier.NotifyAddressChangedByAdmin(ctx, *previous, out.Email)
+		// An address never proved is no one's to warn, and the notice would name the new one.
+		if previous.EmailVerifiedAt != nil {
+			s.verifier.NotifyAddressChangedByAdmin(ctx, *previous, out.Email)
+		}
 		if invite != "" {
 			s.invites.deliver(ctx, out.AppUser, domain.AuthTokenTypeInvite, s.inviteMail(out.AppUser, invite))
 		} else if err := s.verifier.SendForNewAddress(ctx, out.AppUser); err != nil {
