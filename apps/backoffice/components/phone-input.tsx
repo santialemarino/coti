@@ -55,12 +55,11 @@ function mobileAlternative(country: CountryCode, national: string) {
     `+${parsed.countryCallingCode}${AR_MOBILE_PREFIX}${parsed.nationalNumber}`,
   );
   if (!mobile?.isValid()) return null;
-  const international = mobile.formatInternational();
-  return {
-    international,
-    national: international.slice(`+${mobile.countryCallingCode} `.length),
-  };
+  return { international: mobile.formatInternational(), national: mobile.nationalNumber };
 }
+
+// Whatever the seller types with — spaces, dashes, dots, brackets — only the digits are kept.
+const PHONE_CHARACTERS = /[^\d\s+\-().]/g;
 
 /*
  * A country picker beside the national number, emitting E.164. A pasted international number
@@ -112,13 +111,22 @@ export function PhoneInput({
     onChange(e164);
   }
 
-  function handleNationalChange(raw: string) {
+  function handleNationalChange(typed: string) {
+    const raw = typed.replace(PHONE_CHARACTERS, '');
     const international = raw.trim().startsWith('+') ? parsePhoneNumberFromString(raw) : undefined;
     if (international?.country) {
       emit({ country: international.country, national: international.nationalNumber });
       return;
     }
     emit({ country: field.country, national: raw });
+  }
+
+  // A valid number settles to its bare digits, so a typed, pasted or prefilled one reads the same.
+  function settleNational() {
+    const parsed = parsePhoneNumberFromString(field.national, field.country);
+    if (parsed?.isValid() && parsed.nationalNumber !== field.national) {
+      setField({ country: field.country, national: parsed.nationalNumber });
+    }
   }
 
   return (
@@ -153,6 +161,7 @@ export function PhoneInput({
           autoComplete="tel-national"
           value={field.national}
           onChange={(event) => handleNationalChange(event.target.value)}
+          onBlur={settleNational}
           placeholder={placeholder}
           disabled={disabled}
           autoFocus={autoFocus}
