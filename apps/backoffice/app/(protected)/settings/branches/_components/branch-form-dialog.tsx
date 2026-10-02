@@ -66,7 +66,12 @@ export function BranchFormDialog({
   const form = useForm<BranchValues>({
     ...FORM_VALIDATION,
     resolver: zodResolver(schema),
-    defaultValues: { name: '', address: '', defaultExpiryDays: String(DEFAULT_EXPIRY_DAYS) },
+    defaultValues: {
+      name: '',
+      address: '',
+      email: '',
+      defaultExpiryDays: String(DEFAULT_EXPIRY_DAYS),
+    },
   });
 
   /*
@@ -78,6 +83,7 @@ export function BranchFormDialog({
     form.reset({
       name: branch?.name ?? '',
       address: branch?.address ?? '',
+      email: branch?.email ?? '',
       defaultExpiryDays: String(branch?.defaultExpiryDays ?? DEFAULT_EXPIRY_DAYS),
     });
   }, [open, branch, form]);
@@ -124,6 +130,27 @@ export function BranchFormDialog({
                       {...field}
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('email.label')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="email"
+                      autoComplete="email"
+                      maxLength={TEXT_FIELD_MAX_LENGTH}
+                      placeholder={t('email.placeholder')}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>{t('email.hint')}</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

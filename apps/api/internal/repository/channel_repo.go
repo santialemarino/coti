@@ -118,15 +118,16 @@ func (r *ChannelRepository) Create(
 	return &channel, nil
 }
 
-// CreateManualEntry opens the identifier-less manual-entry channel every branch needs.
-func (r *ChannelRepository) CreateManualEntry(
-	ctx context.Context, q Querier, accountID, branchID uuid.UUID,
+// CreateDefaults opens the channels every branch is born with: manual entry, and the WhatsApp and
+// email routes a quote is sent through. email is the branch mailbox, nil when it has none yet.
+func (r *ChannelRepository) CreateDefaults(
+	ctx context.Context, q Querier, accountID, branchID uuid.UUID, email *string,
 ) error {
 	_, err := q.Exec(ctx,
-		`INSERT INTO channel (account_id, branch_id, type)
-		 VALUES ($1, $2, 'MANUAL_ENTRY')
-		 ON CONFLICT (branch_id, type) WHERE identifier IS NULL DO NOTHING`,
-		accountID, branchID)
+		`INSERT INTO channel (account_id, branch_id, type, identifier)
+		 VALUES ($1, $2, 'MANUAL_ENTRY', NULL), ($1, $2, 'WHATSAPP', NULL), ($1, $2, 'EMAIL', $3)
+		 ON CONFLICT DO NOTHING`,
+		accountID, branchID, email)
 	return err
 }
 

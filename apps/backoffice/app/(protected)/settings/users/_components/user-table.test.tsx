@@ -26,6 +26,7 @@ const CENTRAL: Branch = {
   id: 'b1',
   name: 'Casa Central',
   address: 'Av. Siempre Viva 742',
+  email: null,
   defaultExpiryDays: 7,
   isActive: true,
 };
@@ -33,6 +34,7 @@ const MORON: Branch = {
   id: 'b2',
   name: 'Morón',
   address: null,
+  email: null,
   defaultExpiryDays: 30,
   isActive: true,
 };

@@ -9,6 +9,8 @@ type EmailMessage struct {
 	Subject  string
 	TextBody string
 	HTMLBody string
+	// ReplyTo is where an answer goes when it should not go to the sender, blank otherwise.
+	ReplyTo string
 }
 
 // Mailer delivers a rendered message. Adapters live in internal/mail and are bound in the

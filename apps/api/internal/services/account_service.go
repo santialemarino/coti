@@ -29,7 +29,7 @@ type signupBranchRepository interface {
 }
 
 type channelRepository interface {
-	CreateManualEntry(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) error
+	CreateDefaults(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, email *string) error
 }
 
 type signupUserRepository interface {
@@ -189,7 +189,7 @@ func (s *AccountService) Register(
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := s.channels.CreateManualEntry(ctx, tx, account.ID, branch.ID); err != nil {
+	if err := s.channels.CreateDefaults(ctx, tx, account.ID, branch.ID, nil); err != nil {
 		return nil, nil, err
 	}
 	admin, err := s.users.Create(ctx, tx, account.ID, domain.NewUser{

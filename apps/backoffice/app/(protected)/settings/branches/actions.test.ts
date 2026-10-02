@@ -28,6 +28,7 @@ const BRANCH_ID = 'b0000000-0000-4000-8000-000000000001';
 const VALUES: BranchValues = {
   name: 'Casa Central',
   address: 'Av. Siempre Viva 742',
+  email: '',
   defaultExpiryDays: '14',
 };
 

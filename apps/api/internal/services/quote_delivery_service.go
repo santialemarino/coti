@@ -444,9 +444,15 @@ func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenan
 					paragraphs = []string{"Total: " + formatCommercialMoney(payload.Currency, payload.Total),
 						payload.ValidityNote}
 				}
+				// The client's answer goes to the branch mailbox, not to the platform's sender.
+				replyTo := ""
+				if send.ChannelIdentifier != nil {
+					replyTo = *send.ChannelIdentifier
+				}
 				err = s.email.Send(ctx, OutboundMail{AccountID: tenant.AccountID,
 					UserID: &tenant.UserID, ClientID: clientID, QuoteID: &quote.ID,
 					Event: domain.NotificationEventQuoteSent, To: send.Destination,
+					ReplyTo: replyTo,
 					Subject: subject, Heading: "Tu cotización está lista",
 					Paragraphs:  paragraphs,
 					ActionLabel: "Ver cotización", ActionURL: publicURL})

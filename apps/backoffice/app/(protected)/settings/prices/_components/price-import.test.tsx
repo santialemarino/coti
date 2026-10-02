@@ -20,6 +20,7 @@ const BRANCH: Branch = {
   id: '11111111-1111-4111-8111-111111111111',
   name: 'Villa Bosch',
   address: null,
+  email: null,
   defaultExpiryDays: 7,
   isActive: true,
 };

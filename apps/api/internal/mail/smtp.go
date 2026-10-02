@@ -76,6 +76,9 @@ func (m *SMTPMailer) compose(msg domain.EmailMessage) ([]byte, error) {
 		"MIME-Version: 1.0",
 		`Content-Type: multipart/alternative; boundary="` + parts.Boundary() + `"`,
 	}
+	if msg.ReplyTo != "" {
+		headers = append(headers, "Reply-To: "+(&netmail.Address{Address: msg.ReplyTo}).String())
+	}
 	return append([]byte(strings.Join(headers, "\r\n")+"\r\n\r\n"), body.Bytes()...), nil
 }
 

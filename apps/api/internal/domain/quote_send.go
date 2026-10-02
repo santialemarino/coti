@@ -25,11 +25,13 @@ const (
 
 // QuoteSend is one channel-specific attempt to deliver one frozen quote version.
 type QuoteSend struct {
-	ID                uuid.UUID
-	AccountID         uuid.UUID
-	VersionID         uuid.UUID
-	ChannelID         uuid.UUID
-	ChannelType       ChannelType
+	ID          uuid.UUID
+	AccountID   uuid.UUID
+	VersionID   uuid.UUID
+	ChannelID   uuid.UUID
+	ChannelType ChannelType
+	// ChannelIdentifier is the branch mailbox or number the send went through, nil when unset.
+	ChannelIdentifier *string
 	IdempotencyKey    uuid.UUID
 	Destination       string
 	ProviderReference *string

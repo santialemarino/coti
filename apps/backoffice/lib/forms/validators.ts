@@ -53,6 +53,18 @@ export function emailAddress(t: SchemaText, requiredKey: string) {
     );
 }
 
+// The same address check for a field that may stay empty.
+export function optionalEmailAddress(t: SchemaText) {
+  return z
+    .string()
+    .trim()
+    .max(TEXT_FIELD_MAX_LENGTH, t.shared('tooLong', { max: TEXT_FIELD_MAX_LENGTH }))
+    .refine(
+      (value) => value === '' || z.email().safeParse(value).success,
+      t.shared('invalidEmail'),
+    );
+}
+
 /* Presented, never chosen: no policy, because one added later would lock out an older password. */
 export function currentSecret(t: SchemaText, requiredKey: string) {
   return z

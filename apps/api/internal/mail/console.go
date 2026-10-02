@@ -26,6 +26,7 @@ func (m *ConsoleMailer) Send(ctx context.Context, msg domain.EmailMessage) error
 	m.log.InfoContext(ctx, "outbound email",
 		slog.String("from", m.from),
 		slog.String("to", msg.To),
+		slog.String("reply_to", msg.ReplyTo),
 		slog.String("subject", msg.Subject),
 		slog.String("body", msg.TextBody))
 	return nil

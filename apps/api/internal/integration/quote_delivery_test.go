@@ -48,9 +48,10 @@ func (s *captureWhatsAppSender) count() int {
 }
 
 type stagedQuoteEmailSender struct {
-	mu    sync.Mutex
-	sends int
-	err   error
+	mu      sync.Mutex
+	sends   int
+	replyTo []string
+	err     error
 }
 
 func (s *stagedQuoteEmailSender) count() int {
@@ -59,10 +60,11 @@ func (s *stagedQuoteEmailSender) count() int {
 	return s.sends
 }
 
-func (s *stagedQuoteEmailSender) Send(context.Context, services.OutboundMail) error {
+func (s *stagedQuoteEmailSender) Send(_ context.Context, mail services.OutboundMail) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sends++
+	s.replyTo = append(s.replyTo, mail.ReplyTo)
 	return s.err
 }
 
@@ -336,6 +338,10 @@ func TestQuoteDelivery_ChannelsAreIndependentAndTenantBoundariesHold(t *testing.
 	if statuses[domain.ChannelTypeWhatsApp] != domain.SendTrackingStatusFailed ||
 		statuses[domain.ChannelTypeEmail] != domain.SendTrackingStatusSent {
 		t.Errorf("statuses = %+v, want WhatsApp failed and email sent", statuses)
+	}
+	// The client's answer goes to the branch mailbox the email channel carries.
+	if len(email.replyTo) != 1 || email.replyTo[0] != "quotes@test.local" {
+		t.Errorf("Reply-To = %q, want the branch mailbox", email.replyTo)
 	}
 
 	otherAccount, otherBranch := e.seedAccount(t, "Delivery intruder")

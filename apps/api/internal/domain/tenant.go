@@ -69,6 +69,8 @@ type Branch struct {
 	IsActive          bool
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+	// Email is the mailbox of the branch's email channel: where a client's reply to a quote goes.
+	Email *string
 }
 
 // NewBranch is a branch to open under the caller's account. DefaultExpiryDays is how long a
@@ -78,6 +80,7 @@ type NewBranch struct {
 	Name              string
 	Address           *string
 	DefaultExpiryDays int
+	Email             *string
 }
 
 // BranchUpdate replaces a branch's editable fields. IsActive is nil to leave it alone, so an
@@ -87,4 +90,7 @@ type BranchUpdate struct {
 	Address           *string
 	DefaultExpiryDays int
 	IsActive          *bool
+	// Email is nil to leave the branch mailbox alone and blank to clear it, so a form that does
+	// not show the field (the onboarding step, reopening a branch) cannot erase it.
+	Email *string
 }

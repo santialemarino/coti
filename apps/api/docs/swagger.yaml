@@ -146,6 +146,8 @@ definitions:
         type: string
       default_expiry_days:
         type: integer
+      email:
+        type: string
       id:
         type: string
       is_active:
@@ -479,6 +481,9 @@ definitions:
         maximum: 365
         minimum: 1
         type: integer
+      email:
+        maxLength: 255
+        type: string
       name:
         maxLength: 255
         minLength: 1
@@ -1823,6 +1828,9 @@ definitions:
         maximum: 365
         minimum: 1
         type: integer
+      email:
+        maxLength: 255
+        type: string
       is_active:
         type: boolean
       name:

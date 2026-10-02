@@ -85,13 +85,48 @@ func (f *fakeBranchReader) Deactivate(
 	return nil
 }
 
-type fakeBranchChannels struct{ created int }
+// fakeBranchChannels keeps a branch's email channels, which is all a BranchService writes after
+// opening the defaults.
+type fakeBranchChannels struct {
+	defaults []*string
+	email    []domain.Channel
+}
 
-func (f *fakeBranchChannels) CreateManualEntry(
-	_ context.Context, _ repository.Querier, _, _ uuid.UUID,
+func (f *fakeBranchChannels) ListActiveByType(
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID, channelType domain.ChannelType,
+) ([]domain.Channel, error) {
+	if channelType != domain.ChannelTypeEmail {
+		return nil, nil
+	}
+	return f.email, nil
+}
+
+func (f *fakeBranchChannels) Create(
+	_ context.Context, _ repository.Querier, accountID, branchID uuid.UUID, in domain.NewChannel,
+) (*domain.Channel, error) {
+	channel := domain.Channel{ID: uuid.New(), AccountID: accountID, BranchID: branchID,
+		Type: in.Type, IsActive: true, Identifier: in.Identifier}
+	f.email = append(f.email, channel)
+	return &channel, nil
+}
+
+func (f *fakeBranchChannels) CreateDefaults(
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID, email *string,
 ) error {
-	f.created++
+	f.defaults = append(f.defaults, email)
 	return nil
+}
+
+func (f *fakeBranchChannels) Update(
+	_ context.Context, _ repository.Querier, _, _, channelID uuid.UUID, in domain.ChannelUpdate,
+) (*domain.Channel, error) {
+	for i := range f.email {
+		if f.email[i].ID == channelID {
+			f.email[i].Identifier = in.Identifier
+			return &f.email[i], nil
+		}
+	}
+	return nil, domain.ErrNotFound
 }
 
 type fakeBranchCatalog struct{ seeded []uuid.UUID }
@@ -231,4 +266,109 @@ func TestBranchService_CreateBranch_MakesTheCatalogAvailableAtTheNewBranch(t *te
 	if len(catalog.seeded) != 1 || catalog.seeded[0] != branch.ID {
 		t.Fatalf("catalog seeded at %v, want only the new branch %v", catalog.seeded, branch.ID)
 	}
+}
+
+func strptr(s string) *string { return &s }
+
+func TestBranchService_CreateBranch_OpensTheDefaultChannelsWithTheMailbox(t *testing.T) {
+	t.Parallel()
+	channels := &fakeBranchChannels{}
+	svc := NewBranchService(&fakeDB{}, &fakeBranchReader{}, channels, &fakeBranchCatalog{}, 7)
+
+	branch, err := svc.CreateBranch(context.Background(), adminTenant(),
+		domain.NewBranch{Name: "Sucursal Norte", Email: strptr("  Ventas@Norte.Test ")})
+	if err != nil {
+		t.Fatalf("CreateBranch() = %v, want no error", err)
+	}
+	if len(channels.defaults) != 1 || channels.defaults[0] == nil ||
+		*channels.defaults[0] != "ventas@norte.test" {
+		t.Fatalf("default channels opened with %v, want the normalized mailbox", channels.defaults)
+	}
+	if branch.Email == nil || *branch.Email != "ventas@norte.test" {
+		t.Fatalf("branch email = %v, want the normalized mailbox", branch.Email)
+	}
+}
+
+func TestBranchService_CreateBranch_RefusesAMailboxThatIsNotAnAddress(t *testing.T) {
+	t.Parallel()
+	svc := NewBranchService(&fakeDB{}, &fakeBranchReader{}, &fakeBranchChannels{},
+		&fakeBranchCatalog{}, 7)
+
+	_, err := svc.CreateBranch(context.Background(), adminTenant(),
+		domain.NewBranch{Name: "Sucursal Norte", Email: strptr("ventas en norte")})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("CreateBranch() = %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestBranchService_UpdateBranch_WritesTheMailboxOntoTheEmailChannel(t *testing.T) {
+	t.Parallel()
+	channels := &fakeBranchChannels{email: []domain.Channel{
+		{ID: uuid.New(), Type: domain.ChannelTypeEmail, IsActive: true},
+	}}
+	svc := NewBranchService(&fakeDB{}, newBranchReaderWith(), channels, &fakeBranchCatalog{}, 7)
+	update := domain.BranchUpdate{Name: "Villa Bosch", DefaultExpiryDays: 7}
+
+	update.Email = strptr("ventas@villabosch.test")
+	if _, err := svc.UpdateBranch(context.Background(), adminTenant(), assignedBranch, update); err != nil {
+		t.Fatalf("UpdateBranch(set) = %v", err)
+	}
+	if got := channels.email[0].Identifier; got == nil || *got != "ventas@villabosch.test" {
+		t.Fatalf("mailbox = %v, want it written", got)
+	}
+
+	update.Email = nil
+	if _, err := svc.UpdateBranch(context.Background(), adminTenant(), assignedBranch, update); err != nil {
+		t.Fatalf("UpdateBranch(untouched) = %v", err)
+	}
+	if channels.email[0].Identifier == nil {
+		t.Fatal("an update without the field erased the mailbox")
+	}
+
+	update.Email = strptr("")
+	if _, err := svc.UpdateBranch(context.Background(), adminTenant(), assignedBranch, update); err != nil {
+		t.Fatalf("UpdateBranch(clear) = %v", err)
+	}
+	if channels.email[0].Identifier != nil {
+		t.Fatalf("mailbox = %v, want it cleared", *channels.email[0].Identifier)
+	}
+}
+
+func TestBranchService_UpdateBranch_OpensTheEmailChannelABranchLacks(t *testing.T) {
+	t.Parallel()
+	channels := &fakeBranchChannels{}
+	svc := NewBranchService(&fakeDB{}, newBranchReaderWith(), channels, &fakeBranchCatalog{}, 7)
+
+	_, err := svc.UpdateBranch(context.Background(), adminTenant(), assignedBranch,
+		domain.BranchUpdate{Name: "Villa Bosch", DefaultExpiryDays: 7,
+			Email: strptr("ventas@villabosch.test")})
+	if err != nil {
+		t.Fatalf("UpdateBranch() = %v", err)
+	}
+	if len(channels.email) != 1 || channels.email[0].Identifier == nil {
+		t.Fatalf("email channels = %+v, want one opened with the mailbox", channels.email)
+	}
+}
+
+func TestBranchService_UpdateBranch_KeepsTheMailboxAConfiguredChannelSendsFrom(t *testing.T) {
+	t.Parallel()
+	channels := &fakeBranchChannels{email: []domain.Channel{{ID: uuid.New(),
+		Type: domain.ChannelTypeEmail, IsActive: true, IsConfigured: true,
+		Identifier: strptr("ventas@villabosch.test")}}}
+	svc := NewBranchService(&fakeDB{}, newBranchReaderWith(), channels, &fakeBranchCatalog{}, 7)
+
+	_, err := svc.UpdateBranch(context.Background(), adminTenant(), assignedBranch,
+		domain.BranchUpdate{Name: "Villa Bosch", DefaultExpiryDays: 7, Email: strptr("")})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("UpdateBranch() = %v, want ErrInvalidInput", err)
+	}
+	if channels.email[0].Identifier == nil {
+		t.Fatal("the configured channel lost its mailbox")
+	}
+}
+
+func newBranchReaderWith() *fakeBranchReader {
+	return &fakeBranchReader{all: []domain.Branch{
+		{ID: assignedBranch, AccountID: testAccountID, Name: "Villa Bosch", IsActive: true},
+	}}
 }

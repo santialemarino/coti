@@ -28,6 +28,7 @@ const CENTRAL = {
   id: 'b1',
   name: 'Casa Central',
   address: null,
+  email: null,
   defaultExpiryDays: 7,
   isActive: true,
 };

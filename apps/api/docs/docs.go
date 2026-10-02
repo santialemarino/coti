@@ -6130,6 +6130,9 @@ const docTemplate = `{
                 "default_expiry_days": {
                     "type": "integer"
                 },
+                "email": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -6638,6 +6641,10 @@ const docTemplate = `{
                     "type": "integer",
                     "maximum": 365,
                     "minimum": 1
+                },
+                "email": {
+                    "type": "string",
+                    "maxLength": 255
                 },
                 "name": {
                     "type": "string",
@@ -8617,6 +8624,10 @@ const docTemplate = `{
                     "type": "integer",
                     "maximum": 365,
                     "minimum": 1
+                },
+                "email": {
+                    "type": "string",
+                    "maxLength": 255
                 },
                 "is_active": {
                     "type": "boolean"

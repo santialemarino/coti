@@ -57,6 +57,7 @@ describe('AppHeader account menu', () => {
       id: 'b1',
       name: 'Centro',
       address: null,
+      email: null,
       defaultExpiryDays: 7,
       isActive: true,
     };

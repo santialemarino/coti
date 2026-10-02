@@ -39,6 +39,7 @@ export function BranchStep({ branch, formId, onSubmit }: BranchStepProps) {
     defaultValues: {
       name: branch.name,
       address: branch.address ?? '',
+      email: branch.email ?? '',
       defaultExpiryDays: String(branch.defaultExpiryDays),
     },
   });

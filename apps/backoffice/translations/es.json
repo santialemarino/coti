@@ -122,6 +122,7 @@
     "QUOTE_NOT_REACTIVATABLE": "La cotización ya no está cerrada o su versión cambió. Actualizá la pantalla.",
     "QUOTE_NOT_SENDABLE": "La cotización cambió y esta versión ya no es la aprobada.",
     "DELIVERY_CHANNEL": "Esta sucursal no tiene los canales de envío necesarios configurados.",
+    "CHANNEL_IDENTIFIER": "Revisá la dirección: no es un correo válido.",
     "DELIVERY_UNAVAILABLE": "No se pudo entregar por ningún canal. Revisá la configuración de envío o intentá más tarde.",
     "UNSUPPORTED_FILE_TYPE": "Ese tipo de archivo no está soportado.",
     "LEGACY_EXCEL_FILE": "No podemos leer archivos .xls. Guardalo como .xlsx o .csv y volvé a subirlo.",
@@ -617,6 +618,8 @@
         "clientPlaceholder": "Nombre del cliente",
         "sellerLabel": "Vendedor",
         "unassigned": "Sin asignar",
+        "sellerSelf": "El pedido queda a tu nombre.",
+        "sellerOnly": "Es el único vendedor de esta sucursal.",
         "sellersLoading": "Cargando vendedores…",
         "noSellers": "No hay vendedores disponibles para esta sucursal.",
         "sellerPlaceholder": "Seleccioná un vendedor",
@@ -1130,6 +1133,11 @@
       "label": "Dirección",
       "placeholder": "Ingresá la dirección de la sucursal"
     },
+    "email": {
+      "label": "Correo de la sucursal",
+      "placeholder": "ventas@tucorralon.com",
+      "hint": "Las respuestas de tus clientes a una cotización llegan a esta dirección."
+    },
     "defaultExpiryDays": {
       "label": "Días de vencimiento de las cotizaciones",
       "hint": "Por defecto {count} días. Cada sucursal puede usar el suyo.",
@@ -1143,7 +1151,9 @@
     "errors": {
       "NOT_FOUND": "Esa sucursal ya no existe. Actualizá el listado.",
       "INVALID_INPUT": "Revisá los datos de la sucursal e intentá de nuevo.",
-      "INTERNAL": "No pudimos guardar la sucursal. Intentá de nuevo."
+      "INTERNAL": "No pudimos guardar la sucursal. Intentá de nuevo.",
+      "CHANNEL_IDENTIFIER": "Revisá el correo de la sucursal: no es una dirección válida.",
+      "CONFLICT": "Ese correo ya está en otro canal de la sucursal."
     }
   },
   "account": {
