@@ -108,6 +108,27 @@ services:
       - key: MAIL_FROM_ADDRESS
         scope: RUN_TIME
         type: SECRET
+      # local keeps files on this container's disk, which a redeploy wipes and attachment-extraction,
+      # a container of its own, never sees: file orders need spaces. Enter the five secrets below
+      # first, then switch this here and on attachment-extraction in the same change.
+      - key: STORAGE_PROVIDER
+        scope: RUN_TIME
+        value: local
+      - key: STORAGE_ENDPOINT
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_REGION
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_BUCKET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_SECRET_KEY
+        scope: RUN_TIME
+        type: SECRET
       # Both or neither, in either direction: hop counting is spoof-resistant only for a request
       # that really transited the declared chain, and CIDRs with the count at 0 are never read.
       # Raise this to 1 when the CIDRs secret holds the platform's forwarding range.
@@ -334,5 +355,24 @@ jobs:
         scope: RUN_TIME
         type: SECRET
       - key: STORAGE_LOCAL_SIGNING_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      # The sweep downloads every file it reads, so it runs on the same bucket as api. See there.
+      - key: STORAGE_PROVIDER
+        scope: RUN_TIME
+        value: local
+      - key: STORAGE_ENDPOINT
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_REGION
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_BUCKET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_SECRET_KEY
         scope: RUN_TIME
         type: SECRET
