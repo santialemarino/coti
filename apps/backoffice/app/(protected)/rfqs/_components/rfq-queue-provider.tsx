@@ -1,3 +1,4 @@
+import { NoBranchScreen } from '@/app/(protected)/_components/no-branch-screen';
 import { RfqListProvider } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { getBranches } from '@/lib/api/branches';
 import { apiRequest } from '@/lib/api/client';
@@ -49,6 +50,9 @@ export async function RfqQueueProvider({ children }: { children: React.ReactNode
     getSession(),
     getBranches(),
   ]);
+  const isAdmin = session?.role === ADMIN_ROLE;
+  // A seller with no branch has no queue; their own settings stay reachable outside it.
+  if (!isAdmin && branches.length === 0) return <NoBranchScreen />;
   const activeBranchId = await getEffectiveBranchId(branches);
 
   return (
@@ -57,7 +61,7 @@ export async function RfqQueueProvider({ children }: { children: React.ReactNode
       activeBranchId={activeBranchId ?? null}
       userName={session?.name ?? ''}
       userId={session?.userId ?? ''}
-      isAdmin={session?.role === ADMIN_ROLE}
+      isAdmin={isAdmin}
     >
       {children}
     </RfqListProvider>

@@ -37,6 +37,8 @@ beforeEach(() => {
     email: 'ana@corralon.test',
     emailVerified: true,
     role: 'ADMIN',
+    emailVerificationRequired: true,
+    mailDelivery: true,
   });
   vi.mocked(getTranslations).mockResolvedValue(((key: string) => key) as never);
   vi.mocked(getAccount).mockResolvedValue(ACCOUNT);

@@ -27,6 +27,8 @@ const SESSION = {
   email: 'ana@coti.test',
   emailVerified: false,
   role: 'ADMIN',
+  emailVerificationRequired: true,
+  mailDelivery: true,
 };
 
 beforeEach(() => {

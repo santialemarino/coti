@@ -31,6 +31,7 @@ export default async function OnboardingPage() {
       branches={branches.filter((branch) => branch.isActive)}
       users={users}
       currentUserId={session.userId}
+      mailDelivery={session.mailDelivery}
     />
   );
 }

@@ -17,6 +17,7 @@ interface UserRaw {
   role: string;
   is_active: boolean;
   branch_ids: string[];
+  invite_status: 'PENDING' | 'EXPIRED' | null;
   last_login_at: string | null;
   created_at: string;
   updated_at: string;
@@ -31,6 +32,8 @@ export interface AccountUser {
   role: string;
   isActive: boolean;
   branchIds: string[];
+  // Set while the user has not chosen a password through their invite yet.
+  inviteStatus: 'PENDING' | 'EXPIRED' | null;
   // Null until they log in for the first time, so a screen can tell "never" from "long ago".
   lastLoginAt: string | null;
 }
@@ -45,6 +48,7 @@ function mapUser(raw: UserRaw): AccountUser {
     role: raw.role,
     isActive: raw.is_active,
     branchIds: raw.branch_ids,
+    inviteStatus: raw.invite_status,
     lastLoginAt: raw.last_login_at,
   };
 }

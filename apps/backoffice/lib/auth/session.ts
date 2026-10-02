@@ -27,6 +27,8 @@ interface MeRaw {
   email: string;
   email_verified: boolean;
   role: string;
+  email_verification_required: boolean;
+  mail_delivery: boolean;
 }
 
 // --- Frontend types (camelCase) ---
@@ -38,6 +40,10 @@ export interface SessionUser {
   email: string;
   emailVerified: boolean;
   role: string;
+  /* Whether an unconfirmed address closes the product, which is the installation's choice. */
+  emailVerificationRequired: boolean;
+  /* False while mail only reaches the log, so nothing that needs a mailed link can work. */
+  mailDelivery: boolean;
 }
 
 /*
@@ -60,6 +66,8 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
       email: me.email,
       emailVerified: me.email_verified,
       role: me.role,
+      emailVerificationRequired: me.email_verification_required,
+      mailDelivery: me.mail_delivery,
     };
   } catch (error) {
     const code = errorCodeOf(error);
@@ -67,6 +75,12 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
     throw error;
   }
 });
+
+// Whether the caller has to confirm their address before using the product. Only then is the
+// confirmation screen a gate rather than a suggestion.
+export function mustVerifyEmail(session: SessionUser): boolean {
+  return session.emailVerificationRequired && !session.emailVerified;
+}
 
 // An admin-only page answers 404 rather than 403, so it does not advertise to a seller that
 // it is there at all.

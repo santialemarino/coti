@@ -23,6 +23,8 @@ const SESSION = {
   email: 'ana@corralon.test',
   emailVerified: true,
   role: 'ADMIN',
+  emailVerificationRequired: true,
+  mailDelivery: true,
 };
 const CENTRAL = {
   id: 'b1',

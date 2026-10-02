@@ -1,12 +1,18 @@
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
+import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Onboarding } from '@/lib/api/onboarding';
+import messages from '@/translations/es.json';
 
 vi.mock('@/app/(protected)/_components/app-header', () => ({ AppHeader: vi.fn(() => null) }));
 vi.mock('@/lib/api/onboarding', () => ({ getOnboarding: vi.fn() }));
 vi.mock('@/lib/api/branches', () => ({ getBranches: vi.fn() }));
-vi.mock('@/lib/auth/session', () => ({ getSession: vi.fn() }));
+vi.mock('@/lib/auth/branch', () => ({ getSelectedBranchId: vi.fn() }));
+vi.mock('@/lib/auth/session', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/auth/session')>()),
+  getSession: vi.fn(),
+}));
 /*
  * Thrown rather than recorded, the way the real one behaves: a no-op mock would let the layout run
  * on past the redirect, and the assertion that matters here is what it never reaches.
@@ -26,10 +32,11 @@ class RedirectError extends Error {
 const { getOnboarding } = await import('@/lib/api/onboarding');
 const { getBranches } = await import('@/lib/api/branches');
 const { getSession } = await import('@/lib/auth/session');
+const { getSelectedBranchId } = await import('@/lib/auth/branch');
 const { ROUTES } = await import('@/config/routes');
 const { default: ProtectedLayout } = await import('@/app/(protected)/layout');
 
-function session(emailVerified: boolean, role = 'ADMIN') {
+function session(emailVerified: boolean, role = 'ADMIN', emailVerificationRequired = true) {
   return {
     userId: 'u1',
     accountId: 'a1',
@@ -37,13 +44,19 @@ function session(emailVerified: boolean, role = 'ADMIN') {
     email: 'ana@corralonsanmartin.test',
     emailVerified,
     role,
+    emailVerificationRequired,
+    mailDelivery: true,
   };
 }
 
 // Returns where the layout sent the caller, or null when it rendered instead.
 async function redirectedTo(): Promise<string | null> {
   try {
-    render(await ProtectedLayout({ children: null }));
+    render(
+      <NextIntlClientProvider locale="es" messages={messages}>
+        {await ProtectedLayout({ children: <p>pantalla</p> })}
+      </NextIntlClientProvider>,
+    );
     return null;
   } catch (error) {
     if (error instanceof RedirectError) return error.path;
@@ -66,7 +79,8 @@ beforeEach(() => {
   // Answered by default so a layout that reads it out of turn fails on the assertion rather than
   // on an undefined, which reads as a crash instead of as the ordering it is about.
   vi.mocked(getOnboarding).mockResolvedValue(FINISHED_ONBOARDING);
-  vi.mocked(getBranches).mockResolvedValue([{ isActive: true }] as never);
+  vi.mocked(getBranches).mockResolvedValue([{ id: 'b1', isActive: true }] as never);
+  vi.mocked(getSelectedBranchId).mockResolvedValue(undefined);
 });
 
 describe('ProtectedLayout', () => {
@@ -74,6 +88,17 @@ describe('ProtectedLayout', () => {
     vi.mocked(getSession).mockResolvedValue(null);
 
     await expect(redirectedTo()).resolves.toBe(ROUTES.sessionEnded);
+  });
+
+  /*
+   * The production deadlock: the API leaves the requirement off (mail is console there), but the
+   * layout used to send every unconfirmed caller to a screen whose link only ever reached a log.
+   */
+  it('lets an unconfirmed caller in while the installation does not require a confirmation', async () => {
+    vi.mocked(getSession).mockResolvedValue(session(false, 'ADMIN', false));
+
+    await expect(redirectedTo()).resolves.toBeNull();
+    expect(screen.getByText('pantalla')).toBeTruthy();
   });
 
   /*
@@ -129,7 +154,23 @@ describe('ProtectedLayout', () => {
       checklistHiddenAt: null,
       completedAt: null,
     });
-    vi.mocked(getBranches).mockResolvedValue([{ isActive: false }] as never);
+    vi.mocked(getBranches).mockResolvedValue([{ id: 'b1', isActive: false }] as never);
+
+    await expect(redirectedTo()).resolves.toBeNull();
+  });
+
+  // A closed or unassigned branch left in the cookie made every scoped read answer 403, and the
+  // error screen read the same cookie again.
+  it('drops a branch cookie the caller no longer reaches', async () => {
+    vi.mocked(getSession).mockResolvedValue(session(true, 'SELLER'));
+    vi.mocked(getSelectedBranchId).mockResolvedValue('b-cerrada');
+
+    await expect(redirectedTo()).resolves.toBe(ROUTES.branchReset);
+  });
+
+  it('keeps a branch cookie the caller still reaches', async () => {
+    vi.mocked(getSession).mockResolvedValue(session(true, 'SELLER'));
+    vi.mocked(getSelectedBranchId).mockResolvedValue('b1');
 
     await expect(redirectedTo()).resolves.toBeNull();
   });

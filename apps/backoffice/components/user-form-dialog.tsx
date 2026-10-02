@@ -31,7 +31,9 @@ import {
 } from '@repo/ui/components';
 import type { UserResult } from '@/app/(protected)/settings/users/actions';
 import {
+  USER_ACCESS,
   userSchema,
+  type UserAccess,
   type UserFormMode,
   type UserValues,
 } from '@/app/(protected)/settings/users/form-schema';
@@ -55,6 +57,8 @@ interface UserFormDialogProps {
   branches: Branch[];
   /* True when the caller is editing themselves, which the API refuses to let change their role. */
   isSelf: boolean;
+  /* False while mail only reaches the log, when an invite could never be redeemed. */
+  mailDelivery: boolean;
   onSubmit: (values: UserValues) => Promise<UserResult>;
 }
 
@@ -70,6 +74,7 @@ export function UserFormDialog({
   assigned,
   branches,
   isSelf,
+  mailDelivery,
   onSubmit,
 }: UserFormDialogProps) {
   const t = useTranslations('users');
@@ -99,9 +104,20 @@ export function UserFormDialog({
   const form = useForm<UserValues>({
     ...FORM_VALIDATION,
     resolver: zodResolver(schema),
-    defaultValues: { name: '', email: '', role: SELLER_ROLE, branchIds: [], password: '' },
+    defaultValues: {
+      name: '',
+      email: '',
+      role: SELLER_ROLE,
+      branchIds: [],
+      access: initialAccess(mailDelivery),
+      password: '',
+    },
   });
   const role = useWatch({ control: form.control, name: 'role' });
+  const access = useWatch({ control: form.control, name: 'access' });
+  // A new user in an account with one branch has one obvious assignment, so it is made. An id, not
+  // the list: a re-render hands over a fresh array, and resetting on it would wipe what was typed.
+  const soleBranchId = mode === 'create' && branches.length === 1 ? branches[0]?.id : undefined;
   const pending = form.formState.isSubmitting;
 
   /*
@@ -114,10 +130,11 @@ export function UserFormDialog({
       name: user?.name ?? '',
       email: user?.email ?? '',
       role: roleOf(user?.role),
-      branchIds: assigned.map((branch) => branch.id),
+      branchIds: soleBranchId ? [soleBranchId] : assigned.map((branch) => branch.id),
+      access: initialAccess(mailDelivery),
       password: '',
     });
-  }, [open, user, assigned, form]);
+  }, [open, user, assigned, soleBranchId, mailDelivery, form]);
 
   async function submit(values: UserValues) {
     const result = await onSubmit(values);
@@ -177,7 +194,46 @@ export function UserFormDialog({
               )}
             />
 
-            {shown.mode === 'create' ? (
+            {shown.mode === 'create' && mailDelivery ? (
+              <FormField
+                control={form.control}
+                name="access"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel required>{t('access.label')}</FormLabel>
+                    <FormControl>
+                      <RadioGroup
+                        aria-label={t('access.label')}
+                        className="gap-y-3"
+                        value={field.value}
+                        onValueChange={field.onChange}
+                      >
+                        {USER_ACCESS.map((option) => (
+                          <div key={option} className="flex items-start gap-x-2.5">
+                            <RadioGroupItem
+                              id={`${fieldId}-access-${option}`}
+                              value={option}
+                              className="mt-0.5"
+                            />
+                            <div className="flex flex-col gap-y-0.5">
+                              <Label
+                                htmlFor={`${fieldId}-access-${option}`}
+                                className="cursor-pointer"
+                              >
+                                {t(`access.${option}.label`)}
+                              </Label>
+                              <Hint>{t(`access.${option}.hint`)}</Hint>
+                            </div>
+                          </div>
+                        ))}
+                      </RadioGroup>
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+            ) : null}
+
+            {shown.mode === 'create' && access === 'PASSWORD' ? (
               <div className="flex flex-col gap-y-2">
                 <PasswordField
                   control={form.control}
@@ -186,7 +242,8 @@ export function UserFormDialog({
                   placeholder={t('password.placeholder')}
                   meter
                 />
-                <Hint>{t('password.hint')}</Hint>
+                {/* With no mail there is one way in, so it is stated rather than offered. */}
+                {mailDelivery ? null : <Hint>{t('access.passwordOnly')}</Hint>}
               </div>
             ) : null}
 
@@ -305,6 +362,11 @@ export function UserFormDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+// An invite is the default whenever one can be delivered; otherwise a password is the only way in.
+function initialAccess(mailDelivery: boolean): UserAccess {
+  return mailDelivery ? 'INVITE' : 'PASSWORD';
 }
 
 // The wire carries a plain string. An unknown role resolves to the narrower of the two, so a value

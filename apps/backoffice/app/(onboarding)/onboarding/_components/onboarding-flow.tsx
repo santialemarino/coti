@@ -69,6 +69,7 @@ interface OnboardingFlowProps {
   branches: Branch[];
   users: AccountUser[];
   currentUserId: string;
+  mailDelivery: boolean;
 }
 
 export function OnboardingFlow({
@@ -78,6 +79,7 @@ export function OnboardingFlow({
   branches,
   users,
   currentUserId,
+  mailDelivery,
 }: OnboardingFlowProps) {
   const router = useRouter();
   const t = useTranslations('onboarding');
@@ -418,6 +420,7 @@ export function OnboardingFlow({
               branches={branches}
               currentUserId={currentUserId}
               users={users}
+              mailDelivery={mailDelivery}
               onCreate={async (values: UserValues) => {
                 const result = await createOnboardingUser(values);
                 if (result.ok) setAddedUser(true);

@@ -10,7 +10,10 @@ vi.mock('@/lib/api/client', async (importOriginal) => ({
   apiRequest: vi.fn(),
 }));
 
+vi.mock('@/lib/auth/session', () => ({ endSession: vi.fn() }));
+
 const { apiRequest } = await import('@/lib/api/client');
+const { endSession } = await import('@/lib/auth/session');
 const { ApiError } = await import('@/lib/api/errors');
 
 const VALUES: ResetPasswordValues = {
@@ -32,6 +35,19 @@ describe('resetPassword', () => {
       authenticated: false,
       body: { token: 't0ken', new_password: 'Coti-1234-larga' },
     });
+  });
+
+  // A link opened in a signed-in browser (the admin's own, trying an invite) must not leave that
+  // session standing over the account whose password was just chosen.
+  it('ends the browser session once the password is set, and only then', async () => {
+    vi.mocked(apiRequest).mockResolvedValue(undefined);
+    await resetPassword(VALUES);
+    expect(endSession).toHaveBeenCalledTimes(1);
+
+    vi.mocked(endSession).mockClear();
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('INVALID_LINK', 401));
+    await resetPassword(VALUES);
+    expect(endSession).not.toHaveBeenCalled();
   });
 
   // Only the policy belongs to the password field. Reading every 422 as one used to put "the
