@@ -51,6 +51,7 @@ type stagedQuoteEmailSender struct {
 	mu      sync.Mutex
 	sends   int
 	replyTo []string
+	names   []string
 	err     error
 }
 
@@ -65,6 +66,7 @@ func (s *stagedQuoteEmailSender) Send(_ context.Context, mail services.OutboundM
 	defer s.mu.Unlock()
 	s.sends++
 	s.replyTo = append(s.replyTo, mail.ReplyTo)
+	s.names = append(s.names, mail.ReplyToName)
 	return s.err
 }
 
@@ -342,6 +344,9 @@ func TestQuoteDelivery_ChannelsAreIndependentAndTenantBoundariesHold(t *testing.
 	// The client's answer goes to the branch mailbox the email channel carries.
 	if len(email.replyTo) != 1 || email.replyTo[0] != "quotes@test.local" {
 		t.Errorf("Reply-To = %q, want the branch mailbox", email.replyTo)
+	}
+	if len(email.names) != 1 || !strings.Contains(email.names[0], " — ") {
+		t.Errorf("Reply-To name = %q, want the account and the branch", email.names)
 	}
 
 	otherAccount, otherBranch := e.seedAccount(t, "Delivery intruder")

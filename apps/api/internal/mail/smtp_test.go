@@ -159,7 +159,7 @@ func TestSMTPMailer_Send_AddsReplyToOnlyWhenOneIsGiven(t *testing.T) {
 			server := startFakeSMTP(t, nil)
 			err := NewSMTPMailer(smtpConfig(t, server.addr, false)).Send(context.Background(),
 				domain.EmailMessage{To: testTo, Subject: smtpSubject, TextBody: smtpText,
-					HTMLBody: smtpHTML, ReplyTo: tc.replyTo})
+					HTMLBody: smtpHTML, ReplyTo: tc.replyTo, ReplyToName: "Corralón San Martín — Morón"})
 			if err != nil {
 				t.Fatalf("Send() = %v, want no error", err)
 			}
@@ -176,8 +176,8 @@ func TestSMTPMailer_Send_AddsReplyToOnlyWhenOneIsGiven(t *testing.T) {
 				return
 			}
 			reply, err := netmail.ParseAddress(header)
-			if err != nil || reply.Address != tc.replyTo {
-				t.Fatalf("Reply-To = %q (%v), want %s", header, err, tc.replyTo)
+			if err != nil || reply.Address != tc.replyTo || reply.Name != "Corralón San Martín — Morón" {
+				t.Fatalf("Reply-To = %q (%v), want the branch named, at %s", header, err, tc.replyTo)
 			}
 			if got.from != testFrom {
 				t.Fatalf("MAIL FROM = %q, want the platform sender %q", got.from, testFrom)

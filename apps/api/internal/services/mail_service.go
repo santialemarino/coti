@@ -22,6 +22,7 @@ type OutboundMail struct {
 	To          string
 	ToName      string
 	ReplyTo     string
+	ReplyToName string
 	Subject     string
 	Heading     string
 	Paragraphs  []string
