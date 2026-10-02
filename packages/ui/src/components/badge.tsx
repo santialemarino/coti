@@ -13,7 +13,7 @@ import { cn } from '../lib/utils';
 const badgeVariants = cva(
   cn(
     'inline-flex w-fit shrink-0 items-center justify-center gap-x-1.5 border whitespace-nowrap rounded-full',
-    'transition-[color,background-color,border-color] duration-200 ease-out-soft',
+    'transition-[color,background-color,border-color,box-shadow] duration-200 ease-out-soft',
     "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3",
   ),
   {
