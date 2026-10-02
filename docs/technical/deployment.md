@@ -220,12 +220,12 @@ kept out of a public file: `STORAGE_ENDPOINT`, `STORAGE_REGION` (`us-east-1` whi
 holds the Space) and `STORAGE_BUCKET`.
 
 **The API needs the first four; the correction-learning job also needs the OpenAI key.**
-`config.Load()` refuses to start when
-a capability is switched on and its credential is empty, so the committed spec ships every optional
-one **off** — `AI_*_PROVIDER` at `disabled`, `MAIL_PROVIDER` at `console`, `STORAGE_PROVIDER` at
-`local`, `RATE_LIMIT_TRUSTED_PROXY_HOPS` at `0`. Fill a secret, then turn its capability on; doing it the
-other way round produces a deploy that never starts, and `ci.deploy-spec.yml` boots the image on the
-spec's own settings to keep that true.
+`config.Load()` refuses to start when a capability is switched on and its credential is empty, so
+the committed spec ships every optional one **off** — `AI_*_PROVIDER` at `disabled`,
+`MAIL_PROVIDER` at `console`, `STORAGE_PROVIDER` at `local`, `RATE_LIMIT_TRUSTED_PROXY_HOPS` at
+`0`. Fill a secret, then turn its capability on; doing it the other way round produces a deploy
+that never starts, and `ci.deploy-spec.yml` boots the image on the spec's own settings to keep that
+true.
 
 | Key                             | Needed when                                                        | Shape                               |
 | ------------------------------- | ------------------------------------------------------------------ | ----------------------------------- |
@@ -296,8 +296,9 @@ The full list of keys, with defaults and what each bounds, is in the four `.env.
    `STORAGE_LOCAL_API_BASE_URL` and `WEB_BACKOFFICE_URL` need no second pass — they are bound to
    `${APP_URL}` and resolve at runtime.
 8. Fill the optional secrets and flip their switches: the Spaces bucket (before the first file
-   order), mail, then the two AI vendors, then the rate-limit proxy pair. Each is a restart, not a rebuild. `AI_EMBEDDINGS_PROVIDER` is declared
-   on `api` and on `catalog-embedding`: turn it on on both, or the job embeds nothing.
+   order), mail, then the two AI vendors, then the rate-limit proxy pair. Each is a restart, not a
+   rebuild. `AI_EMBEDDINGS_PROVIDER` is declared on `api` and on `catalog-embedding`: turn it on on
+   both, or the job embeds nothing.
    `attachment-extraction` declares no AI keys at all and runs on the defaults, which are off: the
    language model, embeddings and their keys have to be added to it too, or a file order the sweep
    picks up fails at extraction even with AI on everywhere else.

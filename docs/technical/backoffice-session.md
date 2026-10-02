@@ -156,7 +156,8 @@ relative, because Next builds a route handler's `request.url` on the server's ow
 than the browser's `Host`, and an absolute target made from it would send the caller to `localhost`.
 And a request carrying the `RSC` header — a client navigation, or an action's redirect, which Next
 follows server-side — gets an empty 204 instead of the redirect: a followed redirect would lose the
-`Set-Cookie` and keep the shell, switcher included, showing what was just dropped, while a response
+`Set-Cookie` when the server follows it for an action, and a client navigation would keep the shell,
+switcher included, showing what was just dropped, while a response
 with no flight data makes the router load the route as a document, which then redirects.
 
 A caller reaching a single branch is shown that branch as plain context, not a switcher: it is their
