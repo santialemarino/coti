@@ -214,6 +214,13 @@ panel enters from the trigger and then dissolves in place.
   the top of the page and a screen reader is told nothing happened, so move focus into the incoming
   stage — onto whatever the caller has to act on. Not on a first render, which would skip the
   heading.
+- **Something that folds and unfolds on a press uses a spring, not a duration** — `SPRING.expand` /
+  `SPRING.collapse` from `@repo/ui/lib`, and `STAGGER` when a list fans out. A press mid-flight then
+  reverses from where things are instead of restarting, and folding does not bounce. Items that only
+  change place travel with `layout="position"`: they keep their size, and a size animation would
+  scale-correct the text inside them. A list that scrolls on its own needs `layoutScroll` on the
+  scrolling element, or every move is measured against the wrong origin. The queue's status stacks
+  (`RfqQueueGroup`) are the reference.
 - **A column that comes and goes with the route lives in the layout, not in the pages.** A page
   unmounts the moment the route changes, so a column it renders can never animate out. Keep it in
   the shared layout, derive open from the pathname, and animate the box's `width` between `0` and a
