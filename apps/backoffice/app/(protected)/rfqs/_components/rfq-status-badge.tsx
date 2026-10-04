@@ -40,9 +40,12 @@ export const STATUS_COLOUR: Record<RfqStatus, string> = {
     'bg-status-rejected-subtle border-status-rejected-border text-status-rejected-foreground',
 };
 
-/* The dot carries the full-strength hex, which is what keeps each state recognisable at a glance. */
-const STATUS_DOT: Record<RfqStatus, string> = {
-  RECEIVED: '',
+/*
+ * The dot carries the full-strength hex, which is what keeps each state recognisable at a glance.
+ * RECEIVED's neutral dot only appears beside a label, such as a queue group's heading.
+ */
+export const STATUS_DOT: Record<RfqStatus, string> = {
+  RECEIVED: 'bg-foreground-subtle',
   FAILED: 'bg-status-failed',
   GENERATED: 'bg-status-generated',
   QUOTED: 'bg-status-quoted',

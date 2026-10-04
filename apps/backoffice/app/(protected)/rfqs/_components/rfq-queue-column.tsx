@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
+import { motion } from 'motion/react';
 import { useTranslations } from 'next-intl';
 
 import { useHeldWhileClosed, useScrollLane } from '@repo/ui/hooks';
@@ -46,10 +47,11 @@ export function RfqQueueColumn() {
       inert={!open}
       className="flex w-0 h-[calc(100dvh-4rem)] shrink-0 justify-end self-start sticky top-16 overflow-clip [--queue-width:clamp(240px,22vw,320px)] transition-[width] duration-200 ease-in-out-soft data-[open=true]:w-(--queue-width) data-[open=true]:ease-out-soft motion-reduce:transition-none"
     >
-      {/* Held to the viewport under the 64px header and scrolled on its own, so a queue longer than
-          the order never stretches the page past the detail and leaves it facing blank space. */}
-      <aside
+      {/* Held to the viewport under the 64px header and scrolled on its own, so a long queue never
+          stretches the page; `layoutScroll` lets the stacks measure their moves against that scroll. */}
+      <motion.aside
         ref={lane}
+        layoutScroll
         className="flex w-(--queue-width) h-full shrink-0 flex-col bg-background border-r border-border scroll-area scroll-lane"
       >
         {/* Aligned with the rows below: the title with their text, the switch with their edge. */}
@@ -60,7 +62,7 @@ export function RfqQueueColumn() {
           <RfqViewSwitch view="queue" />
         </div>
         <RfqSidebarList records={records} activeRfqId={activeRfqId} />
-      </aside>
+      </motion.aside>
     </div>
   );
 }

@@ -589,6 +589,11 @@
         "archive": "Archivar pedido",
         "unarchive": "Desarchivar pedido"
       },
+      "groups": {
+        "expand": "Ver todos",
+        "collapse": "Mostrar menos",
+        "stackHint": "Mostrar los {count} pedidos de este estado"
+      },
       "empty": {
         "title": "Todavía no hay pedidos"
       },
