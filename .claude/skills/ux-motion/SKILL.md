@@ -214,6 +214,13 @@ panel enters from the trigger and then dissolves in place.
   the top of the page and a screen reader is told nothing happened, so move focus into the incoming
   stage — onto whatever the caller has to act on. Not on a first render, which would skip the
   heading.
+- **A column that comes and goes with the route lives in the layout, not in the pages.** A page
+  unmounts the moment the route changes, so a column it renders can never animate out. Keep it in
+  the shared layout, derive open from the pathname, and animate the box's `width` between `0` and a
+  fixed value while the column inside keeps that width and rides the box's right edge — it slides
+  in whole instead of being squeezed. `RfqQueueColumn` is the reference. Width is a layout property,
+  which is acceptable here because the move is the point; measure the frame gaps against a
+  production build with the heaviest page beside it.
 - **A content-driven size change is not a CSS animation.** `width: auto` cannot be transitioned, so no
   `transition-*` will ever smooth a box that resizes because its text changed — it needs motion's
   `layout`. `PendingButton` is the reference.
