@@ -691,6 +691,11 @@
         "error": "No se pudo crear el pedido. Intentá de nuevo."
       }
     },
+    "view": {
+      "label": "Vista de pedidos",
+      "queue": "Cola",
+      "table": "Tabla"
+    },
     "sidebar": {
       "search": "Buscar pedidos",
       "filter": "Filtros",
@@ -698,7 +703,7 @@
     },
     "detail": {
       "title": "Detalle del pedido",
-      "backToList": "Volver al listado",
+      "backToList": "Volver a la cola",
       "notFound": "Pedido no encontrado",
       "notFoundDescription": "No pudimos encontrar el pedido que buscás.",
       "quoteStatus": "Estado de la cotización",

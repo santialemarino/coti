@@ -8,7 +8,7 @@ import { ApiError } from '@/lib/api/errors';
 import type { RfqRecord } from '@/lib/api/rfqs';
 import messages from '@/translations/es.json';
 
-const router = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
+const router = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }));
 
 vi.mock('next/navigation', () => ({ unstable_rethrow: vi.fn(), useRouter: () => router }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
@@ -149,7 +149,7 @@ function renderAs(
       messages={messages}
       timeZone="America/Argentina/Buenos_Aires"
     >
-      <RfqListProvider records={records} activeBranchId={null} {...roles}>
+      <RfqListProvider hasQueue records={records} activeBranchId={null} {...roles}>
         <RfqDashboard initialRecords={records} activeBranchId={null} />
       </RfqListProvider>
     </NextIntlClientProvider>,

@@ -25,6 +25,7 @@ function view(isAdmin: boolean, branchId = 'b1') {
   return (
     <NextIntlClientProvider locale="es" messages={messages}>
       <RfqListProvider
+        hasQueue
         records={[]}
         activeBranchId={branchId}
         userName="Vendedor Dev"

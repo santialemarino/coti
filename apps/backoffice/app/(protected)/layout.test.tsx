@@ -6,6 +6,12 @@ import type { Onboarding } from '@/lib/api/onboarding';
 import messages from '@/translations/es.json';
 
 vi.mock('@/app/(protected)/_components/app-header', () => ({ AppHeader: vi.fn(() => null) }));
+vi.mock('@/app/(protected)/rfqs/_components/rfq-queue-provider', () => ({
+  RfqQueueProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+vi.mock('@/app/(protected)/rfqs/_components/rfq-queue-column', () => ({
+  RfqQueueColumn: () => null,
+}));
 vi.mock('@/lib/api/onboarding', () => ({ getOnboarding: vi.fn() }));
 vi.mock('@/lib/api/branches', () => ({ getBranches: vi.fn() }));
 vi.mock('@/lib/auth/branch', () => ({ getSelectedBranchId: vi.fn() }));

@@ -62,6 +62,7 @@ function renderItems(
       timeZone="America/Argentina/Buenos_Aires"
     >
       <RfqListProvider
+        hasQueue
         records={[]}
         activeBranchId={activeBranchId}
         userName="Admin"

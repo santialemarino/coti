@@ -25,6 +25,25 @@ export const ROUTES = {
   branchReset: '/branch-reset',
 } as const;
 
+const QUEUE_DETAIL = /^\/rfqs\/([^/]+)$/;
+
+/*
+ * Whether a path is one of the queue's screens — its landing or an order opened from it — and
+ * which order it has open. The table at /rfqs lists the same orders but is not the queue.
+ */
+export function queueSelection(pathname: string): { inQueue: boolean; rfqId: string | null } {
+  if (pathname === ROUTES.home) return { inQueue: true, rfqId: null };
+  const detail = QUEUE_DETAIL.exec(pathname);
+  return detail ? { inQueue: true, rfqId: detail[1] ?? null } : { inQueue: false, rfqId: null };
+}
+
+// The orders section: the queue, its table and every order, which "Pedidos" stays lit across.
+export function isOrdersPath(pathname: string): boolean {
+  return (
+    pathname === ROUTES.home || pathname === ROUTES.rfqs || pathname.startsWith(`${ROUTES.rfqs}/`)
+  );
+}
+
 // Reachable without a session. Anything else is behind the gate.
 export const PUBLIC_ROUTES: readonly string[] = [
   ROUTES.login,

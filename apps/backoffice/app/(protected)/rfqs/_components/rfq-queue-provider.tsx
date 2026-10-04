@@ -1,34 +1,10 @@
-import { NoBranchScreen } from '@/app/(protected)/_components/no-branch-screen';
 import { RfqListProvider } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { getBranches } from '@/lib/api/branches';
 import { apiRequest } from '@/lib/api/client';
-import type { RfqChannel, RfqListItem, RfqRecord } from '@/lib/api/rfqs';
-import { normalizeRfqStatus } from '@/lib/api/rfqs';
+import { mapListItem, type RfqListItem, type RfqRecord } from '@/lib/api/rfqs';
 import { getEffectiveBranchId } from '@/lib/auth/branch';
 import { getSession } from '@/lib/auth/session';
 import { ADMIN_ROLE } from '@/lib/constants/auth';
-
-export function mapListItem(item: RfqListItem): RfqRecord {
-  return {
-    id: item.id,
-    quoteNumber: item.quote_number,
-    client: item.client ?? '',
-    createdAt: item.created_at,
-    channel: item.channel as RfqChannel,
-    seller: item.seller,
-    sellerId: item.seller_id,
-    branch: item.branch,
-    branchId: item.branch_id,
-    quoteId: item.quote_id,
-    itemCount: item.item_count,
-    reviewCount: item.review_count,
-    total: item.total ?? undefined,
-    status: normalizeRfqStatus(item.status),
-    needsFollowup: item.needs_followup,
-    followupFlaggedAt: item.followup_flagged_at,
-    archived: item.archived_at != null,
-  };
-}
 
 /*
  * Archived orders come down with the rest and the screens filter them out by default. They are a
@@ -41,23 +17,22 @@ async function fetchRfqs(): Promise<RfqRecord[]> {
 }
 
 /*
- * Loads the queue once for whichever screen needs it. The home screen and the /rfqs subtree both
- * render the same list, so the fetch and the mapping live here rather than in each of their layouts.
+ * Loads the queue once for the whole signed-in shell. The column that shows it outlives every
+ * navigation, so the list lives above the pages; the queue screens and the table read the same one.
  */
 export async function RfqQueueProvider({ children }: { children: React.ReactNode }) {
-  const [records, session, branches] = await Promise.all([
-    fetchRfqs(),
-    getSession(),
-    getBranches(),
-  ]);
+  const [session, branches] = await Promise.all([getSession(), getBranches()]);
   const isAdmin = session?.role === ADMIN_ROLE;
-  // A seller with no branch has no queue; their own settings stay reachable outside it.
-  if (!isAdmin && branches.length === 0) return <NoBranchScreen />;
-  const activeBranchId = await getEffectiveBranchId(branches);
+  // A seller with no branch has no queue; their own settings stay reachable without one.
+  const hasQueue = isAdmin || branches.length > 0;
+  const [records, activeBranchId] = hasQueue
+    ? await Promise.all([fetchRfqs(), getEffectiveBranchId(branches)])
+    : [[], undefined];
 
   return (
     <RfqListProvider
       records={records}
+      hasQueue={hasQueue}
       activeBranchId={activeBranchId ?? null}
       userName={session?.name ?? ''}
       userId={session?.userId ?? ''}

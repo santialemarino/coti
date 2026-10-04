@@ -1,5 +1,5 @@
-import { RfqQueueProvider } from '@/app/(protected)/rfqs/_components/rfq-queue-provider';
+import { RfqQueueGate } from '@/app/(protected)/rfqs/_components/rfq-queue-gate';
 
 export default function RfqsLayout({ children }: { children: React.ReactNode }) {
-  return <RfqQueueProvider>{children}</RfqQueueProvider>;
+  return <RfqQueueGate>{children}</RfqQueueGate>;
 }

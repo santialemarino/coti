@@ -23,7 +23,14 @@ const EMAIL: Channel = { id: 'c-mail', type: 'EMAIL', identifier: 'moron@corralo
 function view(branchId: string | null) {
   return (
     <NextIntlClientProvider locale="es" messages={messages}>
-      <RfqListProvider records={[]} activeBranchId={branchId} userName="Admin" userId="u1" isAdmin>
+      <RfqListProvider
+        hasQueue
+        records={[]}
+        activeBranchId={branchId}
+        userName="Admin"
+        userId="u1"
+        isAdmin
+      >
         <RfqImportView
           onBack={vi.fn()}
           onClose={vi.fn()}
