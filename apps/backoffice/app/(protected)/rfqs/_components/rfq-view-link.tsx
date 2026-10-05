@@ -1,12 +1,12 @@
 import Link from 'next/link';
-import { ListIcon, TableIcon } from 'lucide-react';
+import { LayersIcon, TableIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Button } from '@repo/ui/components';
 import { ROUTES } from '@/config/routes';
 
 const VIEWS = {
-  queue: { href: ROUTES.home, Icon: ListIcon, label: 'toQueue' },
+  queue: { href: ROUTES.home, Icon: LayersIcon, label: 'toQueue' },
   table: { href: ROUTES.rfqs, Icon: TableIcon, label: 'toTable' },
 } as const;
 

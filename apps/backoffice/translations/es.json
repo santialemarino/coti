@@ -697,7 +697,7 @@
       }
     },
     "view": {
-      "toQueue": "Ver lista",
+      "toQueue": "Ver por estado",
       "toTable": "Ver todos"
     },
     "sidebar": {
