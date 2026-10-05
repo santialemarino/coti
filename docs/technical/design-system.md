@@ -281,6 +281,19 @@ transform family that is `scale` / `translate` / `rotate`, never `transform` —
 Radix open/close, fades, zooms and slides come from `tw-animate-css` — don't
 re-declare those.
 
+### Navigation
+
+The protected shell keeps one left column in its layout (the queue on `/` and an order's page),
+so it survives navigation: it opens and closes by animating its width over `duration-300`
+`ease-in-out-soft`, with its content held at full width and riding the edge rather than being
+squeezed. The screen beside it swaps through a view transition — `ScreenFade` wraps it in
+React's `<ViewTransition name="screen">` keyed by path, with Next's `experimental.viewTransition`
+on — and the `screen` rules in `index.css` fade the old screen out by 40% of the same 300 ms and
+the new one in from there, so two screens never overlap and both land with the column. The
+root's snapshots are dropped, which keeps the column sliding live underneath, and the overlay
+takes `pointer-events: none` so it never swallows a click. A browser without view transitions
+simply swaps.
+
 ### Reduced motion
 
 Decorative motion collapses to nothing under `prefers-reduced-motion: reduce`:

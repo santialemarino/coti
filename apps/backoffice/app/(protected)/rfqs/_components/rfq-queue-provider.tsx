@@ -1,3 +1,5 @@
+import { unstable_rethrow } from 'next/navigation';
+
 import { RfqListProvider } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { getBranches } from '@/lib/api/branches';
 import { apiRequest } from '@/lib/api/client';
@@ -16,6 +18,16 @@ async function fetchRfqs(): Promise<RfqRecord[]> {
   return (items ?? []).map(mapListItem);
 }
 
+// Null when the read fails, which fails the queue screens only: the rest of the shell still renders.
+async function readQueue(): Promise<RfqRecord[] | null> {
+  try {
+    return await fetchRfqs();
+  } catch (error) {
+    unstable_rethrow(error);
+    return null;
+  }
+}
+
 /*
  * Loads the queue once for the whole signed-in shell. The column that shows it outlives every
  * navigation, so the list lives above the pages; the queue screens and the table read the same one.
@@ -26,13 +38,14 @@ export async function RfqQueueProvider({ children }: { children: React.ReactNode
   // A seller with no branch has no queue; their own settings stay reachable without one.
   const hasQueue = isAdmin || branches.length > 0;
   const [records, activeBranchId] = hasQueue
-    ? await Promise.all([fetchRfqs(), getEffectiveBranchId(branches)])
+    ? await Promise.all([readQueue(), getEffectiveBranchId(branches)])
     : [[], undefined];
 
   return (
     <RfqListProvider
-      records={records}
+      records={records ?? []}
       hasQueue={hasQueue}
+      loadFailed={records === null}
       activeBranchId={activeBranchId ?? null}
       userName={session?.name ?? ''}
       userId={session?.userId ?? ''}

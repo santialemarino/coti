@@ -5,10 +5,11 @@ const QUEUE_PATH = '/v1/rfqs?include_archived=true';
 
 /*
  * BFF proxy for GET /v1/rfqs, which the queue re-reads from the browser: the column lives in a
- * layout that a navigation never re-renders, so the server read alone would go stale.
+ * layout that a navigation never re-renders, so the server read alone would go stale. It scopes
+ * exactly as that server read does, or a re-read could swap an account-wide list for one branch's.
  */
 export async function GET(request: Request) {
-  return forwardToApi(request, { path: QUEUE_PATH, method: 'GET' });
+  return forwardToApi(request, { path: QUEUE_PATH, method: 'GET', fallbackToOnlyBranch: false });
 }
 
 /*

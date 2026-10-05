@@ -110,18 +110,23 @@ describe('RfqQueueColumn', () => {
   });
 
   // A layout outlives navigation, so coming back to the queue is the moment its list goes stale.
-  it('reads the queue again when it opens, but not on the first render', async () => {
+  // The shell's list is read once; staying within the orders must still bring new ones in.
+  it('reads the queue again on every move within the orders, not elsewhere or at first', async () => {
     const { navigate } = renderAt(ROUTES.home);
     expect(fetchQueue).not.toHaveBeenCalled();
 
-    navigate(ROUTES.clients);
-    expect(fetchQueue).not.toHaveBeenCalled();
+    await act(async () => navigate(ROUTES.rfqsDetail('r1')));
+    await act(async () => navigate(ROUTES.rfqs));
+    expect(fetchQueue).toHaveBeenCalledTimes(2);
+
+    await act(async () => navigate(ROUTES.clients));
+    expect(fetchQueue).toHaveBeenCalledTimes(2);
 
     await act(async () => navigate(ROUTES.home));
-    expect(fetchQueue).toHaveBeenCalledTimes(1);
+    expect(fetchQueue).toHaveBeenCalledTimes(3);
   });
 
-  it('reads the queue again when the window regains focus, only while open', async () => {
+  it('reads the queue again when the window regains focus, only within the orders', async () => {
     const { navigate } = renderAt(ROUTES.home);
 
     await act(async () => fireEvent.focus(window));

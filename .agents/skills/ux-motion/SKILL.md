@@ -226,7 +226,9 @@ panel enters from the trigger and then dissolves in place.
   content in React's `<ViewTransition name="screen">` (Next's `experimental.viewTransition`) keyed
   by path, and the `screen` rules in `@repo/ui`'s styles fade the old screen out by 40% and the new
   one in from there — two unrelated screens never overlap — on the column's curve and duration. The
-  root's snapshots are dropped so everything else, the column's slide included, stays live.
+  root's snapshots are dropped so everything else, the column's slide included, stays live. Keep
+  `pointer-events: none` on `::view-transition`, or the overlay swallows every click for the swap;
+  even so the captured screen is not hit-tested until it ends, which the fade-through makes moot.
 - **A column that comes and goes with the route lives in the layout, not in the pages.** A page
   unmounts the moment the route changes, so a column it renders can never animate out. Keep it in
   the shared layout, derive open from the pathname, and animate the box's `width` between `0` and a
