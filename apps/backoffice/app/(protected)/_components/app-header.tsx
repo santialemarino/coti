@@ -68,7 +68,8 @@ export async function AppHeader({ session }: AppHeaderProps) {
 
       <PrimaryNav className="max-lg:hidden" />
 
-      <div className="ml-auto flex items-center gap-x-3">
+      {/* `min-w-0` lets the branch picker give up width on the narrowest phones. */}
+      <div className="ml-auto flex min-w-0 items-center gap-x-3">
         {/* Every reachable branch stays visible as working context. One branch is shown rather than
             offered; with more, admins keep the account-wide option alongside their branches. */}
         {branches.length > 0 ? (
@@ -83,7 +84,11 @@ export async function AppHeader({ session }: AppHeaderProps) {
           <DropdownMenuTrigger asChild>
             {/* Two stacked lines beside a 28px avatar need more room than any fixed size gives, so
                 the trigger sizes to its content with its own padding. */}
-            <Button variant="ghost" size="sm" className="h-auto py-1.5 px-2 gap-x-2 lg:pr-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="shrink-0 h-auto py-1.5 px-2 gap-x-2 lg:pr-3"
+            >
               <span className="relative flex shrink-0">
                 <Avatar size="sm">
                   <AvatarFallback>{initials(session.name)}</AvatarFallback>

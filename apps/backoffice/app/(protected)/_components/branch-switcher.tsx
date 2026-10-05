@@ -61,7 +61,7 @@ export function BranchSwitcher({ branches, activeBranchId, isAdmin }: BranchSwit
 
   if (sole) {
     return (
-      <p className="flex h-9 w-44 sm:w-56 items-center px-3 gap-x-2 text-paragraph-sm text-foreground">
+      <p className="flex shrink h-9 w-44 min-w-0 sm:w-56 items-center px-3 gap-x-2 text-paragraph-sm text-foreground">
         <StoreIcon aria-hidden="true" className="size-4 shrink-0 text-foreground-muted" />
         <span className="sr-only">{t('label')}: </span>
         <span className="truncate">{sole.name}</span>
@@ -82,7 +82,7 @@ export function BranchSwitcher({ branches, activeBranchId, isAdmin }: BranchSwit
       aria-label={t('label')}
       triggerLabel={triggerLabel}
       sideOffset={BRANCH_MENU_OFFSET}
-      className="w-44 sm:w-56"
+      className="w-44 min-w-0 shrink sm:w-56"
     />
   );
 }
