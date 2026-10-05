@@ -37,6 +37,13 @@ export function queueSelection(pathname: string): { inQueue: boolean; rfqId: str
   return detail ? { inQueue: true, rfqId: detail[1] ?? null } : { inQueue: false, rfqId: null };
 }
 
+const SETTINGS_ROOT = '/settings';
+
+// Every settings page lives under one root, which the context column keys its menu on.
+export function isSettingsPath(pathname: string): boolean {
+  return pathname.startsWith(`${SETTINGS_ROOT}/`);
+}
+
 // The orders section: the queue, its table and every order, which "Pedidos" stays lit across.
 export function isOrdersPath(pathname: string): boolean {
   return (

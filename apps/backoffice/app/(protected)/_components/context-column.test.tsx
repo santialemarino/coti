@@ -2,8 +2,8 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ContextColumn } from '@/app/(protected)/_components/context-column';
 import { RfqListProvider } from '@/app/(protected)/rfqs/_components/rfq-list-context';
-import { RfqQueueColumn } from '@/app/(protected)/rfqs/_components/rfq-queue-column';
 import { ROUTES } from '@/config/routes';
 import type { RfqRecord } from '@/lib/api/rfqs';
 import messages from '@/translations/es.json';
@@ -20,6 +20,11 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/lib/api/rfqs-client', () => ({ fetchQueue: vi.fn(async () => []) }));
 
 const { fetchQueue } = await import('@/lib/api/rfqs-client');
+
+const SETTINGS_NAV = [
+  { href: ROUTES.accountSettings, label: 'Cuenta' },
+  { href: ROUTES.branchSettings, label: 'Sucursales' },
+];
 
 const ORDER: RfqRecord = {
   id: 'r1',
@@ -50,7 +55,7 @@ function tree(hasQueue: boolean) {
         userId="u1"
         isAdmin
       >
-        <RfqQueueColumn />
+        <ContextColumn settingsNav={SETTINGS_NAV} />
       </RfqListProvider>
     </NextIntlClientProvider>
   );
@@ -70,7 +75,7 @@ function renderAt(pathname: string, hasQueue = true) {
 
 beforeEach(() => vi.clearAllMocks());
 
-describe('RfqQueueColumn', () => {
+describe('ContextColumn', () => {
   it.each([ROUTES.home, ROUTES.rfqsDetail('r1')])('is open on the queue screen %s', (path) => {
     const { column } = renderAt(path);
 
@@ -79,7 +84,7 @@ describe('RfqQueueColumn', () => {
   });
 
   // The table lists the same orders at full width; a rail beside it would repeat it, narrower.
-  it.each([ROUTES.rfqs, ROUTES.clients, ROUTES.accountSettings])('is closed on %s', (path) => {
+  it.each([ROUTES.rfqs, ROUTES.clients, ROUTES.reports])('is closed on %s', (path) => {
     const { column } = renderAt(path);
 
     expect(column().dataset.open).toBe('false');
@@ -129,6 +134,31 @@ describe('RfqQueueColumn', () => {
 
     navigate(ROUTES.clients);
     await act(async () => fireEvent.focus(window));
+    expect(fetchQueue).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens on the settings pages with their sections, the queue kept but hidden', () => {
+    const { column } = renderAt(ROUTES.branchSettings);
+
+    expect(column().dataset.open).toBe('true');
+    expect(screen.getByRole('link', { name: 'Sucursales' }).getAttribute('aria-current')).toBe(
+      'page',
+    );
+    expect(
+      screen
+        .getByRole('navigation', { name: messages.rfqs.list.title, hidden: true })
+        .closest('.hidden'),
+    ).not.toBeNull();
+  });
+
+  // Visiting settings is not coming back to the queue; only the queue showing again reads it.
+  it('does not read the queue again for a move into settings', async () => {
+    const { navigate } = renderAt(ROUTES.home);
+
+    await act(async () => navigate(ROUTES.accountSettings));
+    expect(fetchQueue).not.toHaveBeenCalled();
+
+    await act(async () => navigate(ROUTES.home));
     expect(fetchQueue).toHaveBeenCalledTimes(1);
   });
 });
