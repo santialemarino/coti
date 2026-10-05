@@ -4,7 +4,7 @@
  */
 export default function ProtectedTemplate({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-w-0 flex-1 flex-col animate-in fade-in-0 duration-300 ease-out-soft">
+    <div className="flex min-w-0 flex-1 flex-col animate-in fade-in-0 duration-300 ease-in-out-soft">
       {children}
     </div>
   );
