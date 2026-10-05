@@ -14,9 +14,7 @@ import {
   DropdownMenuTrigger,
 } from '@repo/ui/components';
 import { BranchSwitcher } from '@/app/(protected)/_components/branch-switcher';
-import { ContextSheet } from '@/app/(protected)/_components/context-sheet';
 import { PrimaryNav } from '@/app/(protected)/_components/primary-nav';
-import type { SettingsNavItem } from '@/app/(protected)/_components/settings-nav';
 import { signOut } from '@/app/(protected)/actions';
 import { AttentionDot } from '@/components/attention-dot';
 import { Brand } from '@/components/brand';
@@ -32,7 +30,6 @@ const PROFILE_MENU_OFFSET = 14;
 
 interface AppHeaderProps {
   session: SessionUser;
-  settingsNav: SettingsNavItem[];
 }
 
 /* First letters of the first two words, which is what a two-slot avatar can show. */
@@ -46,7 +43,7 @@ function initials(name: string) {
     .toUpperCase();
 }
 
-export async function AppHeader({ session, settingsNav }: AppHeaderProps) {
+export async function AppHeader({ session }: AppHeaderProps) {
   const t = await getTranslations('common');
   const branches = await getBranches();
   const activeBranchId = await getEffectiveBranchId(branches);
@@ -58,11 +55,9 @@ export async function AppHeader({ session, settingsNav }: AppHeaderProps) {
   const canConfirmEmail = !session.emailVerified && session.mailDelivery;
 
   return (
-    // Below lg the sections fold into the menu sheet and the profile keeps only its avatar, so the bar
+    // Below lg the sections move to the tab bar and the profile keeps only its avatar, so the header
     // fits a phone without scrolling sideways.
     <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center px-4 gap-x-3 bg-background/85 border-b border-border backdrop-blur lg:px-6 lg:gap-x-8">
-      <ContextSheet settingsNav={settingsNav} className="lg:hidden" />
-
       <Link
         href={ROUTES.home}
         aria-label={t('appName')}

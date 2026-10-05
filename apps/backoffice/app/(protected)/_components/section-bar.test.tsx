@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ContextSheet } from '@/app/(protected)/_components/context-sheet';
+import { SectionBar } from '@/app/(protected)/_components/section-bar';
 import { RfqListProvider } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { ROUTES } from '@/config/routes';
 import type { RfqRecord } from '@/lib/api/rfqs';
@@ -17,7 +17,6 @@ vi.mock('next/navigation', () => ({
   usePathname: () => navigation.pathname,
   useRouter: () => navigation.router,
 }));
-vi.mock('@/components/brand', () => ({ Brand: () => null }));
 
 const SETTINGS_NAV = [
   { href: ROUTES.accountSettings, label: 'Cuenta' },
@@ -53,18 +52,18 @@ function tree(records: RfqRecord[]) {
         userId="u1"
         isAdmin
       >
-        <ContextSheet settingsNav={SETTINGS_NAV} />
+        <SectionBar settingsNav={SETTINGS_NAV} />
       </RfqListProvider>
     </NextIntlClientProvider>
   );
 }
 
-function openAt(pathname: string, records = [ORDER]) {
+function renderAt(pathname: string, records = [ORDER]) {
   navigation.pathname = pathname;
   const view = render(tree(records));
-  fireEvent.click(screen.getByRole('button', { name: messages.common.nav.openMenu }));
   return {
-    sheet: () => screen.queryByRole('dialog', { name: messages.common.nav.menu }),
+    bar: (name: RegExp) => screen.queryByRole('button', { name, expanded: false }),
+    sheet: () => screen.queryByRole('dialog'),
     navigate: (next: string) => {
       navigation.pathname = next;
       view.rerender(tree(records));
@@ -72,16 +71,44 @@ function openAt(pathname: string, records = [ORDER]) {
   };
 }
 
+function openAt(pathname: string, records = [ORDER]) {
+  const view = renderAt(pathname, records);
+  fireEvent.click(screen.getByRole('button', { expanded: false }));
+  return view;
+}
+
 beforeEach(() => vi.clearAllMocks());
 
-describe('ContextSheet', () => {
-  it('opens on the main navigation with the queue under it', () => {
+describe('SectionBar', () => {
+  // The bar names what it opens, so the count of open orders sits beside the section.
+  it('names the queue with its count of open orders', () => {
+    const { bar } = renderAt(ROUTES.home, [ORDER, { ...ORDER, id: 'r2', archived: true }]);
+
+    expect(bar(/^Pedidos\s*1$/)).not.toBeNull();
+  });
+
+  it('names the settings section on show', () => {
+    const { bar } = renderAt(ROUTES.branchSettings);
+
+    expect(bar(/^Configuración\s*Sucursales$/)).not.toBeNull();
+  });
+
+  // A section without a column has nothing to open, so there is no bar to read as broken.
+  it('is absent where the section has no column', () => {
+    renderAt(ROUTES.clients);
+
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('opens the queue beneath it, marked open', () => {
     const { sheet } = openAt(ROUTES.home);
 
     const panel = within(sheet() as HTMLElement);
-    expect(panel.getByRole('link', { name: messages.common.nav.orders })).toBeTruthy();
     expect(panel.getByRole('navigation', { name: messages.rfqs.list.title })).toBeTruthy();
     expect(panel.getByRole('button', { name: /#07/ })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: /^Pedidos/, hidden: true }).getAttribute('aria-expanded'),
+    ).toBe('true');
   });
 
   it('carries the settings sections on the settings pages', () => {
@@ -96,14 +123,6 @@ describe('ContextSheet', () => {
     ).not.toBeNull();
   });
 
-  // A section without a column has only the main navigation to offer.
-  it('holds only the main navigation elsewhere', () => {
-    const { sheet } = openAt(ROUTES.clients);
-
-    const panel = within(sheet() as HTMLElement);
-    expect(panel.getAllByRole('navigation')).toHaveLength(1);
-  });
-
   // The order already open changes no path when pressed again, so the press itself closes it.
   it('closes on a press that opens an order, the one already open included', () => {
     const { sheet } = openAt(ROUTES.rfqsDetail('r1'));
@@ -115,11 +134,9 @@ describe('ContextSheet', () => {
   });
 
   it('closes on a press on a link', () => {
-    const { sheet } = openAt(ROUTES.home);
+    const { sheet } = openAt(ROUTES.branchSettings);
 
-    fireEvent.click(
-      within(sheet() as HTMLElement).getByRole('link', { name: messages.common.nav.clients }),
-    );
+    fireEvent.click(within(sheet() as HTMLElement).getByRole('link', { name: 'Cuenta' }));
 
     expect(sheet()).toBeNull();
   });
@@ -143,7 +160,7 @@ describe('ContextSheet', () => {
   it('closes when the path changes from outside it', () => {
     const { sheet, navigate } = openAt(ROUTES.home);
 
-    navigate(ROUTES.rfqs);
+    navigate(ROUTES.rfqsDetail('r1'));
 
     expect(sheet()).toBeNull();
   });

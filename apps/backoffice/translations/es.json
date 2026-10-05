@@ -8,7 +8,8 @@
       "confirm": "Confirmar",
       "edit": "Editar",
       "search": "Buscar",
-      "back": "Volver"
+      "back": "Volver",
+      "close": "Cerrar"
     },
     "states": {
       "loading": "Cargando…",
@@ -24,9 +25,7 @@
       "settings": "Configuración",
       "confirmEmail": "Confirmar tu correo",
       "pending": "Hay algo pendiente",
-      "main": "Secciones",
-      "menu": "Menú",
-      "openMenu": "Abrir el menú"
+      "main": "Secciones"
     },
     "roles": {
       "ADMIN": "Administrador",
@@ -35,6 +34,7 @@
     "branch": {
       "label": "Sucursal activa",
       "all": "Todas las sucursales",
+      "allShort": "Todas",
       "placeholder": "Seleccioná una sucursal",
       "search": "Buscá una sucursal...",
       "empty": "No encontramos esa sucursal."

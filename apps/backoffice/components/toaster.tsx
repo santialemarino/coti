@@ -2,6 +2,10 @@
 
 import { Toaster as Sonner } from 'sonner';
 
+// Sonner's own bottom offsets; `--toast-lift` raises them over the phone tab bar while it shows.
+const OFFSET = 'calc(24px + var(--toast-lift, 0px))';
+const MOBILE_OFFSET = 'calc(16px + var(--toast-lift, 0px))';
+
 /*
  * Sonner styled with the design system's own tokens rather than its defaults, so a toast reads as
  * part of the app. Mounted once in the root layout; call `toast.success` / `toast.error` from
@@ -12,6 +16,8 @@ export function Toaster() {
   return (
     <Sonner
       position="bottom-right"
+      offset={{ bottom: OFFSET }}
+      mobileOffset={{ bottom: MOBILE_OFFSET }}
       toastOptions={{
         classNames: {
           toast:

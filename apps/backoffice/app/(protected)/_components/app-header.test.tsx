@@ -6,9 +6,6 @@ import { ROUTES } from '@/config/routes';
 vi.mock('@/app/(protected)/_components/branch-switcher', () => ({
   BranchSwitcher: vi.fn(() => null),
 }));
-vi.mock('@/app/(protected)/_components/context-sheet', () => ({
-  ContextSheet: vi.fn(() => null),
-}));
 vi.mock('@/app/(protected)/_components/primary-nav', () => ({
   PrimaryNav: vi.fn(() => null),
 }));
@@ -22,7 +19,6 @@ const { getBranches } = await import('@/lib/api/branches');
 const { getEffectiveBranchId } = await import('@/lib/auth/branch');
 const { getTranslations } = await import('next-intl/server');
 const { BranchSwitcher } = await import('@/app/(protected)/_components/branch-switcher');
-const { ContextSheet } = await import('@/app/(protected)/_components/context-sheet');
 const { PrimaryNav } = await import('@/app/(protected)/_components/primary-nav');
 const { AppHeader } = await import('@/app/(protected)/_components/app-header');
 
@@ -39,7 +35,7 @@ const SESSION = {
 
 // The trigger is read before the menu opens: an open menu hides everything outside it.
 async function openMenu(session = SESSION) {
-  const view = render(await AppHeader({ session, settingsNav: [] }));
+  const view = render(await AppHeader({ session }));
   const trigger = view.getByRole('button', { name: /Ana Gómez/ });
   const triggerText = trigger.textContent ?? '';
   fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
@@ -107,7 +103,7 @@ describe('AppHeader attention', () => {
 
 describe('AppHeader account menu', () => {
   it('offers settings and sign out without a separate password entry', async () => {
-    const view = render(await AppHeader({ session: SESSION, settingsNav: [] }));
+    const view = render(await AppHeader({ session: SESSION }));
 
     fireEvent.pointerDown(view.getByRole('button', { name: /Ana Gómez/ }), {
       button: 0,
@@ -132,7 +128,7 @@ describe('AppHeader account menu', () => {
     vi.mocked(getBranches).mockResolvedValue([branch]);
     vi.mocked(getEffectiveBranchId).mockResolvedValue(branch.id);
 
-    render(await AppHeader({ session: SESSION, settingsNav: [] }));
+    render(await AppHeader({ session: SESSION }));
 
     expect(vi.mocked(BranchSwitcher)).toHaveBeenCalledWith(
       expect.objectContaining({ branches: [branch], activeBranchId: branch.id, isAdmin: true }),
@@ -141,25 +137,16 @@ describe('AppHeader account menu', () => {
   });
 });
 
-// A phone has room for the menu, the logo, the branch and the avatar; everything else folds away.
+// A phone has room for the logo, the branch and the avatar; everything else moves or folds away.
 describe('AppHeader below lg', () => {
-  const SETTINGS_NAV = [{ href: ROUTES.accountSettings, label: 'Cuenta' }];
+  it('leaves the section links to the tab bar', async () => {
+    render(await AppHeader({ session: SESSION }));
 
-  it('trades the section links for the menu sheet, which gets the settings sections', async () => {
-    render(await AppHeader({ session: SESSION, settingsNav: SETTINGS_NAV }));
-
-    expect(vi.mocked(PrimaryNav)).toHaveBeenCalledWith(
-      expect.objectContaining({ className: 'max-lg:hidden' }),
-      undefined,
-    );
-    expect(vi.mocked(ContextSheet)).toHaveBeenCalledWith(
-      { settingsNav: SETTINGS_NAV, className: 'lg:hidden' },
-      undefined,
-    );
+    expect(vi.mocked(PrimaryNav)).toHaveBeenCalledWith({ className: 'max-lg:hidden' }, undefined);
   });
 
   it('keeps only the avatar of the profile', async () => {
-    const view = render(await AppHeader({ session: SESSION, settingsNav: [] }));
+    const view = render(await AppHeader({ session: SESSION }));
 
     const name = view.getByText(SESSION.name).parentElement as HTMLElement;
     expect(name.className).toContain('hidden lg:flex');

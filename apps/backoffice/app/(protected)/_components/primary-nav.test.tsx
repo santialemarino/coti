@@ -40,14 +40,23 @@ describe('PrimaryNav', () => {
     ).toBe('page');
   });
 
-  it('lists the sections in a column for the menu sheet', () => {
-    navigation.pathname = ROUTES.home;
+  // Below lg the sections are a tab bar; the chosen one carries the page mark like the header row.
+  it('renders the tab bar with the same sections and the same mark', () => {
+    navigation.pathname = ROUTES.rfqsDetail('r1');
     render(
       <NextIntlClientProvider locale="es" messages={messages}>
-        <PrimaryNav layout="stack" />
+        <PrimaryNav layout="tabs" />
       </NextIntlClientProvider>,
     );
 
-    expect(screen.getByRole('navigation').className).toContain('flex-col');
+    const tabs = screen.getAllByRole('link');
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      messages.common.nav.orders,
+      messages.common.nav.clients,
+      messages.common.nav.reports,
+      messages.common.nav.administration,
+    ]);
+    expect(tabs[0]?.getAttribute('aria-current')).toBe('page');
+    expect(tabs[1]?.getAttribute('aria-current')).toBeNull();
   });
 });

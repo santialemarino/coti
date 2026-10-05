@@ -71,9 +71,10 @@ function SheetContent({
   children,
   side = 'right',
   showCloseButton = true,
+  overlayClassName,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> &
-  VariantProps<typeof sheetVariants> & { showCloseButton?: boolean }) {
+  VariantProps<typeof sheetVariants> & { showCloseButton?: boolean; overlayClassName?: string }) {
   const open = React.useContext(OverlayOpenContext);
   const shown = useHeldWhileClosed(children, open);
 
@@ -86,6 +87,7 @@ function SheetContent({
           'data-[state=open]:animate-in data-[state=open]:fade-in-0',
           'data-[state=closed]:animate-out data-[state=closed]:fade-out-0',
           'duration-200 ease-out-soft',
+          overlayClassName,
         )}
       />
       <SheetPrimitive.Content
