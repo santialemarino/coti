@@ -21,7 +21,7 @@ interface RfqSidebarListProps {
  * the dashboard's status filter is where they are found again.
  *
  * The column outlives navigation, so which groups are open survives moving between orders and
- * sections; a reload folds them all again.
+ * sections; a reload folds them all again but the open order's.
  */
 export function RfqSidebarList({ records, activeRfqId }: RfqSidebarListProps) {
   const t = useTranslations('rfqs');
@@ -34,13 +34,13 @@ export function RfqSidebarList({ records, activeRfqId }: RfqSidebarListProps) {
     () => new Set(activeStatus ? [activeStatus] : []),
   );
   /*
-   * The open order's group unfolds whenever the open order changes group — opened from the table,
-   * or moved by a transition — so the selection is never buried in a stack. Adjusted during render
-   * rather than in an effect, so the group is never painted folded first.
+   * The open order's group unfolds whenever another order opens or the open one changes status —
+   * from the table, the rail or a transition — so the selection is never buried in a stack.
+   * Adjusted during render rather than in an effect, so the group is never painted folded first.
    */
-  const [seenStatus, setSeenStatus] = useState(activeStatus);
-  if (activeStatus !== seenStatus) {
-    setSeenStatus(activeStatus);
+  const [seen, setSeen] = useState({ id: activeRfqId, status: activeStatus });
+  if (seen.id !== activeRfqId || seen.status !== activeStatus) {
+    setSeen({ id: activeRfqId, status: activeStatus });
     if (activeStatus && !expanded.has(activeStatus)) {
       setExpanded(new Set(expanded).add(activeStatus));
     }

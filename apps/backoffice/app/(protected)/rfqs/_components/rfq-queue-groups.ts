@@ -1,7 +1,7 @@
 import { STATUS_ORDER } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
 import type { RfqRecord, RfqStatus } from '@/lib/api/rfqs';
 
-export interface RfqQueueGroup {
+export interface QueueStatusGroup {
   status: RfqStatus;
   records: RfqRecord[];
 }
@@ -10,7 +10,7 @@ export interface RfqQueueGroup {
  * The open orders by status, in the order the workflow moves through them. Each group keeps the
  * list's own order — follow-ups first, then newest — so the top of a stack is what to look at next.
  */
-export function groupQueue(records: readonly RfqRecord[]): RfqQueueGroup[] {
+export function groupQueue(records: readonly RfqRecord[]): QueueStatusGroup[] {
   const byStatus = new Map<RfqStatus, RfqRecord[]>();
   for (const record of records) {
     if (record.archived) continue;

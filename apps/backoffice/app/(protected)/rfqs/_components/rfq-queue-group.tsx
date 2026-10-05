@@ -7,7 +7,7 @@ import { useTranslations } from 'next-intl';
 import { DropdownChevron } from '@repo/ui/components';
 import { cn, MOTION, SPRING, STAGGER } from '@repo/ui/lib';
 import { RfqQueueCard } from '@/app/(protected)/rfqs/_components/rfq-queue-card';
-import type { RfqQueueGroup as QueueGroup } from '@/app/(protected)/rfqs/_components/rfq-queue-groups';
+import type { QueueStatusGroup } from '@/app/(protected)/rfqs/_components/rfq-queue-groups';
 import { STATUS_DOT } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
 
 // Cards that show behind the top of a folded stack, and how far each one shows below the last.
@@ -20,7 +20,7 @@ const PEEK_FADE_STEP = 0.2;
 const ENTER_OFFSET_PX = -8;
 
 interface RfqQueueGroupProps {
-  group: QueueGroup;
+  group: QueueStatusGroup;
   expanded: boolean;
   activeRfqId: string | null;
   onToggle: () => void;
@@ -28,11 +28,11 @@ interface RfqQueueGroupProps {
 
 /*
  * One status in the queue column, folded into a stack the way a phone stacks its notifications: the
- * top card in front, two edges peeking behind it, and a press anywhere on it fans the rest out.
+ * top card in front, two edges peeking behind it, and a press on that card fans the rest out.
  *
- * Cards travel by `layout="position"` only — their size never changes, and a size animation would
- * scale-correct the text inside. Springs rather than durations, so a press mid-flight reverses from
- * where the cards are.
+ * Cards travel by `layout="position"` only: a size animation would scale-correct the text inside,
+ * so the edges behind take the top card's box at once. Springs rather than durations, so a press
+ * mid-flight reverses from where the cards are.
  */
 export function RfqQueueGroup({ group, expanded, activeRfqId, onToggle }: RfqQueueGroupProps) {
   const t = useTranslations('rfqs');
@@ -48,9 +48,10 @@ export function RfqQueueGroup({ group, expanded, activeRfqId, onToggle }: RfqQue
   const spring = reduced ? { duration: 0 } : expanded ? SPRING.expand : SPRING.collapse;
 
   return (
-    <motion.section
+    <motion.div
       layout={reduced ? false : 'position'}
       transition={spring}
+      role="group"
       aria-labelledby={headingId}
       className="flex flex-col gap-y-1.5"
     >
@@ -72,7 +73,7 @@ export function RfqQueueGroup({ group, expanded, activeRfqId, onToggle }: RfqQue
             aria-expanded={expanded}
             aria-controls={listId}
             onClick={onToggle}
-            className="group/toggle flex items-center px-1 gap-x-1 rounded-sm outline-none text-paragraph-mini-medium text-foreground-muted transition-colors duration-200 ease-out-soft hover:text-foreground focus-visible:text-foreground"
+            className="group/toggle flex items-center px-1 gap-x-1 rounded-sm outline-none transition-colors duration-200 ease-out-soft hover:text-foreground focus-visible:text-foreground text-paragraph-mini-medium text-foreground-muted"
           >
             {expanded ? t('list.groups.collapse') : t('list.groups.expand')}
             <DropdownChevron
@@ -88,7 +89,7 @@ export function RfqQueueGroup({ group, expanded, activeRfqId, onToggle }: RfqQue
         initial={false}
         animate={{ paddingBottom: stacked ? peeks * PEEK_OFFSET_PX : 0 }}
         transition={spring}
-        className="relative flex flex-col gap-y-1.5"
+        className="flex flex-col gap-y-1.5 relative"
       >
         <AnimatePresence mode="popLayout" initial={false}>
           {visible.map((rfq, index) => {
@@ -120,7 +121,7 @@ export function RfqQueueGroup({ group, expanded, activeRfqId, onToggle }: RfqQue
                   bottom: behind ? peeks * PEEK_OFFSET_PX : undefined,
                 }}
                 className={cn(
-                  behind && 'absolute inset-x-0 top-0 pointer-events-none [&_button>*]:invisible',
+                  behind && 'pointer-events-none [&_button>*]:invisible absolute inset-x-0 top-0',
                 )}
               >
                 <RfqQueueCard
@@ -134,6 +135,6 @@ export function RfqQueueGroup({ group, expanded, activeRfqId, onToggle }: RfqQue
           })}
         </AnimatePresence>
       </motion.ul>
-    </motion.section>
+    </motion.div>
   );
 }

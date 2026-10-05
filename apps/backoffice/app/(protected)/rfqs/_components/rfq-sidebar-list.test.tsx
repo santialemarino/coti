@@ -50,7 +50,7 @@ function renderList(activeRfqId: string | null = null, records = [...SENT, QUOTE
 }
 
 function group(status: RfqStatus) {
-  return screen.getByRole('region', { name: new RegExp(copy.status[status]) });
+  return screen.getByRole('group', { name: new RegExp(copy.status[status]) });
 }
 
 // The cards a seller can reach; the edges peeking behind a stack are inert and hidden.
@@ -89,7 +89,7 @@ describe('RfqSidebarList', () => {
     renderList();
 
     const top = reachable('SENT')[0] as HTMLElement;
-    expect(top.textContent).toContain('Mostrar los 4 pedidos');
+    expect(top.textContent).toContain(copy.list.groups.stackHint.replace('{count}', '4'));
     fireEvent.click(top);
 
     expect(router.push).not.toHaveBeenCalled();
@@ -137,5 +137,20 @@ describe('RfqSidebarList', () => {
     );
 
     expect(reachable('SENT')).toHaveLength(5);
+  });
+
+  // Folding the open order's group and then opening another order of it must not bury the new one.
+  it('unfolds the group again when another order of it opens', () => {
+    const view = renderList('s1');
+    fireEvent.click(within(group('SENT')).getByRole('button', { name: copy.list.groups.collapse }));
+
+    view.rerender(
+      <NextIntlClientProvider locale="es" messages={messages}>
+        <RfqSidebarList records={[...SENT, QUOTED]} activeRfqId="s3" />
+      </NextIntlClientProvider>,
+    );
+
+    expect(reachable('SENT')).toHaveLength(4);
+    expect(screen.getByRole('button', { current: 'page' }).textContent).toContain('#13');
   });
 });

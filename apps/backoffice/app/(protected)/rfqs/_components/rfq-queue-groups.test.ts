@@ -33,9 +33,9 @@ describe('groupQueue', () => {
 
   // The list arrives follow-ups first, then newest; the top of each stack must stay that one.
   it('keeps the list order inside a group', () => {
-    const [group] = groupQueue([order('first', 'SENT'), order('second', 'SENT')]);
+    const [group] = groupQueue([order('zeta', 'SENT'), order('alfa', 'SENT')]);
 
-    expect(group?.records.map((record) => record.id)).toEqual(['first', 'second']);
+    expect(group?.records.map((record) => record.id)).toEqual(['zeta', 'alfa']);
   });
 
   it('leaves archived orders out, and with them a group they would be alone in', () => {
