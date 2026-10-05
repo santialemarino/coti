@@ -1,5 +1,16 @@
 basePath: /
 definitions:
+  dto.ARCACredentialResponse:
+    properties:
+      cuit:
+        type: string
+      expires_at:
+        type: string
+      subject:
+        type: string
+      updated_at:
+        type: string
+    type: object
   dto.AccountResponse:
     properties:
       brand_color:
@@ -137,6 +148,28 @@ definitions:
         items:
           $ref: '#/definitions/dto.BranchResponse'
         type: array
+    type: object
+  dto.BranchPointOfSaleInput:
+    properties:
+      branch_id:
+        type: string
+      point_of_sale:
+        maximum: 99998
+        minimum: 1
+        type: integer
+    required:
+    - branch_id
+    type: object
+  dto.BranchPointOfSaleResponse:
+    properties:
+      branch_id:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+      point_of_sale:
+        type: integer
     type: object
   dto.BranchResponse:
     properties:
@@ -321,6 +354,19 @@ definitions:
       email:
         type: string
       phone:
+        type: string
+    type: object
+  dto.ClientFiscalResponse:
+    properties:
+      id:
+        type: string
+      iva_condition:
+        type: string
+      legal_name:
+        type: string
+      name:
+        type: string
+      tax_id:
         type: string
     type: object
   dto.ClientListResponse:
@@ -580,6 +626,16 @@ definitions:
       unit:
         maxLength: 64
         type: string
+      vat_rate:
+        enum:
+        - VAT_0
+        - VAT_2_5
+        - VAT_5
+        - VAT_10_5
+        - VAT_21
+        - VAT_27
+        - EXEMPT
+        type: string
     required:
     - canonical_name
     - family_id
@@ -742,6 +798,109 @@ definitions:
       detail:
         type: string
       status:
+        type: string
+    type: object
+  dto.InvoiceAmountsResponse:
+    properties:
+      by_rate:
+        items:
+          $ref: '#/definitions/dto.VATAmountResponse'
+        type: array
+      exempt:
+        type: string
+      net:
+        type: string
+      total:
+        type: string
+      vat:
+        type: string
+    type: object
+  dto.InvoicePreviewResponse:
+    properties:
+      amounts:
+        $ref: '#/definitions/dto.InvoiceAmountsResponse'
+      currency:
+        type: string
+      invoice:
+        $ref: '#/definitions/dto.InvoiceResponse'
+      issues:
+        items:
+          type: string
+        type: array
+      point_of_sale:
+        type: integer
+      receiver:
+        $ref: '#/definitions/dto.InvoiceReceiverResponse'
+      type:
+        type: string
+    type: object
+  dto.InvoiceReceiverResponse:
+    properties:
+      doc_number:
+        type: string
+      doc_type:
+        type: string
+      iva_condition:
+        type: string
+      name:
+        type: string
+    type: object
+  dto.InvoiceResponse:
+    properties:
+      amounts:
+        $ref: '#/definitions/dto.InvoiceAmountsResponse'
+      cae:
+        type: string
+      cae_expires_on:
+        type: string
+      created_at:
+        type: string
+      currency:
+        type: string
+      id:
+        type: string
+      issued_on:
+        type: string
+      issuer_cuit:
+        type: string
+      issues:
+        items:
+          type: string
+        type: array
+      number:
+        type: integer
+      point_of_sale:
+        type: integer
+      qr_url:
+        description: QRURL is ARCA's verification link for an issued invoice (RG 4892),
+          empty otherwise.
+        type: string
+      receiver:
+        $ref: '#/definitions/dto.InvoiceReceiverResponse'
+      status:
+        type: string
+      type:
+        type: string
+    type: object
+  dto.InvoicingSettingsResponse:
+    properties:
+      branches:
+        items:
+          $ref: '#/definitions/dto.BranchPointOfSaleResponse'
+        type: array
+      credential:
+        $ref: '#/definitions/dto.ARCACredentialResponse'
+      enabled:
+        type: boolean
+      environment:
+        type: string
+      iva_condition:
+        type: string
+      legal_name:
+        type: string
+      prices_include_vat:
+        type: boolean
+      tax_id:
         type: string
     type: object
   dto.LoginRequest:
@@ -966,6 +1125,8 @@ definitions:
       unit:
         type: string
       updated_at:
+        type: string
+      vat_rate:
         type: string
     type: object
   dto.ProductSubgroupResponse:
@@ -1860,6 +2021,22 @@ definitions:
       is_active:
         type: boolean
     type: object
+  dto.UpdateClientFiscalRequest:
+    properties:
+      iva_condition:
+        enum:
+        - REGISTERED
+        - MONOTRIBUTO
+        - EXEMPT
+        - FINAL_CONSUMER
+        type: string
+      legal_name:
+        maxLength: 255
+        type: string
+      tax_id:
+        maxLength: 32
+        type: string
+    type: object
   dto.UpdateDiscountRequest:
     properties:
       action_type:
@@ -1886,6 +2063,22 @@ definitions:
       value:
         type: string
     type: object
+  dto.UpdateInvoicingSettingsRequest:
+    properties:
+      branches:
+        items:
+          $ref: '#/definitions/dto.BranchPointOfSaleInput'
+        type: array
+      iva_condition:
+        enum:
+        - REGISTERED
+        - MONOTRIBUTO
+        - EXEMPT
+        - FINAL_CONSUMER
+        type: string
+      prices_include_vat:
+        type: boolean
+    type: object
   dto.UpdateProductRequest:
     properties:
       canonical_name:
@@ -1906,6 +2099,16 @@ definitions:
         type: string
       unit:
         maxLength: 64
+        type: string
+      vat_rate:
+        enum:
+        - VAT_0
+        - VAT_2_5
+        - VAT_5
+        - VAT_10_5
+        - VAT_21
+        - VAT_27
+        - EXEMPT
         type: string
     required:
     - canonical_name
@@ -1996,6 +2199,15 @@ definitions:
       role:
         type: string
       updated_at:
+        type: string
+    type: object
+  dto.VATAmountResponse:
+    properties:
+      amount:
+        type: string
+      base:
+        type: string
+      rate:
         type: string
     type: object
 info:
@@ -2692,6 +2904,83 @@ paths:
       summary: Get a client profile
       tags:
       - clients
+  /v1/clients/{clientId}/fiscal:
+    get:
+      parameters:
+      - description: Client id
+        in: path
+        name: clientId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientFiscalResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a client's fiscal data
+      tags:
+      - clients
+    put:
+      consumes:
+      - application/json
+      description: Replaces the client's legal name, CUIT or DNI (check digit verified)
+        and IVA condition; omitted fields clear.
+      parameters:
+      - description: Client id
+        in: path
+        name: clientId
+        required: true
+        type: string
+      - description: Fiscal data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateClientFiscalRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientFiscalResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: INVALID_TAX_ID
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a client's fiscal data
+      tags:
+      - clients
   /v1/clients/{clientId}/tags:
     put:
       consumes:
@@ -2828,6 +3117,144 @@ paths:
       summary: Download a signed object
       tags:
       - files
+  /v1/invoicing/credentials:
+    delete:
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete ARCA credentials
+      tags:
+      - invoicing
+    put:
+      consumes:
+      - multipart/form-data
+      description: Stores the account's ARCA certificate and its private key (sealed
+        at rest). The key must match the certificate.
+      parameters:
+      - description: X.509 certificate (PEM)
+        in: formData
+        name: certificate
+        required: true
+        type: file
+      - description: RSA private key (PEM)
+        in: formData
+        name: private_key
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ARCACredentialResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "413":
+          description: FILE_TOO_LARGE
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: ARCA_CREDENTIALS
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: NOT_CONFIGURED
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Upload ARCA credentials
+      tags:
+      - invoicing
+  /v1/invoicing/settings:
+    get:
+      description: Returns the account's IVA condition, how its prices treat IVA,
+        each branch's ARCA point of sale and the uploaded certificate.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.InvoicingSettingsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get invoicing settings
+      tags:
+      - invoicing
+    put:
+      consumes:
+      - application/json
+      description: Replaces the account's IVA condition and price treatment and the
+        listed branches' points of sale.
+      parameters:
+      - description: Invoicing settings
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateInvoicingSettingsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.InvoicingSettingsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update invoicing settings
+      tags:
+      - invoicing
   /v1/me:
     get:
       description: Returns the caller's identity and branch reach, plus whether an
@@ -4687,6 +5114,95 @@ paths:
       summary: Update a discount
       tags:
       - rfqs
+  /v1/quotes/{quoteId}/invoice:
+    get:
+      description: Returns the invoice type, buyer and amounts the quote would be
+        invoiced with now, every gap that stops it, and the invoice it already has.
+      parameters:
+      - description: The quote's branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.InvoicePreviewResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Preview a quote's invoice
+      tags:
+      - invoicing
+    post:
+      description: 'Asks ARCA to authorize the electronic invoice for an accepted
+        quote. Irreversible: a mistake is corrected with a credit note.'
+      parameters:
+      - description: The quote's branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.InvoiceResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_ALREADY_INVOICED, INVOICE_IN_PROGRESS
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: INVOICE_NOT_READY, INVOICE_REJECTED
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: INVOICING_UNAVAILABLE
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Issue a quote's invoice
+      tags:
+      - invoicing
   /v1/quotes/{quoteId}/items:
     post:
       consumes:

@@ -90,6 +90,7 @@ type Config struct {
 	PriceImport     SpreadsheetImportConfig
 	Storage         StorageConfig
 	Channel         ChannelConfig
+	Invoicing       InvoicingConfig
 }
 
 // QuoteLogoConfig bounds retrieval of untrusted branding images.
@@ -123,6 +124,58 @@ type ChannelConfig struct {
 	// and still serves channels — storing a credential is the one thing refused, so a deployment
 	// that never set a key cannot end up keeping a provider token in the clear.
 	EncryptionKey []byte
+}
+
+// InvoicingProvider names who authorizes electronic invoices.
+type InvoicingProvider string
+
+const (
+	InvoicingProviderDisabled InvoicingProvider = "disabled"
+	InvoicingProviderWSFE     InvoicingProvider = "wsfe"
+)
+
+// ARCA environments: homologation is ARCA's test service, where nothing issued is fiscally valid.
+const (
+	ARCAEnvironmentHomologation = "homologation"
+	ARCAEnvironmentProduction   = "production"
+)
+
+// InvoicingConfig holds the ARCA integration: off by default, and on homologation until switched.
+type InvoicingConfig struct {
+	Provider       InvoicingProvider
+	Environment    string
+	RequestTimeout time.Duration
+	// UnidentifiedReceiverMax is the amount from which ARCA requires a consumidor final to be
+	// identified on a B invoice, in pesos.
+	UnidentifiedReceiverMax int64
+	// EncryptionKey seals each account's ARCA private key.
+	EncryptionKey []byte
+}
+
+func (c InvoicingConfig) problems() []string {
+	var problems []string
+	switch c.Provider {
+	case InvoicingProviderDisabled:
+	case InvoicingProviderWSFE:
+		if len(c.EncryptionKey) == 0 {
+			problems = append(problems, "ARCA_CREDENTIALS_ENCRYPTION_KEY is required when "+
+				"INVOICING_PROVIDER is "+string(InvoicingProviderWSFE))
+		}
+	default:
+		problems = append(problems, fmt.Sprintf("INVOICING_PROVIDER must be %q or %q, got %q",
+			InvoicingProviderDisabled, InvoicingProviderWSFE, c.Provider))
+	}
+	if c.Environment != ARCAEnvironmentHomologation && c.Environment != ARCAEnvironmentProduction {
+		problems = append(problems, fmt.Sprintf("ARCA_ENVIRONMENT must be %q or %q, got %q",
+			ARCAEnvironmentHomologation, ARCAEnvironmentProduction, c.Environment))
+	}
+	if c.RequestTimeout <= 0 {
+		problems = append(problems, "ARCA_REQUEST_TIMEOUT_SECONDS must be greater than zero")
+	}
+	if c.UnidentifiedReceiverMax <= 0 {
+		problems = append(problems, "INVOICE_UNIDENTIFIED_RECEIVER_MAX_AMOUNT must be greater than zero")
+	}
+	return problems
 }
 
 // RateLimitConfig holds the request allowances, all of them settings rather than literals.
@@ -832,6 +885,14 @@ func Load() (*Config, error) {
 		Channel: ChannelConfig{
 			EncryptionKey: getBase64Key("CHANNEL_CONFIG_ENCRYPTION_KEY", channelKeyLength, &problems),
 		},
+		Invoicing: InvoicingConfig{
+			Provider:       InvoicingProvider(getString("INVOICING_PROVIDER", string(InvoicingProviderDisabled))),
+			Environment:    getString("ARCA_ENVIRONMENT", ARCAEnvironmentHomologation),
+			RequestTimeout: getDuration("ARCA_REQUEST_TIMEOUT_SECONDS", 30*time.Second, &problems),
+			UnidentifiedReceiverMax: int64(getInt("INVOICE_UNIDENTIFIED_RECEIVER_MAX_AMOUNT", 10_000_000,
+				&problems)),
+			EncryptionKey: getBase64Key("ARCA_CREDENTIALS_ENCRYPTION_KEY", channelKeyLength, &problems),
+		},
 	}
 
 	if cfg.Database.URL == "" {
@@ -914,6 +975,7 @@ func Load() (*Config, error) {
 	problems = append(problems, cfg.AI.problems()...)
 	problems = append(problems, cfg.QuoteLogo.problems()...)
 	problems = append(problems, cfg.Storage.problems()...)
+	problems = append(problems, cfg.Invoicing.problems()...)
 
 	// A base URL missing its scheme or host yields recovery links that go nowhere, and the
 	// only symptom is a user reporting that the mail does not work.
