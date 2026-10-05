@@ -671,7 +671,7 @@ export function RfqDashboard({
   return (
     <>
       {/* The greeting belongs to the home screen; this one is the section, so it says so once. */}
-      <PageHeader title={t('list.title')} actions={<RfqViewLink to="queue" />} />
+      <PageHeader title={t('list.title')} actions={<RfqViewLink to="queue" size="default" />} />
       <Card className="gap-y-0 overflow-hidden py-0">
         <CardHeader className="flex-row flex-wrap items-center justify-between py-6 gap-3">
           <CardTitle className="text-heading-3">{t('list.caption')}</CardTitle>

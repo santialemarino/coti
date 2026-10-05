@@ -12,5 +12,8 @@ export function SettingsBackLink() {
   const t = useTranslations('settings');
 
   if (pathname === ROUTES.settings) return null;
-  return <BackLink href={ROUTES.settings} label={t('backToSections')} className="lg:hidden" />;
+  // The layout spaces its children 32px apart; the way back belongs to the title, 8px above it.
+  return (
+    <BackLink href={ROUTES.settings} label={t('backToSections')} className="-mb-6 lg:hidden" />
+  );
 }

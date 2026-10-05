@@ -20,7 +20,11 @@ export function SettingsNav({ title, items }: SettingsNavProps) {
   const pathname = usePathname();
 
   return (
-    <nav aria-label={title} className="flex flex-col px-3 pb-3 gap-y-1">
+    // Below lg the sections are a page, listed on a card like the content of every other page.
+    <nav
+      aria-label={title}
+      className="flex flex-col px-3 pb-3 gap-y-1 max-lg:mx-6 max-lg:mb-10 max-lg:p-2 max-lg:bg-card max-lg:border max-lg:border-border max-lg:rounded-1.5xl max-lg:shadow-e2"
+    >
       {items.map((item) => (
         <NavLink
           key={item.href}

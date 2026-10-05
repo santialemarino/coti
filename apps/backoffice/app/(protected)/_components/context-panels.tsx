@@ -58,8 +58,8 @@ export function ContextPanels({ section, activeRfqId, settingsNav }: ContextPane
           action={
             <>
               {/* Below lg the list is the landing, so it carries the screen's own first action. */}
-              <RfqCreateButton size="sm" className="lg:hidden" />
-              <RfqViewLink to="table" />
+              <RfqCreateButton className="lg:hidden" />
+              <RfqViewLink to="table" className="max-lg:h-9 max-lg:px-4 max-lg:gap-x-2" />
             </>
           }
         >
@@ -91,10 +91,14 @@ function ColumnPanel({ hidden, title, action, children }: ColumnPanelProps) {
       )}
     >
       {/* One height whether or not there is an action, so the title never moves between sections;
-          aligned with the rows below — the title with their text, the action with their edge. */}
-      <div className="flex h-14 items-center justify-between pr-3 pl-6 gap-x-2 bg-background sticky top-0 z-10 max-lg:top-16">
-        <h2 className="text-paragraph-xs-medium text-foreground-subtle uppercase">{title}</h2>
-        {action ? <div className="flex items-center gap-x-2">{action}</div> : null}
+          aligned with the rows below — the title with their text, the action with their edge.
+          Below lg the column is the page, so this is the page's header: PageHeader's title, spacing
+          and layout. */}
+      <div className="flex h-14 items-center justify-between pr-3 pl-6 gap-x-2 bg-background sticky top-0 z-10 max-lg:static max-lg:h-auto max-lg:flex-col max-lg:items-start max-lg:px-6 max-lg:pt-10 max-lg:pb-8 max-lg:gap-3 max-lg:bg-transparent sm:max-lg:flex-row sm:max-lg:items-end">
+        <h2 className="text-paragraph-xs-medium text-foreground-subtle uppercase max-lg:text-heading-2 max-lg:text-foreground max-lg:normal-case">
+          {title}
+        </h2>
+        {action ? <div className="flex items-center gap-x-2 max-lg:gap-x-3">{action}</div> : null}
       </div>
       {children}
     </div>

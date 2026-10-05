@@ -41,7 +41,7 @@ export function RfqDetailHeader({ detail }: RfqDetailHeaderProps) {
       <BackLink href={ROUTES.home} label={t('detail.backToList')} />
 
       <div className="flex items-center justify-between gap-x-4">
-        <h2 className="min-w-0 truncate text-heading-3 text-foreground">
+        <h2 className="min-w-0 truncate text-heading-3 text-foreground max-lg:text-heading-2">
           {formatRfqReference(rfq.quote_number) ?? t('list.numberPending')}
         </h2>
         <div className="flex shrink-0 items-center gap-x-2">

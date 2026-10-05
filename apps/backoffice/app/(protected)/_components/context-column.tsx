@@ -68,7 +68,7 @@ export function ContextColumn({ settingsNav }: ContextColumnProps) {
           sideways, so the thin thumb sits in the list's own padding instead. */}
       <motion.aside
         layoutScroll
-        className="flex w-(--column-width) h-full shrink-0 flex-col bg-background border-r border-border scroll-area max-lg:h-auto max-lg:overflow-visible max-lg:border-r-0"
+        className="flex w-(--column-width) h-full shrink-0 flex-col bg-background border-r border-border scroll-area max-lg:h-auto max-lg:overflow-visible max-lg:bg-transparent max-lg:border-r-0"
       >
         <ContextPanels section={section} activeRfqId={activeRfqId} settingsNav={settingsNav} />
       </motion.aside>

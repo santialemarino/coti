@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeftIcon, MailIcon, PhoneIcon, UserRoundIcon } from 'lucide-react';
+import { MailIcon, PhoneIcon, UserRoundIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 import {
@@ -22,6 +22,7 @@ import {
 import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { PageShell } from '@/app/(protected)/_components/page-shell';
 import { ClientTagEditor } from '@/app/(protected)/clients/[id]/_components/client-tag-editor';
+import { BackLink } from '@/components/back-link';
 import { ROUTES } from '@/config/routes';
 import { clientDisplayName, type ClientProfile, type ClientTag } from '@/lib/api/client-profiles';
 import { getClient, getClientTags } from '@/lib/api/clients';
@@ -48,13 +49,8 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
 
   return (
     <PageShell>
-      <div className="flex flex-col gap-y-4">
-        <InlineLink asChild tone="muted">
-          <Link href={ROUTES.clients}>
-            <ArrowLeftIcon aria-hidden="true" />
-            {t('backToList')}
-          </Link>
-        </InlineLink>
+      <div className="flex flex-col gap-y-2">
+        <BackLink href={ROUTES.clients} label={t('backToList')} />
         <PageHeader
           title={name}
           description={t('profile.description')}
