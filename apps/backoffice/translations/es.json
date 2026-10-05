@@ -697,8 +697,8 @@
       }
     },
     "view": {
-      "toQueue": "Ver cola",
-      "toTable": "Ver tabla"
+      "toQueue": "Ver por estado",
+      "toTable": "Ver todos"
     },
     "sidebar": {
       "search": "Buscar pedidos",
@@ -707,7 +707,7 @@
     },
     "detail": {
       "title": "Detalle del pedido",
-      "backToList": "Volver a la cola",
+      "backToList": "Volver a los pedidos",
       "notFound": "Pedido no encontrado",
       "notFoundDescription": "No pudimos encontrar el pedido que buscás.",
       "quoteStatus": "Estado de la cotización",
