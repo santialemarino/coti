@@ -23,9 +23,8 @@ export default async function AccountSettingsPage() {
       <AccountForm account={account} />
       <section className="flex flex-col max-w-md gap-y-4 lg:max-w-none">
         <Separator />
-        {/* On a wide page the title and its actions share a row on the form's own two columns, so
-            the section spans the page like the form above it; narrower, the buttons would wrap. */}
-        <div className="grid grid-cols-1 items-center gap-x-12 gap-y-4 xl:grid-cols-2">
+        {/* The actions follow the title on its own line, and drop below it only when they no longer fit. */}
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
           <h2 className="text-heading-6">{t('access.title')}</h2>
           <div className="flex flex-wrap gap-x-3 gap-y-3">
             <Button asChild variant="outline">
