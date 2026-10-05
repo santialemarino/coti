@@ -115,7 +115,7 @@ function ColumnPanel({ hidden, title, action, children }: ColumnPanelProps) {
     >
       {/* One height whether or not there is an action, so the title never moves between sections;
           aligned with the rows below — the title with their text, the action with their edge. */}
-      <div className="flex h-12 items-center justify-between pr-2 pl-5 gap-x-2 bg-background sticky top-0 z-10">
+      <div className="flex h-14 items-center justify-between pr-3 pl-6 gap-x-2 bg-background sticky top-0 z-10">
         <p className="text-paragraph-xs-medium text-foreground-subtle uppercase">{title}</p>
         {action}
       </div>

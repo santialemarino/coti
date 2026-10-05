@@ -59,7 +59,7 @@ export function RfqSidebarList({ records, activeRfqId }: RfqSidebarListProps) {
   }
 
   return (
-    <nav className="flex flex-col p-2 gap-y-4" aria-label={t('list.title')}>
+    <nav className="flex flex-col px-3 pb-3 gap-y-4" aria-label={t('list.title')}>
       <LayoutGroup>
         {groups.map((group) => (
           <RfqQueueGroup
