@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 
 import { AppHeader } from '@/app/(protected)/_components/app-header';
+import { ScreenFade } from '@/app/(protected)/_components/screen-fade';
 import { RfqQueueColumn } from '@/app/(protected)/rfqs/_components/rfq-queue-column';
 import { RfqQueueProvider } from '@/app/(protected)/rfqs/_components/rfq-queue-provider';
 import { ROUTES } from '@/config/routes';
@@ -43,7 +44,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
       <RfqQueueProvider>
         <div className="flex flex-1 items-stretch">
           <RfqQueueColumn />
-          <div className="flex min-w-0 flex-1 flex-col">{children}</div>
+          <ScreenFade>{children}</ScreenFade>
         </div>
       </RfqQueueProvider>
     </div>
