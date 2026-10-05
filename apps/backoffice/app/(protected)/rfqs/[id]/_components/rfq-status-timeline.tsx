@@ -192,6 +192,7 @@ export function RfqStatusTimeline({ detail }: RfqStatusTimelineProps) {
        */}
       <Separator />
       <Stepper
+        orientation="adaptive"
         className="py-1"
         currentIndex={TIMELINE_STATES.indexOf(currentStep)}
         steps={TIMELINE_STATES.map((state) => {
