@@ -23,20 +23,24 @@ export default async function AccountSettingsPage() {
       <AccountForm account={account} />
       <section className="flex flex-col max-w-md gap-y-4 lg:max-w-none">
         <Separator />
-        <h2 className="text-heading-6">{t('access.title')}</h2>
-        <div className="flex flex-wrap gap-x-3 gap-y-3">
-          <Button asChild variant="outline">
-            <Link href={ROUTES.emailSettings}>
-              <MailIcon aria-hidden="true" />
-              {t('access.changeEmail')}
-            </Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href={ROUTES.changePassword}>
-              <KeyRoundIcon aria-hidden="true" />
-              {t('access.changePassword')}
-            </Link>
-          </Button>
+        {/* On a wide page the title and its actions share a row on the form's own two columns, so
+            the section spans the page like the form above it; narrower, the buttons would wrap. */}
+        <div className="grid grid-cols-1 items-center gap-x-12 gap-y-4 xl:grid-cols-2">
+          <h2 className="text-heading-6">{t('access.title')}</h2>
+          <div className="flex flex-wrap gap-x-3 gap-y-3">
+            <Button asChild variant="outline">
+              <Link href={ROUTES.emailSettings}>
+                <MailIcon aria-hidden="true" />
+                {t('access.changeEmail')}
+              </Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href={ROUTES.changePassword}>
+                <KeyRoundIcon aria-hidden="true" />
+                {t('access.changePassword')}
+              </Link>
+            </Button>
+          </div>
         </div>
       </section>
     </main>
