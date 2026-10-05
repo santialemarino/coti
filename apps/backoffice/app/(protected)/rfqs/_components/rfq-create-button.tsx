@@ -10,12 +10,11 @@ import { CreateRfqDialog } from '@/app/(protected)/rfqs/_components/create-rfq-d
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 
 interface RfqCreateButtonProps {
-  size?: 'default' | 'sm';
   className?: string;
 }
 
 // "Crear pedido" with the dialog it opens, for every screen the queue offers it on.
-export function RfqCreateButton({ size = 'default', className }: RfqCreateButtonProps) {
+export function RfqCreateButton({ className }: RfqCreateButtonProps) {
   const router = useRouter();
   const t = useTranslations('rfqs');
   const { activeBranchId } = useRfqList();
@@ -23,7 +22,7 @@ export function RfqCreateButton({ size = 'default', className }: RfqCreateButton
 
   return (
     <>
-      <Button size={size} onClick={() => setOpen(true)} className={className}>
+      <Button onClick={() => setOpen(true)} className={className}>
         <PlusIcon aria-hidden="true" />
         {t('list.create')}
       </Button>

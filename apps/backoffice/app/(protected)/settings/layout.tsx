@@ -12,7 +12,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
   const hasSections = session?.role === ADMIN_ROLE;
 
   return (
-    <div className="flex flex-col min-w-0 px-6 py-10 gap-y-8 lg:px-10">
+    <div className="flex flex-1 flex-col min-w-0 px-6 py-10 gap-y-8 lg:px-10">
       {hasSections ? <SettingsBackLink /> : null}
       {children}
     </div>

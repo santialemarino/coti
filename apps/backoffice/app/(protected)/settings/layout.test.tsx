@@ -32,7 +32,7 @@ describe('SettingsLayout', () => {
     const back = await renderAs('ADMIN', ROUTES.accountSettings);
 
     expect(back?.getAttribute('href')).toBe(ROUTES.settings);
-    expect(back?.className).toContain('lg:hidden');
+    expect(back?.classList.contains('lg:hidden')).toBe(true);
   });
 
   it('offers no way back on the index itself', async () => {
@@ -42,4 +42,12 @@ describe('SettingsLayout', () => {
   it('offers a seller, who has no index, no way back', async () => {
     expect(await renderAs('SELLER', ROUTES.changePassword)).toBeNull();
   });
+
+  // The caller's own pages are opened from the profile menu; the list they would go back to lacks them.
+  it.each([ROUTES.changePassword, ROUTES.emailSettings])(
+    'offers no way back to the sections from %s',
+    async (path) => {
+      expect(await renderAs('ADMIN', path)).toBeNull();
+    },
+  );
 });

@@ -49,8 +49,9 @@ describe('ScreenFade', () => {
     expect(frame()).not.toBe(first);
   });
 
-  // The column marks itself as the page; the screen reads that mark rather than the column's rules.
-  it('steps aside below lg while the column before it is the page', () => {
+  // Pins the rule's literal only: jsdom evaluates neither `max-lg:` nor `peer-data`, so the step-aside
+  // itself is checked in a browser; the column's mark and the sibling order are pinned elsewhere.
+  it('carries the rule that steps aside for a column marked as the page', () => {
     render(renderAt('/'));
 
     expect(frame().className).toContain('max-lg:peer-data-[root=true]:hidden');

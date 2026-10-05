@@ -145,10 +145,12 @@ describe('AppHeader below lg', () => {
     expect(vi.mocked(PrimaryNav)).toHaveBeenCalledWith({ className: 'max-lg:hidden' }, undefined);
   });
 
-  it('keeps only the avatar of the profile', async () => {
+  // Pins the class only; the name being hidden at that width is checked in a browser.
+  it('marks the profile name to hide below lg', async () => {
     const view = render(await AppHeader({ session: SESSION }));
 
     const name = view.getByText(SESSION.name).parentElement as HTMLElement;
-    expect(name.className).toContain('hidden lg:flex');
+    expect(name.classList.contains('hidden')).toBe(true);
+    expect(name.classList.contains('lg:flex')).toBe(true);
   });
 });

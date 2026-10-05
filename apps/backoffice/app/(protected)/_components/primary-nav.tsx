@@ -51,13 +51,13 @@ export function PrimaryNav({ layout = 'bar', className }: PrimaryNavProps) {
 
   if (layout === 'tabs') {
     return (
-      <nav aria-label={t('nav.main')} className={cn('grid grid-cols-4 px-2', className)}>
+      <nav aria-label={t('nav.main')} className={cn('grid h-full grid-cols-4 px-2', className)}>
         {items.map(({ href, label, icon: Icon, active }) => (
           <Link
             key={href}
             href={href}
             aria-current={active ? 'page' : undefined}
-            className="group/tab flex flex-col items-center py-2 gap-y-1 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
+            className="group/tab flex flex-col items-center justify-center gap-y-1 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
           >
             {/* The pill carries the state, so the tab reads as chosen without relying on colour alone. */}
             <span

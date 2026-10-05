@@ -33,11 +33,6 @@ export function RfqDetailHeader({ detail }: RfqDetailHeaderProps) {
 
   return (
     <div className="flex flex-col gap-y-2">
-      {/*
-       * The way back is its own line with its own label. Sitting it beside the heading meant
-       * centring a 16px glyph against a 30px line, which never lands anywhere that looks
-       * deliberate — and left the only exit from the screen unnamed.
-       */}
       <BackLink href={ROUTES.home} label={t('detail.backToList')} />
 
       <div className="flex items-center justify-between gap-x-4">

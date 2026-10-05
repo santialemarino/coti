@@ -352,8 +352,10 @@
 ::view-transition-old(shell-tabs) {
   display: none;
 }
-/* On a narrow screen the column is the list screen, so it fades through with the screen it trades
-   places with. */
+/*
+ * On a narrow screen the column is the list screen, so it fades through with the screen it trades
+ * places with.
+ */
 ::view-transition-group(context-list) {
   animation: none;
 }

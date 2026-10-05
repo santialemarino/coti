@@ -5,8 +5,8 @@ import { Building2Icon, StoreIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Combobox, type ComboboxOption } from '@repo/ui/components';
+import { FitLabel } from '@/app/(protected)/_components/fit-label';
 import { selectBranch } from '@/app/(protected)/actions';
-import { FitLabel } from '@/components/fit-label';
 import type { Branch } from '@/lib/api/branches';
 import { ALL_BRANCHES } from '@/lib/constants/branch';
 

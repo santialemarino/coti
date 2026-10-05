@@ -59,4 +59,19 @@ describe('PrimaryNav', () => {
     expect(tabs[0]?.getAttribute('aria-current')).toBe('page');
     expect(tabs[1]?.getAttribute('aria-current')).toBeNull();
   });
+
+  it.each([
+    [ROUTES.clients, messages.common.nav.clients],
+    [ROUTES.reports, messages.common.nav.reports],
+    [ROUTES.administration, messages.common.nav.administration],
+  ])('marks the tab of the section on %s', (path, label) => {
+    navigation.pathname = path;
+    render(
+      <NextIntlClientProvider locale="es" messages={messages}>
+        <PrimaryNav layout="tabs" />
+      </NextIntlClientProvider>,
+    );
+
+    expect(screen.getByRole('link', { current: 'page' }).textContent).toBe(label);
+  });
 });

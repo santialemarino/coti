@@ -1,10 +1,11 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ContextColumn } from '@/app/(protected)/_components/context-column';
 import { RfqListProvider } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { ROUTES } from '@/config/routes';
+import type { Onboarding } from '@/lib/api/onboarding';
 import type { RfqRecord } from '@/lib/api/rfqs';
 import messages from '@/translations/es.json';
 
@@ -18,6 +19,8 @@ vi.mock('next/navigation', () => ({
   useRouter: () => navigation.router,
 }));
 vi.mock('@/lib/api/rfqs-client', () => ({ fetchQueue: vi.fn(async () => []) }));
+vi.mock('@/app/(onboarding)/onboarding/actions', () => ({ resumeOnboarding: vi.fn() }));
+vi.mock('@/app/(protected)/settings/onboarding/actions', () => ({ setChecklistHidden: vi.fn() }));
 
 const { fetchQueue } = await import('@/lib/api/rfqs-client');
 
@@ -44,36 +47,61 @@ const ORDER: RfqRecord = {
   followupFlaggedAt: null,
 };
 
-function tree(hasQueue: boolean, settingsNav = SETTINGS_NAV) {
+const PENDING_SETUP: Onboarding = {
+  flowVersion: 1,
+  status: 'DISMISSED',
+  currentStep: 'CATALOG_UPLOAD',
+  steps: { BRAND: 'COMPLETED', CATALOG_UPLOAD: 'SKIPPED' },
+  checklist: [
+    { step: 'BRAND', done: true },
+    { step: 'CATALOG_UPLOAD', done: false },
+  ],
+  checklistHiddenAt: null,
+  completedAt: null,
+};
+
+interface TreeOptions {
+  onboarding?: Onboarding | null;
+  loadFailed?: boolean;
+}
+
+function tree(hasQueue: boolean, settingsNav = SETTINGS_NAV, options: TreeOptions = {}) {
   return (
     <NextIntlClientProvider locale="es" messages={messages}>
       <RfqListProvider
         records={[ORDER]}
         hasQueue={hasQueue}
+        loadFailed={options.loadFailed}
         activeBranchId={null}
         userName="Ana"
         userId="u1"
         isAdmin
       >
-        <ContextColumn settingsNav={settingsNav} />
+        <ContextColumn settingsNav={settingsNav} onboarding={options.onboarding ?? null} />
       </RfqListProvider>
     </NextIntlClientProvider>
   );
 }
 
-function renderAt(pathname: string, hasQueue = true, settingsNav = SETTINGS_NAV) {
+function renderAt(
+  pathname: string,
+  hasQueue = true,
+  settingsNav = SETTINGS_NAV,
+  options: TreeOptions = {},
+) {
   navigation.pathname = pathname;
-  const view = render(tree(hasQueue, settingsNav));
+  const view = render(tree(hasQueue, settingsNav, options));
   return {
     column: () => view.container.firstElementChild as HTMLElement,
     navigate: (next: string) => {
       navigation.pathname = next;
-      view.rerender(tree(hasQueue, settingsNav));
+      view.rerender(tree(hasQueue, settingsNav, options));
     },
   };
 }
 
 beforeEach(() => vi.clearAllMocks());
+afterEach(() => vi.restoreAllMocks());
 
 describe('ContextColumn', () => {
   it.each([ROUTES.home, ROUTES.rfqsDetail('r1')])('is open on the queue screen %s', (path) => {
@@ -91,10 +119,19 @@ describe('ContextColumn', () => {
     expect(column().hasAttribute('inert')).toBe(true);
   });
 
+  // A closed column marked as the page would hide the screen beside it and leave the page blank.
   it('stays closed for a caller with no queue, even on the queue screens', () => {
     const { column } = renderAt(ROUTES.home, false);
 
     expect(column().dataset.open).toBe('false');
+    expect(column().dataset.root).toBe('false');
+  });
+
+  it('stays closed and is not the page when the queue failed to load', () => {
+    const { column } = renderAt(ROUTES.home, true, SETTINGS_NAV, { loadFailed: true });
+
+    expect(column().dataset.open).toBe('false');
+    expect(column().dataset.root).toBe('false');
   });
 
   it('marks the order the path has open', () => {
@@ -172,9 +209,11 @@ describe('ContextColumn', () => {
     const { column } = renderAt(path);
 
     expect(column().dataset.open).toBe('true');
-    expect(column().className).toContain('max-lg:[--column-width:100%]');
-    expect(column().className).not.toContain('max-lg:hidden');
+    expect(column().classList.contains('max-lg:[--column-width:100%]')).toBe(true);
+    expect(column().classList.contains('max-lg:hidden')).toBe(false);
     expect(column().dataset.root).toBe('true');
+    // The screen's step-aside rule reads this element as its peer.
+    expect(column().classList.contains('peer')).toBe(true);
   });
 
   it.each([ROUTES.rfqsDetail('r1'), ROUTES.accountSettings])(
@@ -183,7 +222,7 @@ describe('ContextColumn', () => {
       const { column } = renderAt(path);
 
       expect(column().dataset.open).toBe('true');
-      expect(column().className).toContain('max-lg:hidden');
+      expect(column().classList.contains('max-lg:hidden')).toBe(true);
       expect(column().dataset.root).toBe('false');
     },
   );
@@ -193,7 +232,51 @@ describe('ContextColumn', () => {
     renderAt(ROUTES.home);
 
     const create = screen.getByRole('button', { name: messages.rfqs.list.create });
-    expect(create.className).toContain('lg:hidden');
+    expect(create.classList.contains('lg:hidden')).toBe(true);
+  });
+
+  it('is the page only on a landing, across moves', () => {
+    const { column, navigate } = renderAt(ROUTES.home);
+    expect(column().dataset.root).toBe('true');
+
+    navigate(ROUTES.rfqsDetail('r1'));
+    expect(column().dataset.root).toBe('false');
+
+    navigate(ROUTES.clients);
+    expect(column().dataset.root).toBe('false');
+    expect(column().dataset.open).toBe('false');
+  });
+
+  // Below lg the home pane that carries the setup card steps aside, so the list carries it.
+  it('carries a pending setup card on the queue landing, below lg only', () => {
+    renderAt(ROUTES.home, true, SETTINGS_NAV, { onboarding: PENDING_SETUP });
+
+    const card = screen.getByText(messages.onboarding.checklist.title).closest('.lg\\:hidden');
+    expect(card).not.toBeNull();
+  });
+
+  // On a narrow screen the landing's column is the page: its main landmark and its title.
+  it('is the main landmark with the page title on a narrow landing', () => {
+    renderAt(ROUTES.home);
+
+    expect(screen.getByRole('main')).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: messages.rfqs.list.title })).toBeTruthy();
+  });
+
+  it('stays a complementary column beside the page on a wide screen', () => {
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query) =>
+        ({
+          matches: true,
+          media: query,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+        }) as unknown as MediaQueryList,
+    );
+    renderAt(ROUTES.home);
+
+    expect(screen.queryByRole('main')).toBeNull();
+    expect(screen.getByRole('heading', { level: 2, name: messages.rfqs.list.title })).toBeTruthy();
   });
 
   // A seller is offered no sections; their own settings pages must not open an empty column.

@@ -23,6 +23,24 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
 
+/*
+ * jsdom implements no window.matchMedia, which a component reading the viewport calls on its first
+ * client render. A stub that matches nothing renders the narrowest layout; a test that needs another
+ * width stubs its own.
+ */
+if (!window.matchMedia) {
+  window.matchMedia = (query) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {},
+    dispatchEvent: () => false,
+  });
+}
+
 // Testing Library only auto-cleans when the runner exposes a global afterEach, and these
 // suites import their hooks explicitly. Without it a rendered tree survives into the next
 // test and a query matches the previous one's DOM.

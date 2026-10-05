@@ -22,7 +22,9 @@ export function FitLabel({ full, short }: FitLabelProps) {
     const room = box.current;
     const text = probe.current;
     if (!room || !text) return;
-    const check = () => setFits(text.offsetWidth <= room.clientWidth);
+    // Fractional widths: rounded ones can call a text that overflows by a sub-pixel a fit.
+    const check = () =>
+      setFits(text.getBoundingClientRect().width <= room.getBoundingClientRect().width);
     check();
     const observer = new ResizeObserver(check);
     observer.observe(room);
@@ -32,7 +34,7 @@ export function FitLabel({ full, short }: FitLabelProps) {
 
   return (
     // `relative` keeps the probe inside this box, so the trigger's own clip hides it.
-    <span ref={box} className="block relative">
+    <span ref={box} className="block truncate relative">
       <span ref={probe} aria-hidden="true" className="invisible absolute whitespace-nowrap">
         {full}
       </span>
