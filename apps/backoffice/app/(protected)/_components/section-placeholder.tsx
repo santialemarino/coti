@@ -28,7 +28,7 @@ export function SectionPlaceholder({
     <Card className="gap-y-0 py-14">
       <StatusScreen icon={icon} tone="info" title={title} description={description}>
         <Button asChild variant="outline">
-          <Link href={ROUTES.rfqs}>
+          <Link href={ROUTES.home}>
             <ArrowLeftIcon aria-hidden="true" />
             {backLabel}
           </Link>

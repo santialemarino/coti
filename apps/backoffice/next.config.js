@@ -4,6 +4,8 @@ const withNextIntl = createNextIntlPlugin();
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // React's <ViewTransition> on navigation: the screen fades out as the next one fades in.
+  experimental: { viewTransition: true },
   // Security headers applied to every route. Tighten/extend per project.
   async headers() {
     return [

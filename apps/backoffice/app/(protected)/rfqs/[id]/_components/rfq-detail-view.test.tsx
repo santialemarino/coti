@@ -234,6 +234,7 @@ function viewTree(detail: RfqDetailResponse, activeBranchId: string | null = BRA
       timeZone="America/Argentina/Buenos_Aires"
     >
       <RfqListProvider
+        hasQueue
         records={[draftRecord()]}
         activeBranchId={activeBranchId}
         userName="Admin"

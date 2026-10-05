@@ -300,6 +300,7 @@ describe('QuoteDeliveryCard without a branch mailbox', () => {
         timeZone="America/Argentina/Buenos_Aires"
       >
         <RfqListProvider
+          hasQueue
           records={[]}
           activeBranchId={BRANCH_ID}
           userName="Ana"

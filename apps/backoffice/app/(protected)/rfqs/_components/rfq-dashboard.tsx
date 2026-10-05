@@ -62,6 +62,7 @@ import {
   RfqStatusBadge,
   STATUS_ORDER,
 } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
+import { RfqViewLink } from '@/app/(protected)/rfqs/_components/rfq-view-link';
 import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { errorCodeOf } from '@/lib/api/errors';
@@ -670,7 +671,7 @@ export function RfqDashboard({
   return (
     <>
       {/* The greeting belongs to the home screen; this one is the section, so it says so once. */}
-      <PageHeader title={t('list.title')} />
+      <PageHeader title={t('list.title')} actions={<RfqViewLink to="queue" />} />
       <Card className="gap-y-0 overflow-hidden py-0">
         <CardHeader className="flex-row items-center justify-between py-6">
           <CardTitle className="text-heading-3">{t('list.caption')}</CardTitle>

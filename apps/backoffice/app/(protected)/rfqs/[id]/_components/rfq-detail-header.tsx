@@ -45,7 +45,7 @@ export function RfqDetailHeader({ detail }: RfqDetailHeaderProps) {
        * deliberate — and left the only exit from the screen unnamed.
        */}
       <Link
-        href={ROUTES.rfqs}
+        href={ROUTES.home}
         className="group/back flex w-fit items-center gap-x-1.5 rounded-sm outline-none text-paragraph-xs-medium text-foreground-muted transition-colors duration-200 ease-out-soft hover:text-foreground focus-visible:text-foreground"
       >
         <ArrowLeftIcon

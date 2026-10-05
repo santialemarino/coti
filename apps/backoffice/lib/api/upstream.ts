@@ -13,6 +13,8 @@ interface ForwardInit {
   method: string;
   body?: string;
   headers?: Record<string, string>;
+  // Off for a read that must scope exactly as the server-side read does, which never falls back.
+  fallbackToOnlyBranch?: boolean;
 }
 
 /*
@@ -36,7 +38,12 @@ export async function forwardToApi(
     headers.set('Content-Type', 'application/json');
   }
 
-  const branchId = await resolveBranchId(incoming, jar.get(BRANCH_COOKIE)?.value, token);
+  const branchId = await resolveBranchId(
+    incoming,
+    jar.get(BRANCH_COOKIE)?.value,
+    token,
+    init.fallbackToOnlyBranch ?? true,
+  );
   if (branchId) {
     headers.set(BRANCH_HEADER, branchId);
   }
@@ -66,10 +73,12 @@ async function resolveBranchId(
   incoming: Request | null,
   cookieBranchId: string | undefined,
   token: string,
+  fallbackToOnlyBranch: boolean,
 ): Promise<string | undefined> {
   const named = incoming?.headers.get(BRANCH_HEADER) || undefined;
   if (named) return named;
   if (cookieBranchId) return cookieBranchId;
+  if (!fallbackToOnlyBranch) return undefined;
 
   const response = await fetch(`${API_URL}/v1/branches`, {
     headers: { Authorization: `Bearer ${token}` },

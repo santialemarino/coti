@@ -8,10 +8,8 @@ export default function RfqsPage() {
   const { records, activeBranchId } = useRfqList();
 
   return (
-    <div className="flex flex-1 items-stretch bg-body-background">
-      <PageShell>
-        <RfqDashboard initialRecords={records} activeBranchId={activeBranchId} />
-      </PageShell>
-    </div>
+    <PageShell>
+      <RfqDashboard initialRecords={records} activeBranchId={activeBranchId} />
+    </PageShell>
   );
 }

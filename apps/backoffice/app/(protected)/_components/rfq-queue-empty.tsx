@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { InboxIcon, ListIcon, PlusIcon } from 'lucide-react';
+import { InboxIcon, PlusIcon, TableIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Button, EmptyState } from '@repo/ui/components';
@@ -45,7 +45,7 @@ export function RfqQueueEmpty({ onboarding }: RfqQueueEmptyProps) {
           </Button>
           <Button asChild variant="outline">
             <Link href={ROUTES.rfqs}>
-              <ListIcon aria-hidden="true" />
+              <TableIcon aria-hidden="true" />
               {t('seeAllOrders')}
             </Link>
           </Button>

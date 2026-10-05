@@ -149,7 +149,7 @@ function renderAs(
       messages={messages}
       timeZone="America/Argentina/Buenos_Aires"
     >
-      <RfqListProvider records={records} activeBranchId={null} {...roles}>
+      <RfqListProvider hasQueue records={records} activeBranchId={null} {...roles}>
         <RfqDashboard initialRecords={records} activeBranchId={null} />
       </RfqListProvider>
     </NextIntlClientProvider>,

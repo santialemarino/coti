@@ -58,7 +58,7 @@ export interface RfqRecord {
   archived?: boolean;
 }
 
-// Raw shape returned by GET /v1/rfqs — the mapper lives on the server side.
+// Raw shape returned by GET /v1/rfqs; mapListItem turns it into an RfqRecord.
 export interface RfqListItem {
   id: string;
   quote_number: number | null;
@@ -77,6 +77,28 @@ export interface RfqListItem {
   needs_followup: boolean;
   followup_flagged_at: string | null;
   archived_at: string | null;
+}
+
+export function mapListItem(item: RfqListItem): RfqRecord {
+  return {
+    id: item.id,
+    quoteNumber: item.quote_number,
+    client: item.client ?? '',
+    createdAt: item.created_at,
+    channel: item.channel as RfqChannel,
+    seller: item.seller,
+    sellerId: item.seller_id,
+    branch: item.branch,
+    branchId: item.branch_id,
+    quoteId: item.quote_id,
+    itemCount: item.item_count,
+    reviewCount: item.review_count,
+    total: item.total ?? undefined,
+    status: normalizeRfqStatus(item.status),
+    needsFollowup: item.needs_followup,
+    followupFlaggedAt: item.followup_flagged_at,
+    archived: item.archived_at != null,
+  };
 }
 
 const RFQ_REFERENCE_MIN_DIGITS = 2;

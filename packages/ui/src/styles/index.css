@@ -318,6 +318,49 @@
 }
 
 /*
+ * The screen swap on navigation: React's <ViewTransition name="screen"> hands the browser the old
+ * screen and the new one. They fade through rather than cross — the old one is gone by 40% and the
+ * new one only starts there — so two unrelated screens never sit on top of each other mid-swap.
+ * The rest of the page stays live — the root's snapshots are dropped, so the column keeps sliding
+ * on its CSS transition underneath — and the screen's group follows the content as the column
+ * pushes it, with the old snapshot kept at its own size rather than scaled into the new box.
+ */
+/* The overlay would swallow every click for the swap's duration; the page under it is live. */
+::view-transition {
+  pointer-events: none;
+}
+::view-transition-old(root) {
+  display: none;
+}
+::view-transition-new(root) {
+  animation: none;
+}
+::view-transition-group(screen) {
+  animation: none;
+}
+::view-transition-old(screen) {
+  inline-size: auto;
+  animation: screen-out var(--duration-slow) var(--ease-in-out-soft) both;
+}
+::view-transition-new(screen) {
+  animation: screen-in var(--duration-slow) var(--ease-in-out-soft) both;
+}
+
+@keyframes screen-out {
+  40%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes screen-in {
+  0%,
+  40% {
+    opacity: 0;
+  }
+}
+
+/*
  * Reduced motion. Decorative motion collapses to nothing; the focus-bump family deliberately does
  * NOT, because it is functional feedback. Every element carrying a bump also shifts colour on
  * focus-visible (see the ux-motion skill), so the affordance survives for a user who cannot
@@ -338,6 +381,11 @@
  * makes it variant-proof — it catches the utility under `data-[state=open]:`, `group-*`, or bare.
  */
 @media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(screen),
+  ::view-transition-new(screen) {
+    animation: none;
+  }
+
   [class*='animate-in'],
   [class*='animate-out'],
   [class*='animate-collapsible-down'],

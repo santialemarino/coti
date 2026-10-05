@@ -6,6 +6,15 @@ import type { Onboarding } from '@/lib/api/onboarding';
 import messages from '@/translations/es.json';
 
 vi.mock('@/app/(protected)/_components/app-header', () => ({ AppHeader: vi.fn(() => null) }));
+vi.mock('@/app/(protected)/rfqs/_components/rfq-queue-provider', () => ({
+  RfqQueueProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+vi.mock('@/app/(protected)/rfqs/_components/rfq-queue-column', () => ({
+  RfqQueueColumn: () => null,
+}));
+vi.mock('@/app/(protected)/_components/screen-fade', () => ({
+  ScreenFade: ({ children }: { children: React.ReactNode }) => children,
+}));
 vi.mock('@/lib/api/onboarding', () => ({ getOnboarding: vi.fn() }));
 vi.mock('@/lib/api/branches', () => ({ getBranches: vi.fn() }));
 vi.mock('@/lib/auth/branch', () => ({ getSelectedBranchId: vi.fn() }));
@@ -19,6 +28,7 @@ vi.mock('@/lib/auth/session', async (importOriginal) => ({
  */
 vi.mock('next/navigation', () => ({
   unstable_rethrow: vi.fn(),
+  usePathname: () => '/',
   redirect: vi.fn((path: string) => {
     throw new RedirectError(path);
   }),
