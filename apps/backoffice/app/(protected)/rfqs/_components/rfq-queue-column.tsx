@@ -8,7 +8,7 @@ import { useTranslations } from 'next-intl';
 import { useHeldWhileClosed } from '@repo/ui/hooks';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { RfqSidebarList } from '@/app/(protected)/rfqs/_components/rfq-sidebar-list';
-import { RfqViewSwitch } from '@/app/(protected)/rfqs/_components/rfq-view-switch';
+import { RfqViewLink } from '@/app/(protected)/rfqs/_components/rfq-view-link';
 import { queueSelection } from '@/config/routes';
 
 /*
@@ -59,7 +59,7 @@ export function RfqQueueColumn() {
           <p className="text-paragraph-xs-medium text-foreground-subtle uppercase">
             {t('list.title')}
           </p>
-          <RfqViewSwitch view="queue" />
+          <RfqViewLink to="table" />
         </div>
         <RfqSidebarList records={records} activeRfqId={activeRfqId} />
       </motion.aside>

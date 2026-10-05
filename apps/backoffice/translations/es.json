@@ -697,9 +697,8 @@
       }
     },
     "view": {
-      "label": "Vista de pedidos",
-      "queue": "Cola",
-      "table": "Tabla"
+      "toQueue": "Ver cola",
+      "toTable": "Ver tabla"
     },
     "sidebar": {
       "search": "Buscar pedidos",
