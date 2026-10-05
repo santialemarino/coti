@@ -12,6 +12,9 @@ vi.mock('@/app/(protected)/rfqs/_components/rfq-queue-provider', () => ({
 vi.mock('@/app/(protected)/rfqs/_components/rfq-queue-column', () => ({
   RfqQueueColumn: () => null,
 }));
+vi.mock('@/app/(protected)/_components/screen-fade', () => ({
+  ScreenFade: ({ children }: { children: React.ReactNode }) => children,
+}));
 vi.mock('@/lib/api/onboarding', () => ({ getOnboarding: vi.fn() }));
 vi.mock('@/lib/api/branches', () => ({ getBranches: vi.fn() }));
 vi.mock('@/lib/auth/branch', () => ({ getSelectedBranchId: vi.fn() }));
