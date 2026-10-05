@@ -43,6 +43,13 @@ export const API_ERROR_CODES = [
   'UNSUPPORTED_FILE_TYPE',
   'LEGACY_EXCEL_FILE',
   'AI_UNAVAILABLE',
+  'INVOICE_NOT_READY',
+  'INVOICE_REJECTED',
+  'INVOICE_IN_PROGRESS',
+  'QUOTE_ALREADY_INVOICED',
+  'ARCA_CREDENTIALS',
+  'INVOICING_UNAVAILABLE',
+  'INVALID_TAX_ID',
   'INTERNAL',
   'UNREACHABLE',
   'SESSION_EXPIRED',
@@ -53,12 +60,15 @@ export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
 export class ApiError extends Error {
   readonly code: ApiErrorCode;
   readonly status: number;
+  // What a refusal lists beside its code: the gaps that stop an invoice, or ARCA's own reasons.
+  readonly issues: string[];
 
-  constructor(code: ApiErrorCode, status: number, message?: string) {
+  constructor(code: ApiErrorCode, status: number, message?: string, issues: string[] = []) {
     super(message ?? code);
     this.name = 'ApiError';
     this.code = code;
     this.status = status;
+    this.issues = issues;
   }
 }
 
