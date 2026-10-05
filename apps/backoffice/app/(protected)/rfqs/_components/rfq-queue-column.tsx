@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { motion } from 'motion/react';
 import { useTranslations } from 'next-intl';
 
-import { useHeldWhileClosed, useScrollLane } from '@repo/ui/hooks';
+import { useHeldWhileClosed } from '@repo/ui/hooks';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { RfqSidebarList } from '@/app/(protected)/rfqs/_components/rfq-sidebar-list';
 import { RfqViewSwitch } from '@/app/(protected)/rfqs/_components/rfq-view-switch';
@@ -19,7 +19,6 @@ export function RfqQueueColumn() {
   const pathname = usePathname();
   const t = useTranslations('rfqs');
   const { records, hasQueue, reload } = useRfqList();
-  const lane = useScrollLane<HTMLElement>();
 
   const selection = queueSelection(pathname);
   const open = hasQueue && selection.inQueue;
@@ -45,14 +44,15 @@ export function RfqQueueColumn() {
     <div
       data-open={open}
       inert={!open}
-      className="flex w-0 h-[calc(100dvh-4rem)] shrink-0 justify-end self-start sticky top-16 overflow-clip [--queue-width:clamp(240px,22vw,320px)] transition-[width] duration-200 ease-in-out-soft data-[open=true]:w-(--queue-width) data-[open=true]:ease-out-soft motion-reduce:transition-none"
+      className="flex w-0 h-[calc(100dvh-4rem)] shrink-0 justify-end self-start sticky top-16 overflow-clip [--queue-width:clamp(240px,22vw,320px)] transition-[width] duration-300 ease-in-out-soft data-[open=true]:w-(--queue-width) motion-reduce:transition-none"
     >
       {/* Held to the viewport under the 64px header and scrolled on its own, so a long queue never
-          stretches the page; `layoutScroll` lets the stacks measure their moves against that scroll. */}
+          stretches the page; `layoutScroll` lets the stacks measure their moves against that scroll.
+          No `scroll-lane`: its margin appears once the list overflows and would shift the whole rail
+          sideways, so the thin thumb sits in the list's own padding instead. */}
       <motion.aside
-        ref={lane}
         layoutScroll
-        className="flex w-(--queue-width) h-full shrink-0 flex-col bg-background border-r border-border scroll-area scroll-lane"
+        className="flex w-(--queue-width) h-full shrink-0 flex-col bg-background border-r border-border scroll-area"
       >
         {/* Aligned with the rows below: the title with their text, the switch with their edge. */}
         <div className="flex items-center justify-between pt-3 pr-2 pb-1 pl-5 gap-x-2 bg-background sticky top-0 z-10">
