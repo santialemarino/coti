@@ -196,7 +196,7 @@ export function UserTable({ users, branches, currentUserId, mailDelivery }: User
     <div className="flex flex-col gap-y-6">
       {error ? <Callout tone="danger">{error}</Callout> : null}
 
-      <div className="flex justify-end">
+      <div className="flex sm:justify-end">
         <Button disabled={busy} onClick={() => setForm({ mode: 'create', row: null })}>
           <PlusIcon aria-hidden="true" />
           {t('add')}

@@ -57,7 +57,7 @@ export async function AppHeader({ session }: AppHeaderProps) {
   return (
     // Below lg the sections move to the tab bar and the profile keeps only its avatar, so the header
     // fits a phone without scrolling sideways.
-    <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center px-4 gap-x-3 bg-background/85 border-b border-border backdrop-blur lg:px-6 lg:gap-x-8">
+    <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center px-4 gap-x-3 bg-background/85 border-b border-border backdrop-blur [view-transition-name:shell-header] lg:px-6 lg:gap-x-8">
       <Link
         href={ROUTES.home}
         aria-label={t('appName')}

@@ -64,7 +64,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
       </RfqQueueProvider>
       <div
         data-slot="tab-bar"
-        className="fixed inset-x-0 bottom-0 z-40 bg-background/85 border-t border-border backdrop-blur lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 bg-background/85 border-t border-border backdrop-blur [view-transition-name:shell-tabs] lg:hidden"
       >
         <PrimaryNav layout="tabs" />
       </div>

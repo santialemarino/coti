@@ -64,7 +64,7 @@ export function SectionBar({ settingsNav }: SectionBarProps) {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       {live ? (
-        <div className="sticky top-16 z-30 flex h-12 shrink-0 items-center px-2 bg-background/85 border-b border-border backdrop-blur lg:hidden">
+        <div className="sticky top-16 z-30 flex h-12 shrink-0 items-center px-2 bg-background/85 border-b border-border backdrop-blur [view-transition-name:shell-section] lg:hidden">
           <SheetTrigger asChild>
             <button
               type="button"
@@ -87,8 +87,8 @@ export function SectionBar({ settingsNav }: SectionBarProps) {
         side="top"
         showCloseButton={false}
         aria-describedby={undefined}
-        overlayClassName="top-28"
-        className="top-28 bottom-0 max-h-none border-b-0 shadow-none data-[state=open]:ease-in-out-soft data-[state=closed]:ease-in-out-soft data-[state=closed]:duration-300 data-[state=open]:slide-in-from-top-2 data-[state=closed]:slide-out-to-top-2 data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 lg:hidden"
+        overlayClassName="top-28 [view-transition-name:shell-sheet-overlay]"
+        className="top-28 bottom-0 max-h-none [view-transition-name:shell-sheet] border-b-0 shadow-none data-[state=open]:ease-in-out-soft data-[state=closed]:ease-in-out-soft data-[state=closed]:duration-300 data-[state=open]:slide-in-from-top-2 data-[state=closed]:slide-out-to-top-2 data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 lg:hidden"
       >
         {/* The sheet's own padding is undone so the column's insets match the desktop column's;
             `layoutScroll` lets the stacks measure their moves against this scroll. */}

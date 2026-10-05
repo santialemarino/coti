@@ -338,6 +338,29 @@
 ::view-transition-group(screen) {
   animation: none;
 }
+/*
+ * The shell's fixed pieces are captured on their own so they paint above the fading screen rather
+ * than under it; each stays live (its new image, unanimated) and its old image is dropped.
+ */
+::view-transition-group(shell-header),
+::view-transition-group(shell-section),
+::view-transition-group(shell-tabs),
+::view-transition-group(shell-sheet),
+::view-transition-group(shell-sheet-overlay),
+::view-transition-new(shell-header),
+::view-transition-new(shell-section),
+::view-transition-new(shell-tabs),
+::view-transition-new(shell-sheet),
+::view-transition-new(shell-sheet-overlay) {
+  animation: none;
+}
+::view-transition-old(shell-header),
+::view-transition-old(shell-section),
+::view-transition-old(shell-tabs),
+::view-transition-old(shell-sheet),
+::view-transition-old(shell-sheet-overlay) {
+  display: none;
+}
 ::view-transition-old(screen) {
   inline-size: auto;
   animation: screen-out var(--duration-slow) var(--ease-in-out-soft) both;
