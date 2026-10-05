@@ -5,7 +5,6 @@ import { AppHeader } from '@/app/(protected)/_components/app-header';
 import { ContextColumn } from '@/app/(protected)/_components/context-column';
 import { PrimaryNav } from '@/app/(protected)/_components/primary-nav';
 import { ScreenFade } from '@/app/(protected)/_components/screen-fade';
-import { SectionBar } from '@/app/(protected)/_components/section-bar';
 import { settingsNavItems } from '@/app/(protected)/_components/settings-nav-items';
 import { RfqQueueProvider } from '@/app/(protected)/rfqs/_components/rfq-queue-provider';
 import { ROUTES } from '@/config/routes';
@@ -55,7 +54,6 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     <div className="flex flex-col min-h-screen">
       <AppHeader session={session} />
       <RfqQueueProvider>
-        <SectionBar settingsNav={settingsNav} />
         {/* Below lg the tab bar covers the bottom of the screen, so the page ends above it. */}
         <div className="flex flex-1 items-stretch max-lg:pb-16">
           <ContextColumn settingsNav={settingsNav} />

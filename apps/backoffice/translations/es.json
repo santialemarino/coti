@@ -8,8 +8,7 @@
       "confirm": "Confirmar",
       "edit": "Editar",
       "search": "Buscar",
-      "back": "Volver",
-      "close": "Cerrar"
+      "back": "Volver"
     },
     "states": {
       "loading": "Cargando…",
@@ -208,6 +207,10 @@
     "emailSettings": {
       "title": "Correo",
       "description": "Cambiá la dirección de correo de tu usuario."
+    },
+    "settings": {
+      "title": "Configuración",
+      "description": "Las secciones de configuración del corralón."
     },
     "accountSettings": {
       "title": "Cuenta",
@@ -1126,6 +1129,8 @@
   },
   "settings": {
     "title": "Configuración",
+    "indexHint": "Elegí una sección para ver o cambiar su configuración.",
+    "backToSections": "Volver a la configuración",
     "nav": {
       "account": "Cuenta",
       "branches": "Sucursales",

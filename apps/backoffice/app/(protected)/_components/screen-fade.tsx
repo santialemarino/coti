@@ -13,7 +13,11 @@ export function ScreenFade({ children }: { children: React.ReactNode }) {
 
   return (
     <ViewTransition key={pathname} name="screen" default="none" share="auto">
-      <div className="flex min-w-0 flex-1 flex-col">{children}</div>
+      {/* Below lg the context column before it can be the page itself (`data-root`); the screen
+          then steps aside. */}
+      <div className="flex min-w-0 flex-1 flex-col max-lg:peer-data-[root=true]:hidden">
+        {children}
+      </div>
     </ViewTransition>
   );
 }

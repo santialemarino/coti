@@ -95,9 +95,9 @@ describe('isOrdersPath', () => {
 });
 
 describe('isSettingsPath', () => {
-  it('covers the pages under the settings root and nothing that only shares its prefix', () => {
+  it('covers the settings root and its pages, and nothing that only shares its prefix', () => {
     expect(isSettingsPath(ROUTES.accountSettings)).toBe(true);
-    expect(isSettingsPath('/settings')).toBe(false);
+    expect(isSettingsPath(ROUTES.settings)).toBe(true);
     expect(isSettingsPath('/settingsx')).toBe(false);
     expect(isSettingsPath(ROUTES.clients)).toBe(false);
   });

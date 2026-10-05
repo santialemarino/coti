@@ -118,7 +118,7 @@ export async function AppHeader({ session }: AppHeaderProps) {
             {isAdmin ? (
               <DropdownMenuItem asChild>
                 {/* With something to fix, the entry lands where it is fixed. */}
-                <Link href={needsSetup ? ROUTES.branchSettings : ROUTES.accountSettings}>
+                <Link href={needsSetup ? ROUTES.branchSettings : ROUTES.settings}>
                   <SettingsIcon aria-hidden="true" />
                   {t('nav.settings')}
                   {needsSetup ? (

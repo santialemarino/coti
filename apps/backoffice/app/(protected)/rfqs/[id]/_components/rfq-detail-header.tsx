@@ -1,18 +1,12 @@
 'use client';
 
-import Link from 'next/link';
-import {
-  ArrowLeftIcon,
-  ClipboardListIcon,
-  LinkIcon,
-  MailIcon,
-  MessageCircleIcon,
-} from 'lucide-react';
+import { ClipboardListIcon, LinkIcon, MailIcon, MessageCircleIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { MetaList } from '@repo/ui/components';
 import { FollowupBadge, followupDue } from '@/app/(protected)/rfqs/_components/followup-badge';
 import { RfqStatusBadge } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
+import { BackLink } from '@/components/back-link';
 import { ROUTES } from '@/config/routes';
 import type { RfqChannel, RfqDetailResponse } from '@/lib/api/rfqs';
 import { formatRfqReference, normalizeRfqStatus } from '@/lib/api/rfqs';
@@ -44,16 +38,7 @@ export function RfqDetailHeader({ detail }: RfqDetailHeaderProps) {
        * centring a 16px glyph against a 30px line, which never lands anywhere that looks
        * deliberate — and left the only exit from the screen unnamed.
        */}
-      <Link
-        href={ROUTES.home}
-        className="group/back flex w-fit items-center gap-x-1.5 rounded-sm outline-none text-paragraph-xs-medium text-foreground-muted transition-colors duration-200 ease-out-soft hover:text-foreground focus-visible:text-foreground"
-      >
-        <ArrowLeftIcon
-          aria-hidden="true"
-          className="size-3.5 group-focus-visible/back:animate-focus-bump-soft"
-        />
-        {t('detail.backToList')}
-      </Link>
+      <BackLink href={ROUTES.home} label={t('detail.backToList')} />
 
       <div className="flex items-center justify-between gap-x-4">
         <h2 className="min-w-0 truncate text-heading-3 text-foreground">

@@ -48,4 +48,11 @@ describe('ScreenFade', () => {
 
     expect(frame()).not.toBe(first);
   });
+
+  // The column marks itself as the page; the screen reads that mark rather than the column's rules.
+  it('steps aside below lg while the column before it is the page', () => {
+    render(renderAt('/'));
+
+    expect(frame().className).toContain('max-lg:peer-data-[root=true]:hidden');
+  });
 });

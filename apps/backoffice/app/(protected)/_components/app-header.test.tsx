@@ -111,7 +111,7 @@ describe('AppHeader account menu', () => {
     });
 
     const settings = await view.findByRole('menuitem', { name: 'nav.settings' });
-    expect(settings.getAttribute('href')).toBe(ROUTES.accountSettings);
+    expect(settings.getAttribute('href')).toBe(ROUTES.settings);
     expect(view.getByRole('menuitem', { name: 'nav.signOut' })).toBeTruthy();
     expect(view.queryByRole('menuitem', { name: 'nav.changePassword' })).toBeNull();
   });

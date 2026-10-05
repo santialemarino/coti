@@ -167,16 +167,34 @@ describe('ContextColumn', () => {
     expect(fetchQueue).toHaveBeenCalledTimes(1);
   });
 
-  // Below lg the page takes the whole width; the menu sheet carries the column instead.
-  it.each([ROUTES.home, ROUTES.rfqsDetail('r1'), ROUTES.accountSettings])(
-    'leaves %s to the menu sheet below lg',
+  // Below lg a section's landing is its list, and what the list opens takes the page instead.
+  it.each([ROUTES.home, ROUTES.settings])('is the page itself below lg on %s', (path) => {
+    const { column } = renderAt(path);
+
+    expect(column().dataset.open).toBe('true');
+    expect(column().className).toContain('max-lg:[--column-width:100%]');
+    expect(column().className).not.toContain('max-lg:hidden');
+    expect(column().dataset.root).toBe('true');
+  });
+
+  it.each([ROUTES.rfqsDetail('r1'), ROUTES.accountSettings])(
+    'steps aside below lg on %s',
     (path) => {
       const { column } = renderAt(path);
 
       expect(column().dataset.open).toBe('true');
       expect(column().className).toContain('max-lg:hidden');
+      expect(column().dataset.root).toBe('false');
     },
   );
+
+  // On a narrow screen the list is the landing, so it carries the first action the landing had.
+  it('offers creating an order from the list header, below lg only', () => {
+    renderAt(ROUTES.home);
+
+    const create = screen.getByRole('button', { name: messages.rfqs.list.create });
+    expect(create.className).toContain('lg:hidden');
+  });
 
   // A seller is offered no sections; their own settings pages must not open an empty column.
   it('stays closed on the settings pages for a caller with no sections', () => {
