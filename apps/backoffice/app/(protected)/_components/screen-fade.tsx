@@ -1,21 +1,19 @@
 'use client';
 
+import { ViewTransition } from 'react';
 import { usePathname } from 'next/navigation';
 
 /*
- * Each screen fades in on the column's own curve and timing, so the two arrive together. Keyed by
- * path rather than left to a template, which only remounts when the top-level section changes and
- * would let one order or one settings page replace another without it.
+ * The screen crossfades on every navigation — out, then the next one in — on the column's own curve
+ * and timing (the `screen` rules in @repo/ui's styles). Keyed by path, so one order or one settings
+ * page replacing another fades too; updates inside a screen never animate it.
  */
 export function ScreenFade({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   return (
-    <div
-      key={pathname}
-      className="flex min-w-0 flex-1 flex-col animate-in fade-in-0 duration-300 ease-in-out-soft"
-    >
-      {children}
-    </div>
+    <ViewTransition key={pathname} name="screen" default="none" share="auto">
+      <div className="flex min-w-0 flex-1 flex-col">{children}</div>
+    </ViewTransition>
   );
 }
