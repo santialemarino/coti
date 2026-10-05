@@ -1,8 +1,10 @@
 import { redirect } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 
 import { AppHeader } from '@/app/(protected)/_components/app-header';
+import { ContextColumn } from '@/app/(protected)/_components/context-column';
 import { ScreenFade } from '@/app/(protected)/_components/screen-fade';
-import { RfqQueueColumn } from '@/app/(protected)/rfqs/_components/rfq-queue-column';
+import { settingsNavItems } from '@/app/(protected)/_components/settings-nav-items';
 import { RfqQueueProvider } from '@/app/(protected)/rfqs/_components/rfq-queue-provider';
 import { ROUTES } from '@/config/routes';
 import { getBranches } from '@/lib/api/branches';
@@ -38,12 +40,21 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     if (onboarding.status === 'IN_PROGRESS' && canOnboard) redirect(ROUTES.onboarding);
   }
 
+  const settingsNav = isAdmin
+    ? settingsNavItems({
+        t: await getTranslations('settings'),
+        tSetup: await getTranslations('common.setup'),
+        onboarding,
+        branches,
+      })
+    : [];
+
   return (
     <div className="flex flex-col min-h-screen">
       <AppHeader session={session} />
       <RfqQueueProvider>
         <div className="flex flex-1 items-stretch">
-          <RfqQueueColumn />
+          <ContextColumn settingsNav={settingsNav} />
           <ScreenFade>{children}</ScreenFade>
         </div>
       </RfqQueueProvider>

@@ -1212,6 +1212,9 @@
   },
   "account": {
     "title": "Cuenta",
+    "company": {
+      "title": "Datos del corralón"
+    },
     "access": {
       "title": "Acceso",
       "changeEmail": "Cambiar correo",

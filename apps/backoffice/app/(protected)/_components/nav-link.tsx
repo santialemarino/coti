@@ -13,13 +13,11 @@ interface NavLinkProps {
 }
 
 /*
- * One entry in a navigation list — the top bar's sections and the settings rail both render this,
- * so the two cannot drift apart.
+ * One entry in a navigation list — the top bar's sections and the settings sections both render
+ * this, so the two cannot drift apart.
  *
- * The fills are `surface-*` rather than `muted` because a nav sits on two different grounds in this
- * app: the header's white bar and the settings page's wash. `muted` is within half a point of
- * lightness of the wash, so a hover painted with it disappears on exactly the screen that has the
- * most entries to scan.
+ * The fills are `surface-*` rather than `muted`: `muted` is within half a point of lightness of the
+ * page wash, so a nav that ever sits on it would lose its hover, and `surface-*` clears white too.
  *
  * Hover and press stay in one family and one step apart — a press that jumps from a neutral hover to
  * a brand tint reads as a different control answering, not as the one under the finger.

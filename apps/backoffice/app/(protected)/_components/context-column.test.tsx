@@ -2,8 +2,8 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ContextColumn } from '@/app/(protected)/_components/context-column';
 import { RfqListProvider } from '@/app/(protected)/rfqs/_components/rfq-list-context';
-import { RfqQueueColumn } from '@/app/(protected)/rfqs/_components/rfq-queue-column';
 import { ROUTES } from '@/config/routes';
 import type { RfqRecord } from '@/lib/api/rfqs';
 import messages from '@/translations/es.json';
@@ -20,6 +20,11 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/lib/api/rfqs-client', () => ({ fetchQueue: vi.fn(async () => []) }));
 
 const { fetchQueue } = await import('@/lib/api/rfqs-client');
+
+const SETTINGS_NAV = [
+  { href: ROUTES.accountSettings, label: 'Cuenta' },
+  { href: ROUTES.branchSettings, label: 'Sucursales' },
+];
 
 const ORDER: RfqRecord = {
   id: 'r1',
@@ -39,7 +44,7 @@ const ORDER: RfqRecord = {
   followupFlaggedAt: null,
 };
 
-function tree(hasQueue: boolean) {
+function tree(hasQueue: boolean, settingsNav = SETTINGS_NAV) {
   return (
     <NextIntlClientProvider locale="es" messages={messages}>
       <RfqListProvider
@@ -50,27 +55,27 @@ function tree(hasQueue: boolean) {
         userId="u1"
         isAdmin
       >
-        <RfqQueueColumn />
+        <ContextColumn settingsNav={settingsNav} />
       </RfqListProvider>
     </NextIntlClientProvider>
   );
 }
 
-function renderAt(pathname: string, hasQueue = true) {
+function renderAt(pathname: string, hasQueue = true, settingsNav = SETTINGS_NAV) {
   navigation.pathname = pathname;
-  const view = render(tree(hasQueue));
+  const view = render(tree(hasQueue, settingsNav));
   return {
     column: () => view.container.firstElementChild as HTMLElement,
     navigate: (next: string) => {
       navigation.pathname = next;
-      view.rerender(tree(hasQueue));
+      view.rerender(tree(hasQueue, settingsNav));
     },
   };
 }
 
 beforeEach(() => vi.clearAllMocks());
 
-describe('RfqQueueColumn', () => {
+describe('ContextColumn', () => {
   it.each([ROUTES.home, ROUTES.rfqsDetail('r1')])('is open on the queue screen %s', (path) => {
     const { column } = renderAt(path);
 
@@ -79,7 +84,7 @@ describe('RfqQueueColumn', () => {
   });
 
   // The table lists the same orders at full width; a rail beside it would repeat it, narrower.
-  it.each([ROUTES.rfqs, ROUTES.clients, ROUTES.accountSettings])('is closed on %s', (path) => {
+  it.each([ROUTES.rfqs, ROUTES.clients, ROUTES.reports])('is closed on %s', (path) => {
     const { column } = renderAt(path);
 
     expect(column().dataset.open).toBe('false');
@@ -135,5 +140,66 @@ describe('RfqQueueColumn', () => {
     navigate(ROUTES.clients);
     await act(async () => fireEvent.focus(window));
     expect(fetchQueue).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens on the settings pages with their sections, the queue kept but hidden', () => {
+    const { column } = renderAt(ROUTES.branchSettings);
+
+    expect(column().dataset.open).toBe('true');
+    expect(screen.getByRole('link', { name: 'Sucursales' }).getAttribute('aria-current')).toBe(
+      'page',
+    );
+    expect(
+      screen
+        .getByRole('navigation', { name: messages.rfqs.list.title, hidden: true })
+        .closest('.hidden'),
+    ).not.toBeNull();
+  });
+
+  // Visiting settings is not coming back to the queue; only the queue showing again reads it.
+  it('does not read the queue again for a move into settings', async () => {
+    const { navigate } = renderAt(ROUTES.home);
+
+    await act(async () => navigate(ROUTES.accountSettings));
+    expect(fetchQueue).not.toHaveBeenCalled();
+
+    await act(async () => navigate(ROUTES.home));
+    expect(fetchQueue).toHaveBeenCalledTimes(1);
+  });
+
+  // A phone has no room for both: the landing is the list, an order is the order.
+  it('gives a phone the list on the landing and the order alone once one is open', () => {
+    const { column, navigate } = renderAt(ROUTES.home);
+    expect(column().className).toContain('max-md:[--column-width:100vw]');
+
+    navigate(ROUTES.rfqsDetail('r1'));
+    expect(column().className).toContain('max-md:hidden');
+  });
+
+  it('leaves the settings sections to the page below lg', () => {
+    const { column } = renderAt(ROUTES.accountSettings);
+
+    expect(column().className).toContain('max-lg:hidden');
+  });
+
+  // A seller is offered no sections; their own settings pages must not open an empty column.
+  it('stays closed on the settings pages for a caller with no sections', () => {
+    const { column } = renderAt(ROUTES.changePassword, true, []);
+
+    expect(column().dataset.open).toBe('false');
+  });
+
+  it('keeps the settings sections on show while the column closes', () => {
+    const { column, navigate } = renderAt(ROUTES.accountSettings);
+
+    navigate(ROUTES.clients);
+
+    expect(column().dataset.open).toBe('false');
+    expect(column().className).toContain('max-lg:hidden');
+    expect(
+      screen
+        .getByRole('navigation', { name: messages.settings.title, hidden: true })
+        .closest('.hidden'),
+    ).toBeNull();
   });
 });

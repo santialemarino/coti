@@ -9,9 +9,10 @@ vi.mock('@/app/(protected)/_components/app-header', () => ({ AppHeader: vi.fn(()
 vi.mock('@/app/(protected)/rfqs/_components/rfq-queue-provider', () => ({
   RfqQueueProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
-vi.mock('@/app/(protected)/rfqs/_components/rfq-queue-column', () => ({
-  RfqQueueColumn: () => null,
+vi.mock('@/app/(protected)/_components/context-column', () => ({
+  ContextColumn: vi.fn(() => null),
 }));
+vi.mock('next-intl/server', () => ({ getTranslations: vi.fn(async () => (key: string) => key) }));
 vi.mock('@/app/(protected)/_components/screen-fade', () => ({
   ScreenFade: ({ children }: { children: React.ReactNode }) => children,
 }));
@@ -46,6 +47,7 @@ const { getSession } = await import('@/lib/auth/session');
 const { getSelectedBranchId } = await import('@/lib/auth/branch');
 const { ROUTES } = await import('@/config/routes');
 const { default: ProtectedLayout } = await import('@/app/(protected)/layout');
+const { ContextColumn } = await import('@/app/(protected)/_components/context-column');
 
 function session(emailVerified: boolean, role = 'ADMIN', emailVerificationRequired = true) {
   return {
@@ -182,5 +184,17 @@ describe('ProtectedLayout', () => {
     vi.mocked(getSelectedBranchId).mockResolvedValue('b1');
 
     await expect(redirectedTo()).resolves.toBeNull();
+  });
+
+  // The settings sections ride in the shell's column, so the layout is what hands them over.
+  it('hands the settings sections to the column for an admin and none for a seller', async () => {
+    vi.mocked(getSession).mockResolvedValue(session(true));
+    await redirectedTo();
+    const adminNav = vi.mocked(ContextColumn).mock.calls.at(-1)?.[0].settingsNav;
+    expect(adminNav?.[0]?.href).toBe(ROUTES.accountSettings);
+
+    vi.mocked(getSession).mockResolvedValue(session(true, 'SELLER'));
+    await redirectedTo();
+    expect(vi.mocked(ContextColumn).mock.calls.at(-1)?.[0].settingsNav).toEqual([]);
   });
 });
