@@ -227,19 +227,20 @@ the committed spec ships every optional one **off** — `AI_*_PROVIDER` at `disa
 that never starts, and `ci.deploy-spec.yml` boots the image on the spec's own settings to keep that
 true.
 
-| Key                             | Needed when                                                        | Shape                               |
-| ------------------------------- | ------------------------------------------------------------------ | ----------------------------------- |
-| `DATABASE_URL`                  | Always                                                             | `coti_app`'s URL, `sslmode=require` |
-| `DATABASE_ADMIN_URL`            | Always                                                             | `doadmin`'s URL, `sslmode=require`  |
-| `AUTH_JWT_SECRET`               | Always                                                             | ≥ 32 characters                     |
-| `STORAGE_LOCAL_SIGNING_SECRET`  | While `STORAGE_PROVIDER=local`                                     | ≥ 32 characters                     |
-| `CHANNEL_CONFIG_ENCRYPTION_KEY` | To configure any intake channel                                    | 32 bytes of base64                  |
-| `AI_ANTHROPIC_API_KEY`          | `AI_LLM_PROVIDER=anthropic`                                        | Provider key                        |
-| `AI_OPENAI_API_KEY`             | `AI_EMBEDDINGS_PROVIDER` or `AI_TRANSCRIPTION_PROVIDER` = `openai` | Provider key                        |
-| `MAIL_SMTP_USERNAME`            | `MAIL_PROVIDER=smtp`                                               | The mailbox                         |
-| `MAIL_SMTP_PASSWORD`            | `MAIL_PROVIDER=smtp`                                               | A Google App Password               |
-| `STORAGE_ACCESS_KEY`            | `STORAGE_PROVIDER=spaces`, on `api` and `attachment-extraction`    | Spaces key                          |
-| `STORAGE_SECRET_KEY`            | `STORAGE_PROVIDER=spaces`, on `api` and `attachment-extraction`    | Spaces secret                       |
+| Key                               | Needed when                                                        | Shape                               |
+| --------------------------------- | ------------------------------------------------------------------ | ----------------------------------- |
+| `DATABASE_URL`                    | Always                                                             | `coti_app`'s URL, `sslmode=require` |
+| `DATABASE_ADMIN_URL`              | Always                                                             | `doadmin`'s URL, `sslmode=require`  |
+| `AUTH_JWT_SECRET`                 | Always                                                             | ≥ 32 characters                     |
+| `STORAGE_LOCAL_SIGNING_SECRET`    | While `STORAGE_PROVIDER=local`                                     | ≥ 32 characters                     |
+| `CHANNEL_CONFIG_ENCRYPTION_KEY`   | To configure any intake channel                                    | 32 bytes of base64                  |
+| `ARCA_CREDENTIALS_ENCRYPTION_KEY` | `INVOICING_PROVIDER=wsfe`                                          | 32 bytes of base64                  |
+| `AI_ANTHROPIC_API_KEY`            | `AI_LLM_PROVIDER=anthropic`                                        | Provider key                        |
+| `AI_OPENAI_API_KEY`               | `AI_EMBEDDINGS_PROVIDER` or `AI_TRANSCRIPTION_PROVIDER` = `openai` | Provider key                        |
+| `MAIL_SMTP_USERNAME`              | `MAIL_PROVIDER=smtp`                                               | The mailbox                         |
+| `MAIL_SMTP_PASSWORD`              | `MAIL_PROVIDER=smtp`                                               | A Google App Password               |
+| `STORAGE_ACCESS_KEY`              | `STORAGE_PROVIDER=spaces`, on `api` and `attachment-extraction`    | Spaces key                          |
+| `STORAGE_SECRET_KEY`              | `STORAGE_PROVIDER=spaces`, on `api` and `attachment-extraction`    | Spaces secret                       |
 
 Three more are marked `SECRET` in the spec without being credentials, purely to keep a value out of
 a public file: `MAIL_SMTP_HOST`, `MAIL_FROM_ADDRESS` — which must be the mailbox itself or Google

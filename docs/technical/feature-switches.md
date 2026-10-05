@@ -25,6 +25,7 @@ Two rules follow:
 | `CATALOG_MATCH_REVIEW_MAX_LINES`               | `0`     | Flagged lines are left to the seller; no review calls          |
 | `QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES` | `3`     | Extraction runs without past corrections, and no lookup        |
 | `AI_LLM_PROVIDER` and its two siblings         | off     | The capability refuses; see [ai-providers.md](ai-providers.md) |
+| `INVOICING_PROVIDER`                           | off     | No invoice is issued; see [invoicing.md](invoicing.md)         |
 
 The review is off because its measured value does not yet repay its cost
 ([catalog.md](catalog.md#the-review-trade-knowledge-the-catalog-text-does-not-carry)). Interpretation
