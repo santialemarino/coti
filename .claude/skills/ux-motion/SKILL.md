@@ -217,8 +217,8 @@ panel enters from the trigger and then dissolves in place.
 - **Something that folds and unfolds on a press uses a spring, not a duration** — `SPRING.expand` /
   `SPRING.collapse` from `@repo/ui/lib`, and `STAGGER` when a list fans out. A press mid-flight then
   reverses from where things are instead of restarting, and folding does not bounce. Items that only
-  change place travel with `layout="position"`: they keep their size, and a size animation would
-  scale-correct the text inside them. A list that scrolls on its own needs `layoutScroll` on the
+  change place travel with `layout="position"`: a size animation would scale-correct the text inside
+  them, so any size they change snaps instead. A list that scrolls on its own needs `layoutScroll` on the
   scrolling element, or every move is measured against the wrong origin. The queue's status stacks
   (`RfqQueueGroup`) are the reference.
 - **A screen swap on navigation is a view transition, and it fades through rather than crossing.**
