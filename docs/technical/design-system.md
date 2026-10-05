@@ -225,6 +225,11 @@ is part of its character, not a reusable step.
 | `slow`    | 0.3     | `duration-300` | height reveals, crossfades between steps |
 | `slower`  | 0.5     | `duration-500` | page-level entrances                     |
 
+Something that folds and unfolds on a press uses a spring instead of a duration, so a press
+mid-flight reverses from where it is: `SPRING.expand` (`visualDuration` 0.3, a 0.12 bounce) and
+`SPRING.collapse` (0.2, no bounce), with `STAGGER` (25 ms per item, the first six) when a list fans
+out. The queue's status stacks are the reference.
+
 ### `@repo/ui` depends on `motion`, for two components only
 
 Almost every animation here is CSS, which is what keeps the presentational components

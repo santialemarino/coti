@@ -214,6 +214,13 @@ panel enters from the trigger and then dissolves in place.
   the top of the page and a screen reader is told nothing happened, so move focus into the incoming
   stage — onto whatever the caller has to act on. Not on a first render, which would skip the
   heading.
+- **Something that folds and unfolds on a press uses a spring, not a duration** — `SPRING.expand` /
+  `SPRING.collapse` from `@repo/ui/lib`, and `STAGGER` when a list fans out. A press mid-flight then
+  reverses from where things are instead of restarting, and folding does not bounce. Items that only
+  change place travel with `layout="position"`: a size animation would scale-correct the text inside
+  them, so any size they change snaps instead. A list that scrolls on its own needs `layoutScroll` on the
+  scrolling element, or every move is measured against the wrong origin. The queue's status stacks
+  (`RfqQueueGroup`) are the reference.
 - **A screen swap on navigation is a view transition, and it fades through rather than crossing.**
   A page unmounts on the frame its route changes, so no React exit can run; `ScreenFade` wraps the
   content in React's `<ViewTransition name="screen">` (Next's `experimental.viewTransition`) keyed

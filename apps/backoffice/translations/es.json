@@ -589,6 +589,11 @@
         "archive": "Archivar pedido",
         "unarchive": "Desarchivar pedido"
       },
+      "groups": {
+        "expand": "Mostrar todos",
+        "collapse": "Mostrar menos",
+        "stackHint": "Mostrar los {count} pedidos de este estado"
+      },
       "empty": {
         "title": "Todavía no hay pedidos"
       },
@@ -692,7 +697,7 @@
       }
     },
     "view": {
-      "toQueue": "Ver lista",
+      "toQueue": "Ver por estado",
       "toTable": "Ver todos"
     },
     "sidebar": {
