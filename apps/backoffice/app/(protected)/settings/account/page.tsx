@@ -21,7 +21,7 @@ export default async function AccountSettingsPage() {
     <main className="flex flex-col gap-y-8">
       <PageHeader title={t('title')} />
       <AccountForm account={account} />
-      <section className="flex flex-col max-w-md gap-y-4">
+      <section className="flex flex-col max-w-md gap-y-4 lg:max-w-none">
         <Separator />
         <h2 className="text-heading-6">{t('access.title')}</h2>
         <div className="flex flex-wrap gap-x-3 gap-y-3">
