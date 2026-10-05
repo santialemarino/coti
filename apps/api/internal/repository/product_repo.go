@@ -56,7 +56,7 @@ func (r *ProductRepository) List(
 	for rows.Next() {
 		var p domain.Product
 		if err := rows.Scan(&p.ID, &p.AccountID, &p.Code, &p.CanonicalName, &p.Description,
-			&p.Unit, &p.FamilyID, &p.SubgroupID, &p.ImageID, &p.IsActive, &p.CreatedAt, &p.UpdatedAt,
+			&p.Unit, &p.FamilyID, &p.SubgroupID, &p.ImageID, &p.IsActive, &p.VATRate, &p.CreatedAt, &p.UpdatedAt,
 			&page.Total); err != nil {
 			return domain.ProductPage{}, err
 		}

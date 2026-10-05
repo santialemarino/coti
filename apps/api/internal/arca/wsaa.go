@@ -129,6 +129,9 @@ func (i *Issuer) login(ctx context.Context, s *signer) (Ticket, error) {
 		if errors.As(err, &fault) && strings.HasSuffix(fault.Code, "coe.alreadyAuthenticated") {
 			return Ticket{}, fmt.Errorf("arca: WSAA still holds an active ticket for this certificate; retry after it expires: %w", domain.ErrInvoicingUnavailable)
 		}
+		if errors.As(err, &fault) && refusesCredentials(fault.Code) {
+			return Ticket{}, &domain.InvoiceRejectedError{Issues: []string{"WSAA " + faultName(fault.Code) + ": " + fault.String}}
+		}
 		return Ticket{}, fmt.Errorf("arca: WSAA login: %w", err)
 	}
 	var env loginCmsEnvelope
@@ -144,6 +147,21 @@ func (i *Issuer) login(ctx context.Context, s *signer) (Ticket, error) {
 		return Ticket{}, unavailable("decode login ticket", fmt.Errorf("incomplete ticket (expiration %q)", resp.Header.ExpirationTime))
 	}
 	return Ticket{Token: resp.Credentials.Token, Sign: resp.Credentials.Sign, ExpiresAt: expires}, nil
+}
+
+// refusesCredentials reports whether a WSAA fault is about the certificate or its delegation,
+// which only the corralón can fix, rather than about the service being down.
+func refusesCredentials(code string) bool {
+	name := faultName(code)
+	return strings.HasPrefix(name, "cms.") || name == "coe.notAuthorized"
+}
+
+// faultName strips the namespace prefix ARCA puts on a fault code ("ns1:cms.cert.untrusted").
+func faultName(code string) string {
+	if i := strings.LastIndex(code, ":"); i >= 0 {
+		return code[i+1:]
+	}
+	return code
 }
 
 // buildTRA renders the loginTicketRequest WSAA spec 1.2.2 asks for.

@@ -112,12 +112,14 @@ func (f *fakeInvoicingStore) MarkIssued(_ context.Context, _ repository.Querier,
 
 func (f *fakeInvoicingStore) MarkRejected(_ context.Context, _ repository.Querier, _, _ uuid.UUID, rejection domain.InvoiceRejectedError) error {
 	f.invoice.Status = domain.InvoiceStatusRejected
+	f.invoice.Issues = rejection.Issues
 	f.rejected = &rejection
 	return nil
 }
 
 func (f *fakeInvoicingStore) ReleasePending(_ context.Context, _ repository.Querier, _, _ uuid.UUID, reason string) error {
 	f.invoice.Status = domain.InvoiceStatusRejected
+	f.invoice.Issues = []string{reason}
 	f.released = append(f.released, reason)
 	return nil
 }
@@ -292,6 +294,10 @@ func TestInvoiceService_RejectionFreesTheQuoteForAnotherTry(t *testing.T) {
 	if f.store.invoice.Status != domain.InvoiceStatusRejected || f.store.rejected == nil {
 		t.Fatalf("invoice = %+v, want it recorded as rejected", f.store.invoice)
 	}
+	preview, err := f.service.Preview(context.Background(), f.tenant, f.quoteID)
+	if err != nil || preview.Invoice == nil || preview.Invoice.Issues[0] != "10013: DocTipo invalido" {
+		t.Fatalf("preview = %+v, %v, want the rejection shown", preview, err)
+	}
 }
 
 func TestInvoiceService_UnavailableReleasesTheHold(t *testing.T) {
@@ -303,6 +309,11 @@ func TestInvoiceService_UnavailableReleasesTheHold(t *testing.T) {
 
 	if !errors.Is(err, domain.ErrInvoicingUnavailable) || len(f.store.released) != 1 {
 		t.Fatalf("err = %v, released = %v, want unavailable and the hold released", err, f.store.released)
+	}
+	// ARCA never answered, so there is no verdict to show beside the next try.
+	preview, err := f.service.Preview(context.Background(), f.tenant, f.quoteID)
+	if err != nil || preview.Invoice != nil {
+		t.Fatalf("preview = %+v, %v, want no invoice shown", preview, err)
 	}
 }
 

@@ -391,7 +391,7 @@ func (s *InvoiceService) draft(
 			Amounts: amounts, Currency: arcaCurrency, Issues: nonNilIssues(issues)},
 	}
 	// Only an invoice for the version on show is this sale's; one for an older version is history.
-	if existing != nil && existing.QuoteVersionID == version.ID {
+	if existing != nil && existing.QuoteVersionID == version.ID && !released(*existing) {
 		draft.preview.Invoice = existing
 	}
 	return draft, nil
@@ -445,6 +445,14 @@ func (s *InvoiceService) hold(ctx context.Context, tenant domain.Tenant, draft i
 	return pending, nil
 }
 
+// releasedIssue marks an attempt ARCA never answered: nothing was authorized or refused.
+const releasedIssue = "ARCA_UNAVAILABLE"
+
+// released reports whether inv is an attempt ARCA never answered, which is no verdict to show.
+func released(inv domain.Invoice) bool {
+	return inv.Status == domain.InvoiceStatusRejected && len(inv.Issues) == 1 && inv.Issues[0] == releasedIssue
+}
+
 // settle records ARCA's verdict on a pending invoice. A refusal or a failure that authorized
 // nothing frees the quote version; an unknown outcome keeps it held until it is reconciled.
 func (s *InvoiceService) settle(
@@ -472,7 +480,7 @@ func (s *InvoiceService) settle(
 		return nil, domain.WithCode(domain.CodeInvoiceInProgress, fmt.Errorf("%w: %w", domain.ErrConflict, issueErr))
 	default:
 		if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-			return s.store.ReleasePending(ctx, q, tenant.AccountID, pending.ID, "ARCA_UNAVAILABLE")
+			return s.store.ReleasePending(ctx, q, tenant.AccountID, pending.ID, releasedIssue)
 		}); err != nil {
 			return nil, errors.Join(issueErr, err)
 		}

@@ -66,6 +66,7 @@ type fakeWSAA struct {
 	logins  int
 	cms     []string
 	already bool
+	fault   string // when set, every login answers a fault with this code.
 }
 
 func (f *fakeWSAA) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -75,6 +76,11 @@ func (f *fakeWSAA) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.logins++
 	if m := regexp.MustCompile(`<wsaa:in0>([^<]*)</wsaa:in0>`).FindSubmatch(body); m != nil {
 		f.cms = append(f.cms, string(m[1]))
+	}
+	if f.fault != "" {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, soapOpen+`<soap:Fault><faultcode xmlns:ns1="http://xml.apache.org/axis/">ns1:`+f.fault+`</faultcode><faultstring>Motivo de ARCA</faultstring></soap:Fault>`+soapClose)
+		return
 	}
 	if f.already {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -315,6 +321,41 @@ func TestIssuer_Issue_AlreadyAuthenticatedWithoutCacheIsUnavailable(t *testing.T
 	_, err := h.issuer.Issue(context.Background(), h.creds, invoiceA())
 	if !errors.Is(err, domain.ErrInvoicingUnavailable) || !strings.Contains(err.Error(), "retry after it expires") {
 		t.Fatalf("err = %v, want unavailable naming the active ticket", err)
+	}
+}
+
+// A login refused over the certificate is the corralón's to fix; anything else is ARCA being down.
+func TestIssuer_Issue_LoginFaults(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		fault    string
+		rejected bool
+	}{
+		{"cms.cert.untrusted", true},
+		{"cms.sign.invalid", true},
+		{"coe.notAuthorized", true},
+		{"wsn.unavailable", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.fault, func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t, &fakeWSFE{last: []int64{41}, solicitar: []string{approved(42)}})
+			h.wsaa.fault = tc.fault
+			_, err := h.issuer.Issue(context.Background(), h.creds, invoiceA())
+			var rejected *domain.InvoiceRejectedError
+			if got := errors.As(err, &rejected); got != tc.rejected {
+				t.Fatalf("err = %v, rejected = %v, want %v", err, got, tc.rejected)
+			}
+			if tc.rejected && (len(rejected.Issues) != 1 || rejected.Issues[0] != "WSAA "+tc.fault+": Motivo de ARCA") {
+				t.Fatalf("issues = %q, want the fault named", rejected.Issues)
+			}
+			if !tc.rejected && !errors.Is(err, domain.ErrInvoicingUnavailable) {
+				t.Fatalf("err = %v, want unavailable", err)
+			}
+			if n := len(h.wsfe.sent("FECAESolicitar")); n != 0 {
+				t.Fatalf("FECAESolicitar called %d times after a failed login", n)
+			}
+		})
 	}
 }
 
