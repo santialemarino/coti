@@ -51,8 +51,8 @@ export default async function ProtectedLayout({ children }: { children: React.Re
 
   return (
     <div className="flex flex-col min-h-screen">
-      <AppHeader session={session} />
       <RfqQueueProvider>
+        <AppHeader session={session} settingsNav={settingsNav} />
         <div className="flex flex-1 items-stretch">
           <ContextColumn settingsNav={settingsNav} />
           <ScreenFade>{children}</ScreenFade>

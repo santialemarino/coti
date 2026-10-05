@@ -40,6 +40,8 @@ export function RfqQueueCard({ rfq, active, stackCount, onExpand }: RfqQueueCard
     <button
       type="button"
       aria-current={active ? 'page' : undefined}
+      // Read by the menu sheet, which closes on a press that opens an order but not on an unfold.
+      data-navigates={stacked ? undefined : true}
       onClick={stacked ? onExpand : () => router.push(ROUTES.rfqsDetail(rfq.id))}
       className={cn(
         'flex size-full flex-col px-3 py-2.5 gap-y-1.5 border rounded-lg shadow-e1 text-left outline-none',

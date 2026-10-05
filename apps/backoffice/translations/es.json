@@ -23,7 +23,10 @@
       "administration": "Administración",
       "settings": "Configuración",
       "confirmEmail": "Confirmar tu correo",
-      "pending": "Hay algo pendiente"
+      "pending": "Hay algo pendiente",
+      "main": "Secciones",
+      "menu": "Menú",
+      "openMenu": "Abrir el menú"
     },
     "roles": {
       "ADMIN": "Administrador",

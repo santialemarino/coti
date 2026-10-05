@@ -191,12 +191,12 @@ export function ProductManager({ page, families, query, bulkEditTargetId }: Prod
 
   return (
     <Card className="gap-y-0 overflow-hidden py-0">
-      <CardHeader className="flex-row items-center justify-between py-6">
+      <CardHeader className="flex-row flex-wrap items-center justify-between py-6 gap-3">
         <div className="flex items-center gap-x-3">
           <CardTitle className="text-heading-3">{t('title')}</CardTitle>
           <Badge tone="neutral">{t('total', { total: page.total })}</Badge>
         </div>
-        <div className="flex items-center gap-x-2">
+        <div className="flex flex-wrap items-center gap-2">
           {bulkEditTargetId ? (
             <Button variant="outline" onClick={() => jumpTo(bulkEditTargetId)}>
               <FileSpreadsheetIcon aria-hidden="true" />

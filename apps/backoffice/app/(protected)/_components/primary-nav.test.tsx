@@ -39,4 +39,15 @@ describe('PrimaryNav', () => {
       screen.getByRole('link', { name: messages.common.nav.clients }).getAttribute('aria-current'),
     ).toBe('page');
   });
+
+  it('lists the sections in a column for the menu sheet', () => {
+    navigation.pathname = ROUTES.home;
+    render(
+      <NextIntlClientProvider locale="es" messages={messages}>
+        <PrimaryNav layout="stack" />
+      </NextIntlClientProvider>,
+    );
+
+    expect(screen.getByRole('navigation').className).toContain('flex-col');
+  });
 });

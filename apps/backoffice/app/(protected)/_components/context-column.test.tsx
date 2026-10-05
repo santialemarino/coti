@@ -167,20 +167,16 @@ describe('ContextColumn', () => {
     expect(fetchQueue).toHaveBeenCalledTimes(1);
   });
 
-  // A phone has no room for both: the landing is the list, an order is the order.
-  it('gives a phone the list on the landing and the order alone once one is open', () => {
-    const { column, navigate } = renderAt(ROUTES.home);
-    expect(column().className).toContain('max-md:[--column-width:100vw]');
+  // Below lg the page takes the whole width; the menu sheet carries the column instead.
+  it.each([ROUTES.home, ROUTES.rfqsDetail('r1'), ROUTES.accountSettings])(
+    'leaves %s to the menu sheet below lg',
+    (path) => {
+      const { column } = renderAt(path);
 
-    navigate(ROUTES.rfqsDetail('r1'));
-    expect(column().className).toContain('max-md:hidden');
-  });
-
-  it('leaves the settings sections to the page below lg', () => {
-    const { column } = renderAt(ROUTES.accountSettings);
-
-    expect(column().className).toContain('max-lg:hidden');
-  });
+      expect(column().dataset.open).toBe('true');
+      expect(column().className).toContain('max-lg:hidden');
+    },
+  );
 
   // A seller is offered no sections; their own settings pages must not open an empty column.
   it('stays closed on the settings pages for a caller with no sections', () => {
@@ -195,7 +191,6 @@ describe('ContextColumn', () => {
     navigate(ROUTES.clients);
 
     expect(column().dataset.open).toBe('false');
-    expect(column().className).toContain('max-lg:hidden');
     expect(
       screen
         .getByRole('navigation', { name: messages.settings.title, hidden: true })
