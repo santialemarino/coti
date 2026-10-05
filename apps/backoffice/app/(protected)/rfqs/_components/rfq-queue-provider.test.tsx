@@ -45,7 +45,7 @@ describe('RfqQueueProvider', () => {
     expect(apiRequest).not.toHaveBeenCalled();
   });
 
-  // The provider wraps the whole shell now, so it must not take the seller's own settings with it.
+  // The provider wraps the whole shell, so it must not take the seller's own settings with it.
   it('leaves the screens outside the queue to a seller with no branch', async () => {
     await renderShell('SELLER', []);
 
@@ -56,5 +56,25 @@ describe('RfqQueueProvider', () => {
     await renderShell('SELLER', [{ id: 'b1' }]);
 
     expect(screen.getByText('cola')).toBeTruthy();
+  });
+
+  // A failed read fails the queue screens alone; the rest of the shell must still render.
+  it('fails only the queue screens when the queue cannot be read', async () => {
+    vi.mocked(getSession).mockResolvedValue({ role: 'ADMIN', name: 'Ana', userId: 'u1' } as never);
+    vi.mocked(getBranches).mockResolvedValue([{ id: 'b1' }] as never);
+    vi.mocked(apiRequest).mockRejectedValue(new Error('down'));
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const shell = (children: React.ReactNode) => (
+      <NextIntlClientProvider locale="es" messages={messages}>
+        {children}
+      </NextIntlClientProvider>
+    );
+
+    render(shell(await RfqQueueProvider({ children: <p>ajustes</p> })));
+    expect(screen.getByText('ajustes')).toBeTruthy();
+
+    const queue = await RfqQueueProvider({ children: <RfqQueueGate>cola</RfqQueueGate> });
+    expect(() => render(shell(queue))).toThrow('could not be read');
+    vi.mocked(apiRequest).mockReset();
   });
 });
