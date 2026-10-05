@@ -214,6 +214,12 @@ panel enters from the trigger and then dissolves in place.
   the top of the page and a screen reader is told nothing happened, so move focus into the incoming
   stage — onto whatever the caller has to act on. Not on a first render, which would skip the
   heading.
+- **A screen swap on navigation is a view transition, and it fades through rather than crossing.**
+  A page unmounts on the frame its route changes, so no React exit can run; `ScreenFade` wraps the
+  content in React's `<ViewTransition name="screen">` (Next's `experimental.viewTransition`) keyed
+  by path, and the `screen` rules in `@repo/ui`'s styles fade the old screen out by 40% and the new
+  one in from there — two unrelated screens never overlap — on the column's curve and duration. The
+  root's snapshots are dropped so everything else, the column's slide included, stays live.
 - **A column that comes and goes with the route lives in the layout, not in the pages.** A page
   unmounts the moment the route changes, so a column it renders can never animate out. Keep it in
   the shared layout, derive open from the pathname, and animate the box's `width` between `0` and a
