@@ -16,6 +16,9 @@ vi.mock('next-intl/server', () => ({ getTranslations: vi.fn(async () => (key: st
 vi.mock('@/app/(protected)/_components/screen-fade', () => ({
   ScreenFade: ({ children }: { children: React.ReactNode }) => children,
 }));
+vi.mock('@/app/(protected)/_components/screen-fade', () => ({
+  ScreenFade: ({ children }: { children: React.ReactNode }) => children,
+}));
 vi.mock('@/lib/api/onboarding', () => ({ getOnboarding: vi.fn() }));
 vi.mock('@/lib/api/branches', () => ({ getBranches: vi.fn() }));
 vi.mock('@/lib/auth/branch', () => ({ getSelectedBranchId: vi.fn() }));
