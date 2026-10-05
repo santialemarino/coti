@@ -132,10 +132,23 @@ func TestAuthTokenRepository_InvalidateActiveRetiresTheOutstandingLinks(t *testi
 	seedResetToken(t, db, account, other, otherHash)
 	tenant := domain.Tenant{AccountID: account}
 
-	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
-		return repo.InvalidateActive(ctx, q, account, user, domain.AuthTokenTypePasswordReset)
-	}); err != nil {
-		t.Fatalf("InvalidateActive() = %v, want no error", err)
+	retire := func() int64 {
+		t.Helper()
+		var retired int64
+		if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+			var err error
+			retired, err = repo.InvalidateActive(ctx, q, account, user, domain.AuthTokenTypePasswordReset)
+			return err
+		}); err != nil {
+			t.Fatalf("InvalidateActive() = %v, want no error", err)
+		}
+		return retired
+	}
+	if retired := retire(); retired != 1 {
+		t.Fatalf("InvalidateActive() retired %d links, want 1", retired)
+	}
+	if retired := retire(); retired != 0 {
+		t.Fatalf("a second InvalidateActive() retired %d links, want 0", retired)
 	}
 
 	first, err := getToken(t, db, tenant, firstHash)
@@ -314,5 +327,123 @@ func TestAuthTokenRepository_LatestInvitesByUsersReadsTheNewestInviteOnly(t *tes
 	}
 	if _, ok := latest[neverInvited]; ok {
 		t.Error("a user with only a recovery link has an invite entry")
+	}
+}
+
+// A resend reads the invite before it retires it, so a redeem committing in between must leave
+// it nothing to retire: the UPDATE waits on the redeem's row lock and re-checks consumed_at.
+func TestAuthTokenRepository_InvalidateActiveRetiresNothingARedeemInFlightConsumed(t *testing.T) {
+	db := testDB(t)
+	repo := NewAuthTokenRepository()
+	ctx := context.Background()
+
+	account := seedAccount(t, db, "Corralón Redeem Race")
+	user := seedUser(t, db, account, "SELLER")
+	hash := hashOf("raceinvite")
+	seedTokenAt(t, db, account, user, domain.AuthTokenTypeInvite, hash, time.Now(), false)
+	tenant := domain.Tenant{AccountID: account}
+	invite, err := getToken(t, db, tenant, hash)
+	if err != nil {
+		t.Fatalf("read the seeded invite: %v", err)
+	}
+
+	type outcome struct {
+		retired int64
+		err     error
+	}
+	done := make(chan outcome, 1)
+	competitor := make(chan int, 1)
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		if consumeErr := repo.Consume(ctx, q, account, invite.ID); consumeErr != nil {
+			return consumeErr
+		}
+		go func() {
+			var o outcome
+			o.err = db.InTenantTx(ctx, tenant, func(q Querier) error {
+				var pid int
+				if pidErr := q.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&pid); pidErr != nil {
+					return pidErr
+				}
+				competitor <- pid
+				var retireErr error
+				o.retired, retireErr = repo.InvalidateActive(ctx, q, account, user, domain.AuthTokenTypeInvite)
+				return retireErr
+			})
+			done <- o
+		}()
+		return waitForLockWait(ctx, db, <-competitor)
+	}); err != nil {
+		t.Fatalf("redeem: %v", err)
+	}
+
+	o := <-done
+	if o.err != nil {
+		t.Fatalf("InvalidateActive() = %v, want no error", o.err)
+	}
+	if o.retired != 0 {
+		t.Fatalf("InvalidateActive() retired %d links after the redeem committed, want 0", o.retired)
+	}
+}
+
+// waitForLockWait returns once the competing backend is blocked on a lock, which is the point
+// where its statement has read the row and must re-check it after the holder commits.
+func waitForLockWait(ctx context.Context, db *DB, pid int) error {
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		var waiting bool
+		if err := db.CrossAccount().QueryRow(ctx,
+			`SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid = $1 AND wait_event_type = 'Lock')`,
+			pid,
+		).Scan(&waiting); err != nil {
+			return err
+		}
+		if waiting {
+			return nil
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return errors.New("the competing UPDATE never waited on the redeem's lock")
+}
+
+// Two invites created in the same microsecond share created_at, and the newest must still be one
+// row. The lower id goes in first, so insertion order cannot pick the right one by accident.
+func TestAuthTokenRepository_LatestInvitesByUsersBreaksATieByID(t *testing.T) {
+	db := testDB(t)
+	repo := NewAuthTokenRepository()
+	ctx := context.Background()
+
+	account := seedAccount(t, db, "Corralón Invite Tie")
+	user := seedUser(t, db, account, "SELLER")
+	low, high := uuid.New(), uuid.New()
+	if strings.Compare(low.String(), high.String()) > 0 {
+		low, high = high, low
+	}
+	at := time.Now().Add(-time.Minute)
+	for _, row := range []struct {
+		id       uuid.UUID
+		hash     string
+		consumed *time.Time
+	}{
+		{low, hashOf("tielow"), &at},
+		{high, hashOf("tiehigh"), nil},
+	} {
+		if _, err := db.CrossAccount().Exec(ctx,
+			`INSERT INTO auth_token (id, account_id, user_id, type, token_hash, expires_at, consumed_at, created_at)
+			 VALUES ($1, $2, $3, 'INVITE', $4, $5, $6, $7)`,
+			row.id, account, user, row.hash, at.Add(time.Hour), row.consumed, at); err != nil {
+			t.Fatalf("seed invite: %v", err)
+		}
+	}
+
+	var latest map[uuid.UUID]domain.AuthToken
+	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: account}, func(q Querier) error {
+		var err error
+		latest, err = repo.LatestInvitesByUsers(ctx, q, account, []uuid.UUID{user})
+		return err
+	}); err != nil {
+		t.Fatalf("LatestInvitesByUsers() = %v, want no error", err)
+	}
+	if got := latest[user]; got.ID != high {
+		t.Fatalf("latest invite = %v, want the higher id %v", got.ID, high)
 	}
 }

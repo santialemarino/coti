@@ -16,7 +16,6 @@ import {
   FormRootMessage,
   Input,
   PendingButton,
-  Separator,
 } from '@repo/ui/components';
 import { updateAccount } from '@/app/(protected)/settings/account/actions';
 import { accountSchema, type AccountValues } from '@/app/(protected)/settings/account/form-schema';
@@ -65,81 +64,89 @@ export function AccountForm({ account }: AccountFormProps) {
       <form
         onSubmit={form.handleSubmit(onSubmit)}
         noValidate
-        className="flex flex-col max-w-md gap-y-5"
+        className="flex flex-col w-full gap-y-6 lg:gap-y-8"
       >
-        <FormField
-          control={form.control}
-          name="name"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel required>{t('name.label')}</FormLabel>
-              <FormControl>
-                <Input
-                  maxLength={TEXT_FIELD_MAX_LENGTH}
-                  placeholder={t('name.placeholder')}
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {/* One column as narrow as a field reads well, or two filling the page once it is wide
+            enough; the save button spans both because it saves both. */}
+        <div className="grid grid-cols-1 gap-x-12 gap-y-8 lg:grid-cols-2">
+          <section className="flex flex-col max-w-md gap-y-5 lg:max-w-none">
+            <h2 className="text-heading-6">{t('company.title')}</h2>
 
-        <FormField
-          control={form.control}
-          name="legalName"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('legalName.label')}</FormLabel>
-              <FormControl>
-                <Input
-                  maxLength={TEXT_FIELD_MAX_LENGTH}
-                  placeholder={t('legalName.placeholder')}
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel required>{t('name.label')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      maxLength={TEXT_FIELD_MAX_LENGTH}
+                      placeholder={t('name.placeholder')}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-        <FormField
-          control={form.control}
-          name="taxId"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('taxId.label')}</FormLabel>
-              <FormControl>
-                <Input
-                  maxLength={TEXT_FIELD_MAX_LENGTH}
-                  placeholder={t('taxId.placeholder')}
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+            <FormField
+              control={form.control}
+              name="legalName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('legalName.label')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      maxLength={TEXT_FIELD_MAX_LENGTH}
+                      placeholder={t('legalName.placeholder')}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-        <Separator />
+            <FormField
+              control={form.control}
+              name="taxId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('taxId.label')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      maxLength={TEXT_FIELD_MAX_LENGTH}
+                      placeholder={t('taxId.placeholder')}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </section>
 
-        <h2 className="text-heading-6">{t('brand.title')}</h2>
+          <section className="flex flex-col max-w-md gap-y-5 lg:max-w-none">
+            <h2 className="text-heading-6">{t('brand.title')}</h2>
 
-        <LogoDropzone initialUrl={account.brandLogoUrl} onFileChange={setLogo} />
+            <LogoDropzone initialUrl={account.brandLogoUrl} onFileChange={setLogo} />
 
-        <BrandColorField
-          control={form.control}
-          name="brandColor"
-          label={t('brandColor.label')}
-          placeholder={t('brandColor.placeholder')}
-          pickerLabel={t('brandColor.pickerLabel')}
-        />
+            <BrandColorField
+              control={form.control}
+              name="brandColor"
+              label={t('brandColor.label')}
+              placeholder={t('brandColor.placeholder')}
+              pickerLabel={t('brandColor.pickerLabel')}
+            />
+          </section>
+        </div>
 
         <FormRootMessage />
 
         <PendingButton
           type="submit"
-          className="self-start"
+          className="w-full max-w-md lg:max-w-none"
           pending={form.formState.isSubmitting}
           pendingLabel={t('submitting')}
         >

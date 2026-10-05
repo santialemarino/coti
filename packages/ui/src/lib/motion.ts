@@ -26,5 +26,18 @@ export const EASE = {
   inOutSoft: [0.65, 0, 0.35, 1],
 } as const;
 
+/*
+ * Springs for something that unfolds and folds back, where a press mid-flight must reverse from
+ * where it is instead of restarting. `visualDuration` keeps them on the scale above; folding does
+ * not bounce, so a closing stack settles instead of rebounding.
+ */
+export const SPRING = {
+  expand: { type: 'spring', visualDuration: MOTION.slow, bounce: 0.12 },
+  collapse: { type: 'spring', visualDuration: MOTION.default, bounce: 0 },
+} as const;
+
+/* A list fanning out, in seconds per item; items past `max` start together. */
+export const STAGGER = { step: 0.025, max: 6 } as const;
+
 /* Delay before a debounced search fires, in milliseconds. */
 export const DEBOUNCE_MS = 300;

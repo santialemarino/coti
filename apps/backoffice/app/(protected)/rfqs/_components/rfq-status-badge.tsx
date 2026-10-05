@@ -23,7 +23,7 @@ export const STATUS_ORDER: readonly RfqStatus[] = [
  * utility. Each state names a wash, a hairline and a label, exactly the way the badge's own
  * success/warning/danger tones are built — so a status pill is visibly one of Coti's pills that
  * happens to be purple, rather than a foreign object that happens to be on a Coti screen. RECEIVED
- * has no colours of its own: it never renders a badge, it always shows the ingestion spinner.
+ * has no pill colours: it never renders a badge, it always shows the ingestion spinner.
  */
 export const STATUS_COLOUR: Record<RfqStatus, string> = {
   RECEIVED: '',
@@ -40,9 +40,12 @@ export const STATUS_COLOUR: Record<RfqStatus, string> = {
     'bg-status-rejected-subtle border-status-rejected-border text-status-rejected-foreground',
 };
 
-/* The dot carries the full-strength hex, which is what keeps each state recognisable at a glance. */
-const STATUS_DOT: Record<RfqStatus, string> = {
-  RECEIVED: '',
+/*
+ * The dot carries the full-strength hex, which is what keeps each state recognisable at a glance.
+ * RECEIVED's neutral dot only appears beside a label, such as a queue group's heading.
+ */
+export const STATUS_DOT: Record<RfqStatus, string> = {
+  RECEIVED: 'bg-foreground-subtle',
   FAILED: 'bg-status-failed',
   GENERATED: 'bg-status-generated',
   QUOTED: 'bg-status-quoted',

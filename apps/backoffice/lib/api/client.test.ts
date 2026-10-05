@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ROUTES } from '@/config/routes';
 import { apiRequest } from '@/lib/api/client';
 
+vi.mock('next/navigation', () => ({
+  unstable_rethrow: vi.fn(),
+  redirect: vi.fn((path: string) => {
+    throw new Error(`NEXT_REDIRECT:${path}`);
+  }),
+}));
 vi.mock('@/lib/auth/session', () => ({ getAccessToken: vi.fn() }));
 vi.mock('@/lib/auth/client-address', () => ({ clientAddress: vi.fn() }));
 vi.mock('@/lib/auth/branch', () => ({ getActiveBranchId: vi.fn() }));
@@ -9,6 +16,7 @@ vi.mock('@/lib/auth/branch', () => ({ getActiveBranchId: vi.fn() }));
 const { getAccessToken } = await import('@/lib/auth/session');
 const { clientAddress } = await import('@/lib/auth/client-address');
 const { getActiveBranchId } = await import('@/lib/auth/branch');
+const { redirect } = await import('next/navigation');
 
 const TOKEN = 'access-token';
 
@@ -244,5 +252,30 @@ describe('apiRequest query strings', () => {
   it('encodes values rather than pasting them in', async () => {
     await apiRequest({ path: '/v1/products', query: { search: 'cal & arena' } });
     expect(lastRequest().url).toContain('search=cal+%26+arena');
+  });
+});
+
+describe('apiRequest on a branch the caller no longer reaches', () => {
+  const stale = responds(JSON.stringify({ code: 'BRANCH_NOT_ACCESSIBLE' }), 403);
+
+  // A soft navigation does not run the layout that checks the cookie, so the read drops it.
+  it('sends a read scoped to the cookie branch to the branch reset', async () => {
+    vi.mocked(getActiveBranchId).mockResolvedValue('gone');
+    vi.mocked(fetch).mockImplementation(stale);
+
+    await expect(apiRequest({ path: '/v1/rfqs' })).rejects.toThrow(
+      `NEXT_REDIRECT:${ROUTES.branchReset}`,
+    );
+  });
+
+  it.each([
+    ['a write, which its action words', { path: '/v1/rfqs', method: 'POST' as const }],
+    ['a read pinned to a branch', { path: '/v1/rfqs', branchId: 'gone' }],
+  ])('throws the code for %s', async (_, request) => {
+    vi.mocked(getActiveBranchId).mockResolvedValue('gone');
+    vi.mocked(fetch).mockImplementation(stale);
+
+    await expect(apiRequest(request)).rejects.toMatchObject({ code: 'BRANCH_NOT_ACCESSIBLE' });
+    expect(redirect).not.toHaveBeenCalled();
   });
 });

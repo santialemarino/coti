@@ -1,102 +1,53 @@
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
+import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { SettingsNavItem } from '@/app/(protected)/settings/_components/settings-nav';
 import { ROUTES } from '@/config/routes';
+import messages from '@/translations/es.json';
 
-vi.mock('@/app/(protected)/settings/_components/settings-nav', () => ({
-  SettingsNav: vi.fn(() => null),
-}));
-vi.mock('@/lib/api/onboarding', () => ({ getOnboarding: vi.fn() }));
-vi.mock('@/lib/api/branches', () => ({ getBranches: vi.fn() }));
+const navigation = vi.hoisted(() => ({ pathname: '/settings/account' }));
+
+vi.mock('next/navigation', () => ({ usePathname: () => navigation.pathname }));
 vi.mock('@/lib/auth/session', () => ({ getSession: vi.fn() }));
-vi.mock('next-intl/server', () => ({ getTranslations: vi.fn() }));
 
-const { SettingsNav } = await import('@/app/(protected)/settings/_components/settings-nav');
-const { getOnboarding } = await import('@/lib/api/onboarding');
-const { getBranches } = await import('@/lib/api/branches');
 const { getSession } = await import('@/lib/auth/session');
-const { getTranslations } = await import('next-intl/server');
 const { default: SettingsLayout } = await import('@/app/(protected)/settings/layout');
 
-function renderedItems(): SettingsNavItem[] | undefined {
-  return vi.mocked(SettingsNav).mock.calls[0]?.[0].items;
+async function renderAs(role: string, pathname: string) {
+  navigation.pathname = pathname;
+  vi.mocked(getSession).mockResolvedValue({ role } as never);
+  render(
+    <NextIntlClientProvider locale="es" messages={messages}>
+      {await SettingsLayout({ children: <p>pantalla</p> })}
+    </NextIntlClientProvider>,
+  );
+  return screen.queryByRole('link', { name: messages.settings.backToSections });
 }
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  vi.mocked(getSession).mockResolvedValue({
-    userId: 'u1',
-    accountId: 'a1',
-    name: 'Ana Gómez',
-    email: 'ana@corralon.test',
-    emailVerified: true,
-    role: 'ADMIN',
-    emailVerificationRequired: true,
-    mailDelivery: true,
-  });
-  vi.mocked(getOnboarding).mockResolvedValue({ status: 'COMPLETED', checklist: [] } as never);
-  vi.mocked(getBranches).mockResolvedValue([
-    { id: 'b1', email: 'centro@corralon.test', isActive: true },
-  ] as never);
-  vi.mocked(getTranslations).mockResolvedValue(((key: string) => key) as never);
-});
+beforeEach(() => vi.clearAllMocks());
 
 describe('SettingsLayout', () => {
-  // The dot is the trail from the shell to the fix, and it must not cry wolf.
-  it('marks Sucursales only while an open branch has no mailbox', async () => {
-    render(await SettingsLayout({ children: null }));
-    const branchesItem = () => renderedItems()?.find((item) => item.href === ROUTES.branchSettings);
-    expect(branchesItem()?.attention).toBeUndefined();
+  // Below lg a section is opened from the index, so it names the way back to it.
+  it('leads a section back to the index, below lg only', async () => {
+    const back = await renderAs('ADMIN', ROUTES.accountSettings);
 
-    vi.mocked(SettingsNav).mockClear();
-    vi.mocked(getBranches).mockResolvedValue([
-      { id: 'b1', email: 'centro@corralon.test', isActive: true },
-      { id: 'b2', email: null, isActive: true },
-    ] as never);
-    render(await SettingsLayout({ children: null }));
-    expect(branchesItem()?.attention).toBe('attention');
+    expect(back?.getAttribute('href')).toBe(ROUTES.settings);
+    expect(back?.classList.contains('lg:hidden')).toBe(true);
   });
 
-  it('starts with account and keeps email and password out of the section list', async () => {
-    render(await SettingsLayout({ children: null }));
-
-    const hrefs = renderedItems()?.map((item) => item.href);
-    expect(hrefs?.[0]).toBe(ROUTES.accountSettings);
-    expect(hrefs).not.toContain(ROUTES.emailSettings);
-    expect(hrefs).not.toContain(ROUTES.changePassword);
+  it('offers no way back on the index itself', async () => {
+    expect(await renderAs('ADMIN', ROUTES.settings)).toBeNull();
   });
 
-  it('lists the initial setup with its progress while a step is pending', async () => {
-    vi.mocked(getOnboarding).mockResolvedValue({
-      status: 'COMPLETED',
-      checklistHiddenAt: '2026-09-30T12:00:00Z',
-      checklist: [
-        { step: 'BRAND', done: true },
-        { step: 'CATALOG_UPLOAD', done: false },
-        { step: 'TEAM', done: true },
-      ],
-    } as never);
-    const t = Object.assign(
-      vi.fn((key: string) => key),
-      { has: () => true },
-    );
-    vi.mocked(getTranslations).mockResolvedValue(t as never);
-
-    render(await SettingsLayout({ children: null }));
-
-    expect(renderedItems()?.map((item) => item.href)).toContain(ROUTES.onboardingSettings);
-    expect(t).toHaveBeenCalledWith('nav.onboarding', { done: 2, total: 3 });
+  it('offers a seller, who has no index, no way back', async () => {
+    expect(await renderAs('SELLER', ROUTES.changePassword)).toBeNull();
   });
 
-  it('drops the initial setup once every step is done', async () => {
-    vi.mocked(getOnboarding).mockResolvedValue({
-      status: 'DISMISSED',
-      checklist: [{ step: 'BRAND', done: true }],
-    } as never);
-
-    render(await SettingsLayout({ children: null }));
-
-    expect(renderedItems()?.map((item) => item.href)).not.toContain(ROUTES.onboardingSettings);
-  });
+  // The caller's own pages are opened from the profile menu; the list they would go back to lacks them.
+  it.each([ROUTES.changePassword, ROUTES.emailSettings])(
+    'offers no way back to the sections from %s',
+    async (path) => {
+      expect(await renderAs('ADMIN', path)).toBeNull();
+    },
+  );
 });

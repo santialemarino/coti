@@ -519,8 +519,8 @@ reference, including how the ramp was derived and every contrast figure:
   (buttons, inputs, selects) use `rounded-lg`; cards use `rounded-1.5xl` (14px); badges
   and pills `rounded-full`. Grouped surfaces and callouts round too — audit every box.
 - **Motion durations and easings are tokens.** `duration-150/200/300/500` and
-  `ease-out-soft`/`ease-in-out-soft` in classes; `MOTION`/`EASE` from `@repo/ui/lib` for
-  `motion/react`. Never hardcode a duration.
+  `ease-out-soft`/`ease-in-out-soft` in classes; `MOTION`/`EASE` (and `SPRING`/`STAGGER`) from
+  `@repo/ui/lib` for `motion/react`. Never hardcode a duration.
 - **Variants via CVA.** Extend a component's CVA variants — don't fork the component to
   add a look.
 

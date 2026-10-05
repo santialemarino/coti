@@ -8,6 +8,7 @@ import { ACCESS_COOKIE, BRANCH_COOKIE, REFRESH_COOKIE, REMEMBER_COOKIE } from '@
 
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('next/navigation', () => ({
+  unstable_rethrow: vi.fn(),
   notFound: vi.fn(() => {
     throw new Error('NEXT_NOT_FOUND');
   }),
@@ -46,6 +47,18 @@ describe('getSession', () => {
 
     await getSession();
     expect(apiRequest).toHaveBeenCalledWith({ path: '/v1/me', branchScoped: false });
+  });
+});
+
+describe('getSession on a locked account', () => {
+  // The lock outlives the access token, so the session ends and the login screen says why.
+  it('ends the session with the locked reason', async () => {
+    jar();
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('ACCOUNT_LOCKED', 429));
+
+    await expect(getSession()).rejects.toThrow(
+      `NEXT_REDIRECT:${ROUTES.sessionEnded}?reason=locked`,
+    );
   });
 });
 

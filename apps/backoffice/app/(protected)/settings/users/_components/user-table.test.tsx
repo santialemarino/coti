@@ -638,6 +638,24 @@ describe('UserTable invites', () => {
     expect(actions.queryByRole('button', { name: copy.passwordReset.action })).toBeNull();
   });
 
+  // The missing resend is explained on the badge, the one thing in the row that can be reached.
+  it('says on the badge why the invite cannot be resent while mail only reaches the log', async () => {
+    const view = renderTable([ME, INVITED], [CENTRAL, MORON], false);
+
+    fireEvent.focus(within(rowOf(view, INVITED.name)).getByText(copy.status.invitePending));
+
+    await waitFor(() => expect(view.getAllByText(copy.invite.needsMail).length).toBeGreaterThan(0));
+  });
+
+  it('explains nothing on the badge while the invite can be resent', async () => {
+    const view = renderTable([ME, INVITED], [CENTRAL, MORON], true);
+
+    const badge = within(rowOf(view, INVITED.name)).getByText(copy.status.invitePending);
+
+    // Not focusable, so there is nothing that could open a tooltip on it.
+    expect(badge.getAttribute('tabindex')).toBeNull();
+  });
+
   it('invites by default and asks for no password', async () => {
     vi.mocked(createUser).mockResolvedValue({ ok: true });
     const view = renderTable([ME], [CENTRAL, MORON], true);

@@ -23,7 +23,8 @@
       "administration": "Administración",
       "settings": "Configuración",
       "confirmEmail": "Confirmar tu correo",
-      "pending": "Hay algo pendiente"
+      "pending": "Hay algo pendiente",
+      "main": "Secciones"
     },
     "roles": {
       "ADMIN": "Administrador",
@@ -32,6 +33,7 @@
     "branch": {
       "label": "Sucursal activa",
       "all": "Todas las sucursales",
+      "allShort": "Todas",
       "placeholder": "Seleccioná una sucursal",
       "search": "Buscá una sucursal...",
       "empty": "No encontramos esa sucursal."
@@ -135,6 +137,7 @@
     "LAST_ACTIVE_BRANCH": "Es la única sucursal activa del corralón. Abrí otra antes de cerrarla, porque la cuenta necesita al menos una para operar.",
     "SELF_DEACTIVATION": "No podés desactivar tu propio usuario. Pedíselo a otro administrador.",
     "SELF_ROLE_CHANGE": "No podés cambiar tu propio rol. Pedíselo a otro administrador.",
+    "SELF_EMAIL_CHANGE": "Tu propio correo se cambia desde «Cambiar correo», que te pide la contraseña.",
     "PASSWORD_POLICY": "La contraseña no cumple con los requisitos.",
     "INVALID_LINK": "El enlace no es válido, ya se usó o venció.",
     "INVITE_NOT_PENDING": "Ese usuario ya eligió su contraseña, así que no tiene una invitación para reenviar.",
@@ -205,6 +208,10 @@
       "title": "Correo",
       "description": "Cambiá la dirección de correo de tu usuario."
     },
+    "settings": {
+      "title": "Configuración",
+      "description": "Las secciones de configuración del corralón."
+    },
     "accountSettings": {
       "title": "Cuenta",
       "description": "Datos del corralón y la marca que ve tu cliente."
@@ -267,6 +274,7 @@
       "forgotPassword": "¿Olvidaste tu contraseña?",
       "noAccount": "¿Todavía no tenés cuenta?",
       "signup": "Registrá tu corralón",
+      "locked": "Tu cuenta quedó bloqueada por intentos fallidos. Probá de nuevo en unos minutos.",
       "errors": {
         "UNAUTHENTICATED": "Correo o contraseña inválidos.",
         "INTERNAL": "No pudimos iniciar sesión. Intentá de nuevo."
@@ -587,6 +595,11 @@
         "archive": "Archivar pedido",
         "unarchive": "Desarchivar pedido"
       },
+      "groups": {
+        "expand": "Mostrar todos",
+        "collapse": "Mostrar menos",
+        "stackHint": "Mostrar los {count} pedidos de este estado"
+      },
       "empty": {
         "title": "Todavía no hay pedidos"
       },
@@ -689,6 +702,10 @@
         "error": "No se pudo crear el pedido. Intentá de nuevo."
       }
     },
+    "view": {
+      "toQueue": "Ver por estado",
+      "toTable": "Ver todos"
+    },
     "sidebar": {
       "search": "Buscar pedidos",
       "filter": "Filtros",
@@ -696,7 +713,7 @@
     },
     "detail": {
       "title": "Detalle del pedido",
-      "backToList": "Volver al listado",
+      "backToList": "Volver a los pedidos",
       "notFound": "Pedido no encontrado",
       "notFoundDescription": "No pudimos encontrar el pedido que buscás.",
       "quoteStatus": "Estado de la cotización",
@@ -1112,6 +1129,8 @@
   },
   "settings": {
     "title": "Configuración",
+    "indexHint": "Elegí una sección para ver o cambiar su configuración.",
+    "backToSections": "Volver a la configuración",
     "nav": {
       "account": "Cuenta",
       "branches": "Sucursales",
@@ -1201,6 +1220,9 @@
   },
   "account": {
     "title": "Cuenta",
+    "company": {
+      "title": "Datos del corralón"
+    },
     "access": {
       "title": "Acceso",
       "changeEmail": "Cambiar correo",
@@ -1312,7 +1334,9 @@
     "email": {
       "label": "Correo electrónico",
       "placeholder": "Ingresá el correo con el que va a entrar",
-      "required": "Ingresá el correo del usuario."
+      "required": "Ingresá el correo del usuario.",
+      "ownAddress": "Tu propio correo se cambia aparte, porque te pide la contraseña.",
+      "ownAddressLink": "Cambiar correo"
     },
     "password": {
       "label": "Contraseña inicial",
@@ -1355,6 +1379,7 @@
     },
     "invite": {
       "action": "Reenviar invitación",
+      "needsMail": "Para reenviarla hace falta el envío de correos.",
       "sent": "Le reenviamos la invitación a {email}.",
       "errors": {
         "INVITE_NOT_PENDING": "Ese usuario ya eligió su contraseña. Si la olvidó, mandale el enlace de contraseña.",

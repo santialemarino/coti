@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { PUBLIC_ROUTES, ROUTES, safeNextPath, SIGNED_OUT_ONLY_ROUTES } from '@/config/routes';
+import {
+  isOrdersPath,
+  isSettingsPath,
+  PUBLIC_ROUTES,
+  queueSelection,
+  ROUTES,
+  safeNextPath,
+  SIGNED_OUT_ONLY_ROUTES,
+} from '@/config/routes';
 
 describe('reachability', () => {
   // Someone with no account is the only caller registration has, so the gate cannot ask for a
@@ -55,5 +63,42 @@ describe('safeNextPath', () => {
 
   it('drops the fragment, which the server never receives anyway', () => {
     expect(safeNextPath('/settings#section')).toBe('/settings');
+  });
+});
+
+describe('queueSelection', () => {
+  it('reads the landing as the queue with nothing open', () => {
+    expect(queueSelection(ROUTES.home)).toEqual({ inQueue: true, rfqId: null });
+  });
+
+  it('reads an order as the queue with that order open', () => {
+    expect(queueSelection(ROUTES.rfqsDetail('r1'))).toEqual({ inQueue: true, rfqId: 'r1' });
+  });
+
+  // The table and anything nested under an order are not the queue's screens.
+  it.each([ROUTES.rfqs, `${ROUTES.rfqs}/`, '/rfqs/r1/extra', ROUTES.clients])(
+    'reads %s as outside the queue',
+    (path) => {
+      expect(queueSelection(path)).toEqual({ inQueue: false, rfqId: null });
+    },
+  );
+});
+
+describe('isOrdersPath', () => {
+  it('covers the queue, the table and an order, and nothing else', () => {
+    expect(isOrdersPath(ROUTES.home)).toBe(true);
+    expect(isOrdersPath(ROUTES.rfqs)).toBe(true);
+    expect(isOrdersPath(ROUTES.rfqsDetail('r1'))).toBe(true);
+    expect(isOrdersPath('/rfqsx')).toBe(false);
+    expect(isOrdersPath(ROUTES.clients)).toBe(false);
+  });
+});
+
+describe('isSettingsPath', () => {
+  it('covers the settings root and its pages, and nothing that only shares its prefix', () => {
+    expect(isSettingsPath(ROUTES.accountSettings)).toBe(true);
+    expect(isSettingsPath(ROUTES.settings)).toBe(true);
+    expect(isSettingsPath('/settingsx')).toBe(false);
+    expect(isSettingsPath(ROUTES.clients)).toBe(false);
   });
 });

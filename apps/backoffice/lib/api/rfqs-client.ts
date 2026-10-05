@@ -10,8 +10,11 @@ import type {
   QuoteSendResponse,
   QuoteVersionResponse,
   RfqDetailResponse,
+  RfqListItem,
+  RfqRecord,
   UpdateDiscountBody,
 } from '@/lib/api/rfqs';
+import { mapListItem } from '@/lib/api/rfqs';
 
 interface CreateRfqBody {
   client_label?: string | null;
@@ -121,6 +124,16 @@ export async function createFileRfqDraft(
     await throwOnError(response);
   }
   return response.json() as Promise<FileRfqDraftResponse>;
+}
+
+// The queue, archived orders included, read again from the browser.
+export async function fetchQueue(): Promise<RfqRecord[]> {
+  const response = await fetch('/api/rfqs', { method: 'GET', cache: 'no-store' });
+  if (!response.ok) {
+    await throwOnError(response);
+  }
+  const items = (await response.json()) as RfqListItem[] | null;
+  return (items ?? []).map(mapListItem);
 }
 
 /*

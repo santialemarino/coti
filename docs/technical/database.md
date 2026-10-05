@@ -241,7 +241,14 @@ parent product row first. The index is the backstop for a path that forgets the 
 
 Single use on `auth_token` is the same shape from the other direction: it is not an index at
 all but a predicate, `UPDATE ... WHERE consumed_at IS NULL`, which is what serializes two
-simultaneous redemptions of one link.
+simultaneous redemptions of one link. An invite resend leans on the same predicate rather than on a
+lock: its retiring `UPDATE` waits on a redeem holding the row, re-checks `consumed_at`, and a count
+of zero is the refusal. A `FOR UPDATE` would take the token and the user in the opposite order to
+the redeem, which is a deadlock.
+
+`idx_auth_token_latest_invite` (`account_id, user_id, created_at DESC, id DESC`, partial on
+`type = 'INVITE'`) answers the users screen's newest-invite read without a sort, and the `id`
+breaks the tie between two invites created in the same microsecond.
 
 ## Catalog
 

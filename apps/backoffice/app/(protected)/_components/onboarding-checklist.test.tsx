@@ -9,7 +9,10 @@ import messages from '@/translations/es.json';
 
 const push = vi.fn();
 const refresh = vi.fn();
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push, refresh }) }));
+vi.mock('next/navigation', () => ({
+  unstable_rethrow: vi.fn(),
+  useRouter: () => ({ push, refresh }),
+}));
 vi.mock('@/app/(onboarding)/onboarding/actions', () => ({
   resumeOnboarding: vi.fn(async () => ({ ok: true })),
 }));

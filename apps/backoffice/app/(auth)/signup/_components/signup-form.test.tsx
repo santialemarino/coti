@@ -7,6 +7,7 @@ import { SignupForm } from '@/app/(auth)/signup/_components/signup-form';
 import messages from '@/translations/es.json';
 
 vi.mock('next/navigation', () => ({
+  unstable_rethrow: vi.fn(),
   useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }),
 }));
 vi.mock('@/app/(auth)/signup/actions', () => ({ signup: vi.fn() }));

@@ -49,7 +49,7 @@ func (r *AuthTokenRepository) LatestInvitesByUsers(
 		`SELECT DISTINCT ON (user_id) `+authTokenColumns+`
 		 FROM auth_token
 		 WHERE account_id = $1 AND user_id = ANY($2) AND type = 'INVITE'
-		 ORDER BY user_id, created_at DESC`,
+		 ORDER BY user_id, created_at DESC, id DESC`,
 		accountID, userIDs)
 	if err != nil {
 		return nil, err
@@ -94,15 +94,18 @@ func (r *AuthTokenRepository) Consume(ctx context.Context, q Querier, accountID,
 }
 
 // InvalidateActive burns every outstanding token of a type for one user, so asking for a new
-// link retires the previous one.
+// link retires the previous one, and reports how many it retired.
 func (r *AuthTokenRepository) InvalidateActive(
 	ctx context.Context, q Querier, accountID, userID uuid.UUID, tokenType domain.AuthTokenType,
-) error {
-	_, err := q.Exec(ctx,
+) (int64, error) {
+	tag, err := q.Exec(ctx,
 		`UPDATE auth_token SET consumed_at = now()
 		 WHERE account_id = $1 AND user_id = $2 AND type = $3 AND consumed_at IS NULL`,
 		accountID, userID, tokenType)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 // InvalidateAllForUser burns every outstanding link of every type for one user, for the changes

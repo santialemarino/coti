@@ -118,9 +118,9 @@ func (f *fakeAuthTokens) Consume(_ context.Context, _ repository.Querier, _, id 
 
 func (f *fakeAuthTokens) InvalidateActive(
 	_ context.Context, _ repository.Querier, _, userID uuid.UUID, tokenType domain.AuthTokenType,
-) error {
+) (int64, error) {
 	f.invalidated = append(f.invalidated, invalidatedLink{userID: userID, tokenType: tokenType})
-	return nil
+	return 0, nil
 }
 
 func (f *fakeAuthTokens) InvalidateAllForUser(_ context.Context, _ repository.Querier, _, userID uuid.UUID) error {
@@ -380,6 +380,11 @@ func TestPasswordService_Reset_RedeemsTheLinkAndEndsEverySession(t *testing.T) {
 	// An invite or a second recovery link mailed earlier must not set the password again.
 	if len(f.tokens.invalidatedAll) != 1 || f.tokens.invalidatedAll[0] != testUserID {
 		t.Fatalf("links retired for %v, want every outstanding link of the user", f.tokens.invalidatedAll)
+	}
+	// A resend committing while the statement above waited leaves an invite it never saw.
+	want := invalidatedLink{userID: testUserID, tokenType: domain.AuthTokenTypeInvite}
+	if len(f.tokens.invalidated) != 1 || f.tokens.invalidated[0] != want {
+		t.Fatalf("retired %v after the sweep, want the user's invites once more", f.tokens.invalidated)
 	}
 }
 

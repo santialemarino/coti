@@ -15,6 +15,7 @@ const router = vi.hoisted(() => ({
 }));
 
 vi.mock('next/navigation', () => ({
+  unstable_rethrow: vi.fn(),
   useRouter: () => router,
 }));
 
@@ -233,6 +234,7 @@ function viewTree(detail: RfqDetailResponse, activeBranchId: string | null = BRA
       timeZone="America/Argentina/Buenos_Aires"
     >
       <RfqListProvider
+        hasQueue
         records={[draftRecord()]}
         activeBranchId={activeBranchId}
         userName="Admin"
@@ -279,6 +281,15 @@ describe('RfqDetailView tracking', () => {
     );
 
     expect(view.getAllByText(copy.detail.timeline.noDeliveries)).toHaveLength(1);
+  });
+
+  // Five dated steps do not fit a phone's row, so the order's rail runs down the screen there.
+  it('lays the tracking rail out to run down a narrow screen', () => {
+    const view = renderView(makeDetail('QUOTED'));
+
+    expect(
+      view.container.querySelector('[data-slot="stepper"]')?.getAttribute('data-orientation'),
+    ).toBe('adaptive');
   });
 });
 
