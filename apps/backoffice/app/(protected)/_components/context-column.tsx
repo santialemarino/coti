@@ -67,7 +67,14 @@ export function ContextColumn({ settingsNav }: ContextColumnProps) {
     <div
       data-open={open}
       inert={!open}
-      className="flex w-0 h-[calc(100dvh-4rem)] shrink-0 justify-end self-start sticky top-16 overflow-clip [--column-width:clamp(240px,22vw,320px)] transition-[width] duration-300 ease-in-out-soft data-[open=true]:w-(--column-width) motion-reduce:transition-none"
+      // Below lg the settings sections sit above the page instead: beside them the forms would be
+      // too narrow. On a phone the queue shows the list or the order, never both side by side.
+      className={cn(
+        'flex w-0 h-[calc(100dvh-4rem)] shrink-0 justify-end self-start sticky top-16 overflow-clip [--column-width:clamp(240px,22vw,320px)] transition-[width] duration-300 ease-in-out-soft data-[open=true]:w-(--column-width) motion-reduce:transition-none',
+        section === 'settings' && 'max-lg:hidden',
+        section === 'queue' &&
+          (selection.rfqId ? 'max-md:hidden' : 'max-md:[--column-width:100vw]'),
+      )}
     >
       {/* Held to the viewport under the 64px header and scrolled on its own, so a long queue never
           stretches the page; `layoutScroll` lets the stacks measure their moves against that scroll.

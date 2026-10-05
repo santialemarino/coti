@@ -161,4 +161,19 @@ describe('ContextColumn', () => {
     await act(async () => navigate(ROUTES.home));
     expect(fetchQueue).toHaveBeenCalledTimes(1);
   });
+
+  // A phone has no room for both: the landing is the list, an order is the order.
+  it('gives a phone the list on the landing and the order alone once one is open', () => {
+    const { column, navigate } = renderAt(ROUTES.home);
+    expect(column().className).toContain('max-md:[--column-width:100vw]');
+
+    navigate(ROUTES.rfqsDetail('r1'));
+    expect(column().className).toContain('max-md:hidden');
+  });
+
+  it('leaves the settings sections to the page below lg', () => {
+    const { column } = renderAt(ROUTES.accountSettings);
+
+    expect(column().className).toContain('max-lg:hidden');
+  });
 });

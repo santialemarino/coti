@@ -19,7 +19,8 @@ export default async function HomePage() {
 
   return (
     <RfqQueueGate>
-      <RfqQueuePane>
+      {/* On a phone the landing is the list itself; the column takes the whole width. */}
+      <RfqQueuePane className="max-md:hidden">
         <RfqQueueEmpty
           onboarding={onboarding && showsChecklistOnHome(onboarding) ? onboarding : null}
         />
