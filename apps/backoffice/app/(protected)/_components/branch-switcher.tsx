@@ -4,7 +4,8 @@ import { useTransition } from 'react';
 import { Building2Icon, StoreIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { Combobox } from '@repo/ui/components';
+import { Combobox, type ComboboxOption } from '@repo/ui/components';
+import { FitLabel } from '@/app/(protected)/_components/fit-label';
 import { selectBranch } from '@/app/(protected)/actions';
 import type { Branch } from '@/lib/api/branches';
 import { ALL_BRANCHES } from '@/lib/constants/branch';
@@ -43,6 +44,15 @@ export function BranchSwitcher({ branches, activeBranchId, isAdmin }: BranchSwit
    */
   const sole = branches.length === 1 ? branches[0] : undefined;
 
+  // A narrow trigger cuts "Todas las sucursales" mid-word; the short form says the same thing whole.
+  function triggerLabel(option: ComboboxOption) {
+    return option.value === ALL_BRANCHES ? (
+      <FitLabel full={t('all')} short={t('allShort')} />
+    ) : (
+      option.label
+    );
+  }
+
   function onValueChange(value: string) {
     startTransition(async () => {
       await selectBranch(value);
@@ -51,7 +61,7 @@ export function BranchSwitcher({ branches, activeBranchId, isAdmin }: BranchSwit
 
   if (sole) {
     return (
-      <p className="flex h-9 w-44 sm:w-56 items-center px-3 gap-x-2 text-paragraph-sm text-foreground">
+      <p className="flex shrink h-9 w-44 min-w-0 sm:w-56 items-center px-3 gap-x-2 text-paragraph-sm text-foreground">
         <StoreIcon aria-hidden="true" className="size-4 shrink-0 text-foreground-muted" />
         <span className="sr-only">{t('label')}: </span>
         <span className="truncate">{sole.name}</span>
@@ -70,8 +80,9 @@ export function BranchSwitcher({ branches, activeBranchId, isAdmin }: BranchSwit
       emptyLabel={t('empty')}
       disabled={pending}
       aria-label={t('label')}
+      triggerLabel={triggerLabel}
       sideOffset={BRANCH_MENU_OFFSET}
-      className="w-44 sm:w-56"
+      className="w-44 min-w-0 shrink sm:w-56"
     />
   );
 }

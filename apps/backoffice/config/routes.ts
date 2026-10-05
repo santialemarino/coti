@@ -4,6 +4,7 @@ const SETTINGS_ROOT = '/settings';
 // Every link and redirect reads from here, so a route rename is one edit.
 export const ROUTES = {
   home: '/',
+  settings: SETTINGS_ROOT,
   rfqs: '/rfqs',
   rfqsDetail: (id: string) => `/rfqs/${id}`,
   clients: '/clients',
@@ -40,9 +41,9 @@ export function queueSelection(pathname: string): { inQueue: boolean; rfqId: str
   return detail ? { inQueue: true, rfqId: detail[1] ?? null } : { inQueue: false, rfqId: null };
 }
 
-// Whether a path is one of the settings pages.
+// Whether a path is one of the settings pages, their index included.
 export function isSettingsPath(pathname: string): boolean {
-  return pathname.startsWith(`${SETTINGS_ROOT}/`);
+  return pathname === SETTINGS_ROOT || pathname.startsWith(`${SETTINGS_ROOT}/`);
 }
 
 // The orders section: the queue, its table and every order, which "Pedidos" stays lit across.

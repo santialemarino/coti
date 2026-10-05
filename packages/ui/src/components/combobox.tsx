@@ -138,9 +138,10 @@ const ComboboxTrigger = React.forwardRef<HTMLButtonElement, ComboboxTriggerProps
       )}
       {...props}
     >
-      <span className="flex min-w-0 items-center gap-x-2">
+      {/* The label fills the slot, so a label that adapts to its room can measure that room. */}
+      <span className="flex min-w-0 flex-1 items-center gap-x-2">
         {icon}
-        <span className="truncate">{label}</span>
+        <span className="flex-1 truncate text-left">{label}</span>
       </span>
       <DropdownChevron open={open} />
     </Button>

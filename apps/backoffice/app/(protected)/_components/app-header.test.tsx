@@ -19,6 +19,7 @@ const { getBranches } = await import('@/lib/api/branches');
 const { getEffectiveBranchId } = await import('@/lib/auth/branch');
 const { getTranslations } = await import('next-intl/server');
 const { BranchSwitcher } = await import('@/app/(protected)/_components/branch-switcher');
+const { PrimaryNav } = await import('@/app/(protected)/_components/primary-nav');
 const { AppHeader } = await import('@/app/(protected)/_components/app-header');
 
 const SESSION = {
@@ -110,7 +111,7 @@ describe('AppHeader account menu', () => {
     });
 
     const settings = await view.findByRole('menuitem', { name: 'nav.settings' });
-    expect(settings.getAttribute('href')).toBe(ROUTES.accountSettings);
+    expect(settings.getAttribute('href')).toBe(ROUTES.settings);
     expect(view.getByRole('menuitem', { name: 'nav.signOut' })).toBeTruthy();
     expect(view.queryByRole('menuitem', { name: 'nav.changePassword' })).toBeNull();
   });
@@ -133,5 +134,23 @@ describe('AppHeader account menu', () => {
       expect.objectContaining({ branches: [branch], activeBranchId: branch.id, isAdmin: true }),
       undefined,
     );
+  });
+});
+
+// A phone has room for the logo, the branch and the avatar; everything else moves or folds away.
+describe('AppHeader below lg', () => {
+  it('leaves the section links to the tab bar', async () => {
+    render(await AppHeader({ session: SESSION }));
+
+    expect(vi.mocked(PrimaryNav)).toHaveBeenCalledWith({ className: 'max-lg:hidden' }, undefined);
+  });
+
+  // Pins the class only; the name being hidden at that width is checked in a browser.
+  it('marks the profile name to hide below lg', async () => {
+    const view = render(await AppHeader({ session: SESSION }));
+
+    const name = view.getByText(SESSION.name).parentElement as HTMLElement;
+    expect(name.classList.contains('hidden')).toBe(true);
+    expect(name.classList.contains('lg:flex')).toBe(true);
   });
 });

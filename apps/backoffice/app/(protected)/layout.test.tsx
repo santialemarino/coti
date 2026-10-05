@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -14,7 +14,9 @@ vi.mock('@/app/(protected)/_components/context-column', () => ({
 }));
 vi.mock('next-intl/server', () => ({ getTranslations: vi.fn(async () => (key: string) => key) }));
 vi.mock('@/app/(protected)/_components/screen-fade', () => ({
-  ScreenFade: ({ children }: { children: React.ReactNode }) => children,
+  ScreenFade: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="screen">{children}</div>
+  ),
 }));
 vi.mock('@/lib/api/onboarding', () => ({ getOnboarding: vi.fn() }));
 vi.mock('@/lib/api/branches', () => ({ getBranches: vi.fn() }));
@@ -196,5 +198,38 @@ describe('ProtectedLayout', () => {
     vi.mocked(getSession).mockResolvedValue(session(true, 'SELLER'));
     await redirectedTo();
     expect(vi.mocked(ContextColumn).mock.calls.at(-1)?.[0].settingsNav).toEqual([]);
+  });
+
+  // Toasts rise over the bar through a CSS rule keyed on this slot, so the slot is a contract.
+  it("mounts the narrow screens' tab bar with the main navigation", async () => {
+    vi.mocked(getSession).mockResolvedValue(session(true, 'SELLER'));
+    await redirectedTo();
+
+    const bar = document.querySelector('[data-slot="tab-bar"]') as HTMLElement;
+    expect(bar.classList.contains('lg:hidden')).toBe(true);
+    expect(within(bar).getByRole('navigation', { name: messages.common.nav.main })).toBeTruthy();
+  });
+
+  // The screen steps aside through a `peer` rule, which only reaches a later sibling.
+  it('renders the screen right after the column, as its sibling', async () => {
+    vi.mocked(ContextColumn).mockImplementation(() => <div data-testid="column" />);
+    vi.mocked(getSession).mockResolvedValue(session(true, 'SELLER'));
+    await redirectedTo();
+
+    expect(screen.getByTestId('column').nextElementSibling).toBe(screen.getByTestId('screen'));
+  });
+
+  it('hands the column the setup card only while it is pending and shown', async () => {
+    vi.mocked(getSession).mockResolvedValue(session(true));
+    vi.mocked(getOnboarding).mockResolvedValue({
+      ...FINISHED_ONBOARDING,
+      checklist: [{ step: 'BRAND', done: false }],
+    });
+    await redirectedTo();
+    expect(vi.mocked(ContextColumn).mock.calls.at(-1)?.[0].onboarding).not.toBeNull();
+
+    vi.mocked(getOnboarding).mockResolvedValue(FINISHED_ONBOARDING);
+    await redirectedTo();
+    expect(vi.mocked(ContextColumn).mock.calls.at(-1)?.[0].onboarding).toBeNull();
   });
 });

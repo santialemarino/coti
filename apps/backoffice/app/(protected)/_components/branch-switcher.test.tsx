@@ -65,4 +65,17 @@ describe('BranchSwitcher', () => {
 
     await vi.waitFor(() => expect(selectBranch).toHaveBeenCalledWith(BRANCHES[1]!.id));
   });
+
+  // Only "all branches" has a short form; a branch's own name is never swapped for another.
+  it('reads "all branches" through a label that can shorten it, and a branch by its name', () => {
+    const all = renderSwitcher(BRANCHES, null, true);
+    expect(all.getByRole('combobox').textContent).toContain(messages.common.branch.all);
+    expect(
+      all.getByText(messages.common.branch.all, { selector: '[aria-hidden="true"]' }),
+    ).toBeTruthy();
+    all.unmount();
+
+    const one = renderSwitcher(BRANCHES, BRANCHES[1]?.id, true);
+    expect(one.getByRole('combobox').textContent).toBe('Norte');
+  });
 });

@@ -6,3 +6,10 @@
  * not render itself) belong below this line.
  */
 @import '@repo/ui/styles';
+
+/* The protected shell's tab bar covers the bottom of a narrow screen; toasts rise above it. */
+@media (width < 64rem) {
+  :root:has([data-slot='tab-bar']) {
+    --toast-lift: 4rem;
+  }
+}

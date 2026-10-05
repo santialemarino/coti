@@ -59,7 +59,11 @@ export function RfqSidebarList({ records, activeRfqId }: RfqSidebarListProps) {
   }
 
   return (
-    <nav className="flex flex-col px-3 pb-3 gap-y-4" aria-label={t('list.title')}>
+    // Below lg the list is a page, so its cards keep the page's gutter.
+    <nav
+      className="flex flex-col px-3 pb-3 gap-y-4 max-lg:px-6 max-lg:pb-10"
+      aria-label={t('list.title')}
+    >
       <LayoutGroup>
         {groups.map((group) => (
           <RfqQueueGroup

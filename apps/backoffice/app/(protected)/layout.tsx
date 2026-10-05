@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 
 import { AppHeader } from '@/app/(protected)/_components/app-header';
 import { ContextColumn } from '@/app/(protected)/_components/context-column';
+import { PrimaryNav } from '@/app/(protected)/_components/primary-nav';
 import { ScreenFade } from '@/app/(protected)/_components/screen-fade';
 import { settingsNavItems } from '@/app/(protected)/_components/settings-nav-items';
 import { RfqQueueProvider } from '@/app/(protected)/rfqs/_components/rfq-queue-provider';
@@ -12,6 +13,7 @@ import { getOnboarding } from '@/lib/api/onboarding';
 import { getSelectedBranchId } from '@/lib/auth/branch';
 import { getSession, mustVerifyEmail } from '@/lib/auth/session';
 import { ADMIN_ROLE } from '@/lib/constants/auth';
+import { showsChecklistOnHome } from '@/lib/utils/onboarding-checklist';
 
 // Middleware answers whether a token exists; this answers whether the session
 // behind it is still good, which only the API knows.
@@ -53,11 +55,21 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     <div className="flex flex-col min-h-screen">
       <AppHeader session={session} />
       <RfqQueueProvider>
-        <div className="flex flex-1 items-stretch">
-          <ContextColumn settingsNav={settingsNav} />
+        {/* Below lg the tab bar covers the bottom of the screen, so the page ends above it. */}
+        <div className="flex flex-1 items-stretch max-lg:pb-16">
+          <ContextColumn
+            settingsNav={settingsNav}
+            onboarding={onboarding && showsChecklistOnHome(onboarding) ? onboarding : null}
+          />
           <ScreenFade>{children}</ScreenFade>
         </div>
       </RfqQueueProvider>
+      <div
+        data-slot="tab-bar"
+        className="h-16 bg-background/85 border-t border-border backdrop-blur fixed inset-x-0 bottom-0 z-40 [view-transition-name:shell-tabs] lg:hidden"
+      >
+        <PrimaryNav layout="tabs" />
+      </div>
     </div>
   );
 }

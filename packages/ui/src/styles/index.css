@@ -338,6 +338,33 @@
 ::view-transition-group(screen) {
   animation: none;
 }
+/*
+ * The shell's fixed pieces are captured on their own so they paint above the fading screen rather
+ * than under it; each stays live (its new image, unanimated) and its old image is dropped.
+ */
+::view-transition-group(shell-header),
+::view-transition-group(shell-tabs),
+::view-transition-new(shell-header),
+::view-transition-new(shell-tabs) {
+  animation: none;
+}
+::view-transition-old(shell-header),
+::view-transition-old(shell-tabs) {
+  display: none;
+}
+/*
+ * On a narrow screen the column is the list screen, so it fades through with the screen it trades
+ * places with.
+ */
+::view-transition-group(context-list) {
+  animation: none;
+}
+::view-transition-old(context-list) {
+  animation: screen-out var(--duration-slow) var(--ease-in-out-soft) both;
+}
+::view-transition-new(context-list) {
+  animation: screen-in var(--duration-slow) var(--ease-in-out-soft) both;
+}
 ::view-transition-old(screen) {
   inline-size: auto;
   animation: screen-out var(--duration-slow) var(--ease-in-out-soft) both;
@@ -382,7 +409,9 @@
  */
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-old(screen),
-  ::view-transition-new(screen) {
+  ::view-transition-new(screen),
+  ::view-transition-old(context-list),
+  ::view-transition-new(context-list) {
     animation: none;
   }
 

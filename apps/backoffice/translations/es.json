@@ -23,7 +23,8 @@
       "administration": "Administración",
       "settings": "Configuración",
       "confirmEmail": "Confirmar tu correo",
-      "pending": "Hay algo pendiente"
+      "pending": "Hay algo pendiente",
+      "main": "Secciones"
     },
     "roles": {
       "ADMIN": "Administrador",
@@ -32,6 +33,7 @@
     "branch": {
       "label": "Sucursal activa",
       "all": "Todas las sucursales",
+      "allShort": "Todas",
       "placeholder": "Seleccioná una sucursal",
       "search": "Buscá una sucursal...",
       "empty": "No encontramos esa sucursal."
@@ -205,6 +207,10 @@
     "emailSettings": {
       "title": "Correo",
       "description": "Cambiá la dirección de correo de tu usuario."
+    },
+    "settings": {
+      "title": "Configuración",
+      "description": "Las secciones de configuración del corralón."
     },
     "accountSettings": {
       "title": "Cuenta",
@@ -1123,6 +1129,8 @@
   },
   "settings": {
     "title": "Configuración",
+    "indexHint": "Elegí una sección para ver o cambiar su configuración.",
+    "backToSections": "Volver a la configuración",
     "nav": {
       "account": "Cuenta",
       "branches": "Sucursales",

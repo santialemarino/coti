@@ -39,4 +39,39 @@ describe('PrimaryNav', () => {
       screen.getByRole('link', { name: messages.common.nav.clients }).getAttribute('aria-current'),
     ).toBe('page');
   });
+
+  // Below lg the sections are a tab bar; the chosen one carries the page mark like the header row.
+  it('renders the tab bar with the same sections and the same mark', () => {
+    navigation.pathname = ROUTES.rfqsDetail('r1');
+    render(
+      <NextIntlClientProvider locale="es" messages={messages}>
+        <PrimaryNav layout="tabs" />
+      </NextIntlClientProvider>,
+    );
+
+    const tabs = screen.getAllByRole('link');
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      messages.common.nav.orders,
+      messages.common.nav.clients,
+      messages.common.nav.reports,
+      messages.common.nav.administration,
+    ]);
+    expect(tabs[0]?.getAttribute('aria-current')).toBe('page');
+    expect(tabs[1]?.getAttribute('aria-current')).toBeNull();
+  });
+
+  it.each([
+    [ROUTES.clients, messages.common.nav.clients],
+    [ROUTES.reports, messages.common.nav.reports],
+    [ROUTES.administration, messages.common.nav.administration],
+  ])('marks the tab of the section on %s', (path, label) => {
+    navigation.pathname = path;
+    render(
+      <NextIntlClientProvider locale="es" messages={messages}>
+        <PrimaryNav layout="tabs" />
+      </NextIntlClientProvider>,
+    );
+
+    expect(screen.getByRole('link', { current: 'page' }).textContent).toBe(label);
+  });
 });

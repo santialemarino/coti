@@ -55,7 +55,9 @@ export async function AppHeader({ session }: AppHeaderProps) {
   const canConfirmEmail = !session.emailVerified && session.mailDelivery;
 
   return (
-    <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-8 px-6 bg-background/85 border-b border-border backdrop-blur">
+    // Below lg the sections move to the tab bar and the profile keeps only its avatar, so the header
+    // fits a phone without scrolling sideways.
+    <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center px-4 gap-x-3 bg-background/85 border-b border-border backdrop-blur [view-transition-name:shell-header] lg:px-6 lg:gap-x-8">
       <Link
         href={ROUTES.home}
         aria-label={t('appName')}
@@ -64,9 +66,10 @@ export async function AppHeader({ session }: AppHeaderProps) {
         <Brand variant="wordmark" size="md" />
       </Link>
 
-      <PrimaryNav />
+      <PrimaryNav className="max-lg:hidden" />
 
-      <div className="ml-auto flex items-center gap-x-3">
+      {/* `min-w-0` lets the branch picker give up width on the narrowest phones. */}
+      <div className="ml-auto flex min-w-0 items-center gap-x-3">
         {/* Every reachable branch stays visible as working context. One branch is shown rather than
             offered; with more, admins keep the account-wide option alongside their branches. */}
         {branches.length > 0 ? (
@@ -81,7 +84,11 @@ export async function AppHeader({ session }: AppHeaderProps) {
           <DropdownMenuTrigger asChild>
             {/* Two stacked lines beside a 28px avatar need more room than any fixed size gives, so
                 the trigger sizes to its content with its own padding. */}
-            <Button variant="ghost" size="sm" className="gap-x-2 h-auto py-1.5 pl-2 pr-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="shrink-0 h-auto py-1.5 px-2 gap-x-2 lg:pr-3"
+            >
               <span className="relative flex shrink-0">
                 <Avatar size="sm">
                   <AvatarFallback>{initials(session.name)}</AvatarFallback>
@@ -93,7 +100,7 @@ export async function AppHeader({ session }: AppHeaderProps) {
                   />
                 ) : null}
               </span>
-              <span className="hidden sm:flex flex-col items-start">
+              <span className="hidden lg:flex flex-col items-start">
                 <span className="text-paragraph-sm-medium text-foreground">{session.name}</span>
                 <span className="text-paragraph-mini text-foreground-muted">
                   {t(`roles.${session.role}`)}
@@ -116,7 +123,7 @@ export async function AppHeader({ session }: AppHeaderProps) {
             {isAdmin ? (
               <DropdownMenuItem asChild>
                 {/* With something to fix, the entry lands where it is fixed. */}
-                <Link href={needsSetup ? ROUTES.branchSettings : ROUTES.accountSettings}>
+                <Link href={needsSetup ? ROUTES.branchSettings : ROUTES.settings}>
                   <SettingsIcon aria-hidden="true" />
                   {t('nav.settings')}
                   {needsSetup ? (
