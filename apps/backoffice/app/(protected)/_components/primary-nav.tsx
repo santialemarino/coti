@@ -14,7 +14,7 @@ export function PrimaryNav() {
   const t = useTranslations('common');
   const pathname = usePathname();
 
-  // A section stays active through its children, so the RFQ detail keeps "Pedidos" lit.
+  // A section stays active through its children: a client's page keeps "Clientes" lit.
   const inSection = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   // Pedidos lands on the queue, the day's work; its table is the other view inside the section.

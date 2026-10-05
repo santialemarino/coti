@@ -44,7 +44,7 @@ const ORDER: RfqRecord = {
   followupFlaggedAt: null,
 };
 
-function tree(hasQueue: boolean) {
+function tree(hasQueue: boolean, settingsNav = SETTINGS_NAV) {
   return (
     <NextIntlClientProvider locale="es" messages={messages}>
       <RfqListProvider
@@ -55,20 +55,20 @@ function tree(hasQueue: boolean) {
         userId="u1"
         isAdmin
       >
-        <ContextColumn settingsNav={SETTINGS_NAV} />
+        <ContextColumn settingsNav={settingsNav} />
       </RfqListProvider>
     </NextIntlClientProvider>
   );
 }
 
-function renderAt(pathname: string, hasQueue = true) {
+function renderAt(pathname: string, hasQueue = true, settingsNav = SETTINGS_NAV) {
   navigation.pathname = pathname;
-  const view = render(tree(hasQueue));
+  const view = render(tree(hasQueue, settingsNav));
   return {
     column: () => view.container.firstElementChild as HTMLElement,
     navigate: (next: string) => {
       navigation.pathname = next;
-      view.rerender(tree(hasQueue));
+      view.rerender(tree(hasQueue, settingsNav));
     },
   };
 }
@@ -115,18 +115,23 @@ describe('ContextColumn', () => {
   });
 
   // A layout outlives navigation, so coming back to the queue is the moment its list goes stale.
-  it('reads the queue again when it opens, but not on the first render', async () => {
+  // The shell's list is read once; staying within the orders must still bring new ones in.
+  it('reads the queue again on every move within the orders, not elsewhere or at first', async () => {
     const { navigate } = renderAt(ROUTES.home);
     expect(fetchQueue).not.toHaveBeenCalled();
 
-    navigate(ROUTES.clients);
-    expect(fetchQueue).not.toHaveBeenCalled();
+    await act(async () => navigate(ROUTES.rfqsDetail('r1')));
+    await act(async () => navigate(ROUTES.rfqs));
+    expect(fetchQueue).toHaveBeenCalledTimes(2);
+
+    await act(async () => navigate(ROUTES.clients));
+    expect(fetchQueue).toHaveBeenCalledTimes(2);
 
     await act(async () => navigate(ROUTES.home));
-    expect(fetchQueue).toHaveBeenCalledTimes(1);
+    expect(fetchQueue).toHaveBeenCalledTimes(3);
   });
 
-  it('reads the queue again when the window regains focus, only while open', async () => {
+  it('reads the queue again when the window regains focus, only within the orders', async () => {
     const { navigate } = renderAt(ROUTES.home);
 
     await act(async () => fireEvent.focus(window));
@@ -175,5 +180,26 @@ describe('ContextColumn', () => {
     const { column } = renderAt(ROUTES.accountSettings);
 
     expect(column().className).toContain('max-lg:hidden');
+  });
+
+  // A seller is offered no sections; their own settings pages must not open an empty column.
+  it('stays closed on the settings pages for a caller with no sections', () => {
+    const { column } = renderAt(ROUTES.changePassword, true, []);
+
+    expect(column().dataset.open).toBe('false');
+  });
+
+  it('keeps the settings sections on show while the column closes', () => {
+    const { column, navigate } = renderAt(ROUTES.accountSettings);
+
+    navigate(ROUTES.clients);
+
+    expect(column().dataset.open).toBe('false');
+    expect(column().className).toContain('max-lg:hidden');
+    expect(
+      screen
+        .getByRole('navigation', { name: messages.settings.title, hidden: true })
+        .closest('.hidden'),
+    ).toBeNull();
   });
 });

@@ -15,7 +15,7 @@ interface SettingsNavProps {
   items: SettingsNavItem[];
 }
 
-// The settings sections, listed in the context column under its "Configuración" heading.
+// The settings sections; the context column and the narrow screens' card give it its heading.
 export function SettingsNav({ title, items }: SettingsNavProps) {
   const pathname = usePathname();
 

@@ -1,3 +1,6 @@
+// Every settings page lives under it, which the context column keys its menu on.
+const SETTINGS_ROOT = '/settings';
+
 // Every link and redirect reads from here, so a route rename is one edit.
 export const ROUTES = {
   home: '/',
@@ -14,14 +17,14 @@ export const ROUTES = {
   verifyEmail: '/verify-email',
   onboarding: '/onboarding',
   sessionEnded: '/session-ended',
-  changePassword: '/settings/password',
-  emailSettings: '/settings/email',
-  accountSettings: '/settings/account',
-  priceSettings: '/settings/prices',
-  catalogSettings: '/settings/catalog',
-  branchSettings: '/settings/branches',
-  userSettings: '/settings/users',
-  onboardingSettings: '/settings/onboarding',
+  changePassword: `${SETTINGS_ROOT}/password`,
+  emailSettings: `${SETTINGS_ROOT}/email`,
+  accountSettings: `${SETTINGS_ROOT}/account`,
+  priceSettings: `${SETTINGS_ROOT}/prices`,
+  catalogSettings: `${SETTINGS_ROOT}/catalog`,
+  branchSettings: `${SETTINGS_ROOT}/branches`,
+  userSettings: `${SETTINGS_ROOT}/users`,
+  onboardingSettings: `${SETTINGS_ROOT}/onboarding`,
   branchReset: '/branch-reset',
 } as const;
 
@@ -37,9 +40,7 @@ export function queueSelection(pathname: string): { inQueue: boolean; rfqId: str
   return detail ? { inQueue: true, rfqId: detail[1] ?? null } : { inQueue: false, rfqId: null };
 }
 
-const SETTINGS_ROOT = '/settings';
-
-// Every settings page lives under one root, which the context column keys its menu on.
+// Whether a path is one of the settings pages.
 export function isSettingsPath(pathname: string): boolean {
   return pathname.startsWith(`${SETTINGS_ROOT}/`);
 }

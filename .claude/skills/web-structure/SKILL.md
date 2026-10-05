@@ -147,7 +147,7 @@ ships its own at the **root of `app/`**:
   has `auth.ts`, `branch.ts`, `brand.ts`, `forms.ts`, `password.ts`). Only for
   constants imported by 2+ files; single-file constants stay in the file that uses
   them. **Motion values are not among them** — durations and easings are tokens in
-  `@repo/ui` (`MOTION`/`EASE` from `@repo/ui/lib`), never an app constant.
+  `@repo/ui` (`MOTION`/`EASE`/`SPRING`/`STAGGER` from `@repo/ui/lib`), never an app constant.
 - **Shared TS types:** `types/` (imported `@/types/...`) for app-wide types that
   aren't tied to one `lib/api` module.
 - **i18n (per app):** `translations/es.json` (the message catalog — one file,

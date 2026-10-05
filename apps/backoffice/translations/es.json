@@ -590,7 +590,7 @@
         "unarchive": "Desarchivar pedido"
       },
       "groups": {
-        "expand": "Ver todos",
+        "expand": "Mostrar todos",
         "collapse": "Mostrar menos",
         "stackHint": "Mostrar los {count} pedidos de este estado"
       },

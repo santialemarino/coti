@@ -1,16 +1,15 @@
-import type { SettingsNavItem } from '@/app/(protected)/settings/_components/settings-nav';
+import type { SettingsNavItem } from '@/app/(protected)/_components/settings-nav';
 import { ROUTES } from '@/config/routes';
 import type { Branch } from '@/lib/api/branches';
 import type { Onboarding } from '@/lib/api/onboarding';
+import type { MessageFor } from '@/lib/forms/validators';
 import { hasPendingChecklist } from '@/lib/utils/onboarding-checklist';
 import { anyBranchMissesEmail } from '@/lib/utils/setup-issues';
 
-type Translate = (key: string, values?: Record<string, number>) => string;
-
 interface SettingsNavInput {
   // The `settings` namespace and the `common.setup` one.
-  t: Translate;
-  tSetup: Translate;
+  t: MessageFor;
+  tSetup: MessageFor;
   onboarding: Onboarding | null;
   branches: Branch[];
 }

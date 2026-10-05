@@ -7,14 +7,11 @@ import { useTranslations } from 'next-intl';
 
 import { useHeldWhileClosed } from '@repo/ui/hooks';
 import { cn } from '@repo/ui/lib';
+import { SettingsNav, type SettingsNavItem } from '@/app/(protected)/_components/settings-nav';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { RfqSidebarList } from '@/app/(protected)/rfqs/_components/rfq-sidebar-list';
 import { RfqViewLink } from '@/app/(protected)/rfqs/_components/rfq-view-link';
-import {
-  SettingsNav,
-  type SettingsNavItem,
-} from '@/app/(protected)/settings/_components/settings-nav';
-import { isSettingsPath, queueSelection } from '@/config/routes';
+import { isOrdersPath, isSettingsPath, queueSelection } from '@/config/routes';
 
 type ColumnSection = 'queue' | 'settings';
 
@@ -24,20 +21,18 @@ interface ContextColumnProps {
 }
 
 /*
- * The shell's one left column, kept in the layout so it outlives navigation and can slide out as
- * well as in. Each section that has a list puts it here — the queue, the settings sections — and
- * the rest leave it closed. The box animates its width; the content keeps its own and rides the
- * box's edge, never squeezed.
+ * The shell's one left column: the queue or the settings sections, closed elsewhere. It lives in the
+ * layout so it can slide out as well as in; its content keeps its width and rides the box's edge.
  */
 export function ContextColumn({ settingsNav }: ContextColumnProps) {
   const pathname = usePathname();
   const t = useTranslations('rfqs');
   const tSettings = useTranslations('settings');
-  const { records, hasQueue, reload } = useRfqList();
+  const { records, hasQueue, loadFailed, reload } = useRfqList();
 
   const selection = queueSelection(pathname);
   const live: ColumnSection | null =
-    hasQueue && selection.inQueue
+    hasQueue && !loadFailed && selection.inQueue
       ? 'queue'
       : settingsNav.length > 0 && isSettingsPath(pathname)
         ? 'settings'
@@ -47,21 +42,22 @@ export function ContextColumn({ settingsNav }: ContextColumnProps) {
   const section = useHeldWhileClosed(live, open);
   const activeRfqId = useHeldWhileClosed(selection.rfqId, live === 'queue');
 
-  // A layout is never re-rendered by navigation, so the list is read again whenever it comes back
-  // into view: the queue showing again, or the window regaining focus on it.
-  const queueShown = live === 'queue';
-  const wasShown = useRef(queueShown);
+  // A layout is never re-rendered by navigation, so the list is read again on every move within the
+  // orders — the queue, an order, the table — and when the window regains focus on them.
+  const inOrders = hasQueue && isOrdersPath(pathname);
+  const lastPath = useRef(pathname);
   useEffect(() => {
-    if (queueShown && !wasShown.current) void reload();
-    wasShown.current = queueShown;
-  }, [queueShown, reload]);
+    if (pathname === lastPath.current) return;
+    lastPath.current = pathname;
+    if (inOrders) void reload();
+  }, [pathname, inOrders, reload]);
 
   useEffect(() => {
-    if (!queueShown) return;
+    if (!inOrders) return;
     const refresh = () => void reload();
     window.addEventListener('focus', refresh);
     return () => window.removeEventListener('focus', refresh);
-  }, [queueShown, reload]);
+  }, [inOrders, reload]);
 
   return (
     <div
@@ -123,7 +119,7 @@ function ColumnPanel({ hidden, title, action, children }: ColumnPanelProps) {
       {/* One height whether or not there is an action, so the title never moves between sections;
           aligned with the rows below — the title with their text, the action with their edge. */}
       <div className="flex h-14 items-center justify-between pr-3 pl-6 gap-x-2 bg-background sticky top-0 z-10">
-        <p className="text-paragraph-xs-medium text-foreground-subtle uppercase">{title}</p>
+        <h2 className="text-paragraph-xs-medium text-foreground-subtle uppercase">{title}</h2>
         {action}
       </div>
       {children}

@@ -40,10 +40,9 @@ export function RfqQueueCard({ rfq, active, stackCount, onExpand }: RfqQueueCard
     <button
       type="button"
       aria-current={active ? 'page' : undefined}
-      aria-expanded={stacked ? false : undefined}
       onClick={stacked ? onExpand : () => router.push(ROUTES.rfqsDetail(rfq.id))}
       className={cn(
-        'flex w-full h-full flex-col px-3 py-2.5 gap-y-1.5 border rounded-lg shadow-e1 text-left outline-none',
+        'flex size-full flex-col px-3 py-2.5 gap-y-1.5 border rounded-lg shadow-e1 text-left outline-none',
         'transition-[color,background-color,border-color,box-shadow] duration-150 ease-out-soft',
         'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45',
         active

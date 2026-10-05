@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   isOrdersPath,
+  isSettingsPath,
   PUBLIC_ROUTES,
   queueSelection,
   ROUTES,
@@ -90,5 +91,14 @@ describe('isOrdersPath', () => {
     expect(isOrdersPath(ROUTES.rfqsDetail('r1'))).toBe(true);
     expect(isOrdersPath('/rfqsx')).toBe(false);
     expect(isOrdersPath(ROUTES.clients)).toBe(false);
+  });
+});
+
+describe('isSettingsPath', () => {
+  it('covers the pages under the settings root and nothing that only shares its prefix', () => {
+    expect(isSettingsPath(ROUTES.accountSettings)).toBe(true);
+    expect(isSettingsPath('/settings')).toBe(false);
+    expect(isSettingsPath('/settingsx')).toBe(false);
+    expect(isSettingsPath(ROUTES.clients)).toBe(false);
   });
 });

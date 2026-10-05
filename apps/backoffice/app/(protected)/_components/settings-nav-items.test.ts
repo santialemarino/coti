@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { settingsNavItems } from '@/app/(protected)/settings/_components/settings-nav-items';
+import { settingsNavItems } from '@/app/(protected)/_components/settings-nav-items';
 import { ROUTES } from '@/config/routes';
 import type { Branch } from '@/lib/api/branches';
 import type { Onboarding } from '@/lib/api/onboarding';

@@ -23,7 +23,7 @@ export const STATUS_ORDER: readonly RfqStatus[] = [
  * utility. Each state names a wash, a hairline and a label, exactly the way the badge's own
  * success/warning/danger tones are built — so a status pill is visibly one of Coti's pills that
  * happens to be purple, rather than a foreign object that happens to be on a Coti screen. RECEIVED
- * has no colours of its own: it never renders a badge, it always shows the ingestion spinner.
+ * has no pill colours: it never renders a badge, it always shows the ingestion spinner.
  */
 export const STATUS_COLOUR: Record<RfqStatus, string> = {
   RECEIVED: '',
