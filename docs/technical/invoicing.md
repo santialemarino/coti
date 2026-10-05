@@ -42,12 +42,12 @@ which breaks no IVA out. A buyer with no fiscal data is a consumidor final; from
 The invoice is written as `PENDING` before ARCA is asked, and a partial unique index allows one
 live (pending or issued) invoice per quote version. ARCA's answer then settles it:
 
-| Outcome                                  | What happens                                                    |
-| ---------------------------------------- | --------------------------------------------------------------- |
-| Authorized                               | `ISSUED`, with number, CAE and its expiry                       |
-| Refused by ARCA                          | `REJECTED`, ARCA's reasons shown verbatim; the seller can retry |
-| ARCA unreachable, nothing authorized     | Released (`REJECTED`, `ARCA_UNAVAILABLE`); retrying is safe     |
-| The request may have landed, unconfirmed | Stays `PENDING`; the quote answers `INVOICE_IN_PROGRESS`        |
+| Outcome                                             | What happens                                                                        |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Authorized                                          | `ISSUED`, with number, CAE and its expiry                                           |
+| Refused by ARCA (a WSAA certificate fault included) | `REJECTED`, ARCA's reasons shown verbatim; the seller can retry                     |
+| ARCA unreachable, nothing authorized                | Released (`REJECTED`, `ARCA_UNAVAILABLE`), not shown as a refusal; retrying is safe |
+| The request may have landed, unconfirmed            | Stays `PENDING`; the quote answers `INVOICE_IN_PROGRESS`                            |
 
 A `PENDING` invoice older than ten request timeouts is reconciled on the next try: ARCA's newest
 invoice at that point of sale is adopted if it has the same buyer and total and is not older;
