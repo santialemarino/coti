@@ -325,6 +325,10 @@
  * on its CSS transition underneath — and the screen's group follows the content as the column
  * pushes it, with the old snapshot kept at its own size rather than scaled into the new box.
  */
+/* The overlay would swallow every click for the swap's duration; the page under it is live. */
+::view-transition {
+  pointer-events: none;
+}
 ::view-transition-old(root) {
   display: none;
 }
