@@ -129,8 +129,8 @@
         "fix": "Configurar facturación"
       },
       "ACCOUNT_TAX_ID": {
-        "title": "Falta el CUIT del corralón",
-        "body": "ARCA identifica a quien emite la factura por su CUIT.",
+        "title": "Falta el CUIT del corralón o no es válido",
+        "body": "ARCA identifica a quien emite la factura por su CUIT de 11 dígitos.",
         "fix": "Cargar CUIT"
       },
       "BRANCH_POINT_OF_SALE": {
@@ -198,7 +198,9 @@
     "NOT_CONFIGURED": "Esa función todavía no está configurada en esta cuenta.",
     "INTERNAL": "Ocurrió un error inesperado. Intentá de nuevo.",
     "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
-    "SESSION_EXPIRED": "Tu sesión expiró. Volvé a iniciar sesión."
+    "SESSION_EXPIRED": "Tu sesión expiró. Volvé a iniciar sesión.",
+    "INVOICE_STALE": "La venta cambió desde que la revisaste. Revisá la factura y volvé a emitirla.",
+    "POINT_OF_SALE_TAKEN": "Ese punto de venta ya lo usa otra sucursal."
   },
   "meta": {
     "home": {
@@ -1012,7 +1014,8 @@
           "INVALID_INPUT": "La acción elegida no es válida para esta cotización.",
           "FORBIDDEN": "No tenés permiso para cambiar el estado de esta cotización.",
           "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
-          "INTERNAL": "No pudimos actualizar la cotización. Intentá de nuevo."
+          "INTERNAL": "No pudimos actualizar la cotización. Intentá de nuevo.",
+          "QUOTE_ALREADY_INVOICED": "Esta venta ya está facturada y no se puede reactivar. Corregirla requiere una nota de crédito."
         }
       },
       "diff": {
@@ -1942,7 +1945,8 @@
         "pointsOfSale": "los puntos de venta de {count} sucursales"
       },
       "errors": {
-        "INVALID_INPUT": "Revisá los puntos de venta: dos sucursales no pueden compartir el mismo."
+        "INVALID_INPUT": "Revisá los datos: algún valor no es válido.",
+        "POINT_OF_SALE_TAKEN": "Dos sucursales no pueden compartir el mismo punto de venta."
       },
       "credential": {
         "title": "Certificado de ARCA",
@@ -2029,7 +2033,7 @@
       },
       "pending": {
         "title": "La factura se está emitiendo",
-        "body": "ARCA todavía no confirmó el último pedido. Si no se actualiza en unos minutos, volvé a emitirla: no se va a duplicar."
+        "body": "ARCA todavía no confirmó el último pedido. Actualizá la página en unos minutos; si sigue igual, volvé a emitirla: no se va a duplicar."
       },
       "issues": {
         "QUOTE_NOT_ACCEPTED": {
@@ -2051,6 +2055,10 @@
         "RECEIVER_ID_REQUIRED": {
           "title": "Falta el documento del cliente",
           "body": "Por el monto, ARCA pide identificar al cliente con su CUIT o DNI."
+        },
+        "QUOTE_TOTAL_MISMATCH": {
+          "title": "Los descuentos superan algún ítem",
+          "body": "Los ítems con sus descuentos no suman el total de la cotización. Revisá los descuentos antes de facturar."
         }
       },
       "noClient": "Asociá un cliente a la venta para cargar sus datos fiscales.",
@@ -2065,8 +2073,9 @@
         "taxId": {
           "label": "CUIT o DNI",
           "placeholder": "Ingresá el CUIT o DNI",
-          "hint": "El CUIT son 11 dígitos, con guiones o sin ellos: 30-70123456-8.",
-          "invalid": "Ingresá un CUIT de 11 dígitos o un DNI de 7 u 8."
+          "hint": "Con guiones o sin ellos, como 30-70123456-8.",
+          "invalid": "Ingresá un CUIT de 11 dígitos o un DNI de 7 u 8.",
+          "checkDigit": "El CUIT no es válido: revisá el último dígito."
         },
         "ivaCondition": {
           "label": "Condición frente al IVA",
@@ -2078,7 +2087,9 @@
         "savedUnnamed": "Guardamos los datos fiscales del cliente."
       },
       "errors": {
-        "NOT_CONFIGURED": "La facturación todavía no está configurada en este servidor."
+        "NOT_CONFIGURED": "La facturación todavía no está configurada en este servidor.",
+        "INVOICE_STALE": "La venta cambió desde que la revisaste. Mirá la factura actualizada y volvé a emitirla.",
+        "ARCA_CREDENTIALS": "No pudimos usar el certificado de ARCA del corralón. Pedile a un administrador que lo vuelva a cargar."
       }
     }
   }

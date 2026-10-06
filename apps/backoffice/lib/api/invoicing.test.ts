@@ -80,6 +80,7 @@ describe('invoicing API mapping', () => {
   it('maps a preview and the invoice it already has', () => {
     expect(
       mapInvoicePreview({
+        version_id: 'v-1',
         type: 'A',
         point_of_sale: 3,
         receiver: RECEIVER,
@@ -105,6 +106,7 @@ describe('invoicing API mapping', () => {
         },
       }),
     ).toEqual({
+      versionId: 'v-1',
       type: 'A',
       pointOfSale: 3,
       receiver: {

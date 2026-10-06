@@ -111,6 +111,7 @@ export interface InvoiceRaw {
 }
 
 export interface InvoicePreviewRaw {
+  version_id: string;
   type: string;
   point_of_sale: number | null;
   receiver: InvoiceReceiverRaw;
@@ -196,6 +197,7 @@ export interface Invoice {
 }
 
 export interface InvoicePreview {
+  versionId: string;
   type: string;
   pointOfSale: number | null;
   receiver: InvoiceReceiver;
@@ -291,6 +293,7 @@ export function mapInvoice(raw: InvoiceRaw): Invoice {
 
 export function mapInvoicePreview(raw: InvoicePreviewRaw): InvoicePreview {
   return {
+    versionId: raw.version_id,
     type: raw.type,
     pointOfSale: raw.point_of_sale,
     receiver: mapReceiver(raw.receiver),

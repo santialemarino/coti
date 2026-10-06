@@ -25,6 +25,8 @@ import { useFormatters } from '@/lib/i18n/formatters';
 
 const CERTIFICATE_ACCEPT = '.crt,.pem,.cer';
 const PRIVATE_KEY_ACCEPT = '.key,.pem';
+// Next refuses a server action body over 1 MB before the action runs; a real pair is a few KB.
+const UPLOAD_MAX_BYTES = 1024 * 1024;
 
 interface ArcaCredentialSectionProps {
   credential: ArcaCredential | null;
@@ -53,12 +55,22 @@ export function ArcaCredentialSection({ credential }: ArcaCredentialSectionProps
       setError(t('bothRequired'));
       return;
     }
+    if (certificate.size + privateKey.size > UPLOAD_MAX_BYTES) {
+      setError(message('FILE_TOO_LARGE'));
+      return;
+    }
     setError(null);
     const payload = new FormData();
     payload.set('certificate', certificate);
     payload.set('private_key', privateKey);
     startUpload(async () => {
-      const result = await uploadArcaCredentials(payload);
+      let result: Awaited<ReturnType<typeof uploadArcaCredentials>>;
+      try {
+        result = await uploadArcaCredentials(payload);
+      } catch {
+        setError(message());
+        return;
+      }
       if (!result.credential) {
         setError(message(result.error));
         return;
@@ -77,7 +89,12 @@ export function ArcaCredentialSection({ credential }: ArcaCredentialSectionProps
 
   function remove() {
     startDelete(async () => {
-      const result = await deleteArcaCredentials();
+      let result: Awaited<ReturnType<typeof deleteArcaCredentials>>;
+      try {
+        result = await deleteArcaCredentials();
+      } catch {
+        result = {};
+      }
       if (!result.ok) {
         setError(message(result.error));
         setConfirmingDelete(false);
@@ -131,7 +148,10 @@ export function ArcaCredentialSection({ credential }: ArcaCredentialSectionProps
           <span className="text-paragraph-sm-medium">{t('certificate.label')}</span>
           <Dropzone
             accept={CERTIFICATE_ACCEPT}
-            onFile={(file) => setCertificate(file ?? null)}
+            onFile={(file) => {
+              setCertificate(file ?? null);
+              setError(null);
+            }}
             title={t('certificate.title')}
             releaseLabel={t('release')}
             chooseLabel={certificate ? t('replaceFile') : t('chooseFile')}
@@ -145,7 +165,10 @@ export function ArcaCredentialSection({ credential }: ArcaCredentialSectionProps
           <span className="text-paragraph-sm-medium">{t('privateKey.label')}</span>
           <Dropzone
             accept={PRIVATE_KEY_ACCEPT}
-            onFile={(file) => setPrivateKey(file ?? null)}
+            onFile={(file) => {
+              setPrivateKey(file ?? null);
+              setError(null);
+            }}
             title={t('privateKey.title')}
             releaseLabel={t('release')}
             chooseLabel={privateKey ? t('replaceFile') : t('chooseFile')}

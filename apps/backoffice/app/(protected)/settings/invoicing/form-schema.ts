@@ -20,7 +20,9 @@ export function invoicingSettingsSchema(t: SchemaText = rawText) {
             .refine(
               (raw) =>
                 raw === '' ||
-                (Number(raw) >= POINT_OF_SALE_MIN && Number(raw) <= POINT_OF_SALE_MAX),
+                (/^\d+$/.test(raw) &&
+                  Number(raw) >= POINT_OF_SALE_MIN &&
+                  Number(raw) <= POINT_OF_SALE_MAX),
               t.field('pointOfSale.range', { min: POINT_OF_SALE_MIN, max: POINT_OF_SALE_MAX }),
             ),
         }),

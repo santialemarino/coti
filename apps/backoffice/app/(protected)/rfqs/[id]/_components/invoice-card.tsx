@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, useTransition } from 'react';
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { ExternalLinkIcon, ReceiptTextIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -71,40 +71,46 @@ export function InvoiceCard({ quoteId, branchId, clientId }: InvoiceCardProps) {
   const [editingFiscal, setEditingFiscal] = useState(false);
   const [issuing, startIssue] = useTransition();
 
+  // Only the newest read may land: a slower, older one would put back a receiver or a button
+  // the seller has already moved past.
+  const latestRead = useRef(0);
+  const headingRef = useRef<HTMLDivElement>(null);
+
   // A refresh that fails keeps the preview on screen; only the first read has nothing to show.
-  const reload = useCallback(async () => {
-    try {
-      setPreview(await getInvoicePreview(quoteId, branchId));
-    } catch (cause) {
-      toast.error(message(errorCodeOf(cause)));
-    }
-  }, [branchId, message, quoteId]);
+  const load = useCallback(
+    async (initial: boolean) => {
+      const read = ++latestRead.current;
+      try {
+        const result = await getInvoicePreview(quoteId, branchId);
+        if (read !== latestRead.current) return;
+        setPreview(result);
+        setLoadError(null);
+      } catch (cause) {
+        if (read !== latestRead.current) return;
+        if (initial) setLoadError(message(errorCodeOf(cause)));
+        else toast.error(message(errorCodeOf(cause)));
+      }
+    },
+    [branchId, message, quoteId],
+  );
+  const reload = useCallback(() => load(false), [load]);
 
   // The client is part of what the invoice says, so a change of client is a new preview.
   useEffect(() => {
-    let active = true;
-    getInvoicePreview(quoteId, branchId)
-      .then((result) => {
-        if (!active) return;
-        setPreview(result);
-        setLoadError(null);
-      })
-      .catch((cause) => {
-        if (active) setLoadError(message(errorCodeOf(cause)));
-      });
-    return () => {
-      active = false;
-    };
-  }, [branchId, clientId, message, quoteId]);
+    void load(true);
+  }, [clientId, load]);
 
-  function issue() {
+  function issue(confirmed: InvoicePreview) {
     setRejection([]);
     startIssue(async () => {
       try {
-        const invoice = await issueInvoice(quoteId, branchId);
+        const invoice = await issueInvoice(quoteId, branchId, confirmed);
+        latestRead.current++;
         setConfirming(false);
         toast.success(t('issued', { type: invoice.type, number: invoiceNumberOf(invoice) }));
         setPreview((current) => (current ? { ...current, invoice, issues: [] } : current));
+        // The button that opened the dialog is gone with the draft; focus lands on what replaced it.
+        requestAnimationFrame(() => headingRef.current?.focus());
       } catch (cause) {
         setConfirming(false);
         const code = errorCodeOf(cause);
@@ -120,7 +126,7 @@ export function InvoiceCard({ quoteId, branchId, clientId }: InvoiceCardProps) {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center gap-x-2">
+        <div ref={headingRef} tabIndex={-1} className="flex items-center gap-x-2 outline-none">
           <ReceiptTextIcon aria-hidden="true" className="size-4 text-foreground-muted" />
           <CardTitle>
             {issued
@@ -211,7 +217,7 @@ export function InvoiceCard({ quoteId, branchId, clientId }: InvoiceCardProps) {
                   total: fmt.currency(shown.amounts.total, shown.currency),
                 })
               }
-              onConfirm={issue}
+              onConfirm={() => issue(preview)}
               pending={issuing}
               labels={{
                 confirm: t('confirm.confirm'),

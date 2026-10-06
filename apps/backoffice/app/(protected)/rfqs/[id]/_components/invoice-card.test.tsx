@@ -32,6 +32,7 @@ const CLIENT_ID = 'c0000000-0000-4000-8000-000000000031';
 const card = messages.invoicing.card;
 
 const READY: InvoicePreview = {
+  versionId: 'v0000000-0000-4000-8000-000000000031',
   type: 'A',
   pointOfSale: 3,
   receiver: {
@@ -73,16 +74,20 @@ const ISSUED: Invoice = {
   createdAt: '2026-10-05T15:00:00Z',
 };
 
-function renderCard(clientId: string | null = CLIENT_ID) {
-  return render(
+function cardWith(clientId: string | null) {
+  return (
     <NextIntlClientProvider
       locale="es"
       messages={messages}
       timeZone="America/Argentina/Buenos_Aires"
     >
       <InvoiceCard quoteId={QUOTE_ID} branchId={BRANCH_ID} clientId={clientId} />
-    </NextIntlClientProvider>,
+    </NextIntlClientProvider>
   );
+}
+
+function renderCard(clientId: string | null = CLIENT_ID) {
+  return render(cardWith(clientId));
 }
 
 beforeEach(() => {
@@ -130,7 +135,8 @@ describe('InvoiceCard', () => {
 
     fireEvent.click(dialog.getByRole('button', { name: card.confirm.confirm }));
 
-    await waitFor(() => expect(issueInvoice).toHaveBeenCalledWith(QUOTE_ID, BRANCH_ID));
+    // The request carries what the seller confirmed, so the API can refuse a sale that moved since.
+    await waitFor(() => expect(issueInvoice).toHaveBeenCalledWith(QUOTE_ID, BRANCH_ID, READY));
     expect(await view.findByText('Factura A 0003-00000023')).toBeTruthy();
     expect(toast.success).toHaveBeenCalledWith('Emitimos la factura A 0003-00000023.');
   });
@@ -204,6 +210,32 @@ describe('InvoiceCard', () => {
 
     expect(await view.findByRole('form', { name: card.fiscal.title })).toBeTruthy();
     expect(view.queryByRole('button', { name: card.fiscal.edit })).toBeNull();
+  });
+
+  it('reloads what would be issued when the sale moved since the seller confirmed', async () => {
+    vi.mocked(issueInvoice).mockRejectedValue(new ApiError('INVOICE_STALE', 409));
+    const view = renderCard();
+
+    fireEvent.click(await view.findByRole('button', { name: 'Emitir factura A' }));
+    const dialog = within(await view.findByRole('dialog'));
+    fireEvent.click(dialog.getByRole('button', { name: card.confirm.confirm }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(card.errors.INVOICE_STALE));
+    expect(getInvoicePreview).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the newest preview when an older read answers last', async () => {
+    let answerFirst: (preview: InvoicePreview) => void = () => {};
+    vi.mocked(getInvoicePreview)
+      .mockImplementationOnce(() => new Promise((resolve) => (answerFirst = resolve)))
+      .mockResolvedValueOnce({ ...READY, type: 'B' });
+    const view = renderCard();
+    view.rerender(cardWith(null));
+
+    expect(await view.findByRole('button', { name: 'Emitir factura B' })).toBeTruthy();
+    answerFirst(READY);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(view.queryByRole('button', { name: 'Emitir factura A' })).toBeNull();
   });
 
   it('says a client has to be associated when the sale has none', async () => {

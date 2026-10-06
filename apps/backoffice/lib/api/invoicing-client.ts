@@ -23,7 +23,7 @@ export async function getInvoicePreview(
   quoteId: string,
   branchId: string,
 ): Promise<InvoicePreview> {
-  const response = await fetch(`/api/quotes/${quoteId}/invoice`, {
+  const response = await fetch(`/api/quotes/${encodeURIComponent(quoteId)}/invoice`, {
     headers: { 'X-Branch-Id': branchId },
     cache: 'no-store',
   });
@@ -31,10 +31,20 @@ export async function getInvoicePreview(
   return mapInvoicePreview((await response.json()) as InvoicePreviewRaw);
 }
 
-export async function issueInvoice(quoteId: string, branchId: string): Promise<Invoice> {
-  const response = await fetch(`/api/quotes/${quoteId}/invoice`, {
+// Issues exactly the previewed invoice; the API refuses with INVOICE_STALE if the sale moved since.
+export async function issueInvoice(
+  quoteId: string,
+  branchId: string,
+  preview: Pick<InvoicePreview, 'versionId' | 'type' | 'amounts'>,
+): Promise<Invoice> {
+  const response = await fetch(`/api/quotes/${encodeURIComponent(quoteId)}/invoice`, {
     method: 'POST',
-    headers: { 'X-Branch-Id': branchId },
+    headers: { 'X-Branch-Id': branchId, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      version_id: preview.versionId,
+      type: preview.type,
+      total: preview.amounts.total,
+    }),
     cache: 'no-store',
   });
   if (!response.ok) await throwOnError(response);
@@ -42,7 +52,9 @@ export async function issueInvoice(quoteId: string, branchId: string): Promise<I
 }
 
 export async function getClientFiscal(clientId: string): Promise<ClientFiscal> {
-  const response = await fetch(`/api/clients/${clientId}/fiscal`, { cache: 'no-store' });
+  const response = await fetch(`/api/clients/${encodeURIComponent(clientId)}/fiscal`, {
+    cache: 'no-store',
+  });
   if (!response.ok) await throwOnError(response);
   return mapClientFiscal((await response.json()) as ClientFiscalRaw);
 }
@@ -51,7 +63,7 @@ export async function updateClientFiscal(
   clientId: string,
   body: ClientFiscalBody,
 ): Promise<ClientFiscal> {
-  const response = await fetch(`/api/clients/${clientId}/fiscal`, {
+  const response = await fetch(`/api/clients/${encodeURIComponent(clientId)}/fiscal`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

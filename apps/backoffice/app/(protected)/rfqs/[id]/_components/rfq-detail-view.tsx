@@ -54,8 +54,10 @@ export function RfqDetailView({
   );
   const [shownInitial, setShownInitial] = useState(initialDetail);
   const [generating, startGenerate] = useTransition();
-  // The sale's client as the association card reports it; undefined until it has loaded.
-  const [clientId, setClientId] = useState<string | null>();
+  // The sale's client: the quote's own, then whatever the association card changes it to.
+  const [clientId, setClientId] = useState<string | null | undefined>(
+    initialDetail.quote?.client_id,
+  );
   const rootRef = useRef<HTMLDivElement>(null);
 
   const quoteId = detail.quote?.id ?? null;
