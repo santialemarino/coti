@@ -15,6 +15,9 @@ ALTER TABLE account
 
 -- ARCA numbers invoices per point of sale, and a point of sale belongs to an address.
 ALTER TABLE branch ADD COLUMN point_of_sale INTEGER CHECK (point_of_sale BETWEEN 1 AND 99998);
+-- Checked at the end of the statement, so one save can swap two branches' numbers.
+ALTER TABLE branch ADD CONSTRAINT uq_branch_point_of_sale UNIQUE (account_id, point_of_sale)
+  DEFERRABLE INITIALLY IMMEDIATE;
 
 ALTER TABLE product ADD COLUMN vat_rate vat_rate NOT NULL DEFAULT 'VAT_21';
 
@@ -24,21 +27,25 @@ ALTER TABLE client
   ADD COLUMN tax_id VARCHAR(11) CHECK (tax_id ~ '^[0-9]{7,11}$'),
   ADD COLUMN iva_condition iva_condition;
 
--- One certificate per account. The key is sealed by the API before it reaches the database.
+-- One certificate per account. The key and the WSAA ticket are sealed by the API before they reach
+-- the database; the ticket is kept because WSAA refuses a new one while it is live.
 CREATE TABLE arca_credential (
-  account_id         UUID PRIMARY KEY,
-  certificate_pem    TEXT NOT NULL,
-  private_key_sealed TEXT NOT NULL,
-  cuit               VARCHAR(11) NOT NULL,
-  subject            VARCHAR(512) NOT NULL,
-  expires_at         TIMESTAMPTZ NOT NULL,
-  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  account_id          UUID PRIMARY KEY,
+  certificate_pem     TEXT NOT NULL,
+  private_key_sealed  TEXT NOT NULL,
+  cuit                VARCHAR(11) NOT NULL,
+  subject             VARCHAR(512) NOT NULL,
+  expires_at          TIMESTAMPTZ NOT NULL,
+  ticket_token_sealed TEXT,
+  ticket_sign_sealed  TEXT,
+  ticket_expires_at   TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT fk_arca_credential_account FOREIGN KEY (account_id) REFERENCES account(id)
 );
 
--- One invoice per accepted quote version. A rejected attempt stays as a record and frees the
--- version for another try; a pending one holds it while ARCA is being asked.
+-- One invoice per sale. A rejected attempt stays as a record and frees the quote for another try;
+-- a pending one holds it while ARCA is being asked.
 CREATE TABLE invoice (
   id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id             UUID NOT NULL,
@@ -49,6 +56,8 @@ CREATE TABLE invoice (
   invoice_type           invoice_type NOT NULL,
   point_of_sale          INTEGER NOT NULL,
   number                 BIGINT,
+  -- The number last requested from ARCA, written before the request: how an unknown outcome is checked.
+  claimed_number         BIGINT,
   issued_on              DATE NOT NULL,
   cae                    VARCHAR(14),
   cae_expires_on         DATE,
@@ -78,7 +87,7 @@ CREATE TABLE invoice (
   )
 );
 
-CREATE UNIQUE INDEX uq_invoice_active_version ON invoice(quote_version_id) WHERE status <> 'REJECTED';
+CREATE UNIQUE INDEX uq_invoice_active_quote ON invoice(quote_id) WHERE status <> 'REJECTED';
 CREATE UNIQUE INDEX uq_invoice_number ON invoice(account_id, point_of_sale, invoice_type, number)
   WHERE number IS NOT NULL;
 CREATE INDEX idx_invoice_account_quote ON invoice(account_id, quote_id);

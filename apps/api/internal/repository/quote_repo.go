@@ -68,6 +68,15 @@ func (r *QuoteRepository) GetByID(
 		accountID, branchID, id))
 }
 
+// HasLiveInvoice reports whether the quote has an invoice issued or in flight with ARCA.
+func (r *QuoteRepository) HasLiveInvoice(ctx context.Context, q Querier, accountID, quoteID uuid.UUID) (bool, error) {
+	var live bool
+	err := q.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM invoice WHERE account_id = $1 AND quote_id = $2 AND status <> 'REJECTED')`,
+		accountID, quoteID).Scan(&live)
+	return live, err
+}
+
 // GetByIDForUpdate locks one branch-scoped quote while a delivery operation is prepared.
 func (r *QuoteRepository) GetByIDForUpdate(
 	ctx context.Context, q Querier, accountID, branchID, id uuid.UUID,

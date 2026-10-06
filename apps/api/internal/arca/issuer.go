@@ -8,10 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
-	_ "time/tzdata" // the API image may ship without a zoneinfo database.
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
@@ -31,7 +31,8 @@ const (
 	productionWSFE   = "https://servicios1.afip.gov.ar/wsfev1/service.asmx"
 )
 
-var argentina = mustLoadLocation("America/Argentina/Buenos_Aires")
+// maxResponseBytes bounds what is read from one SOAP response; ARCA's are a few kilobytes.
+const maxResponseBytes = 1 << 20
 
 // Settings configures an Issuer.
 type Settings struct {
@@ -40,6 +41,7 @@ type Settings struct {
 	Now         func() time.Time
 	WSAAURL     string // overrides the environment's WSAA endpoint.
 	WSFEURL     string // overrides the environment's WSFEv1 endpoint.
+	Log         *slog.Logger
 }
 
 // Issuer implements domain.InvoiceIssuer against ARCA.
@@ -49,7 +51,9 @@ type Issuer struct {
 	now     func() time.Time
 	wsaaURL string
 	wsfeURL string
-	loginMu sync.Mutex
+	log     *slog.Logger
+	mu      sync.Mutex
+	logins  map[string]*sync.Mutex // one per certificate, so a slow login holds back only its own account.
 }
 
 var _ domain.InvoiceIssuer = (*Issuer)(nil)
@@ -70,12 +74,18 @@ func NewIssuer(settings Settings, cache TicketCache) *Issuer {
 	if now == nil {
 		now = time.Now
 	}
+	log := settings.Log
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
 	return &Issuer{
 		client:  &http.Client{Timeout: settings.Timeout},
 		cache:   cache,
 		now:     now,
 		wsaaURL: wsaa,
 		wsfeURL: wsfe,
+		log:     log,
+		logins:  map[string]*sync.Mutex{},
 	}
 }
 
@@ -85,7 +95,7 @@ func (i *Issuer) Issue(ctx context.Context, creds domain.ARCACredentials, req do
 	if err != nil {
 		return nil, err
 	}
-	t, err := i.ticket(ctx, s)
+	t, err := i.ticket(ctx, s, creds.Tickets)
 	if err != nil {
 		return nil, err
 	}
@@ -93,13 +103,18 @@ func (i *Issuer) Issue(ctx context.Context, creds domain.ARCACredentials, req do
 	for attempt := 0; ; attempt++ {
 		last, err := i.lastAuthorized(ctx, a, req.Type, req.PointOfSale)
 		if err != nil {
-			return nil, err
+			return nil, i.dropRejectedTicket(ctx, s, creds.Tickets, err)
 		}
 		number := last + 1
+		if req.Claim != nil {
+			if err := req.Claim(ctx, number); err != nil {
+				return nil, err
+			}
+		}
 		resp, raw, err := i.solicitar(ctx, a, req, number)
 		if err != nil {
 			var transport *transportError
-			if errors.As(err, &transport) && ctx.Err() == nil {
+			if errors.As(err, &transport) {
 				return i.recoverIssued(ctx, a, req, number, raw, err)
 			}
 			return nil, err
@@ -108,30 +123,26 @@ func (i *Issuer) Issue(ctx context.Context, creds domain.ARCACredentials, req do
 		if attempt == 0 && resp.hasCode(codeNotNextNumber) {
 			continue
 		}
-		return resp.authorization(number, raw)
+		auth, err := resp.authorization(number, raw)
+		return auth, i.dropRejectedTicket(ctx, s, creds.Tickets, err)
 	}
 }
 
-// LatestAuthorized reads back the newest invoice ARCA authorized for a type at a point of sale.
-func (i *Issuer) LatestAuthorized(ctx context.Context, creds domain.ARCACredentials, issuerCUIT string, invoiceType domain.InvoiceType, pointOfSale int) (*domain.AuthorizedInvoice, error) {
+// Authorized reads back the invoice ARCA holds under number for a type at a point of sale.
+func (i *Issuer) Authorized(ctx context.Context, creds domain.ARCACredentials, issuerCUIT string, invoiceType domain.InvoiceType, pointOfSale int, number int64) (*domain.AuthorizedInvoice, error) {
 	s, err := parseSigner(creds.CertificatePEM, creds.PrivateKeyPEM)
 	if err != nil {
 		return nil, err
 	}
-	t, err := i.ticket(ctx, s)
+	t, err := i.ticket(ctx, s, creds.Tickets)
 	if err != nil {
 		return nil, err
 	}
-	a := feAuth{Token: t.Token, Sign: t.Sign, Cuit: issuerCUIT}
-	last, err := i.lastAuthorized(ctx, a, invoiceType, pointOfSale)
-	if err != nil || last == 0 {
-		return nil, err
+	got, _, err := i.consult(ctx, feAuth{Token: t.Token, Sign: t.Sign, Cuit: issuerCUIT}, invoiceType, pointOfSale, number)
+	if err != nil || got == nil {
+		return nil, i.dropRejectedTicket(ctx, s, creds.Tickets, err)
 	}
-	got, _, err := i.consult(ctx, a, invoiceType, pointOfSale, last)
-	if err != nil {
-		return nil, err
-	}
-	return got.authorized(last)
+	return got.authorized(number)
 }
 
 // soapFault is a SOAP 1.1 Fault; ARCA answers one for infrastructure and WSAA login failures.
@@ -191,7 +202,7 @@ func (i *Issuer) post(ctx context.Context, url, action string, payload []byte) (
 		return nil, &transportError{err: err}
 	}
 	defer res.Body.Close()
-	raw, err := io.ReadAll(res.Body)
+	raw, err := io.ReadAll(io.LimitReader(res.Body, maxResponseBytes))
 	if err != nil {
 		return nil, &transportError{err: err}
 	}
@@ -207,12 +218,4 @@ func (i *Issuer) post(ctx context.Context, url, action string, payload []byte) (
 
 func unavailable(what string, err error) error {
 	return fmt.Errorf("arca: %s: %v: %w", what, err, domain.ErrInvoicingUnavailable)
-}
-
-func mustLoadLocation(name string) *time.Location {
-	loc, err := time.LoadLocation(name)
-	if err != nil {
-		panic(err)
-	}
-	return loc
 }

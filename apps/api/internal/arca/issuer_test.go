@@ -29,7 +29,7 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
-var fixedNow = time.Date(2026, 10, 5, 15, 0, 0, 0, argentina)
+var fixedNow = time.Date(2026, 10, 5, 15, 0, 0, 0, domain.Argentina)
 
 // testCredentials builds a self-signed certificate whose subject names the CUIT the way ARCA does.
 func testCredentials(t *testing.T, serial string) (certPEM, keyPEM []byte, key *rsa.PrivateKey) {
@@ -93,12 +93,13 @@ func (f *fakeWSAA) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // fakeWSFE answers each operation from a script, recording what it was sent.
 type fakeWSFE struct {
-	mu         sync.Mutex
-	last       []int64  // successive FECompUltimoAutorizado answers, -1 resets the connection; the final one repeats.
-	solicitar  []string // successive FECAESolicitarResult bodies; "DROP" resets the connection.
-	consult    string   // the FECompConsultarResult body; "DROP" resets the connection.
-	requests   map[string][]string
-	lastErrors string
+	mu          sync.Mutex
+	last        []int64  // successive FECompUltimoAutorizado answers, -1 resets the connection; the final one repeats.
+	solicitar   []string // successive FECAESolicitarResult bodies; "DROP" resets the connection.
+	consult     string   // the FECompConsultarResult body; "DROP" resets the connection.
+	requests    map[string][]string
+	lastErrors  string
+	onSolicitar func() // runs as FECAESolicitar arrives, before it is answered.
 }
 
 func (f *fakeWSFE) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -122,6 +123,9 @@ func (f *fakeWSFE) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		fmt.Fprintf(w, soapOpen+`<FECompUltimoAutorizadoResponse xmlns="http://ar.gov.afip.dif.FEV1/"><FECompUltimoAutorizadoResult><PtoVta>3</PtoVta><CbteTipo>1</CbteTipo><CbteNro>%d</CbteNro>%s</FECompUltimoAutorizadoResult></FECompUltimoAutorizadoResponse>`+soapClose, n, f.lastErrors)
 	case "FECAESolicitar":
+		if f.onSolicitar != nil {
+			f.onSolicitar()
+		}
 		next := f.solicitar[0]
 		f.solicitar = f.solicitar[1:]
 		if next == "DROP" {
@@ -197,7 +201,7 @@ func invoiceA() domain.InvoiceRequest {
 		IssuerCUIT:  "20123456789",
 		Type:        domain.InvoiceTypeA,
 		PointOfSale: 3,
-		Date:        time.Date(2026, 10, 6, 1, 30, 0, 0, time.UTC), // still the 5th in Buenos Aires.
+		Date:        time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC), // a calendar day, as the service sends it.
 		Receiver: domain.InvoiceReceiver{
 			Name: "Obra SA", DocType: domain.ReceiverDocCUIT, DocNumber: "30712345678",
 			IVACondition: domain.IVAConditionRegistered,
@@ -419,7 +423,7 @@ func TestIssuer_Issue_MapsApproval(t *testing.T) {
 	if auth.Number != 42 || auth.CAE != "76401234567890" {
 		t.Fatalf("number %d CAE %q", auth.Number, auth.CAE)
 	}
-	if !auth.CAEExpiresOn.Equal(time.Date(2026, 10, 15, 0, 0, 0, 0, argentina)) {
+	if !auth.CAEExpiresOn.Equal(time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC)) {
 		t.Fatalf("CAE expires %v", auth.CAEExpiresOn)
 	}
 	if len(auth.Observations) != 1 || auth.Observations[0] != "10217: Observación informativa" {
@@ -471,15 +475,25 @@ func TestIssuer_Issue_MapsRejection(t *testing.T) {
 	}
 }
 
-func TestIssuer_Issue_AuthErrorIsUnavailable(t *testing.T) {
+// A ticket WSFEv1 refuses is forgotten, so the next call logs in afresh instead of failing until it expires.
+func TestIssuer_Issue_RefusedTicketIsDropped(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, &fakeWSFE{last: []int64{41}, solicitar: []string{
 		`<Errors><Err><Code>600</Code><Msg>ValidacionDeToken: No validaron las fechas del token</Msg></Err></Errors>`,
+		approved(42),
 	}})
+	store := &memoryTicketStore{}
+	h.creds.Tickets = store
 	_, err := h.issuer.Issue(context.Background(), h.creds, invoiceA())
 	var rej *domain.InvoiceRejectedError
 	if !errors.Is(err, domain.ErrInvoicingUnavailable) || errors.As(err, &rej) {
 		t.Fatalf("err = %v, want unavailable", err)
+	}
+	if store.ticket.Token != "" {
+		t.Fatalf("stored ticket %+v, want it cleared", store.ticket)
+	}
+	if _, err := h.issuer.Issue(context.Background(), h.creds, invoiceA()); err != nil || h.wsaa.logins != 2 {
+		t.Fatalf("err = %v after %d logins, want a fresh login", err, h.wsaa.logins)
 	}
 }
 
@@ -521,7 +535,7 @@ func TestIssuer_Issue_RecoversInvoiceAuthorizedInFlight(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if auth.Number != 42 || auth.CAE != "76409999999999" || !auth.CAEExpiresOn.Equal(time.Date(2026, 10, 15, 0, 0, 0, 0, argentina)) {
+	if auth.Number != 42 || auth.CAE != "76409999999999" || !auth.CAEExpiresOn.Equal(time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC)) {
 		t.Fatalf("recovered %+v", auth)
 	}
 	consulted := h.wsfe.sent("FECompConsultar")
@@ -533,22 +547,22 @@ func TestIssuer_Issue_RecoversInvoiceAuthorizedInFlight(t *testing.T) {
 	}
 }
 
-func TestIssuer_Issue_TransportFailureWithoutAuthorizationIsUnavailable(t *testing.T) {
+const noRecords = `<Errors><Err><Code>602</Code><Msg>Sin Resultados: - en FECompConsultar</Msg></Err></Errors>`
+
+// ARCA may still be processing a request whose answer was lost; only proof releases the number.
+func TestIssuer_Issue_InFlightRequestNotOnRecordIsUnknown(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t, &fakeWSFE{last: []int64{41, 41}, solicitar: []string{"DROP"}, consult: consultedA})
+	h := newHarness(t, &fakeWSFE{last: []int64{41}, solicitar: []string{"DROP"}, consult: noRecords})
 	_, err := h.issuer.Issue(context.Background(), h.creds, invoiceA())
-	if !errors.Is(err, domain.ErrInvoicingUnavailable) || errors.Is(err, domain.ErrInvoiceOutcomeUnknown) {
-		t.Fatalf("err = %v, want unavailable", err)
-	}
-	if n := len(h.wsfe.sent("FECompConsultar")); n != 0 {
-		t.Fatalf("consulted %d times for a number ARCA never reached", n)
+	if !errors.Is(err, domain.ErrInvoiceOutcomeUnknown) || errors.Is(err, domain.ErrInvoicingUnavailable) {
+		t.Fatalf("err = %v, want only outcome unknown", err)
 	}
 }
 
 func TestIssuer_Issue_RecoveryRefusesAnotherSystemsInvoice(t *testing.T) {
 	t.Parallel()
 	other := strings.Replace(consultedA, "<ImpTotal>1370.5</ImpTotal>", "<ImpTotal>99</ImpTotal>", 1)
-	h := newHarness(t, &fakeWSFE{last: []int64{41, 42}, solicitar: []string{"DROP"}, consult: other})
+	h := newHarness(t, &fakeWSFE{last: []int64{41}, solicitar: []string{"DROP"}, consult: other})
 	_, err := h.issuer.Issue(context.Background(), h.creds, invoiceA())
 	if !errors.Is(err, domain.ErrInvoicingUnavailable) {
 		t.Fatalf("err = %v, want unavailable", err)
@@ -557,29 +571,139 @@ func TestIssuer_Issue_RecoveryRefusesAnotherSystemsInvoice(t *testing.T) {
 
 func TestIssuer_Issue_OutcomeUnknownWhenReadBackFails(t *testing.T) {
 	t.Parallel()
-	for name, wsfe := range map[string]*fakeWSFE{
-		"last number":  {last: []int64{41, -1}, solicitar: []string{"DROP"}, consult: consultedA},
-		"consultation": {last: []int64{41, 42}, solicitar: []string{"DROP"}, consult: "DROP"},
-	} {
-		h := newHarness(t, wsfe)
-		_, err := h.issuer.Issue(context.Background(), h.creds, invoiceA())
-		if !errors.Is(err, domain.ErrInvoiceOutcomeUnknown) || errors.Is(err, domain.ErrInvoicingUnavailable) {
-			t.Errorf("%s read fails: err = %v, want only outcome unknown", name, err)
-		}
+	h := newHarness(t, &fakeWSFE{last: []int64{41}, solicitar: []string{"DROP"}, consult: "DROP"})
+	_, err := h.issuer.Issue(context.Background(), h.creds, invoiceA())
+	if !errors.Is(err, domain.ErrInvoiceOutcomeUnknown) || errors.Is(err, domain.ErrInvoicingUnavailable) {
+		t.Errorf("err = %v, want only outcome unknown", err)
 	}
 }
 
-func TestIssuer_LatestAuthorized_ReadsNewestInvoice(t *testing.T) {
+// A request cut off by its own deadline may still have reached ARCA.
+func TestIssuer_Issue_CancelledInFlightIsUnknown(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t, &fakeWSFE{last: []int64{42}, consult: consultedA})
-	got, err := h.issuer.LatestAuthorized(context.Background(), h.creds, "20123456789", domain.InvoiceTypeA, 3)
+	ctx, cancel := context.WithCancel(context.Background())
+	h := newHarness(t, &fakeWSFE{last: []int64{41}, solicitar: []string{"DROP"}, consult: consultedA,
+		onSolicitar: cancel})
+	_, err := h.issuer.Issue(ctx, h.creds, invoiceA())
+	if !errors.Is(err, domain.ErrInvoiceOutcomeUnknown) {
+		t.Fatalf("err = %v, want outcome unknown", err)
+	}
+}
+
+func TestIssuer_Issue_ClaimsTheNumberBeforeAskingForIt(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, &fakeWSFE{last: []int64{41}, solicitar: []string{approved(42)}})
+	var claimed []int64
+	req := invoiceA()
+	req.Claim = func(_ context.Context, number int64) error {
+		if n := len(h.wsfe.sent("FECAESolicitar")); n != 0 {
+			t.Errorf("claimed after %d requests, want before", n)
+		}
+		claimed = append(claimed, number)
+		return nil
+	}
+	if _, err := h.issuer.Issue(context.Background(), h.creds, req); err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(claimed) != "[42]" {
+		t.Fatalf("claimed %v, want [42]", claimed)
+	}
+
+	refused := invoiceA()
+	refused.Claim = func(context.Context, int64) error { return errors.New("database down") }
+	h2 := newHarness(t, &fakeWSFE{last: []int64{41}, solicitar: []string{approved(42)}})
+	if _, err := h2.issuer.Issue(context.Background(), h2.creds, refused); err == nil || len(h2.wsfe.sent("FECAESolicitar")) != 0 {
+		t.Fatalf("err = %v, want the request never sent when the claim fails", err)
+	}
+}
+
+// The date ARCA stamps is the calendar day the service chose, whatever the server's zone.
+func TestIssuer_Issue_SendsTheCalendarDay(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, &fakeWSFE{last: []int64{41}, solicitar: []string{approved(42)}})
+	req := invoiceA()
+	req.Date = domain.InvoiceDay(time.Date(2026, 10, 6, 1, 30, 0, 0, time.UTC)) // the 5th in Buenos Aires.
+	if _, err := h.issuer.Issue(context.Background(), h.creds, req); err != nil {
+		t.Fatal(err)
+	}
+	if got := decodeSent(t, h.wsfe.sent("FECAESolicitar")[0]).Det.CbteFch; got != "20261005" {
+		t.Fatalf("CbteFch = %s, want 20261005", got)
+	}
+}
+
+// memoryTicketStore stands in for an account's stored ticket.
+type memoryTicketStore struct {
+	mu     sync.Mutex
+	ticket domain.ARCATicket
+	saves  int
+}
+
+func (m *memoryTicketStore) Load(context.Context) (*domain.ARCATicket, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.ticket.Token == "" {
+		return nil, nil
+	}
+	t := m.ticket
+	return &t, nil
+}
+
+func (m *memoryTicketStore) Save(_ context.Context, t domain.ARCATicket) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.ticket, m.saves = t, m.saves+1
+	return nil
+}
+
+// WSAA refuses a second login while a ticket is live, so a restart must reuse the stored one.
+func TestIssuer_Issue_ReusesTheStoredTicketAfterARestart(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, &fakeWSFE{last: []int64{41, 42}, solicitar: []string{approved(42), approved(43)}})
+	store := &memoryTicketStore{}
+	h.creds.Tickets = store
+	if _, err := h.issuer.Issue(context.Background(), h.creds, invoiceA()); err != nil {
+		t.Fatal(err)
+	}
+	if store.ticket.Token != "TOKEN+secret/abc=" {
+		t.Fatalf("stored %+v, want the ticket WSAA issued", store.ticket)
+	}
+
+	restarted := NewIssuer(Settings{Timeout: 5 * time.Second, Now: func() time.Time { return fixedNow },
+		WSAAURL: h.issuer.wsaaURL, WSFEURL: h.issuer.wsfeURL}, NewMemoryTicketCache())
+	if _, err := restarted.Issue(context.Background(), h.creds, invoiceA()); err != nil {
+		t.Fatal(err)
+	}
+	if h.wsaa.logins != 1 {
+		t.Fatalf("logins = %d, want the stored ticket reused", h.wsaa.logins)
+	}
+}
+
+// Inside the renew margin WSAA may still refuse a new login; the live ticket carries the call.
+func TestIssuer_Issue_FallsBackToTheLiveTicketWhenWSAARefuses(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, &fakeWSFE{last: []int64{41}, solicitar: []string{approved(42)}})
+	h.wsaa.already = true
+	h.creds.Tickets = &memoryTicketStore{ticket: domain.ARCATicket{Token: "LIVE", Sign: "SIG",
+		ExpiresAt: fixedNow.Add(ticketRenewMargin / 2)}}
+	if _, err := h.issuer.Issue(context.Background(), h.creds, invoiceA()); err != nil {
+		t.Fatal(err)
+	}
+	if got := decodeSent(t, h.wsfe.sent("FECAESolicitar")[0]); got.Token != "LIVE" {
+		t.Fatalf("token %q, want the live ticket", got.Token)
+	}
+}
+
+func TestIssuer_Authorized_ReadsTheNumberAsked(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, &fakeWSFE{consult: consultedA})
+	got, err := h.issuer.Authorized(context.Background(), h.creds, "20123456789", domain.InvoiceTypeA, 3, 42)
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := domain.AuthorizedInvoice{
 		Number: 42, CAE: "76409999999999",
-		CAEExpiresOn: time.Date(2026, 10, 15, 0, 0, 0, 0, argentina),
-		Date:         time.Date(2026, 10, 5, 0, 0, 0, 0, argentina),
+		CAEExpiresOn: time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC),
+		Date:         time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC),
 		DocType:      domain.ReceiverDocCUIT, DocNumber: "30712345678",
 	}
 	if got == nil || got.Number != want.Number || got.CAE != want.CAE || !got.CAEExpiresOn.Equal(want.CAEExpiresOn) ||
@@ -587,30 +711,25 @@ func TestIssuer_LatestAuthorized_ReadsNewestInvoice(t *testing.T) {
 		t.Fatalf("got %+v, want %+v total 1370.5", got, want)
 	}
 	consulted := h.wsfe.sent("FECompConsultar")
-	if len(consulted) != 1 || !strings.Contains(consulted[0], "<CbteTipo>1</CbteTipo><CbteNro>42</CbteNro><PtoVta>3</PtoVta>") {
+	if len(consulted) != 1 || !strings.Contains(consulted[0], "<CbteTipo>1</CbteTipo><CbteNro>42</CbteNro><PtoVta>3</PtoVta>") ||
+		!strings.Contains(consulted[0], "<Cuit>20123456789</Cuit>") {
 		t.Fatalf("FECompConsultar requests %q", consulted)
-	}
-	if s := h.wsfe.sent("FECompUltimoAutorizado")[0]; !strings.Contains(s, "<Cuit>20123456789</Cuit>") || !strings.Contains(s, "<PtoVta>3</PtoVta><CbteTipo>1</CbteTipo>") {
-		t.Fatalf("FECompUltimoAutorizado request %s", s)
 	}
 }
 
-func TestIssuer_LatestAuthorized_NoneIsNil(t *testing.T) {
+func TestIssuer_Authorized_NoneIsNil(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t, &fakeWSFE{last: []int64{0}, consult: consultedA})
-	got, err := h.issuer.LatestAuthorized(context.Background(), h.creds, "20123456789", domain.InvoiceTypeB, 3)
+	h := newHarness(t, &fakeWSFE{consult: noRecords})
+	got, err := h.issuer.Authorized(context.Background(), h.creds, "20123456789", domain.InvoiceTypeB, 3, 9)
 	if err != nil || got != nil {
 		t.Fatalf("got %+v, %v; want nil, nil", got, err)
 	}
-	if n := len(h.wsfe.sent("FECompConsultar")); n != 0 {
-		t.Fatalf("consulted %d times with nothing authorized", n)
-	}
 }
 
-func TestIssuer_LatestAuthorized_TransportFailureIsUnavailable(t *testing.T) {
+func TestIssuer_Authorized_TransportFailureIsUnavailable(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t, &fakeWSFE{last: []int64{-1}})
-	_, err := h.issuer.LatestAuthorized(context.Background(), h.creds, "20123456789", domain.InvoiceTypeA, 3)
+	h := newHarness(t, &fakeWSFE{consult: "DROP"})
+	_, err := h.issuer.Authorized(context.Background(), h.creds, "20123456789", domain.InvoiceTypeA, 3, 42)
 	if !errors.Is(err, domain.ErrInvoicingUnavailable) {
 		t.Fatalf("err = %v, want unavailable", err)
 	}

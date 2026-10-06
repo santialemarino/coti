@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
@@ -22,7 +23,7 @@ type InvoiceService interface {
 	GetClientFiscal(ctx context.Context, tenant domain.Tenant, clientID uuid.UUID) (*domain.ClientFiscal, error)
 	UpdateClientFiscal(ctx context.Context, tenant domain.Tenant, clientID uuid.UUID, in domain.ClientFiscalUpdate) (*domain.ClientFiscal, error)
 	Preview(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.InvoicePreview, error)
-	Issue(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Invoice, error)
+	Issue(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID, expected domain.InvoiceExpectation) (*domain.Invoice, error)
 }
 
 // InvoiceHandler serves ARCA invoicing: the account's setup, buyers' fiscal data and the invoices.
@@ -270,17 +271,19 @@ func (h *InvoiceHandler) Preview(c *gin.Context) {
 // Issue asks ARCA to authorize the invoice for an accepted quote.
 //
 //	@Summary		Issue a quote's invoice
-//	@Description	Asks ARCA to authorize the electronic invoice for an accepted quote. Irreversible: a mistake is corrected with a credit note.
+//	@Description	Asks ARCA to authorize the electronic invoice for an accepted quote, as long as it is still the one previewed. Irreversible: a mistake is corrected with a credit note.
 //	@Tags			invoicing
+//	@Accept			json
 //	@Produce		json
 //	@Security		BearerAuth
 //	@Param			X-Branch-Id	header		string	true	"The quote's branch"
-//	@Param			quoteId		path		string	true	"Quote id"
+//	@Param			quoteId		path		string					true	"Quote id"
+//	@Param			body		body		dto.IssueInvoiceRequest	true	"The previewed invoice being confirmed"
 //	@Success		201			{object}	dto.InvoiceResponse
 //	@Failure		400			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
 //	@Failure		404			{object}	dto.ErrorResponse
-//	@Failure		409			{object}	dto.ErrorResponse	"QUOTE_ALREADY_INVOICED, INVOICE_IN_PROGRESS"
+//	@Failure		409			{object}	dto.ErrorResponse	"QUOTE_ALREADY_INVOICED, INVOICE_IN_PROGRESS, INVOICE_STALE"
 //	@Failure		422			{object}	dto.ErrorResponse	"INVOICE_NOT_READY, INVOICE_REJECTED"
 //	@Failure		503			{object}	dto.ErrorResponse	"INVOICING_UNAVAILABLE"
 //	@Router			/v1/quotes/{quoteId}/invoice [post]
@@ -293,7 +296,19 @@ func (h *InvoiceHandler) Issue(c *gin.Context) {
 	if !ok {
 		return
 	}
-	invoice, err := h.invoices.Issue(c.Request.Context(), tenant, quoteID)
+	var body dto.IssueInvoiceRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	total, err := decimal.NewFromString(body.Total)
+	if err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	invoice, err := h.invoices.Issue(c.Request.Context(), tenant, quoteID, domain.InvoiceExpectation{
+		VersionID: body.VersionID, Type: domain.InvoiceType(body.Type), Total: total,
+	})
 	if err != nil {
 		Respond(c, err)
 		return
@@ -357,7 +372,7 @@ func toClientFiscalResponse(c domain.ClientFiscal) dto.ClientFiscalResponse {
 
 func toInvoicePreviewResponse(p domain.InvoicePreview) dto.InvoicePreviewResponse {
 	response := dto.InvoicePreviewResponse{
-		Type: string(p.Type), PointOfSale: p.PointOfSale, Receiver: toInvoiceReceiverResponse(p.Receiver),
+		VersionID: p.VersionID, Type: string(p.Type), PointOfSale: p.PointOfSale, Receiver: toInvoiceReceiverResponse(p.Receiver),
 		Amounts: toInvoiceAmountsResponse(p.Amounts), Currency: p.Currency, Issues: p.Issues,
 	}
 	if p.Invoice != nil {

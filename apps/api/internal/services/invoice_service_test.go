@@ -32,6 +32,7 @@ type fakeInvoicingStore struct {
 	released    []string
 	rejected    *domain.InvoiceRejectedError
 	stored      string
+	ticket      *domain.SealedARCATicket
 }
 
 func (f *fakeInvoicingStore) GetAccountFiscal(context.Context, repository.Querier, uuid.UUID) (*domain.AccountFiscal, error) {
@@ -55,6 +56,16 @@ func (f *fakeInvoicingStore) UpdateBranchPointsOfSale(_ context.Context, _ repos
 	for i := range f.branches {
 		if pos, ok := points[f.branches[i].BranchID]; ok {
 			f.branches[i].PointOfSale = pos
+		}
+	}
+	// Mirrors uq_branch_point_of_sale.
+	seen := map[int]bool{}
+	for _, b := range f.branches {
+		if b.PointOfSale != nil && seen[*b.PointOfSale] {
+			return domain.ErrConflict
+		}
+		if b.PointOfSale != nil {
+			seen[*b.PointOfSale] = true
 		}
 	}
 	return nil
@@ -124,6 +135,20 @@ func (f *fakeInvoicingStore) ReleasePending(_ context.Context, _ repository.Quer
 	return nil
 }
 
+func (f *fakeInvoicingStore) ClaimNumber(_ context.Context, _ repository.Querier, _, _ uuid.UUID, number int64) error {
+	f.invoice.ClaimedNumber = &number
+	return nil
+}
+
+func (f *fakeInvoicingStore) GetSealedTicket(context.Context, repository.Querier, uuid.UUID) (*domain.SealedARCATicket, error) {
+	return f.ticket, nil
+}
+
+func (f *fakeInvoicingStore) SaveSealedTicket(_ context.Context, _ repository.Querier, _ uuid.UUID, ticket *domain.SealedARCATicket) error {
+	f.ticket = ticket
+	return nil
+}
+
 type fakeInvoiceQuotes struct {
 	quote   domain.Quote
 	version domain.QuoteVersion
@@ -155,19 +180,27 @@ func (fakeInvoiceDiscounts) ListItemIDsByDiscountIDs(context.Context, repository
 }
 
 type fakeInvoiceIssuer struct {
-	auth     *domain.InvoiceAuthorization
-	err      error
-	latest   *domain.AuthorizedInvoice
-	requests []domain.InvoiceRequest
+	auth      *domain.InvoiceAuthorization
+	err       error
+	found     *domain.AuthorizedInvoice
+	requests  []domain.InvoiceRequest
+	consulted []int64
+	ctxErr    error // the context's state when Issue was called.
+	creds     domain.ARCACredentials
 }
 
-func (f *fakeInvoiceIssuer) Issue(_ context.Context, _ domain.ARCACredentials, req domain.InvoiceRequest) (*domain.InvoiceAuthorization, error) {
+func (f *fakeInvoiceIssuer) Issue(ctx context.Context, creds domain.ARCACredentials, req domain.InvoiceRequest) (*domain.InvoiceAuthorization, error) {
 	f.requests = append(f.requests, req)
+	f.ctxErr, f.creds = ctx.Err(), creds
+	if err := req.Claim(ctx, 42); err != nil {
+		return nil, err
+	}
 	return f.auth, f.err
 }
 
-func (f *fakeInvoiceIssuer) LatestAuthorized(context.Context, domain.ARCACredentials, string, domain.InvoiceType, int) (*domain.AuthorizedInvoice, error) {
-	return f.latest, nil
+func (f *fakeInvoiceIssuer) Authorized(_ context.Context, _ domain.ARCACredentials, _ string, _ domain.InvoiceType, _ int, number int64) (*domain.AuthorizedInvoice, error) {
+	f.consulted = append(f.consulted, number)
+	return f.found, nil
 }
 
 type fakeKeySealer struct{ enabled bool }
@@ -184,6 +217,13 @@ type invoiceFixture struct {
 	issuer  *fakeInvoiceIssuer
 	tenant  domain.Tenant
 	quoteID uuid.UUID
+	quotes  *fakeInvoiceQuotes
+}
+
+// issue confirms the invoice the fixture previews: an A for 1210.00 on the current version.
+func (f invoiceFixture) issue(ctx context.Context) (*domain.Invoice, error) {
+	return f.service.Issue(ctx, f.tenant, f.quoteID, domain.InvoiceExpectation{
+		VersionID: f.quotes.version.ID, Type: domain.InvoiceTypeA, Total: dec("1210.00")})
 }
 
 func newInvoiceFixture(t *testing.T) invoiceFixture {
@@ -204,15 +244,16 @@ func newInvoiceFixture(t *testing.T) invoiceFixture {
 	quotes := &fakeInvoiceQuotes{
 		quote: domain.Quote{ID: quoteID, BranchID: branchID, ClientID: &clientID,
 			CurrentStatus: domain.QuoteStatusAccepted},
-		version: domain.QuoteVersion{ID: versionID, Currency: "ARS"},
+		version: domain.QuoteVersion{ID: versionID, Currency: "ARS", Total: dec("1000.00")},
 		items:   []domain.QuoteItem{invoiceLine(&product, "1000.00")},
 	}
 	issuer := &fakeInvoiceIssuer{auth: &domain.InvoiceAuthorization{Number: 23, CAE: "74123456789012",
 		CAEExpiresOn: invoiceNow.AddDate(0, 0, 10)}}
 	service := NewInvoiceService(invoiceTestDB{}, store, quotes, fakeInvoiceDiscounts{}, issuer,
-		fakeKeySealer{enabled: true}, nil, InvoiceSettings{Enabled: true, RequestTimeout: time.Second,
-			UnidentifiedMax: decimal.NewFromInt(10_000_000)}, func() time.Time { return invoiceNow })
-	return invoiceFixture{service: service, store: store, issuer: issuer, quoteID: quoteID,
+		fakeKeySealer{enabled: true}, nil, InvoiceSettings{Enabled: true, IssueTimeout: time.Second,
+			ReconcileAfter: time.Minute, UnidentifiedMax: decimal.NewFromInt(10_000_000)},
+		func() time.Time { return invoiceNow })
+	return invoiceFixture{service: service, store: store, issuer: issuer, quoteID: quoteID, quotes: quotes,
 		tenant: domain.Tenant{AccountID: uuid.New(), BranchID: branchID}}
 }
 
@@ -220,7 +261,7 @@ func TestInvoiceService_IssueAuthorizesAndRecordsTheInvoice(t *testing.T) {
 	t.Parallel()
 	f := newInvoiceFixture(t)
 
-	invoice, err := f.service.Issue(context.Background(), f.tenant, f.quoteID)
+	invoice, err := f.issue(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +284,7 @@ func TestInvoiceService_IssueRefusesWhatIsNotReady(t *testing.T) {
 	f := newInvoiceFixture(t)
 	f.store.pointOfSale = nil
 
-	_, err := f.service.Issue(context.Background(), f.tenant, f.quoteID)
+	_, err := f.issue(context.Background())
 
 	var notReady *domain.InvoiceNotReadyError
 	if !errors.As(err, &notReady) || domain.CodeOf(err) != domain.CodeInvoiceNotReady {
@@ -257,11 +298,11 @@ func TestInvoiceService_IssueRefusesWhatIsNotReady(t *testing.T) {
 func TestInvoiceService_IssueRefusesASecondInvoice(t *testing.T) {
 	t.Parallel()
 	f := newInvoiceFixture(t)
-	if _, err := f.service.Issue(context.Background(), f.tenant, f.quoteID); err != nil {
+	if _, err := f.issue(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
-	_, err := f.service.Issue(context.Background(), f.tenant, f.quoteID)
+	_, err := f.issue(context.Background())
 
 	if domain.CodeOf(err) != domain.CodeQuoteAlreadyInvoiced || len(f.issuer.requests) != 1 {
 		t.Fatalf("err = %v after %d requests, want QUOTE_ALREADY_INVOICED and one request", err, len(f.issuer.requests))
@@ -274,7 +315,7 @@ func TestInvoiceService_IssueWaitsForAnInvoiceInFlight(t *testing.T) {
 	f.store.invoice = &domain.Invoice{Status: domain.InvoiceStatusPending,
 		QuoteVersionID: newVersionID(f), UpdatedAt: invoiceNow}
 
-	_, err := f.service.Issue(context.Background(), f.tenant, f.quoteID)
+	_, err := f.issue(context.Background())
 
 	if domain.CodeOf(err) != domain.CodeInvoiceInProgress || len(f.issuer.requests) != 0 {
 		t.Fatalf("err = %v, want INVOICE_IN_PROGRESS without asking ARCA", err)
@@ -286,7 +327,7 @@ func TestInvoiceService_RejectionFreesTheQuoteForAnotherTry(t *testing.T) {
 	f := newInvoiceFixture(t)
 	f.issuer.err = &domain.InvoiceRejectedError{Issues: []string{"10013: DocTipo invalido"}}
 
-	_, err := f.service.Issue(context.Background(), f.tenant, f.quoteID)
+	_, err := f.issue(context.Background())
 
 	if domain.CodeOf(err) != domain.CodeInvoiceRejected {
 		t.Fatalf("err = %v, want INVOICE_REJECTED", err)
@@ -305,7 +346,7 @@ func TestInvoiceService_UnavailableReleasesTheHold(t *testing.T) {
 	f := newInvoiceFixture(t)
 	f.issuer.err = domain.ErrInvoicingUnavailable
 
-	_, err := f.service.Issue(context.Background(), f.tenant, f.quoteID)
+	_, err := f.issue(context.Background())
 
 	if !errors.Is(err, domain.ErrInvoicingUnavailable) || len(f.store.released) != 1 {
 		t.Fatalf("err = %v, released = %v, want unavailable and the hold released", err, f.store.released)
@@ -323,7 +364,7 @@ func TestInvoiceService_UnknownOutcomeKeepsTheHold(t *testing.T) {
 	f := newInvoiceFixture(t)
 	f.issuer.err = domain.ErrInvoiceOutcomeUnknown
 
-	_, err := f.service.Issue(context.Background(), f.tenant, f.quoteID)
+	_, err := f.issue(context.Background())
 
 	if domain.CodeOf(err) != domain.CodeInvoiceInProgress {
 		t.Fatalf("err = %v, want INVOICE_IN_PROGRESS", err)
@@ -336,33 +377,36 @@ func TestInvoiceService_UnknownOutcomeKeepsTheHold(t *testing.T) {
 func TestInvoiceService_StalePendingIsAdoptedWhenARCAHasIt(t *testing.T) {
 	t.Parallel()
 	f := newInvoiceFixture(t)
-	issuedOn := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
+	claimed := int64(7)
 	f.store.invoice = &domain.Invoice{ID: uuid.New(), Status: domain.InvoiceStatusPending,
-		QuoteVersionID: newVersionID(f), UpdatedAt: invoiceNow.Add(-time.Hour), IssuedOn: issuedOn,
+		QuoteVersionID: newVersionID(f), UpdatedAt: invoiceNow.Add(-time.Hour), ClaimedNumber: &claimed,
 		Receiver: domain.InvoiceReceiver{DocType: domain.ReceiverDocCUIT, DocNumber: "20123456786"},
 		Amounts:  domain.InvoiceAmounts{Total: dec("1210.00")}}
-	f.issuer.latest = &domain.AuthorizedInvoice{Number: 7, CAE: "74000000000007", Date: issuedOn,
+	f.issuer.found = &domain.AuthorizedInvoice{Number: 7, CAE: "74000000000007",
 		DocType: domain.ReceiverDocCUIT, DocNumber: "20123456786", Total: dec("1210.00")}
 
-	invoice, err := f.service.Issue(context.Background(), f.tenant, f.quoteID)
+	invoice, err := f.issue(context.Background())
 
 	if err != nil || invoice.Status != domain.InvoiceStatusIssued || *invoice.Number != 7 {
 		t.Fatalf("invoice = %+v, err = %v, want ARCA's invoice 7 adopted", invoice, err)
 	}
-	if len(f.issuer.requests) != 0 {
-		t.Fatal("a second invoice was requested for a sale ARCA had already invoiced")
+	if len(f.issuer.requests) != 0 || len(f.issuer.consulted) != 1 || f.issuer.consulted[0] != 7 {
+		t.Fatalf("consulted %v, requested %d, want only the claimed number read back", f.issuer.consulted,
+			len(f.issuer.requests))
 	}
 }
 
 func TestInvoiceService_StalePendingIsReleasedWhenARCADoesNotHaveIt(t *testing.T) {
 	t.Parallel()
 	f := newInvoiceFixture(t)
+	claimed := int64(6)
 	f.store.invoice = &domain.Invoice{ID: uuid.New(), Status: domain.InvoiceStatusPending,
-		QuoteVersionID: newVersionID(f), UpdatedAt: invoiceNow.Add(-time.Hour),
+		QuoteVersionID: newVersionID(f), UpdatedAt: invoiceNow.Add(-time.Hour), ClaimedNumber: &claimed,
 		Amounts: domain.InvoiceAmounts{Total: dec("1210.00")}}
-	f.issuer.latest = &domain.AuthorizedInvoice{Number: 6, Total: dec("99.00")}
+	// Another system's invoice holds the number this one claimed, so ARCA refused ours.
+	f.issuer.found = &domain.AuthorizedInvoice{Number: 6, Total: dec("99.00")}
 
-	invoice, err := f.service.Issue(context.Background(), f.tenant, f.quoteID)
+	invoice, err := f.issue(context.Background())
 
 	if err != nil || len(f.store.released) != 1 || len(f.issuer.requests) != 1 || *invoice.Number != 23 {
 		t.Fatalf("invoice = %+v, err = %v, released = %v, want the hold released and a fresh invoice",
@@ -400,8 +444,8 @@ func TestInvoiceService_UpdateSettingsRefusesASharedPointOfSale(t *testing.T) {
 	_, err := f.service.UpdateSettings(context.Background(), f.tenant, domain.InvoicingSettingsUpdate{
 		PointsOfSale: map[uuid.UUID]*int{first: &pos, second: &pos}})
 
-	if !errors.Is(err, domain.ErrInvalidInput) {
-		t.Fatalf("err = %v, want two branches on one point of sale refused", err)
+	if domain.CodeOf(err) != domain.CodePointOfSaleTaken {
+		t.Fatalf("err = %v, want POINT_OF_SALE_TAKEN", err)
 	}
 }
 
@@ -429,4 +473,114 @@ func TestInvoiceService_UploadCredentialsSealsTheKey(t *testing.T) {
 func newVersionID(f invoiceFixture) uuid.UUID {
 	quotes := f.service.quotes.(*fakeInvoiceQuotes)
 	return quotes.version.ID
+}
+
+// A hold that never reached ARCA claimed no number, so there is nothing to read back.
+func TestInvoiceService_StalePendingWithoutAClaimIsReleasedUnasked(t *testing.T) {
+	t.Parallel()
+	f := newInvoiceFixture(t)
+	f.store.invoice = &domain.Invoice{ID: uuid.New(), Status: domain.InvoiceStatusPending,
+		QuoteVersionID: newVersionID(f), UpdatedAt: invoiceNow.Add(-time.Hour)}
+
+	if _, err := f.issue(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.issuer.consulted) != 0 || len(f.store.released) != 1 {
+		t.Fatalf("consulted %v, released %v, want the hold released without asking ARCA",
+			f.issuer.consulted, f.store.released)
+	}
+}
+
+func TestInvoiceService_IssueClaimsTheNumberBeforeARCAAnswers(t *testing.T) {
+	t.Parallel()
+	f := newInvoiceFixture(t)
+	f.issuer.err = domain.ErrInvoiceOutcomeUnknown
+
+	_, _ = f.issue(context.Background())
+
+	if f.store.invoice.ClaimedNumber == nil || *f.store.invoice.ClaimedNumber != 42 {
+		t.Fatalf("claimed = %v, want the number the issuer was about to request", f.store.invoice.ClaimedNumber)
+	}
+}
+
+// The seller confirmed one invoice; if the sale moved since, another must not go out in its name.
+func TestInvoiceService_IssueRefusesWhatTheSellerDidNotConfirm(t *testing.T) {
+	t.Parallel()
+	cases := map[string]domain.InvoiceExpectation{
+		"another version": {VersionID: uuid.New(), Type: domain.InvoiceTypeA, Total: dec("1210.00")},
+		"another type":    {Type: domain.InvoiceTypeB, Total: dec("1210.00")},
+		"another total":   {Type: domain.InvoiceTypeA, Total: dec("1200.00")},
+	}
+	for name, expected := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			f := newInvoiceFixture(t)
+			if expected.VersionID == uuid.Nil {
+				expected.VersionID = f.quotes.version.ID
+			}
+
+			_, err := f.service.Issue(context.Background(), f.tenant, f.quoteID, expected)
+
+			if domain.CodeOf(err) != domain.CodeInvoiceStale || len(f.issuer.requests) != 0 {
+				t.Fatalf("err = %v, want INVOICE_STALE without asking ARCA", err)
+			}
+		})
+	}
+}
+
+// Closing the tab mid-request must not cut ARCA off: an authorization never recorded cannot be repaired.
+func TestInvoiceService_IssueOutlivesTheCallersRequest(t *testing.T) {
+	t.Parallel()
+	f := newInvoiceFixture(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	invoice, err := f.issue(ctx)
+
+	if err != nil || f.issuer.ctxErr != nil || invoice.Status != domain.InvoiceStatusIssued {
+		t.Fatalf("invoice = %+v, err = %v, issuer saw %v, want ARCA asked and the answer recorded",
+			invoice, err, f.issuer.ctxErr)
+	}
+}
+
+// Discounts larger than their lines leave a quote total no invoice can match.
+func TestInvoiceService_PreviewFlagsATotalTheLinesCannotCarry(t *testing.T) {
+	t.Parallel()
+	f := newInvoiceFixture(t)
+	f.quotes.version.Total = dec("900.00")
+
+	preview, err := f.service.Preview(context.Background(), f.tenant, f.quoteID)
+
+	if err != nil || !containsString(preview.Issues, "QUOTE_TOTAL_MISMATCH") {
+		t.Fatalf("issues = %v, err = %v, want QUOTE_TOTAL_MISMATCH", preview.Issues, err)
+	}
+}
+
+func TestInvoiceService_TicketStoreSealsWhatItKeeps(t *testing.T) {
+	t.Parallel()
+	f := newInvoiceFixture(t)
+	if _, err := f.issue(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	tickets := f.issuer.creds.Tickets
+	expires := invoiceNow.Add(12 * time.Hour)
+
+	if err := tickets.Save(context.Background(), domain.ARCATicket{Token: "T", Sign: "S", ExpiresAt: expires}); err != nil {
+		t.Fatal(err)
+	}
+	if f.store.ticket == nil || f.store.ticket.Token != "sealed:T" || f.store.ticket.Sign != "sealed:S" {
+		t.Fatalf("stored = %+v, want token and sign sealed", f.store.ticket)
+	}
+	if err := tickets.Save(context.Background(), domain.ARCATicket{}); err != nil || f.store.ticket != nil {
+		t.Fatalf("stored = %+v, err = %v, want an empty ticket to clear it", f.store.ticket, err)
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, v := range values {
+		if v == want {
+			return true
+		}
+	}
+	return false
 }

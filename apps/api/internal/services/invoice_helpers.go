@@ -24,6 +24,7 @@ const (
 	invoiceIssueCredentialsCUIT    = "ARCA_CREDENTIALS_CUIT"
 	invoiceIssueReceiverCUIT       = "RECEIVER_CUIT_REQUIRED"
 	invoiceIssueReceiverID         = "RECEIVER_ID_REQUIRED"
+	invoiceIssueTotalMismatch      = "QUOTE_TOTAL_MISMATCH"
 )
 
 // arcaCurrency is the only currency invoices are issued in for now.
@@ -82,6 +83,15 @@ func grossByRate(
 	return byRate
 }
 
+// sumGross adds up what every rate collects.
+func sumGross(byRate map[domain.VATRate]decimal.Decimal) decimal.Decimal {
+	total := decimal.Zero
+	for _, amount := range byRate {
+		total = total.Add(amount)
+	}
+	return total
+}
+
 // subtractShare takes amount off the named lines in proportion to what each still carries. The
 // last line absorbs the rounding, so the shares always add up to the discount.
 func subtractShare(amounts map[uuid.UUID]decimal.Decimal, ids []uuid.UUID, amount decimal.Decimal) {
@@ -110,9 +120,8 @@ func subtractShare(amounts map[uuid.UUID]decimal.Decimal, ids []uuid.UUID, amoun
 	}
 }
 
-// invoiceAmounts splits what each rate collects into base and IVA. Prices that already carry
-// IVA are divided back out of it; prices that do not get it added on top. A C invoice breaks
-// nothing out: what was charged is its whole amount.
+// invoiceAmounts splits what each rate collects into base and IVA, dividing it out of prices that
+// carry it or adding it on top; a C invoice breaks nothing out.
 func invoiceAmounts(
 	byRate map[domain.VATRate]decimal.Decimal, invoiceType domain.InvoiceType, pricesIncludeVAT bool,
 ) domain.InvoiceAmounts {
@@ -198,6 +207,7 @@ type invoiceInputs struct {
 	enabled         bool
 	quote           domain.Quote
 	version         domain.QuoteVersion
+	gross           decimal.Decimal // what the lines add up to once their discounts are spread.
 	account         domain.AccountFiscal
 	pointOfSale     *int
 	credential      *domain.ARCACredentialStatus
@@ -222,6 +232,10 @@ func invoiceIssues(in invoiceInputs) []string {
 	}
 	if !in.amounts.Total.IsPositive() {
 		add(invoiceIssueEmpty)
+	}
+	// Discounts that outgrow their lines make the quote's total something no invoice line can carry.
+	if !in.gross.Equal(in.version.Total) {
+		add(invoiceIssueTotalMismatch)
 	}
 	if in.version.Currency != "" && in.version.Currency != arcaCurrency {
 		add(invoiceIssueCurrency)

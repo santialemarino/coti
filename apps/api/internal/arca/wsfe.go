@@ -17,6 +17,8 @@ const (
 	wsfeNamespace     = "http://ar.gov.afip.dif.FEV1/"
 	conceptProducts   = 1
 	codeNotNextNumber = 10016
+	codeTokenRejected = 600 // the WSAA ticket did not validate.
+	codeNoRecords     = 602 // a query matched nothing.
 	redacted          = "REDACTED"
 	arcaDate          = "20060102"
 )
@@ -144,10 +146,12 @@ type exchange struct {
 	response []byte
 }
 
-// isServiceFailure reports ARCA's infrastructure (500–502) and authentication (600–602) errors,
-// which say nothing about the invoice itself.
+// errTicketRejected marks a call WSFEv1 refused over the WSAA ticket itself.
+var errTicketRejected = errors.New("arca: WSFEv1 refused the WSAA ticket")
+
+// isServiceFailure reports ARCA's infrastructure errors, which say nothing about the invoice.
 func isServiceFailure(code int) bool {
-	return (code >= 500 && code <= 502) || (code >= 600 && code <= 602)
+	return code >= 500 && code <= 502
 }
 
 // checkErrors turns a call's Errors into the error the service acts on.
@@ -157,7 +161,10 @@ func checkErrors(op string, errs []feMessage, raw exchange) error {
 	}
 	issues := make([]string, 0, len(errs))
 	for _, e := range errs {
-		if isServiceFailure(e.Code) {
+		switch {
+		case e.Code == codeTokenRejected:
+			return fmt.Errorf("arca: %s: %s: %w: %w", op, e.String(), errTicketRejected, domain.ErrInvoicingUnavailable)
+		case isServiceFailure(e.Code):
 			return unavailable(op, errors.New(e.String()))
 		}
 		issues = append(issues, e.String())
@@ -227,7 +234,7 @@ func buildSolicitar(req domain.InvoiceRequest, number int64) solicitarRequest {
 		DocNro:                 docNumber,
 		CbteDesde:              number,
 		CbteHasta:              number,
-		CbteFch:                req.Date.In(argentina).Format(arcaDate),
+		CbteFch:                req.Date.UTC().Format(arcaDate),
 		ImpTotal:               money(amounts.Total),
 		ImpTotConc:             money(decimal.Zero),
 		ImpNeto:                money(amounts.Net),
@@ -279,8 +286,8 @@ func (r *solicitarResult) hasCode(code int) bool {
 // authorization maps ARCA's answer to an authorization or to the error the service acts on.
 func (r *solicitarResult) authorization(number int64, raw exchange) (*domain.InvoiceAuthorization, error) {
 	for _, e := range r.Errors {
-		if isServiceFailure(e.Code) {
-			return nil, unavailable("FECAESolicitar", errors.New(e.String()))
+		if e.Code == codeTokenRejected || isServiceFailure(e.Code) {
+			return nil, checkErrors("FECAESolicitar", []feMessage{e}, raw)
 		}
 	}
 	var observations []string
@@ -290,7 +297,7 @@ func (r *solicitarResult) authorization(number int64, raw exchange) (*domain.Inv
 		}
 	}
 	if r.Cab.Resultado == "A" && len(r.Errors) == 0 && len(r.Det) == 1 && r.Det[0].Resultado == "A" && r.Det[0].CAE != "" {
-		expires, err := time.ParseInLocation(arcaDate, r.Det[0].CAEFchVto, argentina)
+		expires, err := time.Parse(arcaDate, r.Det[0].CAEFchVto)
 		if err != nil {
 			return nil, unavailable("decode CAEFchVto", err)
 		}
@@ -314,7 +321,7 @@ func (r *solicitarResult) authorization(number int64, raw exchange) (*domain.Inv
 	return nil, &domain.InvoiceRejectedError{Issues: issues, RawRequest: raw.request, RawResponse: raw.response}
 }
 
-// consult reads one authorized invoice back from ARCA.
+// consult reads one authorized invoice back from ARCA; nil when ARCA holds none under number.
 func (i *Issuer) consult(ctx context.Context, a feAuth, invoiceType domain.InvoiceType, pointOfSale int, number int64) (*consulted, []byte, error) {
 	var msg consultRequest
 	msg.Auth = a
@@ -333,23 +340,31 @@ func (i *Issuer) consult(ctx context.Context, a feAuth, invoiceType domain.Invoi
 	if err := xml.Unmarshal(raw, &env); err != nil {
 		return nil, nil, unavailable("decode FECompConsultar", err)
 	}
+	for _, e := range env.Result.Errors {
+		if e.Code == codeNoRecords {
+			return nil, raw, nil
+		}
+	}
 	if len(env.Result.Errors) > 0 {
+		if err := checkErrors("FECompConsultar", env.Result.Errors, exchange{}); errors.Is(err, errTicketRejected) {
+			return nil, nil, err
+		}
 		return nil, nil, unavailable("FECompConsultar", errors.New(env.Result.Errors[0].String()))
 	}
 	got := env.Result.Get
 	if got.Resultado != "A" || got.CodAutorizacion == "" {
-		return nil, nil, unavailable("FECompConsultar", fmt.Errorf("invoice %d carries no authorization", number))
+		return nil, raw, nil
 	}
 	return &got, raw, nil
 }
 
 // authorized maps a consulted invoice to the domain's record of it.
 func (c *consulted) authorized(number int64) (*domain.AuthorizedInvoice, error) {
-	expires, err := time.ParseInLocation(arcaDate, c.FchVto, argentina)
+	expires, err := time.Parse(arcaDate, c.FchVto)
 	if err != nil {
 		return nil, unavailable("decode FchVto", err)
 	}
-	date, err := time.ParseInLocation(arcaDate, c.CbteFch, argentina)
+	date, err := time.Parse(arcaDate, c.CbteFch)
 	if err != nil {
 		return nil, unavailable("decode CbteFch", err)
 	}
@@ -376,27 +391,26 @@ func (c *consulted) authorized(number int64) (*domain.AuthorizedInvoice, error) 
 }
 
 // recoverIssued finds out whether a FECAESolicitar that failed in flight was authorized anyway,
-// so a retry cannot issue the same sale twice.
+// so a retry cannot issue the same sale twice. Anything short of proof leaves the outcome unknown.
 func (i *Issuer) recoverIssued(ctx context.Context, a feAuth, req domain.InvoiceRequest, number int64, sent exchange, cause error) (*domain.InvoiceAuthorization, error) {
-	last, err := i.lastAuthorized(ctx, a, req.Type, req.PointOfSale)
-	if err != nil {
-		return nil, outcomeUnknown(cause, err)
-	}
-	// ARCA only authorizes the number it was asked for, so a lower last number means it was not.
-	if last < number {
-		return nil, cause
+	if ctx.Err() != nil {
+		return nil, outcomeUnknown(cause, ctx.Err())
 	}
 	got, raw, err := i.consult(ctx, a, req.Type, req.PointOfSale, number)
 	if err != nil {
 		return nil, outcomeUnknown(cause, err)
 	}
-	// The number may have gone to another system's invoice; only claim it if it is this one.
+	// ARCA may still be processing the request; the number stays claimed until it is reconciled.
+	if got == nil {
+		return nil, outcomeUnknown(cause, fmt.Errorf("invoice %d is not on record yet", number))
+	}
+	// ARCA only authorizes the number it was asked for, so another invoice under it means ours was refused.
 	det := buildSolicitar(req, number).FeCAEReq.FeDetReq.Det[0]
 	total, err := decimal.NewFromString(got.ImpTotal)
 	if err != nil || money(total) != det.ImpTotal || got.DocTipo != det.DocTipo || got.DocNro != det.DocNro {
 		return nil, unavailable("recover FECAESolicitar", fmt.Errorf("invoice %d does not match the request: %w", number, cause))
 	}
-	expires, err := time.ParseInLocation(arcaDate, got.FchVto, argentina)
+	expires, err := time.Parse(arcaDate, got.FchVto)
 	if err != nil {
 		return nil, outcomeUnknown(cause, err)
 	}
@@ -414,7 +428,7 @@ func (i *Issuer) recoverIssued(ctx context.Context, a feAuth, req domain.Invoice
 	}, nil
 }
 
-// outcomeUnknown reports an invoice request that may have been authorized but could not be read back.
+// outcomeUnknown reports an invoice request that may have been authorized but could not be confirmed.
 func outcomeUnknown(cause, readErr error) error {
-	return fmt.Errorf("arca: FECAESolicitar failed in flight (%v) and the read-back failed (%v): %w", cause, readErr, domain.ErrInvoiceOutcomeUnknown)
+	return fmt.Errorf("arca: FECAESolicitar failed in flight (%v) and could not be confirmed (%v): %w", cause, readErr, domain.ErrInvoiceOutcomeUnknown)
 }

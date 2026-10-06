@@ -54,6 +54,7 @@ type fakeQuoteRepo struct {
 
 	updateStatusErr error
 	applyPricingErr error
+	liveInvoice     bool
 
 	branchesAskedFor      []uuid.UUID
 	versionBranches       []uuid.UUID
@@ -902,6 +903,25 @@ func TestQuoteService_ReactivateForResend_ReusesTheFrozenVersion(t *testing.T) {
 	}
 }
 
+// Reopening an invoiced sale would let a second invoice go out for it.
+func TestQuoteService_Reactivate_RefusesAnInvoicedSale(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []domain.QuoteReactivationMode{domain.QuoteReactivationResend, domain.QuoteReactivationEdit} {
+		versionID := uuid.New()
+		quote := &domain.Quote{ID: uuid.New(), CurrentVersionID: &versionID,
+			CurrentStatus: domain.QuoteStatusAccepted}
+		f := quoteFixtureAt(quote)
+		f.quotes.version = &domain.QuoteVersion{ID: versionID, QuoteID: quote.ID, IsImmutable: true}
+		f.quotes.liveInvoice = true
+
+		_, err := f.service.Reactivate(context.Background(), f.tenant, quote.ID, mode)
+
+		if domain.CodeOf(err) != domain.CodeQuoteAlreadyInvoiced || len(f.quotes.statusChanges) != 0 {
+			t.Fatalf("%s: err = %v, want QUOTE_ALREADY_INVOICED and the quote untouched", mode, err)
+		}
+	}
+}
+
 func TestQuoteService_ReactivateForEditing_CreatesARepricedMutableVersion(t *testing.T) {
 	t.Parallel()
 	productID := uuid.New()
@@ -1085,4 +1105,8 @@ func TestQuoteService_Unarchive_RestoresABoxedQuote(t *testing.T) {
 	if restored.ID != quote.ID {
 		t.Errorf("restored %v, want the same quote id %v", restored.ID, quote.ID)
 	}
+}
+
+func (f *fakeQuoteRepo) HasLiveInvoice(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (bool, error) {
+	return f.liveInvoice, nil
 }

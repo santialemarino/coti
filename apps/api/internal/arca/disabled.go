@@ -16,7 +16,7 @@ func (Disabled) Issue(context.Context, domain.ARCACredentials, domain.InvoiceReq
 	return nil, fmt.Errorf("%w: INVOICING_PROVIDER is disabled", domain.ErrNotConfigured)
 }
 
-// LatestAuthorized refuses.
-func (Disabled) LatestAuthorized(context.Context, domain.ARCACredentials, string, domain.InvoiceType, int) (*domain.AuthorizedInvoice, error) {
+// Authorized refuses.
+func (Disabled) Authorized(context.Context, domain.ARCACredentials, string, domain.InvoiceType, int, int64) (*domain.AuthorizedInvoice, error) {
 	return nil, fmt.Errorf("%w: INVOICING_PROVIDER is disabled", domain.ErrNotConfigured)
 }

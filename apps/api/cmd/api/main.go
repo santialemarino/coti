@@ -326,7 +326,7 @@ func newInvoiceService(
 	enabled := cfg.Invoicing.Provider == config.InvoicingProviderWSFE
 	if enabled {
 		issuer = arca.NewIssuer(arca.Settings{Environment: cfg.Invoicing.Environment,
-			Timeout: cfg.Invoicing.RequestTimeout}, arca.NewMemoryTicketCache())
+			Timeout: cfg.Invoicing.RequestTimeout, Log: log}, arca.NewMemoryTicketCache())
 		log.Info("invoicing enabled", slog.String("arca_environment", cfg.Invoicing.Environment))
 	}
 	parse := func(certificatePEM, keyPEM []byte) (*domain.ARCACredentialStatus, error) {
@@ -339,7 +339,8 @@ func newInvoiceService(
 	return services.NewInvoiceService(db, repository.NewInvoicingRepository(), quotes, discounts, issuer,
 		sealer, parse, services.InvoiceSettings{
 			Enabled: enabled, Environment: cfg.Invoicing.Environment,
-			RequestTimeout:  cfg.Invoicing.RequestTimeout,
+			IssueTimeout:    cfg.Invoicing.IssueTimeout,
+			ReconcileAfter:  cfg.Invoicing.ReconcileAfter,
 			UnidentifiedMax: decimal.NewFromInt(cfg.Invoicing.UnidentifiedReceiverMax),
 		}, nil), nil
 }

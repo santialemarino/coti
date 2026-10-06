@@ -13,11 +13,14 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
-// invoiceActiveVersionIndex is the partial unique index behind "one live invoice per version".
-const invoiceActiveVersionIndex = "uq_invoice_active_version"
+// invoiceActiveQuoteIndex is the partial unique index behind "one live invoice per sale".
+const invoiceActiveQuoteIndex = "uq_invoice_active_quote"
+
+// branchPointOfSaleIndex is the constraint keeping two branches of an account off one point of sale.
+const branchPointOfSaleIndex = "uq_branch_point_of_sale"
 
 const invoiceColumns = `id, account_id, branch_id, quote_id, quote_version_id, status, invoice_type,
-	point_of_sale, number, issued_on, cae, cae_expires_on, issuer_cuit, receiver_name,
+	point_of_sale, number, claimed_number, issued_on, cae, cae_expires_on, issuer_cuit, receiver_name,
 	receiver_doc_type, receiver_doc_number, receiver_iva_condition, net_amount, exempt_amount,
 	vat_amount, total, currency, vat_breakdown, issues, created_at, updated_at`
 
@@ -116,7 +119,7 @@ func (r *InvoicingRepository) GetBranchPointOfSale(
 }
 
 // UpdateBranchPointsOfSale sets each named branch's point of sale in one statement. Returns
-// domain.ErrNotFound when any branch is not the account's.
+// domain.ErrNotFound when any branch is not the account's, domain.ErrConflict on a shared number.
 func (r *InvoicingRepository) UpdateBranchPointsOfSale(
 	ctx context.Context, q Querier, accountID uuid.UUID, points map[uuid.UUID]*int,
 ) error {
@@ -139,6 +142,9 @@ func (r *InvoicingRepository) UpdateBranchPointsOfSale(
 		 FROM unnest($2::uuid[], $3::int[]) AS u(id, pos)
 		 WHERE b.account_id = $1 AND b.id = u.id`,
 		accountID, ids, values)
+	if isUniqueViolation(err, branchPointOfSaleIndex) {
+		return domain.ErrConflict
+	}
 	if err != nil {
 		return err
 	}
@@ -243,7 +249,8 @@ func (r *InvoicingRepository) GetSealedCredential(
 	return certificatePEM, sealedKey, err
 }
 
-// UpsertCredential stores the account's certificate and sealed key, replacing any previous pair.
+// UpsertCredential stores the account's certificate and sealed key, replacing any previous pair
+// and the ticket it had.
 func (r *InvoicingRepository) UpsertCredential(
 	ctx context.Context, q Querier, accountID uuid.UUID, certificatePEM, sealedKey string,
 	status domain.ARCACredentialStatus,
@@ -254,7 +261,8 @@ func (r *InvoicingRepository) UpsertCredential(
 		 VALUES ($1, $2, $3, $4, $5, $6)
 		 ON CONFLICT (account_id) DO UPDATE
 		 SET certificate_pem = EXCLUDED.certificate_pem, private_key_sealed = EXCLUDED.private_key_sealed,
-		     cuit = EXCLUDED.cuit, subject = EXCLUDED.subject, expires_at = EXCLUDED.expires_at
+		     cuit = EXCLUDED.cuit, subject = EXCLUDED.subject, expires_at = EXCLUDED.expires_at,
+		     ticket_token_sealed = NULL, ticket_sign_sealed = NULL, ticket_expires_at = NULL
 		 RETURNING cuit, subject, expires_at, updated_at`,
 		accountID, certificatePEM, sealedKey, status.CUIT, status.Subject, status.ExpiresAt,
 	).Scan(&s.CUIT, &s.Subject, &s.ExpiresAt, &s.UpdatedAt)
@@ -262,6 +270,42 @@ func (r *InvoicingRepository) UpsertCredential(
 		return nil, err
 	}
 	return &s, nil
+}
+
+// GetSealedTicket returns the account's stored WSAA ticket, still sealed; nil when it has none.
+func (r *InvoicingRepository) GetSealedTicket(
+	ctx context.Context, q Querier, accountID uuid.UUID,
+) (*domain.SealedARCATicket, error) {
+	var t domain.SealedARCATicket
+	var token, sign *string
+	var expires *time.Time
+	err := q.QueryRow(ctx,
+		`SELECT ticket_token_sealed, ticket_sign_sealed, ticket_expires_at
+		 FROM arca_credential WHERE account_id = $1`, accountID).Scan(&token, &sign, &expires)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil || token == nil || sign == nil || expires == nil {
+		return nil, err
+	}
+	t.Token, t.Sign, t.ExpiresAt = *token, *sign, *expires
+	return &t, nil
+}
+
+// SaveSealedTicket stores the account's WSAA ticket; nil clears it.
+func (r *InvoicingRepository) SaveSealedTicket(
+	ctx context.Context, q Querier, accountID uuid.UUID, ticket *domain.SealedARCATicket,
+) error {
+	var token, sign *string
+	var expires *time.Time
+	if ticket != nil {
+		token, sign, expires = &ticket.Token, &ticket.Sign, &ticket.ExpiresAt
+	}
+	_, err := q.Exec(ctx,
+		`UPDATE arca_credential
+		 SET ticket_token_sealed = $2, ticket_sign_sealed = $3, ticket_expires_at = $4
+		 WHERE account_id = $1`, accountID, token, sign, expires)
+	return err
 }
 
 // DeleteCredential removes the account's certificate and key.
@@ -306,10 +350,24 @@ func (r *InvoicingRepository) CreatePending(
 		in.IssuerCUIT, in.Receiver.Name, in.Receiver.DocType, in.Receiver.DocNumber,
 		in.Receiver.IVACondition, in.Amounts.Net, in.Amounts.Exempt, in.Amounts.VAT, in.Amounts.Total,
 		in.Currency, breakdown))
-	if isUniqueViolation(err, invoiceActiveVersionIndex) {
+	if isUniqueViolation(err, invoiceActiveQuoteIndex) {
 		return nil, domain.ErrConflict
 	}
 	return inv, err
+}
+
+// ClaimNumber records the number a pending invoice is about to be requested under.
+func (r *InvoicingRepository) ClaimNumber(ctx context.Context, q Querier, accountID, id uuid.UUID, number int64) error {
+	tag, err := q.Exec(ctx,
+		`UPDATE invoice SET claimed_number = $3 WHERE account_id = $1 AND id = $2 AND status = 'PENDING'`,
+		accountID, id, number)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 // MarkIssued records ARCA's authorization on a pending invoice.
@@ -362,12 +420,12 @@ func (r *InvoicingRepository) ReleasePending(
 
 func scanInvoice(row pgx.Row) (*domain.Invoice, error) {
 	var inv domain.Invoice
-	var number *int64
+	var number, claimed *int64
 	var docNumber *string
 	var breakdown, issues []byte
 	var issuedOn time.Time
 	err := row.Scan(&inv.ID, &inv.AccountID, &inv.BranchID, &inv.QuoteID, &inv.QuoteVersionID,
-		&inv.Status, &inv.Type, &inv.PointOfSale, &number, &issuedOn, &inv.CAE, &inv.CAEExpiresOn,
+		&inv.Status, &inv.Type, &inv.PointOfSale, &number, &claimed, &issuedOn, &inv.CAE, &inv.CAEExpiresOn,
 		&inv.IssuerCUIT, &inv.Receiver.Name, &inv.Receiver.DocType, &docNumber,
 		&inv.Receiver.IVACondition, &inv.Amounts.Net, &inv.Amounts.Exempt, &inv.Amounts.VAT,
 		&inv.Amounts.Total, &inv.Currency, &breakdown, &issues, &inv.CreatedAt, &inv.UpdatedAt)
@@ -378,6 +436,7 @@ func scanInvoice(row pgx.Row) (*domain.Invoice, error) {
 		return nil, err
 	}
 	inv.Number = number
+	inv.ClaimedNumber = claimed
 	inv.IssuedOn = issuedOn
 	if docNumber != nil {
 		inv.Receiver.DocNumber = *docNumber

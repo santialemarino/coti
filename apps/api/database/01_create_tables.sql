@@ -135,12 +135,12 @@ CREATE TABLE account (
   tax_id          VARCHAR(255),
   brand_logo_url  VARCHAR(512),
   brand_color     VARCHAR(32),
-  iva_condition   iva_condition,
-  -- Whether the catalog's prices already carry IVA; the invoice splits them either way.
-  prices_include_vat BOOLEAN NOT NULL DEFAULT FALSE,
   is_active       BOOLEAN NOT NULL DEFAULT TRUE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  iva_condition   iva_condition,
+  -- Whether the catalog's prices already carry IVA; the invoice splits them either way.
+  prices_include_vat BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE account_onboarding (
@@ -173,11 +173,13 @@ CREATE TABLE branch (
   name                VARCHAR(255) NOT NULL,
   address             VARCHAR(255),
   default_expiry_days INTEGER NOT NULL DEFAULT 7,
-  -- ARCA numbers invoices per point of sale, and a point of sale belongs to an address.
-  point_of_sale       INTEGER CHECK (point_of_sale BETWEEN 1 AND 99998),
   is_active           BOOLEAN NOT NULL DEFAULT TRUE,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- ARCA numbers invoices per point of sale, and a point of sale belongs to an address.
+  point_of_sale       INTEGER CHECK (point_of_sale BETWEEN 1 AND 99998),
+  -- Checked at the end of the statement, so one save can swap two branches' numbers.
+  CONSTRAINT uq_branch_point_of_sale UNIQUE (account_id, point_of_sale) DEFERRABLE INITIALLY IMMEDIATE
 );
 
 -- Bumping session_epoch invalidates every outstanding access token, which is immediate
@@ -272,7 +274,6 @@ CREATE TABLE product (
   canonical_name VARCHAR(255) NOT NULL,
   description    VARCHAR(512),
   unit           VARCHAR(64),
-  vat_rate       vat_rate NOT NULL DEFAULT 'VAT_21',
   embedding      VECTOR(1536),
   is_active      BOOLEAN NOT NULL DEFAULT TRUE,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -286,7 +287,8 @@ CREATE TABLE product (
   search_document TSVECTOR
     GENERATED ALWAYS AS (
       to_tsvector('spanish_unaccent'::regconfig, canonical_name || ' ' || coalesce(description, ''))
-    ) STORED
+    ) STORED,
+  vat_rate       vat_rate NOT NULL DEFAULT 'VAT_21'
 );
 
 CREATE TABLE branch_product (
@@ -390,12 +392,12 @@ CREATE TABLE client (
   email          VARCHAR(255),
   origin_channel client_origin,
   notes          VARCHAR(512),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   legal_name     VARCHAR(255),
   -- Digits only: an 11-digit CUIT or a 7–8 digit DNI.
   tax_id         VARCHAR(11) CHECK (tax_id ~ '^[0-9]{7,11}$'),
   iva_condition  iva_condition,
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT uq_client_account UNIQUE (account_id, id)
 );
 
@@ -989,20 +991,24 @@ CREATE TABLE ai_usage (
 -- INVOICING
 -- =============================================================================
 
--- One certificate per account. The key is sealed by the API before it reaches the database.
+-- One certificate per account. The key and the WSAA ticket are sealed by the API before they reach
+-- the database; the ticket is kept because WSAA refuses a new one while it is live.
 CREATE TABLE arca_credential (
-  account_id         UUID PRIMARY KEY,
-  certificate_pem    TEXT NOT NULL,
-  private_key_sealed TEXT NOT NULL,
-  cuit               VARCHAR(11) NOT NULL,
-  subject            VARCHAR(512) NOT NULL,
-  expires_at         TIMESTAMPTZ NOT NULL,
-  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+  account_id          UUID PRIMARY KEY,
+  certificate_pem     TEXT NOT NULL,
+  private_key_sealed  TEXT NOT NULL,
+  cuit                VARCHAR(11) NOT NULL,
+  subject             VARCHAR(512) NOT NULL,
+  expires_at          TIMESTAMPTZ NOT NULL,
+  ticket_token_sealed TEXT,
+  ticket_sign_sealed  TEXT,
+  ticket_expires_at   TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- One invoice per accepted quote version. A rejected attempt stays as a record and frees the
--- version for another try; a pending one holds it while ARCA is being asked.
+-- One invoice per sale. A rejected attempt stays as a record and frees the quote for another try;
+-- a pending one holds it while ARCA is being asked.
 CREATE TABLE invoice (
   id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id             UUID NOT NULL,
@@ -1013,6 +1019,8 @@ CREATE TABLE invoice (
   invoice_type           invoice_type NOT NULL,
   point_of_sale          INTEGER NOT NULL,
   number                 BIGINT,
+  -- The number last requested from ARCA, written before the request: how an unknown outcome is checked.
+  claimed_number         BIGINT,
   issued_on              DATE NOT NULL,
   cae                    VARCHAR(14),
   cae_expires_on         DATE,
@@ -1186,14 +1194,15 @@ ALTER TABLE notification ADD CONSTRAINT fk_notification_client FOREIGN KEY (acco
 ALTER TABLE notification ADD CONSTRAINT fk_notification_quote FOREIGN KEY (quote_id) REFERENCES quote(id);
 
 ALTER TABLE ai_usage ADD CONSTRAINT fk_ai_usage_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE ai_usage ADD CONSTRAINT fk_ai_usage_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
+-- The spend happened whatever becomes of the order it served.
+ALTER TABLE ai_usage ADD CONSTRAINT fk_ai_usage_rfq FOREIGN KEY (rfq_id) REFERENCES rfq(id) ON DELETE SET NULL;
+
 ALTER TABLE arca_credential ADD CONSTRAINT fk_arca_credential_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE invoice ADD CONSTRAINT fk_invoice_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE invoice ADD CONSTRAINT fk_invoice_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
 ALTER TABLE invoice ADD CONSTRAINT fk_invoice_quote FOREIGN KEY (quote_id) REFERENCES quote(id);
 ALTER TABLE invoice ADD CONSTRAINT fk_invoice_quote_version FOREIGN KEY (quote_version_id) REFERENCES quote_version(id);
-ALTER TABLE ai_usage ADD CONSTRAINT fk_ai_usage_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
--- The spend happened whatever becomes of the order it served.
-ALTER TABLE ai_usage ADD CONSTRAINT fk_ai_usage_rfq FOREIGN KEY (rfq_id) REFERENCES rfq(id) ON DELETE SET NULL;
 
 -- =============================================================================
 -- INDEXES
@@ -1290,7 +1299,7 @@ CREATE INDEX idx_job_run_name_started ON job_run(job_name, started_at DESC);
 CREATE INDEX idx_ai_usage_account_created ON ai_usage(account_id, created_at);
 CREATE INDEX idx_ai_usage_account_rfq ON ai_usage(account_id, rfq_id) WHERE rfq_id IS NOT NULL;
 
-CREATE UNIQUE INDEX uq_invoice_active_version ON invoice(quote_version_id) WHERE status <> 'REJECTED';
+CREATE UNIQUE INDEX uq_invoice_active_quote ON invoice(quote_id) WHERE status <> 'REJECTED';
 CREATE UNIQUE INDEX uq_invoice_number ON invoice(account_id, point_of_sale, invoice_type, number)
   WHERE number IS NOT NULL;
 CREATE INDEX idx_invoice_account_quote ON invoice(account_id, quote_id);

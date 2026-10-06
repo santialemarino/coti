@@ -64,6 +64,8 @@ const (
 	CodeInvoiceNotReady      ErrorCode = "INVOICE_NOT_READY"
 	CodeInvoiceRejected      ErrorCode = "INVOICE_REJECTED"
 	CodeInvoiceInProgress    ErrorCode = "INVOICE_IN_PROGRESS"
+	CodeInvoiceStale         ErrorCode = "INVOICE_STALE"
+	CodePointOfSaleTaken     ErrorCode = "POINT_OF_SALE_TAKEN"
 	CodeQuoteAlreadyInvoiced ErrorCode = "QUOTE_ALREADY_INVOICED"
 	CodeARCACredentials      ErrorCode = "ARCA_CREDENTIALS"
 	CodeInvalidTaxID         ErrorCode = "INVALID_TAX_ID"

@@ -44,8 +44,8 @@ func pendingInvoice(tenant domain.Tenant, quoteID, versionID uuid.UUID) domain.I
 	}
 }
 
-// One version holds one live invoice: a second pending one conflicts, and a refusal frees it.
-func TestInvoicingRepository_OneLiveInvoicePerVersion(t *testing.T) {
+// One sale holds one live invoice: a second pending one conflicts, and a refusal frees it.
+func TestInvoicingRepository_OneLiveInvoicePerSale(t *testing.T) {
 	db, tenant, quoteID, versionID, _ := invoiceFixture(t)
 	ctx := context.Background()
 	repo := NewInvoicingRepository()
@@ -165,5 +165,132 @@ func TestInvoicingRepository_FiscalDataRoundTrips(t *testing.T) {
 	})
 	if !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("foreign branch = %v, want ErrNotFound", err)
+	}
+}
+
+func TestInvoicingRepository_ClaimedNumberRoundTrips(t *testing.T) {
+	db, tenant, quoteID, versionID, _ := invoiceFixture(t)
+	ctx := context.Background()
+	repo := NewInvoicingRepository()
+
+	var latest *domain.Invoice
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		pending, err := repo.CreatePending(ctx, q, pendingInvoice(tenant, quoteID, versionID))
+		if err != nil {
+			return err
+		}
+		if err := repo.ClaimNumber(ctx, q, tenant.AccountID, pending.ID, 42); err != nil {
+			return err
+		}
+		latest, err = repo.GetLatestByQuote(ctx, q, tenant.AccountID, quoteID)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if latest.ClaimedNumber == nil || *latest.ClaimedNumber != 42 || latest.Number != nil {
+		t.Fatalf("latest = %+v, want 42 claimed and nothing authorized", latest)
+	}
+}
+
+// The WSAA ticket lives beside the certificate, and a new certificate never inherits the old one's.
+func TestInvoicingRepository_TicketIsStoredAndClearedWithANewCertificate(t *testing.T) {
+	db, tenant, _, _, _ := invoiceFixture(t)
+	ctx := context.Background()
+	repo := NewInvoicingRepository()
+	status := domain.ARCACredentialStatus{CUIT: "30712345678", Subject: "CN=coti", ExpiresAt: time.Now().AddDate(1, 0, 0)}
+	expires := time.Date(2026, 10, 6, 2, 50, 0, 0, time.UTC)
+
+	var stored, afterUpload *domain.SealedARCATicket
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		if _, err := repo.UpsertCredential(ctx, q, tenant.AccountID, "CERT", "KEY", status); err != nil {
+			return err
+		}
+		if err := repo.SaveSealedTicket(ctx, q, tenant.AccountID,
+			&domain.SealedARCATicket{Token: "T", Sign: "S", ExpiresAt: expires}); err != nil {
+			return err
+		}
+		var err error
+		if stored, err = repo.GetSealedTicket(ctx, q, tenant.AccountID); err != nil {
+			return err
+		}
+		if _, err := repo.UpsertCredential(ctx, q, tenant.AccountID, "CERT2", "KEY2", status); err != nil {
+			return err
+		}
+		afterUpload, err = repo.GetSealedTicket(ctx, q, tenant.AccountID)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if stored == nil || stored.Token != "T" || stored.Sign != "S" || !stored.ExpiresAt.Equal(expires) {
+		t.Fatalf("stored = %+v, want the ticket back", stored)
+	}
+	if afterUpload != nil {
+		t.Fatalf("after a new certificate = %+v, want no ticket", afterUpload)
+	}
+}
+
+func TestInvoicingRepository_TwoBranchesCannotShareAPointOfSale(t *testing.T) {
+	db, tenant, _, _, _ := invoiceFixture(t)
+	ctx := context.Background()
+	repo := NewInvoicingRepository()
+	other := seedExtraBranch(t, db, tenant.AccountID, "Sucursal Norte")
+	pos := 9
+
+	err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		return repo.UpdateBranchPointsOfSale(ctx, q, tenant.AccountID,
+			map[uuid.UUID]*int{tenant.BranchID: &pos, other: &pos})
+	})
+	if !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("err = %v, want ErrConflict", err)
+	}
+}
+
+// A pending or issued invoice makes the sale invoiced; a refused one does not.
+func TestQuoteRepository_HasLiveInvoice(t *testing.T) {
+	db, tenant, quoteID, versionID, _ := invoiceFixture(t)
+	ctx := context.Background()
+	invoices, quotes := NewInvoicingRepository(), NewQuoteRepository()
+
+	var whilePending, afterRefusal bool
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		pending, err := invoices.CreatePending(ctx, q, pendingInvoice(tenant, quoteID, versionID))
+		if err != nil {
+			return err
+		}
+		if whilePending, err = quotes.HasLiveInvoice(ctx, q, tenant.AccountID, quoteID); err != nil {
+			return err
+		}
+		if err := invoices.MarkRejected(ctx, q, tenant.AccountID, pending.ID,
+			domain.InvoiceRejectedError{Issues: []string{"10013: DocTipo"}}); err != nil {
+			return err
+		}
+		afterRefusal, err = quotes.HasLiveInvoice(ctx, q, tenant.AccountID, quoteID)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !whilePending || afterRefusal {
+		t.Fatalf("pending = %v, refused = %v, want true then false", whilePending, afterRefusal)
+	}
+}
+
+// The check runs at the end of the statement, so one save may swap two branches' numbers.
+func TestInvoicingRepository_TwoBranchesCanSwapPointsOfSale(t *testing.T) {
+	db, tenant, _, _, _ := invoiceFixture(t)
+	ctx := context.Background()
+	repo := NewInvoicingRepository()
+	other := seedExtraBranch(t, db, tenant.AccountID, "Sucursal Sur")
+	three, four := 3, 4
+
+	err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		if err := repo.UpdateBranchPointsOfSale(ctx, q, tenant.AccountID,
+			map[uuid.UUID]*int{tenant.BranchID: &three, other: &four}); err != nil {
+			return err
+		}
+		return repo.UpdateBranchPointsOfSale(ctx, q, tenant.AccountID,
+			map[uuid.UUID]*int{tenant.BranchID: &four, other: &three})
+	})
+	if err != nil {
+		t.Fatalf("swap = %v, want it accepted", err)
 	}
 }

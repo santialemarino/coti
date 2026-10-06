@@ -221,8 +221,8 @@ holds the Space) and `STORAGE_BUCKET`.
 
 **The API needs the first four; the correction-learning job also needs the OpenAI key.**
 `config.Load()` refuses to start when a capability is switched on and its credential is empty, so
-the committed spec ships every optional one **off** — `AI_*_PROVIDER` at `disabled`,
-`MAIL_PROVIDER` at `console`, `STORAGE_PROVIDER` at `local`, `RATE_LIMIT_TRUSTED_PROXY_HOPS` at
+the committed spec ships every optional one **off** — `AI_*_PROVIDER` and `INVOICING_PROVIDER` at
+`disabled`, `MAIL_PROVIDER` at `console`, `STORAGE_PROVIDER` at `local`, `RATE_LIMIT_TRUSTED_PROXY_HOPS` at
 `0`. Fill a secret, then turn its capability on; doing it the other way round produces a deploy
 that never starts, and `ci.deploy-spec.yml` boots the image on the spec's own settings to keep that
 true.

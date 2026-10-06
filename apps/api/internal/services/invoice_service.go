@@ -14,13 +14,6 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
 
-// pendingStaleCalls is how many ARCA calls an issue may chain (login, last number, request, one
-// retry, recovery). A pending invoice older than that many timeouts is no longer in flight.
-const pendingStaleCalls = 10
-
-// argentina is the zone an invoice's date is read in.
-var argentina = mustLoadLocation("America/Argentina/Buenos_Aires")
-
 type invoicingStore interface {
 	GetAccountFiscal(ctx context.Context, q repository.Querier, accountID uuid.UUID) (*domain.AccountFiscal, error)
 	UpdateAccountFiscal(ctx context.Context, q repository.Querier, accountID uuid.UUID, condition *domain.IVACondition, pricesIncludeVAT bool) error
@@ -39,6 +32,9 @@ type invoicingStore interface {
 	MarkIssued(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, auth domain.InvoiceAuthorization) (*domain.Invoice, error)
 	MarkRejected(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, rejection domain.InvoiceRejectedError) error
 	ReleasePending(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, reason string) error
+	ClaimNumber(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, number int64) error
+	GetSealedTicket(ctx context.Context, q repository.Querier, accountID uuid.UUID) (*domain.SealedARCATicket, error)
+	SaveSealedTicket(ctx context.Context, q repository.Querier, accountID uuid.UUID, ticket *domain.SealedARCATicket) error
 }
 
 type invoiceQuoteReader interface {
@@ -65,7 +61,8 @@ type CredentialParser func(certificatePEM, keyPEM []byte) (*domain.ARCACredentia
 type InvoiceSettings struct {
 	Enabled         bool
 	Environment     string
-	RequestTimeout  time.Duration
+	IssueTimeout    time.Duration // bounds one issue end to end, detached from the caller's request.
+	ReconcileAfter  time.Duration // a pending invoice this old is checked against ARCA.
 	UnidentifiedMax decimal.Decimal
 }
 
@@ -131,24 +128,11 @@ func (s *InvoiceService) UpdateSettings(
 		if err := s.store.UpdateAccountFiscal(ctx, q, tenant.AccountID, in.IVACondition, in.PricesIncludeVAT); err != nil {
 			return err
 		}
-		if err := s.store.UpdateBranchPointsOfSale(ctx, q, tenant.AccountID, in.PointsOfSale); err != nil {
-			return err
+		err := s.store.UpdateBranchPointsOfSale(ctx, q, tenant.AccountID, in.PointsOfSale)
+		if errors.Is(err, domain.ErrConflict) {
+			return domain.WithCode(domain.CodePointOfSaleTaken, err)
 		}
-		branches, err := s.store.ListBranchPointsOfSale(ctx, q, tenant.AccountID)
-		if err != nil {
-			return err
-		}
-		seen := make(map[int]bool, len(branches))
-		for _, b := range branches {
-			if b.PointOfSale == nil {
-				continue
-			}
-			if seen[*b.PointOfSale] {
-				return fmt.Errorf("%w: point of sale %d is set on two branches", domain.ErrInvalidInput, *b.PointOfSale)
-			}
-			seen[*b.PointOfSale] = true
-		}
-		return nil
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -253,9 +237,11 @@ func (s *InvoiceService) Preview(
 	return preview, err
 }
 
-// Issue asks ARCA to authorize the invoice for an accepted quote. The quote version is held by a
-// pending invoice while ARCA answers, so a second press can never authorize a second invoice.
-func (s *InvoiceService) Issue(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Invoice, error) {
+// Issue asks ARCA to authorize the invoice the seller confirmed for an accepted quote. A pending
+// invoice holds the quote while ARCA answers, so a second press can never authorize a second one.
+func (s *InvoiceService) Issue(
+	ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID, expected domain.InvoiceExpectation,
+) (*domain.Invoice, error) {
 	if err := requireBranch(tenant, "an invoice"); err != nil {
 		return nil, err
 	}
@@ -281,34 +267,49 @@ func (s *InvoiceService) Issue(ctx context.Context, tenant domain.Tenant, quoteI
 		if len(draft.preview.Issues) > 0 {
 			return &domain.InvoiceNotReadyError{Issues: draft.preview.Issues}
 		}
-		creds, err = s.openCredentials(ctx, q, tenant.AccountID)
+		if draft.version.ID != expected.VersionID || draft.preview.Type != expected.Type ||
+			!draft.preview.Amounts.Total.Equal(expected.Total) {
+			return domain.WithCode(domain.CodeInvoiceStale, domain.ErrConflict)
+		}
+		creds, err = s.openCredentials(ctx, q, tenant)
 		return err
 	})
 	if err != nil {
 		return nil, err
 	}
 
+	// Once ARCA is being asked, the seller closing the tab must not cut the exchange short: an
+	// invoice authorized but never recorded is the one outcome nothing can repair.
+	detached := context.WithoutCancel(ctx)
+	work, cancel := context.WithTimeout(detached, s.settings.IssueTimeout)
+	defer cancel()
+
 	if stale != nil {
-		adopted, err := s.reconcile(ctx, tenant, creds, *stale)
+		adopted, err := s.reconcile(work, tenant, creds, *stale)
 		if err != nil || adopted != nil {
 			return adopted, err
 		}
 	}
 
-	pending, err := s.hold(ctx, tenant, *draft)
+	pending, err := s.hold(work, tenant, *draft)
 	if err != nil {
 		return nil, err
 	}
 
-	auth, issueErr := s.issuer.Issue(ctx, creds, domain.InvoiceRequest{
+	auth, issueErr := s.issuer.Issue(work, creds, domain.InvoiceRequest{
 		IssuerCUIT:  pending.IssuerCUIT,
 		Type:        pending.Type,
 		PointOfSale: pending.PointOfSale,
 		Date:        pending.IssuedOn,
 		Receiver:    pending.Receiver,
 		Amounts:     pending.Amounts,
+		Claim: func(ctx context.Context, number int64) error {
+			return s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+				return s.store.ClaimNumber(ctx, q, tenant.AccountID, pending.ID, number)
+			})
+		},
 	})
-	return s.settle(ctx, tenant, *pending, auth, issueErr)
+	return s.settle(detached, tenant, *pending, auth, issueErr)
 }
 
 // invoiceDraft is a preview with what issuing it needs on top.
@@ -378,20 +379,22 @@ func (s *InvoiceService) draft(
 	}
 	receiver := invoiceReceiver(client, "")
 	invoiceType := invoiceTypeFor(issuerCondition, receiver.IVACondition)
-	amounts := invoiceAmounts(grossByRate(items, rates, discounts), invoiceType, account.PricesIncludeVAT)
+	byRate := grossByRate(items, rates, discounts)
+	amounts := invoiceAmounts(byRate, invoiceType, account.PricesIncludeVAT)
 	issues := invoiceIssues(invoiceInputs{
-		enabled: s.settings.Enabled, quote: *quote, version: *version, account: *account,
+		enabled: s.settings.Enabled, quote: *quote, version: *version, gross: sumGross(byRate), account: *account,
 		pointOfSale: pointOfSale, credential: credential, receiver: receiver, amounts: amounts,
 		invoiceType: invoiceType, unidentifiedMax: s.settings.UnidentifiedMax, now: s.now(),
 	})
 
 	draft := &invoiceDraft{
 		quote: *quote, version: *version, issuerCUIT: account.CUIT(),
-		preview: domain.InvoicePreview{Type: invoiceType, PointOfSale: pointOfSale, Receiver: receiver,
+		preview: domain.InvoicePreview{VersionID: version.ID, Type: invoiceType, PointOfSale: pointOfSale, Receiver: receiver,
 			Amounts: amounts, Currency: arcaCurrency, Issues: nonNilIssues(issues)},
 	}
-	// Only an invoice for the version on show is this sale's; one for an older version is history.
-	if existing != nil && existing.QuoteVersionID == version.ID && !released(*existing) {
+	// A live invoice is the sale's whatever the version; a refusal only speaks for the version it was for.
+	if existing != nil && (existing.Status != domain.InvoiceStatusRejected ||
+		(existing.QuoteVersionID == version.ID && !released(*existing))) {
 		draft.preview.Invoice = existing
 	}
 	return draft, nil
@@ -425,11 +428,22 @@ func (s *InvoiceService) versionDiscounts(
 func (s *InvoiceService) hold(ctx context.Context, tenant domain.Tenant, draft invoiceDraft) (*domain.Invoice, error) {
 	var pending *domain.Invoice
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		var err error
+		// The quote may have been reopened while ARCA was being reconciled.
+		quote, err := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, draft.quote.ID)
+		if err != nil {
+			return err
+		}
+		version, err := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, tenant.BranchID, draft.quote.ID)
+		if err != nil {
+			return err
+		}
+		if quote.CurrentStatus != domain.QuoteStatusAccepted || version.ID != draft.version.ID {
+			return domain.WithCode(domain.CodeInvoiceStale, domain.ErrConflict)
+		}
 		pending, err = s.store.CreatePending(ctx, q, domain.Invoice{
 			AccountID: tenant.AccountID, BranchID: draft.quote.BranchID, QuoteID: draft.quote.ID,
 			QuoteVersionID: draft.version.ID, Type: draft.preview.Type, PointOfSale: *draft.preview.PointOfSale,
-			IssuedOn: s.today(), IssuerCUIT: draft.issuerCUIT, Receiver: draft.preview.Receiver,
+			IssuedOn: domain.InvoiceDay(s.now()), IssuerCUIT: draft.issuerCUIT, Receiver: draft.preview.Receiver,
 			Amounts: draft.preview.Amounts, Currency: draft.preview.Currency,
 		})
 		if errors.Is(err, domain.ErrConflict) {
@@ -488,64 +502,109 @@ func (s *InvoiceService) settle(
 	}
 }
 
-// reconcile settles a pending invoice whose outcome was never learned. ARCA's newest invoice at
-// that point of sale is adopted when it is this one (same buyer, same total, issued since); if
-// not, the hold is released and the caller issues afresh.
+// reconcile reads back the number a pending invoice of unknown outcome claimed: ARCA's invoice there
+// is adopted when it is this one, otherwise nothing was authorized and the hold is released.
 func (s *InvoiceService) reconcile(
 	ctx context.Context, tenant domain.Tenant, creds domain.ARCACredentials, pending domain.Invoice,
 ) (*domain.Invoice, error) {
-	latest, err := s.issuer.LatestAuthorized(ctx, creds, pending.IssuerCUIT, pending.Type, pending.PointOfSale)
-	if err != nil {
-		return nil, err
+	var found *domain.AuthorizedInvoice
+	if pending.ClaimedNumber != nil {
+		var err error
+		found, err = s.issuer.Authorized(ctx, creds, pending.IssuerCUIT, pending.Type, pending.PointOfSale,
+			*pending.ClaimedNumber)
+		if err != nil {
+			return nil, err
+		}
 	}
-	if latest != nil && matchesPending(*latest, pending) {
+	if found != nil && matchesPending(*found, pending) {
 		var issued *domain.Invoice
 		err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 			var err error
 			issued, err = s.store.MarkIssued(ctx, q, tenant.AccountID, pending.ID, domain.InvoiceAuthorization{
-				Number: latest.Number, CAE: latest.CAE, CAEExpiresOn: latest.CAEExpiresOn,
-				Observations: []string{"RECONCILED"},
+				Number: found.Number, CAE: found.CAE, CAEExpiresOn: found.CAEExpiresOn,
 			})
 			return err
 		})
 		return issued, err
 	}
 	return nil, s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		return s.store.ReleasePending(ctx, q, tenant.AccountID, pending.ID, "NOT_AUTHORIZED")
+		return s.store.ReleasePending(ctx, q, tenant.AccountID, pending.ID, releasedIssue)
 	})
 }
 
-// matchesPending tells whether ARCA's newest invoice is the pending one: same buyer, same total,
-// dated no earlier than the pending one.
-func matchesPending(latest domain.AuthorizedInvoice, pending domain.Invoice) bool {
-	return latest.DocType == pending.Receiver.DocType &&
-		latest.DocNumber == pending.Receiver.DocNumber &&
-		latest.Total.Equal(pending.Amounts.Total) &&
-		!latest.Date.Before(pending.IssuedOn)
+// matchesPending tells whether ARCA's invoice under the claimed number is the pending one.
+func matchesPending(found domain.AuthorizedInvoice, pending domain.Invoice) bool {
+	return found.DocType == pending.Receiver.DocType &&
+		found.DocNumber == pending.Receiver.DocNumber &&
+		found.Total.Equal(pending.Amounts.Total)
 }
 
-// openCredentials reads and unseals the account's certificate and key.
+// openCredentials reads and unseals the account's certificate and key. A key that no longer
+// opens, sealed under another encryption key, is a credential to upload again.
 func (s *InvoiceService) openCredentials(
-	ctx context.Context, q repository.Querier, accountID uuid.UUID,
+	ctx context.Context, q repository.Querier, tenant domain.Tenant,
 ) (domain.ARCACredentials, error) {
-	certificate, sealed, err := s.store.GetSealedCredential(ctx, q, accountID)
+	certificate, sealed, err := s.store.GetSealedCredential(ctx, q, tenant.AccountID)
 	if err != nil {
 		return domain.ARCACredentials{}, err
 	}
 	key, err := s.sealer.Open(sealed)
 	if err != nil {
-		return domain.ARCACredentials{}, err
+		return domain.ARCACredentials{}, &domain.InvoiceNotReadyError{Issues: []string{invoiceIssueCredentials}}
 	}
-	return domain.ARCACredentials{CertificatePEM: []byte(certificate), PrivateKeyPEM: []byte(key)}, nil
+	return domain.ARCACredentials{
+		CertificatePEM: []byte(certificate),
+		PrivateKeyPEM:  []byte(key),
+		Tickets:        &invoiceTicketStore{service: s, tenant: tenant},
+	}, nil
+}
+
+// invoiceTicketStore keeps an account's WSAA ticket on its credential row, sealed like the key.
+type invoiceTicketStore struct {
+	service *InvoiceService
+	tenant  domain.Tenant
+}
+
+// Load returns the stored ticket, nil when there is none or it no longer opens.
+func (t *invoiceTicketStore) Load(ctx context.Context) (*domain.ARCATicket, error) {
+	var sealed *domain.SealedARCATicket
+	err := t.service.db.InTenantTx(ctx, t.tenant, func(q repository.Querier) error {
+		var err error
+		sealed, err = t.service.store.GetSealedTicket(ctx, q, t.tenant.AccountID)
+		return err
+	})
+	if err != nil || sealed == nil {
+		return nil, err
+	}
+	token, tokenErr := t.service.sealer.Open(sealed.Token)
+	sign, signErr := t.service.sealer.Open(sealed.Sign)
+	if tokenErr != nil || signErr != nil {
+		return nil, nil
+	}
+	return &domain.ARCATicket{Token: token, Sign: sign, ExpiresAt: sealed.ExpiresAt}, nil
+}
+
+// Save stores the ticket; an empty one clears it.
+func (t *invoiceTicketStore) Save(ctx context.Context, ticket domain.ARCATicket) error {
+	var sealed *domain.SealedARCATicket
+	if ticket.Token != "" {
+		token, err := t.service.sealer.Seal(ticket.Token)
+		if err != nil {
+			return err
+		}
+		sign, err := t.service.sealer.Seal(ticket.Sign)
+		if err != nil {
+			return err
+		}
+		sealed = &domain.SealedARCATicket{Token: token, Sign: sign, ExpiresAt: ticket.ExpiresAt}
+	}
+	return t.service.db.InTenantTx(ctx, t.tenant, func(q repository.Querier) error {
+		return t.service.store.SaveSealedTicket(ctx, q, t.tenant.AccountID, sealed)
+	})
 }
 
 func (s *InvoiceService) isStale(pending domain.Invoice) bool {
-	return s.now().Sub(pending.UpdatedAt) > pendingStaleCalls*s.settings.RequestTimeout
-}
-
-func (s *InvoiceService) today() time.Time {
-	now := s.now().In(argentina)
-	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	return s.now().Sub(pending.UpdatedAt) > s.settings.ReconcileAfter
 }
 
 // validCUIT checks a CUIT's check digit (modulo 11 over the first ten digits).
@@ -581,12 +640,4 @@ func nonNilIssues(issues []string) []string {
 		return []string{}
 	}
 	return issues
-}
-
-func mustLoadLocation(name string) *time.Location {
-	location, err := time.LoadLocation(name)
-	if err != nil {
-		panic(err)
-	}
-	return location
 }

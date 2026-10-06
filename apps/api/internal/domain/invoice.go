@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"time"
+	_ "time/tzdata" // the API images ship without a zoneinfo database.
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
@@ -169,9 +170,19 @@ type InvoiceRequest struct {
 	IssuerCUIT  string // digits only; the represented CUIT.
 	Type        InvoiceType
 	PointOfSale int
-	Date        time.Time
+	Date        time.Time // the calendar day, at midnight UTC.
 	Receiver    InvoiceReceiver
 	Amounts     InvoiceAmounts
+	// Claim records the number about to be requested, before ARCA can authorize it; an error
+	// stops the request.
+	Claim func(ctx context.Context, number int64) error
+}
+
+// InvoiceExpectation is the invoice the seller confirmed; issuing refuses if the sale moved since.
+type InvoiceExpectation struct {
+	VersionID uuid.UUID
+	Type      InvoiceType
+	Total     decimal.Decimal
 }
 
 // InvoiceAuthorization is ARCA's answer for an authorized invoice.
@@ -184,20 +195,51 @@ type InvoiceAuthorization struct {
 	RawResponse  []byte
 }
 
+// Argentina is the zone an invoice's calendar day is read in.
+var Argentina = mustLoadLocation("America/Argentina/Buenos_Aires")
+
+// InvoiceDay is the Argentine calendar day of now, as a DATE column holds it: midnight UTC.
+func InvoiceDay(now time.Time) time.Time {
+	local := now.In(Argentina)
+	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+// ARCATicket is a WSAA access ticket. WSAA refuses a new one while one is live, so it outlives
+// the process that asked for it.
+type ARCATicket struct {
+	Token     string
+	Sign      string
+	ExpiresAt time.Time
+}
+
+// SealedARCATicket is a WSAA ticket whose token and sign are sealed for storage.
+type SealedARCATicket struct {
+	Token     string
+	Sign      string
+	ExpiresAt time.Time
+}
+
+// ARCATicketStore keeps an account's live WSAA ticket.
+type ARCATicketStore interface {
+	Load(ctx context.Context) (*ARCATicket, error)
+	Save(ctx context.Context, ticket ARCATicket) error
+}
+
 // ARCACredentials are the certificate and key an account signs its ARCA requests with.
 type ARCACredentials struct {
 	CertificatePEM []byte
 	PrivateKeyPEM  []byte
+	Tickets        ARCATicketStore // nil keeps tickets in the issuer's memory only.
 }
 
 // InvoiceIssuer authorizes electronic invoices with ARCA. Numbering is the issuer's: it asks
 // for the last authorized number and claims the next one in the same exchange.
 type InvoiceIssuer interface {
 	Issue(ctx context.Context, creds ARCACredentials, req InvoiceRequest) (*InvoiceAuthorization, error)
-	// LatestAuthorized returns the newest invoice ARCA authorized for a type at a point of sale,
-	// nil when there is none; it is how a pending invoice of unknown outcome is reconciled.
-	LatestAuthorized(ctx context.Context, creds ARCACredentials, issuerCUIT string, invoiceType InvoiceType,
-		pointOfSale int) (*AuthorizedInvoice, error)
+	// Authorized returns the invoice ARCA holds under number, nil when it holds none; it is how a
+	// pending invoice of unknown outcome is reconciled.
+	Authorized(ctx context.Context, creds ARCACredentials, issuerCUIT string, invoiceType InvoiceType,
+		pointOfSale int, number int64) (*AuthorizedInvoice, error)
 }
 
 // AuthorizedInvoice is an invoice as ARCA has it on record.
@@ -254,6 +296,7 @@ type Invoice struct {
 	Type           InvoiceType
 	PointOfSale    int
 	Number         *int64
+	ClaimedNumber  *int64 // the number last requested from ARCA, set before the request goes out.
 	IssuedOn       time.Time
 	CAE            *string
 	CAEExpiresOn   *time.Time
@@ -337,6 +380,7 @@ type InvoicingSettingsUpdate struct {
 
 // InvoicePreview is the invoice an accepted quote would produce, with whatever stops it.
 type InvoicePreview struct {
+	VersionID   uuid.UUID // the quote version the preview was computed from.
 	Type        InvoiceType
 	PointOfSale *int
 	Receiver    InvoiceReceiver
@@ -355,4 +399,12 @@ func DigitsOnly(value string) string {
 		}
 	}
 	return b.String()
+}
+
+func mustLoadLocation(name string) *time.Location {
+	location, err := time.LoadLocation(name)
+	if err != nil {
+		panic(err)
+	}
+	return location
 }

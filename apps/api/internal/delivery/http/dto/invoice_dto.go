@@ -48,6 +48,14 @@ type ARCACredentialResponse struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// IssueInvoiceRequest is the body for POST /v1/quotes/:quoteId/invoice: the previewed invoice the
+// seller confirmed. Total is a decimal string.
+type IssueInvoiceRequest struct {
+	VersionID uuid.UUID `json:"version_id" binding:"required"`
+	Type      string    `json:"type" binding:"required,oneof=A B C"`
+	Total     string    `json:"total" binding:"required,numeric"`
+}
+
 // UpdateClientFiscalRequest is the body for PUT /v1/clients/:clientId/fiscal. Omitted fields clear.
 type UpdateClientFiscalRequest struct {
 	LegalName    *string `json:"legal_name" binding:"omitempty,max=255"`
@@ -111,6 +119,7 @@ type InvoiceResponse struct {
 // InvoicePreviewResponse is returned by GET /v1/quotes/:quoteId/invoice: what would be issued now,
 // every gap that stops it, and the invoice the quote already has, if any.
 type InvoicePreviewResponse struct {
+	VersionID   uuid.UUID               `json:"version_id"` // what POST confirms, with type and total.
 	Type        string                  `json:"type"`
 	PointOfSale *int                    `json:"point_of_sale"`
 	Receiver    InvoiceReceiverResponse `json:"receiver"`

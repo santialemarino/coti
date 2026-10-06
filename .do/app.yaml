@@ -73,6 +73,9 @@ services:
       - key: CHANNEL_CONFIG_ENCRYPTION_KEY
         scope: RUN_TIME
         type: SECRET
+      - key: ARCA_CREDENTIALS_ENCRYPTION_KEY
+        scope: RUN_TIME
+        type: SECRET
       - key: AI_ANTHROPIC_API_KEY
         scope: RUN_TIME
         type: SECRET
@@ -95,6 +98,10 @@ services:
         scope: RUN_TIME
         value: disabled
       - key: AI_TRANSCRIPTION_PROVIDER
+        scope: RUN_TIME
+        value: disabled
+      # wsfe also needs ARCA_CREDENTIALS_ENCRYPTION_KEY; ARCA_ENVIRONMENT stays homologation until switched.
+      - key: INVOICING_PROVIDER
         scope: RUN_TIME
         value: disabled
       # console writes the message to the log. smtp needs MAIL_FROM_ADDRESS and both credentials,

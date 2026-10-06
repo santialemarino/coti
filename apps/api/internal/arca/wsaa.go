@@ -19,20 +19,17 @@ const (
 	wsaaNamespace = "http://wsaa.view.sua.dvadac.desein.afip.gov"
 	wsfeService   = "wsfe"
 	// ticketRenewMargin keeps a ticket from expiring between the cache read and ARCA's check.
-	ticketRenewMargin = 10 * time.Minute
+	ticketRenewMargin = time.Minute
 )
 
 // Ticket is a WSAA access ticket for the wsfe service.
-type Ticket struct {
-	Token     string
-	Sign      string
-	ExpiresAt time.Time
-}
+type Ticket = domain.ARCATicket
 
-// TicketCache keeps WSAA tickets by certificate, since WSAA refuses a new one while one is live.
+// TicketCache keeps WSAA tickets in the process by certificate, in front of the account's store.
 type TicketCache interface {
 	Get(key string) (Ticket, bool)
 	Put(key string, t Ticket)
+	Delete(key string)
 }
 
 // MemoryTicketCache is a process-local TicketCache.
@@ -59,6 +56,13 @@ func (c *MemoryTicketCache) Put(key string, t Ticket) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.tickets[key] = t
+}
+
+// Delete forgets the ticket for key.
+func (c *MemoryTicketCache) Delete(key string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.tickets, key)
 }
 
 type loginTicketRequest struct {
@@ -93,21 +97,68 @@ type loginCmsEnvelope struct {
 	} `xml:"Body"`
 }
 
-// ticket returns a live ticket for the certificate, logging in only when none is cached.
-func (i *Issuer) ticket(ctx context.Context, s *signer) (Ticket, error) {
+// ticket returns a live ticket for the certificate, logging in only when neither the process
+// nor the account's store holds one.
+func (i *Issuer) ticket(ctx context.Context, s *signer, store domain.ARCATicketStore) (Ticket, error) {
 	key := s.cacheKey()
-	// Serialized so two concurrent first calls do not both log in and trip alreadyAuthenticated.
-	i.loginMu.Lock()
-	defer i.loginMu.Unlock()
-	if t, ok := i.cache.Get(key); ok && i.now().Add(ticketRenewMargin).Before(t.ExpiresAt) {
-		return t, nil
+	// Serialized per certificate so two concurrent first calls do not both log in.
+	lock := i.loginLock(key)
+	lock.Lock()
+	defer lock.Unlock()
+	known, ok := i.cache.Get(key)
+	if !ok && store != nil {
+		stored, err := store.Load(ctx)
+		if err != nil {
+			return Ticket{}, unavailable("load ticket", err)
+		}
+		if stored != nil {
+			known, ok = *stored, true
+		}
+	}
+	if ok && i.now().Add(ticketRenewMargin).Before(known.ExpiresAt) {
+		i.cache.Put(key, known)
+		return known, nil
 	}
 	t, err := i.login(ctx, s)
+	if errors.Is(err, errAlreadyAuthenticated) && ok && i.now().Before(known.ExpiresAt) {
+		return known, nil
+	}
 	if err != nil {
 		return Ticket{}, err
 	}
 	i.cache.Put(key, t)
+	if store != nil {
+		if err := store.Save(ctx, t); err != nil {
+			// The process still holds the ticket; only a restart before it expires would miss it.
+			i.log.Warn("arca: could not store the WSAA ticket", "error", err)
+		}
+	}
 	return t, nil
+}
+
+// dropRejectedTicket forgets a ticket WSFEv1 refused, so the next call logs in afresh.
+func (i *Issuer) dropRejectedTicket(ctx context.Context, s *signer, store domain.ARCATicketStore, err error) error {
+	if !errors.Is(err, errTicketRejected) {
+		return err
+	}
+	i.cache.Delete(s.cacheKey())
+	if store != nil {
+		if saveErr := store.Save(ctx, Ticket{}); saveErr != nil {
+			i.log.Warn("arca: could not clear the WSAA ticket", "error", saveErr)
+		}
+	}
+	return err
+}
+
+func (i *Issuer) loginLock(key string) *sync.Mutex {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	lock, ok := i.logins[key]
+	if !ok {
+		lock = &sync.Mutex{}
+		i.logins[key] = lock
+	}
+	return lock
 }
 
 func (i *Issuer) login(ctx context.Context, s *signer) (Ticket, error) {
@@ -127,7 +178,7 @@ func (i *Issuer) login(ctx context.Context, s *signer) (Ticket, error) {
 	if err != nil {
 		var fault *soapFault
 		if errors.As(err, &fault) && strings.HasSuffix(fault.Code, "coe.alreadyAuthenticated") {
-			return Ticket{}, fmt.Errorf("arca: WSAA still holds an active ticket for this certificate; retry after it expires: %w", domain.ErrInvoicingUnavailable)
+			return Ticket{}, errAlreadyAuthenticated
 		}
 		if errors.As(err, &fault) && refusesCredentials(fault.Code) {
 			return Ticket{}, &domain.InvoiceRejectedError{Issues: []string{"WSAA " + faultName(fault.Code) + ": " + fault.String}}
@@ -164,9 +215,12 @@ func faultName(code string) string {
 	return code
 }
 
+// errAlreadyAuthenticated is WSAA refusing a login while a ticket it issued is still live.
+var errAlreadyAuthenticated = fmt.Errorf("arca: WSAA still holds an active ticket for this certificate; retry after it expires: %w", domain.ErrInvoicingUnavailable)
+
 // buildTRA renders the loginTicketRequest WSAA spec 1.2.2 asks for.
 func (i *Issuer) buildTRA() ([]byte, error) {
-	now := i.now().In(argentina)
+	now := i.now().In(domain.Argentina)
 	req := loginTicketRequest{Version: "1.0", Service: wsfeService}
 	req.Header.UniqueID = uint32(now.Unix())
 	req.Header.GenerationTime = now.Add(-10 * time.Minute).Format(time.RFC3339)

@@ -29,6 +29,7 @@ type quoteRepository interface {
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID, previousStatus *domain.QuoteStatus, newStatus domain.QuoteStatus, userID *uuid.UUID) (*domain.QuoteStatusChange, error)
 	Archive(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
 	Unarchive(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
+	HasLiveInvoice(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID) (bool, error)
 }
 
 // branchPriceReader is the price-in-force surface valuation needs. One call carries every
@@ -260,6 +261,14 @@ func (s *QuoteService) Reactivate(
 		if quote.CurrentStatus != domain.QuoteStatusAccepted &&
 			quote.CurrentStatus != domain.QuoteStatusRejected {
 			return domain.WithCode(domain.CodeQuoteNotReactivatable, domain.ErrConflict)
+		}
+		// An invoiced sale is a fiscal fact: reopening it would let a second invoice go out for it.
+		invoiced, err := s.quotes.HasLiveInvoice(ctx, q, tenant.AccountID, quote.ID)
+		if err != nil {
+			return err
+		}
+		if invoiced {
+			return domain.WithCode(domain.CodeQuoteAlreadyInvoiced, domain.ErrConflict)
 		}
 
 		version, err := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, quote.BranchID,
