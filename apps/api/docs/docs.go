@@ -4458,7 +4458,10 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Asks ARCA to authorize the electronic invoice for an accepted quote. Irreversible: a mistake is corrected with a credit note.",
+                "description": "Asks ARCA to authorize the electronic invoice for an accepted quote, as long as it is still the one previewed. Irreversible: a mistake is corrected with a credit note.",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -4480,6 +4483,15 @@ const docTemplate = `{
                         "name": "quoteId",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "The previewed invoice being confirmed",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.IssueInvoiceRequest"
+                        }
                     }
                 ],
                 "responses": {
@@ -4508,7 +4520,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "QUOTE_ALREADY_INVOICED, INVOICE_IN_PROGRESS",
+                        "description": "QUOTE_ALREADY_INVOICED, INVOICE_IN_PROGRESS, INVOICE_STALE",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -7691,6 +7703,10 @@ const docTemplate = `{
                 },
                 "type": {
                     "type": "string"
+                },
+                "version_id": {
+                    "description": "what POST confirms, with type and total.",
+                    "type": "string"
                 }
             }
         },
@@ -7793,6 +7809,30 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "tax_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.IssueInvoiceRequest": {
+            "type": "object",
+            "required": [
+                "total",
+                "type",
+                "version_id"
+            ],
+            "properties": {
+                "total": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "A",
+                        "B",
+                        "C"
+                    ]
+                },
+                "version_id": {
                     "type": "string"
                 }
             }

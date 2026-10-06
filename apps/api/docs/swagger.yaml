@@ -833,6 +833,9 @@ definitions:
         $ref: '#/definitions/dto.InvoiceReceiverResponse'
       type:
         type: string
+      version_id:
+        description: what POST confirms, with type and total.
+        type: string
     type: object
   dto.InvoiceReceiverResponse:
     properties:
@@ -902,6 +905,23 @@ definitions:
         type: boolean
       tax_id:
         type: string
+    type: object
+  dto.IssueInvoiceRequest:
+    properties:
+      total:
+        type: string
+      type:
+        enum:
+        - A
+        - B
+        - C
+        type: string
+      version_id:
+        type: string
+    required:
+    - total
+    - type
+    - version_id
     type: object
   dto.LoginRequest:
     properties:
@@ -5154,8 +5174,11 @@ paths:
       tags:
       - invoicing
     post:
+      consumes:
+      - application/json
       description: 'Asks ARCA to authorize the electronic invoice for an accepted
-        quote. Irreversible: a mistake is corrected with a credit note.'
+        quote, as long as it is still the one previewed. Irreversible: a mistake is
+        corrected with a credit note.'
       parameters:
       - description: The quote's branch
         in: header
@@ -5167,6 +5190,12 @@ paths:
         name: quoteId
         required: true
         type: string
+      - description: The previewed invoice being confirmed
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.IssueInvoiceRequest'
       produces:
       - application/json
       responses:
@@ -5187,7 +5216,7 @@ paths:
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "409":
-          description: QUOTE_ALREADY_INVOICED, INVOICE_IN_PROGRESS
+          description: QUOTE_ALREADY_INVOICED, INVOICE_IN_PROGRESS, INVOICE_STALE
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "422":
