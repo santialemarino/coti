@@ -47,6 +47,7 @@ type Handlers struct {
 	Prices        *handler.ProductPriceHandler
 	CatalogImport *handler.CatalogImportHandler
 	Onboarding    *handler.OnboardingHandler
+	Reports       *handler.SellerReportHandler
 	// File is nil unless the local storage adapter is bound.
 	File *handler.FileHandler
 }
@@ -213,6 +214,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	// Manual RFQ intake.
 	verified.GET("/rfqs", h.Rfq.List)
 	verified.POST("/rfqs", h.Rfq.Create)
+	verified.GET("/reports", h.Reports.Get)
 
 	// The manual RFQ creator offers the assignable sellers before the order exists, so the
 	// list is not admin-only: it narrows to the branch the X-Branch-Id header named, and the

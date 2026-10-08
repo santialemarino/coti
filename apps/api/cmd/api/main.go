@@ -177,6 +177,7 @@ func run() error {
 		WithClientActions(clientActionRepo).
 		WithWebAppURL(cfg.Web.WebAppURL).
 		WithFileIntake(rfqAttachmentService, providers.Transcriber, cfg.Storage.MaxFileSize)
+	sellerReportService := services.NewSellerReportService(db, repository.NewSellerReportRepository())
 	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, log)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
 		WithCorrectionLearning(quoteCorrectionService)
@@ -221,6 +222,7 @@ func run() error {
 			Account:       handler.NewAccountHandler(accountService),
 			AccountLogo:   handler.NewBrandLogoHandler(accountService, cfg.Storage.MaxFileSize),
 			Onboarding:    handler.NewOnboardingHandler(onboardingService),
+			Reports:       handler.NewSellerReportHandler(sellerReportService),
 			File:          fileHandler(objectStorage),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},

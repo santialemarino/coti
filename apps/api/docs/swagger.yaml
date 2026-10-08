@@ -1675,6 +1675,50 @@ definitions:
           $ref: '#/definitions/dto.SellerResponse'
         type: array
     type: object
+  dto.SellerReportClientResponse:
+    properties:
+      name:
+        type: string
+      order_count:
+        type: integer
+    type: object
+  dto.SellerReportMaterialResponse:
+    properties:
+      name:
+        type: string
+      order_count:
+        type: integer
+    type: object
+  dto.SellerReportResponse:
+    properties:
+      average_quote_time_seconds:
+        type: integer
+      orders_received:
+        type: integer
+      quotes_accepted:
+        type: integer
+      quotes_sent:
+        type: integer
+      statuses:
+        items:
+          $ref: '#/definitions/dto.SellerReportStatusResponse'
+        type: array
+      top_clients:
+        items:
+          $ref: '#/definitions/dto.SellerReportClientResponse'
+        type: array
+      top_materials:
+        items:
+          $ref: '#/definitions/dto.SellerReportMaterialResponse'
+        type: array
+    type: object
+  dto.SellerReportStatusResponse:
+    properties:
+      count:
+        type: integer
+      status:
+        type: string
+    type: object
   dto.SellerResponse:
     properties:
       id:
@@ -5179,6 +5223,45 @@ paths:
       summary: Unarchive a quote
       tags:
       - quotes
+  /v1/reports:
+    get:
+      parameters:
+      - description: First RFQ receipt date (YYYY-MM-DD)
+        in: query
+        name: date_from
+        type: string
+      - description: Last RFQ receipt date (YYYY-MM-DD)
+        in: query
+        name: date_to
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SellerReportResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get seller reports
+      tags:
+      - reports
   /v1/rfqs:
     get:
       description: Returns the RFQ list scoped to the tenant and, when set, the active
