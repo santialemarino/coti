@@ -416,7 +416,10 @@ export function RfqDashboard({
   // The headline count is the open queue, not the archive it now also holds.
   const visibleRecords = useMemo(() => records.filter((rfq) => !rfq.archived), [records]);
   const branches = useMemo(() => unique(records.map((rfq) => rfq.branch)), [records]);
-  const sellers = useMemo(() => unique(records.map((rfq) => rfq.seller)), [records]);
+  const sellers = useMemo(
+    () => unique(records.map((rfq) => rfq.seller).filter((seller) => seller.trim() !== '')),
+    [records],
+  );
 
   /*
    * Everything except the status tab. The tab counts recount within the active criteria — a seller

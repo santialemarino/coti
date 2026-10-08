@@ -255,6 +255,25 @@ describe('RfqDashboard status filter counts', () => {
   });
 });
 
+describe('RfqDashboard seller filter', () => {
+  it('offers all, unassigned, and named sellers without a blank option', async () => {
+    const view = renderDashboard([
+      ...RFQS,
+      { ...(RFQS[0] as RfqRecord), id: 'whitespace-seller', seller: '   ' },
+    ]);
+
+    fireEvent.click(view.getByRole('combobox', { name: copy.list.filters.seller }));
+    const options = await vi.waitFor(() => view.getAllByRole('option'));
+
+    expect(options.map((option) => option.textContent?.trim())).toEqual([
+      copy.list.filters.allSeller,
+      copy.list.filters.unassigned,
+      'Juan Pérez',
+      'María López',
+    ]);
+  });
+});
+
 describe('RfqDashboard archived filter', () => {
   const ARCHIVED: RfqRecord = {
     ...(RFQS[0] as RfqRecord),
