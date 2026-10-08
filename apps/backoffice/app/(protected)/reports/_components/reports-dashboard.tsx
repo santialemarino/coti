@@ -16,6 +16,20 @@ import { ROUTES } from '@/config/routes';
 import type { SellerReport } from '@/lib/api/reports';
 import { getFormatters } from '@/lib/i18n/formatters-server';
 
+const STATUS_CHART_RADIUS = 42;
+const STATUS_CHART_CIRCUMFERENCE = 2 * Math.PI * STATUS_CHART_RADIUS;
+const STATUS_CHART_COLOUR: Record<string, { stroke: string; marker: string }> = {
+  DRAFT: { stroke: 'text-status-draft', marker: 'bg-status-draft' },
+  QUOTED: { stroke: 'text-status-quoted', marker: 'bg-status-quoted' },
+  SENT: { stroke: 'text-status-sent', marker: 'bg-status-sent' },
+  CHANGE_REQUESTED: {
+    stroke: 'text-status-change-requested',
+    marker: 'bg-status-change-requested',
+  },
+  ACCEPTED: { stroke: 'text-status-accepted', marker: 'bg-status-accepted' },
+  REJECTED: { stroke: 'text-status-rejected', marker: 'bg-status-rejected' },
+};
+
 interface ReportsDashboardProps {
   report: SellerReport;
   dateFrom?: string;
@@ -68,7 +82,8 @@ export async function ReportsDashboard({ report, dateFrom, dateTo }: ReportsDash
     }
     return fmt.list(parts);
   })();
-  const maxStatusCount = Math.max(1, ...report.statuses.map((item) => item.count));
+  const totalStatusCount = report.statuses.reduce((total, item) => total + item.count, 0);
+  let accumulatedStatusCount = 0;
 
   return (
     <div className="flex flex-col gap-y-8">
@@ -143,29 +158,61 @@ export async function ReportsDashboard({ report, dateFrom, dateTo }: ReportsDash
             <CardDescription>{t('statuses.description')}</CardDescription>
           </CardHeader>
           <CardContent>
-            {report.statuses.length > 0 ? (
-              <ul aria-label={t('statuses.title')} className="flex flex-col gap-y-5">
-                {report.statuses.map(({ status, count }) => (
-                  <li className="flex flex-col gap-y-2" key={status}>
-                    <div className="flex items-center justify-between gap-x-4">
-                      <span className="text-paragraph-sm">{t(`status.${status}`)}</span>
+            {totalStatusCount > 0 ? (
+              <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-x-12 gap-y-8 sm:flex-row sm:justify-center">
+                <div className="relative size-48 shrink-0">
+                  <svg aria-hidden="true" className="size-full -rotate-90" viewBox="0 0 100 100">
+                    {report.statuses.map(({ status, count }) => {
+                      const segmentLength = (count / totalStatusCount) * STATUS_CHART_CIRCUMFERENCE;
+                      const strokeDasharray = `${segmentLength} ${STATUS_CHART_CIRCUMFERENCE - segmentLength}`;
+                      const strokeDashoffset = -accumulatedStatusCount;
+                      accumulatedStatusCount += segmentLength;
+
+                      return (
+                        <circle
+                          className={STATUS_CHART_COLOUR[status]?.stroke ?? 'text-primary'}
+                          cx="50"
+                          cy="50"
+                          fill="none"
+                          key={status}
+                          r={STATUS_CHART_RADIUS}
+                          stroke="currentColor"
+                          strokeDasharray={strokeDasharray}
+                          strokeDashoffset={strokeDashoffset}
+                          strokeWidth="16"
+                        />
+                      );
+                    })}
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-paragraph-sm text-foreground-muted">
+                      {t('statuses.total')}
+                    </span>
+                    <span className="text-heading-4 tabular-nums">
+                      {fmt.value(totalStatusCount)}
+                    </span>
+                  </div>
+                </div>
+                <ul
+                  aria-label={t('statuses.title')}
+                  className="flex w-full flex-col gap-y-3 sm:w-auto"
+                >
+                  {report.statuses.map(({ status, count }) => (
+                    <li className="flex items-center justify-between gap-x-8" key={status}>
+                      <span className="flex items-center gap-x-3">
+                        <span
+                          aria-hidden="true"
+                          className={`size-3 shrink-0 rounded-full ${STATUS_CHART_COLOUR[status]?.marker ?? 'bg-primary'}`}
+                        />
+                        <span className="text-paragraph-sm">{t(`status.${status}`)}</span>
+                      </span>
                       <span className="text-paragraph-sm-medium tabular-nums">
                         {fmt.value(count)}
                       </span>
-                    </div>
-                    <div
-                      aria-hidden="true"
-                      className="h-2 overflow-hidden rounded-full bg-sunken"
-                      role="presentation"
-                    >
-                      <div
-                        className="h-full rounded-full bg-primary"
-                        style={{ width: `${(count / maxStatusCount) * 100}%` }}
-                      />
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ) : (
               <EmptyState
                 description={t('empty.description')}
