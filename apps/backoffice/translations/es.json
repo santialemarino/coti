@@ -70,7 +70,8 @@
         "passwordTooLong": "Máximo {max} caracteres.",
         "passwordMismatch": "Las contraseñas no coinciden.",
         "passwordRequirements": "La contraseña no cumple con los requisitos.",
-        "amountTooHigh": "El monto es demasiado alto."
+        "amountTooHigh": "El monto es demasiado alto.",
+        "invalidTaxId": "El CUIT debe tener exactamente 11 dígitos."
       }
     },
     "passwordMeter": {

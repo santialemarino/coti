@@ -56,6 +56,17 @@ describe('signupSchema', () => {
     );
   });
 
+  it.each(['1234567890', '123456789012', '30-71234567-9'])(
+    'refuses a tax id that is not exactly eleven digits (%s)',
+    (taxId) => {
+      expect(messagesFor({ taxId }).taxId).toBe('invalidTaxId');
+    },
+  );
+
+  it('accepts a tax id of exactly eleven digits', () => {
+    expect(signupSchema().safeParse({ ...VALID, taxId: '30712345679' }).success).toBe(true);
+  });
+
   it('refuses a password past the length bcrypt reads', () => {
     const past = `Aa1!${'b'.repeat(PASSWORD_MAX_BYTES)}`;
 

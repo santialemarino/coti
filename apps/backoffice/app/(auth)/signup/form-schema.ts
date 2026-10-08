@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   emailAddress,
   newPassword,
+  optionalTaxId,
   optionalText,
   passwordConfirmation,
   rawText,
@@ -15,7 +16,7 @@ export function signupObject(t: SchemaText = rawText) {
   return z.object({
     accountName: requiredText(t, 'accountName.required'),
     legalName: optionalText(t),
-    taxId: optionalText(t),
+    taxId: optionalTaxId(t),
     branchName: requiredText(t, 'branchName.required'),
     branchAddress: optionalText(t),
     adminName: requiredText(t, 'adminName.required'),

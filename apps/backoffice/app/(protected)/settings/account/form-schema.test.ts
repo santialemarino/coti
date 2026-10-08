@@ -41,11 +41,21 @@ describe('accountSchema', () => {
     expect(messagesFor({ name: 'a'.repeat(TEXT_FIELD_MAX_LENGTH + 1) }).name).toBe('tooLong');
   });
 
-  it('refuses a legal name or a tax id past that length', () => {
+  it('refuses a legal name past the length the API stores', () => {
     const tooLong = 'a'.repeat(TEXT_FIELD_MAX_LENGTH + 1);
 
     expect(messagesFor({ legalName: tooLong }).legalName).toBe('tooLong');
-    expect(messagesFor({ taxId: tooLong }).taxId).toBe('tooLong');
+  });
+
+  it.each(['1234567890', '123456789012', '30-71234567-9'])(
+    'refuses a tax id that is not exactly eleven digits (%s)',
+    (taxId) => {
+      expect(messagesFor({ taxId }).taxId).toBe('invalidTaxId');
+    },
+  );
+
+  it('accepts a tax id of exactly eleven digits', () => {
+    expect(accountSchema().safeParse({ ...VALID, taxId: '30712345679' }).success).toBe(true);
   });
 
   it('resolves each message through the catalog it belongs to', () => {
