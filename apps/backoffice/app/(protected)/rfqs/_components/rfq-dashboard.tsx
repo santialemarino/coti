@@ -710,6 +710,7 @@ export function RfqDashboard({
               onValuesChange={(values) => setStatusFilter(values as StatusFilterValue[])}
               placeholder={t('list.filters.status')}
               summaryLabel={(count) => t('list.filters.statusCount', { count })}
+              resetLabel={t('list.filters.allStatus')}
               clearLabel={t('list.filters.clearStatus')}
               icon={<TagIcon aria-hidden="true" className="size-4" />}
               aria-label={t('list.filters.status')}

@@ -563,6 +563,7 @@
       "filters": {
         "status": "Estado",
         "statusCount": "{count} estados",
+        "allStatus": "Todos los estados",
         "clearStatus": "Limpiar estados",
         "channel": "Canal",
         "branch": "Sucursal",

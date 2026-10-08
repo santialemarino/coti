@@ -192,10 +192,37 @@ describe('RfqDashboard status filter counts', () => {
   it('counts the whole list when no filter is active', async () => {
     const view = renderDashboard();
 
+    expect(view.getByRole('combobox', { name: copy.list.filters.status }).textContent).toContain(
+      copy.list.filters.allStatus,
+    );
     expect(await statusCount(view, copy.status.QUOTED)).toBe(2);
     expect(await statusCount(view, copy.status.SENT)).toBe(1);
     expect(await statusCount(view, copy.status.RECEIVED)).toBe(1);
     expect(await statusCount(view, copy.status.GENERATED)).toBe(1);
+  });
+
+  it('restores all unarchived statuses when Todos los estados is chosen', async () => {
+    const view = renderDashboard();
+
+    fireEvent.click(view.getByRole('combobox', { name: copy.list.filters.status }));
+    const quoted = await vi.waitFor(() =>
+      view.getAllByRole('option').find((item) => item.textContent?.startsWith(copy.status.QUOTED)),
+    );
+    if (!quoted) throw new Error('Cotizado option never appeared');
+    fireEvent.click(quoted);
+
+    expect(view.queryByText(copy.list.numberPending)).toBeNull();
+    const allStatuses = await vi.waitFor(() =>
+      view.getAllByRole('option').find((item) => item.textContent === copy.list.filters.allStatus),
+    );
+    if (!allStatuses) throw new Error('Todos los estados option never appeared');
+    fireEvent.click(allStatuses);
+
+    expect(view.getByText(copy.list.numberPending)).toBeTruthy();
+    expect(view.getByText('#05')).toBeTruthy();
+    expect(view.getByRole('combobox', { name: copy.list.filters.status }).textContent).toContain(
+      copy.list.filters.allStatus,
+    );
   });
 
   // The counts answer "how many match what I'm looking at", so a seller filter narrows them too
