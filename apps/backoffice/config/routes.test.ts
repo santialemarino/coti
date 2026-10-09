@@ -140,7 +140,7 @@ describe('route groups', () => {
   // A route in no group, or in two, is a route nobody decided the gate's answer for.
   it('puts every registered route in exactly one group', () => {
     Object.values(ROUTES)
-      .filter((route): route is string => typeof route === 'string')
+      .flatMap((route) => (typeof route === 'string' ? [route] : []))
       .forEach((route) => {
         expect(groups.filter((group) => group.includes(route))).toHaveLength(1);
       });
