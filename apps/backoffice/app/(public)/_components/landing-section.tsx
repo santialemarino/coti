@@ -22,7 +22,11 @@ export function LandingSection({
   const headingId = `${id}-title`;
 
   return (
-    <section aria-labelledby={headingId} className={cn('py-16 lg:py-24', className)}>
+    <section
+      id={id}
+      aria-labelledby={headingId}
+      className={cn('py-16 scroll-mt-16 lg:py-24', className)}
+    >
       <Reveal className="flex flex-col w-full max-w-6xl mx-auto px-4 gap-y-10 sm:px-6 lg:gap-y-12">
         <div className="flex flex-col max-w-2xl gap-y-3">
           <p className="text-paragraph-sm-semibold text-primary">{eyebrow}</p>

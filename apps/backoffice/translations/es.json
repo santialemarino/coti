@@ -278,11 +278,27 @@
       "goToOrders": "Ir a Pedidos"
     },
     "footer": {
-      "nav": "Información",
+      "nav": "Pie de página",
       "tagline": "Cotización asistida por IA para corralones de materiales.",
-      "privacy": "Privacidad",
-      "terms": "Términos",
-      "copyright": "© {year} Coti"
+      "columns": {
+        "product": {
+          "title": "Producto",
+          "links": {
+            "steps": "Cómo funciona",
+            "features": "Qué incluye",
+            "faq": "Preguntas frecuentes"
+          }
+        },
+        "legal": {
+          "title": "Legal",
+          "links": {
+            "privacy": "Privacidad",
+            "terms": "Términos de uso"
+          }
+        }
+      },
+      "copyright": "© {year} Coti. Todos los derechos reservados.",
+      "madeIn": "Hecho en Argentina"
     },
     "hero": {
       "slogan": "Cotizá. Convertí. Cerrá.",

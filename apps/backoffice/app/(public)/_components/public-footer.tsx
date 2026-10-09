@@ -8,35 +8,62 @@ import { ROUTES } from '@/config/routes';
 export async function PublicFooter() {
   const t = await getTranslations('landing.footer');
   const tCommon = await getTranslations('common');
-  const links = [
-    { href: ROUTES.privacy, label: t('privacy') },
-    { href: ROUTES.terms, label: t('terms') },
+  const columns = [
+    {
+      key: 'product',
+      links: [
+        { href: ROUTES.landingSection('steps'), label: 'steps' },
+        { href: ROUTES.landingSection('features'), label: 'features' },
+        { href: ROUTES.landingSection('faq'), label: 'faq' },
+      ],
+    },
+    {
+      key: 'legal',
+      links: [
+        { href: ROUTES.privacy, label: 'privacy' },
+        { href: ROUTES.terms, label: 'terms' },
+      ],
+    },
   ];
 
   return (
     <footer className="border-t border-border bg-card">
-      <div className="flex flex-col w-full max-w-6xl mx-auto px-4 py-10 gap-y-8 sm:px-6">
-        <div className="flex flex-col gap-y-6 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-col gap-y-2">
-            <Brand size="sm" label={tCommon('appName')} />
+      <div className="flex flex-col w-full max-w-6xl mx-auto px-4 sm:px-6">
+        <div className="grid grid-cols-2 py-12 gap-x-8 gap-y-10 lg:grid-cols-12 lg:py-16">
+          <div className="flex flex-col col-span-2 gap-y-3 lg:col-span-8">
+            <Link
+              href={ROUTES.landing}
+              className="w-fit rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
+            >
+              <Brand label={tCommon('appName')} />
+            </Link>
             <p className="text-paragraph-sm text-foreground-muted">{t('tagline')}</p>
           </div>
-          <nav aria-label={t('nav')}>
-            <ul className="flex flex-wrap gap-x-6 gap-y-2">
-              {links.map((link) => (
-                <li key={link.href}>
-                  <InlineLink asChild tone="muted">
-                    <Link href={link.href}>{link.label}</Link>
-                  </InlineLink>
-                </li>
-              ))}
-            </ul>
+          <nav aria-label={t('nav')} className="contents">
+            {columns.map((column) => (
+              <div key={column.key} className="flex flex-col gap-y-4 lg:col-span-2">
+                <h2 className="text-paragraph-sm-semibold text-foreground">
+                  {t(`columns.${column.key}.title`)}
+                </h2>
+                <ul className="flex flex-col gap-y-3">
+                  {column.links.map((link) => (
+                    <li key={link.label}>
+                      <InlineLink asChild tone="muted">
+                        <Link href={link.href}>
+                          {t(`columns.${column.key}.links.${link.label}`)}
+                        </Link>
+                      </InlineLink>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </nav>
         </div>
-        {/* Its own row under the brand, so it shares an edge with something instead of floating. */}
-        <p className="pt-6 border-t border-border text-paragraph-xs text-foreground-subtle">
-          {t('copyright', { year: new Date().getFullYear() })}
-        </p>
+        <div className="flex flex-col py-6 gap-y-2 border-t border-border text-paragraph-xs text-foreground-subtle sm:flex-row sm:items-center sm:justify-between">
+          <p>{t('copyright', { year: new Date().getFullYear() })}</p>
+          <p>{t('madeIn')}</p>
+        </div>
       </div>
     </footer>
   );

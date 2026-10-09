@@ -12,6 +12,7 @@ import {
   safeNextPath,
   SESSION_CLEARING_ROUTES,
   SIGNED_OUT_ONLY_ROUTES,
+  surfaceOf,
 } from '@/config/routes';
 
 describe('reachability', () => {
@@ -160,5 +161,16 @@ describe('safeNextPath allowlist', () => {
     expect(safeNextPath(ROUTES.login)).toBe(ROUTES.home);
     expect(safeNextPath(ROUTES.landing)).toBe(ROUTES.home);
     expect(safeNextPath('/precios')).toBe(ROUTES.home);
+  });
+});
+
+describe('surfaceOf', () => {
+  it('tells the public site, the sign-in screens and the app apart', () => {
+    expect(surfaceOf(ROUTES.landing)).toBe('public');
+    expect(surfaceOf(ROUTES.privacy)).toBe('public');
+    expect(surfaceOf(ROUTES.login)).toBe('auth');
+    expect(surfaceOf(ROUTES.resetPassword)).toBe('auth');
+    expect(surfaceOf(ROUTES.home)).toBe('app');
+    expect(surfaceOf(ROUTES.rfqsDetail('a1'))).toBe('app');
   });
 });

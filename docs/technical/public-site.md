@@ -62,3 +62,7 @@ there too. The header offers a visitor "Ingresar" and "Probar Coti", and a selle
   fades up once as it first enters the screen through `Reveal` — the one place Coti allows a scroll
   reveal. A section already on screen, or any section without JavaScript or under reduced motion,
   is simply shown.
+- Moving between the public site, the sign-in screens and the app fades the whole page in
+  (`SurfaceFade`), distinct from the app's own screen swap.
+- The footer follows the usual layout: the brand and tagline, two headed columns (Producto with the
+  landing's sections, and Legal), and a bottom bar with the copyright. Two columns on a phone.

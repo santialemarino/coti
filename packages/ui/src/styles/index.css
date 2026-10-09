@@ -305,6 +305,17 @@
   }
 }
 
+/*
+ * Crossing between the public site, the sign-in screens and the app: the whole page fades in from the
+ * wash, slower than the in-app screen swap so the two read as different events. Opacity only — a
+ * transform here would make the page the containing block of the app's fixed header and tab bar.
+ */
+@keyframes surface-in {
+  0% {
+    opacity: 0;
+  }
+}
+
 /* Content entrance: a short rise plus fade, for copy following a status icon. */
 @keyframes rise-in {
   0% {
@@ -421,7 +432,8 @@
   [class*='animate-collapsible-up'],
   [class*='animate-status-halo'],
   [class*='animate-status-pop'],
-  [class*='animate-rise-in'] {
+  [class*='animate-rise-in'],
+  [class*='animate-surface-in'] {
     animation: none;
   }
 }

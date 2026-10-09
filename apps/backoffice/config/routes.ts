@@ -6,6 +6,8 @@ export const ROUTES = {
   // Where a seller lands: the queue. The root belongs to the public site.
   home: '/inbox',
   landing: '/',
+  // The landing's sections, linked from the footer on every public page.
+  landingSection: (section: 'steps' | 'features' | 'faq') => `/#${section}`,
   privacy: '/privacy',
   terms: '/terms',
   settings: SETTINGS_ROOT,
@@ -90,6 +92,16 @@ export const SIGNED_OUT_ONLY_ROUTES: readonly string[] = [
  * of a caller who still looks signed in; renewing them first would undo it.
  */
 export const SESSION_CLEARING_ROUTES: readonly string[] = [ROUTES.sessionEnded];
+
+/*
+ * Which of the three surfaces a path belongs to: the public site, the sign-in screens (the 404 shares
+ * their frame) or the app. Crossing from one to another is a page-level change, animated as one.
+ */
+export function surfaceOf(pathname: string): 'public' | 'auth' | 'app' {
+  if (PUBLIC_ROUTES.includes(pathname)) return 'public';
+  if (isProtectedPath(pathname)) return 'app';
+  return 'auth';
+}
 
 // The app's own route handlers, which answer only a signed-in caller.
 const API_ROOT = '/api';

@@ -158,6 +158,7 @@
   --animate-status-pop: status-pop 460ms var(--ease-out-back) both;
   --animate-status-halo: status-halo 640ms var(--ease-out-soft) both;
   --animate-rise-in: rise-in 380ms var(--ease-out-soft) both;
+  --animate-surface-in: surface-in var(--duration-slower) var(--ease-out-soft) both;
 
   /* Widths */
   --max-width-auth-card: 25rem; /* 400px */

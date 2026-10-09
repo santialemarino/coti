@@ -240,6 +240,12 @@ panel enters from the trigger and then dissolves in place.
   **Live is not on top**: the captured screen paints in an overlay above the whole page, so a fixed
   or sticky piece it can overlap (the header once scrolled, the phone tab bar) is captured too
   under its own name, its old image dropped and its new one live and unanimated (`shell-*`).
+- **Crossing surfaces is a page fade, not a screen swap.** A navigation between the public site, the
+  sign-in screens and the app (`surfaceOf` in the backoffice's routes) fades the whole page in from the
+  wash — `SurfaceFade` in the root layout, `animate-surface-in`, 500ms, opacity only (a transform
+  would make the page the containing block of the app's fixed header and tab bar). Slower and
+  simpler than the in-app fade-through, so the two read as different events. Never on a page load,
+  never within one surface, and off under reduced motion.
 - **A column that comes and goes with the route lives in the layout, not in the pages.** A page
   unmounts the moment the route changes, so a column it renders can never animate out. Keep it in
   the shared layout, derive open from the pathname, and animate the box's `width` between `0` and a
