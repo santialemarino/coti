@@ -27,6 +27,7 @@ import (
 
 	"github.com/santialemarino/coti/apps/api/internal/ai"
 	aiprovider "github.com/santialemarino/coti/apps/api/internal/ai/provider"
+	"github.com/santialemarino/coti/apps/api/internal/arca"
 	"github.com/santialemarino/coti/apps/api/internal/branding"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
@@ -132,6 +133,11 @@ func run() error {
 		log.Warn("channel credentials cannot be stored: CHANNEL_CONFIG_ENCRYPTION_KEY is unset")
 	}
 
+	invoiceService, err := newInvoiceService(cfg, log, db, quoteRepo, quoteDiscountRepo)
+	if err != nil {
+		return err
+	}
+
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
 	authService := services.NewAuthService(db, userRepo, branchRepo, refreshTokenRepo, tokenService, cfg.Auth, nil)
 	mailService := services.NewMailService(db, mailer, notificationRepo, accountRepo, nil)
@@ -221,6 +227,7 @@ func run() error {
 			Account:       handler.NewAccountHandler(accountService),
 			AccountLogo:   handler.NewBrandLogoHandler(accountService, cfg.Storage.MaxFileSize),
 			Onboarding:    handler.NewOnboardingHandler(onboardingService),
+			Invoice:       handler.NewInvoiceHandler(invoiceService, cfg.Storage.MaxFileSize),
 			File:          fileHandler(objectStorage),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
@@ -304,4 +311,36 @@ func fileHandler(set storageprovider.Set) *handler.FileHandler {
 		return nil
 	}
 	return handler.NewFileHandler(set.Local)
+}
+
+// newInvoiceService binds the ARCA issuer the configuration names, or the stand-in that refuses.
+func newInvoiceService(
+	cfg *config.Config, log *slog.Logger, db *repository.DB, quotes *repository.QuoteRepository,
+	discounts *repository.QuoteDiscountRepository,
+) (*services.InvoiceService, error) {
+	sealer, err := secrets.NewAESGCM(cfg.Invoicing.EncryptionKey)
+	if err != nil {
+		return nil, err
+	}
+	var issuer domain.InvoiceIssuer = arca.Disabled{}
+	enabled := cfg.Invoicing.Provider == config.InvoicingProviderWSFE
+	if enabled {
+		issuer = arca.NewIssuer(arca.Settings{Environment: cfg.Invoicing.Environment,
+			Timeout: cfg.Invoicing.RequestTimeout, Log: log}, arca.NewMemoryTicketCache())
+		log.Info("invoicing enabled", slog.String("arca_environment", cfg.Invoicing.Environment))
+	}
+	parse := func(certificatePEM, keyPEM []byte) (*domain.ARCACredentialStatus, error) {
+		info, err := arca.ParseCredentials(certificatePEM, keyPEM)
+		if err != nil {
+			return nil, err
+		}
+		return &domain.ARCACredentialStatus{CUIT: info.CUIT, Subject: info.Subject, ExpiresAt: info.NotAfter}, nil
+	}
+	return services.NewInvoiceService(db, repository.NewInvoicingRepository(), quotes, discounts, issuer,
+		sealer, parse, services.InvoiceSettings{
+			Enabled: enabled, Environment: cfg.Invoicing.Environment,
+			IssueTimeout:    cfg.Invoicing.IssueTimeout,
+			ReconcileAfter:  cfg.Invoicing.ReconcileAfter,
+			UnidentifiedMax: decimal.NewFromInt(cfg.Invoicing.UnidentifiedReceiverMax),
+		}, nil), nil
 }

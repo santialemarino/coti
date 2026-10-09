@@ -103,6 +103,7 @@ function productBody(values: ProductValues) {
     unit: values.unit,
     family_id: values.familyId,
     subgroup_id: values.subgroupId || null,
+    vat_rate: values.vatRate,
   };
 }
 

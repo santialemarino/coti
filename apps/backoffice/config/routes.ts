@@ -22,6 +22,7 @@ export const ROUTES = {
   emailSettings: `${SETTINGS_ROOT}/email`,
   accountSettings: `${SETTINGS_ROOT}/account`,
   priceSettings: `${SETTINGS_ROOT}/prices`,
+  invoicingSettings: `${SETTINGS_ROOT}/invoicing`,
   catalogSettings: `${SETTINGS_ROOT}/catalog`,
   branchSettings: `${SETTINGS_ROOT}/branches`,
   userSettings: `${SETTINGS_ROOT}/users`,

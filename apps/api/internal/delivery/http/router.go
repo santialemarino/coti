@@ -47,6 +47,7 @@ type Handlers struct {
 	Prices        *handler.ProductPriceHandler
 	CatalogImport *handler.CatalogImportHandler
 	Onboarding    *handler.OnboardingHandler
+	Invoice       *handler.InvoiceHandler
 	// File is nil unless the local storage adapter is bound.
 	File *handler.FileHandler
 }
@@ -171,11 +172,15 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	quotes.POST("/:quoteId/discounts", h.Rfq.AddDiscount)
 	quotes.PATCH("/:quoteId/discounts/:discountId", h.Rfq.UpdateDiscount)
 	quotes.DELETE("/:quoteId/discounts/:discountId", h.Rfq.DeleteDiscount)
+	quotes.GET("/:quoteId/invoice", h.Invoice.Preview)
+	quotes.POST("/:quoteId/invoice", h.Invoice.Issue)
 
 	clients := verified.Group("/clients")
 	clients.GET("", h.Client.List)
 	clients.GET("/:clientId", h.Client.Get)
 	clients.PUT("/:clientId/tags", h.Client.ReplaceTags)
+	clients.GET("/:clientId/fiscal", h.Invoice.GetClientFiscal)
+	clients.PUT("/:clientId/fiscal", h.Invoice.UpdateClientFiscal)
 
 	tags := verified.Group("/tags")
 	tags.GET("", h.Client.ListTags)
@@ -229,6 +234,10 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	admin.POST("/products/import/preview", h.CatalogImport.Preview)
 	admin.POST("/products/import/confirm", h.CatalogImport.Confirm)
 	admin.GET("/product-taxonomy", h.CatalogImport.Taxonomy)
+	admin.GET("/invoicing/settings", h.Invoice.GetSettings)
+	admin.PUT("/invoicing/settings", h.Invoice.UpdateSettings)
+	admin.PUT("/invoicing/credentials", h.Invoice.UploadCredentials)
+	admin.DELETE("/invoicing/credentials", h.Invoice.DeleteCredentials)
 
 	users := verified.Group("/users", middleware.RequireAdmin())
 	users.GET("", h.User.List)

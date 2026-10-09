@@ -99,6 +99,13 @@ CREATE TYPE ai_operation AS ENUM (
   'CORRECTION_LEARNING'
 );
 
+-- Electronic invoicing with ARCA.
+CREATE TYPE iva_condition AS ENUM ('REGISTERED', 'MONOTRIBUTO', 'EXEMPT', 'FINAL_CONSUMER');
+CREATE TYPE vat_rate AS ENUM ('VAT_0', 'VAT_2_5', 'VAT_5', 'VAT_10_5', 'VAT_21', 'VAT_27', 'EXEMPT');
+CREATE TYPE invoice_type AS ENUM ('A', 'B', 'C');
+CREATE TYPE invoice_status AS ENUM ('PENDING', 'ISSUED', 'REJECTED');
+CREATE TYPE receiver_doc_type AS ENUM ('CUIT', 'DNI', 'NONE');
+
 -- =============================================================================
 -- FUNCTIONS
 -- =============================================================================
@@ -130,7 +137,10 @@ CREATE TABLE account (
   brand_color     VARCHAR(32),
   is_active       BOOLEAN NOT NULL DEFAULT TRUE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  iva_condition   iva_condition,
+  -- Whether the catalog's prices already carry IVA; the invoice splits them either way.
+  prices_include_vat BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE account_onboarding (
@@ -165,7 +175,11 @@ CREATE TABLE branch (
   default_expiry_days INTEGER NOT NULL DEFAULT 7,
   is_active           BOOLEAN NOT NULL DEFAULT TRUE,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- ARCA numbers invoices per point of sale, and a point of sale belongs to an address.
+  point_of_sale       INTEGER CHECK (point_of_sale BETWEEN 1 AND 99998),
+  -- Checked at the end of the statement, so one save can swap two branches' numbers.
+  CONSTRAINT uq_branch_point_of_sale UNIQUE (account_id, point_of_sale) DEFERRABLE INITIALLY IMMEDIATE
 );
 
 -- Bumping session_epoch invalidates every outstanding access token, which is immediate
@@ -273,7 +287,8 @@ CREATE TABLE product (
   search_document TSVECTOR
     GENERATED ALWAYS AS (
       to_tsvector('spanish_unaccent'::regconfig, canonical_name || ' ' || coalesce(description, ''))
-    ) STORED
+    ) STORED,
+  vat_rate       vat_rate NOT NULL DEFAULT 'VAT_21'
 );
 
 CREATE TABLE branch_product (
@@ -379,6 +394,10 @@ CREATE TABLE client (
   notes          VARCHAR(512),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  legal_name     VARCHAR(255),
+  -- Digits only: an 11-digit CUIT or a 7–8 digit DNI.
+  tax_id         VARCHAR(11) CHECK (tax_id ~ '^[0-9]{7,11}$'),
+  iva_condition  iva_condition,
   CONSTRAINT uq_client_account UNIQUE (account_id, id)
 );
 
@@ -969,6 +988,65 @@ CREATE TABLE ai_usage (
 );
 
 -- =============================================================================
+-- INVOICING
+-- =============================================================================
+
+-- One certificate per account. The key and the WSAA ticket are sealed by the API before they reach
+-- the database; the ticket is kept because WSAA refuses a new one while it is live.
+CREATE TABLE arca_credential (
+  account_id          UUID PRIMARY KEY,
+  certificate_pem     TEXT NOT NULL,
+  private_key_sealed  TEXT NOT NULL,
+  cuit                VARCHAR(11) NOT NULL,
+  subject             VARCHAR(512) NOT NULL,
+  expires_at          TIMESTAMPTZ NOT NULL,
+  ticket_token_sealed TEXT,
+  ticket_sign_sealed  TEXT,
+  ticket_expires_at   TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- One invoice per sale. A rejected attempt stays as a record and frees the quote for another try;
+-- a pending one holds it while ARCA is being asked.
+CREATE TABLE invoice (
+  id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id             UUID NOT NULL,
+  branch_id              UUID NOT NULL,
+  quote_id               UUID NOT NULL,
+  quote_version_id       UUID NOT NULL,
+  status                 invoice_status NOT NULL DEFAULT 'PENDING',
+  invoice_type           invoice_type NOT NULL,
+  point_of_sale          INTEGER NOT NULL,
+  number                 BIGINT,
+  -- The number last requested from ARCA, written before the request: how an unknown outcome is checked.
+  claimed_number         BIGINT,
+  issued_on              DATE NOT NULL,
+  cae                    VARCHAR(14),
+  cae_expires_on         DATE,
+  issuer_cuit            VARCHAR(11) NOT NULL,
+  receiver_name          VARCHAR(255) NOT NULL,
+  receiver_doc_type      receiver_doc_type NOT NULL,
+  receiver_doc_number    VARCHAR(11),
+  receiver_iva_condition iva_condition NOT NULL,
+  net_amount             NUMERIC(14,2) NOT NULL,
+  exempt_amount          NUMERIC(14,2) NOT NULL,
+  vat_amount             NUMERIC(14,2) NOT NULL,
+  total                  NUMERIC(14,2) NOT NULL,
+  currency               CHAR(3) NOT NULL,
+  -- [{rate, base, amount}] as decimal strings, as authorized.
+  vat_breakdown          JSONB NOT NULL DEFAULT '[]',
+  issues                 JSONB NOT NULL DEFAULT '[]',
+  arca_request           TEXT,
+  arca_response          TEXT,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT chk_invoice_issued CHECK (
+    status <> 'ISSUED' OR (number IS NOT NULL AND cae IS NOT NULL AND cae_expires_on IS NOT NULL)
+  )
+);
+
+-- =============================================================================
 -- FOREIGN KEYS
 -- (at the end, to resolve the circular quote <-> quote_version dependency)
 -- =============================================================================
@@ -1120,6 +1198,12 @@ ALTER TABLE ai_usage ADD CONSTRAINT fk_ai_usage_branch FOREIGN KEY (branch_id) R
 -- The spend happened whatever becomes of the order it served.
 ALTER TABLE ai_usage ADD CONSTRAINT fk_ai_usage_rfq FOREIGN KEY (rfq_id) REFERENCES rfq(id) ON DELETE SET NULL;
 
+ALTER TABLE arca_credential ADD CONSTRAINT fk_arca_credential_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE invoice ADD CONSTRAINT fk_invoice_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE invoice ADD CONSTRAINT fk_invoice_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
+ALTER TABLE invoice ADD CONSTRAINT fk_invoice_quote FOREIGN KEY (quote_id) REFERENCES quote(id);
+ALTER TABLE invoice ADD CONSTRAINT fk_invoice_quote_version FOREIGN KEY (quote_version_id) REFERENCES quote_version(id);
+
 -- =============================================================================
 -- INDEXES
 -- =============================================================================
@@ -1225,6 +1309,11 @@ CREATE INDEX idx_job_run_name_started ON job_run(job_name, started_at DESC);
 CREATE INDEX idx_ai_usage_account_created ON ai_usage(account_id, created_at);
 CREATE INDEX idx_ai_usage_account_rfq ON ai_usage(account_id, rfq_id) WHERE rfq_id IS NOT NULL;
 
+CREATE UNIQUE INDEX uq_invoice_active_quote ON invoice(quote_id) WHERE status <> 'REJECTED';
+CREATE UNIQUE INDEX uq_invoice_number ON invoice(account_id, point_of_sale, invoice_type, number)
+  WHERE number IS NOT NULL;
+CREATE INDEX idx_invoice_account_quote ON invoice(account_id, quote_id);
+
 -- =============================================================================
 -- updated_at TRIGGERS (only tables that mutate in place)
 -- =============================================================================
@@ -1248,6 +1337,8 @@ CREATE TRIGGER trg_product_updated        BEFORE UPDATE ON product        FOR EA
   )
   EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_branch_product_updated BEFORE UPDATE ON branch_product FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_arca_credential_updated BEFORE UPDATE ON arca_credential FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_invoice_updated        BEFORE UPDATE ON invoice        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_combo_updated          BEFORE UPDATE ON combo          FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_branch_combo_updated   BEFORE UPDATE ON branch_combo   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_client_updated         BEFORE UPDATE ON client         FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -1299,6 +1390,9 @@ REVOKE UPDATE, DELETE ON quote_ai_generation, quote_ai_generation_item,
 -- A ledger of what was spent is only a ledger if no request can rewrite it.
 REVOKE UPDATE, DELETE ON ai_usage FROM coti_app;
 
+-- An authorized invoice is a fiscal record: it is corrected with a credit note, never deleted.
+REVOKE DELETE ON invoice FROM coti_app;
+
 -- The grant above reaches every table, and job_run is an audit trail no request has any reason to
 -- read, let alone rewrite. Only the owner the scheduled jobs run as touches it.
 REVOKE ALL ON job_run FROM coti_app;
@@ -1328,7 +1422,7 @@ BEGIN
     'message_batch', 'quote_message',
     'promotion', 'promotion_condition_item', 'promotion_tier',
     'quote_discount', 'quote_discount_item',
-    'handler_decision', 'notification', 'ai_usage'
+    'handler_decision', 'notification', 'ai_usage', 'arca_credential', 'invoice'
   ] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format(

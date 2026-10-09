@@ -9,6 +9,9 @@ import (
 
 const validSecret = "0123456789abcdef0123456789abcdef" // 32 chars.
 
+// validAESKey is 32 bytes, base64-encoded, as the sealing keys take them.
+const validAESKey = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+
 // setEnv applies the given variables for the test and clears everything else Load
 // reads, so a stray value in the developer's shell cannot change the outcome.
 func setEnv(t *testing.T, vars map[string]string) {
@@ -61,6 +64,9 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY",
 		"STORAGE_MAX_FILE_SIZE_BYTES", "STORAGE_SIGNED_URL_EXPIRY_MINUTES",
 		"CHANNEL_CONFIG_ENCRYPTION_KEY",
+		"INVOICING_PROVIDER", "ARCA_ENVIRONMENT", "ARCA_REQUEST_TIMEOUT_SECONDS",
+		"ARCA_ISSUE_TIMEOUT_SECONDS", "INVOICE_PENDING_RECONCILE_SECONDS",
+		"INVOICE_UNIDENTIFIED_RECEIVER_MAX_AMOUNT", "ARCA_CREDENTIALS_ENCRYPTION_KEY",
 	}
 	for _, k := range known {
 		t.Setenv(k, "")
@@ -1398,9 +1404,9 @@ func TestLoad_ChannelEncryptionKeyIsOptionalAndDecoded(t *testing.T) {
 		t.Errorf("Channel.EncryptionKey = %q, want %q decoded", cfg.Channel.EncryptionKey,
 			validSecret)
 	}
-	if len(cfg.Channel.EncryptionKey) != channelKeyLength {
+	if len(cfg.Channel.EncryptionKey) != aesKeyLength {
 		t.Errorf("Channel.EncryptionKey is %d bytes, want %d", len(cfg.Channel.EncryptionKey),
-			channelKeyLength)
+			aesKeyLength)
 	}
 }
 
@@ -1446,5 +1452,83 @@ func TestMailConfig_DeliversOnlyOverSMTP(t *testing.T) {
 		if got := (MailConfig{Provider: provider}).Delivers(); got != want {
 			t.Errorf("Delivers() for %q = %v, want %v", provider, got, want)
 		}
+	}
+}
+
+func TestLoad_InvoicingTimeoutDefaults(t *testing.T) {
+	setEnv(t, minimalEnv())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	inv := cfg.Invoicing
+	if inv.RequestTimeout != 20*time.Second || inv.IssueTimeout != 75*time.Second ||
+		inv.ReconcileAfter != 300*time.Second {
+		t.Errorf("timeouts = %v / %v / %v, want 20s / 1m15s / 5m0s",
+			inv.RequestTimeout, inv.IssueTimeout, inv.ReconcileAfter)
+	}
+}
+
+func TestLoad_InvoicingTimeoutsLandOnTheirOwnFields(t *testing.T) {
+	env := minimalEnv()
+	env["ARCA_REQUEST_TIMEOUT_SECONDS"] = "7"
+	env["ARCA_ISSUE_TIMEOUT_SECONDS"] = "33"
+	env["INVOICE_PENDING_RECONCILE_SECONDS"] = "44"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	inv := cfg.Invoicing
+	if inv.RequestTimeout != 7*time.Second || inv.IssueTimeout != 33*time.Second ||
+		inv.ReconcileAfter != 44*time.Second {
+		t.Errorf("timeouts = %v / %v / %v, want 7s / 33s / 44s",
+			inv.RequestTimeout, inv.IssueTimeout, inv.ReconcileAfter)
+	}
+}
+
+/*
+ * An issue that outlasts the response leaves the seller with a broken page while ARCA may still
+ * authorize the invoice, and a pending invoice reconciled before its issue can have ended races
+ * it into a second request. Startup refuses both.
+ */
+func TestLoad_RejectsInvoicingTimeoutsThatOverlap(t *testing.T) {
+	cases := map[string]struct {
+		env  map[string]string
+		name string
+	}{
+		"issue outlasts the response": {map[string]string{"ARCA_ISSUE_TIMEOUT_SECONDS": "90",
+			"INVOICING_PROVIDER": "wsfe", "ARCA_CREDENTIALS_ENCRYPTION_KEY": validAESKey}, "SERVER_WRITE_TIMEOUT_SECONDS"},
+		"reconcile within an issue":   {map[string]string{"INVOICE_PENDING_RECONCILE_SECONDS": "75"}, "INVOICE_PENDING_RECONCILE_SECONDS"},
+		"issue shorter than one call": {map[string]string{"ARCA_REQUEST_TIMEOUT_SECONDS": "80"}, "ARCA_ISSUE_TIMEOUT_SECONDS"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			env := minimalEnv()
+			for k, v := range tc.env {
+				env[k] = v
+			}
+			setEnv(t, env)
+
+			_, err := Load()
+			if err == nil || !strings.Contains(err.Error(), tc.name) {
+				t.Fatalf("Load() = %v, want a problem naming %s", err, tc.name)
+			}
+		})
+	}
+}
+
+// A switched-off integration must not block a boot over its own timing.
+func TestLoad_InvoicingOffIgnoresTheResponseBudget(t *testing.T) {
+	env := minimalEnv()
+	env["SERVER_WRITE_TIMEOUT_SECONDS"] = "30"
+	env["RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS"] = "25"
+	env["SERVER_EDGE_TIMEOUT_SECONDS"] = "0"
+	setEnv(t, env)
+
+	if _, err := Load(); err != nil {
+		t.Fatalf("Load() = %v, want invoicing off to accept a short write budget", err)
 	}
 }

@@ -198,6 +198,7 @@ func (h *ProductHandler) Create(c *gin.Context) {
 		Unit:          body.Unit,
 		FamilyID:      body.FamilyID,
 		SubgroupID:    body.SubgroupID,
+		VATRate:       vatRatePtr(body.VATRate),
 	}
 	if body.Price != nil {
 		price, err := decimal.NewFromString(*body.Price)
@@ -262,6 +263,7 @@ func (h *ProductHandler) Update(c *gin.Context) {
 		FamilyID:      body.FamilyID,
 		SubgroupID:    body.SubgroupID,
 		IsActive:      body.IsActive,
+		VATRate:       vatRatePtr(body.VATRate),
 	})
 	if err != nil {
 		Respond(c, err)
@@ -602,6 +604,7 @@ func toProductResponse(p domain.Product) dto.ProductResponse {
 		FamilyID:      p.FamilyID,
 		SubgroupID:    p.SubgroupID,
 		IsActive:      p.IsActive,
+		VATRate:       string(p.VATRate),
 		CreatedAt:     p.CreatedAt,
 		UpdatedAt:     p.UpdatedAt,
 	}
@@ -620,4 +623,13 @@ func toSynonymResponse(s domain.ProductSynonym) dto.SynonymResponse {
 		Source:    string(s.Source),
 		CreatedAt: s.CreatedAt,
 	}
+}
+
+// vatRatePtr maps an optional bound rate, already checked against the closed set, to the domain.
+func vatRatePtr(value *string) *domain.VATRate {
+	if value == nil {
+		return nil
+	}
+	rate := domain.VATRate(*value)
+	return &rate
 }

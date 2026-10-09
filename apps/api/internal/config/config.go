@@ -24,9 +24,8 @@ const minJWTSecretLength = 32
 // with the same construction and so needs the same key width.
 const minSigningSecretLength = 32
 
-// channelKeyLength is the width of CHANNEL_CONFIG_ENCRYPTION_KEY once decoded. AES-256 takes
-// exactly this many bytes.
-const channelKeyLength = 32
+// aesKeyLength is the width of an AES-256 sealing key once decoded.
+const aesKeyLength = 32
 const defaultCatalogImportMaxBytes = 5 * 1024 * 1024
 const defaultPriceImportMaxBytes = 5 * 1024 * 1024
 const maxBranchExpiryDays = 365
@@ -90,6 +89,7 @@ type Config struct {
 	PriceImport     SpreadsheetImportConfig
 	Storage         StorageConfig
 	Channel         ChannelConfig
+	Invoicing       InvoicingConfig
 }
 
 // QuoteLogoConfig bounds retrieval of untrusted branding images.
@@ -123,6 +123,72 @@ type ChannelConfig struct {
 	// and still serves channels — storing a credential is the one thing refused, so a deployment
 	// that never set a key cannot end up keeping a provider token in the clear.
 	EncryptionKey []byte
+}
+
+// InvoicingProvider names who authorizes electronic invoices.
+type InvoicingProvider string
+
+const (
+	InvoicingProviderDisabled InvoicingProvider = "disabled"
+	InvoicingProviderWSFE     InvoicingProvider = "wsfe"
+)
+
+// ARCA environments: homologation is ARCA's test service, where nothing issued is fiscally valid.
+const (
+	ARCAEnvironmentHomologation = "homologation"
+	ARCAEnvironmentProduction   = "production"
+)
+
+// InvoicingConfig holds the ARCA integration: off by default, and on homologation until switched.
+type InvoicingConfig struct {
+	Provider       InvoicingProvider
+	Environment    string
+	RequestTimeout time.Duration // one call to WSAA or WSFEv1.
+	IssueTimeout   time.Duration // a whole issue, every call it chains included.
+	// ReconcileAfter is how old a pending invoice must be before it is checked against ARCA.
+	ReconcileAfter time.Duration
+	// UnidentifiedReceiverMax is the amount from which ARCA requires a consumidor final to be
+	// identified on a B invoice, in pesos.
+	UnidentifiedReceiverMax int64
+	// EncryptionKey seals each account's ARCA private key.
+	EncryptionKey []byte
+}
+
+func (c InvoicingConfig) problems() []string {
+	var problems []string
+	switch c.Provider {
+	case InvoicingProviderDisabled:
+	case InvoicingProviderWSFE:
+		if len(c.EncryptionKey) == 0 {
+			problems = append(problems, "ARCA_CREDENTIALS_ENCRYPTION_KEY is required when "+
+				"INVOICING_PROVIDER is "+string(InvoicingProviderWSFE))
+		}
+	default:
+		problems = append(problems, fmt.Sprintf("INVOICING_PROVIDER must be %q or %q, got %q",
+			InvoicingProviderDisabled, InvoicingProviderWSFE, c.Provider))
+	}
+	if c.Environment != ARCAEnvironmentHomologation && c.Environment != ARCAEnvironmentProduction {
+		problems = append(problems, fmt.Sprintf("ARCA_ENVIRONMENT must be %q or %q, got %q",
+			ARCAEnvironmentHomologation, ARCAEnvironmentProduction, c.Environment))
+	}
+	if c.RequestTimeout <= 0 {
+		problems = append(problems, "ARCA_REQUEST_TIMEOUT_SECONDS must be greater than zero")
+	}
+	if c.IssueTimeout < c.RequestTimeout {
+		problems = append(problems, fmt.Sprintf(
+			"ARCA_ISSUE_TIMEOUT_SECONDS (%s) must be at least ARCA_REQUEST_TIMEOUT_SECONDS (%s)",
+			c.IssueTimeout, c.RequestTimeout))
+	}
+	// A pending invoice younger than one issue may still be in flight; checking it would race it.
+	if c.ReconcileAfter <= c.IssueTimeout {
+		problems = append(problems, fmt.Sprintf(
+			"INVOICE_PENDING_RECONCILE_SECONDS (%s) must be above ARCA_ISSUE_TIMEOUT_SECONDS (%s)",
+			c.ReconcileAfter, c.IssueTimeout))
+	}
+	if c.UnidentifiedReceiverMax <= 0 {
+		problems = append(problems, "INVOICE_UNIDENTIFIED_RECEIVER_MAX_AMOUNT must be greater than zero")
+	}
+	return problems
 }
 
 // RateLimitConfig holds the request allowances, all of them settings rather than literals.
@@ -830,7 +896,17 @@ func Load() (*Config, error) {
 			MaxBytes: int64(getInt("PRICE_IMPORT_MAX_BYTES", defaultPriceImportMaxBytes, &problems)),
 		},
 		Channel: ChannelConfig{
-			EncryptionKey: getBase64Key("CHANNEL_CONFIG_ENCRYPTION_KEY", channelKeyLength, &problems),
+			EncryptionKey: getBase64Key("CHANNEL_CONFIG_ENCRYPTION_KEY", aesKeyLength, &problems),
+		},
+		Invoicing: InvoicingConfig{
+			Provider:       InvoicingProvider(getString("INVOICING_PROVIDER", string(InvoicingProviderDisabled))),
+			Environment:    getString("ARCA_ENVIRONMENT", ARCAEnvironmentHomologation),
+			RequestTimeout: getDuration("ARCA_REQUEST_TIMEOUT_SECONDS", 20*time.Second, &problems),
+			IssueTimeout:   getDuration("ARCA_ISSUE_TIMEOUT_SECONDS", 75*time.Second, &problems),
+			ReconcileAfter: getDuration("INVOICE_PENDING_RECONCILE_SECONDS", 300*time.Second, &problems),
+			UnidentifiedReceiverMax: int64(getInt("INVOICE_UNIDENTIFIED_RECEIVER_MAX_AMOUNT", 10_000_000,
+				&problems)),
+			EncryptionKey: getBase64Key("ARCA_CREDENTIALS_ENCRYPTION_KEY", aesKeyLength, &problems),
 		},
 	}
 
@@ -914,6 +990,7 @@ func Load() (*Config, error) {
 	problems = append(problems, cfg.AI.problems()...)
 	problems = append(problems, cfg.QuoteLogo.problems()...)
 	problems = append(problems, cfg.Storage.problems()...)
+	problems = append(problems, cfg.Invoicing.problems()...)
 
 	// A base URL missing its scheme or host yields recovery links that go nowhere, and the
 	// only symptom is a user reporting that the mail does not work.
@@ -983,6 +1060,12 @@ func Load() (*Config, error) {
 		problems = append(problems, fmt.Sprintf(
 			"RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS (%s) must be below SERVER_WRITE_TIMEOUT_SECONDS (%s)",
 			cfg.RFQ.InlinePipelineTimeout, cfg.Server.WriteTimeout))
+	}
+	if cfg.Invoicing.Provider == InvoicingProviderWSFE && cfg.Invoicing.IssueTimeout >= cfg.Server.WriteTimeout {
+		// The seller would see a broken response while ARCA may still authorize the invoice.
+		problems = append(problems, fmt.Sprintf(
+			"ARCA_ISSUE_TIMEOUT_SECONDS (%s) must be below SERVER_WRITE_TIMEOUT_SECONDS (%s)",
+			cfg.Invoicing.IssueTimeout, cfg.Server.WriteTimeout))
 	}
 	/*
 	 * The platform in front gives up on us at EdgeTimeout, and nothing here can extend it. If our

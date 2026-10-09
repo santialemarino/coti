@@ -59,6 +59,17 @@ const (
 	CodeDeliveryChannel            ErrorCode = "DELIVERY_CHANNEL"
 	CodeIdempotencyMismatch        ErrorCode = "IDEMPOTENCY_MISMATCH"
 	CodeQuoteRepresentationInvalid ErrorCode = "QUOTE_REPRESENTATION_INVALID"
+	// Invoicing. INVOICE_NOT_READY carries the missing fiscal data as issues; INVOICE_REJECTED
+	// carries ARCA's own reasons.
+	CodeInvoiceNotReady      ErrorCode = "INVOICE_NOT_READY"
+	CodeInvoiceRejected      ErrorCode = "INVOICE_REJECTED"
+	CodeInvoiceInProgress    ErrorCode = "INVOICE_IN_PROGRESS"
+	CodeInvoiceStale         ErrorCode = "INVOICE_STALE"
+	CodePointOfSaleTaken     ErrorCode = "POINT_OF_SALE_TAKEN"
+	CodeQuoteAlreadyInvoiced ErrorCode = "QUOTE_ALREADY_INVOICED"
+	CodeARCACredentials      ErrorCode = "ARCA_CREDENTIALS"
+	CodeInvalidTaxID         ErrorCode = "INVALID_TAX_ID"
+	CodeInvoicingUnavailable ErrorCode = "INVOICING_UNAVAILABLE"
 )
 
 // The two an upload is refused with. The delivery layer raises both on its own, before any
@@ -121,6 +132,8 @@ func CodeOf(err error) ErrorCode {
 		return CodeDeliveryUnavailable
 	case errors.Is(err, ErrRepresentationUnavailable):
 		return CodeRepresentationUnavailable
+	case errors.Is(err, ErrInvoicingUnavailable):
+		return CodeInvoicingUnavailable
 	default:
 		return CodeInternal
 	}
