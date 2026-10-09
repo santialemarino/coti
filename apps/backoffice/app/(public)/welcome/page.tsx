@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { LandingBenefits } from '@/app/(public)/welcome/_components/landing-benefits';
 import { LandingCta } from '@/app/(public)/welcome/_components/landing-cta';
 import { LandingFaq } from '@/app/(public)/welcome/_components/landing-faq';
+import { LandingFeatures } from '@/app/(public)/welcome/_components/landing-features';
 import { LandingHero } from '@/app/(public)/welcome/_components/landing-hero';
 import { LandingSteps } from '@/app/(public)/welcome/_components/landing-steps';
 import { LandingTrust } from '@/app/(public)/welcome/_components/landing-trust';
@@ -46,6 +47,7 @@ export default async function LandingPage() {
       <LandingHero signedIn={signedIn} />
       <LandingBenefits />
       <LandingSteps />
+      <LandingFeatures />
       <LandingTrust />
       <LandingFaq />
       {signedIn ? null : <LandingCta />}

@@ -50,8 +50,9 @@ there too. The header offers a visitor "Ingresar" and "Probar Coti", and a selle
 ## Content
 
 - The sections follow the order a buyer asks their questions in: the hero (what Coti does, with both
-  calls to action above the fold), three benefits, the four steps, the copilot rules, the FAQ and a
-  closing call to action that only a visitor sees.
+  calls to action above the fold), three benefits, the four steps, everything Release 1 includes (intake to ARCA invoicing), the
+  copilot rules, the FAQ and a closing call to action that only a visitor sees. The copy describes
+  the Release 1 scope, not only what has shipped so far.
 - The product preview is drawn with the app's own components and fixed demo figures; nothing on
   the page computes a price.
 - **No testimonial, logo or metric is shown until a real one exists**, and there is no pricing

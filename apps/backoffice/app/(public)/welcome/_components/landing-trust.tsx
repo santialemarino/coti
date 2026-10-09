@@ -20,6 +20,7 @@ export async function LandingTrust() {
       eyebrow={t('eyebrow')}
       title={t('title')}
       description={t('description')}
+      className="bg-card"
     >
       <ul className="grid gap-6 md:grid-cols-3">
         {POINTS.map(({ key, icon: Icon }) => (

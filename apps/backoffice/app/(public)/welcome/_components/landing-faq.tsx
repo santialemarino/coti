@@ -8,13 +8,21 @@ import {
 } from '@repo/ui/components';
 import { LandingSection } from '@/app/(public)/welcome/_components/landing-section';
 
-const QUESTIONS = ['catalog', 'noMatch', 'autoReply', 'branches', 'customerAccount'] as const;
+const QUESTIONS = [
+  'catalog',
+  'noMatch',
+  'autoReply',
+  'changes',
+  'invoicing',
+  'branches',
+  'customerAccount',
+] as const;
 
 export async function LandingFaq() {
   const t = await getTranslations('landing.faq');
 
   return (
-    <LandingSection id="faq" eyebrow={t('eyebrow')} title={t('title')} className="bg-card">
+    <LandingSection id="faq" eyebrow={t('eyebrow')} title={t('title')}>
       <ul className="flex flex-col max-w-3xl border-y border-border divide-y divide-border">
         {QUESTIONS.map((question) => (
           <li key={question}>
