@@ -7,7 +7,7 @@ import {
   clearSession,
   getAccessToken,
   getSession,
-  holdsSession,
+  isAuthenticated,
   requireAdmin,
 } from '@/lib/auth/session';
 import { ACCESS_COOKIE, BRANCH_COOKIE, REFRESH_COOKIE, REMEMBER_COOKIE } from '@/lib/auth/tokens';
@@ -120,19 +120,19 @@ describe('getAccessToken', () => {
   });
 });
 
-describe('holdsSession', () => {
+describe('isAuthenticated', () => {
   // The access cookie lapses long before the refresh one; someone holding only that is still signed in.
   it('counts a refresh token alone as a session', async () => {
     jar({ [REFRESH_COOKIE]: 'refresh' });
 
-    await expect(holdsSession()).resolves.toBe(true);
+    await expect(isAuthenticated()).resolves.toBe(true);
   });
 
   it('reports no session once the cookies have been cleared in this request', async () => {
     jar({ [ACCESS_COOKIE]: 'access', [REFRESH_COOKIE]: 'refresh' });
     await clearSession();
 
-    await expect(holdsSession()).resolves.toBe(false);
+    await expect(isAuthenticated()).resolves.toBe(false);
   });
 });
 

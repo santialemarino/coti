@@ -5,9 +5,10 @@ import {
   LOCKED_REASON,
   LOGIN_ROUTE,
   NEXT_PARAM,
-  PUBLIC_ROUTES,
   REASON_PARAM,
   ROUTES,
+  safeNextPath,
+  SESSION_CLEARING_ROUTES,
   SIGNED_OUT_ONLY_ROUTES,
 } from '@/config/routes';
 import {
@@ -20,6 +21,8 @@ import {
   requestRefresh,
   sessionCookieOptions,
 } from '@/lib/auth/tokens';
+
+const SESSION_COOKIES = [ACCESS_COOKIE, REFRESH_COOKIE, REMEMBER_COOKIE, BRANCH_COOKIE] as const;
 
 /*
  * The gate, and the only place a session is renewed: of the three contexts Next
@@ -36,21 +39,21 @@ export async function proxy(request: NextRequest) {
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
   const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value;
   const remembered = request.cookies.get(REMEMBER_COOKIE)?.value === '1';
+  const guarded = isProtectedPath(pathname);
+  const signedOutOnly = SIGNED_OUT_ONLY_ROUTES.includes(pathname);
+  // A signed-in caller on the login screen goes where `next` asked, so a second click on a link works.
+  const onward = new URL(safeNextPath(request.nextUrl.searchParams.get(NEXT_PARAM)), request.url);
 
-  if (PUBLIC_ROUTES.includes(pathname)) {
-    // A refresh token is a session the queue will renew, so it is bounced too: someone holding one
-    // is signed in, and a login form would ask them to do it again.
-    const signedIn = refreshToken || (accessToken && !needsRenewal(accessToken));
-    if (SIGNED_OUT_ONLY_ROUTES.includes(pathname) && signedIn) {
-      return NextResponse.redirect(new URL(ROUTES.home, request.url));
-    }
-    return NextResponse.next();
+  // A visitor: the public site and the 404 are theirs, and anything guarded asks them to log in.
+  if (!accessToken && !refreshToken) {
+    return guarded ? redirectToLogin(request, pathname + search) : NextResponse.next();
   }
 
-  // A visitor's mistyped or stale link is answered with the 404, not with a login screen.
-  if (!accessToken && !refreshToken && !isProtectedPath(pathname)) return NextResponse.next();
+  if (SESSION_CLEARING_ROUTES.includes(pathname)) return NextResponse.next();
 
-  if (!needsRenewal(accessToken)) return NextResponse.next();
+  if (!needsRenewal(accessToken)) {
+    return signedOutOnly ? NextResponse.redirect(onward) : NextResponse.next();
+  }
 
   /*
    * A prefetch renders nothing the user is looking at, so it does not get to spend a
@@ -59,28 +62,34 @@ export async function proxy(request: NextRequest) {
    */
   if (request.headers.get('next-router-prefetch') === '1') return NextResponse.next();
 
-  // An expired access token is not an expired session, and renewing it is what
-  // keeps the user from being thrown out mid-task.
-  if (refreshToken) {
-    const renewed = await requestRefresh(refreshToken, forwardedClientAddress(request.headers));
-    if (renewed.ok && renewed.tokens) {
-      // Onto the request too, so the render this triggers sees the new token rather
-      // than waiting for the next round trip.
-      request.cookies.set(ACCESS_COOKIE, renewed.tokens.accessToken);
-      request.cookies.set(REFRESH_COOKIE, renewed.tokens.refreshToken);
-      const response = NextResponse.next({ request });
-      const options = sessionCookieOptions(remembered);
-      response.cookies.set(ACCESS_COOKIE, renewed.tokens.accessToken, options);
-      response.cookies.set(REFRESH_COOKIE, renewed.tokens.refreshToken, options);
-      return response;
-    }
-    if (renewed.status === 0) return NextResponse.next();
-    if (renewed.code === 'ACCOUNT_LOCKED') {
-      return redirectToLogin(request, pathname + search, LOCKED_REASON);
-    }
+  /*
+   * An expired access token is not an expired session. Renewing it on every page, the public ones
+   * included, settles the question once per request: past this point, still holding the cookies
+   * means holding a live session, which is all the header, the landing and the 404 need to read.
+   */
+  const renewed = refreshToken
+    ? await requestRefresh(refreshToken, forwardedClientAddress(request.headers))
+    : null;
+  if (renewed?.ok && renewed.tokens) {
+    // Onto the request too, so the render this triggers sees the new token rather
+    // than waiting for the next round trip.
+    request.cookies.set(ACCESS_COOKIE, renewed.tokens.accessToken);
+    request.cookies.set(REFRESH_COOKIE, renewed.tokens.refreshToken);
+    const response = signedOutOnly ? NextResponse.redirect(onward) : NextResponse.next({ request });
+    const options = sessionCookieOptions(remembered);
+    response.cookies.set(ACCESS_COOKIE, renewed.tokens.accessToken, options);
+    response.cookies.set(REFRESH_COOKIE, renewed.tokens.refreshToken, options);
+    return response;
   }
+  // The API is unreachable: the cookies survive and the next request retries.
+  if (renewed?.status === 0) return NextResponse.next();
 
-  return redirectToLogin(request, pathname + search);
+  if (guarded) {
+    const reason = renewed?.code === 'ACCOUNT_LOCKED' ? LOCKED_REASON : undefined;
+    return redirectToLogin(request, pathname + search, reason);
+  }
+  // On a public page or a 404 the session just ends, and the page renders for a visitor.
+  return endSession(request);
 }
 
 function redirectToLogin(request: NextRequest, from: string, reason?: string) {
@@ -91,10 +100,14 @@ function redirectToLogin(request: NextRequest, from: string, reason?: string) {
   const response = NextResponse.redirect(target);
   // Clearing is what stops the bounce: a surviving unexpired token would send the
   // login screen straight back to a page that rejects it.
-  response.cookies.delete(ACCESS_COOKIE);
-  response.cookies.delete(REFRESH_COOKIE);
-  response.cookies.delete(REMEMBER_COOKIE);
-  response.cookies.delete(BRANCH_COOKIE);
+  SESSION_COOKIES.forEach((name) => response.cookies.delete(name));
+  return response;
+}
+
+function endSession(request: NextRequest) {
+  SESSION_COOKIES.forEach((name) => request.cookies.delete(name));
+  const response = NextResponse.next({ request });
+  SESSION_COOKIES.forEach((name) => response.cookies.delete(name));
   return response;
 }
 

@@ -57,23 +57,27 @@ export function isOrdersPath(pathname: string): boolean {
   );
 }
 
-// Reachable without a session. Anything else is behind the gate.
-export const PUBLIC_ROUTES: readonly string[] = [
+/*
+ * The sign-in flows, reachable without a session. Which of them send a signed-in caller away is
+ * SIGNED_OUT_ONLY_ROUTES; the rest have a reason to open for one (below).
+ */
+export const AUTH_ROUTES: readonly string[] = [
   ROUTES.login,
   ROUTES.signup,
   ROUTES.forgotPassword,
   ROUTES.resetPassword,
   ROUTES.verifyEmail,
   ROUTES.sessionEnded,
-  ROUTES.landing,
-  ROUTES.privacy,
-  ROUTES.terms,
 ];
 
+// The public site: the same pages for everyone, signed in or not.
+export const PUBLIC_ROUTES: readonly string[] = [ROUTES.landing, ROUTES.privacy, ROUTES.terms];
+
 /*
- * The public routes a signed-in caller has no business on, so the gate sends them
- * home instead. session-ended is deliberately absent: its whole job is to clear the
- * cookies of a caller who still looks signed in, and bouncing it would loop.
+ * The auth routes a signed-in caller has no business on, so the gate sends them on instead.
+ * verify-email is not one: signup hands the caller a session, so the most common way to reach it is
+ * already logged in. Nor is reset-password: a mailed link (a recovery, an invite) has to open in
+ * whatever browser the mail is read in. session-ended exists for a caller who still looks signed in.
  */
 export const SIGNED_OUT_ONLY_ROUTES: readonly string[] = [
   ROUTES.login,
@@ -81,16 +85,24 @@ export const SIGNED_OUT_ONLY_ROUTES: readonly string[] = [
   ROUTES.forgotPassword,
 ];
 
-// verify-email is public but not signed-out-only: signup hands the caller a session, so the
-// most common way to reach it is already logged in. reset-password is neither: a mailed link
-// (a recovery, an invite) has to open in whatever browser the mail is read in.
+/*
+ * The routes the gate never renews a session on. session-ended's whole job is clearing the cookies
+ * of a caller who still looks signed in; renewing them first would undo it.
+ */
+export const SESSION_CLEARING_ROUTES: readonly string[] = [ROUTES.sessionEnded];
 
 // The app's own route handlers, which answer only a signed-in caller.
 const API_ROOT = '/api';
 
-const PROTECTED_ROOTS: readonly string[] = [
+/*
+ * Everything in ROUTES that is neither an auth route nor the public site, plus the route handlers.
+ * Computed rather than listed, so a new route is protected the moment it is registered.
+ */
+export const PROTECTED_ROUTES: readonly string[] = [
   ...Object.values(ROUTES).flatMap((route) =>
-    typeof route === 'string' && !PUBLIC_ROUTES.includes(route) ? [route] : [],
+    typeof route === 'string' && !AUTH_ROUTES.includes(route) && !PUBLIC_ROUTES.includes(route)
+      ? [route]
+      : [],
   ),
   API_ROOT,
 ];
@@ -100,7 +112,7 @@ const PROTECTED_ROOTS: readonly string[] = [
  * is registered; a path that matches nothing is not, and reaches the 404 instead of the login screen.
  */
 export function isProtectedPath(pathname: string): boolean {
-  return PROTECTED_ROOTS.some((root) => pathname === root || pathname.startsWith(`${root}/`));
+  return PROTECTED_ROUTES.some((root) => pathname === root || pathname.startsWith(`${root}/`));
 }
 
 export const LOGIN_ROUTE = ROUTES.login;
@@ -113,15 +125,17 @@ export const REASON_PARAM = 'reason';
 export const LOCKED_REASON = 'locked';
 
 /*
- * Where to send the caller after they log in, accepting same-origin paths only.
- * Resolving against a throwaway origin is what makes it sound: `/\evil.com` and
- * `/\/evil.com` both survive a startsWith check, because the URL parser treats a
- * backslash as a slash and reads them as a host.
+ * Where to send the caller after they log in: a same-origin path to a page the gate guards, which
+ * is the only kind `next` is ever produced for. Resolving against a throwaway origin is what makes
+ * it sound: `/\evil.com` and `/\/evil.com` both survive a startsWith check, because the URL parser
+ * treats a backslash as a slash and reads them as a host.
  */
 export function safeNextPath(raw: string | null | undefined): string {
   if (!raw) return ROUTES.home;
   const resolved = URL.parse(raw, SAME_ORIGIN);
-  if (!resolved || resolved.origin !== SAME_ORIGIN) return ROUTES.home;
+  if (!resolved || resolved.origin !== SAME_ORIGIN || !isProtectedPath(resolved.pathname)) {
+    return ROUTES.home;
+  }
   return resolved.pathname + resolved.search;
 }
 

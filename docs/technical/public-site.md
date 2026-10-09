@@ -16,7 +16,7 @@ host could not do, because the session cookies carry no `domain` attribute.
 A seller's home is the queue at `/inbox` (`ROUTES.home`): login, the "Pedidos" tab and every "Ir a
 Pedidos" go there, so the root can be the same public page for everyone, at one address.
 
-All three are in `PUBLIC_ROUTES` and none is signed-out-only: the header and the 404 send a seller
+All three are `PUBLIC_ROUTES`, open the same way with or without a session: the header and the 404 send a seller
 there too. The header offers a visitor "Ingresar" and "Probar Coti", and a seller "Ir a Pedidos".
 
 ## Not found and errors

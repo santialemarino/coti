@@ -91,7 +91,7 @@ ships its own at the **root of `app/`**:
   a digest, so its copy is the generic one from the catalog — a failure a screen can name is worded
   where it happened, not here.
 - **`not-found.tsx`** is a server component, so it can read whatever decides its call to action. In
-  the backoffice that is whether a session cookie exists (`holdsSession`): a seller gets the queue (and the public
+  the backoffice that is whether a session cookie exists (`isAuthenticated`): a seller gets the queue (and the public
   site), a visitor gets the landing. The gate lets a caller with no session
   reach an unknown path directly — it redirects to login only for a path `isProtectedPath`
   recognises — so the 404 is a real answer for both. Read the **cookie**, not `getSession()` — a 404 must not depend on the API being up, and
@@ -145,9 +145,13 @@ ships its own at the **root of `app/`**:
 - **Cross-entity API contract types:** `lib/api/types.ts` (e.g. a shared
   `SortOrder`) — shared by multiple `lib/api/<feature>.ts` modules; entity-specific
   types stay in their feature module.
-- **Routes:** `config/routes.ts` for `ROUTES`. The backoffice also exports what the
-  gate reads — `PUBLIC_ROUTES`, `SIGNED_OUT_ONLY_ROUTES`, `LOGIN_ROUTE`, `NEXT_PARAM`
-  — and `safeNextPath`, which is what makes a `?next=` round trip same-origin only.
+- **Routes:** `config/routes.ts` for `ROUTES`. The backoffice also exports the route
+  groups the gate reads — `AUTH_ROUTES`, `PUBLIC_ROUTES`, the computed
+  `PROTECTED_ROUTES`, and the `SIGNED_OUT_ONLY_ROUTES` / `SESSION_CLEARING_ROUTES`
+  subsets of the auth group — plus `LOGIN_ROUTE`, `NEXT_PARAM` and `safeNextPath`, which
+  honours a `?next=` only for a same-origin protected path. **A new route goes in a
+  group** (protected is the default by omission); a test fails on any route in none or
+  two. Never special-case a path with an `if` in the proxy — add it to the right list.
 - **Constants:** `lib/constants/<topic>.ts` — one file per topic (the backoffice
   has `auth.ts`, `branch.ts`, `brand.ts`, `forms.ts`, `password.ts`). Only for
   constants imported by 2+ files; single-file constants stay in the file that uses
@@ -263,7 +267,7 @@ app/
 │   ├── constants/<topic>.ts
 │   └── utils/page.tsx
 ├── config/
-│   └── routes.ts                    # ROUTES, PUBLIC_ROUTES, LOGIN_ROUTE, safeNextPath
+│   └── routes.ts                    # ROUTES, the route groups, LOGIN_ROUTE, safeNextPath
 ├── proxy.ts                         # the gate (Next 16's name for middleware.ts)
 ├── i18n/request.ts                  # next-intl request config (locale es, AR timezone)
 ├── translations/es.json            # message catalog (namespaced by feature)

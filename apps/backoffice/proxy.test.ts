@@ -97,21 +97,56 @@ describe('proxy without a session', () => {
   });
 });
 
-describe('proxy on the signed-out-only screens', () => {
-  // The access token lapses within minutes; the refresh token is what says someone is signed in.
-  it('sends a seller holding only a refresh token from the login screen to the queue', async () => {
-    const response = await proxy(
-      new NextRequest('https://backoffice.test/login', {
-        headers: { cookie: `${REFRESH_COOKIE}=refresh` },
-      }),
-    );
+const TOKENS = { accessToken: 'fresh-access', refreshToken: 'fresh-refresh' };
 
-    expect(new URL(response.headers.get('location') ?? '').pathname).toBe('/inbox');
+function withRefresh(path: string) {
+  return new NextRequest(`https://backoffice.test${path}`, {
+    headers: { cookie: `${REFRESH_COOKIE}=refresh` },
+  });
+}
+
+describe('proxy settling a lapsed session', () => {
+  // The access token lapses within minutes; the refresh token is what says someone is signed in.
+  it('renews a seller on the login screen and sends them where `next` asked', async () => {
+    vi.mocked(requestRefresh).mockResolvedValue({ ok: true, status: 200, tokens: TOKENS });
+    const response = await proxy(withRefresh('/login?next=%2Frfqs%2Fa1'));
+
+    expect(new URL(response.headers.get('location') ?? '').pathname).toBe('/rfqs/a1');
+    expect(response.headers.get('set-cookie')).toContain('fresh-access');
   });
 
-  it('shows the login screen to a visitor', async () => {
+  it('shows the login screen once a revoked session has been cleared', async () => {
+    vi.mocked(requestRefresh).mockResolvedValue({
+      ok: false,
+      status: 401,
+      code: 'UNAUTHENTICATED',
+    });
+    const response = await proxy(withRefresh('/login'));
+
+    expect(response.headers.get('location')).toBeNull();
+    expect(response.headers.get('set-cookie')).toContain(`${REFRESH_COOKIE}=;`);
+  });
+
+  // The landing reads the cookies after this, so they have to mean a live session.
+  it('renews on the public site too, without sending anyone anywhere', async () => {
+    vi.mocked(requestRefresh).mockResolvedValue({ ok: true, status: 200, tokens: TOKENS });
+    const response = await proxy(withRefresh('/'));
+
+    expect(response.headers.get('location')).toBeNull();
+    expect(response.headers.get('set-cookie')).toContain('fresh-access');
+  });
+
+  it('lets a visitor see the login screen', async () => {
     const response = await proxy(visitor('/login'));
 
+    expect(response.headers.get('location')).toBeNull();
+    expect(requestRefresh).not.toHaveBeenCalled();
+  });
+
+  it('never renews on session-ended, whose job is clearing the cookies', async () => {
+    const response = await proxy(withRefresh('/session-ended'));
+
+    expect(requestRefresh).not.toHaveBeenCalled();
     expect(response.headers.get('location')).toBeNull();
   });
 });

@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  AUTH_ROUTES,
   isOrdersPath,
   isProtectedPath,
   isSettingsPath,
+  PROTECTED_ROUTES,
   PUBLIC_ROUTES,
   queueSelection,
   ROUTES,
   safeNextPath,
+  SESSION_CLEARING_ROUTES,
   SIGNED_OUT_ONLY_ROUTES,
 } from '@/config/routes';
 
@@ -15,7 +18,7 @@ describe('reachability', () => {
   // Someone with no account is the only caller registration has, so the gate cannot ask for a
   // session — and someone who already has one has no business filling the wizard in again.
   it('lets signup through without a session and bounces a caller who has one', () => {
-    expect(PUBLIC_ROUTES).toContain(ROUTES.signup);
+    expect(AUTH_ROUTES).toContain(ROUTES.signup);
     expect(SIGNED_OUT_ONLY_ROUTES).toContain(ROUTES.signup);
   });
 
@@ -25,14 +28,14 @@ describe('reachability', () => {
    * needed. Pinned because it looks like an omission.
    */
   it('leaves verify-email public but reachable with a session', () => {
-    expect(PUBLIC_ROUTES).toContain(ROUTES.verifyEmail);
+    expect(AUTH_ROUTES).toContain(ROUTES.verifyEmail);
     expect(SIGNED_OUT_ONLY_ROUTES).not.toContain(ROUTES.verifyEmail);
   });
 
   // A recovery or invite link may open in a browser that is signed in — often the admin's own,
   // trying the invite — and bouncing home would swallow the link.
   it('lets a mailed reset or invite link open with a session', () => {
-    expect(PUBLIC_ROUTES).toContain(ROUTES.resetPassword);
+    expect(AUTH_ROUTES).toContain(ROUTES.resetPassword);
     expect(SIGNED_OUT_ONLY_ROUTES).not.toContain(ROUTES.resetPassword);
   });
 });
@@ -128,5 +131,34 @@ describe('isProtectedPath', () => {
       expect(PUBLIC_ROUTES).toContain(route);
       expect(SIGNED_OUT_ONLY_ROUTES).not.toContain(route);
     });
+  });
+});
+
+describe('route groups', () => {
+  const groups = [AUTH_ROUTES, PUBLIC_ROUTES, PROTECTED_ROUTES];
+
+  // A route in no group, or in two, is a route nobody decided the gate's answer for.
+  it('puts every registered route in exactly one group', () => {
+    Object.values(ROUTES)
+      .filter((route): route is string => typeof route === 'string')
+      .forEach((route) => {
+        expect(groups.filter((group) => group.includes(route))).toHaveLength(1);
+      });
+  });
+
+  it('keeps the signed-out-only and session-clearing routes inside the auth group', () => {
+    [...SIGNED_OUT_ONLY_ROUTES, ...SESSION_CLEARING_ROUTES].forEach((route) => {
+      expect(AUTH_ROUTES).toContain(route);
+    });
+  });
+});
+
+describe('safeNextPath allowlist', () => {
+  // `next` only ever points back at a guarded page; anything else is not ours to honour.
+  it('keeps a guarded page and refuses a public or auth one', () => {
+    expect(safeNextPath('/rfqs/a1?tab=items')).toBe('/rfqs/a1?tab=items');
+    expect(safeNextPath(ROUTES.login)).toBe(ROUTES.home);
+    expect(safeNextPath(ROUTES.landing)).toBe(ROUTES.home);
+    expect(safeNextPath('/precios')).toBe(ROUTES.home);
   });
 });

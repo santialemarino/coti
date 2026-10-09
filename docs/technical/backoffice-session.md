@@ -63,28 +63,35 @@ and hides exactly this.
 convention Next 16 renamed from `middleware`; the exported function is `proxy` and nothing else
 about it changed:
 
-| Situation                                          | Result                                                     |
-| -------------------------------------------------- | ---------------------------------------------------------- |
-| Unknown path, neither token held                   | through — the 404 answers it                               |
-| Public route, no usable token                      | through                                                    |
-| Login / signup / forgot, a live session            | redirected home (`/inbox`)                                 |
-| Protected route, token unexpired                   | through                                                    |
-| Protected route, token expired, refresh token held | renewed, then through                                      |
-| Protected route, refresh rejected                  | cookies cleared, redirected to login with `?next=`         |
-| Protected route, refresh answers `ACCOUNT_LOCKED`  | the same, plus `?reason=locked`                            |
-| Protected route, API unreachable                   | through — the cookies survive and the next request retries |
+Every route belongs to exactly one group in `config/routes.ts`, and a test fails if one is left out
+or listed twice:
 
-A **live session** on the signed-out-only screens is an unexpired access token **or** a refresh
-token: the access token lapses within minutes, and someone still holding the refresh token is signed
-in — the queue renews them. The public header and the 404 make the same call from the cookies
-(`holdsSession`), so a seller is never offered a login they are already past.
+| Group                     | Holds                                                             | Without a session    | With one                          |
+| ------------------------- | ----------------------------------------------------------------- | -------------------- | --------------------------------- |
+| `AUTH_ROUTES`             | login, signup, forgot/reset password, verify-email, session-ended | through              | through, except the next two rows |
+| `SIGNED_OUT_ONLY_ROUTES`  | login, signup, forgot password (a subset of the above)            | through              | sent to `?next=`, else `/inbox`   |
+| `SESSION_CLEARING_ROUTES` | session-ended                                                     | through              | through, never renewed            |
+| `PUBLIC_ROUTES`           | the landing (`/`), privacy, terms                                 | through              | through                           |
+| `PROTECTED_ROUTES`        | everything else in `ROUTES` (computed), plus `/api`               | login, with `?next=` | through                           |
+| none (unknown path)       | —                                                                 | through, to the 404  | through, to the 404               |
 
-A **protected route** is any path `isProtectedPath` recognises: every string in `ROUTES` that is
-not public (with everything under it), and `/api`. The root is public — it is the landing — and
-a seller lands on the queue at `/inbox` (`ROUTES.home`). It is derived rather than listed, so a route
-is guarded the moment it is registered. Anything else is unknown, and a visitor with no token at all
-reaches the 404 instead of a login screen for a page that never existed. Someone holding a refresh
-token is a seller whose access token lapsed, not a visitor, so they are renewed as before.
+**The session is settled once, here, on every request.** An expired access token with a refresh token
+beside it is renewed whatever the path — the public site and the auth screens included — except on a
+prefetch or a session-clearing route:
+
+| Renewal                  | Result                                                                            |
+| ------------------------ | --------------------------------------------------------------------------------- |
+| succeeds                 | new cookies on the request and the response, then the row above applies           |
+| refused, protected route | cookies cleared, redirected to login with `?next=` (`?reason=locked` when locked) |
+| refused, anywhere else   | cookies cleared, the page renders for a visitor                                   |
+| API unreachable          | through — the cookies survive and the next request retries                        |
+
+So past the gate, still holding the session cookies means holding a live session. The public header,
+the landing and the 404 read exactly that (`isAuthenticated` in `lib/auth/session.ts`), which is why a
+seller is never offered a login they are already past and a revoked one is never offered the queue.
+
+`?next=` is honoured only for a same-origin path to a protected route (`safeNextPath`): it is only ever
+produced to bring someone back to a guarded page, so nothing else is ours to follow.
 
 `/reset-password` is public but **not** bounced: a mailed recovery or invite link has to open in
 whatever browser the mail is read in, signed in or not. Setting the password clears that browser's

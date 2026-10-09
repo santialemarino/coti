@@ -5,7 +5,7 @@ import { getTranslations } from 'next-intl/server';
 import { Button, Card, StatusScreen } from '@repo/ui/components';
 import { BrandedScreen } from '@/components/branded-screen';
 import { ROUTES } from '@/config/routes';
-import { holdsSession } from '@/lib/auth/session';
+import { isAuthenticated } from '@/lib/auth/session';
 import { generatePageMetadata } from '@/lib/utils/page';
 
 export const generateMetadata = () => generatePageMetadata('notFound');
@@ -22,7 +22,7 @@ export const generateMetadata = () => generatePageMetadata('notFound');
  */
 export default async function NotFound() {
   const t = await getTranslations('notFound');
-  const signedIn = await holdsSession();
+  const signedIn = await isAuthenticated();
 
   return (
     <BrandedScreen>

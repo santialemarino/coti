@@ -100,14 +100,14 @@ export async function getAccessToken(): Promise<string | undefined> {
 }
 
 /*
- * Whether this browser holds a session at all: a guess for which way in or out to offer, never an
- * authorization. The cookies outlive the access token inside them, so an expired one still counts —
- * the gate renews it on the next protected request, the same rule that keeps it off the login screen.
+ * Whether this browser holds a session, for choosing which way in or out to offer — never an
+ * authorization. The gate renews a lapsed session on every page and clears the cookies of one it
+ * cannot renew, so holding them here means holding a live session.
  */
-export async function holdsSession(): Promise<boolean> {
+export const isAuthenticated = cache(async (): Promise<boolean> => {
   const jar = await cookies();
   return Boolean(jar.get(ACCESS_COOKIE)?.value || jar.get(REFRESH_COOKIE)?.value);
-}
+});
 
 // Next allows a cookie write only from a server action or a route handler, which is
 // why the renewal path lives in the proxy instead.
