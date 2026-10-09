@@ -4,6 +4,9 @@ import { getTranslations } from 'next-intl/server';
 
 import { Button, Card, StatusScreen } from '@repo/ui/components';
 import { ROUTES } from '@/config/routes';
+import { generatePageMetadata } from '@/lib/utils/page';
+
+export const generateMetadata = () => generatePageMetadata('notFound');
 
 // A `notFound()` raised by a screen inside the app: the shell stays, and the way out is the queue.
 export default async function ProtectedNotFound() {
