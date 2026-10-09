@@ -42,12 +42,10 @@ describe('LandingHero', () => {
     expect(links.map((link) => link.getAttribute('href'))).toEqual([ROUTES.signup, ROUTES.login]);
   });
 
-  it('sends a seller to the queue instead', async () => {
+  // The header already carries "Ir a Pedidos"; the hero repeating it is noise.
+  it('offers a seller no second way to the queue', async () => {
     const view = render(await LandingHero({ signedIn: true }));
 
-    expect(view.getByRole('link', { name: copy.goToOrders }).getAttribute('href')).toBe(
-      ROUTES.home,
-    );
-    expect(view.queryByRole('link', { name: copy.signup })).toBeNull();
+    expect(view.queryAllByRole('link')).toHaveLength(0);
   });
 });

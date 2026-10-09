@@ -9,7 +9,8 @@ interface LandingHeroProps {
   signedIn: boolean;
 }
 
-// The first screen answers what Coti does and for whom, with the way in visible before any scroll.
+// The first screen answers what Coti does and for whom, with the way in visible before any scroll. A
+// seller already has the way back to the queue in the header, so the hero offers them nothing twice.
 export async function LandingHero({ signedIn }: LandingHeroProps) {
   const t = await getTranslations('landing.hero');
 
@@ -22,23 +23,19 @@ export async function LandingHero({ signedIn }: LandingHeroProps) {
             {t('title')}
           </h1>
           <p className="max-w-xl text-paragraph text-foreground-muted">{t('description')}</p>
-          <div className="flex flex-wrap gap-3">
-            {signedIn ? (
-              <Button asChild size="lg">
-                <Link href={ROUTES.home}>{t('goToOrders')}</Link>
-              </Button>
-            ) : (
-              <>
+          {signedIn ? null : (
+            <>
+              <div className="flex flex-wrap gap-3">
                 <Button asChild size="lg">
                   <Link href={ROUTES.signup}>{t('signup')}</Link>
                 </Button>
                 <Button asChild variant="outline" size="lg">
                   <Link href={ROUTES.login}>{t('login')}</Link>
                 </Button>
-              </>
-            )}
-          </div>
-          <p className="text-paragraph-sm text-foreground-subtle">{t('note')}</p>
+              </div>
+              <p className="text-paragraph-sm text-foreground-subtle">{t('note')}</p>
+            </>
+          )}
         </div>
         {/* A position in the same entrance, not a reusable delay. */}
         <ProductPreview className="animate-rise-in [animation-delay:120ms]" />

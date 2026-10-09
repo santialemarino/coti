@@ -291,7 +291,6 @@
       "description": "Coti lee los pedidos que te llegan por WhatsApp, correo, foto o Excel, los arma contra tu catálogo y tus precios, y te deja la cotización lista para revisar y enviar.",
       "signup": "Probar Coti",
       "login": "Ya tengo cuenta",
-      "goToOrders": "Ir a Pedidos",
       "note": "Importás tu catálogo y tus precios desde un Excel, sin cargar producto por producto."
     },
     "preview": {
