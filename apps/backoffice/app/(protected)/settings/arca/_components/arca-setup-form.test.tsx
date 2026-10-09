@@ -41,10 +41,10 @@ function show(setup: ARCASetup = empty, branchId?: string) {
 beforeEach(() => vi.resetAllMocks());
 
 describe('ARCA onboarding', () => {
-  it('guides the user through homologation without asking for a fiscal password', () => {
+  it('guides the user through setup without asking for a fiscal password', () => {
     const view = show();
-    expect(view.getByText(messages.arca.environment)).toBeTruthy();
-    expect(view.getAllByRole('listitem')).toHaveLength(6);
+    expect(view.getByText(messages.arca.tutorial.title)).toBeTruthy();
+    expect(view.getAllByRole('listitem')).toHaveLength(7);
     expect(view.container.querySelector('input[type="password"]')).toBeNull();
     expect(view.queryByRole('button', { name: messages.arca.verify })).toBeNull();
   });

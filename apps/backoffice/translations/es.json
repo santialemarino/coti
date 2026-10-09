@@ -1,19 +1,17 @@
 {
   "arca": {
     "title": "Conectá tu corralón con ARCA",
-    "environment": "Homologación · ambiente de pruebas",
-    "intro": "Prepará la conexión para probar el facturador. Esta configuración usa únicamente homologación y no emite comprobantes con validez fiscal.",
-    "privacy": "Tu clave fiscal se usa solo en el sitio de ARCA. Coti guarda la clave privada cifrada y obtiene las credenciales temporales automáticamente.",
     "disabled": "La conexión todavía no está habilitada en esta instalación. El administrador del sistema debe configurar el cifrado de credenciales para continuar.",
     "tutorial": {
-      "title": "Cómo obtener tu certificado de pruebas",
-      "access": "Entrá a ARCA con tu clave fiscal personal. Desde el Administrador de Relaciones, adherí WSASS — Autoservicio de Acceso a WebServices de homologación.",
-      "generate": "Ingresá abajo tu CUIT personal, el mismo con el que entrás a WSASS. Generá y descargá la solicitud de certificado. La clave privada queda protegida en Coti.",
-      "certificate": "Abrí WSASS y elegí Nuevo certificado. Definí un alias, por ejemplo coti-pruebas, y pegá el contenido del archivo de solicitud. Elegí Crear DN y Obtener Certificado. Guardá el certificado completo como archivo certificado.pem.",
+      "title": "Cómo conectar tu cuenta con ARCA",
+      "access": "Entrá a ARCA con tu clave fiscal personal. En Administrador de Relaciones → Adherir servicio → ARCA → Servicios Interactivos, seleccioná WSASS y confirmá. Cerrá sesión y volvé a ingresar. Desde Mis Servicios, abrí WSASS; si no aparece, buscá en Ver todos.",
+      "generate": "Volvé a Coti → Configuración → Conexión con ARCA. En Identidad de la empresa, ingresá tu CUIT y tocá Generar solicitud de certificado.",
+      "downloadRequest": "En esa misma pantalla de Coti, tocá Descargar solicitud (.csr). Abrí el archivo descargado con el Bloc de notas y copiá todo su contenido, incluyendo BEGIN CERTIFICATE REQUEST y END CERTIFICATE REQUEST. La solicitud se obtiene en Coti; no es el mensaje que ARCA muestra al confirmar la adhesión.",
+      "certificate": "Volvé a WSASS desde Mis Servicios de ARCA y elegí Nuevo Certificado. Ingresá un alias con letras y números, sin espacios ni guiones, por ejemplo coti2026. Pegá el contenido del .csr descargado de Coti en Solicitud de certificado en formato PKCS10 y tocá Crear DN y Obtener Certificado. Copiá todo el texto de Resultado, incluyendo BEGIN CERTIFICATE y END CERTIFICATE, y guardalo en el Bloc de notas como certificado.pem. Elegí Todos los archivos para que no se agregue .txt al nombre.",
       "authorize": "En WSASS, elegí Crear autorización a servicio. Seleccioná el alias, indicá el CUIT representado que ingresaste en Coti y autorizá el servicio de facturación electrónica wsfe.",
-      "upload": "Volvé a Coti y cargá el certificado descargado. Debe corresponder a esta solicitud, al CUIT ingresado y al ambiente de homologación.",
-      "verify": "Seleccioná una sucursal en el sistema, ingresá el punto de venta de pruebas y verificá la conexión. Se consulta el último número de factura B; no se emite una factura.",
-      "official": "Guía oficial de homologación",
+      "upload": "Volvé a Coti y cargá el archivo certificado.pem que acabás de guardar en Certificado de ARCA. Tocá Guardar certificado.",
+      "verify": "En Conexión de la sucursal, ingresá el número de punto de venta y tocá Verificar conexión. Si tenés una sola sucursal, ya está seleccionada. Si tenés varias, elegí una en el selector del encabezado.",
+      "official": "Guía oficial de ARCA",
       "authorization": "Cómo autorizar el servicio"
     },
     "identity": {
@@ -21,9 +19,9 @@
       "created": "Solicitud generada para el CUIT {cuit}. Podés descargarla nuevamente mientras completás el trámite en WSASS."
     },
     "taxId": {
-      "label": "CUIT emisor de pruebas",
-      "placeholder": "Ingresá el CUIT que vas a autorizar",
-      "hint": "Ingresá tu CUIT personal de 11 dígitos, con guiones o sin ellos. WSASS exige que coincida con el usuario conectado. En este recorrido de pruebas también se autoriza ese mismo CUIT como representado.",
+      "label": "CUIT",
+      "placeholder": "Ingresá tu CUIT",
+      "hint": "11 dígitos, con guiones o sin ellos. Debe coincidir con el CUIT con el que ingresás a WSASS.",
       "required": "Ingresá el CUIT emisor.",
       "invalid": "Revisá el CUIT: debe tener 11 dígitos y un dígito verificador válido."
     },
@@ -33,10 +31,10 @@
     "download": "Descargar solicitud (.csr)",
     "certificate": {
       "title": "2. Certificado de ARCA",
-      "drop": "Arrastrá el certificado de homologación",
+      "drop": "Arrastrá el certificado de ARCA",
       "choose": "Elegir certificado",
       "release": "Soltá el certificado acá",
-      "hint": "Certificado público en formato PEM (.crt, .pem o .cer), hasta 16 KB. No cargues tu clave fiscal ni una clave privada.",
+      "hint": "Archivo en formato PEM (.crt, .pem o .cer), hasta 16 KB.",
       "required": "Seleccioná el certificado emitido por ARCA.",
       "tooLarge": "El certificado no puede superar los 16 KB.",
       "readError": "No pudimos leer el archivo. Volvé a seleccionarlo.",
@@ -47,26 +45,26 @@
     },
     "pointOfSale": {
       "title": "3. Conexión de la sucursal",
-      "label": "Punto de venta de pruebas",
+      "label": "Punto de venta",
       "placeholder": "Ingresá el punto de venta",
-      "hint": "Debe ser aceptado por homologación para este CUIT. Si ARCA lo rechaza, revisá su habilitación; no hace falta emitir una factura real para verificarlo.",
+      "hint": "Ingresá el número del punto de venta asociado a esta sucursal.",
       "scope": "El certificado se comparte entre las sucursales de esta empresa. El punto de venta se guarda para la sucursal seleccionada y no puede asignarse a otra sucursal de la misma cuenta.",
       "required": "Ingresá el punto de venta.",
       "invalid": "Ingresá un número entre 1 y 99998."
     },
     "noBranch": "Seleccioná una sucursal para verificar y guardar su punto de venta.",
-    "verify": "Verificar conexión de pruebas",
+    "verify": "Verificar conexión",
     "verifying": "Consultando ARCA…",
-    "verified": "Conexión de homologación verificada.",
+    "verified": "Conexión con ARCA verificada.",
     "lastVerified": "Última verificación exitosa: {date}. Punto de venta: {point}.",
-    "lastNumber": "ARCA respondió. Último número de factura B de pruebas: {number}. Esta consulta no autorizó ninguna factura.",
+    "lastNumber": "Último número de factura B informado por ARCA: {number}.",
     "failures": {
       "CERTIFICATE_INVALID": "El certificado no es válido, venció o no corresponde a la solicitud. Desconectá la cuenta y generá una nueva solicitud para reemplazarlo.",
-      "WSAA_REJECTED": "ARCA rechazó el certificado o su autorización. Revisá que sea de homologación y que el alias esté autorizado para wsfe y el CUIT indicado.",
+      "WSAA_REJECTED": "ARCA rechazó el certificado o su autorización. Revisá que el alias esté autorizado para wsfe y el CUIT indicado.",
       "TICKET_ACTIVE": "ARCA informa que este certificado ya tiene un acceso vigente que Coti no conserva. Esperá a que venza antes de volver a verificar; no generes otro certificado para resolverlo.",
-      "POINT_OF_SALE_REJECTED": "ARCA no acepta este punto de venta para el servicio. Revisá el número y su habilitación en homologación.",
+      "POINT_OF_SALE_REJECTED": "ARCA no acepta este punto de venta para el servicio. Revisá el número y su habilitación.",
       "WSFE_REJECTED": "La autenticación se completó, pero ARCA rechazó la consulta. Revisá el CUIT representado, los permisos de wsfe y el punto de venta.",
-      "UNAVAILABLE": "No pudimos completar la consulta a ARCA. Volvé a intentar en unos minutos. No se emitió ninguna factura."
+      "UNAVAILABLE": "No pudimos completar la consulta a ARCA. Volvé a intentar en unos minutos."
     },
     "disconnect": "Desconectar ARCA",
     "disconnecting": "Desconectando…",
@@ -298,7 +296,7 @@
     },
     "arcaSettings": {
       "title": "Conexión con ARCA",
-      "description": "Configurá y verificá el acceso al ambiente de homologación de ARCA."
+      "description": "Configurá y verificá la conexión con ARCA."
     },
     "branchSettings": {
       "title": "Sucursales",
