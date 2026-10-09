@@ -4,6 +4,10 @@ const SETTINGS_ROOT = '/settings';
 // Every link and redirect reads from here, so a route rename is one edit.
 export const ROUTES = {
   home: '/',
+  // The public site's landing. The gate serves it at `/` to a caller with no session.
+  landing: '/welcome',
+  privacy: '/privacy',
+  terms: '/terms',
   settings: SETTINGS_ROOT,
   rfqs: '/rfqs',
   rfqsDetail: (id: string) => `/rfqs/${id}`,
@@ -61,6 +65,9 @@ export const PUBLIC_ROUTES: readonly string[] = [
   ROUTES.resetPassword,
   ROUTES.verifyEmail,
   ROUTES.sessionEnded,
+  ROUTES.landing,
+  ROUTES.privacy,
+  ROUTES.terms,
 ];
 
 /*
@@ -77,6 +84,27 @@ export const SIGNED_OUT_ONLY_ROUTES: readonly string[] = [
 // verify-email is public but not signed-out-only: signup hands the caller a session, so the
 // most common way to reach it is already logged in. reset-password is neither: a mailed link
 // (a recovery, an invite) has to open in whatever browser the mail is read in.
+
+// The app's own route handlers, which answer only a signed-in caller.
+const API_ROOT = '/api';
+
+const PROTECTED_ROOTS: readonly string[] = [
+  ...Object.values(ROUTES).flatMap((route) =>
+    typeof route === 'string' && route !== ROUTES.home && !PUBLIC_ROUTES.includes(route)
+      ? [route]
+      : [],
+  ),
+  API_ROOT,
+];
+
+/*
+ * Whether a path is one the gate guards. Derived from ROUTES, so a new route is guarded the moment it
+ * is registered; a path that matches nothing is not, and reaches the 404 instead of the login screen.
+ */
+export function isProtectedPath(pathname: string): boolean {
+  if (pathname === ROUTES.home) return true;
+  return PROTECTED_ROOTS.some((root) => pathname === root || pathname.startsWith(`${root}/`));
+}
 
 export const LOGIN_ROUTE = ROUTES.login;
 

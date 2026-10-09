@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 import {
+  isProtectedPath,
   LOCKED_REASON,
   LOGIN_ROUTE,
   NEXT_PARAM,
@@ -41,6 +42,17 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(new URL(ROUTES.home, request.url));
     }
     return NextResponse.next();
+  }
+
+  // Someone with no session at all is a visitor, not a seller whose session lapsed.
+  if (!accessToken && !refreshToken) {
+    if (pathname === ROUTES.home) {
+      const landing = request.nextUrl.clone();
+      landing.pathname = ROUTES.landing;
+      return NextResponse.rewrite(landing);
+    }
+    // A mistyped or stale link is answered with the 404, not with a login screen.
+    if (!isProtectedPath(pathname)) return NextResponse.next();
   }
 
   if (!needsRenewal(accessToken)) return NextResponse.next();
@@ -97,5 +109,7 @@ export const config = {
   // and without a trailing slash: its own URL is exactly /_next/image plus a query
   // string, so a slash-only exclusion never fires and every optimised image would
   // be sent to the login screen instead.
-  matcher: ['/((?!_next/static/|_next/image$|_next/image/|favicon\\.ico$|icons/|brand/).*)'],
+  matcher: [
+    '/((?!_next/static/|_next/image$|_next/image/|favicon\\.ico$|icons/|brand/|icon\\.png$|apple-icon\\.png$|manifest\\.webmanifest$|opengraph-image|robots\\.txt$|sitemap\\.xml$).*)',
+  ],
 };

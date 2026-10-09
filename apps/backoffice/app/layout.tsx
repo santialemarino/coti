@@ -5,14 +5,20 @@ import { getLocale, getMessages } from 'next-intl/server';
 import { cn } from '@repo/ui/lib';
 import { Toaster } from '@/components/toaster';
 import { inter, poppins } from '@/lib/fonts';
+import { siteOrigin } from '@/lib/utils/site-origin';
 
 import './globals.css';
 
-export const metadata: Metadata = {
-  title: 'Coti — Backoffice',
-  description: 'Vendor and admin workspace for AI-assisted quoting.',
-  applicationName: 'Coti',
-};
+// Nothing is indexed unless a public page says so; `metadataBase` resolves the social card's URL.
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    metadataBase: new URL(await siteOrigin()),
+    title: 'Coti — Backoffice',
+    description: 'Vendor and admin workspace for AI-assisted quoting.',
+    applicationName: 'Coti',
+    robots: { index: false, follow: false },
+  };
+}
 
 /*
  * The browser chrome takes the app's own surface rather than the brand blue: iOS tints from the page

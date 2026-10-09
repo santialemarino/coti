@@ -41,27 +41,26 @@ beforeEach(() => {
 });
 
 describe('NotFound', () => {
-  /*
-   * The CTA is the whole point of reading the session here: sending a signed-in caller to the login
-   * screen is a dead end, and offering the home page to someone with no session bounces them
-   * straight back to login with a `next` they never asked for.
-   */
-  it('offers a signed-in caller the way home', async () => {
+  // A seller is sent back to work; the public site is the second way out, not the first.
+  it('offers a signed-in caller the queue and the public site', async () => {
     vi.mocked(getAccessToken).mockResolvedValue('a-token');
     const view = await renderPage();
 
-    const link = view.getByRole('link', { name: copy.goHome });
-    expect(link.getAttribute('href')).toBe(ROUTES.home);
-    expect(view.queryByRole('link', { name: copy.goToLogin })).toBeNull();
+    expect(view.getByRole('link', { name: copy.goToOrders }).getAttribute('href')).toBe(
+      ROUTES.home,
+    );
+    expect(view.getByRole('link', { name: copy.goToSite }).getAttribute('href')).toBe(
+      ROUTES.landing,
+    );
   });
 
-  it('offers a signed-out caller the login screen', async () => {
+  // Someone with no session reaches this directly now, and the root is where the landing lives.
+  it('offers a signed-out caller the way back to the landing, not a login screen', async () => {
     vi.mocked(getAccessToken).mockResolvedValue(undefined);
     const view = await renderPage();
 
-    const link = view.getByRole('link', { name: copy.goToLogin });
-    expect(link.getAttribute('href')).toBe(ROUTES.login);
-    expect(view.queryByRole('link', { name: copy.goHome })).toBeNull();
+    expect(view.getByRole('link', { name: copy.backHome }).getAttribute('href')).toBe(ROUTES.home);
+    expect(view.getAllByRole('link')).toHaveLength(1);
   });
 
   it('says what happened in Spanish, not in Next.js English', async () => {

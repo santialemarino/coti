@@ -60,6 +60,7 @@
       "presets": "Colores sugeridos"
     },
     "retry": "Reintentar",
+    "retrying": "Reintentando…",
     "form": {
       "togglePassword": "Mostrar u ocultar la contraseña",
       "clearSearch": "Limpiar la búsqueda",
@@ -247,13 +248,324 @@
     "notFound": {
       "title": "Página no encontrada",
       "description": "La dirección que abriste no existe en el backoffice."
-    }
+    },
+    "landing": {
+      "title": "Cotización asistida por IA para corralones",
+      "description": "Coti lee los pedidos que te llegan por WhatsApp, correo, foto o Excel y los convierte en cotizaciones con tu catálogo y tus precios, listas para revisar y enviar."
+    },
+    "privacy": {
+      "title": "Política de privacidad",
+      "description": "Qué datos trata Coti, para qué y con qué cuidados."
+    },
+    "terms": {
+      "title": "Términos de uso",
+      "description": "Las condiciones de uso de Coti para corralones y sus usuarios."
+    },
+    "socialImageAlt": "Coti: cotizá en minutos lo que hoy te lleva horas."
   },
   "notFound": {
     "title": "No encontramos esta página",
     "description": "La dirección que abriste no existe o dejó de estar disponible. Puede que el enlace esté mal copiado o que la pantalla haya cambiado de lugar.",
-    "goHome": "Ir al inicio",
-    "goToLogin": "Iniciar sesión"
+    "goToOrders": "Ir a Pedidos",
+    "goToSite": "Ir al inicio",
+    "backHome": "Volver al inicio"
+  },
+  "landing": {
+    "header": {
+      "nav": "Accesos",
+      "login": "Ingresar",
+      "signup": "Probar Coti",
+      "goToOrders": "Ir a Pedidos"
+    },
+    "footer": {
+      "nav": "Información",
+      "tagline": "Cotización asistida por IA para corralones de materiales.",
+      "privacy": "Privacidad",
+      "terms": "Términos",
+      "login": "Ingresar",
+      "copyright": "© {year} Coti"
+    },
+    "hero": {
+      "slogan": "Cotizá. Convertí. Cerrá.",
+      "title": "Cotizá en minutos lo que hoy te lleva horas",
+      "description": "Coti lee los pedidos que te llegan por WhatsApp, correo, foto o Excel, los arma contra tu catálogo y tus precios, y te deja la cotización lista para revisar y enviar.",
+      "signup": "Probar Coti",
+      "login": "Ya tengo cuenta",
+      "goToOrders": "Ir a Pedidos",
+      "note": "Importás tu catálogo y tus precios desde un Excel, sin cargar producto por producto."
+    },
+    "preview": {
+      "label": "Ejemplo: un pedido por WhatsApp convertido en una cotización con tres productos del catálogo, uno marcado para revisar.",
+      "from": "Martín · Obra Ituzaingó",
+      "channel": "WhatsApp",
+      "message": "Hola! Necesito 30 bolsas de cemento, 2 m³ de arena gruesa y 50 ladrillos huecos del 12 para el lunes.",
+      "quote": "Cotización",
+      "status": "Lista para revisar",
+      "quantity": "{quantity} {unit} × {price}",
+      "lines": {
+        "cement": {
+          "name": "Cemento portland 50 kg",
+          "unit": "bolsas"
+        },
+        "sand": {
+          "name": "Arena gruesa",
+          "unit": "m³"
+        },
+        "brick": {
+          "name": "Ladrillo hueco 12×18×33",
+          "unit": "u."
+        }
+      },
+      "match": {
+        "matched": "Coincide con tu catálogo",
+        "review": "Revisar coincidencia"
+      },
+      "total": "Total"
+    },
+    "benefits": {
+      "eyebrow": "Por qué Coti",
+      "title": "Menos tiempo armando presupuestos, más tiempo vendiendo",
+      "items": {
+        "speed": {
+          "title": "Respondé mientras el cliente sigue mirando",
+          "description": "El pedido llega como venga —texto, audio o la foto de una lista— y sale cotizado en minutos, no al día siguiente. El que contesta primero suele ser el que vende."
+        },
+        "accuracy": {
+          "title": "Tus productos y tus precios, sin errores de tipeo",
+          "description": "Cada línea se arma contra tu catálogo y tu lista vigente. Lo que no encuentra queda marcado para que lo resuelvas vos: ningún ítem del pedido se pierde."
+        },
+        "ticket": {
+          "title": "Cotizaciones que venden más",
+          "description": "Alternativas económicas y premium y combos de tu propio catálogo, para que el cliente elija sin que tengas que armar tres presupuestos."
+        }
+      }
+    },
+    "steps": {
+      "eyebrow": "Cómo funciona",
+      "title": "Del mensaje desordenado a la cotización enviada",
+      "description": "Cuatro pasos, y en el del medio decidís vos.",
+      "items": {
+        "arrives": {
+          "title": "Llega el pedido",
+          "description": "Por WhatsApp, por correo o por el enlace de tu corralón. Texto, audio, foto, PDF o Excel."
+        },
+        "drafts": {
+          "title": "Coti lo arma",
+          "description": "Extrae los ítems, calcula cantidades y los busca en tu catálogo con los precios de tu sucursal."
+        },
+        "review": {
+          "title": "Revisás y enviás",
+          "description": "Corregís lo que haga falta y aprobás. Nada le llega al cliente sin tu visto bueno."
+        },
+        "answer": {
+          "title": "El cliente responde",
+          "description": "Abre la cotización con la marca de tu corralón y acepta, rechaza o pide cambios ítem por ítem."
+        }
+      }
+    },
+    "trust": {
+      "eyebrow": "Un copiloto, no un piloto automático",
+      "title": "La IA propone. Vos decidís.",
+      "description": "Coti está hecho para trabajar al lado del vendedor, con reglas que no se negocian.",
+      "items": {
+        "prices": {
+          "title": "La IA no pone precios",
+          "description": "Los montos salen de tu lista y de tus reglas de descuento, calculados siempre de la misma forma."
+        },
+        "approval": {
+          "title": "Nada sale sin vos",
+          "description": "Coti arma borradores y cotizaciones; enviarlas es una decisión tuya. Nunca le escribe a tu cliente por su cuenta."
+        },
+        "data": {
+          "title": "Lo tuyo es tuyo",
+          "description": "Cada corralón ve solo sus datos, y cada sucursal sus precios. Ninguna otra cuenta puede leerlos."
+        }
+      }
+    },
+    "faq": {
+      "eyebrow": "Preguntas frecuentes",
+      "title": "Lo que suelen preguntarnos",
+      "items": {
+        "catalog": {
+          "question": "¿Tengo que cargar todo mi catálogo a mano?",
+          "answer": "No. Importás productos y precios desde un Excel o un CSV, y después los mantenés desde Configuración."
+        },
+        "noMatch": {
+          "question": "¿Qué pasa si Coti no encuentra un producto?",
+          "answer": "La línea queda marcada como sin coincidencia para que la resuelvas vos. Coti nunca descarta un ítem del pedido."
+        },
+        "autoReply": {
+          "question": "¿Coti le contesta solo a mis clientes?",
+          "answer": "No. Prepara la cotización y los borradores de respuesta, pero enviar es siempre una decisión del vendedor."
+        },
+        "branches": {
+          "question": "¿Sirve si tengo más de una sucursal?",
+          "answer": "Sí. Cada sucursal tiene sus precios, su disponibilidad y sus vendedores, y cada uno trabaja sobre la suya."
+        },
+        "customerAccount": {
+          "question": "¿Mi cliente necesita una cuenta para ver la cotización?",
+          "answer": "No. Le llega un enlace y la ve con la marca de tu corralón, desde el celular o la computadora."
+        }
+      }
+    },
+    "cta": {
+      "title": "Probá Coti con tu propio catálogo",
+      "description": "Creá la cuenta de tu corralón, importá tus productos y cotizá tu próximo pedido con Coti.",
+      "action": "Crear mi cuenta"
+    }
+  },
+  "legal": {
+    "updatedAt": "Última actualización: {date}",
+    "privacy": {
+      "title": "Política de privacidad",
+      "intro": "Esta política explica qué datos personales trata Coti, para qué los usa y con qué cuidados. Coti es un software con el que los corralones de materiales reciben pedidos de sus clientes y les arman y envían cotizaciones.",
+      "sections": [
+        {
+          "title": "Quién es responsable de los datos",
+          "paragraphs": [
+            "Coti es responsable de los datos de la cuenta del corralón y de sus usuarios: nombre, correo electrónico, rol y sucursales.",
+            "De los datos de los clientes del corralón que llegan con un pedido —nombre, teléfono, correo, dirección de entrega y el contenido del pedido— el responsable es el corralón. Coti los trata por cuenta y orden suya, solo para prestarle el servicio."
+          ]
+        },
+        {
+          "title": "Qué datos tratamos",
+          "paragraphs": [
+            "Los datos de la cuenta y de sus usuarios, que se cargan al crearla o desde Configuración.",
+            "El contenido de los pedidos que recibe el corralón: textos, audios, imágenes y archivos, y los datos de contacto del cliente que los envía.",
+            "Datos técnicos del uso del servicio, como la dirección IP y las cookies de sesión, que sirven para mantener la sesión abierta y proteger la cuenta."
+          ]
+        },
+        {
+          "title": "Para qué los usamos",
+          "paragraphs": [
+            "Para prestar el servicio: leer los pedidos, armar las cotizaciones, enviarlas y registrar la respuesta del cliente.",
+            "Para la seguridad de las cuentas: autenticar a los usuarios, limitar los intentos fallidos y detectar accesos indebidos.",
+            "No vendemos datos personales ni los usamos para publicidad."
+          ]
+        },
+        {
+          "title": "Inteligencia artificial",
+          "paragraphs": [
+            "Para leer un pedido y buscar sus productos en el catálogo, Coti envía el contenido del pedido a proveedores de modelos de inteligencia artificial, que actúan como encargados del tratamiento y reciben solo lo necesario para esa tarea.",
+            "La inteligencia artificial propone; no fija precios, no aprueba cotizaciones y no se comunica con los clientes del corralón."
+          ]
+        },
+        {
+          "title": "Con quién los compartimos",
+          "paragraphs": [
+            "Con los proveedores que hacen posible el servicio: alojamiento y base de datos, envío de correo y modelos de inteligencia artificial. Algunos de ellos procesan los datos fuera de la Argentina, con medidas de seguridad acordes a esta política.",
+            "Con autoridades, solo cuando una norma o una orden judicial lo exija."
+          ]
+        },
+        {
+          "title": "Cookies",
+          "paragraphs": [
+            "Coti usa solamente las cookies necesarias para funcionar: las que mantienen la sesión iniciada y recuerdan la sucursal elegida. No usa cookies de publicidad ni de analítica de terceros."
+          ]
+        },
+        {
+          "title": "Cuánto tiempo los guardamos",
+          "paragraphs": [
+            "Mientras la cuenta del corralón esté activa. Cuando se da de baja, los datos se eliminan o se anonimizan en un plazo razonable, salvo los que una norma obligue a conservar."
+          ]
+        },
+        {
+          "title": "Cómo los protegemos",
+          "paragraphs": [
+            "Las comunicaciones viajan cifradas, las contraseñas se guardan con un hash y nunca en texto plano, y la base de datos separa la información de cada cuenta para que ninguna pueda leer la de otra."
+          ]
+        },
+        {
+          "title": "Tus derechos",
+          "paragraphs": [
+            "Podés pedir acceso, rectificación, actualización y supresión de tus datos personales, como prevé la Ley 25.326. Si sos cliente de un corralón, hacé el pedido a ese corralón; si sos usuario de Coti, podés actualizar tus datos desde Configuración.",
+            "El titular de los datos personales tiene la facultad de ejercer el derecho de acceso a ellos en forma gratuita a intervalos no inferiores a seis meses, salvo que se acredite un interés legítimo al efecto, conforme lo establecido en el artículo 14, inciso 3 de la Ley 25.326.",
+            "La Agencia de Acceso a la Información Pública, en su carácter de Órgano de Control de la Ley 25.326, tiene la atribución de atender las denuncias y reclamos que interpongan quienes resulten afectados en sus derechos por incumplimiento de las normas vigentes en materia de protección de datos personales."
+          ]
+        },
+        {
+          "title": "Cambios en esta política",
+          "paragraphs": [
+            "Si la cambiamos, publicamos la versión nueva en esta página con su fecha de actualización."
+          ]
+        }
+      ]
+    },
+    "terms": {
+      "title": "Términos de uso",
+      "intro": "Estos términos regulan el uso de Coti por parte de los corralones que crean una cuenta y de sus usuarios. Al crear una cuenta o usar el servicio, los aceptás.",
+      "sections": [
+        {
+          "title": "El servicio",
+          "paragraphs": [
+            "Coti es un software para recibir pedidos de cotización, armar cotizaciones asistidas por inteligencia artificial contra el catálogo y los precios del corralón, y enviarlas a sus clientes.",
+            "El servicio se ofrece en su etapa de piloto comercial y puede cambiar, sumar o quitar funciones."
+          ]
+        },
+        {
+          "title": "Tu cuenta",
+          "paragraphs": [
+            "Los datos de la cuenta tienen que ser verdaderos y estar actualizados. Quien la administra es responsable de los usuarios que da de alta, de sus permisos y de lo que hacen con ella.",
+            "Cada usuario cuida sus credenciales. Si sospechás que alguien entró a tu cuenta, cambiá la contraseña y avisá al administrador."
+          ]
+        },
+        {
+          "title": "La cotización es del corralón",
+          "paragraphs": [
+            "Coti propone; el corralón revisa y decide. Los precios salen del catálogo y de las reglas que carga el corralón, que es responsable de lo que envía a sus clientes. Revisá cada cotización antes de enviarla."
+          ]
+        },
+        {
+          "title": "Tus datos y los de tus clientes",
+          "paragraphs": [
+            "Los datos que cargás siguen siendo tuyos. Nos autorizás a tratarlos solo para prestarte el servicio, como explica la Política de privacidad.",
+            "Sos responsable de contar con el consentimiento o la base legal necesaria para cargar en Coti los datos de tus clientes."
+          ]
+        },
+        {
+          "title": "Uso aceptable",
+          "paragraphs": [
+            "No se puede usar Coti para enviar comunicaciones no solicitadas, cargar contenido ilícito, intentar acceder a cuentas o datos ajenos, ni interferir con el funcionamiento del servicio."
+          ]
+        },
+        {
+          "title": "Disponibilidad",
+          "paragraphs": [
+            "Trabajamos para que el servicio esté disponible y funcione bien, pero durante el piloto no podemos garantizar que esté libre de interrupciones o errores. Cuando haya mantenimiento programado, lo avisamos con anticipación razonable."
+          ]
+        },
+        {
+          "title": "Responsabilidad",
+          "paragraphs": [
+            "En la medida en que la ley lo permita, Coti no responde por las decisiones comerciales que el corralón tome a partir de cotizaciones que revisó y aprobó, ni por el lucro cesante derivado del uso del servicio."
+          ]
+        },
+        {
+          "title": "Condiciones comerciales",
+          "paragraphs": [
+            "El precio y las condiciones de pago del servicio se acuerdan por separado con cada corralón."
+          ]
+        },
+        {
+          "title": "Baja y suspensión",
+          "paragraphs": [
+            "Podés dar de baja la cuenta cuando quieras. Podemos suspender una cuenta que incumpla estos términos, avisando el motivo."
+          ]
+        },
+        {
+          "title": "Ley aplicable",
+          "paragraphs": [
+            "Estos términos se rigen por las leyes de la República Argentina. Ante cualquier controversia, son competentes los tribunales ordinarios de la Ciudad Autónoma de Buenos Aires."
+          ]
+        },
+        {
+          "title": "Cambios en estos términos",
+          "paragraphs": [
+            "Si los cambiamos, publicamos la versión nueva en esta página con su fecha de actualización y, si el cambio es importante, lo avisamos antes de que rija."
+          ]
+        }
+      ]
+    }
   },
   "auth": {
     "login": {

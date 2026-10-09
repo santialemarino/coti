@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   isOrdersPath,
+  isProtectedPath,
   isSettingsPath,
   PUBLIC_ROUTES,
   queueSelection,
@@ -100,5 +101,32 @@ describe('isSettingsPath', () => {
     expect(isSettingsPath(ROUTES.settings)).toBe(true);
     expect(isSettingsPath('/settingsx')).toBe(false);
     expect(isSettingsPath(ROUTES.clients)).toBe(false);
+  });
+});
+
+describe('isProtectedPath', () => {
+  it('guards the queue, every registered app route and the route handlers', () => {
+    expect(isProtectedPath(ROUTES.home)).toBe(true);
+    expect(isProtectedPath(ROUTES.rfqsDetail('a1'))).toBe(true);
+    expect(isProtectedPath(ROUTES.userSettings)).toBe(true);
+    expect(isProtectedPath(ROUTES.onboarding)).toBe(true);
+    expect(isProtectedPath('/api/rfqs')).toBe(true);
+  });
+
+  // An unknown path is answered with the 404 rather than a login screen for a page that never was.
+  it('leaves the public site and any unknown path unguarded', () => {
+    expect(isProtectedPath(ROUTES.landing)).toBe(false);
+    expect(isProtectedPath(ROUTES.privacy)).toBe(false);
+    expect(isProtectedPath(ROUTES.login)).toBe(false);
+    expect(isProtectedPath('/precios')).toBe(false);
+    expect(isProtectedPath('/rfqsx')).toBe(false);
+  });
+
+  // The public pages have to open for a seller too: the 404 and the header send them there.
+  it('keeps the public site reachable with a session', () => {
+    [ROUTES.landing, ROUTES.privacy, ROUTES.terms].forEach((route) => {
+      expect(PUBLIC_ROUTES).toContain(route);
+      expect(SIGNED_OUT_ONLY_ROUTES).not.toContain(route);
+    });
   });
 });
