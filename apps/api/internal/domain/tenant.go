@@ -14,7 +14,7 @@ const (
 	UserRoleSeller UserRole = "SELLER"
 )
 
-// Tenant is the authenticated caller's scope, resolved once per request.
+// Tenant is the account scope of an authenticated caller or a verified external ingress.
 //
 // AccountID is the hard boundary — it feeds the per-transaction GUC row level security
 // reads. Branch reach is the soft one, filtered in the services: BranchFilter is the set a

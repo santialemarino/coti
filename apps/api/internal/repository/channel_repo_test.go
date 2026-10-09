@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -45,6 +46,24 @@ func seedChannelWithIdentifier(
 		 VALUES ($1, $2, $3, $4, $5)`,
 		id, accountID, branchID, channelType, identifier); err != nil {
 		t.Fatalf("seed channel: %v", err)
+	}
+	t.Cleanup(func() {
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM channel WHERE id = $1`, id)
+	})
+	return id
+}
+
+func seedInboundChannel(
+	t *testing.T, db *DB, accountID, branchID uuid.UUID, channelType domain.ChannelType,
+	identifier *string, config []byte, isActive bool,
+) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	if _, err := db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO channel (id, account_id, branch_id, type, identifier, config, is_active)
+		 VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
+		id, accountID, branchID, channelType, identifier, config, isActive); err != nil {
+		t.Fatalf("seed inbound channel: %v", err)
 	}
 	t.Cleanup(func() {
 		mustCleanup(t, db.CrossAccount(), `DELETE FROM channel WHERE id = $1`, id)
@@ -100,6 +119,124 @@ func TestChannelRepository_ActiveReadsStayInsideAccountAndBranch(t *testing.T) {
 				t.Errorf("GetActiveByID() = %v, want %v", err, domain.ErrNotFound)
 			}
 		})
+	}
+}
+
+func TestChannelRepository_GetActiveByTypeAndIdentifiersCrossAccount_RoutesExternalInboxes(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountA := seedAccount(t, db, "Inbound route account A")
+	accountB := seedAccount(t, db, "Inbound route account B")
+	branchA := branchOf(t, db, accountA)
+	branchB := branchOf(t, db, accountB)
+	repo := NewChannelRepository()
+	phoneNumberID := "phone-" + uuid.NewString()
+	mailbox := "Pedidos+" + uuid.NewString() + "@corralon.test"
+	whatsAppID := seedInboundChannel(t, db, accountB, branchB, domain.ChannelTypeWhatsApp,
+		ptrString("+5491100000000"), []byte(`{"phone_number_id":"`+phoneNumberID+`"}`), true)
+	seedInboundChannel(t, db, accountA, branchA, domain.ChannelTypeWhatsApp,
+		ptrString("+5491100000001"), []byte(`{"phone_number_id":"`+phoneNumberID+`"}`), false)
+	emailID := seedInboundChannel(t, db, accountA, branchA, domain.ChannelTypeEmail, &mailbox,
+		nil, true)
+
+	whatsApp, err := repo.GetActiveByTypeAndIdentifiersCrossAccount(ctx, db.CrossAccount(),
+		domain.ChannelTypeWhatsApp, []string{"unknown", phoneNumberID})
+	if err != nil {
+		t.Fatalf("GetActiveByTypeAndIdentifiersCrossAccount(WHATSAPP) = %v", err)
+	}
+	if len(whatsApp) != 1 || whatsApp[phoneNumberID].ID != whatsAppID ||
+		whatsApp[phoneNumberID].AccountID != accountB || whatsApp[phoneNumberID].BranchID != branchB {
+		t.Errorf("WhatsApp route = %#v, want active channel %s on account/branch %s/%s", whatsApp,
+			whatsAppID, accountB, branchB)
+	}
+
+	email, err := repo.GetActiveByTypeAndIdentifiersCrossAccount(ctx, db.CrossAccount(),
+		domain.ChannelTypeEmail, []string{strings.ToLower(mailbox)})
+	if err != nil {
+		t.Fatalf("GetActiveByTypeAndIdentifiersCrossAccount(EMAIL) = %v", err)
+	}
+	key := strings.ToLower(mailbox)
+	if len(email) != 1 || email[key].ID != emailID || email[key].AccountID != accountA ||
+		email[key].BranchID != branchA {
+		t.Errorf("email route = %#v, want active channel %s on account/branch %s/%s", email,
+			emailID, accountA, branchA)
+	}
+}
+
+func TestChannelRepository_CreateRejectsDuplicateActiveExternalDestination(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountA := seedAccount(t, db, "Inbound destination account A")
+	accountB := seedAccount(t, db, "Inbound destination account B")
+	branchA := branchOf(t, db, accountA)
+	branchB := branchOf(t, db, accountB)
+	repo := NewChannelRepository()
+	phoneNumberID := "phone-" + uuid.NewString()
+	mailbox := "pedidos+" + uuid.NewString() + "@corralon.test"
+
+	create := func(accountID, branchID uuid.UUID, in domain.NewChannel) error {
+		return db.InTenantTx(ctx, domain.Tenant{AccountID: accountID, BranchID: branchID},
+			func(q Querier) error {
+				channel, err := repo.Create(ctx, q, accountID, branchID, in)
+				if channel != nil {
+					cleanupChannel(t, db, channel.ID)
+				}
+				return err
+			})
+	}
+
+	if err := create(accountA, branchA, domain.NewChannel{
+		Type: domain.ChannelTypeWhatsApp, Identifier: ptrString("+5491100000000"),
+		Config: []byte(`{"phone_number_id":"` + phoneNumberID + `"}`),
+	}); err != nil {
+		t.Fatalf("create first WhatsApp channel: %v", err)
+	}
+	if err := create(accountB, branchB, domain.NewChannel{
+		Type: domain.ChannelTypeWhatsApp, Identifier: ptrString("+5491100000001"),
+		Config: []byte(`{"phone_number_id":"` + phoneNumberID + `"}`),
+	}); !errors.Is(err, domain.ErrConflict) {
+		t.Errorf("duplicate WhatsApp destination = %v, want %v", err, domain.ErrConflict)
+	}
+
+	if err := create(accountA, branchA, domain.NewChannel{
+		Type: domain.ChannelTypeEmail, Identifier: &mailbox,
+	}); err != nil {
+		t.Fatalf("create first email channel: %v", err)
+	}
+	upperMailbox := strings.ToUpper(mailbox)
+	if err := create(accountB, branchB, domain.NewChannel{
+		Type: domain.ChannelTypeEmail, Identifier: &upperMailbox,
+	}); !errors.Is(err, domain.ErrConflict) {
+		t.Errorf("duplicate email destination = %v, want %v", err, domain.ErrConflict)
+	}
+}
+
+func TestChannelRepository_CreateDefaultsRefusesAMailboxClaimedByAnotherAccount(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountA := seedAccount(t, db, "Default channels account A")
+	accountB := seedAccount(t, db, "Default channels account B")
+	branchA := branchOf(t, db, accountA)
+	branchB := branchOf(t, db, accountB)
+	mailbox := "pedidos+" + uuid.NewString() + "@corralon.test"
+	seedInboundChannel(t, db, accountA, branchA, domain.ChannelTypeEmail, &mailbox, nil, true)
+
+	err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountB, BranchID: branchB},
+		func(q Querier) error {
+			return NewChannelRepository().CreateDefaults(ctx, q, accountB, branchB, &mailbox)
+		})
+	if !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("CreateDefaults() = %v, want %v", err, domain.ErrConflict)
+	}
+
+	var count int
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT count(*) FROM channel WHERE account_id = $1 AND branch_id = $2`, accountB, branchB,
+	).Scan(&count); err != nil {
+		t.Fatalf("count default channels: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("branch has %d default channels after refusal, want none", count)
 	}
 }
 
@@ -164,7 +301,7 @@ func TestChannelRepository_CreateRoundTripsTheConfigVerbatim(t *testing.T) {
 	repo := NewChannelRepository()
 	identifier := "+5491100000000"
 	// Every JSON scalar the shapes use, plus the characters an escaping bug would mangle.
-	config := []byte(`{"phone_number_id":"1234567890","business_account_id":"9876",` +
+	config := []byte(`{"phone_number_id":"` + uuid.NewString() + `","business_account_id":"9876",` +
 		`"access_token":"v1.ábç\"quote\\slash/","webhook_verify_token":"","smtp_port":587,` +
 		`"smtp_starttls":true}`)
 

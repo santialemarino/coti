@@ -1352,6 +1352,42 @@ func TestRFQService_CreateTextDraft_PersistsGeneratedDraft(t *testing.T) {
 	}
 }
 
+func TestRFQService_CreateInboundTextDraft_UsesTheResolvedChannelBranch(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("cemento", "10", "bolsa", "pidiÃ³ 10"),
+	})
+	clientLabel := "Obra Norte"
+	route := domain.InboundChannelRoute{
+		AccountID: testAccountID, BranchID: testBranchID, ChannelID: testChannelID,
+		ChannelType: domain.ChannelTypeWhatsApp,
+	}
+
+	draft, err := h.service.CreateInboundTextDraft(context.Background(), route,
+		domain.InboundTextRFQDraftInput{
+			ClientLabel: &clientLabel, RawText: "10 bolsas de cemento",
+		})
+	if err != nil {
+		t.Fatalf("CreateInboundTextDraft() = %v, want no error", err)
+	}
+	if len(h.rfqs.created) != 1 {
+		t.Fatalf("created %d RFQs, want one", len(h.rfqs.created))
+	}
+	if h.rfqs.created[0].BranchID != route.BranchID || h.rfqs.created[0].ChannelID != route.ChannelID {
+		t.Errorf("RFQ route = branch %s channel %s, want branch %s channel %s",
+			h.rfqs.created[0].BranchID, h.rfqs.created[0].ChannelID, route.BranchID, route.ChannelID)
+	}
+	if len(h.quotes.created) != 1 || h.quotes.created[0].BranchID != route.BranchID {
+		t.Fatalf("quote branch = %#v, want %s", h.quotes.created, route.BranchID)
+	}
+	if h.quotes.created[0].SellerID != nil || h.quotes.versions[0].AuthorID != nil {
+		t.Errorf("inbound draft recorded seller/author %v/%v, want neither",
+			h.quotes.created[0].SellerID, h.quotes.versions[0].AuthorID)
+	}
+	if draft.RFQ.BranchID != route.BranchID {
+		t.Errorf("returned RFQ branch = %s, want %s", draft.RFQ.BranchID, route.BranchID)
+	}
+}
+
 func TestRFQService_CreateTextDraft_StoresTheOrderBeforeReadingIt(t *testing.T) {
 	h := newRFQHarness(nil)
 	h.extractor.err = errors.New("the model timed out")

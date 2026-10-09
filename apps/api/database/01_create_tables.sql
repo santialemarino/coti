@@ -1198,6 +1198,16 @@ CREATE INDEX idx_message_batch_queue ON message_batch(quote_id, closed_at) WHERE
 -- the rfq pointing at any of them.
 CREATE UNIQUE INDEX uq_channel_branch_type_no_identifier
   ON channel (branch_id, type) WHERE identifier IS NULL;
+-- External ingress arrives before an account is known, so its provider destination must resolve
+-- to exactly one active channel across the deployment. This leaves the per-branch cardinality
+-- unchanged: a branch can still hold many WhatsApp or email channels with distinct destinations.
+CREATE UNIQUE INDEX uq_channel_active_whatsapp_phone_number_id
+  ON channel ((config ->> 'phone_number_id'))
+  WHERE type = 'WHATSAPP' AND is_active = TRUE
+    AND (config ->> 'phone_number_id') IS NOT NULL;
+CREATE UNIQUE INDEX uq_channel_active_email_identifier_global
+  ON channel (lower(identifier))
+  WHERE type = 'EMAIL' AND is_active = TRUE AND identifier IS NOT NULL;
 CREATE UNIQUE INDEX uq_quote_version_draft ON quote_version(quote_id) WHERE is_immutable = FALSE;
 -- One open price period per branch and product. The service also takes a FOR UPDATE on the
 -- parent product row, which is what lets two concurrent repricings both succeed; this index
