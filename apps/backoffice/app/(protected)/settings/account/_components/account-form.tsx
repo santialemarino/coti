@@ -24,7 +24,6 @@ import { LogoDropzone } from '@/components/logo-dropzone';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Account } from '@/lib/api/account';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
-import { TAX_ID_LENGTH, taxIdDigits } from '@/lib/constants/tax';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 
 interface AccountFormProps {
@@ -42,7 +41,7 @@ export function AccountForm({ account }: AccountFormProps) {
     defaultValues: {
       name: account.name,
       legalName: account.legalName ?? '',
-      taxId: taxIdDigits(account.taxId),
+      taxId: account.taxId ?? '',
       brandLogoUrl: account.brandLogoUrl ?? '',
       brandColor: account.brandColor?.replace(/^#/, '') ?? '',
     },
@@ -117,8 +116,7 @@ export function AccountForm({ account }: AccountFormProps) {
                   <FormLabel>{t('taxId.label')}</FormLabel>
                   <FormControl>
                     <Input
-                      inputMode="numeric"
-                      maxLength={TAX_ID_LENGTH}
+                      maxLength={TEXT_FIELD_MAX_LENGTH}
                       placeholder={t('taxId.placeholder')}
                       {...field}
                     />

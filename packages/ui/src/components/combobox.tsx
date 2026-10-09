@@ -319,8 +319,6 @@ interface MultiComboboxProps extends ComboboxSharedProps {
   onValuesChange: (values: string[]) => void;
   /* Trigger copy once more than one option is on, e.g. "3 estados". Receives the count. */
   summaryLabel: (count: number) => string;
-  /* Resets the selection to everything and names that choice in both the menu and trigger. */
-  resetLabel?: string;
   /* Clears the selection from inside the list. Omitted when there is nothing to clear. */
   clearLabel: string;
 }
@@ -338,7 +336,6 @@ function MultiCombobox({
   onValuesChange,
   placeholder,
   summaryLabel,
-  resetLabel,
   clearLabel,
   emptyLabel,
   searchPlaceholder,
@@ -385,9 +382,7 @@ function MultiCombobox({
           invalid={ariaInvalid}
           icon={icon}
           label={
-            values.length === 0
-              ? (resetLabel ?? placeholder)
-              : (onlyOne?.label ?? summaryLabel(values.length))
+            values.length === 0 ? placeholder : (onlyOne?.label ?? summaryLabel(values.length))
           }
           aria-label={ariaLabel}
           aria-describedby={ariaDescribedBy}
@@ -413,17 +408,6 @@ function MultiCombobox({
           {searchable ? <CommandInput placeholder={searchPlaceholder} /> : null}
           <CommandList ref={listRef}>
             {searchable ? <CommandEmpty>{emptyLabel}</CommandEmpty> : null}
-            {resetLabel ? (
-              <>
-                <CommandGroup>
-                  <CommandItem value="__reset__" onSelect={() => onValuesChange([])}>
-                    <span className="text-foreground-muted">{resetLabel}</span>
-                    <SelectedMark selected={values.length === 0} />
-                  </CommandItem>
-                </CommandGroup>
-                <CommandSeparator />
-              </>
-            ) : null}
             {groups.map(([group, groupItems]) => (
               <CommandGroup key={group || 'ungrouped'} heading={group || undefined}>
                 {groupItems.map((option) => (
@@ -441,7 +425,7 @@ function MultiCombobox({
                 ))}
               </CommandGroup>
             ))}
-            {values.length > 0 && !resetLabel ? (
+            {values.length > 0 ? (
               <>
                 <CommandSeparator />
                 <CommandGroup>

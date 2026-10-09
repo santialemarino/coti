@@ -70,8 +70,7 @@
         "passwordTooLong": "Máximo {max} caracteres.",
         "passwordMismatch": "Las contraseñas no coinciden.",
         "passwordRequirements": "La contraseña no cumple con los requisitos.",
-        "amountTooHigh": "El monto es demasiado alto.",
-        "invalidTaxId": "El CUIT debe tener exactamente 11 dígitos."
+        "amountTooHigh": "El monto es demasiado alto."
       }
     },
     "passwordMeter": {
@@ -563,7 +562,6 @@
       "filters": {
         "status": "Estado",
         "statusCount": "{count} estados",
-        "allStatus": "Todos los estados",
         "clearStatus": "Limpiar estados",
         "channel": "Canal",
         "branch": "Sucursal",
@@ -1116,67 +1114,8 @@
     }
   },
   "reports": {
-    "title": "Reportes",
-    "description": "Métricas de los pedidos y las cotizaciones que tenés asignados.",
-    "filters": {
-      "title": "Período",
-      "description": "Elegí un rango de fechas o dejalo vacío para consultar todo tu historial.",
-      "from": "Desde",
-      "to": "Hasta",
-      "apply": "Aplicar período"
-    },
-    "metrics": {
-      "title": "Tus métricas",
-      "ordersReceived": "Pedidos recibidos",
-      "ordersDescription": "Pedidos asignados a vos en el período.",
-      "quotesSent": "Cotizaciones enviadas",
-      "sentDescription": "Cotizaciones enviadas al cliente.",
-      "quotesAccepted": "Cotizaciones aceptadas",
-      "acceptedDescription": "Cotizaciones aceptadas por tus clientes.",
-      "conversion": "Tasa de conversión",
-      "conversionDescription": "Aceptadas sobre cotizaciones enviadas.",
-      "quoteTime": "Tiempo de cotización",
-      "quoteTimeDescription": "Desde que recibís el pedido hasta el primer envío."
-    },
-    "statuses": {
-      "title": "Cotizaciones por estado",
-      "description": "Estado actual de tus cotizaciones dentro del período.",
-      "total": "Total"
-    },
-    "status": {
-      "DRAFT": "Borrador",
-      "QUOTED": "Generada",
-      "SENT": "Enviada",
-      "CHANGE_REQUESTED": "Con cambios solicitados",
-      "ACCEPTED": "Aceptada",
-      "REJECTED": "Rechazada"
-    },
-    "materials": {
-      "title": "Materiales más pedidos",
-      "description": "Productos incluidos en más pedidos tuyos."
-    },
-    "clients": {
-      "title": "Top clientes",
-      "description": "Clientes con más pedidos asignados a vos."
-    },
-    "rankings": {
-      "orders": "{count, plural, one {# pedido} other {# pedidos}}"
-    },
-    "time": {
-      "noData": "Sin datos",
-      "days": "{count, plural, one {# día} other {# días}}",
-      "hours": "{count, plural, one {# hora} other {# horas}}",
-      "minutes": "{count, plural, one {# minuto} other {# minutos}}"
-    },
-    "empty": {
-      "title": "Todavía no hay datos para mostrar",
-      "description": "Cuando tengas pedidos asignados en este período, vas a ver tus métricas acá."
-    },
-    "invalidDate": {
-      "title": "Revisá el período seleccionado",
-      "description": "Ingresá fechas válidas y asegurate de que «Hasta» no sea anterior a «Desde»."
-    },
-    "noData": "—"
+    "placeholderTitle": "Reportes",
+    "placeholderDescription": "Los reportes de pedidos y cotizaciones se van a mostrar acá."
   },
   "administration": {
     "placeholderTitle": "Administración",

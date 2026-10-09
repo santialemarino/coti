@@ -46,15 +46,6 @@ The `/swagger/*any` route is mounted only when `ENV != production`. It describes
 API: publishing it would hand an unauthenticated reader the whole surface for nothing. The
 consumers are this repo's two web apps and whoever is writing them.
 
-## Seller reports
-
-`GET /v1/reports` returns activity for the authenticated user's assigned quotes, narrowed to
-the active branch and the branches reachable by that user. Optional `date_from` and `date_to`
-query parameters (`YYYY-MM-DD`) filter by the RFQ receipt date; omitting both includes all
-available history. The response includes received orders, sent and accepted quotes, current quote
-status counts, frequently requested catalog products, active clients, and average time from RFQ
-receipt to the first quote send. Conversion is accepted quotes divided by sent quotes.
-
 ## Annotating a handler
 
 The block goes in the doc comment, indented with tabs so `gofmt` treats it as preformatted

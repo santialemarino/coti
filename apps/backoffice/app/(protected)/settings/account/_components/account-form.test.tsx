@@ -19,7 +19,7 @@ const ACCOUNT: Account = {
   id: 'a1',
   name: 'Corralón San Martín',
   legalName: 'Corralón San Martín S.R.L.',
-  taxId: '30712345679',
+  taxId: '30-71234567-9',
   brandLogoUrl: 'https://tucorralon.com/logo.png',
   brandColor: '#C2410C',
 };
@@ -59,7 +59,7 @@ describe('AccountForm', () => {
 
     expect(field(view, 'name').value).toBe(ACCOUNT.name);
     expect(field(view, 'legalName').value).toBe(ACCOUNT.legalName);
-    expect(field(view, 'taxId').value).toBe('30712345679');
+    expect(field(view, 'taxId').value).toBe(ACCOUNT.taxId);
     expect(view.getByRole('img', { name: messages.common.logoUpload.previewAlt })).toBeTruthy();
     expect(field(view, 'brandColor').value).toBe('C2410C');
   });
