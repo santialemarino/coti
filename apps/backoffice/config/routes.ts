@@ -21,6 +21,7 @@ export const ROUTES = {
   changePassword: `${SETTINGS_ROOT}/password`,
   emailSettings: `${SETTINGS_ROOT}/email`,
   accountSettings: `${SETTINGS_ROOT}/account`,
+  arcaSettings: `${SETTINGS_ROOT}/arca`,
   priceSettings: `${SETTINGS_ROOT}/prices`,
   catalogSettings: `${SETTINGS_ROOT}/catalog`,
   branchSettings: `${SETTINGS_ROOT}/branches`,

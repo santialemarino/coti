@@ -27,6 +27,7 @@ import (
 
 	"github.com/santialemarino/coti/apps/api/internal/ai"
 	aiprovider "github.com/santialemarino/coti/apps/api/internal/ai/provider"
+	"github.com/santialemarino/coti/apps/api/internal/arca"
 	"github.com/santialemarino/coti/apps/api/internal/branding"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
@@ -161,6 +162,12 @@ func run() error {
 	productPriceImportService := services.NewProductPriceImportService(db, productPriceRepo, nil)
 	catalogImportService := services.NewCatalogImportService(db, catalogImportRepo, nil)
 	channelService := services.NewChannelService(db, channelRepo, channelSealer)
+	arcaCipher, err := secrets.NewAESGCM(cfg.ARCA.EncryptionKey)
+	if err != nil {
+		return err
+	}
+	arcaSetupService := services.NewARCASetupService(db, repository.NewARCASetupRepository(), arcaCipher,
+		arca.NewSetupConnector(cfg.ARCA.Timeout))
 	catalogSearchService := services.NewCatalogSearchService(db, productRepo, providers.Embedder,
 		cfg.Catalog)
 	catalogMatchService := services.NewCatalogMatchService(catalogSearchService, cfg.Catalog).
@@ -221,6 +228,7 @@ func run() error {
 			Account:       handler.NewAccountHandler(accountService),
 			AccountLogo:   handler.NewBrandLogoHandler(accountService, cfg.Storage.MaxFileSize),
 			Onboarding:    handler.NewOnboardingHandler(onboardingService),
+			ARCASetup:     handler.NewARCASetupHandler(arcaSetupService),
 			File:          fileHandler(objectStorage),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},

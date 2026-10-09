@@ -225,6 +225,159 @@
                 }
             }
         },
+        "/v1/arca/setup": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "arca"
+                ],
+                "summary": "Get ARCA homologation setup",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ARCASetupResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "arca"
+                ],
+                "summary": "Create ARCA homologation certificate request",
+                "parameters": [
+                    {
+                        "description": "Issuer CUIT",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateARCASetupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ARCASetupResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "arca"
+                ],
+                "summary": "Disconnect ARCA homologation",
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/v1/arca/setup/certificate": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "arca"
+                ],
+                "summary": "Install ARCA homologation certificate",
+                "parameters": [
+                    {
+                        "description": "Public PEM certificate",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UploadARCACertificateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/v1/arca/setup/verify": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "arca"
+                ],
+                "summary": "Verify ARCA homologation access",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Test point of sale",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.VerifyARCASetupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ARCAConnectionResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/auth/change-email": {
             "post": {
                 "security": [
@@ -5983,6 +6136,46 @@
         }
     },
     "definitions": {
+        "dto.ARCAConnectionResponse": {
+            "type": "object",
+            "properties": {
+                "failure": {
+                    "type": "string"
+                },
+                "last_number": {
+                    "type": "integer"
+                },
+                "verified": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "dto.ARCASetupResponse": {
+            "type": "object",
+            "properties": {
+                "certificate_expires_at": {
+                    "type": "string"
+                },
+                "csr": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "has_certificate": {
+                    "type": "boolean"
+                },
+                "point_of_sale": {
+                    "type": "integer"
+                },
+                "tax_id": {
+                    "type": "string"
+                },
+                "verified_at": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.AccountResponse": {
             "type": "object",
             "properties": {
@@ -6696,6 +6889,18 @@
             "properties": {
                 "imported_rows": {
                     "type": "integer"
+                }
+            }
+        },
+        "dto.CreateARCASetupRequest": {
+            "type": "object",
+            "required": [
+                "tax_id"
+            ],
+            "properties": {
+                "tax_id": {
+                    "type": "string",
+                    "maxLength": 13
                 }
             }
         },
@@ -8866,6 +9071,18 @@
                 }
             }
         },
+        "dto.UploadARCACertificateRequest": {
+            "type": "object",
+            "required": [
+                "certificate"
+            ],
+            "properties": {
+                "certificate": {
+                    "type": "string",
+                    "maxLength": 16384
+                }
+            }
+        },
         "dto.UserBrief": {
             "type": "object",
             "properties": {
@@ -8931,6 +9148,19 @@
                 },
                 "updated_at": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.VerifyARCASetupRequest": {
+            "type": "object",
+            "required": [
+                "point_of_sale"
+            ],
+            "properties": {
+                "point_of_sale": {
+                    "type": "integer",
+                    "maximum": 99998,
+                    "minimum": 1
                 }
             }
         }

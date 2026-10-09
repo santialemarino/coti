@@ -1,5 +1,31 @@
 basePath: /
 definitions:
+  dto.ARCAConnectionResponse:
+    properties:
+      failure:
+        type: string
+      last_number:
+        type: integer
+      verified:
+        type: boolean
+    type: object
+  dto.ARCASetupResponse:
+    properties:
+      certificate_expires_at:
+        type: string
+      csr:
+        type: string
+      enabled:
+        type: boolean
+      has_certificate:
+        type: boolean
+      point_of_sale:
+        type: integer
+      tax_id:
+        type: string
+      verified_at:
+        type: string
+    type: object
   dto.AccountResponse:
     properties:
       brand_color:
@@ -471,6 +497,14 @@ definitions:
     properties:
       imported_rows:
         type: integer
+    type: object
+  dto.CreateARCASetupRequest:
+    properties:
+      tax_id:
+        maxLength: 13
+        type: string
+    required:
+    - tax_id
     type: object
   dto.CreateBranchRequest:
     properties:
@@ -1952,6 +1986,14 @@ definitions:
     - name
     - role
     type: object
+  dto.UploadARCACertificateRequest:
+    properties:
+      certificate:
+        maxLength: 16384
+        type: string
+    required:
+    - certificate
+    type: object
   dto.UserBrief:
     properties:
       account_id:
@@ -1997,6 +2039,15 @@ definitions:
         type: string
       updated_at:
         type: string
+    type: object
+  dto.VerifyARCASetupRequest:
+    properties:
+      point_of_sale:
+        maximum: 99998
+        minimum: 1
+        type: integer
+    required:
+    - point_of_sale
     type: object
 info:
   contact: {}
@@ -2147,6 +2198,98 @@ paths:
       summary: Upload an account logo
       tags:
       - accounts
+  /v1/arca/setup:
+    delete:
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Disconnect ARCA homologation
+      tags:
+      - arca
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ARCASetupResponse'
+      security:
+      - BearerAuth: []
+      summary: Get ARCA homologation setup
+      tags:
+      - arca
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Issuer CUIT
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateARCASetupRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ARCASetupResponse'
+      security:
+      - BearerAuth: []
+      summary: Create ARCA homologation certificate request
+      tags:
+      - arca
+  /v1/arca/setup/certificate:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Public PEM certificate
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UploadARCACertificateRequest'
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Install ARCA homologation certificate
+      tags:
+      - arca
+  /v1/arca/setup/verify:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Test point of sale
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.VerifyARCASetupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ARCAConnectionResponse'
+      security:
+      - BearerAuth: []
+      summary: Verify ARCA homologation access
+      tags:
+      - arca
   /v1/auth/change-email:
     post:
       consumes:
