@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -31,6 +32,48 @@ func TestNormalizeChannelIdentifier(t *testing.T) {
 				t.Fatalf("NormalizeChannelIdentifier() = nil, want %q", *test.want)
 			case *got != *test.want:
 				t.Fatalf("NormalizeChannelIdentifier() = %q, want %q", *got, *test.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeInboundChannelIdentifier(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name        string
+		channelType ChannelType
+		identifier  string
+		want        string
+		wantRefused bool
+	}{
+		{name: "whatsapp keeps provider identifier", channelType: ChannelTypeWhatsApp,
+			identifier: "  1234567890  ", want: "1234567890"},
+		{name: "email is lower cased", channelType: ChannelTypeEmail,
+			identifier: "  Pedidos@Corralon.test  ", want: "pedidos@corralon.test"},
+		{name: "empty", channelType: ChannelTypeWhatsApp, wantRefused: true},
+		{name: "email display name", channelType: ChannelTypeEmail,
+			identifier: "Pedidos <pedidos@corralon.test>", wantRefused: true},
+		{name: "webapp has no inbox", channelType: ChannelTypeWebApp, identifier: "token",
+			wantRefused: true},
+		{name: "control character", channelType: ChannelTypeWhatsApp, identifier: "12\n34",
+			wantRefused: true},
+		{name: "overlong provider identifier", channelType: ChannelTypeWhatsApp,
+			identifier: strings.Repeat("1", maxChannelFieldLength+1), wantRefused: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := NormalizeInboundChannelIdentifier(test.channelType, test.identifier)
+			if test.wantRefused {
+				if !errors.Is(err, ErrInvalidInput) {
+					t.Fatalf("NormalizeInboundChannelIdentifier() = %v, want %v", err, ErrInvalidInput)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("NormalizeInboundChannelIdentifier() = %v, want no error", err)
+			}
+			if got != test.want {
+				t.Errorf("NormalizeInboundChannelIdentifier() = %q, want %q", got, test.want)
 			}
 		})
 	}

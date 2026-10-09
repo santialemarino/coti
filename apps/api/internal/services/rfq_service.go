@@ -956,6 +956,27 @@ func (s *RFQService) assertProductsInAccount(
 
 // ---------- AI pipeline ----------
 
+// CreateInboundTextDraft turns a routed external text message into an unassigned quote draft.
+func (s *RFQService) CreateInboundTextDraft(
+	ctx context.Context, route domain.InboundChannelRoute, in domain.InboundTextRFQDraftInput,
+) (*domain.TextRFQDraft, error) {
+	if err := route.Validate(); err != nil {
+		return nil, err
+	}
+	tenant := route.Tenant()
+	if err := requireBranch(tenant, "an inbound RFQ draft"); err != nil {
+		return nil, err
+	}
+	normalized, err := s.normalizeTextRFQDraftInput(domain.TextRFQDraftInput{
+		ChannelID: route.ChannelID, ClientID: in.ClientID, ClientLabel: in.ClientLabel,
+		RawText: in.RawText, WorkType: in.WorkType,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.createTextDraft(ctx, tenant, normalized, nil)
+}
+
 // CreateTextDraft turns plain RFQ text into a quote DRAFT for seller review.
 func (s *RFQService) CreateTextDraft(
 	ctx context.Context, tenant domain.Tenant, in domain.TextRFQDraftInput,

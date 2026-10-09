@@ -77,9 +77,11 @@ order or a catalog by its own size and never by whether it arrived inline or thr
 The file's own size is capped by `STORAGE_MAX_FILE_SIZE_BYTES`, the same limit the attachment
 upload uses.
 
-The development route resolves the branch's WhatsApp channel and then calls the same service method
-the production route does. It is a different way in, not a second pipeline — a copy would drift from
-the path it is meant to rehearse. It is registered only when `ENV` is not `production`.
+The development route resolves the branch's WhatsApp channel and then calls the same pipeline as a
+production connector. It is a different way in, not a second pipeline — a copy would drift from the
+path it is meant to rehearse. Production connector requirements are documented in
+[accounts-and-branches.md](accounts-and-branches.md#connector-integration-contract). The development
+route is registered only when `ENV` is not `production`.
 
 ## The order of operations, and why
 

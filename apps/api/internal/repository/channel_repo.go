@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -16,8 +17,10 @@ const channelColumns = `id, account_id, branch_id, type, is_active, identifier,
 	config IS NOT NULL AS is_configured, created_at, updated_at`
 
 const (
-	channelIdentifierIndex   = "uq_channel_branch_type_identifier"
-	channelNoIdentifierIndex = "uq_channel_branch_type_no_identifier"
+	channelIdentifierIndex            = "uq_channel_branch_type_identifier"
+	channelNoIdentifierIndex          = "uq_channel_branch_type_no_identifier"
+	channelEmailIdentifierIndex       = "uq_channel_active_email_identifier_global"
+	channelWhatsAppPhoneNumberIDIndex = "uq_channel_active_whatsapp_phone_number_id"
 )
 
 // ChannelRepository owns persistence for channel.
@@ -77,6 +80,35 @@ func (r *ChannelRepository) ListActiveByType(
 	return scanChannels(rows)
 }
 
+// GetActiveByTypeAndIdentifiersCrossAccount resolves active external inboxes before a tenant is known.
+func (r *ChannelRepository) GetActiveByTypeAndIdentifiersCrossAccount(
+	ctx context.Context, q Querier, channelType domain.ChannelType, identifiers []string,
+) (map[string]domain.Channel, error) {
+	if len(identifiers) == 0 {
+		return map[string]domain.Channel{}, nil
+	}
+
+	switch channelType {
+	case domain.ChannelTypeWhatsApp:
+		return r.getActiveInboundChannels(ctx, q,
+			`SELECT `+channelColumns+`, config ->> 'phone_number_id'
+			 FROM channel
+			 WHERE type = 'WHATSAPP' AND is_active = TRUE
+			   AND config ->> 'phone_number_id' = ANY($1)`,
+			identifiers)
+	case domain.ChannelTypeEmail:
+		return r.getActiveInboundChannels(ctx, q,
+			`SELECT `+channelColumns+`, lower(identifier)
+			 FROM channel
+			 WHERE type = 'EMAIL' AND is_active = TRUE
+			   AND lower(identifier) = ANY($1)`,
+			identifiers)
+	default:
+		return nil, fmt.Errorf("%w: %s has no external inbox route", domain.ErrInvalidInput,
+			channelType)
+	}
+}
+
 // GetActiveByID returns an active channel in the requested branch.
 func (r *ChannelRepository) GetActiveByID(
 	ctx context.Context, q Querier, accountID, branchID, channelID uuid.UUID,
@@ -124,10 +156,29 @@ func (r *ChannelRepository) CreateDefaults(
 	ctx context.Context, q Querier, accountID, branchID uuid.UUID, email *string,
 ) error {
 	_, err := q.Exec(ctx,
-		`INSERT INTO channel (account_id, branch_id, type, identifier)
-		 VALUES ($1, $2, 'MANUAL_ENTRY', NULL), ($1, $2, 'WHATSAPP', NULL), ($1, $2, 'EMAIL', $3)
+		`INSERT INTO channel (account_id, branch_id, type)
+		 VALUES ($1, $2, 'MANUAL_ENTRY'), ($1, $2, 'WHATSAPP')
 		 ON CONFLICT DO NOTHING`,
-		accountID, branchID, email)
+		accountID, branchID)
+	if err != nil {
+		return err
+	}
+	if email == nil {
+		_, err = q.Exec(ctx,
+			`INSERT INTO channel (account_id, branch_id, type, identifier)
+			 VALUES ($1, $2, 'EMAIL', NULL)
+			 ON CONFLICT DO NOTHING`,
+			accountID, branchID)
+	} else {
+		_, err = q.Exec(ctx,
+			`INSERT INTO channel (account_id, branch_id, type, identifier)
+			 VALUES ($1, $2, 'EMAIL', $3)
+			 ON CONFLICT (branch_id, type, identifier) DO NOTHING`,
+			accountID, branchID, email)
+	}
+	if isChannelConflict(err) {
+		return domain.ErrConflict
+	}
 	return err
 }
 
@@ -188,9 +239,21 @@ func (r *ChannelRepository) getByID(
 	return &channel, nil
 }
 
+func (r *ChannelRepository) getActiveInboundChannels(
+	ctx context.Context, q Querier, query string, identifiers []string,
+) (map[string]domain.Channel, error) {
+	rows, err := q.Query(ctx, query, identifiers)
+	if err != nil {
+		return nil, err
+	}
+	return scanInboundChannels(rows)
+}
+
 func isChannelConflict(err error) bool {
 	return isUniqueViolation(err, channelIdentifierIndex) ||
-		isUniqueViolation(err, channelNoIdentifierIndex)
+		isUniqueViolation(err, channelNoIdentifierIndex) ||
+		isUniqueViolation(err, channelEmailIdentifierIndex) ||
+		isUniqueViolation(err, channelWhatsAppPhoneNumberIDIndex)
 }
 
 type channelScanner interface {
@@ -211,10 +274,39 @@ func scanChannels(rows pgx.Rows) ([]domain.Channel, error) {
 	return channels, rows.Err()
 }
 
+func scanInboundChannels(rows pgx.Rows) (map[string]domain.Channel, error) {
+	defer rows.Close()
+
+	channels := make(map[string]domain.Channel)
+	for rows.Next() {
+		channel, identifier, err := scanInboundChannel(rows)
+		if err != nil {
+			return nil, err
+		}
+		if _, exists := channels[identifier]; exists {
+			return nil, domain.ErrConflict
+		}
+		channels[identifier] = channel
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return channels, nil
+}
+
 func scanChannel(row channelScanner) (domain.Channel, error) {
 	var channel domain.Channel
 	err := row.Scan(&channel.ID, &channel.AccountID, &channel.BranchID, &channel.Type,
 		&channel.IsActive, &channel.Identifier, &channel.IsConfigured,
 		&channel.CreatedAt, &channel.UpdatedAt)
 	return channel, err
+}
+
+func scanInboundChannel(row channelScanner) (domain.Channel, string, error) {
+	var channel domain.Channel
+	var identifier string
+	err := row.Scan(&channel.ID, &channel.AccountID, &channel.BranchID, &channel.Type,
+		&channel.IsActive, &channel.Identifier, &channel.IsConfigured,
+		&channel.CreatedAt, &channel.UpdatedAt, &identifier)
+	return channel, identifier, err
 }
