@@ -8,7 +8,6 @@ import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 
 import {
-  Badge,
   Button,
   ConfirmDialog,
   Dropzone,
@@ -95,7 +94,7 @@ export function ARCASetupForm({ setup, branchId }: ARCASetupFormProps) {
     const url = URL.createObjectURL(new Blob([setup.csr], { type: 'application/pkcs10' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = `coti-${setup.taxId}-homologation.csr`;
+    link.download = `coti-${setup.taxId}.csr`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -170,17 +169,19 @@ export function ARCASetupForm({ setup, branchId }: ARCASetupFormProps) {
 
   return (
     <div className="flex flex-col gap-y-8">
-      <div className="flex flex-col gap-y-3">
-        <Badge tone="warning">{t('environment')}</Badge>
-        <p className="text-paragraph-md text-muted-foreground">{t('intro')}</p>
-        <p className="text-paragraph-sm text-muted-foreground">{t('privacy')}</p>
-      </div>
       <section className="flex flex-col gap-y-4">
         <h2 className="text-heading-6">{t('tutorial.title')}</h2>
         <StepList
-          steps={['access', 'generate', 'certificate', 'authorize', 'upload', 'verify'].map(
-            (step) => t(`tutorial.${step}`),
-          )}
+          variant="list"
+          steps={[
+            'access',
+            'generate',
+            'downloadRequest',
+            'certificate',
+            'authorize',
+            'upload',
+            'verify',
+          ].map((step) => t(`tutorial.${step}`))}
         />
         <div className="flex flex-wrap gap-3">
           <Button asChild variant="outline">

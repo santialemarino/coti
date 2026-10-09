@@ -17,7 +17,7 @@ describe('ARCA setup boundary', () => {
       point_of_sale: 7,
       verified_at: '2026-10-09',
     });
-    await expect(getARCASetup()).resolves.toEqual({
+    await expect(getARCASetup('selected-branch')).resolves.toEqual({
       enabled: true,
       taxId: '20329642330',
       csr: 'public request',
@@ -25,6 +25,10 @@ describe('ARCA setup boundary', () => {
       certificateExpiresAt: '2027-01-01',
       pointOfSale: 7,
       verifiedAt: '2026-10-09',
+    });
+    expect(apiRequest).toHaveBeenCalledWith({
+      path: '/v1/arca/setup',
+      branchId: 'selected-branch',
     });
   });
   it('pins verification to the branch where it was prepared', async () => {
