@@ -162,8 +162,8 @@
   },
   "meta": {
     "home": {
-      "title": "Inicio",
-      "description": "Workspace del corralón."
+      "title": "Pedidos",
+      "description": "La cola de pedidos del corralón, por estado."
     },
     "rfqs": {
       "title": "Pedidos",
