@@ -57,5 +57,7 @@ there too. The header offers a visitor "Ingresar" and "Probar Coti", and a selle
   the page computes a price.
 - **No testimonial, logo or metric is shown until a real one exists**, and there is no pricing
   section until the commercial model is decided. Neither has a hidden placeholder in the code.
-- Motion follows `ux-motion`: the hero's page-level entrance (`animate-rise-in`) and nothing on
-  scroll.
+- Motion follows `ux-motion`: the hero's page-level entrance (`animate-rise-in`), and each section
+  fades up once as it first enters the screen through `Reveal` — the one place Coti allows a scroll
+  reveal. A section already on screen, or any section without JavaScript or under reduced motion,
+  is simply shown.

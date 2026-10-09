@@ -1,4 +1,5 @@
 import { cn } from '@repo/ui/lib';
+import { Reveal } from '@/app/(public)/welcome/_components/reveal';
 
 interface LandingSectionProps {
   id: string;
@@ -22,7 +23,7 @@ export function LandingSection({
 
   return (
     <section aria-labelledby={headingId} className={cn('py-16 lg:py-24', className)}>
-      <div className="flex flex-col w-full max-w-6xl mx-auto px-4 gap-y-10 sm:px-6 lg:gap-y-12">
+      <Reveal className="flex flex-col w-full max-w-6xl mx-auto px-4 gap-y-10 sm:px-6 lg:gap-y-12">
         <div className="flex flex-col max-w-2xl gap-y-3">
           <p className="text-paragraph-sm-semibold text-primary">{eyebrow}</p>
           <h2 id={headingId} className="text-heading-3 text-foreground lg:text-heading-2">
@@ -33,7 +34,7 @@ export function LandingSection({
           ) : null}
         </div>
         {children}
-      </div>
+      </Reveal>
     </section>
   );
 }
