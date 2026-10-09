@@ -60,6 +60,11 @@ costs nothing on top of it, DigitalOcean DNS hosting is free, App Platform offer
 IPs free of charge, and a certificate is provisioned per hostname automatically. It stays one app
 and one bill.
 
+The primary domain also serves the public site — the landing at `/`, the privacy policy and the
+terms — from the backoffice itself, so its pages share an origin with the session and can tell a
+seller from a visitor (`docs/technical/public-site.md`). The webapp answers `noindex` and a robots
+file that disallows everything: every page on it is one customer's quote.
+
 **The session cookies are the reason.** `coti_access_token`, `coti_refresh_token` and `coti_branch`
 are set with no `domain` attribute (`apps/backoffice/lib/auth/tokens.ts`), so a browser scopes them
 to the exact host that set them and never sends them to a sibling. The client opening a

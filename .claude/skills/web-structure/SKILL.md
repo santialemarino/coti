@@ -9,9 +9,9 @@ Coti has **two** Next.js apps (this is the defining difference from a single-app
 frontend). Decide which app you are in **first** — the rules below differ per app.
 
 - **`apps/backoffice`** — Authenticated vendor & admin web app. Port 3000. Uses
-  route groups: `(auth)` (no session) vs `(protected)` (session enforced). This
-  is where reps triage RFQs, review AI-extracted quotes, manage the catalog, and
-  switch sucursales.
+  route groups: `(auth)` (no session) vs `(protected)` (session enforced), plus
+  `(public)` for Coti's own public site. This is where reps triage RFQs, review
+  AI-extracted quotes, manage the catalog, and switch sucursales.
 - **`apps/webapp`** — Public customer-facing app. Port 3001. **No auth, no route
   groups** — every route is public. This is where a customer submits an RFQ or
   reviews/responds to a quote via a tokenized link.
@@ -57,6 +57,10 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
   account/settings. Its `layout.tsx` calls `getSession()` and redirects to
   `LOGIN_ROUTE` when there is no valid session. It also hosts the app shell
   (header + branch switcher).
+- **`app/(public)/`** — Coti's public site: the landing (`/welcome`, served at `/`
+  by the gate to a caller with no session), `/privacy` and `/terms`. Readable with
+  or without a session, so its header reads the token cookie to offer a seller the
+  queue instead of a login. See `docs/technical/public-site.md`.
 - **`app/layout.tsx`** — Root layout: async server component that resolves the
   locale + messages via next-intl, wraps `children` in `NextIntlClientProvider`,
   and sets `<html lang={locale}>` (always `es` today); imports `globals.css`.
@@ -87,9 +91,10 @@ ships its own at the **root of `app/`**:
   a digest, so its copy is the generic one from the catalog — a failure a screen can name is worded
   where it happened, not here.
 - **`not-found.tsx`** is a server component, so it can read whatever decides its call to action. In
-  the backoffice that is whether a token cookie exists: offering the login screen to someone already
-  signed in is a dead end, and offering the home page to someone signed out bounces them back to
-  login. Read the **cookie**, not `getSession()` — a 404 must not depend on the API being up, and
+  the backoffice that is whether a token cookie exists: a seller gets the queue (and the public
+  site), a visitor gets `/`, which is the landing for them. The gate lets a caller with no session
+  reach an unknown path directly — it redirects to login only for a path `isProtectedPath`
+  recognises — so the 404 is a real answer for both. Read the **cookie**, not `getSession()` — a 404 must not depend on the API being up, and
   `getSession` rethrows anything that is not a 401/403, which would turn an unrelated outage into an
   error screen where a plain "this page does not exist" belonged. A stale token costs one bounce off
   the gate, which is exactly what the gate is for.
