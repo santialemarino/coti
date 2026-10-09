@@ -73,6 +73,9 @@ services:
       - key: CHANNEL_CONFIG_ENCRYPTION_KEY
         scope: RUN_TIME
         type: SECRET
+      - key: WHATSAPP_APP_SECRET
+        scope: RUN_TIME
+        type: SECRET
       - key: AI_ANTHROPIC_API_KEY
         scope: RUN_TIME
         type: SECRET

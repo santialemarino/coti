@@ -90,6 +90,12 @@ type rfqClientActionRepository interface {
 		quoteID uuid.UUID) ([]domain.ClientAction, error)
 }
 
+// rfqInboundMessageReader finds the sender identifier retained for an inbound RFQ.
+type rfqInboundMessageReader interface {
+	FindSenderIDByRFQID(ctx context.Context, q repository.Querier, accountID, branchID,
+		rfqID uuid.UUID) (*string, error)
+}
+
 // rfqChannelReader is the channel validation surface the RFQ flow needs.
 type rfqChannelReader interface {
 	ListActiveByType(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, channelType domain.ChannelType) ([]domain.Channel, error)
@@ -145,6 +151,9 @@ type RFQService struct {
 	// clientActions trails the customer responses the quote's versions received; the detail
 	// only enriches when the surface is wired, so older surfaces stay lean.
 	clientActions rfqClientActionRepository
+	// inboundMessages decorates WhatsApp RFQs with their sender without turning that sender into
+	// a client record.
+	inboundMessages rfqInboundMessageReader
 	// webappURL is the customer-facing app origin; the detail rebuilds each delivery's public_url
 	// from its token only when the surface is wired.
 	webappURL string
@@ -184,6 +193,12 @@ func (s *RFQService) WithDiscounts(discounts quoteDiscountRepository) *RFQServic
 // WithClientActions wires customer response reads, which the seller detail lists when present.
 func (s *RFQService) WithClientActions(clientActions rfqClientActionRepository) *RFQService {
 	s.clientActions = clientActions
+	return s
+}
+
+// WithInboundMessages wires the retained inbound sender into the RFQ detail projection.
+func (s *RFQService) WithInboundMessages(messages rfqInboundMessageReader) *RFQService {
+	s.inboundMessages = messages
 	return s
 }
 
@@ -246,6 +261,14 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 
 		detail = &domain.RfqDetail{
 			Rfq: *rfq,
+		}
+		if s.inboundMessages != nil && rfq.Channel == strings.ToLower(string(domain.ChannelTypeWhatsApp)) {
+			senderID, senderErr := s.inboundMessages.FindSenderIDByRFQID(ctx, q, tenant.AccountID,
+				rfq.BranchID, rfqID)
+			if senderErr != nil {
+				return senderErr
+			}
+			detail.InboundWhatsAppPhone = inboundWhatsAppPhone(senderID)
 		}
 
 		rfqChanges, rfqChangesErr := s.rfqs.ListStatusChanges(ctx, q, tenant.AccountID,
@@ -340,6 +363,19 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 		return nil, err
 	}
 	return detail, nil
+}
+
+// inboundWhatsAppPhone adapts Meta's digits-only wa_id to the E.164 form delivery accepts.
+func inboundWhatsAppPhone(senderID *string) *string {
+	if senderID == nil {
+		return nil
+	}
+	digits := strings.TrimPrefix(strings.TrimSpace(*senderID), "+")
+	phone := "+" + digits
+	if !e164PhonePattern.MatchString(phone) {
+		return nil
+	}
+	return &phone
 }
 
 // decorateDeliveryURLs rebuilds each delivery's public_url from the token the repository stored,
@@ -960,6 +996,24 @@ func (s *RFQService) assertProductsInAccount(
 func (s *RFQService) CreateInboundTextDraft(
 	ctx context.Context, route domain.InboundChannelRoute, in domain.InboundTextRFQDraftInput,
 ) (*domain.TextRFQDraft, error) {
+	return s.createInboundTextDraft(ctx, route, in, nil)
+}
+
+// CreateInboundTextDraftForMessage resumes the RFQ reserved for one durable provider message.
+func (s *RFQService) CreateInboundTextDraftForMessage(
+	ctx context.Context, route domain.InboundChannelRoute, in domain.InboundTextRFQDraftInput,
+	rfqID uuid.UUID,
+) (*domain.TextRFQDraft, error) {
+	if rfqID == uuid.Nil {
+		return nil, fmt.Errorf("%w: an inbound provider message needs an RFQ ID", domain.ErrInvalidInput)
+	}
+	return s.createInboundTextDraft(ctx, route, in, &rfqID)
+}
+
+func (s *RFQService) createInboundTextDraft(
+	ctx context.Context, route domain.InboundChannelRoute, in domain.InboundTextRFQDraftInput,
+	rfqID *uuid.UUID,
+) (*domain.TextRFQDraft, error) {
 	if err := route.Validate(); err != nil {
 		return nil, err
 	}
@@ -974,7 +1028,7 @@ func (s *RFQService) CreateInboundTextDraft(
 	if err != nil {
 		return nil, err
 	}
-	return s.createTextDraft(ctx, tenant, normalized, nil)
+	return s.createTextDraft(ctx, tenant, normalized, nil, rfqID)
 }
 
 // CreateTextDraft turns plain RFQ text into a quote DRAFT for seller review.
@@ -989,7 +1043,7 @@ func (s *RFQService) CreateTextDraft(
 		return nil, err
 	}
 	sellerID := tenant.UserID
-	return s.createTextDraft(ctx, tenant, normalized, &sellerID)
+	return s.createTextDraft(ctx, tenant, normalized, &sellerID, nil)
 }
 
 // CreateFileDraft turns an order that arrived as a file into a quote DRAFT for seller review.
@@ -1035,13 +1089,13 @@ func (s *RFQService) CreateFileDraft(
 	if rawText == "" {
 		rawText = fileOrderPlaceholder(normalized.Filename)
 	}
-	rfq, err := s.persistReceivedRFQ(ctx, tenant, domain.TextRFQDraftInput{
+	rfq, _, err := s.persistReceivedRFQ(ctx, tenant, domain.TextRFQDraftInput{
 		ChannelID:   normalized.ChannelID,
 		ClientID:    normalized.ClientID,
 		ClientLabel: normalized.ClientLabel,
 		RawText:     rawText,
 		WorkType:    normalized.WorkType,
-	})
+	}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1121,19 +1175,23 @@ func (s *RFQService) CreateWhatsAppMockDraft(
 	}
 	return s.createTextDraft(ctx, tenant, domain.TextRFQDraftInput{
 		ChannelID: channel.ID, ClientLabel: &clientLabel, RawText: raw,
-	}, nil)
+	}, nil, nil)
 }
 
 func (s *RFQService) createTextDraft(
 	ctx context.Context, tenant domain.Tenant, in domain.TextRFQDraftInput, sellerID *uuid.UUID,
+	rfqID *uuid.UUID,
 ) (*domain.TextRFQDraft, error) {
 	if s.extractor == nil || s.channels == nil {
 		return nil, fmt.Errorf("%w: the RFQ pipeline is not fully wired", domain.ErrInvalidInput)
 	}
 
-	rfq, err := s.persistReceivedRFQ(ctx, tenant, in)
+	rfq, existing, err := s.persistReceivedRFQ(ctx, tenant, in, rfqID)
 	if err != nil {
 		return nil, err
+	}
+	if existing && rfq.Status != domain.RFQStatusReceived {
+		return &domain.TextRFQDraft{RFQ: *rfq}, nil
 	}
 
 	ctx = domain.WithAIRFQ(ctx, rfq.ID)
@@ -1260,16 +1318,29 @@ func (s *RFQService) applyMatches(
 }
 
 func (s *RFQService) persistReceivedRFQ(
-	ctx context.Context, tenant domain.Tenant, in domain.TextRFQDraftInput,
-) (*domain.RFQ, error) {
+	ctx context.Context, tenant domain.Tenant, in domain.TextRFQDraftInput, rfqID *uuid.UUID,
+) (*domain.RFQ, bool, error) {
 	var rfq *domain.RFQ
+	existing := false
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		if rfqID != nil {
+			stored, getErr := s.rfqs.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, *rfqID)
+			if getErr == nil {
+				rfq = stored
+				existing = true
+				return nil
+			}
+			if !errors.Is(getErr, domain.ErrNotFound) {
+				return getErr
+			}
+		}
 		if _, channelErr := s.channels.GetActiveByID(ctx, q, tenant.AccountID, tenant.BranchID,
 			in.ChannelID); channelErr != nil {
 			return channelErr
 		}
 		var createErr error
 		rfq, createErr = s.rfqs.Create(ctx, q, tenant.AccountID, domain.NewRFQ{
+			ID:          rfqID,
 			BranchID:    tenant.BranchID,
 			ClientID:    in.ClientID,
 			ChannelID:   in.ChannelID,
@@ -1281,9 +1352,9 @@ func (s *RFQService) persistReceivedRFQ(
 		return createErr
 	})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return rfq, nil
+	return rfq, existing, nil
 }
 
 /*

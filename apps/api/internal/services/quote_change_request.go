@@ -22,7 +22,8 @@ func (s *QuoteDeliveryService) WithMessages(messages quoteMessageWriter) *QuoteD
 
 func (s *QuoteDeliveryService) createChangeRequest(ctx context.Context, q repository.Querier,
 	accountID uuid.UUID, quote domain.Quote, send domain.QuoteSend,
-	action domain.ClientAction, message string) error {
+	action domain.ClientAction, message string, proposal *resolvedChangeRequest,
+) error {
 	if s.messages == nil {
 		return domain.ErrNotConfigured
 	}
@@ -33,8 +34,15 @@ func (s *QuoteDeliveryService) createChangeRequest(ctx context.Context, q reposi
 	if !version.IsImmutable || version.ID != send.VersionID {
 		return domain.WithCode(domain.CodeQuoteNotSent, domain.ErrConflict)
 	}
-	if _, err := cloneQuoteVersionForEditing(ctx, q, s.quotes, s.prices, accountID,
-		quote.BranchID, quote.ID, *version, nil, &message); err != nil {
+	clone, err := cloneQuoteVersionForEditing(ctx, q, s.quotes, s.prices, accountID,
+		quote.BranchID, quote.ID, *version, nil, &message)
+	if err != nil {
+		return err
+	}
+	if err := s.applyChangeRequestProposal(ctx, q, accountID, clone, proposal); err != nil {
+		return err
+	}
+	if err := s.recordChangeRequestProposal(ctx, q, accountID, clone.Draft.ID, message, proposal); err != nil {
 		return err
 	}
 	return s.messages.CreateClientRequest(ctx, q, accountID, quote.BranchID, quote.ID,

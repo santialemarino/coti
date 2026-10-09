@@ -460,9 +460,9 @@ pending embeddings.
 `GET /v1/public/quote-sends/{token}` first resolves only the owning account through the owner
 pool, then verifies the completed send under an RLS-scoped transaction. Active tokens expose
 the frozen quote, message and a short-lived PDF URL; expired tokens expose only `EXPIRED`
-and `expires_at`. See [quote representations](quote-representations.md). The current
-WhatsApp composition-root adapter is deliberately disabled until the Meta transport ticket lands,
-and the console mailer is never treated as a successful client delivery.
+and `expires_at`. See [quote representations](quote-representations.md). The WhatsApp Cloud API
+adapter uses the selected branch channel's encrypted Meta credentials. The console mailer is never
+treated as a successful client delivery.
 
 ### Customer change requests
 
@@ -474,11 +474,22 @@ prices, and moves `SENT` to `CHANGE_REQUESTED`. Products with no current branch 
 unpriced for seller review. The old send and public link remain pinned to v1. A stale send for
 another version cannot change the quote.
 
-The seller edits v2 manually. Replacing a product clears that line's previous price and updates
-the draft total; accepting materials recalculates current prices and moves to `QUOTED`, then
-sending moves to `SENT`. The second send has its own token. No conversational window or
-AI interpretation is involved in this manual path; those remain future work. Public links resolve
-through `quote_send.public_token`, scoped to the delivery and channel.
+Before that transaction, the change handler receives only the customer message and the frozen
+version's opaque item IDs, descriptions, quantities, and units. Its forced schema may propose
+`ADD_ITEM`, `REMOVE_ITEM`, `REPLACE_ITEM`, or `UPDATE_QUANTITY`. The service validates every
+operation against those source IDs and the configured item limit, matches only added and replaced
+materials against the branch catalog, and applies the validated batch to v2 in the same transaction.
+It records the unreviewed input, interpretation, and proposal in `handler_decision`. The handler
+never calculates money, sends a reply, or changes the client-visible quote; the seller still reviews
+the draft and accepts materials before a new delivery.
+
+Ambiguous, unsupported, malformed, unavailable, or timed-out handler output leaves the request
+and its unchanged v2 intact for manual seller handling. That fallback is intentional: a customer
+request must not fail merely because a proposal could not be made, and no uncertain operation is
+materialized. Replacing a product clears that line's previous price; accepting materials
+recalculates current prices and moves to `QUOTED`, then sending moves to `SENT`. The second send
+has its own token. Public links resolve through `quote_send.public_token`, scoped to the delivery
+and channel.
 
 ### Closing and reactivating a quote
 

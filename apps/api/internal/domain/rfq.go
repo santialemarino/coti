@@ -52,6 +52,7 @@ type RFQ struct {
 
 // NewRFQ is the input for creating an RFQ source record.
 type NewRFQ struct {
+	ID          *uuid.UUID
 	BranchID    uuid.UUID
 	ClientID    *uuid.UUID
 	ChannelID   uuid.UUID
@@ -220,14 +221,16 @@ type TextRFQDraft struct {
 // RfqDetail is the full detail view projection of one RFQ plus its associated
 // quote data, items, and alternatives. This is what the detail endpoint returns.
 type RfqDetail struct {
-	Rfq                RfqListItem
-	Quote              *Quote
-	Version            *QuoteVersion
-	Items              []QuoteItem
-	Alternatives       map[uuid.UUID][]QuoteItemAlternative
-	RFQStatusChanges   []RFQStatusChange
-	QuoteStatusChanges []QuoteStatusChange
-	Deliveries         []QuoteSend
+	Rfq RfqListItem
+	// InboundWhatsAppPhone is the sender that opened this WhatsApp RFQ, when available.
+	InboundWhatsAppPhone *string
+	Quote                *Quote
+	Version              *QuoteVersion
+	Items                []QuoteItem
+	Alternatives         map[uuid.UUID][]QuoteItemAlternative
+	RFQStatusChanges     []RFQStatusChange
+	QuoteStatusChanges   []QuoteStatusChange
+	Deliveries           []QuoteSend
 	// Discounts are the current version's discount applications; empty when the version
 	// has none or the discount surface is not wired.
 	Discounts []QuoteDiscount

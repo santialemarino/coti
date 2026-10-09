@@ -35,14 +35,14 @@ func (r *RFQRepository) Create(
 		in.Status = domain.RFQStatusReceived
 	}
 	return scanRFQ(q.QueryRow(ctx,
-		`INSERT INTO rfq (account_id, branch_id, client_id, channel_id, raw_text, status,
+		`INSERT INTO rfq (id, account_id, branch_id, client_id, channel_id, raw_text, status,
 		                  work_type, client_label)
-		 SELECT $1, $2, $3, $4, $5, $6, $7, $8
-		 WHERE $3::uuid IS NULL
-		    OR EXISTS (SELECT 1 FROM client WHERE account_id = $1 AND id = $3::uuid)
+		 SELECT COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9
+		 WHERE $4::uuid IS NULL
+		    OR EXISTS (SELECT 1 FROM client WHERE account_id = $2 AND id = $4::uuid)
 		 RETURNING `+rfqColumns,
-		accountID, in.BranchID, in.ClientID, in.ChannelID, in.RawText, in.Status, in.WorkType,
-		in.ClientLabel))
+		in.ID, accountID, in.BranchID, in.ClientID, in.ChannelID, in.RawText, in.Status,
+		in.WorkType, in.ClientLabel))
 }
 
 // GetByID loads one RFQ row, scoped to its account and branch. The sweep needs the row itself

@@ -47,6 +47,7 @@ type Handlers struct {
 	Prices        *handler.ProductPriceHandler
 	CatalogImport *handler.CatalogImportHandler
 	Onboarding    *handler.OnboardingHandler
+	WhatsApp      *handler.WhatsAppWebhookHandler
 	// File is nil unless the local storage adapter is bound.
 	File *handler.FileHandler
 }
@@ -74,6 +75,10 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 
 	r.GET("/health", h.Health.Live)
 	r.GET("/ready", h.Health.Ready)
+	if h.WhatsApp != nil {
+		r.GET(apiPrefix+"/webhooks/whatsapp", h.WhatsApp.Verify)
+		r.POST(apiPrefix+"/webhooks/whatsapp", h.WhatsApp.Receive)
+	}
 
 	if !cfg.IsProduction() {
 		r.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))

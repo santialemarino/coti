@@ -66,7 +66,7 @@ export function SendQuoteDialog({
   const message = useApiErrorMessage('rfqs.detail.send');
   const { isAdmin } = useRfqList();
   const [open, setOpen] = useState(false);
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState(detail.inbound_whatsapp_phone ?? '');
   const [alsoEmail, setAlsoEmail] = useState(false);
   const [email, setEmail] = useState('');
   const [sending, setSending] = useState(false);
@@ -86,7 +86,10 @@ export function SendQuoteDialog({
   // Reset on the way in: resetting on the way out would swap the success view for the form mid-exit.
   function handleOpenChange(next: boolean) {
     if (sending) return;
-    if (next) setResult(null);
+    if (next) {
+      setResult(null);
+      setPhone(detail.inbound_whatsapp_phone ?? '');
+    }
     setOpen(next);
   }
 

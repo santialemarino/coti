@@ -42,6 +42,15 @@ type Channel struct {
 	UpdatedAt    time.Time
 }
 
+// ChannelConfiguration is a stored channel configuration available only to backend adapters.
+type ChannelConfiguration struct {
+	ChannelID uuid.UUID
+	AccountID uuid.UUID
+	BranchID  uuid.UUID
+	Type      ChannelType
+	Config    []byte
+}
+
 // InboundChannelRoute identifies the tenant and branch an external message must enter through.
 type InboundChannelRoute struct {
 	AccountID   uuid.UUID

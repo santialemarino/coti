@@ -90,6 +90,7 @@ type Config struct {
 	PriceImport     SpreadsheetImportConfig
 	Storage         StorageConfig
 	Channel         ChannelConfig
+	WhatsApp        WhatsAppConfig
 }
 
 // QuoteLogoConfig bounds retrieval of untrusted branding images.
@@ -123,6 +124,28 @@ type ChannelConfig struct {
 	// and still serves channels — storing a credential is the one thing refused, so a deployment
 	// that never set a key cannot end up keeping a provider token in the clear.
 	EncryptionKey []byte
+}
+
+// WhatsAppConfig holds app-wide WhatsApp Cloud API settings.
+type WhatsAppConfig struct {
+	AppSecret       string
+	GraphAPIVersion string
+	RequestTimeout  time.Duration
+	WebhookMaxBytes int64
+}
+
+func (w WhatsAppConfig) problems() []string {
+	var problems []string
+	if !isGraphAPIVersion(w.GraphAPIVersion) {
+		problems = append(problems, "WHATSAPP_GRAPH_API_VERSION must look like v25.0")
+	}
+	if w.RequestTimeout <= 0 {
+		problems = append(problems, "WHATSAPP_REQUEST_TIMEOUT_SECONDS must be greater than zero")
+	}
+	if w.WebhookMaxBytes <= 0 {
+		problems = append(problems, "WHATSAPP_WEBHOOK_MAX_BYTES must be greater than zero")
+	}
+	return problems
 }
 
 // RateLimitConfig holds the request allowances, all of them settings rather than literals.
@@ -832,6 +855,12 @@ func Load() (*Config, error) {
 		Channel: ChannelConfig{
 			EncryptionKey: getBase64Key("CHANNEL_CONFIG_ENCRYPTION_KEY", channelKeyLength, &problems),
 		},
+		WhatsApp: WhatsAppConfig{
+			AppSecret:       getString("WHATSAPP_APP_SECRET", ""),
+			GraphAPIVersion: getString("WHATSAPP_GRAPH_API_VERSION", "v25.0"),
+			RequestTimeout:  getDuration("WHATSAPP_REQUEST_TIMEOUT_SECONDS", 10*time.Second, &problems),
+			WebhookMaxBytes: int64(getInt("WHATSAPP_WEBHOOK_MAX_BYTES", 1*1024*1024, &problems)),
+		},
 	}
 
 	if cfg.Database.URL == "" {
@@ -914,6 +943,7 @@ func Load() (*Config, error) {
 	problems = append(problems, cfg.AI.problems()...)
 	problems = append(problems, cfg.QuoteLogo.problems()...)
 	problems = append(problems, cfg.Storage.problems()...)
+	problems = append(problems, cfg.WhatsApp.problems()...)
 
 	// A base URL missing its scheme or host yields recovery links that go nowhere, and the
 	// only symptom is a user reporting that the mail does not work.
@@ -1149,6 +1179,18 @@ func getString(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func isGraphAPIVersion(value string) bool {
+	major, minor, found := strings.Cut(strings.TrimSpace(value), ".")
+	if !found || !strings.HasPrefix(major, "v") || len(major) == 1 || minor == "" {
+		return false
+	}
+	if _, err := strconv.Atoi(strings.TrimPrefix(major, "v")); err != nil {
+		return false
+	}
+	_, err := strconv.Atoi(minor)
+	return err == nil
 }
 
 // getBase64Key decodes a base64 key of an exact byte width. An unset key yields nil, which the
