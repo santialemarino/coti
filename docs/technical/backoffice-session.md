@@ -65,7 +65,6 @@ about it changed:
 
 | Situation                                            | Result                                                     |
 | ---------------------------------------------------- | ---------------------------------------------------------- |
-| `/`, neither token held                              | the public landing, rewritten in place (`/welcome`)        |
 | Unknown path, neither token held                     | through — the 404 answers it                               |
 | Public route, no usable token                        | through                                                    |
 | Login / signup / forgot, token present and unexpired | redirected home                                            |
@@ -75,12 +74,12 @@ about it changed:
 | Protected route, refresh answers `ACCOUNT_LOCKED`    | the same, plus `?reason=locked`                            |
 | Protected route, API unreachable                     | through — the cookies survive and the next request retries |
 
-A **protected route** is any path `isProtectedPath` recognises: `/`, every string in `ROUTES` that
-is not public (with everything under it), and `/api`. It is derived rather than listed, so a route
+A **protected route** is any path `isProtectedPath` recognises: every string in `ROUTES` that is
+not public (with everything under it), and `/api`. The root is public — it is the landing — and
+a seller lands on the queue at `/inbox` (`ROUTES.home`). It is derived rather than listed, so a route
 is guarded the moment it is registered. Anything else is unknown, and a visitor with no token at all
 reaches the 404 instead of a login screen for a page that never existed. Someone holding a refresh
-token is a seller whose access token lapsed, not a visitor, so they are renewed as before and never
-shown the landing.
+token is a seller whose access token lapsed, not a visitor, so they are renewed as before.
 
 `/reset-password` is public but **not** bounced: a mailed recovery or invite link has to open in
 whatever browser the mail is read in, signed in or not. Setting the password clears that browser's

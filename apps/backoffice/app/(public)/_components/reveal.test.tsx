@@ -1,7 +1,7 @@
 import { render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { Reveal } from '@/app/(public)/welcome/_components/reveal';
+import { Reveal } from '@/app/(public)/_components/reveal';
 
 let intersect: (isIntersecting: boolean) => void = () => {};
 let reducedMotion = false;

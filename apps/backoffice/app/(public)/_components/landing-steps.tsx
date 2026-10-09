@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 
-import { LandingSection } from '@/app/(public)/welcome/_components/landing-section';
+import { LandingSection } from '@/app/(public)/_components/landing-section';
 
 // Keyed by id, not position, so reordering the copy can never renumber a step under another's text.
 const STEPS = ['arrives', 'drafts', 'review', 'answer'] as const;

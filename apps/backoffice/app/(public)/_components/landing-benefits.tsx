@@ -1,7 +1,7 @@
 import { ClockIcon, ListChecksIcon, TrendingUpIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { LandingSection } from '@/app/(public)/welcome/_components/landing-section';
+import { LandingSection } from '@/app/(public)/_components/landing-section';
 
 // Three and no more: past three, a list of benefits stops helping anyone decide.
 const BENEFITS = [

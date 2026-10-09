@@ -54,12 +54,14 @@ describe('NotFound', () => {
     );
   });
 
-  // Someone with no session reaches this directly now, and the root is where the landing lives.
+  // Someone with no session reaches this directly, and the root is where the landing lives.
   it('offers a signed-out caller the way back to the landing, not a login screen', async () => {
     vi.mocked(getAccessToken).mockResolvedValue(undefined);
     const view = await renderPage();
 
-    expect(view.getByRole('link', { name: copy.backHome }).getAttribute('href')).toBe(ROUTES.home);
+    expect(view.getByRole('link', { name: copy.backHome }).getAttribute('href')).toBe(
+      ROUTES.landing,
+    );
     expect(view.getAllByRole('link')).toHaveLength(1);
   });
 

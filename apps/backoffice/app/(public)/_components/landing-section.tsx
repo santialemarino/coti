@@ -1,5 +1,5 @@
 import { cn } from '@repo/ui/lib';
-import { Reveal } from '@/app/(public)/welcome/_components/reveal';
+import { Reveal } from '@/app/(public)/_components/reveal';
 
 interface LandingSectionProps {
   id: string;

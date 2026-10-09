@@ -54,13 +54,12 @@ function visitor(path: string) {
 }
 
 describe('proxy without a session', () => {
-  it('serves the landing at the root without changing the address', async () => {
-    const response = await proxy(visitor('/?utm_source=folleto'));
-    const rewrite = new URL(response.headers.get('x-middleware-rewrite') ?? '');
+  // The root is the public landing for everyone; it never sends a visitor to log in.
+  it('lets a visitor through to the landing at the root', async () => {
+    const response = await proxy(visitor('/'));
 
     expect(response.headers.get('location')).toBeNull();
-    expect(rewrite.pathname).toBe('/welcome');
-    expect(rewrite.searchParams.get('utm_source')).toBe('folleto');
+    expect(response.headers.get('x-middleware-rewrite')).toBeNull();
   });
 
   // A mistyped link must reach the 404, not a login screen promising a page that does not exist.
@@ -80,21 +79,20 @@ describe('proxy without a session', () => {
     expect(location.searchParams.get('next')).toBe('/rfqs/a1');
   });
 
-  // A refresh token is a seller whose access token lapsed: renew it, never show them the landing.
-  it('renews a lapsed session at the root instead of serving the landing', async () => {
+  // A seller lands on the queue, and a lapsed one is renewed there rather than treated as a visitor.
+  it('keeps the queue behind the gate and renews a lapsed session on it', async () => {
     vi.mocked(requestRefresh).mockResolvedValue({
       ok: false,
       status: 401,
       code: 'UNAUTHENTICATED',
     });
     const response = await proxy(
-      new NextRequest('https://backoffice.test/', {
+      new NextRequest('https://backoffice.test/inbox', {
         headers: { cookie: `${REFRESH_COOKIE}=refresh` },
       }),
     );
 
     expect(requestRefresh).toHaveBeenCalled();
-    expect(response.headers.get('x-middleware-rewrite')).toBeNull();
     expect(new URL(response.headers.get('location') ?? '').pathname).toBe('/login');
   });
 });

@@ -11,7 +11,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
   return {
     rules: {
       userAgent: '*',
-      allow: [`${ROUTES.home}$`, ROUTES.privacy, ROUTES.terms, '/opengraph-image'],
+      allow: [`${ROUTES.landing}$`, ROUTES.privacy, ROUTES.terms, '/opengraph-image'],
       disallow: '/',
     },
     sitemap: `${origin}/sitemap.xml`,

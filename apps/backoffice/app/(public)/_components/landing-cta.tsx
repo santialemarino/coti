@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
 import { Button } from '@repo/ui/components';
-import { Reveal } from '@/app/(public)/welcome/_components/reveal';
+import { Reveal } from '@/app/(public)/_components/reveal';
 import { ROUTES } from '@/config/routes';
 
 export async function LandingCta() {

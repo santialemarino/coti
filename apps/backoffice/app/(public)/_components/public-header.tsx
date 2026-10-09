@@ -17,7 +17,7 @@ export async function PublicHeader({ signedIn }: PublicHeaderProps) {
     <header className="sticky top-0 z-40 border-b border-border bg-body-background/85 backdrop-blur">
       <div className="flex w-full max-w-6xl h-16 items-center justify-between mx-auto px-4 gap-x-4 sm:px-6">
         <Link
-          href={signedIn ? ROUTES.landing : ROUTES.home}
+          href={ROUTES.landing}
           className="rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
         >
           <Brand label={tCommon('appName')} />

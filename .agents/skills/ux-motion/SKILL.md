@@ -23,7 +23,7 @@ If a motion does not answer "what just happened?" or "where am I?", it does not 
 
 **The one exception is the backoffice's `(public)` site** (the landing and the legal pages), which is
 the only surface in Coti that is marketing rather than a tool. There, and nowhere else, a section may
-fade up **once** as it first enters the screen — `Reveal` in `app/(public)/welcome/_components/` is
+fade up **once** as it first enters the screen — `Reveal` in `app/(public)/_components/` is
 the only way to do it. The rules that make it safe: content renders visible and stays visible without
 JavaScript, under `prefers-reduced-motion`, and for anything already on screen when the page loads;
 one reveal per section, never per item; it never replays on scrolling back; and it uses the motion

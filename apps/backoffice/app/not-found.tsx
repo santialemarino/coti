@@ -34,7 +34,9 @@ export default async function NotFound() {
           description={t('description')}
         >
           <Button asChild size="lg">
-            <Link href={ROUTES.home}>{signedIn ? t('goToOrders') : t('backHome')}</Link>
+            <Link href={signedIn ? ROUTES.home : ROUTES.landing}>
+              {signedIn ? t('goToOrders') : t('backHome')}
+            </Link>
           </Button>
           {signedIn ? (
             <Button asChild variant="outline" size="lg">

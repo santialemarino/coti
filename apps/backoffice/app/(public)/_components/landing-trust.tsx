@@ -1,7 +1,7 @@
 import { CalculatorIcon, LockKeyholeIcon, UserCheckIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { LandingSection } from '@/app/(public)/welcome/_components/landing-section';
+import { LandingSection } from '@/app/(public)/_components/landing-section';
 
 // The objections a supplier raises about letting a model near a quote, each answered by a rule the
 // product enforces.

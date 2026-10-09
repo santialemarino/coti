@@ -6,11 +6,11 @@ import messages from '@/translations/es.json';
 vi.mock('next-intl/server', () => ({ getTranslations: vi.fn() }));
 
 const { getTranslations } = await import('next-intl/server');
-const { LandingBenefits } = await import('@/app/(public)/welcome/_components/landing-benefits');
-const { LandingFaq } = await import('@/app/(public)/welcome/_components/landing-faq');
-const { LandingFeatures } = await import('@/app/(public)/welcome/_components/landing-features');
-const { LandingSteps } = await import('@/app/(public)/welcome/_components/landing-steps');
-const { LandingTrust } = await import('@/app/(public)/welcome/_components/landing-trust');
+const { LandingBenefits } = await import('@/app/(public)/_components/landing-benefits');
+const { LandingFaq } = await import('@/app/(public)/_components/landing-faq');
+const { LandingFeatures } = await import('@/app/(public)/_components/landing-features');
+const { LandingSteps } = await import('@/app/(public)/_components/landing-steps');
+const { LandingTrust } = await import('@/app/(public)/_components/landing-trust');
 
 // A missing key falls back to the key itself, which is what next-intl would put on the page.
 function translator(namespace: string) {

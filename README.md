@@ -270,7 +270,7 @@ See [docs/technical/design-system.md](docs/technical/design-system.md).
 ## Public site
 
 Coti's landing, privacy policy and terms live in the backoffice's `(public)` route group on the
-primary domain: a visitor with no session opening `/` gets the landing, a seller gets the queue.
+primary domain: `/` is the landing for everyone, and a seller's home is the queue at `/inbox`.
 An unknown path answers 404 for anyone.
 
 See [docs/technical/public-site.md](docs/technical/public-site.md).

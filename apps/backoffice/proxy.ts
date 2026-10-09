@@ -44,16 +44,8 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Someone with no session at all is a visitor, not a seller whose session lapsed.
-  if (!accessToken && !refreshToken) {
-    if (pathname === ROUTES.home) {
-      const landing = request.nextUrl.clone();
-      landing.pathname = ROUTES.landing;
-      return NextResponse.rewrite(landing);
-    }
-    // A mistyped or stale link is answered with the 404, not with a login screen.
-    if (!isProtectedPath(pathname)) return NextResponse.next();
-  }
+  // A visitor's mistyped or stale link is answered with the 404, not with a login screen.
+  if (!accessToken && !refreshToken && !isProtectedPath(pathname)) return NextResponse.next();
 
   if (!needsRenewal(accessToken)) return NextResponse.next();
 

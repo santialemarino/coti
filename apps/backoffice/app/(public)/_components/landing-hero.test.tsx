@@ -4,13 +4,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ROUTES } from '@/config/routes';
 import messages from '@/translations/es.json';
 
-vi.mock('@/app/(public)/welcome/_components/product-preview', () => ({
+vi.mock('@/app/(public)/_components/product-preview', () => ({
   ProductPreview: () => null,
 }));
 vi.mock('next-intl/server', () => ({ getTranslations: vi.fn() }));
 
 const { getTranslations } = await import('next-intl/server');
-const { LandingHero } = await import('@/app/(public)/welcome/_components/landing-hero');
+const { LandingHero } = await import('@/app/(public)/_components/landing-hero');
 
 const copy = messages.landing.hero;
 

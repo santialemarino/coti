@@ -6,7 +6,7 @@ import {
   CollapsibleTrigger,
   DropdownChevron,
 } from '@repo/ui/components';
-import { LandingSection } from '@/app/(public)/welcome/_components/landing-section';
+import { LandingSection } from '@/app/(public)/_components/landing-section';
 
 const QUESTIONS = [
   'catalog',

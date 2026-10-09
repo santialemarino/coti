@@ -3,9 +3,9 @@ const SETTINGS_ROOT = '/settings';
 
 // Every link and redirect reads from here, so a route rename is one edit.
 export const ROUTES = {
-  home: '/',
-  // The public site's landing. The gate serves it at `/` to a caller with no session.
-  landing: '/welcome',
+  // Where a seller lands: the queue. The root belongs to the public site.
+  home: '/inbox',
+  landing: '/',
   privacy: '/privacy',
   terms: '/terms',
   settings: SETTINGS_ROOT,
@@ -90,9 +90,7 @@ const API_ROOT = '/api';
 
 const PROTECTED_ROOTS: readonly string[] = [
   ...Object.values(ROUTES).flatMap((route) =>
-    typeof route === 'string' && route !== ROUTES.home && !PUBLIC_ROUTES.includes(route)
-      ? [route]
-      : [],
+    typeof route === 'string' && !PUBLIC_ROUTES.includes(route) ? [route] : [],
   ),
   API_ROOT,
 ];
@@ -102,7 +100,6 @@ const PROTECTED_ROOTS: readonly string[] = [
  * is registered; a path that matches nothing is not, and reaches the 404 instead of the login screen.
  */
 export function isProtectedPath(pathname: string): boolean {
-  if (pathname === ROUTES.home) return true;
   return PROTECTED_ROOTS.some((root) => pathname === root || pathname.startsWith(`${root}/`));
 }
 

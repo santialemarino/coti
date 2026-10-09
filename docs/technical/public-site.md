@@ -7,13 +7,14 @@ host could not do, because the session cookies carry no `domain` attribute.
 
 ## Routes
 
-| Path       | Who sees it                            | Notes                                                      |
-| ---------- | -------------------------------------- | ---------------------------------------------------------- |
-| `/`        | a visitor (no token, no refresh token) | the proxy rewrites it to `/welcome`; the address stays `/` |
-| `/`        | a seller                               | the queue, unchanged                                       |
-| `/welcome` | anyone                                 | the landing's route; its canonical address is `/`          |
-| `/privacy` | anyone                                 | legal text from `legal.privacy` in the catalog             |
-| `/terms`   | anyone                                 | legal text from `legal.terms` in the catalog               |
+| Path       | What it is                                     |
+| ---------- | ---------------------------------------------- |
+| `/`        | the landing, for everyone, signed in or not    |
+| `/privacy` | legal text from `legal.privacy` in the catalog |
+| `/terms`   | legal text from `legal.terms` in the catalog   |
+
+A seller's home is the queue at `/inbox` (`ROUTES.home`): login, the "Pedidos" tab and every "Ir a
+Pedidos" go there, so the root can be the same public page for everyone, at one address.
 
 All three are in `PUBLIC_ROUTES` and none is signed-out-only: the header and the 404 send a seller
 there too. The header offers a visitor "Ingresar" and "Probar Coti", and a seller "Ir a Pedidos".
@@ -23,7 +24,7 @@ there too. The header offers a visitor "Ingresar" and "Probar Coti", and a selle
 - An unknown path answers **404 for anyone**. The proxy redirects to login only for a path
   `isProtectedPath` recognises (see `backoffice-session.md`, "The gate").
 - `app/not-found.tsx` offers a seller "Ir a Pedidos" and "Ir al inicio" (the landing), and a visitor
-  "Volver al inicio" (`/`, which is the landing for them). `app/(protected)/not-found.tsx` answers a
+  "Volver al inicio" (the landing). `app/(protected)/not-found.tsx` answers a
   `notFound()` raised inside the app, keeping the shell.
 - Every route group has its own `error.tsx` rendering `ErrorCard` (`components/error-card.tsx`)
   inside the group's frame; its retry refreshes the router and resets the boundary in one

@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { LandingSection } from '@/app/(public)/welcome/_components/landing-section';
+import { LandingSection } from '@/app/(public)/_components/landing-section';
 
 // The detail for the buyer who reads before deciding: everything a corralón gets, past the three
 // headline benefits.

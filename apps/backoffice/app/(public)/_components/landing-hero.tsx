@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
 import { Button } from '@repo/ui/components';
-import { ProductPreview } from '@/app/(public)/welcome/_components/product-preview';
+import { ProductPreview } from '@/app/(public)/_components/product-preview';
 import { ROUTES } from '@/config/routes';
 
 interface LandingHeroProps {

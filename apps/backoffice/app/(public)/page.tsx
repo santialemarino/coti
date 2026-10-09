@@ -1,19 +1,18 @@
 import { getTranslations } from 'next-intl/server';
 
-import { LandingBenefits } from '@/app/(public)/welcome/_components/landing-benefits';
-import { LandingCta } from '@/app/(public)/welcome/_components/landing-cta';
-import { LandingFaq } from '@/app/(public)/welcome/_components/landing-faq';
-import { LandingFeatures } from '@/app/(public)/welcome/_components/landing-features';
-import { LandingHero } from '@/app/(public)/welcome/_components/landing-hero';
-import { LandingSteps } from '@/app/(public)/welcome/_components/landing-steps';
-import { LandingTrust } from '@/app/(public)/welcome/_components/landing-trust';
+import { LandingBenefits } from '@/app/(public)/_components/landing-benefits';
+import { LandingCta } from '@/app/(public)/_components/landing-cta';
+import { LandingFaq } from '@/app/(public)/_components/landing-faq';
+import { LandingFeatures } from '@/app/(public)/_components/landing-features';
+import { LandingHero } from '@/app/(public)/_components/landing-hero';
+import { LandingSteps } from '@/app/(public)/_components/landing-steps';
+import { LandingTrust } from '@/app/(public)/_components/landing-trust';
 import { ROUTES } from '@/config/routes';
 import { getAccessToken } from '@/lib/auth/session';
 import { generatePublicPageMetadata } from '@/lib/utils/page';
 import { siteOrigin } from '@/lib/utils/site-origin';
 
-// The landing's canonical address is `/`, where the gate serves it; this path is only its route.
-export const generateMetadata = () => generatePublicPageMetadata('landing', ROUTES.home);
+export const generateMetadata = () => generatePublicPageMetadata('landing', ROUTES.landing);
 
 export default async function LandingPage() {
   const t = await getTranslations('landing');
