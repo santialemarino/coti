@@ -15,12 +15,12 @@ export async function PublicFooter() {
 
   return (
     <footer className="border-t border-border bg-card">
-      <div className="flex flex-col w-full max-w-6xl mx-auto px-4 py-10 gap-y-6 sm:flex-row sm:items-start sm:justify-between sm:px-6">
-        <div className="flex flex-col gap-y-2">
-          <Brand size="sm" label={tCommon('appName')} />
-          <p className="text-paragraph-sm text-foreground-muted">{t('tagline')}</p>
-        </div>
-        <div className="flex flex-col gap-y-3">
+      <div className="flex flex-col w-full max-w-6xl mx-auto px-4 py-10 gap-y-8 sm:px-6">
+        <div className="flex flex-col gap-y-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-y-2">
+            <Brand size="sm" label={tCommon('appName')} />
+            <p className="text-paragraph-sm text-foreground-muted">{t('tagline')}</p>
+          </div>
           <nav aria-label={t('nav')}>
             <ul className="flex flex-wrap gap-x-6 gap-y-2">
               {links.map((link) => (
@@ -32,10 +32,11 @@ export async function PublicFooter() {
               ))}
             </ul>
           </nav>
-          <p className="text-paragraph-xs text-foreground-subtle">
-            {t('copyright', { year: new Date().getFullYear() })}
-          </p>
         </div>
+        {/* Its own row under the brand, so it shares an edge with something instead of floating. */}
+        <p className="pt-6 border-t border-border text-paragraph-xs text-foreground-subtle">
+          {t('copyright', { year: new Date().getFullYear() })}
+        </p>
       </div>
     </footer>
   );
