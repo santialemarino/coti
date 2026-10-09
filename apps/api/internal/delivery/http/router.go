@@ -4,6 +4,7 @@ package http
 
 import (
 	"log/slog"
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -47,6 +48,7 @@ type Handlers struct {
 	Prices        *handler.ProductPriceHandler
 	CatalogImport *handler.CatalogImportHandler
 	Onboarding    *handler.OnboardingHandler
+	ARCASetup     *handler.ARCASetupHandler
 	// File is nil unless the local storage adapter is bound.
 	File *handler.FileHandler
 }
@@ -128,6 +130,15 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 
 	// Using the product needs a confirmed address. Everything below is closed until then.
 	verified := authed.Group("", middleware.RequireVerifiedEmail(cfg.Auth.RequireVerifiedEmail))
+	if h.ARCASetup != nil {
+		arca := verified.Group("/arca/setup", middleware.RequireAdmin())
+		arca.Use(func(c *gin.Context) { c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 32768) })
+		arca.GET("", h.ARCASetup.Get)
+		arca.POST("", limit("arca-setup", cfg.RateLimit.Credentials), h.ARCASetup.Create)
+		arca.PUT("/certificate", h.ARCASetup.Upload)
+		arca.DELETE("", h.ARCASetup.Delete)
+		arca.POST("/verify", limit("arca-verify", cfg.RateLimit.Credentials), h.ARCASetup.Verify)
+	}
 	verified.POST("/auth/change-password", h.Password.Change)
 
 	ai := limit("ai", cfg.RateLimit.AI)

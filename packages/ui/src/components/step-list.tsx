@@ -5,6 +5,7 @@ import { cn } from '../lib/utils';
 interface StepListProps {
   /* One short instruction per step, in order. Numbering is positional. */
   steps: readonly string[];
+  variant?: 'cards' | 'list';
   className?: string;
 }
 
@@ -18,7 +19,24 @@ interface StepListProps {
  * pixels above the number it belongs to — small enough to look accidental, which is exactly what it
  * looks like.
  */
-function StepList({ steps, className }: StepListProps) {
+function StepList({ steps, variant = 'cards', className }: StepListProps) {
+  if (variant === 'list') {
+    return (
+      <ol
+        data-slot="step-list"
+        className={cn(
+          'flex flex-col pl-5 gap-y-4 list-decimal text-paragraph-sm text-foreground',
+          className,
+        )}
+      >
+        {steps.map((step) => (
+          <li key={step} className="pl-1">
+            {step}
+          </li>
+        ))}
+      </ol>
+    );
+  }
   return (
     <ol data-slot="step-list" className={cn('grid gap-3 md:grid-cols-3', className)}>
       {steps.map((step, index) => (

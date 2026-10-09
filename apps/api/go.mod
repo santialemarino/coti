@@ -17,6 +17,7 @@ require (
 	github.com/pgvector/pgvector-go/pgx v0.4.1
 	github.com/phpdave11/gofpdf v1.4.3
 	github.com/shopspring/decimal v1.4.0
+	github.com/smallstep/pkcs7 v0.2.3
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.1
 	github.com/swaggo/swag v1.16.6

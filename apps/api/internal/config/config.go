@@ -90,6 +90,13 @@ type Config struct {
 	PriceImport     SpreadsheetImportConfig
 	Storage         StorageConfig
 	Channel         ChannelConfig
+	ARCA            ARCASetupConfig
+}
+
+// ARCASetupConfig protects homologation credentials and bounds external calls.
+type ARCASetupConfig struct {
+	EncryptionKey []byte
+	Timeout       time.Duration
 }
 
 // QuoteLogoConfig bounds retrieval of untrusted branding images.
@@ -832,10 +839,17 @@ func Load() (*Config, error) {
 		Channel: ChannelConfig{
 			EncryptionKey: getBase64Key("CHANNEL_CONFIG_ENCRYPTION_KEY", channelKeyLength, &problems),
 		},
+		ARCA: ARCASetupConfig{
+			EncryptionKey: getBase64Key("ARCA_SETUP_ENCRYPTION_KEY", channelKeyLength, &problems),
+			Timeout:       getDuration("ARCA_SETUP_TIMEOUT_SECONDS", 10*time.Second, &problems),
+		},
 	}
 
 	if cfg.Database.URL == "" {
 		problems = append(problems, "DATABASE_URL is required")
+	}
+	if cfg.ARCA.Timeout <= 0 || cfg.ARCA.Timeout > 15*time.Second {
+		problems = append(problems, "ARCA_SETUP_TIMEOUT_SECONDS must be between 1 and 15")
 	}
 	if cfg.Database.AdminURL == "" {
 		problems = append(problems, "DATABASE_ADMIN_URL is required")
