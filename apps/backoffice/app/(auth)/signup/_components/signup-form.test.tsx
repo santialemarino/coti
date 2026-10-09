@@ -110,11 +110,14 @@ describe('SignupForm steps', () => {
     expect(link.closest('p')?.textContent).toBe(`${copy.haveAccount} ${copy.login}`);
   });
 
-  it('limits the tax id to eleven digits', () => {
+  /*
+   * A CUIT is written with hyphens — the dev seed's own is `30-71234567-9` — and an `inputMode` of
+   * `numeric` gives iOS a keypad with no hyphen key, so the value cannot be typed on a phone.
+   */
+  it('leaves the tax id a plain text field', () => {
     const view = renderSignup();
 
-    expect(fieldOf(view, 'taxId')?.getAttribute('inputmode')).toBe('numeric');
-    expect(fieldOf(view, 'taxId')?.getAttribute('maxlength')).toBe('11');
+    expect(fieldOf(view, 'taxId')?.getAttribute('inputmode')).toBeNull();
   });
 
   /*

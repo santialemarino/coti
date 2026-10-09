@@ -21,7 +21,7 @@ const { ApiError } = await import('@/lib/api/errors');
 const VALUES: AccountValues = {
   name: 'Corralón San Martín',
   legalName: 'Corralón San Martín S.R.L.',
-  taxId: '30712345679',
+  taxId: '30-71234567-9',
   brandLogoUrl: 'https://tucorralon.com/logo.png',
   brandColor: 'C2410C',
 };
@@ -55,7 +55,7 @@ describe('updateAccount', () => {
     expect(bodySent()).toEqual({
       name: 'Corralón San Martín',
       legal_name: 'Corralón San Martín S.R.L.',
-      tax_id: '30712345679',
+      tax_id: '30-71234567-9',
       brand_logo_url: 'https://tucorralon.com/logo.png',
       brand_color: '#C2410C',
     });

@@ -13,7 +13,6 @@ import {
 } from '@repo/ui/components';
 import { type SignupValues } from '@/app/(auth)/signup/form-schema';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
-import { TAX_ID_LENGTH } from '@/lib/constants/tax';
 
 // Only the name is required: nothing the account does depends on the fiscal fields, so making
 // them a gate would stop a registration for no reason.
@@ -68,8 +67,7 @@ export function AccountStep() {
             <FormLabel>{t('taxId.label')}</FormLabel>
             <FormControl>
               <Input
-                inputMode="numeric"
-                maxLength={TAX_ID_LENGTH}
+                maxLength={TEXT_FIELD_MAX_LENGTH}
                 placeholder={t('taxId.placeholder')}
                 {...field}
               />

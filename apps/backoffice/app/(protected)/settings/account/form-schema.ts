@@ -2,13 +2,7 @@ import { z } from 'zod';
 
 import { HEX_COLOR_DIGITS } from '@/lib/constants/brand';
 import { URL_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
-import {
-  optionalTaxId,
-  optionalText,
-  rawText,
-  requiredText,
-  type SchemaText,
-} from '@/lib/forms/validators';
+import { optionalText, rawText, requiredText, type SchemaText } from '@/lib/forms/validators';
 
 /*
  * The optional fields hold `''` for "not set", because a text input cannot hold null — the action
@@ -19,7 +13,7 @@ export function accountSchema(t: SchemaText = rawText) {
   return z.object({
     name: requiredText(t, 'name.required'),
     legalName: optionalText(t),
-    taxId: optionalTaxId(t),
+    taxId: optionalText(t),
     brandLogoUrl: optionalText(t, URL_FIELD_MAX_LENGTH).refine(
       (raw) => raw === '' || URL.canParse(raw),
       t.field('brandLogoUrl.invalid'),

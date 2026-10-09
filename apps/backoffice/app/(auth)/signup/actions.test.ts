@@ -65,12 +65,12 @@ describe('signup', () => {
     jar();
     vi.mocked(apiRequest).mockResolvedValue({ tokens: TOKENS });
 
-    await signup({ ...VALUES, legalName: 'San Martín S.A.', taxId: '30111111111' });
+    await signup({ ...VALUES, legalName: 'San Martín S.A.', taxId: '30-11111111-1' });
 
     expect(bodySent()).toEqual({
       account_name: 'Corralón San Martín',
       legal_name: 'San Martín S.A.',
-      tax_id: '30111111111',
+      tax_id: '30-11111111-1',
       branch_name: 'Villa Bosch',
       branch_address: undefined,
       admin_name: 'Ana Pérez',
