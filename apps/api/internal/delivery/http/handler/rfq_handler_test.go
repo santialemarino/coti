@@ -329,6 +329,7 @@ func TestToRfqDetailResponse_MapsAllFieldsFromDomainDetail(t *testing.T) {
 	previousQuote := domain.QuoteStatusQuoted
 	sentAt := changedAt.Add(5 * time.Minute)
 	expiresAt := changedAt.AddDate(0, 0, 7)
+	inboundWhatsAppPhone := "+5491155550101"
 
 	detail := domain.RfqDetail{
 		Rfq: domain.RfqListItem{
@@ -342,6 +343,7 @@ func TestToRfqDetailResponse_MapsAllFieldsFromDomainDetail(t *testing.T) {
 			Status:      string(domain.QuoteStatusDraft),
 			Total:       &totalStr,
 		},
+		InboundWhatsAppPhone: &inboundWhatsAppPhone,
 		Quote: &domain.Quote{
 			ID: quoteID, RFQID: rfqID, BranchID: uuid.New(),
 			CurrentStatus: domain.QuoteStatusDraft,
@@ -395,6 +397,10 @@ func TestToRfqDetailResponse_MapsAllFieldsFromDomainDetail(t *testing.T) {
 	}
 	if resp.Rfq.Client == nil || *resp.Rfq.Client != clientLabel {
 		t.Errorf("client = %v, want %q", resp.Rfq.Client, clientLabel)
+	}
+	if resp.InboundWhatsAppPhone == nil || *resp.InboundWhatsAppPhone != inboundWhatsAppPhone {
+		t.Errorf("inbound WhatsApp phone = %v, want %q", resp.InboundWhatsAppPhone,
+			inboundWhatsAppPhone)
 	}
 	if resp.Quote == nil || resp.Quote.ID != quoteID {
 		t.Errorf("quote = %v, want %v", resp.Quote, quoteID)

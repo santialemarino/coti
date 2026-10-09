@@ -96,6 +96,11 @@ type fakePublicQuoteQuotes struct {
 	newVersion   *domain.QuoteVersion
 	newItems     []domain.NewQuoteItem
 	newAlts      []domain.NewQuoteItemAlternative
+	itemBatches  [][]domain.NewQuoteItem
+	deletedItems []uuid.UUID
+	deletedAlts  []uuid.UUID
+	quantities   []domain.QuoteItemQuantityUpdate
+	replacements []domain.QuoteItemReplacement
 	getErr       error
 	statusErr    error
 	statusCalls  []quoteStatusCall
@@ -191,7 +196,9 @@ func (f *fakePublicQuoteQuotes) ListItems(context.Context, repository.Querier,
 
 func (f *fakePublicQuoteQuotes) CreateItems(_ context.Context, _ repository.Querier,
 	_, _ uuid.UUID, items []domain.NewQuoteItem) ([]domain.QuoteItem, error) {
-	f.newItems = items
+	copy := append([]domain.NewQuoteItem(nil), items...)
+	f.itemBatches = append(f.itemBatches, copy)
+	f.newItems = append(f.newItems, items...)
 	return make([]domain.QuoteItem, len(items)), nil
 }
 
@@ -203,6 +210,34 @@ func (f *fakePublicQuoteQuotes) ListAlternativesByItemIDs(context.Context, repos
 func (f *fakePublicQuoteQuotes) CreateAlternatives(_ context.Context, _ repository.Querier,
 	_ uuid.UUID, alternatives []domain.NewQuoteItemAlternative) error {
 	f.newAlts = alternatives
+	return nil
+}
+
+func (f *fakePublicQuoteQuotes) DeleteAlternativesByItemIDs(_ context.Context, _ repository.Querier,
+	_ uuid.UUID, _ uuid.UUID, itemIDs []uuid.UUID,
+) error {
+	f.deletedAlts = append(f.deletedAlts, itemIDs...)
+	return nil
+}
+
+func (f *fakePublicQuoteQuotes) DeleteItems(_ context.Context, _ repository.Querier, _ uuid.UUID,
+	_ uuid.UUID, itemIDs []uuid.UUID,
+) error {
+	f.deletedItems = append(f.deletedItems, itemIDs...)
+	return nil
+}
+
+func (f *fakePublicQuoteQuotes) UpdateItemQuantities(_ context.Context, _ repository.Querier,
+	_ uuid.UUID, _ uuid.UUID, updates []domain.QuoteItemQuantityUpdate,
+) error {
+	f.quantities = append(f.quantities, updates...)
+	return nil
+}
+
+func (f *fakePublicQuoteQuotes) ReplaceItems(_ context.Context, _ repository.Querier, _ uuid.UUID,
+	_ uuid.UUID, replacements []domain.QuoteItemReplacement,
+) error {
+	f.replacements = append(f.replacements, replacements...)
 	return nil
 }
 
@@ -236,6 +271,50 @@ type fakeQuoteMessages struct {
 	body      string
 	calls     int
 	err       error
+}
+
+type fakeChangeRequestHandler struct {
+	proposal *domain.ChangeRequestProposal
+	err      error
+	inputs   []domain.ChangeRequestInput
+}
+
+func (f *fakeChangeRequestHandler) Propose(_ context.Context,
+	in domain.ChangeRequestInput,
+) (*domain.ChangeRequestProposal, error) {
+	f.inputs = append(f.inputs, in)
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.proposal, nil
+}
+
+type fakeChangeRequestMatcher struct {
+	matches []domain.LineMatch
+	err     error
+	texts   [][]string
+}
+
+func (f *fakeChangeRequestMatcher) Match(_ context.Context, _ domain.Tenant,
+	descriptions []string,
+) ([]domain.LineMatch, error) {
+	f.texts = append(f.texts, append([]string(nil), descriptions...))
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.matches, nil
+}
+
+type fakeHandlerDecisions struct {
+	created []domain.NewHandlerDecision
+	err     error
+}
+
+func (f *fakeHandlerDecisions) Create(_ context.Context, _ repository.Querier, _ uuid.UUID,
+	in domain.NewHandlerDecision,
+) error {
+	f.created = append(f.created, in)
+	return f.err
 }
 
 func (f *fakeQuoteMessages) CreateClientRequest(_ context.Context, _ repository.Querier,
@@ -503,6 +582,83 @@ func TestQuoteDeliveryService_RespondPublic_CreatesAReviewableChangeRequest(t *t
 		h.quotes.appendTo[0] != domain.QuoteStatusChangeRequested {
 		t.Errorf("status history = %v -> %v, want SENT -> CHANGE_REQUESTED",
 			h.quotes.appendFrom, h.quotes.appendTo)
+	}
+}
+
+func TestQuoteDeliveryService_RespondPublic_AppliesTheHandlerProposalToTheDraft(t *testing.T) {
+	h := newQuoteActionHarness()
+	h.seedActiveSend(testVersionID)
+	h.quotes.quote = &domain.Quote{ID: testQuoteID, BranchID: testBranchID,
+		CurrentVersionID: &testVersionID, CurrentStatus: domain.QuoteStatusSent}
+	h.quotes.version = &domain.QuoteVersion{ID: testVersionID, QuoteID: testQuoteID,
+		VersionNumber: 1, Currency: "ARS", IsImmutable: true}
+	oldItemID := uuid.New()
+	oldProductID := uuid.New()
+	h.quotes.items = []domain.QuoteItem{{ID: oldItemID, ProductID: &oldProductID,
+		RequestedDescription: "bolsas de cemento", Quantity: decimal.NewFromInt(10),
+		MatchStatus: domain.ItemMatchStatusMatched}}
+	h.prices.prices = map[uuid.UUID]domain.BranchPrice{
+		oldProductID: {ProductID: oldProductID, Price: decimal.NewFromInt(9256), Currency: "ARS"},
+	}
+	calProductID := uuid.New()
+	quantity := decimal.NewFromInt(5)
+	description := "bolsas de cal hidratada 25 kg"
+	unit := "bolsa"
+	proposal := &fakeChangeRequestHandler{proposal: &domain.ChangeRequestProposal{
+		Interpretation: "El cliente pidió sumar cinco bolsas de cal hidratada.",
+		Operations: []domain.ChangeRequestOperation{{Type: domain.ChangeRequestOperationAddItem,
+			RequestedDescription: &description, Quantity: &quantity, Unit: &unit}},
+	}}
+	matcher := &fakeChangeRequestMatcher{matches: []domain.LineMatch{{ProductID: &calProductID,
+		MatchStatus: domain.ItemMatchStatusMatched, Confidence: decimal.RequireFromString("0.93")}}}
+	decisions := &fakeHandlerDecisions{}
+	h.service.WithChangeRequestHandler(proposal, matcher, decisions, 10, time.Second)
+	message := "Agregar 5 bolsas de Cal hidratada 25 kg"
+
+	result, err := h.service.RespondPublic(context.Background(), h.token,
+		domain.ClientActionInput{Type: domain.ClientActionRequestChange, Message: &message})
+	if err != nil {
+		t.Fatalf("RespondPublic returned %v", err)
+	}
+	if result.QuoteStatus != domain.QuoteStatusChangeRequested {
+		t.Errorf("status = %q, want CHANGE_REQUESTED", result.QuoteStatus)
+	}
+	if len(proposal.inputs) != 1 || proposal.inputs[0].Message != message ||
+		len(proposal.inputs[0].Items) != 1 || proposal.inputs[0].Items[0].ID != oldItemID {
+		t.Errorf("handler input = %+v, want the message and sent item", proposal.inputs)
+	}
+	if len(matcher.texts) != 1 || len(matcher.texts[0]) != 1 || matcher.texts[0][0] != description {
+		t.Errorf("matcher inputs = %v, want the added material", matcher.texts)
+	}
+	if len(h.quotes.itemBatches) != 2 {
+		t.Fatalf("item batches = %d, want cloned items plus handler additions", len(h.quotes.itemBatches))
+	}
+	added := h.quotes.itemBatches[1]
+	if len(added) != 1 || added[0].RequestedDescription != description ||
+		!added[0].Quantity.Equal(quantity) || added[0].Unit == nil || *added[0].Unit != unit ||
+		added[0].ProductID == nil || *added[0].ProductID != calProductID ||
+		added[0].MatchStatus != domain.ItemMatchStatusMatched {
+		t.Errorf("added items = %+v, want matched cal in the mutable draft", added)
+	}
+	if len(decisions.created) != 1 || decisions.created[0].QuoteVersionID != h.quotes.newVersion.ID ||
+		decisions.created[0].ClientInput != message ||
+		decisions.created[0].StateAtDecision != domain.QuoteStatusSent {
+		t.Errorf("handler decisions = %+v, want the unreviewed proposal", decisions.created)
+	}
+}
+
+func TestValidateChangeRequestProposal_RefusesMultipleMutationsOfTheSameLine(t *testing.T) {
+	itemID := uuid.New()
+	quantity := decimal.NewFromInt(4)
+	proposal := &domain.ChangeRequestProposal{Interpretation: "El cliente pidió cambios.",
+		Operations: []domain.ChangeRequestOperation{
+			{Type: domain.ChangeRequestOperationRemoveItem, TargetItemID: &itemID},
+			{Type: domain.ChangeRequestOperationUpdateQuantity, TargetItemID: &itemID, Quantity: &quantity},
+		}}
+
+	_, err := validateChangeRequestProposal(proposal, []domain.QuoteItem{{ID: itemID}}, 10)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("validateChangeRequestProposal returned %v, want ErrInvalidInput", err)
 	}
 }
 

@@ -8303,6 +8303,9 @@ const docTemplate = `{
                         "$ref": "#/definitions/dto.QuoteDiscountResponse"
                     }
                 },
+                "inbound_whatsapp_phone": {
+                    "type": "string"
+                },
                 "items": {
                     "type": "array",
                     "items": {

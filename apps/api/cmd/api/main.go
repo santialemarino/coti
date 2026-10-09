@@ -88,8 +88,10 @@ func run() error {
 	quoteCorrectionRepo := repository.NewQuoteCorrectionRepository()
 	quoteQualityRepo := repository.NewQuoteQualityRepository()
 	quoteSendRepo := repository.NewQuoteSendRepository()
+	inboundChannelMessageRepo := repository.NewInboundChannelMessageRepository()
 	clientActionRepo := repository.NewClientActionRepository()
 	quoteMessageRepo := repository.NewQuoteMessageRepository()
+	handlerDecisionRepo := repository.NewHandlerDecisionRepository()
 	quoteRepresentationRepo := repository.NewQuoteRepresentationRepository()
 	clientRepo := repository.NewClientRepository()
 	tagRepo := repository.NewTagRepository()
@@ -175,8 +177,12 @@ func run() error {
 		WithCorrectionMemory(quoteCorrectionService).
 		WithDiscounts(quoteDiscountRepo).
 		WithClientActions(clientActionRepo).
+		WithInboundMessages(inboundChannelMessageRepo).
 		WithWebAppURL(cfg.Web.WebAppURL).
 		WithFileIntake(rfqAttachmentService, providers.Transcriber, cfg.Storage.MaxFileSize)
+	inboundRoutingService := services.NewInboundRoutingService(db, channelRepo)
+	whatsAppInboundService := services.NewWhatsAppInboundService(db, inboundRoutingService,
+		inboundChannelMessageRepo, channelRepo, rfqService, channelSealer, log)
 	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, log)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
 		WithCorrectionLearning(quoteCorrectionService)
@@ -185,11 +191,17 @@ func run() error {
 		branding.NewLogoLoader(cfg.QuoteLogo), quotePDF.NewQuoteRenderer(),
 		cfg.Storage.SignedURLExpiry, nil, log)
 	quoteDeliveryService := services.NewQuoteDeliveryService(db, quoteSendRepo, quoteRepo,
-		channelRepo, branchRepo, productPriceRepo, whatsapp.DisabledSender{}, quoteMailService,
+		channelRepo, branchRepo, productPriceRepo,
+		whatsapp.NewMetaSender(&http.Client{Timeout: cfg.WhatsApp.RequestTimeout},
+			cfg.WhatsApp.GraphAPIVersion).
+			WithArgentineTestRecipientFallback(cfg.Environment == config.EnvironmentDevelopment), quoteMailService,
 		quoteQualityService, cfg.Web.WebAppURL, nil, log).
 		WithRepresentationService(quoteRepresentationService).
 		WithClientActions(clientActionRepo, userRepo).
-		WithMessages(quoteMessageRepo)
+		WithMessages(quoteMessageRepo).
+		WithChangeRequestHandler(ai.NewChangeRequestHandler(providers.Generator), catalogMatchService,
+			handlerDecisionRepo, cfg.RFQ.MaxItems, cfg.RFQ.InlinePipelineTimeout).
+		WithWhatsAppCredentials(channelSealer)
 	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
 		quoteSendRepo)
 	// What a MATCHED line clears to read as HIGH, on the 0..1 scale the item carries its score on.
@@ -221,7 +233,9 @@ func run() error {
 			Account:       handler.NewAccountHandler(accountService),
 			AccountLogo:   handler.NewBrandLogoHandler(accountService, cfg.Storage.MaxFileSize),
 			Onboarding:    handler.NewOnboardingHandler(onboardingService),
-			File:          fileHandler(objectStorage),
+			WhatsApp: handler.NewWhatsAppWebhookHandler(cfg.WhatsApp.AppSecret,
+				cfg.WhatsApp.WebhookMaxBytes, whatsAppInboundService),
+			File: fileHandler(objectStorage),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
 		rateLimit,

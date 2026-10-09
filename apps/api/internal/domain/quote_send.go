@@ -86,10 +86,17 @@ type QuoteDeliveryResult struct {
 
 // QuoteWhatsAppMessage is the provider-neutral message sent to the required phone number.
 type QuoteWhatsAppMessage struct {
-	DeliveryID uuid.UUID
-	To         string
-	Body       string
-	PublicURL  string
+	DeliveryID  uuid.UUID
+	To          string
+	Body        string
+	PublicURL   string
+	Credentials WhatsAppDeliveryCredentials
+}
+
+// WhatsAppDeliveryCredentials are the sealed channel settings opened only for one provider call.
+type WhatsAppDeliveryCredentials struct {
+	PhoneNumberID string
+	AccessToken   string
 }
 
 // DeliveryReceipt is the external provider's durable acknowledgement.

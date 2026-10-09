@@ -1553,6 +1553,8 @@ definitions:
         items:
           $ref: '#/definitions/dto.QuoteDiscountResponse'
         type: array
+      inbound_whatsapp_phone:
+        type: string
       items:
         items:
           $ref: '#/definitions/dto.QuoteItemResponse'

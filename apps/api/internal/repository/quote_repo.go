@@ -423,6 +423,125 @@ func (r *QuoteRepository) CreateItems(
 	return created, nil
 }
 
+// DeleteAlternativesByItemIDs removes stale candidate options from mutable version lines.
+func (r *QuoteRepository) DeleteAlternativesByItemIDs(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID, itemIDs []uuid.UUID,
+) error {
+	if len(itemIDs) == 0 {
+		return nil
+	}
+	_, err := q.Exec(ctx,
+		`DELETE FROM quote_item_alternative alternative
+		 USING quote_item item, quote_version version
+		 WHERE alternative.account_id = $1
+		   AND alternative.quote_item_id = item.id
+		   AND item.account_id = $1 AND item.version_id = $2 AND item.id = ANY($3)
+		   AND version.account_id = $1 AND version.id = $2 AND version.is_immutable = FALSE`,
+		accountID, versionID, itemIDs)
+	return err
+}
+
+// DeleteItems removes lines from a mutable quote version in one account-scoped statement.
+func (r *QuoteRepository) DeleteItems(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID, itemIDs []uuid.UUID,
+) error {
+	if len(itemIDs) == 0 {
+		return nil
+	}
+	tag, err := q.Exec(ctx,
+		`DELETE FROM quote_item item
+		 USING quote_version version
+		 WHERE item.account_id = $1 AND item.version_id = $2 AND item.id = ANY($3)
+		   AND version.account_id = $1 AND version.id = $2 AND version.is_immutable = FALSE`,
+		accountID, versionID, itemIDs)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != int64(len(itemIDs)) {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+// UpdateItemQuantities applies the handler's quantity proposals to one mutable version.
+func (r *QuoteRepository) UpdateItemQuantities(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID,
+	updates []domain.QuoteItemQuantityUpdate,
+) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	payload, err := json.Marshal(quoteItemQuantityUpdatePayloads(updates))
+	if err != nil {
+		return err
+	}
+	tag, err := q.Exec(ctx,
+		`WITH incoming AS (
+		   SELECT * FROM jsonb_to_recordset($3::jsonb) AS x(item_id uuid, quantity numeric)
+		 )
+		 UPDATE quote_item item
+		 SET quantity = incoming.quantity,
+		     subtotal = CASE WHEN item.unit_price_snapshot IS NULL THEN NULL
+		                     ELSE incoming.quantity * item.unit_price_snapshot END
+		 FROM incoming, quote_version version
+		 WHERE item.account_id = $1 AND item.version_id = $2 AND item.id = incoming.item_id
+		   AND version.account_id = $1 AND version.id = $2 AND version.is_immutable = FALSE`,
+		accountID, versionID, payload)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != int64(len(updates)) {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+// ReplaceItems applies matched or unmatched material replacements to one mutable quote version.
+func (r *QuoteRepository) ReplaceItems(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID,
+	replacements []domain.QuoteItemReplacement,
+) error {
+	if len(replacements) == 0 {
+		return nil
+	}
+	payload, err := json.Marshal(quoteItemReplacementPayloads(replacements))
+	if err != nil {
+		return err
+	}
+	tag, err := q.Exec(ctx,
+		`WITH incoming AS (
+		   SELECT * FROM jsonb_to_recordset($3::jsonb) AS x(
+		     item_id uuid, product_id uuid, requested_description text, quantity numeric, unit text,
+		     confidence_score numeric, match_status text
+		   )
+		 )
+		 UPDATE quote_item item
+		 SET product_id = incoming.product_id,
+		     requested_description = incoming.requested_description,
+		     quantity = incoming.quantity,
+		     unit = incoming.unit,
+		     unit_price_snapshot = NULL,
+		     min_price_snapshot = NULL,
+		     subtotal = NULL,
+		     confidence_score = incoming.confidence_score,
+		     match_status = incoming.match_status::item_match_status,
+		     quantity_rationale = NULL
+		 FROM incoming, quote_version version
+		 WHERE item.account_id = $1 AND item.version_id = $2 AND item.id = incoming.item_id
+		   AND version.account_id = $1 AND version.id = $2 AND version.is_immutable = FALSE
+		   AND (incoming.product_id IS NULL OR EXISTS (
+		     SELECT 1 FROM product WHERE product.account_id = $1 AND product.id = incoming.product_id
+		   ))`,
+		accountID, versionID, payload)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != int64(len(replacements)) {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 // ApplyPricing freezes every line's valuation in one statement, keyed by line id, the empty ones
 // included. The row count is what turns a predicate that matched nothing into an error.
 func (r *QuoteRepository) ApplyPricing(
@@ -698,6 +817,21 @@ type quoteItemPricingPayload struct {
 	Subtotal          *string   `json:"subtotal"`
 }
 
+type quoteItemQuantityUpdatePayload struct {
+	ItemID   uuid.UUID `json:"item_id"`
+	Quantity string    `json:"quantity"`
+}
+
+type quoteItemReplacementPayload struct {
+	ItemID               uuid.UUID  `json:"item_id"`
+	ProductID            *uuid.UUID `json:"product_id"`
+	RequestedDescription string     `json:"requested_description"`
+	Quantity             string     `json:"quantity"`
+	Unit                 *string    `json:"unit"`
+	ConfidenceScore      *string    `json:"confidence_score"`
+	MatchStatus          string     `json:"match_status"`
+}
+
 type quoteItemAlternativePayload struct {
 	QuoteItemID     uuid.UUID  `json:"quote_item_id"`
 	ProductID       *uuid.UUID `json:"product_id"`
@@ -738,6 +872,36 @@ func quoteItemPricingPayloads(pricings []domain.QuoteItemPricing) []quoteItemPri
 			UnitPriceSnapshot: nullDecimalString(pricing.UnitPriceSnapshot),
 			MinPriceSnapshot:  nullDecimalString(pricing.MinPriceSnapshot),
 			Subtotal:          nullDecimalString(pricing.Subtotal),
+		})
+	}
+	return payloads
+}
+
+func quoteItemQuantityUpdatePayloads(
+	updates []domain.QuoteItemQuantityUpdate,
+) []quoteItemQuantityUpdatePayload {
+	payloads := make([]quoteItemQuantityUpdatePayload, 0, len(updates))
+	for _, update := range updates {
+		payloads = append(payloads, quoteItemQuantityUpdatePayload{
+			ItemID: update.ItemID, Quantity: update.Quantity.String(),
+		})
+	}
+	return payloads
+}
+
+func quoteItemReplacementPayloads(
+	replacements []domain.QuoteItemReplacement,
+) []quoteItemReplacementPayload {
+	payloads := make([]quoteItemReplacementPayload, 0, len(replacements))
+	for _, replacement := range replacements {
+		payloads = append(payloads, quoteItemReplacementPayload{
+			ItemID:               replacement.ItemID,
+			ProductID:            replacement.ProductID,
+			RequestedDescription: replacement.RequestedDescription,
+			Quantity:             replacement.Quantity.String(),
+			Unit:                 replacement.Unit,
+			ConfidenceScore:      nullDecimalString(replacement.ConfidenceScore),
+			MatchStatus:          string(replacement.MatchStatus),
 		})
 	}
 	return payloads

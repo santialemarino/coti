@@ -111,6 +111,8 @@ export function formatRfqReference(quoteNumber: number | null | undefined): stri
 // Raw shape returned by GET /v1/rfqs/:rfqId — the detail view projection.
 export interface RfqDetailResponse {
   rfq: RfqListItem;
+  // The E.164 sender of the inbound WhatsApp message, used only as the editable send default.
+  inbound_whatsapp_phone: string | null;
   quote: QuoteResponse | null;
   version: QuoteVersionResponse | null;
   items: QuoteItemResponse[];

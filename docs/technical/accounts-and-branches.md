@@ -225,6 +225,10 @@ The adapter must not read a tenant-scoped repository or open a tenant transactio
 and it must never expose the resolved account, branch or channel identifiers in its provider-facing
 response.
 
+The WhatsApp Cloud API connector is documented in [WhatsApp Cloud API](whatsapp-cloud-api.md). It
+uses `metadata.phone_number_id` for this routing contract, validates Meta's app-level HMAC before
+routing, and reserves an RFQ against Meta's message ID before the text pipeline starts.
+
 ### Credentials are encrypted at rest, and never come back out
 
 Every credential field is sealed with **AES-256-GCM** under `CHANNEL_CONFIG_ENCRYPTION_KEY` before

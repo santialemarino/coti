@@ -203,7 +203,10 @@ forced schema, and `cmd/api` hands it the bound generator. See
 the second: `ai.NewCatalogMatchReviewer` settles the lines catalog matching flagged, choosing only
 among the candidates it was shown. It is off by default, behind a global switch — see
 [catalog.md](catalog.md#the-review-trade-knowledge-the-catalog-text-does-not-carry) and
-[feature-switches.md](feature-switches.md).
+[feature-switches.md](feature-switches.md). `domain.ChangeRequestHandler` is the public quote
+revision port: `ai.NewChangeRequestHandler` turns one client message into atomic, seller-reviewable
+draft operations. It is attributed as `CHANGE_REQUEST_HANDLING`; it has an account and branch but
+no RFQ ID because the spend serves the delivered quote rather than RFQ ingestion.
 
 One thing to know before writing a schema for one: **structured outputs do not enforce
 `minLength`, `maxLength`, `minItems` or `maxItems`**. Length and size are the service's to check, and

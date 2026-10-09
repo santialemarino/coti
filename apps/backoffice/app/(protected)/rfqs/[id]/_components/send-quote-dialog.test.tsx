@@ -29,7 +29,7 @@ const EMAIL_URL = 'https://coti.app/quotes/email-token-b';
 
 const writeText = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
-function makeDetail(): RfqDetailResponse {
+function makeDetail(inboundWhatsAppPhone: string | null = null): RfqDetailResponse {
   return {
     rfq: {
       id: RFQ_ID,
@@ -50,6 +50,7 @@ function makeDetail(): RfqDetailResponse {
       followup_flagged_at: null,
       archived_at: null,
     },
+    inbound_whatsapp_phone: inboundWhatsAppPhone,
     quote: {
       id: QUOTE_ID,
       branch_id: BRANCH_ID,
@@ -106,7 +107,7 @@ function sentResult(deliveries: QuoteDeliveryResponse[]): QuoteSendResponse {
   };
 }
 
-function renderDialog() {
+function renderDialog(inboundWhatsAppPhone: string | null = null) {
   return render(
     <NextIntlClientProvider
       locale="es"
@@ -114,7 +115,7 @@ function renderDialog() {
       timeZone="America/Argentina/Buenos_Aires"
     >
       <SendQuoteDialog
-        detail={makeDetail()}
+        detail={makeDetail(inboundWhatsAppPhone)}
         branchId={BRANCH_ID}
         onSent={vi.fn().mockResolvedValue(undefined)}
       />
@@ -160,6 +161,21 @@ describe('SendQuoteDialog', () => {
     expect(view.getByText(copy.successTitle)).toBeTruthy();
     expect(view.getByText(WHATSAPP_URL)).toBeTruthy();
     expect(view.getByRole('link', { name: /Abrir/ }).getAttribute('href')).toBe(WHATSAPP_URL);
+  });
+
+  it('uses the inbound WhatsApp sender as the editable recipient default', async () => {
+    vi.mocked(sendQuote).mockResolvedValue(sentResult([delivery({})]));
+    const view = renderDialog(PHONE);
+    openDialog(view);
+
+    fireEvent.click(view.getByRole('button', { name: /^Enviar$/ }));
+
+    await waitFor(() =>
+      expect(sendQuote).toHaveBeenCalledWith(QUOTE_ID, BRANCH_ID, {
+        recipient_phone: PHONE,
+        email_delivery: null,
+      }),
+    );
   });
 
   it('copies a delivered link, then announces it', async () => {

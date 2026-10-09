@@ -847,10 +847,11 @@ func toRfqDetailResponse(
 	detail domain.RfqDetail, highConfidence decimal.Decimal,
 ) dto.RfqDetailResponse {
 	resp := dto.RfqDetailResponse{
-		Rfq:          toListItemResponse(detail.Rfq),
-		RFQHistory:   toRFQStatusChangeResponses(detail.RFQStatusChanges),
-		QuoteHistory: toQuoteStatusChangeResponses(detail.QuoteStatusChanges),
-		Deliveries:   toQuoteSendTrackingResponses(detail.Deliveries),
+		Rfq:                  toListItemResponse(detail.Rfq),
+		InboundWhatsAppPhone: detail.InboundWhatsAppPhone,
+		RFQHistory:           toRFQStatusChangeResponses(detail.RFQStatusChanges),
+		QuoteHistory:         toQuoteStatusChangeResponses(detail.QuoteStatusChanges),
+		Deliveries:           toQuoteSendTrackingResponses(detail.Deliveries),
 	}
 
 	if detail.Quote != nil {

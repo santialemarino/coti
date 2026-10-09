@@ -145,17 +145,18 @@ type RFQAttachmentListResponse struct {
 // list item projection plus the full quote, version, items, alternatives, discounts,
 // the change-request diff when one applies, and the customer responses the versions received.
 type RfqDetailResponse struct {
-	Rfq              RfqListItemResponse                       `json:"rfq"`
-	Quote            *QuoteResponse                            `json:"quote"`
-	Version          *QuoteVersionResponse                     `json:"version"`
-	Items            []QuoteItemResponse                       `json:"items"`
-	Alternatives     map[string][]QuoteItemAlternativeResponse `json:"alternatives"`
-	RFQHistory       []RFQStatusChangeResponse                 `json:"rfq_status_history"`
-	QuoteHistory     []QuoteStatusChangeResponse               `json:"quote_status_history"`
-	Deliveries       []QuoteSendTrackingResponse               `json:"deliveries"`
-	Discounts        []QuoteDiscountResponse                   `json:"discounts"`
-	ChangesRequested *ChangeRequestDiffResponse                `json:"changes_requested,omitempty"`
-	ClientActions    []ClientActionResponse                    `json:"client_actions"`
+	Rfq                  RfqListItemResponse                       `json:"rfq"`
+	InboundWhatsAppPhone *string                                   `json:"inbound_whatsapp_phone"`
+	Quote                *QuoteResponse                            `json:"quote"`
+	Version              *QuoteVersionResponse                     `json:"version"`
+	Items                []QuoteItemResponse                       `json:"items"`
+	Alternatives         map[string][]QuoteItemAlternativeResponse `json:"alternatives"`
+	RFQHistory           []RFQStatusChangeResponse                 `json:"rfq_status_history"`
+	QuoteHistory         []QuoteStatusChangeResponse               `json:"quote_status_history"`
+	Deliveries           []QuoteSendTrackingResponse               `json:"deliveries"`
+	Discounts            []QuoteDiscountResponse                   `json:"discounts"`
+	ChangesRequested     *ChangeRequestDiffResponse                `json:"changes_requested,omitempty"`
+	ClientActions        []ClientActionResponse                    `json:"client_actions"`
 }
 
 // ClientActionResponse is one customer response the quote's versions received. version_number

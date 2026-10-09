@@ -540,8 +540,12 @@ func (f *fakeRFQs) Create(
 	_ context.Context, _ repository.Querier, accountID uuid.UUID, in domain.NewRFQ,
 ) (*domain.RFQ, error) {
 	f.created = append(f.created, in)
+	rfqID := testRFQID
+	if in.ID != nil {
+		rfqID = *in.ID
+	}
 	return &domain.RFQ{
-		ID: testRFQID, AccountID: accountID, BranchID: in.BranchID, ClientID: in.ClientID,
+		ID: rfqID, AccountID: accountID, BranchID: in.BranchID, ClientID: in.ClientID,
 		ChannelID: in.ChannelID, RawText: in.RawText, Status: in.Status, WorkType: in.WorkType,
 		ClientLabel: in.ClientLabel,
 	}, nil
@@ -1112,6 +1116,22 @@ type fakeRFQClientActions struct {
 	reads   []uuid.UUID
 }
 
+type fakeInboundChannelMessages struct {
+	senderID *string
+	err      error
+	reads    []uuid.UUID
+}
+
+func (f *fakeInboundChannelMessages) FindSenderIDByRFQID(
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID, rfqID uuid.UUID,
+) (*string, error) {
+	f.reads = append(f.reads, rfqID)
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.senderID, nil
+}
+
 func (f *fakeRFQClientActions) ListByQuote(
 	_ context.Context, _ repository.Querier, _ uuid.UUID, _ uuid.UUID, quoteID uuid.UUID,
 ) ([]domain.ClientAction, error) {
@@ -1123,17 +1143,18 @@ func (f *fakeRFQClientActions) ListByQuote(
 }
 
 type rfqHarness struct {
-	service       *RFQService
-	db            *fakeRFQDB
-	extractor     *fakeRFQExtractor
-	matcher       *fakeCatalogMatcher
-	rfqs          *fakeRFQs
-	quotes        *fakeQuoteDrafts
-	discounts     *fakeQuoteDiscounts
-	sends         *fakeQuoteSends
-	generations   *fakeQuoteAIGenerations
-	channels      *fakeRFQChannels
-	clientActions *fakeRFQClientActions
+	service         *RFQService
+	db              *fakeRFQDB
+	extractor       *fakeRFQExtractor
+	matcher         *fakeCatalogMatcher
+	rfqs            *fakeRFQs
+	quotes          *fakeQuoteDrafts
+	discounts       *fakeQuoteDiscounts
+	sends           *fakeQuoteSends
+	generations     *fakeQuoteAIGenerations
+	channels        *fakeRFQChannels
+	clientActions   *fakeRFQClientActions
+	inboundMessages *fakeInboundChannelMessages
 }
 
 func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
@@ -1148,16 +1169,17 @@ func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 		}
 	}
 	h := &rfqHarness{
-		db:            db,
-		extractor:     &fakeRFQExtractor{lines: lines, db: db},
-		matcher:       &fakeCatalogMatcher{matches: matches, db: db},
-		rfqs:          &fakeRFQs{},
-		quotes:        &fakeQuoteDrafts{},
-		discounts:     &fakeQuoteDiscounts{},
-		sends:         &fakeQuoteSends{},
-		generations:   &fakeQuoteAIGenerations{},
-		channels:      &fakeRFQChannels{},
-		clientActions: &fakeRFQClientActions{},
+		db:              db,
+		extractor:       &fakeRFQExtractor{lines: lines, db: db},
+		matcher:         &fakeCatalogMatcher{matches: matches, db: db},
+		rfqs:            &fakeRFQs{},
+		quotes:          &fakeQuoteDrafts{},
+		discounts:       &fakeQuoteDiscounts{},
+		sends:           &fakeQuoteSends{},
+		generations:     &fakeQuoteAIGenerations{},
+		channels:        &fakeRFQChannels{},
+		clientActions:   &fakeRFQClientActions{},
+		inboundMessages: &fakeInboundChannelMessages{},
 	}
 	channel := domain.Channel{
 		ID: testChannelID, AccountID: testAccountID, BranchID: testBranchID,
@@ -1167,7 +1189,8 @@ func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 	h.channels.channelsByType = []domain.Channel{channel}
 	h.service = NewRFQService(h.db, h.rfqs, h.quotes, h.sends, h.generations, h.channels,
 		&fakeSellerReach{serves: true}, h.extractor, h.matcher, nil, testRFQConfig()).
-		WithDiscounts(h.discounts).WithClientActions(h.clientActions)
+		WithDiscounts(h.discounts).WithClientActions(h.clientActions).
+		WithInboundMessages(h.inboundMessages)
 	return h
 }
 
@@ -1385,6 +1408,25 @@ func TestRFQService_CreateInboundTextDraft_UsesTheResolvedChannelBranch(t *testi
 	}
 	if draft.RFQ.BranchID != route.BranchID {
 		t.Errorf("returned RFQ branch = %s, want %s", draft.RFQ.BranchID, route.BranchID)
+	}
+}
+
+func TestRFQService_CreateInboundTextDraftForMessage_ReplaysTheReservedRFQ(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{explicitLine("cemento", "10", "bolsa", "pedido")})
+	rfqID := uuid.New()
+	h.rfqs.rfqRow = &domain.RFQ{ID: rfqID, AccountID: testAccountID, BranchID: testBranchID,
+		ChannelID: testChannelID, Status: domain.RFQStatusGenerated}
+	route := domain.InboundChannelRoute{AccountID: testAccountID, BranchID: testBranchID,
+		ChannelID: testChannelID, ChannelType: domain.ChannelTypeWhatsApp}
+
+	draft, err := h.service.CreateInboundTextDraftForMessage(context.Background(), route,
+		domain.InboundTextRFQDraftInput{RawText: "10 bolsas de cemento"}, rfqID)
+	if err != nil {
+		t.Fatalf("CreateInboundTextDraftForMessage() = %v, want no error", err)
+	}
+	if len(h.rfqs.created) != 0 || h.extractor.calls != 0 || draft.RFQ.ID != rfqID {
+		t.Errorf("replay = created %d / extraction %d / RFQ %s, want 0 / 0 / %s",
+			len(h.rfqs.created), h.extractor.calls, draft.RFQ.ID, rfqID)
 	}
 }
 
@@ -1890,6 +1932,38 @@ func TestRFQService_GetDetail_DecoratesDeliveryPublicURLs(t *testing.T) {
 	}
 	if want := "https://quotes.test/quotes/tk-viewed"; detail.Deliveries[0].PublicURL != want {
 		t.Errorf("delivery public_url = %q, want %q", detail.Deliveries[0].PublicURL, want)
+	}
+}
+
+func TestRFQService_GetDetail_ProvidesInboundWhatsAppSenderAsE164(t *testing.T) {
+	h, _, _, _, _ := getDetailHarness()
+	senderID := "5491112345678"
+	h.inboundMessages.senderID = &senderID
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if err != nil {
+		t.Fatalf("GetDetail returned %v", err)
+	}
+	if detail.InboundWhatsAppPhone == nil || *detail.InboundWhatsAppPhone != "+5491112345678" {
+		t.Errorf("inbound WhatsApp phone = %v, want %q", detail.InboundWhatsAppPhone,
+			"+5491112345678")
+	}
+	if len(h.inboundMessages.reads) != 1 || h.inboundMessages.reads[0] != testRFQID {
+		t.Errorf("inbound sender reads = %v, want [%v]", h.inboundMessages.reads, testRFQID)
+	}
+}
+
+func TestRFQService_GetDetail_RejectsMalformedInboundWhatsAppSender(t *testing.T) {
+	h, _, _, _, _ := getDetailHarness()
+	senderID := "not-a-phone"
+	h.inboundMessages.senderID = &senderID
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if err != nil {
+		t.Fatalf("GetDetail returned %v", err)
+	}
+	if detail.InboundWhatsAppPhone != nil {
+		t.Errorf("inbound WhatsApp phone = %q, want nil", *detail.InboundWhatsAppPhone)
 	}
 }
 

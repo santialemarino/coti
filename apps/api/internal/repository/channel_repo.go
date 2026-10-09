@@ -109,6 +109,62 @@ func (r *ChannelRepository) GetActiveByTypeAndIdentifiersCrossAccount(
 	}
 }
 
+// ListActiveWhatsAppConfigurationsCrossAccount loads encrypted configurations only to verify a
+// provider callback before a tenant is known.
+func (r *ChannelRepository) ListActiveWhatsAppConfigurationsCrossAccount(
+	ctx context.Context, q Querier,
+) ([]domain.ChannelConfiguration, error) {
+	rows, err := q.Query(ctx,
+		`SELECT id, account_id, branch_id, type, config
+		 FROM channel
+		 WHERE type = 'WHATSAPP' AND is_active = TRUE AND config IS NOT NULL`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	configs := make([]domain.ChannelConfiguration, 0)
+	for rows.Next() {
+		var config domain.ChannelConfiguration
+		if err := rows.Scan(&config.ChannelID, &config.AccountID, &config.BranchID, &config.Type,
+			&config.Config); err != nil {
+			return nil, err
+		}
+		configs = append(configs, config)
+	}
+	return configs, rows.Err()
+}
+
+// GetActiveConfigurationsByIDs loads encrypted active channel settings for one branch in batch.
+func (r *ChannelRepository) GetActiveConfigurationsByIDs(
+	ctx context.Context, q Querier, accountID, branchID uuid.UUID, channelIDs []uuid.UUID,
+) (map[uuid.UUID][]byte, error) {
+	if len(channelIDs) == 0 {
+		return map[uuid.UUID][]byte{}, nil
+	}
+	rows, err := q.Query(ctx,
+		`SELECT id, config
+		 FROM channel
+		 WHERE account_id = $1 AND branch_id = $2 AND id = ANY($3)
+		   AND is_active = TRUE AND config IS NOT NULL`,
+		accountID, branchID, channelIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	configs := make(map[uuid.UUID][]byte, len(channelIDs))
+	for rows.Next() {
+		var channelID uuid.UUID
+		var config []byte
+		if err := rows.Scan(&channelID, &config); err != nil {
+			return nil, err
+		}
+		configs[channelID] = config
+	}
+	return configs, rows.Err()
+}
+
 // GetActiveByID returns an active channel in the requested branch.
 func (r *ChannelRepository) GetActiveByID(
 	ctx context.Context, q Querier, accountID, branchID, channelID uuid.UUID,

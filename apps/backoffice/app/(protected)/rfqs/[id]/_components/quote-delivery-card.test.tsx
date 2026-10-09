@@ -78,6 +78,7 @@ function makeDetail({
       followup_flagged_at: null,
       archived_at: archived ? BASE_TIME : null,
     },
+    inbound_whatsapp_phone: null,
     quote: withQuote
       ? {
           id: QUOTE_ID,

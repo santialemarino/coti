@@ -61,6 +61,8 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY",
 		"STORAGE_MAX_FILE_SIZE_BYTES", "STORAGE_SIGNED_URL_EXPIRY_MINUTES",
 		"CHANNEL_CONFIG_ENCRYPTION_KEY",
+		"WHATSAPP_APP_SECRET", "WHATSAPP_GRAPH_API_VERSION", "WHATSAPP_REQUEST_TIMEOUT_SECONDS",
+		"WHATSAPP_WEBHOOK_MAX_BYTES",
 	}
 	for _, k := range known {
 		t.Setenv(k, "")
@@ -238,6 +240,10 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Job.Timeout != 30*time.Minute {
 		t.Errorf("Job.Timeout = %v, want 30m", cfg.Job.Timeout)
 	}
+	if cfg.WhatsApp.GraphAPIVersion != "v25.0" || cfg.WhatsApp.RequestTimeout != 10*time.Second ||
+		cfg.WhatsApp.WebhookMaxBytes != 1*1024*1024 {
+		t.Errorf("WhatsApp = %+v, want v25.0/10s/1MiB", cfg.WhatsApp)
+	}
 	if cfg.IsProduction() {
 		t.Error("IsProduction() = true, want false")
 	}
@@ -270,6 +276,24 @@ func TestLoad_RFQKeysLandOnTheirOwnFields(t *testing.T) {
 	}
 	if cfg.RFQ.PipelineTimeout != 9*time.Second {
 		t.Errorf("RFQ.PipelineTimeout = %v, want 9s", cfg.RFQ.PipelineTimeout)
+	}
+}
+
+func TestLoad_WhatsAppKeysLandOnTheirOwnFields(t *testing.T) {
+	env := minimalEnv()
+	env["WHATSAPP_APP_SECRET"] = "app-secret"
+	env["WHATSAPP_GRAPH_API_VERSION"] = "v26.1"
+	env["WHATSAPP_REQUEST_TIMEOUT_SECONDS"] = "13"
+	env["WHATSAPP_WEBHOOK_MAX_BYTES"] = "262144"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.WhatsApp.AppSecret != "app-secret" || cfg.WhatsApp.GraphAPIVersion != "v26.1" ||
+		cfg.WhatsApp.RequestTimeout != 13*time.Second || cfg.WhatsApp.WebhookMaxBytes != 262144 {
+		t.Errorf("WhatsApp = %+v, want app-secret/v26.1/13s/262144", cfg.WhatsApp)
 	}
 }
 

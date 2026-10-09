@@ -24,11 +24,16 @@ type quoteVersionCloneRepository interface {
 		alternatives []domain.NewQuoteItemAlternative) error
 }
 
+type quoteVersionClone struct {
+	Draft         *domain.QuoteVersion
+	SourceItemIDs map[uuid.UUID]uuid.UUID
+}
+
 func cloneQuoteVersionForEditing(
 	ctx context.Context, q repository.Querier, quotes quoteVersionCloneRepository,
 	prices branchPriceReader, accountID, branchID, quoteID uuid.UUID, source domain.QuoteVersion,
 	authorID *uuid.UUID, comment *string,
-) (*domain.QuoteVersion, error) {
+) (*quoteVersionClone, error) {
 	items, err := quotes.ListItems(ctx, q, accountID, source.ID)
 	if err != nil {
 		return nil, err
@@ -71,8 +76,10 @@ func cloneQuoteVersionForEditing(
 
 	clonedItems := make([]domain.NewQuoteItem, 0, len(items))
 	clonedAlternatives := make([]domain.NewQuoteItemAlternative, 0)
+	sourceItemIDs := make(map[uuid.UUID]uuid.UUID, len(valuation.items))
 	for _, item := range valuation.items {
 		newID := uuid.New()
+		sourceItemIDs[item.ID] = newID
 		clonedItems = append(clonedItems, domain.NewQuoteItem{
 			ID: newID, ProductID: item.ProductID, RequestedDescription: item.RequestedDescription,
 			Quantity: item.Quantity, Unit: item.Unit, ConfidenceScore: item.ConfidenceScore,
@@ -98,5 +105,5 @@ func cloneQuoteVersionForEditing(
 	if _, err := quotes.UpdateCurrentVersion(ctx, q, accountID, quoteID, draft.ID); err != nil {
 		return nil, err
 	}
-	return draft, nil
+	return &quoteVersionClone{Draft: draft, SourceItemIDs: sourceItemIDs}, nil
 }

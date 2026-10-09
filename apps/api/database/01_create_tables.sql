@@ -96,7 +96,8 @@ CREATE TYPE ai_operation AS ENUM (
   'CATALOG_SEARCH',
   'CATALOG_MATCH_REVIEW',
   'CATALOG_EMBEDDING',
-  'CORRECTION_LEARNING'
+  'CORRECTION_LEARNING',
+  'CHANGE_REQUEST_HANDLING'
 );
 
 -- =============================================================================
@@ -418,6 +419,24 @@ CREATE TABLE channel (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   identifier VARCHAR(255),
   CONSTRAINT uq_channel_branch_type_identifier UNIQUE (branch_id, type, identifier)
+);
+
+-- One provider event reserves its RFQ before the inbound pipeline runs. The external identifier
+-- is unique per channel, so a retried webhook resumes the same order rather than creating another.
+CREATE TABLE inbound_channel_message (
+  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id           UUID NOT NULL,
+  branch_id            UUID NOT NULL,
+  channel_id           UUID NOT NULL,
+  rfq_id               UUID NOT NULL,
+  external_message_id  VARCHAR(255) NOT NULL,
+  sender_id            VARCHAR(255) NOT NULL,
+  sender_label         VARCHAR(255),
+  body                 TEXT NOT NULL,
+  payload              JSONB NOT NULL,
+  provider_received_at TIMESTAMPTZ NOT NULL,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_inbound_channel_message_external UNIQUE (channel_id, external_message_id)
 );
 
 -- What the client asked for. Separate from quote: the UI stepper is a projection over both,
@@ -1018,6 +1037,9 @@ ALTER TABLE client_tag ADD CONSTRAINT fk_client_tag_tag FOREIGN KEY (account_id,
 
 ALTER TABLE channel ADD CONSTRAINT fk_channel_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE channel ADD CONSTRAINT fk_channel_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
+ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
+ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_channel FOREIGN KEY (channel_id) REFERENCES channel(id);
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_client FOREIGN KEY (account_id, client_id) REFERENCES client(account_id, id);
@@ -1163,6 +1185,7 @@ CREATE INDEX idx_product_price_product ON product_price(product_id, branch_id);
 CREATE INDEX idx_branch_combo_branch ON branch_combo(branch_id) WHERE is_active = TRUE;
 
 CREATE INDEX idx_client_account ON client(account_id);
+CREATE INDEX idx_inbound_channel_message_rfq ON inbound_channel_message(rfq_id);
 CREATE INDEX idx_rfq_branch_status ON rfq(branch_id, status);
 CREATE INDEX idx_rfq_attachment_pending ON rfq_attachment(processing_status) WHERE processing_status IN ('PENDING', 'PROCESSING');
 CREATE INDEX idx_rfq_attachment_account_rfq ON rfq_attachment(account_id, rfq_id);
@@ -1318,7 +1341,7 @@ BEGIN
     'product', 'branch_product', 'product_synonym', 'product_price', 'product_alternative',
     'combo', 'combo_item', 'branch_combo',
     'client', 'tag', 'client_tag',
-    'channel', 'rfq', 'rfq_attachment', 'rfq_status_change',
+    'channel', 'inbound_channel_message', 'rfq', 'rfq_attachment', 'rfq_status_change',
     'quote', 'quote_number_counter', 'quote_version', 'quote_representation',
     'quote_item', 'quote_item_alternative',
     'quote_ai_generation', 'quote_ai_generation_item',
