@@ -58,10 +58,11 @@ there too. The header offers a visitor "Ingresar" and "Probar Coti", and a selle
   the page computes a price.
 - **No testimonial, logo or metric is shown until a real one exists**, and there is no pricing
   section until the commercial model is decided. Neither has a hidden placeholder in the code.
-- Motion follows `ux-motion`: the hero's page-level entrance (`animate-rise-in`), and each section
-  fades up once as it first enters the screen through `Reveal` — the one place Coti allows a scroll
-  reveal. A section already on screen, or any section without JavaScript or under reduced motion,
-  is simply shown.
+- Motion follows `ux-motion`'s public-site exception. Every page's opening screen — the landing's
+  hero, the legal pages' heading — rises in on load, item after item (`revealItem`, CSS only, so a
+  typed URL animates too). Further down, each group (a section's heading, then its cards or steps;
+  each legal section) rises in the first time it scrolls into view (`Reveal`). Without JavaScript
+  or under reduced motion everything is simply shown.
 - Moving between the public site, the sign-in screens and the app fades the whole page in
   (`SurfaceFade`), distinct from the app's own screen swap.
 - The footer follows the usual layout: the brand and tagline, two headed columns (Producto with the

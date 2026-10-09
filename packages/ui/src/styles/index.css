@@ -196,6 +196,8 @@
   --duration-default: 200ms;
   --duration-slow: 300ms;
   --duration-slower: 500ms;
+  /* The gap between items revealing one after another on the public site. */
+  --stagger-reveal: 80ms;
 }
 
 @layer base {

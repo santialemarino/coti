@@ -12,6 +12,7 @@ import {
 import { getTranslations } from 'next-intl/server';
 
 import { LandingSection } from '@/app/(public)/_components/landing-section';
+import { revealItem } from '@/app/(public)/_components/reveal-item';
 
 // The detail for the buyer who reads before deciding: everything a corralón gets, past the three
 // headline benefits.
@@ -38,8 +39,8 @@ export async function LandingFeatures() {
       description={t('description')}
     >
       <ul className="grid gap-x-8 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
-        {FEATURES.map(({ key, icon: Icon }) => (
-          <li key={key} className="flex items-start gap-x-4">
+        {FEATURES.map(({ key, icon: Icon }, index) => (
+          <li key={key} {...revealItem(index + 1, 'flex items-start gap-x-4')}>
             <span className="grid size-10 shrink-0 place-items-center bg-accent rounded-lg">
               <Icon aria-hidden="true" className="size-5 text-primary" />
             </span>

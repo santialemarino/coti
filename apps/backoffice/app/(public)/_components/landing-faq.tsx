@@ -7,6 +7,7 @@ import {
   DropdownChevron,
 } from '@repo/ui/components';
 import { LandingSection } from '@/app/(public)/_components/landing-section';
+import { revealItem } from '@/app/(public)/_components/reveal-item';
 
 const QUESTIONS = [
   'catalog',
@@ -24,8 +25,8 @@ export async function LandingFaq() {
   return (
     <LandingSection id="faq" eyebrow={t('eyebrow')} title={t('title')}>
       <ul className="flex flex-col max-w-3xl border-y border-border divide-y divide-border">
-        {QUESTIONS.map((question) => (
-          <li key={question}>
+        {QUESTIONS.map((question, index) => (
+          <li key={question} {...revealItem(index + 1)}>
             <Collapsible>
               <CollapsibleTrigger className="group/faq flex w-full items-center justify-between py-4 gap-x-4 rounded-md outline-none text-left text-heading-6 text-foreground transition-colors duration-200 ease-out-soft hover:text-primary focus-visible:text-primary">
                 {t(`items.${question}.question`)}

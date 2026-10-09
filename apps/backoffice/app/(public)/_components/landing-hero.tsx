@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 
 import { Button } from '@repo/ui/components';
 import { ProductPreview } from '@/app/(public)/_components/product-preview';
+import { revealItem } from '@/app/(public)/_components/reveal-item';
 import { ROUTES } from '@/config/routes';
 
 interface LandingHeroProps {
@@ -17,15 +18,20 @@ export async function LandingHero({ signedIn }: LandingHeroProps) {
   return (
     <section aria-labelledby="hero-title" className="bg-linear-to-b from-accent to-body-background">
       <div className="grid w-full max-w-6xl mx-auto px-4 pt-12 pb-16 gap-12 sm:px-6 lg:grid-cols-[1.1fr_1fr] lg:items-center lg:pt-20 lg:pb-24">
-        <div className="flex flex-col items-start gap-y-6 animate-rise-in">
-          <p className="text-paragraph-sm-semibold text-primary">{t('slogan')}</p>
-          <h1 id="hero-title" className="text-heading-2 text-foreground lg:text-heading-1">
+        <div className="flex flex-col items-start gap-y-6">
+          <p {...revealItem(0, 'text-paragraph-sm-semibold text-primary')}>{t('slogan')}</p>
+          <h1
+            id="hero-title"
+            {...revealItem(1, 'text-heading-2 text-foreground lg:text-heading-1')}
+          >
             {t('title')}
           </h1>
-          <p className="max-w-xl text-paragraph text-foreground-muted">{t('description')}</p>
+          <p {...revealItem(2, 'max-w-xl text-paragraph text-foreground-muted')}>
+            {t('description')}
+          </p>
           {signedIn ? null : (
             <>
-              <div className="flex flex-wrap gap-3">
+              <div {...revealItem(3, 'flex flex-wrap gap-3')}>
                 <Button asChild size="lg">
                   <Link href={ROUTES.signup}>{t('signup')}</Link>
                 </Button>
@@ -33,12 +39,13 @@ export async function LandingHero({ signedIn }: LandingHeroProps) {
                   <Link href={ROUTES.login}>{t('login')}</Link>
                 </Button>
               </div>
-              <p className="text-paragraph-sm text-foreground-subtle">{t('note')}</p>
+              <p {...revealItem(4, 'text-paragraph-sm text-foreground-subtle')}>{t('note')}</p>
             </>
           )}
         </div>
-        {/* A position in the same entrance, not a reusable delay. */}
-        <ProductPreview className="animate-rise-in [animation-delay:120ms]" />
+        <div {...revealItem(2)}>
+          <ProductPreview />
+        </div>
       </div>
     </section>
   );

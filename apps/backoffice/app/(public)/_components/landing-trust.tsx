@@ -2,6 +2,7 @@ import { CalculatorIcon, LockKeyholeIcon, UserCheckIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 import { LandingSection } from '@/app/(public)/_components/landing-section';
+import { revealItem } from '@/app/(public)/_components/reveal-item';
 
 // The objections a supplier raises about letting a model near a quote, each answered by a rule the
 // product enforces.
@@ -23,8 +24,8 @@ export async function LandingTrust() {
       className="bg-card"
     >
       <ul className="grid gap-6 md:grid-cols-3">
-        {POINTS.map(({ key, icon: Icon }) => (
-          <li key={key} className="flex items-start gap-x-4">
+        {POINTS.map(({ key, icon: Icon }, index) => (
+          <li key={key} {...revealItem(index + 1, 'flex items-start gap-x-4')}>
             <span className="grid size-10 shrink-0 place-items-center bg-accent rounded-full">
               <Icon aria-hidden="true" className="size-5 text-primary" />
             </span>

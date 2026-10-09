@@ -1,6 +1,11 @@
 import { getTranslations } from 'next-intl/server';
 
+import { Reveal } from '@/app/(public)/_components/reveal';
+import { revealItem } from '@/app/(public)/_components/reveal-item';
 import { getFormatters } from '@/lib/i18n/formatters-server';
+
+// The heading, its date and the intro take the first steps of the entrance.
+const SECTION_STEP = 3;
 
 interface LegalSection {
   title: string;
@@ -22,21 +27,24 @@ export async function LegalPage({ namespace, updatedAt }: LegalPageProps) {
   return (
     <article className="flex flex-col w-full max-w-3xl mx-auto px-4 py-12 gap-y-10 sm:px-6 lg:py-16">
       <header className="flex flex-col gap-y-3">
-        <h1 className="text-heading-2 text-foreground">{t('title')}</h1>
-        <p className="text-paragraph-sm text-foreground-subtle">
+        <h1 {...revealItem(0, 'text-heading-2 text-foreground')}>{t('title')}</h1>
+        <p {...revealItem(1, 'text-paragraph-sm text-foreground-subtle')}>
           {tLegal('updatedAt', { date: fmt.date(updatedAt) })}
         </p>
-        <p className="text-paragraph text-foreground-muted">{t('intro')}</p>
+        <p {...revealItem(2, 'text-paragraph text-foreground-muted')}>{t('intro')}</p>
       </header>
       {sections.map((section) => (
-        <section key={section.title} className="flex flex-col gap-y-3">
-          <h2 className="text-heading-5 text-foreground">{section.title}</h2>
-          {section.paragraphs.map((paragraph) => (
-            <p key={paragraph} className="text-paragraph-sm text-foreground-muted">
-              {paragraph}
-            </p>
-          ))}
-        </section>
+        <Reveal key={section.title}>
+          {/* After the heading's three steps, so the opening screen reads top to bottom. */}
+          <section {...revealItem(SECTION_STEP, 'flex flex-col gap-y-3')}>
+            <h2 className="text-heading-5 text-foreground">{section.title}</h2>
+            {section.paragraphs.map((paragraph) => (
+              <p key={paragraph} className="text-paragraph-sm text-foreground-muted">
+                {paragraph}
+              </p>
+            ))}
+          </section>
+        </Reveal>
       ))}
     </article>
   );

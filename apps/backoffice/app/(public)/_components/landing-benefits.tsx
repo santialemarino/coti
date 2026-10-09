@@ -2,6 +2,7 @@ import { ClockIcon, ListChecksIcon, TrendingUpIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 import { LandingSection } from '@/app/(public)/_components/landing-section';
+import { revealItem } from '@/app/(public)/_components/reveal-item';
 
 // Three and no more: past three, a list of benefits stops helping anyone decide.
 const BENEFITS = [
@@ -16,10 +17,13 @@ export async function LandingBenefits() {
   return (
     <LandingSection id="benefits" eyebrow={t('eyebrow')} title={t('title')}>
       <ul className="grid gap-4 md:grid-cols-3">
-        {BENEFITS.map(({ key, icon: Icon }) => (
+        {BENEFITS.map(({ key, icon: Icon }, index) => (
           <li
             key={key}
-            className="flex flex-col p-6 gap-y-4 bg-card border border-border rounded-1.5xl shadow-e2"
+            {...revealItem(
+              index + 1,
+              'flex flex-col p-6 gap-y-4 bg-card border border-border rounded-1.5xl shadow-e2',
+            )}
           >
             <span className="grid size-11 place-items-center bg-accent rounded-xl">
               <Icon aria-hidden="true" className="size-5 text-primary" />

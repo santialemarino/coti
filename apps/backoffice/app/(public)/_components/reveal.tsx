@@ -2,8 +2,6 @@
 
 import { useEffect, useRef } from 'react';
 
-import { cn } from '@repo/ui/lib';
-
 // Fires a little before the section's top reaches the bottom edge, so the rise is seen, not missed.
 const REVEAL_MARGIN = '0px 0px -10% 0px';
 
@@ -13,10 +11,10 @@ interface RevealProps {
 }
 
 /*
- * Fades a landing section up once as it first enters the screen. It only ever hides a section that
- * is still below the fold after hydration, so the content is visible without JavaScript, under
- * reduced motion and for whatever the page opened on. The state lives on the DOM node rather than in
- * React state: it changes nothing React renders.
+ * Holds a group of `revealItem`s that is still below the fold after hydration, and lets them rise in
+ * the first time it scrolls into view. Everything else — the screen the page opened on, a visit
+ * without JavaScript, reduced motion — keeps the entrance the items play on first paint. The state
+ * lives on the DOM node rather than in React state: it changes nothing React renders.
  */
 export function Reveal({ children, className }: RevealProps) {
   const ref = useRef<HTMLDivElement>(null);
@@ -40,14 +38,7 @@ export function Reveal({ children, className }: RevealProps) {
   }, []);
 
   return (
-    <div
-      ref={ref}
-      className={cn(
-        'transition-[opacity,translate] duration-500 ease-out-soft motion-reduce:transition-none',
-        'data-[reveal=waiting]:translate-y-4 data-[reveal=waiting]:opacity-0',
-        className,
-      )}
-    >
+    <div ref={ref} className={className}>
       {children}
     </div>
   );
