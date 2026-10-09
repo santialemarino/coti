@@ -359,7 +359,7 @@
         },
         "answer": {
           "title": "El cliente responde",
-          "description": "Abre la cotización con la marca de tu corralón y acepta, rechaza o pide cambios ítem por ítem."
+          "description": "Abre la cotización con la marca de tu corralón y la acepta, la rechaza o pide cambios."
         }
       }
     },

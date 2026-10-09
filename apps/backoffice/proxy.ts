@@ -110,6 +110,6 @@ export const config = {
   // string, so a slash-only exclusion never fires and every optimised image would
   // be sent to the login screen instead.
   matcher: [
-    '/((?!_next/static/|_next/image$|_next/image/|favicon\\.ico$|icons/|brand/|icon\\.png$|apple-icon\\.png$|manifest\\.webmanifest$|opengraph-image|robots\\.txt$|sitemap\\.xml$).*)',
+    '/((?!_next/static/|_next/image$|_next/image/|favicon\\.ico$|icons/|brand/|icon\\.png$|apple-icon\\.png$|manifest\\.webmanifest$|opengraph-image$|robots\\.txt$|sitemap\\.xml$).*)',
   ],
 };
