@@ -13,10 +13,10 @@ vi.mock('@/components/branded-screen', () => ({
  * rethrows anything that is not a 401/403, so an unreachable API would replace "this page does not
  * exist" with an error screen over an outage that has nothing to do with it.
  */
-vi.mock('@/lib/auth/session', () => ({ getAccessToken: vi.fn() }));
+vi.mock('@/lib/auth/session', () => ({ isAuthenticated: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getTranslations: vi.fn() }));
 
-const { getAccessToken } = await import('@/lib/auth/session');
+const { isAuthenticated } = await import('@/lib/auth/session');
 const { getTranslations } = await import('next-intl/server');
 const { default: NotFound } = await import('@/app/not-found');
 
@@ -41,31 +41,32 @@ beforeEach(() => {
 });
 
 describe('NotFound', () => {
-  /*
-   * The CTA is the whole point of reading the session here: sending a signed-in caller to the login
-   * screen is a dead end, and offering the home page to someone with no session bounces them
-   * straight back to login with a `next` they never asked for.
-   */
-  it('offers a signed-in caller the way home', async () => {
-    vi.mocked(getAccessToken).mockResolvedValue('a-token');
+  // A seller is sent back to work; the public site is the second way out, not the first.
+  it('offers a signed-in caller the queue and the public site', async () => {
+    vi.mocked(isAuthenticated).mockResolvedValue(true);
     const view = await renderPage();
 
-    const link = view.getByRole('link', { name: copy.goHome });
-    expect(link.getAttribute('href')).toBe(ROUTES.home);
-    expect(view.queryByRole('link', { name: copy.goToLogin })).toBeNull();
+    expect(view.getByRole('link', { name: copy.goToOrders }).getAttribute('href')).toBe(
+      ROUTES.home,
+    );
+    expect(view.getByRole('link', { name: copy.goToSite }).getAttribute('href')).toBe(
+      ROUTES.landing,
+    );
   });
 
-  it('offers a signed-out caller the login screen', async () => {
-    vi.mocked(getAccessToken).mockResolvedValue(undefined);
+  // Someone with no session reaches this directly, and the root is where the landing lives.
+  it('offers a signed-out caller the way back to the landing, not a login screen', async () => {
+    vi.mocked(isAuthenticated).mockResolvedValue(false);
     const view = await renderPage();
 
-    const link = view.getByRole('link', { name: copy.goToLogin });
-    expect(link.getAttribute('href')).toBe(ROUTES.login);
-    expect(view.queryByRole('link', { name: copy.goHome })).toBeNull();
+    expect(view.getByRole('link', { name: copy.backHome }).getAttribute('href')).toBe(
+      ROUTES.landing,
+    );
+    expect(view.getAllByRole('link')).toHaveLength(1);
   });
 
   it('says what happened in Spanish, not in Next.js English', async () => {
-    vi.mocked(getAccessToken).mockResolvedValue(undefined);
+    vi.mocked(isAuthenticated).mockResolvedValue(false);
     const view = await renderPage();
 
     expect(view.getByText(copy.title)).toBeTruthy();

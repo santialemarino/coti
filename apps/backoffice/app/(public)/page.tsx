@@ -1,0 +1,55 @@
+import { getTranslations } from 'next-intl/server';
+
+import { LandingBenefits } from '@/app/(public)/_components/landing-benefits';
+import { LandingCta } from '@/app/(public)/_components/landing-cta';
+import { LandingFaq } from '@/app/(public)/_components/landing-faq';
+import { LandingFeatures } from '@/app/(public)/_components/landing-features';
+import { LandingHero } from '@/app/(public)/_components/landing-hero';
+import { LandingSteps } from '@/app/(public)/_components/landing-steps';
+import { LandingTrust } from '@/app/(public)/_components/landing-trust';
+import { ROUTES } from '@/config/routes';
+import { isAuthenticated } from '@/lib/auth/session';
+import { generatePublicPageMetadata } from '@/lib/utils/page';
+import { siteOrigin } from '@/lib/utils/site-origin';
+
+export const generateMetadata = () => generatePublicPageMetadata('landing', ROUTES.landing);
+
+export default async function LandingPage() {
+  const t = await getTranslations('landing');
+  const signedIn = await isAuthenticated();
+  const origin = await siteOrigin();
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      { '@type': 'Organization', name: 'Coti', url: origin, logo: `${origin}/icon.png` },
+      {
+        '@type': 'SoftwareApplication',
+        name: 'Coti',
+        applicationCategory: 'BusinessApplication',
+        operatingSystem: 'Web',
+        inLanguage: 'es-AR',
+        description: t('hero.description'),
+        url: origin,
+      },
+    ],
+  };
+
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        // Escaped so no value can close the script element early.
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(structuredData).replace(/</g, '\\u003c'),
+        }}
+      />
+      <LandingHero signedIn={signedIn} />
+      <LandingBenefits />
+      <LandingSteps />
+      <LandingFeatures />
+      <LandingTrust />
+      <LandingFaq />
+      {signedIn ? null : <LandingCta />}
+    </>
+  );
+}

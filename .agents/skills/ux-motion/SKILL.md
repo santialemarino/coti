@@ -21,6 +21,17 @@ snap, an entrance that orients someone on a result screen.
 There is no scroll-reveal, no parallax, no ambient loop, no decorative hover-float anywhere in Coti.
 If a motion does not answer "what just happened?" or "where am I?", it does not ship.
 
+**The one exception is the backoffice's `(public)` site** (the landing and the legal pages), which is
+the only surface in Coti that is marketing rather than a tool. There, and nowhere else, content
+enters: every page's opening screen rises in on load, and each group further down rises in the first
+time it scrolls into view, its items one after another. Mark an element with `revealItem(index)`
+(`app/(public)/_components/reveal-item.ts`) and wrap a group that may start below the fold in `Reveal`;
+the motion itself is CSS in `@repo/ui`'s styles, with the rest of the motion layer. The rules that make it safe: the load
+entrance is pure CSS, so a typed URL animates and content never waits on JavaScript; a group is only
+held hidden once hydrated and only while still below the fold; it never replays on scrolling back;
+the gap between items is `--stagger-reveal`; it is opacity and translate only; and reduced motion
+removes all of it. Parallax, loops and hover-floats stay banned there too.
+
 ## Interaction states
 
 Every interactive element gets **all four** that apply: hover, active, focus-visible, disabled.
@@ -232,6 +243,12 @@ panel enters from the trigger and then dissolves in place.
   **Live is not on top**: the captured screen paints in an overlay above the whole page, so a fixed
   or sticky piece it can overlap (the header once scrolled, the phone tab bar) is captured too
   under its own name, its old image dropped and its new one live and unanimated (`shell-*`).
+- **Crossing surfaces is a page fade, not a screen swap.** A navigation between the public site, the
+  sign-in screens and the app (`surfaceOf` in the backoffice's routes) fades the whole page in from the
+  wash — `SurfaceFade` in the root layout, `animate-surface-in`, 500ms, opacity only (a transform
+  would make the page the containing block of the app's fixed header and tab bar). Slower and
+  simpler than the in-app fade-through, so the two read as different events. Never on a page load,
+  never within one surface, and off under reduced motion.
 - **A column that comes and goes with the route lives in the layout, not in the pages.** A page
   unmounts the moment the route changes, so a column it renders can never animate out. Keep it in
   the shared layout, derive open from the pathname, and animate the box's `width` between `0` and a

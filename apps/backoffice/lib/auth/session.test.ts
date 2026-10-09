@@ -3,7 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cookieJar } from '@repo/vitest-config/cookies';
 import { ROUTES } from '@/config/routes';
 import { ApiError } from '@/lib/api/errors';
-import { clearSession, getAccessToken, getSession, requireAdmin } from '@/lib/auth/session';
+import {
+  clearSession,
+  getAccessToken,
+  getSession,
+  isAuthenticated,
+  requireAdmin,
+} from '@/lib/auth/session';
 import { ACCESS_COOKIE, BRANCH_COOKIE, REFRESH_COOKIE, REMEMBER_COOKIE } from '@/lib/auth/tokens';
 
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
@@ -111,6 +117,22 @@ describe('getAccessToken', () => {
     await clearSession();
 
     await expect(getAccessToken()).resolves.toBeUndefined();
+  });
+});
+
+describe('isAuthenticated', () => {
+  // The access cookie lapses long before the refresh one; someone holding only that is still signed in.
+  it('counts a refresh token alone as a session', async () => {
+    jar({ [REFRESH_COOKIE]: 'refresh' });
+
+    await expect(isAuthenticated()).resolves.toBe(true);
+  });
+
+  it('reports no session once the cookies have been cleared in this request', async () => {
+    jar({ [ACCESS_COOKIE]: 'access', [REFRESH_COOKIE]: 'refresh' });
+    await clearSession();
+
+    await expect(isAuthenticated()).resolves.toBe(false);
   });
 });
 

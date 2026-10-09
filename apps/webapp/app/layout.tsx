@@ -7,10 +7,12 @@ import { inter, poppins } from '@/lib/fonts';
 
 import './globals.css';
 
+// A quote link belongs to one customer, so nothing here is ever indexed.
 export const metadata: Metadata = {
   title: 'Coti',
   description: 'Review and respond to your quote.',
   applicationName: 'Coti',
+  robots: { index: false, follow: false },
 };
 
 /*

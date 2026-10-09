@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { describe, expect, it } from 'vitest';
 
 import { GET } from '@/app/branch-reset/route';
+import { ROUTES } from '@/config/routes';
 import { BRANCH_COOKIE } from '@/lib/auth/tokens';
 
 function expectBranchCookieCleared(response: Response) {
@@ -16,7 +17,7 @@ describe('GET /branch-reset', () => {
     const response = await GET(new NextRequest('https://backoffice.test/branch-reset'));
 
     expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe('/');
+    expect(response.headers.get('location')).toBe(ROUTES.home);
     expectBranchCookieCleared(response);
   });
 
