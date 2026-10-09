@@ -88,9 +88,9 @@ export async function proxy(request: NextRequest) {
     const reason = renewed?.code === 'ACCOUNT_LOCKED' ? LOCKED_REASON : undefined;
     return redirectToLogin(request, pathname + search, reason);
   }
-  // On a public page or a 404 only a definite refusal ends the session; a hiccup (a 5xx, a rate
-  // limit that is not a lockout) keeps the cookies for the next request to retry.
-  const refused = renewed?.status === 401 || renewed?.code === 'ACCOUNT_LOCKED';
+  // On a public page or a 404 a session ends only when it cannot be renewed (no refresh token, a 401,
+  // a lockout); a hiccup (a 5xx, a rate limit) keeps the cookies for the next request to retry.
+  const refused = !renewed || renewed.status === 401 || renewed.code === 'ACCOUNT_LOCKED';
   return refused ? endSession(request) : NextResponse.next();
 }
 

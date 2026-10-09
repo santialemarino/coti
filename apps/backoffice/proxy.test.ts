@@ -158,6 +158,17 @@ describe('proxy settling a lapsed session', () => {
     expect(response.headers.get('location')).toBeNull();
   });
 
+  it('ends a lapsed session that has nothing to renew it with', async () => {
+    const response = await proxy(
+      new NextRequest('https://backoffice.test/', {
+        headers: { cookie: `${ACCESS_COOKIE}=expired` },
+      }),
+    );
+
+    expect(response.headers.get('set-cookie')).toContain(`${ACCESS_COOKIE}=;`);
+    expect(response.headers.get('location')).toBeNull();
+  });
+
   it('never spends a refresh token on a prefetch', async () => {
     const response = await proxy(
       new NextRequest('https://backoffice.test/', {
