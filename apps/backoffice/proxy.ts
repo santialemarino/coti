@@ -38,7 +38,10 @@ export async function proxy(request: NextRequest) {
   const remembered = request.cookies.get(REMEMBER_COOKIE)?.value === '1';
 
   if (PUBLIC_ROUTES.includes(pathname)) {
-    if (SIGNED_OUT_ONLY_ROUTES.includes(pathname) && accessToken && !needsRenewal(accessToken)) {
+    // A refresh token is a session the queue will renew, so it is bounced too: someone holding one
+    // is signed in, and a login form would ask them to do it again.
+    const signedIn = refreshToken || (accessToken && !needsRenewal(accessToken));
+    if (SIGNED_OUT_ONLY_ROUTES.includes(pathname) && signedIn) {
       return NextResponse.redirect(new URL(ROUTES.home, request.url));
     }
     return NextResponse.next();

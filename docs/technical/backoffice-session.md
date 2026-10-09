@@ -63,16 +63,21 @@ and hides exactly this.
 convention Next 16 renamed from `middleware`; the exported function is `proxy` and nothing else
 about it changed:
 
-| Situation                                            | Result                                                     |
-| ---------------------------------------------------- | ---------------------------------------------------------- |
-| Unknown path, neither token held                     | through — the 404 answers it                               |
-| Public route, no usable token                        | through                                                    |
-| Login / signup / forgot, token present and unexpired | redirected home                                            |
-| Protected route, token unexpired                     | through                                                    |
-| Protected route, token expired, refresh token held   | renewed, then through                                      |
-| Protected route, refresh rejected                    | cookies cleared, redirected to login with `?next=`         |
-| Protected route, refresh answers `ACCOUNT_LOCKED`    | the same, plus `?reason=locked`                            |
-| Protected route, API unreachable                     | through — the cookies survive and the next request retries |
+| Situation                                          | Result                                                     |
+| -------------------------------------------------- | ---------------------------------------------------------- |
+| Unknown path, neither token held                   | through — the 404 answers it                               |
+| Public route, no usable token                      | through                                                    |
+| Login / signup / forgot, a live session            | redirected home (`/inbox`)                                 |
+| Protected route, token unexpired                   | through                                                    |
+| Protected route, token expired, refresh token held | renewed, then through                                      |
+| Protected route, refresh rejected                  | cookies cleared, redirected to login with `?next=`         |
+| Protected route, refresh answers `ACCOUNT_LOCKED`  | the same, plus `?reason=locked`                            |
+| Protected route, API unreachable                   | through — the cookies survive and the next request retries |
+
+A **live session** on the signed-out-only screens is an unexpired access token **or** a refresh
+token: the access token lapses within minutes, and someone still holding the refresh token is signed
+in — the queue renews them. The public header and the 404 make the same call from the cookies
+(`holdsSession`), so a seller is never offered a login they are already past.
 
 A **protected route** is any path `isProtectedPath` recognises: every string in `ROUTES` that is
 not public (with everything under it), and `/api`. The root is public — it is the landing — and

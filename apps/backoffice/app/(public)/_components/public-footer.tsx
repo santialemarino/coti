@@ -11,7 +11,6 @@ export async function PublicFooter() {
   const links = [
     { href: ROUTES.privacy, label: t('privacy') },
     { href: ROUTES.terms, label: t('terms') },
-    { href: ROUTES.login, label: t('login') },
   ];
 
   return (

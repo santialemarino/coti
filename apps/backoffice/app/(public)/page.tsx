@@ -8,7 +8,7 @@ import { LandingHero } from '@/app/(public)/_components/landing-hero';
 import { LandingSteps } from '@/app/(public)/_components/landing-steps';
 import { LandingTrust } from '@/app/(public)/_components/landing-trust';
 import { ROUTES } from '@/config/routes';
-import { getAccessToken } from '@/lib/auth/session';
+import { holdsSession } from '@/lib/auth/session';
 import { generatePublicPageMetadata } from '@/lib/utils/page';
 import { siteOrigin } from '@/lib/utils/site-origin';
 
@@ -16,7 +16,7 @@ export const generateMetadata = () => generatePublicPageMetadata('landing', ROUT
 
 export default async function LandingPage() {
   const t = await getTranslations('landing');
-  const signedIn = (await getAccessToken()) !== undefined;
+  const signedIn = await holdsSession();
   const origin = await siteOrigin();
   const structuredData = {
     '@context': 'https://schema.org',

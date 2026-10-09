@@ -99,6 +99,16 @@ export async function getAccessToken(): Promise<string | undefined> {
   return (await cookies()).get(ACCESS_COOKIE)?.value || undefined;
 }
 
+/*
+ * Whether this browser holds a session at all: a guess for which way in or out to offer, never an
+ * authorization. The cookies outlive the access token inside them, so an expired one still counts —
+ * the gate renews it on the next protected request, the same rule that keeps it off the login screen.
+ */
+export async function holdsSession(): Promise<boolean> {
+  const jar = await cookies();
+  return Boolean(jar.get(ACCESS_COOKIE)?.value || jar.get(REFRESH_COOKIE)?.value);
+}
+
 // Next allows a cookie write only from a server action or a route handler, which is
 // why the renewal path lives in the proxy instead.
 export async function startSession(tokens: TokenPair, rememberMe = false): Promise<void> {

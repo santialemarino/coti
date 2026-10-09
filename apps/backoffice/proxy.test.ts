@@ -96,3 +96,22 @@ describe('proxy without a session', () => {
     expect(new URL(response.headers.get('location') ?? '').pathname).toBe('/login');
   });
 });
+
+describe('proxy on the signed-out-only screens', () => {
+  // The access token lapses within minutes; the refresh token is what says someone is signed in.
+  it('sends a seller holding only a refresh token from the login screen to the queue', async () => {
+    const response = await proxy(
+      new NextRequest('https://backoffice.test/login', {
+        headers: { cookie: `${REFRESH_COOKIE}=refresh` },
+      }),
+    );
+
+    expect(new URL(response.headers.get('location') ?? '').pathname).toBe('/inbox');
+  });
+
+  it('shows the login screen to a visitor', async () => {
+    const response = await proxy(visitor('/login'));
+
+    expect(response.headers.get('location')).toBeNull();
+  });
+});

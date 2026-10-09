@@ -1,11 +1,11 @@
 import { PublicFooter } from '@/app/(public)/_components/public-footer';
 import { PublicHeader } from '@/app/(public)/_components/public-header';
-import { getAccessToken } from '@/lib/auth/session';
+import { holdsSession } from '@/lib/auth/session';
 
-// The public site's frame. A seller can open these pages too, so the header reads the token cookie
+// The public site's frame. A seller can open these pages too, so the header reads the session cookies
 // to offer the way back to the queue instead of a login they are already past.
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
-  const signedIn = (await getAccessToken()) !== undefined;
+  const signedIn = await holdsSession();
 
   return (
     <div className="flex flex-col min-h-screen">

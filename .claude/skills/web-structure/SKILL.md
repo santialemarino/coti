@@ -60,7 +60,7 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
 - **`app/(public)/`** — Coti's public site: the landing at `/`, `/privacy` and
   `/terms`, the same pages for everyone. A seller's home is the queue at `/inbox`
   (`ROUTES.home`), so the root never depends on who asks; the header reads the
-  token cookie only to offer a seller the queue instead of a login. See `docs/technical/public-site.md`.
+  session cookies only to offer a seller the queue instead of a login. See `docs/technical/public-site.md`.
 - **`app/layout.tsx`** — Root layout: async server component that resolves the
   locale + messages via next-intl, wraps `children` in `NextIntlClientProvider`,
   and sets `<html lang={locale}>` (always `es` today); imports `globals.css`.
@@ -91,7 +91,7 @@ ships its own at the **root of `app/`**:
   a digest, so its copy is the generic one from the catalog — a failure a screen can name is worded
   where it happened, not here.
 - **`not-found.tsx`** is a server component, so it can read whatever decides its call to action. In
-  the backoffice that is whether a token cookie exists: a seller gets the queue (and the public
+  the backoffice that is whether a session cookie exists (`holdsSession`): a seller gets the queue (and the public
   site), a visitor gets the landing. The gate lets a caller with no session
   reach an unknown path directly — it redirects to login only for a path `isProtectedPath`
   recognises — so the 404 is a real answer for both. Read the **cookie**, not `getSession()` — a 404 must not depend on the API being up, and

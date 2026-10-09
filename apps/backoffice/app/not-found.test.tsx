@@ -13,10 +13,10 @@ vi.mock('@/components/branded-screen', () => ({
  * rethrows anything that is not a 401/403, so an unreachable API would replace "this page does not
  * exist" with an error screen over an outage that has nothing to do with it.
  */
-vi.mock('@/lib/auth/session', () => ({ getAccessToken: vi.fn() }));
+vi.mock('@/lib/auth/session', () => ({ holdsSession: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getTranslations: vi.fn() }));
 
-const { getAccessToken } = await import('@/lib/auth/session');
+const { holdsSession } = await import('@/lib/auth/session');
 const { getTranslations } = await import('next-intl/server');
 const { default: NotFound } = await import('@/app/not-found');
 
@@ -43,7 +43,7 @@ beforeEach(() => {
 describe('NotFound', () => {
   // A seller is sent back to work; the public site is the second way out, not the first.
   it('offers a signed-in caller the queue and the public site', async () => {
-    vi.mocked(getAccessToken).mockResolvedValue('a-token');
+    vi.mocked(holdsSession).mockResolvedValue(true);
     const view = await renderPage();
 
     expect(view.getByRole('link', { name: copy.goToOrders }).getAttribute('href')).toBe(
@@ -56,7 +56,7 @@ describe('NotFound', () => {
 
   // Someone with no session reaches this directly, and the root is where the landing lives.
   it('offers a signed-out caller the way back to the landing, not a login screen', async () => {
-    vi.mocked(getAccessToken).mockResolvedValue(undefined);
+    vi.mocked(holdsSession).mockResolvedValue(false);
     const view = await renderPage();
 
     expect(view.getByRole('link', { name: copy.backHome }).getAttribute('href')).toBe(
@@ -66,7 +66,7 @@ describe('NotFound', () => {
   });
 
   it('says what happened in Spanish, not in Next.js English', async () => {
-    vi.mocked(getAccessToken).mockResolvedValue(undefined);
+    vi.mocked(holdsSession).mockResolvedValue(false);
     const view = await renderPage();
 
     expect(view.getByText(copy.title)).toBeTruthy();
