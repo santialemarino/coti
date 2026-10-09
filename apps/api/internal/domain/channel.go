@@ -42,6 +42,30 @@ type Channel struct {
 	UpdatedAt    time.Time
 }
 
+// InboundChannelRoute identifies the tenant and branch an external message must enter through.
+type InboundChannelRoute struct {
+	AccountID   uuid.UUID
+	BranchID    uuid.UUID
+	ChannelID   uuid.UUID
+	ChannelType ChannelType
+}
+
+// Tenant returns the database scope for the resolved external route.
+func (r InboundChannelRoute) Tenant() Tenant {
+	return Tenant{AccountID: r.AccountID, BranchID: r.BranchID}
+}
+
+// Validate refuses incomplete routes and channel types without an external inbox.
+func (r InboundChannelRoute) Validate() error {
+	if r.AccountID == uuid.Nil || r.BranchID == uuid.Nil || r.ChannelID == uuid.Nil {
+		return fmt.Errorf("%w: an inbound route needs account, branch, and channel IDs", ErrInvalidInput)
+	}
+	if r.ChannelType != ChannelTypeWhatsApp && r.ChannelType != ChannelTypeEmail {
+		return fmt.Errorf("%w: %s has no external inbox route", ErrInvalidInput, r.ChannelType)
+	}
+	return nil
+}
+
 // NewChannel is an intake route an administrator opens on the selected branch. Config is stored
 // verbatim, so the service validates it and seals its credentials before the repository sees it.
 type NewChannel struct {
@@ -76,6 +100,33 @@ func NormalizeChannelIdentifier(identifier *string) *string {
 		return nil
 	}
 	return &trimmed
+}
+
+// NormalizeInboundChannelIdentifier canonicalizes the provider identifier used before a tenant is known.
+func NormalizeInboundChannelIdentifier(channelType ChannelType, identifier string) (string, error) {
+	normalized := strings.TrimSpace(identifier)
+	if normalized == "" {
+		return "", fmt.Errorf("%w: an inbound channel identifier is required", ErrInvalidInput)
+	}
+	if strings.ContainsFunc(normalized, unicode.IsControl) {
+		return "", fmt.Errorf("%w: an inbound channel identifier carries no control characters", ErrInvalidInput)
+	}
+	if len([]byte(normalized)) > maxChannelFieldLength {
+		return "", fmt.Errorf("%w: an inbound channel identifier must be at most %d bytes",
+			ErrInvalidInput, maxChannelFieldLength)
+	}
+	switch channelType {
+	case ChannelTypeWhatsApp:
+		return normalized, nil
+	case ChannelTypeEmail:
+		parsed, err := mail.ParseAddress(normalized)
+		if err != nil || parsed.Address != normalized {
+			return "", fmt.Errorf("%w: an inbound EMAIL identifier must be a bare email address", ErrInvalidInput)
+		}
+		return strings.ToLower(parsed.Address), nil
+	default:
+		return "", fmt.Errorf("%w: %s has no external inbox route", ErrInvalidInput, channelType)
+	}
 }
 
 // ValidateChannelIdentifier holds both rules the identifier column carries: WEBAPP and MANUAL_ENTRY

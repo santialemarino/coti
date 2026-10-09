@@ -20,7 +20,7 @@ import (
 // and the credentials to call it with. The number itself is the identifier column.
 func whatsAppConfig() map[string]any {
 	return map[string]any{
-		"phone_number_id":      "1234567890",
+		"phone_number_id":      uuid.NewString(),
 		"business_account_id":  "9876543210",
 		"access_token":         "EAAG-live-token",
 		"webhook_verify_token": "hook-secret",

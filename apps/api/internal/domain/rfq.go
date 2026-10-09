@@ -174,6 +174,14 @@ type TextRFQDraftInput struct {
 	WorkType    *string
 }
 
+// InboundTextRFQDraftInput is the text payload an external channel delivered after routing.
+type InboundTextRFQDraftInput struct {
+	ClientID    *uuid.UUID
+	ClientLabel *string
+	RawText     string
+	WorkType    *string
+}
+
 // FileRFQDraftInput is one order that arrived as a file — a photo of a handwritten list, a PDF,
 // a spreadsheet, a voice note — to run through the RFQ pipeline.
 type FileRFQDraftInput struct {
