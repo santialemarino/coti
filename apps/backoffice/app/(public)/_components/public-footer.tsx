@@ -39,9 +39,9 @@ export async function PublicFooter() {
             </Link>
             <p className="text-paragraph-sm text-foreground-muted">{t('tagline')}</p>
           </div>
-          <nav aria-label={t('nav')} className="contents">
+          <nav aria-label={t('nav')} className="grid col-span-2 grid-cols-2 gap-x-8 lg:col-span-4">
             {columns.map((column) => (
-              <div key={column.key} className="flex flex-col gap-y-4 lg:col-span-2">
+              <div key={column.key} className="flex flex-col gap-y-4">
                 <h2 className="text-paragraph-sm-semibold text-foreground">
                   {t(`columns.${column.key}.title`)}
                 </h2>

@@ -88,8 +88,10 @@ export async function proxy(request: NextRequest) {
     const reason = renewed?.code === 'ACCOUNT_LOCKED' ? LOCKED_REASON : undefined;
     return redirectToLogin(request, pathname + search, reason);
   }
-  // On a public page or a 404 the session just ends, and the page renders for a visitor.
-  return endSession(request);
+  // On a public page or a 404 only a definite refusal ends the session; a hiccup (a 5xx, a rate
+  // limit that is not a lockout) keeps the cookies for the next request to retry.
+  const refused = renewed?.status === 401 || renewed?.code === 'ACCOUNT_LOCKED';
+  return refused ? endSession(request) : NextResponse.next();
 }
 
 function redirectToLogin(request: NextRequest, from: string, reason?: string) {

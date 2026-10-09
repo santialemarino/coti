@@ -79,16 +79,18 @@ or listed twice:
 beside it is renewed whatever the path — the public site and the auth screens included — except on a
 prefetch or a session-clearing route:
 
-| Renewal                  | Result                                                                            |
-| ------------------------ | --------------------------------------------------------------------------------- |
-| succeeds                 | new cookies on the request and the response, then the row above applies           |
-| refused, protected route | cookies cleared, redirected to login with `?next=` (`?reason=locked` when locked) |
-| refused, anywhere else   | cookies cleared, the page renders for a visitor                                   |
-| API unreachable          | through — the cookies survive and the next request retries                        |
+| Renewal                             | Result                                                                            |
+| ----------------------------------- | --------------------------------------------------------------------------------- |
+| succeeds                            | new cookies on the request and the response, then the row above applies           |
+| refused, protected route            | cookies cleared, redirected to login with `?next=` (`?reason=locked` when locked) |
+| refused (401 or lockout), elsewhere | cookies cleared, the page renders for a visitor                                   |
+| any other failure, elsewhere        | through — a 5xx or a rate limit keeps the cookies for the next request            |
+| API unreachable                     | through — the cookies survive and the next request retries                        |
 
 So past the gate, still holding the session cookies means holding a live session. The public header,
 the landing and the 404 read exactly that (`isAuthenticated` in `lib/auth/session.ts`), which is why a
-seller is never offered a login they are already past and a revoked one is never offered the queue.
+seller is never offered a login they are already past. A revoked session whose access token has not
+expired yet still reads as signed in until its next protected request, which the gate then refuses.
 
 `?next=` is honoured only for a same-origin path to a protected route (`safeNextPath`): it is only ever
 produced to bring someone back to a guarded page, so nothing else is ours to follow.

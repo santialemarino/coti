@@ -136,6 +136,39 @@ describe('proxy settling a lapsed session', () => {
     expect(response.headers.get('set-cookie')).toContain('fresh-access');
   });
 
+  // The page renders from the request's cookies, so they have to be gone there too, not only in the reply.
+  it('renders the public page for a visitor once a revoked session is cleared', async () => {
+    vi.mocked(requestRefresh).mockResolvedValue({
+      ok: false,
+      status: 401,
+      code: 'UNAUTHENTICATED',
+    });
+    const response = await proxy(withRefresh('/'));
+
+    expect(response.headers.get('x-middleware-request-cookie') ?? '').not.toContain('refresh');
+    expect(response.headers.get('set-cookie')).toContain(`${REFRESH_COOKIE}=;`);
+  });
+
+  // A deploy's 503 is not a revoked session; ending it would log a seller out for nothing.
+  it('keeps the session on a public page when the renewal only hiccups', async () => {
+    vi.mocked(requestRefresh).mockResolvedValue({ ok: false, status: 503, code: 'INTERNAL' });
+    const response = await proxy(withRefresh('/'));
+
+    expect(response.headers.get('set-cookie')).toBeNull();
+    expect(response.headers.get('location')).toBeNull();
+  });
+
+  it('never spends a refresh token on a prefetch', async () => {
+    const response = await proxy(
+      new NextRequest('https://backoffice.test/', {
+        headers: { cookie: `${REFRESH_COOKIE}=refresh`, 'next-router-prefetch': '1' },
+      }),
+    );
+
+    expect(requestRefresh).not.toHaveBeenCalled();
+    expect(response.headers.get('location')).toBeNull();
+  });
+
   it('lets a visitor see the login screen', async () => {
     const response = await proxy(visitor('/login'));
 

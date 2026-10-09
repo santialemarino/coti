@@ -43,4 +43,17 @@ describe('SurfaceFade', () => {
 
     expect(wrapper(container).className).not.toContain('animate-surface-in');
   });
+
+  // A second crossing must fade again, which takes a fresh element for the animation to start on.
+  it('starts the fade over on every crossing', () => {
+    const { container, rerender } = view('/');
+    navigation.pathname = '/login';
+    rerender(<SurfaceFade>contenido</SurfaceFade>);
+    const first = wrapper(container);
+    navigation.pathname = '/inbox';
+    rerender(<SurfaceFade>contenido</SurfaceFade>);
+
+    expect(wrapper(container)).not.toBe(first);
+    expect(wrapper(container).className).toContain('animate-surface-in');
+  });
 });

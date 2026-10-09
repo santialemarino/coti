@@ -26,7 +26,7 @@ the only surface in Coti that is marketing rather than a tool. There, and nowher
 enters: every page's opening screen rises in on load, and each group further down rises in the first
 time it scrolls into view, its items one after another. Mark an element with `revealItem(index)`
 (`app/(public)/_components/reveal-item.ts`) and wrap a group that may start below the fold in `Reveal`;
-the motion itself is CSS in the backoffice's `globals.css`. The rules that make it safe: the load
+the motion itself is CSS in `@repo/ui`'s styles, with the rest of the motion layer. The rules that make it safe: the load
 entrance is pure CSS, so a typed URL animates and content never waits on JavaScript; a group is only
 held hidden once hydrated and only while still below the fold; it never replays on scrolling back;
 the gap between items is `--stagger-reveal`; it is opacity and translate only; and reduced motion

@@ -7,42 +7,6 @@
  */
 @import '@repo/ui/styles';
 
-/*
- * The public site's entrances — the one place ux-motion allows a reveal. Every `.reveal-item` rises
- * in on first paint, staggered by its `--reveal-index`, with no script involved: the page a visitor
- * opens animates, typed URL or not, and content never waits on JavaScript. Once hydrated, `Reveal`
- * marks a group still below the fold `waiting`; its items then hold hidden and rise in, with the
- * same stagger, the first time the group scrolls into view. Opacity and translate only.
- */
-.reveal-item {
-  animation: reveal-rise var(--duration-slower) var(--ease-out-soft) both;
-  animation-delay: calc(var(--reveal-index, 0) * var(--stagger-reveal));
-  transition-property: opacity, translate;
-  transition-duration: var(--duration-slower);
-  transition-timing-function: var(--ease-out-soft);
-  transition-delay: calc(var(--reveal-index, 0) * var(--stagger-reveal));
-}
-
-[data-reveal='waiting'] .reveal-item {
-  animation: none;
-  opacity: 0;
-  translate: 0 1rem;
-}
-
-@keyframes reveal-rise {
-  0% {
-    opacity: 0;
-    translate: 0 1rem;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .reveal-item {
-    animation: none;
-    transition: none;
-  }
-}
-
 /* The protected shell's tab bar covers the bottom of a narrow screen; toasts rise above it. */
 @media (width < 64rem) {
   :root:has([data-slot='tab-bar']) {
