@@ -60,16 +60,27 @@ import { errorCodeOf } from '@/lib/api/errors';
 interface ClientAssociationCardProps {
   quoteId: string;
   branchId: string;
+  /* Told which client the sale has once it is known, and again whenever it changes. */
+  onClientChange?: (clientId: string | null) => void;
 }
 
 type AssociationMode = 'existing' | 'new';
 
-export function ClientAssociationCard({ quoteId, branchId }: ClientAssociationCardProps) {
+export function ClientAssociationCard({
+  quoteId,
+  branchId,
+  onClientChange,
+}: ClientAssociationCardProps) {
   const t = useTranslations('clients.association');
   const message = useApiErrorMessage('clients.association.errors');
   const [association, setAssociation] = useState<QuoteClientAssociation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const clientId = association ? (association.currentClient?.client.id ?? null) : undefined;
+
+  useEffect(() => {
+    if (clientId !== undefined) onClientChange?.(clientId);
+  }, [clientId, onClientChange]);
 
   useEffect(() => {
     let active = true;

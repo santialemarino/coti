@@ -1198,6 +1198,125 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/clients/{clientId}/fiscal": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "Get a client's fiscal data",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client id",
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ClientFiscalResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Replaces the client's legal name, CUIT or DNI (check digit verified) and IVA condition; omitted fields clear.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "Update a client's fiscal data",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client id",
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fiscal data",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateClientFiscalRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ClientFiscalResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "INVALID_TAX_ID",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/clients/{clientId}/tags": {
             "put": {
                 "security": [
@@ -1397,6 +1516,229 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/invoices": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "List invoices",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.InvoiceListResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/invoices/{invoiceId}/pdf": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/pdf"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "Download invoice PDF",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Invoice id",
+                        "name": "invoiceId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/invoices/{invoiceId}/recover": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "Recover invoice authorization",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Invoice id",
+                        "name": "invoiceId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.InvoiceResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/invoicing/settings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the account's IVA condition, how its prices treat IVA, each branch's ARCA point of sale and the uploaded certificate.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "Get invoicing settings",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.InvoicingSettingsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Replaces the account's IVA condition and price treatment and the listed branches' points of sale.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "Update invoicing settings",
+                "parameters": [
+                    {
+                        "description": "Invoicing settings",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateInvoicingSettingsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.InvoicingSettingsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -4216,6 +4558,152 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/quotes/{quoteId}/invoice": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the invoice type, buyer and amounts the quote would be invoiced with now, every gap that stops it, and the invoice it already has.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "Preview a quote's invoice",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "The quote's branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.InvoicePreviewResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Asks ARCA to authorize the electronic invoice for an accepted quote, as long as it is still the one previewed. Irreversible: a mistake is corrected with a credit note.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "Issue a quote's invoice",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "The quote's branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The previewed invoice being confirmed",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.IssueInvoiceRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.InvoiceResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_ALREADY_INVOICED, INVOICE_IN_PROGRESS, INVOICE_STALE",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "INVOICE_NOT_READY, INVOICE_REJECTED",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "INVOICING_UNAVAILABLE",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/quotes/{quoteId}/items": {
             "post": {
                 "security": [
@@ -6157,6 +6645,23 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ARCACredentialResponse": {
+            "type": "object",
+            "properties": {
+                "cuit": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "subject": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.ARCASetupResponse": {
             "type": "object",
             "properties": {
@@ -6387,6 +6892,39 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dto.BranchResponse"
                     }
+                }
+            }
+        },
+        "dto.BranchPointOfSaleInput": {
+            "type": "object",
+            "required": [
+                "branch_id"
+            ],
+            "properties": {
+                "branch_id": {
+                    "type": "string"
+                },
+                "point_of_sale": {
+                    "type": "integer",
+                    "maximum": 99998,
+                    "minimum": 1
+                }
+            }
+        },
+        "dto.BranchPointOfSaleResponse": {
+            "type": "object",
+            "properties": {
+                "branch_id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "point_of_sale": {
+                    "type": "integer"
                 }
             }
         },
@@ -6666,6 +7204,29 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "phone": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.ClientFiscalResponse": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "iva_condition": {
+                    "type": "string"
+                },
+                "legal_name": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "tax_id": {
                     "type": "string"
                 }
             }
@@ -7065,6 +7626,18 @@ const docTemplate = `{
                 "unit": {
                     "type": "string",
                     "maxLength": 64
+                },
+                "vat_rate": {
+                    "type": "string",
+                    "enum": [
+                        "VAT_0",
+                        "VAT_2_5",
+                        "VAT_5",
+                        "VAT_10_5",
+                        "VAT_21",
+                        "VAT_27",
+                        "EXEMPT"
+                    ]
                 }
             }
         },
@@ -7296,6 +7869,243 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.InvoiceAmountsResponse": {
+            "type": "object",
+            "properties": {
+                "by_rate": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.VATAmountResponse"
+                    }
+                },
+                "exempt": {
+                    "type": "string"
+                },
+                "net": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "string"
+                },
+                "vat": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.InvoiceIssuerProfileRequest": {
+            "type": "object",
+            "required": [
+                "activity_started_on",
+                "address",
+                "gross_income_registration"
+            ],
+            "properties": {
+                "activity_started_on": {
+                    "type": "string"
+                },
+                "address": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "gross_income_registration": {
+                    "type": "string",
+                    "maxLength": 50
+                }
+            }
+        },
+        "dto.InvoiceListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.InvoiceResponse"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.InvoicePreviewResponse": {
+            "type": "object",
+            "properties": {
+                "amounts": {
+                    "$ref": "#/definitions/dto.InvoiceAmountsResponse"
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "fingerprint": {
+                    "type": "string"
+                },
+                "invoice": {
+                    "$ref": "#/definitions/dto.InvoiceResponse"
+                },
+                "issues": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "point_of_sale": {
+                    "type": "integer"
+                },
+                "receiver": {
+                    "$ref": "#/definitions/dto.InvoiceReceiverResponse"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "version_id": {
+                    "description": "what POST confirms, with type and total.",
+                    "type": "string"
+                }
+            }
+        },
+        "dto.InvoiceReceiverResponse": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "doc_number": {
+                    "type": "string"
+                },
+                "doc_type": {
+                    "type": "string"
+                },
+                "iva_condition": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.InvoiceResponse": {
+            "type": "object",
+            "properties": {
+                "amounts": {
+                    "$ref": "#/definitions/dto.InvoiceAmountsResponse"
+                },
+                "cae": {
+                    "type": "string"
+                },
+                "cae_expires_on": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "issued_on": {
+                    "type": "string"
+                },
+                "issuer_cuit": {
+                    "type": "string"
+                },
+                "issues": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "number": {
+                    "type": "integer"
+                },
+                "point_of_sale": {
+                    "type": "integer"
+                },
+                "qr_url": {
+                    "description": "QRURL is ARCA's verification link for an issued invoice (RG 4892), empty otherwise.",
+                    "type": "string"
+                },
+                "receiver": {
+                    "$ref": "#/definitions/dto.InvoiceReceiverResponse"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.InvoicingSettingsResponse": {
+            "type": "object",
+            "properties": {
+                "branches": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.BranchPointOfSaleResponse"
+                    }
+                },
+                "credential": {
+                    "$ref": "#/definitions/dto.ARCACredentialResponse"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "environment": {
+                    "type": "string"
+                },
+                "iva_condition": {
+                    "type": "string"
+                },
+                "legal_name": {
+                    "type": "string"
+                },
+                "prices_include_vat": {
+                    "type": "boolean"
+                },
+                "profile": {
+                    "$ref": "#/definitions/dto.InvoiceIssuerProfileRequest"
+                },
+                "tax_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.IssueInvoiceRequest": {
+            "type": "object",
+            "required": [
+                "fingerprint",
+                "total",
+                "type",
+                "version_id"
+            ],
+            "properties": {
+                "fingerprint": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "A",
+                        "B",
+                        "C"
+                    ]
+                },
+                "version_id": {
                     "type": "string"
                 }
             }
@@ -7628,6 +8438,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "updated_at": {
+                    "type": "string"
+                },
+                "vat_rate": {
                     "type": "string"
                 }
             }
@@ -8948,6 +9761,32 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.UpdateClientFiscalRequest": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "iva_condition": {
+                    "type": "string",
+                    "enum": [
+                        "REGISTERED",
+                        "MONOTRIBUTO",
+                        "EXEMPT",
+                        "FINAL_CONSUMER"
+                    ]
+                },
+                "legal_name": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "tax_id": {
+                    "type": "string",
+                    "maxLength": 32
+                }
+            }
+        },
         "dto.UpdateDiscountRequest": {
             "type": "object",
             "properties": {
@@ -8985,6 +9824,32 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.UpdateInvoicingSettingsRequest": {
+            "type": "object",
+            "properties": {
+                "branches": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.BranchPointOfSaleInput"
+                    }
+                },
+                "iva_condition": {
+                    "type": "string",
+                    "enum": [
+                        "REGISTERED",
+                        "MONOTRIBUTO",
+                        "EXEMPT",
+                        "FINAL_CONSUMER"
+                    ]
+                },
+                "prices_include_vat": {
+                    "type": "boolean"
+                },
+                "profile": {
+                    "$ref": "#/definitions/dto.InvoiceIssuerProfileRequest"
+                }
+            }
+        },
         "dto.UpdateProductRequest": {
             "type": "object",
             "required": [
@@ -9017,6 +9882,18 @@ const docTemplate = `{
                 "unit": {
                     "type": "string",
                     "maxLength": 64
+                },
+                "vat_rate": {
+                    "type": "string",
+                    "enum": [
+                        "VAT_0",
+                        "VAT_2_5",
+                        "VAT_5",
+                        "VAT_10_5",
+                        "VAT_21",
+                        "VAT_27",
+                        "EXEMPT"
+                    ]
                 }
             }
         },
@@ -9154,6 +10031,20 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.VATAmountResponse": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "string"
+                },
+                "base": {
+                    "type": "string"
+                },
+                "rate": {
                     "type": "string"
                 }
             }

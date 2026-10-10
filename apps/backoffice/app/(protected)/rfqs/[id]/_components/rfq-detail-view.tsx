@@ -16,6 +16,7 @@ import { normalizeRfqStatus } from '@/lib/api/rfqs';
 import { fetchRfqDetail, generateQuote } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
 import { ClientAssociationCard } from './client-association-card';
+import { InvoiceCard } from './invoice-card';
 import { QuoteDeliveryCard } from './quote-delivery-card';
 import { RfqChangeDiff } from './rfq-change-diff';
 import { RfqDetailHeader } from './rfq-detail-header';
@@ -53,6 +54,10 @@ export function RfqDetailView({
   );
   const [shownInitial, setShownInitial] = useState(initialDetail);
   const [generating, startGenerate] = useTransition();
+  // The sale's client: the quote's own, then whatever the association card changes it to.
+  const [clientId, setClientId] = useState<string | null | undefined>(
+    initialDetail.quote?.client_id,
+  );
   const rootRef = useRef<HTMLDivElement>(null);
 
   const quoteId = detail.quote?.id ?? null;
@@ -181,7 +186,14 @@ export function RfqDetailView({
             {t('detail.callouts.accepted.description')}
           </Callout>
           {quoteId && detail.quote?.archived_at === null ? (
-            <ClientAssociationCard quoteId={quoteId} branchId={branchId} />
+            <ClientAssociationCard
+              quoteId={quoteId}
+              branchId={branchId}
+              onClientChange={setClientId}
+            />
+          ) : null}
+          {quoteId ? (
+            <InvoiceCard quoteId={quoteId} branchId={branchId} clientId={clientId} />
           ) : null}
         </>
       )}

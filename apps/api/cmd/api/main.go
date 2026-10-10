@@ -28,6 +28,7 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/ai"
 	aiprovider "github.com/santialemarino/coti/apps/api/internal/ai/provider"
 	"github.com/santialemarino/coti/apps/api/internal/arca"
+	arcainvoice "github.com/santialemarino/coti/apps/api/internal/arca/invoicing"
 	"github.com/santialemarino/coti/apps/api/internal/branding"
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
@@ -166,6 +167,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	invoiceService := services.NewInvoiceService(db, repository.NewInvoicingRepository(), quoteRepo, quoteDiscountRepo, arcainvoice.NewIssuer(arcainvoice.Settings{Environment: arcainvoice.EnvironmentHomologation, Timeout: cfg.ARCA.Timeout, Log: log}, arcainvoice.NewMemoryTicketCache()), arcaCipher, services.InvoiceSettings{Enabled: arcaCipher.Enabled(), Environment: arcainvoice.EnvironmentHomologation, IssueTimeout: cfg.ARCA.IssueTimeout, ReconcileAfter: cfg.ARCA.ReconcileAfter, UnidentifiedMax: decimal.Zero}, nil, quotePDF.NewInvoiceRenderer())
 	arcaSetupService := services.NewARCASetupService(db, repository.NewARCASetupRepository(), arcaCipher,
 		arca.NewSetupConnector(cfg.ARCA.Timeout))
 	catalogSearchService := services.NewCatalogSearchService(db, productRepo, providers.Embedder,
@@ -228,6 +230,7 @@ func run() error {
 			Account:       handler.NewAccountHandler(accountService),
 			AccountLogo:   handler.NewBrandLogoHandler(accountService, cfg.Storage.MaxFileSize),
 			Onboarding:    handler.NewOnboardingHandler(onboardingService),
+			Invoice:       handler.NewInvoiceHandler(invoiceService, cfg.Storage.MaxFileSize),
 			ARCASetup:     handler.NewARCASetupHandler(arcaSetupService),
 			File:          fileHandler(objectStorage),
 		},

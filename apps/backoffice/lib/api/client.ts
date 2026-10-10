@@ -110,10 +110,17 @@ export async function apiFetch(request: ApiRequest): Promise<Response> {
 export async function toApiError(response: Response): Promise<ApiError> {
   let code: string | undefined;
   let detail = '';
+  let issues: string[] = [];
   try {
-    const payload = (await response.json()) as { error?: string; code?: string; detail?: string };
+    const payload = (await response.json()) as {
+      error?: string;
+      code?: string;
+      detail?: string;
+      issues?: string[] | null;
+    };
     code = payload.code;
     detail = [payload.error, payload.detail].filter(Boolean).join(': ');
+    issues = payload.issues ?? [];
   } catch {
     // A body that is not the envelope tells us nothing extra; the status still does.
   }
@@ -121,6 +128,7 @@ export async function toApiError(response: Response): Promise<ApiError> {
     knownErrorCode(code) ?? codeForStatus(response.status),
     response.status,
     detail || undefined,
+    issues,
   );
 }
 
