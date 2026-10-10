@@ -113,7 +113,8 @@ type QuoteRepresentationBranch struct {
 
 // QuoteRepresentationCustomer is the minimal public customer identity.
 type QuoteRepresentationCustomer struct {
-	Name *string `json:"name,omitempty"`
+	Address *string `json:"address,omitempty"`
+	Name    *string `json:"name,omitempty"`
 }
 
 // QuoteRepresentationItem is one fully priced client-facing line.

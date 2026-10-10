@@ -5,7 +5,19 @@ import { ROUTES } from '@/config/routes';
  * inline, where the missing piece bites, and never papered over with a fallback the reader
  * cannot see.
  */
-export const SETUP_ISSUES = ['BRANCH_EMAIL', 'BRANCH_NO_SELLERS', 'NO_INTAKE_CHANNELS'] as const;
+export const SETUP_ISSUES = [
+  'BRANCH_EMAIL',
+  'BRANCH_NO_SELLERS',
+  'NO_INTAKE_CHANNELS',
+  'INVOICING_DISABLED',
+  'ACCOUNT_IVA_CONDITION',
+  'ISSUER_PROFILE_REQUIRED',
+  'ACCOUNT_TAX_ID',
+  'BRANCH_POINT_OF_SALE',
+  'ARCA_CREDENTIALS',
+  'ARCA_CREDENTIALS_EXPIRED',
+  'ARCA_CREDENTIALS_CUIT',
+] as const;
 
 export type SetupIssue = (typeof SETUP_ISSUES)[number];
 
@@ -13,7 +25,19 @@ export type SetupIssue = (typeof SETUP_ISSUES)[number];
 export const SETUP_FIX_ROUTE: Partial<Record<SetupIssue, string>> = {
   BRANCH_EMAIL: ROUTES.branchSettings,
   BRANCH_NO_SELLERS: ROUTES.userSettings,
+  ACCOUNT_IVA_CONDITION: ROUTES.invoicingSettings,
+  ISSUER_PROFILE_REQUIRED: ROUTES.invoicingSettings,
+  ACCOUNT_TAX_ID: ROUTES.accountSettings,
+  BRANCH_POINT_OF_SALE: ROUTES.arcaSettings,
+  ARCA_CREDENTIALS: ROUTES.arcaSettings,
+  ARCA_CREDENTIALS_EXPIRED: ROUTES.arcaSettings,
+  ARCA_CREDENTIALS_CUIT: ROUTES.arcaSettings,
 };
+
+// Whether a gap an invoice preview reports is configuration, which SetupNotice words and routes.
+export function isSetupIssue(value: string): value is SetupIssue {
+  return SETUP_ISSUES.some((issue) => issue === value);
+}
 
 interface BranchMailbox {
   email: string | null;

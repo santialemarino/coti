@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { VAT_RATES } from '@/lib/api/invoicing';
 import { MONEY_MAX } from '@/lib/constants/forms';
 import { optionalText, rawText, requiredText, type SchemaText } from '@/lib/forms/validators';
 
@@ -13,6 +14,7 @@ export function productSchema(t: SchemaText = rawText) {
       familyId: z.string().min(1, t.field('family.required')),
       subgroupId: z.string(),
       isActive: z.boolean(),
+      vatRate: z.enum(VAT_RATES),
       // Canonical decimal strings from AmountInput; both optional, and only sent on create.
       price: z.string(),
       minPrice: z.string(),

@@ -83,6 +83,9 @@ describe('apiErrorMessage', () => {
       'users.passwordReset',
       'priceImport',
       'priceImport.export',
+      'invoicing.settings',
+      'invoicing.settings.credential',
+      'invoicing.card',
     ];
     namespaces.forEach((namespace) => {
       API_ERROR_CODES.forEach((code) => {

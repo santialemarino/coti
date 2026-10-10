@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createProduct,
   deactivateProduct,
+  updateProduct,
   uploadProductImage,
 } from '@/app/(protected)/settings/catalog/actions';
 import type { ProductValues } from '@/app/(protected)/settings/catalog/form-schema';
@@ -23,6 +24,7 @@ const VALUES: ProductValues = {
   familyId: '11111111-1111-4111-8111-111111111111',
   subgroupId: '',
   isActive: true,
+  vatRate: 'VAT_21',
   price: '',
   minPrice: '',
 };
@@ -45,9 +47,25 @@ describe('catalog product actions', () => {
         unit: 'bolsa',
         family_id: VALUES.familyId,
         subgroup_id: null,
+        vat_rate: 'VAT_21',
         price: null,
         min_price: null,
       },
+    });
+  });
+
+  it('sends the product’s VAT rate on create and on edit', async () => {
+    vi.mocked(apiRequest).mockResolvedValue({ id: 'product-1' });
+
+    await createProduct({ ...VALUES, vatRate: 'VAT_10_5' });
+    await updateProduct('product-1', { ...VALUES, vatRate: 'EXEMPT' });
+
+    expect(vi.mocked(apiRequest).mock.calls[0]?.[0]).toMatchObject({
+      body: { vat_rate: 'VAT_10_5' },
+    });
+    expect(vi.mocked(apiRequest).mock.calls[1]?.[0]).toMatchObject({
+      method: 'PUT',
+      body: { vat_rate: 'EXEMPT' },
     });
   });
 

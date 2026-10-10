@@ -55,6 +55,16 @@ export async function forwardToApi(
     cache: 'no-store',
   });
 
+  if (upstream.ok && upstream.headers.get('Content-Type')?.startsWith('application/pdf')) {
+    return new NextResponse(await upstream.arrayBuffer(), {
+      status: upstream.status,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': upstream.headers.get('Content-Disposition') ?? 'attachment',
+        'Cache-Control': 'private, no-store',
+      },
+    });
+  }
   const text = await upstream.text();
   return new NextResponse(text, {
     status: upstream.status,

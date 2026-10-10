@@ -9,6 +9,8 @@ import { toast } from 'sonner';
 
 import {
   Button,
+  Card,
+  CardContent,
   ConfirmDialog,
   Dropzone,
   Form,
@@ -22,7 +24,6 @@ import {
   Input,
   PendingButton,
   Separator,
-  StepList,
 } from '@repo/ui/components';
 import {
   createARCASetup,
@@ -171,9 +172,8 @@ export function ARCASetupForm({ setup, branchId }: ARCASetupFormProps) {
     <div className="flex flex-col gap-y-8">
       <section className="flex flex-col gap-y-4">
         <h2 className="text-heading-6">{t('tutorial.title')}</h2>
-        <StepList
-          variant="list"
-          steps={[
+        <ol className="flex flex-col gap-y-3">
+          {[
             'access',
             'generate',
             'downloadRequest',
@@ -181,8 +181,27 @@ export function ARCASetupForm({ setup, branchId }: ARCASetupFormProps) {
             'authorize',
             'upload',
             'verify',
-          ].map((step) => t(`tutorial.${step}`))}
-        />
+          ].map((step, index) => (
+            <li key={step}>
+              <Card className="py-5">
+                <CardContent className="flex items-start gap-x-4">
+                  <span
+                    aria-hidden="true"
+                    className="flex size-8 shrink-0 items-center justify-center bg-primary/10 rounded-full text-paragraph-sm-semibold text-primary"
+                  >
+                    {index + 1}
+                  </span>
+                  <div className="flex flex-col min-w-0 gap-y-1.5">
+                    <h3 className="text-paragraph-md-semibold">{t(`tutorial.headings.${step}`)}</h3>
+                    <p className="text-paragraph-sm text-foreground-muted">
+                      {t(`tutorial.${step}`)}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </li>
+          ))}
+        </ol>
         <div className="flex flex-wrap gap-3">
           <Button asChild variant="outline">
             <a
