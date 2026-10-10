@@ -238,7 +238,7 @@ func newInvoiceFixture(t *testing.T) invoiceFixture {
 	store := &fakeInvoicingStore{
 		account:     domain.AccountFiscal{Name: "Supplier", Profile: domain.InvoiceIssuerProfile{Address: "Main 123", GrossIncomeRegistration: "Exempt", ActivityStartedOn: "2020-01-01"}, TaxID: &taxID, IVACondition: &registered},
 		pointOfSale: &pos,
-		client:      &domain.ClientFiscal{Address: &address, TaxID: &cuit, IVACondition: &registered},
+		client:      &domain.ClientFiscal{Name: &address, Address: &address, TaxID: &cuit, IVACondition: &registered},
 		rates:       map[uuid.UUID]domain.VATRate{product: domain.VATRateTwentyOne},
 		credential:  &domain.ARCACredentialStatus{CUIT: "30712345678", ExpiresAt: invoiceNow.AddDate(1, 0, 0)},
 		sealedKey:   accountID.String() + ":KEY",
