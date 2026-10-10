@@ -252,7 +252,7 @@ func invoiceIssues(in invoiceInputs) []string {
 	if in.account.IVACondition == nil {
 		add(invoiceIssueIVACondition)
 	}
-	if in.receiver.IVACondition.Valid() && in.receiver.IVACondition != domain.IVAConditionFinalConsumer && strings.TrimSpace(in.receiver.Address) == "" {
+	if in.receiver.IVACondition.Valid() && in.receiver.IVACondition != domain.IVAConditionFinalConsumer && (strings.TrimSpace(in.receiver.Address) == "" || strings.TrimSpace(in.receiver.Name) == "") {
 		add("RECEIVER_ADDRESS_REQUIRED")
 	}
 	cuit := in.account.CUIT()

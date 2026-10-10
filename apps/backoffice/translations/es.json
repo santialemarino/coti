@@ -2169,8 +2169,8 @@
           "body": "Cargá el domicilio fiscal, ingresos brutos e inicio de actividades en Configuración → Facturación."
         },
         "RECEIVER_ADDRESS_REQUIRED": {
-          "title": "Completá el domicilio del cliente",
-          "body": "Cargá su domicilio fiscal en los datos del cliente para emitir el comprobante."
+          "title": "Completá los datos fiscales del cliente",
+          "body": "Cargá su nombre o razón social y su domicilio fiscal para emitir el comprobante."
         }
       },
       "noClient": "Asociá un cliente a la venta para cargar sus datos fiscales.",
