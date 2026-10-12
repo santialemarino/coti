@@ -173,6 +173,9 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
                         maxLength={name === 'address' ? 255 : 50}
                       />
                     </FormControl>
+                    {name === 'grossIncomeRegistration' ? (
+                      <FormDescription>{t('profile.grossIncomeRegistrationHint')}</FormDescription>
+                    ) : null}
                     <FormMessage />
                   </FormItem>
                 )}

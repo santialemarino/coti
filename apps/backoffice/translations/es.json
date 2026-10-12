@@ -2483,7 +2483,8 @@
       "connection": "Administrar conexión con ARCA",
       "profile": {
         "address": "Domicilio fiscal",
-        "grossIncomeRegistration": "Ingresos brutos (número o Exento)",
+        "grossIncomeRegistration": "Ingresos Brutos",
+        "grossIncomeRegistrationHint": "Ingresá tu número de inscripción en Ingresos Brutos o escribí Exento, según lo que figure en tu constancia fiscal.",
         "activityStartedOn": "Inicio de actividades",
         "addressRequired": "Ingresá el domicilio fiscal.",
         "grossIncomeRegistrationRequired": "Ingresá el número de ingresos brutos o indicá Exento.",
