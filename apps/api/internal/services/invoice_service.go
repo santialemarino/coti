@@ -20,6 +20,7 @@ import (
 type invoicingStore interface {
 	SaveProfile(context.Context, repository.Querier, uuid.UUID, domain.InvoiceIssuerProfile) error
 	GetSnapshot(ctx context.Context, q repository.Querier, accountID, branchID, quoteID, versionID uuid.UUID) (domain.QuoteRepresentationPayload, error)
+	GetSnapshotSource(ctx context.Context, q repository.Querier, accountID, branchID, quoteID, versionID uuid.UUID) (*domain.QuoteRepresentationSource, error)
 	ClaimRecovery(ctx context.Context, q repository.Querier, accountID, branchID, id uuid.UUID, before time.Time) (bool, error)
 	GetAccountFiscal(ctx context.Context, q repository.Querier, accountID uuid.UUID) (*domain.AccountFiscal, error)
 	UpdateAccountFiscal(ctx context.Context, q repository.Querier, accountID uuid.UUID, condition *domain.IVACondition, pricesIncludeVAT bool) error
@@ -474,7 +475,7 @@ func (s *InvoiceService) hold(ctx context.Context, tenant domain.Tenant, draft i
 		if current.preview.Fingerprint != draft.preview.Fingerprint {
 			return domain.WithCode(domain.CodeInvoiceStale, domain.ErrConflict)
 		}
-		snapshot, err := s.store.GetSnapshot(ctx, q, tenant.AccountID, tenant.BranchID, draft.quote.ID, draft.version.ID)
+		snapshot, err := s.invoiceSnapshot(ctx, q, tenant, draft)
 		if err != nil {
 			return err
 		}

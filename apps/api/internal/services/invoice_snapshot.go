@@ -1,9 +1,14 @@
 package services
 
 import (
-	"github.com/santialemarino/coti/apps/api/internal/domain"
-	"github.com/shopspring/decimal"
+	"context"
+	"errors"
 	"strings"
+
+	"github.com/shopspring/decimal"
+
+	"github.com/santialemarino/coti/apps/api/internal/domain"
+	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
 
 // fiscalSnapshot converts commercial line prices into the document's fiscal presentation.
@@ -74,4 +79,19 @@ func fiscalSnapshot(snapshot domain.QuoteRepresentationPayload, draft invoiceDra
 
 func invoiceLineKey(description, quantity, price, subtotal string) string {
 	return strings.Join([]string{description, quantity, price, subtotal}, "\x00")
+}
+
+func (s *InvoiceService) invoiceSnapshot(ctx context.Context, q repository.Querier, tenant domain.Tenant, draft invoiceDraft) (domain.QuoteRepresentationPayload, error) {
+	snapshot, err := s.store.GetSnapshot(ctx, q, tenant.AccountID, tenant.BranchID, draft.quote.ID, draft.version.ID)
+	if !errors.Is(err, domain.ErrNotFound) {
+		return snapshot, err
+	}
+	source, err := s.store.GetSnapshotSource(ctx, q, tenant.AccountID, tenant.BranchID, draft.quote.ID, draft.version.ID)
+	if err != nil {
+		return domain.QuoteRepresentationPayload{}, err
+	}
+	if err := validateRepresentationSource(*source); err != nil {
+		return domain.QuoteRepresentationPayload{}, err
+	}
+	return buildRepresentationPayload(*source, s.now()), nil
 }

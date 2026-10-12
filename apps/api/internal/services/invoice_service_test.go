@@ -22,18 +22,21 @@ func (invoiceTestDB) InTenantTx(_ context.Context, _ domain.Tenant, fn func(repo
 }
 
 type fakeInvoicingStore struct {
-	account     domain.AccountFiscal
-	pointOfSale *int
-	client      *domain.ClientFiscal
-	rates       map[uuid.UUID]domain.VATRate
-	credential  *domain.ARCACredentialStatus
-	sealedKey   string
-	branches    []domain.BranchPointOfSale
-	invoice     *domain.Invoice
-	released    []string
-	rejected    *domain.InvoiceRejectedError
-	stored      string
-	ticket      *domain.SealedARCATicket
+	snapshotErr    error
+	snapshotSource *domain.QuoteRepresentationSource
+	sourceErr      error
+	account        domain.AccountFiscal
+	pointOfSale    *int
+	client         *domain.ClientFiscal
+	rates          map[uuid.UUID]domain.VATRate
+	credential     *domain.ARCACredentialStatus
+	sealedKey      string
+	branches       []domain.BranchPointOfSale
+	invoice        *domain.Invoice
+	released       []string
+	rejected       *domain.InvoiceRejectedError
+	stored         string
+	ticket         *domain.SealedARCATicket
 }
 
 func (f *fakeInvoicingStore) GetAccountFiscal(context.Context, repository.Querier, uuid.UUID) (*domain.AccountFiscal, error) {
@@ -569,7 +572,10 @@ func (f invoiceFixture) fingerprint() string {
 	return p.Fingerprint
 }
 func (f *fakeInvoicingStore) GetSnapshot(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID) (domain.QuoteRepresentationPayload, error) {
-	return domain.QuoteRepresentationPayload{}, nil
+	return domain.QuoteRepresentationPayload{}, f.snapshotErr
+}
+func (f *fakeInvoicingStore) GetSnapshotSource(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID) (*domain.QuoteRepresentationSource, error) {
+	return f.snapshotSource, f.sourceErr
 }
 func (f *fakeInvoicingStore) ClaimRecovery(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID, time.Time) (bool, error) {
 	return true, nil

@@ -18,6 +18,11 @@ func (r *InvoicingRepository) GetSnapshot(ctx context.Context, q Querier, accoun
 	return representation.Payload, nil
 }
 
+// GetSnapshotSource reads a quote version without requiring a generated commercial document.
+func (r *InvoicingRepository) GetSnapshotSource(ctx context.Context, q Querier, accountID, branchID, quoteID, versionID uuid.UUID) (*domain.QuoteRepresentationSource, error) {
+	return NewQuoteRepresentationRepository().LoadSource(ctx, q, accountID, branchID, quoteID, versionID)
+}
+
 // GetByID loads a fiscal document within the active branch.
 func (r *InvoicingRepository) GetByID(ctx context.Context, q Querier, accountID, branchID, id uuid.UUID) (*domain.Invoice, error) {
 	return scanInvoice(q.QueryRow(ctx, `SELECT `+invoiceColumns+` FROM invoice WHERE account_id = $1 AND branch_id = $2 AND id = $3`, accountID, branchID, id))

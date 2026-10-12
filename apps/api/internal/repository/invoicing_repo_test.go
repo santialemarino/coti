@@ -258,3 +258,32 @@ func TestInvoicingRepository_SeriesHoldAndBranchIsolation(t *testing.T) {
 		}
 	}
 }
+
+func TestInvoicingRepository_SnapshotSourceDoesNotRequireRepresentation(t *testing.T) {
+	db, tenant, quoteID, versionID, _ := invoiceFixture(t)
+	ctx := context.Background()
+	repo := NewInvoicingRepository()
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		if _, err := q.Exec(ctx, `UPDATE quote SET current_status='ACCEPTED' WHERE account_id=$1 AND branch_id=$2 AND id=$3`, tenant.AccountID, tenant.BranchID, quoteID); err != nil {
+			return err
+		}
+		if _, err := repo.GetSnapshot(ctx, q, tenant.AccountID, tenant.BranchID, quoteID, versionID); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("representation = %v, want missing", err)
+		}
+		source, err := repo.GetSnapshotSource(ctx, q, tenant.AccountID, tenant.BranchID, quoteID, versionID)
+		if err != nil {
+			return err
+		}
+		if source.Version.ID != versionID || source.Quote.CurrentStatus != domain.QuoteStatusAccepted || len(source.Items) != 1 || source.Items[0].ProductName == nil {
+			t.Fatal("accepted version source is incomplete")
+		}
+		for _, scope := range []domain.Tenant{{AccountID: uuid.New(), BranchID: tenant.BranchID}, {AccountID: tenant.AccountID, BranchID: uuid.New()}} {
+			if _, err := repo.GetSnapshotSource(ctx, q, scope.AccountID, scope.BranchID, quoteID, versionID); !errors.Is(err, domain.ErrNotFound) {
+				t.Fatalf("foreign scope = %v, want not found", err)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
