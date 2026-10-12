@@ -16,9 +16,6 @@ import (
 // invoiceActiveQuoteIndex is the partial unique index behind "one live invoice per sale".
 const invoiceActiveQuoteIndex = "uq_invoice_active_quote"
 
-// branchPointOfSaleIndex is the constraint keeping two branches of an account off one point of sale.
-const branchPointOfSaleIndex = "uq_branch_point_of_sale"
-
 const invoiceColumns = `id, account_id, branch_id, quote_id, quote_version_id, status, invoice_type,
 	point_of_sale, number, claimed_number, issued_on, cae, cae_expires_on, issuer_cuit, receiver_name,
 	receiver_doc_type, receiver_doc_number, receiver_iva_condition, net_amount, exempt_amount,

@@ -189,8 +189,8 @@ func (c *SetupConnector) Verify(ctx context.Context, key, certificate, taxID str
 		result.Failure = "UNAVAILABLE"
 		return result, nil
 	}
-	for _, e := range envelope.Body.Result.Errors {
-		switch e.Code {
+	if len(envelope.Body.Result.Errors) > 0 {
+		switch envelope.Body.Result.Errors[0].Code {
 		case 10005, 11002:
 			result.Failure = "POINT_OF_SALE_REJECTED"
 		default:

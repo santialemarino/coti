@@ -133,11 +133,11 @@ func (s *InvoiceService) loadInvoiceLogo(ctx context.Context, accountID uuid.UUI
 	if err != nil || int64(len(content)) > s.settings.LogoMaxBytes {
 		return nil
 	}
-	imageConfig, format, err := image.DecodeConfig(bytes.NewReader(content))
+	imageConfig, _, err := image.DecodeConfig(bytes.NewReader(content))
 	if err != nil || imageConfig.Width <= 0 || imageConfig.Height <= 0 || int64(imageConfig.Width)*int64(imageConfig.Height) > s.settings.LogoMaxPixels {
 		return nil
 	}
-	_, format, err = image.Decode(bytes.NewReader(content))
+	_, format, err := image.Decode(bytes.NewReader(content))
 	if err != nil || (format != "png" && format != "jpeg") {
 		return nil
 	}
