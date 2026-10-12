@@ -1,23 +1,12 @@
 import { ApiError, codeForStatus, knownErrorCode } from '@/lib/api/errors';
 import {
-  mapClientFiscal,
   mapInvoice,
   mapInvoicePreview,
-  type ClientFiscal,
-  type ClientFiscalRaw,
   type Invoice,
   type InvoicePreview,
   type InvoicePreviewRaw,
   type InvoiceRaw,
-  type IvaCondition,
 } from '@/lib/api/invoicing';
-
-export interface ClientFiscalBody {
-  address?: string;
-  legal_name?: string;
-  tax_id?: string;
-  iva_condition?: IvaCondition;
-}
 
 // What an accepted order would be invoiced with now, every gap that stops it, and its invoice.
 export async function getInvoicePreview(
@@ -51,28 +40,6 @@ export async function issueInvoice(
   });
   if (!response.ok) await throwOnError(response);
   return mapInvoice((await response.json()) as InvoiceRaw);
-}
-
-export async function getClientFiscal(clientId: string): Promise<ClientFiscal> {
-  const response = await fetch(`/api/clients/${encodeURIComponent(clientId)}/fiscal`, {
-    cache: 'no-store',
-  });
-  if (!response.ok) await throwOnError(response);
-  return mapClientFiscal((await response.json()) as ClientFiscalRaw);
-}
-
-export async function updateClientFiscal(
-  clientId: string,
-  body: ClientFiscalBody,
-): Promise<ClientFiscal> {
-  const response = await fetch(`/api/clients/${encodeURIComponent(clientId)}/fiscal`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    cache: 'no-store',
-  });
-  if (!response.ok) await throwOnError(response);
-  return mapClientFiscal((await response.json()) as ClientFiscalRaw);
 }
 
 // Keeps the envelope's issues, which is where ARCA's own reasons for a refusal travel.

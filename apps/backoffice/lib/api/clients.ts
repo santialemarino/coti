@@ -12,6 +12,7 @@ import {
   type ClientTag,
   type ClientTagListRaw,
 } from '@/lib/api/client-profiles';
+import { mapClientFiscal, type ClientFiscal, type ClientFiscalRaw } from '@/lib/api/invoicing';
 
 export async function getClients(): Promise<ClientSummary[]> {
   const raw = await apiRequest<ClientListRaw>({ path: '/v1/clients' });
@@ -26,4 +27,11 @@ export async function getClient(clientId: string): Promise<ClientProfile> {
 export async function getClientTags(): Promise<ClientTag[]> {
   const raw = await apiRequest<ClientTagListRaw>({ path: '/v1/tags', branchScoped: false });
   return raw.items.map(mapClientTag);
+}
+
+export async function getClientFiscal(clientId: string): Promise<ClientFiscal> {
+  const raw = await apiRequest<ClientFiscalRaw>({
+    path: `/v1/clients/${encodeURIComponent(clientId)}/fiscal`,
+  });
+  return mapClientFiscal(raw);
 }

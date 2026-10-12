@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
+import Link from 'next/link';
 import { ExternalLinkIcon, ReceiptTextIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -43,7 +44,6 @@ import {
 import { getInvoicePreview, issueInvoice } from '@/lib/api/invoicing-client';
 import { useFormatters } from '@/lib/i18n/formatters';
 import { isSetupIssue } from '@/lib/utils/setup-issues';
-import { ClientFiscalForm } from './client-fiscal-form';
 
 const RECEIVER_ISSUES = new Set([
   'RECEIVER_CUIT_REQUIRED',
@@ -73,8 +73,6 @@ export function InvoiceCard({ quoteId, branchId, clientId }: InvoiceCardProps) {
   // ARCA's reasons from the attempt just made, until a reload carries them on the invoice itself.
   const [rejection, setRejection] = useState<string[]>([]);
   const [confirming, setConfirming] = useState(false);
-  // A buyer with nothing missing may still be a registered one owed an A, so the data stays reachable.
-  const [editingFiscal, setEditingFiscal] = useState(false);
   const [issuing, startIssue] = useTransition();
 
   // Only the newest read may land: a slower, older one would put back a receiver or a button
@@ -181,30 +179,16 @@ export function InvoiceCard({ quoteId, branchId, clientId }: InvoiceCardProps) {
                 </Callout>
               ),
             )}
-            {clientId &&
-            (editingFiscal || preview.issues.some((issue) => RECEIVER_ISSUES.has(issue))) ? (
-              <ClientFiscalForm
-                key={clientId}
-                clientId={clientId}
-                onSaved={() => {
-                  setEditingFiscal(false);
-                  void reload();
-                }}
-              />
-            ) : null}
-
             <IssuerFacts
               cuit={preview.issuerCuit}
               pointOfSale={preview.pointOfSale}
               editable={isAdmin}
             />
             <ReceiverFacts receiver={preview.receiver} />
-            {clientId &&
-            !editingFiscal &&
-            !preview.issues.some((issue) => RECEIVER_ISSUES.has(issue)) ? (
+            {clientId ? (
               <div>
-                <Button variant="outline" onClick={() => setEditingFiscal(true)}>
-                  {t('fiscal.edit')}
+                <Button asChild variant="outline">
+                  <Link href={ROUTES.clientDetail(clientId)}>{t('editClient')}</Link>
                 </Button>
               </div>
             ) : null}
@@ -328,6 +312,7 @@ function ReceiverFacts({ receiver }: { receiver: InvoiceReceiver }) {
       <Fact label={t('receiver')}>{receiver.name || t('finalConsumer')}</Fact>
       <Fact label={t('documentLabel')}>{document}</Fact>
       <Fact label={t('condition')}>{tConditions(receiver.ivaCondition)}</Fact>
+      <Fact label={t('receiverAddress')}>{receiver.address || '—'}</Fact>
     </dl>
   );
 }

@@ -4,7 +4,7 @@ import { schemaText } from '@repo/vitest-config/schema-text';
 import {
   clientFiscalSchema,
   type ClientFiscalValues,
-} from '@/app/(protected)/rfqs/[id]/form-schema';
+} from '@/app/(protected)/clients/[id]/form-schema';
 
 const VALUES: ClientFiscalValues = { legalName: '', taxId: '', ivaCondition: '' };
 

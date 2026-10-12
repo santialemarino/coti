@@ -1545,7 +1545,7 @@
       "description": "Probá con otro nombre, contacto o tag."
     },
     "profile": {
-      "description": "Contacto, tags e historial de ventas aceptadas.",
+      "description": "Datos de contacto, información fiscal, tags e historial comercial.",
       "contactTitle": "Datos de contacto",
       "phone": "Teléfono",
       "email": "Correo electrónico",
@@ -1634,6 +1634,35 @@
         "FORBIDDEN": "No tenés permiso para consultar esta venta.",
         "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
         "INTERNAL": "No pudimos asociar el cliente. Intentá de nuevo."
+      }
+    },
+    "fiscal": {
+      "title": "Datos fiscales",
+      "legalName": {
+        "label": "Razón social",
+        "placeholder": "Ingresá la razón social"
+      },
+      "taxId": {
+        "label": "CUIT o DNI",
+        "placeholder": "Ingresá el CUIT o DNI",
+        "hint": "Con guiones o sin ellos, como 30-70123456-8.",
+        "invalid": "Ingresá un CUIT de 11 dígitos o un DNI de 7 u 8.",
+        "checkDigit": "El CUIT no es válido: revisá el último dígito."
+      },
+      "ivaCondition": {
+        "label": "Condición frente al IVA",
+        "placeholder": "Seleccioná una condición"
+      },
+      "submit": "Guardar cambios",
+      "submitting": "Guardando…",
+      "saved": "Los datos fiscales de {name} quedaron guardados.",
+      "savedUnnamed": "Guardamos los datos fiscales del cliente.",
+      "address": {
+        "label": "Domicilio fiscal"
+      },
+      "description": "Se utilizan al emitir las facturas de este cliente.",
+      "errors": {
+        "INVALID_TAX_ID": "Revisá el CUIT o DNI del cliente."
       }
     }
   },
@@ -2551,7 +2580,7 @@
         },
         "RECEIVER_CUIT_REQUIRED": {
           "title": "Falta el CUIT del cliente",
-          "body": "Una factura A necesita el CUIT del cliente."
+          "body": "Cargá el CUIT del cliente desde su ficha para emitir este tipo de factura."
         },
         "RECEIVER_ID_REQUIRED": {
           "title": "Falta el documento del cliente",
@@ -2567,37 +2596,10 @@
         },
         "RECEIVER_ADDRESS_REQUIRED": {
           "title": "Completá los datos fiscales del cliente",
-          "body": "Cargá su nombre o razón social y su domicilio fiscal para emitir el comprobante."
+          "body": "Completá su nombre o razón social y su domicilio fiscal en la ficha del cliente."
         }
       },
       "noClient": "Asociá un cliente a la venta para cargar sus datos fiscales.",
-      "fiscal": {
-        "title": "Datos fiscales del cliente",
-        "edit": "Editar datos fiscales del cliente",
-        "loading": "Cargando los datos fiscales…",
-        "legalName": {
-          "label": "Razón social",
-          "placeholder": "Ingresá la razón social"
-        },
-        "taxId": {
-          "label": "CUIT o DNI",
-          "placeholder": "Ingresá el CUIT o DNI",
-          "hint": "Con guiones o sin ellos, como 30-70123456-8.",
-          "invalid": "Ingresá un CUIT de 11 dígitos o un DNI de 7 u 8.",
-          "checkDigit": "El CUIT no es válido: revisá el último dígito."
-        },
-        "ivaCondition": {
-          "label": "Condición frente al IVA",
-          "placeholder": "Seleccioná una condición"
-        },
-        "submit": "Guardar datos fiscales",
-        "submitting": "Guardando…",
-        "saved": "Los datos fiscales de {name} quedaron guardados.",
-        "savedUnnamed": "Guardamos los datos fiscales del cliente.",
-        "address": {
-          "label": "Domicilio fiscal"
-        }
-      },
       "errors": {
         "NOT_CONFIGURED": "La facturación todavía no está configurada en este servidor.",
         "INVOICE_STALE": "La venta cambió desde que la revisaste. Mirá la factura actualizada y volvé a emitirla.",
@@ -2610,7 +2612,9 @@
         "pointOfSale": "Punto de venta",
         "account": "Configurar conexión con ARCA",
         "branch": "Configurar sucursal"
-      }
+      },
+      "editClient": "Editar cliente",
+      "receiverAddress": "Domicilio fiscal"
     },
     "history": {
       "title": "Facturación",

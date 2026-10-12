@@ -21,12 +21,14 @@ import {
 } from '@repo/ui/components';
 import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { PageShell } from '@/app/(protected)/_components/page-shell';
+import { ClientFiscalForm } from '@/app/(protected)/clients/[id]/_components/client-fiscal-form';
 import { ClientTagEditor } from '@/app/(protected)/clients/[id]/_components/client-tag-editor';
 import { BackLink } from '@/components/back-link';
 import { ROUTES } from '@/config/routes';
 import { clientDisplayName, type ClientProfile, type ClientTag } from '@/lib/api/client-profiles';
-import { getClient, getClientTags } from '@/lib/api/clients';
+import { getClient, getClientFiscal, getClientTags } from '@/lib/api/clients';
 import { ApiError, errorCodeOf } from '@/lib/api/errors';
+import type { ClientFiscal } from '@/lib/api/invoicing';
 import { formatRfqReference } from '@/lib/api/rfqs';
 import { getFormatters } from '@/lib/i18n/formatters-server';
 import { generatePageMetadata } from '@/lib/utils/page';
@@ -39,8 +41,13 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
   const fmt = await getFormatters();
   let profile: ClientProfile;
   let availableTags: ClientTag[];
+  let fiscal: ClientFiscal;
   try {
-    [profile, availableTags] = await Promise.all([getClient(id), getClientTags()]);
+    [profile, availableTags, fiscal] = await Promise.all([
+      getClient(id),
+      getClientTags(),
+      getClientFiscal(id),
+    ]);
   } catch (error) {
     if (error instanceof ApiError && errorCodeOf(error) === 'NOT_FOUND') notFound();
     throw error;
@@ -96,6 +103,8 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
           initialAvailable={availableTags}
         />
       </div>
+
+      <ClientFiscalForm key={id} client={fiscal} />
 
       <Card className="gap-y-0 overflow-hidden py-0">
         <CardHeader className="py-6">

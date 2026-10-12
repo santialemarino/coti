@@ -14,6 +14,12 @@ import {
   type QuoteClientAssociationRaw,
 } from '@/lib/api/client-profiles';
 import { ApiError, codeForStatus, knownErrorCode } from '@/lib/api/errors';
+import {
+  mapClientFiscal,
+  type ClientFiscal,
+  type ClientFiscalRaw,
+  type IvaCondition,
+} from '@/lib/api/invoicing';
 
 export interface AssociateQuoteClientBody {
   client_id?: string;
@@ -84,6 +90,32 @@ export async function replaceClientTags(clientId: string, tagIds: string[]): Pro
   if (!response.ok) await throwOnError(response);
   const raw = (await response.json()) as ClientTagListRaw;
   return raw.items.map(mapClientTag);
+}
+
+export interface ClientFiscalInput {
+  address?: string;
+  legalName?: string;
+  taxId?: string;
+  ivaCondition?: IvaCondition;
+}
+
+export async function updateClientFiscal(
+  clientId: string,
+  values: ClientFiscalInput,
+): Promise<ClientFiscal> {
+  const response = await fetch(`/api/clients/${encodeURIComponent(clientId)}/fiscal`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      address: values.address,
+      legal_name: values.legalName,
+      tax_id: values.taxId,
+      iva_condition: values.ivaCondition,
+    }),
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwOnError(response);
+  return mapClientFiscal((await response.json()) as ClientFiscalRaw);
 }
 
 async function throwOnError(response: Response): Promise<never> {

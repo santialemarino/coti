@@ -22,7 +22,7 @@ export function hasValidCuitCheckDigit(raw: string): boolean {
   return Number(digits[10]) === check;
 }
 
-// The client's fiscal identity, edited where an invoice needs it. Every field may stay empty.
+// The client's fiscal identity is editable independently of an order.
 export function clientFiscalSchema(t: SchemaText = rawText) {
   return z.object({
     address: optionalText(t).optional(),

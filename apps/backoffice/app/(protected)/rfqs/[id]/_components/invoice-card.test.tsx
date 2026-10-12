@@ -6,12 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ROUTES } from '@/config/routes';
 import { ApiError } from '@/lib/api/errors';
 import type { Invoice, InvoicePreview } from '@/lib/api/invoicing';
-import {
-  getClientFiscal,
-  getInvoicePreview,
-  issueInvoice,
-  updateClientFiscal,
-} from '@/lib/api/invoicing-client';
+import { getInvoicePreview, issueInvoice } from '@/lib/api/invoicing-client';
 import messages from '@/translations/es.json';
 import { InvoiceCard } from './invoice-card';
 
@@ -22,8 +17,6 @@ vi.mock('@/app/(protected)/rfqs/_components/rfq-list-context', () => ({
 vi.mock('@/lib/api/invoicing-client', () => ({
   getInvoicePreview: vi.fn(),
   issueInvoice: vi.fn(),
-  getClientFiscal: vi.fn(),
-  updateClientFiscal: vi.fn(),
 }));
 
 const QUOTE_ID = '20000000-0000-4000-8000-000000000031';
@@ -159,61 +152,22 @@ describe('InvoiceCard', () => {
     expect(view.queryByRole('button', { name: /Emitir factura/ })).toBeNull();
   });
 
-  it('asks for the client’s fiscal data in place and refreshes the preview once saved', async () => {
-    vi.mocked(getInvoicePreview).mockResolvedValueOnce({
+  it('links missing fiscal data to the client profile without rendering an order form', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({
       ...READY,
       issues: ['RECEIVER_CUIT_REQUIRED'],
     });
-    vi.mocked(getClientFiscal).mockResolvedValue({
-      id: CLIENT_ID,
-      name: 'Horizonte',
-      legalName: null,
-      taxId: null,
-      ivaCondition: 'REGISTERED',
-    });
-    vi.mocked(updateClientFiscal).mockResolvedValue({
-      id: CLIENT_ID,
-      name: 'Horizonte',
-      legalName: 'Constructora Horizonte SA',
-      taxId: '30701234568',
-      ivaCondition: 'REGISTERED',
-    });
     const view = renderCard();
-
-    const form = within(await view.findByRole('form', { name: card.fiscal.title }));
-    fireEvent.change(form.getByLabelText(card.fiscal.legalName.label), {
-      target: { value: 'Constructora Horizonte SA' },
-    });
-    fireEvent.change(form.getByLabelText(card.fiscal.taxId.label), {
-      target: { value: '30-70123456-8' },
-    });
-    fireEvent.click(form.getByRole('button', { name: card.fiscal.submit }));
-
-    await waitFor(() =>
-      expect(updateClientFiscal).toHaveBeenCalledWith(CLIENT_ID, {
-        legal_name: 'Constructora Horizonte SA',
-        tax_id: '30-70123456-8',
-        iva_condition: 'REGISTERED',
-      }),
-    );
-    expect(await view.findByRole('button', { name: 'Emitir factura A' })).toBeTruthy();
-    expect(getInvoicePreview).toHaveBeenCalledTimes(2);
+    const link = await view.findByRole('link', { name: card.editClient });
+    expect(link.getAttribute('href')).toBe(ROUTES.clientDetail(CLIENT_ID));
+    expect(view.queryByRole('form')).toBeNull();
+    expect(view.queryByRole('textbox')).toBeNull();
   });
-
-  it('keeps a ready buyer’s fiscal data one click away, so a registered one can get an A', async () => {
-    vi.mocked(getClientFiscal).mockResolvedValue({
-      id: CLIENT_ID,
-      name: 'Horizonte',
-      legalName: null,
-      taxId: null,
-      ivaCondition: null,
-    });
+  it('keeps the ready client profile accessible for correcting invoice details', async () => {
     const view = renderCard();
-
-    fireEvent.click(await view.findByRole('button', { name: card.fiscal.edit }));
-
-    expect(await view.findByRole('form', { name: card.fiscal.title })).toBeTruthy();
-    expect(view.queryByRole('button', { name: card.fiscal.edit })).toBeNull();
+    const link = await view.findByRole('link', { name: card.editClient });
+    expect(link.getAttribute('href')).toBe(ROUTES.clientDetail(CLIENT_ID));
+    expect(view.queryByRole('form')).toBeNull();
   });
 
   it('reloads what would be issued when the sale moved since the seller confirmed', async () => {
@@ -248,8 +202,7 @@ describe('InvoiceCard', () => {
 
     expect(await view.findByText(new RegExp(card.noClient))).toBeTruthy();
     expect(view.queryByRole('form')).toBeNull();
-    expect(view.queryByRole('button', { name: card.fiscal.edit })).toBeNull();
-    expect(getClientFiscal).not.toHaveBeenCalled();
+    expect(view.queryByRole('link', { name: card.editClient })).toBeNull();
   });
 
   it('shows ARCA’s reasons verbatim after a refusal and lets the seller retry', async () => {
