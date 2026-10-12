@@ -889,6 +889,8 @@ definitions:
         type: string
       invoice:
         $ref: '#/definitions/dto.InvoiceResponse'
+      issuer_cuit:
+        type: string
       issues:
         items:
           type: string

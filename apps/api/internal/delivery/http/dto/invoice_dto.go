@@ -125,6 +125,7 @@ type InvoiceResponse struct {
 // InvoicePreviewResponse is returned by GET /v1/quotes/:quoteId/invoice: what would be issued now,
 // every gap that stops it, and the invoice the quote already has, if any.
 type InvoicePreviewResponse struct {
+	IssuerCUIT  string                  `json:"issuer_cuit"`
 	Fingerprint string                  `json:"fingerprint"`
 	VersionID   uuid.UUID               `json:"version_id"` // what POST confirms, with type and total.
 	Type        string                  `json:"type"`

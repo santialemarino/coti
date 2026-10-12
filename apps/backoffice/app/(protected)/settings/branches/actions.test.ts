@@ -6,10 +6,17 @@ import {
   createBranch,
   reopenBranch,
   updateBranch,
+  verifyBranchPointOfSale,
 } from '@/app/(protected)/settings/branches/actions';
 import { type BranchValues } from '@/app/(protected)/settings/branches/form-schema';
 import { BRANCH_COOKIE } from '@/lib/auth/tokens';
 
+vi.mock('@/lib/auth/session', () => ({
+  requireAdmin: vi.fn(),
+  getSession: vi.fn(async () => ({ role: 'ADMIN' })),
+  mustVerifyEmail: vi.fn(() => false),
+}));
+vi.mock('@/lib/api/arca-setup', () => ({ checkARCAConnection: vi.fn() }));
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 // Only the request: the error vocabulary is what maps a status onto a rejection, and that mapping
@@ -223,5 +230,33 @@ describe('reopenBranch', () => {
 
     expect(store.delete).not.toHaveBeenCalled();
     expect(revalidatePath).toHaveBeenCalledWith('/', 'layout');
+  });
+});
+
+describe('branch point of sale', () => {
+  it('pins verification to the edited branch and refreshes both settings screens', async () => {
+    const { checkARCAConnection } = await import('@/lib/api/arca-setup');
+    vi.mocked(checkARCAConnection).mockResolvedValue({
+      verified: true,
+      failure: '',
+      lastNumber: 0,
+    });
+    await expect(verifyBranchPointOfSale({ pointOfSale: '1' }, BRANCH_ID)).resolves.toMatchObject({
+      ok: true,
+      connection: { verified: true },
+    });
+    expect(checkARCAConnection).toHaveBeenCalledWith(1, BRANCH_ID);
+    expect(revalidatePath).toHaveBeenCalledWith('/settings/branches');
+    expect(revalidatePath).toHaveBeenCalledWith('/settings/invoicing');
+  });
+  it('refuses invalid numbers and branch identifiers before reaching ARCA', async () => {
+    const { checkARCAConnection } = await import('@/lib/api/arca-setup');
+    await expect(verifyBranchPointOfSale({ pointOfSale: '0' }, BRANCH_ID)).resolves.toEqual({
+      error: 'INVALID_BODY',
+    });
+    await expect(verifyBranchPointOfSale({ pointOfSale: '1' }, 'other')).resolves.toEqual({
+      error: 'INVALID_BODY',
+    });
+    expect(checkARCAConnection).not.toHaveBeenCalled();
   });
 });

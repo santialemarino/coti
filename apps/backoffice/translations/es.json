@@ -10,7 +10,7 @@
       "certificate": "Volvé a WSASS desde Mis Servicios de ARCA y elegí Nuevo Certificado. Ingresá un alias con letras y números, sin espacios ni guiones, por ejemplo coti2026. Pegá el contenido del .csr descargado de Coti en Solicitud de certificado en formato PKCS10 y tocá Crear DN y Obtener Certificado. Copiá todo el texto de Resultado, incluyendo BEGIN CERTIFICATE y END CERTIFICATE, y guardalo en el Bloc de notas como certificado.pem. Elegí Todos los archivos para que no se agregue .txt al nombre.",
       "authorize": "En WSASS, elegí Crear autorización a servicio. Seleccioná el alias, indicá el CUIT representado que ingresaste en Coti y autorizá el servicio de facturación electrónica wsfe.",
       "upload": "Volvé a Coti y cargá el archivo certificado.pem que acabás de guardar en Certificado de ARCA. Tocá Guardar certificado.",
-      "verify": "En Conexión de la sucursal, ingresá el número de punto de venta y tocá Verificar conexión. Si tenés una sola sucursal, ya está seleccionada. Si tenés varias, elegí una en el selector del encabezado.",
+      "verify": "En Coti → Configuración → Sucursales, abrí Punto de venta en la fila de la sucursal. Ingresá su número y tocá Verificar y guardar. Repetí este paso para cada sucursal que vaya a facturar.",
       "official": "Guía oficial de ARCA",
       "authorization": "Cómo autorizar el servicio",
       "headings": {
@@ -30,7 +30,6 @@
     "taxId": {
       "label": "CUIT",
       "placeholder": "Ingresá tu CUIT",
-      "hint": "11 dígitos, con guiones o sin ellos. Debe coincidir con el CUIT con el que ingresás a WSASS.",
       "required": "Ingresá el CUIT emisor.",
       "invalid": "Revisá el CUIT: debe tener 11 dígitos y un dígito verificador válido."
     },
@@ -57,9 +56,10 @@
       "label": "Punto de venta",
       "placeholder": "Ingresá el punto de venta",
       "hint": "Ingresá el número del punto de venta asociado a esta sucursal.",
-      "scope": "El certificado se comparte entre las sucursales de esta empresa. El punto de venta se guarda para la sucursal seleccionada y no puede asignarse a otra sucursal de la misma cuenta.",
+      "scope": "El CUIT y el certificado pertenecen a esta empresa y se comparten entre sus sucursales. Configurá un único punto de venta para cada sucursal desde sus ajustes.",
       "required": "Ingresá el punto de venta.",
-      "invalid": "Ingresá un número entre 1 y 99998."
+      "invalid": "Ingresá un número entre 1 y 99998.",
+      "configure": "Configurar sucursales"
     },
     "noBranch": "Seleccioná una sucursal para verificar y guardar su punto de venta.",
     "verify": "Verificar conexión",
@@ -223,8 +223,8 @@
       },
       "BRANCH_POINT_OF_SALE": {
         "title": "Esta sucursal no tiene punto de venta",
-        "body": "Cada factura sale numerada desde el punto de venta de la sucursal en ARCA.",
-        "fix": "Asignar punto de venta"
+        "body": "Configurá y verificá el punto de venta en los ajustes de esta sucursal.",
+        "fix": "Configurar sucursal"
       },
       "ARCA_CREDENTIALS": {
         "title": "Falta el certificado de ARCA",
@@ -1742,6 +1742,19 @@
       "INTERNAL": "No pudimos guardar la sucursal. Intentá de nuevo.",
       "CHANNEL_IDENTIFIER": "Revisá el correo de la sucursal: no es una dirección válida.",
       "CONFLICT": "Ese correo ya está en otro canal de la sucursal."
+    },
+    "billing": {
+      "action": "Punto de venta",
+      "title": "Facturación de {branch}",
+      "description": "Esta sucursal factura con el CUIT de la empresa. Su punto de venta se verifica con ARCA antes de guardar los cambios.",
+      "cuit": "CUIT de la empresa",
+      "pointOfSale": "Punto de venta",
+      "unset": "Sin configurar",
+      "submit": "Verificar y guardar",
+      "saved": "Punto de venta de {branch} guardado.",
+      "connectionRequired": "Conectá la empresa con ARCA para configurar el punto de venta de esta sucursal.",
+      "connection": "Configurar conexión con ARCA",
+      "account": "Editar datos de la empresa"
     }
   },
   "account": {
@@ -2399,13 +2412,14 @@
       },
       "pointsOfSale": {
         "title": "Puntos de venta",
-        "hint": "Los puntos de venta se verifican y guardan en Conexión con ARCA.",
+        "hint": "Cada sucursal usa un único punto de venta. Se verifica y guarda desde los ajustes de la sucursal.",
         "caption": "Punto de venta de cada sucursal",
         "branch": "Sucursal",
         "number": "Punto de venta",
         "closed": "Cerrada",
         "inputLabel": "Punto de venta de {branch}",
-        "placeholder": "Ingresá el número"
+        "placeholder": "Ingresá el número",
+        "configure": "Configurar en Sucursales"
       },
       "pointOfSale": {
         "range": "Tiene que estar entre {min} y {max}.",
@@ -2587,7 +2601,13 @@
         "ARCA_CREDENTIALS": "No pudimos usar el certificado de ARCA del corralón. Pedile a un administrador que lo vuelva a cargar."
       },
       "download": "Descargar factura",
-      "recover": "Consultar autorización"
+      "recover": "Consultar autorización",
+      "issuer": {
+        "cuit": "CUIT emisor",
+        "pointOfSale": "Punto de venta",
+        "account": "Configurar empresa",
+        "branch": "Configurar sucursal"
+      }
     },
     "history": {
       "title": "Facturación",

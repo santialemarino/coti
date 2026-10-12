@@ -381,6 +381,7 @@ type InvoicingSettingsUpdate struct {
 
 // InvoicePreview is the invoice an accepted quote would produce, with whatever stops it.
 type InvoicePreview struct {
+	IssuerCUIT  string
 	Fingerprint string
 	VersionID   uuid.UUID // the quote version the preview was computed from.
 	Type        InvoiceType

@@ -113,6 +113,7 @@ export interface InvoiceRaw {
 }
 
 export interface InvoicePreviewRaw {
+  issuer_cuit: string;
   fingerprint: string;
   version_id: string;
   type: string;
@@ -203,6 +204,7 @@ export interface Invoice {
 }
 
 export interface InvoicePreview {
+  issuerCuit: string;
   fingerprint: string;
   versionId: string;
   type: string;
@@ -309,6 +311,7 @@ export function mapInvoice(raw: InvoiceRaw): Invoice {
 
 export function mapInvoicePreview(raw: InvoicePreviewRaw): InvoicePreview {
   return {
+    issuerCuit: raw.issuer_cuit,
     fingerprint: raw.fingerprint,
     versionId: raw.version_id,
     type: raw.type,

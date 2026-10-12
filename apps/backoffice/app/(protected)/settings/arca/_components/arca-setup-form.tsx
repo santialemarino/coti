@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
@@ -15,7 +16,6 @@ import {
   Dropzone,
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -29,16 +29,14 @@ import {
   createARCASetup,
   disconnectARCA,
   uploadARCACertificate,
-  verifyARCA,
 } from '@/app/(protected)/settings/arca/actions';
 import {
   arcaCertificateSchema,
   arcaIdentitySchema,
-  arcaPointOfSaleSchema,
   type ARCACertificateValues,
   type ARCAIdentityValues,
-  type ARCAPointOfSaleValues,
 } from '@/app/(protected)/settings/arca/form-schema';
+import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { ARCASetup } from '@/lib/api/arca-setup';
 import { FORM_VALIDATION } from '@/lib/forms/options';
@@ -46,27 +44,20 @@ import { useFormatters } from '@/lib/i18n/formatters';
 
 interface ARCASetupFormProps {
   setup: ARCASetup;
-  branchId?: string;
 }
 
-export function ARCASetupForm({ setup, branchId }: ARCASetupFormProps) {
+export function ARCASetupForm({ setup }: ARCASetupFormProps) {
   const t = useTranslations('arca');
   const shared = useTranslations('common.form.errors');
   const message = useApiErrorMessage('arca');
   const fmt = useFormatters();
   const router = useRouter();
   const identitySchema = useMemo(() => arcaIdentitySchema({ field: t, shared }), [t, shared]);
-  const pointSchema = useMemo(() => arcaPointOfSaleSchema({ field: t, shared }), [t, shared]);
   const certificateSchema = useMemo(() => arcaCertificateSchema({ field: t, shared }), [t, shared]);
   const identity = useForm<ARCAIdentityValues>({
     ...FORM_VALIDATION,
     resolver: zodResolver(identitySchema),
     defaultValues: { taxId: setup.taxId },
-  });
-  const point = useForm<ARCAPointOfSaleValues>({
-    ...FORM_VALIDATION,
-    resolver: zodResolver(pointSchema),
-    defaultValues: { pointOfSale: setup.pointOfSale ? String(setup.pointOfSale) : '' },
   });
   const certificateForm = useForm<ARCACertificateValues>({
     ...FORM_VALIDATION,
@@ -77,9 +68,7 @@ export function ARCASetupForm({ setup, branchId }: ARCASetupFormProps) {
   const [uploading, setUploading] = useState(false);
   const [disconnectOpen, setDisconnectOpen] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
-  const [lastNumber, setLastNumber] = useState<number>();
-  const busy =
-    identity.formState.isSubmitting || point.formState.isSubmitting || uploading || disconnecting;
+  const busy = identity.formState.isSubmitting || uploading || disconnecting;
 
   async function create(values: ARCAIdentityValues) {
     const result = await createARCASetup(values);
@@ -128,28 +117,6 @@ export function ARCASetupForm({ setup, branchId }: ARCASetupFormProps) {
     }
   }
 
-  async function verify(values: ARCAPointOfSaleValues) {
-    if (!branchId) {
-      point.setError('root', { message: t('noBranch') });
-      return;
-    }
-    setLastNumber(undefined);
-    const result = await verifyARCA(values, branchId);
-    if (result.error) {
-      point.setError('root', { message: message(result.error) });
-      return;
-    }
-    if (!result.connection?.verified) {
-      point.setError('root', {
-        message: t(`failures.${result.connection?.failure || 'UNAVAILABLE'}`),
-      });
-      return;
-    }
-    setLastNumber(result.connection.lastNumber);
-    toast.success(t('verified'));
-    router.refresh();
-  }
-
   async function disconnect() {
     setDisconnecting(true);
     try {
@@ -160,7 +127,6 @@ export function ARCASetupForm({ setup, branchId }: ARCASetupFormProps) {
       }
       setDisconnectOpen(false);
       setFile(undefined);
-      setLastNumber(undefined);
       toast.success(t('disconnected'));
       router.refresh();
     } finally {
@@ -253,7 +219,6 @@ export function ARCASetupForm({ setup, branchId }: ARCASetupFormProps) {
                             disabled={busy}
                           />
                         </FormControl>
-                        <FormDescription>{t('taxId.hint')}</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -335,61 +300,10 @@ export function ARCASetupForm({ setup, branchId }: ARCASetupFormProps) {
           {setup.hasCertificate && (
             <section className="flex flex-col max-w-xl gap-y-4">
               <h2 className="text-heading-6">{t('pointOfSale.title')}</h2>
-              <p className="text-paragraph-sm text-muted-foreground">{t('pointOfSale.scope')}</p>
-              {setup.verifiedAt && (
-                <p className="text-paragraph-sm text-muted-foreground">
-                  {t('lastVerified', {
-                    date: fmt.timestamp(setup.verifiedAt),
-                    point: setup.pointOfSale,
-                  })}
-                </p>
-              )}
-              {!branchId ? (
-                <p className="text-paragraph-md">{t('noBranch')}</p>
-              ) : (
-                <Form {...point}>
-                  <form
-                    noValidate
-                    onSubmit={point.handleSubmit(verify)}
-                    className="flex flex-col gap-y-4"
-                  >
-                    <FormField
-                      control={point.control}
-                      name="pointOfSale"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel required>{t('pointOfSale.label')}</FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              inputMode="numeric"
-                              maxLength={5}
-                              placeholder={t('pointOfSale.placeholder')}
-                              disabled={busy}
-                            />
-                          </FormControl>
-                          <FormDescription>{t('pointOfSale.hint')}</FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormRootMessage />
-                    <PendingButton
-                      type="submit"
-                      pending={point.formState.isSubmitting}
-                      disabled={busy}
-                      pendingLabel={t('verifying')}
-                    >
-                      {t('verify')}
-                    </PendingButton>
-                    {lastNumber !== undefined && (
-                      <p role="status" className="text-paragraph-sm">
-                        {t('lastNumber', { number: lastNumber })}
-                      </p>
-                    )}
-                  </form>
-                </Form>
-              )}
+              <p className="text-paragraph-sm text-foreground-muted">{t('pointOfSale.scope')}</p>
+              <Button asChild variant="outline" className="self-start">
+                <Link href={ROUTES.branchSettings}>{t('pointOfSale.configure')}</Link>
+              </Button>
             </section>
           )}
           {setup.csr && (

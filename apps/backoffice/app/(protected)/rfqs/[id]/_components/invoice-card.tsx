@@ -193,6 +193,11 @@ export function InvoiceCard({ quoteId, branchId, clientId }: InvoiceCardProps) {
               />
             ) : null}
 
+            <IssuerFacts
+              cuit={preview.issuerCuit}
+              pointOfSale={preview.pointOfSale}
+              editable={isAdmin}
+            />
             <ReceiverFacts receiver={preview.receiver} />
             {clientId &&
             !editingFiscal &&
@@ -273,6 +278,7 @@ function IssuedInvoice({ invoice, branchId }: { invoice: Invoice; branchId: stri
           {invoice.caeExpiresOn ? fmt.date(invoice.caeExpiresOn) : null}
         </Fact>
       </dl>
+      <IssuerFacts cuit={invoice.issuerCuit} pointOfSale={invoice.pointOfSale} />
       <ReceiverFacts receiver={invoice.receiver} />
       <AmountsTable amounts={invoice.amounts} currency={invoice.currency} />
       <Button asChild variant="outline" className="self-start">
@@ -375,5 +381,33 @@ function AmountsTable({ amounts, currency }: { amounts: InvoiceAmounts; currency
         </TableRow>
       </TableBody>
     </Table>
+  );
+}
+
+function IssuerFacts({
+  cuit,
+  pointOfSale,
+  editable = false,
+}: {
+  cuit: string;
+  pointOfSale: number | null;
+  editable?: boolean;
+}) {
+  const t = useTranslations('invoicing.card.issuer');
+  return (
+    <dl className="grid grid-cols-1 gap-x-8 gap-y-3 text-paragraph-sm sm:grid-cols-2">
+      <Fact label={t('cuit')}>
+        <div className="flex flex-col items-start gap-y-1">
+          <span>{cuit ? formatCuit(cuit) : '—'}</span>
+          {editable ? <InlineLink href={ROUTES.accountSettings}>{t('account')}</InlineLink> : null}
+        </div>
+      </Fact>
+      <Fact label={t('pointOfSale')}>
+        <div className="flex flex-col items-start gap-y-1">
+          <span>{pointOfSale ?? '—'}</span>
+          {editable ? <InlineLink href={ROUTES.branchSettings}>{t('branch')}</InlineLink> : null}
+        </div>
+      </Fact>
+    </dl>
   );
 }

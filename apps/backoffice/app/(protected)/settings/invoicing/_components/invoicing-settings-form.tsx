@@ -199,6 +199,9 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
             <div className="flex flex-col gap-y-1">
               <h2 className="text-heading-6">{t('pointsOfSale.title')}</h2>
               <p className="text-paragraph-xs text-foreground-muted">{t('pointsOfSale.hint')}</p>
+              <InlineLink asChild>
+                <Link href={ROUTES.branchSettings}>{t('pointsOfSale.configure')}</Link>
+              </InlineLink>
             </div>
             <Table>
               <TableCaption className="sr-only">{t('pointsOfSale.caption')}</TableCaption>

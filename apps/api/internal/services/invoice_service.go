@@ -394,7 +394,7 @@ func (s *InvoiceService) draft(
 
 	draft := &invoiceDraft{
 		quote: *quote, version: *version, issuerCUIT: account.CUIT(), issuerCondition: issuerCondition, items: items, rates: rates, pricesIncludeVAT: account.PricesIncludeVAT, profile: account.Profile, issuerName: firstNonEmpty(account.LegalName, &account.Name),
-		preview: domain.InvoicePreview{VersionID: version.ID, Type: invoiceType, PointOfSale: pointOfSale, Receiver: receiver,
+		preview: domain.InvoicePreview{IssuerCUIT: account.CUIT(), VersionID: version.ID, Type: invoiceType, PointOfSale: pointOfSale, Receiver: receiver,
 			Amounts: amounts, Currency: arcaCurrency, Issues: nonNilIssues(issues)},
 	}
 	// A live invoice is the sale's whatever the version; a refusal only speaks for the version it was for.

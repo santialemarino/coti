@@ -80,6 +80,7 @@ describe('invoicing API mapping', () => {
   it('maps a preview and the invoice it already has', () => {
     expect(
       mapInvoicePreview({
+        issuer_cuit: '30711111112',
         fingerprint: 'a'.repeat(64),
         version_id: 'v-1',
         type: 'A',
@@ -107,6 +108,7 @@ describe('invoicing API mapping', () => {
         },
       }),
     ).toEqual({
+      issuerCuit: '30711111112',
       fingerprint: 'a'.repeat(64),
       versionId: 'v-1',
       type: 'A',

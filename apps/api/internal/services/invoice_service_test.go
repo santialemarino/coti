@@ -583,3 +583,15 @@ func (f *fakeInvoicingStore) SaveProfile(context.Context, repository.Querier, uu
 }
 
 func newVersionID(f invoiceFixture) uuid.UUID { return f.quotes.version.ID }
+
+func TestInvoiceService_PreviewUsesCompanyCUITAndBranchPointOfSale(t *testing.T) {
+	t.Parallel()
+	f := newInvoiceFixture(t)
+	preview, err := f.service.Preview(context.Background(), f.tenant, f.quoteID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.IssuerCUIT != f.store.account.CUIT() || preview.PointOfSale == nil || *preview.PointOfSale != *f.store.pointOfSale {
+		t.Fatalf("preview = %+v, want company CUIT and branch point of sale", preview)
+	}
+}

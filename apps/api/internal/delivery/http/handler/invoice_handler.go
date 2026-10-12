@@ -285,6 +285,7 @@ func toClientFiscalResponse(c domain.ClientFiscal) dto.ClientFiscalResponse {
 
 func toInvoicePreviewResponse(p domain.InvoicePreview) dto.InvoicePreviewResponse {
 	response := dto.InvoicePreviewResponse{
+		IssuerCUIT:  p.IssuerCUIT,
 		Fingerprint: p.Fingerprint, VersionID: p.VersionID, Type: string(p.Type), PointOfSale: p.PointOfSale, Receiver: toInvoiceReceiverResponse(p.Receiver),
 		Amounts: toInvoiceAmountsResponse(p.Amounts), Currency: p.Currency, Issues: p.Issues,
 	}

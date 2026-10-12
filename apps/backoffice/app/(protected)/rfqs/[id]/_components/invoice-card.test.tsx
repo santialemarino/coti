@@ -32,6 +32,7 @@ const CLIENT_ID = 'c0000000-0000-4000-8000-000000000031';
 const card = messages.invoicing.card;
 
 const READY: InvoicePreview = {
+  issuerCuit: '30711111112',
   fingerprint: 'a'.repeat(64),
   versionId: 'v0000000-0000-4000-8000-000000000031',
   type: 'A',
@@ -150,8 +151,10 @@ describe('InvoiceCard', () => {
     const view = renderCard();
 
     expect(await view.findByText(messages.common.setup.BRANCH_POINT_OF_SALE.title)).toBeTruthy();
-    const fix = view.getByRole('link', { name: messages.common.setup.BRANCH_POINT_OF_SALE.fix });
-    expect(fix.getAttribute('href')).toBe(ROUTES.arcaSettings);
+    const fixes = view.getAllByRole('link', {
+      name: messages.common.setup.BRANCH_POINT_OF_SALE.fix,
+    });
+    for (const fix of fixes) expect(fix.getAttribute('href')).toBe(ROUTES.branchSettings);
     expect(view.getByText(card.issues.QUOTE_EMPTY.title)).toBeTruthy();
     expect(view.queryByRole('button', { name: /Emitir factura/ })).toBeNull();
   });

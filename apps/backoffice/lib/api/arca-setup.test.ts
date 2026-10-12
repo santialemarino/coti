@@ -31,6 +31,23 @@ describe('ARCA setup boundary', () => {
       branchId: 'selected-branch',
     });
   });
+  it('loads the company setup without the active branch cookie', async () => {
+    vi.mocked(apiRequest).mockResolvedValue({
+      enabled: true,
+      tax_id: '',
+      csr: '',
+      has_certificate: false,
+      certificate_expires_at: null,
+      point_of_sale: 0,
+      verified_at: null,
+    });
+    await getARCASetup();
+    expect(apiRequest).toHaveBeenCalledWith({
+      path: '/v1/arca/setup',
+      branchId: undefined,
+      branchScoped: false,
+    });
+  });
   it('pins verification to the branch where it was prepared', async () => {
     vi.mocked(apiRequest).mockResolvedValue({
       verified: false,

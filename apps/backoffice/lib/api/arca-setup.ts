@@ -37,7 +37,11 @@ export interface ARCAConnection {
 }
 
 export async function getARCASetup(branchId?: string): Promise<ARCASetup> {
-  const raw = await apiRequest<ARCASetupRaw>({ path: '/v1/arca/setup', branchId });
+  const raw = await apiRequest<ARCASetupRaw>({
+    path: '/v1/arca/setup',
+    branchId,
+    ...(branchId ? {} : { branchScoped: false }),
+  });
   return {
     enabled: raw.enabled,
     taxId: raw.tax_id,

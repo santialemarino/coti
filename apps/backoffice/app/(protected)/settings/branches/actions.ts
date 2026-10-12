@@ -2,10 +2,23 @@
 
 import { revalidatePath } from 'next/cache';
 
+import {
+  arcaPointOfSaleSchema,
+  type ARCAPointOfSaleValues,
+} from '@/app/(protected)/settings/arca/form-schema';
 import { branchSchema, type BranchValues } from '@/app/(protected)/settings/branches/form-schema';
+import { ROUTES } from '@/config/routes';
+import { checkARCAConnection, type ARCAConnection } from '@/lib/api/arca-setup';
 import { apiRequest } from '@/lib/api/client';
 import { errorCodeOf, type ApiErrorCode } from '@/lib/api/errors';
 import { clearActiveBranch, getActiveBranchId } from '@/lib/auth/branch';
+import { requireAdmin } from '@/lib/auth/session';
+
+interface BranchPointOfSaleResult {
+  ok?: true;
+  error?: ApiErrorCode;
+  connection?: ARCAConnection;
+}
 
 export interface BranchResult {
   ok?: true;
@@ -65,6 +78,23 @@ export async function reopenBranch(branch: ReopenableBranch): Promise<BranchResu
   });
 }
 
+export async function verifyBranchPointOfSale(
+  values: ARCAPointOfSaleValues,
+  branchId: string,
+): Promise<BranchPointOfSaleResult> {
+  await requireAdmin();
+  const parsed = arcaPointOfSaleSchema().safeParse(values);
+  if (!parsed.success || !zBranchId(branchId)) return { error: 'INVALID_BODY' };
+  try {
+    const connection = await checkARCAConnection(Number(parsed.data.pointOfSale), branchId);
+    revalidatePath(ROUTES.branchSettings);
+    revalidatePath(ROUTES.invoicingSettings);
+    return { ok: true, connection };
+  } catch (error) {
+    return { error: errorCodeOf(error) };
+  }
+}
+
 function bodyOf(values: BranchValues) {
   return {
     name: values.name,
@@ -95,4 +125,8 @@ async function write(request: BranchWrite): Promise<BranchResult> {
   }
   revalidatePath('/', 'layout');
   return { ok: true };
+}
+
+function zBranchId(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }

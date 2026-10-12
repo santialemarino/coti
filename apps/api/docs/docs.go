@@ -7952,6 +7952,9 @@ const docTemplate = `{
                 "invoice": {
                     "$ref": "#/definitions/dto.InvoiceResponse"
                 },
+                "issuer_cuit": {
+                    "type": "string"
+                },
                 "issues": {
                     "type": "array",
                     "items": {
