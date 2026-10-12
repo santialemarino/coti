@@ -12,8 +12,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  Input,
-  Label,
   PendingButton,
 } from '@repo/ui/components';
 import { logoCropGeometry } from '@/lib/utils/logo-crop';
@@ -197,17 +195,26 @@ export function LogoCropDialog({ file, onCancel, onConfirm }: LogoCropDialogProp
           />
         </div>
         <div className="flex flex-col gap-y-2">
-          <Label htmlFor="logo-crop-zoom">{t('zoom')}</Label>
-          <Input
-            id="logo-crop-zoom"
-            type="range"
-            min={1}
-            max={4}
-            step={0.05}
-            value={zoom}
-            disabled={!image || pending}
-            onChange={(event) => setZoom(Number(event.target.value))}
-          />
+          <div className="relative flex h-8 items-center">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-2 h-1.5 overflow-hidden rounded-full bg-border"
+            >
+              <div className="h-full bg-primary" style={{ width: `${((zoom - 1) / 3) * 100}%` }} />
+            </div>
+            <input
+              id="logo-crop-zoom"
+              aria-label={t('zoom')}
+              type="range"
+              min={1}
+              max={4}
+              step={0.05}
+              value={zoom}
+              disabled={!image || pending}
+              onChange={(event) => setZoom(Number(event.target.value))}
+              className="relative m-0 h-8 w-full cursor-pointer appearance-none rounded-full bg-transparent outline-none focus-visible:ring-3 focus-visible:ring-ring/45 disabled:cursor-not-allowed disabled:opacity-50 [&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:-mt-1.25 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary hover:[&::-webkit-slider-thumb]:bg-primary-hover active:[&::-webkit-slider-thumb]:bg-primary-active [&::-moz-range-track]:h-1.5 [&::-moz-range-track]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-primary hover:[&::-moz-range-thumb]:bg-primary-hover active:[&::-moz-range-thumb]:bg-primary-active"
+            />
+          </div>
           <p className="text-paragraph-xs text-foreground-muted">{t('moveHint')}</p>
         </div>
         {error ? <Callout tone="danger">{t('error')}</Callout> : null}
