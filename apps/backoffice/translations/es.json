@@ -2484,7 +2484,11 @@
       "profile": {
         "address": "Domicilio fiscal",
         "grossIncomeRegistration": "Ingresos brutos (número o Exento)",
-        "activityStartedOn": "Inicio de actividades"
+        "activityStartedOn": "Inicio de actividades",
+        "addressRequired": "Ingresá el domicilio fiscal.",
+        "grossIncomeRegistrationRequired": "Ingresá el número de ingresos brutos o indicá Exento.",
+        "activityStartedOnRequired": "Ingresá la fecha de inicio de actividades.",
+        "activityStartedOnInvalid": "Ingresá una fecha válida."
       }
     },
     "card": {

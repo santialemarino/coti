@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { IVA_CONDITIONS, POINT_OF_SALE_MAX, POINT_OF_SALE_MIN } from '@/lib/api/invoicing';
-import { rawText, type SchemaText } from '@/lib/forms/validators';
+import { rawText, requiredText, type SchemaText } from '@/lib/forms/validators';
 
 /*
  * A point of sale is a QuantityInput's digit string, `''` for "none yet". Two branches sharing one
@@ -11,11 +11,14 @@ export function invoicingSettingsSchema(t: SchemaText = rawText) {
   return z.object({
     ivaCondition: z.union([z.enum(IVA_CONDITIONS), z.literal('')]),
     pricesIncludeVat: z.boolean(),
-    address: z.string().trim().min(1, t.shared('required')).max(255).optional(),
-    grossIncomeRegistration: z.string().trim().min(1, t.shared('required')).max(50).optional(),
-    activityStartedOn: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, t.shared('required'))
+    address: requiredText(t, 'profile.addressRequired', 255).optional(),
+    grossIncomeRegistration: requiredText(
+      t,
+      'profile.grossIncomeRegistrationRequired',
+      50,
+    ).optional(),
+    activityStartedOn: requiredText(t, 'profile.activityStartedOnRequired', 10)
+      .pipe(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, t.field('profile.activityStartedOnInvalid')))
       .optional(),
     branches: z
       .array(
