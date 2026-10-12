@@ -10,6 +10,12 @@ import {
 import { type BranchValues } from '@/app/(protected)/settings/branches/form-schema';
 import { BRANCH_COOKIE } from '@/lib/auth/tokens';
 
+vi.mock('@/lib/auth/session', () => ({
+  requireAdmin: vi.fn(),
+  getSession: vi.fn(async () => ({ role: 'ADMIN' })),
+  mustVerifyEmail: vi.fn(() => false),
+}));
+vi.mock('@/lib/api/arca-setup', () => ({ checkARCAConnection: vi.fn() }));
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 // Only the request: the error vocabulary is what maps a status onto a rejection, and that mapping
@@ -223,5 +229,28 @@ describe('reopenBranch', () => {
 
     expect(store.delete).not.toHaveBeenCalled();
     expect(revalidatePath).toHaveBeenCalledWith('/', 'layout');
+  });
+});
+
+describe('branch point of sale', () => {
+  it('saves a manually entered number with the existing branch update', async () => {
+    vi.mocked(apiRequest).mockResolvedValue(undefined);
+    await expect(updateBranch(BRANCH_ID, { ...VALUES, pointOfSale: '1' })).resolves.toEqual({
+      ok: true,
+    });
+    expect(requestSent()).toMatchObject({
+      path: '/v1/branches/' + BRANCH_ID,
+      method: 'PUT',
+      body: { point_of_sale: 1 },
+    });
+  });
+  it('clears the number when the field is blank and preserves it when omitted', async () => {
+    vi.mocked(apiRequest).mockResolvedValue(undefined);
+    await updateBranch(BRANCH_ID, { ...VALUES, pointOfSale: '' });
+    expect(requestSent()?.body).toHaveProperty('point_of_sale', 0);
+    vi.clearAllMocks();
+    vi.mocked(apiRequest).mockResolvedValue(undefined);
+    await updateBranch(BRANCH_ID, VALUES);
+    expect(requestSent()?.body).not.toHaveProperty('point_of_sale');
   });
 });

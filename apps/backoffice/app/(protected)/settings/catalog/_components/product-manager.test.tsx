@@ -36,7 +36,7 @@ vi.mock('motion/react', async (importOriginal) => ({
   ),
 }));
 
-const { deactivateProduct, reactivateProduct } =
+const { deactivateProduct, reactivateProduct, updateProduct } =
   await import('@/app/(protected)/settings/catalog/actions');
 
 const FAMILY: ProductFamily = {
@@ -53,6 +53,7 @@ const PRODUCT: Product = {
   familyId: FAMILY.id,
   subgroupId: FAMILY.subgroups[0]?.id ?? null,
   imageUrl: null,
+  vatRate: 'VAT_10_5',
   isActive: true,
   createdAt: '2026-09-01T12:00:00Z',
   updatedAt: '2026-09-01T12:00:00Z',
@@ -98,6 +99,33 @@ describe('ProductManager', () => {
     const code = dialog.querySelector('input[name="code"]');
     await waitFor(() => expect(name).toHaveProperty('value', PRODUCT.name));
     expect(code).toHaveProperty('value', PRODUCT.code);
+  });
+
+  it('keeps the product’s VAT rate on edit and sends it with the rest', async () => {
+    vi.mocked(updateProduct).mockResolvedValue({ ok: true, productId: PRODUCT.id });
+    const view = renderManager();
+    const row = within(view.getByRole('row', { name: new RegExp(PRODUCT.name) }));
+
+    fireEvent.click(row.getByRole('button', { name: messages.products.edit.action }));
+    const dialog = within(await view.findByRole('dialog'));
+    expect(dialog.getByText(messages.invoicing.vatRates.VAT_10_5)).toBeTruthy();
+    fireEvent.click(dialog.getByRole('button', { name: messages.products.edit.submit }));
+
+    await waitFor(() =>
+      expect(updateProduct).toHaveBeenCalledWith(
+        PRODUCT.id,
+        expect.objectContaining({ vatRate: 'VAT_10_5' }),
+      ),
+    );
+  });
+
+  it('offers 21 % for a new product until the seller picks another rate', async () => {
+    const view = renderManager();
+
+    fireEvent.click(view.getAllByRole('button', { name: messages.products.add })[0]!);
+    const dialog = within(await view.findByRole('dialog'));
+
+    expect(dialog.getByText(messages.invoicing.vatRates.VAT_21)).toBeTruthy();
   });
 
   it('confirms before soft-deactivating a product', async () => {

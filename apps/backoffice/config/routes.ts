@@ -17,6 +17,8 @@ export const ROUTES = {
   clientDetail: (id: string) => `/clients/${id}`,
   reports: '/reports',
   administration: '/administration',
+  invoicePDF: (id: string, branchId: string) =>
+    `/api/invoices/${encodeURIComponent(id)}/pdf?branch=${encodeURIComponent(branchId)}`,
   login: '/login',
   signup: '/signup',
   forgotPassword: '/forgot-password',
@@ -27,7 +29,9 @@ export const ROUTES = {
   changePassword: `${SETTINGS_ROOT}/password`,
   emailSettings: `${SETTINGS_ROOT}/email`,
   accountSettings: `${SETTINGS_ROOT}/account`,
+  arcaSettings: `${SETTINGS_ROOT}/arca`,
   priceSettings: `${SETTINGS_ROOT}/prices`,
+  invoicingSettings: `${SETTINGS_ROOT}/invoicing`,
   catalogSettings: `${SETTINGS_ROOT}/catalog`,
   branchSettings: `${SETTINGS_ROOT}/branches`,
   userSettings: `${SETTINGS_ROOT}/users`,

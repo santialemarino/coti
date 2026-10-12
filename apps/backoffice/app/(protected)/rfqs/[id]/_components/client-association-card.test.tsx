@@ -47,14 +47,18 @@ const association: QuoteClientAssociation = {
   availableTags: [{ id: TAG_ID, name: 'Recurrente', createdAt: NOW }],
 };
 
-function renderCard() {
+function renderCard(onClientChange?: (clientId: string | null) => void) {
   return render(
     <NextIntlClientProvider
       locale="es"
       messages={messages}
       timeZone="America/Argentina/Buenos_Aires"
     >
-      <ClientAssociationCard quoteId={QUOTE_ID} branchId={BRANCH_ID} />
+      <ClientAssociationCard
+        quoteId={QUOTE_ID}
+        branchId={BRANCH_ID}
+        onClientChange={onClientChange}
+      />
     </NextIntlClientProvider>,
   );
 }
@@ -86,6 +90,20 @@ describe('ClientAssociationCard', () => {
       }),
     );
     expect(await view.findByRole('link', { name: 'Constructora Horizonte' })).toBeTruthy();
+  });
+
+  // The invoice card reads the sale's client from here, so it hears of a new one at once.
+  it('reports the sale’s client once loaded and again after an association', async () => {
+    const onClientChange = vi.fn();
+    const view = renderCard(onClientChange);
+
+    await waitFor(() => expect(onClientChange).toHaveBeenCalledWith(null));
+    fireEvent.click(view.getByRole('button', { name: messages.clients.association.associate }));
+    fireEvent.click(
+      await view.findByRole('button', { name: messages.clients.association.dialog.save }),
+    );
+
+    await waitFor(() => expect(onClientChange).toHaveBeenLastCalledWith(CLIENT_ID));
   });
 
   it('does not copy a suggested profile tags when the seller chooses a new client', async () => {

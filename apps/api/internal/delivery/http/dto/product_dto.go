@@ -28,6 +28,7 @@ type CreateProductRequest struct {
 	SubgroupID    *uuid.UUID `json:"subgroup_id"`
 	Price         *string    `json:"price" binding:"required_with=MinPrice,omitempty,numeric"`
 	MinPrice      *string    `json:"min_price" binding:"omitempty,numeric"`
+	VATRate       *string    `json:"vat_rate" binding:"omitempty,oneof=VAT_0 VAT_2_5 VAT_5 VAT_10_5 VAT_21 VAT_27 EXEMPT"`
 }
 
 // UpdateProductRequest is the body for PUT /v1/products/:productId. It replaces the
@@ -41,6 +42,7 @@ type UpdateProductRequest struct {
 	FamilyID      uuid.UUID  `json:"family_id" binding:"required"`
 	SubgroupID    *uuid.UUID `json:"subgroup_id"`
 	IsActive      *bool      `json:"is_active"`
+	VATRate       *string    `json:"vat_rate" binding:"omitempty,oneof=VAT_0 VAT_2_5 VAT_5 VAT_10_5 VAT_21 VAT_27 EXEMPT"`
 }
 
 // AddSynonymRequest is the body for POST /v1/products/:productId/synonyms. source
@@ -74,6 +76,7 @@ type ProductResponse struct {
 	SubgroupID    *uuid.UUID `json:"subgroup_id"`
 	ImagePath     *string    `json:"image_path"`
 	IsActive      bool       `json:"is_active"`
+	VATRate       string     `json:"vat_rate"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
 }

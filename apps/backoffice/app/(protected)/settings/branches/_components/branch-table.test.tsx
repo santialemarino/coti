@@ -7,6 +7,7 @@ import type { Branch } from '@/lib/api/branches';
 import { EXPIRY_MAX_DAYS, EXPIRY_MIN_DAYS } from '@/lib/constants/branch';
 import messages from '@/translations/es.json';
 
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock('@/app/(protected)/settings/branches/actions', () => ({
   createBranch: vi.fn(),
   updateBranch: vi.fn(),
@@ -22,6 +23,7 @@ const { toast } = await import('sonner');
 const copy = messages.branches;
 
 const CENTRAL: Branch = {
+  pointOfSale: 1,
   id: 'b1',
   name: 'Casa Central',
   address: 'Av. Siempre Viva 742',
@@ -126,6 +128,12 @@ describe('BranchTable listing', () => {
 });
 
 describe('BranchTable dialogs', () => {
+  it('opens fiscal settings for the selected row and preserves its point of sale', async () => {
+    const view = renderTable();
+    fireEvent.click(rowActions(view, CENTRAL.name).edit);
+    await waitFor(() => expect(field(view, 'pointOfSale').value).toBe('1'));
+    expect(view.baseElement.querySelector('input[name="taxId"]')).toBeNull();
+  });
   /*
    * The mode is an explicit prop rather than something derived from whether a branch is selected:
    * the dialog holds its last mode so the copy survives the close animation, so a create opened
@@ -171,6 +179,7 @@ describe('BranchTable dialogs', () => {
       address: '',
       email: '',
       defaultExpiryDays: String(MORON.defaultExpiryDays),
+      pointOfSale: '',
     });
     expect(createBranch).not.toHaveBeenCalled();
   });

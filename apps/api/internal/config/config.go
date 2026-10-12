@@ -91,6 +91,15 @@ type Config struct {
 	Storage         StorageConfig
 	Channel         ChannelConfig
 	WhatsApp        WhatsAppConfig
+	ARCA            ARCASetupConfig
+}
+
+// ARCASetupConfig protects homologation credentials and bounds external calls.
+type ARCASetupConfig struct {
+	EncryptionKey  []byte
+	Timeout        time.Duration
+	IssueTimeout   time.Duration
+	ReconcileAfter time.Duration
 }
 
 // QuoteLogoConfig bounds retrieval of untrusted branding images.
@@ -861,10 +870,25 @@ func Load() (*Config, error) {
 			RequestTimeout:  getDuration("WHATSAPP_REQUEST_TIMEOUT_SECONDS", 10*time.Second, &problems),
 			WebhookMaxBytes: int64(getInt("WHATSAPP_WEBHOOK_MAX_BYTES", 1*1024*1024, &problems)),
 		},
+		ARCA: ARCASetupConfig{
+			EncryptionKey:  getBase64Key("ARCA_SETUP_ENCRYPTION_KEY", channelKeyLength, &problems),
+			Timeout:        getDuration("ARCA_SETUP_TIMEOUT_SECONDS", 10*time.Second, &problems),
+			IssueTimeout:   getDuration("ARCA_ISSUE_TIMEOUT_SECONDS", 25*time.Second, &problems),
+			ReconcileAfter: getDuration("INVOICE_PENDING_RECONCILE_SECONDS", 300*time.Second, &problems),
+		},
 	}
 
+	if cfg.ARCA.IssueTimeout <= cfg.ARCA.Timeout || cfg.ARCA.IssueTimeout >= cfg.Server.WriteTimeout {
+		problems = append(problems, "ARCA_ISSUE_TIMEOUT_SECONDS must exceed ARCA_SETUP_TIMEOUT_SECONDS and stay below SERVER_WRITE_TIMEOUT_SECONDS")
+	}
+	if cfg.ARCA.ReconcileAfter <= cfg.ARCA.IssueTimeout {
+		problems = append(problems, "INVOICE_PENDING_RECONCILE_SECONDS must exceed ARCA_ISSUE_TIMEOUT_SECONDS")
+	}
 	if cfg.Database.URL == "" {
 		problems = append(problems, "DATABASE_URL is required")
+	}
+	if cfg.ARCA.Timeout <= 0 || cfg.ARCA.Timeout > 15*time.Second {
+		problems = append(problems, "ARCA_SETUP_TIMEOUT_SECONDS must be between 1 and 15")
 	}
 	if cfg.Database.AdminURL == "" {
 		problems = append(problems, "DATABASE_ADMIN_URL is required")

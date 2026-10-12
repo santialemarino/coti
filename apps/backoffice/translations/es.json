@@ -1,4 +1,91 @@
 {
+  "arca": {
+    "title": "Conectá tu corralón con ARCA",
+    "disabled": "La conexión todavía no está habilitada en esta instalación. El administrador del sistema debe configurar el cifrado de credenciales para continuar.",
+    "tutorial": {
+      "title": "Cómo conectar tu cuenta con ARCA",
+      "access": "Entrá a ARCA con tu clave fiscal personal. En Administrador de Relaciones → Adherir servicio → ARCA → Servicios Interactivos, seleccioná WSASS y confirmá. Cerrá sesión y volvé a ingresar. Desde Mis Servicios, abrí WSASS; si no aparece, buscá en Ver todos.",
+      "generate": "Volvé a Coti → Configuración → Conexión con ARCA. En Identidad de la empresa, ingresá tu CUIT y tocá Generar solicitud de certificado.",
+      "downloadRequest": "En esa misma pantalla de Coti, tocá Descargar solicitud (.csr). Abrí el archivo descargado con el Bloc de notas y copiá todo su contenido, incluyendo BEGIN CERTIFICATE REQUEST y END CERTIFICATE REQUEST. La solicitud se obtiene en Coti; no es el mensaje que ARCA muestra al confirmar la adhesión.",
+      "certificate": "Volvé a WSASS desde Mis Servicios de ARCA y elegí Nuevo Certificado. Ingresá un alias con letras y números, sin espacios ni guiones, por ejemplo coti2026. Pegá el contenido del .csr descargado de Coti en Solicitud de certificado en formato PKCS10 y tocá Crear DN y Obtener Certificado. Copiá todo el texto de Resultado, incluyendo BEGIN CERTIFICATE y END CERTIFICATE, y guardalo en el Bloc de notas como certificado.pem. Elegí Todos los archivos para que no se agregue .txt al nombre.",
+      "authorize": "En WSASS, elegí Crear autorización a servicio. Seleccioná el alias, indicá el CUIT representado que ingresaste en Coti y autorizá el servicio de facturación electrónica wsfe.",
+      "upload": "Volvé a Coti y cargá el archivo certificado.pem que acabás de guardar en Certificado de ARCA. Tocá Guardar certificado.",
+      "verify": "En Coti → Configuración → Sucursales, tocá Editar en la fila de la sucursal. Cargá el número en Punto de venta y guardá los cambios. Repetí este paso para cada sucursal que vaya a facturar.",
+      "official": "Guía oficial de ARCA",
+      "authorization": "Cómo autorizar el servicio",
+      "headings": {
+        "access": "Habilitá WSASS en ARCA",
+        "generate": "Generá la solicitud en Coti",
+        "downloadRequest": "Descargá y copiá la solicitud",
+        "certificate": "Obtené el certificado en WSASS",
+        "authorize": "Autorizá el servicio de facturación",
+        "upload": "Cargá el certificado en Coti",
+        "verify": "Cargá el punto de venta de la sucursal"
+      }
+    },
+    "identity": {
+      "title": "1. Identidad de la empresa",
+      "created": "Solicitud generada para el CUIT {cuit}. Podés descargarla nuevamente mientras completás el trámite en WSASS."
+    },
+    "taxId": {
+      "label": "CUIT",
+      "placeholder": "Ingresá tu CUIT",
+      "required": "Ingresá el CUIT emisor.",
+      "invalid": "Revisá el CUIT: debe tener 11 dígitos y un dígito verificador válido."
+    },
+    "create": "Generar solicitud de certificado",
+    "creating": "Generando solicitud…",
+    "requestCreated": "La solicitud de certificado está lista.",
+    "download": "Descargar solicitud (.csr)",
+    "certificate": {
+      "title": "2. Certificado de ARCA",
+      "drop": "Arrastrá el certificado de ARCA",
+      "choose": "Elegir certificado",
+      "release": "Soltá el certificado acá",
+      "hint": "Archivo en formato PEM (.crt, .pem o .cer), hasta 16 KB.",
+      "required": "Seleccioná el certificado emitido por ARCA.",
+      "tooLarge": "El certificado no puede superar los 16 KB.",
+      "readError": "No pudimos leer el archivo. Volvé a seleccionarlo.",
+      "saved": "El certificado quedó guardado.",
+      "submit": "Guardar certificado",
+      "uploading": "Validando certificado…",
+      "installed": "Certificado instalado. Vence el {date}."
+    },
+    "pointOfSale": {
+      "title": "3. Conexión de la sucursal",
+      "label": "Punto de venta",
+      "placeholder": "Ingresá el punto de venta",
+      "hint": "Ingresá el número del punto de venta asociado a esta sucursal.",
+      "scope": "El CUIT y el certificado de esta conexión se usan para facturar. El punto de venta se configura desde Editar sucursal.",
+      "required": "Ingresá el punto de venta.",
+      "invalid": "Ingresá un número entre 1 y 99998.",
+      "configure": "Configurar sucursales"
+    },
+    "noBranch": "Seleccioná una sucursal para verificar y guardar su punto de venta.",
+    "verify": "Verificar conexión",
+    "verifying": "Consultando ARCA…",
+    "verified": "Conexión con ARCA verificada.",
+    "lastVerified": "Última verificación exitosa: {date}. Punto de venta: {point}.",
+    "lastNumber": "Último número de factura B informado por ARCA: {number}.",
+    "failures": {
+      "CERTIFICATE_INVALID": "El certificado no es válido, venció o no corresponde a la solicitud. Desconectá la cuenta y generá una nueva solicitud para reemplazarlo.",
+      "WSAA_REJECTED": "ARCA rechazó el certificado o su autorización. Revisá que el alias esté autorizado para wsfe y el CUIT indicado.",
+      "TICKET_ACTIVE": "ARCA informa que este certificado ya tiene un acceso vigente que Coti no conserva. Esperá a que venza antes de volver a verificar; no generes otro certificado para resolverlo.",
+      "POINT_OF_SALE_REJECTED": "ARCA no acepta este punto de venta para el servicio. Revisá el número y su habilitación.",
+      "WSFE_REJECTED": "La autenticación se completó, pero ARCA rechazó la consulta. Revisá el CUIT representado, los permisos de wsfe y el punto de venta.",
+      "UNAVAILABLE": "No pudimos completar la consulta a ARCA. Volvé a intentar en unos minutos."
+    },
+    "disconnect": "Desconectar ARCA",
+    "disconnecting": "Desconectando…",
+    "disconnected": "La configuración de ARCA fue eliminada.",
+    "disconnectTitle": "¿Desconectar esta empresa de ARCA?",
+    "disconnectDescription": "Se eliminarán la clave privada, el certificado y las verificaciones de todas las sucursales del CUIT {cuit}. Para reconectar tendrás que generar y autorizar un nuevo certificado. La autorización en ARCA se revoca desde su portal.",
+    "cancel": "Cancelar",
+    "errors": {
+      "INVALID_INPUT": "Revisá el CUIT o el certificado: debe estar vigente y corresponder a la solicitud y al CUIT ingresado.",
+      "CONFLICT": "La configuración cambió o ese punto de venta ya pertenece a otra sucursal. Actualizá la página y revisá los datos."
+    }
+  },
   "common": {
     "appName": "Coti",
     "actions": {
@@ -45,7 +132,23 @@
       "replace": "Cambiar imagen",
       "remove": "Quitar imagen",
       "invalidType": "Elegí una imagen PNG o JPG.",
-      "previewAlt": "Vista previa del logo"
+      "previewAlt": "Vista previa del logo",
+      "crop": {
+        "title": "Recortar logo",
+        "description": "Ajustá el encuadre. Así se va a guardar tu logo.",
+        "shape": "Formato del logo",
+        "original": "Original",
+        "square": "Cuadrado",
+        "wide": "Horizontal",
+        "preview": "Vista previa del recorte del logo",
+        "zoom": "Acercamiento",
+        "moveHint": "Arrastrá la imagen para moverla o usá las flechas del teclado.",
+        "reset": "Restablecer",
+        "cancel": "Cancelar",
+        "saving": "Preparando logo…",
+        "confirm": "Usar logo",
+        "error": "No pudimos preparar esta imagen. Probá con otra."
+      }
     },
     "fileUpload": {
       "title": "Arrastrá tu archivo hasta acá",
@@ -119,6 +222,45 @@
       "NO_INTAKE_CHANNELS": {
         "title": "Esta sucursal no tiene canales abiertos",
         "body": "Para importar un pedido hace falta al menos un canal abierto en la sucursal. Escribinos a soporte para habilitarlo."
+      },
+      "INVOICING_DISABLED": {
+        "title": "La facturación electrónica no está activada",
+        "body": "Este servidor todavía no tiene habilitada la conexión con ARCA, así que no se pueden emitir facturas. Escribinos a soporte para activarla."
+      },
+      "ACCOUNT_IVA_CONDITION": {
+        "title": "Falta la condición frente al IVA del corralón",
+        "body": "Sin ella no sabemos qué tipo de factura corresponde.",
+        "fix": "Configurar facturación"
+      },
+      "ACCOUNT_TAX_ID": {
+        "title": "Falta el CUIT del corralón o no es válido",
+        "body": "ARCA identifica a quien emite la factura por su CUIT de 11 dígitos.",
+        "fix": "Cargar CUIT"
+      },
+      "BRANCH_POINT_OF_SALE": {
+        "title": "Esta sucursal no tiene punto de venta",
+        "body": "Cargá el punto de venta desde Editar sucursal para poder facturar.",
+        "fix": "Configurar sucursal"
+      },
+      "ARCA_CREDENTIALS": {
+        "title": "Falta el certificado de ARCA",
+        "body": "Sin el certificado y su clave privada, ARCA no acepta pedidos de factura del corralón.",
+        "fix": "Cargar certificado"
+      },
+      "ARCA_CREDENTIALS_EXPIRED": {
+        "title": "El certificado de ARCA venció",
+        "body": "ARCA rechaza los pedidos firmados con un certificado vencido. Generá uno nuevo y cargalo.",
+        "fix": "Reemplazar certificado"
+      },
+      "ARCA_CREDENTIALS_CUIT": {
+        "title": "El certificado es de otro CUIT",
+        "body": "El certificado cargado no corresponde al CUIT del corralón, así que ARCA no lo va a aceptar.",
+        "fix": "Revisar certificado"
+      },
+      "ISSUER_PROFILE_REQUIRED": {
+        "title": "Completá los datos del emisor",
+        "body": "Cargá el domicilio fiscal, ingresos brutos e inicio de actividades.",
+        "fix": "Configurar facturación"
       }
     }
   },
@@ -155,10 +297,19 @@
     "UNSUPPORTED_FILE_TYPE": "Ese tipo de archivo no está soportado.",
     "LEGACY_EXCEL_FILE": "No podemos leer archivos .xls. Guardalo como .xlsx o .csv y volvé a subirlo.",
     "AI_UNAVAILABLE": "La IA no está disponible en este momento. Probá de nuevo en unos minutos.",
+    "INVOICE_NOT_READY": "Faltan datos para emitir la factura. Revisá lo que indica la tarjeta de la factura.",
+    "INVOICE_REJECTED": "ARCA rechazó la factura. Revisá los motivos que informó y volvé a emitirla.",
+    "INVOICE_IN_PROGRESS": "La factura ya se está emitiendo. Esperá unos segundos y actualizá la pantalla.",
+    "QUOTE_ALREADY_INVOICED": "Esta venta ya tiene una factura emitida.",
+    "ARCA_CREDENTIALS": "No pudimos usar el certificado: revisá que la clave privada sea la del certificado y que este tenga el CUIT.",
+    "INVOICING_UNAVAILABLE": "ARCA no respondió y no se emitió ninguna factura. Probá de nuevo en unos minutos.",
+    "INVALID_TAX_ID": "Revisá el CUIT o DNI: el número no es válido.",
     "NOT_CONFIGURED": "Esa función todavía no está configurada en esta cuenta.",
     "INTERNAL": "Ocurrió un error inesperado. Intentá de nuevo.",
     "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
-    "SESSION_EXPIRED": "Tu sesión expiró. Volvé a iniciar sesión."
+    "SESSION_EXPIRED": "Tu sesión expiró. Volvé a iniciar sesión.",
+    "INVOICE_STALE": "La venta cambió desde que la revisaste. Revisá la factura y volvé a emitirla.",
+    "POINT_OF_SALE_TAKEN": "Ese punto de venta ya lo usa otra sucursal."
   },
   "meta": {
     "home": {
@@ -217,6 +368,10 @@
       "title": "Cuenta",
       "description": "Datos del corralón y la marca que ve tu cliente."
     },
+    "arcaSettings": {
+      "title": "Conexión con ARCA",
+      "description": "Configurá y verificá la conexión con ARCA."
+    },
     "branchSettings": {
       "title": "Sucursales",
       "description": "Alta y administración de las sucursales del corralón."
@@ -261,7 +416,11 @@
       "title": "Términos de uso",
       "description": "Las condiciones de uso de Coti para corralones y sus usuarios."
     },
-    "socialImageAlt": "Coti: cotizá en minutos lo que hoy te lleva horas."
+    "socialImageAlt": "Coti: cotizá en minutos lo que hoy te lleva horas.",
+    "invoicingSettings": {
+      "title": "Facturación",
+      "description": "Los datos con los que el corralón emite facturas electrónicas en ARCA."
+    }
   },
   "notFound": {
     "title": "No encontramos esta página",
@@ -1347,7 +1506,8 @@
           "INVALID_INPUT": "La acción elegida no es válida para esta cotización.",
           "FORBIDDEN": "No tenés permiso para cambiar el estado de esta cotización.",
           "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
-          "INTERNAL": "No pudimos actualizar la cotización. Intentá de nuevo."
+          "INTERNAL": "No pudimos actualizar la cotización. Intentá de nuevo.",
+          "QUOTE_ALREADY_INVOICED": "Esta venta ya está facturada y no se puede reactivar. Corregirla requiere una nota de crédito."
         }
       },
       "diff": {
@@ -1401,7 +1561,7 @@
       "description": "Probá con otro nombre, contacto o tag."
     },
     "profile": {
-      "description": "Contacto, tags e historial de ventas aceptadas.",
+      "description": "Datos de contacto, información fiscal, tags e historial comercial.",
       "contactTitle": "Datos de contacto",
       "phone": "Teléfono",
       "email": "Correo electrónico",
@@ -1491,6 +1651,35 @@
         "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
         "INTERNAL": "No pudimos asociar el cliente. Intentá de nuevo."
       }
+    },
+    "fiscal": {
+      "title": "Datos fiscales",
+      "legalName": {
+        "label": "Razón social",
+        "placeholder": "Ingresá la razón social"
+      },
+      "taxId": {
+        "label": "CUIT o DNI",
+        "placeholder": "Ingresá el CUIT o DNI",
+        "hint": "Con guiones o sin ellos, como 30-70123456-8.",
+        "invalid": "Ingresá un CUIT de 11 dígitos o un DNI de 7 u 8.",
+        "checkDigit": "El CUIT no es válido: revisá el último dígito."
+      },
+      "ivaCondition": {
+        "label": "Condición frente al IVA",
+        "placeholder": "Seleccioná una condición"
+      },
+      "submit": "Guardar cambios",
+      "submitting": "Guardando…",
+      "saved": "Los datos fiscales de {name} quedaron guardados.",
+      "savedUnnamed": "Guardamos los datos fiscales del cliente.",
+      "address": {
+        "label": "Domicilio fiscal"
+      },
+      "description": "Se utilizan al emitir las facturas de este cliente.",
+      "errors": {
+        "INVALID_TAX_ID": "Revisá el CUIT o DNI del cliente."
+      }
     }
   },
   "reports": {
@@ -1513,11 +1702,13 @@
     "backToSections": "Volver a la configuración",
     "nav": {
       "account": "Cuenta",
+      "arca": "Conexión con ARCA",
       "branches": "Sucursales",
       "users": "Usuarios",
       "catalog": "Catálogo",
       "prices": "Precios",
-      "onboarding": "Configuración inicial · {done}/{total}"
+      "onboarding": "Configuración inicial · {done}/{total}",
+      "invoicing": "Facturación"
     }
   },
   "branches": {
@@ -1595,7 +1786,18 @@
       "INVALID_INPUT": "Revisá los datos de la sucursal e intentá de nuevo.",
       "INTERNAL": "No pudimos guardar la sucursal. Intentá de nuevo.",
       "CHANNEL_IDENTIFIER": "Revisá el correo de la sucursal: no es una dirección válida.",
-      "CONFLICT": "Ese correo ya está en otro canal de la sucursal."
+      "CONFLICT": "Ese correo ya está en otro canal de la sucursal.",
+      "POINT_OF_SALE_TAKEN": "Otra sucursal ya usa ese punto de venta. Elegí un número distinto."
+    },
+    "billing": {
+      "pointOfSale": "Punto de venta",
+      "unset": "Sin configurar"
+    },
+    "pointOfSale": {
+      "label": "Punto de venta",
+      "placeholder": "Ingresá el número",
+      "hint": "Número que usará esta sucursal para facturar. Dejalo vacío si todavía no está configurado.",
+      "invalid": "Ingresá un número entre 1 y 99998."
     }
   },
   "account": {
@@ -1879,6 +2081,11 @@
       "INVALID_INPUT": "Revisá los datos del producto e intentá de nuevo.",
       "FILE_TOO_LARGE": "La foto supera el tamaño permitido.",
       "INTERNAL": "No pudimos guardar el producto. Intentá de nuevo."
+    },
+    "vatRate": {
+      "label": "Alícuota de IVA",
+      "placeholder": "Seleccioná una alícuota",
+      "hint": "Por defecto {rate}. Es la que se usa al facturar este producto."
     }
   },
   "catalogImport": {
@@ -2194,6 +2401,264 @@
       "newPrice": "Precio nuevo",
       "minPrice": "Precio mínimo",
       "result": "Validación"
+    }
+  },
+  "invoicing": {
+    "ivaConditions": {
+      "REGISTERED": "Responsable inscripto",
+      "MONOTRIBUTO": "Monotributo",
+      "EXEMPT": "Exento",
+      "FINAL_CONSUMER": "Consumidor final"
+    },
+    "vatRates": {
+      "VAT_21": "IVA 21 %",
+      "VAT_10_5": "IVA 10,5 %",
+      "VAT_27": "IVA 27 %",
+      "VAT_5": "IVA 5 %",
+      "VAT_2_5": "IVA 2,5 %",
+      "VAT_0": "IVA 0 %",
+      "EXEMPT": "Exento"
+    },
+    "docTypes": {
+      "CUIT": "CUIT",
+      "DNI": "DNI",
+      "NONE": "Sin documento"
+    },
+    "settings": {
+      "title": "Facturación",
+      "description": "Los datos con los que el corralón emite facturas electrónicas en ARCA.",
+      "disabled": {
+        "title": "La facturación electrónica no está activada en este servidor",
+        "body": "Podés dejar todo configurado, pero no se va a poder emitir ninguna factura hasta que se active. Escribinos a soporte para activarla."
+      },
+      "homologation": {
+        "badge": "Homologación",
+        "title": "Ambiente de homologación",
+        "body": "Las facturas que se emitan desde este servidor son de prueba y no tienen validez fiscal."
+      },
+      "fiscal": {
+        "title": "Datos fiscales",
+        "legalName": "Razón social",
+        "taxId": "CUIT",
+        "missing": "Sin cargar",
+        "editHint": "Se cargan en los datos del corralón.",
+        "editLink": "Editar en Cuenta"
+      },
+      "ivaCondition": {
+        "label": "Condición frente al IVA",
+        "placeholder": "Seleccioná una condición",
+        "hint": "Decide el tipo de factura: un responsable inscripto emite A o B; el resto, C."
+      },
+      "pricesIncludeVat": {
+        "label": "Los precios del catálogo incluyen IVA",
+        "hint": "Apagado, el IVA se suma sobre los precios al facturar."
+      },
+      "pointsOfSale": {
+        "title": "Puntos de venta",
+        "hint": "Cada sucursal usa un único punto de venta, configurable desde Editar sucursal.",
+        "caption": "Punto de venta de cada sucursal",
+        "branch": "Sucursal",
+        "number": "Punto de venta",
+        "closed": "Cerrada",
+        "inputLabel": "Punto de venta de {branch}",
+        "placeholder": "Ingresá el número",
+        "configure": "Configurar en Sucursales"
+      },
+      "pointOfSale": {
+        "range": "Tiene que estar entre {min} y {max}.",
+        "duplicate": "Otra sucursal ya usa este punto de venta."
+      },
+      "submit": "Guardar cambios",
+      "submitting": "Guardando…",
+      "saved": "Guardamos {changes}.",
+      "savedUnchanged": "Guardamos la configuración de facturación.",
+      "changes": {
+        "ivaCondition": "la condición frente al IVA",
+        "pricesIncludeVat": "si los precios incluyen IVA",
+        "pointOfSale": "el punto de venta de {branches}",
+        "pointsOfSale": "los puntos de venta de {count} sucursales",
+        "profile": "los datos del emisor"
+      },
+      "errors": {
+        "INVALID_INPUT": "Revisá los datos: algún valor no es válido.",
+        "POINT_OF_SALE_TAKEN": "Dos sucursales no pueden compartir el mismo punto de venta."
+      },
+      "credential": {
+        "title": "Certificado de ARCA",
+        "loaded": "Cargado",
+        "expired": "Vencido",
+        "missing": "No cargado",
+        "missingDescription": "Sin certificado, ARCA no acepta pedidos de factura del corralón.",
+        "cuit": "CUIT {cuit}",
+        "expiresOn": "Vence el {date}",
+        "expiredOn": "Venció el {date}",
+        "hint": "Generalo en ARCA, en «Administración de Certificados Digitales», y delegá el servicio «Facturación Electrónica» al computador del certificado en «Administrador de Relaciones».",
+        "certificate": {
+          "label": "Certificado",
+          "title": "Arrastrá el certificado hasta acá",
+          "hint": "Archivo .crt o .pem."
+        },
+        "privateKey": {
+          "label": "Clave privada",
+          "title": "Arrastrá la clave privada hasta acá",
+          "hint": "Archivo .key o .pem. La guardamos cifrada."
+        },
+        "release": "Soltá el archivo para cargarlo",
+        "chooseFile": "Elegir archivo",
+        "replaceFile": "Cambiar archivo",
+        "bothRequired": "Elegí el certificado y la clave privada.",
+        "upload": "Cargar certificado",
+        "replace": "Reemplazar certificado",
+        "uploading": "Cargando…",
+        "uploaded": "Cargamos el certificado del CUIT {cuit}. Vence el {date}.",
+        "deleted": "Eliminamos el certificado de ARCA. No se van a poder emitir facturas hasta cargar otro.",
+        "delete": {
+          "action": "Eliminar certificado",
+          "title": "Eliminar el certificado de ARCA",
+          "description": "Se van a borrar el certificado del CUIT {cuit} y su clave privada. No se van a poder emitir facturas hasta que cargues otro.",
+          "confirm": "Eliminar certificado",
+          "confirming": "Eliminando…",
+          "cancel": "Cancelar"
+        },
+        "errors": {
+          "NOT_CONFIGURED": "Este servidor todavía no puede guardar certificados porque le falta su clave de cifrado. Escribinos a soporte.",
+          "FILE_TOO_LARGE": "El archivo es demasiado grande para ser un certificado o una clave."
+        }
+      },
+      "connection": "Administrar conexión con ARCA",
+      "profile": {
+        "address": "Domicilio fiscal",
+        "grossIncomeRegistration": "Ingresos Brutos",
+        "grossIncomeRegistrationHint": "Ingresá tu número de inscripción en Ingresos Brutos o escribí Exento, según lo que figure en tu constancia fiscal.",
+        "activityStartedOn": "Inicio de actividades",
+        "addressRequired": "Ingresá el domicilio fiscal.",
+        "grossIncomeRegistrationRequired": "Ingresá el número de ingresos brutos o indicá Exento.",
+        "activityStartedOnRequired": "Ingresá la fecha de inicio de actividades.",
+        "activityStartedOnInvalid": "Ingresá una fecha válida."
+      }
+    },
+    "card": {
+      "title": "Factura",
+      "loading": "Cargando la factura…",
+      "issuedTitle": "Factura {type} {number}",
+      "draftTitle": "Factura {type}",
+      "draftHint": "Así va a salir con los datos de hoy.",
+      "issuedOn": "Fecha",
+      "cae": "CAE",
+      "caeCopy": "Copiar CAE",
+      "caeCopied": "CAE copiado",
+      "caeCopyFailed": "No pudimos copiar el CAE. Seleccionalo y copialo a mano.",
+      "caeExpires": "Vencimiento del CAE",
+      "verify": "Verificar en ARCA",
+      "receiver": "Receptor",
+      "condition": "Condición frente al IVA",
+      "finalConsumer": "Consumidor final",
+      "documentLabel": "Documento",
+      "document": "{type} {number}",
+      "amounts": {
+        "caption": "Importes de la factura",
+        "concept": "Concepto",
+        "amount": "Importe",
+        "net": "Neto gravado",
+        "exempt": "Exento",
+        "total": "Total"
+      },
+      "issue": "Emitir factura {type}",
+      "issuing": "Emitiendo…",
+      "issued": "Emitimos la factura {type} {number}.",
+      "confirm": {
+        "title": "Emitir la factura {type}",
+        "description": "Le vamos a pedir a ARCA la factura {type} a {receiver} por {total}. Una vez emitida no se puede anular: un error se corrige con una nota de crédito.",
+        "confirm": "Emitir factura",
+        "confirming": "Emitiendo…",
+        "cancel": "Cancelar"
+      },
+      "rejected": {
+        "title": "ARCA rechazó el último intento",
+        "retry": "Corregí lo que indica y volvé a emitirla."
+      },
+      "pending": {
+        "title": "La factura se está emitiendo",
+        "body": "ARCA todavía no confirmó el último pedido. Actualizá la página en unos minutos; si sigue igual, volvé a emitirla: no se va a duplicar."
+      },
+      "issues": {
+        "QUOTE_NOT_ACCEPTED": {
+          "title": "La venta no está aceptada",
+          "body": "Solo se factura una cotización que el cliente aceptó."
+        },
+        "QUOTE_EMPTY": {
+          "title": "La cotización no tiene importe",
+          "body": "Una factura necesita al menos un ítem con precio."
+        },
+        "QUOTE_CURRENCY": {
+          "title": "La cotización no está en pesos",
+          "body": "Coti solo emite facturas en pesos."
+        },
+        "RECEIVER_CUIT_REQUIRED": {
+          "title": "Falta el CUIT del cliente",
+          "body": "Cargá el CUIT del cliente desde su ficha para emitir este tipo de factura."
+        },
+        "RECEIVER_ID_REQUIRED": {
+          "title": "Falta el documento del cliente",
+          "body": "Por el monto, ARCA pide identificar al cliente con su CUIT o DNI."
+        },
+        "QUOTE_TOTAL_MISMATCH": {
+          "title": "Los descuentos superan algún ítem",
+          "body": "Los ítems con sus descuentos no suman el total de la cotización. Revisá los descuentos antes de facturar."
+        },
+        "ISSUER_PROFILE_REQUIRED": {
+          "title": "Completá los datos del emisor",
+          "body": "Cargá el domicilio fiscal, ingresos brutos e inicio de actividades en Configuración → Facturación."
+        },
+        "RECEIVER_ADDRESS_REQUIRED": {
+          "title": "Completá los datos fiscales del cliente",
+          "body": "Completá su nombre o razón social y su domicilio fiscal en la ficha del cliente."
+        }
+      },
+      "noClient": "Asociá un cliente a la venta para cargar sus datos fiscales.",
+      "errors": {
+        "NOT_CONFIGURED": "La facturación todavía no está configurada en este servidor.",
+        "INVOICE_STALE": "La venta cambió desde que la revisaste. Mirá la factura actualizada y volvé a emitirla.",
+        "ARCA_CREDENTIALS": "No pudimos usar el certificado de ARCA del corralón. Pedile a un administrador que lo vuelva a cargar."
+      },
+      "download": "Descargar factura",
+      "recover": "Consultar autorización",
+      "issuer": {
+        "cuit": "CUIT emisor de ARCA",
+        "pointOfSale": "Punto de venta",
+        "account": "Configurar conexión con ARCA",
+        "branch": "Configurar sucursal"
+      },
+      "editClient": "Editar cliente",
+      "receiverAddress": "Domicilio fiscal"
+    },
+    "history": {
+      "title": "Facturación",
+      "description": "Consultá los comprobantes de esta sucursal. Para emitir una factura, abrí un pedido aceptado.",
+      "empty": "Todavía no hay facturas en esta sucursal.",
+      "orders": "Ir a pedidos",
+      "settings": "Datos fiscales",
+      "date": "Fecha",
+      "number": "Comprobante",
+      "receiver": "Cliente",
+      "amount": "Total",
+      "status": "Estado",
+      "actions": "Acciones",
+      "cae": "CAE",
+      "statuses": {
+        "PENDING": "Pendiente",
+        "ISSUED": "Autorizada",
+        "REJECTED": "Rechazada"
+      },
+      "recover": "Consultar estado",
+      "download": "Descargar PDF",
+      "recovered": "El estado del comprobante fue actualizado.",
+      "previous": "Anterior",
+      "next": "Siguiente",
+      "page": "Página {page} de {pages}",
+      "selectBranch": "Elegí una sucursal en el encabezado para ver sus facturas.",
+      "finalConsumer": "Consumidor final",
+      "recovering": "Consultando…"
     }
   }
 }

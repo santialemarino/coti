@@ -6,6 +6,7 @@ import { ImageIcon, XIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Button, Callout, Dropzone } from '@repo/ui/components';
+import { LogoCropDialog } from '@/components/logo-crop-dialog';
 
 const ACCEPTED_TYPES = ['image/png', 'image/jpeg'];
 
@@ -17,6 +18,7 @@ interface LogoDropzoneProps {
 
 export function LogoDropzone({ initialUrl, onFileChange, onPreviewChange }: LogoDropzoneProps) {
   const t = useTranslations('common.logoUpload');
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const [selection, setSelection] = useState<File | null>();
   const [previewUrl, setPreviewUrl] = useState<string | null>(initialUrl ?? null);
   const [error, setError] = useState<string | null>(null);
@@ -45,8 +47,7 @@ export function LogoDropzone({ initialUrl, onFileChange, onPreviewChange }: Logo
       return;
     }
     setError(null);
-    setSelection(next);
-    onFileChange?.(next);
+    setCropFile(next);
   }
 
   function clear() {
@@ -79,6 +80,17 @@ export function LogoDropzone({ initialUrl, onFileChange, onPreviewChange }: Logo
           ) : undefined
         }
       />
+      {cropFile ? (
+        <LogoCropDialog
+          file={cropFile}
+          onCancel={() => setCropFile(null)}
+          onConfirm={(cropped) => {
+            setSelection(cropped);
+            onFileChange?.(cropped);
+            setCropFile(null);
+          }}
+        />
+      ) : null}
       {/* Outside the box: the dropzone is one button, and a button cannot contain another. */}
       {previewUrl ? (
         <Button type="button" variant="ghost" size="sm" className="self-start" onClick={clear}>

@@ -4,6 +4,7 @@ package http
 
 import (
 	"log/slog"
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -48,6 +49,8 @@ type Handlers struct {
 	CatalogImport *handler.CatalogImportHandler
 	Onboarding    *handler.OnboardingHandler
 	WhatsApp      *handler.WhatsAppWebhookHandler
+	ARCASetup     *handler.ARCASetupHandler
+	Invoice       *handler.InvoiceHandler
 	// File is nil unless the local storage adapter is bound.
 	File *handler.FileHandler
 }
@@ -133,6 +136,15 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 
 	// Using the product needs a confirmed address. Everything below is closed until then.
 	verified := authed.Group("", middleware.RequireVerifiedEmail(cfg.Auth.RequireVerifiedEmail))
+	if h.ARCASetup != nil {
+		arca := verified.Group("/arca/setup", middleware.RequireAdmin())
+		arca.Use(func(c *gin.Context) { c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 32768) })
+		arca.GET("", h.ARCASetup.Get)
+		arca.POST("", limit("arca-setup", cfg.RateLimit.Credentials), h.ARCASetup.Create)
+		arca.PUT("/certificate", h.ARCASetup.Upload)
+		arca.DELETE("", h.ARCASetup.Delete)
+		arca.POST("/verify", limit("arca-verify", cfg.RateLimit.Credentials), h.ARCASetup.Verify)
+	}
 	verified.POST("/auth/change-password", h.Password.Change)
 
 	ai := limit("ai", cfg.RateLimit.AI)
@@ -177,9 +189,20 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	quotes.PATCH("/:quoteId/discounts/:discountId", h.Rfq.UpdateDiscount)
 	quotes.DELETE("/:quoteId/discounts/:discountId", h.Rfq.DeleteDiscount)
 
+	if h.Invoice != nil {
+		verified.GET("/invoices", h.Invoice.List)
+		verified.GET("/invoices/:invoiceId/pdf", h.Invoice.DownloadPDF)
+		verified.POST("/invoices/:invoiceId/recover", h.Invoice.Recover)
+		quotes.GET("/:quoteId/invoice", h.Invoice.Preview)
+		quotes.POST("/:quoteId/invoice", h.Invoice.Issue)
+	}
 	clients := verified.Group("/clients")
 	clients.GET("", h.Client.List)
 	clients.GET("/:clientId", h.Client.Get)
+	if h.Invoice != nil {
+		clients.GET("/:clientId/fiscal", h.Invoice.GetClientFiscal)
+		clients.PUT("/:clientId/fiscal", h.Invoice.UpdateClientFiscal)
+	}
 	clients.PUT("/:clientId/tags", h.Client.ReplaceTags)
 
 	tags := verified.Group("/tags")
@@ -234,6 +257,10 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	admin.POST("/products/import/preview", h.CatalogImport.Preview)
 	admin.POST("/products/import/confirm", h.CatalogImport.Confirm)
 	admin.GET("/product-taxonomy", h.CatalogImport.Taxonomy)
+	if h.Invoice != nil {
+		admin.GET("/invoicing/settings", h.Invoice.GetSettings)
+		admin.PUT("/invoicing/settings", h.Invoice.UpdateSettings)
+	}
 
 	users := verified.Group("/users", middleware.RequireAdmin())
 	users.GET("", h.User.List)

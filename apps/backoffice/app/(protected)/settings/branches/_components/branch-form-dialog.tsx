@@ -70,6 +70,7 @@ export function BranchFormDialog({
       name: '',
       address: '',
       email: '',
+      pointOfSale: '',
       defaultExpiryDays: String(DEFAULT_EXPIRY_DAYS),
     },
   });
@@ -84,6 +85,7 @@ export function BranchFormDialog({
       name: branch?.name ?? '',
       address: branch?.address ?? '',
       email: branch?.email ?? '',
+      pointOfSale: branch?.pointOfSale ? String(branch.pointOfSale) : '',
       defaultExpiryDays: String(branch?.defaultExpiryDays ?? DEFAULT_EXPIRY_DAYS),
     });
   }, [open, branch, form]);
@@ -156,27 +158,52 @@ export function BranchFormDialog({
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="defaultExpiryDays"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel required>{t('defaultExpiryDays.label')}</FormLabel>
-                  <FormControl>
-                    <QuantityInput
-                      min={EXPIRY_MIN_DAYS}
-                      placeholder={String(DEFAULT_EXPIRY_DAYS)}
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    {t('defaultExpiryDays.hint', { count: DEFAULT_EXPIRY_DAYS })}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="defaultExpiryDays"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel required className="sm:min-h-10">
+                      {t('defaultExpiryDays.label')}
+                    </FormLabel>
+                    <FormControl>
+                      <QuantityInput
+                        min={EXPIRY_MIN_DAYS}
+                        placeholder={String(DEFAULT_EXPIRY_DAYS)}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('defaultExpiryDays.hint', { count: DEFAULT_EXPIRY_DAYS })}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
+              <FormField
+                control={form.control}
+                name="pointOfSale"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="sm:min-h-10">{t('pointOfSale.label')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        value={field.value ?? ''}
+                        inputMode="numeric"
+                        maxLength={5}
+                        disabled={pending}
+                        placeholder={t('pointOfSale.placeholder')}
+                      />
+                    </FormControl>
+                    <FormDescription>{t('pointOfSale.hint')}</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
             <DialogFooter>
               <Button
                 type="button"

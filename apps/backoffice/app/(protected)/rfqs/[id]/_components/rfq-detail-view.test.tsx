@@ -28,6 +28,9 @@ vi.mock('@/lib/api/rfqs-client', () => ({
 // header are stubbed out, with the send dialog and the diff left as spies.
 vi.mock('./rfq-items-table', () => ({ RfqItemsTable: vi.fn(() => null) }));
 vi.mock('./rfq-detail-header', () => ({ RfqDetailHeader: () => null }));
+vi.mock('./invoice-card', () => ({
+  InvoiceCard: () => <div data-testid="invoice-card" />,
+}));
 vi.mock('./client-association-card', () => ({
   ClientAssociationCard: () => <div data-testid="client-association-card" />,
 }));

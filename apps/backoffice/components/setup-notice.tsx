@@ -6,6 +6,7 @@ import { SETUP_FIX_ROUTE, type SetupIssue } from '@/lib/utils/setup-issues';
 
 interface SetupNoticeProps {
   issue: SetupIssue;
+  tone?: 'info' | 'warning';
   /* An administrator is sent to the fix; anyone else is told who can make it. */
   isAdmin: boolean;
   className?: string;
@@ -15,13 +16,13 @@ interface SetupNoticeProps {
  * Missing configuration, reported where it bites: what is missing, what that changes, and who
  * fixes it. Deliberately not dismissible — the consequence stands until the setting exists.
  */
-export function SetupNotice({ issue, isAdmin, className }: SetupNoticeProps) {
+export function SetupNotice({ issue, isAdmin, className, tone = 'warning' }: SetupNoticeProps) {
   const t = useTranslations('common.setup');
   const fix = SETUP_FIX_ROUTE[issue];
 
   return (
     <Callout
-      tone="warning"
+      tone={tone}
       title={t(`${issue}.title`)}
       className={className}
       action={

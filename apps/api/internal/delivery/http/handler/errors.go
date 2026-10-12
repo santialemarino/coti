@@ -29,8 +29,15 @@ func Respond(c *gin.Context, err error) {
 	case errors.Is(err, domain.ErrInvalidInput):
 		response := dto.ErrorResponse{Error: err.Error(), Code: code}
 		var validation *domain.QuoteRepresentationValidationError
-		if errors.As(err, &validation) {
+		var notReady *domain.InvoiceNotReadyError
+		var rejected *domain.InvoiceRejectedError
+		switch {
+		case errors.As(err, &validation):
 			response.Issues = validation.Issues
+		case errors.As(err, &notReady):
+			response.Issues = notReady.Issues
+		case errors.As(err, &rejected):
+			response.Issues = rejected.Issues
 		}
 		c.JSON(http.StatusUnprocessableEntity, response)
 	case errors.Is(err, domain.ErrUnauthenticated):
@@ -60,6 +67,10 @@ func Respond(c *gin.Context, err error) {
 		_ = c.Error(err)
 		c.JSON(http.StatusServiceUnavailable,
 			dto.ErrorResponse{Error: "quote representation unavailable", Code: code})
+	case errors.Is(err, domain.ErrInvoicingUnavailable):
+		_ = c.Error(err)
+		c.JSON(http.StatusServiceUnavailable,
+			dto.ErrorResponse{Error: "invoicing unavailable", Code: code})
 	case errors.Is(err, domain.ErrAIUnavailable):
 		// Attached as well: which provider failed, and why, belongs in the log and not in the
 		// response. The caller only needs to know the proposal is not coming.

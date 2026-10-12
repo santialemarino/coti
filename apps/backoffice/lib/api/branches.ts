@@ -13,6 +13,7 @@ interface BranchListRaw {
 }
 
 interface BranchRaw {
+  point_of_sale?: number | null;
   id: string;
   name: string;
   address: string | null;
@@ -26,6 +27,7 @@ interface BranchRaw {
 // --- Frontend types (camelCase) ---
 
 export interface Branch {
+  pointOfSale?: number | null;
   id: string;
   name: string;
   address: string | null;
@@ -38,6 +40,7 @@ export interface Branch {
 
 function mapBranch(raw: BranchRaw): Branch {
   return {
+    pointOfSale: raw.point_of_sale ?? null,
     id: raw.id,
     name: raw.name,
     address: raw.address,

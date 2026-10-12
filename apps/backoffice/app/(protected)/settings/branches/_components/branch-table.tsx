@@ -32,7 +32,7 @@ import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Branch } from '@/lib/api/branches';
 import { missesBranchEmail } from '@/lib/utils/setup-issues';
 
-const COLUMN_COUNT = 5;
+const COLUMN_COUNT = 6;
 
 interface BranchTableProps {
   branches: Branch[];
@@ -121,6 +121,7 @@ export function BranchTable({ branches }: BranchTableProps) {
             <TableHead kind="text">{t('table.name')}</TableHead>
             <TableHead kind="text">{t('table.address')}</TableHead>
             <TableHead kind="count">{t('table.expiry')}</TableHead>
+            <TableHead kind="count">{t('billing.pointOfSale')}</TableHead>
             <TableHead kind="status">{t('table.status')}</TableHead>
             <TableHead kind="actionsWide">{t('table.actions')}</TableHead>
           </TableRow>
@@ -153,6 +154,7 @@ export function BranchTable({ branches }: BranchTableProps) {
                 <TableCell kind="count">
                   {t('expiryDays', { count: branch.defaultExpiryDays })}
                 </TableCell>
+                <TableCell kind="count">{branch.pointOfSale ?? t('billing.unset')}</TableCell>
                 <TableCell kind="status">
                   <Badge tone={branch.isActive ? 'success' : 'neutral'}>
                     {t(branch.isActive ? 'status.active' : 'status.closed')}

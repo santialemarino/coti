@@ -1,3 +1,8 @@
+CREATE TYPE iva_condition AS ENUM ('REGISTERED', 'MONOTRIBUTO', 'EXEMPT', 'FINAL_CONSUMER');
+CREATE TYPE vat_rate AS ENUM ('VAT_0', 'VAT_2_5', 'VAT_5', 'VAT_10_5', 'VAT_21', 'VAT_27', 'EXEMPT');
+CREATE TYPE invoice_type AS ENUM ('A', 'B', 'C');
+CREATE TYPE invoice_status AS ENUM ('PENDING', 'ISSUED', 'REJECTED');
+CREATE TYPE receiver_doc_type AS ENUM ('CUIT', 'DNI', 'NONE');
 -- Coti — consolidated reference schema.
 --
 -- This file is READ, never applied: the executable source is the goose chain in
@@ -131,7 +136,10 @@ CREATE TABLE account (
   brand_color     VARCHAR(32),
   is_active       BOOLEAN NOT NULL DEFAULT TRUE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  iva_condition iva_condition,
+  prices_include_vat BOOLEAN NOT NULL DEFAULT TRUE,
+  invoice_profile JSONB NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(invoice_profile) = 'object')
 );
 
 CREATE TABLE account_onboarding (
@@ -159,6 +167,8 @@ CREATE TABLE onboarding_step_progress (
 );
 
 CREATE TABLE branch (
+  point_of_sale INTEGER CHECK (point_of_sale BETWEEN 1 AND 99998),
+  CONSTRAINT uq_branch_point_of_sale UNIQUE (account_id, point_of_sale),
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id          UUID NOT NULL,
   name                VARCHAR(255) NOT NULL,
@@ -274,7 +284,8 @@ CREATE TABLE product (
   search_document TSVECTOR
     GENERATED ALWAYS AS (
       to_tsvector('spanish_unaccent'::regconfig, canonical_name || ' ' || coalesce(description, ''))
-    ) STORED
+    ) STORED,
+  vat_rate vat_rate NOT NULL DEFAULT 'VAT_21'
 );
 
 CREATE TABLE branch_product (
@@ -380,7 +391,11 @@ CREATE TABLE client (
   notes          VARCHAR(512),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT uq_client_account UNIQUE (account_id, id)
+  CONSTRAINT uq_client_account UNIQUE (account_id, id),
+  legal_name VARCHAR(255),
+  tax_id VARCHAR(11) CHECK (tax_id ~ '^[0-9]{7,11}$'),
+  iva_condition iva_condition,
+  fiscal_address VARCHAR(255)
 );
 
 CREATE TABLE tag (
@@ -514,7 +529,8 @@ CREATE TABLE quote (
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT uq_quote_rfq UNIQUE (rfq_id),
   CONSTRAINT uq_quote_account_number UNIQUE (account_id, number),
-  CONSTRAINT ck_quote_number CHECK (number > 0)
+  CONSTRAINT ck_quote_number CHECK (number > 0),
+  CONSTRAINT uq_invoice_quote_tenant UNIQUE (account_id, branch_id, id)
 );
 
 CREATE TABLE quote_number_counter (
@@ -541,7 +557,8 @@ CREATE TABLE quote_version (
   CONSTRAINT ck_quote_version_frozen_at CHECK (
     (is_immutable = TRUE AND frozen_at IS NOT NULL)
     OR (is_immutable = FALSE AND frozen_at IS NULL)
-  )
+  ),
+  CONSTRAINT uq_invoice_version_tenant UNIQUE (account_id, quote_id, id)
 );
 
 CREATE TABLE quote_representation (
@@ -1359,3 +1376,115 @@ BEGIN
       t || '_account_isolation', t);
   END LOOP;
 END $$;
+
+
+ALTER TABLE branch ADD CONSTRAINT uq_branch_account_id UNIQUE (account_id, id);
+CREATE TABLE arca_setup (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id UUID NOT NULL UNIQUE REFERENCES account(id) ON DELETE CASCADE,
+  tax_id VARCHAR(11) NOT NULL,
+  csr TEXT NOT NULL,
+  sealed_key TEXT NOT NULL,
+  certificate TEXT NOT NULL DEFAULT '',
+  sealed_ticket TEXT NOT NULL DEFAULT '',
+  certificate_expires_at TIMESTAMPTZ,
+  UNIQUE (account_id, id)
+);
+
+CREATE TABLE branch_arca_setup (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id UUID NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+  branch_id UUID NOT NULL,
+  setup_id UUID NOT NULL,
+  point_of_sale INTEGER NOT NULL CHECK (point_of_sale BETWEEN 1 AND 99998),
+  verified_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (account_id, branch_id),
+  UNIQUE (account_id, point_of_sale),
+  FOREIGN KEY (account_id, setup_id) REFERENCES arca_setup(account_id, id) ON DELETE CASCADE,
+  FOREIGN KEY (account_id, branch_id) REFERENCES branch(account_id, id) ON DELETE CASCADE
+);
+
+ALTER TABLE arca_setup ENABLE ROW LEVEL SECURITY;
+ALTER TABLE arca_setup FORCE ROW LEVEL SECURITY;
+CREATE POLICY arca_setup_tenant ON arca_setup
+  USING (account_id = NULLIF(current_setting('app.current_account_id', true), '')::uuid)
+  WITH CHECK (account_id = NULLIF(current_setting('app.current_account_id', true), '')::uuid);
+ALTER TABLE branch_arca_setup ENABLE ROW LEVEL SECURITY;
+ALTER TABLE branch_arca_setup FORCE ROW LEVEL SECURITY;
+CREATE POLICY branch_arca_setup_tenant ON branch_arca_setup
+  USING (account_id = NULLIF(current_setting('app.current_account_id', true), '')::uuid)
+  WITH CHECK (account_id = NULLIF(current_setting('app.current_account_id', true), '')::uuid);
+
+CREATE TABLE invoice (
+  id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id             UUID NOT NULL,
+  branch_id              UUID NOT NULL,
+  quote_id               UUID NOT NULL,
+  quote_version_id       UUID NOT NULL,
+  status                 invoice_status NOT NULL DEFAULT 'PENDING',
+  invoice_type           invoice_type NOT NULL,
+  point_of_sale          INTEGER NOT NULL,
+  number                 BIGINT,
+  -- The number last requested from ARCA, written before the request: how an unknown outcome is checked.
+  claimed_number         BIGINT,
+  issued_on              DATE NOT NULL,
+  cae                    VARCHAR(14),
+  cae_expires_on         DATE,
+  issuer_cuit            VARCHAR(11) NOT NULL,
+  receiver_name          VARCHAR(255) NOT NULL,
+  receiver_doc_type      receiver_doc_type NOT NULL,
+  receiver_doc_number    VARCHAR(11),
+  receiver_iva_condition iva_condition NOT NULL,
+  net_amount             NUMERIC(14,2) NOT NULL,
+  exempt_amount          NUMERIC(14,2) NOT NULL,
+  vat_amount             NUMERIC(14,2) NOT NULL,
+  total                  NUMERIC(14,2) NOT NULL,
+  currency               CHAR(3) NOT NULL,
+  snapshot               JSONB NOT NULL DEFAULT '{}',
+  issuer_profile         JSONB NOT NULL DEFAULT '{}',
+  issuer_iva_condition   iva_condition NOT NULL DEFAULT 'REGISTERED',
+  -- [{rate, base, amount}] as decimal strings, as authorized.
+  vat_breakdown          JSONB NOT NULL DEFAULT '[]',
+  issues                 JSONB NOT NULL DEFAULT '[]',
+  arca_request           TEXT,
+  arca_response          TEXT,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT fk_invoice_account FOREIGN KEY (account_id) REFERENCES account(id),
+  CONSTRAINT fk_invoice_branch FOREIGN KEY (account_id, branch_id) REFERENCES branch(account_id, id),
+  CONSTRAINT fk_invoice_quote FOREIGN KEY (account_id, branch_id, quote_id) REFERENCES quote(account_id, branch_id, id),
+  CONSTRAINT fk_invoice_quote_version FOREIGN KEY (account_id, quote_id, quote_version_id) REFERENCES quote_version(account_id, quote_id, id),
+  CONSTRAINT chk_invoice_amounts CHECK (net_amount >= 0 AND exempt_amount >= 0 AND vat_amount >= 0 AND total > 0 AND total = net_amount + exempt_amount + vat_amount),
+  CONSTRAINT chk_invoice_identifiers CHECK (point_of_sale BETWEEN 1 AND 99999 AND issuer_cuit ~ '^[0-9]{11}$' AND (number IS NULL OR number > 0) AND (claimed_number IS NULL OR claimed_number > 0) AND (cae IS NULL OR cae ~ '^[0-9]{14}$')),
+  CONSTRAINT chk_invoice_issued CHECK (
+    status <> 'ISSUED' OR (number IS NOT NULL AND cae IS NOT NULL AND cae_expires_on IS NOT NULL)
+  )
+);
+
+CREATE UNIQUE INDEX uq_invoice_active_quote ON invoice(quote_id) WHERE status <> 'REJECTED';
+CREATE UNIQUE INDEX uq_invoice_number ON invoice(account_id, issuer_cuit, point_of_sale, invoice_type, number)
+  WHERE number IS NOT NULL;
+CREATE UNIQUE INDEX uq_invoice_pending_series ON invoice(account_id, issuer_cuit, point_of_sale, invoice_type) WHERE status = 'PENDING';
+ALTER TABLE invoice FORCE ROW LEVEL SECURITY;
+CREATE INDEX idx_invoice_account_quote ON invoice(account_id, quote_id);
+
+CREATE TRIGGER trg_invoice_updated BEFORE UPDATE ON invoice
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+ALTER TABLE invoice ENABLE ROW LEVEL SECURITY;
+CREATE POLICY invoice_account_isolation ON invoice
+  USING (account_id = app_current_account_id())
+  WITH CHECK (account_id = app_current_account_id());
+
+-- An authorized invoice is a fiscal record: it is corrected with a credit note, never deleted.
+GRANT SELECT, INSERT, UPDATE ON invoice TO coti_app;
+REVOKE DELETE ON invoice FROM coti_app;
+
+
+CREATE FUNCTION protect_issued_invoice() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF OLD.status = 'ISSUED' THEN RAISE EXCEPTION 'Authorized invoices are immutable'; END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_invoice_immutable BEFORE UPDATE ON invoice FOR EACH ROW EXECUTE FUNCTION protect_issued_invoice();
