@@ -584,14 +584,29 @@ func (f *fakeInvoicingStore) SaveProfile(context.Context, repository.Querier, uu
 
 func newVersionID(f invoiceFixture) uuid.UUID { return f.quotes.version.ID }
 
-func TestInvoiceService_PreviewUsesCompanyCUITAndBranchPointOfSale(t *testing.T) {
+func TestInvoiceService_PreviewUsesARCACUITAndBranchPointOfSale(t *testing.T) {
 	t.Parallel()
 	f := newInvoiceFixture(t)
+	f.store.account.TaxID = nil
 	preview, err := f.service.Preview(context.Background(), f.tenant, f.quoteID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if preview.IssuerCUIT != f.store.account.CUIT() || preview.PointOfSale == nil || *preview.PointOfSale != *f.store.pointOfSale {
-		t.Fatalf("preview = %+v, want company CUIT and branch point of sale", preview)
+	if preview.IssuerCUIT != f.store.credential.CUIT || preview.PointOfSale == nil || *preview.PointOfSale != *f.store.pointOfSale {
+		t.Fatalf("preview = %+v, want ARCA CUIT and branch point of sale", preview)
+	}
+}
+
+func TestInvoiceService_IssuesWithIndependentARCACUIT(t *testing.T) {
+	t.Parallel()
+	f := newInvoiceFixture(t)
+	other := "20329642330"
+	f.store.account.TaxID = &other
+	invoice, err := f.issue(context.Background())
+	if err != nil || invoice.IssuerCUIT != f.store.credential.CUIT {
+		t.Fatalf("invoice=%+v err=%v, want ARCA issuer", invoice, err)
+	}
+	if len(f.issuer.requests) != 1 || f.issuer.requests[0].IssuerCUIT != f.store.credential.CUIT {
+		t.Fatalf("request did not use ARCA CUIT: %+v", f.issuer.requests)
 	}
 }

@@ -9,7 +9,6 @@ import messages from '@/translations/es.json';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock('@/app/(protected)/settings/branches/actions', () => ({
-  verifyBranchPointOfSale: vi.fn(),
   createBranch: vi.fn(),
   updateBranch: vi.fn(),
   closeBranch: vi.fn(),
@@ -24,6 +23,7 @@ const { toast } = await import('sonner');
 const copy = messages.branches;
 
 const CENTRAL: Branch = {
+  pointOfSale: 1,
   id: 'b1',
   name: 'Casa Central',
   address: 'Av. Siempre Viva 742',
@@ -56,25 +56,7 @@ function renderTable(branches: Branch[] = [CENTRAL, MORON]) {
       messages={messages}
       timeZone="America/Argentina/Buenos_Aires"
     >
-      <BranchTable
-        branches={branches}
-        companyTaxId="20329642330"
-        setup={{
-          enabled: true,
-          taxId: '20329642330',
-          csr: 'request',
-          hasCertificate: true,
-          certificateExpiresAt: null,
-          pointOfSale: 99,
-          verifiedAt: null,
-        }}
-        fiscalBranches={branches.map((branch) => ({
-          branchId: branch.id,
-          name: branch.name,
-          isActive: branch.isActive,
-          pointOfSale: branch.id === CENTRAL.id ? 1 : null,
-        }))}
-      />
+      <BranchTable branches={branches} />
     </NextIntlClientProvider>,
   );
 }
@@ -148,11 +130,8 @@ describe('BranchTable listing', () => {
 describe('BranchTable dialogs', () => {
   it('opens fiscal settings for the selected row and preserves its point of sale', async () => {
     const view = renderTable();
-    fireEvent.click(
-      within(rowOf(view, CENTRAL.name)).getByRole('button', { name: copy.billing.action }),
-    );
+    fireEvent.click(rowActions(view, CENTRAL.name).edit);
     await waitFor(() => expect(field(view, 'pointOfSale').value).toBe('1'));
-    expect(within(dialog(view)).getByText('20-32964233-0')).toBeTruthy();
     expect(view.baseElement.querySelector('input[name="taxId"]')).toBeNull();
   });
   /*
@@ -200,6 +179,7 @@ describe('BranchTable dialogs', () => {
       address: '',
       email: '',
       defaultExpiryDays: String(MORON.defaultExpiryDays),
+      pointOfSale: '',
     });
     expect(createBranch).not.toHaveBeenCalled();
   });

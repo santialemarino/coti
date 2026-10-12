@@ -167,6 +167,8 @@ CREATE TABLE onboarding_step_progress (
 );
 
 CREATE TABLE branch (
+  point_of_sale INTEGER CHECK (point_of_sale BETWEEN 1 AND 99998),
+  CONSTRAINT uq_branch_point_of_sale UNIQUE (account_id, point_of_sale),
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id          UUID NOT NULL,
   name                VARCHAR(255) NOT NULL,

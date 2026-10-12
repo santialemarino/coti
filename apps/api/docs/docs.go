@@ -6952,6 +6952,9 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
+                "point_of_sale": {
+                    "type": "integer"
+                },
                 "updated_at": {
                     "type": "string"
                 }
@@ -7495,6 +7498,11 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 255,
                     "minLength": 1
+                },
+                "point_of_sale": {
+                    "type": "integer",
+                    "maximum": 99998,
+                    "minimum": 0
                 }
             }
         },
@@ -9749,6 +9757,11 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 255,
                     "minLength": 1
+                },
+                "point_of_sale": {
+                    "type": "integer",
+                    "maximum": 99998,
+                    "minimum": 0
                 }
             }
         },

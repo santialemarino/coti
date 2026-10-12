@@ -399,7 +399,7 @@ function IssuerFacts({
       <Fact label={t('cuit')}>
         <div className="flex flex-col items-start gap-y-1">
           <span>{cuit ? formatCuit(cuit) : '—'}</span>
-          {editable ? <InlineLink href={ROUTES.accountSettings}>{t('account')}</InlineLink> : null}
+          {editable ? <InlineLink href={ROUTES.arcaSettings}>{t('account')}</InlineLink> : null}
         </div>
       </Fact>
       <Fact label={t('pointOfSale')}>

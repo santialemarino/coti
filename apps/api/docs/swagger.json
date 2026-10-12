@@ -6945,6 +6945,9 @@
                 "name": {
                     "type": "string"
                 },
+                "point_of_sale": {
+                    "type": "integer"
+                },
                 "updated_at": {
                     "type": "string"
                 }
@@ -7488,6 +7491,11 @@
                     "type": "string",
                     "maxLength": 255,
                     "minLength": 1
+                },
+                "point_of_sale": {
+                    "type": "integer",
+                    "maximum": 99998,
+                    "minimum": 0
                 }
             }
         },
@@ -9742,6 +9750,11 @@
                     "type": "string",
                     "maxLength": 255,
                     "minLength": 1
+                },
+                "point_of_sale": {
+                    "type": "integer",
+                    "maximum": 99998,
+                    "minimum": 0
                 }
             }
         },

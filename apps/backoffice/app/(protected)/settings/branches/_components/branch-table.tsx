@@ -1,14 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import {
-  BuildingIcon,
-  PencilIcon,
-  PlusIcon,
-  ReceiptTextIcon,
-  RotateCcwIcon,
-  XCircleIcon,
-} from 'lucide-react';
+import { BuildingIcon, PencilIcon, PlusIcon, RotateCcwIcon, XCircleIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
@@ -28,7 +21,6 @@ import {
   TableRow,
 } from '@repo/ui/components';
 import { BranchFormDialog } from '@/app/(protected)/settings/branches/_components/branch-form-dialog';
-import { BranchPointOfSaleDialog } from '@/app/(protected)/settings/branches/_components/branch-point-of-sale-dialog';
 import {
   closeBranch,
   createBranch,
@@ -37,30 +29,19 @@ import {
 } from '@/app/(protected)/settings/branches/actions';
 import type { BranchValues } from '@/app/(protected)/settings/branches/form-schema';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
-import type { ARCASetup } from '@/lib/api/arca-setup';
 import type { Branch } from '@/lib/api/branches';
-import type { InvoicingBranch } from '@/lib/api/invoicing';
 import { missesBranchEmail } from '@/lib/utils/setup-issues';
 
 const COLUMN_COUNT = 6;
 
 interface BranchTableProps {
   branches: Branch[];
-  setup?: ARCASetup;
-  companyTaxId?: string | null;
-  fiscalBranches?: InvoicingBranch[];
 }
 
-export function BranchTable({
-  branches,
-  setup,
-  companyTaxId,
-  fiscalBranches = [],
-}: BranchTableProps) {
+export function BranchTable({ branches }: BranchTableProps) {
   const t = useTranslations('branches');
   const message = useApiErrorMessage('branches');
   const [form, setForm] = useState<{ mode: 'create' | 'edit'; branch: Branch | null } | null>(null);
-  const [billing, setBilling] = useState<Branch | null>(null);
   const [closing, setClosing] = useState<Branch | null>(null);
   const [error, setError] = useState<string | null>(null);
   /*
@@ -173,10 +154,7 @@ export function BranchTable({
                 <TableCell kind="count">
                   {t('expiryDays', { count: branch.defaultExpiryDays })}
                 </TableCell>
-                <TableCell kind="count">
-                  {fiscalBranches.find((item) => item.branchId === branch.id)?.pointOfSale ??
-                    t('billing.unset')}
-                </TableCell>
+                <TableCell kind="count">{branch.pointOfSale ?? t('billing.unset')}</TableCell>
                 <TableCell kind="status">
                   <Badge tone={branch.isActive ? 'success' : 'neutral'}>
                     {t(branch.isActive ? 'status.active' : 'status.closed')}
@@ -189,12 +167,6 @@ export function BranchTable({
                       label={t('edit.action')}
                       disabled={busy}
                       onClick={() => setForm({ mode: 'edit', branch })}
-                    />
-                    <RowActionButton
-                      icon={ReceiptTextIcon}
-                      label={t('billing.action')}
-                      disabled={busy || !branch.isActive}
-                      onClick={() => setBilling(branch)}
                     />
                     {branch.isActive ? (
                       <RowActionButton
@@ -219,19 +191,6 @@ export function BranchTable({
           )}
         </TableBody>
       </Table>
-
-      {setup ? (
-        <BranchPointOfSaleDialog
-          branch={billing}
-          setup={setup}
-          companyTaxId={companyTaxId ?? null}
-          pointOfSale={
-            fiscalBranches.find((item) => item.branchId === billing?.id)?.pointOfSale ?? null
-          }
-          open={billing !== null}
-          onOpenChange={(open) => !open && setBilling(null)}
-        />
-      ) : null}
 
       <BranchFormDialog
         open={form !== null}

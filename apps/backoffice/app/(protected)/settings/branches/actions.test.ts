@@ -6,7 +6,6 @@ import {
   createBranch,
   reopenBranch,
   updateBranch,
-  verifyBranchPointOfSale,
 } from '@/app/(protected)/settings/branches/actions';
 import { type BranchValues } from '@/app/(protected)/settings/branches/form-schema';
 import { BRANCH_COOKIE } from '@/lib/auth/tokens';
@@ -234,29 +233,24 @@ describe('reopenBranch', () => {
 });
 
 describe('branch point of sale', () => {
-  it('pins verification to the edited branch and refreshes both settings screens', async () => {
-    const { checkARCAConnection } = await import('@/lib/api/arca-setup');
-    vi.mocked(checkARCAConnection).mockResolvedValue({
-      verified: true,
-      failure: '',
-      lastNumber: 0,
-    });
-    await expect(verifyBranchPointOfSale({ pointOfSale: '1' }, BRANCH_ID)).resolves.toMatchObject({
+  it('saves a manually entered number with the existing branch update', async () => {
+    vi.mocked(apiRequest).mockResolvedValue(undefined);
+    await expect(updateBranch(BRANCH_ID, { ...VALUES, pointOfSale: '1' })).resolves.toEqual({
       ok: true,
-      connection: { verified: true },
     });
-    expect(checkARCAConnection).toHaveBeenCalledWith(1, BRANCH_ID);
-    expect(revalidatePath).toHaveBeenCalledWith('/settings/branches');
-    expect(revalidatePath).toHaveBeenCalledWith('/settings/invoicing');
+    expect(requestSent()).toMatchObject({
+      path: '/v1/branches/' + BRANCH_ID,
+      method: 'PUT',
+      body: { point_of_sale: 1 },
+    });
   });
-  it('refuses invalid numbers and branch identifiers before reaching ARCA', async () => {
-    const { checkARCAConnection } = await import('@/lib/api/arca-setup');
-    await expect(verifyBranchPointOfSale({ pointOfSale: '0' }, BRANCH_ID)).resolves.toEqual({
-      error: 'INVALID_BODY',
-    });
-    await expect(verifyBranchPointOfSale({ pointOfSale: '1' }, 'other')).resolves.toEqual({
-      error: 'INVALID_BODY',
-    });
-    expect(checkARCAConnection).not.toHaveBeenCalled();
+  it('clears the number when the field is blank and preserves it when omitted', async () => {
+    vi.mocked(apiRequest).mockResolvedValue(undefined);
+    await updateBranch(BRANCH_ID, { ...VALUES, pointOfSale: '' });
+    expect(requestSent()?.body).toHaveProperty('point_of_sale', 0);
+    vi.clearAllMocks();
+    vi.mocked(apiRequest).mockResolvedValue(undefined);
+    await updateBranch(BRANCH_ID, VALUES);
+    expect(requestSent()?.body).not.toHaveProperty('point_of_sale');
   });
 });

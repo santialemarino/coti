@@ -230,7 +230,7 @@ func TestInvoiceIssues_ReportsEveryGapAtOnce(t *testing.T) {
 
 	got := invoiceIssues(in)
 	for _, want := range []string{invoiceIssueDisabled, invoiceIssueNotAccepted, invoiceIssueIVACondition,
-		invoiceIssueTaxID, invoiceIssuePointOfSale, invoiceIssueCredentials} {
+		invoiceIssuePointOfSale, invoiceIssueCredentials} {
 		if !slices.Contains(got, want) {
 			t.Errorf("issues = %v, missing %s", got, want)
 		}
@@ -263,8 +263,8 @@ func TestInvoiceIssues_CredentialChecks(t *testing.T) {
 
 	other := readyInputs()
 	other.credential.CUIT = "20111111112"
-	if got := invoiceIssues(other); !slices.Contains(got, invoiceIssueCredentialsCUIT) {
-		t.Errorf("certificate for another CUIT: issues = %v", got)
+	if got := invoiceIssues(other); slices.Contains(got, invoiceIssueCredentialsCUIT) {
+		t.Errorf("independent ARCA CUIT must remain usable: issues = %v", got)
 	}
 }
 

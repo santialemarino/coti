@@ -84,8 +84,8 @@ func (r *InvoicingRepository) ListBranchPointsOfSale(
 	ctx context.Context, q Querier, accountID uuid.UUID,
 ) ([]domain.BranchPointOfSale, error) {
 	rows, err := q.Query(ctx,
-		`SELECT b.id, b.name, b.is_active, s.point_of_sale
-		 FROM branch b LEFT JOIN branch_arca_setup s ON s.account_id = b.account_id AND s.branch_id = b.id
+		`SELECT b.id, b.name, b.is_active, b.point_of_sale
+		 FROM branch b
 		 WHERE b.account_id = $1
 		 ORDER BY b.is_active DESC, b.name, b.id`, accountID)
 	if err != nil {
@@ -112,7 +112,7 @@ func (r *InvoicingRepository) GetBranchPointOfSale(
 ) (*int, error) {
 	var pos *int32
 	err := q.QueryRow(ctx,
-		`SELECT s.point_of_sale FROM branch b LEFT JOIN branch_arca_setup s ON s.account_id = b.account_id AND s.branch_id = b.id WHERE b.account_id = $1 AND b.id = $2`,
+		`SELECT b.point_of_sale FROM branch b WHERE b.account_id = $1 AND b.id = $2`,
 		accountID, branchID).Scan(&pos)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound

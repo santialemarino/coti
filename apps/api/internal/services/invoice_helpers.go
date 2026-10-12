@@ -255,10 +255,6 @@ func invoiceIssues(in invoiceInputs) []string {
 	if in.receiver.IVACondition.Valid() && in.receiver.IVACondition != domain.IVAConditionFinalConsumer && (strings.TrimSpace(in.receiver.Address) == "" || strings.TrimSpace(in.receiver.Name) == "") {
 		add("RECEIVER_ADDRESS_REQUIRED")
 	}
-	cuit := in.account.CUIT()
-	if cuit == "" {
-		add(invoiceIssueTaxID)
-	}
 	if in.pointOfSale == nil {
 		add(invoiceIssuePointOfSale)
 	}
@@ -267,8 +263,6 @@ func invoiceIssues(in invoiceInputs) []string {
 		add(invoiceIssueCredentials)
 	case !in.credential.ExpiresAt.After(in.now):
 		add(invoiceIssueCredentialsExpired)
-	case cuit != "" && in.credential.CUIT != cuit:
-		add(invoiceIssueCredentialsCUIT)
 	}
 
 	switch {

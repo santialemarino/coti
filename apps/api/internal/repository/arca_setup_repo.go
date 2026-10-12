@@ -67,8 +67,9 @@ func (r *ARCASetupRepository) SaveTicket(ctx context.Context, q Querier, account
 
 // SaveBranch records a successful check under the unchanged account identity.
 func (r *ARCASetupRepository) SaveBranch(ctx context.Context, q Querier, accountID, branchID, setupID uuid.UUID, pointOfSale int) error {
-	tag, err := q.Exec(ctx, `INSERT INTO branch_arca_setup (account_id, branch_id, setup_id, point_of_sale)
-	 SELECT $1, $2, id, $4 FROM arca_setup WHERE account_id = $1 AND id = $3
+	tag, err := q.Exec(ctx, `WITH configured AS (UPDATE branch SET point_of_sale = $4 WHERE account_id = $1 AND id = $2 RETURNING id)
+ INSERT INTO branch_arca_setup (account_id, branch_id, setup_id, point_of_sale)
+	 SELECT $1, $2, id, $4 FROM arca_setup WHERE account_id = $1 AND id = $3 AND EXISTS (SELECT 1 FROM configured)
 	 ON CONFLICT (account_id, branch_id) DO UPDATE SET setup_id = EXCLUDED.setup_id,
 	 point_of_sale = EXCLUDED.point_of_sale, verified_at = now()`, accountID, branchID, setupID, pointOfSale)
 	if err != nil {
