@@ -169,7 +169,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	invoiceService := services.NewInvoiceService(db, repository.NewInvoicingRepository(), quoteRepo, quoteDiscountRepo, arcainvoice.NewIssuer(arcainvoice.Settings{Environment: arcainvoice.EnvironmentHomologation, Timeout: cfg.ARCA.Timeout, Log: log}, arcainvoice.NewMemoryTicketCache()), arcaCipher, services.InvoiceSettings{Enabled: arcaCipher.Enabled(), Environment: arcainvoice.EnvironmentHomologation, IssueTimeout: cfg.ARCA.IssueTimeout, ReconcileAfter: cfg.ARCA.ReconcileAfter, UnidentifiedMax: decimal.Zero}, nil, quotePDF.NewInvoiceRenderer())
+	invoiceService := services.NewInvoiceService(db, repository.NewInvoicingRepository(), quoteRepo, quoteDiscountRepo, arcainvoice.NewIssuer(arcainvoice.Settings{Environment: arcainvoice.EnvironmentHomologation, Timeout: cfg.ARCA.Timeout, Log: log}, arcainvoice.NewMemoryTicketCache()), arcaCipher, services.InvoiceSettings{Enabled: arcaCipher.Enabled(), Environment: arcainvoice.EnvironmentHomologation, IssueTimeout: cfg.ARCA.IssueTimeout, ReconcileAfter: cfg.ARCA.ReconcileAfter, UnidentifiedMax: decimal.Zero, LogoMaxBytes: cfg.QuoteLogo.MaxSizeBytes, LogoMaxPixels: cfg.QuoteLogo.MaxPixels}, nil, accountService, quotePDF.NewInvoiceRenderer())
 	arcaSetupService := services.NewARCASetupService(db, repository.NewARCASetupRepository(), arcaCipher,
 		arca.NewSetupConnector(cfg.ARCA.Timeout))
 	catalogSearchService := services.NewCatalogSearchService(db, productRepo, providers.Embedder,

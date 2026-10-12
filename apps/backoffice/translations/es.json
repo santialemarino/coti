@@ -132,7 +132,23 @@
       "replace": "Cambiar imagen",
       "remove": "Quitar imagen",
       "invalidType": "Elegí una imagen PNG o JPG.",
-      "previewAlt": "Vista previa del logo"
+      "previewAlt": "Vista previa del logo",
+      "crop": {
+        "title": "Recortar logo",
+        "description": "Ajustá el encuadre. Así se va a guardar tu logo.",
+        "shape": "Formato del logo",
+        "original": "Original",
+        "square": "Cuadrado",
+        "wide": "Horizontal",
+        "preview": "Vista previa del recorte del logo",
+        "zoom": "Acercamiento",
+        "moveHint": "Arrastrá la imagen para moverla o usá las flechas del teclado.",
+        "reset": "Restablecer",
+        "cancel": "Cancelar",
+        "saving": "Preparando logo…",
+        "confirm": "Usar logo",
+        "error": "No pudimos preparar esta imagen. Probá con otra."
+      }
     },
     "fileUpload": {
       "title": "Arrastrá tu archivo hasta acá",

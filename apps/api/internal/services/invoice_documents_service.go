@@ -1,8 +1,17 @@
 package services
 
 import (
+	"bytes"
 	"context"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
+	"io"
+	"net/url"
+	"strings"
+
 	"github.com/google/uuid"
+
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
@@ -64,7 +73,7 @@ func (s *InvoiceService) DownloadPDF(ctx context.Context, tenant domain.Tenant, 
 	if s.renderer == nil {
 		return nil, domain.ErrNotConfigured
 	}
-	return s.renderer.Render(*invoice)
+	return s.renderer.Render(*invoice, s.loadInvoiceLogo(ctx, tenant.AccountID, invoice.Snapshot.Supplier.LogoURL))
 }
 
 // Recover consults a stale pending record without requesting another authorization.
@@ -97,4 +106,44 @@ func (s *InvoiceService) Recover(ctx context.Context, tenant domain.Tenant, id u
 		return nil, err
 	}
 	return s.GetByID(ctx, tenant, id)
+}
+
+func (s *InvoiceService) loadInvoiceLogo(ctx context.Context, accountID uuid.UUID, rawURL *string) *domain.BrandLogo {
+	if rawURL == nil || s.logos == nil || s.settings.LogoMaxBytes <= 0 || s.settings.LogoMaxPixels <= 0 {
+		return nil
+	}
+	parsed, err := url.Parse(*rawURL)
+	if err != nil {
+		return nil
+	}
+	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	if len(parts) != 5 || parts[0] != "v1" || parts[1] != "public" || parts[2] != "account-logos" || parts[3] != accountID.String() {
+		return nil
+	}
+	id, err := uuid.Parse(parts[4])
+	if err != nil {
+		return nil
+	}
+	object, err := s.logos.DownloadLogo(ctx, accountID, id)
+	if err != nil || object == nil || object.Body == nil {
+		return nil
+	}
+	defer object.Body.Close()
+	content, err := io.ReadAll(io.LimitReader(object.Body, s.settings.LogoMaxBytes+1))
+	if err != nil || int64(len(content)) > s.settings.LogoMaxBytes {
+		return nil
+	}
+	imageConfig, format, err := image.DecodeConfig(bytes.NewReader(content))
+	if err != nil || imageConfig.Width <= 0 || imageConfig.Height <= 0 || int64(imageConfig.Width)*int64(imageConfig.Height) > s.settings.LogoMaxPixels {
+		return nil
+	}
+	_, format, err = image.Decode(bytes.NewReader(content))
+	if err != nil || (format != "png" && format != "jpeg") {
+		return nil
+	}
+	contentType := "image/png"
+	if format == "jpeg" {
+		contentType = "image/jpeg"
+	}
+	return &domain.BrandLogo{Bytes: content, ContentType: contentType}
 }

@@ -41,6 +41,10 @@ type invoicingStore interface {
 	SaveSealedTicket(ctx context.Context, q repository.Querier, accountID uuid.UUID, ticket *domain.SealedARCATicket) error
 }
 
+type invoiceLogoReader interface {
+	DownloadLogo(context.Context, uuid.UUID, uuid.UUID) (*domain.StoredObject, error)
+}
+
 type invoiceQuoteReader interface {
 	GetByIDForUpdate(ctx context.Context, q repository.Querier, accountID, branchID, id uuid.UUID) (*domain.Quote, error)
 	GetByID(ctx context.Context, q repository.Querier, accountID, branchID, id uuid.UUID) (*domain.Quote, error)
@@ -66,6 +70,8 @@ type InvoiceSettings struct {
 	IssueTimeout    time.Duration // bounds one issue end to end, detached from the caller's request.
 	ReconcileAfter  time.Duration // a pending invoice this old is checked against ARCA.
 	UnidentifiedMax decimal.Decimal
+	LogoMaxBytes    int64
+	LogoMaxPixels   int64
 }
 
 // InvoiceService issues ARCA electronic invoices for accepted quotes and keeps the fiscal data
@@ -80,13 +86,14 @@ type InvoiceService struct {
 	settings  InvoiceSettings
 	now       func() time.Time
 	renderer  domain.InvoicePDFRenderer
+	logos     invoiceLogoReader
 }
 
 // NewInvoiceService builds the invoicing use cases.
 func NewInvoiceService(
 	db tenantTxRunner, store invoicingStore, quotes invoiceQuoteReader, discounts invoiceDiscountReader,
 	issuer domain.InvoiceIssuer, sealer keySealer, settings InvoiceSettings,
-	now func() time.Time, renderers ...domain.InvoicePDFRenderer,
+	now func() time.Time, logos invoiceLogoReader, renderers ...domain.InvoicePDFRenderer,
 ) *InvoiceService {
 	if now == nil {
 		now = time.Now
@@ -95,7 +102,7 @@ func NewInvoiceService(
 	if len(renderers) != 0 {
 		renderer = renderers[0]
 	}
-	return &InvoiceService{renderer: renderer, db: db, store: store, quotes: quotes, discounts: discounts, issuer: issuer,
+	return &InvoiceService{renderer: renderer, logos: logos, db: db, store: store, quotes: quotes, discounts: discounts, issuer: issuer,
 		sealer: sealer, settings: settings, now: now}
 }
 

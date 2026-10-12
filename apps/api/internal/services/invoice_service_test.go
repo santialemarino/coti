@@ -255,7 +255,7 @@ func newInvoiceFixture(t *testing.T) invoiceFixture {
 	service := NewInvoiceService(invoiceTestDB{}, store, quotes, fakeInvoiceDiscounts{}, issuer,
 		fakeKeySealer{enabled: true}, InvoiceSettings{Enabled: true, IssueTimeout: time.Second,
 			ReconcileAfter: time.Minute, UnidentifiedMax: decimal.NewFromInt(10_000_000)},
-		func() time.Time { return invoiceNow })
+		func() time.Time { return invoiceNow }, nil)
 	return invoiceFixture{service: service, store: store, issuer: issuer, quoteID: quoteID, quotes: quotes,
 		tenant: domain.Tenant{AccountID: accountID, BranchID: branchID}}
 }

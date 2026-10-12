@@ -4,6 +4,22 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { LogoDropzone } from '@/components/logo-dropzone';
 
+vi.mock('@/components/logo-crop-dialog', () => ({
+  LogoCropDialog: ({
+    file,
+    onConfirm,
+    onCancel,
+  }: {
+    file: File;
+    onConfirm: (file: File) => void;
+    onCancel: () => void;
+  }) => (
+    <div role="dialog">
+      <button onClick={() => onConfirm(file)}>Use crop</button>
+      <button onClick={onCancel}>Cancel crop</button>
+    </div>
+  ),
+}));
 const messages = (await import('@/translations/es.json')).default;
 
 afterEach(() => vi.unstubAllGlobals());
@@ -29,6 +45,8 @@ describe('LogoDropzone', () => {
 
     fireEvent.change(input!, { target: { files: [logo] } });
 
+    expect(onFileChange).not.toHaveBeenCalled();
+    fireEvent.click(view.getByRole('button', { name: 'Use crop' }));
     expect(createObjectURL).toHaveBeenCalledWith(logo);
     expect(input?.name).toBe('');
     expect(onFileChange).toHaveBeenCalledWith(logo);

@@ -413,7 +413,9 @@ func mustLoadLocation(name string) *time.Location {
 }
 
 // InvoicePDFRenderer renders an authorized fiscal snapshot.
-type InvoicePDFRenderer interface{ Render(Invoice) ([]byte, error) }
+type InvoicePDFRenderer interface {
+	Render(Invoice, *BrandLogo) ([]byte, error)
+}
 
 // InvoiceIssuerProfile is the fiscal identity printed on the authorized document.
 type InvoiceIssuerProfile struct {

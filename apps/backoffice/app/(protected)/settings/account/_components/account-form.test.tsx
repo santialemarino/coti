@@ -15,6 +15,13 @@ const { toast } = await import('sonner');
 
 const copy = messages.account;
 
+vi.mock('@/components/logo-crop-dialog', () => ({
+  LogoCropDialog: ({ file, onConfirm }: { file: File; onConfirm: (file: File) => void }) => (
+    <button type="button" onClick={() => onConfirm(file)}>
+      Use crop
+    </button>
+  ),
+}));
 const ACCOUNT: Account = {
   id: 'a1',
   name: 'Corralón San Martín',
@@ -210,6 +217,7 @@ describe('AccountForm brand controls', () => {
     const input = view.container.querySelector<HTMLInputElement>('input[type="file"]');
 
     fireEvent.change(input!, { target: { files: [logo] } });
+    fireEvent.click(view.getByRole('button', { name: 'Use crop' }));
     submit(view);
 
     await waitFor(() => expect(updateAccount).toHaveBeenCalledOnce());
