@@ -12,7 +12,8 @@ import (
 const sellerReportTopLimit = 5
 
 const sellerReportOwnedQuotes = `WITH owned_quotes AS (
-	SELECT q.id AS quote_id, q.current_status, q.current_version_id, q.client_id,
+	SELECT q.id AS quote_id, q.current_status, q.current_version_id,
+	       COALESCE(q.client_id, r.client_id) AS client_id,
 	       r.id AS rfq_id, r.client_label, r.received_at
 	FROM quote q
 	JOIN rfq r ON r.account_id = q.account_id AND r.id = q.rfq_id
