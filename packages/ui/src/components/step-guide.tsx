@@ -9,6 +9,8 @@ export interface StepGuideStep {
   id: string;
   title: string;
   status: StepGuideStatus;
+  /* The step's element id, for a link that opens the guide on this step. */
+  anchor?: string;
   /* What the step asks for: its instructions and the control that completes it. */
   children?: React.ReactNode;
 }
@@ -17,6 +19,8 @@ interface StepGuideProps {
   steps: StepGuideStep[];
   /* Read after each title, so the state is never carried by colour alone. */
   statusLabels: Record<StepGuideStatus, string>;
+  /* The level of each step's title, so the guide fits the outline of the page it sits in. */
+  headingLevel?: 2 | 3 | 4;
   className?: string;
 }
 
@@ -27,7 +31,8 @@ interface StepGuideProps {
  *
  * Only the first current step is `aria-current`, so assistive technology announces one position.
  */
-function StepGuide({ steps, statusLabels, className }: StepGuideProps) {
+function StepGuide({ steps, statusLabels, headingLevel = 2, className }: StepGuideProps) {
+  const Heading = `h${headingLevel}` as const;
   const firstCurrent = steps.findIndex((step) => step.status === 'current');
 
   return (
@@ -37,9 +42,10 @@ function StepGuide({ steps, statusLabels, className }: StepGuideProps) {
         return (
           <li
             key={step.id}
+            id={step.anchor}
             data-status={step.status}
             aria-current={index === firstCurrent ? 'step' : undefined}
-            className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4"
+            className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 scroll-mt-24"
           >
             <div aria-hidden="true" className="flex flex-col items-center">
               <span
@@ -64,7 +70,7 @@ function StepGuide({ steps, statusLabels, className }: StepGuideProps) {
               )}
             </div>
             <div className={cn('flex flex-col min-w-0 pt-0.5 gap-y-3', !last && 'pb-8')}>
-              <h3
+              <Heading
                 className={cn(
                   'text-paragraph-semibold',
                   step.status === 'pending' ? 'text-foreground-muted' : 'text-foreground',
@@ -72,7 +78,7 @@ function StepGuide({ steps, statusLabels, className }: StepGuideProps) {
               >
                 {step.title}
                 <span className="sr-only">. {statusLabels[step.status]}</span>
-              </h3>
+              </Heading>
               {step.children}
             </div>
           </li>

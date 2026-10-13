@@ -37,6 +37,22 @@ describe('StepGuide', () => {
     expect(screen.getByRole('heading', { name: 'Copiar. Pendiente' })).toBeTruthy();
   });
 
+  it('titles each step one level under the page heading unless told otherwise', () => {
+    const { rerender } = render(
+      <StepGuide statusLabels={LABELS} steps={[{ id: 'a', title: 'Generar', status: 'done' }]} />,
+    );
+    expect(screen.getByRole('heading', { level: 2 })).toBeTruthy();
+
+    rerender(
+      <StepGuide
+        headingLevel={3}
+        statusLabels={LABELS}
+        steps={[{ id: 'a', title: 'Generar', status: 'done' }]}
+      />,
+    );
+    expect(screen.getByRole('heading', { level: 3 })).toBeTruthy();
+  });
+
   it('renders what each step asks for', () => {
     render(
       <StepGuide

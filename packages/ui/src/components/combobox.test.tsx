@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
@@ -9,6 +10,28 @@ const OPTIONS = [
 ];
 
 describe('Combobox', () => {
+  // A form focuses the first invalid field through its ref, so the ref has to reach the trigger.
+  it('hands a passed ref the trigger', () => {
+    const ref = React.createRef<HTMLButtonElement>();
+    render(
+      <Combobox
+        options={OPTIONS}
+        value={null}
+        onValueChange={() => {}}
+        placeholder="País"
+        ref={ref}
+      />,
+    );
+
+    expect(ref.current).toBe(screen.getByRole('combobox'));
+  });
+
+  it('fills the trigger like a field', () => {
+    render(<Combobox options={OPTIONS} value={null} onValueChange={() => {}} placeholder="País" />);
+
+    expect(screen.getByRole('combobox').classList.contains('bg-input')).toBe(true);
+  });
+
   it('names the trigger after the chosen option', () => {
     render(<Combobox options={OPTIONS} value="UY" onValueChange={() => {}} placeholder="País" />);
 
