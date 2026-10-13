@@ -14,15 +14,12 @@ import (
 )
 
 type setupTestStore struct {
-	setup           *domain.ARCASetup
-	account, branch uuid.UUID
-	branchErr       error
-	branchWrites    int
-	ticketWrites    int
+	setup   *domain.ARCASetup
+	account uuid.UUID
 }
 
-func (f *setupTestStore) Get(_ context.Context, _ repository.Querier, account, branch uuid.UUID) (*domain.ARCASetup, error) {
-	f.account, f.branch = account, branch
+func (f *setupTestStore) Get(_ context.Context, _ repository.Querier, account uuid.UUID) (*domain.ARCASetup, error) {
+	f.account = account
 	if f.setup == nil {
 		return nil, domain.ErrNotFound
 	}
@@ -39,32 +36,26 @@ func (f *setupTestStore) SaveCertificate(_ context.Context, _ repository.Querier
 	f.setup.CertificateExpiresAt = &expires
 	return nil
 }
-func (f *setupTestStore) SaveTicket(_ context.Context, _ repository.Querier, _, _ uuid.UUID, ticket string) error {
-	f.setup.SealedTicket = ticket
-	f.ticketWrites++
-	return nil
-}
-func (f *setupTestStore) SaveBranch(_ context.Context, _ repository.Querier, account, branch, _ uuid.UUID, _ int) error {
-	f.account, f.branch = account, branch
-	f.branchWrites++
-	return f.branchErr
-}
 func (f *setupTestStore) Delete(_ context.Context, _ repository.Querier, _ uuid.UUID) error {
 	f.setup = nil
 	return nil
 }
 
-type setupTestAccounts struct{ taxID *string }
+// setupTestAccounts records whether the account row was locked before the setup was written.
+type setupTestAccounts struct {
+	taxID       *string
+	store       *setupTestStore
+	lockedFirst bool
+}
 
-func (f *setupTestAccounts) GetByID(_ context.Context, _ repository.Querier, id uuid.UUID) (*domain.Account, error) {
+func (f *setupTestAccounts) GetByIDForUpdate(_ context.Context, _ repository.Querier, id uuid.UUID) (*domain.Account, error) {
+	f.lockedFirst = f.store == nil || f.store.setup == nil
 	return &domain.Account{ID: id, TaxID: f.taxID}, nil
 }
 
 type setupTestConnector struct {
 	generatedFor string
-	result       domain.ARCAConnectionResult
-	seenTicket   domain.ARCATicket
-	calls        int
+	validations  int
 }
 
 func (f *setupTestConnector) Generate(taxID string) (string, string, error) {
@@ -72,31 +63,29 @@ func (f *setupTestConnector) Generate(taxID string) (string, string, error) {
 	return "private-key", "public-csr", nil
 }
 func (f *setupTestConnector) ValidateCertificate(string, string, string) (time.Time, error) {
+	f.validations++
 	return time.Now().Add(time.Hour), nil
-}
-func (f *setupTestConnector) Verify(_ context.Context, _, _, _ string, _ int, ticket domain.ARCATicket) (domain.ARCAConnectionResult, error) {
-	f.calls++
-	f.seenTicket = ticket
-	return f.result, nil
 }
 
 func setupTestService(t *testing.T) (*ARCASetupService, *setupTestStore, *setupTestConnector, *secrets.AESGCM, domain.Tenant) {
 	t.Helper()
 	cuit := "20-32964233-0"
-	return setupTestServiceFor(t, &setupTestAccounts{taxID: &cuit})
+	s, store, connector, cipher, tenant, _ := setupTestServiceFor(t, &cuit)
+	return s, store, connector, cipher, tenant
 }
 
-func setupTestServiceFor(t *testing.T, accounts *setupTestAccounts) (*ARCASetupService, *setupTestStore, *setupTestConnector, *secrets.AESGCM, domain.Tenant) {
+func setupTestServiceFor(t *testing.T, taxID *string) (*ARCASetupService, *setupTestStore, *setupTestConnector, *secrets.AESGCM, domain.Tenant, *setupTestAccounts) {
 	t.Helper()
 	cipher, err := secrets.NewAESGCM([]byte(strings.Repeat("x", 32)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	store := &setupTestStore{}
+	accounts := &setupTestAccounts{taxID: taxID, store: store}
 	connector := &setupTestConnector{}
 	service := NewARCASetupService(&fakeDB{}, store, accounts, cipher, connector)
 	tenant := domain.Tenant{AccountID: uuid.New(), BranchID: uuid.New(), Role: domain.UserRoleAdmin}
-	return service, store, connector, cipher, tenant
+	return service, store, connector, cipher, tenant, accounts
 }
 
 func TestARCASetupService_CredentialsAreEncryptedAndNeverReturned(t *testing.T) {
@@ -106,7 +95,7 @@ func TestARCASetupService_CredentialsAreEncryptedAndNeverReturned(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if public.SealedKey != "" || public.SealedTicket != "" || public.CSR != "public-csr" {
+	if public.SealedKey != "" || public.CSR != "public-csr" {
 		t.Fatalf("unsafe public setup %+v", public)
 	}
 	if strings.Contains(store.setup.SealedKey, "private-key") {
@@ -116,16 +105,15 @@ func TestARCASetupService_CredentialsAreEncryptedAndNeverReturned(t *testing.T) 
 	if err != nil || plain != tenant.AccountID.String()+":private-key" {
 		t.Fatal("key is not bound to its tenant")
 	}
-	store.setup.SealedTicket = "secret-ticket"
 	read, _, err := s.Get(context.Background(), tenant)
-	if err != nil || read.SealedKey != "" || read.SealedTicket != "" {
+	if err != nil || read.SealedKey != "" {
 		t.Fatal("public read exposed credentials")
 	}
 }
 
 func TestARCASetupService_RefusesSellersAndCrossAccountCredentials(t *testing.T) {
 	t.Parallel()
-	s, store, connector, _, tenant := setupTestService(t)
+	s, _, connector, _, tenant := setupTestService(t)
 	seller := tenant
 	seller.Role = domain.UserRoleSeller
 	if _, err := s.Create(context.Background(), seller); !errors.Is(err, domain.ErrForbidden) {
@@ -136,44 +124,30 @@ func TestARCASetupService_RefusesSellersAndCrossAccountCredentials(t *testing.T)
 	}
 	other := tenant
 	other.AccountID = uuid.New()
-	if _, err := s.Verify(context.Background(), other, 1); !errors.Is(err, domain.ErrNotConfigured) {
+	if err := s.Upload(context.Background(), other, "certificate"); !errors.Is(err, domain.ErrNotConfigured) {
 		t.Fatalf("accepted another account's key: %v", err)
 	}
-	if connector.calls != 0 || store.branchWrites != 0 {
-		t.Fatal("foreign credentials reached ARCA")
+	if connector.validations != 0 {
+		t.Fatal("a foreign key reached certificate validation")
 	}
 }
 
-func TestARCASetupService_PreservesTicketWhenBranchVerificationFails(t *testing.T) {
+func TestARCASetupService_CreateUsesTheLockedAccountCUIT(t *testing.T) {
 	t.Parallel()
-	s, store, connector, _, tenant := setupTestService(t)
-	if _, err := s.Create(context.Background(), tenant); err != nil {
-		t.Fatal(err)
-	}
-	connector.result = domain.ARCAConnectionResult{Ticket: domain.ARCATicket{Token: "token", Sign: "sign", ExpiresAt: time.Now().Add(time.Hour)}, Failure: "POINT_OF_SALE_REJECTED"}
-	result, err := s.Verify(context.Background(), tenant, 2)
-	if err != nil || result.Ticket.Token != "" || store.branchWrites != 0 || store.ticketWrites != 1 {
-		t.Fatal("failed check leaked or discarded credentials")
-	}
-	connector.result.Failure = ""
-	store.branchErr = domain.ErrConflict
-	if _, err = s.Verify(context.Background(), tenant, 2); !errors.Is(err, domain.ErrConflict) {
-		t.Fatal("branch conflict was ignored")
-	}
-	if connector.seenTicket.Token != "token" || store.ticketWrites != 2 || store.branch != tenant.BranchID {
-		t.Fatal("ticket or branch scope was lost")
-	}
-}
-
-func TestARCASetupService_CreateUsesTheAccountCUIT(t *testing.T) {
-	t.Parallel()
-	s, store, connector, _, tenant := setupTestService(t)
+	cuit := "20-32964233-0"
+	s, store, connector, _, tenant, accounts := setupTestServiceFor(t, &cuit)
 	setup, err := s.Create(context.Background(), tenant)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if connector.generatedFor != "20329642330" || setup.TaxID != "20329642330" || store.setup.TaxID != "20329642330" {
 		t.Fatalf("request for %q, stored %q, want the account CUIT as digits", connector.generatedFor, store.setup.TaxID)
+	}
+	if !accounts.lockedFirst {
+		t.Fatal("the setup was written without locking the account first")
+	}
+	if len(s.db.(*fakeDB).scopes) != 1 {
+		t.Fatalf("ran %d transactions, want the read and the write in one", len(s.db.(*fakeDB).scopes))
 	}
 }
 
@@ -192,7 +166,7 @@ func TestARCASetupService_CreateRefusesAnAccountWithoutAValidCUIT(t *testing.T) 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			s, store, connector, _, tenant := setupTestServiceFor(t, &setupTestAccounts{taxID: tc.taxID})
+			s, store, connector, _, tenant, _ := setupTestServiceFor(t, tc.taxID)
 			_, err := s.Create(context.Background(), tenant)
 			if !errors.Is(err, domain.ErrInvalidInput) || domain.CodeOf(err) != tc.want {
 				t.Fatalf("err = %v (%s), want %s", err, domain.CodeOf(err), tc.want)

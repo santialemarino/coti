@@ -36,6 +36,22 @@ func (r *AccountRepository) GetByID(
 	return account, nil
 }
 
+// GetByIDForUpdate returns one account and locks its row until the transaction ends, so a write
+// that depends on its CUIT cannot interleave with another one.
+func (r *AccountRepository) GetByIDForUpdate(
+	ctx context.Context, q Querier, accountID uuid.UUID,
+) (*domain.Account, error) {
+	account, err := scanAccount(q.QueryRow(ctx,
+		`SELECT `+accountColumns+` FROM account WHERE id = $1 FOR UPDATE`, accountID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return account, nil
+}
+
 // Create inserts the account a registration opens.
 func (r *AccountRepository) Create(
 	ctx context.Context, q Querier, name string, legalName, taxID *string,

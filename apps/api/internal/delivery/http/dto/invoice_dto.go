@@ -15,6 +15,12 @@ type UpdateInvoicingSettingsRequest struct {
 	Branches         []BranchPointOfSaleInput     `json:"branches" binding:"dive"`
 }
 
+// UpdatePointsOfSaleRequest is the body for PUT /v1/invoicing/points-of-sale. Branches not listed
+// keep their point of sale; a null point_of_sale clears it.
+type UpdatePointsOfSaleRequest struct {
+	Branches []BranchPointOfSaleInput `json:"branches" binding:"required,dive"`
+}
+
 // BranchPointOfSaleInput sets one branch's ARCA point of sale.
 type BranchPointOfSaleInput struct {
 	BranchID    uuid.UUID `json:"branch_id" binding:"required"`

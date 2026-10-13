@@ -20,6 +20,7 @@ import (
 
 type accountRepository interface {
 	GetByID(ctx context.Context, q repository.Querier, accountID uuid.UUID) (*domain.Account, error)
+	GetByIDForUpdate(ctx context.Context, q repository.Querier, accountID uuid.UUID) (*domain.Account, error)
 	Create(ctx context.Context, q repository.Querier, name string, legalName, taxID *string) (*domain.Account, error)
 	Update(ctx context.Context, q repository.Querier, accountID uuid.UUID, in domain.AccountUpdate) (*domain.Account, error)
 }
@@ -225,7 +226,8 @@ func (s *AccountService) Register(
 }
 
 // Update replaces the caller's account record, including the brand the client webapp renders. The
-// CUIT is what ARCA is connected with, so it cannot change while a connection exists.
+// CUIT is what ARCA is connected with, so it cannot change while a connection exists, finished or
+// in progress; the account row is locked so a connection cannot start while the check runs.
 func (s *AccountService) Update(
 	ctx context.Context, tenant domain.Tenant, in domain.AccountUpdate,
 ) (*domain.Account, error) {
@@ -234,7 +236,7 @@ func (s *AccountService) Update(
 	}
 	var account *domain.Account
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		current, err := s.accounts.GetByID(ctx, q, tenant.AccountID)
+		current, err := s.accounts.GetByIDForUpdate(ctx, q, tenant.AccountID)
 		if err != nil {
 			return err
 		}

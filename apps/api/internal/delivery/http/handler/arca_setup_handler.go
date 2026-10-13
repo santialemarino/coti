@@ -15,10 +15,9 @@ type ARCASetupService interface {
 	Create(context.Context, domain.Tenant) (*domain.ARCASetup, error)
 	Upload(context.Context, domain.Tenant, string) error
 	Delete(context.Context, domain.Tenant) error
-	Verify(context.Context, domain.Tenant, int) (domain.ARCAConnectionResult, error)
 }
 
-// ARCASetupHandler serves administrator-only homologation setup.
+// ARCASetupHandler serves the administrator-only ARCA connection setup.
 type ARCASetupHandler struct{ setup ARCASetupService }
 
 // NewARCASetupHandler builds an ARCASetupHandler.
@@ -26,8 +25,8 @@ func NewARCASetupHandler(setup ARCASetupService) *ARCASetupHandler {
 	return &ARCASetupHandler{setup: setup}
 }
 
-// Get returns public setup metadata.
-// @Summary Get ARCA homologation setup
+// Get returns the account's public setup material.
+// @Summary Get ARCA setup
 // @Tags arca
 // @Produce json
 // @Security BearerAuth
@@ -51,8 +50,6 @@ func (h *ARCASetupHandler) Get(c *gin.Context) {
 		response.HasCertificate = setup.Certificate != ""
 		response.Certificate = setup.Certificate
 		response.CertificateExpiresAt = setup.CertificateExpiresAt
-		response.PointOfSale = setup.PointOfSale
-		response.VerifiedAt = setup.VerifiedAt
 	}
 	c.JSON(http.StatusOK, response)
 }
@@ -80,7 +77,7 @@ func (h *ARCASetupHandler) Create(c *gin.Context) {
 }
 
 // Upload installs the public ARCA certificate matching the generated key.
-// @Summary Install ARCA homologation certificate
+// @Summary Install ARCA certificate
 // @Tags arca
 // @Accept json
 // @Security BearerAuth
@@ -104,8 +101,8 @@ func (h *ARCASetupHandler) Upload(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// Delete disconnects the account and every branch.
-// @Summary Disconnect ARCA homologation
+// Delete removes the account's ARCA credential, finished or in progress.
+// @Summary Disconnect ARCA
 // @Tags arca
 // @Security BearerAuth
 // @Success 204
@@ -120,32 +117,4 @@ func (h *ARCASetupHandler) Delete(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
-}
-
-// Verify checks access through a read-only request for a test invoice's last number.
-// @Summary Verify ARCA homologation access
-// @Tags arca
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param X-Branch-Id header string true "Active branch"
-// @Param request body dto.VerifyARCASetupRequest true "Test point of sale"
-// @Success 200 {object} dto.ARCAConnectionResponse
-// @Router /v1/arca/setup/verify [post]
-func (h *ARCASetupHandler) Verify(c *gin.Context) {
-	tenant, ok := tenantOf(c)
-	if !ok {
-		return
-	}
-	var body dto.VerifyARCASetupRequest
-	if err := c.ShouldBindJSON(&body); err != nil {
-		RespondBindError(c, err)
-		return
-	}
-	result, err := h.setup.Verify(c.Request.Context(), tenant, body.PointOfSale)
-	if err != nil {
-		Respond(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, dto.ARCAConnectionResponse{Verified: result.Failure == "", Failure: result.Failure, LastNumber: result.LastNumber})
 }

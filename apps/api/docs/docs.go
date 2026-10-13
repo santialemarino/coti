@@ -245,7 +245,7 @@ const docTemplate = `{
                 "tags": [
                     "arca"
                 ],
-                "summary": "Get ARCA homologation setup",
+                "summary": "Get ARCA setup",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -293,7 +293,7 @@ const docTemplate = `{
                 "tags": [
                     "arca"
                 ],
-                "summary": "Disconnect ARCA homologation",
+                "summary": "Disconnect ARCA",
                 "responses": {
                     "204": {
                         "description": "No Content"
@@ -314,7 +314,7 @@ const docTemplate = `{
                 "tags": [
                     "arca"
                 ],
-                "summary": "Install ARCA homologation certificate",
+                "summary": "Install ARCA certificate",
                 "parameters": [
                     {
                         "description": "Public PEM certificate",
@@ -329,51 +329,6 @@ const docTemplate = `{
                 "responses": {
                     "204": {
                         "description": "No Content"
-                    }
-                }
-            }
-        },
-        "/v1/arca/setup/verify": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "arca"
-                ],
-                "summary": "Verify ARCA homologation access",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Active branch",
-                        "name": "X-Branch-Id",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "description": "Test point of sale",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.VerifyARCASetupRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.ARCAConnectionResponse"
-                        }
                     }
                 }
             }
@@ -1629,6 +1584,69 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/dto.InvoiceResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/invoicing/points-of-sale": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Sets the listed branches' ARCA points of sale in one write; 409 POINT_OF_SALE_TAKEN when two branches would share one.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "Update points of sale",
+                "parameters": [
+                    {
+                        "description": "Points of sale",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdatePointsOfSaleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.InvoicingSettingsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
                         }
                     }
                 }
@@ -6623,20 +6641,6 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "dto.ARCAConnectionResponse": {
-            "type": "object",
-            "properties": {
-                "failure": {
-                    "type": "string"
-                },
-                "last_number": {
-                    "type": "integer"
-                },
-                "verified": {
-                    "type": "boolean"
-                }
-            }
-        },
         "dto.ARCACredentialResponse": {
             "type": "object",
             "properties": {
@@ -6672,13 +6676,7 @@ const docTemplate = `{
                 "has_certificate": {
                     "type": "boolean"
                 },
-                "point_of_sale": {
-                    "type": "integer"
-                },
                 "tax_id": {
-                    "type": "string"
-                },
-                "verified_at": {
                     "type": "string"
                 }
             }
@@ -9845,6 +9843,20 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.UpdatePointsOfSaleRequest": {
+            "type": "object",
+            "required": [
+                "branches"
+            ],
+            "properties": {
+                "branches": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.BranchPointOfSaleInput"
+                    }
+                }
+            }
+        },
         "dto.UpdateProductRequest": {
             "type": "object",
             "required": [
@@ -10041,19 +10053,6 @@ const docTemplate = `{
                 },
                 "rate": {
                     "type": "string"
-                }
-            }
-        },
-        "dto.VerifyARCASetupRequest": {
-            "type": "object",
-            "required": [
-                "point_of_sale"
-            ],
-            "properties": {
-                "point_of_sale": {
-                    "type": "integer",
-                    "maximum": 99998,
-                    "minimum": 1
                 }
             }
         }

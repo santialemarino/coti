@@ -158,11 +158,23 @@ func (s *InvoiceService) UpdateSettings(
 		if err := s.store.UpdateAccountFiscal(ctx, q, tenant.AccountID, in.IVACondition, in.PricesIncludeVAT); err != nil {
 			return err
 		}
-		err := s.store.UpdateBranchPointsOfSale(ctx, q, tenant.AccountID, in.PointsOfSale)
-		if errors.Is(err, domain.ErrConflict) {
-			return domain.WithCode(domain.CodePointOfSaleTaken, err)
-		}
-		return err
+		return s.savePointsOfSale(ctx, q, tenant.AccountID, in.PointsOfSale)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.GetSettings(ctx, tenant)
+}
+
+// UpdatePointsOfSale sets the given branches' points of sale and leaves every other setting alone.
+func (s *InvoiceService) UpdatePointsOfSale(
+	ctx context.Context, tenant domain.Tenant, points map[uuid.UUID]*int,
+) (*domain.InvoicingSettings, error) {
+	if err := validatePointsOfSale(points); err != nil {
+		return nil, err
+	}
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		return s.savePointsOfSale(ctx, q, tenant.AccountID, points)
 	})
 	if err != nil {
 		return nil, err
@@ -692,6 +704,17 @@ func validCUIT(digits string) bool {
 		check = 9
 	}
 	return int(digits[10]-'0') == check
+}
+
+// savePointsOfSale writes the points of sale, wording a number another branch keeps.
+func (s *InvoiceService) savePointsOfSale(
+	ctx context.Context, q repository.Querier, accountID uuid.UUID, points map[uuid.UUID]*int,
+) error {
+	err := s.store.UpdateBranchPointsOfSale(ctx, q, accountID, points)
+	if errors.Is(err, domain.ErrConflict) {
+		return domain.WithCode(domain.CodePointOfSaleTaken, err)
+	}
+	return err
 }
 
 // validatePointsOfSale refuses a number ARCA does not accept and one number given to two branches.

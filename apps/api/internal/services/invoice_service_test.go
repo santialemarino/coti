@@ -22,7 +22,10 @@ func (invoiceTestDB) InTenantTx(_ context.Context, _ domain.Tenant, fn func(repo
 }
 
 type fakeInvoicingStore struct {
-	savedProfile   *domain.InvoiceIssuerProfile
+	savedProfile *domain.InvoiceIssuerProfile
+	// Off by default; a test turns it on to prove a refusal does not depend on the index.
+	noUniqueIndex  bool
+	pointWrites    int
 	snapshotErr    error
 	snapshotSource *domain.QuoteRepresentationSource
 	sourceErr      error
@@ -58,10 +61,14 @@ func (f *fakeInvoicingStore) GetBranchPointOfSale(context.Context, repository.Qu
 }
 
 func (f *fakeInvoicingStore) UpdateBranchPointsOfSale(_ context.Context, _ repository.Querier, _ uuid.UUID, points map[uuid.UUID]*int) error {
+	f.pointWrites++
 	for i := range f.branches {
 		if pos, ok := points[f.branches[i].BranchID]; ok {
 			f.branches[i].PointOfSale = pos
 		}
+	}
+	if f.noUniqueIndex {
+		return nil
 	}
 	// Mirrors uq_branch_point_of_sale.
 	seen := map[int]bool{}
@@ -453,6 +460,40 @@ func TestInvoiceService_UpdateSettingsRefusesASharedPointOfSale(t *testing.T) {
 
 	if domain.CodeOf(err) != domain.CodePointOfSaleTaken {
 		t.Fatalf("err = %v, want POINT_OF_SALE_TAKEN", err)
+	}
+}
+
+// The duplicate is refused by the service before any write, so it holds even where no index would
+// catch it.
+func TestInvoiceService_UpdatePointsOfSaleRefusesADuplicateBeforeWriting(t *testing.T) {
+	t.Parallel()
+	f := newInvoiceFixture(t)
+	f.store.noUniqueIndex = true
+	first, second := uuid.New(), uuid.New()
+	f.store.branches = []domain.BranchPointOfSale{{BranchID: first}, {BranchID: second}}
+	pos := 4
+
+	_, err := f.service.UpdatePointsOfSale(context.Background(), f.tenant, map[uuid.UUID]*int{first: &pos, second: &pos})
+
+	if domain.CodeOf(err) != domain.CodePointOfSaleTaken || !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("err = %v, want 409 POINT_OF_SALE_TAKEN", err)
+	}
+	if f.store.pointWrites != 0 {
+		t.Fatal("the duplicate reached the store")
+	}
+}
+
+func TestInvoiceService_UpdatePointsOfSaleWordsTheIndexRefusal(t *testing.T) {
+	t.Parallel()
+	f := newInvoiceFixture(t)
+	first, second := uuid.New(), uuid.New()
+	kept := 4
+	f.store.branches = []domain.BranchPointOfSale{{BranchID: first, PointOfSale: &kept}, {BranchID: second}}
+
+	_, err := f.service.UpdatePointsOfSale(context.Background(), f.tenant, map[uuid.UUID]*int{second: &kept})
+
+	if domain.CodeOf(err) != domain.CodePointOfSaleTaken {
+		t.Fatalf("err = %v, want POINT_OF_SALE_TAKEN for a number another branch keeps", err)
 	}
 }
 

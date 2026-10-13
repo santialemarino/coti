@@ -1,14 +1,5 @@
 basePath: /
 definitions:
-  dto.ARCAConnectionResponse:
-    properties:
-      failure:
-        type: string
-      last_number:
-        type: integer
-      verified:
-        type: boolean
-    type: object
   dto.ARCACredentialResponse:
     properties:
       cuit:
@@ -32,11 +23,7 @@ definitions:
         type: boolean
       has_certificate:
         type: boolean
-      point_of_sale:
-        type: integer
       tax_id:
-        type: string
-      verified_at:
         type: string
     type: object
   dto.AccountResponse:
@@ -2179,6 +2166,15 @@ definitions:
       profile:
         $ref: '#/definitions/dto.InvoiceIssuerProfileRequest'
     type: object
+  dto.UpdatePointsOfSaleRequest:
+    properties:
+      branches:
+        items:
+          $ref: '#/definitions/dto.BranchPointOfSaleInput'
+        type: array
+    required:
+    - branches
+    type: object
   dto.UpdateProductRequest:
     properties:
       canonical_name:
@@ -2317,15 +2313,6 @@ definitions:
         type: string
       rate:
         type: string
-    type: object
-  dto.VerifyARCASetupRequest:
-    properties:
-      point_of_sale:
-        maximum: 99998
-        minimum: 1
-        type: integer
-    required:
-    - point_of_sale
     type: object
 info:
   contact: {}
@@ -2483,7 +2470,7 @@ paths:
           description: No Content
       security:
       - BearerAuth: []
-      summary: Disconnect ARCA homologation
+      summary: Disconnect ARCA
       tags:
       - arca
     get:
@@ -2496,7 +2483,7 @@ paths:
             $ref: '#/definitions/dto.ARCASetupResponse'
       security:
       - BearerAuth: []
-      summary: Get ARCA homologation setup
+      summary: Get ARCA setup
       tags:
       - arca
     post:
@@ -2534,35 +2521,7 @@ paths:
           description: No Content
       security:
       - BearerAuth: []
-      summary: Install ARCA homologation certificate
-      tags:
-      - arca
-  /v1/arca/setup/verify:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Active branch
-        in: header
-        name: X-Branch-Id
-        required: true
-        type: string
-      - description: Test point of sale
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.VerifyARCASetupRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.ARCAConnectionResponse'
-      security:
-      - BearerAuth: []
-      summary: Verify ARCA homologation access
+      summary: Install ARCA certificate
       tags:
       - arca
   /v1/auth/change-email:
@@ -3394,6 +3353,47 @@ paths:
       security:
       - BearerAuth: []
       summary: Recover invoice authorization
+      tags:
+      - invoicing
+  /v1/invoicing/points-of-sale:
+    put:
+      consumes:
+      - application/json
+      description: Sets the listed branches' ARCA points of sale in one write; 409
+        POINT_OF_SALE_TAKEN when two branches would share one.
+      parameters:
+      - description: Points of sale
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdatePointsOfSaleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.InvoicingSettingsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update points of sale
       tags:
       - invoicing
   /v1/invoicing/settings:

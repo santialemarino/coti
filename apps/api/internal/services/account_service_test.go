@@ -19,11 +19,17 @@ func (*accountTestDB) AdminTx(context.Context) (pgx.Tx, error) { return nil, err
 type accountTestRepo struct {
 	account *domain.Account
 	updated *domain.AccountUpdate
+	locked  bool
 }
 
 func (r *accountTestRepo) GetByID(context.Context, repository.Querier, uuid.UUID) (*domain.Account, error) {
 	copy := *r.account
 	return &copy, nil
+}
+
+func (r *accountTestRepo) GetByIDForUpdate(ctx context.Context, q repository.Querier, id uuid.UUID) (*domain.Account, error) {
+	r.locked = true
+	return r.GetByID(ctx, q, id)
 }
 
 func (r *accountTestRepo) Create(context.Context, repository.Querier, string, *string, *string) (*domain.Account, error) {
@@ -73,6 +79,9 @@ func TestAccountService_UpdateLocksTheCUITWhileARCAIsConnected(t *testing.T) {
 			}
 			if err != nil || repo.updated == nil {
 				t.Fatalf("err = %v, want the account updated", err)
+			}
+			if !repo.locked {
+				t.Fatal("the CUIT was compared without locking the account row")
 			}
 		})
 	}

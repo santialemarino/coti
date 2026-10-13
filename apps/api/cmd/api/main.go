@@ -172,7 +172,7 @@ func run() error {
 	}
 	invoiceService := services.NewInvoiceService(db, repository.NewInvoicingRepository(), quoteRepo, quoteDiscountRepo, arcainvoice.NewIssuer(arcainvoice.Settings{Environment: arcainvoice.EnvironmentHomologation, Timeout: cfg.ARCA.Timeout, Log: log}, arcainvoice.NewMemoryTicketCache()), arcaCipher, services.InvoiceSettings{Enabled: arcaCipher.Enabled(), Environment: arcainvoice.EnvironmentHomologation, IssueTimeout: cfg.ARCA.IssueTimeout, ReconcileAfter: cfg.ARCA.ReconcileAfter, UnidentifiedMax: decimal.Zero, LogoMaxBytes: cfg.QuoteLogo.MaxSizeBytes, LogoMaxPixels: cfg.QuoteLogo.MaxPixels}, nil, accountService, quotePDF.NewInvoiceRenderer())
 	arcaSetupService := services.NewARCASetupService(db, arcaSetupRepo, accountRepo, arcaCipher,
-		arca.NewSetupConnector(cfg.ARCA.Timeout))
+		arca.NewSetupConnector())
 	catalogSearchService := services.NewCatalogSearchService(db, productRepo, providers.Embedder,
 		cfg.Catalog)
 	catalogMatchService := services.NewCatalogMatchService(catalogSearchService, cfg.Catalog).

@@ -12,21 +12,18 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
-// ARCASetupRepository persists encrypted account credentials and branch verification.
+// ARCASetupRepository persists an account's encrypted ARCA credentials.
 type ARCASetupRepository struct{}
 
 // NewARCASetupRepository builds an ARCASetupRepository.
 func NewARCASetupRepository() *ARCASetupRepository { return &ARCASetupRepository{} }
 
-// Get returns the account setup and the selected branch's verification.
-func (r *ARCASetupRepository) Get(ctx context.Context, q Querier, accountID, branchID uuid.UUID) (*domain.ARCASetup, error) {
+// Get returns the account's setup. Returns domain.ErrNotFound when it has none.
+func (r *ARCASetupRepository) Get(ctx context.Context, q Querier, accountID uuid.UUID) (*domain.ARCASetup, error) {
 	var s domain.ARCASetup
-	err := q.QueryRow(ctx, `SELECT s.id, s.tax_id, s.csr, s.sealed_key, s.certificate,
-	 s.sealed_ticket, s.certificate_expires_at, COALESCE(b.point_of_sale, 0), b.verified_at
-	 FROM arca_setup s LEFT JOIN branch_arca_setup b
-	 ON b.account_id = s.account_id AND b.setup_id = s.id AND b.branch_id = $2
-	 WHERE s.account_id = $1`, accountID, branchID).Scan(&s.ID, &s.TaxID, &s.CSR, &s.SealedKey,
-		&s.Certificate, &s.SealedTicket, &s.CertificateExpiresAt, &s.PointOfSale, &s.VerifiedAt)
+	err := q.QueryRow(ctx, `SELECT id, tax_id, csr, sealed_key, certificate, certificate_expires_at
+	 FROM arca_setup WHERE account_id = $1`, accountID).Scan(&s.ID, &s.TaxID, &s.CSR, &s.SealedKey,
+		&s.Certificate, &s.CertificateExpiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -44,7 +41,11 @@ func (r *ARCASetupRepository) Exists(ctx context.Context, q Querier, accountID u
 func (r *ARCASetupRepository) Create(ctx context.Context, q Querier, accountID uuid.UUID, s domain.ARCASetup) error {
 	_, err := q.Exec(ctx, `INSERT INTO arca_setup (id, account_id, tax_id, csr, sealed_key)
 	 VALUES ($1, $2, $3, $4, $5)`, s.ID, accountID, s.TaxID, s.CSR, s.SealedKey)
-	return arcaConstraintError(err)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return domain.ErrConflict
+	}
+	return err
 }
 
 // SaveCertificate installs the certificate if the request has not changed.
@@ -60,44 +61,8 @@ func (r *ARCASetupRepository) SaveCertificate(ctx context.Context, q Querier, ac
 	return nil
 }
 
-// SaveTicket retains a WSAA ticket without marking a branch as verified.
-func (r *ARCASetupRepository) SaveTicket(ctx context.Context, q Querier, accountID, setupID uuid.UUID, ticket string) error {
-	tag, err := q.Exec(ctx, `UPDATE arca_setup SET sealed_ticket = $3 WHERE account_id = $1 AND id = $2`, accountID, setupID, ticket)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return domain.ErrConflict
-	}
-	return nil
-}
-
-// SaveBranch records a successful check under the unchanged account identity.
-func (r *ARCASetupRepository) SaveBranch(ctx context.Context, q Querier, accountID, branchID, setupID uuid.UUID, pointOfSale int) error {
-	tag, err := q.Exec(ctx, `WITH configured AS (UPDATE branch SET point_of_sale = $4 WHERE account_id = $1 AND id = $2 RETURNING id)
- INSERT INTO branch_arca_setup (account_id, branch_id, setup_id, point_of_sale)
-	 SELECT $1, $2, id, $4 FROM arca_setup WHERE account_id = $1 AND id = $3 AND EXISTS (SELECT 1 FROM configured)
-	 ON CONFLICT (account_id, branch_id) DO UPDATE SET setup_id = EXCLUDED.setup_id,
-	 point_of_sale = EXCLUDED.point_of_sale, verified_at = now()`, accountID, branchID, setupID, pointOfSale)
-	if err != nil {
-		return arcaConstraintError(err)
-	}
-	if tag.RowsAffected() == 0 {
-		return domain.ErrConflict
-	}
-	return nil
-}
-
-// Delete removes the setup and every branch verification under it.
+// Delete removes the account's setup.
 func (r *ARCASetupRepository) Delete(ctx context.Context, q Querier, accountID uuid.UUID) error {
 	_, err := q.Exec(ctx, `DELETE FROM arca_setup WHERE account_id = $1`, accountID)
-	return err
-}
-
-func arcaConstraintError(err error) error {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && (pgErr.Code == "23505" || pgErr.Code == "23503") {
-		return domain.ErrConflict
-	}
 	return err
 }
