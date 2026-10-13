@@ -485,6 +485,37 @@ func TestInvoicingRepository_EachEnvironmentNumbersOnItsOwn(t *testing.T) {
 
 // A sale holds one live invoice per environment: the test one never stops the real one, and each
 // environment still refuses a second.
+// A real invoice is a fiscal record: a server switched back to test mode still sees it holding the sale.
+func TestQuoteRepository_ARealInvoiceIsLiveInEveryEnvironment(t *testing.T) {
+	db, tenant, quoteID, versionID, _ := invoiceFixture(t)
+	ctx := context.Background()
+	repo, quotes := NewInvoicingRepository(), NewQuoteRepository()
+	in := pendingInvoice(tenant, quoteID, versionID)
+	in.Environment = domain.ARCAEnvironmentProduction
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		real, err := repo.CreatePending(ctx, q, in)
+		if err != nil {
+			return err
+		}
+		_, err = repo.MarkIssued(ctx, q, tenant.AccountID, tenant.BranchID, real.ID, domain.InvoiceAuthorization{
+			Number: 1, CAE: "74123456789012", CAEExpiresOn: time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC)})
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var live bool
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		var err error
+		live, err = quotes.HasLiveInvoice(ctx, q, tenant.AccountID, tenant.BranchID, quoteID, domain.ARCAEnvironmentHomologation)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !live {
+		t.Fatal("a sale with a real invoice reads as free on a server in test mode")
+	}
+}
+
 func TestInvoicingRepository_OneLiveInvoicePerSalePerEnvironment(t *testing.T) {
 	db, tenant, quoteID, versionID, _ := invoiceFixture(t)
 	ctx := context.Background()
@@ -559,5 +590,9 @@ func TestInvoicingRepository_OneLiveInvoicePerSalePerEnvironment(t *testing.T) {
 	}
 	if _, err := create(domain.ARCAEnvironmentProduction); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("second real invoice = %v, want ErrConflict", err)
+	}
+	// A real invoice is a fiscal record, so it holds the sale even on a server back in test mode.
+	if latest, _, live := read(domain.ARCAEnvironmentHomologation); latest == nil || latest.ID != real.ID || !live {
+		t.Fatalf("real invoice under homologation: latest = %+v, live = %v, want it holding the sale", latest, live)
 	}
 }

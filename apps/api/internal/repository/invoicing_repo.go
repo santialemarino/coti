@@ -307,14 +307,15 @@ func (r *InvoicingRepository) LockAccountForShare(ctx context.Context, q Querier
 	return err
 }
 
-// GetLatestByQuote returns the quote's newest invoice made in env, or still pending in any
-// environment, nil when it has none. An invoice of the other environment never holds the sale here.
+// GetLatestByQuote returns the quote's newest invoice made in env, still pending anywhere, or issued
+// in production, nil when it has none. A test invoice never holds the sale in production.
 func (r *InvoicingRepository) GetLatestByQuote(
 	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID, env domain.ARCAEnvironment,
 ) (*domain.Invoice, error) {
 	inv, err := scanInvoice(q.QueryRow(ctx,
 		`SELECT `+invoiceColumns+` FROM invoice
-		 WHERE account_id = $1 AND quote_id = $2 AND branch_id = $3 AND (environment = $4 OR status = 'PENDING')
+		 WHERE account_id = $1 AND quote_id = $2 AND branch_id = $3
+		   AND (environment = $4 OR status = 'PENDING' OR (status = 'ISSUED' AND environment = 'PRODUCTION'))
 		 ORDER BY created_at DESC, id DESC LIMIT 1`, accountID, quoteID, branchID, env))
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil, nil
