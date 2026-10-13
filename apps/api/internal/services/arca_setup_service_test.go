@@ -16,6 +16,14 @@ import (
 type setupTestStore struct {
 	setup   *domain.ARCASetup
 	account uuid.UUID
+	pending bool
+}
+
+func (f *setupTestStore) Exists(context.Context, repository.Querier, uuid.UUID) (bool, error) {
+	return f.setup != nil, nil
+}
+func (f *setupTestStore) HasPendingInvoice(context.Context, repository.Querier, uuid.UUID) (bool, error) {
+	return f.pending, nil
 }
 
 func (f *setupTestStore) Get(_ context.Context, _ repository.Querier, account uuid.UUID) (*domain.ARCASetup, error) {
@@ -175,5 +183,24 @@ func TestARCASetupService_CreateRefusesAnAccountWithoutAValidCUIT(t *testing.T) 
 				t.Fatal("a request was generated without the account CUIT")
 			}
 		})
+	}
+}
+
+func TestARCASetupService_DeleteWaitsForPendingInvoices(t *testing.T) {
+	t.Parallel()
+	s, store, _, _, tenant := setupTestService(t)
+	if _, err := s.Create(context.Background(), tenant); err != nil {
+		t.Fatal(err)
+	}
+	store.pending = true
+	if err := s.Delete(context.Background(), tenant); domain.CodeOf(err) != domain.CodeInvoicePending {
+		t.Fatalf("err = %v, want INVOICE_PENDING", err)
+	}
+	if store.setup == nil {
+		t.Fatal("the credential went while an invoice waited for ARCA")
+	}
+	store.pending = false
+	if err := s.Delete(context.Background(), tenant); err != nil || store.setup != nil {
+		t.Fatalf("err = %v, setup = %v, want it removed", err, store.setup)
 	}
 }

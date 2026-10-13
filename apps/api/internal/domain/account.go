@@ -28,6 +28,8 @@ type AccountUpdate struct {
 	TaxID        *string
 	BrandLogoURL *string
 	BrandColor   *string
+	// DisconnectARCA confirms that a new CUIT may remove the ARCA connection made with the old one.
+	DisconnectARCA bool
 }
 
 // AccountLogo is one account logo stored under a public, unguessable identifier.

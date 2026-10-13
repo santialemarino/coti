@@ -121,11 +121,12 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	}
 
 	account, err := h.accounts.Update(c.Request.Context(), tenant, domain.AccountUpdate{
-		Name:         body.Name,
-		LegalName:    body.LegalName,
-		TaxID:        body.TaxID,
-		BrandLogoURL: body.BrandLogoURL,
-		BrandColor:   body.BrandColor,
+		Name:           body.Name,
+		LegalName:      body.LegalName,
+		TaxID:          body.TaxID,
+		BrandLogoURL:   body.BrandLogoURL,
+		BrandColor:     body.BrandColor,
+		DisconnectARCA: body.DisconnectARCA,
 	})
 	if err != nil {
 		Respond(c, err)

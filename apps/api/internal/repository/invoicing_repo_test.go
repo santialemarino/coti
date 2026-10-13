@@ -396,3 +396,44 @@ func TestInvoicingRepository_ListNarrowsToTheBranchSet(t *testing.T) {
 		}
 	}
 }
+
+// A pending invoice is what keeps the ARCA connection from going.
+func TestARCASetupRepository_HasPendingInvoice(t *testing.T) {
+	db, tenant, quoteID, versionID, _ := invoiceFixture(t)
+	ctx := context.Background()
+	setups := NewARCASetupRepository()
+	pending := func() bool {
+		var has bool
+		if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+			var err error
+			has, err = setups.HasPendingInvoice(ctx, q, tenant.AccountID)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return has
+	}
+	if pending() {
+		t.Fatal("an account with no invoices reads as pending")
+	}
+	var invoice *domain.Invoice
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		var err error
+		invoice, err = NewInvoicingRepository().CreatePending(ctx, q, pendingInvoice(tenant, quoteID, versionID))
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !pending() {
+		t.Fatal("a pending invoice was not seen")
+	}
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		return NewInvoicingRepository().MarkRejected(ctx, q, tenant.AccountID, tenant.BranchID, invoice.ID,
+			domain.InvoiceRejectedError{Issues: []string{"rechazada"}})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if pending() {
+		t.Fatal("a rejected invoice still reads as pending")
+	}
+}

@@ -2058,6 +2058,11 @@ definitions:
       brand_logo_url:
         maxLength: 512
         type: string
+      disconnect_arca:
+        description: |-
+          Confirms that a new tax_id removes the ARCA connection made with the old one; without it the
+          change is refused with 409 ARCA_CONNECTED.
+        type: boolean
       legal_name:
         maxLength: 255
         type: string

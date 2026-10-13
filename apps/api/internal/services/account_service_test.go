@@ -41,10 +41,23 @@ func (r *accountTestRepo) Update(_ context.Context, _ repository.Querier, _ uuid
 	return &domain.Account{Name: in.Name, TaxID: in.TaxID}, nil
 }
 
-type accountTestARCASetups struct{ connected bool }
+type accountTestARCASetups struct {
+	connected bool
+	pending   bool
+	deleted   bool
+}
 
-func (f accountTestARCASetups) Exists(context.Context, repository.Querier, uuid.UUID) (bool, error) {
+func (f *accountTestARCASetups) Exists(context.Context, repository.Querier, uuid.UUID) (bool, error) {
 	return f.connected, nil
+}
+
+func (f *accountTestARCASetups) HasPendingInvoice(context.Context, repository.Querier, uuid.UUID) (bool, error) {
+	return f.pending, nil
+}
+
+func (f *accountTestARCASetups) Delete(context.Context, repository.Querier, uuid.UUID) error {
+	f.deleted = true
+	return nil
 }
 
 func TestAccountService_UpdateLocksTheCUITWhileARCAIsConnected(t *testing.T) {
@@ -66,7 +79,7 @@ func TestAccountService_UpdateLocksTheCUITWhileARCAIsConnected(t *testing.T) {
 			t.Parallel()
 			repo := &accountTestRepo{account: &domain.Account{Name: "Corralón", TaxID: &stored}}
 			service := &AccountService{db: &accountTestDB{}, accounts: repo,
-				arcaSetups: accountTestARCASetups{connected: tc.connected}}
+				arcaSetups: &accountTestARCASetups{connected: tc.connected}}
 
 			_, err := service.Update(context.Background(), domain.Tenant{AccountID: uuid.New()},
 				domain.AccountUpdate{Name: "Corralón", TaxID: tc.taxID})
@@ -82,6 +95,43 @@ func TestAccountService_UpdateLocksTheCUITWhileARCAIsConnected(t *testing.T) {
 			}
 			if !repo.locked {
 				t.Fatal("the CUIT was compared without locking the account row")
+			}
+		})
+	}
+}
+
+func TestAccountService_UpdateDisconnectsARCAOnlyWhenConfirmed(t *testing.T) {
+	t.Parallel()
+	stored, other := "30-71234567-9", "20-32964233-0"
+	cases := []struct {
+		name     string
+		confirm  bool
+		pending  bool
+		wantCode domain.ErrorCode
+		deleted  bool
+	}{
+		{"unconfirmed", false, false, domain.CodeARCAConnected, false},
+		{"confirmed", true, false, "", true},
+		{"confirmed with an invoice waiting for ARCA", true, true, domain.CodeInvoicePending, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repo := &accountTestRepo{account: &domain.Account{Name: "Corralón", TaxID: &stored}}
+			setups := &accountTestARCASetups{connected: true, pending: tc.pending}
+			service := &AccountService{db: &accountTestDB{}, accounts: repo, arcaSetups: setups}
+
+			_, err := service.Update(context.Background(), domain.Tenant{AccountID: uuid.New()},
+				domain.AccountUpdate{Name: "Corralón", TaxID: &other, DisconnectARCA: tc.confirm})
+
+			if tc.wantCode != "" {
+				if domain.CodeOf(err) != tc.wantCode || repo.updated != nil || setups.deleted {
+					t.Fatalf("err = %v, updated = %v, deleted = %v, want %s and nothing written", err, repo.updated, setups.deleted, tc.wantCode)
+				}
+				return
+			}
+			if err != nil || repo.updated == nil || !setups.deleted {
+				t.Fatalf("err = %v, updated = %v, deleted = %v, want both written", err, repo.updated, setups.deleted)
 			}
 		})
 	}

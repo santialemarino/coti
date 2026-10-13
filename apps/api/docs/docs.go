@@ -9694,6 +9694,10 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 512
                 },
+                "disconnect_arca": {
+                    "description": "Confirms that a new tax_id removes the ARCA connection made with the old one; without it the\nchange is refused with 409 ARCA_CONNECTED.",
+                    "type": "boolean"
+                },
                 "legal_name": {
                     "type": "string",
                     "maxLength": 255

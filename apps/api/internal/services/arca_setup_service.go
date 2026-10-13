@@ -15,6 +15,8 @@ import (
 
 type arcaSetupStore interface {
 	Get(context.Context, repository.Querier, uuid.UUID) (*domain.ARCASetup, error)
+	Exists(context.Context, repository.Querier, uuid.UUID) (bool, error)
+	HasPendingInvoice(context.Context, repository.Querier, uuid.UUID) (bool, error)
 	Create(context.Context, repository.Querier, uuid.UUID, domain.ARCASetup) error
 	SaveCertificate(context.Context, repository.Querier, uuid.UUID, uuid.UUID, string, time.Time) error
 	Delete(context.Context, repository.Querier, uuid.UUID) error
@@ -133,14 +135,21 @@ func (s *ARCASetupService) Upload(ctx context.Context, tenant domain.Tenant, cer
 	})
 }
 
-// Delete removes the account's credential, whether the connection is finished or in progress.
+// Delete removes the account's credential, whether the connection is finished or in progress, unless
+// an invoice issued with it is still waiting for ARCA. The account row is locked first, as a CUIT
+// change does.
 func (s *ARCASetupService) Delete(ctx context.Context, tenant domain.Tenant) error {
 	if !tenant.IsAdmin() {
 		return domain.ErrForbidden
 	}
 	unlock := s.lock(tenant.AccountID)
 	defer unlock()
-	return s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error { return s.store.Delete(ctx, q, tenant.AccountID) })
+	return s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		if _, err := s.accounts.GetByIDForUpdate(ctx, q, tenant.AccountID); err != nil {
+			return err
+		}
+		return disconnectARCA(ctx, q, s.store, tenant.AccountID)
+	})
 }
 
 func (s *ARCASetupService) load(ctx context.Context, tenant domain.Tenant) (*domain.ARCASetup, error) {

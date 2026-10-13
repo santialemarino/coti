@@ -37,6 +37,14 @@ func (r *ARCASetupRepository) Exists(ctx context.Context, q Querier, accountID u
 	return exists, err
 }
 
+// HasPendingInvoice reports whether ARCA still owes the answer for one of the account's invoices.
+func (r *ARCASetupRepository) HasPendingInvoice(ctx context.Context, q Querier, accountID uuid.UUID) (bool, error) {
+	var pending bool
+	err := q.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM invoice WHERE account_id = $1 AND status = 'PENDING')`, accountID).Scan(&pending)
+	return pending, err
+}
+
 // Create inserts the account's first certificate request.
 func (r *ARCASetupRepository) Create(ctx context.Context, q Querier, accountID uuid.UUID, s domain.ARCASetup) error {
 	_, err := q.Exec(ctx, `INSERT INTO arca_setup (id, account_id, tax_id, csr, sealed_key)
