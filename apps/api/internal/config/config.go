@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 // minJWTSecretLength is the floor for AUTH_JWT_SECRET. HMAC-SHA256 keys shorter
@@ -100,7 +102,21 @@ type ARCASetupConfig struct {
 	Timeout        time.Duration
 	IssueTimeout   time.Duration
 	ReconcileAfter time.Duration
+	// Environment is the ARCA deployment invoices are authorized in: ARCAEnvironmentHomologation or
+	// ARCAEnvironmentProduction.
+	Environment string
+	// UnidentifiedReceiverMax is the invoice total from which ARCA requires the buyer's CUIT or DNI.
+	UnidentifiedReceiverMax decimal.Decimal
 }
+
+// The ARCA deployments a server can authorize invoices in.
+const (
+	ARCAEnvironmentHomologation = "homologation"
+	ARCAEnvironmentProduction   = "production"
+)
+
+// defaultUnidentifiedReceiverMax is ARCA's identification threshold for a final consumer, in pesos.
+const defaultUnidentifiedReceiverMax = "10000000"
 
 // QuoteLogoConfig bounds retrieval of untrusted branding images.
 type QuoteLogoConfig struct {
@@ -875,11 +891,18 @@ func Load() (*Config, error) {
 			Timeout:        getDuration("ARCA_SETUP_TIMEOUT_SECONDS", 10*time.Second, &problems),
 			IssueTimeout:   getDuration("ARCA_ISSUE_TIMEOUT_SECONDS", 25*time.Second, &problems),
 			ReconcileAfter: getDuration("INVOICE_PENDING_RECONCILE_SECONDS", 300*time.Second, &problems),
+			Environment:    getString("ARCA_ENVIRONMENT", ARCAEnvironmentHomologation),
+			UnidentifiedReceiverMax: getPositiveDecimal("INVOICE_UNIDENTIFIED_RECEIVER_MAX_AMOUNT",
+				defaultUnidentifiedReceiverMax, &problems),
 		},
 	}
 
 	if cfg.ARCA.IssueTimeout <= cfg.ARCA.Timeout || cfg.ARCA.IssueTimeout >= cfg.Server.WriteTimeout {
 		problems = append(problems, "ARCA_ISSUE_TIMEOUT_SECONDS must exceed ARCA_SETUP_TIMEOUT_SECONDS and stay below SERVER_WRITE_TIMEOUT_SECONDS")
+	}
+	if cfg.ARCA.Environment != ARCAEnvironmentHomologation && cfg.ARCA.Environment != ARCAEnvironmentProduction {
+		problems = append(problems, fmt.Sprintf("ARCA_ENVIRONMENT must be %q or %q, got %q",
+			ARCAEnvironmentHomologation, ARCAEnvironmentProduction, cfg.ARCA.Environment))
 	}
 	if cfg.ARCA.ReconcileAfter <= cfg.ARCA.IssueTimeout {
 		problems = append(problems, "INVOICE_PENDING_RECONCILE_SECONDS must exceed ARCA_ISSUE_TIMEOUT_SECONDS")
@@ -1293,6 +1316,17 @@ func getInt(key string, fallback int, problems *[]string) int {
 	if err != nil {
 		*problems = append(*problems, fmt.Sprintf("%s must be an integer, got %q", key, raw))
 		return fallback
+	}
+	return v
+}
+
+// getPositiveDecimal reads an amount as an exact decimal; money never passes through a float.
+func getPositiveDecimal(key, fallback string, problems *[]string) decimal.Decimal {
+	raw := getString(key, fallback)
+	v, err := decimal.NewFromString(raw)
+	if err != nil || !v.IsPositive() {
+		*problems = append(*problems, fmt.Sprintf("%s must be a positive amount, got %q", key, raw))
+		return decimal.RequireFromString(fallback)
 	}
 	return v
 }
