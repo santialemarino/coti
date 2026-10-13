@@ -12,7 +12,7 @@ import (
 // ARCASetupService is the setup surface required by the handler.
 type ARCASetupService interface {
 	Get(context.Context, domain.Tenant) (*domain.ARCASetup, bool, error)
-	Create(context.Context, domain.Tenant, string) (*domain.ARCASetup, error)
+	Create(context.Context, domain.Tenant) (*domain.ARCASetup, error)
 	Upload(context.Context, domain.Tenant, string) error
 	Delete(context.Context, domain.Tenant) error
 	Verify(context.Context, domain.Tenant, int) (domain.ARCAConnectionResult, error)
@@ -49,6 +49,7 @@ func (h *ARCASetupHandler) Get(c *gin.Context) {
 		response.TaxID = setup.TaxID
 		response.CSR = setup.CSR
 		response.HasCertificate = setup.Certificate != ""
+		response.Certificate = setup.Certificate
 		response.CertificateExpiresAt = setup.CertificateExpiresAt
 		response.PointOfSale = setup.PointOfSale
 		response.VerifiedAt = setup.VerifiedAt
@@ -56,26 +57,21 @@ func (h *ARCASetupHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// Create generates the account's first certificate request.
-// @Summary Create ARCA homologation certificate request
+// Create generates the account's first certificate request for the account's own CUIT.
+// @Summary Create ARCA certificate request
+// @Description Generates the key and the certificate request for the CUIT on the account; 422 ACCOUNT_TAX_ID_REQUIRED when the account has none.
 // @Tags arca
-// @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body dto.CreateARCASetupRequest true "Issuer CUIT"
 // @Success 201 {object} dto.ARCASetupResponse
+// @Failure 422 {object} dto.ErrorResponse
 // @Router /v1/arca/setup [post]
 func (h *ARCASetupHandler) Create(c *gin.Context) {
 	tenant, ok := tenantOf(c)
 	if !ok {
 		return
 	}
-	var body dto.CreateARCASetupRequest
-	if err := c.ShouldBindJSON(&body); err != nil {
-		RespondBindError(c, err)
-		return
-	}
-	setup, err := h.setup.Create(c.Request.Context(), tenant, body.TaxID)
+	setup, err := h.setup.Create(c.Request.Context(), tenant)
 	if err != nil {
 		Respond(c, err)
 		return

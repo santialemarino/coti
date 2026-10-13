@@ -62,3 +62,11 @@ func TestInvoiceRenderer_LongRowsRepeatFiscalHeadersAndPreserveLogo(t *testing.T
 		}
 	}
 }
+
+func TestInvoiceGrossIncome_PrintsExemptAsAWord(t *testing.T) {
+	for raw, want := range map[string]string{domain.GrossIncomeExempt: "Exento", "exento": "Exento", "901-123456-7": "901-123456-7"} {
+		if got := invoiceGrossIncome(raw); got != want {
+			t.Errorf("invoiceGrossIncome(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}

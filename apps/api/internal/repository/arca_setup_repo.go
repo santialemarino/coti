@@ -33,6 +33,13 @@ func (r *ARCASetupRepository) Get(ctx context.Context, q Querier, accountID, bra
 	return &s, err
 }
 
+// Exists reports whether the account has an ARCA setup, finished or not.
+func (r *ARCASetupRepository) Exists(ctx context.Context, q Querier, accountID uuid.UUID) (bool, error) {
+	var exists bool
+	err := q.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM arca_setup WHERE account_id = $1)`, accountID).Scan(&exists)
+	return exists, err
+}
+
 // Create inserts the account's first certificate request.
 func (r *ARCASetupRepository) Create(ctx context.Context, q Querier, accountID uuid.UUID, s domain.ARCASetup) error {
 	_, err := q.Exec(ctx, `INSERT INTO arca_setup (id, account_id, tax_id, csr, sealed_key)

@@ -219,3 +219,37 @@ func TestAccount_UpdateTouchesOnlyTheCallersAccount(t *testing.T) {
 		}
 	}
 }
+
+// ARCA is connected with the account's CUIT, so while a connection exists the CUIT cannot change;
+// writing the same number another way is not a change.
+func TestAccount_UpdateLocksTheCUITWhileARCAIsConnected(t *testing.T) {
+	e := newEnv(t)
+	accountID, _ := e.seedAccount(t, "Corralón A")
+	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	token := e.tokenFor(t, admin)
+
+	if rec := e.do(t, request{method: http.MethodPut, path: "/v1/account", token: token,
+		body: accountBody("Corralón A", map[string]any{"tax_id": "30-71234567-9"})}); rec.Code != http.StatusOK {
+		t.Fatalf("first update: status = %d; body = %s", rec.Code, rec.Body)
+	}
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO arca_setup (account_id, tax_id, csr, sealed_key) VALUES ($1, '30712345679', 'csr', 'sealed')`,
+		accountID); err != nil {
+		t.Fatalf("seed arca setup: %v", err)
+	}
+
+	rec := e.do(t, request{method: http.MethodPut, path: "/v1/account", token: token,
+		body: accountBody("Corralón A", map[string]any{"tax_id": "20-32964233-0"})})
+	if rec.Code != http.StatusConflict || errorCode(t, rec) != string(domain.CodeARCAConnected) {
+		t.Fatalf("status = %d, body = %s, want 409 ARCA_CONNECTED", rec.Code, rec.Body)
+	}
+	if rec := e.do(t, request{method: http.MethodPut, path: "/v1/account", token: token,
+		body: accountBody("Corralón B", map[string]any{"tax_id": "30712345679"})}); rec.Code != http.StatusOK {
+		t.Fatalf("same CUIT reformatted: status = %d; body = %s", rec.Code, rec.Body)
+	}
+	var taxID string
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT tax_id FROM account WHERE id = $1`, accountID).Scan(&taxID); err != nil || taxID != "30712345679" {
+		t.Fatalf("tax_id = %q, %v", taxID, err)
+	}
+}

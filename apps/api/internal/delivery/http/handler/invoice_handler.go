@@ -298,7 +298,7 @@ func toInvoicePreviewResponse(p domain.InvoicePreview) dto.InvoicePreviewRespons
 
 func toInvoiceResponse(inv domain.Invoice) dto.InvoiceResponse {
 	response := dto.InvoiceResponse{
-		ID: inv.ID, Status: string(inv.Status), Type: string(inv.Type), PointOfSale: inv.PointOfSale,
+		ID: inv.ID, BranchID: inv.BranchID, Status: string(inv.Status), Type: string(inv.Type), PointOfSale: inv.PointOfSale,
 		Number: inv.Number, IssuedOn: inv.IssuedOn.Format("2006-01-02"), CAE: inv.CAE,
 		IssuerCUIT: inv.IssuerCUIT, Receiver: toInvoiceReceiverResponse(inv.Receiver),
 		Amounts: toInvoiceAmountsResponse(inv.Amounts), Currency: inv.Currency, Issues: inv.Issues,

@@ -54,13 +54,21 @@ func (f *setupTestStore) Delete(_ context.Context, _ repository.Querier, _ uuid.
 	return nil
 }
 
-type setupTestConnector struct {
-	result     domain.ARCAConnectionResult
-	seenTicket domain.ARCATicket
-	calls      int
+type setupTestAccounts struct{ taxID *string }
+
+func (f *setupTestAccounts) GetByID(_ context.Context, _ repository.Querier, id uuid.UUID) (*domain.Account, error) {
+	return &domain.Account{ID: id, TaxID: f.taxID}, nil
 }
 
-func (f *setupTestConnector) Generate(string) (string, string, error) {
+type setupTestConnector struct {
+	generatedFor string
+	result       domain.ARCAConnectionResult
+	seenTicket   domain.ARCATicket
+	calls        int
+}
+
+func (f *setupTestConnector) Generate(taxID string) (string, string, error) {
+	f.generatedFor = taxID
 	return "private-key", "public-csr", nil
 }
 func (f *setupTestConnector) ValidateCertificate(string, string, string) (time.Time, error) {
@@ -74,13 +82,19 @@ func (f *setupTestConnector) Verify(_ context.Context, _, _, _ string, _ int, ti
 
 func setupTestService(t *testing.T) (*ARCASetupService, *setupTestStore, *setupTestConnector, *secrets.AESGCM, domain.Tenant) {
 	t.Helper()
+	cuit := "20-32964233-0"
+	return setupTestServiceFor(t, &setupTestAccounts{taxID: &cuit})
+}
+
+func setupTestServiceFor(t *testing.T, accounts *setupTestAccounts) (*ARCASetupService, *setupTestStore, *setupTestConnector, *secrets.AESGCM, domain.Tenant) {
+	t.Helper()
 	cipher, err := secrets.NewAESGCM([]byte(strings.Repeat("x", 32)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	store := &setupTestStore{}
 	connector := &setupTestConnector{}
-	service := NewARCASetupService(&fakeDB{}, store, cipher, connector)
+	service := NewARCASetupService(&fakeDB{}, store, accounts, cipher, connector)
 	tenant := domain.Tenant{AccountID: uuid.New(), BranchID: uuid.New(), Role: domain.UserRoleAdmin}
 	return service, store, connector, cipher, tenant
 }
@@ -88,7 +102,7 @@ func setupTestService(t *testing.T) (*ARCASetupService, *setupTestStore, *setupT
 func TestARCASetupService_CredentialsAreEncryptedAndNeverReturned(t *testing.T) {
 	t.Parallel()
 	s, store, _, cipher, tenant := setupTestService(t)
-	public, err := s.Create(context.Background(), tenant, "20-32964233-0")
+	public, err := s.Create(context.Background(), tenant)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,13 +128,10 @@ func TestARCASetupService_RefusesSellersAndCrossAccountCredentials(t *testing.T)
 	s, store, connector, _, tenant := setupTestService(t)
 	seller := tenant
 	seller.Role = domain.UserRoleSeller
-	if _, err := s.Create(context.Background(), seller, "20329642330"); !errors.Is(err, domain.ErrForbidden) {
+	if _, err := s.Create(context.Background(), seller); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatal("seller generated credentials")
 	}
-	if _, err := s.Create(context.Background(), tenant, "00000000000"); !errors.Is(err, domain.ErrInvalidInput) {
-		t.Fatal("accepted fabricated identity")
-	}
-	if _, err := s.Create(context.Background(), tenant, "20329642330"); err != nil {
+	if _, err := s.Create(context.Background(), tenant); err != nil {
 		t.Fatal(err)
 	}
 	other := tenant
@@ -136,7 +147,7 @@ func TestARCASetupService_RefusesSellersAndCrossAccountCredentials(t *testing.T)
 func TestARCASetupService_PreservesTicketWhenBranchVerificationFails(t *testing.T) {
 	t.Parallel()
 	s, store, connector, _, tenant := setupTestService(t)
-	if _, err := s.Create(context.Background(), tenant, "20329642330"); err != nil {
+	if _, err := s.Create(context.Background(), tenant); err != nil {
 		t.Fatal(err)
 	}
 	connector.result = domain.ARCAConnectionResult{Ticket: domain.ARCATicket{Token: "token", Sign: "sign", ExpiresAt: time.Now().Add(time.Hour)}, Failure: "POINT_OF_SALE_REJECTED"}
@@ -151,5 +162,44 @@ func TestARCASetupService_PreservesTicketWhenBranchVerificationFails(t *testing.
 	}
 	if connector.seenTicket.Token != "token" || store.ticketWrites != 2 || store.branch != tenant.BranchID {
 		t.Fatal("ticket or branch scope was lost")
+	}
+}
+
+func TestARCASetupService_CreateUsesTheAccountCUIT(t *testing.T) {
+	t.Parallel()
+	s, store, connector, _, tenant := setupTestService(t)
+	setup, err := s.Create(context.Background(), tenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if connector.generatedFor != "20329642330" || setup.TaxID != "20329642330" || store.setup.TaxID != "20329642330" {
+		t.Fatalf("request for %q, stored %q, want the account CUIT as digits", connector.generatedFor, store.setup.TaxID)
+	}
+}
+
+func TestARCASetupService_CreateRefusesAnAccountWithoutAValidCUIT(t *testing.T) {
+	t.Parallel()
+	blank, fabricated := " ", "00-00000000-0"
+	cases := []struct {
+		name  string
+		taxID *string
+		want  domain.ErrorCode
+	}{
+		{"no CUIT", nil, domain.CodeAccountTaxIDRequired},
+		{"blank CUIT", &blank, domain.CodeAccountTaxIDRequired},
+		{"invalid CUIT", &fabricated, domain.CodeInvalidTaxID},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s, store, connector, _, tenant := setupTestServiceFor(t, &setupTestAccounts{taxID: tc.taxID})
+			_, err := s.Create(context.Background(), tenant)
+			if !errors.Is(err, domain.ErrInvalidInput) || domain.CodeOf(err) != tc.want {
+				t.Fatalf("err = %v (%s), want %s", err, domain.CodeOf(err), tc.want)
+			}
+			if store.setup != nil || connector.generatedFor != "" {
+				t.Fatal("a request was generated without the account CUIT")
+			}
+		})
 	}
 }

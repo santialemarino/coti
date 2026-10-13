@@ -261,32 +261,25 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Generates the key and the certificate request for the CUIT on the account; 422 ACCOUNT_TAX_ID_REQUIRED when the account has none.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "arca"
                 ],
-                "summary": "Create ARCA homologation certificate request",
-                "parameters": [
-                    {
-                        "description": "Issuer CUIT",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.CreateARCASetupRequest"
-                        }
-                    }
-                ],
+                "summary": "Create ARCA certificate request",
                 "responses": {
                     "201": {
                         "description": "Created",
                         "schema": {
                             "$ref": "#/definitions/dto.ARCASetupResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
                         }
                     }
                 }
@@ -1540,10 +1533,9 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Active branch",
+                        "description": "Active branch; omitted lists every branch the caller reaches",
                         "name": "X-Branch-Id",
-                        "in": "header",
-                        "required": true
+                        "in": "header"
                     },
                     {
                         "type": "integer",
@@ -6665,6 +6657,9 @@ const docTemplate = `{
         "dto.ARCASetupResponse": {
             "type": "object",
             "properties": {
+                "certificate": {
+                    "type": "string"
+                },
                 "certificate_expires_at": {
                     "type": "string"
                 },
@@ -7463,18 +7458,6 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.CreateARCASetupRequest": {
-            "type": "object",
-            "required": [
-                "tax_id"
-            ],
-            "properties": {
-                "tax_id": {
-                    "type": "string",
-                    "maxLength": 13
-                }
-            }
-        },
         "dto.CreateBranchRequest": {
             "type": "object",
             "required": [
@@ -7498,11 +7481,6 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 255,
                     "minLength": 1
-                },
-                "point_of_sale": {
-                    "type": "integer",
-                    "maximum": 99998,
-                    "minimum": 0
                 }
             }
         },
@@ -8009,6 +7987,9 @@ const docTemplate = `{
             "properties": {
                 "amounts": {
                     "$ref": "#/definitions/dto.InvoiceAmountsResponse"
+                },
+                "branch_id": {
+                    "type": "string"
                 },
                 "cae": {
                     "type": "string"
@@ -9757,11 +9738,6 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 255,
                     "minLength": 1
-                },
-                "point_of_sale": {
-                    "type": "integer",
-                    "maximum": 99998,
-                    "minimum": 0
                 }
             }
         },

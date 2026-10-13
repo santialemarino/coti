@@ -22,6 +22,7 @@ func (invoiceTestDB) InTenantTx(_ context.Context, _ domain.Tenant, fn func(repo
 }
 
 type fakeInvoicingStore struct {
+	savedProfile   *domain.InvoiceIssuerProfile
 	snapshotErr    error
 	snapshotSource *domain.QuoteRepresentationSource
 	sourceErr      error
@@ -455,6 +456,69 @@ func TestInvoiceService_UpdateSettingsRefusesASharedPointOfSale(t *testing.T) {
 	}
 }
 
+func TestInvoiceService_UpdateSettingsPersistsPointsOfSale(t *testing.T) {
+	t.Parallel()
+	f := newInvoiceFixture(t)
+	first, second := uuid.New(), uuid.New()
+	kept := 7
+	f.store.branches = []domain.BranchPointOfSale{{BranchID: first, PointOfSale: &kept}, {BranchID: second}}
+	moved := 3
+
+	settings, err := f.service.UpdateSettings(context.Background(), f.tenant, domain.InvoicingSettingsUpdate{
+		PointsOfSale: map[uuid.UUID]*int{first: nil, second: &moved}})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.Branches[0].PointOfSale != nil || *settings.Branches[1].PointOfSale != 3 {
+		t.Fatalf("branches = %+v, want the first cleared and the second at 3", settings.Branches)
+	}
+}
+
+func TestInvoiceService_UpdateSettingsRefusesAPointOfSaleOutOfRange(t *testing.T) {
+	t.Parallel()
+	for _, pos := range []int{0, domain.PointOfSaleMax + 1} {
+		f := newInvoiceFixture(t)
+		_, err := f.service.UpdateSettings(context.Background(), f.tenant, domain.InvoicingSettingsUpdate{
+			PointsOfSale: map[uuid.UUID]*int{uuid.New(): &pos}})
+		if !errors.Is(err, domain.ErrInvalidInput) {
+			t.Fatalf("point of sale %d: err = %v, want ErrInvalidInput", pos, err)
+		}
+	}
+}
+
+func TestInvoiceService_UpdateSettingsNormalizesTheIssuerProfile(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		registration string
+		want         string
+	}{
+		{" exento ", domain.GrossIncomeExempt},
+		{"901.123 456-7", "901123456-7"},
+	}
+	for _, tc := range cases {
+		f := newInvoiceFixture(t)
+		_, err := f.service.UpdateSettings(context.Background(), f.tenant, domain.InvoicingSettingsUpdate{
+			Profile: &domain.InvoiceIssuerProfile{Address: "  Av.  Rivadavia   1234 ", GrossIncomeRegistration: tc.registration, ActivityStartedOn: "2020-01-02"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := *f.store.savedProfile; got.Address != "Av. Rivadavia 1234" || got.GrossIncomeRegistration != tc.want {
+			t.Fatalf("saved %+v, want the address collapsed and the registration %q", got, tc.want)
+		}
+	}
+}
+
+func TestInvoiceService_UpdateSettingsRefusesAMalformedGrossIncomeRegistration(t *testing.T) {
+	t.Parallel()
+	f := newInvoiceFixture(t)
+	_, err := f.service.UpdateSettings(context.Background(), f.tenant, domain.InvoicingSettingsUpdate{
+		Profile: &domain.InvoiceIssuerProfile{Address: "Av. Rivadavia 1234", GrossIncomeRegistration: "en trámite", ActivityStartedOn: "2020-01-02"}})
+	if !errors.Is(err, domain.ErrInvalidInput) || f.store.savedProfile != nil {
+		t.Fatalf("err = %v, saved = %+v, want the profile refused unsaved", err, f.store.savedProfile)
+	}
+}
+
 func TestInvoiceService_StalePendingWithoutAClaimIsReleasedUnasked(t *testing.T) {
 	t.Parallel()
 	f := newInvoiceFixture(t)
@@ -584,7 +648,8 @@ func (f *fakeInvoiceQuotes) GetByIDForUpdate(ctx context.Context, q repository.Q
 	return f.GetByID(ctx, q, a, b, id)
 }
 
-func (f *fakeInvoicingStore) SaveProfile(context.Context, repository.Querier, uuid.UUID, domain.InvoiceIssuerProfile) error {
+func (f *fakeInvoicingStore) SaveProfile(_ context.Context, _ repository.Querier, _ uuid.UUID, profile domain.InvoiceIssuerProfile) error {
+	f.savedProfile = &profile
 	return nil
 }
 

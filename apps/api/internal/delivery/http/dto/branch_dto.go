@@ -33,7 +33,6 @@ type ListBranchesQuery struct {
 // CreateBranchRequest is the body for POST /v1/branches. Omitting the expiry takes the
 // configured default.
 type CreateBranchRequest struct {
-	PointOfSale       *int    `json:"point_of_sale" binding:"omitempty,min=0,max=99998"`
 	Name              string  `json:"name" binding:"required,min=1,max=255"`
 	Address           *string `json:"address" binding:"omitempty,max=255"`
 	DefaultExpiryDays int     `json:"default_expiry_days" binding:"omitempty,min=1,max=365"`
@@ -43,7 +42,6 @@ type CreateBranchRequest struct {
 // UpdateBranchRequest is the body for PUT /v1/branches/:branchId. is_active or email omitted
 // leaves it alone; a blank email clears the branch mailbox.
 type UpdateBranchRequest struct {
-	PointOfSale       *int    `json:"point_of_sale" binding:"omitempty,min=0,max=99998"`
 	Name              string  `json:"name" binding:"required,min=1,max=255"`
 	Address           *string `json:"address" binding:"omitempty,max=255"`
 	DefaultExpiryDays int     `json:"default_expiry_days" binding:"required,min=1,max=365"`

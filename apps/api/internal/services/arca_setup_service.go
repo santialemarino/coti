@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +22,10 @@ type arcaSetupStore interface {
 	SaveBranch(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID, int) error
 	Delete(context.Context, repository.Querier, uuid.UUID) error
 }
+type arcaAccountReader interface {
+	GetByID(ctx context.Context, q repository.Querier, accountID uuid.UUID) (*domain.Account, error)
+}
+
 type arcaSetupCipher interface {
 	Enabled() bool
 	Seal(string) (string, error)
@@ -31,14 +36,15 @@ type arcaSetupCipher interface {
 type ARCASetupService struct {
 	db        tenantTxRunner
 	store     arcaSetupStore
+	accounts  arcaAccountReader
 	cipher    arcaSetupCipher
 	connector domain.ARCAConnector
 	locks     sync.Map
 }
 
 // NewARCASetupService builds the setup service.
-func NewARCASetupService(db tenantTxRunner, store arcaSetupStore, cipher arcaSetupCipher, connector domain.ARCAConnector) *ARCASetupService {
-	return &ARCASetupService{db: db, store: store, cipher: cipher, connector: connector}
+func NewARCASetupService(db tenantTxRunner, store arcaSetupStore, accounts arcaAccountReader, cipher arcaSetupCipher, connector domain.ARCAConnector) *ARCASetupService {
+	return &ARCASetupService{db: db, store: store, accounts: accounts, cipher: cipher, connector: connector}
 }
 
 // Get returns public setup metadata without credentials.
@@ -58,17 +64,31 @@ func (s *ARCASetupService) Get(ctx context.Context, tenant domain.Tenant) (*doma
 	return setup, s.cipher.Enabled(), nil
 }
 
-// Create generates the account's first key and returns its public certificate request.
-func (s *ARCASetupService) Create(ctx context.Context, tenant domain.Tenant, taxID string) (*domain.ARCASetup, error) {
+// Create generates the account's first key for the account's own CUIT and returns its public
+// certificate request.
+func (s *ARCASetupService) Create(ctx context.Context, tenant domain.Tenant) (*domain.ARCASetup, error) {
 	if !tenant.IsAdmin() {
 		return nil, domain.ErrForbidden
 	}
 	if !s.cipher.Enabled() {
 		return nil, domain.ErrNotConfigured
 	}
-	taxID = strings.ReplaceAll(strings.TrimSpace(taxID), "-", "")
+	var account *domain.Account
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		var err error
+		account, err = s.accounts.GetByID(ctx, q, tenant.AccountID)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	if account.TaxID == nil || strings.TrimSpace(*account.TaxID) == "" {
+		return nil, domain.WithCode(domain.CodeAccountTaxIDRequired,
+			fmt.Errorf("%w: the account has no CUIT", domain.ErrInvalidInput))
+	}
+	taxID := domain.NormalizeTaxID(*account.TaxID)
 	if !validARCATaxID(taxID) {
-		return nil, domain.ErrInvalidInput
+		return nil, domain.WithCode(domain.CodeInvalidTaxID,
+			fmt.Errorf("%w: the account CUIT is not valid", domain.ErrInvalidInput))
 	}
 	unlock := s.lock(tenant.AccountID)
 	defer unlock()

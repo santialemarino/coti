@@ -22,6 +22,8 @@ definitions:
     type: object
   dto.ARCASetupResponse:
     properties:
+      certificate:
+        type: string
       certificate_expires_at:
         type: string
       csr:
@@ -548,14 +550,6 @@ definitions:
       imported_rows:
         type: integer
     type: object
-  dto.CreateARCASetupRequest:
-    properties:
-      tax_id:
-        maxLength: 13
-        type: string
-    required:
-    - tax_id
-    type: object
   dto.CreateBranchRequest:
     properties:
       address:
@@ -572,10 +566,6 @@ definitions:
         maxLength: 255
         minLength: 1
         type: string
-      point_of_sale:
-        maximum: 99998
-        minimum: 0
-        type: integer
     required:
     - name
     type: object
@@ -928,6 +918,8 @@ definitions:
     properties:
       amounts:
         $ref: '#/definitions/dto.InvoiceAmountsResponse'
+      branch_id:
+        type: string
       cae:
         type: string
       cae_expires_on:
@@ -2110,10 +2102,6 @@ definitions:
         maxLength: 255
         minLength: 1
         type: string
-      point_of_sale:
-        maximum: 99998
-        minimum: 0
-        type: integer
     required:
     - default_expiry_days
     - name
@@ -2512,15 +2500,8 @@ paths:
       tags:
       - arca
     post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Issuer CUIT
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.CreateARCASetupRequest'
+      description: Generates the key and the certificate request for the CUIT on the
+        account; 422 ACCOUNT_TAX_ID_REQUIRED when the account has none.
       produces:
       - application/json
       responses:
@@ -2528,9 +2509,13 @@ paths:
           description: Created
           schema:
             $ref: '#/definitions/dto.ARCASetupResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Create ARCA homologation certificate request
+      summary: Create ARCA certificate request
       tags:
       - arca
   /v1/arca/setup/certificate:
@@ -3341,10 +3326,9 @@ paths:
   /v1/invoices:
     get:
       parameters:
-      - description: Active branch
+      - description: Active branch; omitted lists every branch the caller reaches
         in: header
         name: X-Branch-Id
-        required: true
         type: string
       - description: Page number
         in: query

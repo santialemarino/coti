@@ -138,12 +138,16 @@ func (s *InvoiceService) UpdateSettings(
 		return nil, fmt.Errorf("%w: unknown IVA condition %q", domain.ErrInvalidInput, *in.IVACondition)
 	}
 	if in.Profile != nil {
-		in.Profile.Address = strings.TrimSpace(in.Profile.Address)
-		in.Profile.GrossIncomeRegistration = strings.TrimSpace(in.Profile.GrossIncomeRegistration)
+		in.Profile.Address = domain.NormalizeFiscalAddress(in.Profile.Address)
+		registration, ok := domain.NormalizeGrossIncomeRegistration(in.Profile.GrossIncomeRegistration)
 		day, err := time.Parse("2006-01-02", in.Profile.ActivityStartedOn)
-		if err != nil || day.After(domain.InvoiceDay(s.now())) || in.Profile.Address == "" || in.Profile.GrossIncomeRegistration == "" {
+		if err != nil || day.After(domain.InvoiceDay(s.now())) || in.Profile.Address == "" || !ok {
 			return nil, domain.ErrInvalidInput
 		}
+		in.Profile.GrossIncomeRegistration = registration
+	}
+	if err := validatePointsOfSale(in.PointsOfSale); err != nil {
+		return nil, err
 	}
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		if in.Profile != nil {
@@ -688,6 +692,24 @@ func validCUIT(digits string) bool {
 		check = 9
 	}
 	return int(digits[10]-'0') == check
+}
+
+// validatePointsOfSale refuses a number ARCA does not accept and one number given to two branches.
+func validatePointsOfSale(points map[uuid.UUID]*int) error {
+	seen := make(map[int]bool, len(points))
+	for _, point := range points {
+		if point == nil {
+			continue
+		}
+		if *point < domain.PointOfSaleMin || *point > domain.PointOfSaleMax {
+			return fmt.Errorf("%w: point of sale %d out of range", domain.ErrInvalidInput, *point)
+		}
+		if seen[*point] {
+			return domain.WithCode(domain.CodePointOfSaleTaken, domain.ErrConflict)
+		}
+		seen[*point] = true
+	}
+	return nil
 }
 
 func trimmedOrNil(value *string) *string {

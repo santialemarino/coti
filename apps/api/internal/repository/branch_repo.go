@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
@@ -140,7 +139,7 @@ func (r *BranchRepository) GetByID(
 		return nil, domain.ErrNotFound
 	}
 	if err != nil {
-		return nil, branchPointOfSaleError(err)
+		return nil, err
 	}
 	return branch, nil
 }
@@ -164,11 +163,11 @@ func (r *BranchRepository) Create(
 	ctx context.Context, q Querier, accountID uuid.UUID, in domain.NewBranch,
 ) (*domain.Branch, error) {
 	return scanBranch(q.QueryRow(ctx,
-		`INSERT INTO branch (account_id, name, address, default_expiry_days, point_of_sale)
-		 VALUES ($1, $2, $3, $4, NULLIF($5, 0))
+		`INSERT INTO branch (account_id, name, address, default_expiry_days)
+		 VALUES ($1, $2, $3, $4)
 		 RETURNING id, account_id, name, address, default_expiry_days, is_active,
 		           created_at, updated_at, NULL::varchar, point_of_sale`,
-		accountID, in.Name, in.Address, in.DefaultExpiryDays, in.PointOfSale))
+		accountID, in.Name, in.Address, in.DefaultExpiryDays))
 }
 
 // Update replaces the branch's editable fields, leaving is_active alone when isActive is nil.
@@ -178,15 +177,14 @@ func (r *BranchRepository) Update(
 	branch, err := scanBranch(q.QueryRow(ctx,
 		`UPDATE branch
 		 SET name = $3, address = $4, default_expiry_days = $5,
-		     is_active = COALESCE($6, is_active),
-		     point_of_sale = CASE WHEN $7::integer IS NULL THEN point_of_sale ELSE NULLIF($7, 0) END
+		     is_active = COALESCE($6, is_active)
 		 WHERE account_id = $1 AND id = $2
 		 RETURNING id, account_id, name, address, default_expiry_days, is_active,
 		           created_at, updated_at, (SELECT c.identifier FROM channel c
 		          WHERE c.account_id = branch.account_id AND c.branch_id = branch.id
 		            AND c.type = 'EMAIL' AND c.is_active
 		          ORDER BY c.created_at LIMIT 1), point_of_sale`,
-		accountID, branchID, in.Name, in.Address, in.DefaultExpiryDays, in.IsActive, in.PointOfSale))
+		accountID, branchID, in.Name, in.Address, in.DefaultExpiryDays, in.IsActive))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -253,15 +251,7 @@ func scanBranch(row pgx.Row) (*domain.Branch, error) {
 	var b domain.Branch
 	if err := row.Scan(&b.ID, &b.AccountID, &b.Name, &b.Address, &b.DefaultExpiryDays,
 		&b.IsActive, &b.CreatedAt, &b.UpdatedAt, &b.Email, &b.PointOfSale); err != nil {
-		return nil, branchPointOfSaleError(err)
+		return nil, err
 	}
 	return &b, nil
-}
-
-func branchPointOfSaleError(err error) error {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "uq_branch_point_of_sale" {
-		return domain.WithCode(domain.CodePointOfSaleTaken, domain.ErrConflict)
-	}
-	return err
 }

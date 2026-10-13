@@ -18,14 +18,12 @@ import (
 
 type invoiceDocumentStore interface {
 	GetByID(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) (*domain.Invoice, error)
-	List(context.Context, repository.Querier, uuid.UUID, uuid.UUID, int, int) ([]domain.Invoice, int, error)
+	List(context.Context, repository.Querier, uuid.UUID, []uuid.UUID, int, int) ([]domain.Invoice, int, error)
 }
 
-// List returns a bounded page of the active branch's fiscal records.
+// List returns a bounded page of the fiscal records in the caller's branch reach: the active
+// branch, or every branch the caller may read when none is selected.
 func (s *InvoiceService) List(ctx context.Context, tenant domain.Tenant, page int) ([]domain.Invoice, int, error) {
-	if err := requireBranch(tenant, "invoices"); err != nil {
-		return nil, 0, err
-	}
 	if page < 1 || page > 100000 {
 		return nil, 0, domain.ErrInvalidInput
 	}
@@ -37,7 +35,7 @@ func (s *InvoiceService) List(ctx context.Context, tenant domain.Tenant, page in
 	var total int
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		var err error
-		invoices, total, err = store.List(ctx, q, tenant.AccountID, tenant.BranchID, 25, (page-1)*25)
+		invoices, total, err = store.List(ctx, q, tenant.AccountID, tenant.BranchFilter(), 25, (page-1)*25)
 		return err
 	})
 	return invoices, total, err
