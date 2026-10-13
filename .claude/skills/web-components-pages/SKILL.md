@@ -67,7 +67,7 @@ catalogue:
 | Controls | `Button` `PendingButton` `CopyButton` `Badge` `Input` `SearchInput` `Textarea` `Label` `Checkbox` `RadioGroup` `Switch` `ToggleGroup` `Combobox` `MultiCombobox` `Pagination` `RowActionButton` `Dropzone` |
 | Surfaces | `Card` `Separator` `Table` `ScrollArea` `Skeleton` `Spinner` `Progress` `Avatar` `Hint` `Callout`                                                                                                          |
 | Overlays | `Dialog` `Sheet` `Popover` `DropdownMenu` `Tooltip` `Collapsible` `Command` `ConfirmDialog`                                                                                                                |
-| Patterns | `StatusScreen` `Stepper` `StepList` `EmptyState` `TableEmptyRow` `SortableTableHead` `MetaList` `InlineLink` `DropdownChevron`                                                                             |
+| Patterns | `StatusScreen` `Stepper` `StepList` `StepGuide` `EmptyState` `TableEmptyRow` `SortableTableHead` `MetaList` `InlineLink` `DropdownChevron`                                                                 |
 | Forms    | `Form` `FormField` `FormItem` `FormLabel` `FormControl` `FormDescription` `FormMessage` `FormRootMessage`                                                                                                  |
 
 - **Reuse-first, in search order.** Look in this order: (1) the page's

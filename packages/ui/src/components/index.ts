@@ -35,6 +35,7 @@ export * from './skeleton';
 export * from './sortable-table-head';
 export * from './spinner';
 export * from './status-screen';
+export * from './step-guide';
 export * from './step-list';
 export * from './stepper';
 export * from './switch';
