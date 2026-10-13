@@ -1862,6 +1862,7 @@
     "errors": {
       "NOT_FOUND": "No encontramos la cuenta. Volvé a iniciar sesión.",
       "INVALID_INPUT": "Revisá los datos del corralón e intentá de nuevo.",
+      "INVALID_TAX_ID": "Revisá el CUIT: el dígito verificador no coincide.",
       "INTERNAL": "No pudimos guardar los datos. Intentá de nuevo."
     },
     "savedDisconnected": "Guardamos el CUIT nuevo y desconectamos ARCA. Conectalo desde Facturación para volver a facturar.",

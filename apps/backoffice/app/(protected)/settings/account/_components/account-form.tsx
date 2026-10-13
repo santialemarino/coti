@@ -83,6 +83,10 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
       form.setError('taxId', { message: message(result.error) }, { shouldFocus: !disconnectARCA });
       return;
     }
+    if (result.error === 'INVALID_TAX_ID') {
+      form.setError('taxId', { message: message(result.error) }, { shouldFocus: true });
+      return;
+    }
     form.setError('root', { message: message(result.error) });
   }
 

@@ -50,7 +50,7 @@ export function BrandStep({ account, formId, onSubmit }: BrandStepProps) {
           </p>
           <p className="text-heading-5">{account.name}</p>
           <p className="text-paragraph-sm text-foreground-muted">
-            {[account.legalName, account.taxId && formatCuit(taxIdDigits(account.taxId))]
+            {[account.legalName, account.taxId && shownTaxId(account.taxId)]
               .filter(Boolean)
               .join(' · ') || t('noLegalData')}
           </p>
@@ -113,4 +113,10 @@ export function BrandStep({ account, formId, onSubmit }: BrandStepProps) {
       </Card>
     </div>
   );
+}
+
+// A stored CUIT shows with its separators; an old free-text value with no digits shows as written.
+function shownTaxId(taxId: string): string {
+  const digits = taxIdDigits(taxId);
+  return digits ? formatCuit(digits) : taxId;
 }

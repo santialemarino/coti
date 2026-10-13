@@ -264,6 +264,16 @@ describe('AccountForm', () => {
     await waitFor(() => expect(document.activeElement).toBe(field(view, 'taxId')));
   });
 
+  it('puts a CUIT the API refuses on its field', async () => {
+    vi.mocked(updateAccount).mockResolvedValue({ error: 'INVALID_TAX_ID' });
+    const view = renderForm();
+
+    submit(view);
+
+    await waitFor(() => expect(field(view, 'taxId').getAttribute('aria-invalid')).toBe('true'));
+    expect(view.getByText(copy.errors.INVALID_TAX_ID)).toBeTruthy();
+  });
+
   it('points to the invoices that keep the CUIT from changing', async () => {
     vi.mocked(updateAccount).mockResolvedValue({ error: 'INVOICE_PENDING' });
     const view = renderForm();
