@@ -25,6 +25,7 @@ const CLIENT_ID = 'c0000000-0000-4000-8000-000000000031';
 const card = messages.invoicing.card;
 
 const READY: InvoicePreview = {
+  environment: 'PRODUCTION',
   issuerCuit: '30711111112',
   fingerprint: 'a'.repeat(64),
   versionId: 'v0000000-0000-4000-8000-000000000031',
@@ -53,6 +54,7 @@ const READY: InvoicePreview = {
 
 const ISSUED: Invoice = {
   branchId: 'branch-1',
+  environment: 'PRODUCTION',
   id: 'inv-1',
   status: 'ISSUED',
   type: 'A',
@@ -251,5 +253,41 @@ describe('InvoiceCard', () => {
     expect(await view.findByText('10013: CUIT')).toBeTruthy();
     expect(view.getByText(card.rejected.title)).toBeTruthy();
     expect(view.getByRole('button', { name: 'Emitir factura A' })).toBeTruthy();
+  });
+
+  it('marks an invoice issued in homologation as a test, and nothing in production', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({
+      ...READY,
+      invoice: { ...ISSUED, environment: 'HOMOLOGATION' },
+    });
+    const test = renderCard();
+    expect(await test.findByText(messages.invoicing.testBadge)).toBeTruthy();
+    expect(test.getByText(card.testNote)).toBeTruthy();
+    test.unmount();
+
+    vi.mocked(getInvoicePreview).mockResolvedValue({ ...READY, invoice: ISSUED });
+    const live = renderCard();
+    expect(await live.findByText('Factura A 0003-00000023')).toBeTruthy();
+    expect(live.queryByText(messages.invoicing.testBadge)).toBeNull();
+    expect(live.queryByText(card.testNote)).toBeNull();
+  });
+
+  // The invoice keeps the environment it was authorized in, whatever the server says today.
+  it('reads the test mark from the issued invoice, not from the server', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({
+      ...READY,
+      environment: 'HOMOLOGATION',
+      invoice: ISSUED,
+    });
+    const view = renderCard();
+    expect(await view.findByText('Factura A 0003-00000023')).toBeTruthy();
+    expect(view.queryByText(messages.invoicing.testBadge)).toBeNull();
+  });
+
+  it('marks a draft as a test while the server invoices in homologation', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({ ...READY, environment: 'HOMOLOGATION' });
+    const view = renderCard();
+    expect(await view.findByText(messages.invoicing.testBadge)).toBeTruthy();
+    expect(view.getByText(card.testNote)).toBeTruthy();
   });
 });

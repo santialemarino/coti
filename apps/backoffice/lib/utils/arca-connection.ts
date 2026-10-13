@@ -11,6 +11,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export type ARCAConnectionState =
   | 'disabled'
   | 'notConnected'
+  | 'reconnect'
   | 'inProgress'
   | 'expired'
   | 'pointsMissing'
@@ -24,13 +25,17 @@ export function everyActiveBranchHasPointOfSale(branches: readonly InvoicingBran
 }
 
 export function arcaConnectionState(
-  setup: Pick<ARCASetup, 'enabled' | 'csr' | 'hasCertificate' | 'certificateExpiresAt'>,
+  setup: Pick<
+    ARCASetup,
+    'enabled' | 'csr' | 'hasCertificate' | 'certificateExpiresAt' | 'reconnectRequired'
+  >,
   branches: readonly InvoicingBranch[],
   now: string,
   renewalDays: number,
 ): ARCAConnectionState {
   if (!setup.enabled) return 'disabled';
   if (!setup.csr) return 'notConnected';
+  if (setup.reconnectRequired) return 'reconnect';
   if (!setup.hasCertificate) return 'inProgress';
   const expires = setup.certificateExpiresAt ? Date.parse(setup.certificateExpiresAt) : null;
   const today = Date.parse(now);

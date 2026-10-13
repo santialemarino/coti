@@ -10,7 +10,13 @@ const MISSING: InvoicingBranch[] = [
   ...READY,
   { branchId: 'b', name: 'Villa Bosch', isActive: true, pointOfSale: null },
 ];
-const NONE = { enabled: true, csr: '', hasCertificate: false, certificateExpiresAt: null };
+const NONE = {
+  enabled: true,
+  csr: '',
+  hasCertificate: false,
+  certificateExpiresAt: null,
+  reconnectRequired: false,
+};
 const INSTALLED = {
   ...NONE,
   csr: 'request',
@@ -23,6 +29,8 @@ describe('arcaConnectionState', () => {
     ['disabled', { ...NONE, enabled: false }, READY],
     ['notConnected', NONE, READY],
     ['inProgress', { ...NONE, csr: 'request' }, READY],
+    ['reconnect', { ...INSTALLED, reconnectRequired: true }, READY],
+    ['reconnect', { ...NONE, csr: 'request', reconnectRequired: true }, MISSING],
     ['expired', { ...INSTALLED, certificateExpiresAt: '2026-10-13T11:00:00Z' }, MISSING],
     ['pointsMissing', INSTALLED, MISSING],
     ['pointsMissing', { ...INSTALLED, certificateExpiresAt: '2026-10-20T00:00:00Z' }, MISSING],

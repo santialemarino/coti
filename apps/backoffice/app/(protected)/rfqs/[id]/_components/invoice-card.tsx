@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import {
+  Badge,
   Button,
   Callout,
   Card,
@@ -66,6 +67,7 @@ interface InvoiceCardProps {
 export function InvoiceCard({ quoteId, branchId, clientId }: InvoiceCardProps) {
   const fmt = useFormatters();
   const t = useTranslations('invoicing.card');
+  const tInvoicing = useTranslations('invoicing');
   const message = useApiErrorMessage('invoicing.card');
   const { isAdmin } = useRfqList();
   const [preview, setPreview] = useState<InvoicePreview | null>(null);
@@ -126,6 +128,8 @@ export function InvoiceCard({ quoteId, branchId, clientId }: InvoiceCardProps) {
   }
 
   const issued = preview?.invoice?.status === 'ISSUED' ? preview.invoice : null;
+  // An issued invoice keeps the environment it was authorized in; a draft follows the server's.
+  const testInvoice = (issued ?? preview)?.environment === 'HOMOLOGATION';
 
   return (
     <Card>
@@ -139,8 +143,10 @@ export function InvoiceCard({ quoteId, branchId, clientId }: InvoiceCardProps) {
                 ? t('draftTitle', { type: preview.type })
                 : t('title')}
           </CardTitle>
+          {testInvoice ? <Badge tone="outline">{tInvoicing('testBadge')}</Badge> : null}
         </div>
         {preview && !issued ? <CardDescription>{t('draftHint')}</CardDescription> : null}
+        {testInvoice ? <CardDescription>{t('testNote')}</CardDescription> : null}
       </CardHeader>
       <CardContent>
         {loadError ? (

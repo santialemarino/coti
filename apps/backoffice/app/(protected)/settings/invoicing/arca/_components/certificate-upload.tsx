@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { CheckCircle2Icon } from 'lucide-react';
+import { CheckCircle2Icon, UploadIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 
 import {
+  Button,
   Form,
   FormControl,
   FormField,
@@ -37,13 +38,18 @@ const CERTIFICATE_FILE_TYPES = '.crt,.pem,.cer,.csr,.txt';
 
 interface CertificateUploadProps {
   disabled?: boolean;
+  // ARCA hands the certificate over as a file, so choosing it leads and pasting is the fallback.
+  filePrimary?: boolean;
 }
 
 /*
  * The certificate ARCA issued, pasted as text. A file, chosen or dropped onto the field, only fills
  * the same field, so there is one thing to check and one way to save it.
  */
-export function CertificateUpload({ disabled = false }: CertificateUploadProps) {
+export function CertificateUpload({
+  disabled = false,
+  filePrimary = false,
+}: CertificateUploadProps) {
   const router = useRouter();
   const t = useTranslations('arca');
   const tShared = useTranslations('common.form.errors');
@@ -127,6 +133,17 @@ export function CertificateUpload({ disabled = false }: CertificateUploadProps) 
           render={({ field }) => (
             <FormItem>
               <FormLabel required>{t('steps.upload.label')}</FormLabel>
+              {filePrimary ? (
+                <Button
+                  variant="outline"
+                  className="self-start"
+                  disabled={locked}
+                  onClick={() => fileInput.current?.click()}
+                >
+                  <UploadIcon aria-hidden="true" />
+                  {t('steps.upload.chooseCertificate')}
+                </Button>
+              ) : null}
               <FormControl>
                 <Textarea
                   {...field}
@@ -138,7 +155,9 @@ export function CertificateUpload({ disabled = false }: CertificateUploadProps) 
                   spellCheck={false}
                   autoComplete="off"
                   disabled={locked}
-                  placeholder={t('steps.upload.placeholder')}
+                  placeholder={t(
+                    filePrimary ? 'steps.upload.pastePlaceholder' : 'steps.upload.placeholder',
+                  )}
                   data-dragging={dragging || undefined}
                   onDragOver={(event) => {
                     if (!carriesFiles(event)) return;
@@ -158,18 +177,20 @@ export function CertificateUpload({ disabled = false }: CertificateUploadProps) 
                   )}
                 />
               </FormControl>
-              <p className="text-paragraph-xs text-foreground-muted">
-                {t('steps.upload.fromFile')}{' '}
-                <InlineLink asChild>
-                  <button
-                    type="button"
-                    disabled={locked}
-                    onClick={() => fileInput.current?.click()}
-                  >
-                    {t('steps.upload.chooseFile')}
-                  </button>
-                </InlineLink>
-              </p>
+              {filePrimary ? null : (
+                <p className="text-paragraph-xs text-foreground-muted">
+                  {t('steps.upload.fromFile')}{' '}
+                  <InlineLink asChild>
+                    <button
+                      type="button"
+                      disabled={locked}
+                      onClick={() => fileInput.current?.click()}
+                    >
+                      {t('steps.upload.chooseFile')}
+                    </button>
+                  </InlineLink>
+                </p>
+              )}
               <input
                 ref={fileInput}
                 type="file"

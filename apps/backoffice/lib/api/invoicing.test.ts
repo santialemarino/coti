@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  arcaEnvironmentOf,
   formatCuit,
   formatInvoiceNumber,
   mapClientFiscal,
@@ -59,6 +60,7 @@ describe('invoicing API mapping', () => {
   it('maps a preview and the invoice it already has', () => {
     expect(
       mapInvoicePreview({
+        environment: 'PRODUCTION',
         issuer_cuit: '30711111112',
         fingerprint: 'a'.repeat(64),
         version_id: 'v-1',
@@ -71,6 +73,7 @@ describe('invoicing API mapping', () => {
         invoice: {
           id: 'inv-1',
           branch_id: 'b1',
+          environment: 'HOMOLOGATION',
           status: 'ISSUED',
           type: 'A',
           point_of_sale: 3,
@@ -88,6 +91,7 @@ describe('invoicing API mapping', () => {
         },
       }),
     ).toEqual({
+      environment: 'PRODUCTION',
       issuerCuit: '30711111112',
       fingerprint: 'a'.repeat(64),
       versionId: 'v-1',
@@ -111,6 +115,7 @@ describe('invoicing API mapping', () => {
       invoice: {
         id: 'inv-1',
         branchId: 'b1',
+        environment: 'HOMOLOGATION',
         status: 'ISSUED',
         type: 'A',
         pointOfSale: 3,
@@ -132,6 +137,13 @@ describe('invoicing API mapping', () => {
         createdAt: '2026-10-05T15:00:00Z',
       },
     });
+  });
+
+  it('reads an environment it does not know as a test, never as production', () => {
+    expect(arcaEnvironmentOf('PRODUCTION')).toBe('PRODUCTION');
+    expect(arcaEnvironmentOf('HOMOLOGATION')).toBe('HOMOLOGATION');
+    expect(arcaEnvironmentOf('production')).toBe('HOMOLOGATION');
+    expect(arcaEnvironmentOf(undefined)).toBe('HOMOLOGATION');
   });
 
   it('maps a client fiscal identity', () => {

@@ -48,6 +48,7 @@ export default async function AdministrationPage({
   const session = await getSession();
   const fmt = await getFormatters();
   const t = await getTranslations('invoicing.history');
+  const tInvoicing = await getTranslations('invoicing');
   const branches = await getBranches();
   const branchId = await getEffectiveBranchId(branches);
   const requested = Number((await searchParams).page ?? '1');
@@ -108,9 +109,14 @@ export default async function AdministrationPage({
                     <TableCell>{branchNames.get(invoice.branchId) ?? '—'}</TableCell>
                   ) : null}
                   <TableCell kind="status">
-                    <Badge tone={STATUS_TONE[invoice.status]}>
-                      {t(`statuses.${invoice.status}`)}
-                    </Badge>
+                    <span className="flex flex-wrap gap-1">
+                      <Badge tone={STATUS_TONE[invoice.status]}>
+                        {t(`statuses.${invoice.status}`)}
+                      </Badge>
+                      {invoice.environment === 'HOMOLOGATION' ? (
+                        <Badge tone="outline">{tInvoicing('testBadge')}</Badge>
+                      ) : null}
+                    </span>
                   </TableCell>
                   <TableCell kind="money">
                     {fmt.currency(invoice.amounts.total, invoice.currency)}
