@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { updateInvoicingSettings } from '@/app/(protected)/settings/invoicing/actions';
+import {
+  updateInvoicingSettings,
+  updatePointsOfSale,
+} from '@/app/(protected)/settings/invoicing/actions';
 import type { InvoicingSettingsValues } from '@/app/(protected)/settings/invoicing/form-schema';
 import { ApiError } from '@/lib/api/errors';
 
@@ -105,5 +108,38 @@ describe('updateInvoicingSettings', () => {
     vi.mocked(apiRequest).mockRejectedValue(new ApiError('INVALID_INPUT', 422));
 
     await expect(updateInvoicingSettings(VALUES)).resolves.toEqual({ error: 'INVALID_INPUT' });
+  });
+});
+
+describe('updatePointsOfSale', () => {
+  it('sends only the points of sale, to their own route', async () => {
+    vi.mocked(apiRequest).mockResolvedValue(SETTINGS_RAW);
+
+    await updatePointsOfSale([
+      { branchId: 'b1', pointOfSale: '2' },
+      { branchId: 'b2', pointOfSale: '' },
+    ]);
+
+    expect(apiRequest).toHaveBeenCalledWith({
+      path: '/v1/invoicing/points-of-sale',
+      method: 'PUT',
+      branchScoped: false,
+      body: {
+        branches: [
+          { branch_id: 'b1', point_of_sale: 2 },
+          { branch_id: 'b2', point_of_sale: null },
+        ],
+      },
+    });
+  });
+
+  it('refuses a duplicate before calling the API', async () => {
+    await expect(
+      updatePointsOfSale([
+        { branchId: 'b1', pointOfSale: '2' },
+        { branchId: 'b2', pointOfSale: '2' },
+      ]),
+    ).resolves.toEqual({ error: 'INVALID_BODY' });
+    expect(apiRequest).not.toHaveBeenCalled();
   });
 });

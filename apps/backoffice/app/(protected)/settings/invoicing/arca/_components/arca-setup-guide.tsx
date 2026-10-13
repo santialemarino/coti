@@ -21,10 +21,12 @@ import {
 import { useHeldWhileClosed } from '@repo/ui/hooks';
 import { CertificateUpload } from '@/app/(protected)/settings/invoicing/arca/_components/certificate-upload';
 import { PemExample } from '@/app/(protected)/settings/invoicing/arca/_components/pem-example';
+import { PointsOfSaleForm } from '@/app/(protected)/settings/invoicing/arca/_components/points-of-sale-form';
 import { createARCASetup, disconnectARCA } from '@/app/(protected)/settings/invoicing/arca/actions';
 import {
   ARCA_STEPS,
   arcaStepStatuses,
+  STEP_ANCHORS,
   type ARCAStep,
 } from '@/app/(protected)/settings/invoicing/arca/step-statuses';
 import { SetupNotice } from '@/components/setup-notice';
@@ -34,35 +36,49 @@ import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { ARCASetup } from '@/lib/api/arca-setup';
 import { formatCuit, type InvoicingBranch } from '@/lib/api/invoicing';
 import { useFormatters } from '@/lib/i18n/formatters';
+import type { ARCAConnectionState } from '@/lib/utils/arca-connection';
 import { isValidCuit } from '@/lib/utils/cuit';
+
+// Removing the credential means starting over while it is in progress, and disconnecting after.
+type RemoveMode = 'restart' | 'disconnect';
+
+// The states the guide calls out above its steps, as the status card does.
+const SUMMARY_TONE: Partial<Record<ARCAConnectionState, 'warning' | 'danger'>> = {
+  expired: 'danger',
+  pointsMissing: 'warning',
+  expiringSoon: 'warning',
+};
 
 interface ARCASetupGuideProps {
   setup: ARCASetup;
   // The account's CUIT: the one the request is generated for, edited only in Cuenta.
   accountTaxId: string | null;
   branches: InvoicingBranch[];
-  now: string;
+  state: ARCAConnectionState;
 }
 
-export function ARCASetupGuide({ setup, accountTaxId, branches, now }: ARCASetupGuideProps) {
+export function ARCASetupGuide({ setup, accountTaxId, branches, state }: ARCASetupGuideProps) {
   const router = useRouter();
   const fmt = useFormatters();
   const t = useTranslations('arca');
+  const tConnection = useTranslations('invoicing.settings.connection');
   const message = useApiErrorMessage('arca');
   const [generating, startGenerating] = useTransition();
-  const [disconnectOpen, setDisconnectOpen] = useState(false);
-  const [disconnecting, startDisconnecting] = useTransition();
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const [removing, startRemoving] = useTransition();
 
   const statuses = arcaStepStatuses(setup, branches);
   // The request can only be generated for a CUIT ARCA accepts; anything else is fixed in Cuenta.
   const usableCuit = accountTaxId !== null && isValidCuit(accountTaxId);
   const cuit = setup.taxId || accountTaxId || '';
   const shownCuit = cuit ? formatCuit(cuit.replace(/\D/g, '')) : '';
-  const expired = setup.certificateExpiresAt !== null && setup.certificateExpiresAt < now;
+  const expiresOn = setup.certificateExpiresAt ? fmt.date(setup.certificateExpiresAt) : '';
   const activeBranches = branches.filter((branch) => branch.isActive);
-  const busy = generating || disconnecting;
-  // The CUIT is gone once the disconnect lands, while the dialog is still fading out.
-  const confirmCuit = useHeldWhileClosed(shownCuit, disconnectOpen);
+  const busy = generating || removing;
+  const mode: RemoveMode = setup.hasCertificate ? 'disconnect' : 'restart';
+  // The dialog keeps what it was about while it fades out after the credential is gone.
+  const confirm = useHeldWhileClosed({ mode, cuit: shownCuit }, removeOpen);
+  const summaryTone = SUMMARY_TONE[state];
 
   function generate() {
     startGenerating(async () => {
@@ -76,15 +92,15 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, now }: ARCASetup
     });
   }
 
-  function disconnect() {
-    startDisconnecting(async () => {
+  function remove() {
+    startRemoving(async () => {
       const result = await disconnectARCA();
       if (result.error) {
         toast.error(message(result.error));
         return;
       }
-      setDisconnectOpen(false);
-      toast.success(t('disconnected'));
+      setRemoveOpen(false);
+      toast.success(t(`remove.${mode}.done`));
       router.refresh();
     });
   }
@@ -93,6 +109,7 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, now }: ARCASetup
     wsass: (
       <>
         <Paragraph>{t('steps.wsass.body')}</Paragraph>
+        <Paragraph>{t('steps.wsass.check', { lookup: t('wsassLookup') })}</Paragraph>
         <ExternalButton href={ARCA_URLS.login}>{t('steps.wsass.open')}</ExternalButton>
       </>
     ),
@@ -138,14 +155,16 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, now }: ARCASetup
         <Paragraph>{t('steps.copy.body')}</Paragraph>
         {setup.csr ? (
           <>
-            <ScrollArea className="max-h-48 bg-sunken border border-border rounded-lg">
-              <pre
-                aria-label={t('steps.copy.label')}
-                className="px-3 py-2 text-paragraph-xs font-mono text-foreground whitespace-pre-wrap break-all"
-              >
-                {setup.csr}
-              </pre>
-            </ScrollArea>
+            <figure className="flex flex-col gap-y-1.5">
+              <figcaption className="text-paragraph-xs-medium text-foreground-muted">
+                {t('steps.copy.label')}
+              </figcaption>
+              <ScrollArea className="max-h-48 bg-sunken border border-border rounded-lg">
+                <pre className="px-3 py-2 text-paragraph-xs font-mono text-foreground whitespace-pre-wrap break-all">
+                  {setup.csr}
+                </pre>
+              </ScrollArea>
+            </figure>
             <div className="flex flex-wrap gap-2">
               <CopyButton
                 variant="default"
@@ -169,16 +188,18 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, now }: ARCASetup
     certificate: (
       <>
         <ol className="flex flex-col pl-5 gap-y-2 list-decimal text-paragraph-sm text-foreground-muted">
+          <li>{t('wsassLookup')}</li>
           <li>{t('steps.certificate.open')}</li>
           <li>{t('steps.certificate.alias')}</li>
           <li>{t('steps.certificate.paste')}</li>
           <li>{t('steps.certificate.result')}</li>
         </ol>
-        <PemExample label="CERTIFICATE" caption={t('pemCaption')} />
+        <PemExample instruction={t('pem.instruction')} />
       </>
     ),
     authorize: (
       <>
+        <Paragraph>{t('wsassLookup')}</Paragraph>
         <Paragraph>
           {t.rich('steps.authorize.body', {
             cuit: () => <span className="whitespace-nowrap">{shownCuit || '—'}</span>,
@@ -192,9 +213,9 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, now }: ARCASetup
     upload: setup.hasCertificate ? (
       <>
         <Paragraph>
-          {setup.certificateExpiresAt
-            ? t(expired ? 'steps.upload.expired' : 'steps.upload.installed', {
-                date: fmt.date(setup.certificateExpiresAt),
+          {expiresOn
+            ? t(state === 'expired' ? 'steps.upload.expired' : 'steps.upload.installed', {
+                date: expiresOn,
               })
             : t('steps.upload.installedUndated')}
         </Paragraph>
@@ -217,18 +238,16 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, now }: ARCASetup
       <>
         <Paragraph>{t('steps.pointsOfSale.body')}</Paragraph>
         {setup.hasCertificate ? (
-          <Paragraph>
-            {t('steps.pointsOfSale.progress', {
-              done: activeBranches.filter((branch) => branch.pointOfSale !== null).length,
-              total: activeBranches.length,
-            })}
-          </Paragraph>
+          <>
+            <Paragraph>
+              {t('steps.pointsOfSale.progress', {
+                done: activeBranches.filter((branch) => branch.pointOfSale !== null).length,
+                total: activeBranches.length,
+              })}
+            </Paragraph>
+            <PointsOfSaleForm branches={branches} disabled={busy} />
+          </>
         ) : null}
-        <Button asChild variant="outline" className="self-start">
-          <Link href={ROUTES.invoicingSection('points-of-sale')}>
-            {t('steps.pointsOfSale.link')}
-          </Link>
-        </Button>
       </>
     ),
   };
@@ -237,6 +256,7 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, now }: ARCASetup
 
   const steps: StepGuideStep[] = ARCA_STEPS.map((step) => ({
     id: step,
+    anchor: STEP_ANCHORS[step],
     title: t(`steps.${step}.title`),
     status: statuses[step],
     children: content[step],
@@ -244,6 +264,11 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, now }: ARCASetup
 
   return (
     <div className="flex flex-col max-w-2xl gap-y-8">
+      {summaryTone ? (
+        <Callout tone={summaryTone} title={tConnection(`states.${state}`)}>
+          {tConnection(`bodies.${state}`, { date: expiresOn })}
+        </Callout>
+      ) : null}
       <StepGuide
         steps={steps}
         statusLabels={{
@@ -254,21 +279,25 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, now }: ARCASetup
       />
       {setup.csr ? (
         <div className="flex flex-col items-start pt-6 gap-y-2 border-t border-border">
-          <p className="text-paragraph-sm text-foreground-muted">{t('disconnectHint')}</p>
-          <Button variant="outline" onClick={() => setDisconnectOpen(true)} disabled={busy}>
-            {t('disconnect')}
+          <p className="text-paragraph-sm text-foreground-muted">{t(`remove.${mode}.hint`)}</p>
+          <Button variant="outline" onClick={() => setRemoveOpen(true)} disabled={busy}>
+            {t(`remove.${mode}.action`)}
           </Button>
         </div>
       ) : null}
       <ConfirmDialog
-        open={disconnectOpen}
-        onOpenChange={setDisconnectOpen}
-        entity={confirmCuit || null}
-        title={t('disconnectTitle')}
-        description={(value) => t('disconnectDescription', { cuit: value })}
-        onConfirm={disconnect}
-        pending={disconnecting}
-        labels={{ confirm: t('disconnect'), pending: t('disconnecting'), cancel: t('cancel') }}
+        open={removeOpen}
+        onOpenChange={setRemoveOpen}
+        entity={confirm.cuit || null}
+        title={t(`remove.${confirm.mode}.title`)}
+        description={(value) => t(`remove.${confirm.mode}.description`, { cuit: value })}
+        onConfirm={remove}
+        pending={removing}
+        labels={{
+          confirm: t(`remove.${confirm.mode}.action`),
+          pending: t(`remove.${confirm.mode}.pending`),
+          cancel: t('cancel'),
+        }}
       />
     </div>
   );

@@ -8,8 +8,6 @@ import { useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 
 import {
-  Badge,
-  Button,
   Combobox,
   Form,
   FormControl,
@@ -23,13 +21,6 @@ import {
   Input,
   PendingButton,
   Switch,
-  Table,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
   ToggleGroup,
   ToggleGroupItem,
 } from '@repo/ui/components';
@@ -40,22 +31,24 @@ import {
   GROSS_INCOME_NUMBER_MAX_LENGTH,
   invoicingSettingsSchema,
   ISSUER_IVA_CONDITIONS,
-  POINT_OF_SALE_MAX_LENGTH,
   type GrossIncomeKind,
   type InvoicingSettingsOutput,
   type InvoicingSettingsValues,
 } from '@/app/(protected)/settings/invoicing/form-schema';
-import { QuantityInput } from '@/components/quantity-input';
+import { PointsOfSaleTable } from '@/components/points-of-sale-table';
 import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
-import { formatCuit, POINT_OF_SALE_MIN, type InvoicingSettings } from '@/lib/api/invoicing';
+import { formatCuit, type InvoicingSettings } from '@/lib/api/invoicing';
 import { FORM_VALIDATION } from '@/lib/forms/options';
+import { pointsOfSaleValues } from '@/lib/forms/points-of-sale';
 import { useFormatters } from '@/lib/i18n/formatters';
 
 // Past this many, the toast counts the branches instead of naming them.
 const NAMED_BRANCHES_MAX = 2;
 // The anchor the setup notices and the ARCA guide link to.
 const POINTS_OF_SALE_SECTION = 'points-of-sale';
+// The worked example under the price switch: an item at 21% IVA.
+const VAT_EXAMPLE = { net: '1000', vat: '210', gross: '1210' };
 
 interface InvoicingSettingsFormProps {
   settings: InvoicingSettings;
@@ -155,6 +148,7 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
                   <FormLabel required>{t('ivaCondition.label')}</FormLabel>
                   <FormControl>
                     <Combobox
+                      ref={field.ref}
                       value={field.value || null}
                       onValueChange={field.onChange}
                       options={ISSUER_IVA_CONDITIONS.map((condition) => ({
@@ -212,13 +206,9 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
                       </ToggleGroupItem>
                     </ToggleGroup>
                   </FormControl>
-                  <FormDescription>
-                    {t(
-                      grossIncomeKind === 'exempt'
-                        ? 'profile.grossIncomeExemptHint'
-                        : 'profile.grossIncomeNumberHint',
-                    )}
-                  </FormDescription>
+                  {grossIncomeKind === 'exempt' ? (
+                    <FormDescription>{t('profile.grossIncomeExemptHint')}</FormDescription>
+                  ) : null}
                 </FormItem>
               )}
             />
@@ -230,33 +220,38 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel required>{t('profile.grossIncomeNumber')}</FormLabel>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                      <FormControl>
-                        <Input
-                          {...field}
-                          inputMode="numeric"
-                          maxLength={GROSS_INCOME_NUMBER_MAX_LENGTH}
-                          placeholder={t('profile.grossIncomeNumberPlaceholder')}
-                          disabled={pending}
-                          containerClassName="flex-1 min-w-48"
-                        />
-                      </FormControl>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        inputMode="numeric"
+                        maxLength={GROSS_INCOME_NUMBER_MAX_LENGTH}
+                        placeholder={t('profile.grossIncomeNumberPlaceholder')}
+                        disabled={pending}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('profile.grossIncomeNumberHint')}
                       {accountCuit ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={pending}
-                          onClick={() =>
-                            form.setValue('grossIncomeNumber', accountCuit, {
-                              shouldDirty: true,
-                              shouldValidate: form.formState.isSubmitted,
-                            })
-                          }
-                        >
-                          {t('profile.useCuit')}
-                        </Button>
+                        <>
+                          {' '}
+                          {t('profile.sameAsCuit')}{' '}
+                          <InlineLink asChild>
+                            <button
+                              type="button"
+                              disabled={pending}
+                              onClick={() =>
+                                form.setValue('grossIncomeNumber', accountCuit, {
+                                  shouldDirty: true,
+                                  shouldValidate: form.formState.isSubmitted,
+                                })
+                              }
+                            >
+                              {t('profile.useCuit')}
+                            </button>
+                          </InlineLink>
+                        </>
                       ) : null}
-                    </div>
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -292,7 +287,13 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
                     </FormControl>
                     <FormLabel>{t('pricesIncludeVat.label')}</FormLabel>
                   </div>
-                  <FormDescription>{t('pricesIncludeVat.hint')}</FormDescription>
+                  <FormDescription>
+                    {t(field.value ? 'pricesIncludeVat.hintOn' : 'pricesIncludeVat.hintOff', {
+                      net: fmt.currency(VAT_EXAMPLE.net),
+                      vat: fmt.currency(VAT_EXAMPLE.vat),
+                      gross: fmt.currency(VAT_EXAMPLE.gross),
+                    })}
+                  </FormDescription>
                 </FormItem>
               )}
             />
@@ -309,52 +310,11 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
               </h2>
               <p className="text-paragraph-xs text-foreground-muted">{t('pointsOfSale.hint')}</p>
             </div>
-            <Table>
-              <TableCaption className="sr-only">{t('pointsOfSale.caption')}</TableCaption>
-              <TableHeader>
-                <TableRow>
-                  <TableHead kind="text">{t('pointsOfSale.branch')}</TableHead>
-                  <TableHead kind="quantityInput">{t('pointsOfSale.number')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {settings.branches.map((branch, index) => (
-                  <TableRow key={branch.branchId}>
-                    <TableCell className="text-paragraph-sm-medium text-foreground">
-                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        {branch.name}
-                        {branch.isActive ? null : (
-                          <Badge tone="neutral" size="sm">
-                            {t('pointsOfSale.closed')}
-                          </Badge>
-                        )}
-                      </span>
-                    </TableCell>
-                    <TableCell kind="quantityInput">
-                      <FormField
-                        control={form.control}
-                        name={`branches.${index}.pointOfSale`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormControl>
-                              <QuantityInput
-                                {...field}
-                                min={POINT_OF_SALE_MIN}
-                                maxLength={POINT_OF_SALE_MAX_LENGTH}
-                                placeholder={t('pointsOfSale.placeholder')}
-                                disabled={pending}
-                                aria-label={t('pointsOfSale.inputLabel', { branch: branch.name })}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <PointsOfSaleTable
+              control={form.control}
+              branches={settings.branches}
+              disabled={pending}
+            />
           </section>
         </div>
 
@@ -386,9 +346,6 @@ export function valuesOf(settings: InvoicingSettings): InvoicingSettingsValues {
         ? settings.ivaCondition
         : '',
     pricesIncludeVat: settings.pricesIncludeVat,
-    branches: settings.branches.map((branch) => ({
-      branchId: branch.branchId,
-      pointOfSale: branch.pointOfSale === null ? '' : String(branch.pointOfSale),
-    })),
+    branches: pointsOfSaleValues(settings.branches),
   };
 }

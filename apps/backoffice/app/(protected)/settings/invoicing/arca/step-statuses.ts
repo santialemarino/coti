@@ -1,6 +1,7 @@
 import type { StepGuideStatus } from '@repo/ui/components';
 import type { ARCASetup } from '@/lib/api/arca-setup';
 import type { InvoicingBranch } from '@/lib/api/invoicing';
+import { everyActiveBranchHasPointOfSale } from '@/lib/utils/arca-connection';
 
 export const ARCA_STEPS = [
   'wsass',
@@ -13,14 +14,13 @@ export const ARCA_STEPS = [
 ] as const;
 export type ARCAStep = (typeof ARCA_STEPS)[number];
 
+// The element ids a link can open the guide on.
+export const STEP_ANCHORS: Partial<Record<ARCAStep, 'points-of-sale'>> = {
+  pointsOfSale: 'points-of-sale',
+};
+
 // The steps done on ARCA's side, which Coti cannot observe: current until the certificate arrives.
 const ARCA_SIDE: readonly ARCAStep[] = ['copy', 'certificate', 'authorize', 'upload'];
-
-// Whether every open branch can invoice, which is what finishes the connection.
-export function everyActiveBranchHasPointOfSale(branches: readonly InvoicingBranch[]): boolean {
-  const active = branches.filter((branch) => branch.isActive);
-  return active.length > 0 && active.every((branch) => branch.pointOfSale !== null);
-}
 
 /*
  * Each step's state, from what the account holds: no request yet → enabling WSASS and generating are

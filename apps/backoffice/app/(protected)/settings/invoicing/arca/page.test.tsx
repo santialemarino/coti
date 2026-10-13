@@ -31,10 +31,12 @@ describe('ARCA connection page', () => {
     const guide = (page.props.children as React.ReactElement[])[1] as React.ReactElement<{
       accountTaxId: string;
       branches: unknown[];
+      state: string;
     }>;
 
     expect(requireAdmin).toHaveBeenCalled();
     expect(guide.props.accountTaxId).toBe('30-71234567-9');
     expect(guide.props.branches).toHaveLength(1);
+    expect(guide.props.state).toBe('notConnected');
   });
 });

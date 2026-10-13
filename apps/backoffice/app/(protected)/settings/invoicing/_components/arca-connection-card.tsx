@@ -17,67 +17,62 @@ import { ROUTES } from '@/config/routes';
 import type { ARCASetup } from '@/lib/api/arca-setup';
 import { formatCuit } from '@/lib/api/invoicing';
 import { useFormatters } from '@/lib/i18n/formatters';
+import type { ARCAConnectionState } from '@/lib/utils/arca-connection';
 
-export type ARCAConnectionState =
-  | 'disabled'
-  | 'notConnected'
-  | 'inProgress'
-  | 'connected'
-  | 'expired';
-
-const BADGE_TONE = {
+const CONNECTION_TONE: Record<ARCAConnectionState, 'neutral' | 'warning' | 'success' | 'danger'> = {
   disabled: 'neutral',
   notConnected: 'neutral',
   inProgress: 'warning',
-  connected: 'success',
+  pointsMissing: 'warning',
+  expiringSoon: 'warning',
   expired: 'danger',
-} as const;
+  connected: 'success',
+};
 
-const ACTION = {
-  notConnected: 'start',
-  inProgress: 'continue',
-  connected: 'manage',
-  expired: 'manage',
-} as const;
+const ACTION: Record<Exclude<ARCAConnectionState, 'disabled'>, { label: string; href: string }> = {
+  notConnected: { label: 'start', href: ROUTES.arcaSettings },
+  inProgress: { label: 'continue', href: ROUTES.arcaSettings },
+  pointsMissing: { label: 'continue', href: ROUTES.arcaStep('points-of-sale') },
+  expiringSoon: { label: 'manage', href: ROUTES.arcaSettings },
+  expired: { label: 'manage', href: ROUTES.arcaSettings },
+  connected: { label: 'manage', href: ROUTES.arcaSettings },
+};
 
-// Where the connection stands, from the account's setup and the date the page was rendered on.
-export function arcaConnectionState(setup: ARCASetup, now: string): ARCAConnectionState {
-  if (!setup.enabled) return 'disabled';
-  if (!setup.csr) return 'notConnected';
-  if (!setup.hasCertificate) return 'inProgress';
-  return setup.certificateExpiresAt !== null && setup.certificateExpiresAt < now
-    ? 'expired'
-    : 'connected';
-}
+// The states in which a certificate is installed, so the CUIT and its expiry are worth showing.
+const INSTALLED: readonly ARCAConnectionState[] = [
+  'connected',
+  'pointsMissing',
+  'expiringSoon',
+  'expired',
+];
 
 interface ARCAConnectionCardProps {
   setup: ARCASetup;
-  now: string;
+  state: ARCAConnectionState;
 }
 
-export function ARCAConnectionCard({ setup, now }: ARCAConnectionCardProps) {
+export function ARCAConnectionCard({ setup, state }: ARCAConnectionCardProps) {
   const fmt = useFormatters();
   const t = useTranslations('invoicing.settings.connection');
-  const state = arcaConnectionState(setup, now);
-  const installed = state === 'connected' || state === 'expired';
+  const expiresOn = setup.certificateExpiresAt ? fmt.date(setup.certificateExpiresAt) : '';
 
   return (
     <Card className="gap-y-4">
       <CardHeader>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <CardTitle>{t('title')}</CardTitle>
-          <Badge tone={BADGE_TONE[state]}>{t(`states.${state}`)}</Badge>
+          <Badge tone={CONNECTION_TONE[state]}>{t(`states.${state}`)}</Badge>
         </div>
-        <CardDescription>{t(`bodies.${state}`)}</CardDescription>
+        <CardDescription>{t(`bodies.${state}`, { date: expiresOn })}</CardDescription>
       </CardHeader>
-      {installed ? (
+      {INSTALLED.includes(state) ? (
         <CardContent>
           <dl className="grid grid-cols-1 gap-x-8 gap-y-3 text-paragraph-sm sm:grid-cols-2">
             <div className="flex flex-col gap-y-0.5">
               <dt className="text-foreground-muted">{t('cuit')}</dt>
               <dd className="text-foreground tabular-nums">{formatCuit(setup.taxId)}</dd>
             </div>
-            {setup.certificateExpiresAt ? (
+            {expiresOn ? (
               <div className="flex flex-col gap-y-0.5">
                 <dt className="text-foreground-muted">{t('expires')}</dt>
                 <dd
@@ -87,7 +82,7 @@ export function ARCAConnectionCard({ setup, now }: ARCAConnectionCardProps) {
                       : 'text-foreground tabular-nums'
                   }
                 >
-                  {fmt.date(setup.certificateExpiresAt)}
+                  {expiresOn}
                 </dd>
               </div>
             ) : null}
@@ -97,7 +92,7 @@ export function ARCAConnectionCard({ setup, now }: ARCAConnectionCardProps) {
       {state === 'disabled' ? null : (
         <CardFooter>
           <Button asChild variant={state === 'connected' ? 'outline' : 'default'}>
-            <Link href={ROUTES.arcaSettings}>{t(`actions.${ACTION[state]}`)}</Link>
+            <Link href={ACTION[state].href}>{t(`actions.${ACTION[state].label}`)}</Link>
           </Button>
         </CardFooter>
       )}

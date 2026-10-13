@@ -30,6 +30,8 @@ export const ROUTES = {
   emailSettings: `${SETTINGS_ROOT}/email`,
   accountSettings: `${SETTINGS_ROOT}/account`,
   arcaSettings: `${SETTINGS_ROOT}/invoicing/arca`,
+  // A step of the ARCA guide, linked from the status card when that step is the one left.
+  arcaStep: (step: 'points-of-sale') => `${SETTINGS_ROOT}/invoicing/arca#${step}`,
   priceSettings: `${SETTINGS_ROOT}/prices`,
   invoicingSettings: `${SETTINGS_ROOT}/invoicing`,
   // A section of the invoicing page, linked from where a missing piece of it is reported.

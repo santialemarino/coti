@@ -1,28 +1,34 @@
-import { fireEvent, render, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ARCASetupGuide } from '@/app/(protected)/settings/invoicing/arca/_components/arca-setup-guide';
 import { ROUTES } from '@/config/routes';
 import type { ARCASetup } from '@/lib/api/arca-setup';
 import type { InvoicingBranch } from '@/lib/api/invoicing';
+import type { ARCAConnectionState } from '@/lib/utils/arca-connection';
 import messages from '@/translations/es.json';
 
 const refresh = vi.fn();
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }));
+vi.mock('next/navigation', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('next/navigation')>()),
+  useRouter: () => ({ refresh }),
+}));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/app/(protected)/settings/invoicing/arca/actions', () => ({
   createARCASetup: vi.fn(),
   uploadARCACertificate: vi.fn(),
   disconnectARCA: vi.fn(),
 }));
+vi.mock('@/app/(protected)/settings/invoicing/actions', () => ({ updatePointsOfSale: vi.fn() }));
 
 const { toast } = await import('sonner');
 const { createARCASetup, uploadARCACertificate, disconnectARCA } =
   await import('@/app/(protected)/settings/invoicing/arca/actions');
+const { updatePointsOfSale } = await import('@/app/(protected)/settings/invoicing/actions');
 
 const copy = messages.arca;
-const NOW = '2026-10-13T12:00:00.000Z';
+const connection = messages.invoicing.settings.connection;
 const CERTIFICATE = '-----BEGIN CERTIFICATE-----\nMIIDazCCAlOgAwIBAgIU\n-----END CERTIFICATE-----';
 const EMPTY: ARCASetup = {
   enabled: true,
@@ -47,15 +53,26 @@ const BRANCHES: InvoicingBranch[] = [
   { branchId: 'm', name: 'Morón', isActive: true, pointOfSale: 1 },
   { branchId: 'b', name: 'Villa Bosch', isActive: true, pointOfSale: null },
 ];
+const READY: InvoicingBranch[] = [
+  { branchId: 'm', name: 'Morón', isActive: true, pointOfSale: 1 },
+  { branchId: 'b', name: 'Villa Bosch', isActive: true, pointOfSale: 2 },
+];
 
-function show(setup: ARCASetup, accountTaxId: string | null = '30-71234567-1') {
+function show(
+  setup: ARCASetup,
+  state: ARCAConnectionState,
+  { accountTaxId = '30-71234567-1', branches = BRANCHES } = {} as {
+    accountTaxId?: string | null;
+    branches?: InvoicingBranch[];
+  },
+) {
   return render(
     <NextIntlClientProvider
       locale="es"
       messages={messages}
       timeZone="America/Argentina/Buenos_Aires"
     >
-      <ARCASetupGuide setup={setup} accountTaxId={accountTaxId} branches={BRANCHES} now={NOW} />
+      <ARCASetupGuide setup={setup} accountTaxId={accountTaxId} branches={branches} state={state} />
     </NextIntlClientProvider>,
   );
 }
@@ -64,11 +81,18 @@ function stepState(view: ReturnType<typeof show>, title: string) {
   return view.getByRole('heading', { name: new RegExp(`^${title}`) }).closest('li')?.dataset.status;
 }
 
+function statuses(view: ReturnType<typeof show>) {
+  return Array.from(view.container.querySelectorAll('[data-slot=step-guide] > li')).map(
+    (li) => (li as HTMLElement).dataset.status,
+  );
+}
+
 beforeEach(() => vi.clearAllMocks());
+afterEach(() => vi.unstubAllGlobals());
 
 describe('ARCASetupGuide states', () => {
   it('starts on WSASS and the request, with the account CUIT shown read-only', () => {
-    const view = show(EMPTY);
+    const view = show(EMPTY, 'notConnected');
 
     expect(stepState(view, copy.steps.wsass.title)).toBe('current');
     expect(stepState(view, copy.steps.generate.title)).toBe('current');
@@ -82,8 +106,13 @@ describe('ARCASetupGuide states', () => {
     ).toBe(ROUTES.accountSettings);
   });
 
+  it('titles the steps one level under the page heading', () => {
+    const view = show(EMPTY, 'notConnected');
+    expect(view.getAllByRole('heading', { level: 2 })).toHaveLength(7);
+  });
+
   it.each([null, '30-71234567-9'])('blocks the request without a valid CUIT (%s)', (cuit) => {
-    const view = show(EMPTY, cuit);
+    const view = show(EMPTY, 'notConnected', { accountTaxId: cuit });
 
     expect(view.getByText(messages.common.setup.ACCOUNT_TAX_ID.title)).toBeTruthy();
     expect(view.queryByRole('button', { name: copy.steps.generate.submit })).toBeNull();
@@ -91,7 +120,7 @@ describe('ARCASetupGuide states', () => {
 
   it('generates the request without sending a CUIT', async () => {
     vi.mocked(createARCASetup).mockResolvedValue({ ok: true });
-    const view = show(EMPTY);
+    const view = show(EMPTY, 'notConnected');
 
     fireEvent.click(view.getByRole('button', { name: copy.steps.generate.submit }));
 
@@ -100,56 +129,143 @@ describe('ARCASetupGuide states', () => {
   });
 
   it('moves to the steps done in ARCA once the request exists, the request ready to copy', () => {
-    const view = show(REQUESTED);
+    const view = show(REQUESTED, 'inProgress');
 
-    expect(stepState(view, copy.steps.generate.title)).toBe('done');
-    for (const step of ['copy', 'certificate', 'authorize', 'upload'] as const) {
-      expect(stepState(view, copy.steps[step].title)).toBe('current');
-    }
-    expect(view.getByLabelText(copy.steps.copy.label).textContent).toBe(REQUESTED.csr);
-    expect(view.getByRole('button', { name: copy.steps.copy.copy })).toBeTruthy();
-    expect(view.getByRole('button', { name: copy.steps.copy.download })).toBeTruthy();
+    expect(statuses(view)).toEqual([
+      'done',
+      'done',
+      'current',
+      'current',
+      'current',
+      'current',
+      'pending',
+    ]);
+    const request = view.getByText(copy.steps.copy.label).closest('figure')!;
+    expect(request.querySelector('figcaption')?.textContent).toBe(copy.steps.copy.label);
+    expect(request.textContent).toContain(REQUESTED.csr);
   });
 
-  it('shows what a whole certificate looks like instead of describing its delimiters', () => {
-    const view = show(REQUESTED);
-    expect(view.getByText(copy.pemCaption)).toBeTruthy();
-    expect(view.container.textContent).toContain('-----BEGIN CERTIFICATE-----');
+  it('opens WSASS the same way in every step that goes there', () => {
+    const view = show(REQUESTED, 'inProgress');
+    expect(view.getAllByText(copy.wsassLookup)).toHaveLength(2);
+    expect(
+      view.getByText(copy.steps.wsass.check.replace('{lookup}', copy.wsassLookup)),
+    ).toBeTruthy();
+  });
+
+  it('shows the certificate’s real delimiters and describes the middle, with one instruction', () => {
+    const view = show(REQUESTED, 'inProgress');
+    const example = view.getByText(copy.pem.instruction).closest('figure')!;
+    expect(within(example).getByText('-----BEGIN CERTIFICATE-----')).toBeTruthy();
+    expect(within(example).getByText('-----END CERTIFICATE-----')).toBeTruthy();
+    expect(within(example).getByText(copy.pem.middle).tagName).not.toBe('CODE');
+    expect(view.container.textContent).not.toContain('MIIDaz');
     expect(JSON.stringify(copy)).not.toMatch(/BEGIN|END CERTIFICATE/);
   });
 
-  it('leaves the points of sale while a branch has none, after the certificate is in', () => {
-    const view = show(INSTALLED);
+  it('agrees with the status card while a point of sale is missing', () => {
+    const view = show(INSTALLED, 'pointsMissing');
 
-    expect(stepState(view, copy.steps.upload.title)).toBe('done');
     expect(stepState(view, copy.steps.pointsOfSale.title)).toBe('current');
+    expect(view.getByText(connection.states.pointsMissing)).toBeTruthy();
     expect(view.getByText('1 de 2 sucursales abiertas tienen punto de venta.')).toBeTruthy();
-    expect(
-      view.getByRole('link', { name: copy.steps.pointsOfSale.link }).getAttribute('href'),
-    ).toBe(ROUTES.invoicingSection('points-of-sale'));
-    expect(view.getByRole('button', { name: copy.steps.upload.download })).toBeTruthy();
+    expect(view.container.querySelector('#points-of-sale')).toBeTruthy();
   });
 
-  it('says the certificate expired when it has', () => {
-    const view = show({ ...INSTALLED, certificateExpiresAt: '2026-10-01T00:00:00Z' });
-    expect(view.getByText(/El certificado venció el/)).toBeTruthy();
+  it('finishes every step once every open branch has a point of sale', () => {
+    const view = show(INSTALLED, 'connected', { branches: READY });
+    expect(statuses(view).every((status) => status === 'done')).toBe(true);
+    expect(view.queryByRole('alert')).toBeNull();
+  });
+
+  it.each([
+    ['expiringSoon', /El certificado vence el/],
+    ['expired', /El certificado venció el/],
+  ] as const)('calls out the certificate when it is %s', (state, upload) => {
+    const view = show(INSTALLED, state, { branches: READY });
+    expect(view.getByText(connection.states[state])).toBeTruthy();
+    if (state === 'expired') expect(view.getByText(upload)).toBeTruthy();
   });
 
   it('explains a server that cannot connect, with no steps to take', () => {
-    const view = show({ ...EMPTY, enabled: false });
+    const view = show({ ...EMPTY, enabled: false }, 'disabled');
     expect(view.getByText(copy.disabled)).toBeTruthy();
     expect(view.getByText(copy.disabled).closest('[role="status"]')).toBeNull();
     expect(view.queryByRole('list')).toBeNull();
   });
 });
 
+describe('ARCASetupGuide copy and download', () => {
+  it('copies the request and says so', async () => {
+    const writeText = vi.fn(async () => {});
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    const view = show(REQUESTED, 'inProgress');
+
+    fireEvent.click(view.getByRole('button', { name: copy.steps.copy.copy }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(REQUESTED.csr));
+    expect((await view.findAllByText(copy.steps.copy.copied)).length).toBeGreaterThan(0);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('points to the download when the clipboard refuses', async () => {
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      clipboard: { writeText: vi.fn(async () => Promise.reject(new Error('denied'))) },
+    });
+    const view = show(REQUESTED, 'inProgress');
+
+    fireEvent.click(view.getByRole('button', { name: copy.steps.copy.copy }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(copy.steps.copy.copyError));
+  });
+
+  it.each([
+    [
+      'request',
+      REQUESTED,
+      'inProgress',
+      copy.steps.copy.download,
+      'coti-30712345671.csr',
+      REQUESTED.csr,
+    ],
+    [
+      'certificate',
+      INSTALLED,
+      'connected',
+      copy.steps.upload.download,
+      'coti-30712345671.pem',
+      CERTIFICATE,
+    ],
+  ] as const)('downloads the %s as a file', async (_, setup, state, label, fileName, content) => {
+    const blobs: Blob[] = [];
+    const createObjectURL = vi.fn((blob: Blob) => {
+      blobs.push(blob);
+      return 'blob:download';
+    });
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      expect(this.download).toBe(fileName);
+    });
+    const view = show(setup, state, { branches: READY });
+
+    fireEvent.click(view.getByRole('button', { name: label }));
+
+    expect(click).toHaveBeenCalledOnce();
+    expect(await blobs[0]!.text()).toBe(content);
+    click.mockRestore();
+  });
+});
+
 describe('ARCASetupGuide certificate', () => {
-  it('sends a pasted certificate trimmed, with Windows line endings normalized', async () => {
+  it('sends a pasted certificate trimmed', async () => {
     vi.mocked(uploadARCACertificate).mockResolvedValue({ ok: true });
-    const view = show(REQUESTED);
+    const view = show(REQUESTED, 'inProgress');
 
     fireEvent.change(view.getByLabelText(copy.steps.upload.label, { exact: false }), {
-      target: { value: `\r\n  ${CERTIFICATE.replace(/\n/g, '\r\n')}  \r\n` },
+      target: { value: `\n  ${CERTIFICATE}  \n` },
     });
     fireEvent.click(view.getByRole('button', { name: copy.steps.upload.submit }));
 
@@ -157,24 +273,36 @@ describe('ARCASetupGuide certificate', () => {
     expect(toast.success).toHaveBeenCalledWith(copy.steps.upload.saved);
   });
 
-  it('refuses text that is not one certificate block, without calling the API', async () => {
-    const view = show(REQUESTED);
+  it('asks for the paste in the field, not with an example inside it', () => {
+    const view = show(REQUESTED, 'inProgress');
     const field = view.getByLabelText(copy.steps.upload.label, { exact: false });
+    expect(field.getAttribute('placeholder')).toBe(copy.steps.upload.placeholder);
+  });
 
-    fireEvent.change(field, { target: { value: 'MIIDazCCAlOgAwIBAgIU' } });
+  it('refuses text that is not one certificate block, without calling the API', async () => {
+    const view = show(REQUESTED, 'inProgress');
+
+    fireEvent.change(view.getByLabelText(copy.steps.upload.label, { exact: false }), {
+      target: { value: 'MIIDazCCAlOgAwIBAgIU' },
+    });
     fireEvent.click(view.getByRole('button', { name: copy.steps.upload.submit }));
 
     await waitFor(() => expect(view.getByText(copy.steps.upload.invalid)).toBeTruthy());
     expect(uploadARCACertificate).not.toHaveBeenCalled();
   });
 
-  it('reads a chosen file into the same field', async () => {
-    const view = show(REQUESTED);
-    const input = view.container.querySelector<HTMLInputElement>('input[type="file"]');
+  function certificateFile() {
     const file = new File([CERTIFICATE], 'certificado.pem');
     Object.defineProperty(file, 'text', { value: async () => CERTIFICATE });
+    return file;
+  }
 
-    fireEvent.change(input!, { target: { files: [file] } });
+  it('reads a chosen file into the same field and says which one', async () => {
+    const view = show(REQUESTED, 'inProgress');
+    const input = view.container.querySelector<HTMLInputElement>('input[type="file"]');
+
+    fireEvent.click(view.getByRole('button', { name: copy.steps.upload.chooseFile }));
+    fireEvent.change(input!, { target: { files: [certificateFile()] } });
 
     await waitFor(() =>
       expect(
@@ -182,11 +310,28 @@ describe('ARCASetupGuide certificate', () => {
           .value,
       ).toBe(CERTIFICATE),
     );
+    expect(view.getByText('Cargamos el contenido de certificado.pem.')).toBeTruthy();
+    expect(view.queryByText(/Arrastrá/)).toBeNull();
+  });
+
+  it('fills the field from a file dropped on it, highlighted while it is dragged over', async () => {
+    const view = show(REQUESTED, 'inProgress');
+    const field = view.getByLabelText(copy.steps.upload.label, { exact: false });
+    const dataTransfer = { types: ['Files'], files: [certificateFile()] };
+
+    fireEvent.dragOver(field, { dataTransfer });
+    expect(field.dataset.dragging).toBe('true');
+    await act(async () => {
+      fireEvent.drop(field, { dataTransfer });
+    });
+
+    expect(field.dataset.dragging).toBeUndefined();
+    await waitFor(() => expect((field as HTMLTextAreaElement).value).toBe(CERTIFICATE));
   });
 
   it('puts the API’s refusal on the certificate field', async () => {
     vi.mocked(uploadARCACertificate).mockResolvedValue({ error: 'INVALID_INPUT' });
-    const view = show(REQUESTED);
+    const view = show(REQUESTED, 'inProgress');
 
     fireEvent.change(view.getByLabelText(copy.steps.upload.label, { exact: false }), {
       target: { value: CERTIFICATE },
@@ -197,23 +342,77 @@ describe('ARCASetupGuide certificate', () => {
   });
 });
 
-describe('ARCASetupGuide disconnect', () => {
-  it('asks first, then removes the connection', async () => {
-    vi.mocked(disconnectARCA).mockResolvedValue({ ok: true });
-    const view = show(INSTALLED);
+describe('ARCASetupGuide points of sale', () => {
+  it('saves the points of sale from inside the step', async () => {
+    vi.mocked(updatePointsOfSale).mockResolvedValue({
+      settings: { branches: READY } as never,
+    });
+    const view = show(INSTALLED, 'pointsMissing');
 
-    fireEvent.click(view.getByRole('button', { name: copy.disconnect }));
-    const dialog = await view.findByRole('dialog');
-    expect(within(dialog).getByText(/30-71234567-1/)).toBeTruthy();
-    expect(disconnectARCA).not.toHaveBeenCalled();
-    fireEvent.click(within(dialog).getByRole('button', { name: copy.disconnect }));
+    fireEvent.change(view.getByLabelText('Punto de venta de Villa Bosch'), {
+      target: { value: '2' },
+    });
+    fireEvent.click(
+      view.getByRole('button', { name: messages.invoicing.settings.pointsOfSale.save }),
+    );
 
-    await waitFor(() => expect(disconnectARCA).toHaveBeenCalledOnce());
-    expect(toast.success).toHaveBeenCalledWith(copy.disconnected);
+    await waitFor(() =>
+      expect(updatePointsOfSale).toHaveBeenCalledWith([
+        { branchId: 'm', pointOfSale: '1' },
+        { branchId: 'b', pointOfSale: '2' },
+      ]),
+    );
+    expect(refresh).toHaveBeenCalled();
   });
 
-  it('offers no disconnect before there is anything to remove', () => {
-    const view = show(EMPTY);
-    expect(view.queryByRole('button', { name: copy.disconnect })).toBeNull();
+  it('refuses one number for two branches before saving', async () => {
+    const view = show(INSTALLED, 'pointsMissing');
+
+    fireEvent.change(view.getByLabelText('Punto de venta de Villa Bosch'), {
+      target: { value: '1' },
+    });
+    fireEvent.click(
+      view.getByRole('button', { name: messages.invoicing.settings.pointsOfSale.save }),
+    );
+
+    await waitFor(() =>
+      expect(view.getByText(messages.invoicing.settings.pointOfSale.duplicate)).toBeTruthy(),
+    );
+    expect(updatePointsOfSale).not.toHaveBeenCalled();
+  });
+});
+
+describe('ARCASetupGuide removal', () => {
+  it('starts over while the connection is in progress', async () => {
+    vi.mocked(disconnectARCA).mockResolvedValue({ ok: true });
+    const view = show(REQUESTED, 'inProgress');
+
+    expect(view.getByText(copy.remove.restart.hint)).toBeTruthy();
+    expect(view.queryByRole('button', { name: copy.remove.disconnect.action })).toBeNull();
+    fireEvent.click(view.getByRole('button', { name: copy.remove.restart.action }));
+    const dialog = await view.findByRole('dialog');
+    expect(within(dialog).getByText(/30-71234567-1/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: copy.remove.restart.action }));
+
+    await waitFor(() => expect(disconnectARCA).toHaveBeenCalledOnce());
+    expect(toast.success).toHaveBeenCalledWith(copy.remove.restart.done);
+  });
+
+  it('asks first, then disconnects once connected', async () => {
+    vi.mocked(disconnectARCA).mockResolvedValue({ ok: true });
+    const view = show(INSTALLED, 'connected', { branches: READY });
+
+    fireEvent.click(view.getByRole('button', { name: copy.remove.disconnect.action }));
+    const dialog = await view.findByRole('dialog');
+    expect(disconnectARCA).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: copy.remove.disconnect.action }));
+
+    await waitFor(() => expect(disconnectARCA).toHaveBeenCalledOnce());
+    expect(toast.success).toHaveBeenCalledWith(copy.remove.disconnect.done);
+  });
+
+  it('offers nothing to remove before there is a request', () => {
+    const view = show(EMPTY, 'notConnected');
+    expect(view.queryByRole('button', { name: copy.remove.restart.action })).toBeNull();
   });
 });

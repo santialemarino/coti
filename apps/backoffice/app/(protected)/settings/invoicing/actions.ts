@@ -17,6 +17,12 @@ import {
   type InvoicingSettingsRaw,
 } from '@/lib/api/invoicing';
 import { requireAdmin } from '@/lib/auth/session';
+import {
+  pointsOfSaleBody,
+  pointsOfSaleSchema,
+  type PointOfSaleValue,
+} from '@/lib/forms/points-of-sale';
+import { rawText } from '@/lib/forms/validators';
 
 export interface InvoicingSettingsResult {
   settings?: InvoicingSettings;
@@ -55,9 +61,28 @@ function settingsBody(values: InvoicingSettingsOutput) {
     },
     iva_condition: values.ivaCondition,
     prices_include_vat: values.pricesIncludeVat,
-    branches: values.branches.map((branch) => ({
-      branch_id: branch.branchId,
-      point_of_sale: branch.pointOfSale === '' ? null : Number(branch.pointOfSale),
-    })),
+    branches: pointsOfSaleBody(values.branches),
   };
+}
+
+// The points of sale alone, saved from the ARCA guide without touching the rest of the settings.
+export async function updatePointsOfSale(
+  values: PointOfSaleValue[],
+): Promise<InvoicingSettingsResult> {
+  await requireAdmin();
+  const parsed = pointsOfSaleSchema(rawText).safeParse(values);
+  if (!parsed.success) return { error: 'INVALID_BODY' };
+
+  try {
+    const raw = await apiRequest<InvoicingSettingsRaw>({
+      path: '/v1/invoicing/points-of-sale',
+      method: 'PUT',
+      branchScoped: false,
+      body: { branches: pointsOfSaleBody(parsed.data) },
+    });
+    revalidatePath(ROUTES.invoicingSettings, 'layout');
+    return { settings: mapInvoicingSettings(raw) };
+  } catch (error) {
+    return { error: errorCodeOf(error) };
+  }
 }

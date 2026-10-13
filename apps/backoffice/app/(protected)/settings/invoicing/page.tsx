@@ -6,6 +6,8 @@ import { InvoicingSettingsForm } from '@/app/(protected)/settings/invoicing/_com
 import { getARCASetup } from '@/lib/api/arca-setup';
 import { getInvoicingSettings } from '@/lib/api/invoicing-settings';
 import { requireAdmin } from '@/lib/auth/session';
+import { ARCA_CERTIFICATE_RENEWAL_DAYS } from '@/lib/config';
+import { arcaConnectionState } from '@/lib/utils/arca-connection';
 import { generatePageMetadata } from '@/lib/utils/page';
 
 export const generateMetadata = () => generatePageMetadata('invoicingSettings');
@@ -14,11 +16,17 @@ export default async function InvoicingSettingsPage() {
   await requireAdmin();
   const t = await getTranslations('invoicing.settings');
   const [settings, setup] = await Promise.all([getInvoicingSettings(), getARCASetup()]);
+  const state = arcaConnectionState(
+    setup,
+    settings.branches,
+    new Date().toISOString(),
+    ARCA_CERTIFICATE_RENEWAL_DAYS,
+  );
 
   return (
     <main className="flex flex-col gap-y-8">
       <PageHeader title={t('title')} description={t('description')} />
-      <ARCAConnectionCard setup={setup} now={new Date().toISOString()} />
+      <ARCAConnectionCard setup={setup} state={state} />
       <InvoicingSettingsForm settings={settings} />
     </main>
   );

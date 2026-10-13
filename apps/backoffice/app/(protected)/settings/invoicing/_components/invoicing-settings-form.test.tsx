@@ -150,6 +150,36 @@ describe('InvoicingSettingsForm gross income', () => {
   });
 });
 
+describe('InvoicingSettingsForm focus and hints', () => {
+  // Focus lands on the first invalid field in reading order, the IVA condition before the table.
+  it('focuses the first invalid field after a refused save', async () => {
+    const view = renderForm({ ...SETTINGS, ivaCondition: null });
+
+    fireEvent.change(pointOfSale(view, 'Morón'), { target: { value: '3' } });
+    fireEvent.click(view.getByRole('button', { name: copy.submit }));
+
+    const condition = view.getByRole('combobox', { name: new RegExp(copy.ivaCondition.label) });
+    await waitFor(() => expect(document.activeElement).toBe(condition));
+  });
+
+  it('explains the price switch with an example that follows its state', () => {
+    const view = renderForm();
+    const hint = () => view.getByText(/Por ejemplo/).textContent?.replace(/\s/g, ' ') ?? '';
+
+    expect(hint()).toMatch(
+      /^Los precios ya incluyen el IVA\. .*\$ 1\.210,00 se factura como \$ 1\.000,00/,
+    );
+    fireEvent.click(view.getByRole('switch'));
+    expect(hint()).toMatch(/^El IVA se suma al facturar\. .*= \$ 1\.210,00\.$/);
+  });
+
+  it('offers the account CUIT from the hint under the number, not beside the field', () => {
+    const view = renderForm();
+    const hint = view.getByText(copy.profile.grossIncomeNumberHint, { exact: false });
+    expect(within(hint).getByRole('button', { name: copy.profile.useCuit })).toBeTruthy();
+  });
+});
+
 describe('InvoicingSettingsForm fiscal identity', () => {
   it('shows the account’s legal name and CUIT read-only, with the way to edit them', () => {
     const view = renderForm();

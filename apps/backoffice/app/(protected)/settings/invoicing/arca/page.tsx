@@ -5,6 +5,8 @@ import { ARCASetupGuide } from '@/app/(protected)/settings/invoicing/arca/_compo
 import { getARCASetup } from '@/lib/api/arca-setup';
 import { getInvoicingSettings } from '@/lib/api/invoicing-settings';
 import { requireAdmin } from '@/lib/auth/session';
+import { ARCA_CERTIFICATE_RENEWAL_DAYS } from '@/lib/config';
+import { arcaConnectionState } from '@/lib/utils/arca-connection';
 import { generatePageMetadata } from '@/lib/utils/page';
 
 export const generateMetadata = () => generatePageMetadata('arcaSettings');
@@ -13,6 +15,12 @@ export default async function ARCASettingsPage() {
   await requireAdmin();
   const t = await getTranslations('arca');
   const [setup, settings] = await Promise.all([getARCASetup(), getInvoicingSettings()]);
+  const state = arcaConnectionState(
+    setup,
+    settings.branches,
+    new Date().toISOString(),
+    ARCA_CERTIFICATE_RENEWAL_DAYS,
+  );
 
   return (
     <main className="flex flex-col gap-y-8">
@@ -21,7 +29,7 @@ export default async function ARCASettingsPage() {
         setup={setup}
         accountTaxId={settings.taxId}
         branches={settings.branches}
-        now={new Date().toISOString()}
+        state={state}
       />
     </main>
   );

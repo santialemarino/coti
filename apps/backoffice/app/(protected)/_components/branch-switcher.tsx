@@ -82,7 +82,8 @@ export function BranchSwitcher({ branches, activeBranchId, isAdmin }: BranchSwit
       aria-label={t('label')}
       triggerLabel={triggerLabel}
       sideOffset={BRANCH_MENU_OFFSET}
-      className="w-44 min-w-0 shrink sm:w-56"
+      // A toolbar control in the header, not a form field: it keeps the white of the bar.
+      className="w-44 min-w-0 shrink sm:w-56 bg-background hover:bg-muted active:bg-surface-hover aria-expanded:bg-muted"
     />
   );
 }

@@ -108,6 +108,7 @@ export function ClientFiscalForm({ client }: ClientFiscalFormProps) {
                         {...field}
                         value={field.value ?? ''}
                         maxLength={TEXT_FIELD_MAX_LENGTH}
+                        placeholder={t('address.placeholder')}
                         disabled={form.formState.isSubmitting}
                       />
                     </FormControl>
@@ -161,6 +162,7 @@ export function ClientFiscalForm({ client }: ClientFiscalFormProps) {
                     <FormLabel>{t('ivaCondition.label')}</FormLabel>
                     <FormControl>
                       <Combobox
+                        ref={field.ref}
                         disabled={form.formState.isSubmitting}
                         value={field.value || null}
                         onValueChange={field.onChange}

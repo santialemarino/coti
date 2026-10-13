@@ -1,13 +1,12 @@
 import { z } from 'zod';
 
-import { POINT_OF_SALE_MAX, POINT_OF_SALE_MIN } from '@/lib/api/invoicing';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
+import { pointsOfSaleSchema } from '@/lib/forms/points-of-sale';
 import { rawText, requiredText, type SchemaText } from '@/lib/forms/validators';
 
 // The caps the inputs stop typing at, shared with the rules below so the two cannot drift.
 export const ADDRESS_MAX_LENGTH = TEXT_FIELD_MAX_LENGTH;
 export const GROSS_INCOME_NUMBER_MAX_LENGTH = 20;
-export const POINT_OF_SALE_MAX_LENGTH = String(POINT_OF_SALE_MAX).length;
 
 // Mirrors the API: province registrations differ in shape, so only bounds every one fits apply.
 const GROSS_INCOME_DIGITS_MIN = 5;
@@ -37,10 +36,6 @@ function isGrossIncomeNumber(value: string): boolean {
   );
 }
 
-/*
- * A point of sale is a QuantityInput's digit string, `''` for "none yet". Two branches sharing one
- * would hand ARCA two invoice sequences under one number, so the second is refused on its own row.
- */
 export function invoicingSettingsSchema(t: SchemaText = rawText) {
   return z
     .object({
@@ -52,37 +47,7 @@ export function invoicingSettingsSchema(t: SchemaText = rawText) {
       activityStartedOn: requiredText(t, 'profile.activityStartedOnRequired', 10).pipe(
         z.string().regex(/^\d{4}-\d{2}-\d{2}$/, t.field('profile.activityStartedOnInvalid')),
       ),
-      branches: z
-        .array(
-          z.object({
-            branchId: z.string().min(1),
-            pointOfSale: z
-              .string()
-              .refine(
-                (raw) =>
-                  raw === '' ||
-                  (/^\d+$/.test(raw) &&
-                    Number(raw) >= POINT_OF_SALE_MIN &&
-                    Number(raw) <= POINT_OF_SALE_MAX),
-                t.field('pointOfSale.range', { min: POINT_OF_SALE_MIN, max: POINT_OF_SALE_MAX }),
-              ),
-          }),
-        )
-        .superRefine((branches, ctx) => {
-          const seen = new Set<number>();
-          branches.forEach((branch, index) => {
-            if (branch.pointOfSale === '') return;
-            const value = Number(branch.pointOfSale);
-            if (seen.has(value)) {
-              ctx.addIssue({
-                code: 'custom',
-                path: [index, 'pointOfSale'],
-                message: t.field('pointOfSale.duplicate'),
-              });
-            }
-            seen.add(value);
-          });
-        }),
+      branches: pointsOfSaleSchema(t),
     })
     .superRefine((values, ctx) => {
       if (values.ivaCondition === '') {
