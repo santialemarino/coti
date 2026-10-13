@@ -1,8 +1,9 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { CheckCircle2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -19,17 +20,20 @@ import {
   PendingButton,
   Textarea,
 } from '@repo/ui/components';
+import { useHeldWhileClosed } from '@repo/ui/hooks';
 import { cn } from '@repo/ui/lib';
 import { uploadARCACertificate } from '@/app/(protected)/settings/invoicing/arca/actions';
 import {
   arcaCertificateSchema,
+  certificateContent,
   type ARCACertificateValues,
 } from '@/app/(protected)/settings/invoicing/arca/form-schema';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { CERTIFICATE_MAX_BYTES, CERTIFICATE_MAX_KB } from '@/lib/constants/arca';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 
-const CERTIFICATE_FILE_TYPES = '.crt,.pem,.cer';
+// What a saved certificate, or a mistaken file, is usually called. The content decides, not this.
+const CERTIFICATE_FILE_TYPES = '.crt,.pem,.cer,.csr,.txt';
 
 interface CertificateUploadProps {
   disabled?: boolean;
@@ -55,21 +59,48 @@ export function CertificateUpload({ disabled = false }: CertificateUploadProps) 
   });
   const pending = form.formState.isSubmitting;
   const locked = disabled || pending;
+  // A refusal arrives while the field is still disabled for the save, so focus waits for it to open.
+  const focusAfterSave = useRef(false);
+  const loadedName = useHeldWhileClosed(loadedFrom, loadedFrom !== null);
+
+  useEffect(() => {
+    if (pending || !focusAfterSave.current) return;
+    focusAfterSave.current = false;
+    form.setFocus('certificate');
+  }, [pending, form]);
 
   async function readFile(file: File | undefined) {
     if (!file) return;
     if (file.size > CERTIFICATE_MAX_BYTES) {
+      setLoadedFrom(null);
       form.setError('certificate', {
         message: t('steps.upload.tooLarge', { max: CERTIFICATE_MAX_KB }),
       });
       return;
     }
+    let text: string;
     try {
-      form.setValue('certificate', await file.text(), { shouldValidate: true, shouldDirty: true });
-      setLoadedFrom(file.name);
+      text = await file.text();
     } catch {
       form.setError('certificate', { message: t('steps.upload.readError') });
+      return;
     }
+    const content = certificateContent(text);
+    if (content !== 'certificate') {
+      setLoadedFrom(null);
+      form.setError(
+        'certificate',
+        {
+          message: t(
+            content === 'request' ? 'steps.upload.fileRequest' : 'steps.upload.fileInvalid',
+          ),
+        },
+        { shouldFocus: true },
+      );
+      return;
+    }
+    form.setValue('certificate', text, { shouldValidate: true, shouldDirty: true });
+    setLoadedFrom(file.name);
   }
 
   function carriesFiles(event: React.DragEvent) {
@@ -79,7 +110,8 @@ export function CertificateUpload({ disabled = false }: CertificateUploadProps) 
   async function onSubmit(values: ARCACertificateValues) {
     const result = await uploadARCACertificate(values.certificate);
     if (result.error) {
-      form.setError('certificate', { message: message(result.error) }, { shouldFocus: true });
+      form.setError('certificate', { message: message(result.error) });
+      focusAfterSave.current = true;
       return;
     }
     toast.success(t('steps.upload.saved'));
@@ -149,12 +181,28 @@ export function CertificateUpload({ disabled = false }: CertificateUploadProps) 
                   event.target.value = '';
                 }}
               />
-              <p
-                aria-live="polite"
-                className="text-paragraph-xs text-foreground-muted empty:hidden"
-              >
+              <p data-slot="certificate-loaded" aria-live="polite" className="sr-only">
                 {loadedFrom ? t('steps.upload.loaded', { fileName: loadedFrom }) : null}
               </p>
+              {/* The visible note reveals and collapses like a field message, holding its text while
+                  it leaves; the live region above is what gets announced. */}
+              <div
+                aria-hidden="true"
+                data-shown={loadedFrom !== null}
+                className="grid grid-rows-[0fr] -mt-2 transition-[grid-template-rows] duration-200 ease-out-soft motion-reduce:transition-none data-[shown=true]:grid-rows-[1fr] [&>*]:overflow-hidden"
+              >
+                <div>
+                  <p
+                    className={cn(
+                      'flex items-start pt-2 gap-x-1.5 text-paragraph-xs text-success-foreground transition-opacity duration-200 ease-out-soft motion-reduce:transition-none',
+                      loadedFrom === null && 'opacity-0',
+                    )}
+                  >
+                    <CheckCircle2Icon aria-hidden="true" className="size-3.5 mt-0.5 shrink-0" />
+                    {loadedName ? t('steps.upload.loaded', { fileName: loadedName }) : null}
+                  </p>
+                </div>
+              </div>
               <FormMessage />
             </FormItem>
           )}

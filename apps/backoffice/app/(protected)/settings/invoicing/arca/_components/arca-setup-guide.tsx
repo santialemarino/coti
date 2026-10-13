@@ -188,7 +188,6 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, state }: ARCASet
     certificate: (
       <>
         <ol className="flex flex-col pl-5 gap-y-2 list-decimal text-paragraph-sm text-foreground-muted">
-          <li>{t('wsassLookup')}</li>
           <li>{t('steps.certificate.open')}</li>
           <li>{t('steps.certificate.alias')}</li>
           <li>{t('steps.certificate.paste')}</li>
@@ -199,7 +198,6 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, state }: ARCASet
     ),
     authorize: (
       <>
-        <Paragraph>{t('wsassLookup')}</Paragraph>
         <Paragraph>
           {t.rich('steps.authorize.body', {
             cuit: () => <span className="whitespace-nowrap">{shownCuit || '—'}</span>,
@@ -236,9 +234,9 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, state }: ARCASet
     ),
     pointsOfSale: (
       <>
-        <Paragraph>{t('steps.pointsOfSale.body')}</Paragraph>
         {setup.hasCertificate ? (
           <>
+            <Paragraph>{t('steps.pointsOfSale.body')}</Paragraph>
             <Paragraph>
               {t('steps.pointsOfSale.progress', {
                 done: activeBranches.filter((branch) => branch.pointOfSale !== null).length,
@@ -247,7 +245,9 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, state }: ARCASet
             </Paragraph>
             <PointsOfSaleForm branches={branches} disabled={busy} />
           </>
-        ) : null}
+        ) : (
+          <Paragraph>{t('steps.pointsOfSale.pending')}</Paragraph>
+        )}
       </>
     ),
   };

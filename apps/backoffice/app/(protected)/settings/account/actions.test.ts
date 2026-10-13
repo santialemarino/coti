@@ -58,7 +58,18 @@ describe('updateAccount', () => {
       tax_id: '30-71234567-9',
       brand_logo_url: 'https://tucorralon.com/logo.png',
       brand_color: '#C2410C',
+      disconnect_arca: false,
     });
+  });
+
+  // The confirmation travels with the write, and the invoicing screens re-read the connection.
+  it('sends a confirmed ARCA disconnection and refreshes the invoicing screens', async () => {
+    vi.mocked(apiRequest).mockResolvedValue(undefined);
+
+    await updateAccount(VALUES, undefined, true);
+
+    expect(bodySent()).toMatchObject({ disconnect_arca: true });
+    expect(revalidatePath).toHaveBeenCalledWith(ROUTES.invoicingSettings, 'layout');
   });
 
   it('uploads a selected logo and stores its public URL', async () => {

@@ -49,6 +49,8 @@ const INSTALLED: ARCASetup = {
   certificate: CERTIFICATE,
   certificateExpiresAt: '2028-10-13T00:00:00Z',
 };
+const REQUEST_FILE_TEXT =
+  '-----BEGIN CERTIFICATE REQUEST-----\nMIIC\n-----END CERTIFICATE REQUEST-----';
 const BRANCHES: InvoicingBranch[] = [
   { branchId: 'm', name: 'Morón', isActive: true, pointOfSale: 1 },
   { branchId: 'b', name: 'Villa Bosch', isActive: true, pointOfSale: null },
@@ -145,12 +147,16 @@ describe('ARCASetupGuide states', () => {
     expect(request.textContent).toContain(REQUESTED.csr);
   });
 
-  it('opens WSASS the same way in every step that goes there', () => {
+  // The full way to WSASS, with ARCA's exact label, is given once; later steps only go back to it.
+  it('explains how to find WSASS once and sends the later steps back to it', () => {
     const view = show(REQUESTED, 'inProgress');
-    expect(view.getAllByText(copy.wsassLookup)).toHaveLength(2);
+    const text = view.container.textContent ?? '';
+    expect(text.split('Autogestión Certificados Homologación').length - 1).toBe(1);
     expect(
       view.getByText(copy.steps.wsass.check.replace('{lookup}', copy.wsassLookup)),
     ).toBeTruthy();
+    expect(view.getByText(copy.steps.certificate.open)).toBeTruthy();
+    expect(text).toContain('Volvé a «WSASS» y elegí «Crear autorización a servicio»');
   });
 
   it('shows the certificate’s real delimiters and describes the middle, with one instruction', () => {
@@ -310,8 +316,46 @@ describe('ARCASetupGuide certificate', () => {
           .value,
       ).toBe(CERTIFICATE),
     );
-    expect(view.getByText('Cargamos el contenido de certificado.pem.')).toBeTruthy();
+    const note = 'Leímos el certificado de certificado.pem. Revisalo y tocá «Guardar certificado».';
+    expect(view.getAllByText(note)).toHaveLength(2);
+    expect(view.container.querySelector('[data-slot=certificate-loaded]')?.textContent).toBe(note);
     expect(view.queryByText(/Arrastrá/)).toBeNull();
+
+    // Editing the text drops the note: what is in the field is no longer what the file held.
+    fireEvent.change(view.getByLabelText(copy.steps.upload.label, { exact: false }), {
+      target: { value: `${CERTIFICATE}x` },
+    });
+    expect(view.container.querySelector('[data-slot=certificate-loaded]')?.textContent).toBe('');
+  });
+
+  it.each([
+    ['the request generated in Coti', REQUEST_FILE_TEXT, 'fileRequest'],
+    ['anything else', 'hola', 'fileInvalid'],
+  ] as const)('refuses a file holding %s, leaving the field as it was', async (_, text, key) => {
+    const view = show(REQUESTED, 'inProgress');
+    const input = view.container.querySelector<HTMLInputElement>('input[type="file"]');
+    const file = new File([text], 'archivo.txt');
+    Object.defineProperty(file, 'text', { value: async () => text });
+
+    fireEvent.change(input!, { target: { files: [file] } });
+
+    const field = view.getByLabelText(copy.steps.upload.label, { exact: false });
+    await waitFor(() => expect(view.getByText(copy.steps.upload[key])).toBeTruthy());
+    expect((field as HTMLTextAreaElement).value).toBe('');
+    expect(view.container.querySelector('[data-slot=certificate-loaded]')?.textContent).toBe('');
+    expect(input?.getAttribute('accept')).toBe('.crt,.pem,.cer,.csr,.txt');
+  });
+
+  it('tells a pasted request apart from the certificate', async () => {
+    const view = show(REQUESTED, 'inProgress');
+
+    fireEvent.change(view.getByLabelText(copy.steps.upload.label, { exact: false }), {
+      target: { value: REQUEST_FILE_TEXT },
+    });
+    fireEvent.click(view.getByRole('button', { name: copy.steps.upload.submit }));
+
+    await waitFor(() => expect(view.getByText(copy.steps.upload.pastedRequest)).toBeTruthy());
+    expect(uploadARCACertificate).not.toHaveBeenCalled();
   });
 
   it('fills the field from a file dropped on it, highlighted while it is dragged over', async () => {
@@ -329,6 +373,17 @@ describe('ARCASetupGuide certificate', () => {
     await waitFor(() => expect((field as HTMLTextAreaElement).value).toBe(CERTIFICATE));
   });
 
+  it('focuses the certificate field when the API refuses it', async () => {
+    vi.mocked(uploadARCACertificate).mockResolvedValue({ error: 'INVALID_INPUT' });
+    const view = show(REQUESTED, 'inProgress');
+    const field = view.getByLabelText(copy.steps.upload.label, { exact: false });
+
+    fireEvent.change(field, { target: { value: CERTIFICATE } });
+    fireEvent.click(view.getByRole('button', { name: copy.steps.upload.submit }));
+
+    await waitFor(() => expect(document.activeElement).toBe(field));
+  });
+
   it('puts the API’s refusal on the certificate field', async () => {
     vi.mocked(uploadARCACertificate).mockResolvedValue({ error: 'INVALID_INPUT' });
     const view = show(REQUESTED, 'inProgress');
@@ -343,7 +398,13 @@ describe('ARCASetupGuide certificate', () => {
 });
 
 describe('ARCASetupGuide points of sale', () => {
-  it('saves the points of sale from inside the step', async () => {
+  it('says what comes after the certificate, with no table yet', () => {
+    const view = show(REQUESTED, 'inProgress');
+    expect(view.getByText(copy.steps.pointsOfSale.pending)).toBeTruthy();
+    expect(view.queryByLabelText('Punto de venta de Morón')).toBeNull();
+  });
+
+  it('saves only the rows that changed, from inside the step', async () => {
     vi.mocked(updatePointsOfSale).mockResolvedValue({
       settings: { branches: READY } as never,
     });
@@ -357,10 +418,7 @@ describe('ARCASetupGuide points of sale', () => {
     );
 
     await waitFor(() =>
-      expect(updatePointsOfSale).toHaveBeenCalledWith([
-        { branchId: 'm', pointOfSale: '1' },
-        { branchId: 'b', pointOfSale: '2' },
-      ]),
+      expect(updatePointsOfSale).toHaveBeenCalledWith([{ branchId: 'b', pointOfSale: '2' }]),
     );
     expect(refresh).toHaveBeenCalled();
   });
@@ -409,6 +467,18 @@ describe('ARCASetupGuide removal', () => {
 
     await waitFor(() => expect(disconnectARCA).toHaveBeenCalledOnce());
     expect(toast.success).toHaveBeenCalledWith(copy.remove.disconnect.done);
+  });
+
+  it('keeps the connection while an invoice waits for ARCA, and says why', async () => {
+    vi.mocked(disconnectARCA).mockResolvedValue({ error: 'INVOICE_PENDING' });
+    const view = show(INSTALLED, 'connected', { branches: READY });
+
+    fireEvent.click(view.getByRole('button', { name: copy.remove.disconnect.action }));
+    const dialog = await view.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: copy.remove.disconnect.action }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(copy.errors.INVOICE_PENDING));
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it('offers nothing to remove before there is a request', () => {

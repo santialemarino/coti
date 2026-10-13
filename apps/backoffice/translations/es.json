@@ -41,14 +41,14 @@
       },
       "certificate": {
         "title": "Obtené el certificado en WSASS",
-        "open": "Elegí «Nuevo Certificado».",
+        "open": "Volvé a «WSASS» y elegí «Nuevo Certificado».",
         "alias": "En «Nombre simbólico del DN» escribí un alias con letras y números, sin espacios ni guiones; por ejemplo, coti2026.",
         "paste": "Pegá la solicitud que copiaste en «Solicitud de certificado en formato PKCS#10» y tocá «Crear DN y Obtener Certificado».",
         "result": "ARCA te muestra el certificado en «Resultado». Se ve así:"
       },
       "authorize": {
         "title": "Autorizá la facturación electrónica",
-        "body": "Elegí «Crear autorización a servicio». Seleccioná el alias que creaste, ingresá <cuit></cuit> como «CUIT representado» y elegí el servicio «wsfe», que es el de facturación electrónica. Confirmá con «Crear autorización».",
+        "body": "Volvé a «WSASS» y elegí «Crear autorización a servicio». Seleccioná el alias que creaste, ingresá <cuit></cuit> como «CUIT representado» y elegí el servicio «wsfe», que es el de facturación electrónica. Confirmá con «Crear autorización».",
         "guide": "Ver la guía de ARCA"
       },
       "upload": {
@@ -67,14 +67,18 @@
         "expired": "El certificado venció el {date}. Desconectá ARCA y repetí los pasos para obtener uno nuevo.",
         "download": "Descargar certificado (.pem)",
         "placeholder": "Pegá acá el certificado",
-        "fromFile": "¿Lo guardaste en un archivo?",
-        "chooseFile": "Cargarlo desde un archivo",
-        "loaded": "Cargamos el contenido de {fileName}."
+        "fromFile": "¿Guardaste el certificado en un archivo?",
+        "chooseFile": "Cargalo desde el archivo",
+        "loaded": "Leímos el certificado de {fileName}. Revisalo y tocá «Guardar certificado».",
+        "pastedRequest": "Eso que pegaste es la solicitud que generaste en Coti, no el certificado. Pegala en WSASS y pegá acá el certificado que te muestra ARCA en «Resultado».",
+        "fileRequest": "Ese archivo es la solicitud que generaste en Coti, no el certificado. Pegala en WSASS y cargá acá el certificado que te muestra ARCA en «Resultado».",
+        "fileInvalid": "Ese archivo no es un certificado. Elegí el que guardaste desde «Resultado» o pegá su texto."
       },
       "pointsOfSale": {
         "title": "Cargá los puntos de venta",
         "body": "Cada sucursal factura con su propio punto de venta: el número que das de alta en ARCA, en «Administración de puntos de venta y domicilios». Cargalos acá. Después podés cambiarlos cuando quieras en Facturación.",
-        "progress": "{done} de {total} sucursales abiertas tienen punto de venta."
+        "progress": "{done} de {total} sucursales abiertas tienen punto de venta.",
+        "pending": "Cuando el certificado esté cargado, acá vas a cargar el punto de venta de cada sucursal: el número que das de alta en ARCA, en «Administración de puntos de venta y domicilios»."
       }
     },
     "remove": {
@@ -100,7 +104,8 @@
       "INVALID_INPUT": "El certificado no corresponde a la solicitud de este CUIT o ya venció. Revisá que hayas copiado el «Resultado» completo.",
       "INVALID_BODY": "Pegá el certificado completo, desde el primer guion hasta el último.",
       "CONFLICT": "La conexión cambió mientras la editabas. Actualizá la página.",
-      "INVALID_TAX_ID": "El CUIT del corralón no es válido. Corregilo en Cuenta."
+      "INVALID_TAX_ID": "El CUIT del corralón no es válido. Corregilo en Cuenta.",
+      "INVOICE_PENDING": "Hay facturas esperando la respuesta de ARCA, así que todavía no se puede desconectar. Consultalas en Comprobantes y volvé a intentar."
     }
   },
   "common": {
@@ -328,7 +333,8 @@
     "INVOICE_STALE": "La venta cambió desde que la revisaste. Revisá la factura y volvé a emitirla.",
     "POINT_OF_SALE_TAKEN": "Ese punto de venta ya lo usa otra sucursal.",
     "ACCOUNT_TAX_ID_REQUIRED": "Cargá el CUIT del corralón en Cuenta antes de conectar ARCA.",
-    "ARCA_CONNECTED": "No podés cambiar el CUIT mientras haya una conexión con ARCA, activa o en curso. Desconectala o empezá de nuevo desde Facturación."
+    "ARCA_CONNECTED": "El CUIT está conectado con ARCA. Confirmá el cambio para desconectarlo.",
+    "INVOICE_PENDING": "Hay facturas esperando la respuesta de ARCA. Consultalas en Comprobantes y volvé a intentar."
   },
   "meta": {
     "home": {
@@ -1851,6 +1857,16 @@
       "NOT_FOUND": "No encontramos la cuenta. Volvé a iniciar sesión.",
       "INVALID_INPUT": "Revisá los datos del corralón e intentá de nuevo.",
       "INTERNAL": "No pudimos guardar los datos. Intentá de nuevo."
+    },
+    "savedDisconnected": "Guardamos el CUIT nuevo y desconectamos ARCA. Conectalo desde Facturación para volver a facturar.",
+    "invoicePending": "Hay facturas esperando la respuesta de ARCA, así que el CUIT todavía no se puede cambiar.",
+    "invoicePendingLink": "Ver comprobantes",
+    "disconnectARCA": {
+      "title": "Cambiar el CUIT",
+      "inProgress": "Cambiar el CUIT descarta la solicitud que generaste para el CUIT {old}. Después vas a generar una nueva desde Facturación.",
+      "connected": "Cambiar el CUIT desconecta ARCA: se borran el certificado y la clave del CUIT {old}, y no vas a poder facturar hasta conectar el nuevo. Las facturas ya emitidas no cambian.",
+      "confirm": "Cambiar CUIT y desconectar ARCA",
+      "cancel": "Cancelar"
     }
   },
   "users": {
@@ -2514,7 +2530,8 @@
         "inputLabel": "Punto de venta de {branch}",
         "placeholder": "Ingresá el número",
         "save": "Guardar puntos de venta",
-        "saved": "Guardamos los puntos de venta de las sucursales."
+        "saved": "Guardamos los puntos de venta de las sucursales.",
+        "unchanged": "No cambiaste ningún punto de venta."
       },
       "pointOfSale": {
         "range": "Tiene que estar entre {min} y {max}.",

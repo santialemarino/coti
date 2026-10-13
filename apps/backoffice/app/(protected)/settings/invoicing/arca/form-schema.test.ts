@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { schemaText } from '@repo/vitest-config/schema-text';
-import { arcaCertificateSchema } from '@/app/(protected)/settings/invoicing/arca/form-schema';
+import {
+  arcaCertificateSchema,
+  certificateContent,
+} from '@/app/(protected)/settings/invoicing/arca/form-schema';
 import { CERTIFICATE_MAX_BYTES } from '@/lib/constants/arca';
 
 const BLOCK = '-----BEGIN CERTIFICATE-----\nMIIDaz\nCCAlOg==\n-----END CERTIFICATE-----';
@@ -20,12 +23,20 @@ describe('arcaCertificateSchema', () => {
     expect(parse('  ').error?.issues[0]?.message).toBe('field:steps.upload.required');
     for (const raw of [
       'MIIDazCCAlOg',
-      BLOCK.replace('CERTIFICATE-----', 'CERTIFICATE REQUEST-----'),
       `${BLOCK}\n${BLOCK}`,
       BLOCK.replace('-----END', '----END'),
     ]) {
       expect(parse(raw).error?.issues[0]?.message).toBe('field:steps.upload.invalid');
     }
+  });
+
+  // The request is what the guide had them copy a few steps earlier, so it gets its own message.
+  it('tells the request Coti generated apart from anything else', () => {
+    const request = BLOCK.replaceAll('CERTIFICATE-----', 'CERTIFICATE REQUEST-----');
+    expect(parse(request).error?.issues[0]?.message).toBe('field:steps.upload.pastedRequest');
+    expect(certificateContent(request)).toBe('request');
+    expect(certificateContent(BLOCK)).toBe('certificate');
+    expect(certificateContent('hola')).toBe('other');
   });
 
   it('refuses a paste larger than the API accepts', () => {
