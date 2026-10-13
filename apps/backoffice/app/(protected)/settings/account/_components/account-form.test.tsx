@@ -2,6 +2,7 @@ import { fireEvent, render, waitFor, within, type RenderResult } from '@testing-
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { isMessageShown } from '@repo/vitest-config/form-messages';
 import { AccountForm } from '@/app/(protected)/settings/account/_components/account-form';
 import type { Account } from '@/lib/api/account';
 import { BRAND_COLOR_PRESETS } from '@/lib/constants/brand';
@@ -35,7 +36,7 @@ const ACCOUNT: Account = {
   id: 'a1',
   name: 'Corralón San Martín',
   legalName: 'Corralón San Martín S.R.L.',
-  taxId: '30-71234567-9',
+  taxId: '30-71234567-1',
   brandLogoUrl: 'https://tucorralon.com/logo.png',
   brandColor: '#C2410C',
 };
@@ -136,7 +137,7 @@ describe('AccountForm', () => {
       {
         name: 'Corralón San Martín Sur',
         legalName: ACCOUNT.legalName,
-        taxId: ACCOUNT.taxId,
+        taxId: '30712345671',
         brandLogoUrl: ACCOUNT.brandLogoUrl,
         brandColor: 'C2410C',
       },
@@ -145,6 +146,44 @@ describe('AccountForm', () => {
     );
     // A confirmation of something just done is transient, so it is a toast.
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.saved));
+  });
+
+  // The field shows the CUIT as it is written and describes that shape to a screen reader too.
+  it('shows the CUIT formatted, with its format as the field description', () => {
+    const view = renderForm({ ...ACCOUNT, taxId: '30712345671' });
+    const taxId = field(view, 'taxId');
+
+    expect(taxId.value).toBe('30-71234567-1');
+    expect(taxId.getAttribute('inputmode')).toBe('numeric');
+    const described = taxId.getAttribute('aria-describedby')?.split(' ') ?? [];
+    expect(described.map((id) => document.getElementById(id)?.textContent)).toContain(
+      copy.taxId.hint,
+    );
+  });
+
+  it('refuses a CUIT with the wrong check digit, then clears the message once it is fixed', async () => {
+    const view = renderForm();
+
+    fireEvent.change(field(view, 'taxId'), { target: { value: '30-71234567-9' } });
+    submit(view);
+
+    await waitFor(() => expect(isMessageShown(view.container, copy.taxId.checkDigit)).toBe(true));
+    expect(field(view, 'taxId').getAttribute('aria-invalid')).toBe('true');
+    expect(updateAccount).not.toHaveBeenCalled();
+
+    fireEvent.change(field(view, 'taxId'), { target: { value: '30-71234567-1' } });
+
+    await waitFor(() => expect(isMessageShown(view.container, copy.taxId.checkDigit)).toBe(false));
+  });
+
+  it('refuses a CUIT that is too short to be one', async () => {
+    const view = renderForm({ ...ACCOUNT, taxId: null });
+
+    fireEvent.change(field(view, 'taxId'), { target: { value: '3071234' } });
+    submit(view);
+
+    await waitFor(() => expect(isMessageShown(view.container, copy.taxId.invalid)).toBe(true));
+    expect(updateAccount).not.toHaveBeenCalled();
   });
 
   it('refuses to submit without a name, and says so on the field', async () => {

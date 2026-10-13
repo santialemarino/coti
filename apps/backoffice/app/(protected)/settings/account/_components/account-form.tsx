@@ -11,6 +11,7 @@ import {
   ConfirmDialog,
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -25,11 +26,14 @@ import { updateAccount } from '@/app/(protected)/settings/account/actions';
 import { accountSchema, type AccountValues } from '@/app/(protected)/settings/account/form-schema';
 import { BrandColorField } from '@/components/brand-color-field';
 import { LogoDropzone } from '@/components/logo-dropzone';
+import { TaxIdInput } from '@/components/tax-id-input';
 import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Account } from '@/lib/api/account';
+import { formatCuit } from '@/lib/api/invoicing';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { FORM_VALIDATION } from '@/lib/forms/options';
+import { taxIdDigits } from '@/lib/utils/tax-id';
 
 interface AccountFormProps {
   account: Account;
@@ -48,7 +52,7 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
     defaultValues: {
       name: account.name,
       legalName: account.legalName ?? '',
-      taxId: account.taxId ?? '',
+      taxId: taxIdDigits(account.taxId ?? ''),
       brandLogoUrl: account.brandLogoUrl ?? '',
       brandColor: account.brandColor?.replace(/^#/, '') ?? '',
     },
@@ -149,12 +153,9 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
                 <FormItem>
                   <FormLabel>{t('taxId.label')}</FormLabel>
                   <FormControl>
-                    <Input
-                      maxLength={TEXT_FIELD_MAX_LENGTH}
-                      placeholder={t('taxId.placeholder')}
-                      {...field}
-                    />
+                    <TaxIdInput kind="cuit" placeholder={t('taxId.placeholder')} {...field} />
                   </FormControl>
+                  <FormDescription>{t('taxId.hint')}</FormDescription>
                   <FormMessage>
                     {invoicePending && form.formState.errors.taxId ? (
                       <>
@@ -199,7 +200,7 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
       <ConfirmDialog
         open={confirming !== null}
         onOpenChange={(open) => !open && setConfirming(null)}
-        entity={account.taxId}
+        entity={account.taxId && formatCuit(taxIdDigits(account.taxId))}
         title={t('disconnectARCA.title')}
         description={(cuit) =>
           t(

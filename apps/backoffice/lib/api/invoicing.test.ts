@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   formatCuit,
+  formatDni,
   formatInvoiceNumber,
   mapClientFiscal,
   mapInvoicePreview,
@@ -171,6 +172,18 @@ describe('formatCuit', () => {
 
   it('leaves anything else as it came', () => {
     expect(formatCuit('28123456')).toBe('28123456');
+  });
+});
+
+describe('formatDni', () => {
+  it('writes seven or eight digits with their dots', () => {
+    expect(formatDni('12345678')).toBe('12.345.678');
+    expect(formatDni('1234567')).toBe('1.234.567');
+  });
+
+  it('leaves anything else as it came', () => {
+    expect(formatDni('123456')).toBe('123456');
+    expect(formatDni('30701234568')).toBe('30701234568');
   });
 });
 

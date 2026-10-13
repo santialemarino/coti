@@ -871,7 +871,10 @@
       },
       "taxId": {
         "label": "CUIT",
-        "placeholder": "Ingresá el CUIT"
+        "placeholder": "Ingresá el CUIT",
+        "hint": "Formato: 30-70123456-8.",
+        "invalid": "Ingresá un CUIT de 11 dígitos.",
+        "checkDigit": "El CUIT no es válido: revisá el último dígito."
       },
       "branchName": {
         "label": "Nombre de la sucursal",
@@ -1686,7 +1689,7 @@
       "taxId": {
         "label": "CUIT o DNI",
         "placeholder": "Ingresá el CUIT o DNI",
-        "hint": "Con guiones o sin ellos, como 30-70123456-8.",
+        "hint": "Formato: 30-70123456-8 para un CUIT o 12.345.678 para un DNI.",
         "invalid": "Ingresá un CUIT de 11 dígitos o un DNI de 7 u 8.",
         "checkDigit": "El CUIT no es válido: revisá el último dígito."
       },
@@ -1836,7 +1839,10 @@
     },
     "taxId": {
       "label": "CUIT",
-      "placeholder": "Ingresá el CUIT"
+      "placeholder": "Ingresá el CUIT",
+      "hint": "Formato: 30-70123456-8.",
+      "invalid": "Ingresá un CUIT de 11 dígitos.",
+      "checkDigit": "El CUIT no es válido: revisá el último dígito."
     },
     "brand": {
       "title": "Marca"

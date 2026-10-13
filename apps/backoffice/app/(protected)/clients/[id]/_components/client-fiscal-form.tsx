@@ -28,15 +28,16 @@ import {
 } from '@repo/ui/components';
 import {
   clientFiscalSchema,
-  TAX_ID_MAX_LENGTH,
   type ClientFiscalValues,
 } from '@/app/(protected)/clients/[id]/form-schema';
+import { TaxIdInput } from '@/components/tax-id-input';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { updateClientFiscal } from '@/lib/api/clients-client';
 import { errorCodeOf } from '@/lib/api/errors';
 import { IVA_CONDITIONS, type ClientFiscal } from '@/lib/api/invoicing';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { FORM_VALIDATION } from '@/lib/forms/options';
+import { taxIdDigits } from '@/lib/utils/tax-id';
 
 interface ClientFiscalFormProps {
   client: ClientFiscal;
@@ -141,10 +142,9 @@ export function ClientFiscalForm({ client }: ClientFiscalFormProps) {
                   <FormItem>
                     <FormLabel>{t('taxId.label')}</FormLabel>
                     <FormControl>
-                      <Input
+                      <TaxIdInput
+                        kind="cuit-or-dni"
                         disabled={form.formState.isSubmitting}
-                        maxLength={TAX_ID_MAX_LENGTH}
-                        inputMode="numeric"
                         placeholder={t('taxId.placeholder')}
                         {...field}
                       />
@@ -199,7 +199,7 @@ function valuesOf(client: ClientFiscal): ClientFiscalValues {
   return {
     address: client.address ?? '',
     legalName: client.legalName ?? '',
-    taxId: client.taxId ?? '',
+    taxId: taxIdDigits(client.taxId ?? ''),
     ivaCondition: client.ivaCondition ?? '',
   };
 }

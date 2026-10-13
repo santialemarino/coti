@@ -41,11 +41,25 @@ describe('accountSchema', () => {
     expect(messagesFor({ name: 'a'.repeat(TEXT_FIELD_MAX_LENGTH + 1) }).name).toBe('tooLong');
   });
 
-  it('refuses a legal name or a tax id past that length', () => {
-    const tooLong = 'a'.repeat(TEXT_FIELD_MAX_LENGTH + 1);
+  it('refuses a legal name past that length', () => {
+    expect(messagesFor({ legalName: 'a'.repeat(TEXT_FIELD_MAX_LENGTH + 1) }).legalName).toBe(
+      'tooLong',
+    );
+  });
 
-    expect(messagesFor({ legalName: tooLong }).legalName).toBe('tooLong');
-    expect(messagesFor({ taxId: tooLong }).taxId).toBe('tooLong');
+  it('settles the CUIT to its digits', () => {
+    const parsed = accountSchema().safeParse({ ...VALID, taxId: '30-71234567-1' });
+
+    expect(parsed.success && parsed.data.taxId).toBe('30712345671');
+  });
+
+  // The account's CUIT is what ARCA invoices with, so a DNI is not one.
+  it.each(['3071234567', '12345678', '307123456712'])('refuses %s as a CUIT', (raw) => {
+    expect(messagesFor({ taxId: raw }).taxId).toBe('taxId.invalid');
+  });
+
+  it('refuses a CUIT whose check digit does not match', () => {
+    expect(messagesFor({ taxId: '30712345679' }).taxId).toBe('taxId.checkDigit');
   });
 
   it('resolves each message through the catalog it belongs to', () => {

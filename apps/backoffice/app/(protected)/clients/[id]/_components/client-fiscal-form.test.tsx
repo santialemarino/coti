@@ -37,7 +37,7 @@ describe('client profile fiscal data', () => {
       address: 'San Martin 123',
     });
     expect(view.getByLabelText(t.legalName.label)).toHaveProperty('value', 'Obra SA');
-    expect(view.getByLabelText(t.taxId.label)).toHaveProperty('value', '30701234568');
+    expect(view.getByLabelText(t.taxId.label)).toHaveProperty('value', '30-70123456-8');
     expect(view.getByLabelText(t.address.label)).toHaveProperty('value', 'San Martin 123');
   });
   it('saves to the client and refreshes the profile after updating fiscal details', async () => {
@@ -55,13 +55,40 @@ describe('client profile fiscal data', () => {
     await waitFor(() =>
       expect(updateClientFiscal).toHaveBeenCalledWith(client.id, {
         legalName: 'Obra SA',
-        taxId: '30-70123456-8',
+        taxId: '30701234568',
         address: 'San Martin 123',
         ivaCondition: 'REGISTERED',
       }),
     );
     await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
-    expect(view.getByLabelText(t.taxId.label)).toHaveProperty('value', '30701234568');
+    expect(view.getByLabelText(t.taxId.label)).toHaveProperty('value', '30-70123456-8');
+  });
+
+  it('takes a DNI in its own shape and saves its digits', async () => {
+    vi.mocked(updateClientFiscal).mockResolvedValue({ ...client, taxId: '12345678' });
+    const view = show();
+    const taxId = view.getByLabelText(t.taxId.label);
+
+    fireEvent.change(taxId, { target: { value: '12 345 678' } });
+    expect(taxId).toHaveProperty('value', '12.345.678');
+    fireEvent.submit(view.getByRole('form', { name: t.title }));
+
+    await waitFor(() =>
+      expect(updateClientFiscal).toHaveBeenCalledWith(
+        client.id,
+        expect.objectContaining({ taxId: '12345678' }),
+      ),
+    );
+  });
+
+  it('refuses a number that is neither a CUIT nor a DNI', async () => {
+    const view = show();
+
+    fireEvent.change(view.getByLabelText(t.taxId.label), { target: { value: '123456789' } });
+    fireEvent.submit(view.getByRole('form', { name: t.title }));
+
+    await waitFor(() => expect(view.getByText(t.taxId.invalid)).toBeTruthy());
+    expect(updateClientFiscal).not.toHaveBeenCalled();
   });
   it('prevents an invalid CUIT from reaching the client update', async () => {
     const view = show();
