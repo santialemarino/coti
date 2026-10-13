@@ -18,7 +18,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 	known := []string{
 		"ENV", "LOG_LEVEL", "API_PORT",
 		"ARCA_SETUP_ENCRYPTION_KEY", "ARCA_SETUP_TIMEOUT_SECONDS", "ARCA_ENVIRONMENT",
-		"INVOICE_UNIDENTIFIED_RECEIVER_MAX_AMOUNT",
+		"INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT",
 		"SERVER_READ_TIMEOUT_SECONDS", "SERVER_WRITE_TIMEOUT_SECONDS", "SERVER_SHUTDOWN_TIMEOUT_SECONDS",
 		"DATABASE_URL", "DATABASE_ADMIN_URL", "DB_MAX_CONNS", "DB_MIN_CONNS",
 		"DB_MAX_CONN_LIFETIME_MINUTES", "DB_MAX_CONN_IDLE_MINUTES", "DB_CONNECT_TIMEOUT_SECONDS",
@@ -249,8 +249,8 @@ func TestLoad_Defaults(t *testing.T) {
 		t.Errorf("WhatsApp = %+v, want v25.0/10s/1MiB", cfg.WhatsApp)
 	}
 	if cfg.ARCA.Environment != ARCAEnvironmentHomologation ||
-		!cfg.ARCA.UnidentifiedReceiverMax.Equal(decimal.RequireFromString("10000000")) {
-		t.Errorf("ARCA = %s/%s, want homologation/10000000", cfg.ARCA.Environment, cfg.ARCA.UnidentifiedReceiverMax)
+		!cfg.ARCA.ReceiverIDThreshold.Equal(decimal.RequireFromString("10000000")) {
+		t.Errorf("ARCA = %s/%s, want homologation/10000000", cfg.ARCA.Environment, cfg.ARCA.ReceiverIDThreshold)
 	}
 	if cfg.IsProduction() {
 		t.Error("IsProduction() = true, want false")
@@ -260,7 +260,7 @@ func TestLoad_Defaults(t *testing.T) {
 func TestLoad_ARCAInvoicingKeysLandOnTheirOwnFields(t *testing.T) {
 	env := minimalEnv()
 	env["ARCA_ENVIRONMENT"] = "production"
-	env["INVOICE_UNIDENTIFIED_RECEIVER_MAX_AMOUNT"] = "12500000.50"
+	env["INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT"] = "12500000.50"
 	setEnv(t, env)
 
 	cfg, err := Load()
@@ -268,8 +268,8 @@ func TestLoad_ARCAInvoicingKeysLandOnTheirOwnFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	if cfg.ARCA.Environment != ARCAEnvironmentProduction ||
-		!cfg.ARCA.UnidentifiedReceiverMax.Equal(decimal.RequireFromString("12500000.50")) {
-		t.Errorf("ARCA = %s/%s, want production/12500000.50", cfg.ARCA.Environment, cfg.ARCA.UnidentifiedReceiverMax)
+		!cfg.ARCA.ReceiverIDThreshold.Equal(decimal.RequireFromString("12500000.50")) {
+		t.Errorf("ARCA = %s/%s, want production/12500000.50", cfg.ARCA.Environment, cfg.ARCA.ReceiverIDThreshold)
 	}
 }
 
@@ -547,14 +547,14 @@ func TestLoad_Invalid(t *testing.T) {
 			wantSub: "ARCA_ENVIRONMENT must be",
 		},
 		{
-			name:    "non-positive unidentified receiver max",
-			mutate:  func(e map[string]string) { e["INVOICE_UNIDENTIFIED_RECEIVER_MAX_AMOUNT"] = "0" },
-			wantSub: "INVOICE_UNIDENTIFIED_RECEIVER_MAX_AMOUNT must be a positive amount",
+			name:    "non-positive receiver id threshold",
+			mutate:  func(e map[string]string) { e["INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT"] = "0" },
+			wantSub: "INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT must be a positive amount",
 		},
 		{
-			name:    "unparseable unidentified receiver max",
-			mutate:  func(e map[string]string) { e["INVOICE_UNIDENTIFIED_RECEIVER_MAX_AMOUNT"] = "10.000.000" },
-			wantSub: "INVOICE_UNIDENTIFIED_RECEIVER_MAX_AMOUNT must be a positive amount",
+			name:    "unparseable receiver id threshold",
+			mutate:  func(e map[string]string) { e["INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT"] = "10.000.000" },
+			wantSub: "INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT must be a positive amount",
 		},
 		{
 			name:    "missing app url",

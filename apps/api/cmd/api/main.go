@@ -171,7 +171,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	invoiceService := services.NewInvoiceService(db, invoicingRepo, quoteRepo, quoteDiscountRepo, arcainvoice.NewIssuer(arcainvoice.Settings{Environment: cfg.ARCA.Environment, Timeout: cfg.ARCA.Timeout, Log: log}, arcainvoice.NewMemoryTicketCache()), arcaCipher, services.InvoiceSettings{Enabled: arcaCipher.Enabled(), Environment: cfg.ARCA.Environment, IssueTimeout: cfg.ARCA.IssueTimeout, ReconcileAfter: cfg.ARCA.ReconcileAfter, UnidentifiedMax: cfg.ARCA.UnidentifiedReceiverMax, LogoMaxBytes: cfg.QuoteLogo.MaxSizeBytes, LogoMaxPixels: cfg.QuoteLogo.MaxPixels}, nil, accountService, quotePDF.NewInvoiceRenderer())
+	invoiceService := services.NewInvoiceService(db, invoicingRepo, quoteRepo, quoteDiscountRepo, arcainvoice.NewIssuer(arcainvoice.Settings{Environment: cfg.ARCA.Environment, Timeout: cfg.ARCA.Timeout, Log: log}, arcainvoice.NewMemoryTicketCache()), arcaCipher, services.InvoiceSettings{Enabled: arcaCipher.Enabled(), Environment: cfg.ARCA.Environment, IssueTimeout: cfg.ARCA.IssueTimeout, ReconcileAfter: cfg.ARCA.ReconcileAfter, UnidentifiedMax: cfg.ARCA.ReceiverIDThreshold, LogoMaxBytes: cfg.QuoteLogo.MaxSizeBytes, LogoMaxPixels: cfg.QuoteLogo.MaxPixels}, nil, accountService, quotePDF.NewInvoiceRenderer())
 	arcaSetupService := services.NewARCASetupService(db, arcaSetupRepo, accountRepo, invoicingRepo, arcaCipher,
 		arca.NewSetupConnector())
 	catalogSearchService := services.NewCatalogSearchService(db, productRepo, providers.Embedder,

@@ -105,8 +105,8 @@ type ARCASetupConfig struct {
 	// Environment is the ARCA deployment invoices are authorized in: ARCAEnvironmentHomologation or
 	// ARCAEnvironmentProduction.
 	Environment string
-	// UnidentifiedReceiverMax is the invoice total from which ARCA requires the buyer's CUIT or DNI.
-	UnidentifiedReceiverMax decimal.Decimal
+	// ReceiverIDThreshold is the invoice total from which ARCA requires the buyer's CUIT or DNI.
+	ReceiverIDThreshold decimal.Decimal
 }
 
 // The ARCA deployments a server can authorize invoices in.
@@ -115,8 +115,8 @@ const (
 	ARCAEnvironmentProduction   = "production"
 )
 
-// defaultUnidentifiedReceiverMax is ARCA's identification threshold for a final consumer, in pesos.
-const defaultUnidentifiedReceiverMax = "10000000"
+// defaultReceiverIDThreshold is ARCA's identification threshold for a final consumer, in pesos.
+const defaultReceiverIDThreshold = "10000000"
 
 // QuoteLogoConfig bounds retrieval of untrusted branding images.
 type QuoteLogoConfig struct {
@@ -892,8 +892,8 @@ func Load() (*Config, error) {
 			IssueTimeout:   getDuration("ARCA_ISSUE_TIMEOUT_SECONDS", 25*time.Second, &problems),
 			ReconcileAfter: getDuration("INVOICE_PENDING_RECONCILE_SECONDS", 300*time.Second, &problems),
 			Environment:    getString("ARCA_ENVIRONMENT", ARCAEnvironmentHomologation),
-			UnidentifiedReceiverMax: getPositiveDecimal("INVOICE_UNIDENTIFIED_RECEIVER_MAX_AMOUNT",
-				defaultUnidentifiedReceiverMax, &problems),
+			ReceiverIDThreshold: getPositiveDecimal("INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT",
+				defaultReceiverIDThreshold, &problems),
 		},
 	}
 
