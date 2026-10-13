@@ -42,6 +42,13 @@ type fakeInvoicingStore struct {
 	rejected       *domain.InvoiceRejectedError
 	stored         string
 	ticket         *domain.SealedARCATicket
+	accountLocked  bool
+	heldUnlocked   bool
+}
+
+func (f *fakeInvoicingStore) LockAccountForShare(context.Context, repository.Querier, uuid.UUID) error {
+	f.accountLocked = true
+	return nil
 }
 
 func (f *fakeInvoicingStore) GetAccountFiscal(context.Context, repository.Querier, uuid.UUID) (*domain.AccountFiscal, error) {
@@ -118,6 +125,9 @@ func (f *fakeInvoicingStore) GetLatestByQuote(context.Context, repository.Querie
 }
 
 func (f *fakeInvoicingStore) CreatePending(_ context.Context, _ repository.Querier, in domain.Invoice) (*domain.Invoice, error) {
+	if !f.accountLocked {
+		f.heldUnlocked = true
+	}
 	if f.invoice != nil && f.invoice.Status != domain.InvoiceStatusRejected && f.invoice.QuoteVersionID == in.QuoteVersionID {
 		return nil, domain.ErrConflict
 	}
@@ -291,6 +301,19 @@ func TestInvoiceService_IssueAuthorizesAndRecordsTheInvoice(t *testing.T) {
 	assertMoney(t, "request total", req.Amounts.Total, "1210.00")
 	if want := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC); !req.Date.Equal(want) {
 		t.Fatalf("date = %s, want the day in Argentina", req.Date)
+	}
+}
+
+// A CUIT change or a disconnect must not slip between the readiness check and the pending invoice.
+func TestInvoiceService_IssueHoldsTheAccountBeforeReservingTheInvoice(t *testing.T) {
+	t.Parallel()
+	f := newInvoiceFixture(t)
+
+	if _, err := f.issue(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if f.store.heldUnlocked {
+		t.Fatal("the pending invoice was written without holding the account row")
 	}
 }
 

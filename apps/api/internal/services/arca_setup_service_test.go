@@ -91,7 +91,7 @@ func setupTestServiceFor(t *testing.T, taxID *string) (*ARCASetupService, *setup
 	store := &setupTestStore{}
 	accounts := &setupTestAccounts{taxID: taxID, store: store}
 	connector := &setupTestConnector{}
-	service := NewARCASetupService(&fakeDB{}, store, accounts, cipher, connector)
+	service := NewARCASetupService(&fakeDB{}, store, accounts, store, cipher, connector)
 	tenant := domain.Tenant{AccountID: uuid.New(), BranchID: uuid.New(), Role: domain.UserRoleAdmin}
 	return service, store, connector, cipher, tenant, accounts
 }

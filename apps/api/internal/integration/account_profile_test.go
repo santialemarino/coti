@@ -292,7 +292,7 @@ func TestAccount_ConfirmedCUITChangeDisconnectsARCAAtomically(t *testing.T) {
 	}
 
 	accounts := services.NewAccountService(e.db, repository.NewAccountRepository(), repository.NewARCASetupRepository(),
-		nil, nil, nil, nil, nil, nil, nil, config.AuthConfig{}, config.BranchConfig{})
+		repository.NewInvoicingRepository(), nil, nil, nil, nil, nil, nil, nil, config.AuthConfig{}, config.BranchConfig{})
 	other := "20-32964233-0"
 	_, err := accounts.Update(ctx, domain.Tenant{AccountID: accountID, Role: domain.UserRoleAdmin},
 		domain.AccountUpdate{Name: strings.Repeat("x", 300), TaxID: &other, DisconnectARCA: true})

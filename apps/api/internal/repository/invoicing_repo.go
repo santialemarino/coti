@@ -286,6 +286,25 @@ func (r *InvoicingRepository) SaveSealedTicket(
 
 // --- Invoices ---
 
+// HasPendingInvoice reports whether ARCA still owes the answer for one of the account's invoices.
+func (r *InvoicingRepository) HasPendingInvoice(ctx context.Context, q Querier, accountID uuid.UUID) (bool, error) {
+	var pending bool
+	err := q.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM invoice WHERE account_id = $1 AND status = 'PENDING')`, accountID).Scan(&pending)
+	return pending, err
+}
+
+// LockAccountForShare holds the account row until the transaction ends, so a CUIT change or an ARCA
+// disconnect waits for an invoice being held under the current credential.
+func (r *InvoicingRepository) LockAccountForShare(ctx context.Context, q Querier, accountID uuid.UUID) error {
+	var id uuid.UUID
+	err := q.QueryRow(ctx, `SELECT id FROM account WHERE id = $1 FOR SHARE`, accountID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ErrNotFound
+	}
+	return err
+}
+
 // GetLatestByQuote returns the quote's newest invoice in any status, nil when it has none.
 func (r *InvoicingRepository) GetLatestByQuote(
 	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID,

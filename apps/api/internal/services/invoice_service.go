@@ -27,6 +27,7 @@ type invoicingStore interface {
 	ListBranchPointsOfSale(ctx context.Context, q repository.Querier, accountID uuid.UUID) ([]domain.BranchPointOfSale, error)
 	GetBranchPointOfSale(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (*int, error)
 	UpdateBranchPointsOfSale(ctx context.Context, q repository.Querier, accountID uuid.UUID, points map[uuid.UUID]*int) error
+	LockAccountForShare(ctx context.Context, q repository.Querier, accountID uuid.UUID) error
 	GetClientFiscal(ctx context.Context, q repository.Querier, accountID, clientID uuid.UUID) (*domain.ClientFiscal, error)
 	UpdateClientFiscal(ctx context.Context, q repository.Querier, accountID, clientID uuid.UUID, in domain.ClientFiscalUpdate) (*domain.ClientFiscal, error)
 	VATRatesByProductIDs(ctx context.Context, q repository.Querier, accountID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]domain.VATRate, error)
@@ -475,6 +476,11 @@ func (s *InvoiceService) hold(ctx context.Context, tenant domain.Tenant, draft i
 		// The quote may have been reopened while ARCA was being reconciled.
 		quote, err := s.quotes.GetByIDForUpdate(ctx, q, tenant.AccountID, tenant.BranchID, draft.quote.ID)
 		if err != nil {
+			return err
+		}
+		// Taken before the draft is rebuilt, so a CUIT change or disconnect either waits for this
+		// invoice or has already landed and makes the draft stale.
+		if err := s.store.LockAccountForShare(ctx, q, tenant.AccountID); err != nil {
 			return err
 		}
 		version, err := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, tenant.BranchID, draft.quote.ID)

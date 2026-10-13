@@ -79,7 +79,7 @@ func TestAccountService_UpdateLocksTheCUITWhileARCAIsConnected(t *testing.T) {
 			t.Parallel()
 			repo := &accountTestRepo{account: &domain.Account{Name: "Corralón", TaxID: &stored}}
 			service := &AccountService{db: &accountTestDB{}, accounts: repo,
-				arcaSetups: &accountTestARCASetups{connected: tc.connected}}
+				arcaSetups: &accountTestARCASetups{connected: tc.connected}, invoices: &accountTestARCASetups{}}
 
 			_, err := service.Update(context.Background(), domain.Tenant{AccountID: uuid.New()},
 				domain.AccountUpdate{Name: "Corralón", TaxID: tc.taxID})
@@ -119,7 +119,7 @@ func TestAccountService_UpdateDisconnectsARCAOnlyWhenConfirmed(t *testing.T) {
 			t.Parallel()
 			repo := &accountTestRepo{account: &domain.Account{Name: "Corralón", TaxID: &stored}}
 			setups := &accountTestARCASetups{connected: true, pending: tc.pending}
-			service := &AccountService{db: &accountTestDB{}, accounts: repo, arcaSetups: setups}
+			service := &AccountService{db: &accountTestDB{}, accounts: repo, arcaSetups: setups, invoices: setups}
 
 			_, err := service.Update(context.Background(), domain.Tenant{AccountID: uuid.New()},
 				domain.AccountUpdate{Name: "Corralón", TaxID: &other, DisconnectARCA: tc.confirm})

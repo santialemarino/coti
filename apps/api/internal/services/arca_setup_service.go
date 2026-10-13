@@ -16,7 +16,6 @@ import (
 type arcaSetupStore interface {
 	Get(context.Context, repository.Querier, uuid.UUID) (*domain.ARCASetup, error)
 	Exists(context.Context, repository.Querier, uuid.UUID) (bool, error)
-	HasPendingInvoice(context.Context, repository.Querier, uuid.UUID) (bool, error)
 	Create(context.Context, repository.Querier, uuid.UUID, domain.ARCASetup) error
 	SaveCertificate(context.Context, repository.Querier, uuid.UUID, uuid.UUID, string, time.Time) error
 	Delete(context.Context, repository.Querier, uuid.UUID) error
@@ -37,14 +36,18 @@ type ARCASetupService struct {
 	db        tenantTxRunner
 	store     arcaSetupStore
 	accounts  arcaAccountLocker
+	invoices  pendingInvoices
 	cipher    arcaSetupCipher
 	connector domain.ARCAConnector
 	locks     sync.Map
 }
 
 // NewARCASetupService builds the setup service.
-func NewARCASetupService(db tenantTxRunner, store arcaSetupStore, accounts arcaAccountLocker, cipher arcaSetupCipher, connector domain.ARCAConnector) *ARCASetupService {
-	return &ARCASetupService{db: db, store: store, accounts: accounts, cipher: cipher, connector: connector}
+func NewARCASetupService(
+	db tenantTxRunner, store arcaSetupStore, accounts arcaAccountLocker, invoices pendingInvoices, cipher arcaSetupCipher,
+	connector domain.ARCAConnector,
+) *ARCASetupService {
+	return &ARCASetupService{db: db, store: store, accounts: accounts, invoices: invoices, cipher: cipher, connector: connector}
 }
 
 // Get returns the account's setup without its private key; nil when it has none. The flag says
@@ -148,7 +151,7 @@ func (s *ARCASetupService) Delete(ctx context.Context, tenant domain.Tenant) err
 		if _, err := s.accounts.GetByIDForUpdate(ctx, q, tenant.AccountID); err != nil {
 			return err
 		}
-		return disconnectARCA(ctx, q, s.store, tenant.AccountID)
+		return disconnectARCA(ctx, q, s.store, s.invoices, tenant.AccountID)
 	})
 }
 

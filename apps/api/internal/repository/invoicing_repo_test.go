@@ -398,15 +398,15 @@ func TestInvoicingRepository_ListNarrowsToTheBranchSet(t *testing.T) {
 }
 
 // A pending invoice is what keeps the ARCA connection from going.
-func TestARCASetupRepository_HasPendingInvoice(t *testing.T) {
+func TestInvoicingRepository_HasPendingInvoice(t *testing.T) {
 	db, tenant, quoteID, versionID, _ := invoiceFixture(t)
 	ctx := context.Background()
-	setups := NewARCASetupRepository()
+	invoices := NewInvoicingRepository()
 	pending := func() bool {
 		var has bool
 		if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
 			var err error
-			has, err = setups.HasPendingInvoice(ctx, q, tenant.AccountID)
+			has, err = invoices.HasPendingInvoice(ctx, q, tenant.AccountID)
 			return err
 		}); err != nil {
 			t.Fatal(err)

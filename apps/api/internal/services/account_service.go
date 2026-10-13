@@ -28,8 +28,12 @@ type accountRepository interface {
 // accountARCASetups tells whether the account is connected to ARCA, which locks its CUIT.
 type accountARCASetups interface {
 	Exists(ctx context.Context, q repository.Querier, accountID uuid.UUID) (bool, error)
-	HasPendingInvoice(ctx context.Context, q repository.Querier, accountID uuid.UUID) (bool, error)
 	Delete(ctx context.Context, q repository.Querier, accountID uuid.UUID) error
+}
+
+// pendingInvoices tells whether ARCA still owes the answer for one of the account's invoices.
+type pendingInvoices interface {
+	HasPendingInvoice(ctx context.Context, q repository.Querier, accountID uuid.UUID) (bool, error)
 }
 
 type signupBranchRepository interface {
@@ -73,6 +77,7 @@ type AccountService struct {
 	db                adminTxScoper
 	accounts          accountRepository
 	arcaSetups        accountARCASetups
+	invoices          pendingInvoices
 	branches          signupBranchRepository
 	channels          channelRepository
 	users             signupUserRepository
@@ -89,7 +94,8 @@ type AccountService struct {
 
 // NewAccountService builds an AccountService.
 func NewAccountService(
-	db adminTxScoper, accounts accountRepository, arcaSetups accountARCASetups, branches signupBranchRepository,
+	db adminTxScoper, accounts accountRepository, arcaSetups accountARCASetups, invoices pendingInvoices,
+	branches signupBranchRepository,
 	channels channelRepository, users signupUserRepository, onboarding signupOnboardingRepository,
 	tokens tokenIssuer,
 	verifier emailVerifier, log *slog.Logger, cfg config.AuthConfig, branchCfg config.BranchConfig,
@@ -97,7 +103,7 @@ func NewAccountService(
 	if log == nil {
 		log = slog.Default()
 	}
-	return &AccountService{db: db, accounts: accounts, arcaSetups: arcaSetups, branches: branches, channels: channels,
+	return &AccountService{db: db, accounts: accounts, arcaSetups: arcaSetups, invoices: invoices, branches: branches, channels: channels,
 		users: users, onboarding: onboarding, tokens: tokens, verifier: verifier, log: log,
 		policy:            domain.PasswordPolicy{MinLength: cfg.PasswordMinLength},
 		defaultExpiryDays: branchCfg.DefaultExpiryDays}
@@ -253,7 +259,7 @@ func (s *AccountService) Update(
 					return domain.WithCode(domain.CodeARCAConnected,
 						fmt.Errorf("%w: the CUIT is locked while ARCA is connected", domain.ErrConflict))
 				}
-				if err := disconnectARCA(ctx, q, s.arcaSetups, tenant.AccountID); err != nil {
+				if err := disconnectARCA(ctx, q, s.arcaSetups, s.invoices, tenant.AccountID); err != nil {
 					return err
 				}
 			}
@@ -304,8 +310,10 @@ func (s *AccountService) UploadLogo(
 
 // disconnectARCA removes the account's ARCA credential, refusing while an invoice issued with it is
 // still waiting for ARCA's answer.
-func disconnectARCA(ctx context.Context, q repository.Querier, setups accountARCASetups, accountID uuid.UUID) error {
-	pending, err := setups.HasPendingInvoice(ctx, q, accountID)
+func disconnectARCA(
+	ctx context.Context, q repository.Querier, setups accountARCASetups, invoices pendingInvoices, accountID uuid.UUID,
+) error {
+	pending, err := invoices.HasPendingInvoice(ctx, q, accountID)
 	if err != nil {
 		return err
 	}
