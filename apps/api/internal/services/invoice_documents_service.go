@@ -91,7 +91,7 @@ func (s *InvoiceService) Recover(ctx context.Context, tenant domain.Tenant, id u
 		if err != nil || !claimed {
 			return err
 		}
-		creds, err = s.openCredentials(ctx, q, tenant)
+		creds, err = s.openCredentials(ctx, q, tenant, invoice.Environment)
 		return err
 	})
 	if err != nil {

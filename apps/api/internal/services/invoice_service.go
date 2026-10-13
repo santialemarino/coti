@@ -32,7 +32,7 @@ type invoicingStore interface {
 	UpdateClientFiscal(ctx context.Context, q repository.Querier, accountID, clientID uuid.UUID, in domain.ClientFiscalUpdate) (*domain.ClientFiscal, error)
 	VATRatesByProductIDs(ctx context.Context, q repository.Querier, accountID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]domain.VATRate, error)
 	GetCredentialStatus(ctx context.Context, q repository.Querier, accountID uuid.UUID) (*domain.ARCACredentialStatus, error)
-	GetSealedCredential(ctx context.Context, q repository.Querier, accountID uuid.UUID) (string, string, error)
+	GetSealedCredential(ctx context.Context, q repository.Querier, accountID uuid.UUID) (string, string, domain.ARCAEnvironment, error)
 	GetLatestByQuote(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Invoice, error)
 	CreatePending(ctx context.Context, q repository.Querier, in domain.Invoice) (*domain.Invoice, error)
 	MarkIssued(ctx context.Context, q repository.Querier, accountID, branchID, id uuid.UUID, auth domain.InvoiceAuthorization) (*domain.Invoice, error)
@@ -68,9 +68,9 @@ type keySealer interface {
 // InvoiceSettings is what the invoice service is configured with.
 type InvoiceSettings struct {
 	Enabled         bool
-	Environment     string
-	IssueTimeout    time.Duration // bounds one issue end to end, detached from the caller's request.
-	ReconcileAfter  time.Duration // a pending invoice this old is checked against ARCA.
+	Environment     domain.ARCAEnvironment // where new invoices are authorized; each record keeps its own.
+	IssueTimeout    time.Duration          // bounds one issue end to end, detached from the caller's request.
+	ReconcileAfter  time.Duration          // a pending invoice this old is checked against ARCA.
 	UnidentifiedMax decimal.Decimal
 	LogoMaxBytes    int64
 	LogoMaxPixels   int64
@@ -259,7 +259,7 @@ func (s *InvoiceService) Issue(
 	}
 
 	var draft *invoiceDraft
-	var creds domain.ARCACredentials
+	var creds, recovery domain.ARCACredentials
 	var stale *domain.Invoice
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		var err error
@@ -283,7 +283,13 @@ func (s *InvoiceService) Issue(
 			!draft.preview.Amounts.Total.Equal(expected.Total) {
 			return domain.WithCode(domain.CodeInvoiceStale, domain.ErrConflict)
 		}
-		creds, err = s.openCredentials(ctx, q, tenant)
+		// A stale invoice is read back from the environment it was requested in, never the current one.
+		if stale != nil {
+			if recovery, err = s.openCredentials(ctx, q, tenant, stale.Environment); err != nil {
+				return err
+			}
+		}
+		creds, err = s.openCredentials(ctx, q, tenant, s.settings.Environment)
 		return err
 	})
 	if err != nil {
@@ -309,7 +315,7 @@ func (s *InvoiceService) Issue(
 		if !claimed {
 			return nil, domain.WithCode(domain.CodeInvoiceInProgress, domain.ErrConflict)
 		}
-		adopted, err := s.reconcile(work, tenant, creds, *stale)
+		adopted, err := s.reconcile(work, tenant, recovery, *stale)
 		if err != nil || adopted != nil {
 			return adopted, err
 		}
@@ -413,7 +419,7 @@ func (s *InvoiceService) draft(
 	amounts := invoiceAmounts(byRate, invoiceType, account.PricesIncludeVAT)
 	issues := invoiceIssues(invoiceInputs{
 		enabled: s.settings.Enabled, quote: *quote, version: *version, gross: sumGross(byRate), account: *account,
-		pointOfSale: pointOfSale, credential: credential, receiver: receiver, amounts: amounts,
+		pointOfSale: pointOfSale, credential: credential, environment: s.settings.Environment, receiver: receiver, amounts: amounts,
 		invoiceType: invoiceType, unidentifiedMax: s.settings.UnidentifiedMax, now: s.now(),
 	})
 
@@ -423,7 +429,7 @@ func (s *InvoiceService) draft(
 	}
 	draft := &invoiceDraft{
 		quote: *quote, version: *version, issuerCUIT: issuerCUIT, issuerCondition: issuerCondition, items: items, rates: rates, pricesIncludeVAT: account.PricesIncludeVAT, profile: account.Profile, issuerName: firstNonEmpty(account.LegalName, &account.Name),
-		preview: domain.InvoicePreview{IssuerCUIT: issuerCUIT, VersionID: version.ID, Type: invoiceType, PointOfSale: pointOfSale, Receiver: receiver,
+		preview: domain.InvoicePreview{Environment: s.settings.Environment, IssuerCUIT: issuerCUIT, VersionID: version.ID, Type: invoiceType, PointOfSale: pointOfSale, Receiver: receiver,
 			Amounts: amounts, Currency: arcaCurrency, Issues: nonNilIssues(issues)},
 	}
 	// A live invoice is the sale's whatever the version; a refusal only speaks for the version it was for.
@@ -510,7 +516,7 @@ func (s *InvoiceService) hold(ctx context.Context, tenant domain.Tenant, draft i
 		snapshot.Supplier.LegalName = &draft.issuerName
 		snapshot.Supplier.TaxID = &draft.issuerCUIT
 		pending, err = s.store.CreatePending(ctx, q, domain.Invoice{
-			Snapshot: snapshot, IssuerCondition: draft.issuerCondition, IssuerProfile: draft.profile, AccountID: tenant.AccountID, BranchID: draft.quote.BranchID, QuoteID: draft.quote.ID,
+			Environment: s.settings.Environment, Snapshot: snapshot, IssuerCondition: draft.issuerCondition, IssuerProfile: draft.profile, AccountID: tenant.AccountID, BranchID: draft.quote.BranchID, QuoteID: draft.quote.ID,
 			QuoteVersionID: draft.version.ID, Type: draft.preview.Type, PointOfSale: *draft.preview.PointOfSale,
 			IssuedOn: domain.InvoiceDay(s.now()), IssuerCUIT: draft.issuerCUIT, Receiver: draft.preview.Receiver,
 			Amounts: draft.preview.Amounts, Currency: draft.preview.Currency,
@@ -616,14 +622,19 @@ func matchesPending(found domain.AuthorizedInvoice, pending domain.Invoice) bool
 		found.Total.Equal(pending.Amounts.Total) && found.Date.Equal(pending.IssuedOn)
 }
 
-// openCredentials reads and unseals the account's certificate and key. A key that no longer
-// opens, sealed under another encryption key, is a credential to upload again.
+// openCredentials reads and unseals the account's certificate and key for env. A key that no longer
+// opens, sealed under another encryption key, is a credential to upload again; one issued for the
+// other environment is refused, since ARCA would only answer it with another deployment's records.
 func (s *InvoiceService) openCredentials(
-	ctx context.Context, q repository.Querier, tenant domain.Tenant,
+	ctx context.Context, q repository.Querier, tenant domain.Tenant, env domain.ARCAEnvironment,
 ) (domain.ARCACredentials, error) {
-	certificate, sealed, err := s.store.GetSealedCredential(ctx, q, tenant.AccountID)
+	certificate, sealed, issuedFor, err := s.store.GetSealedCredential(ctx, q, tenant.AccountID)
 	if err != nil {
 		return domain.ARCACredentials{}, err
+	}
+	if issuedFor != env {
+		return domain.ARCACredentials{}, domain.WithCode(domain.CodeARCAEnvironmentMismatch,
+			fmt.Errorf("%w: the ARCA connection is for %s, the request for %s", domain.ErrConflict, issuedFor, env))
 	}
 	key, err := s.sealer.Open(sealed)
 	if err != nil {
@@ -634,6 +645,7 @@ func (s *InvoiceService) openCredentials(
 		return domain.ARCACredentials{}, domain.ErrNotConfigured
 	}
 	return domain.ARCACredentials{
+		Environment:    env,
 		CertificatePEM: []byte(certificate),
 		PrivateKeyPEM:  []byte(key),
 		Tickets:        &invoiceTicketStore{service: s, tenant: tenant},

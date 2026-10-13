@@ -3,6 +3,7 @@ CREATE TYPE vat_rate AS ENUM ('VAT_0', 'VAT_2_5', 'VAT_5', 'VAT_10_5', 'VAT_21',
 CREATE TYPE invoice_type AS ENUM ('A', 'B', 'C');
 CREATE TYPE invoice_status AS ENUM ('PENDING', 'ISSUED', 'REJECTED');
 CREATE TYPE receiver_doc_type AS ENUM ('CUIT', 'DNI', 'NONE');
+CREATE TYPE arca_environment AS ENUM ('HOMOLOGATION', 'PRODUCTION');
 -- Coti — consolidated reference schema.
 --
 -- This file is READ, never applied: the executable source is the goose chain in
@@ -1382,6 +1383,8 @@ ALTER TABLE branch ADD CONSTRAINT uq_branch_account_id UNIQUE (account_id, id);
 CREATE TABLE arca_setup (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id UUID NOT NULL UNIQUE REFERENCES account(id) ON DELETE CASCADE,
+  -- The ARCA deployment the certificate was requested for; a server set to the other cannot use it.
+  environment arca_environment NOT NULL,
   tax_id VARCHAR(11) NOT NULL,
   csr TEXT NOT NULL,
   sealed_key TEXT NOT NULL,
@@ -1403,6 +1406,8 @@ CREATE TABLE invoice (
   branch_id              UUID NOT NULL,
   quote_id               UUID NOT NULL,
   quote_version_id       UUID NOT NULL,
+  -- The ARCA deployment that authorizes it; HOMOLOGATION invoices have no fiscal validity.
+  environment            arca_environment NOT NULL,
   status                 invoice_status NOT NULL DEFAULT 'PENDING',
   invoice_type           invoice_type NOT NULL,
   point_of_sale          INTEGER NOT NULL,
@@ -1444,9 +1449,10 @@ CREATE TABLE invoice (
 );
 
 CREATE UNIQUE INDEX uq_invoice_active_quote ON invoice(quote_id) WHERE status <> 'REJECTED';
-CREATE UNIQUE INDEX uq_invoice_number ON invoice(account_id, issuer_cuit, point_of_sale, invoice_type, number)
+CREATE UNIQUE INDEX uq_invoice_number ON invoice(account_id, environment, issuer_cuit, point_of_sale, invoice_type, number)
   WHERE number IS NOT NULL;
-CREATE UNIQUE INDEX uq_invoice_pending_series ON invoice(account_id, issuer_cuit, point_of_sale, invoice_type) WHERE status = 'PENDING';
+CREATE UNIQUE INDEX uq_invoice_pending_series ON invoice(account_id, environment, issuer_cuit, point_of_sale, invoice_type)
+  WHERE status = 'PENDING';
 ALTER TABLE invoice FORCE ROW LEVEL SECURITY;
 CREATE INDEX idx_invoice_account_quote ON invoice(account_id, quote_id);
 

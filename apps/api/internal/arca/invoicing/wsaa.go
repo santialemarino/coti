@@ -115,6 +115,8 @@ func (i *Issuer) ticket(ctx context.Context, s *signer, store domain.ARCATicketS
 			known, ok = *stored, true
 		}
 	}
+	// A ticket WSAA issued in the other environment is no credential here.
+	ok = ok && known.Environment == s.env
 	if ok && i.now().Add(ticketRenewMargin).Before(known.ExpiresAt) {
 		i.cache.Put(key, known)
 		return known, nil
@@ -174,7 +176,7 @@ func (i *Issuer) login(ctx context.Context, s *signer) (Ticket, error) {
 	if err != nil {
 		return Ticket{}, fmt.Errorf("arca: encode loginCms: %w", err)
 	}
-	raw, err := i.call(ctx, i.wsaaURL, "", `xmlns:wsaa="`+wsaaNamespace+`"`, body)
+	raw, err := i.call(ctx, s.endpoints.wsaa, "", `xmlns:wsaa="`+wsaaNamespace+`"`, body)
 	if err != nil {
 		var fault *soapFault
 		if errors.As(err, &fault) && strings.HasSuffix(fault.Code, "coe.alreadyAuthenticated") {
@@ -197,7 +199,7 @@ func (i *Issuer) login(ctx context.Context, s *signer) (Ticket, error) {
 	if err != nil || resp.Credentials.Token == "" || resp.Credentials.Sign == "" {
 		return Ticket{}, unavailable("decode login ticket", fmt.Errorf("incomplete ticket (expiration %q)", resp.Header.ExpirationTime))
 	}
-	return Ticket{Token: resp.Credentials.Token, Sign: resp.Credentials.Sign, ExpiresAt: expires}, nil
+	return Ticket{Environment: s.env, Token: resp.Credentials.Token, Sign: resp.Credentials.Sign, ExpiresAt: expires}, nil
 }
 
 // refusesCredentials reports whether a WSAA fault is about the certificate or its delegation,

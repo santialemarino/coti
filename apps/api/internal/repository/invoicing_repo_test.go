@@ -33,7 +33,7 @@ func invoiceFixture(t *testing.T) (*DB, domain.Tenant, uuid.UUID, uuid.UUID, uui
 func pendingInvoice(tenant domain.Tenant, quoteID, versionID uuid.UUID) domain.Invoice {
 	return domain.Invoice{
 		AccountID: tenant.AccountID, BranchID: tenant.BranchID, QuoteID: quoteID, QuoteVersionID: versionID,
-		Type: domain.InvoiceTypeA, PointOfSale: 3, IssuedOn: time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC),
+		Environment: domain.ARCAEnvironmentHomologation, Type: domain.InvoiceTypeA, PointOfSale: 3, IssuedOn: time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC),
 		IssuerCondition: domain.IVAConditionRegistered, IssuerCUIT: "30712345678", Currency: "ARS",
 		Receiver: domain.InvoiceReceiver{Name: "Obra Norte", DocType: domain.ReceiverDocCUIT,
 			DocNumber: "20123456786", IVACondition: domain.IVAConditionRegistered},
@@ -435,5 +435,50 @@ func TestInvoicingRepository_HasPendingInvoice(t *testing.T) {
 	}
 	if pending() {
 		t.Fatal("a rejected invoice still reads as pending")
+	}
+}
+
+// ARCA numbers each environment on its own: going live restarts at 1 beside the test invoices.
+func TestInvoicingRepository_EachEnvironmentNumbersOnItsOwn(t *testing.T) {
+	db, tenant, quoteID, versionID, productID := invoiceFixture(t)
+	ctx := context.Background()
+	repo := NewInvoicingRepository()
+	liveQuote, liveVersion, _ := seedQuoteChain(t, db, tenant.AccountID, tenant.BranchID, productID)
+	// Registered after the second chain, so it runs before that chain's teardown.
+	t.Cleanup(func() {
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM invoice WHERE account_id = $1`, tenant.AccountID)
+	})
+	expires := time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC)
+	issue := func(in domain.Invoice) (*domain.Invoice, error) {
+		var issued *domain.Invoice
+		err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+			pending, err := repo.CreatePending(ctx, q, in)
+			if err != nil {
+				return err
+			}
+			issued, err = repo.MarkIssued(ctx, q, tenant.AccountID, tenant.BranchID, pending.ID,
+				domain.InvoiceAuthorization{Number: 1, CAE: "74123456789012", CAEExpiresOn: expires})
+			return err
+		})
+		return issued, err
+	}
+
+	test, err := issue(pendingInvoice(tenant, quoteID, versionID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	live := pendingInvoice(tenant, liveQuote, liveVersion)
+	live.Environment = domain.ARCAEnvironmentProduction
+	production, err := issue(live)
+	if err != nil {
+		t.Fatalf("production invoice 1 beside test invoice 1 = %v, want it recorded", err)
+	}
+	if test.Environment != domain.ARCAEnvironmentHomologation || production.Environment != domain.ARCAEnvironmentProduction {
+		t.Fatalf("environments = %q, %q, want each stored as issued", test.Environment, production.Environment)
+	}
+	// The trigger still refuses any change to an issued invoice, its environment included.
+	_, err = db.CrossAccount().Exec(ctx, `UPDATE invoice SET environment = 'PRODUCTION' WHERE id = $1`, test.ID)
+	if err == nil {
+		t.Fatal("an issued invoice changed environment")
 	}
 }

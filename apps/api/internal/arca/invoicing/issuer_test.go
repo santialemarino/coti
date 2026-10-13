@@ -185,13 +185,13 @@ func newHarness(t *testing.T, wsfe *fakeWSFE) *harness {
 	t.Cleanup(wsfeSrv.Close)
 	certPEM, keyPEM, key := testCredentials(t, "CUIT 20123456789")
 	issuer := NewIssuer(Settings{
-		Environment: EnvironmentHomologation,
-		Timeout:     5 * time.Second,
-		Now:         func() time.Time { return fixedNow },
-		WSAAURL:     wsaaSrv.URL,
-		WSFEURL:     wsfeSrv.URL,
+		Timeout: 5 * time.Second,
+		Now:     func() time.Time { return fixedNow },
+		WSAAURL: wsaaSrv.URL,
+		WSFEURL: wsfeSrv.URL,
 	}, NewMemoryTicketCache())
-	return &harness{issuer: issuer, wsaa: wsaa, wsfe: wsfe, creds: domain.ARCACredentials{CertificatePEM: certPEM, PrivateKeyPEM: keyPEM}, key: key}
+	return &harness{issuer: issuer, wsaa: wsaa, wsfe: wsfe, key: key, creds: domain.ARCACredentials{
+		Environment: domain.ARCAEnvironmentHomologation, CertificatePEM: certPEM, PrivateKeyPEM: keyPEM}}
 }
 
 func dec(s string) decimal.Decimal { return decimal.RequireFromString(s) }
@@ -683,13 +683,67 @@ func TestIssuer_Issue_FallsBackToTheLiveTicketWhenWSAARefuses(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, &fakeWSFE{last: []int64{41}, solicitar: []string{approved(42)}})
 	h.wsaa.already = true
-	h.creds.Tickets = &memoryTicketStore{ticket: domain.ARCATicket{Token: "LIVE", Sign: "SIG",
-		ExpiresAt: fixedNow.Add(ticketRenewMargin / 2)}}
+	h.creds.Tickets = &memoryTicketStore{ticket: domain.ARCATicket{Environment: domain.ARCAEnvironmentHomologation,
+		Token: "LIVE", Sign: "SIG", ExpiresAt: fixedNow.Add(ticketRenewMargin / 2)}}
 	if _, err := h.issuer.Issue(context.Background(), h.creds, invoiceA()); err != nil {
 		t.Fatal(err)
 	}
 	if got := decodeSent(t, h.wsfe.sent("FECAESolicitar")[0]); got.Token != "LIVE" {
 		t.Fatalf("token %q, want the live ticket", got.Token)
+	}
+}
+
+// A ticket is a credential of the environment WSAA issued it in; the other one never sees it.
+func TestIssuer_Issue_NeverReusesATicketAcrossEnvironments(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, &fakeWSFE{last: []int64{41}, solicitar: []string{approved(42), approved(42), approved(42)}})
+	h.creds.Tickets = &memoryTicketStore{ticket: domain.ARCATicket{Environment: domain.ARCAEnvironmentProduction,
+		Token: "PRODUCTION", Sign: "SIG", ExpiresAt: fixedNow.Add(time.Hour)}}
+
+	if _, err := h.issuer.Issue(context.Background(), h.creds, invoiceA()); err != nil {
+		t.Fatal(err)
+	}
+	if got := decodeSent(t, h.wsfe.sent("FECAESolicitar")[0]); got.Token == "PRODUCTION" || h.wsaa.logins != 1 {
+		t.Fatalf("token %q after %d logins, want a homologation login instead of the stored ticket", got.Token, h.wsaa.logins)
+	}
+
+	// The same certificate in the other environment does not inherit the cached ticket either.
+	production := h.creds
+	production.Environment, production.Tickets = domain.ARCAEnvironmentProduction, nil
+	if _, err := h.issuer.Issue(context.Background(), production, invoiceA()); err != nil {
+		t.Fatal(err)
+	}
+	if h.wsaa.logins != 2 {
+		t.Fatalf("logins = %d, want production to log in on its own", h.wsaa.logins)
+	}
+	// Each keeps its own ticket, so going back to homologation needs no third login.
+	h.creds.Tickets = nil
+	if _, err := h.issuer.Issue(context.Background(), h.creds, invoiceA()); err != nil {
+		t.Fatal(err)
+	}
+	if h.wsaa.logins != 2 {
+		t.Fatalf("logins = %d, want homologation's cached ticket reused", h.wsaa.logins)
+	}
+}
+
+func TestIssuer_EndpointsFollowTheCredentialsEnvironment(t *testing.T) {
+	t.Parallel()
+	issuer := NewIssuer(Settings{Timeout: time.Second}, NewMemoryTicketCache())
+	for env, want := range map[domain.ARCAEnvironment]endpoints{
+		domain.ARCAEnvironmentHomologation: {wsaa: homologationWSAA, wsfe: homologationWSFE},
+		domain.ARCAEnvironmentProduction:   {wsaa: productionWSAA, wsfe: productionWSFE},
+	} {
+		if got, err := issuer.endpointsFor(env); err != nil || got != want {
+			t.Errorf("endpointsFor(%s) = %+v, %v; want %+v", env, got, err, want)
+		}
+	}
+	if _, err := issuer.endpointsFor(""); !errors.Is(err, domain.ErrNotConfigured) {
+		t.Fatalf("an unnamed environment: err = %v, want it refused", err)
+	}
+	certPEM, keyPEM, _ := testCredentials(t, "CUIT 20123456789")
+	unnamed := domain.ARCACredentials{CertificatePEM: certPEM, PrivateKeyPEM: keyPEM}
+	if _, err := issuer.Authorized(context.Background(), unnamed, "20123456789", domain.InvoiceTypeA, 3, 1); !errors.Is(err, domain.ErrNotConfigured) {
+		t.Fatalf("credentials without an environment: err = %v, want refused before any call", err)
 	}
 }
 

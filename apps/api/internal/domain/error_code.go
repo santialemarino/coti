@@ -76,6 +76,9 @@ const (
 	CodeARCAConnected        ErrorCode = "ARCA_CONNECTED"
 	// The connection cannot go while ARCA still owes the answer for an invoice issued with it.
 	CodeInvoicePending ErrorCode = "INVOICE_PENDING"
+	// The connection was made for the other ARCA environment, so it can neither take a certificate nor
+	// reach an invoice made in this one.
+	CodeARCAEnvironmentMismatch ErrorCode = "ARCA_ENVIRONMENT_MISMATCH"
 )
 
 // The two an upload is refused with. The delivery layer raises both on its own, before any

@@ -237,7 +237,7 @@ func TestAccount_UpdateLocksTheCUITWhileARCAIsConnected(t *testing.T) {
 		t.Fatalf("first update: status = %d; body = %s", rec.Code, rec.Body)
 	}
 	if _, err := e.db.CrossAccount().Exec(context.Background(),
-		`INSERT INTO arca_setup (account_id, tax_id, csr, sealed_key) VALUES ($1, '30712345679', 'csr', 'sealed')`,
+		`INSERT INTO arca_setup (account_id, environment, tax_id, csr, sealed_key) VALUES ($1, 'HOMOLOGATION', '30712345679', 'csr', 'sealed')`,
 		accountID); err != nil {
 		t.Fatalf("seed arca setup: %v", err)
 	}
@@ -271,7 +271,7 @@ func TestAccount_ConfirmedCUITChangeDisconnectsARCAAtomically(t *testing.T) {
 		t.Fatalf("first update: status = %d; body = %s", rec.Code, rec.Body)
 	}
 	if _, err := e.db.CrossAccount().Exec(ctx,
-		`INSERT INTO arca_setup (account_id, tax_id, csr, sealed_key) VALUES ($1, '30712345671', 'csr', 'sealed')`,
+		`INSERT INTO arca_setup (account_id, environment, tax_id, csr, sealed_key) VALUES ($1, 'HOMOLOGATION', '30712345671', 'csr', 'sealed')`,
 		accountID); err != nil {
 		t.Fatalf("seed arca setup: %v", err)
 	}

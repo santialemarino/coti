@@ -91,7 +91,8 @@ func setupTestServiceFor(t *testing.T, taxID *string) (*ARCASetupService, *setup
 	store := &setupTestStore{}
 	accounts := &setupTestAccounts{taxID: taxID, store: store}
 	connector := &setupTestConnector{}
-	service := NewARCASetupService(&fakeDB{}, store, accounts, store, cipher, connector)
+	service := NewARCASetupService(&fakeDB{}, store, accounts, store, cipher, connector,
+		domain.ARCAEnvironmentHomologation)
 	tenant := domain.Tenant{AccountID: uuid.New(), BranchID: uuid.New(), Role: domain.UserRoleAdmin}
 	return service, store, connector, cipher, tenant, accounts
 }
@@ -202,5 +203,29 @@ func TestARCASetupService_DeleteWaitsForPendingInvoices(t *testing.T) {
 	store.pending = false
 	if err := s.Delete(context.Background(), tenant); err != nil || store.setup != nil {
 		t.Fatalf("err = %v, setup = %v, want it removed", err, store.setup)
+	}
+}
+
+// A connection belongs to the environment it was requested in; the other one starts over.
+func TestARCASetupService_AConnectionForTheOtherEnvironmentIsStartedOver(t *testing.T) {
+	t.Parallel()
+	s, store, connector, _, tenant := setupTestService(t)
+	if _, err := s.Create(context.Background(), tenant); err != nil {
+		t.Fatal(err)
+	}
+	if store.setup.Environment != domain.ARCAEnvironmentHomologation {
+		t.Fatalf("environment = %q, want the server's", store.setup.Environment)
+	}
+
+	s.env = domain.ARCAEnvironmentProduction
+	err := s.Upload(context.Background(), tenant, "certificate")
+	if domain.CodeOf(err) != domain.CodeARCAEnvironmentMismatch || connector.validations != 0 {
+		t.Fatalf("err = %v after %d validations, want ARCA_ENVIRONMENT_MISMATCH before any check", err, connector.validations)
+	}
+	if err := s.Delete(context.Background(), tenant); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Create(context.Background(), tenant); err != nil || store.setup.Environment != domain.ARCAEnvironmentProduction {
+		t.Fatalf("err = %v, setup = %+v, want a production request after starting over", err, store.setup)
 	}
 }

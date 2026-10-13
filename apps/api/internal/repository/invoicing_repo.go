@@ -20,7 +20,8 @@ const invoiceActiveQuoteIndex = "uq_invoice_active_quote"
 const invoiceColumns = `id, account_id, branch_id, quote_id, quote_version_id, status, invoice_type,
 	point_of_sale, number, claimed_number, issued_on, cae, cae_expires_on, issuer_cuit, receiver_name,
 	receiver_doc_type, receiver_doc_number, receiver_iva_condition, net_amount, exempt_amount,
-	vat_amount, total, currency, vat_breakdown, issues, created_at, updated_at, snapshot, issuer_iva_condition, issuer_profile`
+	vat_amount, total, currency, vat_breakdown, issues, created_at, updated_at, snapshot, issuer_iva_condition, issuer_profile,
+	environment`
 
 // vatBreakdownRow is how one rate of an invoice is stored in vat_breakdown.
 type vatBreakdownRow struct {
@@ -233,8 +234,8 @@ func (r *InvoicingRepository) GetCredentialStatus(
 ) (*domain.ARCACredentialStatus, error) {
 	var s domain.ARCACredentialStatus
 	err := q.QueryRow(ctx,
-		`SELECT tax_id, '', certificate_expires_at, certificate_expires_at FROM arca_setup WHERE account_id = $1 AND certificate <> ''`,
-		accountID).Scan(&s.CUIT, &s.Subject, &s.ExpiresAt, &s.UpdatedAt)
+		`SELECT environment, tax_id, '', certificate_expires_at, certificate_expires_at FROM arca_setup WHERE account_id = $1 AND certificate <> ''`,
+		accountID).Scan(&s.Environment, &s.CUIT, &s.Subject, &s.ExpiresAt, &s.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -244,17 +245,18 @@ func (r *InvoicingRepository) GetCredentialStatus(
 	return &s, nil
 }
 
-// GetSealedCredential returns the account's certificate and its still-sealed key.
+// GetSealedCredential returns the account's certificate, its still-sealed key and the environment
+// they were issued for.
 func (r *InvoicingRepository) GetSealedCredential(
 	ctx context.Context, q Querier, accountID uuid.UUID,
-) (certificatePEM, sealedKey string, err error) {
+) (certificatePEM, sealedKey string, env domain.ARCAEnvironment, err error) {
 	err = q.QueryRow(ctx,
-		`SELECT certificate, sealed_key FROM arca_setup WHERE account_id = $1 AND certificate <> ''`,
-		accountID).Scan(&certificatePEM, &sealedKey)
+		`SELECT certificate, sealed_key, environment FROM arca_setup WHERE account_id = $1 AND certificate <> ''`,
+		accountID).Scan(&certificatePEM, &sealedKey, &env)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", "", domain.ErrNotFound
+		return "", "", "", domain.ErrNotFound
 	}
-	return certificatePEM, sealedKey, err
+	return certificatePEM, sealedKey, env, err
 }
 
 // GetSealedTicket returns the account's stored WSAA ticket, still sealed; nil when it has none.
@@ -331,14 +333,16 @@ func (r *InvoicingRepository) CreatePending(
 	inv, err := scanInvoice(q.QueryRow(ctx,
 		`INSERT INTO invoice (account_id, branch_id, quote_id, quote_version_id, status, invoice_type,
 		   point_of_sale, issued_on, issuer_cuit, receiver_name, receiver_doc_type, receiver_doc_number,
-		   receiver_iva_condition, net_amount, exempt_amount, vat_amount, total, currency, vat_breakdown, snapshot, issuer_iva_condition, issuer_profile)
+		   receiver_iva_condition, net_amount, exempt_amount, vat_amount, total, currency, vat_breakdown, snapshot, issuer_iva_condition, issuer_profile,
+		   environment)
 		 VALUES ($1, $2, $3, $4, 'PENDING', $5, $6, $7, $8, $9, $10, NULLIF($11, ''), $12, $13, $14,
-		   $15, $16, $17, $18, $19, $20, $21)
+		   $15, $16, $17, $18, $19, $20, $21, $22)
 		 RETURNING `+invoiceColumns,
 		in.AccountID, in.BranchID, in.QuoteID, in.QuoteVersionID, in.Type, in.PointOfSale, in.IssuedOn,
 		in.IssuerCUIT, in.Receiver.Name, in.Receiver.DocType, in.Receiver.DocNumber,
 		in.Receiver.IVACondition, in.Amounts.Net, in.Amounts.Exempt, in.Amounts.VAT, in.Amounts.Total,
-		in.Currency, breakdown, mustInvoiceSnapshot(in.Snapshot), in.IssuerCondition, mustProfile(in.IssuerProfile)))
+		in.Currency, breakdown, mustInvoiceSnapshot(in.Snapshot), in.IssuerCondition, mustProfile(in.IssuerProfile),
+		in.Environment))
 	if isUniqueViolation(err, invoiceActiveQuoteIndex) || isUniqueViolation(err, "uq_invoice_pending_series") {
 		return nil, domain.ErrConflict
 	}
@@ -417,7 +421,8 @@ func scanInvoice(row pgx.Row) (*domain.Invoice, error) {
 		&inv.Status, &inv.Type, &inv.PointOfSale, &number, &claimed, &issuedOn, &inv.CAE, &inv.CAEExpiresOn,
 		&inv.IssuerCUIT, &inv.Receiver.Name, &inv.Receiver.DocType, &docNumber,
 		&inv.Receiver.IVACondition, &inv.Amounts.Net, &inv.Amounts.Exempt, &inv.Amounts.VAT,
-		&inv.Amounts.Total, &inv.Currency, &breakdown, &issues, &inv.CreatedAt, &inv.UpdatedAt, &snapshot, &inv.IssuerCondition, &profile)
+		&inv.Amounts.Total, &inv.Currency, &breakdown, &issues, &inv.CreatedAt, &inv.UpdatedAt, &snapshot, &inv.IssuerCondition, &profile,
+		&inv.Environment)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

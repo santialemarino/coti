@@ -36,6 +36,7 @@ type fakeInvoicingStore struct {
 	rates          map[uuid.UUID]domain.VATRate
 	credential     *domain.ARCACredentialStatus
 	sealedKey      string
+	setupEnv       domain.ARCAEnvironment
 	branches       []domain.BranchPointOfSale
 	invoice        *domain.Invoice
 	released       []string
@@ -107,8 +108,20 @@ func (f *fakeInvoicingStore) GetCredentialStatus(context.Context, repository.Que
 	return f.credential, nil
 }
 
-func (f *fakeInvoicingStore) GetSealedCredential(context.Context, repository.Querier, uuid.UUID) (string, string, error) {
-	return "CERT", f.sealedKey, nil
+func (f *fakeInvoicingStore) GetSealedCredential(context.Context, repository.Querier, uuid.UUID) (string, string, domain.ARCAEnvironment, error) {
+	return "CERT", f.sealedKey, f.setupEnv, nil
+}
+
+func (f *fakeInvoicingStore) GetByID(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) (*domain.Invoice, error) {
+	if f.invoice == nil {
+		return nil, domain.ErrNotFound
+	}
+	invoice := *f.invoice
+	return &invoice, nil
+}
+
+func (f *fakeInvoicingStore) List(context.Context, repository.Querier, uuid.UUID, []uuid.UUID, int, int) ([]domain.Invoice, int, error) {
+	return nil, 0, nil
 }
 
 func (f *fakeInvoicingStore) UpsertCredential(_ context.Context, _ repository.Querier, _ uuid.UUID, _ string, sealedKey string, status domain.ARCACredentialStatus) (*domain.ARCACredentialStatus, error) {
@@ -210,6 +223,7 @@ type fakeInvoiceIssuer struct {
 	consulted []int64
 	ctxErr    error // the context's state when Issue was called.
 	creds     domain.ARCACredentials
+	readWith  []domain.ARCAEnvironment // the credentials' environment on each read-back.
 }
 
 func (f *fakeInvoiceIssuer) Issue(ctx context.Context, creds domain.ARCACredentials, req domain.InvoiceRequest) (*domain.InvoiceAuthorization, error) {
@@ -221,8 +235,9 @@ func (f *fakeInvoiceIssuer) Issue(ctx context.Context, creds domain.ARCACredenti
 	return f.auth, f.err
 }
 
-func (f *fakeInvoiceIssuer) Authorized(_ context.Context, _ domain.ARCACredentials, _ string, _ domain.InvoiceType, _ int, number int64) (*domain.AuthorizedInvoice, error) {
+func (f *fakeInvoiceIssuer) Authorized(_ context.Context, creds domain.ARCACredentials, _ string, _ domain.InvoiceType, _ int, number int64) (*domain.AuthorizedInvoice, error) {
 	f.consulted = append(f.consulted, number)
+	f.readWith = append(f.readWith, creds.Environment)
 	return f.found, nil
 }
 
@@ -262,8 +277,10 @@ func newInvoiceFixture(t *testing.T) invoiceFixture {
 		pointOfSale: &pos,
 		client:      &domain.ClientFiscal{Name: &address, Address: &address, TaxID: &cuit, IVACondition: &registered},
 		rates:       map[uuid.UUID]domain.VATRate{product: domain.VATRateTwentyOne},
-		credential:  &domain.ARCACredentialStatus{CUIT: "30712345671", ExpiresAt: invoiceNow.AddDate(1, 0, 0)},
-		sealedKey:   accountID.String() + ":KEY",
+		credential: &domain.ARCACredentialStatus{Environment: domain.ARCAEnvironmentHomologation, CUIT: "30712345671",
+			ExpiresAt: invoiceNow.AddDate(1, 0, 0)},
+		sealedKey: accountID.String() + ":KEY",
+		setupEnv:  domain.ARCAEnvironmentHomologation,
 	}
 	clientID := uuid.New()
 	quotes := &fakeInvoiceQuotes{
@@ -275,7 +292,7 @@ func newInvoiceFixture(t *testing.T) invoiceFixture {
 	issuer := &fakeInvoiceIssuer{auth: &domain.InvoiceAuthorization{Number: 23, CAE: "74123456789012",
 		CAEExpiresOn: invoiceNow.AddDate(0, 0, 10)}}
 	service := NewInvoiceService(invoiceTestDB{}, store, quotes, fakeInvoiceDiscounts{}, issuer,
-		fakeKeySealer{enabled: true}, InvoiceSettings{Enabled: true, IssueTimeout: time.Second,
+		fakeKeySealer{enabled: true}, InvoiceSettings{Enabled: true, Environment: domain.ARCAEnvironmentHomologation, IssueTimeout: time.Second,
 			ReconcileAfter: time.Minute, UnidentifiedMax: decimal.NewFromInt(10_000_000)},
 		func() time.Time { return invoiceNow }, nil)
 	return invoiceFixture{service: service, store: store, issuer: issuer, quoteID: quoteID, quotes: quotes,
@@ -299,6 +316,10 @@ func TestInvoiceService_IssueAuthorizesAndRecordsTheInvoice(t *testing.T) {
 		t.Fatalf("request = %+v, want an A invoice from the account's CUIT at its point of sale", req)
 	}
 	assertMoney(t, "request total", req.Amounts.Total, "1210.00")
+	if invoice.Environment != domain.ARCAEnvironmentHomologation || f.issuer.creds.Environment != domain.ARCAEnvironmentHomologation {
+		t.Fatalf("invoice in %q, asked with %q credentials, want both in the server's environment",
+			invoice.Environment, f.issuer.creds.Environment)
+	}
 	if want := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC); !req.Date.Equal(want) {
 		t.Fatalf("date = %s, want the day in Argentina", req.Date)
 	}
@@ -416,7 +437,7 @@ func TestInvoiceService_StalePendingIsAdoptedWhenARCAHasIt(t *testing.T) {
 	t.Parallel()
 	f := newInvoiceFixture(t)
 	claimed := int64(7)
-	f.store.invoice = &domain.Invoice{ID: uuid.New(), Status: domain.InvoiceStatusPending,
+	f.store.invoice = &domain.Invoice{ID: uuid.New(), Environment: domain.ARCAEnvironmentHomologation, Status: domain.InvoiceStatusPending,
 		QuoteVersionID: newVersionID(f), UpdatedAt: invoiceNow.Add(-time.Hour), ClaimedNumber: &claimed,
 		Receiver: domain.InvoiceReceiver{DocType: domain.ReceiverDocCUIT, DocNumber: "20123456786"},
 		Amounts:  domain.InvoiceAmounts{Total: dec("1210.00")}}
@@ -438,7 +459,7 @@ func TestInvoiceService_StalePendingMismatchKeepsItsHold(t *testing.T) {
 	t.Parallel()
 	f := newInvoiceFixture(t)
 	claimed := int64(6)
-	f.store.invoice = &domain.Invoice{ID: uuid.New(), Status: domain.InvoiceStatusPending,
+	f.store.invoice = &domain.Invoice{ID: uuid.New(), Environment: domain.ARCAEnvironmentHomologation, Status: domain.InvoiceStatusPending,
 		QuoteVersionID: newVersionID(f), UpdatedAt: invoiceNow.Add(-time.Hour), ClaimedNumber: &claimed,
 		Amounts: domain.InvoiceAmounts{Total: dec("1210.00")}}
 	// Another system's invoice holds the number this one claimed, so ARCA refused ours.
@@ -587,7 +608,7 @@ func TestInvoiceService_UpdateSettingsRefusesAMalformedGrossIncomeRegistration(t
 func TestInvoiceService_StalePendingWithoutAClaimIsReleasedUnasked(t *testing.T) {
 	t.Parallel()
 	f := newInvoiceFixture(t)
-	f.store.invoice = &domain.Invoice{ID: uuid.New(), Status: domain.InvoiceStatusPending,
+	f.store.invoice = &domain.Invoice{ID: uuid.New(), Environment: domain.ARCAEnvironmentHomologation, Status: domain.InvoiceStatusPending,
 		QuoteVersionID: newVersionID(f), UpdatedAt: invoiceNow.Add(-time.Hour)}
 
 	if _, err := f.issue(context.Background()); err != nil {
@@ -755,5 +776,76 @@ func TestInvoiceService_IssueRefusesACUITTheCertificateDoesNotCover(t *testing.T
 		if len(f.issuer.requests) != 0 {
 			t.Fatalf("%s: the request reached ARCA", name)
 		}
+	}
+}
+
+// A connection made for the other environment stops the invoice where the seller sees it.
+func TestInvoiceService_PreviewFlagsAConnectionForTheOtherEnvironment(t *testing.T) {
+	t.Parallel()
+	f := newInvoiceFixture(t)
+	f.service.settings.Environment = domain.ARCAEnvironmentProduction
+
+	preview, err := f.service.Preview(context.Background(), f.tenant, f.quoteID)
+	if err != nil || !slices.Contains(preview.Issues, invoiceIssueCredentialsEnv) ||
+		preview.Environment != domain.ARCAEnvironmentProduction {
+		t.Fatalf("preview = %+v, err = %v, want ARCA_CREDENTIALS_ENVIRONMENT in production", preview, err)
+	}
+	_, err = f.issue(context.Background())
+	var notReady *domain.InvoiceNotReadyError
+	if !errors.As(err, &notReady) || len(f.issuer.requests) != 0 {
+		t.Fatalf("err = %v after %d requests, want the invoice refused before ARCA", err, len(f.issuer.requests))
+	}
+}
+
+// A pending invoice is read back where it was requested, whatever the server is set to now.
+func TestInvoiceService_RecoveryAsksTheInvoicesOwnEnvironment(t *testing.T) {
+	t.Parallel()
+	f := newInvoiceFixture(t)
+	f.service.settings.Environment = domain.ARCAEnvironmentProduction
+	claimed := int64(7)
+	f.store.invoice = &domain.Invoice{ID: uuid.New(), Environment: domain.ARCAEnvironmentHomologation,
+		Status: domain.InvoiceStatusPending, QuoteVersionID: newVersionID(f), UpdatedAt: invoiceNow.Add(-time.Hour),
+		ClaimedNumber: &claimed, Amounts: domain.InvoiceAmounts{Total: dec("1210.00")}}
+
+	if _, err := f.service.Recover(context.Background(), f.tenant, f.store.invoice.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.issuer.readWith) != 1 || f.issuer.readWith[0] != domain.ARCAEnvironmentHomologation {
+		t.Fatalf("read back with %v, want the invoice's homologation credentials", f.issuer.readWith)
+	}
+}
+
+// Asking the wrong deployment would find no invoice and release a hold ARCA may have authorized.
+func TestInvoiceService_RecoveryRefusesAConnectionForAnotherEnvironment(t *testing.T) {
+	t.Parallel()
+	for name, recover := range map[string]func(f invoiceFixture) error{
+		"recover": func(f invoiceFixture) error {
+			_, err := f.service.Recover(context.Background(), f.tenant, f.store.invoice.ID)
+			return err
+		},
+		"issue again": func(f invoiceFixture) error {
+			_, err := f.issue(context.Background())
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			f := newInvoiceFixture(t)
+			claimed := int64(7)
+			f.store.invoice = &domain.Invoice{ID: uuid.New(), Environment: domain.ARCAEnvironmentProduction,
+				Status: domain.InvoiceStatusPending, QuoteVersionID: newVersionID(f), UpdatedAt: invoiceNow.Add(-time.Hour),
+				ClaimedNumber: &claimed, Amounts: domain.InvoiceAmounts{Total: dec("1210.00")}}
+
+			err := recover(f)
+
+			if domain.CodeOf(err) != domain.CodeARCAEnvironmentMismatch {
+				t.Fatalf("err = %v, want ARCA_ENVIRONMENT_MISMATCH", err)
+			}
+			if len(f.issuer.consulted) != 0 || len(f.issuer.requests) != 0 || len(f.store.released) != 0 ||
+				f.store.invoice.Status != domain.InvoiceStatusPending {
+				t.Fatalf("consulted %v, requested %d, released %v, want the hold kept and ARCA never asked",
+					f.issuer.consulted, len(f.issuer.requests), f.store.released)
+			}
+		})
 	}
 }

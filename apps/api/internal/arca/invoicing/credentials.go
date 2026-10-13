@@ -21,17 +21,19 @@ type CertificateInfo struct {
 	NotAfter time.Time
 }
 
-// signer is a parsed certificate and the key that matches it.
+// signer is a parsed certificate, the key that matches it and the environment they sign for.
 type signer struct {
-	cert *x509.Certificate
-	key  *rsa.PrivateKey
-	cuit string
+	cert      *x509.Certificate
+	key       *rsa.PrivateKey
+	cuit      string
+	env       domain.ARCAEnvironment
+	endpoints endpoints
 }
 
-// cacheKey identifies the certificate a ticket was issued to.
+// cacheKey identifies the certificate and the environment a ticket was issued for.
 func (s *signer) cacheKey() string {
 	sum := sha256.Sum256(s.cert.Raw)
-	return fmt.Sprintf("%x", sum)
+	return fmt.Sprintf("%s:%x", s.env, sum)
 }
 
 var oidSerialNumber = asn1.ObjectIdentifier{2, 5, 4, 5}

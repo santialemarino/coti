@@ -221,6 +221,7 @@ type ARCATicketStore interface {
 
 // ARCACredentials are the certificate and key an account signs its ARCA requests with.
 type ARCACredentials struct {
+	Environment    ARCAEnvironment // the deployment the certificate belongs to, and the one called.
 	CertificatePEM []byte
 	PrivateKeyPEM  []byte
 	Tickets        ARCATicketStore // nil keeps tickets in the issuer's memory only.
@@ -286,6 +287,7 @@ type Invoice struct {
 	BranchID        uuid.UUID
 	QuoteID         uuid.UUID
 	QuoteVersionID  uuid.UUID
+	Environment     ARCAEnvironment // where it is authorized; never changes, so recovery asks the same one.
 	Status          InvoiceStatus
 	Type            InvoiceType
 	PointOfSale     int
@@ -308,10 +310,11 @@ type Invoice struct {
 
 // ARCACredentialStatus describes the certificate an account uploaded, never the key.
 type ARCACredentialStatus struct {
-	CUIT      string
-	Subject   string
-	ExpiresAt time.Time
-	UpdatedAt time.Time
+	Environment ARCAEnvironment
+	CUIT        string
+	Subject     string
+	ExpiresAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // AccountFiscal is the account's side of an invoice.
@@ -365,7 +368,7 @@ type BranchPointOfSale struct {
 // InvoicingSettings is the account's invoicing setup as the settings screen shows it.
 type InvoicingSettings struct {
 	Enabled     bool
-	Environment string
+	Environment ARCAEnvironment
 	Account     AccountFiscal
 	Branches    []BranchPointOfSale
 	Credential  *ARCACredentialStatus
@@ -381,6 +384,7 @@ type InvoicingSettingsUpdate struct {
 
 // InvoicePreview is the invoice an accepted quote would produce, with whatever stops it.
 type InvoicePreview struct {
+	Environment ARCAEnvironment // where an invoice issued now would be authorized.
 	IssuerCUIT  string
 	Fingerprint string
 	VersionID   uuid.UUID // the quote version the preview was computed from.

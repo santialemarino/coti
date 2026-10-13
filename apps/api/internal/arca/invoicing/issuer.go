@@ -16,12 +16,6 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
-// Environment names ARCA's two deployments.
-const (
-	EnvironmentHomologation = "homologation"
-	EnvironmentProduction   = "production"
-)
-
 const (
 	soapNamespace = "http://schemas.xmlsoap.org/soap/envelope/"
 
@@ -34,14 +28,19 @@ const (
 // maxResponseBytes bounds what is read from one SOAP response; ARCA's are a few kilobytes.
 const maxResponseBytes = 1 << 20
 
-// Settings configures an Issuer.
+// Settings configures an Issuer. Each call reaches the environment its credentials belong to.
 type Settings struct {
-	Environment string // EnvironmentHomologation or EnvironmentProduction; anything else is homologation.
-	Timeout     time.Duration
-	Now         func() time.Time
-	WSAAURL     string // overrides the environment's WSAA endpoint.
-	WSFEURL     string // overrides the environment's WSFEv1 endpoint.
-	Log         *slog.Logger
+	Timeout time.Duration
+	Now     func() time.Time
+	WSAAURL string // overrides both environments' WSAA endpoint.
+	WSFEURL string // overrides both environments' WSFEv1 endpoint.
+	Log     *slog.Logger
+}
+
+// endpoints are one environment's WSAA and WSFEv1 addresses.
+type endpoints struct {
+	wsaa string
+	wsfe string
 }
 
 // Issuer implements domain.InvoiceIssuer against ARCA.
@@ -49,7 +48,7 @@ type Issuer struct {
 	client  *http.Client
 	cache   TicketCache
 	now     func() time.Time
-	wsaaURL string
+	wsaaURL string // set only to override every environment.
 	wsfeURL string
 	log     *slog.Logger
 	mu      sync.Mutex
@@ -58,18 +57,8 @@ type Issuer struct {
 
 var _ domain.InvoiceIssuer = (*Issuer)(nil)
 
-// NewIssuer builds an Issuer for the configured environment, caching tickets in cache.
+// NewIssuer builds an Issuer, caching tickets in cache.
 func NewIssuer(settings Settings, cache TicketCache) *Issuer {
-	wsaa, wsfe := homologationWSAA, homologationWSFE
-	if settings.Environment == EnvironmentProduction {
-		wsaa, wsfe = productionWSAA, productionWSFE
-	}
-	if settings.WSAAURL != "" {
-		wsaa = settings.WSAAURL
-	}
-	if settings.WSFEURL != "" {
-		wsfe = settings.WSFEURL
-	}
 	now := settings.Now
 	if now == nil {
 		now = time.Now
@@ -82,8 +71,8 @@ func NewIssuer(settings Settings, cache TicketCache) *Issuer {
 		client:  &http.Client{Timeout: settings.Timeout, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }},
 		cache:   cache,
 		now:     now,
-		wsaaURL: wsaa,
-		wsfeURL: wsfe,
+		wsaaURL: settings.WSAAURL,
+		wsfeURL: settings.WSFEURL,
 		log:     log,
 		logins:  map[string]*sync.Mutex{},
 	}
@@ -91,7 +80,7 @@ func NewIssuer(settings Settings, cache TicketCache) *Issuer {
 
 // Issue authorizes one invoice, numbering it as the next after ARCA's last authorized one.
 func (i *Issuer) Issue(ctx context.Context, creds domain.ARCACredentials, req domain.InvoiceRequest) (*domain.InvoiceAuthorization, error) {
-	s, err := parseSigner(creds.CertificatePEM, creds.PrivateKeyPEM)
+	s, err := i.signerFor(creds)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +88,7 @@ func (i *Issuer) Issue(ctx context.Context, creds domain.ARCACredentials, req do
 	if err != nil {
 		return nil, err
 	}
-	a := feAuth{Token: t.Token, Sign: t.Sign, Cuit: req.IssuerCUIT}
+	a := feAuth{Token: t.Token, Sign: t.Sign, Cuit: req.IssuerCUIT, url: s.endpoints.wsfe}
 	for attempt := 0; ; attempt++ {
 		last, err := i.lastAuthorized(ctx, a, req.Type, req.PointOfSale)
 		if err != nil {
@@ -133,7 +122,7 @@ func (i *Issuer) Issue(ctx context.Context, creds domain.ARCACredentials, req do
 
 // Authorized reads back the invoice ARCA holds under number for a type at a point of sale.
 func (i *Issuer) Authorized(ctx context.Context, creds domain.ARCACredentials, issuerCUIT string, invoiceType domain.InvoiceType, pointOfSale int, number int64) (*domain.AuthorizedInvoice, error) {
-	s, err := parseSigner(creds.CertificatePEM, creds.PrivateKeyPEM)
+	s, err := i.signerFor(creds)
 	if err != nil {
 		return nil, err
 	}
@@ -141,11 +130,46 @@ func (i *Issuer) Authorized(ctx context.Context, creds domain.ARCACredentials, i
 	if err != nil {
 		return nil, err
 	}
-	got, _, err := i.consult(ctx, feAuth{Token: t.Token, Sign: t.Sign, Cuit: issuerCUIT}, invoiceType, pointOfSale, number)
+	got, _, err := i.consult(ctx, feAuth{Token: t.Token, Sign: t.Sign, Cuit: issuerCUIT, url: s.endpoints.wsfe}, invoiceType, pointOfSale, number)
 	if err != nil || got == nil {
 		return nil, i.dropRejectedTicket(ctx, s, creds.Tickets, err)
 	}
 	return got.authorized(number)
+}
+
+// signerFor parses the credentials and binds them to the environment they belong to.
+func (i *Issuer) signerFor(creds domain.ARCACredentials) (*signer, error) {
+	ep, err := i.endpointsFor(creds.Environment)
+	if err != nil {
+		return nil, err
+	}
+	s, err := parseSigner(creds.CertificatePEM, creds.PrivateKeyPEM)
+	if err != nil {
+		return nil, err
+	}
+	s.env, s.endpoints = creds.Environment, ep
+	return s, nil
+}
+
+// endpointsFor returns where env's web services answer. An unnamed environment is refused rather
+// than guessed, since guessing production would authorize a real invoice.
+func (i *Issuer) endpointsFor(env domain.ARCAEnvironment) (endpoints, error) {
+	var ep endpoints
+	switch env {
+	case domain.ARCAEnvironmentHomologation:
+		ep = endpoints{wsaa: homologationWSAA, wsfe: homologationWSFE}
+	case domain.ARCAEnvironmentProduction:
+		ep = endpoints{wsaa: productionWSAA, wsfe: productionWSFE}
+	default:
+		return endpoints{}, fmt.Errorf("arca: unknown environment %q: %w", env, domain.ErrNotConfigured)
+	}
+	if i.wsaaURL != "" {
+		ep.wsaa = i.wsaaURL
+	}
+	if i.wsfeURL != "" {
+		ep.wsfe = i.wsfeURL
+	}
+	return ep, nil
 }
 
 // soapFault is a SOAP 1.1 Fault; ARCA answers one for infrastructure and WSAA login failures.
