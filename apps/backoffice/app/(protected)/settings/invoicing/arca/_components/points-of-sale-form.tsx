@@ -15,6 +15,7 @@ import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { InvoicingBranch } from '@/lib/api/invoicing';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 import {
+  changedPointsOfSale,
   pointsOfSaleSchema,
   pointsOfSaleValues,
   type PointOfSaleValue,
@@ -47,7 +48,13 @@ export function PointsOfSaleForm({ branches, disabled = false }: PointsOfSaleFor
   const pending = form.formState.isSubmitting;
 
   async function onSubmit(values: PointsOfSaleFormValues) {
-    const result = await updatePointsOfSale(values.branches);
+    const before = form.formState.defaultValues?.branches as PointOfSaleValue[];
+    const changed = changedPointsOfSale(values.branches, before);
+    if (changed.length === 0) {
+      toast.success(t('pointsOfSale.unchanged'));
+      return;
+    }
+    const result = await updatePointsOfSale(changed);
     if (!result.settings) {
       form.setError('root', { message: message(result.error) });
       return;

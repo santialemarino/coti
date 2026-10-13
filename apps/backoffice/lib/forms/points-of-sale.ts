@@ -57,7 +57,19 @@ export function pointsOfSaleValues(branches: readonly InvoicingBranch[]): PointO
   }));
 }
 
-// The wire shape: every branch is sent, so a cleared number arrives as null.
+/*
+ * The rows whose number differs from what the form opened with. Only those are sent, so a tab left
+ * open on old numbers cannot undo what was saved since from somewhere else.
+ */
+export function changedPointsOfSale(
+  values: readonly PointOfSaleValue[],
+  initial: readonly PointOfSaleValue[],
+): PointOfSaleValue[] {
+  const before = new Map(initial.map((branch) => [branch.branchId, branch.pointOfSale]));
+  return values.filter((branch) => before.get(branch.branchId) !== branch.pointOfSale);
+}
+
+// The wire shape: a cleared number arrives as null.
 export function pointsOfSaleBody(values: readonly PointOfSaleValue[]) {
   return values.map((branch) => ({
     branch_id: branch.branchId,

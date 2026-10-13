@@ -74,6 +74,20 @@ describe('InvoicingSettingsForm points of sale', () => {
     expect(toast.success).toHaveBeenCalled();
   });
 
+  // A tab left open on old numbers must not undo what was saved since: unchanged rows stay home.
+  it('sends only the rows that changed', async () => {
+    const view = renderForm();
+
+    fireEvent.change(pointOfSale(view, 'Morón'), { target: { value: '4' } });
+    fireEvent.click(view.getByRole('button', { name: copy.submit }));
+
+    await waitFor(() =>
+      expect(updateInvoicingSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ branches: [{ branchId: 'b2', pointOfSale: '4' }] }),
+      ),
+    );
+  });
+
   it('refuses one number for two branches on the second row', async () => {
     const view = renderForm();
 

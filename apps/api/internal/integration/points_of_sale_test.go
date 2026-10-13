@@ -72,4 +72,12 @@ func TestInvoicing_PointsOfSaleSwapAndRefuseADuplicate(t *testing.T) {
 	if got := read(); *got[moron] != 2 || *got[bosch] != 1 {
 		t.Fatal("a refused save changed a point of sale")
 	}
+
+	// A save carries only the rows it changed; a branch it leaves out keeps its number.
+	if _, err := invoices.UpdatePointsOfSale(ctx, tenant, map[uuid.UUID]*int{bosch: nil}); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(); got[moron] == nil || *got[moron] != 2 || got[bosch] != nil {
+		t.Fatalf("after clearing Villa Bosch alone: Morón = %v, Villa Bosch = %v", got[moron], got[bosch])
+	}
 }

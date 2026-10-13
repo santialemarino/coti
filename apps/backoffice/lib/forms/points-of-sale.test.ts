@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { pointsOfSaleBody, pointsOfSaleValues } from '@/lib/forms/points-of-sale';
+import {
+  changedPointsOfSale,
+  pointsOfSaleBody,
+  pointsOfSaleValues,
+} from '@/lib/forms/points-of-sale';
 
 describe('points of sale at the boundary', () => {
   it('reads an unset number as an empty field', () => {
@@ -24,6 +28,29 @@ describe('points of sale at the boundary', () => {
     ).toEqual([
       { branch_id: 'm', point_of_sale: 3 },
       { branch_id: 'b', point_of_sale: null },
+    ]);
+  });
+});
+
+describe('changedPointsOfSale', () => {
+  it('keeps only the rows whose number moved, a cleared one included', () => {
+    const initial = [
+      { branchId: 'm', pointOfSale: '1' },
+      { branchId: 'b', pointOfSale: '2' },
+      { branchId: 'c', pointOfSale: '' },
+    ];
+    expect(
+      changedPointsOfSale(
+        [
+          { branchId: 'm', pointOfSale: '1' },
+          { branchId: 'b', pointOfSale: '' },
+          { branchId: 'c', pointOfSale: '4' },
+        ],
+        initial,
+      ),
+    ).toEqual([
+      { branchId: 'b', pointOfSale: '' },
+      { branchId: 'c', pointOfSale: '4' },
     ]);
   });
 });

@@ -40,7 +40,7 @@ import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { formatCuit, type InvoicingSettings } from '@/lib/api/invoicing';
 import { FORM_VALIDATION } from '@/lib/forms/options';
-import { pointsOfSaleValues } from '@/lib/forms/points-of-sale';
+import { changedPointsOfSale, pointsOfSaleValues } from '@/lib/forms/points-of-sale';
 import { useFormatters } from '@/lib/i18n/formatters';
 
 // Past this many, the toast counts the branches instead of naming them.
@@ -75,7 +75,10 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
 
   async function onSubmit(values: InvoicingSettingsOutput) {
     const before = form.formState.defaultValues as InvoicingSettingsValues;
-    const result = await updateInvoicingSettings(values);
+    const result = await updateInvoicingSettings({
+      ...values,
+      branches: changedPointsOfSale(values.branches, before.branches),
+    });
     if (!result.settings) {
       form.setError('root', { message: message(result.error) });
       return;
