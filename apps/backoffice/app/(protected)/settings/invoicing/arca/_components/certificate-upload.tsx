@@ -30,6 +30,7 @@ import {
   type ARCACertificateValues,
 } from '@/app/(protected)/settings/invoicing/arca/form-schema';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import type { ARCAEnvironment } from '@/lib/api/invoicing';
 import { CERTIFICATE_MAX_BYTES, CERTIFICATE_MAX_KB } from '@/lib/constants/arca';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 
@@ -38,18 +39,15 @@ const CERTIFICATE_FILE_TYPES = '.crt,.pem,.cer,.csr,.txt';
 
 interface CertificateUploadProps {
   disabled?: boolean;
-  // ARCA hands the certificate over as a file, so choosing it leads and pasting is the fallback.
-  filePrimary?: boolean;
+  // Production ARCA hands the certificate over as a file, so choosing it leads there.
+  environment: ARCAEnvironment;
 }
 
 /*
  * The certificate ARCA issued, pasted as text. A file, chosen or dropped onto the field, only fills
  * the same field, so there is one thing to check and one way to save it.
  */
-export function CertificateUpload({
-  disabled = false,
-  filePrimary = false,
-}: CertificateUploadProps) {
+export function CertificateUpload({ disabled = false, environment }: CertificateUploadProps) {
   const router = useRouter();
   const t = useTranslations('arca');
   const tShared = useTranslations('common.form.errors');
@@ -57,7 +55,11 @@ export function CertificateUpload({
   const fileInput = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [loadedFrom, setLoadedFrom] = useState<string | null>(null);
-  const schema = useMemo(() => arcaCertificateSchema({ field: t, shared: tShared }), [t, tShared]);
+  const filePrimary = environment === 'PRODUCTION';
+  const schema = useMemo(
+    () => arcaCertificateSchema({ field: t, shared: tShared }, environment),
+    [t, tShared, environment],
+  );
   const form = useForm<ARCACertificateValues>({
     ...FORM_VALIDATION,
     resolver: zodResolver(schema),

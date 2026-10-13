@@ -23,7 +23,7 @@
         "PRODUCTION": {
           "title": "Habilitá la administración de certificados en ARCA",
           "body": "Coti factura con un certificado digital que se pide en el servicio «Administración de Certificados Digitales». Entrá a ARCA con tu clave fiscal (nivel 3 o superior) y abrí «Administrador de Relaciones de Clave Fiscal». Tocá «Nueva Relación», después «Buscar», y elegí «Administración de Certificados Digitales». En «Representante», buscá tu CUIT y confirmá. Cerrá sesión y volvé a entrar.",
-          "check": "Si ya lo tenés habilitado, aparece entre tus servicios de ARCA y podés pasar al paso siguiente."
+          "check": "Si ya lo tenés habilitado, aparece entre tus servicios de ARCA y podés pasar al paso siguiente. Si después de volver a entrar no aparece, aceptá la designación en «Aceptación de Designación»."
         },
         "open": "Abrir ARCA"
       },
@@ -82,7 +82,6 @@
       "upload": {
         "title": "Cargá el certificado en Coti",
         "label": "Certificado de ARCA",
-        "required": "Pegá el certificado que te dio ARCA.",
         "invalid": "Pegá el certificado completo, desde el primer guion hasta el último.",
         "tooLarge": "El certificado no puede superar los {max} KB.",
         "readError": "No pudimos leer el archivo. Volvé a elegirlo o pegá el texto.",
@@ -101,10 +100,12 @@
         "fileRequest": "Ese archivo es la solicitud que generaste en Coti, no el certificado. Usala en ARCA para obtener el certificado y cargá acá el que te entregue.",
         "fileInvalid": "Ese archivo no es un certificado. Elegí el que te entregó ARCA o pegá su texto.",
         "HOMOLOGATION": {
-          "body": "Pegá el certificado que copiaste de «Resultado» y tocá «Guardar certificado»."
+          "body": "Pegá el certificado que copiaste de «Resultado» y tocá «Guardar certificado».",
+          "required": "Pegá el certificado que te dio ARCA."
         },
         "PRODUCTION": {
-          "body": "Elegí el archivo del certificado que descargaste de ARCA y tocá «Guardar certificado». También podés pegar su texto."
+          "body": "Elegí el archivo del certificado que descargaste de ARCA y tocá «Guardar certificado». También podés pegar su texto.",
+          "required": "Elegí el archivo del certificado que te dio ARCA, o pegá su texto."
         },
         "chooseCertificate": "Elegir el certificado",
         "pastePlaceholder": "O pegá acá el texto del certificado"
@@ -116,8 +117,8 @@
           "pending": "Cuando el certificado esté cargado, acá vas a cargar el punto de venta de cada sucursal: el número que das de alta en ARCA, en «Administración de puntos de venta y domicilios»."
         },
         "PRODUCTION": {
-          "body": "Cada sucursal factura con su propio punto de venta. Dalo de alta en ARCA, en «Administración de puntos de venta y domicilios», eligiendo en «Sistema» el de web services: «RECE para aplicativo y web services» si sos responsable inscripto, o «Factura Electrónica - Monotributo - Web Services» si sos monotributista. Cargá acá su número; después podés cambiarlo cuando quieras en Facturación.",
-          "pending": "Cuando el certificado esté cargado, acá vas a cargar el punto de venta de cada sucursal: uno dado de alta en «Administración de puntos de venta y domicilios» con un sistema de web services."
+          "body": "Cada sucursal factura con su propio punto de venta. Creá uno en ARCA, en «Administración de puntos de venta y domicilios», para facturación electrónica por web services, del tipo que corresponda a tu condición frente al IVA. Cargá acá su número; después podés cambiarlo cuando quieras en Facturación.",
+          "pending": "Cuando el certificado esté cargado, acá vas a cargar el punto de venta de cada sucursal: uno creado en «Administración de puntos de venta y domicilios» para facturación electrónica por web services."
         },
         "progress": "{done} de {total} sucursales abiertas tienen punto de venta."
       }
@@ -144,7 +145,7 @@
         "description": "Se van a borrar la solicitud y el certificado del CUIT {cuit}, que eran de otro entorno de ARCA, y Coti va a generar una solicitud nueva.",
         "action": "Volver a conectar",
         "pending": "Conectando…",
-        "done": "Generamos una solicitud nueva. Seguí los pasos en ARCA."
+        "done": "Generamos una solicitud nueva. Seguí los pasos en ARCA y revisá los puntos de venta."
       }
     },
     "cancel": "Cancelar",
@@ -158,7 +159,7 @@
     },
     "reconnect": {
       "title": "Hay que volver a conectar",
-      "body": "Esta conexión se hizo para otro entorno de ARCA y ya no sirve para facturar. Generá una solicitud nueva y repetí los pasos en ARCA."
+      "body": "Esta conexión se hizo para otro entorno de ARCA y ya no sirve para facturar. Generá una solicitud nueva y repetí los pasos en ARCA. Después revisá el punto de venta de cada sucursal: los que usabas en el otro entorno ARCA no los reconoce en este."
     }
   },
   "common": {
@@ -2711,7 +2712,17 @@
       },
       "editClient": "Editar cliente",
       "receiverAddress": "Domicilio fiscal",
-      "testNote": "Comprobante de prueba: no tiene validez fiscal."
+      "testNote": "Comprobante de prueba: no tiene validez fiscal.",
+      "otherInvoice": {
+        "title": "Factura {type} {number}",
+        "HOMOLOGATION": {
+          "body": "Es una factura de prueba, emitida el {date}: no tiene validez fiscal. La factura real de esta venta se emite abajo."
+        },
+        "PRODUCTION": {
+          "body": "Es la factura real de esta venta, emitida el {date}. Lo que emitas en este servidor es de prueba."
+        },
+        "download": "Descargar factura"
+      }
     },
     "history": {
       "title": "Comprobantes",

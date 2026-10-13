@@ -108,6 +108,7 @@ export interface InvoicePreviewRaw {
   currency: string;
   issues: string[] | null;
   invoice: InvoiceRaw | null;
+  other_environment_invoice?: InvoiceRaw | null;
 }
 
 export interface ClientFiscalRaw {
@@ -193,6 +194,8 @@ export interface InvoicePreview {
   currency: string;
   issues: string[];
   invoice: Invoice | null;
+  // The newest invoice issued for the sale in the other ARCA environment: history, never a hold.
+  otherEnvironmentInvoice: Invoice | null;
 }
 
 export interface ClientFiscal {
@@ -291,6 +294,9 @@ export function mapInvoicePreview(raw: InvoicePreviewRaw): InvoicePreview {
     currency: raw.currency,
     issues: raw.issues ?? [],
     invoice: raw.invoice ? mapInvoice(raw.invoice) : null,
+    otherEnvironmentInvoice: raw.other_environment_invoice
+      ? mapInvoice(raw.other_environment_invoice)
+      : null,
   };
 }
 

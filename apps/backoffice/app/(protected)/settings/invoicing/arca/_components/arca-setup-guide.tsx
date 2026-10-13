@@ -121,6 +121,11 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, state }: ARCASet
     startRemoving(async () => {
       const result = await (mode === 'reconnect' ? reconnectARCA() : disconnectARCA());
       if (result.error) {
+        // The old connection may be gone even though no new one was made, so show what is there now.
+        if (mode === 'reconnect') {
+          setRemoveOpen(false);
+          router.refresh();
+        }
         toast.error(message(result.error));
         return;
       }
@@ -284,7 +289,7 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, state }: ARCASet
     ) : (
       <>
         <Paragraph>{t(`steps.upload.${env}.body`)}</Paragraph>
-        <CertificateUpload disabled={!current.csr || busy} filePrimary={env === 'PRODUCTION'} />
+        <CertificateUpload disabled={!current.csr || busy} environment={env} />
       </>
     ),
     pointsOfSale: (

@@ -563,4 +563,24 @@ describe('ARCASetupGuide after the environment changed', () => {
     expect(disconnectARCA).not.toHaveBeenCalled();
     expect(toast.success).toHaveBeenCalledWith(copy.remove.reconnect.done);
   });
+
+  // The old connection may already be gone, so the page shows what is left instead of a stale dialog.
+  it('closes and refreshes when the new request fails after the old one went', async () => {
+    vi.mocked(reconnectARCA).mockResolvedValue({ error: 'INVOICING_UNAVAILABLE' });
+    const view = show(
+      { ...INSTALLED, setupEnvironment: 'PRODUCTION', reconnectRequired: true },
+      'reconnect',
+      {
+        branches: READY,
+      },
+    );
+
+    fireEvent.click(view.getByRole('button', { name: copy.steps.generate.submit }));
+    const dialog = await view.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: copy.remove.reconnect.action }));
+
+    await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+    expect(toast.error).toHaveBeenCalledOnce();
+    await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
+  });
 });

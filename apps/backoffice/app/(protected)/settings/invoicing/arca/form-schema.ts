@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import type { ARCAEnvironment } from '@/lib/api/invoicing';
 import { CERTIFICATE_MAX_BYTES, CERTIFICATE_MAX_KB } from '@/lib/constants/arca';
 import { rawText, type SchemaText } from '@/lib/forms/validators';
 
@@ -23,7 +24,11 @@ export function certificateContent(raw: string): CertificateContent {
   return PEM_CERTIFICATE.test(text) ? 'certificate' : 'other';
 }
 
-export function arcaCertificateSchema(t: SchemaText = rawText) {
+// Production hands the certificate over as a file, so its empty-field message leads with the file.
+export function arcaCertificateSchema(
+  t: SchemaText = rawText,
+  environment: ARCAEnvironment = 'HOMOLOGATION',
+) {
   return z.object({
     certificate: z
       .string()
@@ -31,7 +36,7 @@ export function arcaCertificateSchema(t: SchemaText = rawText) {
       .pipe(
         z
           .string()
-          .min(1, t.field('steps.upload.required'))
+          .min(1, t.field(`steps.upload.${environment}.required`))
           .max(CERTIFICATE_MAX_BYTES, t.field('steps.upload.tooLarge', { max: CERTIFICATE_MAX_KB }))
           .superRefine((text, ctx) => {
             const content = certificateContent(text);
