@@ -27,6 +27,7 @@ import {
 import { updateInvoicingSettings } from '@/app/(protected)/settings/invoicing/actions';
 import {
   ADDRESS_MAX_LENGTH,
+  GROSS_INCOME_CHARACTER,
   GROSS_INCOME_EXEMPT,
   GROSS_INCOME_NUMBER_MAX_LENGTH,
   invoicingSettingsSchema,
@@ -38,10 +39,12 @@ import {
 import { PointsOfSaleTable } from '@/components/points-of-sale-table';
 import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import { useCaretPlacement } from '@/hooks/use-caret-placement';
 import { formatCuit, type InvoicingSettings } from '@/lib/api/invoicing';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 import { changedPointsOfSale, pointsOfSaleValues } from '@/lib/forms/points-of-sale';
 import { useFormatters } from '@/lib/i18n/formatters';
+import { keepAllowed } from '@/lib/utils/tax-id';
 
 // Past this many, the toast counts the branches instead of naming them.
 const NAMED_BRANCHES_MAX = 2;
@@ -70,6 +73,7 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
     defaultValues: valuesOf(settings),
   });
   const grossIncomeKind = useWatch({ control: form.control, name: 'grossIncomeKind' });
+  const placeCaret = useCaretPlacement();
   const pending = form.formState.isSubmitting;
   const accountCuit = settings.taxId ? formatCuit(settings.taxId.replace(/\D/g, '')) : null;
 
@@ -226,7 +230,15 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
                     <FormControl>
                       <Input
                         {...field}
+                        onChange={(event) => {
+                          const input = event.currentTarget;
+                          const caret = input.selectionStart ?? input.value.length;
+                          const kept = keepAllowed(input.value, caret, GROSS_INCOME_CHARACTER);
+                          placeCaret(input, kept.caret);
+                          field.onChange(kept.value);
+                        }}
                         inputMode="numeric"
+                        autoComplete="off"
                         maxLength={GROSS_INCOME_NUMBER_MAX_LENGTH}
                         placeholder={t('profile.grossIncomeNumberPlaceholder')}
                         disabled={pending}
