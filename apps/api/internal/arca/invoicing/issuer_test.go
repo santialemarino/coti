@@ -693,6 +693,22 @@ func TestIssuer_Issue_FallsBackToTheLiveTicketWhenWSAARefuses(t *testing.T) {
 	}
 }
 
+// A ticket stored before tickets named their environment is homologation's, and is reused there
+// rather than meeting WSAA's refusal of a second login.
+func TestIssuer_Issue_ReadsAnUnnamedStoredTicketAsHomologation(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, &fakeWSFE{last: []int64{41}, solicitar: []string{approved(42)}})
+	h.wsaa.already = true
+	h.creds.Tickets = &memoryTicketStore{ticket: domain.ARCATicket{Token: "STORED", Sign: "SIG",
+		ExpiresAt: fixedNow.Add(time.Hour)}}
+	if _, err := h.issuer.Issue(context.Background(), h.creds, invoiceA()); err != nil {
+		t.Fatal(err)
+	}
+	if got := decodeSent(t, h.wsfe.sent("FECAESolicitar")[0]); got.Token != "STORED" || h.wsaa.logins != 0 {
+		t.Fatalf("token %q after %d logins, want the stored ticket reused", got.Token, h.wsaa.logins)
+	}
+}
+
 // A ticket is a credential of the environment WSAA issued it in; the other one never sees it.
 func TestIssuer_Issue_NeverReusesATicketAcrossEnvironments(t *testing.T) {
 	t.Parallel()

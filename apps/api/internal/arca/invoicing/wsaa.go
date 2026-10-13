@@ -114,6 +114,10 @@ func (i *Issuer) ticket(ctx context.Context, s *signer, store domain.ARCATicketS
 		if stored != nil {
 			known, ok = *stored, true
 		}
+		// Tickets stored before they named an environment were all issued in homologation.
+		if ok && known.Environment == "" {
+			known.Environment = domain.ARCAEnvironmentHomologation
+		}
 	}
 	// A ticket WSAA issued in the other environment is no credential here.
 	ok = ok && known.Environment == s.env
