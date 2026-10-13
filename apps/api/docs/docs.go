@@ -7973,6 +7973,14 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "other_environment_invoice": {
+                    "description": "OtherEnvironmentInvoice is the newest invoice issued for the sale in the other ARCA environment,\nshown as history; it does not stop an invoice in this one.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.InvoiceResponse"
+                        }
+                    ]
+                },
                 "point_of_sale": {
                     "type": "integer"
                 },

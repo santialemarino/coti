@@ -99,7 +99,7 @@ func TestInvoicingRepository_IssuedInvoiceRoundTrips(t *testing.T) {
 		}); err != nil {
 			return err
 		}
-		latest, err = repo.GetLatestByQuote(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		latest, err = repo.GetLatestByQuote(ctx, q, tenant.AccountID, tenant.BranchID, quoteID, domain.ARCAEnvironmentHomologation)
 		return err
 	}); err != nil {
 		t.Fatalf("issue round trip = %v", err)
@@ -174,7 +174,7 @@ func TestInvoicingRepository_ClaimedNumberRoundTrips(t *testing.T) {
 		if err := repo.ClaimNumber(ctx, q, tenant.AccountID, tenant.BranchID, pending.ID, 42); err != nil {
 			return err
 		}
-		latest, err = repo.GetLatestByQuote(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		latest, err = repo.GetLatestByQuote(ctx, q, tenant.AccountID, tenant.BranchID, quoteID, domain.ARCAEnvironmentHomologation)
 		return err
 	}); err != nil {
 		t.Fatal(err)
@@ -196,14 +196,14 @@ func TestQuoteRepository_HasLiveInvoice(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if whilePending, err = quotes.HasLiveInvoice(ctx, q, tenant.AccountID, tenant.BranchID, quoteID); err != nil {
+		if whilePending, err = quotes.HasLiveInvoice(ctx, q, tenant.AccountID, tenant.BranchID, quoteID, domain.ARCAEnvironmentHomologation); err != nil {
 			return err
 		}
 		if err := invoices.MarkRejected(ctx, q, tenant.AccountID, tenant.BranchID, pending.ID,
 			domain.InvoiceRejectedError{Issues: []string{"10013: DocTipo"}}); err != nil {
 			return err
 		}
-		afterRefusal, err = quotes.HasLiveInvoice(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		afterRefusal, err = quotes.HasLiveInvoice(ctx, q, tenant.AccountID, tenant.BranchID, quoteID, domain.ARCAEnvironmentHomologation)
 		return err
 	}); err != nil {
 		t.Fatal(err)
@@ -480,5 +480,84 @@ func TestInvoicingRepository_EachEnvironmentNumbersOnItsOwn(t *testing.T) {
 	_, err = db.CrossAccount().Exec(ctx, `UPDATE invoice SET environment = 'PRODUCTION' WHERE id = $1`, test.ID)
 	if err == nil {
 		t.Fatal("an issued invoice changed environment")
+	}
+}
+
+// A sale holds one live invoice per environment: the test one never stops the real one, and each
+// environment still refuses a second.
+func TestInvoicingRepository_OneLiveInvoicePerSalePerEnvironment(t *testing.T) {
+	db, tenant, quoteID, versionID, _ := invoiceFixture(t)
+	ctx := context.Background()
+	repo, quotes := NewInvoicingRepository(), NewQuoteRepository()
+	inEnv := func(env domain.ARCAEnvironment) domain.Invoice {
+		in := pendingInvoice(tenant, quoteID, versionID)
+		in.Environment = env
+		return in
+	}
+	create := func(env domain.ARCAEnvironment) (*domain.Invoice, error) {
+		var inv *domain.Invoice
+		err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+			var err error
+			inv, err = repo.CreatePending(ctx, q, inEnv(env))
+			return err
+		})
+		return inv, err
+	}
+	read := func(env domain.ARCAEnvironment) (latest, elsewhere *domain.Invoice, live bool) {
+		if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+			var err error
+			if latest, err = repo.GetLatestByQuote(ctx, q, tenant.AccountID, tenant.BranchID, quoteID, env); err != nil {
+				return err
+			}
+			if elsewhere, err = repo.GetLatestIssuedOutside(ctx, q, tenant.AccountID, tenant.BranchID, quoteID, env); err != nil {
+				return err
+			}
+			live, err = quotes.HasLiveInvoice(ctx, q, tenant.AccountID, tenant.BranchID, quoteID, env)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return latest, elsewhere, live
+	}
+
+	test, err := create(domain.ARCAEnvironmentHomologation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Still pending, the test invoice holds the sale in both environments.
+	if latest, _, live := read(domain.ARCAEnvironmentProduction); latest == nil || latest.ID != test.ID || !live {
+		t.Fatalf("pending test invoice: latest = %+v, live = %v, want it holding production too", latest, live)
+	}
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		_, err := repo.MarkIssued(ctx, q, tenant.AccountID, tenant.BranchID, test.ID, domain.InvoiceAuthorization{
+			Number: 1, CAE: "74123456789012", CAEExpiresOn: time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC)})
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if latest, elsewhere, live := read(domain.ARCAEnvironmentProduction); latest != nil || live ||
+		elsewhere == nil || elsewhere.ID != test.ID {
+		t.Fatalf("issued test invoice in production: latest = %+v, live = %v, elsewhere = %+v, want only history", latest, live, elsewhere)
+	}
+	if latest, _, live := read(domain.ARCAEnvironmentHomologation); latest == nil || !live {
+		t.Fatalf("issued test invoice in homologation: latest = %+v, live = %v, want it holding the sale", latest, live)
+	}
+	if _, err := create(domain.ARCAEnvironmentHomologation); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("second test invoice = %v, want ErrConflict", err)
+	}
+	real, err := create(domain.ARCAEnvironmentProduction)
+	if err != nil {
+		t.Fatalf("real invoice beside the test one = %v, want it held", err)
+	}
+	// Issued first, so only the one-live-invoice index is left to refuse the next.
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		_, err := repo.MarkIssued(ctx, q, tenant.AccountID, tenant.BranchID, real.ID, domain.InvoiceAuthorization{
+			Number: 1, CAE: "74123456789012", CAEExpiresOn: time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC)})
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := create(domain.ARCAEnvironmentProduction); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("second real invoice = %v, want ErrConflict", err)
 	}
 }

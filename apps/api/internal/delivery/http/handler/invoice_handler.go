@@ -331,6 +331,10 @@ func toInvoicePreviewResponse(p domain.InvoicePreview) dto.InvoicePreviewRespons
 		invoice := toInvoiceResponse(*p.Invoice)
 		response.Invoice = &invoice
 	}
+	if p.OtherEnvironmentInvoice != nil {
+		other := toInvoiceResponse(*p.OtherEnvironmentInvoice)
+		response.OtherEnvironmentInvoice = &other
+	}
 	return response
 }
 

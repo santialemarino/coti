@@ -146,6 +146,9 @@ type InvoicePreviewResponse struct {
 	Currency    string                  `json:"currency"`
 	Issues      []string                `json:"issues"`
 	Invoice     *InvoiceResponse        `json:"invoice"`
+	// OtherEnvironmentInvoice is the newest invoice issued for the sale in the other ARCA environment,
+	// shown as history; it does not stop an invoice in this one.
+	OtherEnvironmentInvoice *InvoiceResponse `json:"other_environment_invoice"`
 }
 
 // InvoiceListResponse is a bounded page of branch-scoped fiscal records.

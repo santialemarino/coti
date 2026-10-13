@@ -196,7 +196,7 @@ func run() error {
 	inboundRoutingService := services.NewInboundRoutingService(db, channelRepo)
 	whatsAppInboundService := services.NewWhatsAppInboundService(db, inboundRoutingService,
 		inboundChannelMessageRepo, channelRepo, rfqService, channelSealer, log)
-	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, log)
+	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, arcaEnvironment, log)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
 		WithCorrectionLearning(quoteCorrectionService)
 	quoteRepresentationService := services.NewQuoteRepresentationService(db,

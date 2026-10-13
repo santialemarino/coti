@@ -395,6 +395,9 @@ type InvoicePreview struct {
 	Currency    string
 	Issues      []string
 	Invoice     *Invoice // the invoice already issued or in flight, if any.
+	// OtherEnvironmentInvoice is the newest invoice issued for the sale in the other ARCA environment:
+	// history to show, never a hold on this one.
+	OtherEnvironmentInvoice *Invoice
 }
 
 // DigitsOnly drops every character that is not a decimal digit.

@@ -39,6 +39,7 @@ type fakeInvoicingStore struct {
 	setupEnv       domain.ARCAEnvironment
 	branches       []domain.BranchPointOfSale
 	invoice        *domain.Invoice
+	earlier        []domain.Invoice // the quote's older invoices, oldest first.
 	released       []string
 	rejected       *domain.InvoiceRejectedError
 	stored         string
@@ -133,16 +134,50 @@ func (f *fakeInvoicingStore) DeleteCredential(context.Context, repository.Querie
 	return nil
 }
 
-func (f *fakeInvoicingStore) GetLatestByQuote(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) (*domain.Invoice, error) {
-	return f.invoice, nil
+// all lists the quote's invoices, oldest first.
+func (f *fakeInvoicingStore) all() []*domain.Invoice {
+	out := make([]*domain.Invoice, 0, len(f.earlier)+1)
+	for i := range f.earlier {
+		out = append(out, &f.earlier[i])
+	}
+	if f.invoice != nil {
+		out = append(out, f.invoice)
+	}
+	return out
+}
+
+func (f *fakeInvoicingStore) GetLatestByQuote(_ context.Context, _ repository.Querier, _, _, _ uuid.UUID, env domain.ARCAEnvironment) (*domain.Invoice, error) {
+	invoices := f.all()
+	for i := len(invoices) - 1; i >= 0; i-- {
+		if invoices[i].Environment == env || invoices[i].Status == domain.InvoiceStatusPending {
+			return invoices[i], nil
+		}
+	}
+	return nil, nil
+}
+
+func (f *fakeInvoicingStore) GetLatestIssuedOutside(_ context.Context, _ repository.Querier, _, _, _ uuid.UUID, env domain.ARCAEnvironment) (*domain.Invoice, error) {
+	invoices := f.all()
+	for i := len(invoices) - 1; i >= 0; i-- {
+		if invoices[i].Environment != env && invoices[i].Status == domain.InvoiceStatusIssued {
+			return invoices[i], nil
+		}
+	}
+	return nil, nil
 }
 
 func (f *fakeInvoicingStore) CreatePending(_ context.Context, _ repository.Querier, in domain.Invoice) (*domain.Invoice, error) {
 	if !f.accountLocked {
 		f.heldUnlocked = true
 	}
-	if f.invoice != nil && f.invoice.Status != domain.InvoiceStatusRejected && f.invoice.QuoteVersionID == in.QuoteVersionID {
-		return nil, domain.ErrConflict
+	// Mirrors uq_invoice_active_quote, unless a test turns the index off.
+	for _, inv := range f.all() {
+		if !f.noUniqueIndex && inv.Status != domain.InvoiceStatusRejected && inv.Environment == in.Environment {
+			return nil, domain.ErrConflict
+		}
+	}
+	if f.invoice != nil {
+		f.earlier = append(f.earlier, *f.invoice)
 	}
 	in.ID = uuid.New()
 	in.Status = domain.InvoiceStatusPending
@@ -847,5 +882,70 @@ func TestInvoiceService_RecoveryRefusesAConnectionForAnotherEnvironment(t *testi
 					f.issuer.consulted, len(f.issuer.requests), f.store.released)
 			}
 		})
+	}
+}
+
+// productionFixture is the fixture after go-live: the server and its connection in production.
+func productionFixture(t *testing.T) invoiceFixture {
+	t.Helper()
+	f := newInvoiceFixture(t)
+	f.service.settings.Environment = domain.ARCAEnvironmentProduction
+	f.store.setupEnv = domain.ARCAEnvironmentProduction
+	f.store.credential.Environment = domain.ARCAEnvironmentProduction
+	return f
+}
+
+func issuedTestInvoice(f invoiceFixture) *domain.Invoice {
+	number, cae := int64(5), "74000000000005"
+	return &domain.Invoice{ID: uuid.New(), Environment: domain.ARCAEnvironmentHomologation,
+		Status: domain.InvoiceStatusIssued, QuoteVersionID: newVersionID(f), Number: &number, CAE: &cae}
+}
+
+// A test invoice is history once the server invoices for real: it never holds the sale.
+func TestInvoiceService_ATestInvoiceDoesNotHoldTheRealOne(t *testing.T) {
+	t.Parallel()
+	f := productionFixture(t)
+	test := issuedTestInvoice(f)
+	f.store.invoice = test
+
+	preview, err := f.service.Preview(context.Background(), f.tenant, f.quoteID)
+	if err != nil || preview.Invoice != nil || preview.OtherEnvironmentInvoice == nil ||
+		preview.OtherEnvironmentInvoice.ID != test.ID {
+		t.Fatalf("preview = %+v, err = %v, want no hold and the test invoice as history", preview, err)
+	}
+	invoice, err := f.issue(context.Background())
+	if err != nil || invoice.Status != domain.InvoiceStatusIssued || invoice.Environment != domain.ARCAEnvironmentProduction {
+		t.Fatalf("invoice = %+v, err = %v, want the real invoice issued beside the test one", invoice, err)
+	}
+}
+
+// Within one environment the sale still takes one invoice, refused before the index is reached.
+func TestInvoiceService_TwoInvoicesInOneEnvironmentAreRefused(t *testing.T) {
+	t.Parallel()
+	for name, f := range map[string]invoiceFixture{"homologation": newInvoiceFixture(t), "production": productionFixture(t)} {
+		f.store.noUniqueIndex = true
+		issued := issuedTestInvoice(f)
+		issued.Environment = f.service.settings.Environment
+		f.store.invoice = issued
+
+		_, err := f.issue(context.Background())
+
+		if domain.CodeOf(err) != domain.CodeQuoteAlreadyInvoiced || len(f.issuer.requests) != 0 {
+			t.Fatalf("%s: err = %v after %d requests, want QUOTE_ALREADY_INVOICED", name, err, len(f.issuer.requests))
+		}
+	}
+}
+
+// A test invoice still waiting for ARCA keeps the sale until it is read back in its own environment.
+func TestInvoiceService_APendingTestInvoiceHoldsTheSaleInProduction(t *testing.T) {
+	t.Parallel()
+	f := productionFixture(t)
+	f.store.invoice = &domain.Invoice{ID: uuid.New(), Environment: domain.ARCAEnvironmentHomologation,
+		Status: domain.InvoiceStatusPending, QuoteVersionID: newVersionID(f), UpdatedAt: invoiceNow}
+
+	_, err := f.issue(context.Background())
+
+	if domain.CodeOf(err) != domain.CodeInvoiceInProgress || len(f.issuer.requests) != 0 {
+		t.Fatalf("err = %v, want INVOICE_IN_PROGRESS without asking ARCA", err)
 	}
 }

@@ -1448,7 +1448,7 @@ CREATE TABLE invoice (
   )
 );
 
-CREATE UNIQUE INDEX uq_invoice_active_quote ON invoice(quote_id) WHERE status <> 'REJECTED';
+CREATE UNIQUE INDEX uq_invoice_active_quote ON invoice(quote_id, environment) WHERE status <> 'REJECTED';
 CREATE UNIQUE INDEX uq_invoice_number ON invoice(account_id, environment, issuer_cuit, point_of_sale, invoice_type, number)
   WHERE number IS NOT NULL;
 CREATE UNIQUE INDEX uq_invoice_pending_series ON invoice(account_id, environment, issuer_cuit, point_of_sale, invoice_type)

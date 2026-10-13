@@ -33,7 +33,8 @@ type invoicingStore interface {
 	VATRatesByProductIDs(ctx context.Context, q repository.Querier, accountID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]domain.VATRate, error)
 	GetCredentialStatus(ctx context.Context, q repository.Querier, accountID uuid.UUID) (*domain.ARCACredentialStatus, error)
 	GetSealedCredential(ctx context.Context, q repository.Querier, accountID uuid.UUID) (string, string, domain.ARCAEnvironment, error)
-	GetLatestByQuote(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Invoice, error)
+	GetLatestByQuote(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID, env domain.ARCAEnvironment) (*domain.Invoice, error)
+	GetLatestIssuedOutside(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID, env domain.ARCAEnvironment) (*domain.Invoice, error)
 	CreatePending(ctx context.Context, q repository.Querier, in domain.Invoice) (*domain.Invoice, error)
 	MarkIssued(ctx context.Context, q repository.Querier, accountID, branchID, id uuid.UUID, auth domain.InvoiceAuthorization) (*domain.Invoice, error)
 	MarkRejected(ctx context.Context, q repository.Querier, accountID, branchID, id uuid.UUID, rejection domain.InvoiceRejectedError) error
@@ -404,7 +405,11 @@ func (s *InvoiceService) draft(
 			return nil, err
 		}
 	}
-	existing, err := s.store.GetLatestByQuote(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+	existing, err := s.store.GetLatestByQuote(ctx, q, tenant.AccountID, tenant.BranchID, quoteID, s.settings.Environment)
+	if err != nil {
+		return nil, err
+	}
+	elsewhere, err := s.store.GetLatestIssuedOutside(ctx, q, tenant.AccountID, tenant.BranchID, quoteID, s.settings.Environment)
 	if err != nil {
 		return nil, err
 	}
@@ -448,6 +453,7 @@ func (s *InvoiceService) draft(
 	}
 	digest := sha256.Sum256(fingerprint)
 	draft.preview.Fingerprint = hex.EncodeToString(digest[:])
+	draft.preview.OtherEnvironmentInvoice = elsewhere
 	return draft, nil
 }
 

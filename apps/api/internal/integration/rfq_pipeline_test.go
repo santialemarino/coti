@@ -162,7 +162,7 @@ func TestQuoteQualityHook_PersistsOneIdempotentLabelAfterTheVersionIsSent(t *tes
 
 	quoteRepo := repository.NewQuoteRepository()
 	quoteService := services.NewQuoteService(e.db, quoteRepo,
-		repository.NewProductPriceRepository(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+		repository.NewProductPriceRepository(), domain.ARCAEnvironmentHomologation, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if _, err := e.db.CrossAccount().Exec(context.Background(),
 		`UPDATE quote_item SET quantity = 3 WHERE id = $1`, draft.Items[0].ID); err != nil {
 		t.Fatalf("apply seller quantity correction: %v", err)

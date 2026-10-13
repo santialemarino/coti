@@ -903,6 +903,12 @@ definitions:
         items:
           type: string
         type: array
+      other_environment_invoice:
+        allOf:
+        - $ref: '#/definitions/dto.InvoiceResponse'
+        description: |-
+          OtherEnvironmentInvoice is the newest invoice issued for the sale in the other ARCA environment,
+          shown as history; it does not stop an invoice in this one.
       point_of_sale:
         type: integer
       receiver:

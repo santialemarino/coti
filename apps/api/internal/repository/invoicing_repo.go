@@ -307,22 +307,38 @@ func (r *InvoicingRepository) LockAccountForShare(ctx context.Context, q Querier
 	return err
 }
 
-// GetLatestByQuote returns the quote's newest invoice in any status, nil when it has none.
+// GetLatestByQuote returns the quote's newest invoice made in env, or still pending in any
+// environment, nil when it has none. An invoice of the other environment never holds the sale here.
 func (r *InvoicingRepository) GetLatestByQuote(
-	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID,
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID, env domain.ARCAEnvironment,
 ) (*domain.Invoice, error) {
 	inv, err := scanInvoice(q.QueryRow(ctx,
 		`SELECT `+invoiceColumns+` FROM invoice
-		 WHERE account_id = $1 AND quote_id = $2 AND branch_id = $3
-		 ORDER BY created_at DESC, id DESC LIMIT 1`, accountID, quoteID, branchID))
+		 WHERE account_id = $1 AND quote_id = $2 AND branch_id = $3 AND (environment = $4 OR status = 'PENDING')
+		 ORDER BY created_at DESC, id DESC LIMIT 1`, accountID, quoteID, branchID, env))
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil, nil
 	}
 	return inv, err
 }
 
-// CreatePending records an invoice about to be asked for, holding its quote version. Returns
-// domain.ErrConflict when the version already has a pending or issued invoice.
+// GetLatestIssuedOutside returns the quote's newest invoice issued in an environment other than env,
+// nil when it has none.
+func (r *InvoicingRepository) GetLatestIssuedOutside(
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID, env domain.ARCAEnvironment,
+) (*domain.Invoice, error) {
+	inv, err := scanInvoice(q.QueryRow(ctx,
+		`SELECT `+invoiceColumns+` FROM invoice
+		 WHERE account_id = $1 AND quote_id = $2 AND branch_id = $3 AND environment <> $4 AND status = 'ISSUED'
+		 ORDER BY created_at DESC, id DESC LIMIT 1`, accountID, quoteID, branchID, env))
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil, nil
+	}
+	return inv, err
+}
+
+// CreatePending records an invoice about to be asked for, holding its quote in its environment.
+// Returns domain.ErrConflict when the quote already has a pending or issued invoice there.
 func (r *InvoicingRepository) CreatePending(
 	ctx context.Context, q Querier, in domain.Invoice,
 ) (*domain.Invoice, error) {
