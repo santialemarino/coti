@@ -209,6 +209,22 @@ describe('AccountForm', () => {
     expect(toast.success).not.toHaveBeenCalled();
   });
 
+  it('lands on the CUIT when a confirmed change meets a pending invoice', async () => {
+    vi.mocked(updateAccount)
+      .mockResolvedValueOnce({ error: 'ARCA_CONNECTED' })
+      .mockResolvedValueOnce({ error: 'INVOICE_PENDING' });
+    const view = renderForm(ACCOUNT, 'connected');
+    // A real save starts from the focused button, which is where the dialog would hand focus back.
+    view.container.querySelector<HTMLButtonElement>('button[type="submit"]')!.focus();
+
+    submit(view);
+    const dialog = await view.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: copy.disconnectARCA.confirm }));
+
+    await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(field(view, 'taxId')));
+  });
+
   it('points to the invoices that keep the CUIT from changing', async () => {
     vi.mocked(updateAccount).mockResolvedValue({ error: 'INVOICE_PENDING' });
     const view = renderForm();

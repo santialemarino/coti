@@ -75,7 +75,8 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
     // The refusals a field owns; the rest are values this schema already refuses.
     if (result.error === 'INVOICE_PENDING') {
       setInvoicePending(true);
-      form.setError('taxId', { message: message(result.error) }, { shouldFocus: true });
+      // Behind the confirmation, the dialog's close moves focus here once it has finished closing.
+      form.setError('taxId', { message: message(result.error) }, { shouldFocus: !disconnectARCA });
       return;
     }
     form.setError('root', { message: message(result.error) });
@@ -209,6 +210,12 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
           )
         }
         onConfirm={confirmDisconnect}
+        onCloseAutoFocus={(event) => {
+          // A refusal the CUIT owns lands on that field, not back on the save button.
+          if (!invoicePending) return;
+          event.preventDefault();
+          form.setFocus('taxId');
+        }}
         pending={disconnecting}
         labels={{
           confirm: t('disconnectARCA.confirm'),

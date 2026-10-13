@@ -24,6 +24,8 @@ interface ConfirmDialogProps<TEntity> {
   pending?: boolean;
   labels: { confirm: string; pending: string; cancel: string };
   tone?: 'default' | 'danger';
+  /* Where focus goes once the dialog closes; call `event.preventDefault()` to move it yourself. */
+  onCloseAutoFocus?: (event: Event) => void;
 }
 
 /*
@@ -42,6 +44,7 @@ function ConfirmDialog<TEntity>({
   pending = false,
   labels,
   tone = 'danger',
+  onCloseAutoFocus,
 }: ConfirmDialogProps<TEntity>) {
   const lastEntity = React.useRef(entity);
   if (entity) lastEntity.current = entity;
@@ -49,7 +52,11 @@ function ConfirmDialog<TEntity>({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md" closeOnClickOutside={!pending}>
+      <DialogContent
+        className="sm:max-w-md"
+        closeOnClickOutside={!pending}
+        onCloseAutoFocus={onCloseAutoFocus}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{shown ? description(shown) : ''}</DialogDescription>
