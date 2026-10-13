@@ -194,7 +194,7 @@ func TestInvoiceReceiver_DocumentFollowsTheTaxIDLength(t *testing.T) {
 
 func readyInputs() invoiceInputs {
 	registered := domain.IVAConditionRegistered
-	taxID, pos := "30-71234567-8", 3
+	taxID, pos := "30-71234567-1", 3
 	now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 	return invoiceInputs{
 		enabled:     true,
@@ -202,7 +202,7 @@ func readyInputs() invoiceInputs {
 		version:     domain.QuoteVersion{Currency: "ARS"},
 		account:     domain.AccountFiscal{Name: "Supplier", Profile: domain.InvoiceIssuerProfile{Address: "Main 123", GrossIncomeRegistration: "Exempt", ActivityStartedOn: "2020-01-01"}, TaxID: &taxID, IVACondition: &registered},
 		pointOfSale: &pos,
-		credential: &domain.ARCACredentialStatus{CUIT: "30712345678",
+		credential: &domain.ARCACredentialStatus{CUIT: "30712345671",
 			ExpiresAt: now.AddDate(1, 0, 0)},
 		receiver:        domain.InvoiceReceiver{DocType: domain.ReceiverDocNone},
 		amounts:         domain.InvoiceAmounts{Total: dec("1000.00")},
@@ -261,10 +261,33 @@ func TestInvoiceIssues_CredentialChecks(t *testing.T) {
 		t.Errorf("expired certificate: issues = %v", got)
 	}
 
+	// A certificate for another CUIT, from a connection made before the CUIT was locked to it.
 	other := readyInputs()
-	other.credential.CUIT = "20111111112"
-	if got := invoiceIssues(other); slices.Contains(got, invoiceIssueCredentialsCUIT) {
-		t.Errorf("independent ARCA CUIT must remain usable: issues = %v", got)
+	other.credential.CUIT = "20329642330"
+	if got := invoiceIssues(other); !slices.Contains(got, invoiceIssueCredentialsCUIT) {
+		t.Errorf("certificate for another CUIT: issues = %v, want %s", got, invoiceIssueCredentialsCUIT)
+	}
+}
+
+func TestInvoiceIssues_AccountCUIT(t *testing.T) {
+	t.Parallel()
+	blank, wrongDigit := " ", "30-71234567-9"
+	for name, taxID := range map[string]*string{"none": nil, "blank": &blank, "wrong check digit": &wrongDigit} {
+		in := readyInputs()
+		in.account.TaxID = taxID
+		got := invoiceIssues(in)
+		if !slices.Contains(got, invoiceIssueTaxID) {
+			t.Errorf("%s: issues = %v, want %s", name, got, invoiceIssueTaxID)
+		}
+		if slices.Contains(got, invoiceIssueCredentialsCUIT) {
+			t.Errorf("%s: issues = %v, want no CUIT comparison without a valid account CUIT", name, got)
+		}
+	}
+	formatted := readyInputs()
+	written := "30.71234567.1"
+	formatted.account.TaxID = &written
+	if got := invoiceIssues(formatted); len(got) != 0 {
+		t.Errorf("the same CUIT written another way: issues = %v, want none", got)
 	}
 }
 

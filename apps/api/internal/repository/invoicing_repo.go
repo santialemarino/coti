@@ -46,8 +46,8 @@ func (r *InvoicingRepository) GetAccountFiscal(
 	var a domain.AccountFiscal
 	var profile []byte
 	err := q.QueryRow(ctx,
-		`SELECT a.name, a.legal_name, COALESCE(s.tax_id, a.tax_id), a.iva_condition, a.prices_include_vat, a.invoice_profile
-		 FROM account a LEFT JOIN arca_setup s ON s.account_id = a.id WHERE a.id = $1`, accountID,
+		`SELECT a.name, a.legal_name, a.tax_id, a.iva_condition, a.prices_include_vat, a.invoice_profile
+		 FROM account a WHERE a.id = $1`, accountID,
 	).Scan(&a.Name, &a.LegalName, &a.TaxID, &a.IVACondition, &a.PricesIncludeVAT, &profile)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound

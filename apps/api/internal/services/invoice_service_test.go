@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -242,7 +243,7 @@ func newInvoiceFixture(t *testing.T) invoiceFixture {
 	t.Helper()
 	registered := domain.IVAConditionRegistered
 	address := "Main 123"
-	taxID, pos := "30-71234567-8", 3
+	taxID, pos := "30-71234567-1", 3
 	cuit, product := "20123456786", uuid.New()
 	versionID, quoteID, branchID := uuid.New(), uuid.New(), uuid.New()
 	accountID := uuid.New()
@@ -251,7 +252,7 @@ func newInvoiceFixture(t *testing.T) invoiceFixture {
 		pointOfSale: &pos,
 		client:      &domain.ClientFiscal{Name: &address, Address: &address, TaxID: &cuit, IVACondition: &registered},
 		rates:       map[uuid.UUID]domain.VATRate{product: domain.VATRateTwentyOne},
-		credential:  &domain.ARCACredentialStatus{CUIT: "30712345678", ExpiresAt: invoiceNow.AddDate(1, 0, 0)},
+		credential:  &domain.ARCACredentialStatus{CUIT: "30712345671", ExpiresAt: invoiceNow.AddDate(1, 0, 0)},
 		sealedKey:   accountID.String() + ":KEY",
 	}
 	clientID := uuid.New()
@@ -283,7 +284,7 @@ func TestInvoiceService_IssueAuthorizesAndRecordsTheInvoice(t *testing.T) {
 		t.Fatalf("invoice = %+v, want issued with ARCA's CAE", invoice)
 	}
 	req := f.issuer.requests[0]
-	if req.Type != domain.InvoiceTypeA || req.IssuerCUIT != "30712345678" || req.PointOfSale != 3 ||
+	if req.Type != domain.InvoiceTypeA || req.IssuerCUIT != "30712345671" || req.PointOfSale != 3 ||
 		req.Receiver.DocType != domain.ReceiverDocCUIT {
 		t.Fatalf("request = %+v, want an A invoice from the account's CUIT at its point of sale", req)
 	}
@@ -709,16 +710,27 @@ func TestInvoiceService_PreviewUsesARCACUITAndBranchPointOfSale(t *testing.T) {
 	}
 }
 
-func TestInvoiceService_IssuesWithIndependentARCACUIT(t *testing.T) {
+// Issue goes through the same checks as the preview, so neither gap reaches ARCA.
+func TestInvoiceService_IssueRefusesACUITTheCertificateDoesNotCover(t *testing.T) {
 	t.Parallel()
-	f := newInvoiceFixture(t)
-	other := "20329642330"
-	f.store.account.TaxID = &other
-	invoice, err := f.issue(context.Background())
-	if err != nil || invoice.IssuerCUIT != f.store.credential.CUIT {
-		t.Fatalf("invoice=%+v err=%v, want ARCA issuer", invoice, err)
-	}
-	if len(f.issuer.requests) != 1 || f.issuer.requests[0].IssuerCUIT != f.store.credential.CUIT {
-		t.Fatalf("request did not use ARCA CUIT: %+v", f.issuer.requests)
+	other, blank := "20329642330", ""
+	for name, taxID := range map[string]*string{"another CUIT": &other, "no CUIT": &blank} {
+		f := newInvoiceFixture(t)
+		f.store.account.TaxID = taxID
+		_, err := f.issue(context.Background())
+		var notReady *domain.InvoiceNotReadyError
+		if !errors.As(err, &notReady) {
+			t.Fatalf("%s: err = %v, want the invoice refused as not ready", name, err)
+		}
+		want := invoiceIssueCredentialsCUIT
+		if taxID == &blank {
+			want = invoiceIssueTaxID
+		}
+		if !slices.Contains(notReady.Issues, want) {
+			t.Fatalf("%s: issues = %v, want %s", name, notReady.Issues, want)
+		}
+		if len(f.issuer.requests) != 0 {
+			t.Fatalf("%s: the request reached ARCA", name)
+		}
 	}
 }

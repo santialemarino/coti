@@ -154,6 +154,21 @@ describe('InvoiceCard', () => {
     expect(view.queryByRole('button', { name: /Emitir factura/ })).toBeNull();
   });
 
+  it.each([
+    ['ACCOUNT_TAX_ID', ROUTES.accountSettings],
+    ['ARCA_CREDENTIALS_CUIT', ROUTES.arcaSettings],
+  ] as const)('reports %s as a setup gap with the way to fix it', async (issue, href) => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({ ...READY, issues: [issue] });
+    const view = renderCard();
+
+    expect(await view.findByText(messages.common.setup[issue].title)).toBeTruthy();
+    expect(view.getByText(messages.common.setup[issue].body, { exact: false })).toBeTruthy();
+    expect(
+      view.getByRole('link', { name: messages.common.setup[issue].fix }).getAttribute('href'),
+    ).toBe(href);
+    expect(view.queryByRole('button', { name: /Emitir factura/ })).toBeNull();
+  });
+
   it('links missing fiscal data to the client profile without rendering an order form', async () => {
     vi.mocked(getInvoicePreview).mockResolvedValue({
       ...READY,
