@@ -13,34 +13,60 @@ import {
   DialogHeader,
   DialogTitle,
   PendingButton,
+  ToggleGroup,
+  ToggleGroupItem,
 } from '@repo/ui/components';
-import { logoCropGeometry } from '@/lib/utils/logo-crop';
+import { clampLogoOffset, logoCropGeometry, type LogoOffset } from '@/lib/utils/logo-crop';
+
+const SHAPES = ['original', 'square', 'wide'] as const;
+type Shape = (typeof SHAPES)[number];
+
+// The wide frame's ratio, also the stand-in for "original" until the image has loaded.
+const WIDE_RATIO = 3;
+// The preview is this tall at most and never wider than the dialog's content.
+const PREVIEW_HEIGHT = 280;
+const PREVIEW_MAX_WIDTH = 600;
+// The exported PNG's longest side.
+const EXPORT_MAX_SIDE = 1200;
+// One arrow press pans this fraction of the frame.
+const KEY_PAN_STEP = 0.03;
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 4;
+const ZOOM_STEP = 0.05;
+const CENTERED: LogoOffset = { x: 0, y: 0 };
+
+const KEY_DIRECTIONS: Record<string, [number, number]> = {
+  ArrowLeft: [-KEY_PAN_STEP, 0],
+  ArrowRight: [KEY_PAN_STEP, 0],
+  ArrowUp: [0, -KEY_PAN_STEP],
+  ArrowDown: [0, KEY_PAN_STEP],
+};
 
 interface LogoCropDialogProps {
+  open: boolean;
   file: File;
   onCancel: () => void;
   onConfirm: (file: File) => void;
 }
 
-export function LogoCropDialog({ file, onCancel, onConfirm }: LogoCropDialogProps) {
+export function LogoCropDialog({ open, file, onCancel, onConfirm }: LogoCropDialogProps) {
   const t = useTranslations('common.logoUpload.crop');
   const canvas = useRef<HTMLCanvasElement>(null);
-  const drag = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
+  const drag = useRef<{ x: number; y: number; offset: LogoOffset } | null>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
-  const [shape, setShape] = useState<'original' | 'square' | 'wide'>('original');
-  const [zoom, setZoom] = useState(1);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [shape, setShape] = useState<Shape>('original');
+  const [zoom, setZoom] = useState(ZOOM_MIN);
+  const [offset, setOffset] = useState<LogoOffset>(CENTERED);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(false);
+
   const ratio =
-    shape === 'original'
-      ? image
+    shape === 'square'
+      ? 1
+      : shape === 'original' && image
         ? image.naturalWidth / image.naturalHeight
-        : 3
-      : shape === 'square'
-        ? 1
-        : 3;
-  const width = Math.max(1, Math.round(Math.min(600, 280 * ratio)));
+        : WIDE_RATIO;
+  const width = Math.max(1, Math.round(Math.min(PREVIEW_MAX_WIDTH, PREVIEW_HEIGHT * ratio)));
   const height = Math.max(1, Math.round(width / ratio));
 
   useEffect(() => {
@@ -76,11 +102,21 @@ export function LogoCropDialog({ file, onCancel, onConfirm }: LogoCropDialogProp
     context.drawImage(image, geometry.x, geometry.y, geometry.width, geometry.height);
   }, [image, width, height, zoom, offset]);
 
+  function clamped(next: LogoOffset, nextZoom = zoom): LogoOffset {
+    if (!image) return CENTERED;
+    return clampLogoOffset(image.naturalWidth, image.naturalHeight, width, height, nextZoom, next);
+  }
+
   function reset(nextShape = shape) {
     setError(false);
     setShape(nextShape);
-    setZoom(1);
-    setOffset({ x: 0, y: 0 });
+    setZoom(ZOOM_MIN);
+    setOffset(CENTERED);
+  }
+
+  function changeZoom(nextZoom: number) {
+    setZoom(nextZoom);
+    setOffset((current) => clamped(current, nextZoom));
   }
 
   async function confirm() {
@@ -89,7 +125,10 @@ export function LogoCropDialog({ file, onCancel, onConfirm }: LogoCropDialogProp
     setError(false);
     try {
       const output = document.createElement('canvas');
-      const outputWidth = Math.max(1, Math.round(Math.min(1200, 1200 * ratio)));
+      const outputWidth = Math.max(
+        1,
+        Math.round(Math.min(EXPORT_MAX_SIDE, EXPORT_MAX_SIDE * ratio)),
+      );
       const outputHeight = Math.max(1, Math.round(outputWidth / ratio));
       output.width = outputWidth;
       output.height = outputHeight;
@@ -122,28 +161,27 @@ export function LogoCropDialog({ file, onCancel, onConfirm }: LogoCropDialogProp
   }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && !pending && onCancel()}>
+    <Dialog open={open} onOpenChange={(next) => !next && !pending && onCancel()}>
       <DialogContent className="sm:max-w-lg" closeOnClickOutside={!pending}>
         <DialogHeader>
           <DialogTitle>{t('title')}</DialogTitle>
           <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
-        <div className="flex flex-wrap gap-2" role="group" aria-label={t('shape')}>
-          {(['original', 'square', 'wide'] as const).map((value) => (
-            <Button
-              key={value}
-              type="button"
-              variant={shape === value ? 'secondary' : 'outline'}
-              size="sm"
-              aria-pressed={shape === value}
-              disabled={pending}
-              onClick={() => reset(value)}
-            >
+        <ToggleGroup
+          type="single"
+          size="sm"
+          value={shape}
+          onValueChange={(value) => value && reset(value as Shape)}
+          disabled={pending}
+          aria-label={t('shape')}
+        >
+          {SHAPES.map((value) => (
+            <ToggleGroupItem key={value} value={value}>
               {t(value)}
-            </Button>
+            </ToggleGroupItem>
           ))}
-        </div>
-        <div className="flex min-h-48 items-center justify-center rounded-lg border border-border bg-sunken p-3">
+        </ToggleGroup>
+        <div className="flex min-h-48 items-center justify-center p-3 bg-sunken border border-border rounded-lg">
           <canvas
             ref={canvas}
             width={width}
@@ -151,24 +189,22 @@ export function LogoCropDialog({ file, onCancel, onConfirm }: LogoCropDialogProp
             role="img"
             aria-label={t('preview')}
             tabIndex={0}
-            className="max-w-full touch-none cursor-grab rounded-sm bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+            className="max-w-full bg-background rounded-sm outline-none cursor-grab touch-none transition-[box-shadow] duration-200 ease-out-soft focus-visible:ring-3 focus-visible:ring-ring/45 active:cursor-grabbing"
             onPointerDown={(event) => {
               if (!image || pending) return;
               event.currentTarget.setPointerCapture(event.pointerId);
-              drag.current = {
-                x: event.clientX,
-                y: event.clientY,
-                offsetX: offset.x,
-                offsetY: offset.y,
-              };
+              drag.current = { x: event.clientX, y: event.clientY, offset };
             }}
             onPointerMove={(event) => {
-              if (!drag.current) return;
+              const start = drag.current;
+              if (!start) return;
               const rect = event.currentTarget.getBoundingClientRect();
-              setOffset({
-                x: drag.current.offsetX + (event.clientX - drag.current.x) / rect.width,
-                y: drag.current.offsetY + (event.clientY - drag.current.y) / rect.height,
-              });
+              setOffset(
+                clamped({
+                  x: start.offset.x + (event.clientX - start.x) / rect.width,
+                  y: start.offset.y + (event.clientY - start.y) / rect.height,
+                }),
+              );
             }}
             onPointerUp={() => {
               drag.current = null;
@@ -177,20 +213,12 @@ export function LogoCropDialog({ file, onCancel, onConfirm }: LogoCropDialogProp
               drag.current = null;
             }}
             onKeyDown={(event) => {
-              const directions: Record<string, [number, number]> = {
-                ArrowLeft: [-0.03, 0],
-                ArrowRight: [0.03, 0],
-                ArrowUp: [0, -0.03],
-                ArrowDown: [0, 0.03],
-              };
-              const direction = directions[event.key];
-              if (direction && !pending) {
-                event.preventDefault();
-                setOffset((current) => ({
-                  x: current.x + direction[0],
-                  y: current.y + direction[1],
-                }));
-              }
+              const direction = KEY_DIRECTIONS[event.key];
+              if (!direction || pending) return;
+              event.preventDefault();
+              setOffset((current) =>
+                clamped({ x: current.x + direction[0], y: current.y + direction[1] }),
+              );
             }}
           />
         </div>
@@ -198,20 +226,23 @@ export function LogoCropDialog({ file, onCancel, onConfirm }: LogoCropDialogProp
           <div className="relative flex h-8 items-center">
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-x-2 h-1.5 overflow-hidden rounded-full bg-border"
+              className="absolute inset-x-2 h-1.5 bg-border rounded-full overflow-hidden pointer-events-none"
             >
-              <div className="h-full bg-primary" style={{ width: `${((zoom - 1) / 3) * 100}%` }} />
+              <div
+                className="h-full bg-primary"
+                style={{ width: `${((zoom - ZOOM_MIN) / (ZOOM_MAX - ZOOM_MIN)) * 100}%` }}
+              />
             </div>
             <input
               id="logo-crop-zoom"
               aria-label={t('zoom')}
               type="range"
-              min={1}
-              max={4}
-              step={0.05}
+              min={ZOOM_MIN}
+              max={ZOOM_MAX}
+              step={ZOOM_STEP}
               value={zoom}
               disabled={!image || pending}
-              onChange={(event) => setZoom(Number(event.target.value))}
+              onChange={(event) => changeZoom(Number(event.target.value))}
               className="relative m-0 h-8 w-full cursor-pointer appearance-none rounded-full bg-transparent outline-none focus-visible:ring-3 focus-visible:ring-ring/45 disabled:cursor-not-allowed disabled:opacity-50 [&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:-mt-1.25 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary hover:[&::-webkit-slider-thumb]:bg-primary-hover active:[&::-webkit-slider-thumb]:bg-primary-active [&::-moz-range-track]:h-1.5 [&::-moz-range-track]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-primary hover:[&::-moz-range-thumb]:bg-primary-hover active:[&::-moz-range-thumb]:bg-primary-active"
             />
           </div>

@@ -6,6 +6,7 @@ import { ImageIcon, XIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Button, Callout, Dropzone } from '@repo/ui/components';
+import { useHeldWhileClosed } from '@repo/ui/hooks';
 import { LogoCropDialog } from '@/components/logo-crop-dialog';
 
 const ACCEPTED_TYPES = ['image/png', 'image/jpeg'];
@@ -23,6 +24,8 @@ export function LogoDropzone({ initialUrl, onFileChange, onPreviewChange }: Logo
   const [previewUrl, setPreviewUrl] = useState<string | null>(initialUrl ?? null);
   const [error, setError] = useState<string | null>(null);
   const file = selection instanceof File ? selection : null;
+  // The dialog keeps the image it was cropping while it fades out.
+  const croppedFile = useHeldWhileClosed(cropFile, cropFile !== null);
 
   useEffect(() => {
     if (selection === undefined) {
@@ -80,9 +83,10 @@ export function LogoDropzone({ initialUrl, onFileChange, onPreviewChange }: Logo
           ) : undefined
         }
       />
-      {cropFile ? (
+      {croppedFile ? (
         <LogoCropDialog
-          file={cropFile}
+          open={cropFile !== null}
+          file={croppedFile}
           onCancel={() => setCropFile(null)}
           onConfirm={(cropped) => {
             setSelection(cropped);

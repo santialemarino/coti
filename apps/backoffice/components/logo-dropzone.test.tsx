@@ -6,15 +6,17 @@ import { LogoDropzone } from '@/components/logo-dropzone';
 
 vi.mock('@/components/logo-crop-dialog', () => ({
   LogoCropDialog: ({
+    open,
     file,
     onConfirm,
     onCancel,
   }: {
+    open: boolean;
     file: File;
     onConfirm: (file: File) => void;
     onCancel: () => void;
   }) => (
-    <div role="dialog">
+    <div role="dialog" data-state={open ? 'open' : 'closed'}>
       <button onClick={() => onConfirm(file)}>Use crop</button>
       <button onClick={onCancel}>Cancel crop</button>
     </div>
@@ -52,5 +54,23 @@ describe('LogoDropzone', () => {
     expect(onFileChange).toHaveBeenCalledWith(logo);
     await waitFor(() => expect(onPreviewChange).toHaveBeenCalledWith('blob:local-logo'));
     expect(view.getByRole('img', { name: messages.common.logoUpload.previewAlt })).toBeTruthy();
+  });
+
+  // Unmounting the dialog the moment the crop lands would cut its exit short.
+  it('keeps the crop dialog mounted, closed, while it fades out', () => {
+    const view = render(
+      <NextIntlClientProvider locale="es" messages={messages}>
+        <LogoDropzone />
+      </NextIntlClientProvider>,
+    );
+    const input = view.container.querySelector<HTMLInputElement>('input[type="file"]');
+
+    fireEvent.change(input!, {
+      target: { files: [new File(['logo'], 'logo.png', { type: 'image/png' })] },
+    });
+    expect(view.getByRole('dialog').dataset.state).toBe('open');
+    fireEvent.click(view.getByRole('button', { name: 'Cancel crop' }));
+
+    expect(view.getByRole('dialog').dataset.state).toBe('closed');
   });
 });
