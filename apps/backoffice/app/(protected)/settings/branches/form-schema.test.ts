@@ -80,14 +80,3 @@ describe('branchSchema', () => {
     ).toBe('shared:tooLong');
   });
 });
-
-describe('branch point of sale', () => {
-  it('accepts an unset number or a value in the supported range', () => {
-    for (const pointOfSale of ['', '1', '99998'])
-      expect(branchSchema().safeParse({ ...VALID, pointOfSale }).success).toBe(true);
-  });
-  it('refuses fractions, signs, zero and values beyond the supported range', () => {
-    for (const pointOfSale of ['0', '-1', '1.5', '99999', 'word'])
-      expect(branchSchema().safeParse({ ...VALID, pointOfSale }).success).toBe(false);
-  });
-});

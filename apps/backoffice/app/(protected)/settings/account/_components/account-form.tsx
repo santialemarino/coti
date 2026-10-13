@@ -54,8 +54,12 @@ export function AccountForm({ account }: AccountFormProps) {
       toast.success(t('saved'));
       return;
     }
-    // The rejection belongs to the form, not to a field: the two the API answers with are both
-    // values this schema already refuses.
+    // A CUIT locked by the ARCA connection is the one refusal a field owns; the rest are values
+    // this schema already refuses.
+    if (result.error === 'ARCA_CONNECTED') {
+      form.setError('taxId', { message: message(result.error) }, { shouldFocus: true });
+      return;
+    }
     form.setError('root', { message: message(result.error) });
   }
 

@@ -16,11 +16,20 @@ const { toast } = await import('sonner');
 const copy = messages.account;
 
 vi.mock('@/components/logo-crop-dialog', () => ({
-  LogoCropDialog: ({ file, onConfirm }: { file: File; onConfirm: (file: File) => void }) => (
-    <button type="button" onClick={() => onConfirm(file)}>
-      Use crop
-    </button>
-  ),
+  LogoCropDialog: ({
+    open,
+    file,
+    onConfirm,
+  }: {
+    open: boolean;
+    file: File;
+    onConfirm: (file: File) => void;
+  }) =>
+    open ? (
+      <button type="button" onClick={() => onConfirm(file)}>
+        Use crop
+      </button>
+    ) : null,
 }));
 const ACCOUNT: Account = {
   id: 'a1',
@@ -157,6 +166,17 @@ describe('AccountForm', () => {
     await waitFor(() => expect(view.getByText(copy.errors.NOT_FOUND)).toBeTruthy());
     expect(copy.errors.NOT_FOUND).not.toBe(messages.errors.NOT_FOUND);
     expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  // ARCA is connected with the account's CUIT, so its lock is reported on the field to change.
+  it('puts a CUIT locked by the ARCA connection on the CUIT field', async () => {
+    vi.mocked(updateAccount).mockResolvedValue({ error: 'ARCA_CONNECTED' });
+    const view = renderForm();
+
+    submit(view);
+
+    await waitFor(() => expect(field(view, 'taxId').getAttribute('aria-invalid')).toBe('true'));
+    expect(view.getByText(messages.errors.ARCA_CONNECTED)).toBeTruthy();
   });
 
   /*

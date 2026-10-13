@@ -26,7 +26,6 @@ export function settingsNavItems({
 }: SettingsNavInput): SettingsNavItem[] {
   return [
     { href: ROUTES.accountSettings, label: t('nav.account') },
-    { href: ROUTES.arcaSettings, label: t('nav.arca') },
     {
       href: ROUTES.branchSettings,
       label: t('nav.branches'),

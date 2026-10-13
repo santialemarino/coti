@@ -6,8 +6,8 @@ import {
   Badge,
   Button,
   Card,
-  CardContent,
   EmptyState,
+  MetaList,
   Table,
   TableBody,
   TableCell,
@@ -17,15 +17,26 @@ import {
 } from '@repo/ui/components';
 import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { PageShell } from '@/app/(protected)/_components/page-shell';
+import { InvoicePagination } from '@/app/(protected)/administration/_components/invoice-pagination';
 import { InvoiceRecoveryButton } from '@/components/invoice-recovery-button';
 import { ROUTES } from '@/config/routes';
 import { getBranches } from '@/lib/api/branches';
 import { getInvoices } from '@/lib/api/invoices';
-import { formatInvoiceNumber } from '@/lib/api/invoicing';
+import { formatInvoiceNumber, type Invoice } from '@/lib/api/invoicing';
 import { getEffectiveBranchId } from '@/lib/auth/branch';
 import { getSession } from '@/lib/auth/session';
+import { ADMIN_ROLE } from '@/lib/constants/auth';
 import { getFormatters } from '@/lib/i18n/formatters-server';
 import { generatePageMetadata } from '@/lib/utils/page';
+
+// The API pages the history up to here; anything past it reads as the first page.
+const PAGE_MAX = 100000;
+
+const STATUS_TONE: Record<Invoice['status'], 'success' | 'danger' | 'neutral'> = {
+  ISSUED: 'success',
+  REJECTED: 'danger',
+  PENDING: 'neutral',
+};
 
 export const generateMetadata = () => generatePageMetadata('administration');
 
@@ -34,24 +45,28 @@ export default async function AdministrationPage({
 }: {
   searchParams: Promise<{ page?: string }>;
 }) {
-  const t = await getTranslations('invoicing.history');
-  const fmt = await getFormatters();
   const session = await getSession();
-  const branchId = await getEffectiveBranchId(await getBranches());
+  const fmt = await getFormatters();
+  const t = await getTranslations('invoicing.history');
+  const branches = await getBranches();
+  const branchId = await getEffectiveBranchId(branches);
   const requested = Number((await searchParams).page ?? '1');
-  const page = Number.isInteger(requested) && requested > 0 && requested <= 100000 ? requested : 1;
-  const result = branchId
-    ? await getInvoices(branchId, page)
-    : { items: [], total: 0, page, pageSize: 25 };
-  const pages = Math.max(1, Math.ceil(result.total / result.pageSize));
+  const page =
+    Number.isInteger(requested) && requested > 0 && requested <= PAGE_MAX ? requested : 1;
+  const result = await getInvoices(page);
+  const pageCount = Math.max(1, Math.ceil(result.total / result.pageSize));
+  // With every branch in view, each row says which one it belongs to.
+  const showBranch = !branchId;
+  const branchNames = new Map(branches.map((branch) => [branch.id, branch.name]));
+
   return (
     <PageShell>
       <PageHeader
         title={t('title')}
-        description={t('description')}
+        description={t(showBranch ? 'descriptionAll' : 'description')}
         actions={
           <>
-            {session?.role === 'ADMIN' ? (
+            {session?.role === ADMIN_ROLE ? (
               <Button asChild variant="outline">
                 <Link href={ROUTES.invoicingSettings}>{t('settings')}</Link>
               </Button>
@@ -62,96 +77,80 @@ export default async function AdministrationPage({
           </>
         }
       />
-      {!branchId ? (
-        <p className="text-paragraph-md text-foreground-muted">{t('selectBranch')}</p>
-      ) : result.items.length === 0 ? (
-        <EmptyState icon={ReceiptTextIcon} title={t('empty')} />
+      {result.items.length === 0 ? (
+        <EmptyState icon={ReceiptTextIcon} title={t(showBranch ? 'emptyAll' : 'empty')} />
       ) : (
-        <Card>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead kind="text">{t('date')}</TableHead>
-                  <TableHead kind="text">{t('number')}</TableHead>
-                  <TableHead kind="text">{t('receiver')}</TableHead>
-                  <TableHead kind="text">{t('status')}</TableHead>
-                  <TableHead kind="money">{t('amount')}</TableHead>
-                  <TableHead kind="text">{t('cae')}</TableHead>
-                  <TableHead kind="text">{t('actions')}</TableHead>
+        <Card className="py-0 gap-y-0 overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead kind="date">{t('date')}</TableHead>
+                <TableHead kind="short">{t('number')}</TableHead>
+                <TableHead kind="text">{t('receiver')}</TableHead>
+                {showBranch ? <TableHead kind="text">{t('branch')}</TableHead> : null}
+                <TableHead kind="status">{t('status')}</TableHead>
+                <TableHead kind="money">{t('amount')}</TableHead>
+                <TableHead kind="short">{t('cae')}</TableHead>
+                <TableHead kind="actionsWide">{t('actions')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {result.items.map((invoice) => (
+                <TableRow key={invoice.id}>
+                  <TableCell kind="date">{fmt.dateNumeric(invoice.issuedOn)}</TableCell>
+                  <TableCell kind="short" className="tabular-nums">
+                    {invoice.number === null
+                      ? invoice.type
+                      : `${invoice.type} ${formatInvoiceNumber(invoice.pointOfSale, invoice.number)}`}
+                  </TableCell>
+                  <TableCell>{invoice.receiver.name || t('finalConsumer')}</TableCell>
+                  {showBranch ? (
+                    <TableCell>{branchNames.get(invoice.branchId) ?? '—'}</TableCell>
+                  ) : null}
+                  <TableCell kind="status">
+                    <Badge tone={STATUS_TONE[invoice.status]}>
+                      {t(`statuses.${invoice.status}`)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell kind="money">
+                    {fmt.currency(invoice.amounts.total, invoice.currency)}
+                  </TableCell>
+                  <TableCell kind="short" className="tabular-nums">
+                    {invoice.cae ?? '—'}
+                  </TableCell>
+                  <TableCell kind="actionsWide">
+                    <InvoiceAction invoice={invoice} downloadLabel={t('download')} />
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {result.items.map((invoice) => (
-                  <TableRow key={invoice.id}>
-                    <TableCell>{fmt.date(invoice.issuedOn)}</TableCell>
-                    <TableCell>
-                      {invoice.type}{' '}
-                      {invoice.number === null
-                        ? '—'
-                        : formatInvoiceNumber(invoice.pointOfSale, invoice.number)}
-                    </TableCell>
-                    <TableCell>{invoice.receiver.name || t('finalConsumer')}</TableCell>
-                    <TableCell>
-                      <Badge
-                        tone={
-                          invoice.status === 'ISSUED'
-                            ? 'success'
-                            : invoice.status === 'REJECTED'
-                              ? 'danger'
-                              : 'neutral'
-                        }
-                      >
-                        {t(`statuses.${invoice.status}`)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell kind="money">
-                      {fmt.currency(invoice.amounts.total, invoice.currency)}
-                    </TableCell>
-                    <TableCell className="tabular-nums">{invoice.cae ?? '—'}</TableCell>
-                    <TableCell>
-                      {invoice.status === 'ISSUED' ? (
-                        <Button asChild variant="outline" size="sm">
-                          <a href={ROUTES.invoicePDF(invoice.id, branchId)}>{t('download')}</a>
-                        </Button>
-                      ) : invoice.status === 'PENDING' ? (
-                        <InvoiceRecoveryButton invoiceId={invoice.id} branchId={branchId} />
-                      ) : (
-                        invoice.issues.join(' · ')
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
+              ))}
+            </TableBody>
+          </Table>
         </Card>
       )}
-      {pages > 1 ? (
-        <div className="flex items-center justify-between gap-x-4">
-          <Button
-            asChild
-            variant="outline"
-            aria-disabled={page <= 1}
-            tabIndex={page <= 1 ? -1 : undefined}
-          >
-            <Link href={`${ROUTES.administration}?page=${Math.max(1, page - 1)}`}>
-              {t('previous')}
-            </Link>
-          </Button>
-          <p className="text-paragraph-sm text-foreground-muted">{t('page', { page, pages })}</p>
-          <Button
-            asChild
-            variant="outline"
-            aria-disabled={page >= pages}
-            tabIndex={page >= pages ? -1 : undefined}
-          >
-            <Link href={`${ROUTES.administration}?page=${Math.min(pages, page + 1)}`}>
-              {t('next')}
-            </Link>
-          </Button>
+      {pageCount > 1 ? (
+        <div className="flex justify-center">
+          <InvoicePagination page={page} pageCount={pageCount} />
         </div>
       ) : null}
     </PageShell>
+  );
+}
+
+function InvoiceAction({ invoice, downloadLabel }: { invoice: Invoice; downloadLabel: string }) {
+  if (invoice.status === 'ISSUED') {
+    return (
+      <Button asChild variant="outline" size="sm">
+        <a href={ROUTES.invoicePDF(invoice.id, invoice.branchId)}>{downloadLabel}</a>
+      </Button>
+    );
+  }
+  if (invoice.status === 'PENDING') {
+    return <InvoiceRecoveryButton invoiceId={invoice.id} branchId={invoice.branchId} />;
+  }
+  return (
+    <MetaList
+      items={invoice.issues}
+      className="justify-center text-paragraph-xs text-foreground-muted"
+    />
   );
 }

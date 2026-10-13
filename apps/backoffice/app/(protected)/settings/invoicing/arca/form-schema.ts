@@ -1,31 +1,37 @@
 import { z } from 'zod';
 
-import { rawText, requiredText, type SchemaText } from '@/lib/forms/validators';
+import { CERTIFICATE_MAX_BYTES, CERTIFICATE_MAX_KB } from '@/lib/constants/arca';
+import { rawText, type SchemaText } from '@/lib/forms/validators';
 
-export function arcaIdentitySchema(t: SchemaText = rawText) {
-  return z.object({
-    taxId: requiredText(t, 'taxId.required', 13).regex(
-      /^\d{2}-?\d{8}-?\d$/,
-      t.field('taxId.invalid'),
-    ),
-  });
+// One PEM certificate block: the shape is checked here, the certificate itself by the API.
+const PEM_CERTIFICATE =
+  /^-----BEGIN CERTIFICATE-----\n[A-Za-z0-9+/=\n]+\n-----END CERTIFICATE-----$/;
+
+// What a paste is compared and sent as: trimmed, with Windows line endings turned into plain ones.
+export function normalizeCertificate(raw: string): string {
+  return raw.replace(/\r\n?/g, '\n').trim();
 }
 
-export function arcaPointOfSaleSchema(t: SchemaText = rawText) {
+export function arcaCertificateSchema(t: SchemaText = rawText) {
   return z.object({
-    pointOfSale: requiredText(t, 'pointOfSale.required', 5)
-      .regex(/^\d+$/, t.field('pointOfSale.invalid'))
-      .refine(
-        (value) => Number(value) >= 1 && Number(value) <= 99998,
-        t.field('pointOfSale.invalid'),
+    certificate: z
+      .string()
+      .transform(normalizeCertificate)
+      .pipe(
+        z
+          .string()
+          .min(1, t.field('steps.upload.required'))
+          .pipe(
+            z
+              .string()
+              .max(
+                CERTIFICATE_MAX_BYTES,
+                t.field('steps.upload.tooLarge', { max: CERTIFICATE_MAX_KB }),
+              )
+              .regex(PEM_CERTIFICATE, t.field('steps.upload.invalid')),
+          ),
       ),
   });
 }
 
-export function arcaCertificateSchema(t: SchemaText = rawText) {
-  return z.object({ certificate: requiredText(t, 'certificate.required', 255) });
-}
-
-export type ARCACertificateValues = z.infer<ReturnType<typeof arcaCertificateSchema>>;
-export type ARCAIdentityValues = z.infer<ReturnType<typeof arcaIdentitySchema>>;
-export type ARCAPointOfSaleValues = z.infer<ReturnType<typeof arcaPointOfSaleSchema>>;
+export type ARCACertificateValues = z.input<ReturnType<typeof arcaCertificateSchema>>;

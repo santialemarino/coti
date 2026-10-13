@@ -128,12 +128,6 @@ describe('BranchTable listing', () => {
 });
 
 describe('BranchTable dialogs', () => {
-  it('opens fiscal settings for the selected row and preserves its point of sale', async () => {
-    const view = renderTable();
-    fireEvent.click(rowActions(view, CENTRAL.name).edit);
-    await waitFor(() => expect(field(view, 'pointOfSale').value).toBe('1'));
-    expect(view.baseElement.querySelector('input[name="taxId"]')).toBeNull();
-  });
   /*
    * The mode is an explicit prop rather than something derived from whether a branch is selected:
    * the dialog holds its last mode so the copy survives the close animation, so a create opened
@@ -179,7 +173,6 @@ describe('BranchTable dialogs', () => {
       address: '',
       email: '',
       defaultExpiryDays: String(MORON.defaultExpiryDays),
-      pointOfSale: '',
     });
     expect(createBranch).not.toHaveBeenCalled();
   });

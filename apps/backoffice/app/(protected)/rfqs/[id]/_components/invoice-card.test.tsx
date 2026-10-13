@@ -52,6 +52,7 @@ const READY: InvoicePreview = {
 };
 
 const ISSUED: Invoice = {
+  branchId: 'branch-1',
   id: 'inv-1',
   status: 'ISSUED',
   type: 'A',
@@ -147,7 +148,8 @@ describe('InvoiceCard', () => {
     const fixes = view.getAllByRole('link', {
       name: messages.common.setup.BRANCH_POINT_OF_SALE.fix,
     });
-    for (const fix of fixes) expect(fix.getAttribute('href')).toBe(ROUTES.branchSettings);
+    for (const fix of fixes)
+      expect(fix.getAttribute('href')).toBe(ROUTES.invoicingSection('points-of-sale'));
     expect(view.getByText(card.issues.QUOTE_EMPTY.title)).toBeTruthy();
     expect(view.queryByRole('button', { name: /Emitir factura/ })).toBeNull();
   });

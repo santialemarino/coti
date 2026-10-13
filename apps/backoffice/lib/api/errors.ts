@@ -52,6 +52,8 @@ export const API_ERROR_CODES = [
   'ARCA_CREDENTIALS',
   'INVOICING_UNAVAILABLE',
   'INVALID_TAX_ID',
+  'ACCOUNT_TAX_ID_REQUIRED',
+  'ARCA_CONNECTED',
   'INTERNAL',
   'UNREACHABLE',
   'SESSION_EXPIRED',
@@ -106,6 +108,35 @@ export function codeForStatus(status: number): ApiErrorCode {
     default:
       return 'INTERNAL';
   }
+}
+
+/*
+ * Turns a refused response from one of this app's route handlers into an ApiError, keeping the
+ * envelope's issues: the gaps that stop an invoice, or ARCA's own reasons for a refusal.
+ */
+export async function throwApiError(response: Response): Promise<never> {
+  let code: string | undefined;
+  let detail = '';
+  let issues: string[] = [];
+  try {
+    const payload = (await response.json()) as {
+      error?: string;
+      code?: string;
+      detail?: string;
+      issues?: string[] | null;
+    };
+    code = payload.code;
+    detail = [payload.error, payload.detail].filter(Boolean).join(': ');
+    issues = payload.issues ?? [];
+  } catch {
+    // A body that is not the envelope adds nothing beyond the status.
+  }
+  throw new ApiError(
+    knownErrorCode(code) ?? codeForStatus(response.status),
+    response.status,
+    detail || undefined,
+    issues,
+  );
 }
 
 /*

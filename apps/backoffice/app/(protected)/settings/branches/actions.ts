@@ -74,7 +74,6 @@ function bodyOf(values: BranchValues) {
     // Sent even when empty: a blank address clears the branch mailbox, an absent one keeps it.
     email: values.email,
     default_expiry_days: Number(values.defaultExpiryDays),
-    ...(values.pointOfSale === undefined ? {} : { point_of_sale: Number(values.pointOfSale) }),
   };
 }
 

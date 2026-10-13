@@ -28,53 +28,32 @@ describe('invoicing API mapping', () => {
   it('maps every settings field from snake_case', () => {
     expect(
       mapInvoicingSettings({
-        enabled: true,
-        environment: 'production',
         legal_name: 'Corralón del Sur SRL',
         tax_id: '30711111112',
         iva_condition: 'REGISTERED',
         prices_include_vat: true,
         branches: [{ branch_id: 'b1', name: 'Centro', is_active: false, point_of_sale: 3 }],
-        credential: {
-          cuit: '30711111112',
-          subject: 'SERIALNUMBER=CUIT 30711111112, CN=coti',
-          expires_at: '2028-01-01T00:00:00Z',
-          updated_at: '2026-10-01T12:00:00Z',
-        },
       }),
     ).toEqual({
-      enabled: true,
-      homologation: false,
       legalName: 'Corralón del Sur SRL',
       taxId: '30711111112',
       ivaCondition: 'REGISTERED',
       pricesIncludeVat: true,
       branches: [{ branchId: 'b1', name: 'Centro', isActive: false, pointOfSale: 3 }],
-      credential: {
-        cuit: '30711111112',
-        subject: 'SERIALNUMBER=CUIT 30711111112, CN=coti',
-        expiresAt: '2028-01-01T00:00:00Z',
-        updatedAt: '2026-10-01T12:00:00Z',
-      },
     });
   });
 
-  it('reads homologation, nulls and an unknown condition as unset', () => {
+  it('reads nulls and an unknown condition as unset', () => {
     const settings = mapInvoicingSettings({
-      enabled: false,
-      environment: 'homologation',
       legal_name: null,
       tax_id: null,
       iva_condition: 'SOMETHING_NEW',
       prices_include_vat: false,
       branches: null,
-      credential: null,
     });
 
-    expect(settings.homologation).toBe(true);
     expect(settings.ivaCondition).toBeNull();
     expect(settings.branches).toEqual([]);
-    expect(settings.credential).toBeNull();
   });
 
   it('maps a preview and the invoice it already has', () => {
@@ -91,6 +70,7 @@ describe('invoicing API mapping', () => {
         issues: null,
         invoice: {
           id: 'inv-1',
+          branch_id: 'b1',
           status: 'ISSUED',
           type: 'A',
           point_of_sale: 3,
@@ -130,6 +110,7 @@ describe('invoicing API mapping', () => {
       issues: [],
       invoice: {
         id: 'inv-1',
+        branchId: 'b1',
         status: 'ISSUED',
         type: 'A',
         pointOfSale: 3,

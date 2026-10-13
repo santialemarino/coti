@@ -22,23 +22,7 @@ export function vatRateOf(value: string | null | undefined): VatRate {
   return VAT_RATES.find((rate) => rate === value) ?? DEFAULT_VAT_RATE;
 }
 
-// Each one names a gap the preview found. Configuration ones map onto a setup issue of the same name.
-export const INVOICE_ISSUES = [
-  'INVOICING_DISABLED',
-  'QUOTE_NOT_ACCEPTED',
-  'QUOTE_EMPTY',
-  'QUOTE_CURRENCY',
-  'ACCOUNT_IVA_CONDITION',
-  'ACCOUNT_TAX_ID',
-  'BRANCH_POINT_OF_SALE',
-  'ARCA_CREDENTIALS',
-  'ARCA_CREDENTIALS_EXPIRED',
-  'ARCA_CREDENTIALS_CUIT',
-  'RECEIVER_CUIT_REQUIRED',
-  'RECEIVER_ID_REQUIRED',
-] as const;
-export type InvoiceIssue = (typeof INVOICE_ISSUES)[number];
-
+// The point-of-sale range ARCA accepts, mirrored from the API.
 export const POINT_OF_SALE_MIN = 1;
 export const POINT_OF_SALE_MAX = 99998;
 
@@ -51,26 +35,14 @@ interface InvoicingBranchRaw {
   point_of_sale: number | null;
 }
 
-interface ArcaCredentialRaw {
-  cuit: string;
-  subject: string;
-  expires_at: string;
-  updated_at: string;
-}
-
 export interface InvoicingSettingsRaw {
   profile?: { address: string; gross_income_registration: string; activity_started_on: string };
-  enabled: boolean;
-  environment: string;
   legal_name: string | null;
   tax_id: string | null;
   iva_condition: string | null;
   prices_include_vat: boolean;
   branches: InvoicingBranchRaw[] | null;
-  credential: ArcaCredentialRaw | null;
 }
-
-export type ArcaCredentialResponseRaw = ArcaCredentialRaw;
 
 interface VatAmountRaw {
   rate: string;
@@ -96,6 +68,7 @@ interface InvoiceAmountsRaw {
 
 export interface InvoiceRaw {
   id: string;
+  branch_id: string;
   status: string;
   type: string;
   point_of_sale: number;
@@ -143,23 +116,13 @@ export interface InvoicingBranch {
   pointOfSale: number | null;
 }
 
-export interface ArcaCredential {
-  cuit: string;
-  subject: string;
-  expiresAt: string;
-  updatedAt: string;
-}
-
 export interface InvoicingSettings {
   profile?: { address: string; grossIncomeRegistration: string; activityStartedOn: string };
-  enabled: boolean;
-  homologation: boolean;
   legalName: string | null;
   taxId: string | null;
   ivaCondition: IvaCondition | null;
   pricesIncludeVat: boolean;
   branches: InvoicingBranch[];
-  credential: ArcaCredential | null;
 }
 
 export interface VatAmount {
@@ -186,6 +149,7 @@ export interface InvoiceAmounts {
 
 export interface Invoice {
   id: string;
+  branchId: string;
   status: 'PENDING' | 'ISSUED' | 'REJECTED';
   type: string;
   pointOfSale: number;
@@ -231,15 +195,6 @@ function ivaConditionOf(value: string | null): IvaCondition | null {
   return IVA_CONDITIONS.find((condition) => condition === value) ?? null;
 }
 
-export function mapArcaCredential(raw: ArcaCredentialRaw): ArcaCredential {
-  return {
-    cuit: raw.cuit,
-    subject: raw.subject,
-    expiresAt: raw.expires_at,
-    updatedAt: raw.updated_at,
-  };
-}
-
 export function mapInvoicingSettings(raw: InvoicingSettingsRaw): InvoicingSettings {
   return {
     profile: raw.profile
@@ -249,8 +204,6 @@ export function mapInvoicingSettings(raw: InvoicingSettingsRaw): InvoicingSettin
           activityStartedOn: raw.profile.activity_started_on,
         }
       : undefined,
-    enabled: raw.enabled,
-    homologation: raw.environment !== 'production',
     legalName: raw.legal_name,
     taxId: raw.tax_id,
     ivaCondition: ivaConditionOf(raw.iva_condition),
@@ -261,7 +214,6 @@ export function mapInvoicingSettings(raw: InvoicingSettingsRaw): InvoicingSettin
       isActive: branch.is_active,
       pointOfSale: branch.point_of_sale,
     })),
-    credential: raw.credential ? mapArcaCredential(raw.credential) : null,
   };
 }
 
@@ -292,6 +244,7 @@ function mapAmounts(raw: InvoiceAmountsRaw): InvoiceAmounts {
 export function mapInvoice(raw: InvoiceRaw): Invoice {
   return {
     id: raw.id,
+    branchId: raw.branch_id,
     status: raw.status as Invoice['status'],
     type: raw.type,
     pointOfSale: raw.point_of_sale,

@@ -1,4 +1,4 @@
-import { ApiError, codeForStatus, knownErrorCode } from '@/lib/api/errors';
+import { throwApiError } from '@/lib/api/errors';
 import {
   mapInvoice,
   mapInvoicePreview,
@@ -17,7 +17,7 @@ export async function getInvoicePreview(
     headers: { 'X-Branch-Id': branchId },
     cache: 'no-store',
   });
-  if (!response.ok) await throwOnError(response);
+  if (!response.ok) await throwApiError(response);
   return mapInvoicePreview((await response.json()) as InvoicePreviewRaw);
 }
 
@@ -38,31 +38,17 @@ export async function issueInvoice(
     }),
     cache: 'no-store',
   });
-  if (!response.ok) await throwOnError(response);
+  if (!response.ok) await throwApiError(response);
   return mapInvoice((await response.json()) as InvoiceRaw);
 }
 
-// Keeps the envelope's issues, which is where ARCA's own reasons for a refusal travel.
-async function throwOnError(response: Response): Promise<never> {
-  let code: string | undefined;
-  let detail = '';
-  let issues: string[] = [];
-  try {
-    const payload = (await response.json()) as {
-      error?: string;
-      code?: string;
-      issues?: string[] | null;
-    };
-    code = payload.code;
-    detail = payload.error ?? '';
-    issues = payload.issues ?? [];
-  } catch {
-    // A non-envelope body adds no information beyond the status.
-  }
-  throw new ApiError(
-    knownErrorCode(code) ?? codeForStatus(response.status),
-    response.status,
-    detail || undefined,
-    issues,
-  );
+// Asks ARCA how a pending invoice ended, without requesting another authorization.
+export async function recoverInvoice(invoiceId: string, branchId: string): Promise<Invoice> {
+  const response = await fetch(`/api/invoices/${encodeURIComponent(invoiceId)}/recover`, {
+    method: 'POST',
+    headers: { 'X-Branch-Id': branchId },
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwApiError(response);
+  return mapInvoice((await response.json()) as InvoiceRaw);
 }

@@ -30,7 +30,7 @@ export function SettingsNav({ title, items }: SettingsNavProps) {
           key={item.href}
           href={item.href}
           label={item.label}
-          active={pathname === item.href}
+          active={pathname === item.href || pathname.startsWith(`${item.href}/`)}
           attention={item.attention}
         />
       ))}

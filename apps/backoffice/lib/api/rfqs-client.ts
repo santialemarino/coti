@@ -1,4 +1,4 @@
-import { ApiError, codeForStatus, knownErrorCode } from '@/lib/api/errors';
+import { throwApiError } from '@/lib/api/errors';
 import type {
   CreateDiscountBody,
   FileRfqDraftResponse,
@@ -66,24 +66,7 @@ export async function createRfq(body: CreateRfqBody): Promise<CreateRfqResponse>
   });
 
   if (!response.ok) {
-    let code: string | undefined;
-    let detail = '';
-    try {
-      const payload = (await response.json()) as {
-        error?: string;
-        code?: string;
-        detail?: string;
-      };
-      code = payload.code;
-      detail = [payload.error, payload.detail].filter(Boolean).join(': ');
-    } catch {
-      // A body that is not the envelope tells us nothing extra.
-    }
-    throw new ApiError(
-      knownErrorCode(code) ?? codeForStatus(response.status),
-      response.status,
-      detail || undefined,
-    );
+    await throwApiError(response);
   }
 
   return response.json() as Promise<CreateRfqResponse>;
@@ -121,7 +104,7 @@ export async function createFileRfqDraft(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json() as Promise<FileRfqDraftResponse>;
 }
@@ -130,7 +113,7 @@ export async function createFileRfqDraft(
 export async function fetchQueue(): Promise<RfqRecord[]> {
   const response = await fetch('/api/rfqs', { method: 'GET', cache: 'no-store' });
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   const items = (await response.json()) as RfqListItem[] | null;
   return (items ?? []).map(mapListItem);
@@ -147,24 +130,7 @@ export async function fetchRfqDetail(id: string): Promise<RfqDetailResponse> {
   });
 
   if (!response.ok) {
-    let code: string | undefined;
-    let detail = '';
-    try {
-      const payload = (await response.json()) as {
-        error?: string;
-        code?: string;
-        detail?: string;
-      };
-      code = payload.code;
-      detail = [payload.error, payload.detail].filter(Boolean).join(': ');
-    } catch {
-      // A body that is not the envelope tells us nothing extra.
-    }
-    throw new ApiError(
-      knownErrorCode(code) ?? codeForStatus(response.status),
-      response.status,
-      detail || undefined,
-    );
+    await throwApiError(response);
   }
 
   return response.json() as Promise<RfqDetailResponse>;
@@ -183,31 +149,6 @@ function branchHeaders(branchId: string, json = false): Record<string, string> {
 }
 
 /*
- * Helper to throw an ApiError from a non-ok response. Extracts the code and
- * detail from the standard error envelope when present.
- */
-async function throwOnError(response: Response): Promise<never> {
-  let code: string | undefined;
-  let detail = '';
-  try {
-    const payload = (await response.json()) as {
-      error?: string;
-      code?: string;
-      detail?: string;
-    };
-    code = payload.code;
-    detail = [payload.error, payload.detail].filter(Boolean).join(': ');
-  } catch {
-    // A body that is not the envelope tells us nothing extra.
-  }
-  throw new ApiError(
-    knownErrorCode(code) ?? codeForStatus(response.status),
-    response.status,
-    detail || undefined,
-  );
-}
-
-/*
  * Claim an unassigned order for the signed-in seller. The backend answers 409
  * when a peer took it first; the caller surfaces that as a conflict toast.
  */
@@ -218,7 +159,7 @@ export async function assignRfqSeller(rfqId: string): Promise<QuoteResponse> {
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json() as Promise<QuoteResponse>;
 }
@@ -237,7 +178,7 @@ export async function setRfqSeller(rfqId: string, sellerId: string | null): Prom
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json() as Promise<QuoteResponse>;
 }
@@ -261,7 +202,7 @@ export async function setQuoteArchived(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
 }
 
@@ -288,7 +229,7 @@ export async function updateQuoteItem(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json() as Promise<QuoteItemResponse>;
 }
@@ -308,7 +249,7 @@ export async function deleteQuoteItem(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
 }
 
@@ -333,7 +274,7 @@ export async function addQuoteItem(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json() as Promise<QuoteItemResponse>;
 }
@@ -352,7 +293,7 @@ export async function generateQuote(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json();
 }
@@ -374,7 +315,7 @@ export async function addDiscount(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json() as Promise<QuoteDiscountResponse>;
 }
@@ -397,7 +338,7 @@ export async function updateDiscount(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json() as Promise<QuoteDiscountResponse>;
 }
@@ -418,7 +359,7 @@ export async function deleteDiscount(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
 }
 
@@ -440,7 +381,7 @@ export async function sendQuote(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json() as Promise<QuoteSendResponse>;
 }
@@ -459,7 +400,7 @@ export async function transitionQuote(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json() as Promise<QuoteResponse>;
 }
@@ -478,7 +419,7 @@ export async function reactivateQuote(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json() as Promise<QuoteResponse>;
 }

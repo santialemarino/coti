@@ -4,11 +4,12 @@ import { useMemo } from 'react';
 import Link from 'next/link';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 
 import {
   Badge,
+  Button,
   Combobox,
   Form,
   FormControl,
@@ -29,20 +30,32 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  ToggleGroup,
+  ToggleGroupItem,
 } from '@repo/ui/components';
 import { updateInvoicingSettings } from '@/app/(protected)/settings/invoicing/actions';
 import {
+  ADDRESS_MAX_LENGTH,
+  GROSS_INCOME_EXEMPT,
+  GROSS_INCOME_NUMBER_MAX_LENGTH,
   invoicingSettingsSchema,
+  ISSUER_IVA_CONDITIONS,
+  POINT_OF_SALE_MAX_LENGTH,
+  type GrossIncomeKind,
+  type InvoicingSettingsOutput,
   type InvoicingSettingsValues,
 } from '@/app/(protected)/settings/invoicing/form-schema';
+import { QuantityInput } from '@/components/quantity-input';
 import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
-import { formatCuit, IVA_CONDITIONS, type InvoicingSettings } from '@/lib/api/invoicing';
+import { formatCuit, POINT_OF_SALE_MIN, type InvoicingSettings } from '@/lib/api/invoicing';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 import { useFormatters } from '@/lib/i18n/formatters';
 
 // Past this many, the toast counts the branches instead of naming them.
 const NAMED_BRANCHES_MAX = 2;
+// The anchor the setup notices and the ARCA guide link to.
+const POINTS_OF_SALE_SECTION = 'points-of-sale';
 
 interface InvoicingSettingsFormProps {
   settings: InvoicingSettings;
@@ -58,20 +71,23 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
     () => invoicingSettingsSchema({ field: t, shared: tErrors }),
     [t, tErrors],
   );
-  const form = useForm<InvoicingSettingsValues>({
+  const form = useForm<InvoicingSettingsValues, unknown, InvoicingSettingsOutput>({
     ...FORM_VALIDATION,
     resolver: zodResolver(schema),
     defaultValues: valuesOf(settings),
   });
+  const grossIncomeKind = useWatch({ control: form.control, name: 'grossIncomeKind' });
+  const pending = form.formState.isSubmitting;
+  const accountCuit = settings.taxId ? formatCuit(settings.taxId.replace(/\D/g, '')) : null;
 
-  async function onSubmit(values: InvoicingSettingsValues) {
+  async function onSubmit(values: InvoicingSettingsOutput) {
     const before = form.formState.defaultValues as InvoicingSettingsValues;
     const result = await updateInvoicingSettings(values);
     if (!result.settings) {
       form.setError('root', { message: message(result.error) });
       return;
     }
-    toast.success(savedMessage(before, values));
+    toast.success(savedMessage(before, form.getValues()));
     form.reset(valuesOf(result.settings));
   }
 
@@ -79,7 +95,8 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
     const changes: string[] = [];
     if (
       before.address !== after.address ||
-      before.grossIncomeRegistration !== after.grossIncomeRegistration ||
+      before.grossIncomeKind !== after.grossIncomeKind ||
+      before.grossIncomeNumber !== after.grossIncomeNumber ||
       before.activityStartedOn !== after.activityStartedOn
     )
       changes.push(t('changes.profile'));
@@ -118,11 +135,9 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
               </dd>
               <dt className="text-foreground-muted">{t('fiscal.taxId')}</dt>
               <dd
-                className={
-                  settings.taxId ? 'text-foreground tabular-nums' : 'text-foreground-subtle'
-                }
+                className={accountCuit ? 'text-foreground tabular-nums' : 'text-foreground-subtle'}
               >
-                {settings.taxId ? formatCuit(settings.taxId) : t('fiscal.missing')}
+                {accountCuit ?? t('fiscal.missing')}
               </dd>
             </dl>
             <p className="text-paragraph-xs text-foreground-muted">
@@ -137,18 +152,17 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
               name="ivaCondition"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('ivaCondition.label')}</FormLabel>
+                  <FormLabel required>{t('ivaCondition.label')}</FormLabel>
                   <FormControl>
                     <Combobox
                       value={field.value || null}
                       onValueChange={field.onChange}
-                      options={IVA_CONDITIONS.filter(
-                        (condition) => condition !== 'FINAL_CONSUMER',
-                      ).map((condition) => ({
+                      options={ISSUER_IVA_CONDITIONS.map((condition) => ({
                         value: condition,
                         label: tConditions(condition),
                       }))}
                       placeholder={t('ivaCondition.placeholder')}
+                      disabled={pending}
                     />
                   </FormControl>
                   <FormDescription>{t('ivaCondition.hint')}</FormDescription>
@@ -157,30 +171,112 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
               )}
             />
 
-            {(['address', 'grossIncomeRegistration', 'activityStartedOn'] as const).map((name) => (
+            <FormField
+              control={form.control}
+              name="address"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel required>{t('profile.address')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      maxLength={ADDRESS_MAX_LENGTH}
+                      placeholder={t('profile.addressPlaceholder')}
+                      disabled={pending}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="grossIncomeKind"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel required>{t('profile.grossIncome')}</FormLabel>
+                  <FormControl>
+                    <ToggleGroup
+                      type="single"
+                      value={field.value}
+                      onValueChange={(value) => value && field.onChange(value as GrossIncomeKind)}
+                      disabled={pending}
+                      aria-label={t('profile.grossIncome')}
+                    >
+                      <ToggleGroupItem value="number">
+                        {t('profile.grossIncomeKinds.number')}
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="exempt">
+                        {t('profile.grossIncomeKinds.exempt')}
+                      </ToggleGroupItem>
+                    </ToggleGroup>
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      grossIncomeKind === 'exempt'
+                        ? 'profile.grossIncomeExemptHint'
+                        : 'profile.grossIncomeNumberHint',
+                    )}
+                  </FormDescription>
+                </FormItem>
+              )}
+            />
+
+            {grossIncomeKind === 'number' ? (
               <FormField
-                key={name}
                 control={form.control}
-                name={name}
+                name="grossIncomeNumber"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel required>{t(`profile.${name}`)}</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        value={field.value ?? ''}
-                        type={name === 'activityStartedOn' ? 'date' : 'text'}
-                        maxLength={name === 'address' ? 255 : 50}
-                      />
-                    </FormControl>
-                    {name === 'grossIncomeRegistration' ? (
-                      <FormDescription>{t('profile.grossIncomeRegistrationHint')}</FormDescription>
-                    ) : null}
+                    <FormLabel required>{t('profile.grossIncomeNumber')}</FormLabel>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                      <FormControl>
+                        <Input
+                          {...field}
+                          inputMode="numeric"
+                          maxLength={GROSS_INCOME_NUMBER_MAX_LENGTH}
+                          placeholder={t('profile.grossIncomeNumberPlaceholder')}
+                          disabled={pending}
+                          containerClassName="flex-1 min-w-48"
+                        />
+                      </FormControl>
+                      {accountCuit ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={pending}
+                          onClick={() =>
+                            form.setValue('grossIncomeNumber', accountCuit, {
+                              shouldDirty: true,
+                              shouldValidate: form.formState.isSubmitted,
+                            })
+                          }
+                        >
+                          {t('profile.useCuit')}
+                        </Button>
+                      ) : null}
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-            ))}
+            ) : null}
+
+            <FormField
+              control={form.control}
+              name="activityStartedOn"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel required>{t('profile.activityStartedOn')}</FormLabel>
+                  <FormControl>
+                    <Input {...field} type="date" disabled={pending} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <FormField
               control={form.control}
               name="pricesIncludeVat"
@@ -188,7 +284,11 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
                 <FormItem>
                   <div className="flex items-center gap-x-3">
                     <FormControl>
-                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        disabled={pending}
+                      />
                     </FormControl>
                     <FormLabel>{t('pricesIncludeVat.label')}</FormLabel>
                   </div>
@@ -198,13 +298,16 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
             />
           </section>
 
-          <section className="flex flex-col min-w-0 gap-y-5">
+          <section
+            id={POINTS_OF_SALE_SECTION}
+            aria-labelledby={`${POINTS_OF_SALE_SECTION}-title`}
+            className="flex flex-col min-w-0 gap-y-5 scroll-mt-24"
+          >
             <div className="flex flex-col gap-y-1">
-              <h2 className="text-heading-6">{t('pointsOfSale.title')}</h2>
+              <h2 id={`${POINTS_OF_SALE_SECTION}-title`} className="text-heading-6">
+                {t('pointsOfSale.title')}
+              </h2>
               <p className="text-paragraph-xs text-foreground-muted">{t('pointsOfSale.hint')}</p>
-              <InlineLink asChild>
-                <Link href={ROUTES.branchSettings}>{t('pointsOfSale.configure')}</Link>
-              </InlineLink>
             </div>
             <Table>
               <TableCaption className="sr-only">{t('pointsOfSale.caption')}</TableCaption>
@@ -215,7 +318,7 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {settings.branches.map((branch) => (
+                {settings.branches.map((branch, index) => (
                   <TableRow key={branch.branchId}>
                     <TableCell className="text-paragraph-sm-medium text-foreground">
                       <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -227,7 +330,27 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
                         )}
                       </span>
                     </TableCell>
-                    <TableCell kind="quantity">{branch.pointOfSale ?? '—'}</TableCell>
+                    <TableCell kind="quantityInput">
+                      <FormField
+                        control={form.control}
+                        name={`branches.${index}.pointOfSale`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormControl>
+                              <QuantityInput
+                                {...field}
+                                min={POINT_OF_SALE_MIN}
+                                maxLength={POINT_OF_SALE_MAX_LENGTH}
+                                placeholder={t('pointsOfSale.placeholder')}
+                                disabled={pending}
+                                aria-label={t('pointsOfSale.inputLabel', { branch: branch.name })}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -239,8 +362,8 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
 
         <PendingButton
           type="submit"
-          className="w-full max-w-md lg:max-w-none"
-          pending={form.formState.isSubmitting}
+          className="w-full sm:w-auto sm:self-start"
+          pending={pending}
           pendingLabel={t('submitting')}
         >
           {t('submit')}
@@ -251,11 +374,17 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
 }
 
 export function valuesOf(settings: InvoicingSettings): InvoicingSettingsValues {
+  const registration = settings.profile?.grossIncomeRegistration ?? '';
+  const exempt = registration.toUpperCase() === GROSS_INCOME_EXEMPT;
   return {
     address: settings.profile?.address ?? '',
-    grossIncomeRegistration: settings.profile?.grossIncomeRegistration ?? '',
+    grossIncomeKind: exempt ? 'exempt' : 'number',
+    grossIncomeNumber: exempt ? '' : registration,
     activityStartedOn: settings.profile?.activityStartedOn ?? '',
-    ivaCondition: settings.ivaCondition ?? '',
+    ivaCondition:
+      settings.ivaCondition && settings.ivaCondition !== 'FINAL_CONSUMER'
+        ? settings.ivaCondition
+        : '',
     pricesIncludeVat: settings.pricesIncludeVat,
     branches: settings.branches.map((branch) => ({
       branchId: branch.branchId,

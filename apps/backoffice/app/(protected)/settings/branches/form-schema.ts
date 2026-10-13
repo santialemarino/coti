@@ -35,14 +35,6 @@ export function branchSchema(t: SchemaText = rawText) {
     address: optionalText(t),
     email: optionalEmailAddress(t),
     defaultExpiryDays: expiryDays(t),
-    pointOfSale: z
-      .string()
-      .trim()
-      .refine(
-        (raw) => raw === '' || (/^\d+$/.test(raw) && Number(raw) >= 1 && Number(raw) <= 99998),
-        t.field('pointOfSale.invalid'),
-      )
-      .optional(),
   });
 }
 
