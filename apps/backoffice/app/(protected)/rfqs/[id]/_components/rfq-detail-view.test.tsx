@@ -23,6 +23,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.f
 vi.mock('@/lib/api/rfqs-client', () => ({
   fetchRfqDetail: vi.fn(),
   generateQuote: vi.fn(),
+  setQuoteArchived: vi.fn(),
 }));
 // The send button's presence per status is what these tests exercise; the edit surface, diff and
 // header are stubbed out, with the send dialog and the diff left as spies.
@@ -38,7 +39,7 @@ vi.mock('./send-quote-dialog', () => ({ SendQuoteDialog: vi.fn(() => null) }));
 vi.mock('./rfq-change-diff', () => ({ RfqChangeDiff: vi.fn(() => null) }));
 
 const { toast } = await import('sonner');
-const { generateQuote } = await import('@/lib/api/rfqs-client');
+const { generateQuote, setQuoteArchived } = await import('@/lib/api/rfqs-client');
 
 const copy = messages.rfqs;
 
@@ -376,6 +377,64 @@ describe('RfqDetailView client association', () => {
     const view = renderView(detail);
 
     expect(view.queryByTestId('client-association-card')).toBeNull();
+  });
+});
+
+function archivedDetail(quoteStatus: string, rfqStatus: string = quoteStatus) {
+  const detail = makeDetail(quoteStatus, rfqStatus);
+  detail.rfq = { ...detail.rfq, archived_at: BASE_TIME };
+  detail.quote = { ...detail.quote!, archived_at: BASE_TIME };
+  return detail;
+}
+
+describe('RfqDetailView archived', () => {
+  it('locks an archived draft: no generate, read-only lines, and a way back', async () => {
+    const { RfqItemsTable } = await import('./rfq-items-table');
+    const view = renderView(archivedDetail('DRAFT', 'GENERATED'));
+
+    expect(view.getByText(copy.detail.callouts.archived.title)).toBeTruthy();
+    expect(view.queryByRole('button', { name: copy.detail.items.generate })).toBeNull();
+    expect(vi.mocked(RfqItemsTable).mock.lastCall?.[0].readOnly).toBe(true);
+  });
+
+  it('keeps the lines editable and says nothing while the quote is not archived', async () => {
+    const { RfqItemsTable } = await import('./rfq-items-table');
+    const view = renderView(makeDetail('DRAFT', 'GENERATED'));
+
+    expect(view.queryByText(copy.detail.callouts.archived.title)).toBeNull();
+    expect(vi.mocked(RfqItemsTable).mock.lastCall?.[0].readOnly).toBe(false);
+  });
+
+  it('hides the invoice of an archived sale', () => {
+    const view = renderView(archivedDetail('ACCEPTED'));
+
+    expect(view.queryByTestId('invoice-card')).toBeNull();
+  });
+
+  it("unarchives through the order's branch and hands the lines back", async () => {
+    vi.mocked(setQuoteArchived).mockResolvedValue(undefined);
+    const { RfqItemsTable } = await import('./rfq-items-table');
+    const view = renderView(archivedDetail('DRAFT', 'GENERATED'));
+
+    fireEvent.click(view.getByRole('button', { name: copy.detail.callouts.archived.unarchive }));
+
+    await vi.waitFor(() =>
+      expect(view.queryByText(copy.detail.callouts.archived.title)).toBeNull(),
+    );
+    expect(setQuoteArchived).toHaveBeenCalledWith(QUOTE_ID, false, BRANCH_ID);
+    expect(vi.mocked(RfqItemsTable).mock.lastCall?.[0].readOnly).toBe(false);
+    expect(view.getByRole('button', { name: copy.detail.items.generate })).toBeTruthy();
+    expect(toast.success).toHaveBeenCalled();
+  });
+
+  it('stays archived and says why when the unarchive fails', async () => {
+    vi.mocked(setQuoteArchived).mockRejectedValue(new Error('boom'));
+    const view = renderView(archivedDetail('DRAFT', 'GENERATED'));
+
+    fireEvent.click(view.getByRole('button', { name: copy.detail.callouts.archived.unarchive }));
+
+    await vi.waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(view.getByText(copy.detail.callouts.archived.title)).toBeTruthy();
   });
 });
 

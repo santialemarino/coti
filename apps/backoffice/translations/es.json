@@ -1374,6 +1374,12 @@
         "none": "Sin datos"
       },
       "callouts": {
+        "archived": {
+          "title": "Pedido archivado",
+          "description": "No se puede editar, enviar ni facturar mientras esté archivado. Desarchivalo para seguir trabajándolo.",
+          "unarchive": "Desarchivar",
+          "unarchiving": "Desarchivando…"
+        },
         "accepted": {
           "title": "Cotización aceptada",
           "description": "La cotización quedó aceptada. El pedido está listo para procesar."
