@@ -393,6 +393,44 @@ func TestIssuer_Issue_InvoiceARequest(t *testing.T) {
 	}
 }
 
+// A credit note is numbered in its own series and names the invoice it cancels in CbtesAsoc, between
+// the receiver's condition and the rates, as the WSDL orders them.
+func TestIssuer_Issue_CreditNoteNamesTheInvoice(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, &fakeWSFE{last: []int64{6}, solicitar: []string{approved(7)}})
+	req := invoiceA()
+	req.Kind = domain.VoucherKindCreditNote
+	req.Associated = &domain.AssociatedVoucher{Type: domain.VoucherType{Kind: domain.VoucherKindInvoice, Letter: domain.InvoiceTypeA},
+		PointOfSale: 3, Number: 42, IssuerCUIT: "20123456789", Date: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)}
+	if _, err := h.issuer.Issue(context.Background(), h.creds, req); err != nil {
+		t.Fatal(err)
+	}
+	if last := h.wsfe.sent("FECompUltimoAutorizado"); !strings.Contains(last[0], "<CbteTipo>3</CbteTipo>") {
+		t.Fatalf("numbered in %s, want the credit note A series", last[0])
+	}
+	sent := h.wsfe.sent("FECAESolicitar")[0]
+	if s := decodeSent(t, sent); s.CbteTipo != 3 || s.Det.CbteDesde != 7 || s.Det.ImpTotal != "1370.50" {
+		t.Fatalf("CbteTipo %d number %d total %s, want credit note A 7 for the invoice's total", s.CbteTipo, s.Det.CbteDesde, s.Det.ImpTotal)
+	}
+	want := "<CondicionIVAReceptorId>1</CondicionIVAReceptorId><CbtesAsoc><CbteAsoc><Tipo>1</Tipo><PtoVta>3</PtoVta>" +
+		"<Nro>42</Nro><Cuit>20123456789</Cuit><CbteFch>20261001</CbteFch></CbteAsoc></CbtesAsoc><Iva>"
+	if !strings.Contains(sent, want) {
+		t.Fatalf("request lacks %s:\n%s", want, sent)
+	}
+}
+
+// An invoice names no associated voucher.
+func TestIssuer_Issue_InvoiceSendsNoCbtesAsoc(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, &fakeWSFE{last: []int64{41}, solicitar: []string{approved(42)}})
+	if _, err := h.issuer.Issue(context.Background(), h.creds, invoiceA()); err != nil {
+		t.Fatal(err)
+	}
+	if sent := h.wsfe.sent("FECAESolicitar")[0]; strings.Contains(sent, "CbtesAsoc") {
+		t.Fatalf("invoice sent CbtesAsoc:\n%s", sent)
+	}
+}
+
 func TestIssuer_Issue_InvoiceCOmitsIvaAndNoneReceiver(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, &fakeWSFE{last: []int64{7}, solicitar: []string{approved(8)}})
@@ -758,7 +796,7 @@ func TestIssuer_EndpointsFollowTheCredentialsEnvironment(t *testing.T) {
 	}
 	certPEM, keyPEM, _ := testCredentials(t, "CUIT 20123456789")
 	unnamed := domain.ARCACredentials{CertificatePEM: certPEM, PrivateKeyPEM: keyPEM}
-	if _, err := issuer.Authorized(context.Background(), unnamed, "20123456789", domain.InvoiceTypeA, 3, 1); !errors.Is(err, domain.ErrNotConfigured) {
+	if _, err := issuer.Authorized(context.Background(), unnamed, "20123456789", domain.VoucherType{Kind: domain.VoucherKindInvoice, Letter: domain.InvoiceTypeA}, 3, 1); !errors.Is(err, domain.ErrNotConfigured) {
 		t.Fatalf("credentials without an environment: err = %v, want refused before any call", err)
 	}
 }
@@ -766,7 +804,7 @@ func TestIssuer_EndpointsFollowTheCredentialsEnvironment(t *testing.T) {
 func TestIssuer_Authorized_ReadsTheNumberAsked(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, &fakeWSFE{consult: consultedA})
-	got, err := h.issuer.Authorized(context.Background(), h.creds, "20123456789", domain.InvoiceTypeA, 3, 42)
+	got, err := h.issuer.Authorized(context.Background(), h.creds, "20123456789", domain.VoucherType{Kind: domain.VoucherKindInvoice, Letter: domain.InvoiceTypeA}, 3, 42)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -790,7 +828,7 @@ func TestIssuer_Authorized_ReadsTheNumberAsked(t *testing.T) {
 func TestIssuer_Authorized_NoneIsNil(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, &fakeWSFE{consult: noRecords})
-	got, err := h.issuer.Authorized(context.Background(), h.creds, "20123456789", domain.InvoiceTypeB, 3, 9)
+	got, err := h.issuer.Authorized(context.Background(), h.creds, "20123456789", domain.VoucherType{Kind: domain.VoucherKindInvoice, Letter: domain.InvoiceTypeB}, 3, 9)
 	if err != nil || got != nil {
 		t.Fatalf("got %+v, %v; want nil, nil", got, err)
 	}
@@ -799,7 +837,7 @@ func TestIssuer_Authorized_NoneIsNil(t *testing.T) {
 func TestIssuer_Authorized_TransportFailureIsUnavailable(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, &fakeWSFE{consult: "DROP"})
-	_, err := h.issuer.Authorized(context.Background(), h.creds, "20123456789", domain.InvoiceTypeA, 3, 42)
+	_, err := h.issuer.Authorized(context.Background(), h.creds, "20123456789", domain.VoucherType{Kind: domain.VoucherKindInvoice, Letter: domain.InvoiceTypeA}, 3, 42)
 	if !errors.Is(err, domain.ErrInvoicingUnavailable) {
 		t.Fatalf("err = %v, want unavailable", err)
 	}

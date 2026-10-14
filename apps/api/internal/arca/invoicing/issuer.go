@@ -78,7 +78,7 @@ func NewIssuer(settings Settings, cache TicketCache) *Issuer {
 	}
 }
 
-// Issue authorizes one invoice, numbering it as the next after ARCA's last authorized one.
+// Issue authorizes one voucher, numbering it as the next after ARCA's last authorized one in its series.
 func (i *Issuer) Issue(ctx context.Context, creds domain.ARCACredentials, req domain.InvoiceRequest) (*domain.InvoiceAuthorization, error) {
 	s, err := i.signerFor(creds)
 	if err != nil {
@@ -90,7 +90,7 @@ func (i *Issuer) Issue(ctx context.Context, creds domain.ARCACredentials, req do
 	}
 	a := feAuth{Token: t.Token, Sign: t.Sign, Cuit: req.IssuerCUIT, url: s.endpoints.wsfe}
 	for attempt := 0; ; attempt++ {
-		last, err := i.lastAuthorized(ctx, a, req.Type, req.PointOfSale)
+		last, err := i.lastAuthorized(ctx, a, req.VoucherType(), req.PointOfSale)
 		if err != nil {
 			return nil, i.dropRejectedTicket(ctx, s, creds.Tickets, err)
 		}
@@ -120,8 +120,8 @@ func (i *Issuer) Issue(ctx context.Context, creds domain.ARCACredentials, req do
 	}
 }
 
-// Authorized reads back the invoice ARCA holds under number for a type at a point of sale.
-func (i *Issuer) Authorized(ctx context.Context, creds domain.ARCACredentials, issuerCUIT string, invoiceType domain.InvoiceType, pointOfSale int, number int64) (*domain.AuthorizedInvoice, error) {
+// Authorized reads back the voucher ARCA holds under number in a series at a point of sale.
+func (i *Issuer) Authorized(ctx context.Context, creds domain.ARCACredentials, issuerCUIT string, voucher domain.VoucherType, pointOfSale int, number int64) (*domain.AuthorizedInvoice, error) {
 	s, err := i.signerFor(creds)
 	if err != nil {
 		return nil, err
@@ -130,7 +130,7 @@ func (i *Issuer) Authorized(ctx context.Context, creds domain.ARCACredentials, i
 	if err != nil {
 		return nil, err
 	}
-	got, _, err := i.consult(ctx, feAuth{Token: t.Token, Sign: t.Sign, Cuit: issuerCUIT, url: s.endpoints.wsfe}, invoiceType, pointOfSale, number)
+	got, _, err := i.consult(ctx, feAuth{Token: t.Token, Sign: t.Sign, Cuit: issuerCUIT, url: s.endpoints.wsfe}, voucher, pointOfSale, number)
 	if err != nil || got == nil {
 		return nil, i.dropRejectedTicket(ctx, s, creds.Tickets, err)
 	}

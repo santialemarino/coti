@@ -14,14 +14,21 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
-// invoiceActiveQuoteIndex is the partial unique index behind "one live invoice per sale".
-const invoiceActiveQuoteIndex = "uq_invoice_active_quote"
+// The partial unique indexes behind "one live invoice per sale" and "one credit note per invoice".
+const (
+	invoiceActiveQuoteIndex = "uq_invoice_active_quote"
+	invoiceCreditNoteIndex  = "uq_invoice_credit_note"
+)
+
+// invoiceCredited holds for an invoice row aliased i that an issued credit note cancels.
+const invoiceCredited = `EXISTS (SELECT 1 FROM invoice nc WHERE nc.account_id = i.account_id AND nc.credited_invoice_id = i.id
+	AND nc.kind = 'CREDIT_NOTE' AND nc.status = 'ISSUED')`
 
 const invoiceColumns = `id, account_id, branch_id, quote_id, quote_version_id, status, invoice_type,
 	point_of_sale, number, claimed_number, issued_on, cae, cae_expires_on, issuer_cuit, receiver_name,
 	receiver_doc_type, receiver_doc_number, receiver_iva_condition, net_amount, exempt_amount,
 	vat_amount, total, currency, vat_breakdown, issues, created_at, updated_at, snapshot, issuer_iva_condition, issuer_profile,
-	environment`
+	environment, kind, credited_invoice_id, replaces_invoice_id`
 
 // vatBreakdownRow is how one rate of an invoice is stored in vat_breakdown.
 type vatBreakdownRow struct {
@@ -308,14 +315,16 @@ func (r *InvoicingRepository) LockAccountForShare(ctx context.Context, q Querier
 }
 
 // GetLatestByQuote returns the quote's newest invoice made in env, still pending anywhere, or issued
-// in production, nil when it has none. A test invoice never holds the sale in production.
+// in production, nil when it has none. A test invoice never holds the sale in production, and one an
+// issued credit note cancelled holds it nowhere.
 func (r *InvoicingRepository) GetLatestByQuote(
 	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID, env domain.ARCAEnvironment,
 ) (*domain.Invoice, error) {
 	inv, err := scanInvoice(q.QueryRow(ctx,
-		`SELECT `+invoiceColumns+` FROM invoice
-		 WHERE account_id = $1 AND quote_id = $2 AND branch_id = $3
+		`SELECT `+invoiceColumns+` FROM invoice i
+		 WHERE account_id = $1 AND quote_id = $2 AND branch_id = $3 AND kind = 'INVOICE'
 		   AND (environment = $4 OR status = 'PENDING' OR (status = 'ISSUED' AND environment = 'PRODUCTION'))
+		   AND NOT `+invoiceCredited+`
 		 ORDER BY created_at DESC, id DESC LIMIT 1`, accountID, quoteID, branchID, env))
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil, nil
@@ -331,6 +340,7 @@ func (r *InvoicingRepository) GetLatestIssuedOutside(
 	inv, err := scanInvoice(q.QueryRow(ctx,
 		`SELECT `+invoiceColumns+` FROM invoice
 		 WHERE account_id = $1 AND quote_id = $2 AND branch_id = $3 AND environment <> $4 AND status = 'ISSUED'
+		   AND kind = 'INVOICE'
 		 ORDER BY created_at DESC, id DESC LIMIT 1`, accountID, quoteID, branchID, env))
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil, nil
@@ -338,8 +348,52 @@ func (r *InvoicingRepository) GetLatestIssuedOutside(
 	return inv, err
 }
 
-// CreatePending records an invoice about to be asked for, holding its quote in its environment.
-// Returns domain.ErrConflict when the quote already has a pending or issued invoice there.
+// GetLatestCreditedByQuote returns the quote's newest invoice in env that an issued credit note
+// cancelled, nil when it has none.
+func (r *InvoicingRepository) GetLatestCreditedByQuote(
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID, env domain.ARCAEnvironment,
+) (*domain.Invoice, error) {
+	inv, err := scanInvoice(q.QueryRow(ctx,
+		`SELECT `+invoiceColumns+` FROM invoice i
+		 WHERE account_id = $1 AND quote_id = $2 AND branch_id = $3 AND environment = $4 AND kind = 'INVOICE'
+		   AND status = 'ISSUED' AND `+invoiceCredited+`
+		 ORDER BY created_at DESC, id DESC LIMIT 1`, accountID, quoteID, branchID, env))
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil, nil
+	}
+	return inv, err
+}
+
+// GetByIDs loads the account's vouchers by id, keyed by id.
+func (r *InvoicingRepository) GetByIDs(
+	ctx context.Context, q Querier, accountID uuid.UUID, ids []uuid.UUID,
+) (map[uuid.UUID]domain.Invoice, error) {
+	return collectInvoices(q.Query(ctx,
+		`SELECT `+invoiceColumns+` FROM invoice WHERE account_id = $1 AND id = ANY($2)`, accountID, ids))
+}
+
+// GetCreditNotesByInvoiceIDs returns the newest credit note of each named invoice, keyed by the
+// invoice's id; an invoice with none is absent.
+func (r *InvoicingRepository) GetCreditNotesByInvoiceIDs(
+	ctx context.Context, q Querier, accountID uuid.UUID, invoiceIDs []uuid.UUID,
+) (map[uuid.UUID]domain.Invoice, error) {
+	notes, err := collectInvoices(q.Query(ctx,
+		`SELECT DISTINCT ON (credited_invoice_id) `+invoiceColumns+` FROM invoice
+		 WHERE account_id = $1 AND kind = 'CREDIT_NOTE' AND credited_invoice_id = ANY($2)
+		 ORDER BY credited_invoice_id, created_at DESC, id DESC`, accountID, invoiceIDs))
+	if err != nil {
+		return nil, err
+	}
+	byInvoice := make(map[uuid.UUID]domain.Invoice, len(notes))
+	for _, note := range notes {
+		byInvoice[*note.CreditedInvoiceID] = note
+	}
+	return byInvoice, nil
+}
+
+// CreatePending records a voucher about to be asked for: an invoice holds its quote in its
+// environment, a credit note holds the invoice it cancels. Returns domain.ErrConflict when the quote
+// already has a live invoice there, or the invoice a pending or issued credit note.
 func (r *InvoicingRepository) CreatePending(
 	ctx context.Context, q Querier, in domain.Invoice,
 ) (*domain.Invoice, error) {
@@ -351,16 +405,17 @@ func (r *InvoicingRepository) CreatePending(
 		`INSERT INTO invoice (account_id, branch_id, quote_id, quote_version_id, status, invoice_type,
 		   point_of_sale, issued_on, issuer_cuit, receiver_name, receiver_doc_type, receiver_doc_number,
 		   receiver_iva_condition, net_amount, exempt_amount, vat_amount, total, currency, vat_breakdown, snapshot, issuer_iva_condition, issuer_profile,
-		   environment)
+		   environment, kind, credited_invoice_id, replaces_invoice_id)
 		 VALUES ($1, $2, $3, $4, 'PENDING', $5, $6, $7, $8, $9, $10, NULLIF($11, ''), $12, $13, $14,
-		   $15, $16, $17, $18, $19, $20, $21, $22)
+		   $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
 		 RETURNING `+invoiceColumns,
 		in.AccountID, in.BranchID, in.QuoteID, in.QuoteVersionID, in.Type, in.PointOfSale, in.IssuedOn,
 		in.IssuerCUIT, in.Receiver.Name, in.Receiver.DocType, in.Receiver.DocNumber,
 		in.Receiver.IVACondition, in.Amounts.Net, in.Amounts.Exempt, in.Amounts.VAT, in.Amounts.Total,
 		in.Currency, breakdown, mustInvoiceSnapshot(in.Snapshot), in.IssuerCondition, mustProfile(in.IssuerProfile),
-		in.Environment))
-	if isUniqueViolation(err, invoiceActiveQuoteIndex) || isUniqueViolation(err, "uq_invoice_pending_series") {
+		in.Environment, in.Kind, in.CreditedInvoiceID, in.ReplacesInvoiceID))
+	if isUniqueViolation(err, invoiceActiveQuoteIndex) || isUniqueViolation(err, invoiceCreditNoteIndex) ||
+		isUniqueViolation(err, "uq_invoice_pending_series") {
 		return nil, domain.ErrConflict
 	}
 	return inv, err
@@ -439,7 +494,7 @@ func scanInvoice(row pgx.Row) (*domain.Invoice, error) {
 		&inv.IssuerCUIT, &inv.Receiver.Name, &inv.Receiver.DocType, &docNumber,
 		&inv.Receiver.IVACondition, &inv.Amounts.Net, &inv.Amounts.Exempt, &inv.Amounts.VAT,
 		&inv.Amounts.Total, &inv.Currency, &breakdown, &issues, &inv.CreatedAt, &inv.UpdatedAt, &snapshot, &inv.IssuerCondition, &profile,
-		&inv.Environment)
+		&inv.Environment, &inv.Kind, &inv.CreditedInvoiceID, &inv.ReplacesInvoiceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -478,6 +533,23 @@ func scanInvoice(row pgx.Row) (*domain.Invoice, error) {
 		return nil, err
 	}
 	return &inv, nil
+}
+
+// collectInvoices scans every row of a voucher query, keyed by id.
+func collectInvoices(rows pgx.Rows, err error) (map[uuid.UUID]domain.Invoice, error) {
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[uuid.UUID]domain.Invoice)
+	for rows.Next() {
+		inv, err := scanInvoice(rows)
+		if err != nil {
+			return nil, err
+		}
+		result[inv.ID] = *inv
+	}
+	return result, rows.Err()
 }
 
 func toBreakdownRows(amounts []domain.VATAmount) []vatBreakdownRow {

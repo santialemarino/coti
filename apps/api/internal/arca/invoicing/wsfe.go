@@ -54,22 +54,36 @@ type solicitarRequest struct {
 
 // detRequest follows the WSDL's sequence order, which the .asmx serializer enforces.
 type detRequest struct {
-	Concepto               int      `xml:"Concepto"`
-	DocTipo                int      `xml:"DocTipo"`
-	DocNro                 string   `xml:"DocNro"`
-	CbteDesde              int64    `xml:"CbteDesde"`
-	CbteHasta              int64    `xml:"CbteHasta"`
-	CbteFch                string   `xml:"CbteFch"`
-	ImpTotal               string   `xml:"ImpTotal"`
-	ImpTotConc             string   `xml:"ImpTotConc"`
-	ImpNeto                string   `xml:"ImpNeto"`
-	ImpOpEx                string   `xml:"ImpOpEx"`
-	ImpTrib                string   `xml:"ImpTrib"`
-	ImpIVA                 string   `xml:"ImpIVA"`
-	MonID                  string   `xml:"MonId"`
-	MonCotiz               string   `xml:"MonCotiz"`
-	CondicionIVAReceptorID int      `xml:"CondicionIVAReceptorId"`
-	Iva                    *ivaList `xml:"Iva,omitempty"`
+	Concepto               int           `xml:"Concepto"`
+	DocTipo                int           `xml:"DocTipo"`
+	DocNro                 string        `xml:"DocNro"`
+	CbteDesde              int64         `xml:"CbteDesde"`
+	CbteHasta              int64         `xml:"CbteHasta"`
+	CbteFch                string        `xml:"CbteFch"`
+	ImpTotal               string        `xml:"ImpTotal"`
+	ImpTotConc             string        `xml:"ImpTotConc"`
+	ImpNeto                string        `xml:"ImpNeto"`
+	ImpOpEx                string        `xml:"ImpOpEx"`
+	ImpTrib                string        `xml:"ImpTrib"`
+	ImpIVA                 string        `xml:"ImpIVA"`
+	MonID                  string        `xml:"MonId"`
+	MonCotiz               string        `xml:"MonCotiz"`
+	CondicionIVAReceptorID int           `xml:"CondicionIVAReceptorId"`
+	CbtesAsoc              *cbteAsocList `xml:"CbtesAsoc,omitempty"`
+	Iva                    *ivaList      `xml:"Iva,omitempty"`
+}
+
+// cbteAsocList names the vouchers a credit note adjusts (WSFEv1 CbtesAsoc).
+type cbteAsocList struct {
+	CbteAsoc []cbteAsoc `xml:"CbteAsoc"`
+}
+
+type cbteAsoc struct {
+	Tipo    int    `xml:"Tipo"`
+	PtoVta  int    `xml:"PtoVta"`
+	Nro     int64  `xml:"Nro"`
+	Cuit    string `xml:"Cuit"`
+	CbteFch string `xml:"CbteFch"`
 }
 
 type ivaList struct {
@@ -175,8 +189,8 @@ func checkErrors(op string, errs []feMessage, raw exchange) error {
 	return &domain.InvoiceRejectedError{Issues: issues, RawRequest: raw.request, RawResponse: raw.response}
 }
 
-func (i *Issuer) lastAuthorized(ctx context.Context, a feAuth, invoiceType domain.InvoiceType, pointOfSale int) (int64, error) {
-	body, err := xml.Marshal(lastAuthorizedRequest{Auth: a, PtoVta: pointOfSale, CbteTipo: invoiceType.ARCACode()})
+func (i *Issuer) lastAuthorized(ctx context.Context, a feAuth, voucher domain.VoucherType, pointOfSale int) (int64, error) {
+	body, err := xml.Marshal(lastAuthorizedRequest{Auth: a, PtoVta: pointOfSale, CbteTipo: voucher.ARCACode()})
 	if err != nil {
 		return 0, fmt.Errorf("arca: encode FECompUltimoAutorizado: %w", err)
 	}
@@ -227,7 +241,7 @@ func buildSolicitar(req domain.InvoiceRequest, number int64) solicitarRequest {
 	var msg solicitarRequest
 	msg.FeCAEReq.FeCabReq.CantReg = 1
 	msg.FeCAEReq.FeCabReq.PtoVta = req.PointOfSale
-	msg.FeCAEReq.FeCabReq.CbteTipo = req.Type.ARCACode()
+	msg.FeCAEReq.FeCabReq.CbteTipo = req.VoucherType().ARCACode()
 
 	docNumber := req.Receiver.DocNumber
 	if req.Receiver.DocType == domain.ReceiverDocNone || docNumber == "" {
@@ -250,6 +264,12 @@ func buildSolicitar(req domain.InvoiceRequest, number int64) solicitarRequest {
 		MonID:                  "PES",
 		MonCotiz:               "1",
 		CondicionIVAReceptorID: req.Receiver.IVACondition.ARCAReceiverID(),
+	}
+	if asoc := req.Associated; asoc != nil {
+		det.CbtesAsoc = &cbteAsocList{CbteAsoc: []cbteAsoc{{
+			Tipo: asoc.Type.ARCACode(), PtoVta: asoc.PointOfSale, Nro: asoc.Number, Cuit: asoc.IssuerCUIT,
+			CbteFch: asoc.Date.UTC().Format(arcaDate),
+		}}}
 	}
 	if !req.Type.DiscriminatesVAT() {
 		det.ImpNeto = money(amounts.Total)
@@ -330,11 +350,11 @@ func (r *solicitarResult) authorization(number int64, raw exchange) (*domain.Inv
 	return nil, &domain.InvoiceRejectedError{Issues: issues, RawRequest: raw.request, RawResponse: raw.response}
 }
 
-// consult reads one authorized invoice back from ARCA; nil when ARCA holds none under number.
-func (i *Issuer) consult(ctx context.Context, a feAuth, invoiceType domain.InvoiceType, pointOfSale int, number int64) (*consulted, []byte, error) {
+// consult reads one authorized voucher back from ARCA; nil when ARCA holds none under number.
+func (i *Issuer) consult(ctx context.Context, a feAuth, voucher domain.VoucherType, pointOfSale int, number int64) (*consulted, []byte, error) {
 	var msg consultRequest
 	msg.Auth = a
-	msg.FeCompConsReq.CbteTipo = invoiceType.ARCACode()
+	msg.FeCompConsReq.CbteTipo = voucher.ARCACode()
 	msg.FeCompConsReq.CbteNro = number
 	msg.FeCompConsReq.PtoVta = pointOfSale
 	body, err := xml.Marshal(msg)
@@ -405,7 +425,7 @@ func (i *Issuer) recoverIssued(ctx context.Context, a feAuth, req domain.Invoice
 	if ctx.Err() != nil {
 		return nil, outcomeUnknown(cause, ctx.Err())
 	}
-	got, raw, err := i.consult(ctx, a, req.Type, req.PointOfSale, number)
+	got, raw, err := i.consult(ctx, a, req.VoucherType(), req.PointOfSale, number)
 	if err != nil {
 		return nil, outcomeUnknown(cause, err)
 	}

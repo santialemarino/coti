@@ -33,7 +33,7 @@ func invoiceFixture(t *testing.T) (*DB, domain.Tenant, uuid.UUID, uuid.UUID, uui
 func pendingInvoice(tenant domain.Tenant, quoteID, versionID uuid.UUID) domain.Invoice {
 	return domain.Invoice{
 		AccountID: tenant.AccountID, BranchID: tenant.BranchID, QuoteID: quoteID, QuoteVersionID: versionID,
-		Environment: domain.ARCAEnvironmentHomologation, Type: domain.InvoiceTypeA, PointOfSale: 3, IssuedOn: time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC),
+		Environment: domain.ARCAEnvironmentHomologation, Kind: domain.VoucherKindInvoice, Type: domain.InvoiceTypeA, PointOfSale: 3, IssuedOn: time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC),
 		IssuerCondition: domain.IVAConditionRegistered, IssuerCUIT: "30712345678", Currency: "ARS",
 		Receiver: domain.InvoiceReceiver{Name: "Obra Norte", DocType: domain.ReceiverDocCUIT,
 			DocNumber: "20123456786", IVACondition: domain.IVAConditionRegistered},
