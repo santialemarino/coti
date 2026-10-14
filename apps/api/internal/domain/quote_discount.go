@@ -99,3 +99,16 @@ type QuoteDiscountUpdate struct {
 	Description        *string
 	SuppressedBySeller *bool
 }
+
+// DiscountApplication is one AUTOMATIC application the engine computed for a version, before it
+// is written. ActionValue is the figure the rule applied (a tier's, for a tiered rule).
+type DiscountApplication struct {
+	ID            uuid.UUID // chosen by the caller, so the line links can name it.
+	PromotionID   uuid.UUID
+	ConditionType PromotionConditionType
+	Scope         DiscountScope
+	ActionType    PromotionActionType
+	ActionValue   decimal.Decimal
+	Amount        decimal.Decimal
+	ItemIDs       []uuid.UUID
+}

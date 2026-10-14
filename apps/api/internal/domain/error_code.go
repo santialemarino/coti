@@ -41,6 +41,8 @@ const (
 	CodeQuoteArchived         ErrorCode = "QUOTE_ARCHIVED"
 	CodeQuoteNotDraft         ErrorCode = "QUOTE_NOT_DRAFT"
 	CodeQuoteNotReactivatable ErrorCode = "QUOTE_NOT_REACTIVATABLE"
+	// CodeDiscountNotApplicable refuses restoring a promotion the quote no longer earns.
+	CodeDiscountNotApplicable ErrorCode = "DISCOUNT_NOT_APPLICABLE"
 	CodeLinkExpired           ErrorCode = "LINK_EXPIRED"
 	// CodeUnsupportedFileType sits beside CodeFileTooLarge: both refuse an upload, and a client
 	// offering a different file needs to know which rule it broke.

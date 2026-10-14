@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/google/uuid"
@@ -90,6 +91,84 @@ func (r *QuoteDiscountRepository) Create(
 		 RETURNING `+quoteDiscountRowColumns,
 		accountID, versionID, in.Scope, in.Amount, in.ActionType, in.Value,
 		in.Description))
+}
+
+// CreateApplications writes the engine's AUTOMATIC applications to a mutable version, then the
+// lines each one covers. Each application carries the id its links name.
+func (r *QuoteDiscountRepository) CreateApplications(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID, apps []domain.DiscountApplication,
+) error {
+	if len(apps) == 0 {
+		return nil
+	}
+	type row struct {
+		ID            uuid.UUID `json:"id"`
+		PromotionID   uuid.UUID `json:"promotion_id"`
+		ConditionType string    `json:"condition_type"`
+		Scope         string    `json:"scope"`
+		ActionType    string    `json:"action_type"`
+		ActionValue   string    `json:"action_value"`
+		Amount        string    `json:"amount"`
+	}
+	type link struct {
+		DiscountID uuid.UUID `json:"discount_id"`
+		ItemID     uuid.UUID `json:"item_id"`
+	}
+	rows := make([]row, 0, len(apps))
+	links := make([]link, 0)
+	for _, app := range apps {
+		if app.ID == uuid.Nil {
+			return errors.New("discount application needs a caller-chosen id")
+		}
+		rows = append(rows, row{ID: app.ID, PromotionID: app.PromotionID,
+			ConditionType: string(app.ConditionType), Scope: string(app.Scope),
+			ActionType: string(app.ActionType), ActionValue: app.ActionValue.String(),
+			Amount: app.Amount.String()})
+		for _, itemID := range app.ItemIDs {
+			links = append(links, link{DiscountID: app.ID, ItemID: itemID})
+		}
+	}
+	encodedRows, err := json.Marshal(rows)
+	if err != nil {
+		return err
+	}
+	tag, err := q.Exec(ctx,
+		`INSERT INTO quote_discount (id, account_id, quote_version_id, promotion_id, condition_type,
+		        scope, origin, amount, action_type, action_value)
+		 SELECT x.id, $1, qv.id, p.id, x.condition_type::promotion_condition_type,
+		        x.scope::discount_scope, 'AUTOMATIC'::discount_origin, x.amount,
+		        x.action_type::promotion_action_type, x.action_value
+		 FROM jsonb_to_recordset($3::jsonb) AS x(id uuid, promotion_id uuid, condition_type text,
+		      scope text, action_type text, action_value numeric, amount numeric)
+		 JOIN quote_version qv ON qv.account_id = $1 AND qv.id = $2 AND qv.is_immutable = FALSE
+		 JOIN promotion p ON p.account_id = $1 AND p.id = x.promotion_id`,
+		accountID, versionID, encodedRows)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != int64(len(rows)) {
+		return domain.ErrNotFound
+	}
+	if len(links) == 0 {
+		return nil
+	}
+	encodedLinks, err := json.Marshal(links)
+	if err != nil {
+		return err
+	}
+	tag, err = q.Exec(ctx,
+		`INSERT INTO quote_discount_item (account_id, quote_discount_id, quote_item_id)
+		 SELECT $1, x.discount_id, qi.id
+		 FROM jsonb_to_recordset($3::jsonb) AS x(discount_id uuid, item_id uuid)
+		 JOIN quote_item qi ON qi.account_id = $1 AND qi.version_id = $2 AND qi.id = x.item_id`,
+		accountID, versionID, encodedLinks)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != int64(len(links)) {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 // CreateItemLinks ties a discount to the quote lines it covers. Each item must belong to the
@@ -233,6 +312,23 @@ func (r *QuoteDiscountRepository) UpdateAmount(
 		accountID, versionID, discountID, amount)
 }
 
+// UpdateApplication rewrites the figure and the money of an AUTOMATIC application on a mutable
+// version, for a sweep whose rule still applies but to different quantities.
+func (r *QuoteDiscountRepository) UpdateApplication(
+	ctx context.Context, q Querier, accountID, versionID, discountID uuid.UUID,
+	actionValue, amount decimal.Decimal,
+) error {
+	return r.mustAffect(ctx, q,
+		`UPDATE quote_discount qd
+		 SET action_value = $4::numeric, amount = $5::numeric
+		 FROM quote_version qv
+		 WHERE qv.account_id = $1 AND qv.id = $2 AND qv.is_immutable = FALSE
+		   AND qd.account_id = $1 AND qd.quote_version_id = qv.id AND qd.id = $3
+		   AND qd.origin = 'AUTOMATIC'::discount_origin
+		 RETURNING qd.id`,
+		accountID, versionID, discountID, actionValue, amount)
+}
+
 // DeleteByID removes a discount application and the line links it carries. Used only for
 // MANUAL_SELLER rows; an AUTOMATIC one is suppressed, never deleted.
 func (r *QuoteDiscountRepository) DeleteByID(
@@ -254,6 +350,39 @@ func (r *QuoteDiscountRepository) DeleteByID(
 		   AND qd.account_id = $1 AND qd.quote_version_id = qv.id AND qd.id = $3
 		 RETURNING qd.id`,
 		accountID, versionID, discountID)
+}
+
+// DeleteApplications removes AUTOMATIC applications a sweep no longer earns, with their line links.
+func (r *QuoteDiscountRepository) DeleteApplications(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID, discountIDs []uuid.UUID,
+) error {
+	if len(discountIDs) == 0 {
+		return nil
+	}
+	if _, err := q.Exec(ctx,
+		`DELETE FROM quote_discount_item qdi
+		 USING quote_discount qd, quote_version qv
+		 WHERE qv.account_id = $1 AND qv.id = $2 AND qv.is_immutable = FALSE
+		   AND qd.account_id = $1 AND qd.quote_version_id = qv.id AND qd.id = ANY($3)
+		   AND qd.origin = 'AUTOMATIC'::discount_origin
+		   AND qdi.account_id = $1 AND qdi.quote_discount_id = qd.id`,
+		accountID, versionID, discountIDs); err != nil {
+		return err
+	}
+	tag, err := q.Exec(ctx,
+		`DELETE FROM quote_discount qd
+		 USING quote_version qv
+		 WHERE qv.account_id = $1 AND qv.id = $2 AND qv.is_immutable = FALSE
+		   AND qd.account_id = $1 AND qd.quote_version_id = qv.id AND qd.id = ANY($3)
+		   AND qd.origin = 'AUTOMATIC'::discount_origin`,
+		accountID, versionID, discountIDs)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != int64(len(discountIDs)) {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 func (r *QuoteDiscountRepository) mustAffect(ctx context.Context, q Querier, query string, args ...any) error {

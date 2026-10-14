@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
@@ -45,6 +46,15 @@ type QuoteService struct {
 	prices branchPriceReader
 	env    domain.ARCAEnvironment // where this server invoices; only an invoice issued there closes a sale.
 	log    *slog.Logger
+	// sweep settles the version's discounts once its lines are priced; nil prices without them.
+	sweep *discountSweep
+}
+
+// WithDiscountEngine wires the discount sweep, so accepting the materials also earns the promotions
+// the priced lines qualify for.
+func (s *QuoteService) WithDiscountEngine(discounts versionDiscountStore, promotions promotionReader) *QuoteService {
+	s.sweep = &discountSweep{discounts: discounts, promotions: promotions, now: time.Now}
+	return s
 }
 
 // NewQuoteService builds a QuoteService.
@@ -122,8 +132,16 @@ func (s *QuoteService) AcceptMaterials(
 			return err
 		}
 		applyAlternativePricing(candidates, alternativePricings)
+		total := valuation.total
+		if s.sweep != nil {
+			total, err = s.sweep.settle(ctx, q, tenant.AccountID, quote.BranchID, version.ID,
+				valuation.items)
+			if err != nil {
+				return err
+			}
+		}
 		version, err = s.quotes.UpdateVersionValuation(ctx, q, tenant.AccountID, version.ID,
-			valuation.total, valuation.currency)
+			total, valuation.currency)
 		if err != nil {
 			return err
 		}

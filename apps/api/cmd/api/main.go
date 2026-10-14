@@ -100,6 +100,7 @@ func run() error {
 	accountRepo := repository.NewAccountRepository()
 	onboardingRepo := repository.NewOnboardingRepository()
 	channelRepo := repository.NewChannelRepository()
+	promotionRepo := repository.NewPromotionRepository()
 	authTokenRepo := repository.NewAuthTokenRepository()
 	notificationRepo := repository.NewNotificationRepository()
 	limiter := ratelimit.NewMemory(nil)
@@ -189,6 +190,7 @@ func run() error {
 		quoteAIGenerationRepo, channelRepo, userRepo, rfqExtractor, catalogMatchService, log, cfg.RFQ).
 		WithCorrectionMemory(quoteCorrectionService).
 		WithDiscounts(quoteDiscountRepo).
+		WithPromotions(promotionRepo).
 		WithClientActions(clientActionRepo).
 		WithInboundMessages(inboundChannelMessageRepo).
 		WithWebAppURL(cfg.Web.WebAppURL).
@@ -196,7 +198,8 @@ func run() error {
 	inboundRoutingService := services.NewInboundRoutingService(db, channelRepo)
 	whatsAppInboundService := services.NewWhatsAppInboundService(db, inboundRoutingService,
 		inboundChannelMessageRepo, channelRepo, rfqService, channelSealer, log)
-	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, arcaEnvironment, log)
+	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, arcaEnvironment, log).
+		WithDiscountEngine(quoteDiscountRepo, promotionRepo)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
 		WithCorrectionLearning(quoteCorrectionService)
 	quoteRepresentationService := services.NewQuoteRepresentationService(db,
@@ -251,6 +254,7 @@ func run() error {
 			File:      fileHandler(objectStorage),
 			ARCASetup: handler.NewARCASetupHandler(arcaSetupService),
 			Invoice:   handler.NewInvoiceHandler(invoiceService, cfg.Storage.MaxFileSize),
+			Promotion: handler.NewPromotionHandler(services.NewPromotionService(db, promotionRepo)),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
 		rateLimit,

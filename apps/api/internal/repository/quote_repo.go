@@ -461,6 +461,9 @@ func (r *QuoteRepository) DeleteItems(
 	if len(itemIDs) == 0 {
 		return nil
 	}
+	if err := deleteItemDiscountLinks(ctx, q, accountID, versionID, itemIDs); err != nil {
+		return err
+	}
 	tag, err := q.Exec(ctx,
 		`DELETE FROM quote_item item
 		 USING quote_version version
@@ -939,6 +942,21 @@ func quoteItemAlternativePayloads(
 	return payloads
 }
 
+// deleteItemDiscountLinks unties lines of a mutable version from the discounts that cover them, so
+// the lines can go; the sweep that follows rebuilds what the engine owns.
+func deleteItemDiscountLinks(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID, itemIDs []uuid.UUID,
+) error {
+	_, err := q.Exec(ctx,
+		`DELETE FROM quote_discount_item qdi
+		 USING quote_item qi, quote_version qv
+		 WHERE qv.account_id = $1 AND qv.id = $2 AND qv.is_immutable = FALSE
+		   AND qi.account_id = $1 AND qi.version_id = qv.id AND qi.id = ANY($3)
+		   AND qdi.account_id = $1 AND qdi.quote_item_id = qi.id`,
+		accountID, versionID, itemIDs)
+	return err
+}
+
 func nullDecimalString(amount decimal.NullDecimal) *string {
 	if !amount.Valid {
 		return nil
@@ -1115,6 +1133,9 @@ func (r *QuoteRepository) UpdateItem(
 func (r *QuoteRepository) DeleteItem(
 	ctx context.Context, q Querier, accountID, versionID, itemID uuid.UUID,
 ) error {
+	if err := deleteItemDiscountLinks(ctx, q, accountID, versionID, []uuid.UUID{itemID}); err != nil {
+		return err
+	}
 	tag, err := q.Exec(ctx,
 		`DELETE FROM quote_item qi
 		 USING quote_version qv
