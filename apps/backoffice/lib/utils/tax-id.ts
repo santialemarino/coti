@@ -7,6 +7,8 @@ const DNI_MAX_DIGITS = 8;
 const CUIT_PREFIX_DIGITS = 2;
 const CUIT_BODY_END = 10;
 const DNI_GROUP = 3;
+const CUIT_SEPARATOR = '-';
+const DNI_SEPARATOR = '.';
 
 export const TAX_ID_MAX_DIGITS: Record<TaxIdKind, number> = {
   cuit: CUIT_DIGITS,
@@ -32,12 +34,12 @@ function cuitShape(digits: string): string {
   const prefix = digits.slice(0, CUIT_PREFIX_DIGITS);
   const body = digits.slice(CUIT_PREFIX_DIGITS, CUIT_BODY_END);
   const check = digits.slice(CUIT_BODY_END);
-  return check ? `${prefix}-${body}-${check}` : `${prefix}-${body}`;
+  return [prefix, body, check].filter(Boolean).join(CUIT_SEPARATOR);
 }
 
 // Grouped in thousands from the right, so a DNI reads the same while typed as once complete.
 function dniShape(digits: string): string {
-  return digits.replace(new RegExp(`\\B(?=(\\d{${DNI_GROUP}})+$)`, 'g'), '.');
+  return digits.replace(new RegExp(`\\B(?=(\\d{${DNI_GROUP}})+$)`, 'g'), DNI_SEPARATOR);
 }
 
 /*
@@ -50,21 +52,32 @@ export function formatTaxId(digits: string, kind: TaxIdKind): string {
   return cuitShape(digits);
 }
 
-// The position just after the `count`-th character `counts` accepts; 0 when `count` is 0.
-function caretAfter(display: string, count: number, counts: (char: string) => boolean): number {
-  if (count <= 0) return 0;
-  let seen = 0;
-  for (let i = 0; i < display.length; i += 1) {
-    if (counts(display[i] ?? '')) seen += 1;
-    if (seen === count) return i + 1;
+// The literal that follows `count` digits: a CUIT's hyphen after its prefix and after its body, a
+// DNI's dot where a seven- or eight-digit number groups its thousands. A `cuit-or-dni` takes the
+// literal of the shape its next digit gives it, so its only hyphen comes after the tenth digit.
+function separatorAfter(count: number, kind: TaxIdKind): string | null {
+  const next = kind === 'cuit-or-dni' ? (count >= DNI_MAX_DIGITS ? 'cuit' : 'dni') : kind;
+  if (next === 'cuit') {
+    return count === CUIT_PREFIX_DIGITS || count === CUIT_BODY_END ? CUIT_SEPARATOR : null;
   }
-  return display.length;
+  const grouped = [DNI_MIN_DIGITS, DNI_MAX_DIGITS].some(
+    (length) => length > count && (length - count) % DNI_GROUP === 0,
+  );
+  return grouped ? DNI_SEPARATOR : null;
 }
 
 const isDigit = (char: string) => char >= '0' && char <= '9';
+const isSeparator = (char: string) => char === CUIT_SEPARATOR || char === DNI_SEPARATOR;
 
-function countDigits(text: string): number {
-  return taxIdDigits(text).length;
+// The position just after the `count`-th digit; 0 when `count` is 0.
+function caretAfterDigits(display: string, count: number): number {
+  if (count <= 0) return 0;
+  let seen = 0;
+  for (let i = 0; i < display.length; i += 1) {
+    if (isDigit(display[i] ?? '')) seen += 1;
+    if (seen === count) return i + 1;
+  }
+  return display.length;
 }
 
 export interface TaxIdEdit {
@@ -74,33 +87,48 @@ export interface TaxIdEdit {
 }
 
 /*
- * Reads what the field holds after an edit (a keystroke, a paste, autofill) back into digits and a
- * caret. The caret is mapped by counting digits, because separators are exactly what moved. A field
- * already full refuses more digits instead of pushing its last ones out; text that overflows an
- * emptier one keeps its first digits.
+ * Reads what the field holds after an edit (a keystroke, a paste, a drop, autofill) back into digits,
+ * the text to show and a caret. The caret is mapped by counting digits, because separators are
+ * exactly what moved; a separator typed against the same literal steps over it, and one typed where
+ * the next literal goes stays on screen until a digit follows. A field already full refuses more
+ * digits instead of pushing its last ones out; text that overflows an emptier one keeps its first.
  */
 export function editTaxId(
   raw: string,
   caret: number,
-  previous: string,
+  previousDisplay: string,
   kind: TaxIdKind,
 ): TaxIdEdit {
   const max = TAX_ID_MAX_DIGITS[kind];
+  const previous = taxIdDigits(previousDisplay);
   const typed = taxIdDigits(raw);
   if (typed.length > max && previous.length >= max) {
-    const display = formatTaxId(previous, kind);
-    const inserted = raw.length - display.length;
-    return { digits: previous, display, caret: Math.max(0, caret - inserted) };
+    const inserted = raw.length - previousDisplay.length;
+    return { digits: previous, display: previousDisplay, caret: Math.max(0, caret - inserted) };
   }
   const digits = typed.slice(0, max);
-  const display = formatTaxId(digits, kind);
-  const digitsBefore = Math.min(countDigits(raw.slice(0, caret)), digits.length);
-  return { digits, display, caret: caretAfter(display, digitsBefore, isDigit) };
+  const separator = separatorAfter(digits.length, kind);
+  const kept = [...raw].filter((char) => isDigit(char) || isSeparator(char)).join('');
+  const display =
+    formatTaxId(digits, kind) + (separator && kept.endsWith(separator) ? separator : '');
+
+  const beforeCaret = raw.slice(0, caret);
+  let at = caretAfterDigits(display, Math.min(taxIdDigits(beforeCaret).length, digits.length));
+  [...beforeCaret.replace(/^.*\d/, '')].forEach((char) => {
+    if (isSeparator(char) && display[at] === char) at += 1;
+  });
+  return { digits, display, caret: at };
+}
+
+function lastDigitBefore(display: string, end: number): number {
+  for (let i = end - 1; i >= 0; i -= 1) if (isDigit(display[i] ?? '')) return i;
+  return -1;
 }
 
 /*
- * Backspace or Delete against a separator takes the digit beyond it: removing the separator alone
- * would be put straight back by the format, trapping the caret. Null when the key is not that case.
+ * Backspace or Delete against a separator inside the number takes the digit beyond it, the caret
+ * crossing the separator: removing the separator alone would be put straight back by the format.
+ * A separator at the end goes alone, so null — the browser's own edit — as for every other key.
  */
 export function deleteAcrossSeparator(
   display: string,
@@ -108,21 +136,32 @@ export function deleteAcrossSeparator(
   key: string,
   kind: TaxIdKind,
 ): TaxIdEdit | null {
-  const digits = taxIdDigits(display);
-  const before = countDigits(display.slice(0, caret));
-  let removed: number;
-  if (key === 'Backspace' && caret > 0 && !isDigit(display[caret - 1] ?? '')) {
-    if (before === 0) return null;
-    removed = before - 1;
-  } else if (key === 'Delete' && caret < display.length && !isDigit(display[caret] ?? '')) {
-    if (before === digits.length) return null;
-    removed = before;
-  } else {
-    return null;
+  let removed = -1;
+  if (key === 'Backspace' && caret < display.length && isSeparator(display[caret - 1] ?? '')) {
+    removed = lastDigitBefore(display, caret - 1);
+  } else if (key === 'Delete' && caret + 1 < display.length && isSeparator(display[caret] ?? '')) {
+    removed = display.slice(caret + 1).search(/\d/);
+    if (removed >= 0) removed += caret + 1;
   }
-  const next = digits.slice(0, removed) + digits.slice(removed + 1);
-  const shown = formatTaxId(next, kind);
-  return { digits: next, display: shown, caret: caretAfter(shown, removed, isDigit) };
+  if (removed < 0) return null;
+  const raw = display.slice(0, removed) + display.slice(removed + 1);
+  return editTaxId(raw, key === 'Backspace' ? removed : caret, display, kind);
+}
+
+// What a paste may add to the field: its digits up to the room left, with the separators among them.
+export function pastedTaxId(text: string, room: number): string {
+  let kept = '';
+  let digits = 0;
+  for (const char of text) {
+    if (isDigit(char)) {
+      if (digits === room) break;
+      digits += 1;
+    } else if (!isSeparator(char)) {
+      continue;
+    }
+    kept += char;
+  }
+  return kept;
 }
 
 /*
