@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type ChangeEvent, type FocusEvent } from 'react';
 import {
   getCountries,
   getCountryCallingCode,
@@ -10,7 +10,10 @@ import {
 
 import { Combobox, InlineLink, Input } from '@repo/ui/components';
 import { AR_MOBILE_PREFIX, DEFAULT_PHONE_COUNTRY } from '@/config/phone';
+import { useCaretPlacement } from '@/hooks/use-caret-placement';
+import { editKind, useInputHistory, type InputSnapshot } from '@/hooks/use-input-history';
 import { useFormatters } from '@/lib/i18n/formatters';
+import { keepAllowed } from '@/lib/utils/keep-allowed';
 
 // The country list needs room for "Islas Georgias del Sur y Sandwich del Sur (+500)".
 const COUNTRY_LIST_MIN_WIDTH = 288;
@@ -59,11 +62,13 @@ function mobileAlternative(country: CountryCode, national: string) {
 }
 
 // What a phone is typed with: digits and the usual separators. The number settles to digits on blur.
-const PHONE_CHARACTERS = /[^\d\s+\-().]/g;
+const PHONE_CHARACTER = /^[\d\s+\-().]$/;
 
 /*
  * A country picker beside the national number, emitting E.164. A pasted international number
  * ("+598 99 123 456") moves the picker to its country, so the seller never has to split it by hand.
+ * The number keeps its own undo history, since a filtered or settled value is one the browser did
+ * not write.
  */
 export function PhoneInput({
   id,
@@ -80,8 +85,16 @@ export function PhoneInput({
   landlineNotice,
 }: PhoneInputProps) {
   const fmt = useFormatters();
+  const placeCaret = useCaretPlacement();
   const [field, setField] = useState(() => readValue(value));
   const emitted = useRef(value);
+  // The country rides on each undo step, since a pasted international number changes it.
+  const history = useInputHistory({
+    ref: null,
+    value: field.national,
+    context: () => field.country,
+    restore: (snapshot, input) => show(input, snapshot),
+  });
 
   // A value the caller set (a prefill, a reset) is read back in; one this field emitted is not.
   if (value !== emitted.current) {
@@ -111,22 +124,47 @@ export function PhoneInput({
     onChange(e164);
   }
 
-  function handleNationalChange(typed: string) {
-    const raw = typed.replace(PHONE_CHARACTERS, '');
-    const international = raw.trim().startsWith('+') ? parsePhoneNumberFromString(raw) : undefined;
-    if (international?.country) {
-      emit({ country: international.country, national: international.nationalNumber });
-      return;
-    }
-    emit({ country: field.country, national: raw });
+  function show(input: HTMLInputElement, to: InputSnapshot) {
+    placeCaret(input, to.start, to.end);
+    emit({ country: (to.context as CountryCode | undefined) ?? field.country, national: to.value });
+  }
+
+  function handleNationalChange(event: ChangeEvent<HTMLInputElement>) {
+    if (history.replay(event)) return;
+    const input = event.currentTarget;
+    const kept = keepAllowed(
+      input.value,
+      input.selectionStart ?? input.value.length,
+      PHONE_CHARACTER,
+    );
+    const international = kept.value.trim().startsWith('+')
+      ? parsePhoneNumberFromString(kept.value)
+      : undefined;
+    const to = international?.country
+      ? {
+          value: international.nationalNumber,
+          start: international.nationalNumber.length,
+          end: international.nationalNumber.length,
+          context: international.country,
+        }
+      : { value: kept.value, start: kept.caret, end: kept.caret, context: field.country };
+    history.record(editKind(event.nativeEvent), history.before(), to);
+    show(input, to);
   }
 
   // A valid number settles to its bare digits, so a typed, pasted or prefilled one reads the same.
-  function settleNational() {
+  function settleNational(event: FocusEvent<HTMLInputElement>) {
     const parsed = parsePhoneNumberFromString(field.national, field.country);
-    if (parsed?.isValid() && parsed.nationalNumber !== field.national) {
-      setField({ country: field.country, national: parsed.nationalNumber });
-    }
+    if (!parsed?.isValid() || parsed.nationalNumber === field.national) return;
+    const national = parsed.nationalNumber;
+    const end = national.length;
+    history.record('other', history.snapshot(event.currentTarget), {
+      value: national,
+      start: end,
+      end,
+      context: field.country,
+    });
+    setField({ country: field.country, national });
   }
 
   return (
@@ -155,12 +193,14 @@ export function PhoneInput({
           className="w-auto shrink-0 px-2.5 gap-x-1.5"
         />
         <Input
+          ref={history.inputRef}
           id={id}
           type="tel"
           inputMode="tel"
           autoComplete="tel-national"
           value={field.national}
-          onChange={(event) => handleNationalChange(event.target.value)}
+          onChange={handleNationalChange}
+          onKeyDown={history.onKeyDown}
           onBlur={settleNational}
           placeholder={placeholder}
           disabled={disabled}
