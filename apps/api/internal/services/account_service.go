@@ -161,6 +161,11 @@ func (s *AccountService) Register(
 	if err := s.policy.Validate(in.AdminPassword); err != nil {
 		return nil, nil, err
 	}
+	taxID, err := accountCUIT(in.TaxID)
+	if err != nil {
+		return nil, nil, err
+	}
+	in.TaxID = taxID
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(in.AdminPassword), bcrypt.DefaultCost)
 	if err != nil {
@@ -243,6 +248,11 @@ func (s *AccountService) Update(
 	if strings.TrimSpace(in.Name) == "" {
 		return nil, fmt.Errorf("%w: name is required", domain.ErrInvalidInput)
 	}
+	taxID, err := accountCUIT(in.TaxID)
+	if err != nil {
+		return nil, err
+	}
+	in.TaxID = taxID
 	var account *domain.Account
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		current, err := s.accounts.GetByIDForUpdate(ctx, q, tenant.AccountID)
@@ -322,6 +332,22 @@ func disconnectARCA(
 			fmt.Errorf("%w: an invoice is waiting for ARCA", domain.ErrConflict))
 	}
 	return setups.Delete(ctx, q, accountID)
+}
+
+// accountCUIT keeps an account's CUIT as its 11 digits once the check digit holds; blank means none.
+func accountCUIT(raw *string) (*string, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	digits := domain.DigitsOnly(*raw)
+	if digits == "" {
+		return nil, nil
+	}
+	if len(digits) != 11 || !validCUIT(digits) {
+		return nil, domain.WithCode(domain.CodeInvalidTaxID,
+			fmt.Errorf("%w: %q is not a valid CUIT", domain.ErrInvalidInput, *raw))
+	}
+	return &digits, nil
 }
 
 func taxIDOf(value *string) string {

@@ -24,6 +24,7 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from '@repo/ui/components';
+import { GrossIncomeNumberInput } from '@/app/(protected)/settings/invoicing/_components/gross-income-number-input';
 import { updateInvoicingSettings } from '@/app/(protected)/settings/invoicing/actions';
 import {
   ADDRESS_MAX_LENGTH,
@@ -224,9 +225,8 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
                   <FormItem>
                     <FormLabel required>{t('profile.grossIncomeNumber')}</FormLabel>
                     <FormControl>
-                      <Input
+                      <GrossIncomeNumberInput
                         {...field}
-                        inputMode="numeric"
                         maxLength={GROSS_INCOME_NUMBER_MAX_LENGTH}
                         placeholder={t('profile.grossIncomeNumberPlaceholder')}
                         disabled={pending}

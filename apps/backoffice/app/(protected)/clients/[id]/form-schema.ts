@@ -1,25 +1,14 @@
 import { z } from 'zod';
 
 import { IVA_CONDITIONS } from '@/lib/api/invoicing';
-import { optionalText, rawText, type SchemaText } from '@/lib/forms/validators';
-import { hasValidCuitCheckDigit } from '@/lib/utils/cuit';
-
-export const TAX_ID_MAX_LENGTH = 32;
-
-// A CUIT is eleven digits and a DNI seven or eight; separators are the API's to strip.
-function isTaxIdShape(raw: string): boolean {
-  const digits = raw.replace(/\D/g, '');
-  return digits.length === 11 || digits.length === 7 || digits.length === 8;
-}
+import { optionalTaxId, optionalText, rawText, type SchemaText } from '@/lib/forms/validators';
 
 // The client's fiscal identity is editable independently of an order.
 export function clientFiscalSchema(t: SchemaText = rawText) {
   return z.object({
     address: optionalText(t).optional(),
     legalName: optionalText(t),
-    taxId: optionalText(t, TAX_ID_MAX_LENGTH)
-      .refine((raw) => raw === '' || isTaxIdShape(raw), t.field('taxId.invalid'))
-      .refine((raw) => raw === '' || hasValidCuitCheckDigit(raw), t.field('taxId.checkDigit')),
+    taxId: optionalTaxId(t, 'cuit-or-dni'),
     ivaCondition: z.union([z.enum(IVA_CONDITIONS), z.literal('')]),
   });
 }

@@ -35,7 +35,7 @@ func TestAccount_UpdateReplacesTheProfileAndBrand(t *testing.T) {
 	rec := e.do(t, request{method: http.MethodPut, path: "/v1/account", token: e.tokenFor(t, admin),
 		body: accountBody("Corralón San Martín", map[string]any{
 			"legal_name":     "Corralón San Martín S.R.L.",
-			"tax_id":         "30-71234567-9",
+			"tax_id":         "30-71234567-1",
 			"brand_logo_url": "https://cdn.corralon.test/logo.png",
 			"brand_color":    "#C2410C",
 		})})
@@ -84,7 +84,7 @@ func TestAccount_UpdateClearsAnOmittedField(t *testing.T) {
 	token := e.tokenFor(t, admin)
 
 	if rec := e.do(t, request{method: http.MethodPut, path: "/v1/account", token: token,
-		body: accountBody("Corralón A", map[string]any{"tax_id": "30-71234567-9"})}); rec.Code != http.StatusOK {
+		body: accountBody("Corralón A", map[string]any{"tax_id": "30-71234567-1"})}); rec.Code != http.StatusOK {
 		t.Fatalf("first update: status = %d, want %d; body = %s", rec.Code, http.StatusOK, rec.Body)
 	}
 	if rec := e.do(t, request{method: http.MethodPut, path: "/v1/account", token: token,
@@ -233,11 +233,11 @@ func TestAccount_UpdateLocksTheCUITWhileARCAIsConnected(t *testing.T) {
 	token := e.tokenFor(t, admin)
 
 	if rec := e.do(t, request{method: http.MethodPut, path: "/v1/account", token: token,
-		body: accountBody("Corralón A", map[string]any{"tax_id": "30-71234567-9"})}); rec.Code != http.StatusOK {
+		body: accountBody("Corralón A", map[string]any{"tax_id": "30-71234567-1"})}); rec.Code != http.StatusOK {
 		t.Fatalf("first update: status = %d; body = %s", rec.Code, rec.Body)
 	}
 	if _, err := e.db.CrossAccount().Exec(context.Background(),
-		`INSERT INTO arca_setup (account_id, environment, tax_id, csr, sealed_key) VALUES ($1, 'HOMOLOGATION', '30712345679', 'csr', 'sealed')`,
+		`INSERT INTO arca_setup (account_id, environment, tax_id, csr, sealed_key) VALUES ($1, 'HOMOLOGATION', '30712345671', 'csr', 'sealed')`,
 		accountID); err != nil {
 		t.Fatalf("seed arca setup: %v", err)
 	}
@@ -248,12 +248,12 @@ func TestAccount_UpdateLocksTheCUITWhileARCAIsConnected(t *testing.T) {
 		t.Fatalf("status = %d, body = %s, want 409 ARCA_CONNECTED", rec.Code, rec.Body)
 	}
 	if rec := e.do(t, request{method: http.MethodPut, path: "/v1/account", token: token,
-		body: accountBody("Corralón B", map[string]any{"tax_id": "30712345679"})}); rec.Code != http.StatusOK {
+		body: accountBody("Corralón B", map[string]any{"tax_id": "30712345671"})}); rec.Code != http.StatusOK {
 		t.Fatalf("same CUIT reformatted: status = %d; body = %s", rec.Code, rec.Body)
 	}
 	var taxID string
 	if err := e.db.CrossAccount().QueryRow(context.Background(),
-		`SELECT tax_id FROM account WHERE id = $1`, accountID).Scan(&taxID); err != nil || taxID != "30712345679" {
+		`SELECT tax_id FROM account WHERE id = $1`, accountID).Scan(&taxID); err != nil || taxID != "30712345671" {
 		t.Fatalf("tax_id = %q, %v", taxID, err)
 	}
 }
@@ -299,7 +299,7 @@ func TestAccount_ConfirmedCUITChangeDisconnectsARCAAtomically(t *testing.T) {
 	if err == nil {
 		t.Fatal("an account name past the column accepted")
 	}
-	if !connected() || taxID() != "30-71234567-1" {
+	if !connected() || taxID() != "30712345671" {
 		t.Fatal("a failed account write still removed the connection or changed the CUIT")
 	}
 
@@ -308,7 +308,7 @@ func TestAccount_ConfirmedCUITChangeDisconnectsARCAAtomically(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("confirmed change: status = %d; body = %s", rec.Code, rec.Body)
 	}
-	if connected() || taxID() != other {
+	if connected() || taxID() != "20329642330" {
 		t.Fatal("a confirmed change left the connection or kept the old CUIT")
 	}
 }

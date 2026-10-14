@@ -36,6 +36,7 @@ import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { ApiError, errorCodeOf } from '@/lib/api/errors';
 import {
   formatCuit,
+  formatDni,
   formatInvoiceNumber,
   type Invoice,
   type InvoiceAmounts,
@@ -52,6 +53,10 @@ const RECEIVER_ISSUES = new Set([
   'RECEIVER_ADDRESS_REQUIRED',
 ]);
 const NO_AMOUNT = '0.00';
+const DOC_NUMBER_FORMATS: Record<string, (digits: string) => string> = {
+  CUIT: formatCuit,
+  DNI: formatDni,
+};
 
 interface InvoiceCardProps {
   quoteId: string;
@@ -342,7 +347,7 @@ function ReceiverFacts({ receiver }: { receiver: InvoiceReceiver }) {
       ? tDocs('NONE')
       : t('document', {
           type: tDocs(receiver.docType),
-          number: receiver.docType === 'CUIT' ? formatCuit(receiver.docNumber) : receiver.docNumber,
+          number: (DOC_NUMBER_FORMATS[receiver.docType] ?? String)(receiver.docNumber),
         });
 
   return (

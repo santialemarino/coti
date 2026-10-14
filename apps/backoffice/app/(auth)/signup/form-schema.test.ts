@@ -56,6 +56,18 @@ describe('signupSchema', () => {
     );
   });
 
+  // The account's CUIT is the one ARCA invoices with, so a DNI-length number is not one.
+  it('refuses a CUIT of the wrong length or with the wrong check digit', () => {
+    expect(messagesFor({ taxId: '12345678' }).taxId).toBe('taxId.invalid');
+    expect(messagesFor({ taxId: '30712345679' }).taxId).toBe('taxId.checkDigit');
+  });
+
+  it('settles a CUIT to its digits', () => {
+    const parsed = signupSchema().safeParse({ ...VALID, taxId: '30-71234567-1' });
+
+    expect(parsed.success && parsed.data.taxId).toBe('30712345671');
+  });
+
   it('refuses a password past the length bcrypt reads', () => {
     const past = `Aa1!${'b'.repeat(PASSWORD_MAX_BYTES)}`;
 

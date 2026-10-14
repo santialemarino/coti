@@ -1,6 +1,8 @@
 // The invoicing vocabulary both halves share: the server read of the settings and the browser's
 // reads and writes on an order. No transport here, so either side can import it.
 
+import { formatTaxId } from '@/lib/utils/tax-id';
+
 export const IVA_CONDITIONS = ['REGISTERED', 'MONOTRIBUTO', 'EXEMPT', 'FINAL_CONSUMER'] as const;
 export type IvaCondition = (typeof IVA_CONDITIONS)[number];
 
@@ -333,4 +335,9 @@ export function formatCuit(digits: string): string {
   return /^\d{11}$/.test(digits)
     ? `${digits.slice(0, 2)}-${digits.slice(2, 10)}-${digits.slice(10)}`
     : digits;
+}
+
+// A DNI as it is written: 12.345.678. Anything that is not seven or eight digits reads as it came.
+export function formatDni(digits: string): string {
+  return /^\d{7,8}$/.test(digits) ? formatTaxId(digits, 'dni') : digits;
 }

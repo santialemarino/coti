@@ -8,6 +8,8 @@ import {
   passwordByteLength,
   SECRET_MAX_LENGTH,
 } from '@/lib/constants/password';
+import { hasValidCuitCheckDigit } from '@/lib/utils/cuit';
+import { hasTaxIdLength, taxIdDigits, type TaxIdKind } from '@/lib/utils/tax-id';
 
 /* A schema message is a catalog key the form resolves, so no copy is baked into a schema. */
 export type MessageFor = (key: string, values?: Record<string, string | number>) => string;
@@ -38,6 +40,21 @@ export function requiredText(t: SchemaText, requiredKey: string, max = TEXT_FIEL
 
 export function optionalText(t: SchemaText, max = TEXT_FIELD_MAX_LENGTH) {
   return z.string().trim().max(max, t.shared('tooLong', { max }));
+}
+
+/*
+ * An optional CUIT or DNI, settled to its digits so the API receives one canonical form. Only an
+ * eleven-digit value has a check digit to fail, so a wrong length reports the length alone.
+ */
+export function optionalTaxId(t: SchemaText, kind: TaxIdKind) {
+  return z
+    .string()
+    .transform(taxIdDigits)
+    .refine((digits) => digits === '' || hasTaxIdLength(digits, kind), t.field('taxId.invalid'))
+    .refine(
+      (digits) => !hasTaxIdLength(digits, kind) || hasValidCuitCheckDigit(digits),
+      t.field('taxId.checkDigit'),
+    );
 }
 
 // The cap mirrors what the API stores; a longer address is refused here rather than as a 400.

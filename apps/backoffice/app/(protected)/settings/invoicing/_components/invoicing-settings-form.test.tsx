@@ -156,11 +156,24 @@ describe('InvoicingSettingsForm gross income', () => {
     const view = renderForm();
     const number = view.getByLabelText(copy.profile.grossIncomeNumber, { exact: false });
 
-    fireEvent.change(number, { target: { value: 'en trámite' } });
+    fireEvent.change(number, { target: { value: '901--123456' } });
     fireEvent.click(view.getByRole('button', { name: copy.submit }));
 
     await waitFor(() => expect(number.getAttribute('aria-invalid')).toBe('true'));
     expect(updateInvoicingSettings).not.toHaveBeenCalled();
+  });
+
+  // Provinces group the number differently, so it is filtered, never reshaped into one pattern.
+  it('keeps only the digits and hyphens of what is typed or pasted', () => {
+    const view = renderForm();
+    const number = view.getByLabelText(copy.profile.grossIncomeNumber, {
+      exact: false,
+    }) as HTMLInputElement;
+
+    fireEvent.change(number, { target: { value: ' 901 234.567-8 n' } });
+
+    expect(number.value).toBe('901234567-8');
+    expect(number.getAttribute('autocomplete')).toBe('off');
   });
 });
 

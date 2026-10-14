@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -62,7 +63,7 @@ func (f *accountTestARCASetups) Delete(context.Context, repository.Querier, uuid
 
 func TestAccountService_UpdateLocksTheCUITWhileARCAIsConnected(t *testing.T) {
 	t.Parallel()
-	stored, other, formatted := "30-71234567-9", "20-32964233-0", "30712345679"
+	stored, other, formatted := "30-71234567-1", "20-32964233-0", "30712345671"
 	cases := []struct {
 		name      string
 		connected bool
@@ -100,9 +101,51 @@ func TestAccountService_UpdateLocksTheCUITWhileARCAIsConnected(t *testing.T) {
 	}
 }
 
+// The account's CUIT is what ARCA invoices carry, so the API holds the rule the form shows.
+func TestAccountService_UpdateKeepsOnlyAValidCUIT(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name  string
+		taxID string
+		want  *string
+	}{
+		{"formatted", "20-32964233-0", ptr("20329642330")},
+		{"blank means none", "   ", nil},
+		{"wrong check digit", "20-32964233-1", nil},
+		{"too short", "20-3296423", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repo := &accountTestRepo{account: &domain.Account{Name: "Corralón"}}
+			service := &AccountService{db: &accountTestDB{}, accounts: repo,
+				arcaSetups: &accountTestARCASetups{}, invoices: &accountTestARCASetups{}}
+			taxID := tc.taxID
+
+			_, err := service.Update(context.Background(), domain.Tenant{AccountID: uuid.New()},
+				domain.AccountUpdate{Name: "Corralón", TaxID: &taxID})
+
+			wantRefused := tc.want == nil && strings.TrimSpace(tc.taxID) != ""
+			if wantRefused {
+				if domain.CodeOf(err) != domain.CodeInvalidTaxID {
+					t.Fatalf("err = %v, want INVALID_TAX_ID", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := repo.updated.TaxID
+			if (got == nil) != (tc.want == nil) || (got != nil && *got != *tc.want) {
+				t.Fatalf("stored tax id = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestAccountService_UpdateDisconnectsARCAOnlyWhenConfirmed(t *testing.T) {
 	t.Parallel()
-	stored, other := "30-71234567-9", "20-32964233-0"
+	stored, other := "30-71234567-1", "20-32964233-0"
 	cases := []struct {
 		name     string
 		confirm  bool

@@ -1,4 +1,4 @@
-const CUIT_DIGITS = 11;
+export const CUIT_DIGITS = 11;
 const CUIT_WEIGHTS = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
 
 // The CUIT check digit, as the API and ARCA compute it: modulo 11 over the first ten digits. A value

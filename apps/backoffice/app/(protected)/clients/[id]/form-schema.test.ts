@@ -28,5 +28,13 @@ describe('clientFiscalSchema tax id', () => {
 
   it('refuses a number that is neither a CUIT nor a DNI', () => {
     expect(taxIdIssues('123456')).toEqual(['field:taxId.invalid']);
+    expect(taxIdIssues('123456789')).toEqual(['field:taxId.invalid']);
+  });
+
+  it('settles a CUIT or a DNI to its digits', () => {
+    const parse = (taxId: string) => clientFiscalSchema().parse({ ...VALUES, taxId }).taxId;
+
+    expect(parse('30-70123456-8')).toBe('30701234568');
+    expect(parse('12.345.678')).toBe('12345678');
   });
 });

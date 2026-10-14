@@ -12,6 +12,8 @@ export const GROSS_INCOME_NUMBER_MAX_LENGTH = 20;
 const GROSS_INCOME_DIGITS_MIN = 5;
 const GROSS_INCOME_DIGITS_MAX = 15;
 const GROSS_INCOME_NUMBER = /^\d+(-\d+)*$/;
+// What the field keeps as it is typed or pasted; the grouping is left as the province writes it.
+export const GROSS_INCOME_CHARACTER = /^[\d-]$/;
 
 // What the API stores for an issuer exempt from gross income tax.
 export const GROSS_INCOME_EXEMPT = 'EXENTO';
