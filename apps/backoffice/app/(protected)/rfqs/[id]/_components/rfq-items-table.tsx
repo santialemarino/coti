@@ -234,8 +234,9 @@ export function RfqItemsTable({
       const updated = await updateDiscount(quoteId, discount.id, branchId, {
         suppressed_by_seller: !discount.suppressed_by_seller,
       });
-      await onRefresh?.();
+      // The local swap first: the refresh then brings what the sweep re-earned around it.
       onDiscountsChange?.(discounts.map((d) => (d.id === updated.id ? updated : d)));
+      await onRefresh?.();
       toast.success(
         t(
           updated.suppressed_by_seller
@@ -283,6 +284,8 @@ export function RfqItemsTable({
     try {
       const updated = await updateQuoteItem(quoteId, itemId, branchId, { quantity: normalized });
       onItemsChange(items.map((item) => (item.id === itemId ? updated : item)));
+      // Every line change re-sweeps the promotions, so the discounts are read back too.
+      await onRefresh?.();
       toast.success(t('detail.items.toast.updated', { name: updated.requested_description }));
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
@@ -315,6 +318,8 @@ export function RfqItemsTable({
         unit_price_snapshot: normalized,
       });
       onItemsChange(items.map((item) => (item.id === itemId ? updated : item)));
+      // Every line change re-sweeps the promotions, so the discounts are read back too.
+      await onRefresh?.();
       toast.success(t('detail.items.toast.updated', { name: updated.requested_description }));
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
@@ -338,6 +343,7 @@ export function RfqItemsTable({
     try {
       await deleteQuoteItem(quoteId, item.id, branchId);
       onItemsChange(items.filter((line) => line.id !== item.id));
+      await onRefresh?.();
       setPendingDelete(null);
       toast.success(t('detail.items.toast.deleted', { name: item.requested_description }));
     } catch (error) {
@@ -357,6 +363,7 @@ export function RfqItemsTable({
         unit: product.unit || null,
       });
       onItemsChange([...items, created]);
+      await onRefresh?.();
       toast.success(t('detail.items.toast.added', { name: created.requested_description }));
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
@@ -379,6 +386,7 @@ export function RfqItemsTable({
       const kept =
         updated.alternatives.length > 0 ? updated : { ...updated, alternatives: item.alternatives };
       onItemsChange(items.map((i) => (i.id === item.id ? kept : i)));
+      await onRefresh?.();
       toast.success(t('detail.items.toast.updated', { name: updated.requested_description }));
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
@@ -663,6 +671,11 @@ export function RfqItemsTable({
                           >
                             {t(`detail.items.discounts.scope.${discount.scope}`)}
                           </Badge>
+                          {discount.origin !== 'MANUAL_SELLER' && (
+                            <Badge tone="neutral" size="sm">
+                              {t(`detail.items.discounts.origin.${discount.origin}`)}
+                            </Badge>
+                          )}
                           {discountRuleLabel(discount, fmt) && (
                             <Badge tone="neutral" size="sm">
                               {discountRuleLabel(discount, fmt)}
