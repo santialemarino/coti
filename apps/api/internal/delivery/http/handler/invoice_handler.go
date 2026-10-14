@@ -297,7 +297,7 @@ func (h *InvoiceHandler) Issue(c *gin.Context) {
 
 func toInvoicingSettingsResponse(s domain.InvoicingSettings) dto.InvoicingSettingsResponse {
 	response := dto.InvoicingSettingsResponse{
-		Profile: dto.InvoiceIssuerProfileRequest{Address: s.Account.Profile.Address, GrossIncomeRegistration: s.Account.Profile.GrossIncomeRegistration, ActivityStartedOn: s.Account.Profile.ActivityStartedOn}, Enabled: s.Enabled, Environment: s.Environment, LegalName: s.Account.LegalName,
+		Profile: dto.InvoiceIssuerProfileRequest{Address: s.Account.Profile.Address, GrossIncomeRegistration: s.Account.Profile.GrossIncomeRegistration, ActivityStartedOn: s.Account.Profile.ActivityStartedOn}, Enabled: s.Enabled, Environment: string(s.Environment), LegalName: s.Account.LegalName,
 		TaxID: s.Account.TaxID, IVACondition: conditionString(s.Account.IVACondition),
 		PricesIncludeVAT: s.Account.PricesIncludeVAT, Branches: make([]dto.BranchPointOfSaleResponse, 0, len(s.Branches)),
 	}
@@ -323,7 +323,7 @@ func toClientFiscalResponse(c domain.ClientFiscal) dto.ClientFiscalResponse {
 
 func toInvoicePreviewResponse(p domain.InvoicePreview) dto.InvoicePreviewResponse {
 	response := dto.InvoicePreviewResponse{
-		IssuerCUIT:  p.IssuerCUIT,
+		Environment: string(p.Environment), IssuerCUIT: p.IssuerCUIT,
 		Fingerprint: p.Fingerprint, VersionID: p.VersionID, Type: string(p.Type), PointOfSale: p.PointOfSale, Receiver: toInvoiceReceiverResponse(p.Receiver),
 		Amounts: toInvoiceAmountsResponse(p.Amounts), Currency: p.Currency, Issues: p.Issues,
 	}
@@ -331,12 +331,16 @@ func toInvoicePreviewResponse(p domain.InvoicePreview) dto.InvoicePreviewRespons
 		invoice := toInvoiceResponse(*p.Invoice)
 		response.Invoice = &invoice
 	}
+	if p.OtherEnvironmentInvoice != nil {
+		other := toInvoiceResponse(*p.OtherEnvironmentInvoice)
+		response.OtherEnvironmentInvoice = &other
+	}
 	return response
 }
 
 func toInvoiceResponse(inv domain.Invoice) dto.InvoiceResponse {
 	response := dto.InvoiceResponse{
-		ID: inv.ID, BranchID: inv.BranchID, Status: string(inv.Status), Type: string(inv.Type), PointOfSale: inv.PointOfSale,
+		ID: inv.ID, BranchID: inv.BranchID, Environment: string(inv.Environment), Status: string(inv.Status), Type: string(inv.Type), PointOfSale: inv.PointOfSale,
 		Number: inv.Number, IssuedOn: inv.IssuedOn.Format("2006-01-02"), CAE: inv.CAE,
 		IssuerCUIT: inv.IssuerCUIT, Receiver: toInvoiceReceiverResponse(inv.Receiver),
 		Amounts: toInvoiceAmountsResponse(inv.Amounts), Currency: inv.Currency, Issues: inv.Issues,

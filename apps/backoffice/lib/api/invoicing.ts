@@ -22,6 +22,16 @@ export function vatRateOf(value: string | null | undefined): VatRate {
   return VAT_RATES.find((rate) => rate === value) ?? DEFAULT_VAT_RATE;
 }
 
+// ARCA's two deployments. HOMOLOGATION is its test environment: what it authorizes has no fiscal
+// validity, so everything made there is marked as a test.
+export const ARCA_ENVIRONMENTS = ['HOMOLOGATION', 'PRODUCTION'] as const;
+export type ARCAEnvironment = (typeof ARCA_ENVIRONMENTS)[number];
+
+// A value this app does not know reads as a test, so the mark is never dropped by mistake.
+export function arcaEnvironmentOf(value: string | null | undefined): ARCAEnvironment {
+  return value === 'PRODUCTION' ? 'PRODUCTION' : 'HOMOLOGATION';
+}
+
 // The point-of-sale range ARCA accepts, mirrored from the API.
 export const POINT_OF_SALE_MIN = 1;
 export const POINT_OF_SALE_MAX = 99998;
@@ -69,6 +79,7 @@ interface InvoiceAmountsRaw {
 export interface InvoiceRaw {
   id: string;
   branch_id: string;
+  environment: string;
   status: string;
   type: string;
   point_of_sale: number;
@@ -86,6 +97,7 @@ export interface InvoiceRaw {
 }
 
 export interface InvoicePreviewRaw {
+  environment: string;
   issuer_cuit: string;
   fingerprint: string;
   version_id: string;
@@ -96,6 +108,7 @@ export interface InvoicePreviewRaw {
   currency: string;
   issues: string[] | null;
   invoice: InvoiceRaw | null;
+  other_environment_invoice?: InvoiceRaw | null;
 }
 
 export interface ClientFiscalRaw {
@@ -150,6 +163,7 @@ export interface InvoiceAmounts {
 export interface Invoice {
   id: string;
   branchId: string;
+  environment: ARCAEnvironment;
   status: 'PENDING' | 'ISSUED' | 'REJECTED';
   type: string;
   pointOfSale: number;
@@ -168,6 +182,8 @@ export interface Invoice {
 }
 
 export interface InvoicePreview {
+  // Where an invoice issued now would be authorized.
+  environment: ARCAEnvironment;
   issuerCuit: string;
   fingerprint: string;
   versionId: string;
@@ -178,6 +194,8 @@ export interface InvoicePreview {
   currency: string;
   issues: string[];
   invoice: Invoice | null;
+  // The newest invoice issued for the sale in the other ARCA environment: history, never a hold.
+  otherEnvironmentInvoice: Invoice | null;
 }
 
 export interface ClientFiscal {
@@ -245,6 +263,7 @@ export function mapInvoice(raw: InvoiceRaw): Invoice {
   return {
     id: raw.id,
     branchId: raw.branch_id,
+    environment: arcaEnvironmentOf(raw.environment),
     status: raw.status as Invoice['status'],
     type: raw.type,
     pointOfSale: raw.point_of_sale,
@@ -264,6 +283,7 @@ export function mapInvoice(raw: InvoiceRaw): Invoice {
 
 export function mapInvoicePreview(raw: InvoicePreviewRaw): InvoicePreview {
   return {
+    environment: arcaEnvironmentOf(raw.environment),
     issuerCuit: raw.issuer_cuit,
     fingerprint: raw.fingerprint,
     versionId: raw.version_id,
@@ -274,6 +294,9 @@ export function mapInvoicePreview(raw: InvoicePreviewRaw): InvoicePreview {
     currency: raw.currency,
     issues: raw.issues ?? [],
     invoice: raw.invoice ? mapInvoice(raw.invoice) : null,
+    otherEnvironmentInvoice: raw.other_environment_invoice
+      ? mapInvoice(raw.other_environment_invoice)
+      : null,
   };
 }
 

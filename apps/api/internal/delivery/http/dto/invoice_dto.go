@@ -31,7 +31,7 @@ type BranchPointOfSaleInput struct {
 type InvoicingSettingsResponse struct {
 	Profile          InvoiceIssuerProfileRequest `json:"profile"`
 	Enabled          bool                        `json:"enabled"`
-	Environment      string                      `json:"environment"`
+	Environment      string                      `json:"environment" enums:"HOMOLOGATION,PRODUCTION"`
 	LegalName        *string                     `json:"legal_name"`
 	TaxID            *string                     `json:"tax_id"`
 	IVACondition     *string                     `json:"iva_condition"`
@@ -110,8 +110,10 @@ type InvoiceAmountsResponse struct {
 
 // InvoiceResponse is an invoice issued, pending or refused for a quote.
 type InvoiceResponse struct {
-	ID           uuid.UUID               `json:"id"`
-	BranchID     uuid.UUID               `json:"branch_id"`
+	ID       uuid.UUID `json:"id"`
+	BranchID uuid.UUID `json:"branch_id"`
+	// Environment is where ARCA authorizes it; a HOMOLOGATION invoice has no fiscal validity.
+	Environment  string                  `json:"environment" enums:"HOMOLOGATION,PRODUCTION"`
 	Status       string                  `json:"status"`
 	Type         string                  `json:"type"`
 	PointOfSale  int                     `json:"point_of_sale"`
@@ -132,6 +134,8 @@ type InvoiceResponse struct {
 // InvoicePreviewResponse is returned by GET /v1/quotes/:quoteId/invoice: what would be issued now,
 // every gap that stops it, and the invoice the quote already has, if any.
 type InvoicePreviewResponse struct {
+	// Environment is where an invoice issued now would be authorized.
+	Environment string                  `json:"environment" enums:"HOMOLOGATION,PRODUCTION"`
 	IssuerCUIT  string                  `json:"issuer_cuit"`
 	Fingerprint string                  `json:"fingerprint"`
 	VersionID   uuid.UUID               `json:"version_id"` // what POST confirms, with type and total.
@@ -142,6 +146,9 @@ type InvoicePreviewResponse struct {
 	Currency    string                  `json:"currency"`
 	Issues      []string                `json:"issues"`
 	Invoice     *InvoiceResponse        `json:"invoice"`
+	// OtherEnvironmentInvoice is the newest invoice issued for the sale in the other ARCA environment,
+	// shown as history; it does not stop an invoice in this one.
+	OtherEnvironmentInvoice *InvoiceResponse `json:"other_environment_invoice"`
 }
 
 // InvoiceListResponse is a bounded page of branch-scoped fiscal records.

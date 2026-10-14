@@ -88,6 +88,10 @@ services:
       - key: MAIL_SMTP_PASSWORD
         scope: RUN_TIME
         type: SECRET
+      # ARCA's test deployment until go-live switches it to production.
+      - key: ARCA_ENVIRONMENT
+        scope: RUN_TIME
+        value: homologation
       # Every selector below is OFF, so the app boots on the two database URLs, AUTH_JWT_SECRET and
       # STORAGE_LOCAL_SIGNING_SECRET alone. Turning one on makes its own credential required at
       # startup: an empty SECRET beside an enabled capability is a deploy that never starts.

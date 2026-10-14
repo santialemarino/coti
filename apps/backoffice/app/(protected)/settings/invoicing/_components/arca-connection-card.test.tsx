@@ -10,6 +10,9 @@ import messages from '@/translations/es.json';
 
 const NONE: ARCASetup = {
   enabled: true,
+  environment: 'PRODUCTION',
+  setupEnvironment: null,
+  reconnectRequired: false,
   taxId: '',
   csr: '',
   hasCertificate: false,
@@ -74,5 +77,25 @@ describe('ARCAConnectionCard', () => {
     const view = card({ ...NONE, enabled: false }, 'disabled');
     expect(view.getByText(copy.bodies.disabled)).toBeTruthy();
     expect(view.queryByRole('link')).toBeNull();
+  });
+
+  it('leads a connection made for the other environment back through the guide', () => {
+    const view = card({ ...INSTALLED, reconnectRequired: true }, 'reconnect');
+    expect(view.getByText(copy.states.reconnect)).toBeTruthy();
+    expect(view.getByText(copy.bodies.reconnect)).toBeTruthy();
+    expect(view.getByRole('link', { name: copy.actions.reconnect }).getAttribute('href')).toBe(
+      ROUTES.arcaSettings,
+    );
+  });
+
+  it('says the server is in test mode only while it invoices in homologation', () => {
+    const test = card({ ...INSTALLED, environment: 'HOMOLOGATION' }, 'connected');
+    expect(test.getByText(copy.testMode)).toBeTruthy();
+    expect(test.getByText(copy.testModeNote)).toBeTruthy();
+    test.unmount();
+
+    const live = card(INSTALLED, 'connected');
+    expect(live.queryByText(copy.testMode)).toBeNull();
+    expect(live.queryByText(copy.testModeNote)).toBeNull();
   });
 });

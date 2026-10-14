@@ -22,6 +22,7 @@ const (
 	invoiceIssueCredentials        = "ARCA_CREDENTIALS"
 	invoiceIssueCredentialsExpired = "ARCA_CREDENTIALS_EXPIRED"
 	invoiceIssueCredentialsCUIT    = "ARCA_CREDENTIALS_CUIT"
+	invoiceIssueCredentialsEnv     = "ARCA_CREDENTIALS_ENVIRONMENT"
 	invoiceIssueReceiverCUIT       = "RECEIVER_CUIT_REQUIRED"
 	invoiceIssueReceiverID         = "RECEIVER_ID_REQUIRED"
 	invoiceIssueTotalMismatch      = "QUOTE_TOTAL_MISMATCH"
@@ -216,6 +217,7 @@ type invoiceInputs struct {
 	account         domain.AccountFiscal
 	pointOfSale     *int
 	credential      *domain.ARCACredentialStatus
+	environment     domain.ARCAEnvironment // where this server authorizes invoices.
 	receiver        domain.InvoiceReceiver
 	amounts         domain.InvoiceAmounts
 	invoiceType     domain.InvoiceType
@@ -269,6 +271,9 @@ func invoiceIssues(in invoiceInputs) []string {
 	switch {
 	case in.credential == nil:
 		add(invoiceIssueCredentials)
+	// A connection made for the other environment is replaced by reconnecting, whatever else ails it.
+	case in.credential.Environment != in.environment:
+		add(invoiceIssueCredentialsEnv)
 	case !in.credential.ExpiresAt.After(in.now):
 		add(invoiceIssueCredentialsExpired)
 	}

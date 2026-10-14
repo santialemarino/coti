@@ -16,6 +16,9 @@ describe('ARCA connection page', () => {
   it('hands the guide the account CUIT and branches alongside the connection', async () => {
     vi.mocked(getARCASetup).mockResolvedValue({
       enabled: true,
+      environment: 'HOMOLOGATION',
+      setupEnvironment: null,
+      reconnectRequired: false,
       taxId: '',
       csr: '',
       hasCertificate: false,

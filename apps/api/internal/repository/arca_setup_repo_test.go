@@ -17,7 +17,8 @@ func TestARCASetupRepository_TenantIsolation(t *testing.T) {
 	repo := NewARCASetupRepository()
 	a := seedAccount(t, db, "ARCA test A")
 	b := seedAccount(t, db, "ARCA test B")
-	setup := domain.ARCASetup{ID: uuid.New(), TaxID: "20329642330", CSR: "public", SealedKey: "encrypted"}
+	setup := domain.ARCASetup{ID: uuid.New(), Environment: domain.ARCAEnvironmentProduction, TaxID: "20329642330",
+		CSR: "public", SealedKey: "encrypted"}
 	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: a}, func(q Querier) error { return repo.Create(ctx, q, a, setup) }); err != nil {
 		t.Fatal(err)
 	}
@@ -40,6 +41,9 @@ func TestARCASetupRepository_TenantIsolation(t *testing.T) {
 		return nil
 	}); err != nil {
 		t.Fatal(err)
+	}
+	if got, err := repo.Get(ctx, db.CrossAccount(), a); err != nil || got.Environment != domain.ARCAEnvironmentProduction {
+		t.Fatalf("Get(a) = %+v, %v, want the setup with its environment", got, err)
 	}
 	if _, err := repo.Get(ctx, db.CrossAccount(), b); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("account predicate leaked A: %v", err)

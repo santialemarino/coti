@@ -204,7 +204,7 @@ func newEnvWithRFQProviders(
 		extractor,
 		services.NewCatalogMatchService(catalogSearchService, cfg.Catalog), quiet, cfg.RFQ)
 	quoteService := services.NewQuoteService(db, quoteRepo,
-		repository.NewProductPriceRepository(), quiet)
+		repository.NewProductPriceRepository(), domain.ARCAEnvironmentHomologation, quiet)
 	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
 		quoteSendRepo)
 	channelSealer, err := secrets.NewAESGCM(cfg.Channel.EncryptionKey)

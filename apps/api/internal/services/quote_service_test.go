@@ -334,7 +334,7 @@ func newQuoteFixture(items []domain.QuoteItem, prices map[uuid.UUID]domain.Branc
 	}
 	branchPrices := &fakeBranchPrices{prices: prices}
 	return quoteFixture{
-		service: NewQuoteService(db, quotes, branchPrices,
+		service: NewQuoteService(db, quotes, branchPrices, domain.ARCAEnvironmentHomologation,
 			slog.New(slog.NewTextHandler(io.Discard, nil))),
 		db:     db,
 		quotes: quotes,
@@ -817,7 +817,7 @@ func quoteFixtureAt(quote *domain.Quote) quoteFixture {
 	db := &fakeQuoteDB{}
 	quotes := &fakeQuoteRepo{quote: quote, inTransaction: db}
 	prices := &fakeBranchPrices{}
-	service := NewQuoteService(db, quotes, prices,
+	service := NewQuoteService(db, quotes, prices, domain.ARCAEnvironmentHomologation,
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	return quoteFixture{
 		service: service,
@@ -1107,6 +1107,6 @@ func TestQuoteService_Unarchive_RestoresABoxedQuote(t *testing.T) {
 	}
 }
 
-func (f *fakeQuoteRepo) HasLiveInvoice(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) (bool, error) {
+func (f *fakeQuoteRepo) HasLiveInvoice(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID, domain.ARCAEnvironment) (bool, error) {
 	return f.liveInvoice, nil
 }
