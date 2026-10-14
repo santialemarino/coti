@@ -183,11 +183,10 @@ The stack is **react-hook-form + zod** with the shared `Form` primitives from
   input otherwise undoes one character at a time, or not at all. The hook groups edits the way a
   plain input does, answers ⌘Z / Ctrl+Z, ⌘⇧Z / Ctrl+Y and the `beforeinput` history events, takes
   its own step for a browser undo that skips `beforeinput` (`replay`, first thing in `onChange`),
-  and resets when the value changes from outside. `AmountInput`, `QuantityInput`, `PhoneInput`,
-  `TaxIdInput` and the Ingresos Brutos number all run on it, with the caret placed by
-  `useCaretPlacement` even when the edit changed nothing; state the text does not hold (a phone's
-  country) rides on each step as its `context`. A field that only filters drops what it refuses
-  with `keepAllowed` (`lib/utils/`).
+  and resets when the value changes from outside. Every field that formats or filters its value
+  runs on it, with the caret placed by `useCaretPlacement` even when the edit changed nothing; state
+  the text does not hold rides on each step as its `context`, and a change to that state is a step
+  of its own. A field that only filters drops what it refuses with `keepAllowed` (`lib/utils/`).
 - **A literal the caller types is accepted where the mask puts one, stepped over when it is the
   next character, and ignored anywhere else** — a separator, a decimal comma, a hyphen. Nothing
   typed may look ignored when it was right, and nothing typed may double what the mask already
