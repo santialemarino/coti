@@ -434,7 +434,7 @@ describe('TaxIdInput', () => {
     it.each([
       ['the arrow keys', () => ['ArrowLeft', 'ArrowRight'].forEach((key) => press(key))],
       ['a click', () => fireEvent.pointerDown(input())],
-    ])('closes the run when %s move the caret, even back to the same spot', (_, move) => {
+    ])('closes the run when the caret moves by %s, even back to the same spot', (_, move) => {
       render(<Harness kind="cuit" />);
       select(0);
       type('20');
