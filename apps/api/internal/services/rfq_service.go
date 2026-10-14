@@ -535,8 +535,8 @@ func (s *RFQService) UpdateItem(
 		if quoteErr != nil {
 			return quoteErr
 		}
-		if !domain.IsEditableStatus(quote.CurrentStatus) {
-			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+		if err := requireEditableLines(*quote); err != nil {
+			return err
 		}
 		if quote.CurrentVersionID == nil {
 			return domain.ErrNotFound
@@ -586,8 +586,8 @@ func (s *RFQService) DeleteItem(
 		if quoteErr != nil {
 			return quoteErr
 		}
-		if !domain.IsEditableStatus(quote.CurrentStatus) {
-			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+		if err := requireEditableLines(*quote); err != nil {
+			return err
 		}
 		if quote.CurrentVersionID == nil {
 			return domain.ErrNotFound
@@ -632,8 +632,8 @@ func (s *RFQService) AddItem(
 		if quoteErr != nil {
 			return quoteErr
 		}
-		if !domain.IsEditableStatus(quote.CurrentStatus) {
-			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+		if err := requireEditableLines(*quote); err != nil {
+			return err
 		}
 		if quote.CurrentVersionID == nil {
 			return domain.ErrNotFound
@@ -679,8 +679,8 @@ func (s *RFQService) AddDiscount(
 		if quoteErr != nil {
 			return quoteErr
 		}
-		if !domain.IsEditableStatus(quote.CurrentStatus) {
-			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+		if err := requireEditableLines(*quote); err != nil {
+			return err
 		}
 		if quote.CurrentVersionID == nil {
 			return domain.ErrNotFound
@@ -748,8 +748,8 @@ func (s *RFQService) UpdateDiscount(
 		if quoteErr != nil {
 			return quoteErr
 		}
-		if !domain.IsEditableStatus(quote.CurrentStatus) {
-			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+		if err := requireEditableLines(*quote); err != nil {
+			return err
 		}
 		if quote.CurrentVersionID == nil {
 			return domain.ErrNotFound
@@ -843,8 +843,8 @@ func (s *RFQService) DeleteDiscount(
 		if quoteErr != nil {
 			return quoteErr
 		}
-		if !domain.IsEditableStatus(quote.CurrentStatus) {
-			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+		if err := requireEditableLines(*quote); err != nil {
+			return err
 		}
 		if quote.CurrentVersionID == nil {
 			return domain.ErrNotFound

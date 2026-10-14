@@ -184,7 +184,10 @@ func (s *QuoteService) ApproveAlternative(
 		if err != nil {
 			return err
 		}
-		if quote.ArchivedAt != nil || quote.CurrentStatus != domain.QuoteStatusQuoted {
+		if err := requireUnarchived(*quote); err != nil {
+			return err
+		}
+		if quote.CurrentStatus != domain.QuoteStatusQuoted {
 			return domain.ErrConflict
 		}
 		version, err := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)

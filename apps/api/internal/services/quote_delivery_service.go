@@ -305,8 +305,11 @@ func (s *QuoteDeliveryService) prepare(ctx context.Context, tenant domain.Tenant
 		if err != nil {
 			return err
 		}
-		if quote.ArchivedAt != nil || (quote.CurrentStatus != domain.QuoteStatusQuoted &&
-			quote.CurrentStatus != domain.QuoteStatusSent) {
+		if err := requireUnarchived(*quote); err != nil {
+			return err
+		}
+		if quote.CurrentStatus != domain.QuoteStatusQuoted &&
+			quote.CurrentStatus != domain.QuoteStatusSent {
 			return domain.WithCode(domain.CodeQuoteNotSendable, domain.ErrConflict)
 		}
 		version, err = s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
