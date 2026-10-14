@@ -11,7 +11,10 @@
     "wsassLookup": "En la página de inicio de ARCA, escribí «WSASS» en el buscador «¿Qué necesitás?» y abrí «WSASS - Autogestión Certificados Homologación». También podés tocar «Ver todos» en «Servicios más utilizados» y buscarlo en «Mis servicios», con su buscador o recorriendo la lista.",
     "pem": {
       "middle": "(varias líneas de letras, números y símbolos)",
-      "instruction": "Copialo completo, desde el primer guion hasta el último, guiones incluidos."
+      "instruction": {
+        "HOMOLOGATION": "Copialo completo, desde el primer guion hasta el último, guiones incluidos.",
+        "PRODUCTION": "Si en vez de elegir el archivo pegás su texto en Coti, copialo completo, desde el primer guion hasta el último, guiones incluidos."
+      }
     },
     "steps": {
       "wsass": {

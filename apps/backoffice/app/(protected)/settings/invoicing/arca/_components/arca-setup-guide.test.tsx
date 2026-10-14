@@ -166,7 +166,7 @@ describe('ARCASetupGuide states', () => {
 
   it('shows the certificate’s real delimiters and describes the middle, with one instruction', () => {
     const view = show(REQUESTED, 'inProgress');
-    const example = view.getByText(copy.pem.instruction).closest('figure')!;
+    const example = view.getByText(copy.pem.instruction.HOMOLOGATION).closest('figure')!;
     expect(within(example).getByText('-----BEGIN CERTIFICATE-----')).toBeTruthy();
     expect(within(example).getByText('-----END CERTIFICATE-----')).toBeTruthy();
     expect(within(example).getByText(copy.pem.middle).tagName).not.toBe('CODE');
@@ -518,6 +518,9 @@ describe('ARCASetupGuide in production', () => {
     expect(view.getByText(copy.steps.certificate.PRODUCTION.view)).toBeTruthy();
     expect(view.getByRole('button', { name: copy.steps.upload.chooseCertificate })).toBeTruthy();
     expect(view.getByPlaceholderText(copy.steps.upload.pastePlaceholder)).toBeTruthy();
+    // The file is the way back in production, so the copy instruction only covers pasting it.
+    expect(view.getByText(copy.pem.instruction.PRODUCTION)).toBeTruthy();
+    expect(view.queryByText(copy.pem.instruction.HOMOLOGATION)).toBeNull();
     expect(view.getByText(/«Computador Fiscal»/)).toBeTruthy();
     const guides = view
       .getAllByRole('link', { name: new RegExp(copy.steps.authorize.guide) })

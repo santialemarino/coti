@@ -248,7 +248,7 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, state }: ARCASet
             <li key={item}>{t(`steps.certificate.${env}.${item}`)}</li>
           ))}
         </ol>
-        <PemExample instruction={t('pem.instruction')} />
+        <PemExample instruction={t(`pem.instruction.${env}`)} />
         {env === 'PRODUCTION' ? (
           <ExternalButton href={ARCA_URLS.certificateGuide}>
             {t('steps.certificate.guide')}
