@@ -8,12 +8,8 @@ interface Placement {
   end: number;
 }
 
-/*
- * Puts the caret, or a selection, back where an edit left it once the reformatted value has
- * committed. A controlled input whose value was rewritten — or refused, and restored by React —
- * otherwise jumps to the end. Every call renders, so a refused edit that changes nothing still gets
- * its caret back.
- */
+// Puts the caret or selection back after a rewritten (or refused) value commits; React would
+// otherwise send it to the end. Every call renders, so even an edit that changed nothing gets it.
 export function useCaretPlacement() {
   const [placement, setPlacement] = useState<Placement | null>(null);
 

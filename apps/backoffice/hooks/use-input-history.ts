@@ -11,6 +11,8 @@ import {
 
 // A pause this long between keystrokes closes a run of typing into its own undo step.
 const UNDO_GROUP_PAUSE_MS = 1000;
+const MAX_UNDO_STEPS = 100;
+const NAVIGATION_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
 
 export interface InputSnapshot {
   value: string;
@@ -32,6 +34,7 @@ interface InputHistoryOptions {
   // What the field shows now; a change that no recorded edit produced resets the history.
   value: string;
   restore: (snapshot: InputSnapshot, input: HTMLInputElement) => void;
+  onReset?: () => void;
 }
 
 export function editKind(event: Event): EditKind {
@@ -56,13 +59,8 @@ function shortcutOf(event: KeyboardEvent<HTMLInputElement>): 'undo' | 'redo' | n
   return null;
 }
 
-/*
- * Undo and redo for a field that rewrites its own value: the browser drops a programmatic write from
- * its history, so a formatted or filtered input would otherwise undo one character at a time, or not
- * at all. Edits are grouped the way a plain input groups them, and every shortcut, menu entry and
- * `beforeinput` history event lands here instead of on the browser's stack.
- */
-export function useInputHistory({ ref, value, restore }: InputHistoryOptions) {
+// Undo for a field that rewrites its own value, which the browser leaves out of its own history.
+export function useInputHistory({ ref, value, restore, onReset }: InputHistoryOptions) {
   const undoStack = useRef<InputSnapshot[]>([]);
   const redoStack = useRef<InputSnapshot[]>([]);
   const lastEdit = useRef<LastEdit | null>(null);
@@ -70,9 +68,11 @@ export function useInputHistory({ ref, value, restore }: InputHistoryOptions) {
   const known = useRef(value);
   const menuStepTaken = useRef(false);
   const restoreLatest = useRef(restore);
+  const onResetLatest = useRef(onReset);
 
   useLayoutEffect(() => {
     restoreLatest.current = restore;
+    onResetLatest.current = onReset;
   });
 
   useEffect(() => {
@@ -81,6 +81,7 @@ export function useInputHistory({ ref, value, restore }: InputHistoryOptions) {
     redoStack.current = [];
     lastEdit.current = null;
     known.current = value;
+    onResetLatest.current?.();
   }, [value]);
 
   const step = useCallback((input: HTMLInputElement, direction: 'undo' | 'redo') => {
@@ -114,9 +115,15 @@ export function useInputHistory({ ref, value, restore }: InputHistoryOptions) {
         }
         pending.current = snapshotOf(input);
       };
+      // A click may put the caret back where the run left it, which must still close the run.
+      const onPointerDown = () => {
+        lastEdit.current = null;
+      };
       input.addEventListener('beforeinput', onBeforeInput);
+      input.addEventListener('pointerdown', onPointerDown);
       return () => {
         input.removeEventListener('beforeinput', onBeforeInput);
+        input.removeEventListener('pointerdown', onPointerDown);
         if (typeof ref === 'function') ref(null);
         else if (ref) ref.current = null;
       };
@@ -145,7 +152,7 @@ export function useInputHistory({ ref, value, restore }: InputHistoryOptions) {
       from.start === from.end &&
       from.start === last.caret &&
       now - last.at < UNDO_GROUP_PAUSE_MS;
-    if (!continues) undoStack.current.push(from);
+    if (!continues) undoStack.current = [...undoStack.current, from].slice(-MAX_UNDO_STEPS);
     redoStack.current = [];
     lastEdit.current = kind === 'other' ? null : { kind, caret: to.end, at: now };
     known.current = to.value;
@@ -153,6 +160,7 @@ export function useInputHistory({ ref, value, restore }: InputHistoryOptions) {
 
   // True when the key was an undo or redo shortcut, which the field has then handled.
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>): boolean {
+    if (NAVIGATION_KEYS.has(event.key)) lastEdit.current = null;
     const shortcut = shortcutOf(event);
     if (!shortcut || event.currentTarget.readOnly) return false;
     event.preventDefault();

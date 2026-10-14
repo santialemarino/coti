@@ -1,10 +1,7 @@
 import { createEvent, fireEvent } from '@testing-library/react';
 
-/*
- * What a browser does to a text field on an edit, as far as jsdom can play it: `beforeinput` while
- * the field still holds its old text and selection, then the new text and caret, then `input`.
- * jsdom implements no `inputType`, so it is set on each event by hand.
- */
+// A browser edit as jsdom can play it: `beforeinput` on the old text, the new text, then `input`.
+// jsdom implements no `inputType`, so each event gets it by hand.
 const setNativeValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
 
 function withInputType(event, inputType) {
@@ -22,10 +19,7 @@ export function beforeInput(field, inputType) {
   return event.defaultPrevented;
 }
 
-/*
- * One edit: `raw` is the text the browser leaves and `caret` where it leaves the caret. Autofill
- * fires no `beforeinput` and carries no `inputType`; pass `inputType: null` for it.
- */
+// One edit leaving `raw` and `caret`; pass `inputType: null` for autofill, which fires neither.
 export function browserEdit(field, raw, { caret = raw.length, inputType = 'insertText' } = {}) {
   if (inputType !== null) beforeInput(field, inputType);
   setNativeValue.call(field, raw);

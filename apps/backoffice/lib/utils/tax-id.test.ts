@@ -65,6 +65,10 @@ describe('editTaxId', () => {
     );
   });
 
+  it('keeps the right separator when a wrong one follows it', () => {
+    expect(editTaxId('20-.', 4, '20-', 'cuit')).toEqual({ digits: '20', display: '20-', caret: 3 });
+  });
+
   it('drops a separator anywhere else, and the caret stays put', () => {
     expect(editTaxId('20.', 3, '20', 'cuit')).toEqual({ digits: '20', display: '20', caret: 2 });
     expect(editTaxId('201-', 4, '20-1', 'cuit')).toEqual({

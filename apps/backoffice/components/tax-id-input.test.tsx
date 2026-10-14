@@ -30,6 +30,12 @@ function Harness({
       <button type="button" onClick={() => setValue('30701234568')}>
         reset
       </button>
+      <button type="button" onClick={() => setValue('')}>
+        clear
+      </button>
+      <button type="button" onClick={() => setValue('20')}>
+        set 20
+      </button>
     </>
   );
 }
@@ -261,6 +267,26 @@ describe('TaxIdInput', () => {
       expect(input().selectionStart).toBe(typed.length);
     });
 
+    it('keeps a separator shown when a wrong one is typed after it', () => {
+      render(<Harness kind="cuit" />);
+
+      type('20-.');
+
+      expect(input().value).toBe('20-');
+      expect(selection()).toEqual([3, 3]);
+    });
+
+    it('drops a shown separator once the value changes from outside', () => {
+      render(<Harness kind="cuit" />);
+      select(0);
+      type('20-');
+
+      fireEvent.click(screen.getByRole('button', { name: 'clear' }));
+      fireEvent.click(screen.getByRole('button', { name: 'set 20' }));
+
+      expect(input().value).toBe('20');
+    });
+
     it('steps over the literal right after the caret instead of doubling it', () => {
       const onValue = vi.fn();
       render(<Harness kind="cuit" initial="2012345" onValue={onValue} />);
@@ -403,6 +429,33 @@ describe('TaxIdInput', () => {
       expect(selection()).toEqual([2, 2]);
       undo();
       expect(input().value).toBe('');
+    });
+
+    it.each([
+      ['the arrow keys', () => ['ArrowLeft', 'ArrowRight'].forEach((key) => press(key))],
+      ['a click', () => fireEvent.pointerDown(input())],
+    ])('closes the run when %s move the caret, even back to the same spot', (_, move) => {
+      render(<Harness kind="cuit" />);
+      select(0);
+      type('20');
+      move();
+      type('32');
+
+      undo();
+
+      expect(input().value).toBe('20');
+    });
+
+    it('keeps the last hundred steps and drops the oldest', () => {
+      render(<Harness kind="dni" />);
+      Array.from({ length: 102 }, (_, i) => String((i % 2) + 1)).forEach((digit) => {
+        select(0, input().value.length);
+        paste(digit);
+      });
+
+      Array.from({ length: 150 }, undo);
+
+      expect(input().value).toBe('2');
     });
 
     it('makes a change of edit kind its own step, and a run of deletions one', () => {

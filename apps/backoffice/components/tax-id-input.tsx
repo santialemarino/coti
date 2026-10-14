@@ -40,12 +40,8 @@ interface TaxIdInputProps {
   id?: string;
 }
 
-/*
- * A CUIT (`30-70123456-8`), a DNI (`12.345.678`) or either one, formatted as it is typed. Anything
- * that cannot belong to the number is dropped rather than refused, so a pasted `20.12345678.9` or
- * `20 12345678 9` lands as the same digits, and form state only ever holds those digits. The field
- * rewrites its own value, which the browser's undo cannot follow, so it keeps its own history.
- */
+// A CUIT, a DNI or either, formatted as typed; whatever cannot belong to the number is dropped, and
+// form state only ever holds the digits.
 const TaxIdInput = forwardRef<HTMLInputElement, TaxIdInputProps>(
   ({ kind, value = '', onChange, ...rest }, ref) => {
     const placeCaret = useCaretPlacement();
@@ -58,6 +54,7 @@ const TaxIdInput = forwardRef<HTMLInputElement, TaxIdInputProps>(
       ref,
       value: display,
       restore: (snapshot, input) => show(input, snapshot),
+      onReset: () => setShown(null),
     });
 
     function show(input: HTMLInputElement, to: InputSnapshot) {

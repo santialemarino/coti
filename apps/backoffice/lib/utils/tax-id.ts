@@ -55,6 +55,7 @@ export function formatTaxId(digits: string, kind: TaxIdKind): string {
 // The literal that follows `count` digits: a CUIT's hyphen after its prefix and after its body, a
 // DNI's dot where a seven- or eight-digit number groups its thousands. A `cuit-or-dni` takes the
 // literal of the shape its next digit gives it, so its only hyphen comes after the tenth digit.
+// A DNI groups from the right, so a typed `12.` + `3` reads `123` until the fourth digit regroups it.
 function separatorAfter(count: number, kind: TaxIdKind): string | null {
   const next = kind === 'cuit-or-dni' ? (count >= DNI_MAX_DIGITS ? 'cuit' : 'dni') : kind;
   if (next === 'cuit') {
@@ -86,13 +87,8 @@ export interface TaxIdEdit {
   caret: number;
 }
 
-/*
- * Reads what the field holds after an edit (a keystroke, a paste, a drop, autofill) back into digits,
- * the text to show and a caret. The caret is mapped by counting digits, because separators are
- * exactly what moved; a separator typed against the same literal steps over it, and one typed where
- * the next literal goes stays on screen until a digit follows. A field already full refuses more
- * digits instead of pushing its last ones out; text that overflows an emptier one keeps its first.
- */
+// Reads the field after any edit back into digits, display and a caret mapped by counting digits;
+// a full field refuses more digits rather than pushing its last ones out.
 export function editTaxId(
   raw: string,
   caret: number,
@@ -108,9 +104,9 @@ export function editTaxId(
   }
   const digits = typed.slice(0, max);
   const separator = separatorAfter(digits.length, kind);
-  const kept = [...raw].filter((char) => isDigit(char) || isSeparator(char)).join('');
+  const trailing = raw.replace(/^.*\d/, '');
   const display =
-    formatTaxId(digits, kind) + (separator && kept.endsWith(separator) ? separator : '');
+    formatTaxId(digits, kind) + (separator && trailing.includes(separator) ? separator : '');
 
   const beforeCaret = raw.slice(0, caret);
   let at = caretAfterDigits(display, Math.min(taxIdDigits(beforeCaret).length, digits.length));
@@ -125,11 +121,8 @@ function lastDigitBefore(display: string, end: number): number {
   return -1;
 }
 
-/*
- * Backspace or Delete against a separator inside the number takes the digit beyond it, the caret
- * crossing the separator: removing the separator alone would be put straight back by the format.
- * A separator at the end goes alone, so null — the browser's own edit — as for every other key.
- */
+// Backspace or Delete against a separator inside the number takes the digit beyond it, since the
+// format would put a lone separator straight back; null leaves the key to the browser.
 export function deleteAcrossSeparator(
   display: string,
   caret: number,
