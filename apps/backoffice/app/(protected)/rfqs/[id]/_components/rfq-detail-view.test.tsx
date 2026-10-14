@@ -30,7 +30,9 @@ vi.mock('@/lib/api/rfqs-client', () => ({
 vi.mock('./rfq-items-table', () => ({ RfqItemsTable: vi.fn(() => null) }));
 vi.mock('./rfq-detail-header', () => ({ RfqDetailHeader: () => null }));
 vi.mock('./invoice-card', () => ({
-  InvoiceCard: () => <div data-testid="invoice-card" />,
+  InvoiceCard: ({ readOnly }: { readOnly?: boolean }) => (
+    <div data-testid="invoice-card" data-read-only={String(Boolean(readOnly))} />
+  ),
 }));
 vi.mock('./client-association-card', () => ({
   ClientAssociationCard: () => <div data-testid="client-association-card" />,
@@ -405,10 +407,11 @@ describe('RfqDetailView archived', () => {
     expect(vi.mocked(RfqItemsTable).mock.lastCall?.[0].readOnly).toBe(false);
   });
 
-  it('hides the invoice of an archived sale', () => {
+  it('keeps the invoice of an archived sale on screen, read-only', () => {
     const view = renderView(archivedDetail('ACCEPTED'));
 
-    expect(view.queryByTestId('invoice-card')).toBeNull();
+    expect(view.getByTestId('invoice-card').dataset.readOnly).toBe('true');
+    expect(view.queryByTestId('client-association-card')).toBeNull();
   });
 
   it("unarchives through the order's branch and hands the lines back", async () => {

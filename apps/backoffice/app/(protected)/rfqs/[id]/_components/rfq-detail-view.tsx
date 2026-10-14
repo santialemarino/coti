@@ -232,14 +232,19 @@ export function RfqDetailView({
             {t('detail.callouts.accepted.description')}
           </Callout>
           {quoteId && !archived ? (
-            <>
-              <ClientAssociationCard
-                quoteId={quoteId}
-                branchId={branchId}
-                onClientChange={setClientId}
-              />
-              <InvoiceCard quoteId={quoteId} branchId={branchId} clientId={clientId} />
-            </>
+            <ClientAssociationCard
+              quoteId={quoteId}
+              branchId={branchId}
+              onClientChange={setClientId}
+            />
+          ) : null}
+          {quoteId ? (
+            <InvoiceCard
+              quoteId={quoteId}
+              branchId={branchId}
+              clientId={clientId}
+              readOnly={archived}
+            />
           ) : null}
         </>
       )}
