@@ -178,6 +178,12 @@ The stack is **react-hook-form + zod** with the shared `Form` primitives from
   rejects that keystroke. The keystroke rules, the paste normaliser and the caret mapper live in
   `lib/i18n/numeric-input.ts` — compose from there rather than writing a third masker. The caret is
   mapped by counting digits, not characters, because the group separators are exactly what moved.
+- **A field that rewrites its own value keeps its own undo history** (`useInputHistory`, backoffice
+  `hooks/`). The browser leaves a programmatic write out of its stack, so a formatted or filtered
+  input otherwise undoes one character at a time, or not at all. The hook groups edits the way a
+  plain input does, answers ⌘Z / Ctrl+Z, ⌘⇧Z / Ctrl+Y and the `beforeinput` history events, and
+  resets when the value changes from outside. A separator the caller types where the mask puts one
+  is shown, not swallowed — nothing typed may look ignored when it was right.
 - **A phone number is `PhoneInput`** (backoffice `components/`): a searchable country `Combobox`,
   Argentina first, beside the national number, emitting E.164 or `''`. Validate with
   `isValidPhoneNumber` from `libphonenumber-js/min`, never a regex — the country supplies the code the

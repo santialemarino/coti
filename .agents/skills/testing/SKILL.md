@@ -319,6 +319,9 @@ setting that should hold everywhere in the shared package, not in one app. What 
   held and faded on its way out, so it is still in the DOM after it clears —
   `queryByText(...)` going null is the **defect**, not the expectation. These read `aria-hidden`
   instead, which is the one definition of "shown".
+- **`browserEdit` / `typeText` / `beforeInput`**, from `@repo/vitest-config/input-edits`, for a field
+  that handles its own edits: they fire `beforeinput` with the old selection, then the new text and
+  `input`, each carrying the `inputType` jsdom does not implement.
 
 ### Fake timers, and the one that bites
 

@@ -16,6 +16,10 @@
       "types": "./form-messages.d.ts",
       "default": "./form-messages.js"
     },
+    "./input-edits": {
+      "types": "./input-edits.d.ts",
+      "default": "./input-edits.js"
+    },
     "./schema-text": {
       "types": "./schema-text.d.ts",
       "default": "./schema-text.js"

@@ -4,20 +4,21 @@ import { useCallback, useLayoutEffect, useState } from 'react';
 
 interface Placement {
   input: HTMLInputElement;
-  at: number;
+  start: number;
+  end: number;
 }
 
-/*
- * Puts the caret back where an edit left it once the reformatted value has committed. A controlled
- * input whose value was rewritten — or refused, and restored by React — otherwise jumps to the end.
- * Every call renders, so a refused edit that changes nothing still gets its caret back.
- */
+// Puts the caret or selection back after a rewritten (or refused) value commits; React would
+// otherwise send it to the end. Every call renders, so even an edit that changed nothing gets it.
 export function useCaretPlacement() {
   const [placement, setPlacement] = useState<Placement | null>(null);
 
   useLayoutEffect(() => {
-    placement?.input.setSelectionRange(placement.at, placement.at);
+    placement?.input.setSelectionRange(placement.start, placement.end);
   }, [placement]);
 
-  return useCallback((input: HTMLInputElement, at: number) => setPlacement({ input, at }), []);
+  return useCallback(
+    (input: HTMLInputElement, start: number, end = start) => setPlacement({ input, start, end }),
+    [],
+  );
 }
