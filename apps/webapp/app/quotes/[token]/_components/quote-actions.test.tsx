@@ -118,6 +118,25 @@ describe('QuoteActions', () => {
     vi.unstubAllGlobals();
   });
 
+  it('says the quote is no longer available when the corralón archived it', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 409,
+        json: async () => ({ error: 'QUOTE_ARCHIVED' }),
+      }),
+    );
+    const view = renderActions({ token: 'tok-abc' });
+
+    fireEvent.click(view.getByRole('button', { name: copy.acceptLabel }));
+    fireEvent.click(view.getByRole('button', { name: copy.confirm }));
+
+    await waitFor(() => expect(view.getByText(copy.errorUnavailable)).toBeTruthy());
+    expect(view.queryByText(copy.errorSubmit)).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
   it('reports the send refusal inline and lets the customer retry', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 502 }));
     const view = renderActions({ token: 'tok-abc' });

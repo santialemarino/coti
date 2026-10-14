@@ -82,8 +82,11 @@ interface QuoteDiscountRaw {
 
 // --- Frontend types (camelCase) ---
 
-// The API answers EXPIRED with no quote body, so the payload is what separates the two states.
-export type PublicQuoteStatus = 'ACTIVE' | 'EXPIRED';
+/*
+ * EXPIRED and UNAVAILABLE come with no quote body. UNAVAILABLE is a live link to a quote the
+ * corralón archived: the offer was withdrawn, not left to lapse.
+ */
+export type PublicQuoteStatus = 'ACTIVE' | 'EXPIRED' | 'UNAVAILABLE';
 
 // The wire value of client_action_type; this is the customer's deliberate decision on the frozen
 // version, so the approval pallet mirrors the backend enum exactly.
@@ -210,7 +213,7 @@ function mapQuotePayload(raw: QuotePayloadRaw): QuotePayload {
 function mapPublicQuoteSend(raw: PublicQuoteSendRaw): PublicQuoteSend {
   return {
     // Anything the wire adds later reads as expired rather than rendering a quote we cannot word.
-    status: raw.status === 'ACTIVE' ? 'ACTIVE' : 'EXPIRED',
+    status: raw.status === 'ACTIVE' || raw.status === 'UNAVAILABLE' ? raw.status : 'EXPIRED',
     expiresAt: raw.expires_at,
     quote: raw.quote ? mapQuotePayload(raw.quote) : undefined,
     message: raw.message,
@@ -243,14 +246,16 @@ export async function getPublicQuoteByToken(token: string): Promise<PublicQuoteS
   return mapPublicQuoteSend((await response.json()) as PublicQuoteSendRaw);
 }
 
-// PublicQuoteActionError carries the HTTP status behind a refused customer response, so the app
-// route can forward the right shape instead of guessing from a message string.
+// PublicQuoteActionError carries the HTTP status and the API's error code behind a refused customer
+// response, so the app route can forward the right shape instead of guessing from a message string.
 export class PublicQuoteActionError extends Error {
   readonly status: number;
+  readonly code?: string;
 
-  constructor(status: number) {
+  constructor(status: number, code?: string) {
     super(`public quote action failed with ${status}`);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -273,7 +278,13 @@ export async function submitPublicQuoteAction(
       cache: 'no-store',
     },
   );
-  if (!response.ok) throw new PublicQuoteActionError(response.status);
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { code?: unknown } | null;
+    throw new PublicQuoteActionError(
+      response.status,
+      typeof body?.code === 'string' ? body.code : undefined,
+    );
+  }
   const raw = (await response.json()) as PublicQuoteActionResultRaw;
   return {
     customerStatus: raw.customer_status as CustomerActionType,

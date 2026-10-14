@@ -8,6 +8,7 @@ import {
   makeQuotePayload,
 } from '@/lib/api/public-quotes.fixtures';
 import { getFormatters } from '@/lib/i18n/formatters-server';
+import messages from '@/translations/es.json';
 import { PublicQuoteView } from './public-quote-view';
 
 vi.mock('next-intl/server', async () => import('@/lib/i18n/server-intl.mock'));
@@ -90,6 +91,21 @@ describe('PublicQuoteView', () => {
     expect(view.queryByTestId('quote-header')).toBeNull();
     expect(view.queryByTestId('quote-items')).toBeNull();
     expect(view.queryByTestId('quote-info')).toBeNull();
+    expect(view.queryByTestId('quote-actions')).toBeNull();
+  });
+
+  it('says a withdrawn quote is no longer available, never showing it', async () => {
+    const send = makePublicQuoteSend({
+      status: 'UNAVAILABLE',
+      quote: undefined,
+      pdfUrl: undefined,
+    });
+
+    const view = render(await PublicQuoteView({ send }));
+
+    expect(view.getByText(messages.quote.unavailableTitle)).toBeTruthy();
+    expect(view.getByText(messages.quote.unavailableDescription)).toBeTruthy();
+    expect(view.queryByText(messages.quote.expiredTitle)).toBeNull();
     expect(view.queryByTestId('quote-actions')).toBeNull();
   });
 });

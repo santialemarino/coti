@@ -28,6 +28,8 @@ import {
 import type { CustomerActionType, PublicQuoteActionResult } from '@/lib/api/public-quotes';
 
 const MAX_ACTION_MESSAGE = 512;
+// The refusal the route forwards by name when the corralón archived the quote under the open page.
+const UNAVAILABLE_CODE = 'QUOTE_ARCHIVED';
 const PREVIEW_ACTION_DELAY_MS = 700;
 
 type ActionChoice = CustomerActionType;
@@ -86,7 +88,8 @@ export function QuoteActions({ token, customerStatus }: QuoteActionsProps) {
   const [message, setMessage] = useState('');
   const [messageTouched, setMessageTouched] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [submitError, setSubmitError] = useState(false);
+  // The catalog key of the refusal to show, or null while there is none.
+  const [submitError, setSubmitError] = useState<'errorSubmit' | 'errorUnavailable' | null>(null);
   const [result, setResult] = useState<PublicQuoteActionResult | null>(null);
   const messageMissing = message.trim() === '';
   const showMessageError = choice === 'REQUEST_CHANGE' && messageMissing && messageTouched;
@@ -95,7 +98,7 @@ export function QuoteActions({ token, customerStatus }: QuoteActionsProps) {
     setChoice(next);
     setMessage('');
     setMessageTouched(false);
-    setSubmitError(false);
+    setSubmitError(null);
   }
 
   // The form resets on open, so a closing dialog keeps what it showed through its exit.
@@ -111,15 +114,19 @@ export function QuoteActions({ token, customerStatus }: QuoteActionsProps) {
       return;
     }
     setBusy(true);
-    setSubmitError(false);
+    setSubmitError(null);
     try {
       const outcome = token
         ? await submitAction(token, { type: choice, message: message.trim() || undefined })
         : await simulateAction(choice);
       setResult(outcome);
       closeDialog();
-    } catch {
-      setSubmitError(true);
+    } catch (error) {
+      setSubmitError(
+        error instanceof ActionRefusedError && error.code === UNAVAILABLE_CODE
+          ? 'errorUnavailable'
+          : 'errorSubmit',
+      );
     } finally {
       setBusy(false);
     }
@@ -196,7 +203,7 @@ export function QuoteActions({ token, customerStatus }: QuoteActionsProps) {
               </div>
             ) : null}
             {submitError ? (
-              <p className="text-paragraph-sm text-danger-foreground">{t('errorSubmit')}</p>
+              <p className="text-paragraph-sm text-danger-foreground">{t(submitError)}</p>
             ) : null}
           </div>
 
@@ -229,11 +236,23 @@ async function submitAction(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token, type: action.type, message: action.message }),
   });
-  if (!response.ok) throw new Error('public quote action refused');
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: unknown } | null;
+    throw new ActionRefusedError(typeof body?.error === 'string' ? body.error : undefined);
+  }
   return (await response.json()) as PublicQuoteActionResult;
 }
 
 async function simulateAction(choice: CustomerActionType): Promise<PublicQuoteActionResult> {
   await new Promise((resolve) => setTimeout(resolve, PREVIEW_ACTION_DELAY_MS));
   return { customerStatus: choice, createdAt: new Date().toISOString() };
+}
+
+class ActionRefusedError extends Error {
+  readonly code?: string;
+
+  constructor(code?: string) {
+    super('public quote action refused');
+    this.code = code;
+  }
 }
