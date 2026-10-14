@@ -88,9 +88,10 @@ export function PhoneInput({
   const placeCaret = useCaretPlacement();
   const [field, setField] = useState(() => readValue(value));
   const emitted = useRef(value);
+  const nationalRef = useRef<HTMLInputElement>(null);
   // The country rides on each undo step, since a pasted international number changes it.
   const history = useInputHistory({
-    ref: null,
+    ref: nationalRef,
     value: field.national,
     context: () => field.country,
     restore: (snapshot, input) => show(input, snapshot),
@@ -152,6 +153,16 @@ export function PhoneInput({
     show(input, to);
   }
 
+  // A country picked by hand is a step of its own, so undoing the number never reverts it unasked.
+  function pickCountry(country: CountryCode) {
+    const input = nationalRef.current;
+    if (input) {
+      const from = history.snapshot(input);
+      history.record('other', from, { ...from, context: country });
+    }
+    emit({ country, national: field.national });
+  }
+
   // A valid number settles to its bare digits, so a typed, pasted or prefilled one reads the same.
   function settleNational(event: FocusEvent<HTMLInputElement>) {
     const parsed = parsePhoneNumberFromString(field.national, field.country);
@@ -173,9 +184,7 @@ export function PhoneInput({
         <Combobox
           options={options}
           value={field.country}
-          onValueChange={(country) =>
-            emit({ country: country as CountryCode, national: field.national })
-          }
+          onValueChange={(country) => pickCountry(country as CountryCode)}
           placeholder={countryLabel}
           searchable
           searchPlaceholder={countrySearchPlaceholder}

@@ -232,5 +232,23 @@ describe('PhoneInput', () => {
 
       expect(national().value).toBe('');
     });
+
+    it('takes a country picked by hand as a step of its own', async () => {
+      const onValue = vi.fn();
+      render(<Harness onValue={onValue} />);
+      start();
+      typeText(national(), '99123456');
+
+      fireEvent.click(country());
+      fireEvent.click(await screen.findByRole('option', { name: /Uruguay/ }));
+      expect(country().textContent).toContain('+598');
+
+      undo();
+      expect(country().textContent).toBe('🇦🇷+54');
+      expect(national().value).toBe('99123456');
+
+      undo();
+      expect(national().value).toBe('');
+    });
   });
 });
