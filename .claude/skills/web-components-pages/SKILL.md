@@ -181,9 +181,18 @@ The stack is **react-hook-form + zod** with the shared `Form` primitives from
 - **A field that rewrites its own value keeps its own undo history** (`useInputHistory`, backoffice
   `hooks/`). The browser leaves a programmatic write out of its stack, so a formatted or filtered
   input otherwise undoes one character at a time, or not at all. The hook groups edits the way a
-  plain input does, answers ⌘Z / Ctrl+Z, ⌘⇧Z / Ctrl+Y and the `beforeinput` history events, and
-  resets when the value changes from outside. A separator the caller types where the mask puts one
-  is shown, not swallowed — nothing typed may look ignored when it was right.
+  plain input does, answers ⌘Z / Ctrl+Z, ⌘⇧Z / Ctrl+Y and the `beforeinput` history events, takes
+  its own step for a browser undo that skips `beforeinput` (`replay`, first thing in `onChange`),
+  and resets when the value changes from outside. `AmountInput`, `QuantityInput`, `PhoneInput`,
+  `TaxIdInput` and the Ingresos Brutos number all run on it, with the caret placed by
+  `useCaretPlacement` even when the edit changed nothing; state the text does not hold (a phone's
+  country) rides on each step as its `context`. A field that only filters drops what it refuses
+  with `keepAllowed` (`lib/utils/`).
+- **A literal the caller types is accepted where the mask puts one, stepped over when it is the
+  next character, and ignored anywhere else** — a separator, a decimal comma, a hyphen. Nothing
+  typed may look ignored when it was right, and nothing typed may double what the mask already
+  shows. A keystroke rule (`composeKeyHandlers`) never sees a shortcut, so ⌘− and ⌘E keep working
+  inside a field that refuses `-` and `e`.
 - **A phone number is `PhoneInput`** (backoffice `components/`): a searchable country `Combobox`,
   Argentina first, beside the national number, emitting E.164 or `''`. Validate with
   `isValidPhoneNumber` from `libphonenumber-js/min`, never a regex — the country supplies the code the
