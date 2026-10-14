@@ -397,7 +397,10 @@
     "ACCOUNT_TAX_ID_REQUIRED": "Cargá el CUIT del corralón en Cuenta antes de conectar ARCA.",
     "ARCA_CONNECTED": "El CUIT está conectado con ARCA. Confirmá el cambio para desconectarlo.",
     "INVOICE_PENDING": "Hay facturas esperando la respuesta de ARCA. Consultalas en Comprobantes y volvé a intentar.",
-    "ARCA_ENVIRONMENT_MISMATCH": "Esta factura se pidió en otro entorno de ARCA que el de la conexión actual, así que no se puede consultar desde acá."
+    "ARCA_ENVIRONMENT_MISMATCH": "Esta factura se pidió en otro entorno de ARCA que el de la conexión actual, así que no se puede consultar desde acá.",
+    "INVOICE_NOT_CREDITABLE": "Solo se anula con nota de crédito una factura autorizada por ARCA.",
+    "INVOICE_ALREADY_CREDITED": "Esta factura ya está anulada por una nota de crédito.",
+    "CREDIT_NOTE_IN_PROGRESS": "La nota de crédito ya se está emitiendo. Esperá unos segundos y actualizá la pantalla."
   },
   "meta": {
     "home": {
@@ -1598,7 +1601,7 @@
           "FORBIDDEN": "No tenés permiso para cambiar el estado de esta cotización.",
           "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
           "INTERNAL": "No pudimos actualizar la cotización. Intentá de nuevo.",
-          "QUOTE_ALREADY_INVOICED": "Esta venta ya está facturada y no se puede reactivar. Corregirla requiere una nota de crédito."
+          "QUOTE_ALREADY_INVOICED": "Esta venta está facturada y no se puede reactivar. Para cambiarla, anulá la factura con una nota de crédito desde la tarjeta de la factura."
         }
       },
       "diff": {
@@ -2659,7 +2662,7 @@
       "issued": "Emitimos la factura {type} {number}.",
       "confirm": {
         "title": "Emitir la factura {type}",
-        "description": "Le vamos a pedir a ARCA la factura {type} a {receiver} por {total}. Una vez emitida no se puede anular: un error se corrige con una nota de crédito.",
+        "description": "Le vamos a pedir a ARCA la factura {type} a {receiver} por {total}. Una vez emitida no se puede modificar: si hay un error, se anula con una nota de crédito.",
         "confirm": "Emitir factura",
         "confirming": "Emitiendo…",
         "cancel": "Cancelar"
@@ -2732,12 +2735,45 @@
           "body": "Es la factura real de esta venta, emitida el {date}. Lo que emitas en este servidor es de prueba."
         },
         "download": "Descargar factura"
+      },
+      "creditNote": {
+        "issue": "Emitir nota de crédito",
+        "issuing": "Emitiendo…",
+        "issued": "Emitimos la nota de crédito {type} {number}: la factura {type} {invoice} quedó anulada.",
+        "confirm": {
+          "title": "Anular la factura {type}",
+          "description": "Le vamos a pedir a ARCA una nota de crédito {type} por {total} que anula la factura {type} {number} de {receiver}. No se puede deshacer: la venta deja de estar facturada y podés reactivarla o volver a facturarla.",
+          "confirm": "Emitir nota de crédito",
+          "confirming": "Emitiendo…",
+          "cancel": "Cancelar"
+        },
+        "pending": {
+          "title": "La nota de crédito se está emitiendo",
+          "body": "ARCA todavía no confirmó el último pedido. Consultá la autorización en unos minutos: no se va a duplicar."
+        },
+        "rejected": {
+          "title": "ARCA rechazó la nota de crédito",
+          "retry": "Corregí lo que indica y volvé a emitirla."
+        },
+        "errors": {
+          "INVOICE_NOT_READY": "Falta la conexión con ARCA del CUIT y el entorno de esta factura para emitir la nota de crédito.",
+          "INVOICE_REJECTED": "ARCA rechazó la nota de crédito. Revisá los motivos que informó.",
+          "INVOICING_UNAVAILABLE": "ARCA no respondió y no se emitió ninguna nota de crédito. Probá de nuevo en unos minutos.",
+          "ARCA_ENVIRONMENT_MISMATCH": "La conexión con ARCA es de otro entorno que esta factura, así que no puede anularla."
+        }
+      },
+      "credited": {
+        "title": "Factura {type} {number} anulada por nota de crédito {noteType} {noteNumber}",
+        "body": "La venta ya no está facturada: podés reactivar la cotización para cambiarla o volver a facturarla.",
+        "downloadNote": "Descargar nota de crédito",
+        "downloadInvoice": "Descargar factura anulada",
+        "verify": "Verificar la nota de crédito en ARCA"
       }
     },
     "history": {
       "title": "Comprobantes",
-      "description": "Las facturas emitidas en ARCA por esta sucursal. Para emitir una, abrí un pedido aceptado.",
-      "empty": "Todavía no hay facturas en esta sucursal.",
+      "description": "Las facturas y notas de crédito emitidas en ARCA por esta sucursal. Para emitir una factura, abrí un pedido aceptado.",
+      "empty": "Todavía no hay comprobantes en esta sucursal.",
       "orders": "Ir a pedidos",
       "settings": "Datos fiscales",
       "date": "Fecha",
@@ -2750,16 +2786,19 @@
       "statuses": {
         "PENDING": "Pendiente",
         "ISSUED": "Autorizada",
-        "REJECTED": "Rechazada"
+        "REJECTED": "Rechazada",
+        "CREDITED": "Anulada"
       },
       "recover": "Consultar estado",
       "download": "Descargar PDF",
       "recovered": "El estado del comprobante fue actualizado.",
       "finalConsumer": "Consumidor final",
       "recovering": "Consultando…",
-      "descriptionAll": "Las facturas emitidas en ARCA por las sucursales del corralón. Para emitir una, abrí un pedido aceptado.",
-      "emptyAll": "Todavía no hay facturas en ninguna sucursal.",
-      "branch": "Sucursal"
+      "descriptionAll": "Las facturas y notas de crédito emitidas en ARCA por las sucursales del corralón. Para emitir una factura, abrí un pedido aceptado.",
+      "emptyAll": "Todavía no hay comprobantes en ninguna sucursal.",
+      "branch": "Sucursal",
+      "creditNoteType": "NC {type}",
+      "credits": "Anula {type} {number}"
     },
     "testBadge": "Prueba"
   }

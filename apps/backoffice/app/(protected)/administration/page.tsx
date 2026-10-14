@@ -7,6 +7,7 @@ import {
   Button,
   Card,
   EmptyState,
+  InlineLink,
   MetaList,
   Table,
   TableBody,
@@ -22,7 +23,7 @@ import { InvoiceRecoveryButton } from '@/components/invoice-recovery-button';
 import { ROUTES } from '@/config/routes';
 import { getBranches } from '@/lib/api/branches';
 import { getInvoices } from '@/lib/api/invoices';
-import { formatInvoiceNumber, type Invoice } from '@/lib/api/invoicing';
+import { formatInvoiceNumber, isCredited, type Invoice } from '@/lib/api/invoicing';
 import { getEffectiveBranchId } from '@/lib/auth/branch';
 import { getSession } from '@/lib/auth/session';
 import { ADMIN_ROLE } from '@/lib/constants/auth';
@@ -32,10 +33,11 @@ import { generatePageMetadata } from '@/lib/utils/page';
 // The API pages the history up to here; anything past it reads as the first page.
 const PAGE_MAX = 100000;
 
-const STATUS_TONE: Record<Invoice['status'], 'success' | 'danger' | 'neutral'> = {
+const STATUS_TONE: Record<Invoice['status'] | 'CREDITED', 'success' | 'danger' | 'neutral'> = {
   ISSUED: 'success',
   REJECTED: 'danger',
   PENDING: 'neutral',
+  CREDITED: 'neutral',
 };
 
 export const generateMetadata = () => generatePageMetadata('administration');
@@ -96,39 +98,61 @@ export default async function AdministrationPage({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {result.items.map((invoice) => (
-                <TableRow key={invoice.id}>
-                  <TableCell kind="date">{fmt.dateNumeric(invoice.issuedOn)}</TableCell>
-                  <TableCell kind="short" className="tabular-nums">
-                    {invoice.number === null
-                      ? invoice.type
-                      : `${invoice.type} ${formatInvoiceNumber(invoice.pointOfSale, invoice.number)}`}
-                  </TableCell>
-                  <TableCell>{invoice.receiver.name || t('finalConsumer')}</TableCell>
-                  {showBranch ? (
-                    <TableCell>{branchNames.get(invoice.branchId) ?? '—'}</TableCell>
-                  ) : null}
-                  <TableCell kind="status">
-                    <span className="flex flex-wrap gap-1">
-                      <Badge tone={STATUS_TONE[invoice.status]}>
-                        {t(`statuses.${invoice.status}`)}
-                      </Badge>
-                      {invoice.environment === 'HOMOLOGATION' ? (
-                        <Badge tone="outline">{tInvoicing('testBadge')}</Badge>
-                      ) : null}
-                    </span>
-                  </TableCell>
-                  <TableCell kind="money">
-                    {fmt.currency(invoice.amounts.total, invoice.currency)}
-                  </TableCell>
-                  <TableCell kind="short" className="tabular-nums">
-                    {invoice.cae ?? '—'}
-                  </TableCell>
-                  <TableCell kind="actionsWide">
-                    <InvoiceAction invoice={invoice} downloadLabel={t('download')} />
-                  </TableCell>
-                </TableRow>
-              ))}
+              {result.items.map((invoice) => {
+                // An issued invoice a credit note cancelled reads as cancelled, not as authorized.
+                const status = isCredited(invoice) ? 'CREDITED' : invoice.status;
+                const credited = invoice.creditedInvoice;
+                return (
+                  <TableRow key={invoice.id}>
+                    <TableCell kind="date">{fmt.dateNumeric(invoice.issuedOn)}</TableCell>
+                    <TableCell kind="short" className="tabular-nums">
+                      <span className="flex flex-col items-start gap-y-0.5">
+                        <span>
+                          {invoice.kind === 'CREDIT_NOTE'
+                            ? t('creditNoteType', { type: invoice.type })
+                            : invoice.type}
+                          {invoice.number === null
+                            ? null
+                            : ` ${formatInvoiceNumber(invoice.pointOfSale, invoice.number)}`}
+                        </span>
+                        {credited?.number != null ? (
+                          <InlineLink
+                            tone="muted"
+                            href={ROUTES.invoicePDF(credited.id, invoice.branchId)}
+                            className="text-paragraph-xs"
+                          >
+                            {t('credits', {
+                              type: credited.type,
+                              number: formatInvoiceNumber(credited.pointOfSale, credited.number),
+                            })}
+                          </InlineLink>
+                        ) : null}
+                      </span>
+                    </TableCell>
+                    <TableCell>{invoice.receiver.name || t('finalConsumer')}</TableCell>
+                    {showBranch ? (
+                      <TableCell>{branchNames.get(invoice.branchId) ?? '—'}</TableCell>
+                    ) : null}
+                    <TableCell kind="status">
+                      <span className="flex flex-wrap gap-1">
+                        <Badge tone={STATUS_TONE[status]}>{t(`statuses.${status}`)}</Badge>
+                        {invoice.environment === 'HOMOLOGATION' ? (
+                          <Badge tone="outline">{tInvoicing('testBadge')}</Badge>
+                        ) : null}
+                      </span>
+                    </TableCell>
+                    <TableCell kind="money">
+                      {fmt.currency(invoice.amounts.total, invoice.currency)}
+                    </TableCell>
+                    <TableCell kind="short" className="tabular-nums">
+                      {invoice.cae ?? '—'}
+                    </TableCell>
+                    <TableCell kind="actionsWide">
+                      <InvoiceAction invoice={invoice} downloadLabel={t('download')} />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </Card>

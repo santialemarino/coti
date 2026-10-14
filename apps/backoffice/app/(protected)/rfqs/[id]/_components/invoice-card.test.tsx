@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ROUTES } from '@/config/routes';
 import { ApiError } from '@/lib/api/errors';
 import type { Invoice, InvoicePreview } from '@/lib/api/invoicing';
-import { getInvoicePreview, issueInvoice } from '@/lib/api/invoicing-client';
+import { getInvoicePreview, issueCreditNote, issueInvoice } from '@/lib/api/invoicing-client';
 import messages from '@/translations/es.json';
 import { InvoiceCard } from './invoice-card';
 
@@ -18,6 +18,7 @@ vi.mock('@/components/invoice-recovery-button', () => ({ InvoiceRecoveryButton: 
 vi.mock('@/lib/api/invoicing-client', () => ({
   getInvoicePreview: vi.fn(),
   issueInvoice: vi.fn(),
+  issueCreditNote: vi.fn(),
 }));
 
 const QUOTE_ID = '20000000-0000-4000-8000-000000000031';
@@ -52,10 +53,12 @@ const READY: InvoicePreview = {
   issues: [],
   invoice: null,
   otherEnvironmentInvoice: null,
+  creditedInvoice: null,
 };
 
 const ISSUED: Invoice = {
   branchId: 'branch-1',
+  kind: 'INVOICE',
   environment: 'PRODUCTION',
   id: 'inv-1',
   status: 'ISSUED',
@@ -72,6 +75,19 @@ const ISSUED: Invoice = {
   issues: [],
   qrUrl: 'https://www.afip.gob.ar/fe/qr/?p=abc',
   createdAt: '2026-10-05T15:00:00Z',
+  creditNote: null,
+  creditedInvoice: null,
+};
+
+const CREDIT_NOTE: Invoice = {
+  ...ISSUED,
+  id: 'nc-1',
+  kind: 'CREDIT_NOTE',
+  number: 24,
+  issuedOn: '2026-10-07',
+  cae: '76543210980024',
+  qrUrl: 'https://www.afip.gob.ar/fe/qr/?p=nc',
+  creditedInvoice: { id: ISSUED.id, type: 'A', pointOfSale: 3, number: 23, issuedOn: '2026-10-05' },
 };
 
 function cardWith(clientId: string | null) {
@@ -327,5 +343,106 @@ describe('InvoiceCard', () => {
     const view = renderCard();
     expect(await view.findByText(card.pending.title)).toBeTruthy();
     expect(view.getByText(messages.invoicing.testBadge)).toBeTruthy();
+  });
+
+  it('cancels an issued invoice with a credit note only after the seller confirms', async () => {
+    vi.mocked(getInvoicePreview)
+      .mockResolvedValueOnce({ ...READY, invoice: ISSUED })
+      .mockResolvedValue({ ...READY, creditedInvoice: { ...ISSUED, creditNote: CREDIT_NOTE } });
+    vi.mocked(issueCreditNote).mockResolvedValue(CREDIT_NOTE);
+    const view = renderCard();
+
+    fireEvent.click(await view.findByRole('button', { name: card.creditNote.issue }));
+    expect(issueCreditNote).not.toHaveBeenCalled();
+    const dialog = within(await view.findByRole('dialog'));
+    expect(
+      dialog.getByText(/anula la factura A 0003-00000023 de Constructora Horizonte SA/),
+    ).toBeTruthy();
+    expect(dialog.getByText(/No se puede deshacer/)).toBeTruthy();
+
+    fireEvent.click(dialog.getByRole('button', { name: card.creditNote.confirm.confirm }));
+
+    await waitFor(() => expect(issueCreditNote).toHaveBeenCalledWith(ISSUED.id, BRANCH_ID));
+    expect(
+      await view.findByText('Factura A 0003-00000023 anulada por nota de crédito A 0003-00000024'),
+    ).toBeTruthy();
+    expect(toast.success).toHaveBeenCalledWith(
+      'Emitimos la nota de crédito A 0003-00000024: la factura A 0003-00000023 quedó anulada.',
+    );
+    expect(view.getByRole('button', { name: 'Emitir factura A' })).toBeTruthy();
+  });
+
+  // Once credited, the sale shows the note that cancelled the invoice and can be invoiced again.
+  it('shows the credited invoice with its credit note above the new draft', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({
+      ...READY,
+      creditedInvoice: {
+        ...ISSUED,
+        environment: 'HOMOLOGATION',
+        creditNote: { ...CREDIT_NOTE, environment: 'HOMOLOGATION' },
+      },
+    });
+    const view = renderCard();
+
+    expect(
+      await view.findByText('Factura A 0003-00000023 anulada por nota de crédito A 0003-00000024'),
+    ).toBeTruthy();
+    expect(view.getByText(card.credited.body)).toBeTruthy();
+    expect(view.getByText(CREDIT_NOTE.cae!)).toBeTruthy();
+    expect(view.getByText(messages.invoicing.testBadge)).toBeTruthy();
+    expect(view.getByRole('link', { name: card.credited.downloadNote }).getAttribute('href')).toBe(
+      ROUTES.invoicePDF(CREDIT_NOTE.id, BRANCH_ID),
+    );
+    expect(
+      view.getByRole('link', { name: card.credited.downloadInvoice }).getAttribute('href'),
+    ).toBe(ROUTES.invoicePDF(ISSUED.id, BRANCH_ID));
+    expect(view.getByRole('link', { name: card.credited.verify }).getAttribute('href')).toBe(
+      CREDIT_NOTE.qrUrl,
+    );
+    expect(view.getByRole('button', { name: 'Emitir factura A' })).toBeTruthy();
+  });
+
+  it('holds the credit note action while ARCA still owes the answer for one', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({
+      ...READY,
+      invoice: { ...ISSUED, creditNote: { ...CREDIT_NOTE, status: 'PENDING', number: null } },
+    });
+    const view = renderCard();
+
+    expect(await view.findByText(card.creditNote.pending.title)).toBeTruthy();
+    expect(view.queryByRole('button', { name: card.creditNote.issue })).toBeNull();
+  });
+
+  it('shows ARCA’s reasons for a refused credit note and offers it again', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({
+      ...READY,
+      invoice: {
+        ...ISSUED,
+        creditNote: { ...CREDIT_NOTE, status: 'REJECTED', number: null, issues: ['10040: Tipo'] },
+      },
+    });
+    const view = renderCard();
+
+    expect(await view.findByText('10040: Tipo')).toBeTruthy();
+    expect(view.getByText(card.creditNote.rejected.title)).toBeTruthy();
+    expect(view.getByRole('button', { name: card.creditNote.issue })).toBeTruthy();
+  });
+
+  it('words a refused credit note as one, not as an invoice', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({ ...READY, invoice: ISSUED });
+    vi.mocked(issueCreditNote).mockRejectedValue(new ApiError('INVOICE_ALREADY_CREDITED', 409));
+    const view = renderCard();
+
+    fireEvent.click(await view.findByRole('button', { name: card.creditNote.issue }));
+    fireEvent.click(
+      within(await view.findByRole('dialog')).getByRole('button', {
+        name: card.creditNote.confirm.confirm,
+      }),
+    );
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(messages.errors.INVOICE_ALREADY_CREDITED),
+    );
+    expect(getInvoicePreview).toHaveBeenCalledTimes(2);
   });
 });

@@ -39,6 +39,7 @@ function invoice(overrides: Partial<Invoice>): Invoice {
   return {
     id: 'inv-1',
     branchId: 'moron',
+    kind: 'INVOICE',
     environment: 'PRODUCTION',
     status: 'ISSUED',
     type: 'B',
@@ -54,6 +55,8 @@ function invoice(overrides: Partial<Invoice>): Invoice {
     issues: [],
     qrUrl: '',
     createdAt: '2026-10-05T00:00:00Z',
+    creditNote: null,
+    creditedInvoice: null,
     ...overrides,
   };
 }
@@ -124,6 +127,33 @@ describe('AdministrationPage', () => {
   it('says so when no branch has invoices yet', async () => {
     await renderPage(undefined, []);
     expect(screen.getByText(copy.emptyAll)).toBeTruthy();
+  });
+
+  // A credit note names the invoice it cancels, and that invoice reads as cancelled.
+  it('lists a credit note under its own type, linked to the invoice it cancels', async () => {
+    const note = invoice({
+      id: 'nc-1',
+      kind: 'CREDIT_NOTE',
+      number: 4,
+      creditedInvoice: {
+        id: 'inv-1',
+        type: 'B',
+        pointOfSale: 3,
+        number: 23,
+        issuedOn: '2026-10-05',
+      },
+    });
+    await renderPage('moron', [note, invoice({ creditNote: note })]);
+
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(within(rows[0]!).getByText('NC B 0003-00000004')).toBeTruthy();
+    expect(
+      within(rows[0]!).getByRole('link', { name: 'Anula B 0003-00000023' }).getAttribute('href'),
+    ).toBe(ROUTES.invoicePDF('inv-1', 'moron'));
+    expect(within(rows[0]!).getByText(copy.statuses.ISSUED)).toBeTruthy();
+    expect(within(rows[1]!).getByText('B 0003-00000023')).toBeTruthy();
+    expect(within(rows[1]!).getByText(copy.statuses.CREDITED)).toBeTruthy();
+    expect(within(rows[1]!).queryByText(copy.statuses.ISSUED)).toBeNull();
   });
 
   it('marks only the invoices issued in homologation as tests', async () => {
