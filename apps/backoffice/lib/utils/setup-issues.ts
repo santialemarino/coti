@@ -28,7 +28,7 @@ export const SETUP_FIX_ROUTE: Partial<Record<SetupIssue, string>> = {
   ACCOUNT_IVA_CONDITION: ROUTES.invoicingSettings,
   ISSUER_PROFILE_REQUIRED: ROUTES.invoicingSettings,
   ACCOUNT_TAX_ID: ROUTES.accountSettings,
-  BRANCH_POINT_OF_SALE: ROUTES.branchSettings,
+  BRANCH_POINT_OF_SALE: ROUTES.invoicingSection('points-of-sale'),
   ARCA_CREDENTIALS: ROUTES.arcaSettings,
   ARCA_CREDENTIALS_EXPIRED: ROUTES.arcaSettings,
   ARCA_CREDENTIALS_CUIT: ROUTES.arcaSettings,

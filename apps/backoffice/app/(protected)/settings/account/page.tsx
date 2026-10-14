@@ -7,6 +7,7 @@ import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { AccountForm } from '@/app/(protected)/settings/account/_components/account-form';
 import { ROUTES } from '@/config/routes';
 import { getAccount } from '@/lib/api/account';
+import { getARCASetup } from '@/lib/api/arca-setup';
 import { requireAdmin } from '@/lib/auth/session';
 import { generatePageMetadata } from '@/lib/utils/page';
 
@@ -15,12 +16,13 @@ export const generateMetadata = () => generatePageMetadata('accountSettings');
 export default async function AccountSettingsPage() {
   await requireAdmin();
   const t = await getTranslations('account');
-  const account = await getAccount();
+  const [account, setup] = await Promise.all([getAccount(), getARCASetup()]);
+  const arcaConnection = setup.hasCertificate ? 'connected' : setup.csr ? 'inProgress' : null;
 
   return (
     <main className="flex flex-col gap-y-8">
       <PageHeader title={t('title')} />
-      <AccountForm account={account} />
+      <AccountForm account={account} arcaConnection={arcaConnection} />
       <section className="flex flex-col max-w-md gap-y-4 lg:max-w-none">
         <Separator />
         {/* The actions follow the title on its own line, and drop below it only when they no longer fit. */}

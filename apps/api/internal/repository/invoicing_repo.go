@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
@@ -45,8 +46,8 @@ func (r *InvoicingRepository) GetAccountFiscal(
 	var a domain.AccountFiscal
 	var profile []byte
 	err := q.QueryRow(ctx,
-		`SELECT a.name, a.legal_name, COALESCE(s.tax_id, a.tax_id), a.iva_condition, a.prices_include_vat, a.invoice_profile
-		 FROM account a LEFT JOIN arca_setup s ON s.account_id = a.id WHERE a.id = $1`, accountID,
+		`SELECT a.name, a.legal_name, a.tax_id, a.iva_condition, a.prices_include_vat, a.invoice_profile
+		 FROM account a WHERE a.id = $1`, accountID,
 	).Scan(&a.Name, &a.LegalName, &a.TaxID, &a.IVACondition, &a.PricesIncludeVAT, &profile)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
@@ -120,14 +121,45 @@ func (r *InvoicingRepository) GetBranchPointOfSale(
 	return intPtr(pos), nil
 }
 
-// UpdateBranchPointsOfSale refuses writes outside the verified ARCA setup flow.
+// UpdateBranchPointsOfSale sets the given branches' points of sale; nil clears one. A branch outside
+// the account is ErrNotFound and a number another branch holds is ErrConflict.
 func (r *InvoicingRepository) UpdateBranchPointsOfSale(
 	ctx context.Context, q Querier, accountID uuid.UUID, points map[uuid.UUID]*int,
 ) error {
-	if len(points) != 0 {
-		return domain.ErrInvalidInput
+	if len(points) == 0 {
+		return nil
 	}
-	return nil
+	ids := make([]uuid.UUID, 0, len(points))
+	values := make([]*int32, 0, len(points))
+	for id, point := range points {
+		ids = append(ids, id)
+		if point == nil {
+			values = append(values, nil)
+			continue
+		}
+		value := int32(*point)
+		values = append(values, &value)
+	}
+	// Cleared first: the unique index checks each row as it is written, so two branches swapping
+	// numbers in one statement would collide halfway.
+	tag, err := q.Exec(ctx,
+		`UPDATE branch SET point_of_sale = NULL WHERE account_id = $1 AND id = ANY($2)`, accountID, ids)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != int64(len(ids)) {
+		return domain.ErrNotFound
+	}
+	_, err = q.Exec(ctx,
+		`UPDATE branch b SET point_of_sale = u.point_of_sale
+		 FROM unnest($2::uuid[], $3::integer[]) AS u(id, point_of_sale)
+		 WHERE b.account_id = $1 AND b.id = u.id AND u.point_of_sale IS NOT NULL`,
+		accountID, ids, values)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return domain.ErrConflict
+	}
+	return err
 }
 
 // GetClientFiscal loads a client's fiscal identity.
@@ -253,6 +285,25 @@ func (r *InvoicingRepository) SaveSealedTicket(
 }
 
 // --- Invoices ---
+
+// HasPendingInvoice reports whether ARCA still owes the answer for one of the account's invoices.
+func (r *InvoicingRepository) HasPendingInvoice(ctx context.Context, q Querier, accountID uuid.UUID) (bool, error) {
+	var pending bool
+	err := q.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM invoice WHERE account_id = $1 AND status = 'PENDING')`, accountID).Scan(&pending)
+	return pending, err
+}
+
+// LockAccountForShare holds the account row until the transaction ends, so a CUIT change or an ARCA
+// disconnect waits for an invoice being held under the current credential.
+func (r *InvoicingRepository) LockAccountForShare(ctx context.Context, q Querier, accountID uuid.UUID) error {
+	var id uuid.UUID
+	err := q.QueryRow(ctx, `SELECT id FROM account WHERE id = $1 FOR SHARE`, accountID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ErrNotFound
+	}
+	return err
+}
 
 // GetLatestByQuote returns the quote's newest invoice in any status, nil when it has none.
 func (r *InvoicingRepository) GetLatestByQuote(

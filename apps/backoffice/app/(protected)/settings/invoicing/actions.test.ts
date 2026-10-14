@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { updateInvoicingSettings } from '@/app/(protected)/settings/invoicing/actions';
+import {
+  updateInvoicingSettings,
+  updatePointsOfSale,
+} from '@/app/(protected)/settings/invoicing/actions';
 import type { InvoicingSettingsValues } from '@/app/(protected)/settings/invoicing/form-schema';
 import { ApiError } from '@/lib/api/errors';
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+vi.mock('@/lib/auth/session', () => ({ requireAdmin: vi.fn() }));
 vi.mock('@/lib/api/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/api/client')>()),
   apiRequest: vi.fn(),
@@ -13,19 +17,20 @@ vi.mock('@/lib/api/client', async (importOriginal) => ({
 const { apiRequest } = await import('@/lib/api/client');
 
 const SETTINGS_RAW = {
-  enabled: true,
-  environment: 'homologation',
   legal_name: 'Corralón del Sur SRL',
   tax_id: '30711111112',
   iva_condition: 'REGISTERED',
   prices_include_vat: true,
   branches: [],
-  credential: null,
 };
 
 const VALUES: InvoicingSettingsValues = {
   ivaCondition: 'REGISTERED',
   pricesIncludeVat: true,
+  address: 'Av.  Rivadavia 1234',
+  grossIncomeKind: 'number',
+  grossIncomeNumber: '901.123456-7',
+  activityStartedOn: '2020-01-02',
   branches: [
     { branchId: 'b1', pointOfSale: '3' },
     { branchId: 'b2', pointOfSale: '' },
@@ -35,7 +40,8 @@ const VALUES: InvoicingSettingsValues = {
 beforeEach(() => vi.clearAllMocks());
 
 describe('updateInvoicingSettings', () => {
-  it('maps the form to the API contract', async () => {
+  // Every branch is sent, so a cleared number reaches the API as null and is saved with the rest.
+  it('maps the form to the API contract, points of sale included', async () => {
     vi.mocked(apiRequest).mockResolvedValue(SETTINGS_RAW);
 
     const result = await updateInvoicingSettings(VALUES);
@@ -48,21 +54,34 @@ describe('updateInvoicingSettings', () => {
       body: {
         iva_condition: 'REGISTERED',
         prices_include_vat: true,
-        branches: [],
-        profile: { address: '', gross_income_registration: '', activity_started_on: '' },
+        branches: [
+          { branch_id: 'b1', point_of_sale: 3 },
+          { branch_id: 'b2', point_of_sale: null },
+        ],
+        profile: {
+          address: 'Av.  Rivadavia 1234',
+          gross_income_registration: '901123456-7',
+          activity_started_on: '2020-01-02',
+        },
       },
     });
   });
 
-  // An unset condition is a null on the wire, never the empty string the Combobox holds.
-  it('sends an unset condition as null', async () => {
+  it('sends an exempt issuer as the canonical value', async () => {
     vi.mocked(apiRequest).mockResolvedValue(SETTINGS_RAW);
 
-    await updateInvoicingSettings({ ...VALUES, ivaCondition: '', pricesIncludeVat: false });
+    await updateInvoicingSettings({ ...VALUES, grossIncomeKind: 'exempt' });
 
     expect(vi.mocked(apiRequest).mock.calls[0]?.[0]).toMatchObject({
-      body: { iva_condition: null, prices_include_vat: false },
+      body: { profile: { gross_income_registration: 'EXENTO' } },
     });
+  });
+
+  it('refuses an unset IVA condition before calling the API', async () => {
+    await expect(updateInvoicingSettings({ ...VALUES, ivaCondition: '' })).resolves.toEqual({
+      error: 'INVALID_BODY',
+    });
+    expect(apiRequest).not.toHaveBeenCalled();
   });
 
   it('refuses two branches on one point of sale before calling the API', async () => {
@@ -89,5 +108,38 @@ describe('updateInvoicingSettings', () => {
     vi.mocked(apiRequest).mockRejectedValue(new ApiError('INVALID_INPUT', 422));
 
     await expect(updateInvoicingSettings(VALUES)).resolves.toEqual({ error: 'INVALID_INPUT' });
+  });
+});
+
+describe('updatePointsOfSale', () => {
+  it('sends only the points of sale, to their own route', async () => {
+    vi.mocked(apiRequest).mockResolvedValue(SETTINGS_RAW);
+
+    await updatePointsOfSale([
+      { branchId: 'b1', pointOfSale: '2' },
+      { branchId: 'b2', pointOfSale: '' },
+    ]);
+
+    expect(apiRequest).toHaveBeenCalledWith({
+      path: '/v1/invoicing/points-of-sale',
+      method: 'PUT',
+      branchScoped: false,
+      body: {
+        branches: [
+          { branch_id: 'b1', point_of_sale: 2 },
+          { branch_id: 'b2', point_of_sale: null },
+        ],
+      },
+    });
+  });
+
+  it('refuses a duplicate before calling the API', async () => {
+    await expect(
+      updatePointsOfSale([
+        { branchId: 'b1', pointOfSale: '2' },
+        { branchId: 'b2', pointOfSale: '2' },
+      ]),
+    ).resolves.toEqual({ error: 'INVALID_BODY' });
+    expect(apiRequest).not.toHaveBeenCalled();
   });
 });

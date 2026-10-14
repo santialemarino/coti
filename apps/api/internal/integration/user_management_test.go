@@ -252,7 +252,7 @@ func newEnvWithRFQProviders(
 			Quote:         handler.NewQuoteHandler(quoteService, nil, nil, highConfidence),
 			Client:        handler.NewClientHandler(clientService),
 			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
-				branchRepo, channelRepo, userRepo, onboardingRepo, authService, verificationService, quiet,
+				repository.NewARCASetupRepository(), repository.NewInvoicingRepository(), branchRepo, channelRepo, userRepo, onboardingRepo, authService, verificationService, quiet,
 				cfg.Auth, cfg.Branch).WithDefaultTags(tagRepo)),
 			Onboarding: handler.NewOnboardingHandler(onboardingService),
 		},

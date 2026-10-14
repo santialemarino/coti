@@ -8,7 +8,7 @@
 
 INSERT INTO account (id, name, legal_name, tax_id, brand_color) VALUES
   ('a0000000-0000-4000-8000-000000000001', 'Corralón San Martín',
-   'Corralón San Martín S.R.L.', '30-71234567-9', '#C2410C')
+   'Corralón San Martín S.R.L.', '30-71234567-1', '#C2410C')
 ON CONFLICT (id) DO NOTHING;
 
 -- The long-lived development account predates onboarding and must never block an existing

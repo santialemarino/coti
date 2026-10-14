@@ -20,8 +20,20 @@ import (
 
 type accountRepository interface {
 	GetByID(ctx context.Context, q repository.Querier, accountID uuid.UUID) (*domain.Account, error)
+	GetByIDForUpdate(ctx context.Context, q repository.Querier, accountID uuid.UUID) (*domain.Account, error)
 	Create(ctx context.Context, q repository.Querier, name string, legalName, taxID *string) (*domain.Account, error)
 	Update(ctx context.Context, q repository.Querier, accountID uuid.UUID, in domain.AccountUpdate) (*domain.Account, error)
+}
+
+// accountARCASetups tells whether the account is connected to ARCA, which locks its CUIT.
+type accountARCASetups interface {
+	Exists(ctx context.Context, q repository.Querier, accountID uuid.UUID) (bool, error)
+	Delete(ctx context.Context, q repository.Querier, accountID uuid.UUID) error
+}
+
+// pendingInvoices tells whether ARCA still owes the answer for one of the account's invoices.
+type pendingInvoices interface {
+	HasPendingInvoice(ctx context.Context, q repository.Querier, accountID uuid.UUID) (bool, error)
 }
 
 type signupBranchRepository interface {
@@ -64,6 +76,8 @@ type adminTxScoper interface {
 type AccountService struct {
 	db                adminTxScoper
 	accounts          accountRepository
+	arcaSetups        accountARCASetups
+	invoices          pendingInvoices
 	branches          signupBranchRepository
 	channels          channelRepository
 	users             signupUserRepository
@@ -80,7 +94,8 @@ type AccountService struct {
 
 // NewAccountService builds an AccountService.
 func NewAccountService(
-	db adminTxScoper, accounts accountRepository, branches signupBranchRepository,
+	db adminTxScoper, accounts accountRepository, arcaSetups accountARCASetups, invoices pendingInvoices,
+	branches signupBranchRepository,
 	channels channelRepository, users signupUserRepository, onboarding signupOnboardingRepository,
 	tokens tokenIssuer,
 	verifier emailVerifier, log *slog.Logger, cfg config.AuthConfig, branchCfg config.BranchConfig,
@@ -88,7 +103,7 @@ func NewAccountService(
 	if log == nil {
 		log = slog.Default()
 	}
-	return &AccountService{db: db, accounts: accounts, branches: branches, channels: channels,
+	return &AccountService{db: db, accounts: accounts, arcaSetups: arcaSetups, invoices: invoices, branches: branches, channels: channels,
 		users: users, onboarding: onboarding, tokens: tokens, verifier: verifier, log: log,
 		policy:            domain.PasswordPolicy{MinLength: cfg.PasswordMinLength},
 		defaultExpiryDays: branchCfg.DefaultExpiryDays}
@@ -218,7 +233,10 @@ func (s *AccountService) Register(
 	return &domain.SignupResult{Account: *account, Branch: *branch, Admin: *admin}, pair, nil
 }
 
-// Update replaces the caller's account record, including the brand the client webapp renders.
+// Update replaces the caller's account record, including the brand the client webapp renders. The
+// CUIT is what ARCA is connected with: while a connection exists, finished or in progress, a new one
+// is refused unless the caller confirms removing the connection, which then happens in the same
+// transaction. The account row is locked first, as starting a connection does.
 func (s *AccountService) Update(
 	ctx context.Context, tenant domain.Tenant, in domain.AccountUpdate,
 ) (*domain.Account, error) {
@@ -227,7 +245,25 @@ func (s *AccountService) Update(
 	}
 	var account *domain.Account
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		var err error
+		current, err := s.accounts.GetByIDForUpdate(ctx, q, tenant.AccountID)
+		if err != nil {
+			return err
+		}
+		if taxIDOf(current.TaxID) != taxIDOf(in.TaxID) {
+			connected, err := s.arcaSetups.Exists(ctx, q, tenant.AccountID)
+			if err != nil {
+				return err
+			}
+			if connected {
+				if !in.DisconnectARCA {
+					return domain.WithCode(domain.CodeARCAConnected,
+						fmt.Errorf("%w: the CUIT is locked while ARCA is connected", domain.ErrConflict))
+				}
+				if err := disconnectARCA(ctx, q, s.arcaSetups, s.invoices, tenant.AccountID); err != nil {
+					return err
+				}
+			}
+		}
 		account, err = s.accounts.Update(ctx, q, tenant.AccountID, in)
 		return err
 	}); err != nil {
@@ -270,6 +306,29 @@ func (s *AccountService) UploadLogo(
 		return nil, err
 	}
 	return logo, nil
+}
+
+// disconnectARCA removes the account's ARCA credential, refusing while an invoice issued with it is
+// still waiting for ARCA's answer.
+func disconnectARCA(
+	ctx context.Context, q repository.Querier, setups accountARCASetups, invoices pendingInvoices, accountID uuid.UUID,
+) error {
+	pending, err := invoices.HasPendingInvoice(ctx, q, accountID)
+	if err != nil {
+		return err
+	}
+	if pending {
+		return domain.WithCode(domain.CodeInvoicePending,
+			fmt.Errorf("%w: an invoice is waiting for ARCA", domain.ErrConflict))
+	}
+	return setups.Delete(ctx, q, accountID)
+}
+
+func taxIDOf(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return domain.NormalizeTaxID(*value)
 }
 
 func brandLogoKey(accountID, logoID uuid.UUID) string {

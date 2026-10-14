@@ -25,6 +25,8 @@ const (
 	invoiceIssueReceiverCUIT       = "RECEIVER_CUIT_REQUIRED"
 	invoiceIssueReceiverID         = "RECEIVER_ID_REQUIRED"
 	invoiceIssueTotalMismatch      = "QUOTE_TOTAL_MISMATCH"
+	invoiceIssueIssuerProfile      = "ISSUER_PROFILE_REQUIRED"
+	invoiceIssueReceiverAddress    = "RECEIVER_ADDRESS_REQUIRED"
 )
 
 // arcaCurrency is the only currency invoices are issued in for now.
@@ -244,7 +246,7 @@ func invoiceIssues(in invoiceInputs) []string {
 		add(invoiceIssueCurrency)
 	}
 	if in.account.Profile.Address == "" || in.account.Profile.GrossIncomeRegistration == "" || in.account.Profile.ActivityStartedOn == "" || firstNonEmpty(in.account.LegalName, &in.account.Name) == "" {
-		add("ISSUER_PROFILE_REQUIRED")
+		add(invoiceIssueIssuerProfile)
 	}
 	if in.account.IVACondition != nil && *in.account.IVACondition == domain.IVAConditionFinalConsumer {
 		add(invoiceIssueIVACondition)
@@ -253,16 +255,26 @@ func invoiceIssues(in invoiceInputs) []string {
 		add(invoiceIssueIVACondition)
 	}
 	if in.receiver.IVACondition.Valid() && in.receiver.IVACondition != domain.IVAConditionFinalConsumer && (strings.TrimSpace(in.receiver.Address) == "" || strings.TrimSpace(in.receiver.Name) == "") {
-		add("RECEIVER_ADDRESS_REQUIRED")
+		add(invoiceIssueReceiverAddress)
 	}
 	if in.pointOfSale == nil {
 		add(invoiceIssuePointOfSale)
+	}
+	// The account's CUIT is what the invoice names as issuer, so it has to be one ARCA accepts.
+	cuit := in.account.CUIT()
+	validTaxID := cuit != "" && validCUIT(cuit)
+	if !validTaxID {
+		add(invoiceIssueTaxID)
 	}
 	switch {
 	case in.credential == nil:
 		add(invoiceIssueCredentials)
 	case !in.credential.ExpiresAt.After(in.now):
 		add(invoiceIssueCredentialsExpired)
+	}
+	// A certificate issued for another CUIT is refused by ARCA for this one.
+	if in.credential != nil && validTaxID && in.credential.CUIT != cuit {
+		add(invoiceIssueCredentialsCUIT)
 	}
 
 	switch {

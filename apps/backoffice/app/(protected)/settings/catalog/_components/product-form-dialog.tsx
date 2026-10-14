@@ -187,6 +187,7 @@ export function ProductFormDialog({
                     <FormLabel required>{t('family.label')}</FormLabel>
                     <FormControl>
                       <Combobox
+                        ref={field.ref}
                         value={field.value || null}
                         onValueChange={(value) => {
                           field.onChange(value);
@@ -217,6 +218,7 @@ export function ProductFormDialog({
                     <FormLabel>{t('subgroup.label')}</FormLabel>
                     <FormControl>
                       <Combobox
+                        ref={field.ref}
                         value={field.value || null}
                         onValueChange={field.onChange}
                         options={subgroups.map((subgroup) => ({
@@ -239,6 +241,7 @@ export function ProductFormDialog({
                     <FormLabel required>{t('vatRate.label')}</FormLabel>
                     <FormControl>
                       <Combobox
+                        ref={field.ref}
                         value={field.value}
                         onValueChange={field.onChange}
                         options={VAT_RATES.map((rate) => ({ value: rate, label: tRates(rate) }))}

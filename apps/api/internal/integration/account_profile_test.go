@@ -6,11 +6,15 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 
+	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
+	"github.com/santialemarino/coti/apps/api/internal/repository"
+	"github.com/santialemarino/coti/apps/api/internal/services"
 )
 
 func accountBody(name string, overrides map[string]any) map[string]any {
@@ -217,5 +221,94 @@ func TestAccount_UpdateTouchesOnlyTheCallersAccount(t *testing.T) {
 		if tc.id == accountB && colour != nil {
 			t.Errorf("account B brand_color = %q, want it untouched", *colour)
 		}
+	}
+}
+
+// ARCA is connected with the account's CUIT, so while a connection exists the CUIT cannot change;
+// writing the same number another way is not a change.
+func TestAccount_UpdateLocksTheCUITWhileARCAIsConnected(t *testing.T) {
+	e := newEnv(t)
+	accountID, _ := e.seedAccount(t, "Corralón A")
+	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	token := e.tokenFor(t, admin)
+
+	if rec := e.do(t, request{method: http.MethodPut, path: "/v1/account", token: token,
+		body: accountBody("Corralón A", map[string]any{"tax_id": "30-71234567-9"})}); rec.Code != http.StatusOK {
+		t.Fatalf("first update: status = %d; body = %s", rec.Code, rec.Body)
+	}
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO arca_setup (account_id, tax_id, csr, sealed_key) VALUES ($1, '30712345679', 'csr', 'sealed')`,
+		accountID); err != nil {
+		t.Fatalf("seed arca setup: %v", err)
+	}
+
+	rec := e.do(t, request{method: http.MethodPut, path: "/v1/account", token: token,
+		body: accountBody("Corralón A", map[string]any{"tax_id": "20-32964233-0"})})
+	if rec.Code != http.StatusConflict || errorCode(t, rec) != string(domain.CodeARCAConnected) {
+		t.Fatalf("status = %d, body = %s, want 409 ARCA_CONNECTED", rec.Code, rec.Body)
+	}
+	if rec := e.do(t, request{method: http.MethodPut, path: "/v1/account", token: token,
+		body: accountBody("Corralón B", map[string]any{"tax_id": "30712345679"})}); rec.Code != http.StatusOK {
+		t.Fatalf("same CUIT reformatted: status = %d; body = %s", rec.Code, rec.Body)
+	}
+	var taxID string
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT tax_id FROM account WHERE id = $1`, accountID).Scan(&taxID); err != nil || taxID != "30712345679" {
+		t.Fatalf("tax_id = %q, %v", taxID, err)
+	}
+}
+
+// A confirmed CUIT change removes the ARCA connection in the same write; when the account write then
+// fails, the connection is still there and the CUIT unchanged.
+func TestAccount_ConfirmedCUITChangeDisconnectsARCAAtomically(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	accountID, _ := e.seedAccount(t, "Corralón A")
+	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	token := e.tokenFor(t, admin)
+	if rec := e.do(t, request{method: http.MethodPut, path: "/v1/account", token: token,
+		body: accountBody("Corralón A", map[string]any{"tax_id": "30-71234567-1"})}); rec.Code != http.StatusOK {
+		t.Fatalf("first update: status = %d; body = %s", rec.Code, rec.Body)
+	}
+	if _, err := e.db.CrossAccount().Exec(ctx,
+		`INSERT INTO arca_setup (account_id, tax_id, csr, sealed_key) VALUES ($1, '30712345671', 'csr', 'sealed')`,
+		accountID); err != nil {
+		t.Fatalf("seed arca setup: %v", err)
+	}
+	connected := func() bool {
+		var exists bool
+		if err := e.db.CrossAccount().QueryRow(ctx,
+			`SELECT EXISTS (SELECT 1 FROM arca_setup WHERE account_id = $1)`, accountID).Scan(&exists); err != nil {
+			t.Fatal(err)
+		}
+		return exists
+	}
+	taxID := func() string {
+		var value string
+		if err := e.db.CrossAccount().QueryRow(ctx, `SELECT tax_id FROM account WHERE id = $1`, accountID).Scan(&value); err != nil {
+			t.Fatal(err)
+		}
+		return value
+	}
+
+	accounts := services.NewAccountService(e.db, repository.NewAccountRepository(), repository.NewARCASetupRepository(),
+		repository.NewInvoicingRepository(), nil, nil, nil, nil, nil, nil, nil, config.AuthConfig{}, config.BranchConfig{})
+	other := "20-32964233-0"
+	_, err := accounts.Update(ctx, domain.Tenant{AccountID: accountID, Role: domain.UserRoleAdmin},
+		domain.AccountUpdate{Name: strings.Repeat("x", 300), TaxID: &other, DisconnectARCA: true})
+	if err == nil {
+		t.Fatal("an account name past the column accepted")
+	}
+	if !connected() || taxID() != "30-71234567-1" {
+		t.Fatal("a failed account write still removed the connection or changed the CUIT")
+	}
+
+	rec := e.do(t, request{method: http.MethodPut, path: "/v1/account", token: token,
+		body: accountBody("Corralón A", map[string]any{"tax_id": other, "disconnect_arca": true})})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("confirmed change: status = %d; body = %s", rec.Code, rec.Body)
+	}
+	if connected() || taxID() != other {
+		t.Fatal("a confirmed change left the connection or kept the old CUIT")
 	}
 }

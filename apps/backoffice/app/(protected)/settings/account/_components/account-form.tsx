@@ -1,12 +1,14 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 
 import {
+  ConfirmDialog,
   Form,
   FormControl,
   FormField,
@@ -14,13 +16,16 @@ import {
   FormLabel,
   FormMessage,
   FormRootMessage,
+  InlineLink,
   Input,
   PendingButton,
 } from '@repo/ui/components';
+import { useHeldWhileClosed } from '@repo/ui/hooks';
 import { updateAccount } from '@/app/(protected)/settings/account/actions';
 import { accountSchema, type AccountValues } from '@/app/(protected)/settings/account/form-schema';
 import { BrandColorField } from '@/components/brand-color-field';
 import { LogoDropzone } from '@/components/logo-dropzone';
+import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Account } from '@/lib/api/account';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
@@ -28,9 +33,11 @@ import { FORM_VALIDATION } from '@/lib/forms/options';
 
 interface AccountFormProps {
   account: Account;
+  // Where the ARCA connection made with this CUIT stands; null when there is none.
+  arcaConnection: 'inProgress' | 'connected' | null;
 }
 
-export function AccountForm({ account }: AccountFormProps) {
+export function AccountForm({ account, arcaConnection }: AccountFormProps) {
   const t = useTranslations('account');
   const tErrors = useTranslations('common.form.errors');
   const message = useApiErrorMessage('account');
@@ -47,22 +54,49 @@ export function AccountForm({ account }: AccountFormProps) {
     },
   });
   const [logo, setLogo] = useState<File | null>();
+  // The values a CUIT change is waiting on while the caller decides about the ARCA connection.
+  const [confirming, setConfirming] = useState<AccountValues | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [invoicePending, setInvoicePending] = useState(false);
+  const heldConnection = useHeldWhileClosed(arcaConnection, confirming !== null);
 
-  async function onSubmit(values: AccountValues) {
-    const result = await updateAccount(values, logo);
+  async function save(values: AccountValues, disconnectARCA: boolean) {
+    setInvoicePending(false);
+    const result = await updateAccount(values, logo, disconnectARCA);
     if (result.ok) {
-      toast.success(t('saved'));
+      toast.success(t(disconnectARCA ? 'savedDisconnected' : 'saved'));
       return;
     }
-    // The rejection belongs to the form, not to a field: the two the API answers with are both
-    // values this schema already refuses.
+    // A CUIT change ARCA is connected with asks first, then goes again with the confirmation.
+    if (result.error === 'ARCA_CONNECTED') {
+      setConfirming(values);
+      return;
+    }
+    // The refusals a field owns; the rest are values this schema already refuses.
+    if (result.error === 'INVOICE_PENDING') {
+      setInvoicePending(true);
+      // Behind the confirmation, the dialog's close moves focus here once it has finished closing.
+      form.setError('taxId', { message: message(result.error) }, { shouldFocus: !disconnectARCA });
+      return;
+    }
     form.setError('root', { message: message(result.error) });
+  }
+
+  async function confirmDisconnect() {
+    if (!confirming) return;
+    setDisconnecting(true);
+    try {
+      await save(confirming, true);
+    } finally {
+      setDisconnecting(false);
+      setConfirming(null);
+    }
   }
 
   return (
     <Form {...form}>
       <form
-        onSubmit={form.handleSubmit(onSubmit)}
+        onSubmit={form.handleSubmit((values) => save(values, false))}
         noValidate
         className="flex flex-col w-full gap-y-6 lg:gap-y-8"
       >
@@ -121,7 +155,16 @@ export function AccountForm({ account }: AccountFormProps) {
                       {...field}
                     />
                   </FormControl>
-                  <FormMessage />
+                  <FormMessage>
+                    {invoicePending && form.formState.errors.taxId ? (
+                      <>
+                        {t('invoicePending')}{' '}
+                        <InlineLink asChild>
+                          <Link href={ROUTES.administration}>{t('invoicePendingLink')}</Link>
+                        </InlineLink>
+                      </>
+                    ) : undefined}
+                  </FormMessage>
                 </FormItem>
               )}
             />
@@ -153,6 +196,33 @@ export function AccountForm({ account }: AccountFormProps) {
           {t('submit')}
         </PendingButton>
       </form>
+      <ConfirmDialog
+        open={confirming !== null}
+        onOpenChange={(open) => !open && setConfirming(null)}
+        entity={account.taxId}
+        title={t('disconnectARCA.title')}
+        description={(cuit) =>
+          t(
+            heldConnection === 'inProgress'
+              ? 'disconnectARCA.inProgress'
+              : 'disconnectARCA.connected',
+            { old: cuit },
+          )
+        }
+        onConfirm={confirmDisconnect}
+        onCloseAutoFocus={(event) => {
+          // A refusal the CUIT owns lands on that field, not back on the save button.
+          if (!invoicePending) return;
+          event.preventDefault();
+          form.setFocus('taxId');
+        }}
+        pending={disconnecting}
+        labels={{
+          confirm: t('disconnectARCA.confirm'),
+          pending: t('submitting'),
+          cancel: t('disconnectARCA.cancel'),
+        }}
+      />
     </Form>
   );
 }

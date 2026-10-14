@@ -36,6 +36,9 @@ type UpdateAccountRequest struct {
 	// Hexadecimal, with three, four, six or eight digits behind a hash. Checked here because the
 	// webapp renders a quote with it, not in whichever client happens to be writing it.
 	BrandColor *string `json:"brand_color" binding:"omitempty,hexcolor,max=32"`
+	// Confirms that a new tax_id removes the ARCA connection made with the old one; without it the
+	// change is refused with 409 ARCA_CONNECTED.
+	DisconnectARCA bool `json:"disconnect_arca"`
 }
 
 // AccountResponse is the corralón record the backoffice reads and edits.

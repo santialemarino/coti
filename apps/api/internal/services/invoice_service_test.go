@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +23,10 @@ func (invoiceTestDB) InTenantTx(_ context.Context, _ domain.Tenant, fn func(repo
 }
 
 type fakeInvoicingStore struct {
+	savedProfile *domain.InvoiceIssuerProfile
+	// Off by default; a test turns it on to prove a refusal does not depend on the index.
+	noUniqueIndex  bool
+	pointWrites    int
 	snapshotErr    error
 	snapshotSource *domain.QuoteRepresentationSource
 	sourceErr      error
@@ -37,6 +42,13 @@ type fakeInvoicingStore struct {
 	rejected       *domain.InvoiceRejectedError
 	stored         string
 	ticket         *domain.SealedARCATicket
+	accountLocked  bool
+	heldUnlocked   bool
+}
+
+func (f *fakeInvoicingStore) LockAccountForShare(context.Context, repository.Querier, uuid.UUID) error {
+	f.accountLocked = true
+	return nil
 }
 
 func (f *fakeInvoicingStore) GetAccountFiscal(context.Context, repository.Querier, uuid.UUID) (*domain.AccountFiscal, error) {
@@ -57,10 +69,14 @@ func (f *fakeInvoicingStore) GetBranchPointOfSale(context.Context, repository.Qu
 }
 
 func (f *fakeInvoicingStore) UpdateBranchPointsOfSale(_ context.Context, _ repository.Querier, _ uuid.UUID, points map[uuid.UUID]*int) error {
+	f.pointWrites++
 	for i := range f.branches {
 		if pos, ok := points[f.branches[i].BranchID]; ok {
 			f.branches[i].PointOfSale = pos
 		}
+	}
+	if f.noUniqueIndex {
+		return nil
 	}
 	// Mirrors uq_branch_point_of_sale.
 	seen := map[int]bool{}
@@ -109,6 +125,9 @@ func (f *fakeInvoicingStore) GetLatestByQuote(context.Context, repository.Querie
 }
 
 func (f *fakeInvoicingStore) CreatePending(_ context.Context, _ repository.Querier, in domain.Invoice) (*domain.Invoice, error) {
+	if !f.accountLocked {
+		f.heldUnlocked = true
+	}
 	if f.invoice != nil && f.invoice.Status != domain.InvoiceStatusRejected && f.invoice.QuoteVersionID == in.QuoteVersionID {
 		return nil, domain.ErrConflict
 	}
@@ -234,7 +253,7 @@ func newInvoiceFixture(t *testing.T) invoiceFixture {
 	t.Helper()
 	registered := domain.IVAConditionRegistered
 	address := "Main 123"
-	taxID, pos := "30-71234567-8", 3
+	taxID, pos := "30-71234567-1", 3
 	cuit, product := "20123456786", uuid.New()
 	versionID, quoteID, branchID := uuid.New(), uuid.New(), uuid.New()
 	accountID := uuid.New()
@@ -243,7 +262,7 @@ func newInvoiceFixture(t *testing.T) invoiceFixture {
 		pointOfSale: &pos,
 		client:      &domain.ClientFiscal{Name: &address, Address: &address, TaxID: &cuit, IVACondition: &registered},
 		rates:       map[uuid.UUID]domain.VATRate{product: domain.VATRateTwentyOne},
-		credential:  &domain.ARCACredentialStatus{CUIT: "30712345678", ExpiresAt: invoiceNow.AddDate(1, 0, 0)},
+		credential:  &domain.ARCACredentialStatus{CUIT: "30712345671", ExpiresAt: invoiceNow.AddDate(1, 0, 0)},
 		sealedKey:   accountID.String() + ":KEY",
 	}
 	clientID := uuid.New()
@@ -275,13 +294,26 @@ func TestInvoiceService_IssueAuthorizesAndRecordsTheInvoice(t *testing.T) {
 		t.Fatalf("invoice = %+v, want issued with ARCA's CAE", invoice)
 	}
 	req := f.issuer.requests[0]
-	if req.Type != domain.InvoiceTypeA || req.IssuerCUIT != "30712345678" || req.PointOfSale != 3 ||
+	if req.Type != domain.InvoiceTypeA || req.IssuerCUIT != "30712345671" || req.PointOfSale != 3 ||
 		req.Receiver.DocType != domain.ReceiverDocCUIT {
 		t.Fatalf("request = %+v, want an A invoice from the account's CUIT at its point of sale", req)
 	}
 	assertMoney(t, "request total", req.Amounts.Total, "1210.00")
 	if want := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC); !req.Date.Equal(want) {
 		t.Fatalf("date = %s, want the day in Argentina", req.Date)
+	}
+}
+
+// A CUIT change or a disconnect must not slip between the readiness check and the pending invoice.
+func TestInvoiceService_IssueHoldsTheAccountBeforeReservingTheInvoice(t *testing.T) {
+	t.Parallel()
+	f := newInvoiceFixture(t)
+
+	if _, err := f.issue(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if f.store.heldUnlocked {
+		t.Fatal("the pending invoice was written without holding the account row")
 	}
 }
 
@@ -455,6 +487,103 @@ func TestInvoiceService_UpdateSettingsRefusesASharedPointOfSale(t *testing.T) {
 	}
 }
 
+// The duplicate is refused by the service before any write, so it holds even where no index would
+// catch it.
+func TestInvoiceService_UpdatePointsOfSaleRefusesADuplicateBeforeWriting(t *testing.T) {
+	t.Parallel()
+	f := newInvoiceFixture(t)
+	f.store.noUniqueIndex = true
+	first, second := uuid.New(), uuid.New()
+	f.store.branches = []domain.BranchPointOfSale{{BranchID: first}, {BranchID: second}}
+	pos := 4
+
+	_, err := f.service.UpdatePointsOfSale(context.Background(), f.tenant, map[uuid.UUID]*int{first: &pos, second: &pos})
+
+	if domain.CodeOf(err) != domain.CodePointOfSaleTaken || !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("err = %v, want 409 POINT_OF_SALE_TAKEN", err)
+	}
+	if f.store.pointWrites != 0 {
+		t.Fatal("the duplicate reached the store")
+	}
+}
+
+func TestInvoiceService_UpdatePointsOfSaleWordsTheIndexRefusal(t *testing.T) {
+	t.Parallel()
+	f := newInvoiceFixture(t)
+	first, second := uuid.New(), uuid.New()
+	kept := 4
+	f.store.branches = []domain.BranchPointOfSale{{BranchID: first, PointOfSale: &kept}, {BranchID: second}}
+
+	_, err := f.service.UpdatePointsOfSale(context.Background(), f.tenant, map[uuid.UUID]*int{second: &kept})
+
+	if domain.CodeOf(err) != domain.CodePointOfSaleTaken {
+		t.Fatalf("err = %v, want POINT_OF_SALE_TAKEN for a number another branch keeps", err)
+	}
+}
+
+func TestInvoiceService_UpdateSettingsPersistsPointsOfSale(t *testing.T) {
+	t.Parallel()
+	f := newInvoiceFixture(t)
+	first, second := uuid.New(), uuid.New()
+	kept := 7
+	f.store.branches = []domain.BranchPointOfSale{{BranchID: first, PointOfSale: &kept}, {BranchID: second}}
+	moved := 3
+
+	settings, err := f.service.UpdateSettings(context.Background(), f.tenant, domain.InvoicingSettingsUpdate{
+		PointsOfSale: map[uuid.UUID]*int{first: nil, second: &moved}})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.Branches[0].PointOfSale != nil || *settings.Branches[1].PointOfSale != 3 {
+		t.Fatalf("branches = %+v, want the first cleared and the second at 3", settings.Branches)
+	}
+}
+
+func TestInvoiceService_UpdateSettingsRefusesAPointOfSaleOutOfRange(t *testing.T) {
+	t.Parallel()
+	for _, pos := range []int{0, domain.PointOfSaleMax + 1} {
+		f := newInvoiceFixture(t)
+		_, err := f.service.UpdateSettings(context.Background(), f.tenant, domain.InvoicingSettingsUpdate{
+			PointsOfSale: map[uuid.UUID]*int{uuid.New(): &pos}})
+		if !errors.Is(err, domain.ErrInvalidInput) {
+			t.Fatalf("point of sale %d: err = %v, want ErrInvalidInput", pos, err)
+		}
+	}
+}
+
+func TestInvoiceService_UpdateSettingsNormalizesTheIssuerProfile(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		registration string
+		want         string
+	}{
+		{" exento ", domain.GrossIncomeExempt},
+		{"901.123 456-7", "901123456-7"},
+	}
+	for _, tc := range cases {
+		f := newInvoiceFixture(t)
+		_, err := f.service.UpdateSettings(context.Background(), f.tenant, domain.InvoicingSettingsUpdate{
+			Profile: &domain.InvoiceIssuerProfile{Address: "  Av.  Rivadavia   1234 ", GrossIncomeRegistration: tc.registration, ActivityStartedOn: "2020-01-02"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := *f.store.savedProfile; got.Address != "Av. Rivadavia 1234" || got.GrossIncomeRegistration != tc.want {
+			t.Fatalf("saved %+v, want the address collapsed and the registration %q", got, tc.want)
+		}
+	}
+}
+
+func TestInvoiceService_UpdateSettingsRefusesAMalformedGrossIncomeRegistration(t *testing.T) {
+	t.Parallel()
+	f := newInvoiceFixture(t)
+	_, err := f.service.UpdateSettings(context.Background(), f.tenant, domain.InvoicingSettingsUpdate{
+		Profile: &domain.InvoiceIssuerProfile{Address: "Av. Rivadavia 1234", GrossIncomeRegistration: "en trámite", ActivityStartedOn: "2020-01-02"}})
+	if !errors.Is(err, domain.ErrInvalidInput) || f.store.savedProfile != nil {
+		t.Fatalf("err = %v, saved = %+v, want the profile refused unsaved", err, f.store.savedProfile)
+	}
+}
+
 func TestInvoiceService_StalePendingWithoutAClaimIsReleasedUnasked(t *testing.T) {
 	t.Parallel()
 	f := newInvoiceFixture(t)
@@ -584,7 +713,8 @@ func (f *fakeInvoiceQuotes) GetByIDForUpdate(ctx context.Context, q repository.Q
 	return f.GetByID(ctx, q, a, b, id)
 }
 
-func (f *fakeInvoicingStore) SaveProfile(context.Context, repository.Querier, uuid.UUID, domain.InvoiceIssuerProfile) error {
+func (f *fakeInvoicingStore) SaveProfile(_ context.Context, _ repository.Querier, _ uuid.UUID, profile domain.InvoiceIssuerProfile) error {
+	f.savedProfile = &profile
 	return nil
 }
 
@@ -603,16 +733,27 @@ func TestInvoiceService_PreviewUsesARCACUITAndBranchPointOfSale(t *testing.T) {
 	}
 }
 
-func TestInvoiceService_IssuesWithIndependentARCACUIT(t *testing.T) {
+// Issue goes through the same checks as the preview, so neither gap reaches ARCA.
+func TestInvoiceService_IssueRefusesACUITTheCertificateDoesNotCover(t *testing.T) {
 	t.Parallel()
-	f := newInvoiceFixture(t)
-	other := "20329642330"
-	f.store.account.TaxID = &other
-	invoice, err := f.issue(context.Background())
-	if err != nil || invoice.IssuerCUIT != f.store.credential.CUIT {
-		t.Fatalf("invoice=%+v err=%v, want ARCA issuer", invoice, err)
-	}
-	if len(f.issuer.requests) != 1 || f.issuer.requests[0].IssuerCUIT != f.store.credential.CUIT {
-		t.Fatalf("request did not use ARCA CUIT: %+v", f.issuer.requests)
+	other, blank := "20329642330", ""
+	for name, taxID := range map[string]*string{"another CUIT": &other, "no CUIT": &blank} {
+		f := newInvoiceFixture(t)
+		f.store.account.TaxID = taxID
+		_, err := f.issue(context.Background())
+		var notReady *domain.InvoiceNotReadyError
+		if !errors.As(err, &notReady) {
+			t.Fatalf("%s: err = %v, want the invoice refused as not ready", name, err)
+		}
+		want := invoiceIssueCredentialsCUIT
+		if taxID == &blank {
+			want = invoiceIssueTaxID
+		}
+		if !slices.Contains(notReady.Issues, want) {
+			t.Fatalf("%s: issues = %v, want %s", name, notReady.Issues, want)
+		}
+		if len(f.issuer.requests) != 0 {
+			t.Fatalf("%s: the request reached ARCA", name)
+		}
 	}
 }

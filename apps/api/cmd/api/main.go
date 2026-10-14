@@ -152,7 +152,9 @@ func run() error {
 		mailService, verificationService, log, cfg.Auth, cfg.Web, cfg.Mail.Delivers(), nil)
 	branchService := services.NewBranchService(db, branchRepo, channelRepo, branchProductRepo,
 		cfg.Branch.DefaultExpiryDays)
-	accountService := services.NewAccountService(db, accountRepo, branchRepo, channelRepo,
+	arcaSetupRepo := repository.NewARCASetupRepository()
+	invoicingRepo := repository.NewInvoicingRepository()
+	accountService := services.NewAccountService(db, accountRepo, arcaSetupRepo, invoicingRepo, branchRepo, channelRepo,
 		userRepo, onboardingRepo, authService, verificationService, log, cfg.Auth, cfg.Branch).
 		WithDefaultTags(tagRepo).
 		WithLogoStorage(objectStorage.Storage, cfg.Storage.MaxFileSize)
@@ -169,9 +171,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	invoiceService := services.NewInvoiceService(db, repository.NewInvoicingRepository(), quoteRepo, quoteDiscountRepo, arcainvoice.NewIssuer(arcainvoice.Settings{Environment: arcainvoice.EnvironmentHomologation, Timeout: cfg.ARCA.Timeout, Log: log}, arcainvoice.NewMemoryTicketCache()), arcaCipher, services.InvoiceSettings{Enabled: arcaCipher.Enabled(), Environment: arcainvoice.EnvironmentHomologation, IssueTimeout: cfg.ARCA.IssueTimeout, ReconcileAfter: cfg.ARCA.ReconcileAfter, UnidentifiedMax: decimal.Zero, LogoMaxBytes: cfg.QuoteLogo.MaxSizeBytes, LogoMaxPixels: cfg.QuoteLogo.MaxPixels}, nil, accountService, quotePDF.NewInvoiceRenderer())
-	arcaSetupService := services.NewARCASetupService(db, repository.NewARCASetupRepository(), arcaCipher,
-		arca.NewSetupConnector(cfg.ARCA.Timeout))
+	invoiceService := services.NewInvoiceService(db, invoicingRepo, quoteRepo, quoteDiscountRepo, arcainvoice.NewIssuer(arcainvoice.Settings{Environment: arcainvoice.EnvironmentHomologation, Timeout: cfg.ARCA.Timeout, Log: log}, arcainvoice.NewMemoryTicketCache()), arcaCipher, services.InvoiceSettings{Enabled: arcaCipher.Enabled(), Environment: arcainvoice.EnvironmentHomologation, IssueTimeout: cfg.ARCA.IssueTimeout, ReconcileAfter: cfg.ARCA.ReconcileAfter, UnidentifiedMax: decimal.Zero, LogoMaxBytes: cfg.QuoteLogo.MaxSizeBytes, LogoMaxPixels: cfg.QuoteLogo.MaxPixels}, nil, accountService, quotePDF.NewInvoiceRenderer())
+	arcaSetupService := services.NewARCASetupService(db, arcaSetupRepo, accountRepo, invoicingRepo, arcaCipher,
+		arca.NewSetupConnector())
 	catalogSearchService := services.NewCatalogSearchService(db, productRepo, providers.Embedder,
 		cfg.Catalog)
 	catalogMatchService := services.NewCatalogMatchService(catalogSearchService, cfg.Catalog).

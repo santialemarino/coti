@@ -8,12 +8,12 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
 )
 
-// List returns the active branch's fiscal history.
+// List returns the fiscal history of the active branch, or of every branch the caller reaches.
 // @Summary List invoices
 // @Tags invoicing
 // @Produce json
 // @Security BearerAuth
-// @Param X-Branch-Id header string true "Active branch"
+// @Param X-Branch-Id header string false "Active branch; omitted lists every branch the caller reaches"
 // @Param page query int false "Page number"
 // @Success 200 {object} dto.InvoiceListResponse
 // @Router /v1/invoices [get]

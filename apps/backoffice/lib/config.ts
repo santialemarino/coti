@@ -4,6 +4,7 @@ const DEFAULT_API_URL = 'http://localhost:8000';
 const DEFAULT_REFRESH_SKEW_SECONDS = 60;
 const DEFAULT_REMEMBERED_SESSION_DAYS = 30;
 const DEFAULT_RESEND_COOLDOWN_SECONDS = 30;
+const DEFAULT_ARCA_CERTIFICATE_RENEWAL_DAYS = 30;
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? DEFAULT_API_URL;
 
@@ -36,6 +37,12 @@ export const TRUSTED_PROXY_HOPS = readInt(process.env.WEB_TRUSTED_PROXY_HOPS, 0)
 export const RESEND_COOLDOWN_SECONDS = readInt(
   process.env.NEXT_PUBLIC_AUTH_RESEND_COOLDOWN_SECONDS,
   DEFAULT_RESEND_COOLDOWN_SECONDS,
+);
+
+// How many days before the ARCA certificate expires the invoicing screens ask to renew it.
+export const ARCA_CERTIFICATE_RENEWAL_DAYS = readInt(
+  process.env.ARCA_CERTIFICATE_RENEWAL_DAYS,
+  DEFAULT_ARCA_CERTIFICATE_RENEWAL_DAYS,
 );
 
 function readInt(raw: string | undefined, fallback: number): number {

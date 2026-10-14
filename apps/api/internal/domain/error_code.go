@@ -70,6 +70,12 @@ const (
 	CodeARCACredentials      ErrorCode = "ARCA_CREDENTIALS"
 	CodeInvalidTaxID         ErrorCode = "INVALID_TAX_ID"
 	CodeInvoicingUnavailable ErrorCode = "INVOICING_UNAVAILABLE"
+	// The account's CUIT is what ARCA is connected with: it is required to connect and locked
+	// while connected.
+	CodeAccountTaxIDRequired ErrorCode = "ACCOUNT_TAX_ID_REQUIRED"
+	CodeARCAConnected        ErrorCode = "ARCA_CONNECTED"
+	// The connection cannot go while ARCA still owes the answer for an invoice issued with it.
+	CodeInvoicePending ErrorCode = "INVOICE_PENDING"
 )
 
 // The two an upload is refused with. The delivery layer raises both on its own, before any

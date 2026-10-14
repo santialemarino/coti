@@ -143,7 +143,6 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 		arca.POST("", limit("arca-setup", cfg.RateLimit.Credentials), h.ARCASetup.Create)
 		arca.PUT("/certificate", h.ARCASetup.Upload)
 		arca.DELETE("", h.ARCASetup.Delete)
-		arca.POST("/verify", limit("arca-verify", cfg.RateLimit.Credentials), h.ARCASetup.Verify)
 	}
 	verified.POST("/auth/change-password", h.Password.Change)
 
@@ -260,6 +259,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	if h.Invoice != nil {
 		admin.GET("/invoicing/settings", h.Invoice.GetSettings)
 		admin.PUT("/invoicing/settings", h.Invoice.UpdateSettings)
+		admin.PUT("/invoicing/points-of-sale", h.Invoice.UpdatePointsOfSale)
 	}
 
 	users := verified.Group("/users", middleware.RequireAdmin())

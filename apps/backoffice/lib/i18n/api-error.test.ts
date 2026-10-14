@@ -84,7 +84,6 @@ describe('apiErrorMessage', () => {
       'priceImport',
       'priceImport.export',
       'invoicing.settings',
-      'invoicing.settings.credential',
       'invoicing.card',
     ];
     namespaces.forEach((namespace) => {

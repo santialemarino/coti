@@ -1,15 +1,28 @@
 import 'server-only';
 
 import { apiRequest } from '@/lib/api/client';
-import { mapInvoice, type InvoiceRaw } from '@/lib/api/invoicing';
+import { mapInvoice, type Invoice, type InvoiceRaw } from '@/lib/api/invoicing';
 
-export async function getInvoices(branchId: string, page: number) {
-  const result = await apiRequest<{
-    items: InvoiceRaw[];
-    total: number;
-    page: number;
-    page_size: number;
-  }>({ path: '/v1/invoices', branchId, query: { page: String(page) } });
+interface InvoicePageRaw {
+  items: InvoiceRaw[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface InvoicePage {
+  items: Invoice[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+// One page of the fiscal history, for the active branch or every branch the caller reaches.
+export async function getInvoices(page: number): Promise<InvoicePage> {
+  const result = await apiRequest<InvoicePageRaw>({
+    path: '/v1/invoices',
+    query: { page: String(page) },
+  });
   return {
     items: result.items.map(mapInvoice),
     total: result.total,

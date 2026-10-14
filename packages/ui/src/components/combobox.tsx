@@ -56,6 +56,8 @@ interface ComboboxSharedProps {
   'aria-label'?: string;
   'aria-invalid'?: boolean;
   'aria-describedby'?: string;
+  /* The trigger, for a form that moves focus to the first invalid field. */
+  ref?: React.Ref<HTMLButtonElement>;
 }
 
 interface ComboboxProps extends ComboboxSharedProps {
@@ -110,6 +112,21 @@ function useTriggerWidth(minWidth?: number) {
   };
 }
 
+/* The trigger's own ref, which measures it, joined with the one a caller passes in. */
+function useTriggerRef(
+  own: React.RefObject<HTMLButtonElement | null>,
+  forwarded?: React.Ref<HTMLButtonElement>,
+) {
+  return React.useCallback(
+    (node: HTMLButtonElement | null) => {
+      own.current = node;
+      if (typeof forwarded === 'function') forwarded(node);
+      else if (forwarded) forwarded.current = node;
+    },
+    [own, forwarded],
+  );
+}
+
 interface ComboboxTriggerProps extends React.ComponentProps<typeof Button> {
   open: boolean;
   /* True while nothing is chosen: the trigger shows the placeholder, muted. */
@@ -131,7 +148,8 @@ const ComboboxTrigger = React.forwardRef<HTMLButtonElement, ComboboxTriggerProps
       className={cn(
         /* The trigger reads as a field, so it swaps Button's medium size token for the input one
            at the same size — a bare `font-normal` would leave both weights in the class list. */
-        'w-full justify-between text-paragraph-sm',
+        /* A field's fill, as `Input` has: the trigger sits among inputs and reads as one. */
+        'w-full justify-between bg-input hover:bg-input active:bg-input aria-expanded:bg-input text-paragraph-sm',
         unset && 'text-foreground-subtle',
         invalid && 'border-danger focus-visible:border-danger focus-visible:ring-danger/30',
         className,
@@ -188,6 +206,7 @@ function Combobox({
   'aria-label': ariaLabel,
   'aria-invalid': ariaInvalid,
   'aria-describedby': ariaDescribedBy,
+  ref,
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false);
   /* The highlighted option. Controlled so type-ahead can move it without a search query. */
@@ -195,6 +214,7 @@ function Combobox({
   const typeahead = React.useRef({ buffer: '', timer: 0 });
   const listRef = React.useRef<HTMLDivElement>(null);
   const trigger = useTriggerWidth(contentMinWidth);
+  const triggerRef = useTriggerRef(trigger.ref, ref);
 
   const selected = options.find((option) => option.value === value) ?? null;
   const unset = selected === null || selected.value === resetValue;
@@ -235,7 +255,7 @@ function Combobox({
     >
       <PopoverTrigger asChild>
         <ComboboxTrigger
-          ref={trigger.ref}
+          ref={triggerRef}
           id={id}
           open={open}
           unset={unset}
@@ -350,10 +370,12 @@ function MultiCombobox({
   'aria-label': ariaLabel,
   'aria-invalid': ariaInvalid,
   'aria-describedby': ariaDescribedBy,
+  ref,
 }: MultiComboboxProps) {
   const [open, setOpen] = React.useState(false);
   const listRef = React.useRef<HTMLDivElement>(null);
   const trigger = useTriggerWidth(contentMinWidth);
+  const triggerRef = useTriggerRef(trigger.ref, ref);
 
   const groups = React.useMemo(() => groupOptions(options), [options]);
   const selectedSet = React.useMemo(() => new Set(values), [values]);
@@ -375,7 +397,7 @@ function MultiCombobox({
     >
       <PopoverTrigger asChild>
         <ComboboxTrigger
-          ref={trigger.ref}
+          ref={triggerRef}
           id={id}
           open={open}
           unset={values.length === 0}

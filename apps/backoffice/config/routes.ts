@@ -29,9 +29,13 @@ export const ROUTES = {
   changePassword: `${SETTINGS_ROOT}/password`,
   emailSettings: `${SETTINGS_ROOT}/email`,
   accountSettings: `${SETTINGS_ROOT}/account`,
-  arcaSettings: `${SETTINGS_ROOT}/arca`,
+  arcaSettings: `${SETTINGS_ROOT}/invoicing/arca`,
+  // A step of the ARCA guide, linked from the status card when that step is the one left.
+  arcaStep: (step: 'points-of-sale') => `${SETTINGS_ROOT}/invoicing/arca#${step}`,
   priceSettings: `${SETTINGS_ROOT}/prices`,
   invoicingSettings: `${SETTINGS_ROOT}/invoicing`,
+  // A section of the invoicing page, linked from where a missing piece of it is reported.
+  invoicingSection: (section: 'points-of-sale') => `${SETTINGS_ROOT}/invoicing#${section}`,
   catalogSettings: `${SETTINGS_ROOT}/catalog`,
   branchSettings: `${SETTINGS_ROOT}/branches`,
   userSettings: `${SETTINGS_ROOT}/users`,

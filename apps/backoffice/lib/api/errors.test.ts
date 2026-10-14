@@ -7,6 +7,7 @@ import {
   codeForStatus,
   errorCodeOf,
   knownErrorCode,
+  throwApiError,
 } from '@/lib/api/errors';
 import messages from '@/translations/es.json';
 
@@ -78,5 +79,32 @@ describe('the shared catalog', () => {
       (key) => !API_ERROR_CODES.some((code) => code === key),
     );
     expect(stale).toEqual([]);
+  });
+});
+
+describe('throwApiError', () => {
+  it('keeps the code, the detail and the issues the envelope carries', async () => {
+    const response = new Response(
+      JSON.stringify({ code: 'INVOICE_REJECTED', error: 'rejected', issues: ['10016: fecha'] }),
+      { status: 422 },
+    );
+
+    const error = await throwApiError(response).catch((thrown: unknown) => thrown);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      code: 'INVOICE_REJECTED',
+      status: 422,
+      message: 'rejected',
+      issues: ['10016: fecha'],
+    });
+  });
+
+  it('falls back to the status when the body is not the envelope', async () => {
+    const error = await throwApiError(new Response('<html>', { status: 409 })).catch(
+      (thrown: unknown) => thrown,
+    );
+
+    expect(error).toMatchObject({ code: 'CONFLICT', issues: [] });
   });
 });

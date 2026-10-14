@@ -105,7 +105,6 @@ func (h *BranchHandler) Create(c *gin.Context) {
 	}
 
 	branch, err := h.branches.CreateBranch(c.Request.Context(), tenant, domain.NewBranch{
-		PointOfSale:       body.PointOfSale,
 		Name:              body.Name,
 		Address:           body.Address,
 		DefaultExpiryDays: body.DefaultExpiryDays,
@@ -152,7 +151,6 @@ func (h *BranchHandler) Update(c *gin.Context) {
 
 	branch, err := h.branches.UpdateBranch(c.Request.Context(), tenant, branchID,
 		domain.BranchUpdate{
-			PointOfSale:       body.PointOfSale,
 			Name:              body.Name,
 			Address:           body.Address,
 			DefaultExpiryDays: body.DefaultExpiryDays,

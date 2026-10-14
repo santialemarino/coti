@@ -7,7 +7,8 @@ import { toast } from 'sonner';
 
 import { PendingButton } from '@repo/ui/components';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
-import { ApiError, codeForStatus, errorCodeOf, knownErrorCode } from '@/lib/api/errors';
+import { errorCodeOf } from '@/lib/api/errors';
+import { recoverInvoice } from '@/lib/api/invoicing-client';
 
 interface InvoiceRecoveryButtonProps {
   invoiceId: string;
@@ -20,31 +21,22 @@ export function InvoiceRecoveryButton({
   branchId,
   onRecovered,
 }: InvoiceRecoveryButtonProps) {
+  const router = useRouter();
   const t = useTranslations('invoicing.history');
   const message = useApiErrorMessage('invoicing.card');
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   function recover() {
     startTransition(async () => {
       try {
-        const response = await fetch(`/api/invoices/${encodeURIComponent(invoiceId)}/recover`, {
-          method: 'POST',
-          headers: { 'X-Branch-Id': branchId },
-        });
-        if (!response.ok) {
-          const result = (await response.json()) as { code?: string };
-          throw new ApiError(
-            knownErrorCode(result.code) ?? codeForStatus(response.status),
-            response.status,
-          );
-        }
-        toast.success(t('recovered'));
-        onRecovered?.();
-        router.refresh();
+        await recoverInvoice(invoiceId, branchId);
       } catch (error) {
         toast.error(message(errorCodeOf(error)));
+        return;
       }
+      toast.success(t('recovered'));
+      onRecovered?.();
+      router.refresh();
     });
   }
 

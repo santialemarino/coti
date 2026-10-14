@@ -155,7 +155,7 @@ func TestInvoicingRepository_FiscalDataRoundTrips(t *testing.T) {
 	err := db.InTenantTx(ctx, tenant, func(q Querier) error {
 		return repo.UpdateBranchPointsOfSale(ctx, q, tenant.AccountID, map[uuid.UUID]*int{uuid.New(): nil})
 	})
-	if !errors.Is(err, domain.ErrInvalidInput) {
+	if !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("foreign branch = %v, want ErrNotFound", err)
 	}
 }
@@ -285,5 +285,155 @@ func TestInvoicingRepository_SnapshotSourceDoesNotRequireRepresentation(t *testi
 		return nil
 	}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Points of sale are written per branch inside the account: two branches may swap numbers in one
+// write, a number another branch keeps is refused, and another account's branch is not found.
+func TestInvoicingRepository_UpdateBranchPointsOfSale(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	repo := NewInvoicingRepository()
+	accountID := seedAccount(t, db, "Points of sale A")
+	other := seedAccount(t, db, "Points of sale B")
+	first := branchOf(t, db, accountID)
+	foreign := branchOf(t, db, other)
+	second := seedExtraBranch(t, db, accountID, "Villa Bosch")
+	tenant := domain.Tenant{AccountID: accountID, Role: domain.UserRoleAdmin}
+	write := func(points map[uuid.UUID]*int) error {
+		return db.InTenantTx(ctx, tenant, func(q Querier) error {
+			return repo.UpdateBranchPointsOfSale(ctx, q, accountID, points)
+		})
+	}
+	read := func() map[uuid.UUID]*int {
+		result := map[uuid.UUID]*int{}
+		if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+			branches, err := repo.ListBranchPointsOfSale(ctx, q, accountID)
+			for _, b := range branches {
+				result[b.BranchID] = b.PointOfSale
+			}
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	one, two := 1, 2
+
+	if err := write(map[uuid.UUID]*int{first: &one, second: &two}); err != nil {
+		t.Fatal(err)
+	}
+	if err := write(map[uuid.UUID]*int{first: &two, second: &one}); err != nil {
+		t.Fatalf("swap = %v, want the numbers exchanged", err)
+	}
+	if got := read(); *got[first] != 2 || *got[second] != 1 {
+		t.Fatalf("after swap first = %d, second = %d", *got[first], *got[second])
+	}
+	if err := write(map[uuid.UUID]*int{first: &one}); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("taken number = %v, want ErrConflict", err)
+	}
+	if err := write(map[uuid.UUID]*int{first: nil}); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(); got[first] != nil || *got[second] != 1 {
+		t.Fatal("clearing one branch touched the other")
+	}
+	if err := write(map[uuid.UUID]*int{foreign: &two}); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("foreign branch = %v, want ErrNotFound", err)
+	}
+	var foreignPoint *int32
+	if err := db.CrossAccount().QueryRow(ctx, `SELECT point_of_sale FROM branch WHERE id = $1`, foreign).Scan(&foreignPoint); err != nil || foreignPoint != nil {
+		t.Fatalf("foreign branch point of sale = %v, %v, want untouched", foreignPoint, err)
+	}
+}
+
+// The history lists one branch, a set of branches, or the whole account when no set is given.
+func TestInvoicingRepository_ListNarrowsToTheBranchSet(t *testing.T) {
+	db, tenant, quoteID, versionID, productID := invoiceFixture(t)
+	ctx := context.Background()
+	repo := NewInvoicingRepository()
+	other := seedExtraBranch(t, db, tenant.AccountID, "Villa Bosch")
+	otherQuote, otherVersion, _ := seedQuoteChain(t, db, tenant.AccountID, other, productID)
+	second := pendingInvoice(domain.Tenant{AccountID: tenant.AccountID, BranchID: other}, otherQuote, otherVersion)
+	second.PointOfSale = 4
+	// Registered after the quote chains, so it runs before their teardown.
+	t.Cleanup(func() {
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM invoice WHERE account_id = $1`, tenant.AccountID)
+	})
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		if _, err := repo.CreatePending(ctx, q, pendingInvoice(tenant, quoteID, versionID)); err != nil {
+			return err
+		}
+		_, err := repo.CreatePending(ctx, q, second)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name     string
+		branches []uuid.UUID
+		want     int
+	}{
+		{"every branch", nil, 2},
+		{"one branch", []uuid.UUID{other}, 1},
+		{"no branch reachable", []uuid.UUID{}, 0},
+	}
+	for _, tc := range cases {
+		var invoices []domain.Invoice
+		var total int
+		if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+			var err error
+			invoices, total, err = repo.List(ctx, q, tenant.AccountID, tc.branches, 25, 0)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if total != tc.want || len(invoices) != tc.want {
+			t.Fatalf("%s: total %d, listed %d, want %d", tc.name, total, len(invoices), tc.want)
+		}
+		if tc.name == "one branch" && invoices[0].BranchID != other {
+			t.Fatalf("listed branch %s, want %s", invoices[0].BranchID, other)
+		}
+	}
+}
+
+// A pending invoice is what keeps the ARCA connection from going.
+func TestInvoicingRepository_HasPendingInvoice(t *testing.T) {
+	db, tenant, quoteID, versionID, _ := invoiceFixture(t)
+	ctx := context.Background()
+	invoices := NewInvoicingRepository()
+	pending := func() bool {
+		var has bool
+		if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+			var err error
+			has, err = invoices.HasPendingInvoice(ctx, q, tenant.AccountID)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return has
+	}
+	if pending() {
+		t.Fatal("an account with no invoices reads as pending")
+	}
+	var invoice *domain.Invoice
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		var err error
+		invoice, err = NewInvoicingRepository().CreatePending(ctx, q, pendingInvoice(tenant, quoteID, versionID))
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !pending() {
+		t.Fatal("a pending invoice was not seen")
+	}
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		return NewInvoicingRepository().MarkRejected(ctx, q, tenant.AccountID, tenant.BranchID, invoice.ID,
+			domain.InvoiceRejectedError{Issues: []string{"rechazada"}})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if pending() {
+		t.Fatal("a rejected invoice still reads as pending")
 	}
 }

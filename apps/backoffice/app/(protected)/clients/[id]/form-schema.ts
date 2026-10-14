@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { IVA_CONDITIONS } from '@/lib/api/invoicing';
 import { optionalText, rawText, type SchemaText } from '@/lib/forms/validators';
+import { hasValidCuitCheckDigit } from '@/lib/utils/cuit';
 
 export const TAX_ID_MAX_LENGTH = 32;
 
@@ -9,17 +10,6 @@ export const TAX_ID_MAX_LENGTH = 32;
 function isTaxIdShape(raw: string): boolean {
   const digits = raw.replace(/\D/g, '');
   return digits.length === 11 || digits.length === 7 || digits.length === 8;
-}
-
-// The CUIT check digit, as the API and ARCA compute it: modulo 11 over the first ten digits.
-export function hasValidCuitCheckDigit(raw: string): boolean {
-  const digits = raw.replace(/\D/g, '');
-  if (digits.length !== 11) return true;
-  const weights = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
-  const sum = weights.reduce((total, weight, i) => total + Number(digits[i]) * weight, 0);
-  const remainder = 11 - (sum % 11);
-  const check = remainder === 11 ? 0 : remainder === 10 ? 9 : remainder;
-  return Number(digits[10]) === check;
 }
 
 // The client's fiscal identity is editable independently of an order.

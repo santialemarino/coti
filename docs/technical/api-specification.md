@@ -117,6 +117,9 @@ a code from the sentinel an error wraps — `NOT_FOUND`, `CONFLICT`, `INVALID_IN
 | `MAIL_NOT_CONFIGURED`     | 503    | inviting a user while mail only reaches the log                                         |
 | `BRANCH_NOT_ACCESSIBLE`   | 403    | an `X-Branch-Id` the caller does not reach — closed, or not assigned to them            |
 | `BRANCH_MAILBOX_REQUIRED` | 422    | clearing the mailbox a configured email channel sends from                              |
+| `ACCOUNT_TAX_ID_REQUIRED` | 422    | starting the ARCA connection for an account with no CUIT                                |
+| `ARCA_CONNECTED`          | 409    | changing the account's CUIT while ARCA is connected with it, without `disconnect_arca`  |
+| `INVOICE_PENDING`         | 409    | removing the ARCA connection while an invoice is still waiting for ARCA's answer        |
 
 `AI_UNAVAILABLE` is the **503** whose status says "come back later":
 no AI provider is bound, or the one that is could not answer. A request the provider _rejected_ is

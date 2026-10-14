@@ -28,13 +28,17 @@ func (r *InvoicingRepository) GetByID(ctx context.Context, q Querier, accountID,
 	return scanInvoice(q.QueryRow(ctx, `SELECT `+invoiceColumns+` FROM invoice WHERE account_id = $1 AND branch_id = $2 AND id = $3`, accountID, branchID, id))
 }
 
-// List returns fiscal documents in a bounded branch-scoped page.
-func (r *InvoicingRepository) List(ctx context.Context, q Querier, accountID, branchID uuid.UUID, limit, offset int) ([]domain.Invoice, int, error) {
+// List returns a bounded page of the account's fiscal documents, newest first, narrowed to
+// branchIDs unless it is nil.
+func (r *InvoicingRepository) List(ctx context.Context, q Querier, accountID uuid.UUID, branchIDs []uuid.UUID, limit, offset int) ([]domain.Invoice, int, error) {
 	var count int
-	if err := q.QueryRow(ctx, `SELECT count(*) FROM invoice WHERE account_id = $1 AND branch_id = $2`, accountID, branchID).Scan(&count); err != nil {
+	if err := q.QueryRow(ctx, `SELECT count(*) FROM invoice
+	 WHERE account_id = $1 AND ($2::uuid[] IS NULL OR branch_id = ANY($2::uuid[]))`, accountID, branchIDs).Scan(&count); err != nil {
 		return nil, 0, err
 	}
-	rows, err := q.Query(ctx, `SELECT `+invoiceColumns+` FROM invoice WHERE account_id = $1 AND branch_id = $2 ORDER BY created_at DESC, id DESC LIMIT $3 OFFSET $4`, accountID, branchID, limit, offset)
+	rows, err := q.Query(ctx, `SELECT `+invoiceColumns+` FROM invoice
+	 WHERE account_id = $1 AND ($2::uuid[] IS NULL OR branch_id = ANY($2::uuid[]))
+	 ORDER BY created_at DESC, id DESC LIMIT $3 OFFSET $4`, accountID, branchIDs, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}

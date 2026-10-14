@@ -5,11 +5,13 @@ vi.mock('@/app/(protected)/settings/account/_components/account-form', () => ({
   AccountForm: vi.fn(() => null),
 }));
 vi.mock('@/lib/api/account', () => ({ getAccount: vi.fn() }));
+vi.mock('@/lib/api/arca-setup', () => ({ getARCASetup: vi.fn() }));
 vi.mock('@/lib/auth/session', () => ({ requireAdmin: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getTranslations: vi.fn() }));
 
 const { AccountForm } = await import('@/app/(protected)/settings/account/_components/account-form');
 const { getAccount } = await import('@/lib/api/account');
+const { getARCASetup } = await import('@/lib/api/arca-setup');
 const { requireAdmin } = await import('@/lib/auth/session');
 const { getTranslations } = await import('next-intl/server');
 const { default: AccountSettingsPage } = await import('@/app/(protected)/settings/account/page');
@@ -42,6 +44,14 @@ beforeEach(() => {
   });
   vi.mocked(getTranslations).mockResolvedValue(((key: string) => key) as never);
   vi.mocked(getAccount).mockResolvedValue(ACCOUNT);
+  vi.mocked(getARCASetup).mockResolvedValue({
+    enabled: true,
+    taxId: '30712345671',
+    csr: 'request',
+    hasCertificate: false,
+    certificate: '',
+    certificateExpiresAt: null,
+  });
 });
 
 describe('AccountSettingsPage', () => {
@@ -60,6 +70,12 @@ describe('AccountSettingsPage', () => {
 
     expect(getAccount).toHaveBeenCalledOnce();
     expect(props?.account).toEqual(ACCOUNT);
+  });
+
+  // The form asks before a CUIT change removes the connection, and words it by how far it got.
+  it('tells the form where the ARCA connection stands', async () => {
+    const props = await renderPage();
+    expect(props?.arcaConnection).toBe('inProgress');
   });
 
   it('offers email and password changes after the account form', async () => {

@@ -120,7 +120,7 @@ func (r *InvoiceRenderer) drawInvoiceHeader(doc *gofpdf.Fpdf, inv domain.Invoice
 	doc.SetFont("Go", "B", 11)
 	doc.CellFormat(72, 7, ref, "", 1, "L", false, 0, "")
 	doc.SetFont("Go", "", 8)
-	for _, line := range []string{"Fecha de emisión: " + inv.IssuedOn.Format("02/01/2006"), "CUIT: " + inv.IssuerCUIT, "Ingresos Brutos: " + inv.IssuerProfile.GrossIncomeRegistration, "Inicio de actividades: " + invoiceActivityDate(inv.IssuerProfile.ActivityStartedOn), "Moneda: " + inv.Currency} {
+	for _, line := range []string{"Fecha de emisión: " + inv.IssuedOn.Format("02/01/2006"), "CUIT: " + inv.IssuerCUIT, "Ingresos Brutos: " + invoiceGrossIncome(inv.IssuerProfile.GrossIncomeRegistration), "Inicio de actividades: " + invoiceActivityDate(inv.IssuerProfile.ActivityStartedOn), "Moneda: " + inv.Currency} {
 		doc.SetX(118)
 		doc.MultiCell(72, 4.5, line, "", "L", false)
 	}
@@ -271,6 +271,13 @@ func invoiceCondition(condition domain.IVACondition) string {
 	default:
 		return "Consumidor Final"
 	}
+}
+
+func invoiceGrossIncome(registration string) string {
+	if strings.EqualFold(registration, domain.GrossIncomeExempt) {
+		return "Exento"
+	}
+	return registration
 }
 
 func invoiceActivityDate(raw string) string {

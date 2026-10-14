@@ -19,6 +19,7 @@ type InvoiceService interface {
 	Recover(context.Context, domain.Tenant, uuid.UUID) (*domain.Invoice, error)
 	GetSettings(ctx context.Context, tenant domain.Tenant) (*domain.InvoicingSettings, error)
 	UpdateSettings(ctx context.Context, tenant domain.Tenant, in domain.InvoicingSettingsUpdate) (*domain.InvoicingSettings, error)
+	UpdatePointsOfSale(ctx context.Context, tenant domain.Tenant, points map[uuid.UUID]*int) (*domain.InvoicingSettings, error)
 	GetClientFiscal(ctx context.Context, tenant domain.Tenant, clientID uuid.UUID) (*domain.ClientFiscal, error)
 	UpdateClientFiscal(ctx context.Context, tenant domain.Tenant, clientID uuid.UUID, in domain.ClientFiscalUpdate) (*domain.ClientFiscal, error)
 	Preview(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.InvoicePreview, error)
@@ -99,6 +100,43 @@ func (h *InvoiceHandler) UpdateSettings(c *gin.Context) {
 		in.PointsOfSale[b.BranchID] = b.PointOfSale
 	}
 	settings, err := h.invoices.UpdateSettings(c.Request.Context(), tenant, in)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toInvoicingSettingsResponse(*settings))
+}
+
+// UpdatePointsOfSale replaces the listed branches' points of sale and nothing else.
+//
+//	@Summary		Update points of sale
+//	@Description	Sets the listed branches' ARCA points of sale in one write; 409 POINT_OF_SALE_TAKEN when two branches would share one.
+//	@Tags			invoicing
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			body	body		dto.UpdatePointsOfSaleRequest	true	"Points of sale"
+//	@Success		200		{object}	dto.InvoicingSettingsResponse
+//	@Failure		400		{object}	dto.ErrorResponse
+//	@Failure		404		{object}	dto.ErrorResponse
+//	@Failure		409		{object}	dto.ErrorResponse
+//	@Failure		422		{object}	dto.ErrorResponse
+//	@Router			/v1/invoicing/points-of-sale [put]
+func (h *InvoiceHandler) UpdatePointsOfSale(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	var body dto.UpdatePointsOfSaleRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	points := make(map[uuid.UUID]*int, len(body.Branches))
+	for _, b := range body.Branches {
+		points[b.BranchID] = b.PointOfSale
+	}
+	settings, err := h.invoices.UpdatePointsOfSale(c.Request.Context(), tenant, points)
 	if err != nil {
 		Respond(c, err)
 		return
@@ -298,7 +336,7 @@ func toInvoicePreviewResponse(p domain.InvoicePreview) dto.InvoicePreviewRespons
 
 func toInvoiceResponse(inv domain.Invoice) dto.InvoiceResponse {
 	response := dto.InvoiceResponse{
-		ID: inv.ID, Status: string(inv.Status), Type: string(inv.Type), PointOfSale: inv.PointOfSale,
+		ID: inv.ID, BranchID: inv.BranchID, Status: string(inv.Status), Type: string(inv.Type), PointOfSale: inv.PointOfSale,
 		Number: inv.Number, IssuedOn: inv.IssuedOn.Format("2006-01-02"), CAE: inv.CAE,
 		IssuerCUIT: inv.IssuerCUIT, Receiver: toInvoiceReceiverResponse(inv.Receiver),
 		Amounts: toInvoiceAmountsResponse(inv.Amounts), Currency: inv.Currency, Issues: inv.Issues,

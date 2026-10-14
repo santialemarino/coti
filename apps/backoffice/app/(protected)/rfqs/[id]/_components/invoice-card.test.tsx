@@ -52,6 +52,7 @@ const READY: InvoicePreview = {
 };
 
 const ISSUED: Invoice = {
+  branchId: 'branch-1',
   id: 'inv-1',
   status: 'ISSUED',
   type: 'A',
@@ -147,8 +148,24 @@ describe('InvoiceCard', () => {
     const fixes = view.getAllByRole('link', {
       name: messages.common.setup.BRANCH_POINT_OF_SALE.fix,
     });
-    for (const fix of fixes) expect(fix.getAttribute('href')).toBe(ROUTES.branchSettings);
+    for (const fix of fixes)
+      expect(fix.getAttribute('href')).toBe(ROUTES.invoicingSection('points-of-sale'));
     expect(view.getByText(card.issues.QUOTE_EMPTY.title)).toBeTruthy();
+    expect(view.queryByRole('button', { name: /Emitir factura/ })).toBeNull();
+  });
+
+  it.each([
+    ['ACCOUNT_TAX_ID', ROUTES.accountSettings],
+    ['ARCA_CREDENTIALS_CUIT', ROUTES.arcaSettings],
+  ] as const)('reports %s as a setup gap with the way to fix it', async (issue, href) => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({ ...READY, issues: [issue] });
+    const view = renderCard();
+
+    expect(await view.findByText(messages.common.setup[issue].title)).toBeTruthy();
+    expect(view.getByText(messages.common.setup[issue].body, { exact: false })).toBeTruthy();
+    expect(
+      view.getByRole('link', { name: messages.common.setup[issue].fix }).getAttribute('href'),
+    ).toBe(href);
     expect(view.queryByRole('button', { name: /Emitir factura/ })).toBeNull();
   });
 

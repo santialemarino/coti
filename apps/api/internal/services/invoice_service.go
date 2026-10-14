@@ -27,6 +27,7 @@ type invoicingStore interface {
 	ListBranchPointsOfSale(ctx context.Context, q repository.Querier, accountID uuid.UUID) ([]domain.BranchPointOfSale, error)
 	GetBranchPointOfSale(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (*int, error)
 	UpdateBranchPointsOfSale(ctx context.Context, q repository.Querier, accountID uuid.UUID, points map[uuid.UUID]*int) error
+	LockAccountForShare(ctx context.Context, q repository.Querier, accountID uuid.UUID) error
 	GetClientFiscal(ctx context.Context, q repository.Querier, accountID, clientID uuid.UUID) (*domain.ClientFiscal, error)
 	UpdateClientFiscal(ctx context.Context, q repository.Querier, accountID, clientID uuid.UUID, in domain.ClientFiscalUpdate) (*domain.ClientFiscal, error)
 	VATRatesByProductIDs(ctx context.Context, q repository.Querier, accountID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]domain.VATRate, error)
@@ -138,12 +139,16 @@ func (s *InvoiceService) UpdateSettings(
 		return nil, fmt.Errorf("%w: unknown IVA condition %q", domain.ErrInvalidInput, *in.IVACondition)
 	}
 	if in.Profile != nil {
-		in.Profile.Address = strings.TrimSpace(in.Profile.Address)
-		in.Profile.GrossIncomeRegistration = strings.TrimSpace(in.Profile.GrossIncomeRegistration)
+		in.Profile.Address = domain.NormalizeFiscalAddress(in.Profile.Address)
+		registration, ok := domain.NormalizeGrossIncomeRegistration(in.Profile.GrossIncomeRegistration)
 		day, err := time.Parse("2006-01-02", in.Profile.ActivityStartedOn)
-		if err != nil || day.After(domain.InvoiceDay(s.now())) || in.Profile.Address == "" || in.Profile.GrossIncomeRegistration == "" {
+		if err != nil || day.After(domain.InvoiceDay(s.now())) || in.Profile.Address == "" || !ok {
 			return nil, domain.ErrInvalidInput
 		}
+		in.Profile.GrossIncomeRegistration = registration
+	}
+	if err := validatePointsOfSale(in.PointsOfSale); err != nil {
+		return nil, err
 	}
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		if in.Profile != nil {
@@ -154,11 +159,23 @@ func (s *InvoiceService) UpdateSettings(
 		if err := s.store.UpdateAccountFiscal(ctx, q, tenant.AccountID, in.IVACondition, in.PricesIncludeVAT); err != nil {
 			return err
 		}
-		err := s.store.UpdateBranchPointsOfSale(ctx, q, tenant.AccountID, in.PointsOfSale)
-		if errors.Is(err, domain.ErrConflict) {
-			return domain.WithCode(domain.CodePointOfSaleTaken, err)
-		}
-		return err
+		return s.savePointsOfSale(ctx, q, tenant.AccountID, in.PointsOfSale)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.GetSettings(ctx, tenant)
+}
+
+// UpdatePointsOfSale sets the given branches' points of sale and leaves every other setting alone.
+func (s *InvoiceService) UpdatePointsOfSale(
+	ctx context.Context, tenant domain.Tenant, points map[uuid.UUID]*int,
+) (*domain.InvoicingSettings, error) {
+	if err := validatePointsOfSale(points); err != nil {
+		return nil, err
+	}
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		return s.savePointsOfSale(ctx, q, tenant.AccountID, points)
 	})
 	if err != nil {
 		return nil, err
@@ -461,6 +478,11 @@ func (s *InvoiceService) hold(ctx context.Context, tenant domain.Tenant, draft i
 		if err != nil {
 			return err
 		}
+		// Taken before the draft is rebuilt, so a CUIT change or disconnect either waits for this
+		// invoice or has already landed and makes the draft stale.
+		if err := s.store.LockAccountForShare(ctx, q, tenant.AccountID); err != nil {
+			return err
+		}
 		version, err := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, tenant.BranchID, draft.quote.ID)
 		if err != nil {
 			return err
@@ -688,6 +710,35 @@ func validCUIT(digits string) bool {
 		check = 9
 	}
 	return int(digits[10]-'0') == check
+}
+
+// savePointsOfSale writes the points of sale, wording a number another branch keeps.
+func (s *InvoiceService) savePointsOfSale(
+	ctx context.Context, q repository.Querier, accountID uuid.UUID, points map[uuid.UUID]*int,
+) error {
+	err := s.store.UpdateBranchPointsOfSale(ctx, q, accountID, points)
+	if errors.Is(err, domain.ErrConflict) {
+		return domain.WithCode(domain.CodePointOfSaleTaken, err)
+	}
+	return err
+}
+
+// validatePointsOfSale refuses a number ARCA does not accept and one number given to two branches.
+func validatePointsOfSale(points map[uuid.UUID]*int) error {
+	seen := make(map[int]bool, len(points))
+	for _, point := range points {
+		if point == nil {
+			continue
+		}
+		if *point < domain.PointOfSaleMin || *point > domain.PointOfSaleMax {
+			return fmt.Errorf("%w: point of sale %d out of range", domain.ErrInvalidInput, *point)
+		}
+		if seen[*point] {
+			return domain.WithCode(domain.CodePointOfSaleTaken, domain.ErrConflict)
+		}
+		seen[*point] = true
+	}
+	return nil
 }
 
 func trimmedOrNil(value *string) *string {

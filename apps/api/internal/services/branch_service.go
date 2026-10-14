@@ -112,9 +112,6 @@ func (s *BranchService) GetBranch(
 func (s *BranchService) CreateBranch(
 	ctx context.Context, tenant domain.Tenant, in domain.NewBranch,
 ) (*domain.Branch, error) {
-	if in.PointOfSale != nil && (*in.PointOfSale < 0 || *in.PointOfSale > 99998) {
-		return nil, domain.ErrInvalidInput
-	}
 	if strings.TrimSpace(in.Name) == "" {
 		return nil, fmt.Errorf("%w: name is required", domain.ErrInvalidInput)
 	}
@@ -149,9 +146,6 @@ func (s *BranchService) CreateBranch(
 func (s *BranchService) UpdateBranch(
 	ctx context.Context, tenant domain.Tenant, branchID uuid.UUID, in domain.BranchUpdate,
 ) (*domain.Branch, error) {
-	if in.PointOfSale != nil && (*in.PointOfSale < 0 || *in.PointOfSale > 99998) {
-		return nil, domain.ErrInvalidInput
-	}
 	if strings.TrimSpace(in.Name) == "" {
 		return nil, fmt.Errorf("%w: name is required", domain.ErrInvalidInput)
 	}

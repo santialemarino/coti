@@ -13,7 +13,7 @@ import {
   type QuoteClientAssociation,
   type QuoteClientAssociationRaw,
 } from '@/lib/api/client-profiles';
-import { ApiError, codeForStatus, knownErrorCode } from '@/lib/api/errors';
+import { throwApiError } from '@/lib/api/errors';
 import {
   mapClientFiscal,
   type ClientFiscal,
@@ -36,7 +36,7 @@ export async function getClientDirectory(branchId: string): Promise<ClientMatch[
     headers: { 'X-Branch-Id': branchId },
     cache: 'no-store',
   });
-  if (!response.ok) await throwOnError(response);
+  if (!response.ok) await throwApiError(response);
   const raw = (await response.json()) as ClientListRaw;
   return raw.items.map(mapClientSummary).map(clientMatchFromSummary);
 }
@@ -49,7 +49,7 @@ export async function getQuoteClientAssociation(
     headers: { 'X-Branch-Id': branchId },
     cache: 'no-store',
   });
-  if (!response.ok) await throwOnError(response);
+  if (!response.ok) await throwApiError(response);
   const raw = (await response.json()) as QuoteClientAssociationRaw;
   return mapQuoteClientAssociation(raw);
 }
@@ -65,7 +65,7 @@ export async function associateQuoteClient(
     body: JSON.stringify(body),
     cache: 'no-store',
   });
-  if (!response.ok) await throwOnError(response);
+  if (!response.ok) await throwApiError(response);
   return mapClientMatch((await response.json()) as ClientMatchRaw);
 }
 
@@ -76,7 +76,7 @@ export async function createClientTag(name: string): Promise<ClientTag> {
     body: JSON.stringify({ name }),
     cache: 'no-store',
   });
-  if (!response.ok) await throwOnError(response);
+  if (!response.ok) await throwApiError(response);
   return mapClientTag((await response.json()) as ClientTagRaw);
 }
 
@@ -87,7 +87,7 @@ export async function replaceClientTags(clientId: string, tagIds: string[]): Pro
     body: JSON.stringify({ tag_ids: tagIds }),
     cache: 'no-store',
   });
-  if (!response.ok) await throwOnError(response);
+  if (!response.ok) await throwApiError(response);
   const raw = (await response.json()) as ClientTagListRaw;
   return raw.items.map(mapClientTag);
 }
@@ -114,27 +114,6 @@ export async function updateClientFiscal(
     }),
     cache: 'no-store',
   });
-  if (!response.ok) await throwOnError(response);
+  if (!response.ok) await throwApiError(response);
   return mapClientFiscal((await response.json()) as ClientFiscalRaw);
-}
-
-async function throwOnError(response: Response): Promise<never> {
-  let code: string | undefined;
-  let detail = '';
-  try {
-    const payload = (await response.json()) as {
-      error?: string;
-      code?: string;
-      detail?: string;
-    };
-    code = payload.code;
-    detail = [payload.error, payload.detail].filter(Boolean).join(': ');
-  } catch {
-    // A non-envelope body adds no information beyond the status.
-  }
-  throw new ApiError(
-    knownErrorCode(code) ?? codeForStatus(response.status),
-    response.status,
-    detail || undefined,
-  );
 }

@@ -21,6 +21,7 @@ interface QuantityInputProps {
   name?: string;
   placeholder?: string;
   disabled?: boolean;
+  maxLength?: number;
   min?: number;
   step?: number;
   /* Runs after the field's own rules, and only when they let the key through. */

@@ -78,7 +78,6 @@ type Branch struct {
 // quote sent from here stays valid, and it lives on the branch because tolerance to inflation
 // differs between locations.
 type NewBranch struct {
-	PointOfSale       *int
 	Name              string
 	Address           *string
 	DefaultExpiryDays int
@@ -88,7 +87,6 @@ type NewBranch struct {
 // BranchUpdate replaces a branch's editable fields. IsActive is nil to leave it alone, so an
 // edit form cannot silently revive a closed branch.
 type BranchUpdate struct {
-	PointOfSale       *int // nil preserves the number; zero clears it.
 	Name              string
 	Address           *string
 	DefaultExpiryDays int
