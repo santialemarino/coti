@@ -5,6 +5,7 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  type ChangeEvent,
   type ForwardedRef,
   type KeyboardEvent,
 } from 'react';
@@ -18,6 +19,8 @@ export interface InputSnapshot {
   value: string;
   start: number;
   end: number;
+  // Field state that lives outside the text but changes with it, such as a phone's country.
+  context?: string;
 }
 
 // A run of `insert` or of `delete` edits is one undo step; any other edit is a step of its own.
@@ -35,6 +38,7 @@ interface InputHistoryOptions {
   value: string;
   restore: (snapshot: InputSnapshot, input: HTMLInputElement) => void;
   onReset?: () => void;
+  context?: () => string;
 }
 
 export function editKind(event: Event): EditKind {
@@ -46,9 +50,8 @@ export function editKind(event: Event): EditKind {
   return 'other';
 }
 
-export function snapshotOf(input: HTMLInputElement): InputSnapshot {
-  const end = input.selectionEnd ?? input.value.length;
-  return { value: input.value, start: input.selectionStart ?? end, end };
+function isHistoryEdit(inputType: string): inputType is 'historyUndo' | 'historyRedo' {
+  return inputType === 'historyUndo' || inputType === 'historyRedo';
 }
 
 function shortcutOf(event: KeyboardEvent<HTMLInputElement>): 'undo' | 'redo' | null {
@@ -60,7 +63,7 @@ function shortcutOf(event: KeyboardEvent<HTMLInputElement>): 'undo' | 'redo' | n
 }
 
 // Undo for a field that rewrites its own value, which the browser leaves out of its own history.
-export function useInputHistory({ ref, value, restore, onReset }: InputHistoryOptions) {
+export function useInputHistory({ ref, value, restore, onReset, context }: InputHistoryOptions) {
   const undoStack = useRef<InputSnapshot[]>([]);
   const redoStack = useRef<InputSnapshot[]>([]);
   const lastEdit = useRef<LastEdit | null>(null);
@@ -69,10 +72,12 @@ export function useInputHistory({ ref, value, restore, onReset }: InputHistoryOp
   const menuStepTaken = useRef(false);
   const restoreLatest = useRef(restore);
   const onResetLatest = useRef(onReset);
+  const contextLatest = useRef(context);
 
   useLayoutEffect(() => {
     restoreLatest.current = restore;
     onResetLatest.current = onReset;
+    contextLatest.current = context;
   });
 
   useEffect(() => {
@@ -84,15 +89,24 @@ export function useInputHistory({ ref, value, restore, onReset }: InputHistoryOp
     onResetLatest.current?.();
   }, [value]);
 
-  const step = useCallback((input: HTMLInputElement, direction: 'undo' | 'redo') => {
-    const [from, to] = direction === 'undo' ? [undoStack, redoStack] : [redoStack, undoStack];
-    const snapshot = from.current.pop();
-    if (!snapshot) return;
-    to.current.push(snapshotOf(input));
-    lastEdit.current = null;
-    known.current = snapshot.value;
-    restoreLatest.current(snapshot, input);
+  const snapshot = useCallback((input: HTMLInputElement): InputSnapshot => {
+    const end = input.selectionEnd ?? input.value.length;
+    const start = input.selectionStart ?? end;
+    return { value: input.value, start, end, context: contextLatest.current?.() };
   }, []);
+
+  const step = useCallback(
+    (input: HTMLInputElement, direction: 'undo' | 'redo', current = snapshot(input)) => {
+      const [from, to] = direction === 'undo' ? [undoStack, redoStack] : [redoStack, undoStack];
+      const target = from.current.pop();
+      if (!target) return;
+      to.current.push(current);
+      lastEdit.current = null;
+      known.current = target.value;
+      restoreLatest.current(target, input);
+    },
+    [snapshot],
+  );
 
   const inputRef = useCallback(
     (input: HTMLInputElement | null) => {
@@ -103,7 +117,7 @@ export function useInputHistory({ ref, value, restore, onReset }: InputHistoryOp
       // The Edit menu and the context menu undo through `beforeinput`, never through a key. WebKit
       // answers one such undo with an event per entry of its own stack, all in one task.
       const onBeforeInput = (event: InputEvent) => {
-        if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') {
+        if (isHistoryEdit(event.inputType)) {
           event.preventDefault();
           if (menuStepTaken.current) return;
           menuStepTaken.current = true;
@@ -113,7 +127,7 @@ export function useInputHistory({ ref, value, restore, onReset }: InputHistoryOp
           step(input, event.inputType === 'historyUndo' ? 'undo' : 'redo');
           return;
         }
-        pending.current = snapshotOf(input);
+        pending.current = snapshot(input);
       };
       // A click may put the caret back where the run left it, which must still close the run.
       const onPointerDown = () => {
@@ -128,20 +142,36 @@ export function useInputHistory({ ref, value, restore, onReset }: InputHistoryOp
         else if (ref) ref.current = null;
       };
     },
-    [ref, step],
+    [ref, snapshot, step],
   );
 
   // The field as it stood before the edit in progress: `beforeinput` saw it, unless the edit
   // (autofill) skipped that event, and then the caret is taken to have been at the end.
   function before(): InputSnapshot {
-    const snapshot = pending.current ?? { value, start: value.length, end: value.length };
+    const taken = pending.current ?? shown();
     pending.current = null;
-    return snapshot;
+    return taken;
+  }
+
+  // What the field shows, with the caret at the end, for an edit the browser made unannounced.
+  function shown(): InputSnapshot {
+    return { value, start: value.length, end: value.length, context: context?.() };
+  }
+
+  // True when the edit was the browser's own undo or redo, which skips `beforeinput` when a script
+  // asks for it (Chromium's `execCommand`); the field takes its own step instead.
+  function replay(event: ChangeEvent<HTMLInputElement>): boolean {
+    const { nativeEvent } = event;
+    const inputType = 'inputType' in nativeEvent ? String(nativeEvent.inputType) : '';
+    if (!isHistoryEdit(inputType)) return false;
+    pending.current = null;
+    step(event.currentTarget, inputType === 'historyUndo' ? 'undo' : 'redo', shown());
+    return true;
   }
 
   function record(kind: EditKind, from: InputSnapshot, to: InputSnapshot) {
     const last = lastEdit.current;
-    if (from.value === to.value) {
+    if (from.value === to.value && from.context === to.context) {
       if (last?.kind === kind) last.caret = to.end;
       return;
     }
@@ -168,5 +198,5 @@ export function useInputHistory({ ref, value, restore, onReset }: InputHistoryOp
     return true;
   }
 
-  return { inputRef, before, record, onKeyDown };
+  return { inputRef, snapshot, before, replay, record, onKeyDown };
 }

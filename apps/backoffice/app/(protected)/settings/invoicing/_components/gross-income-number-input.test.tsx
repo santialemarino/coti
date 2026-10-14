@@ -64,6 +64,17 @@ describe('GrossIncomeNumberInput', () => {
     expect(input().value).toBe('901');
   });
 
+  it('takes its own step when the browser undoes without announcing it', () => {
+    render(<Harness />);
+    start();
+    typeText(input(), '901');
+    browserEdit(input(), '901-234', { inputType: 'insertFromPaste' });
+
+    browserEdit(input(), '901-23', { inputType: 'historyUndo', announced: false });
+
+    expect(input().value).toBe('901');
+  });
+
   it('starts over when the value is filled from outside', () => {
     render(<Harness />);
     start();

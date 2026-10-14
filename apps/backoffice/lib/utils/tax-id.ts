@@ -156,20 +156,3 @@ export function pastedTaxId(text: string, room: number): string {
   }
   return kept;
 }
-
-/*
- * Drops every character `allowed` (a one-character, non-global pattern) refuses and keeps the caret
- * after the characters it followed — for a number whose shape varies too much to format, like a
- * provincial gross income registration.
- */
-export function keepAllowed(
-  raw: string,
-  caret: number,
-  allowed: RegExp,
-): { value: string; caret: number } {
-  const keeps = (char: string) => allowed.test(char);
-  return {
-    value: [...raw].filter(keeps).join(''),
-    caret: [...raw.slice(0, caret)].filter(keeps).length,
-  };
-}

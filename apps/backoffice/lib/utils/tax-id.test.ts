@@ -5,7 +5,6 @@ import {
   editTaxId,
   formatTaxId,
   hasTaxIdLength,
-  keepAllowed,
   pastedTaxId,
   taxIdDigits,
 } from '@/lib/utils/tax-id';
@@ -124,20 +123,5 @@ describe('pastedTaxId', () => {
     expect(pastedTaxId(' 20-12345678-9 ', 11)).toBe('20-12345678-9');
     expect(pastedTaxId('20.123.456', 4)).toBe('20.12');
     expect(pastedTaxId('abc', 4)).toBe('');
-  });
-});
-
-describe('keepAllowed', () => {
-  const GROSS_INCOME = /^[\d-]$/;
-
-  it('drops what the pattern refuses and keeps the caret after what it followed', () => {
-    expect(keepAllowed('90.1a-23', 5, GROSS_INCOME)).toEqual({ value: '901-23', caret: 3 });
-  });
-
-  it('settles a pasted number with spaces and dots', () => {
-    expect(keepAllowed(' 901 234.567-8 ', 15, GROSS_INCOME)).toEqual({
-      value: '901234567-8',
-      caret: 11,
-    });
   });
 });

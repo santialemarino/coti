@@ -19,9 +19,14 @@ export function beforeInput(field, inputType) {
   return event.defaultPrevented;
 }
 
-// One edit leaving `raw` and `caret`; pass `inputType: null` for autofill, which fires neither.
-export function browserEdit(field, raw, { caret = raw.length, inputType = 'insertText' } = {}) {
-  if (inputType !== null) beforeInput(field, inputType);
+// One edit leaving `raw` and `caret`; pass `inputType: null` for autofill, which fires neither, and
+// `announced: false` for an edit that skips `beforeinput`, like Chromium's scripted undo.
+export function browserEdit(
+  field,
+  raw,
+  { caret = raw.length, inputType = 'insertText', announced = inputType !== null } = {},
+) {
+  if (announced) beforeInput(field, inputType);
   setNativeValue.call(field, raw);
   field.setSelectionRange(caret, caret);
   const event = createEvent.input(field);

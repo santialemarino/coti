@@ -6,7 +6,7 @@ import { Input } from '@repo/ui/components';
 import { GROSS_INCOME_CHARACTER } from '@/app/(protected)/settings/invoicing/form-schema';
 import { useCaretPlacement } from '@/hooks/use-caret-placement';
 import { editKind, useInputHistory } from '@/hooks/use-input-history';
-import { keepAllowed } from '@/lib/utils/tax-id';
+import { keepAllowed } from '@/lib/utils/keep-allowed';
 
 type GrossIncomeNumberInputProps = Omit<React.ComponentProps<typeof Input>, 'onChange'> & {
   value?: string;
@@ -40,6 +40,7 @@ const GrossIncomeNumberInput = forwardRef<HTMLInputElement, GrossIncomeNumberInp
           history.onKeyDown(event);
         }}
         onChange={(event) => {
+          if (history.replay(event)) return;
           const input = event.currentTarget;
           const caret = input.selectionStart ?? input.value.length;
           const kept = keepAllowed(input.value, caret, GROSS_INCOME_CHARACTER);

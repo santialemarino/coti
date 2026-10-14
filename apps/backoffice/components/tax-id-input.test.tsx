@@ -592,6 +592,21 @@ describe('TaxIdInput', () => {
       expect(input().value).toBe('20-32');
     });
 
+    it('takes its own step when the browser undoes without announcing it', () => {
+      const onValue = vi.fn();
+      render(<Harness kind="cuit" onValue={onValue} />);
+      select(0);
+      type('2012');
+
+      // Chromium's scripted undo reverts its own stack, which only holds the last keystroke.
+      browserEdit(input(), '20-1', { inputType: 'historyUndo', announced: false });
+      expect(input().value).toBe('');
+      expect(onValue).toHaveBeenLastCalledWith('');
+
+      browserEdit(input(), '20-1', { inputType: 'historyRedo', announced: false });
+      expect(input().value).toBe('20-12');
+    });
+
     it('takes one step for the burst of history events WebKit fires for one menu undo', () => {
       render(<Harness kind="cuit" />);
       select(0);

@@ -6,7 +6,6 @@ import { Input } from '@repo/ui/components';
 import { useCaretPlacement } from '@/hooks/use-caret-placement';
 import {
   editKind,
-  snapshotOf,
   useInputHistory,
   type EditKind,
   type InputSnapshot,
@@ -84,6 +83,7 @@ const TaxIdInput = forwardRef<HTMLInputElement, TaxIdInputProps>(
         autoComplete="off"
         value={display}
         onChange={(event) => {
+          if (history.replay(event)) return;
           const input = event.currentTarget;
           const caret = input.selectionStart ?? input.value.length;
           const edit = editTaxId(input.value, caret, display, kind);
@@ -98,12 +98,12 @@ const TaxIdInput = forwardRef<HTMLInputElement, TaxIdInputProps>(
           const edit = deleteAcrossSeparator(display, input.selectionStart, event.key, kind);
           if (!edit) return;
           event.preventDefault();
-          apply(input, 'delete', edit, snapshotOf(input));
+          apply(input, 'delete', edit, history.snapshot(input));
         }}
         onPaste={(event) => {
           event.preventDefault();
           const input = event.currentTarget;
-          const from = snapshotOf(input);
+          const from = history.snapshot(input);
           // A paste fills the room the field has left; a typed digit past it is refused instead.
           const selected = taxIdDigits(input.value.slice(from.start, from.end)).length;
           const room = Math.max(0, TAX_ID_MAX_DIGITS[kind] - digits.length + selected);
