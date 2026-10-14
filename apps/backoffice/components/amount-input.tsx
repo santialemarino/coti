@@ -115,6 +115,15 @@ const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
       show(input, to);
     }
 
+    // A group separator typed at the end is shown only while typing; leaving the field drops it.
+    function settle(input: HTMLInputElement) {
+      const settled = formatAmountForInput(normalizeAmountFromInput(display, locale), locale);
+      if (settled === display) return;
+      const end = settled.length;
+      history.record('other', history.snapshot(input), { value: settled, start: end, end });
+      setDisplay(settled);
+    }
+
     const runKeyRules = composeKeyHandlers(
       blockSignKeys,
       blockScientificKeys,
@@ -144,7 +153,8 @@ const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
        * alone regroups it straight back, which traps the caret against it forever.
        */
       const start = input.selectionStart;
-      if (start !== null && start === input.selectionEnd && !event.altKey && !event.metaKey) {
+      const modified = event.altKey || event.metaKey || event.ctrlKey;
+      if (start !== null && start === input.selectionEnd && !modified) {
         const from = history.snapshot(input);
         if (event.key === 'Backspace' && start > 1 && display[start - 1] === group) {
           event.preventDefault();
@@ -174,7 +184,10 @@ const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
           const edit = editAmount(input.value, caret, display, locale, cap);
           apply(input, editKind(event.nativeEvent), edit, history.before());
         }}
-        onBlur={onBlur}
+        onBlur={(event) => {
+          settle(event.currentTarget);
+          onBlur?.();
+        }}
         onKeyDown={handleKeyDown}
         onPaste={(event) => {
           event.preventDefault();

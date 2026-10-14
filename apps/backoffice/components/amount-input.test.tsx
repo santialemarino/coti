@@ -52,7 +52,10 @@ function paste(text: string) {
   fireEvent(field, createEvent.paste(field, { clipboardData: { getData: () => text } }));
 }
 
-function press(key: string, modifiers: { metaKey?: boolean; shiftKey?: boolean } = {}) {
+function press(
+  key: string,
+  modifiers: { metaKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean } = {},
+) {
   const event = createEvent.keyDown(input(), { key, ...modifiers });
   fireEvent(input(), event);
   return event;
@@ -98,6 +101,44 @@ describe('AmountInput', () => {
       expect(input().value).toBe('1,23');
       expect(selection()).toEqual([2, 2]);
       expect(onValue).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['the whole value', '10.50', 0, 5, '1234,567', '1.234,56', '1234.56'],
+      ['the fraction', '1.25', 2, 4, '999', '1,99', '1.99'],
+    ])(
+      'truncates a paste that replaces %s to the cap',
+      (_, initial, start, end, text, shown, held) => {
+        const onValue = vi.fn();
+        render(<Harness initial={initial} onValue={onValue} />);
+        select(start, end);
+
+        paste(text);
+
+        expect(input().value).toBe(shown);
+        expect(onValue).toHaveBeenLastCalledWith(held);
+      },
+    );
+
+    it('drops a group separator left at the end when the field is left', () => {
+      const onValue = vi.fn();
+      render(<Harness onValue={onValue} />);
+      select(0);
+      type('1.234.');
+      expect(input().value).toBe('1.234.');
+
+      fireEvent.blur(input());
+
+      expect(input().value).toBe('1.234');
+      expect(onValue).toHaveBeenLastCalledWith('1234');
+    });
+
+    it('leaves a modified Backspace against a separator to the browser', () => {
+      render(<Harness initial="1234" />);
+      select(2);
+
+      expect(press('Backspace', { ctrlKey: true }).defaultPrevented).toBe(false);
+      expect(press('Backspace').defaultPrevented).toBe(true);
     });
 
     it('leaves shortcuts to the browser while refusing the characters they share a key with', () => {
@@ -219,7 +260,7 @@ describe('AmountInput', () => {
       expect(input().value).toBe('');
     });
 
-    it('takes its own step when the browser undoes without announcing it', () => {
+    it('takes its own step when the browser undoes without announcing it', async () => {
       const onValue = vi.fn();
       render(<Harness onValue={onValue} />);
       select(0);
@@ -230,8 +271,21 @@ describe('AmountInput', () => {
       expect(input().value).toBe('');
       expect(onValue).toHaveBeenLastCalledWith('');
 
+      await new Promise((resolve) => setTimeout(resolve));
       browserEdit(input(), '1.23', { inputType: 'historyRedo', announced: false });
       expect(input().value).toBe('1.234');
+    });
+
+    it('takes one step for a burst of unannounced browser undos in one task', () => {
+      render(<Harness />);
+      select(0);
+      type('12');
+      paste('34');
+
+      browserEdit(input(), '123', { inputType: 'historyUndo', announced: false });
+      browserEdit(input(), '1', { inputType: 'historyUndo', announced: false });
+
+      expect(input().value).toBe('12');
     });
 
     it('starts over when the value changes from outside', () => {

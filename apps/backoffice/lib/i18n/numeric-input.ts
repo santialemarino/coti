@@ -194,7 +194,8 @@ function fractionDigits(canonical: string): number {
  * Reads the field after any edit back into the canonical value, the display and a caret mapped by
  * counting digits. A separator typed onto the same separator steps over it; a group separator typed
  * at the end of the whole part is shown until the next digit regroups the number; any other typed
- * separator is ignored, and so is a fraction digit past the cap rather than pushing one out.
+ * separator is ignored, and so is a fraction digit typed past the cap rather than pushing one out;
+ * a paste or a replaced selection is truncated to the cap instead.
  */
 export function editAmount(
   raw: string,
@@ -226,11 +227,11 @@ export function editAmount(
   const canonical = normalizeAmountFromInput(sanitizeDecimalChars(raw, locale), locale);
   if (
     maxDecimals !== undefined &&
-    inserted > 0 &&
+    typed !== undefined &&
     fractionDigits(canonical) > maxDecimals &&
     fractionDigits(previous) >= maxDecimals
   ) {
-    return unchanged(Math.max(0, caret - inserted));
+    return unchanged(caret - 1);
   }
   const capped = limitDecimalsInString(canonical, '.', maxDecimals);
   const display = formatAmountForInput(capped, locale);
