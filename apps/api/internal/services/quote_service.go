@@ -18,6 +18,7 @@ type quoteRepository interface {
 	quoteVersionCloneRepository
 	GetByID(ctx context.Context, q repository.Querier, accountID, branchID, id uuid.UUID) (*domain.Quote, error)
 	GetByIDForUpdate(ctx context.Context, q repository.Querier, accountID, branchID, id uuid.UUID) (*domain.Quote, error)
+	ClaimForEdit(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
 	UpdateStatus(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID, from, to domain.QuoteStatus) (*domain.Quote, error)
 	GetCurrentVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.QuoteVersion, error)
 	UpdateVersionValuation(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
@@ -69,7 +70,7 @@ func (s *QuoteService) AcceptMaterials(
 	var priced domain.PricedQuote
 	var unpricedProducts []uuid.UUID
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		quote, err := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		quote, err := s.quotes.GetByIDForUpdate(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
 		if err != nil {
 			return err
 		}
@@ -180,7 +181,7 @@ func (s *QuoteService) ApproveAlternative(
 	}
 	var result *domain.QuoteItemAlternative
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		quote, err := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		quote, err := s.quotes.ClaimForEdit(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
 		if err != nil {
 			return err
 		}
@@ -331,7 +332,7 @@ func (s *QuoteService) Transition(
 
 	var moved *domain.Quote
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		quote, err := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		quote, err := s.quotes.GetByIDForUpdate(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
 		if err != nil {
 			return err
 		}

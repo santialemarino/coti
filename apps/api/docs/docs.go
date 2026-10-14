@@ -8553,7 +8553,12 @@ const docTemplate = `{
                     "$ref": "#/definitions/dto.QuoteRepresentationPayloadResponse"
                 },
                 "status": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                        "ACTIVE",
+                        "EXPIRED",
+                        "UNAVAILABLE"
+                    ]
                 }
             }
         },

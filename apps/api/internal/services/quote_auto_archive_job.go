@@ -12,7 +12,7 @@ import (
 
 type inactiveQuoteArchiver interface {
 	ArchiveInactiveCrossAccount(ctx context.Context, q repository.Querier,
-		statuses []domain.QuoteStatus, before time.Time, limit int) ([]domain.ArchivedQuote, error)
+		statuses []domain.QuoteStatus, before, now time.Time, limit int) ([]domain.ArchivedQuote, error)
 }
 
 // QuoteAutoArchiveJob archives the quotes that went quiet past the configured inactivity, across
@@ -40,11 +40,12 @@ func (j *QuoteAutoArchiveJob) Name() string { return "quote-auto-archive" }
 func (j *QuoteAutoArchiveJob) Run(
 	ctx context.Context, q repository.Querier,
 ) (domain.JobReport, error) {
-	before := j.now().Add(-j.cfg.InactiveAfter)
+	now := j.now()
+	before := now.Add(-j.cfg.InactiveAfter)
 	var report domain.JobReport
 	for {
 		archived, err := j.quotes.ArchiveInactiveCrossAccount(ctx, q, domain.AutoArchiveStatuses,
-			before, j.cfg.BatchSize)
+			before, now, j.cfg.BatchSize)
 		if err != nil {
 			return report, err
 		}

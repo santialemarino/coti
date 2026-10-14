@@ -170,13 +170,16 @@ in a bill.
 ### `quote-auto-archive`
 
 **What it archives.** A quote not yet archived, in `DRAFT`, `QUOTED` or `SENT`, whose row has not
-changed in `QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS`. Those are the two stalls follow-up chases — the
-seller has not finished or sent it, or the client has not answered. Everything else is left alone:
+changed in `QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS` — and, for a `SENT` one, whose offer has lapsed
+(`quote.expires_at` in the past). Those are the two stalls follow-up chases: the seller has not
+finished or sent it, or the client has not answered. Everything else is left alone:
 
 | Status             | Archived automatically | Why                                                          |
 | ------------------ | ---------------------- | ------------------------------------------------------------ |
 | `DRAFT`, `QUOTED`  | Yes                    | Waiting on the seller                                        |
-| `SENT`             | Yes                    | Waiting on the client; an expired quote is the common case   |
+| `SENT`, lapsed     | Yes                    | The client never answered and the offer is over              |
+| `SENT`, link live  | No                     | The client may still accept; archiving would lose the sale   |
+| `SENT`, no expiry  | No                     | Nothing proves the offer is over; the seller decides         |
 | `CHANGE_REQUESTED` | No                     | The client asked for something; burying it loses the request |
 | `ACCEPTED`         | No                     | A sale may still be invoiced or delivered                    |
 | `REJECTED`         | No                     | A closed outcome; the seller archives it when they choose    |
@@ -186,8 +189,10 @@ invoice out of the sweep.
 
 **What counts as activity is `quote.updated_at`.** Every write to the quote row moves it: a
 transition, a send, assigning the seller, associating the client, and unarchiving — so a quote the
-seller brings back starts a fresh window instead of being put away again on the next run. Editing
-the lines of a draft writes the version and its items, not the quote, and does not count. US-41's
+seller brings back starts a fresh window instead of being put away again on the next run. A line,
+discount or alternative edit claims the quote row first (`ClaimForEdit`), which touches it and
+holds its lock until the edit commits, so a quote being worked on is never idle and the sweep can
+never archive it between the edit's archive check and its write. US-41's
 follow-up flag is meant to read the same measure on a shorter threshold, so a quote is flagged
 before it is archived; because setting the flag writes the quote row too, that job has to compare
 against the time before its own write.

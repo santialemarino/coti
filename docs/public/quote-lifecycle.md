@@ -17,7 +17,8 @@ Archiving only removes a quote from the active queue. It does not change whether
 accepted, rejected, or in progress, and restoring it keeps the same lifecycle state. An archived
 quote can be read but not changed, sent, or invoiced until it is restored.
 
-Coti also archives on its own a quote that has gone quiet: one still being prepared, ready to send,
-or sent and waiting for the customer, with no movement for a configurable number of days (30 by
-default). Quotes with a change request pending or already accepted or rejected are never archived
+Coti also archives on its own a quote that has gone quiet: one still being prepared or ready to
+send, or one sent whose validity has already run out, with no movement for a configurable number of
+days (30 by default). A sent quote the customer can still accept is never archived automatically. If
+a seller archives one by hand, the customer's link says the quote is no longer available. Quotes with a change request pending or already accepted or rejected are never archived
 automatically. Archived quotes stay available under the "Archivado" status filter of the order list.

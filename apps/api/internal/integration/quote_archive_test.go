@@ -120,11 +120,12 @@ func (e *env) archiveQuote(t *testing.T, quoteID uuid.UUID, at time.Time) {
 	}
 }
 
-// seedIdleQuote writes a quote in status whose row last changed idleFor ago. The insert sets
-// updated_at itself: only an UPDATE goes through the trigger that would reset it.
+// seedIdleQuote writes a quote in status whose row last changed idleFor ago, with the offer
+// validity it was sent with. The insert sets updated_at itself: only an UPDATE goes through the
+// trigger that would reset it.
 func (e *env) seedIdleQuote(
 	t *testing.T, accountID, branchID uuid.UUID, status domain.QuoteStatus,
-	idleFor time.Duration, archivedAt *time.Time,
+	idleFor time.Duration, archivedAt, expiresAt *time.Time,
 ) uuid.UUID {
 	t.Helper()
 	ctx := context.Background()
@@ -138,13 +139,13 @@ func (e *env) seedIdleQuote(
 	}
 	if _, err := e.db.CrossAccount().Exec(ctx,
 		`INSERT INTO quote (id, account_id, number, branch_id, rfq_id, current_status,
-		                    archived_at, created_at, updated_at)
+		                    archived_at, expires_at, created_at, updated_at)
 		 VALUES ($1::uuid, $2,
 		         (('x'||substr(replace($1::uuid::text,'-',''),1,15))::bit(60)::bigint),
-		         $3, $4, $5, $6, now() - make_interval(secs => $7),
+		         $3, $4, $5, $6, $8, now() - make_interval(secs => $7),
 		         now() - make_interval(secs => $7))`,
 		quoteID, accountID, branchID, rfqID, status, archivedAt,
-		idleFor.Seconds()); err != nil {
+		idleFor.Seconds(), expiresAt); err != nil {
 		t.Fatalf("seed quote: %v", err)
 	}
 	e.dropDraft(t, rfqID)
@@ -161,8 +162,9 @@ func (e *env) archivedAtOf(t *testing.T, quoteID uuid.UUID) *time.Time {
 	return at
 }
 
-// The sweep archives the follow-up stalls quiet past the threshold in every account, leaves every
-// other quote alone, changes nothing on a second run, and lets an unarchived quote start over.
+// The sweep archives the follow-up stalls quiet past the threshold in every account — a sent one only
+// once its offer has lapsed — leaves every other quote alone, changes nothing on a second run, and
+// lets an unarchived quote start over.
 func TestQuoteAutoArchive_ArchivesOnlyTheStallsQuietPastTheThreshold(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
@@ -170,21 +172,25 @@ func TestQuoteAutoArchive_ArchivesOnlyTheStallsQuietPastTheThreshold(t *testing.
 	otherAccountID, otherBranchID := e.seedAccount(t, "Auto archive other")
 	idle, recent := 40*24*time.Hour, 10*24*time.Hour
 	boxedBefore := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	// The reviewer's case: sent 40 days ago on a 60-day validity, so the link is still live.
+	lapsed, live := time.Now().Add(-24*time.Hour), time.Now().Add(20*24*time.Hour)
 
 	eligible := map[string]uuid.UUID{
-		"idle DRAFT":                   e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusDraft, idle, nil),
-		"idle QUOTED":                  e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusQuoted, idle, nil),
-		"idle SENT in another account": e.seedIdleQuote(t, otherAccountID, otherBranchID, domain.QuoteStatusSent, idle, nil),
+		"idle DRAFT":                            e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusDraft, idle, nil, nil),
+		"idle QUOTED":                           e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusQuoted, idle, nil, nil),
+		"idle SENT, lapsed, in another account": e.seedIdleQuote(t, otherAccountID, otherBranchID, domain.QuoteStatusSent, idle, nil, &lapsed),
 	}
 	left := map[string]uuid.UUID{
-		"idle CHANGE_REQUESTED": e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusChangeRequested, idle, nil),
-		"idle ACCEPTED":         e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusAccepted, idle, nil),
-		"idle REJECTED":         e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusRejected, idle, nil),
-		"recent DRAFT":          e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusDraft, recent, nil),
-		"recent SENT":           e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusSent, recent, nil),
+		"idle CHANGE_REQUESTED": e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusChangeRequested, idle, nil, nil),
+		"idle ACCEPTED":         e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusAccepted, idle, nil, nil),
+		"idle REJECTED":         e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusRejected, idle, nil, nil),
+		"recent DRAFT":          e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusDraft, recent, nil, nil),
+		"recent SENT":           e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusSent, recent, nil, &lapsed),
+		"idle SENT, link live":  e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusSent, idle, nil, &live),
+		"idle SENT, no expiry":  e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusSent, idle, nil, nil),
 	}
 	alreadyBoxed := e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusDraft, idle,
-		&boxedBefore)
+		&boxedBefore, nil)
 
 	job := services.NewQuoteAutoArchiveJob(repository.NewQuoteRepository(),
 		config.QuoteArchiveConfig{InactiveAfter: 30 * 24 * time.Hour, BatchSize: 2},
@@ -244,5 +250,129 @@ func TestQuoteAutoArchive_ArchivesOnlyTheStallsQuietPastTheThreshold(t *testing.
 	}
 	if at := e.archivedAtOf(t, eligible["idle DRAFT"]); at != nil {
 		t.Errorf("unarchived DRAFT archived again at %v, want its inactivity to start over", at)
+	}
+}
+
+// backdateQuote makes a quote look idle for idleFor. The update trigger would stamp now() over any
+// value written, so the write runs with triggers off for its own transaction only.
+func (e *env) backdateQuote(t *testing.T, quoteID uuid.UUID, idleFor time.Duration) {
+	t.Helper()
+	ctx := context.Background()
+	tx, err := e.db.AdminTx(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SET LOCAL session_replication_role = replica`); err != nil {
+		t.Fatalf("switch triggers off: %v", err)
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE quote SET updated_at = now() - make_interval(secs => $2) WHERE id = $1`,
+		quoteID, idleFor.Seconds()); err != nil {
+		t.Fatalf("backdate the quote: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+}
+
+func (e *env) autoArchiveJobs(t *testing.T) (*services.JobService, string) {
+	t.Helper()
+	job := services.NewQuoteAutoArchiveJob(repository.NewQuoteRepository(),
+		config.QuoteArchiveConfig{InactiveAfter: 30 * 24 * time.Hour, BatchSize: 100},
+		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	e.dropRuns(t, job.Name())
+	return e.jobService(t, job), job.Name()
+}
+
+// Editing a draft's lines is activity: a quote a seller is working on is never swept as idle.
+func TestQuoteAutoArchive_ALineEditKeepsADraftActive(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	accountID, branchID := e.seedAccount(t, "Auto archive line edit")
+	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	lines := []draftLine{{description: "10 bolsas de cemento", quantity: "10"}}
+	edited := e.seedDraftQuote(t, accountID, branchID, admin, lines)
+	untouched := e.seedDraftQuote(t, accountID, branchID, admin, lines)
+	e.backdateQuote(t, edited.quoteID, 40*24*time.Hour)
+	e.backdateQuote(t, untouched.quoteID, 40*24*time.Hour)
+
+	rec := e.do(t, request{method: http.MethodPost,
+		path:  "/v1/quotes/" + edited.quoteID.String() + "/items",
+		token: e.tokenFor(t, admin), branch: branchID.String(),
+		body: map[string]any{"requested_description": "arena", "quantity": "2"}})
+	if rec.Code != http.StatusCreated && rec.Code != http.StatusOK {
+		t.Fatalf("add item = %d, want it accepted: %s", rec.Code, rec.Body)
+	}
+	jobs, name := e.autoArchiveJobs(t)
+	if _, err := jobs.Run(ctx, name); err != nil {
+		t.Fatalf("Run() = %v, want no error", err)
+	}
+
+	if at := e.archivedAtOf(t, edited.quoteID); at != nil {
+		t.Errorf("edited draft archived at %v, want the edit to count as activity", at)
+	}
+	if e.archivedAtOf(t, untouched.quoteID) == nil {
+		t.Error("untouched idle draft not archived, want it archived")
+	}
+}
+
+// An edit holds the quote's row from its guard to its write, so the sweep skips it rather than
+// archiving it in between, and the edit's own commit leaves it active.
+func TestQuoteAutoArchive_SkipsAQuoteAnEditHolds(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	accountID, branchID := e.seedAccount(t, "Auto archive held")
+	quoteID := e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusDraft,
+		40*24*time.Hour, nil, nil)
+	tenant := domain.Tenant{AccountID: accountID, BranchID: branchID, Role: domain.UserRoleAdmin}
+
+	claimed, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	go func() {
+		done <- e.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+			if _, err := repository.NewQuoteRepository().ClaimForEdit(ctx, q, accountID, branchID,
+				quoteID); err != nil {
+				return err
+			}
+			close(claimed)
+			<-release
+			return nil
+		})
+	}()
+	<-claimed
+	jobs, name := e.autoArchiveJobs(t)
+	_, runErr := jobs.Run(ctx, name)
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatalf("edit transaction = %v, want no error", err)
+	}
+	if runErr != nil {
+		t.Fatalf("Run() = %v, want no error", runErr)
+	}
+	if at := e.archivedAtOf(t, quoteID); at != nil {
+		t.Errorf("held quote archived at %v, want it skipped", at)
+	}
+}
+
+// A seller may still archive a sent quote whose link is live. The public side then stops offering
+// it: the link reads as unavailable, and an answer is refused by name.
+func TestQuoteArchive_APublicLinkStopsOfferingAnArchivedQuote(t *testing.T) {
+	e := newEnv(t)
+	seed := e.seedSendableQuote(t, "Archive public link", false)
+	service := e.clientAnswerService(t, &captureWhatsAppSender{}, &stagedQuoteEmailSender{})
+	token, _ := e.sentQuoteToken(t, service, seed)
+	e.archiveQuote(t, seed.draft.Quote.ID, time.Now())
+
+	resolved, err := service.ResolvePublic(context.Background(), token)
+	if err != nil {
+		t.Fatalf("ResolvePublic() = %v, want no error", err)
+	}
+	if resolved.Status != domain.PublicQuoteStatusUnavailable || resolved.Payload != nil {
+		t.Errorf("resolved = %+v, want UNAVAILABLE with no quote", resolved)
+	}
+	_, err = service.RespondPublic(context.Background(), token,
+		domain.ClientActionInput{Type: domain.ClientActionAccept})
+	if domain.CodeOf(err) != domain.CodeQuoteArchived {
+		t.Fatalf("RespondPublic() = %v, want QUOTE_ARCHIVED", err)
 	}
 }

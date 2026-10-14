@@ -595,10 +595,17 @@ func (s *QuoteDeliveryService) ResolvePublic(ctx context.Context,
 		return nil, err
 	}
 	var send *domain.QuoteSend
+	var quote *domain.Quote
 	err = s.db.InTenantTx(ctx, domain.Tenant{AccountID: accountID},
 		func(q repository.Querier) error {
 			var getErr error
-			send, getErr = s.sends.GetPublicByToken(ctx, q, accountID, token)
+			if send, getErr = s.sends.GetPublicByToken(ctx, q, accountID, token); getErr != nil {
+				return getErr
+			}
+			if send.ExpiresAt == nil || !s.now().Before(*send.ExpiresAt) {
+				return nil
+			}
+			quote, getErr = s.quotes.GetByVersionID(ctx, q, accountID, send.VersionID)
 			return getErr
 		})
 	if err != nil {
@@ -610,6 +617,13 @@ func (s *QuoteDeliveryService) ResolvePublic(ctx context.Context,
 	if !s.now().Before(*send.ExpiresAt) {
 		return &domain.PublicQuoteRepresentation{Status: "EXPIRED", ExpiresAt: *send.ExpiresAt}, nil
 	}
+	customerStatus := s.customerStatus(ctx, accountID, send.ID)
+	// An archived quote takes no answer, so it is no longer offered; one already answered still
+	// shows the customer what they said.
+	if quote.ArchivedAt != nil && customerStatus == nil {
+		return &domain.PublicQuoteRepresentation{Status: domain.PublicQuoteStatusUnavailable,
+			ExpiresAt: *send.ExpiresAt}, nil
+	}
 	if s.representations == nil {
 		return nil, domain.ErrNotConfigured
 	}
@@ -618,9 +632,7 @@ func (s *QuoteDeliveryService) ResolvePublic(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	if customerStatus := s.customerStatus(ctx, accountID, send.ID); customerStatus != nil {
-		result.CustomerStatus = customerStatus
-	}
+	result.CustomerStatus = customerStatus
 	return result, nil
 }
 

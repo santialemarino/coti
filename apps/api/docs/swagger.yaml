@@ -1298,6 +1298,10 @@ definitions:
       quote:
         $ref: '#/definitions/dto.QuoteRepresentationPayloadResponse'
       status:
+        enum:
+        - ACTIVE
+        - EXPIRED
+        - UNAVAILABLE
         type: string
     type: object
   dto.QuoteAlternativeApprovalRequest:

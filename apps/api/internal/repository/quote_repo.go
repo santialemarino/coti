@@ -207,11 +207,27 @@ func (r *QuoteRepository) Unarchive(
 	return quote, err
 }
 
+// ClaimForEdit locks a quote for an edit and records the edit as activity, in one statement: the
+// row lock keeps the inactivity sweep from archiving it between the guard and the write, and the
+// touched updated_at is what the sweep measures. A refused edit rolls both back with its transaction.
+func (r *QuoteRepository) ClaimForEdit(
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID,
+) (*domain.Quote, error) {
+	return scanQuote(q.QueryRow(ctx,
+		`UPDATE quote
+		 SET updated_at = now()
+		 WHERE account_id = $1 AND branch_id = $2 AND id = $3
+		 RETURNING `+quoteColumns,
+		accountID, branchID, quoteID))
+}
+
 // ArchiveInactiveCrossAccount archives up to limit quotes, across every account, that sit in one of
-// statuses and whose row has not changed since before. Inactivity is quote.updated_at, which every
-// transition, send, assignment and unarchive moves. It runs on a scheduled job's owner connection.
+// statuses and whose row has not changed since before; a SENT one also needs its offer to have
+// lapsed by now, so a live link is never withdrawn. Inactivity is quote.updated_at, which every
+// transition, send, assignment, line edit and unarchive moves. It runs on a scheduled job's owner
+// connection.
 func (r *QuoteRepository) ArchiveInactiveCrossAccount(
-	ctx context.Context, q Querier, statuses []domain.QuoteStatus, before time.Time, limit int,
+	ctx context.Context, q Querier, statuses []domain.QuoteStatus, before, now time.Time, limit int,
 ) ([]domain.ArchivedQuote, error) {
 	names := make([]string, len(statuses))
 	for i, status := range statuses {
@@ -224,6 +240,7 @@ func (r *QuoteRepository) ArchiveInactiveCrossAccount(
 		   WHERE archived_at IS NULL
 		     AND current_status = ANY($1::quote_status[])
 		     AND updated_at < $2
+		     AND (current_status <> 'SENT' OR expires_at < $4)
 		   ORDER BY updated_at, id
 		   LIMIT $3
 		   FOR UPDATE SKIP LOCKED
@@ -234,7 +251,7 @@ func (r *QuoteRepository) ArchiveInactiveCrossAccount(
 		 WHERE quote.id = stale.id
 		 RETURNING quote.account_id, quote.branch_id, quote.id, quote.number,
 		           quote.current_status, stale.updated_at`,
-		names, before, limit)
+		names, before, limit, now)
 	if err != nil {
 		return nil, err
 	}

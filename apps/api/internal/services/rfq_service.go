@@ -46,6 +46,7 @@ type quoteDraftRepository interface {
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID, previousStatus *domain.QuoteStatus, newStatus domain.QuoteStatus, userID *uuid.UUID) (*domain.QuoteStatusChange, error)
 	GetByRFQID(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID) (*domain.Quote, error)
 	GetByID(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
+	ClaimForEdit(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
 	GetCurrentVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.QuoteVersion, error)
 	GetPreviousVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID, versionNumber int) (*domain.QuoteVersion, error)
 	ListItems(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID) ([]domain.QuoteItem, error)
@@ -531,7 +532,7 @@ func (s *RFQService) UpdateItem(
 
 	var item *domain.QuoteItem
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		quote, quoteErr := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		quote, quoteErr := s.quotes.ClaimForEdit(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
 		if quoteErr != nil {
 			return quoteErr
 		}
@@ -582,7 +583,7 @@ func (s *RFQService) DeleteItem(
 		return err
 	}
 	return s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		quote, quoteErr := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		quote, quoteErr := s.quotes.ClaimForEdit(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
 		if quoteErr != nil {
 			return quoteErr
 		}
@@ -628,7 +629,7 @@ func (s *RFQService) AddItem(
 
 	var item *domain.QuoteItem
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		quote, quoteErr := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		quote, quoteErr := s.quotes.ClaimForEdit(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
 		if quoteErr != nil {
 			return quoteErr
 		}
@@ -675,7 +676,7 @@ func (s *RFQService) AddDiscount(
 
 	var discount *domain.QuoteDiscount
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		quote, quoteErr := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		quote, quoteErr := s.quotes.ClaimForEdit(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
 		if quoteErr != nil {
 			return quoteErr
 		}
@@ -744,7 +745,7 @@ func (s *RFQService) UpdateDiscount(
 
 	var discount *domain.QuoteDiscount
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		quote, quoteErr := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		quote, quoteErr := s.quotes.ClaimForEdit(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
 		if quoteErr != nil {
 			return quoteErr
 		}
@@ -839,7 +840,7 @@ func (s *RFQService) DeleteDiscount(
 		return fmt.Errorf("%w: discount persistence is not wired", domain.ErrInvalidInput)
 	}
 	return s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		quote, quoteErr := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		quote, quoteErr := s.quotes.ClaimForEdit(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
 		if quoteErr != nil {
 			return quoteErr
 		}

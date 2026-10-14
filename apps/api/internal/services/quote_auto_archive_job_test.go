@@ -19,6 +19,7 @@ import (
 type archiveCall struct {
 	statuses []domain.QuoteStatus
 	before   time.Time
+	now      time.Time
 	limit    int
 }
 
@@ -30,10 +31,11 @@ type fakeInactiveArchiver struct {
 }
 
 func (f *fakeInactiveArchiver) ArchiveInactiveCrossAccount(
-	_ context.Context, _ repository.Querier, statuses []domain.QuoteStatus, before time.Time,
+	_ context.Context, _ repository.Querier, statuses []domain.QuoteStatus, before, now time.Time,
 	limit int,
 ) ([]domain.ArchivedQuote, error) {
-	f.calls = append(f.calls, archiveCall{statuses: statuses, before: before, limit: limit})
+	f.calls = append(f.calls, archiveCall{statuses: statuses, before: before, now: now,
+		limit: limit})
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -74,6 +76,10 @@ func TestQuoteAutoArchiveJob_Run_AsksForTheFollowupStallsQuietPastTheThreshold(t
 	// 2026-10-31 12:00 minus 30 days, by hand.
 	if want := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC); !call.before.Equal(want) {
 		t.Errorf("before = %v, want %v", call.before, want)
+	}
+	// A SENT quote's offer is judged against the same instant, not a second read of the clock.
+	if want := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC); !call.now.Equal(want) {
+		t.Errorf("now = %v, want %v", call.now, want)
 	}
 	if call.limit != 50 {
 		t.Errorf("limit = %d, want 50", call.limit)

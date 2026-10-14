@@ -526,11 +526,16 @@ neither writes `quote_status_change`. The queue leaves archived quotes out unles
 discounts, accepting materials, approving an alternative, a transition, reactivation, sending,
 generating the PDF, the client association and issuing the invoice. The guard is checked before the
 status, so the refusal names the archive rather than a status the seller cannot see a reason for.
-Reads stay open, and so does recovering an invoice already in flight at ARCA. A customer's answer
-through the public link is refused the same way.
+Reads stay open, and so does recovering an invoice already in flight at ARCA (the backoffice shows
+the invoice card read-only and offers neither action until the quote is unarchived).
+
+A seller may archive a `SENT` quote whose link is still live. The public side then stops offering
+it: `GET /v1/public/quote-sends/{token}` answers `status: UNAVAILABLE` with no quote body, and an
+answer through the link is refused with `QUOTE_ARCHIVED`, which the webapp words as an offer no
+longer available. A customer who already answered keeps seeing their answer.
 
 Quotes also archive themselves: the `quote-auto-archive` job puts away the ones nobody has moved in
-`QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS`. See [scheduled-jobs.md](scheduled-jobs.md#quote-auto-archive).
+`QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS` — a sent one only once its offer has lapsed. See [scheduled-jobs.md](scheduled-jobs.md#quote-auto-archive).
 
 ## Where the code lives
 
