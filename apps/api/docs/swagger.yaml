@@ -885,6 +885,12 @@ definitions:
     properties:
       amounts:
         $ref: '#/definitions/dto.InvoiceAmountsResponse'
+      credited_invoice:
+        allOf:
+        - $ref: '#/definitions/dto.InvoiceResponse'
+        description: |-
+          CreditedInvoice is the newest invoice of the sale an issued credit note cancelled in this
+          environment, with that credit note: history, and what a new invoice follows.
       currency:
         type: string
       environment:
@@ -944,6 +950,15 @@ definitions:
         type: string
       created_at:
         type: string
+      credit_note:
+        allOf:
+        - $ref: '#/definitions/dto.InvoiceResponse'
+        description: CreditNote is an invoice's newest credit note; an ISSUED one
+          cancels the invoice.
+      credited_invoice:
+        allOf:
+        - $ref: '#/definitions/dto.VoucherReferenceResponse'
+        description: CreditedInvoice is the invoice a credit note cancels.
       currency:
         type: string
       environment:
@@ -963,6 +978,11 @@ definitions:
         items:
           type: string
         type: array
+      kind:
+        enum:
+        - INVOICE
+        - CREDIT_NOTE
+        type: string
       number:
         type: integer
       point_of_sale:
@@ -2360,6 +2380,19 @@ definitions:
       rate:
         type: string
     type: object
+  dto.VoucherReferenceResponse:
+    properties:
+      id:
+        type: string
+      issued_on:
+        type: string
+      number:
+        type: integer
+      point_of_sale:
+        type: integer
+      type:
+        type: string
+    type: object
 info:
   contact: {}
   description: Every /v1 route outside /public needs an access token. The active branch
@@ -3349,6 +3382,59 @@ paths:
       security:
       - BearerAuth: []
       summary: List invoices
+      tags:
+      - invoicing
+  /v1/invoices/{invoiceId}/credit-note:
+    post:
+      description: 'Asks ARCA to authorize a credit note of the invoice''s letter,
+        lines, amounts and buyer, associated with it. Irreversible: once issued, the
+        sale is no longer invoiced.'
+      parameters:
+      - description: The invoice's branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Invoice id
+        in: path
+        name: invoiceId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.InvoiceResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: INVOICE_NOT_CREDITABLE, INVOICE_ALREADY_CREDITED, CREDIT_NOTE_IN_PROGRESS,
+            ARCA_ENVIRONMENT_MISMATCH
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: INVOICE_NOT_READY, INVOICE_REJECTED
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: INVOICING_UNAVAILABLE
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Issue a credit note for an invoice
       tags:
       - invoicing
   /v1/invoices/{invoiceId}/pdf:

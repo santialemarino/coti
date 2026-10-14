@@ -121,6 +121,9 @@ a code from the sentinel an error wraps — `NOT_FOUND`, `CONFLICT`, `INVALID_IN
 | `ARCA_CONNECTED`            | 409    | changing the account's CUIT while ARCA is connected with it, without `disconnect_arca`                              |
 | `INVOICE_PENDING`           | 409    | removing the ARCA connection while an invoice is still waiting for ARCA's answer                                    |
 | `ARCA_ENVIRONMENT_MISMATCH` | 409    | installing a certificate, or reading back a pending invoice, with an ARCA connection made for the other environment |
+| `INVOICE_NOT_CREDITABLE`    | 409    | asking for a credit note for anything but an issued invoice                                                         |
+| `INVOICE_ALREADY_CREDITED`  | 409    | asking for a credit note for an invoice an issued credit note already cancelled                                     |
+| `CREDIT_NOTE_IN_PROGRESS`   | 409    | asking for a credit note while the invoice's previous one is still waiting for ARCA's answer                        |
 
 `AI_UNAVAILABLE` is the **503** whose status says "come back later":
 no AI provider is bound, or the one that is could not answer. A request the provider _rejected_ is
