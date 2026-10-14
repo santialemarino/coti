@@ -299,7 +299,7 @@ func TestAccount_ConfirmedCUITChangeDisconnectsARCAAtomically(t *testing.T) {
 	if err == nil {
 		t.Fatal("an account name past the column accepted")
 	}
-	if !connected() || taxID() != "30-71234567-1" {
+	if !connected() || taxID() != "30712345671" {
 		t.Fatal("a failed account write still removed the connection or changed the CUIT")
 	}
 
@@ -308,7 +308,7 @@ func TestAccount_ConfirmedCUITChangeDisconnectsARCAAtomically(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("confirmed change: status = %d; body = %s", rec.Code, rec.Body)
 	}
-	if connected() || taxID() != other {
+	if connected() || taxID() != "20329642330" {
 		t.Fatal("a confirmed change left the connection or kept the old CUIT")
 	}
 }
