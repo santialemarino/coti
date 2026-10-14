@@ -3,6 +3,13 @@
 import { forwardRef } from 'react';
 
 import { Input } from '@repo/ui/components';
+import { useCaretPlacement } from '@/hooks/use-caret-placement';
+import {
+  editKind,
+  useInputHistory,
+  type EditKind,
+  type InputSnapshot,
+} from '@/hooks/use-input-history';
 import {
   blockAllSeparators,
   blockScientificKeys,
@@ -11,6 +18,9 @@ import {
   sanitizeIntegerPaste,
   stepCanonical,
 } from '@/lib/i18n/numeric-input';
+import { keepAllowed } from '@/lib/utils/keep-allowed';
+
+const DIGIT = /^\d$/;
 
 interface QuantityInputProps {
   /* A digit-only string. Range checks stay in the schema; this only guarantees the shape. */
@@ -41,30 +51,61 @@ interface QuantityInputProps {
  * wheel cannot rewrite it while the page scrolls past. The arrow keys step it.
  *
  * The rule across the app: money and anything with a fraction is `AmountInput`; a count is this.
- * Neither is `<input type="number">`.
+ * Neither is `<input type="number">`. Filtering is a write the browser does not record, so the field
+ * keeps its own undo history.
  */
 const QuantityInput = forwardRef<HTMLInputElement, QuantityInputProps>(
   ({ value = '', onChange, onBlur, onKeyDown, name, min = 0, step = 1, ...rest }, ref) => {
+    const placeCaret = useCaretPlacement();
+    const history = useInputHistory({
+      ref,
+      value,
+      restore: (snapshot, input) => show(input, snapshot),
+    });
     const runKeyRules = composeKeyHandlers(blockSignKeys, blockScientificKeys, blockAllSeparators);
+
+    function show(input: HTMLInputElement, to: InputSnapshot) {
+      placeCaret(input, to.start, to.end);
+      if (to.value !== value) onChange?.(to.value);
+    }
+
+    function apply(
+      input: HTMLInputElement,
+      edited: EditKind,
+      to: InputSnapshot,
+      from: InputSnapshot,
+    ) {
+      history.record(edited, from, to);
+      show(input, to);
+    }
 
     return (
       <Input
         {...rest}
-        ref={ref}
+        ref={history.inputRef}
         type="text"
         inputMode="numeric"
         name={name}
         value={value}
         /* Strips anything a keystroke rule never sees: IME composition, autofill, dropped text. */
-        onChange={(event) => onChange?.(event.target.value.replace(/[^0-9]/g, ''))}
+        onChange={(event) => {
+          if (history.replay(event)) return;
+          const input = event.currentTarget;
+          const kept = keepAllowed(input.value, input.selectionStart ?? input.value.length, DIGIT);
+          const to = { value: kept.value, start: kept.caret, end: kept.caret };
+          apply(input, editKind(event.nativeEvent), to, history.before());
+        }}
         onBlur={onBlur}
         onKeyDown={(event) => {
+          if (history.onKeyDown(event)) return;
           runKeyRules(event);
           if (event.defaultPrevented) return;
           const stepped = stepCanonical(event.key, value, { step, min, maxDecimals: 0 });
           if (stepped !== null) {
             event.preventDefault();
-            onChange?.(stepped);
+            const input = event.currentTarget;
+            const to = { value: stepped, start: stepped.length, end: stepped.length };
+            apply(input, 'other', to, history.snapshot(input));
             return;
           }
           onKeyDown?.(event);
@@ -72,10 +113,16 @@ const QuantityInput = forwardRef<HTMLInputElement, QuantityInputProps>(
         onPaste={(event) => {
           event.preventDefault();
           const input = event.currentTarget;
-          const start = input.selectionStart ?? input.value.length;
-          const end = input.selectionEnd ?? input.value.length;
-          const pasted = sanitizeIntegerPaste(event.clipboardData.getData('text/plain'));
-          onChange?.(input.value.slice(0, start) + pasted + input.value.slice(end));
+          const from = history.snapshot(input);
+          // A paste fills the room `maxLength` leaves, as typing into the field would.
+          const room = (rest.maxLength ?? Infinity) - value.length + (from.end - from.start);
+          const pasted = sanitizeIntegerPaste(event.clipboardData.getData('text/plain')).slice(
+            0,
+            Math.max(0, room),
+          );
+          const caret = from.start + pasted.length;
+          const raw = value.slice(0, from.start) + pasted + value.slice(from.end);
+          apply(input, 'other', { value: raw, start: caret, end: caret }, from);
         }}
         autoComplete="off"
       />

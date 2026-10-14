@@ -321,7 +321,9 @@ setting that should hold everywhere in the shared package, not in one app. What 
   instead, which is the one definition of "shown".
 - **`browserEdit` / `typeText` / `beforeInput`**, from `@repo/vitest-config/input-edits`, for a field
   that handles its own edits: they fire `beforeinput` with the old selection, then the new text and
-  `input`, each carrying the `inputType` jsdom does not implement.
+  `input`, each carrying the `inputType` jsdom does not implement. `announced: false` skips the
+  `beforeinput`, as Chromium's scripted undo does; give such an edit a value that differs from the
+  field's, or React sees no change and fires no `onChange`.
 
 ### Fake timers, and the one that bites
 
