@@ -592,7 +592,7 @@ describe('TaxIdInput', () => {
       expect(input().value).toBe('20-32');
     });
 
-    it('takes its own step when the browser undoes without announcing it', () => {
+    it('takes its own step when the browser undoes without announcing it', async () => {
       const onValue = vi.fn();
       render(<Harness kind="cuit" onValue={onValue} />);
       select(0);
@@ -603,6 +603,7 @@ describe('TaxIdInput', () => {
       expect(input().value).toBe('');
       expect(onValue).toHaveBeenLastCalledWith('');
 
+      await nextTask();
       browserEdit(input(), '20-1', { inputType: 'historyRedo', announced: false });
       expect(input().value).toBe('20-12');
     });

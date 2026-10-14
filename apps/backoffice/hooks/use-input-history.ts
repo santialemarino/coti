@@ -108,23 +108,31 @@ export function useInputHistory({ ref, value, restore, onReset, context }: Input
     [snapshot],
   );
 
+  // A history event, from the menu or the browser's own undo, takes one step per task: WebKit answers
+  // one menu undo with an event per entry of its own stack, all in one task.
+  const historyStep = useCallback(
+    (input: HTMLInputElement, direction: 'undo' | 'redo', current?: InputSnapshot) => {
+      if (menuStepTaken.current) return;
+      menuStepTaken.current = true;
+      setTimeout(() => {
+        menuStepTaken.current = false;
+      });
+      step(input, direction, current);
+    },
+    [step],
+  );
+
   const inputRef = useCallback(
     (input: HTMLInputElement | null) => {
       if (typeof ref === 'function') ref(input);
       else if (ref) ref.current = input;
       if (!input) return;
 
-      // The Edit menu and the context menu undo through `beforeinput`, never through a key. WebKit
-      // answers one such undo with an event per entry of its own stack, all in one task.
+      // The Edit menu and the context menu undo through `beforeinput`, never through a key.
       const onBeforeInput = (event: InputEvent) => {
         if (isHistoryEdit(event.inputType)) {
           event.preventDefault();
-          if (menuStepTaken.current) return;
-          menuStepTaken.current = true;
-          setTimeout(() => {
-            menuStepTaken.current = false;
-          });
-          step(input, event.inputType === 'historyUndo' ? 'undo' : 'redo');
+          historyStep(input, event.inputType === 'historyUndo' ? 'undo' : 'redo');
           return;
         }
         pending.current = snapshot(input);
@@ -142,7 +150,7 @@ export function useInputHistory({ ref, value, restore, onReset, context }: Input
         else if (ref) ref.current = null;
       };
     },
-    [ref, snapshot, step],
+    [ref, snapshot, historyStep],
   );
 
   // The field as it stood before the edit in progress: `beforeinput` saw it, unless the edit
@@ -165,7 +173,7 @@ export function useInputHistory({ ref, value, restore, onReset, context }: Input
     const inputType = 'inputType' in nativeEvent ? String(nativeEvent.inputType) : '';
     if (!isHistoryEdit(inputType)) return false;
     pending.current = null;
-    step(event.currentTarget, inputType === 'historyUndo' ? 'undo' : 'redo', shown());
+    historyStep(event.currentTarget, inputType === 'historyUndo' ? 'undo' : 'redo', shown());
     return true;
   }
 
