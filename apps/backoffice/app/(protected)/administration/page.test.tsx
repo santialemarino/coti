@@ -39,6 +39,7 @@ function invoice(overrides: Partial<Invoice>): Invoice {
   return {
     id: 'inv-1',
     branchId: 'moron',
+    environment: 'PRODUCTION',
     status: 'ISSUED',
     type: 'B',
     pointOfSale: 3,
@@ -123,5 +124,15 @@ describe('AdministrationPage', () => {
   it('says so when no branch has invoices yet', async () => {
     await renderPage(undefined, []);
     expect(screen.getByText(copy.emptyAll)).toBeTruthy();
+  });
+
+  it('marks only the invoices issued in homologation as tests', async () => {
+    await renderPage('moron', [
+      invoice({ environment: 'HOMOLOGATION' }),
+      invoice({ id: 'inv-2', number: 24 }),
+    ]);
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(within(rows[0]!).getByText(messages.invoicing.testBadge)).toBeTruthy();
+    expect(within(rows[1]!).queryByText(messages.invoicing.testBadge)).toBeNull();
   });
 });

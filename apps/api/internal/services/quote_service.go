@@ -29,7 +29,7 @@ type quoteRepository interface {
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID, previousStatus *domain.QuoteStatus, newStatus domain.QuoteStatus, userID *uuid.UUID) (*domain.QuoteStatusChange, error)
 	Archive(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
 	Unarchive(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
-	HasLiveInvoice(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (bool, error)
+	HasLiveInvoice(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID, env domain.ARCAEnvironment) (bool, error)
 }
 
 // branchPriceReader is the price-in-force surface valuation needs. One call carries every
@@ -43,17 +43,18 @@ type QuoteService struct {
 	db     tenantTxRunner
 	quotes quoteRepository
 	prices branchPriceReader
+	env    domain.ARCAEnvironment // where this server invoices; only an invoice issued there closes a sale.
 	log    *slog.Logger
 }
 
 // NewQuoteService builds a QuoteService.
 func NewQuoteService(
-	db tenantTxRunner, quotes quoteRepository, prices branchPriceReader, log *slog.Logger,
+	db tenantTxRunner, quotes quoteRepository, prices branchPriceReader, env domain.ARCAEnvironment, log *slog.Logger,
 ) *QuoteService {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &QuoteService{db: db, quotes: quotes, prices: prices, log: log}
+	return &QuoteService{db: db, quotes: quotes, prices: prices, env: env, log: log}
 }
 
 // AcceptMaterials values a draft quote and moves it to QUOTED for human review. Returns
@@ -263,7 +264,7 @@ func (s *QuoteService) Reactivate(
 			return domain.WithCode(domain.CodeQuoteNotReactivatable, domain.ErrConflict)
 		}
 		// An invoiced sale is a fiscal fact: reopening it would let a second invoice go out for it.
-		invoiced, err := s.quotes.HasLiveInvoice(ctx, q, tenant.AccountID, tenant.BranchID, quote.ID)
+		invoiced, err := s.quotes.HasLiveInvoice(ctx, q, tenant.AccountID, tenant.BranchID, quote.ID, s.env)
 		if err != nil {
 			return err
 		}

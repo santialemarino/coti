@@ -22,7 +22,11 @@ import { useHeldWhileClosed } from '@repo/ui/hooks';
 import { CertificateUpload } from '@/app/(protected)/settings/invoicing/arca/_components/certificate-upload';
 import { PemExample } from '@/app/(protected)/settings/invoicing/arca/_components/pem-example';
 import { PointsOfSaleForm } from '@/app/(protected)/settings/invoicing/arca/_components/points-of-sale-form';
-import { createARCASetup, disconnectARCA } from '@/app/(protected)/settings/invoicing/arca/actions';
+import {
+  createARCASetup,
+  disconnectARCA,
+  reconnectARCA,
+} from '@/app/(protected)/settings/invoicing/arca/actions';
 import {
   ARCA_STEPS,
   arcaStepStatuses,
@@ -39,8 +43,20 @@ import { useFormatters } from '@/lib/i18n/formatters';
 import type { ARCAConnectionState } from '@/lib/utils/arca-connection';
 import { isValidCuit } from '@/lib/utils/cuit';
 
-// Removing the credential means starting over while it is in progress, and disconnecting after.
-type RemoveMode = 'restart' | 'disconnect';
+/*
+ * Removing the credential means starting over while it is in progress and disconnecting after; a
+ * connection made for the other ARCA environment is replaced by a new request in one step.
+ */
+type RemoveMode = 'restart' | 'disconnect' | 'reconnect';
+
+// What ARCA shows on the way to the certificate, which differs between its two environments.
+const CERTIFICATE_ITEMS = {
+  HOMOLOGATION: ['open', 'alias', 'paste', 'result'],
+  PRODUCTION: ['open', 'alias', 'upload', 'view'],
+} as const;
+
+// The steps whose title names what ARCA calls its own screens, which differ between environments.
+const STEP_TITLES_BY_ENVIRONMENT: readonly ARCAStep[] = ['wsass', 'copy', 'certificate'];
 
 // The states the guide calls out above its steps, as the status card does.
 const SUMMARY_TONE: Partial<Record<ARCAConnectionState, 'warning' | 'danger'>> = {
@@ -67,17 +83,26 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, state }: ARCASet
   const [removeOpen, setRemoveOpen] = useState(false);
   const [removing, startRemoving] = useTransition();
 
-  const statuses = arcaStepStatuses(setup, branches);
+  const env = setup.environment;
+  const reconnecting = state === 'reconnect';
+  // A connection made for the other environment is started over, so its steps read from the top.
+  const current = reconnecting ? { ...setup, taxId: '', csr: '', hasCertificate: false } : setup;
+  const statuses = arcaStepStatuses(current, branches);
   // The request can only be generated for a CUIT ARCA accepts; anything else is fixed in Cuenta.
   const usableCuit = accountTaxId !== null && isValidCuit(accountTaxId);
-  const cuit = setup.taxId || accountTaxId || '';
+  const cuit = current.taxId || accountTaxId || '';
   const shownCuit = cuit ? formatCuit(cuit.replace(/\D/g, '')) : '';
+  const removedCuit = formatCuit((setup.taxId || accountTaxId || '').replace(/\D/g, ''));
   const expiresOn = setup.certificateExpiresAt ? fmt.date(setup.certificateExpiresAt) : '';
   const activeBranches = branches.filter((branch) => branch.isActive);
   const busy = generating || removing;
-  const mode: RemoveMode = setup.hasCertificate ? 'disconnect' : 'restart';
+  const mode: RemoveMode = reconnecting
+    ? 'reconnect'
+    : setup.hasCertificate
+      ? 'disconnect'
+      : 'restart';
   // The dialog keeps what it was about while it fades out after the credential is gone.
-  const confirm = useHeldWhileClosed({ mode, cuit: shownCuit }, removeOpen);
+  const confirm = useHeldWhileClosed({ mode, cuit: removedCuit }, removeOpen);
   const summaryTone = SUMMARY_TONE[state];
 
   function generate() {
@@ -94,8 +119,13 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, state }: ARCASet
 
   function remove() {
     startRemoving(async () => {
-      const result = await disconnectARCA();
+      const result = await (mode === 'reconnect' ? reconnectARCA() : disconnectARCA());
       if (result.error) {
+        // The old connection may be gone even though no new one was made, so show what is there now.
+        if (mode === 'reconnect') {
+          setRemoveOpen(false);
+          router.refresh();
+        }
         toast.error(message(result.error));
         return;
       }
@@ -105,18 +135,46 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, state }: ARCASet
     });
   }
 
+  function copyRequest(variant: 'default' | 'outline') {
+    return (
+      <CopyButton
+        variant={variant}
+        size="default"
+        value={setup.csr}
+        labels={{ copy: t('steps.copy.copy'), copied: t('steps.copy.copied') }}
+        onCopyError={() => toast.error(t('steps.copy.copyError'))}
+      />
+    );
+  }
+
+  function downloadRequest(variant: 'default' | 'outline') {
+    return (
+      <Button
+        variant={variant}
+        onClick={() => download(setup.csr, `coti-${cuit}.csr`, 'application/pkcs10')}
+      >
+        <DownloadIcon aria-hidden="true" />
+        {t('steps.copy.download')}
+      </Button>
+    );
+  }
+
   const content: Record<ARCAStep, React.ReactNode> = {
     wsass: (
       <>
-        <Paragraph>{t('steps.wsass.body')}</Paragraph>
-        <Paragraph>{t('steps.wsass.check', { lookup: t('wsassLookup') })}</Paragraph>
+        <Paragraph>{t(`steps.wsass.${env}.body`)}</Paragraph>
+        <Paragraph>
+          {env === 'HOMOLOGATION'
+            ? t('steps.wsass.HOMOLOGATION.check', { lookup: t('wsassLookup') })
+            : t('steps.wsass.PRODUCTION.check')}
+        </Paragraph>
         <ExternalButton href={ARCA_URLS.login}>{t('steps.wsass.open')}</ExternalButton>
       </>
     ),
     generate: (
       <>
         <Paragraph>{t('steps.generate.body')}</Paragraph>
-        {usableCuit || setup.csr ? (
+        {usableCuit || current.csr ? (
           <dl className="flex flex-col gap-y-1">
             <dt className="text-paragraph-xs-medium text-foreground-muted">
               {t('steps.generate.cuit')}
@@ -125,7 +183,7 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, state }: ARCASet
               <span className="text-paragraph-semibold text-foreground tabular-nums">
                 {shownCuit}
               </span>
-              {setup.csr ? null : (
+              {current.csr ? null : (
                 <InlineLink asChild tone="muted">
                   <Link href={ROUTES.accountSettings}>{t('steps.generate.editCuit')}</Link>
                 </InlineLink>
@@ -135,7 +193,7 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, state }: ARCASet
         ) : (
           <SetupNotice issue="ACCOUNT_TAX_ID" isAdmin />
         )}
-        {setup.csr ? (
+        {current.csr ? (
           <Paragraph>{t('steps.generate.locked')}</Paragraph>
         ) : usableCuit ? (
           <PendingButton
@@ -143,7 +201,7 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, state }: ARCASet
             pending={generating}
             pendingLabel={t('steps.generate.submitting')}
             disabled={busy}
-            onClick={generate}
+            onClick={reconnecting ? () => setRemoveOpen(true) : generate}
           >
             {t('steps.generate.submit')}
           </PendingButton>
@@ -152,8 +210,8 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, state }: ARCASet
     ),
     copy: (
       <>
-        <Paragraph>{t('steps.copy.body')}</Paragraph>
-        {setup.csr ? (
+        <Paragraph>{t(`steps.copy.${env}.body`)}</Paragraph>
+        {current.csr ? (
           <>
             <figure className="flex flex-col gap-y-1.5">
               <figcaption className="text-paragraph-xs-medium text-foreground-muted">
@@ -165,21 +223,19 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, state }: ARCASet
                 </pre>
               </ScrollArea>
             </figure>
+            {/* WSASS takes the request pasted; production ARCA takes it as a file. */}
             <div className="flex flex-wrap gap-2">
-              <CopyButton
-                variant="default"
-                size="default"
-                value={setup.csr}
-                labels={{ copy: t('steps.copy.copy'), copied: t('steps.copy.copied') }}
-                onCopyError={() => toast.error(t('steps.copy.copyError'))}
-              />
-              <Button
-                variant="outline"
-                onClick={() => download(setup.csr, `coti-${cuit}.csr`, 'application/pkcs10')}
-              >
-                <DownloadIcon aria-hidden="true" />
-                {t('steps.copy.download')}
-              </Button>
+              {env === 'PRODUCTION' ? (
+                <>
+                  {downloadRequest('default')}
+                  {copyRequest('outline')}
+                </>
+              ) : (
+                <>
+                  {copyRequest('default')}
+                  {downloadRequest('outline')}
+                </>
+              )}
             </div>
           </>
         ) : null}
@@ -188,27 +244,31 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, state }: ARCASet
     certificate: (
       <>
         <ol className="flex flex-col pl-5 gap-y-2 list-decimal text-paragraph-sm text-foreground-muted">
-          <li>{t('steps.certificate.open')}</li>
-          <li>{t('steps.certificate.alias')}</li>
-          <li>{t('steps.certificate.paste')}</li>
-          <li>{t('steps.certificate.result')}</li>
+          {CERTIFICATE_ITEMS[env].map((item) => (
+            <li key={item}>{t(`steps.certificate.${env}.${item}`)}</li>
+          ))}
         </ol>
-        <PemExample instruction={t('pem.instruction')} />
+        <PemExample instruction={t(`pem.instruction.${env}`)} />
+        {env === 'PRODUCTION' ? (
+          <ExternalButton href={ARCA_URLS.certificateGuide}>
+            {t('steps.certificate.guide')}
+          </ExternalButton>
+        ) : null}
       </>
     ),
     authorize: (
       <>
         <Paragraph>
-          {t.rich('steps.authorize.body', {
+          {t.rich(`steps.authorize.${env}.body`, {
             cuit: () => <span className="whitespace-nowrap">{shownCuit || '—'}</span>,
           })}
         </Paragraph>
-        <ExternalButton href={ARCA_URLS.authorizationGuide}>
+        <ExternalButton href={ARCA_URLS.authorizationGuide[env]}>
           {t('steps.authorize.guide')}
         </ExternalButton>
       </>
     ),
-    upload: setup.hasCertificate ? (
+    upload: current.hasCertificate ? (
       <>
         <Paragraph>
           {expiresOn
@@ -228,15 +288,15 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, state }: ARCASet
       </>
     ) : (
       <>
-        <Paragraph>{t('steps.upload.body')}</Paragraph>
-        <CertificateUpload disabled={!setup.csr || busy} />
+        <Paragraph>{t(`steps.upload.${env}.body`)}</Paragraph>
+        <CertificateUpload disabled={!current.csr || busy} environment={env} />
       </>
     ),
     pointsOfSale: (
       <>
-        {setup.hasCertificate ? (
+        {current.hasCertificate ? (
           <>
-            <Paragraph>{t('steps.pointsOfSale.body')}</Paragraph>
+            <Paragraph>{t(`steps.pointsOfSale.${env}.body`)}</Paragraph>
             <Paragraph>
               {t('steps.pointsOfSale.progress', {
                 done: activeBranches.filter((branch) => branch.pointOfSale !== null).length,
@@ -246,7 +306,7 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, state }: ARCASet
             <PointsOfSaleForm branches={branches} disabled={busy} />
           </>
         ) : (
-          <Paragraph>{t('steps.pointsOfSale.pending')}</Paragraph>
+          <Paragraph>{t(`steps.pointsOfSale.${env}.pending`)}</Paragraph>
         )}
       </>
     ),
@@ -257,14 +317,22 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, state }: ARCASet
   const steps: StepGuideStep[] = ARCA_STEPS.map((step) => ({
     id: step,
     anchor: STEP_ANCHORS[step],
-    title: t(`steps.${step}.title`),
+    title: t(
+      STEP_TITLES_BY_ENVIRONMENT.includes(step)
+        ? `steps.${step}.${env}.title`
+        : `steps.${step}.title`,
+    ),
     status: statuses[step],
     children: content[step],
   }));
 
   return (
     <div className="flex flex-col max-w-2xl gap-y-8">
-      {summaryTone ? (
+      {reconnecting ? (
+        <Callout tone="warning" title={t('reconnect.title')}>
+          {t('reconnect.body')}
+        </Callout>
+      ) : summaryTone ? (
         <Callout tone={summaryTone} title={tConnection(`states.${state}`)}>
           {tConnection(`bodies.${state}`, { date: expiresOn })}
         </Callout>
@@ -277,7 +345,7 @@ export function ARCASetupGuide({ setup, accountTaxId, branches, state }: ARCASet
           pending: t('statuses.pending'),
         }}
       />
-      {setup.csr ? (
+      {setup.csr && !reconnecting ? (
         <div className="flex flex-col items-start pt-6 gap-y-2 border-t border-border">
           <p className="text-paragraph-sm text-foreground-muted">{t(`remove.${mode}.hint`)}</p>
           <Button variant="outline" onClick={() => setRemoveOpen(true)} disabled={busy}>

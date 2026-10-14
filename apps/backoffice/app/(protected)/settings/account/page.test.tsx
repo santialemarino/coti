@@ -46,6 +46,9 @@ beforeEach(() => {
   vi.mocked(getAccount).mockResolvedValue(ACCOUNT);
   vi.mocked(getARCASetup).mockResolvedValue({
     enabled: true,
+    environment: 'HOMOLOGATION',
+    setupEnvironment: null,
+    reconnectRequired: false,
     taxId: '30712345671',
     csr: 'request',
     hasCertificate: false,

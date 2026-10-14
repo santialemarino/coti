@@ -35,6 +35,14 @@ export async function disconnectARCA(): Promise<SetupResult> {
   return run({ path: '/v1/arca/setup', method: 'DELETE' });
 }
 
+// A connection made for the other ARCA environment is removed and requested again in one step.
+export async function reconnectARCA(): Promise<SetupResult> {
+  await requireAdmin();
+  const removed = await run({ path: '/v1/arca/setup', method: 'DELETE' });
+  if (removed.error) return removed;
+  return run({ path: '/v1/arca/setup', method: 'POST' });
+}
+
 async function run(request: {
   path: string;
   method: 'POST' | 'PUT' | 'DELETE';

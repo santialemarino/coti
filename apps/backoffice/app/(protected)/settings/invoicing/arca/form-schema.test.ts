@@ -20,7 +20,7 @@ describe('arcaCertificateSchema', () => {
   });
 
   it('tells an empty paste from a malformed one', () => {
-    expect(parse('  ').error?.issues[0]?.message).toBe('field:steps.upload.required');
+    expect(parse('  ').error?.issues[0]?.message).toBe('field:steps.upload.HOMOLOGATION.required');
     for (const raw of [
       'MIIDazCCAlOg',
       `${BLOCK}\n${BLOCK}`,
@@ -28,6 +28,13 @@ describe('arcaCertificateSchema', () => {
     ]) {
       expect(parse(raw).error?.issues[0]?.message).toBe('field:steps.upload.invalid');
     }
+  });
+
+  it('asks for the file first in production', () => {
+    const result = arcaCertificateSchema(schemaText(true), 'PRODUCTION').safeParse({
+      certificate: '',
+    });
+    expect(result.error?.issues[0]?.message).toBe('field:steps.upload.PRODUCTION.required');
   });
 
   // The request is what the guide had them copy a few steps earlier, so it gets its own message.

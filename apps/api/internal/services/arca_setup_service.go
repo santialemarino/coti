@@ -39,16 +39,20 @@ type ARCASetupService struct {
 	invoices  pendingInvoices
 	cipher    arcaSetupCipher
 	connector domain.ARCAConnector
+	env       domain.ARCAEnvironment
 	locks     sync.Map
 }
 
-// NewARCASetupService builds the setup service.
+// NewARCASetupService builds the setup service for the ARCA environment this server invoices in.
 func NewARCASetupService(
 	db tenantTxRunner, store arcaSetupStore, accounts arcaAccountLocker, invoices pendingInvoices, cipher arcaSetupCipher,
-	connector domain.ARCAConnector,
+	connector domain.ARCAConnector, env domain.ARCAEnvironment,
 ) *ARCASetupService {
-	return &ARCASetupService{db: db, store: store, accounts: accounts, invoices: invoices, cipher: cipher, connector: connector}
+	return &ARCASetupService{db: db, store: store, accounts: accounts, invoices: invoices, cipher: cipher, connector: connector, env: env}
 }
+
+// Environment is the ARCA environment new connections are made for.
+func (s *ARCASetupService) Environment() domain.ARCAEnvironment { return s.env }
 
 // Get returns the account's setup without its private key; nil when it has none. The flag says
 // whether this server can store credentials at all.
@@ -101,7 +105,7 @@ func (s *ARCASetupService) Create(ctx context.Context, tenant domain.Tenant) (*d
 		if err != nil {
 			return err
 		}
-		setup = domain.ARCASetup{ID: uuid.New(), TaxID: taxID, CSR: csr, SealedKey: sealed}
+		setup = domain.ARCASetup{ID: uuid.New(), Environment: s.env, TaxID: taxID, CSR: csr, SealedKey: sealed}
 		return s.store.Create(ctx, q, tenant.AccountID, setup)
 	})
 	if err != nil {
@@ -124,6 +128,11 @@ func (s *ARCASetupService) Upload(ctx context.Context, tenant domain.Tenant, cer
 	setup, err := s.load(ctx, tenant)
 	if err != nil {
 		return err
+	}
+	// A request made for the other environment is started over, not finished.
+	if !setup.UsableIn(s.env) {
+		return domain.WithCode(domain.CodeARCAEnvironmentMismatch,
+			fmt.Errorf("%w: the setup is for %s, this server invoices in %s", domain.ErrConflict, setup.Environment, s.env))
 	}
 	key, err := s.open(tenant.AccountID, setup.SealedKey)
 	if err != nil {

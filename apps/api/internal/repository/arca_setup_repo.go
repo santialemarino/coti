@@ -21,8 +21,8 @@ func NewARCASetupRepository() *ARCASetupRepository { return &ARCASetupRepository
 // Get returns the account's setup. Returns domain.ErrNotFound when it has none.
 func (r *ARCASetupRepository) Get(ctx context.Context, q Querier, accountID uuid.UUID) (*domain.ARCASetup, error) {
 	var s domain.ARCASetup
-	err := q.QueryRow(ctx, `SELECT id, tax_id, csr, sealed_key, certificate, certificate_expires_at
-	 FROM arca_setup WHERE account_id = $1`, accountID).Scan(&s.ID, &s.TaxID, &s.CSR, &s.SealedKey,
+	err := q.QueryRow(ctx, `SELECT id, environment, tax_id, csr, sealed_key, certificate, certificate_expires_at
+	 FROM arca_setup WHERE account_id = $1`, accountID).Scan(&s.ID, &s.Environment, &s.TaxID, &s.CSR, &s.SealedKey,
 		&s.Certificate, &s.CertificateExpiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
@@ -39,8 +39,8 @@ func (r *ARCASetupRepository) Exists(ctx context.Context, q Querier, accountID u
 
 // Create inserts the account's first certificate request.
 func (r *ARCASetupRepository) Create(ctx context.Context, q Querier, accountID uuid.UUID, s domain.ARCASetup) error {
-	_, err := q.Exec(ctx, `INSERT INTO arca_setup (id, account_id, tax_id, csr, sealed_key)
-	 VALUES ($1, $2, $3, $4, $5)`, s.ID, accountID, s.TaxID, s.CSR, s.SealedKey)
+	_, err := q.Exec(ctx, `INSERT INTO arca_setup (id, account_id, environment, tax_id, csr, sealed_key)
+	 VALUES ($1, $2, $3, $4, $5, $6)`, s.ID, accountID, s.Environment, s.TaxID, s.CSR, s.SealedKey)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return domain.ErrConflict

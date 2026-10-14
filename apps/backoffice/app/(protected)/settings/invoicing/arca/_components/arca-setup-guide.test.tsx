@@ -3,6 +3,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ARCASetupGuide } from '@/app/(protected)/settings/invoicing/arca/_components/arca-setup-guide';
+import { ARCA_URLS } from '@/config/arca';
 import { ROUTES } from '@/config/routes';
 import type { ARCASetup } from '@/lib/api/arca-setup';
 import type { InvoicingBranch } from '@/lib/api/invoicing';
@@ -19,11 +20,12 @@ vi.mock('@/app/(protected)/settings/invoicing/arca/actions', () => ({
   createARCASetup: vi.fn(),
   uploadARCACertificate: vi.fn(),
   disconnectARCA: vi.fn(),
+  reconnectARCA: vi.fn(),
 }));
 vi.mock('@/app/(protected)/settings/invoicing/actions', () => ({ updatePointsOfSale: vi.fn() }));
 
 const { toast } = await import('sonner');
-const { createARCASetup, uploadARCACertificate, disconnectARCA } =
+const { createARCASetup, uploadARCACertificate, disconnectARCA, reconnectARCA } =
   await import('@/app/(protected)/settings/invoicing/arca/actions');
 const { updatePointsOfSale } = await import('@/app/(protected)/settings/invoicing/actions');
 
@@ -32,6 +34,9 @@ const connection = messages.invoicing.settings.connection;
 const CERTIFICATE = '-----BEGIN CERTIFICATE-----\nMIIDazCCAlOgAwIBAgIU\n-----END CERTIFICATE-----';
 const EMPTY: ARCASetup = {
   enabled: true,
+  environment: 'HOMOLOGATION',
+  setupEnvironment: null,
+  reconnectRequired: false,
   taxId: '',
   csr: '',
   hasCertificate: false,
@@ -96,7 +101,7 @@ describe('ARCASetupGuide states', () => {
   it('starts on WSASS and the request, with the account CUIT shown read-only', () => {
     const view = show(EMPTY, 'notConnected');
 
-    expect(stepState(view, copy.steps.wsass.title)).toBe('current');
+    expect(stepState(view, copy.steps.wsass.HOMOLOGATION.title)).toBe('current');
     expect(stepState(view, copy.steps.generate.title)).toBe('current');
     expect(stepState(view, copy.steps.upload.title)).toBe('pending');
     expect(view.getByText(copy.steps.generate.cuit).nextElementSibling?.textContent).toContain(
@@ -153,15 +158,15 @@ describe('ARCASetupGuide states', () => {
     const text = view.container.textContent ?? '';
     expect(text.split('Autogestión Certificados Homologación').length - 1).toBe(1);
     expect(
-      view.getByText(copy.steps.wsass.check.replace('{lookup}', copy.wsassLookup)),
+      view.getByText(copy.steps.wsass.HOMOLOGATION.check.replace('{lookup}', copy.wsassLookup)),
     ).toBeTruthy();
-    expect(view.getByText(copy.steps.certificate.open)).toBeTruthy();
+    expect(view.getByText(copy.steps.certificate.HOMOLOGATION.open)).toBeTruthy();
     expect(text).toContain('Volvé a «WSASS» y elegí «Crear autorización a servicio»');
   });
 
   it('shows the certificate’s real delimiters and describes the middle, with one instruction', () => {
     const view = show(REQUESTED, 'inProgress');
-    const example = view.getByText(copy.pem.instruction).closest('figure')!;
+    const example = view.getByText(copy.pem.instruction.HOMOLOGATION).closest('figure')!;
     expect(within(example).getByText('-----BEGIN CERTIFICATE-----')).toBeTruthy();
     expect(within(example).getByText('-----END CERTIFICATE-----')).toBeTruthy();
     expect(within(example).getByText(copy.pem.middle).tagName).not.toBe('CODE');
@@ -400,7 +405,7 @@ describe('ARCASetupGuide certificate', () => {
 describe('ARCASetupGuide points of sale', () => {
   it('says what comes after the certificate, with no table yet', () => {
     const view = show(REQUESTED, 'inProgress');
-    expect(view.getByText(copy.steps.pointsOfSale.pending)).toBeTruthy();
+    expect(view.getByText(copy.steps.pointsOfSale.HOMOLOGATION.pending)).toBeTruthy();
     expect(view.queryByLabelText('Punto de venta de Morón')).toBeNull();
   });
 
@@ -484,5 +489,101 @@ describe('ARCASetupGuide removal', () => {
   it('offers nothing to remove before there is a request', () => {
     const view = show(EMPTY, 'notConnected');
     expect(view.queryByRole('button', { name: copy.remove.restart.action })).toBeNull();
+  });
+});
+
+describe('ARCASetupGuide in production', () => {
+  const PRODUCTION = { environment: 'PRODUCTION' } as const;
+
+  it('sends the administrator through certificate administration, not WSASS', () => {
+    const view = show({ ...EMPTY, ...PRODUCTION }, 'notConnected');
+    const text = view.container.textContent ?? '';
+
+    expect(stepState(view, copy.steps.wsass.PRODUCTION.title)).toBe('current');
+    expect(text).toContain('Administración de Certificados Digitales');
+    expect(text).not.toContain('WSASS');
+  });
+
+  it('makes the request file the way to hand it over, and the certificate file the way back', () => {
+    const view = show({ ...REQUESTED, ...PRODUCTION }, 'inProgress');
+    const download = view.getByRole('button', { name: copy.steps.copy.download });
+    const copyRequest = view.getByRole('button', { name: copy.steps.copy.copy });
+
+    // The download leads, in reading order and in weight.
+    expect(
+      download.compareDocumentPosition(copyRequest) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(download.dataset.variant).not.toBe(copyRequest.dataset.variant);
+    expect(view.getByText(copy.steps.certificate.PRODUCTION.upload)).toBeTruthy();
+    expect(view.getByText(copy.steps.certificate.PRODUCTION.view)).toBeTruthy();
+    expect(view.getByRole('button', { name: copy.steps.upload.chooseCertificate })).toBeTruthy();
+    expect(view.getByPlaceholderText(copy.steps.upload.pastePlaceholder)).toBeTruthy();
+    // The file is the way back in production, so the copy instruction only covers pasting it.
+    expect(view.getByText(copy.pem.instruction.PRODUCTION)).toBeTruthy();
+    expect(view.queryByText(copy.pem.instruction.HOMOLOGATION)).toBeNull();
+    expect(view.getByText(/«Computador Fiscal»/)).toBeTruthy();
+    const guides = view
+      .getAllByRole('link', { name: new RegExp(copy.steps.authorize.guide) })
+      .map((link) => link.getAttribute('href'));
+    expect(guides).toEqual([ARCA_URLS.certificateGuide, ARCA_URLS.authorizationGuide.PRODUCTION]);
+  });
+
+  it('keeps pasting as the way in homologation', () => {
+    const view = show(REQUESTED, 'inProgress');
+    expect(view.queryByRole('button', { name: copy.steps.upload.chooseCertificate })).toBeNull();
+    expect(view.getByText(copy.steps.certificate.HOMOLOGATION.paste)).toBeTruthy();
+  });
+});
+
+describe('ARCASetupGuide after the environment changed', () => {
+  const STALE: ARCASetup = {
+    ...INSTALLED,
+    setupEnvironment: 'PRODUCTION',
+    reconnectRequired: true,
+  };
+
+  it('starts the steps over and says why', () => {
+    const view = show(STALE, 'reconnect', { branches: READY });
+
+    expect(view.getByText(copy.reconnect.title)).toBeTruthy();
+    expect(stepState(view, copy.steps.wsass.HOMOLOGATION.title)).toBe('current');
+    expect(stepState(view, copy.steps.upload.title)).toBe('pending');
+    expect(view.queryByRole('button', { name: copy.remove.disconnect.action })).toBeNull();
+  });
+
+  it('replaces the old connection with a new request once confirmed', async () => {
+    vi.mocked(reconnectARCA).mockResolvedValue({ ok: true });
+    const view = show(STALE, 'reconnect', { branches: READY });
+
+    fireEvent.click(view.getByRole('button', { name: copy.steps.generate.submit }));
+    const dialog = await view.findByRole('dialog');
+    expect(reconnectARCA).not.toHaveBeenCalled();
+    expect(within(dialog).getByText(/30-71234567-1/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: copy.remove.reconnect.action }));
+
+    await waitFor(() => expect(reconnectARCA).toHaveBeenCalledOnce());
+    expect(createARCASetup).not.toHaveBeenCalled();
+    expect(disconnectARCA).not.toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledWith(copy.remove.reconnect.done);
+  });
+
+  // The old connection may already be gone, so the page shows what is left instead of a stale dialog.
+  it('closes and refreshes when the new request fails after the old one went', async () => {
+    vi.mocked(reconnectARCA).mockResolvedValue({ error: 'INVOICING_UNAVAILABLE' });
+    const view = show(
+      { ...INSTALLED, setupEnvironment: 'PRODUCTION', reconnectRequired: true },
+      'reconnect',
+      {
+        branches: READY,
+      },
+    );
+
+    fireEvent.click(view.getByRole('button', { name: copy.steps.generate.submit }));
+    const dialog = await view.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: copy.remove.reconnect.action }));
+
+    await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+    expect(toast.error).toHaveBeenCalledOnce();
+    await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
   });
 });

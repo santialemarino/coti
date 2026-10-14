@@ -171,9 +171,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	invoiceService := services.NewInvoiceService(db, invoicingRepo, quoteRepo, quoteDiscountRepo, arcainvoice.NewIssuer(arcainvoice.Settings{Environment: arcainvoice.EnvironmentHomologation, Timeout: cfg.ARCA.Timeout, Log: log}, arcainvoice.NewMemoryTicketCache()), arcaCipher, services.InvoiceSettings{Enabled: arcaCipher.Enabled(), Environment: arcainvoice.EnvironmentHomologation, IssueTimeout: cfg.ARCA.IssueTimeout, ReconcileAfter: cfg.ARCA.ReconcileAfter, UnidentifiedMax: decimal.Zero, LogoMaxBytes: cfg.QuoteLogo.MaxSizeBytes, LogoMaxPixels: cfg.QuoteLogo.MaxPixels}, nil, accountService, quotePDF.NewInvoiceRenderer())
+	// The env var spells the deployment in lowercase; records store the native enum.
+	arcaEnvironment := domain.ARCAEnvironment(strings.ToUpper(cfg.ARCA.Environment))
+	invoiceService := services.NewInvoiceService(db, invoicingRepo, quoteRepo, quoteDiscountRepo, arcainvoice.NewIssuer(arcainvoice.Settings{Timeout: cfg.ARCA.Timeout, Log: log}, arcainvoice.NewMemoryTicketCache()), arcaCipher, services.InvoiceSettings{Enabled: arcaCipher.Enabled(), Environment: arcaEnvironment, IssueTimeout: cfg.ARCA.IssueTimeout, ReconcileAfter: cfg.ARCA.ReconcileAfter, UnidentifiedMax: cfg.ARCA.ReceiverIDThreshold, LogoMaxBytes: cfg.QuoteLogo.MaxSizeBytes, LogoMaxPixels: cfg.QuoteLogo.MaxPixels}, nil, accountService, quotePDF.NewInvoiceRenderer())
 	arcaSetupService := services.NewARCASetupService(db, arcaSetupRepo, accountRepo, invoicingRepo, arcaCipher,
-		arca.NewSetupConnector())
+		arca.NewSetupConnector(), arcaEnvironment)
 	catalogSearchService := services.NewCatalogSearchService(db, productRepo, providers.Embedder,
 		cfg.Catalog)
 	catalogMatchService := services.NewCatalogMatchService(catalogSearchService, cfg.Catalog).
@@ -194,7 +196,7 @@ func run() error {
 	inboundRoutingService := services.NewInboundRoutingService(db, channelRepo)
 	whatsAppInboundService := services.NewWhatsAppInboundService(db, inboundRoutingService,
 		inboundChannelMessageRepo, channelRepo, rfqService, channelSealer, log)
-	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, log)
+	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, arcaEnvironment, log)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
 		WithCorrectionLearning(quoteCorrectionService)
 	quoteRepresentationService := services.NewQuoteRepresentationService(db,

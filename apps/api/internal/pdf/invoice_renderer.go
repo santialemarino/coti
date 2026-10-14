@@ -15,6 +15,9 @@ import (
 
 const invoiceContentBottom = 236.0
 
+// TestInvoiceMark labels every page of an invoice authorized in ARCA's homologation environment.
+const TestInvoiceMark = "COMPROBANTE DE PRUEBA — SIN VALIDEZ FISCAL"
+
 // InvoiceRenderer renders branded fiscal documents from authorized snapshots.
 type InvoiceRenderer struct{}
 
@@ -42,6 +45,9 @@ func (r *InvoiceRenderer) Render(inv domain.Invoice, logo *domain.BrandLogo) ([]
 	doc.AddUTF8FontFromBytes("Go", "B", gobold.TTF)
 	doc.SetTitle("Factura "+string(inv.Type)+" "+ref, true)
 	doc.SetAuthor(inv.Snapshot.Supplier.Name, true)
+	if isTestInvoice(inv) {
+		doc.SetSubject(TestInvoiceMark, true)
+	}
 	doc.SetCreationDate(inv.CreatedAt)
 	doc.SetModificationDate(inv.CreatedAt)
 	doc.SetCatalogSort(true)
@@ -72,6 +78,9 @@ func (r *InvoiceRenderer) Render(inv domain.Invoice, logo *domain.BrandLogo) ([]
 }
 
 func (r *InvoiceRenderer) drawInvoiceHeader(doc *gofpdf.Fpdf, inv domain.Invoice, logo *domain.BrandLogo, ref string, red, green, blue int) {
+	if isTestInvoice(inv) {
+		drawTestInvoiceBand(doc)
+	}
 	doc.SetTextColor(35, 35, 35)
 	doc.SetDrawColor(185, 185, 185)
 	doc.SetLineWidth(.2)
@@ -258,6 +267,21 @@ func (r *InvoiceRenderer) drawInvoiceFooter(doc *gofpdf.Fpdf, inv domain.Invoice
 	doc.SetXY(leftMargin, 281)
 	doc.SetFont("Go", "", 7)
 	doc.CellFormat(pageWidth, 4, fmt.Sprintf("Factura %s %s · Página %d de {nb}", inv.Type, ref, doc.PageNo()), "", 0, "R", false, 0, "")
+}
+
+// isTestInvoice reports whether ARCA authorized inv anywhere but production, where nothing is fiscal.
+func isTestInvoice(inv domain.Invoice) bool {
+	return inv.Environment != domain.ARCAEnvironmentProduction
+}
+
+// drawTestInvoiceBand fills the top margin, above the fiscal frame, so the mark never covers its data.
+func drawTestInvoiceBand(doc *gofpdf.Fpdf) {
+	doc.SetFillColor(196, 30, 58)
+	doc.Rect(leftMargin, 5, pageWidth, 8, "F")
+	doc.SetTextColor(255, 255, 255)
+	doc.SetFont("Go", "B", 10)
+	doc.SetXY(leftMargin, 5)
+	doc.CellFormat(pageWidth, 8, TestInvoiceMark, "", 0, "C", false, 0, "")
 }
 
 func invoiceCondition(condition domain.IVACondition) string {

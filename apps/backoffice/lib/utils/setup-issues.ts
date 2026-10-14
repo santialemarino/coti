@@ -17,6 +17,7 @@ export const SETUP_ISSUES = [
   'ARCA_CREDENTIALS',
   'ARCA_CREDENTIALS_EXPIRED',
   'ARCA_CREDENTIALS_CUIT',
+  'ARCA_CREDENTIALS_ENVIRONMENT',
 ] as const;
 
 export type SetupIssue = (typeof SETUP_ISSUES)[number];
@@ -32,6 +33,7 @@ export const SETUP_FIX_ROUTE: Partial<Record<SetupIssue, string>> = {
   ARCA_CREDENTIALS: ROUTES.arcaSettings,
   ARCA_CREDENTIALS_EXPIRED: ROUTES.arcaSettings,
   ARCA_CREDENTIALS_CUIT: ROUTES.arcaSettings,
+  ARCA_CREDENTIALS_ENVIRONMENT: ROUTES.arcaSettings,
 };
 
 // Whether a gap an invoice preview reports is configuration, which SetupNotice words and routes.

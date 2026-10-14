@@ -133,7 +133,7 @@ func (e *env) seedSendableQuote(t *testing.T, name string, corrected bool) senda
 		}
 	}
 	quoteService := services.NewQuoteService(e.db, repository.NewQuoteRepository(),
-		repository.NewProductPriceRepository(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+		repository.NewProductPriceRepository(), domain.ARCAEnvironmentHomologation, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if _, err := quoteService.AcceptMaterials(context.Background(), tenant,
 		draft.Quote.ID); err != nil {
 		t.Fatalf("AcceptMaterials() = %v", err)
@@ -676,7 +676,7 @@ func TestQuoteClientAction_ChangeRequestCreatesAndResendsReviewedVersion(t *test
 	}
 
 	quoteService := services.NewQuoteService(e.db, repository.NewQuoteRepository(),
-		repository.NewProductPriceRepository(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+		repository.NewProductPriceRepository(), domain.ARCAEnvironmentHomologation, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	priced, err := quoteService.AcceptMaterials(context.Background(), seed.tenant,
 		seed.draft.Quote.ID)
 	if err != nil {

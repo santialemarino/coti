@@ -6673,8 +6673,28 @@ const docTemplate = `{
                 "enabled": {
                     "type": "boolean"
                 },
+                "environment": {
+                    "description": "Environment is where this server authorizes invoices: HOMOLOGATION (test mode) or PRODUCTION.",
+                    "type": "string",
+                    "enum": [
+                        "HOMOLOGATION",
+                        "PRODUCTION"
+                    ]
+                },
                 "has_certificate": {
                     "type": "boolean"
+                },
+                "reconnect_required": {
+                    "description": "ReconnectRequired is set when the connection was made for the other environment and has to\nbe started over before it can invoice.",
+                    "type": "boolean"
+                },
+                "setup_environment": {
+                    "description": "SetupEnvironment is the environment the connection was made for; null without one.",
+                    "type": "string",
+                    "enum": [
+                        "HOMOLOGATION",
+                        "PRODUCTION"
+                    ]
                 },
                 "tax_id": {
                     "type": "string"
@@ -7930,6 +7950,14 @@ const docTemplate = `{
                 "currency": {
                     "type": "string"
                 },
+                "environment": {
+                    "description": "Environment is where an invoice issued now would be authorized.",
+                    "type": "string",
+                    "enum": [
+                        "HOMOLOGATION",
+                        "PRODUCTION"
+                    ]
+                },
                 "fingerprint": {
                     "type": "string"
                 },
@@ -7944,6 +7972,14 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "other_environment_invoice": {
+                    "description": "OtherEnvironmentInvoice is the newest invoice issued for the sale in the other ARCA environment,\nshown as history; it does not stop an invoice in this one.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.InvoiceResponse"
+                        }
+                    ]
                 },
                 "point_of_sale": {
                     "type": "integer"
@@ -8001,6 +8037,14 @@ const docTemplate = `{
                 "currency": {
                     "type": "string"
                 },
+                "environment": {
+                    "description": "Environment is where ARCA authorizes it; a HOMOLOGATION invoice has no fiscal validity.",
+                    "type": "string",
+                    "enum": [
+                        "HOMOLOGATION",
+                        "PRODUCTION"
+                    ]
+                },
                 "id": {
                     "type": "string"
                 },
@@ -8053,7 +8097,11 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "environment": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                        "HOMOLOGATION",
+                        "PRODUCTION"
+                    ]
                 },
                 "iva_condition": {
                     "type": "string"

@@ -21,8 +21,27 @@ definitions:
         type: string
       enabled:
         type: boolean
+      environment:
+        description: 'Environment is where this server authorizes invoices: HOMOLOGATION
+          (test mode) or PRODUCTION.'
+        enum:
+        - HOMOLOGATION
+        - PRODUCTION
+        type: string
       has_certificate:
         type: boolean
+      reconnect_required:
+        description: |-
+          ReconnectRequired is set when the connection was made for the other environment and has to
+          be started over before it can invoice.
+        type: boolean
+      setup_environment:
+        description: SetupEnvironment is the environment the connection was made for;
+          null without one.
+        enum:
+        - HOMOLOGATION
+        - PRODUCTION
+        type: string
       tax_id:
         type: string
     type: object
@@ -868,6 +887,12 @@ definitions:
         $ref: '#/definitions/dto.InvoiceAmountsResponse'
       currency:
         type: string
+      environment:
+        description: Environment is where an invoice issued now would be authorized.
+        enum:
+        - HOMOLOGATION
+        - PRODUCTION
+        type: string
       fingerprint:
         type: string
       invoice:
@@ -878,6 +903,12 @@ definitions:
         items:
           type: string
         type: array
+      other_environment_invoice:
+        allOf:
+        - $ref: '#/definitions/dto.InvoiceResponse'
+        description: |-
+          OtherEnvironmentInvoice is the newest invoice issued for the sale in the other ARCA environment,
+          shown as history; it does not stop an invoice in this one.
       point_of_sale:
         type: integer
       receiver:
@@ -915,6 +946,13 @@ definitions:
         type: string
       currency:
         type: string
+      environment:
+        description: Environment is where ARCA authorizes it; a HOMOLOGATION invoice
+          has no fiscal validity.
+        enum:
+        - HOMOLOGATION
+        - PRODUCTION
+        type: string
       id:
         type: string
       issued_on:
@@ -951,6 +989,9 @@ definitions:
       enabled:
         type: boolean
       environment:
+        enum:
+        - HOMOLOGATION
+        - PRODUCTION
         type: string
       iva_condition:
         type: string

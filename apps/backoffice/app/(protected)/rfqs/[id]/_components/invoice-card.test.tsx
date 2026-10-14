@@ -14,6 +14,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/app/(protected)/rfqs/_components/rfq-list-context', () => ({
   useRfqList: () => ({ isAdmin: true }),
 }));
+vi.mock('@/components/invoice-recovery-button', () => ({ InvoiceRecoveryButton: () => null }));
 vi.mock('@/lib/api/invoicing-client', () => ({
   getInvoicePreview: vi.fn(),
   issueInvoice: vi.fn(),
@@ -25,6 +26,7 @@ const CLIENT_ID = 'c0000000-0000-4000-8000-000000000031';
 const card = messages.invoicing.card;
 
 const READY: InvoicePreview = {
+  environment: 'PRODUCTION',
   issuerCuit: '30711111112',
   fingerprint: 'a'.repeat(64),
   versionId: 'v0000000-0000-4000-8000-000000000031',
@@ -49,10 +51,12 @@ const READY: InvoicePreview = {
   currency: 'ARS',
   issues: [],
   invoice: null,
+  otherEnvironmentInvoice: null,
 };
 
 const ISSUED: Invoice = {
   branchId: 'branch-1',
+  environment: 'PRODUCTION',
   id: 'inv-1',
   status: 'ISSUED',
   type: 'A',
@@ -251,5 +255,77 @@ describe('InvoiceCard', () => {
     expect(await view.findByText('10013: CUIT')).toBeTruthy();
     expect(view.getByText(card.rejected.title)).toBeTruthy();
     expect(view.getByRole('button', { name: 'Emitir factura A' })).toBeTruthy();
+  });
+
+  it('marks an invoice issued in homologation as a test, and nothing in production', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({
+      ...READY,
+      invoice: { ...ISSUED, environment: 'HOMOLOGATION' },
+    });
+    const test = renderCard();
+    expect(await test.findByText(messages.invoicing.testBadge)).toBeTruthy();
+    expect(test.getByText(card.testNote)).toBeTruthy();
+    test.unmount();
+
+    vi.mocked(getInvoicePreview).mockResolvedValue({ ...READY, invoice: ISSUED });
+    const live = renderCard();
+    expect(await live.findByText('Factura A 0003-00000023')).toBeTruthy();
+    expect(live.queryByText(messages.invoicing.testBadge)).toBeNull();
+    expect(live.queryByText(card.testNote)).toBeNull();
+  });
+
+  // The invoice keeps the environment it was authorized in, whatever the server says today.
+  it('reads the test mark from the issued invoice, not from the server', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({
+      ...READY,
+      environment: 'HOMOLOGATION',
+      invoice: ISSUED,
+    });
+    const view = renderCard();
+    expect(await view.findByText('Factura A 0003-00000023')).toBeTruthy();
+    expect(view.queryByText(messages.invoicing.testBadge)).toBeNull();
+  });
+
+  it('marks a draft as a test while the server invoices in homologation', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({ ...READY, environment: 'HOMOLOGATION' });
+    const view = renderCard();
+    expect(await view.findByText(messages.invoicing.testBadge)).toBeTruthy();
+    expect(view.getByText(card.testNote)).toBeTruthy();
+  });
+
+  // The test invoice is history: nothing reads as invoiced, and the real one is offered.
+  it('shows a test invoice as history beside the real one to issue', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({
+      ...READY,
+      otherEnvironmentInvoice: { ...ISSUED, environment: 'HOMOLOGATION' },
+    });
+    const view = renderCard();
+
+    expect(await view.findByText('Factura A')).toBeTruthy();
+    expect(view.getByText('Factura A 0003-00000023')).toBeTruthy();
+    expect(view.getByText(messages.invoicing.testBadge)).toBeTruthy();
+    expect(view.getByText(/no tiene validez fiscal/)).toBeTruthy();
+    expect(view.getByRole('link', { name: card.otherInvoice.download }).getAttribute('href')).toBe(
+      ROUTES.invoicePDF(ISSUED.id, BRANCH_ID),
+    );
+    expect(view.getByRole('button', { name: 'Emitir factura A' })).toBeTruthy();
+    expect(view.queryByText(card.testNote)).toBeNull();
+  });
+
+  // A pending invoice is badged by its own environment, not the server's.
+  it('badges a pending test invoice as a test while the server invoices for real', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({
+      ...READY,
+      invoice: {
+        ...ISSUED,
+        environment: 'HOMOLOGATION',
+        status: 'PENDING',
+        number: null,
+        cae: null,
+      },
+    });
+    const view = renderCard();
+    expect(await view.findByText(card.pending.title)).toBeTruthy();
+    expect(view.getByText(messages.invoicing.testBadge)).toBeTruthy();
   });
 });

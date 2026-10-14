@@ -22,6 +22,7 @@ import type { ARCAConnectionState } from '@/lib/utils/arca-connection';
 const CONNECTION_TONE: Record<ARCAConnectionState, 'neutral' | 'warning' | 'success' | 'danger'> = {
   disabled: 'neutral',
   notConnected: 'neutral',
+  reconnect: 'warning',
   inProgress: 'warning',
   pointsMissing: 'warning',
   expiringSoon: 'warning',
@@ -31,6 +32,7 @@ const CONNECTION_TONE: Record<ARCAConnectionState, 'neutral' | 'warning' | 'succ
 
 const ACTION: Record<Exclude<ARCAConnectionState, 'disabled'>, { label: string; href: string }> = {
   notConnected: { label: 'start', href: ROUTES.arcaSettings },
+  reconnect: { label: 'reconnect', href: ROUTES.arcaSettings },
   inProgress: { label: 'continue', href: ROUTES.arcaSettings },
   pointsMissing: { label: 'continue', href: ROUTES.arcaStep('points-of-sale') },
   expiringSoon: { label: 'manage', href: ROUTES.arcaSettings },
@@ -55,6 +57,7 @@ export function ARCAConnectionCard({ setup, state }: ARCAConnectionCardProps) {
   const fmt = useFormatters();
   const t = useTranslations('invoicing.settings.connection');
   const expiresOn = setup.certificateExpiresAt ? fmt.date(setup.certificateExpiresAt) : '';
+  const testMode = setup.environment === 'HOMOLOGATION';
 
   return (
     <Card className="gap-y-4">
@@ -62,8 +65,10 @@ export function ARCAConnectionCard({ setup, state }: ARCAConnectionCardProps) {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <CardTitle>{t('title')}</CardTitle>
           <Badge tone={CONNECTION_TONE[state]}>{t(`states.${state}`)}</Badge>
+          {testMode ? <Badge tone="outline">{t('testMode')}</Badge> : null}
         </div>
         <CardDescription>{t(`bodies.${state}`, { date: expiresOn })}</CardDescription>
+        {testMode ? <CardDescription>{t('testModeNote')}</CardDescription> : null}
       </CardHeader>
       {INSTALLED.includes(state) ? (
         <CardContent>

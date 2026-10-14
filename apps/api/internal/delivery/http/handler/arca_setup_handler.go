@@ -15,6 +15,7 @@ type ARCASetupService interface {
 	Create(context.Context, domain.Tenant) (*domain.ARCASetup, error)
 	Upload(context.Context, domain.Tenant, string) error
 	Delete(context.Context, domain.Tenant) error
+	Environment() domain.ARCAEnvironment
 }
 
 // ARCASetupHandler serves the administrator-only ARCA connection setup.
@@ -43,8 +44,12 @@ func (h *ARCASetupHandler) Get(c *gin.Context) {
 		return
 	}
 	c.Header("Cache-Control", "no-store")
-	response := dto.ARCASetupResponse{Enabled: enabled}
+	env := h.setup.Environment()
+	response := dto.ARCASetupResponse{Enabled: enabled, Environment: string(env)}
 	if setup != nil {
+		setupEnv := string(setup.Environment)
+		response.SetupEnvironment = &setupEnv
+		response.ReconnectRequired = !setup.UsableIn(env)
 		response.TaxID = setup.TaxID
 		response.CSR = setup.CSR
 		response.HasCertificate = setup.Certificate != ""
@@ -73,7 +78,9 @@ func (h *ARCASetupHandler) Create(c *gin.Context) {
 		Respond(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, dto.ARCASetupResponse{Enabled: true, TaxID: setup.TaxID, CSR: setup.CSR})
+	setupEnv := string(setup.Environment)
+	c.JSON(http.StatusCreated, dto.ARCASetupResponse{Enabled: true, Environment: string(h.setup.Environment()),
+		SetupEnvironment: &setupEnv, TaxID: setup.TaxID, CSR: setup.CSR})
 }
 
 // Upload installs the public ARCA certificate matching the generated key.

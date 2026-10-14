@@ -104,22 +104,23 @@ a code from the sentinel an error wraps — `NOT_FOUND`, `CONFLICT`, `INVALID_IN
 `RATE_LIMITED`, `AI_UNAVAILABLE`, `INTERNAL` — and a service tags a more specific one with
 `domain.WithCode` where a caller has to tell siblings apart:
 
-| Code                      | Status | Raised when                                                                             |
-| ------------------------- | ------ | --------------------------------------------------------------------------------------- |
-| `EMAIL_TAKEN`             | 409    | the address is already registered, in this account or any other, or is the caller's own |
-| `LAST_ACTIVE_BRANCH`      | 422    | closing the account's only active branch                                                |
-| `SELF_DEACTIVATION`       | 422    | an admin deactivating themselves                                                        |
-| `SELF_ROLE_CHANGE`        | 422    | an admin changing their own role                                                        |
-| `SELF_EMAIL_CHANGE`       | 422    | an admin changing their own email from user administration, not their account settings  |
-| `PASSWORD_POLICY`         | 422    | a password that does not clear `domain.PasswordPolicy`                                  |
-| `INVALID_LINK`            | 401    | a mailed link that is unknown, expired, used or wrong-typed                             |
-| `INVITE_NOT_PENDING`      | 422    | resending an invite to a user who has already chosen a password, or is deactivated      |
-| `MAIL_NOT_CONFIGURED`     | 503    | inviting a user while mail only reaches the log                                         |
-| `BRANCH_NOT_ACCESSIBLE`   | 403    | an `X-Branch-Id` the caller does not reach — closed, or not assigned to them            |
-| `BRANCH_MAILBOX_REQUIRED` | 422    | clearing the mailbox a configured email channel sends from                              |
-| `ACCOUNT_TAX_ID_REQUIRED` | 422    | starting the ARCA connection for an account with no CUIT                                |
-| `ARCA_CONNECTED`          | 409    | changing the account's CUIT while ARCA is connected with it, without `disconnect_arca`  |
-| `INVOICE_PENDING`         | 409    | removing the ARCA connection while an invoice is still waiting for ARCA's answer        |
+| Code                        | Status | Raised when                                                                                                         |
+| --------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------- |
+| `EMAIL_TAKEN`               | 409    | the address is already registered, in this account or any other, or is the caller's own                             |
+| `LAST_ACTIVE_BRANCH`        | 422    | closing the account's only active branch                                                                            |
+| `SELF_DEACTIVATION`         | 422    | an admin deactivating themselves                                                                                    |
+| `SELF_ROLE_CHANGE`          | 422    | an admin changing their own role                                                                                    |
+| `SELF_EMAIL_CHANGE`         | 422    | an admin changing their own email from user administration, not their account settings                              |
+| `PASSWORD_POLICY`           | 422    | a password that does not clear `domain.PasswordPolicy`                                                              |
+| `INVALID_LINK`              | 401    | a mailed link that is unknown, expired, used or wrong-typed                                                         |
+| `INVITE_NOT_PENDING`        | 422    | resending an invite to a user who has already chosen a password, or is deactivated                                  |
+| `MAIL_NOT_CONFIGURED`       | 503    | inviting a user while mail only reaches the log                                                                     |
+| `BRANCH_NOT_ACCESSIBLE`     | 403    | an `X-Branch-Id` the caller does not reach — closed, or not assigned to them                                        |
+| `BRANCH_MAILBOX_REQUIRED`   | 422    | clearing the mailbox a configured email channel sends from                                                          |
+| `ACCOUNT_TAX_ID_REQUIRED`   | 422    | starting the ARCA connection for an account with no CUIT                                                            |
+| `ARCA_CONNECTED`            | 409    | changing the account's CUIT while ARCA is connected with it, without `disconnect_arca`                              |
+| `INVOICE_PENDING`           | 409    | removing the ARCA connection while an invoice is still waiting for ARCA's answer                                    |
+| `ARCA_ENVIRONMENT_MISMATCH` | 409    | installing a certificate, or reading back a pending invoice, with an ARCA connection made for the other environment |
 
 `AI_UNAVAILABLE` is the **503** whose status says "come back later":
 no AI provider is bound, or the one that is could not answer. A request the provider _rejected_ is

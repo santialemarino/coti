@@ -27,6 +27,7 @@ type feAuth struct {
 	Token string `xml:"Token"`
 	Sign  string `xml:"Sign"`
 	Cuit  string `xml:"Cuit"`
+	url   string // the WSFEv1 endpoint of the environment the ticket was issued in.
 }
 
 type lastAuthorizedRequest struct {
@@ -179,7 +180,7 @@ func (i *Issuer) lastAuthorized(ctx context.Context, a feAuth, invoiceType domai
 	if err != nil {
 		return 0, fmt.Errorf("arca: encode FECompUltimoAutorizado: %w", err)
 	}
-	raw, err := i.call(ctx, i.wsfeURL, wsfeNamespace+"FECompUltimoAutorizado", "", body)
+	raw, err := i.call(ctx, a.url, wsfeNamespace+"FECompUltimoAutorizado", "", body)
 	if err != nil {
 		return 0, fmt.Errorf("arca: FECompUltimoAutorizado: %w", err)
 	}
@@ -210,7 +211,7 @@ func (i *Issuer) solicitar(ctx context.Context, a feAuth, req domain.InvoiceRequ
 		return nil, exchange{}, fmt.Errorf("arca: encode FECAESolicitar: %w", err)
 	}
 	ex := exchange{request: envelope("", redactedBody)}
-	raw, err := i.post(ctx, i.wsfeURL, wsfeNamespace+"FECAESolicitar", envelope("", body))
+	raw, err := i.post(ctx, a.url, wsfeNamespace+"FECAESolicitar", envelope("", body))
 	if err != nil {
 		return nil, ex, fmt.Errorf("arca: FECAESolicitar: %w", err)
 	}
@@ -340,7 +341,7 @@ func (i *Issuer) consult(ctx context.Context, a feAuth, invoiceType domain.Invoi
 	if err != nil {
 		return nil, nil, fmt.Errorf("arca: encode FECompConsultar: %w", err)
 	}
-	raw, err := i.call(ctx, i.wsfeURL, wsfeNamespace+"FECompConsultar", "", body)
+	raw, err := i.call(ctx, a.url, wsfeNamespace+"FECompConsultar", "", body)
 	if err != nil {
 		return nil, nil, fmt.Errorf("arca: FECompConsultar: %w", err)
 	}
