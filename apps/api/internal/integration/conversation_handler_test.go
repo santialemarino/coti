@@ -226,12 +226,6 @@ func (e *env) cementPromotion(t *testing.T, quote handlerQuote) {
 func TestConversationHandler_BatchesAccumulateOnTheSingleDraft(t *testing.T) {
 	e := newEnv(t)
 	quote := e.sentHandlerQuote(t, "Handler accumulates")
-	// The customer answers after the send; the seeded batches backdate their messages.
-	if _, err := e.db.CrossAccount().Exec(context.Background(),
-		`UPDATE quote_version SET frozen_at = now() - interval '10 minutes' WHERE id = $1`,
-		quote.sentID); err != nil {
-		t.Fatal(err)
-	}
 	e.cementPromotion(t, quote)
 	proposer := &scriptedProposer{answer: requantify(4)}
 	sand := e.seedPricedProduct(t, quote.seed.tenant.AccountID, quote.seed.tenant.BranchID,
@@ -317,7 +311,15 @@ func TestConversationHandler_BatchesAccumulateOnTheSingleDraft(t *testing.T) {
 		t.Errorf("decisions = %+v, want the second taken on CHANGE_REQUESTED", decisions)
 	}
 
-	// The seller reads every message the customer sent, from one branch or from all of them.
+	// A message stored before the send belongs to an earlier cycle and stays out of the list.
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO quote_message (account_id, quote_id, author_type, body, received_at, created_at)
+		 VALUES ($1, $2, 'CLIENT', 'antes del envío', now() - interval '1 hour', now() - interval '1 hour')`,
+		quote.seed.tenant.AccountID, quote.quoteID); err != nil {
+		t.Fatal(err)
+	}
+
+	// The seller reads every message the customer sent since, from one branch or from all of them.
 	admin := e.tokenFor(t, e.seedUser(t, quote.seed.tenant.AccountID, domain.UserRoleAdmin))
 	for _, branch := range []string{quote.seed.tenant.BranchID.String(), ""} {
 		rec := e.do(t, request{method: http.MethodGet,
