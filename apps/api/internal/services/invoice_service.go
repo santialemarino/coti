@@ -270,6 +270,9 @@ func (s *InvoiceService) Issue(
 		if draft, err = s.draft(ctx, q, tenant, quoteID); err != nil {
 			return err
 		}
+		if err := requireUnarchived(draft.quote); err != nil {
+			return err
+		}
 		if current := draft.preview.Invoice; current != nil {
 			switch {
 			case current.Status == domain.InvoiceStatusIssued:

@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { getPublicQuoteByToken, type PublicQuoteSend } from '@/lib/api/public-quotes';
+import {
+  getPublicQuoteByToken,
+  PublicQuoteActionError,
+  submitPublicQuoteAction,
+  type PublicQuoteSend,
+} from '@/lib/api/public-quotes';
 import { API_URL } from '@/lib/config';
 
 function rawSend(overrides: Record<string, unknown> = {}) {
@@ -150,6 +155,15 @@ describe('getPublicQuoteByToken', () => {
     });
   });
 
+  // A live link to an archived quote: the offer was withdrawn, which reads differently from lapsing.
+  it('keeps a withdrawn send apart from an expired one', async () => {
+    stubFetch(200, { status: 'UNAVAILABLE', expires_at: '2026-09-22T12:00:00Z' });
+    await expect(getPublicQuoteByToken('tok-1')).resolves.toMatchObject({
+      status: 'UNAVAILABLE',
+      quote: undefined,
+    });
+  });
+
   // A status this app cannot word must not fall through to rendering a quote as if it were live.
   it('treats an unknown status as expired', async () => {
     stubFetch(200, rawSend({ status: 'REVOKED' }));
@@ -174,3 +188,15 @@ function supplier(logoUrl: string | undefined) {
 function logoOf(send: PublicQuoteSend | null) {
   return send?.quote?.supplier.logoUrl;
 }
+
+describe('submitPublicQuoteAction', () => {
+  // The page words an archived quote on its own, so the refusal has to carry the API's code.
+  it('carries the code of a refused answer', async () => {
+    stubFetch(409, { error: 'conflict', code: 'QUOTE_ARCHIVED' });
+
+    const refusal = await submitPublicQuoteAction('tok-1', { type: 'ACCEPT' }).catch((e) => e);
+
+    expect(refusal).toBeInstanceOf(PublicQuoteActionError);
+    expect(refusal).toMatchObject({ status: 409, code: 'QUOTE_ARCHIVED' });
+  });
+});

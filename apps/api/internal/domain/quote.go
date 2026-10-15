@@ -49,6 +49,22 @@ type Quote struct {
 	UpdatedAt         time.Time
 }
 
+// AutoArchiveStatuses are the statuses the inactivity sweep archives: the stalls follow-up chases,
+// waiting on the seller (DRAFT, QUOTED) or on the client (SENT, only once its offer has lapsed). A
+// change request is a live demand from the client, and a closed quote is a record of the outcome,
+// so neither is put away unasked.
+var AutoArchiveStatuses = []QuoteStatus{QuoteStatusDraft, QuoteStatusQuoted, QuoteStatusSent}
+
+// ArchivedQuote is one quote the inactivity sweep archived, with the activity it went quiet after.
+type ArchivedQuote struct {
+	AccountID      uuid.UUID
+	BranchID       uuid.UUID
+	QuoteID        uuid.UUID
+	Number         int64
+	Status         QuoteStatus
+	LastActivityAt time.Time
+}
+
 // NewQuote is the input for creating a quote shell.
 type NewQuote struct {
 	BranchID      uuid.UUID

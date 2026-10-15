@@ -263,7 +263,7 @@ func (h *InvoiceHandler) Preview(c *gin.Context) {
 //	@Failure		400			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
 //	@Failure		404			{object}	dto.ErrorResponse
-//	@Failure		409			{object}	dto.ErrorResponse	"QUOTE_ALREADY_INVOICED, INVOICE_IN_PROGRESS, INVOICE_STALE"
+//	@Failure		409			{object}	dto.ErrorResponse	"QUOTE_ALREADY_INVOICED, INVOICE_IN_PROGRESS, INVOICE_STALE, QUOTE_ARCHIVED"
 //	@Failure		422			{object}	dto.ErrorResponse	"INVOICE_NOT_READY, INVOICE_REJECTED"
 //	@Failure		503			{object}	dto.ErrorResponse	"INVOICING_UNAVAILABLE"
 //	@Router			/v1/quotes/{quoteId}/invoice [post]

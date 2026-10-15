@@ -147,8 +147,11 @@ func (s *QuoteRepresentationService) ensureLocked(
 		if quote.CurrentVersionID == nil {
 			return invalidRepresentation("quote has no current version")
 		}
-		if quote.ArchivedAt != nil || (quote.CurrentStatus != domain.QuoteStatusQuoted &&
-			quote.CurrentStatus != domain.QuoteStatusSent) {
+		if err := requireUnarchived(*quote); err != nil {
+			return err
+		}
+		if quote.CurrentStatus != domain.QuoteStatusQuoted &&
+			quote.CurrentStatus != domain.QuoteStatusSent {
 			return domain.WithCode(domain.CodeQuoteNotSendable, domain.ErrConflict)
 		}
 		version, err := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
@@ -163,7 +166,7 @@ func (s *QuoteRepresentationService) ensureLocked(
 		if !errors.Is(err, domain.ErrNotFound) {
 			return err
 		}
-		if quote.ArchivedAt != nil || quote.CurrentStatus != domain.QuoteStatusQuoted {
+		if quote.CurrentStatus != domain.QuoteStatusQuoted {
 			return domain.WithCode(domain.CodeQuoteNotSendable, domain.ErrConflict)
 		}
 		source, err = s.representations.LoadSource(ctx, q, tenant.AccountID, tenant.BranchID,

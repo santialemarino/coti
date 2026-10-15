@@ -14,7 +14,9 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/app/(protected)/rfqs/_components/rfq-list-context', () => ({
   useRfqList: () => ({ isAdmin: true }),
 }));
-vi.mock('@/components/invoice-recovery-button', () => ({ InvoiceRecoveryButton: () => null }));
+vi.mock('@/components/invoice-recovery-button', () => ({
+  InvoiceRecoveryButton: vi.fn(() => null),
+}));
 vi.mock('@/lib/api/invoicing-client', () => ({
   getInvoicePreview: vi.fn(),
   issueInvoice: vi.fn(),
@@ -462,5 +464,46 @@ describe('InvoiceCard', () => {
     vi.mocked(getInvoicePreview).mockResolvedValue({ ...READY, invoice: ISSUED });
     const same = renderCard();
     expect(await same.findByRole('button', { name: card.creditNote.issue })).toBeTruthy();
+  });
+});
+
+describe('InvoiceCard on an archived sale', () => {
+  function renderReadOnly() {
+    return render(
+      <NextIntlClientProvider
+        locale="es"
+        messages={messages}
+        timeZone="America/Argentina/Buenos_Aires"
+      >
+        <InvoiceCard quoteId={QUOTE_ID} branchId={BRANCH_ID} clientId={CLIENT_ID} readOnly />
+      </NextIntlClientProvider>,
+    );
+  }
+
+  it('still shows the issued invoice, to consult and download', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({ ...READY, invoice: ISSUED });
+    const view = renderReadOnly();
+
+    expect(await view.findByText('Factura A 0003-00000023')).toBeTruthy();
+    expect(view.getByRole('link', { name: card.verify })).toBeTruthy();
+  });
+
+  it('shows what would be issued without offering to issue it', async () => {
+    const view = renderReadOnly();
+
+    expect(await view.findByText('Factura A')).toBeTruthy();
+    expect(view.queryByRole('button', { name: 'Emitir factura A' })).toBeNull();
+  });
+
+  it('reports an invoice in flight without offering to recover it', async () => {
+    const { InvoiceRecoveryButton } = await import('@/components/invoice-recovery-button');
+    vi.mocked(getInvoicePreview).mockResolvedValue({
+      ...READY,
+      invoice: { ...ISSUED, status: 'PENDING', number: null, cae: null },
+    });
+    const view = renderReadOnly();
+
+    expect(await view.findByText(card.pending.title)).toBeTruthy();
+    expect(InvoiceRecoveryButton).not.toHaveBeenCalled();
   });
 });

@@ -65,6 +65,8 @@ interface InvoiceCardProps {
   branchId: string;
   /* The sale's client: null when none is associated, undefined while that is still unknown. */
   clientId: string | null | undefined;
+  // An archived sale shows its invoice and draft but offers no issue or recovery until unarchived.
+  readOnly?: boolean;
 }
 
 /*
@@ -72,7 +74,7 @@ interface InvoiceCardProps {
  * gap that stops it. Issuing is always a person's confirmed decision — it cannot be undone, only
  * cancelled by a credit note, after which the sale can be invoiced again.
  */
-export function InvoiceCard({ quoteId, branchId, clientId }: InvoiceCardProps) {
+export function InvoiceCard({ quoteId, branchId, clientId, readOnly = false }: InvoiceCardProps) {
   const fmt = useFormatters();
   const t = useTranslations('invoicing.card');
   const tInvoicing = useTranslations('invoicing');
@@ -238,13 +240,15 @@ export function InvoiceCard({ quoteId, branchId, clientId }: InvoiceCardProps) {
             {preview.invoice?.status === 'PENDING' ? (
               <Callout tone="info" title={t('pending.title')}>
                 {t('pending.body')}
-                <div className="mt-3">
-                  <InvoiceRecoveryButton
-                    invoiceId={preview.invoice.id}
-                    branchId={branchId}
-                    onRecovered={() => void reload()}
-                  />
-                </div>
+                {readOnly ? null : (
+                  <div className="mt-3">
+                    <InvoiceRecoveryButton
+                      invoiceId={preview.invoice.id}
+                      branchId={branchId}
+                      onRecovered={() => void reload()}
+                    />
+                  </div>
+                )}
               </Callout>
             ) : null}
             <RejectionNotice
@@ -275,7 +279,7 @@ export function InvoiceCard({ quoteId, branchId, clientId }: InvoiceCardProps) {
             ) : null}
             <AmountsTable amounts={preview.amounts} currency={preview.currency} />
 
-            {preview.issues.length === 0 && preview.invoice?.status !== 'PENDING' ? (
+            {!readOnly && preview.issues.length === 0 && preview.invoice?.status !== 'PENDING' ? (
               <div className="flex justify-end">
                 <PendingButton
                   ref={issueButtonRef}

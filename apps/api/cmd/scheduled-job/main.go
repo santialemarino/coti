@@ -114,7 +114,8 @@ func run() error {
 			cfg.Attachment, log),
 		services.NewCatalogEmbeddingJob(productRepo, services.NewCatalogEmbeddingService(db,
 			repository.NewAccountRepository(), productRepo, providers.Embedder, cfg.Catalog),
-			cfg.AI.EmbeddingsProvider != config.AIProviderDisabled))
+			cfg.AI.EmbeddingsProvider != config.AIProviderDisabled),
+		services.NewQuoteAutoArchiveJob(quoteRepo, cfg.QuoteArchive, log))
 	if err != nil {
 		return err
 	}

@@ -60,6 +60,8 @@
     "downloadPdf": "Descargar la cotización en PDF",
     "expiredTitle": "Esta cotización venció",
     "expiredDescription": "El enlace dejó de estar disponible el {date}. Escribile al corralón y pedile una cotización nueva.",
+    "unavailableTitle": "Esta cotización ya no está disponible",
+    "unavailableDescription": "El corralón la retiró. Escribile y pedile una cotización actualizada.",
     "questions": "¿Tenés dudas? Contactanos",
     "actions": {
       "heading": "¿Qué querés hacer?",
@@ -80,6 +82,7 @@
       "cancel": "Cancelar",
       "sending": "Registrando tu respuesta…",
       "errorSubmit": "No pudimos registrar tu respuesta. Intentalo de nuevo.",
+      "errorUnavailable": "Esta cotización ya no está disponible. Escribile al corralón para pedir una nueva.",
       "resultTitle": "Tu respuesta se registró",
       "resultAccept": "Aceptaste la cotización. El corralón avanza con tu pedido.",
       "resultRequestChange": "Enviamos tu solicitud de cambios. El corralón va a preparar una nueva versión.",

@@ -445,6 +445,10 @@ func (h *quoteActionHarness) seedActiveSend(versionID uuid.UUID) *domain.QuoteSe
 		VersionID: versionID, PublicToken: h.token,
 		ExpiresAt: &expiry, TrackingStatus: domain.SendTrackingStatusViewed}
 	h.sends.send = send
+	if h.quotes.quote == nil {
+		h.quotes.quote = &domain.Quote{ID: testQuoteID, BranchID: testBranchID,
+			CurrentVersionID: &versionID, CurrentStatus: domain.QuoteStatusSent}
+	}
 	return send
 }
 

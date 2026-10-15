@@ -383,3 +383,35 @@ jobs:
       - key: STORAGE_SECRET_KEY
         scope: RUN_TIME
         type: SECRET
+
+  # Puts away the quotes nobody has moved in QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS (Go default: 30). It
+  # only sets a flag the seller can clear, so once a day, at night, is enough.
+  - name: quote-auto-archive
+    kind: SCHEDULED
+    schedule:
+      cron: '30 3 * * *'
+      time_zone: America/Argentina/Buenos_Aires
+    dockerfile_path: docker/api.Dockerfile
+    source_dir: /
+    github:
+      repo: santialemarino/coti
+      branch: main
+      deploy_on_push: true
+    instance_size_slug: apps-s-1vcpu-1gb
+    run_command: /api/bin/scheduled-job --job quote-auto-archive
+    envs:
+      - key: ENV
+        scope: RUN_TIME
+        value: production
+      - key: DATABASE_ADMIN_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: AUTH_JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_LOCAL_SIGNING_SECRET
+        scope: RUN_TIME
+        type: SECRET
