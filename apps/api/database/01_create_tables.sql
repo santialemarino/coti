@@ -438,14 +438,16 @@ CREATE TABLE channel (
   CONSTRAINT uq_channel_branch_type_identifier UNIQUE (branch_id, type, identifier)
 );
 
--- One provider event reserves its RFQ before the inbound pipeline runs. The external identifier
--- is unique per channel, so a retried webhook resumes the same order rather than creating another.
+-- One provider event reserves either the RFQ it starts or the quote_message that continues a sent
+-- quote's conversation, before anything else runs. The external identifier is unique per channel,
+-- so a retried webhook resumes the same outcome rather than creating another.
 CREATE TABLE inbound_channel_message (
   id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id           UUID NOT NULL,
   branch_id            UUID NOT NULL,
   channel_id           UUID NOT NULL,
-  rfq_id               UUID NOT NULL,
+  rfq_id               UUID,
+  quote_message_id     UUID,
   external_message_id  VARCHAR(255) NOT NULL,
   sender_id            VARCHAR(255) NOT NULL,
   sender_label         VARCHAR(255),
@@ -453,7 +455,9 @@ CREATE TABLE inbound_channel_message (
   payload              JSONB NOT NULL,
   provider_received_at TIMESTAMPTZ NOT NULL,
   created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT uq_inbound_channel_message_external UNIQUE (channel_id, external_message_id)
+  CONSTRAINT uq_inbound_channel_message_external UNIQUE (channel_id, external_message_id),
+  CONSTRAINT ck_inbound_channel_message_target
+    CHECK ((rfq_id IS NULL) <> (quote_message_id IS NULL))
 );
 
 -- What the client asked for. Separate from quote: the UI stepper is a projection over both,
@@ -832,7 +836,11 @@ CREATE TABLE quote_message (
   author_user_id   UUID,
   body             TEXT NOT NULL,
   received_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+  -- Other live quotes the same sender could have meant when the message was routed.
+  other_live_quotes INTEGER NOT NULL DEFAULT 0,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT ck_quote_message_other_live_quotes CHECK (other_live_quotes >= 0),
+  CONSTRAINT uq_quote_message_account_id UNIQUE (account_id, id)
 );
 
 -- =============================================================================
@@ -1059,6 +1067,7 @@ ALTER TABLE channel ADD CONSTRAINT fk_channel_branch FOREIGN KEY (branch_id) REF
 ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
 ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_channel FOREIGN KEY (channel_id) REFERENCES channel(id);
+ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_quote_message FOREIGN KEY (account_id, quote_message_id) REFERENCES quote_message(account_id, id);
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_client FOREIGN KEY (account_id, client_id) REFERENCES client(account_id, id);
@@ -1205,6 +1214,7 @@ CREATE INDEX idx_branch_combo_branch ON branch_combo(branch_id) WHERE is_active 
 
 CREATE INDEX idx_client_account ON client(account_id);
 CREATE INDEX idx_inbound_channel_message_rfq ON inbound_channel_message(rfq_id);
+CREATE UNIQUE INDEX uq_inbound_channel_message_quote_message ON inbound_channel_message(quote_message_id) WHERE quote_message_id IS NOT NULL;
 CREATE INDEX idx_rfq_branch_status ON rfq(branch_id, status);
 CREATE INDEX idx_rfq_attachment_pending ON rfq_attachment(processing_status) WHERE processing_status IN ('PENDING', 'PROCESSING');
 CREATE INDEX idx_rfq_attachment_account_rfq ON rfq_attachment(account_id, rfq_id);
@@ -1231,6 +1241,8 @@ CREATE INDEX idx_product_subgroup_family_id ON product_subgroup(family_id);
 CREATE INDEX idx_quote_discount_version ON quote_discount(quote_version_id);
 CREATE INDEX idx_promotion_account ON promotion(account_id) WHERE is_active = TRUE;
 CREATE INDEX idx_quote_message_quote ON quote_message(quote_id, received_at);
+CREATE UNIQUE INDEX uq_quote_message_client_action ON quote_message(client_action_id) WHERE client_action_id IS NOT NULL;
+CREATE INDEX idx_quote_send_channel_destination ON quote_send(channel_id, destination);
 CREATE INDEX idx_message_batch_due ON message_batch(closes_at) WHERE status = 'OPEN';
 CREATE INDEX idx_message_batch_queue ON message_batch(quote_id, closed_at) WHERE status = 'CLOSED';
 
