@@ -1155,6 +1155,16 @@ func Load() (*Config, error) {
 	if cfg.Conversation.ProcessingTimeout <= 0 {
 		problems = append(problems, "CONVERSATION_PROCESSING_TIMEOUT_SECONDS must be greater than zero")
 	}
+	if cfg.Conversation.ProcessingTimeout > 0 &&
+		cfg.Conversation.ProcessingTimeout <= cfg.Conversation.TickerInterval {
+		problems = append(problems,
+			"CONVERSATION_PROCESSING_TIMEOUT_SECONDS must be greater than CONVERSATION_TICKER_SECONDS")
+	}
+	// The scheduled backstop runs a batch inside one job run.
+	if cfg.Job.Timeout > 0 && cfg.Conversation.ProcessingTimeout >= cfg.Job.Timeout {
+		problems = append(problems,
+			"CONVERSATION_PROCESSING_TIMEOUT_SECONDS must be below JOB_TIMEOUT_MINUTES")
+	}
 	if cfg.Conversation.SweepBatchSize < 1 {
 		problems = append(problems, "CONVERSATION_SWEEP_BATCH_SIZE must be greater than zero")
 	}

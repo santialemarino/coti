@@ -17,8 +17,14 @@ import (
 // stuckBatchFailure is the last_error a reclaimed claim records.
 const stuckBatchFailure = "processing timed out"
 
+// claimSettleTimeout bounds each write that settles a claim, which runs detached from the sweep's
+// context so a shutdown can still release what it interrupted.
+const claimSettleTimeout = 10 * time.Second
+
 // ConversationBatchHandler acts on a claimed batch after the claim commits, in its own tenant
-// transaction, and owns every write it causes — the SENT → CHANGE_REQUESTED move included.
+// transaction, and owns every write it causes — the SENT → CHANGE_REQUESTED move included. That
+// transaction calls MessageBatchRepository.LockClaim before its first write, so a claim that was
+// reclaimed writes nothing, and a locked one cannot be reclaimed.
 type ConversationBatchHandler interface {
 	Handle(ctx context.Context, batch domain.MessageBatch) error
 }
@@ -65,12 +71,16 @@ func NewConversationBatchService(db conversationQueueDB, queue conversationBatch
 	if now == nil {
 		now = time.Now
 	}
-	if handler == nil {
-		log.Warn("conversation batch processing is off until a handler is configured; " +
-			"closed batches wait")
-	}
 	return &ConversationBatchService{db: db, queue: queue, handler: handler, cfg: cfg, now: now,
 		log: log}
+}
+
+// warnIfProcessingOff says, once per caller start, that closed batches wait for a handler.
+func (s *ConversationBatchService) warnIfProcessingOff() {
+	if s.handler == nil {
+		s.log.Warn("conversation batch processing is off until a handler is configured; " +
+			"closed batches wait")
+	}
 }
 
 // Sweep closes every due window, then, when a handler is configured, reclaims stuck claims and
@@ -134,7 +144,8 @@ func (s *ConversationBatchService) reclaimStuck(ctx context.Context,
 	report *domain.ConversationSweep,
 ) error {
 	for {
-		startedBefore := s.now().UTC().Add(-s.cfg.ProcessingTimeout)
+		// A tick past the handler's own deadline, so a handler finishing on time is never reclaimed.
+		startedBefore := s.now().UTC().Add(-s.cfg.ProcessingTimeout - s.cfg.TickerInterval)
 		reclaimed, err := s.queue.ReclaimStuckCrossAccount(ctx, s.db.CrossAccount(), startedBefore,
 			s.cfg.MaxAttempts, s.cfg.SweepBatchSize, stuckBatchFailure)
 		if err != nil {
@@ -155,11 +166,14 @@ func (s *ConversationBatchService) processQueue(ctx context.Context,
 ) error {
 	// Each batch gets one attempt per pass, so a failing one waits for the next pass to retry.
 	tried := make([]uuid.UUID, 0, s.cfg.SweepBatchSize)
-	for len(tried) < s.cfg.SweepBatchSize {
+	for range s.cfg.SweepBatchSize {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		batch, err := s.queue.ClaimNextCrossAccount(ctx, s.db.CrossAccount(), s.now().UTC(), tried)
+		if errors.Is(err, domain.ErrConflict) {
+			continue
+		}
 		if err != nil {
 			return err
 		}
@@ -183,7 +197,8 @@ func (s *ConversationBatchService) process(ctx context.Context, batch domain.Mes
 	handleCtx, cancel := context.WithTimeout(ctx, s.cfg.ProcessingTimeout)
 	handleErr := s.handler.Handle(handleCtx, batch)
 	cancel()
-	settle := context.WithoutCancel(ctx)
+	settle, cancelSettle := context.WithTimeout(context.WithoutCancel(ctx), claimSettleTimeout)
+	defer cancelSettle()
 	q := s.db.CrossAccount()
 
 	if handleErr == nil {
@@ -262,6 +277,7 @@ func NewConversationBatchTicker(sweeper *ConversationBatchService, interval time
 // flight has settled.
 func (t *ConversationBatchTicker) Run(ctx context.Context) {
 	t.log.Info("conversation ticker started", slog.Duration("interval", t.interval))
+	t.sweeper.warnIfProcessingOff()
 	ticker := time.NewTicker(t.interval)
 	defer ticker.Stop()
 	for {
@@ -308,6 +324,7 @@ func (j *ConversationBatchJob) Name() string { return "conversation-batches" }
 // Run sweeps once. Each close and claim commits on its own owner-pool statement or transaction,
 // so the run's lock connection is not needed for the work.
 func (j *ConversationBatchJob) Run(ctx context.Context, _ repository.Querier) (domain.JobReport, error) {
+	j.sweeper.warnIfProcessingOff()
 	report, err := j.sweeper.Sweep(ctx)
 	return domain.JobReport{
 		Scanned: report.Closed + report.Reclaimed + report.Claimed,

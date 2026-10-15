@@ -21,7 +21,6 @@ import (
 const maxHandlerText = 512
 
 var (
-	errBatchClaimLost = errors.New("conversation batch claim lost")
 	// errDraftMoved sends the batch back to the queue: the seller sent or rebuilt the draft, or
 	// removed a line the proposal targets, while the model was answering.
 	errDraftMoved = errors.New("the draft changed while the proposal was prepared")
@@ -51,8 +50,7 @@ type batchHandlerMessages interface {
 }
 
 type batchClaimFence interface {
-	LockClaim(ctx context.Context, q repository.Querier, accountID uuid.UUID,
-		batch domain.MessageBatch) (bool, error)
+	LockClaim(ctx context.Context, q repository.Querier, batch domain.MessageBatch) error
 }
 
 // BatchChangeHandlerConfig bounds what the handler sends the model and accepts back.
@@ -312,12 +310,8 @@ func (h *BatchChangeHandler) lock(ctx context.Context, q repository.Querier,
 	if err != nil {
 		return nil, err
 	}
-	held, err := h.claims.LockClaim(ctx, q, batch.AccountID, batch)
-	if err != nil {
+	if err := h.claims.LockClaim(ctx, q, batch); err != nil {
 		return nil, err
-	}
-	if !held {
-		return nil, errBatchClaimLost
 	}
 	return quote, nil
 }

@@ -47,14 +47,15 @@ func (r *MessageBatchRepository) OpenOrExtend(ctx context.Context, q Querier, ac
 	return batch, err
 }
 
-// CloseOpen closes the quote's OPEN window at now and stamps every unbatched CLIENT message of
-// the quote with it. The caller holds the quote's lock. Returns domain.ErrNotFound when the quote
-// has no OPEN window.
+// CloseOpen closes the quote's OPEN window now, on the database's clock like every close, and
+// stamps every unbatched CLIENT message of the quote with it. The caller holds the quote's lock.
+// Returns domain.ErrNotFound when the quote has no OPEN window.
 func (r *MessageBatchRepository) CloseOpen(ctx context.Context, q Querier, accountID,
-	quoteID uuid.UUID, now time.Time,
+	quoteID uuid.UUID,
 ) (*domain.MessageBatch, error) {
 	batch, err := scanMessageBatch(q.QueryRow(ctx, `WITH closed AS (
-		  UPDATE message_batch SET status = 'CLOSED', closes_at = LEAST(closes_at, $3), closed_at = $3
+		  UPDATE message_batch
+		  SET status = 'CLOSED', closes_at = LEAST(closes_at, now()), closed_at = now()
 		  WHERE account_id = $1 AND quote_id = $2 AND status = 'OPEN'
 		  RETURNING `+messageBatchColumns+`),
 		stamped AS (
@@ -64,28 +65,11 @@ func (r *MessageBatchRepository) CloseOpen(ctx context.Context, q Querier, accou
 		    AND quote_message.quote_id = closed.quote_id
 		    AND quote_message.author_type = 'CLIENT' AND quote_message.batch_id IS NULL)
 		SELECT `+messageBatchColumns+` FROM closed`,
-		accountID, quoteID, now))
+		accountID, quoteID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
 	return batch, err
-}
-
-// LockClaim locks a claimed batch inside the handler's transaction and confirms the claim still
-// stands: PROCESSING since batch.ProcessingStartedAt. False means it was reclaimed or claimed
-// again, and the caller must write nothing.
-func (r *MessageBatchRepository) LockClaim(ctx context.Context, q Querier, accountID uuid.UUID,
-	batch domain.MessageBatch,
-) (bool, error) {
-	var id uuid.UUID
-	err := q.QueryRow(ctx, `SELECT id FROM message_batch
-		WHERE account_id = $1 AND id = $2 AND status = 'PROCESSING' AND processing_started_at = $3
-		FOR UPDATE`,
-		accountID, batch.ID, batch.ProcessingStartedAt).Scan(&id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	}
-	return err == nil, err
 }
 
 // LockDueQuotesCrossAccount locks, across every account, the quotes of up to limit OPEN windows
@@ -110,13 +94,13 @@ func (r *MessageBatchRepository) LockDueQuotesCrossAccount(ctx context.Context, 
 }
 
 // CloseDueCrossAccount closes the OPEN windows of quoteIDs still due at now and stamps each one's
-// unbatched CLIENT messages with it. The caller holds the quotes' locks, so no message can join a
-// window between its close and the stamp.
+// unbatched CLIENT messages with it. closed_at is the database's clock, so FIFO order never
+// depends on which instance closed a window. The caller holds the quotes' locks.
 func (r *MessageBatchRepository) CloseDueCrossAccount(ctx context.Context, q Querier,
 	quoteIDs []uuid.UUID, now time.Time,
 ) ([]domain.MessageBatch, error) {
 	return queryMessageBatches(ctx, q, `WITH closed AS (
-		  UPDATE message_batch SET status = 'CLOSED', closed_at = $2
+		  UPDATE message_batch SET status = 'CLOSED', closed_at = now()
 		  WHERE quote_id = ANY($1::uuid[]) AND status = 'OPEN' AND closes_at <= $2
 		  RETURNING `+messageBatchColumns+`),
 		stamped AS (
@@ -153,7 +137,7 @@ func (r *MessageBatchRepository) ReclaimStuckCrossAccount(ctx context.Context, q
 // ClaimNextCrossAccount moves the oldest claimable CLOSED batch to PROCESSING, across every
 // account. A batch is claimable when it heads its quote's queue by (closed_at, id) and its quote
 // has no PROCESSING batch; skip excludes batches already tried this pass. Returns nil when none is
-// claimable, including when a concurrent claim on the same quote wins the race.
+// claimable, and domain.ErrConflict when a concurrent claim on the same quote won the race.
 func (r *MessageBatchRepository) ClaimNextCrossAccount(ctx context.Context, q Querier,
 	now time.Time, skip []uuid.UUID,
 ) (*domain.MessageBatch, error) {
@@ -177,10 +161,29 @@ func (r *MessageBatchRepository) ClaimNextCrossAccount(ctx context.Context, q Qu
 		FROM next WHERE message_batch.id = next.id
 		RETURNING `+qualifiedMessageBatchColumns("message_batch"),
 		now, skip))
-	if errors.Is(err, pgx.ErrNoRows) || isUniqueViolation(err, messageBatchProcessingIndex) {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
+	if isUniqueViolation(err, messageBatchProcessingIndex) {
+		return nil, domain.ErrConflict
+	}
 	return batch, err
+}
+
+// LockClaim locks a batch still held by the claim batch.ProcessingStartedAt dates, for the rest of
+// the caller's transaction. Returns domain.ErrConflict when the claim was lost.
+func (r *MessageBatchRepository) LockClaim(ctx context.Context, q Querier,
+	batch domain.MessageBatch,
+) error {
+	var id uuid.UUID
+	err := q.QueryRow(ctx, `SELECT id FROM message_batch
+		WHERE id = $1 AND account_id = $2 AND status = 'PROCESSING' AND processing_started_at = $3
+		FOR UPDATE`,
+		batch.ID, batch.AccountID, batch.ProcessingStartedAt).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("%w: batch %s is no longer claimed", domain.ErrConflict, batch.ID)
+	}
+	return err
 }
 
 // MarkProcessedCrossAccount finishes a claim as PROCESSED. Returns false when the claim was lost:

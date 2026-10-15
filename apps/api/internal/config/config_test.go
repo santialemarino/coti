@@ -1616,3 +1616,25 @@ func TestLoad_ConversationQueueSettingsMustBePositive(t *testing.T) {
 		}
 	}
 }
+
+func TestLoad_ConversationProcessingTimeoutBounds(t *testing.T) {
+	for name, test := range map[string]struct {
+		key, value, want string
+	}{
+		"at the ticker": {"CONVERSATION_TICKER_SECONDS", "600",
+			"CONVERSATION_PROCESSING_TIMEOUT_SECONDS must be greater than CONVERSATION_TICKER_SECONDS"},
+		"at the job timeout": {"JOB_TIMEOUT_MINUTES", "10",
+			"CONVERSATION_PROCESSING_TIMEOUT_SECONDS must be below JOB_TIMEOUT_MINUTES"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			env := minimalEnv()
+			env["CONVERSATION_PROCESSING_TIMEOUT_SECONDS"] = "600"
+			env[test.key] = test.value
+			setEnv(t, env)
+			_, err := Load()
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("Load() = %v, want %q", err, test.want)
+			}
+		})
+	}
+}

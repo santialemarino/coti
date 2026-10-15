@@ -133,27 +133,33 @@ A sweep closes the due windows and works the queue, across every account on the 
 
 1. **Close.** Each page locks up to `CONVERSATION_SWEEP_BATCH_SIZE` quotes with a window due
    (`closes_at <= now`), skipping a quote another transaction holds, then in the same transaction
-   moves their windows to `CLOSED` (`closed_at`) and stamps every unbatched `CLIENT` message of the
+   moves their windows to `CLOSED` (`closed_at` from the database's clock, so instance skew cannot
+   reorder the queue) and stamps every unbatched `CLIENT` message of the
    quote with the batch. The quote is locked before its window, the order routing follows too, so a
    message either lands before the close and joins the batch or after it and opens the next window.
 2. **Reclaim.** A `PROCESSING` batch whose `processing_started_at` is older than
-   `CONVERSATION_PROCESSING_TIMEOUT_SECONDS` lost its worker: it counts the attempt and returns to
-   `CLOSED`, or `FAILED` once `attempts` reaches `CONVERSATION_MAX_ATTEMPTS`.
+   `CONVERSATION_PROCESSING_TIMEOUT_SECONDS` plus one ticker interval lost its worker: it counts
+   the attempt and returns to `CLOSED`, or `FAILED` once `attempts` reaches
+   `CONVERSATION_MAX_ATTEMPTS`.
 3. **Process.** One statement claims the oldest `CLOSED` batch that heads its quote's queue by
    `(closed_at, id)` on a quote with no `PROCESSING` batch (`FOR UPDATE SKIP LOCKED`), and
-   `uq_message_batch_processing` refuses a second claim on one quote should two workers race. The
+   `uq_message_batch_processing` refuses a second claim on one quote should two workers race (the
+   loser moves on to the next batch). The
    claimed batch goes to the `ConversationBatchHandler` port with one attempt's timeout, then
    `PROCESSED`; an error counts an attempt and returns it to `CLOSED` (`last_error`), or `FAILED` at
    the limit, and the quote's next batch waits behind it until then. Each batch gets one attempt
    per pass, so retries are spaced by the cadence. A shutdown hands the claim back uncounted.
 
 Every write that settles a claim matches its `processing_started_at`, so a worker that was reclaimed
-and comes back late changes nothing. The handler owns every quote write a batch causes, the
-`SENT` → `CHANGE_REQUESTED` move included; both binaries bind the batch change handler
-([rfq-pipeline.md](rfq-pipeline.md#conversation-batch-handler)). A handler error wrapping
-`domain.ErrBatchUnprocessable` — the quote was archived or closed after its window closed — spends
-the batch's last attempt at once and leaves it `FAILED` with the reason in `last_error`. The
-webapp's «Pedir cambios» enters the same queue as a batch closed in its own transaction.
+and comes back late changes nothing; those writes outlive a shutdown but are bounded at 10 s. The
+handler owns every quote write a batch causes, the `SENT` → `CHANGE_REQUESTED` move included, and
+its transactions take `MessageBatchRepository.LockClaim` right after the quote's lock: a lost claim
+is refused with a conflict, and a claim it holds cannot be reclaimed until it commits. Both binaries
+bind the batch change handler ([rfq-pipeline.md](rfq-pipeline.md#conversation-batch-handler)). A
+handler error wrapping `domain.ErrBatchUnprocessable` — the quote was archived or closed after its
+window closed — spends the batch's last attempt at once and leaves it `FAILED` with the reason in
+`last_error`. The webapp's «Pedir cambios» enters the same queue as a batch closed in its own
+transaction.
 
 The API runs the sweep on an in-process ticker every `CONVERSATION_TICKER_SECONDS` (30), one pass at
 a time, stopped and awaited on shutdown before the pools close. The `conversation-batches`

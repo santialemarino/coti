@@ -289,10 +289,9 @@ func (f *fakeChangeWindows) OpenOrExtend(_ context.Context, _ repository.Querier
 }
 
 func (f *fakeChangeWindows) CloseOpen(_ context.Context, _ repository.Querier, _,
-	quoteID uuid.UUID, now time.Time,
+	quoteID uuid.UUID,
 ) (*domain.MessageBatch, error) {
 	f.closed = append(f.closed, quoteID)
-	f.at = append(f.at, now)
 	return &domain.MessageBatch{QuoteID: quoteID, Status: domain.MessageBatchStatusClosed}, nil
 }
 

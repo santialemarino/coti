@@ -19,8 +19,8 @@ type quoteMessageWriter interface {
 type changeRequestQueue interface {
 	OpenOrExtend(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID,
 		now time.Time, reset, limit time.Duration) (*domain.MessageBatch, error)
-	CloseOpen(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID,
-		now time.Time) (*domain.MessageBatch, error)
+	CloseOpen(ctx context.Context, q repository.Querier, accountID,
+		quoteID uuid.UUID) (*domain.MessageBatch, error)
 }
 
 // WithMessages wires the customer conversation a change request is written into and queued from.
@@ -55,11 +55,10 @@ func (s *QuoteDeliveryService) createChangeRequest(ctx context.Context, q reposi
 		send.ChannelID, action.ID, message); err != nil {
 		return err
 	}
-	now := s.now().UTC()
-	if _, err := s.windows.OpenOrExtend(ctx, q, accountID, quote.BranchID, quote.ID, now, 0,
-		0); err != nil {
+	if _, err := s.windows.OpenOrExtend(ctx, q, accountID, quote.BranchID, quote.ID,
+		s.now().UTC(), 0, 0); err != nil {
 		return err
 	}
-	_, err = s.windows.CloseOpen(ctx, q, accountID, quote.ID, now)
+	_, err = s.windows.CloseOpen(ctx, q, accountID, quote.ID)
 	return err
 }
