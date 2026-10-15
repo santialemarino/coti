@@ -47,6 +47,31 @@ func (r *MessageBatchRepository) OpenOrExtend(ctx context.Context, q Querier, ac
 	return batch, err
 }
 
+// CloseOpen closes the quote's OPEN window now, on the database's clock like every close, and
+// stamps every unbatched CLIENT message of the quote with it. The caller holds the quote's lock.
+// Returns domain.ErrNotFound when the quote has no OPEN window.
+func (r *MessageBatchRepository) CloseOpen(ctx context.Context, q Querier, accountID,
+	quoteID uuid.UUID,
+) (*domain.MessageBatch, error) {
+	batch, err := scanMessageBatch(q.QueryRow(ctx, `WITH closed AS (
+		  UPDATE message_batch
+		  SET status = 'CLOSED', closes_at = LEAST(closes_at, now()), closed_at = now()
+		  WHERE account_id = $1 AND quote_id = $2 AND status = 'OPEN'
+		  RETURNING `+messageBatchColumns+`),
+		stamped AS (
+		  UPDATE quote_message SET batch_id = closed.id
+		  FROM closed
+		  WHERE quote_message.account_id = closed.account_id
+		    AND quote_message.quote_id = closed.quote_id
+		    AND quote_message.author_type = 'CLIENT' AND quote_message.batch_id IS NULL)
+		SELECT `+messageBatchColumns+` FROM closed`,
+		accountID, quoteID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	return batch, err
+}
+
 // LockDueQuotesCrossAccount locks, across every account, the quotes of up to limit OPEN windows
 // whose closes_at is at or before now. A quote another transaction holds is skipped. The quote is
 // locked before its window, the order every writer of a conversation follows.

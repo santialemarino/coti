@@ -222,7 +222,11 @@ func (s *ConversationBatchService) process(ctx context.Context, batch domain.Mes
 		}
 		return ctx.Err()
 	}
-	settled, err := s.queue.RecordFailureCrossAccount(settle, q, batch, s.cfg.MaxAttempts,
+	maxAttempts := s.cfg.MaxAttempts
+	if errors.Is(handleErr, domain.ErrBatchUnprocessable) {
+		maxAttempts = 1
+	}
+	settled, err := s.queue.RecordFailureCrossAccount(settle, q, batch, maxAttempts,
 		handleErr.Error())
 	if err != nil {
 		return err

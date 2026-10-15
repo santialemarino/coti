@@ -1256,6 +1256,7 @@ CREATE INDEX idx_quote_send_channel_destination ON quote_send(channel_id, destin
 CREATE INDEX idx_message_batch_due ON message_batch(closes_at) WHERE status = 'OPEN';
 CREATE INDEX idx_message_batch_queue ON message_batch(quote_id, closed_at) WHERE status = 'CLOSED';
 CREATE INDEX idx_message_batch_processing_started ON message_batch(processing_started_at) WHERE status = 'PROCESSING';
+CREATE INDEX idx_handler_decision_version ON handler_decision(quote_version_id, created_at);
 
 -- Business invariants expressed in the database, not left to the good will of the code.
 -- uq_channel_branch_type_identifier does not compare NULLs, so without this index a branch

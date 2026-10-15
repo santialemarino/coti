@@ -12,7 +12,12 @@ import { followupDue } from '@/app/(protected)/rfqs/_components/followup-badge';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { errorCodeOf } from '@/lib/api/errors';
-import type { QuoteDiscountResponse, QuoteItemResponse, RfqDetailResponse } from '@/lib/api/rfqs';
+import type {
+  HandlerNoMatchReason,
+  QuoteDiscountResponse,
+  QuoteItemResponse,
+  RfqDetailResponse,
+} from '@/lib/api/rfqs';
 import { formatRfqReference, normalizeRfqStatus } from '@/lib/api/rfqs';
 import { fetchRfqDetail, generateQuote, setQuoteArchived } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
@@ -23,6 +28,13 @@ import { RfqChangeDiff } from './rfq-change-diff';
 import { RfqDetailHeader } from './rfq-detail-header';
 import { RfqItemsTable } from './rfq-items-table';
 import { RfqStatusTimeline } from './rfq-status-timeline';
+
+// What the seller reads when the conversation handler left a customer's messages to them.
+const HANDLER_NO_MATCH_KEYS = {
+  REQUIRES_SELLER: 'detail.callouts.changeRequested.handler.requiresSeller',
+  AI_DISABLED: 'detail.callouts.changeRequested.handler.aiDisabled',
+  PROPOSAL_REFUSED: 'detail.callouts.changeRequested.handler.proposalRefused',
+} as const satisfies Record<HandlerNoMatchReason, string>;
 
 interface RfqDetailViewProps {
   detail: RfqDetailResponse;
@@ -73,11 +85,22 @@ export function RfqDetailView({
   const archived = detail.quote?.archived_at != null;
   const isDraft = !archived && (quoteStatus === 'DRAFT' || quoteStatus === 'CHANGE_REQUESTED');
   const latestClientAction = detail.client_actions?.at(-1);
+  // A customer's messages reach the draft through the conversation handler, which leaves a note.
+  const handlerNote = detail.changes_requested?.handler;
+  const clientMessages = detail.changes_requested?.client_messages ?? [];
   const isCustomerChangeRequest =
     quoteStatus === 'CHANGE_REQUESTED' &&
     detail.version !== null &&
-    latestClientAction?.type === 'REQUEST_CHANGE' &&
-    latestClientAction.version_number === detail.version.version_number - 1;
+    (handlerNote != null ||
+      (latestClientAction?.type === 'REQUEST_CHANGE' &&
+        latestClientAction.version_number === detail.version.version_number - 1));
+  const handlerNoteText = !handlerNote
+    ? null
+    : handlerNote.outcome === 'APPLIED'
+      ? t('detail.callouts.changeRequested.handler.applied', {
+          interpretation: handlerNote.interpretation.replace(/\.\s*$/, ''),
+        })
+      : t(HANDLER_NO_MATCH_KEYS[handlerNote.no_match_reason ?? 'REQUIRES_SELLER']);
   const followupOrigin = rfqStatus === 'SENT' ? 'customer' : 'seller';
   const showFollowup = followupDue(
     detail.rfq.needs_followup,
@@ -266,11 +289,33 @@ export function RfqDetailView({
               : 'detail.callouts.sellerRevision.title',
           )}
         >
-          {isCustomerChangeRequest
-            ? detail.version?.comment
-              ? t('detail.callouts.changeRequested.withReason', { reason: detail.version.comment })
-              : t('detail.callouts.changeRequested.description')
-            : t('detail.callouts.sellerRevision.description')}
+          {isCustomerChangeRequest ? (
+            <div className="flex flex-col gap-y-1">
+              {clientMessages.length > 0 ? (
+                <>
+                  <p>{t('detail.callouts.changeRequested.clientMessages')}</p>
+                  <ul className="flex flex-col gap-y-1 pl-3">
+                    {clientMessages.map((message, index) => (
+                      <li key={`${message.received_at}-${index}`} className="whitespace-pre-line">
+                        {message.body}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <p>
+                  {detail.version?.comment
+                    ? t('detail.callouts.changeRequested.withReason', {
+                        reason: detail.version.comment,
+                      })
+                    : t('detail.callouts.changeRequested.description')}
+                </p>
+              )}
+              {handlerNoteText ? <p>{handlerNoteText}</p> : null}
+            </div>
+          ) : (
+            t('detail.callouts.sellerRevision.description')
+          )}
         </Callout>
       )}
 

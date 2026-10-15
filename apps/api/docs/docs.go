@@ -7425,6 +7425,16 @@ const docTemplate = `{
         "dto.ChangeRequestDiffResponse": {
             "type": "object",
             "properties": {
+                "client_messages": {
+                    "description": "ClientMessages is every message the customer sent since the version they answered went out.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ClientMessageResponse"
+                    }
+                },
+                "handler": {
+                    "$ref": "#/definitions/dto.HandlerDecisionResponse"
+                },
                 "original": {
                     "$ref": "#/definitions/dto.ChangeRequestSideResponse"
                 },
@@ -7576,6 +7586,17 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dto.ClientTagResponse"
                     }
+                }
+            }
+        },
+        "dto.ClientMessageResponse": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "type": "string"
+                },
+                "received_at": {
+                    "type": "string"
                 }
             }
         },
@@ -8170,6 +8191,35 @@ const docTemplate = `{
                 "email": {
                     "type": "string",
                     "maxLength": 255
+                }
+            }
+        },
+        "dto.HandlerDecisionResponse": {
+            "type": "object",
+            "properties": {
+                "client_input": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "interpretation": {
+                    "type": "string"
+                },
+                "no_match_reason": {
+                    "type": "string",
+                    "enum": [
+                        "REQUIRES_SELLER",
+                        "AI_DISABLED",
+                        "PROPOSAL_REFUSED"
+                    ]
+                },
+                "outcome": {
+                    "type": "string",
+                    "enum": [
+                        "APPLIED",
+                        "NO_MATCH"
+                    ]
                 }
             }
         },

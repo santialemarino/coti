@@ -323,6 +323,14 @@ definitions:
     type: object
   dto.ChangeRequestDiffResponse:
     properties:
+      client_messages:
+        description: ClientMessages is every message the customer sent since the version
+          they answered went out.
+        items:
+          $ref: '#/definitions/dto.ClientMessageResponse'
+        type: array
+      handler:
+        $ref: '#/definitions/dto.HandlerDecisionResponse'
       original:
         $ref: '#/definitions/dto.ChangeRequestSideResponse'
       reason:
@@ -422,6 +430,13 @@ definitions:
         items:
           $ref: '#/definitions/dto.ClientTagResponse'
         type: array
+    type: object
+  dto.ClientMessageResponse:
+    properties:
+      body:
+        type: string
+      received_at:
+        type: string
     type: object
   dto.ClientProfileResponse:
     properties:
@@ -830,6 +845,26 @@ definitions:
         type: string
     required:
     - email
+    type: object
+  dto.HandlerDecisionResponse:
+    properties:
+      client_input:
+        type: string
+      created_at:
+        type: string
+      interpretation:
+        type: string
+      no_match_reason:
+        enum:
+        - REQUIRES_SELLER
+        - AI_DISABLED
+        - PROPOSAL_REFUSED
+        type: string
+      outcome:
+        enum:
+        - APPLIED
+        - NO_MATCH
+        type: string
     type: object
   dto.HealthResponse:
     properties:

@@ -273,6 +273,28 @@ type fakeQuoteMessages struct {
 	err       error
 }
 
+// fakeChangeWindows records how a change request was queued.
+type fakeChangeWindows struct {
+	opened []time.Duration
+	closed []uuid.UUID
+	at     []time.Time
+}
+
+func (f *fakeChangeWindows) OpenOrExtend(_ context.Context, _ repository.Querier, _, _,
+	quoteID uuid.UUID, now time.Time, reset, _ time.Duration,
+) (*domain.MessageBatch, error) {
+	f.opened = append(f.opened, reset)
+	f.at = append(f.at, now)
+	return &domain.MessageBatch{QuoteID: quoteID, Status: domain.MessageBatchStatusOpen}, nil
+}
+
+func (f *fakeChangeWindows) CloseOpen(_ context.Context, _ repository.Querier, _,
+	quoteID uuid.UUID,
+) (*domain.MessageBatch, error) {
+	f.closed = append(f.closed, quoteID)
+	return &domain.MessageBatch{QuoteID: quoteID, Status: domain.MessageBatchStatusClosed}, nil
+}
+
 type fakeChangeRequestHandler struct {
 	proposal *domain.ChangeRequestProposal
 	err      error
@@ -303,18 +325,6 @@ func (f *fakeChangeRequestMatcher) Match(_ context.Context, _ domain.Tenant,
 		return nil, f.err
 	}
 	return f.matches, nil
-}
-
-type fakeHandlerDecisions struct {
-	created []domain.NewHandlerDecision
-	err     error
-}
-
-func (f *fakeHandlerDecisions) Create(_ context.Context, _ repository.Querier, _ uuid.UUID,
-	in domain.NewHandlerDecision,
-) error {
-	f.created = append(f.created, in)
-	return f.err
 }
 
 func (f *fakeQuoteMessages) CreateClientRequest(_ context.Context, _ repository.Querier,
@@ -414,6 +424,7 @@ type quoteActionHarness struct {
 	prices          *fakeBranchPrices
 	clientActions   *fakePublicQuoteClientActions
 	messages        *fakeQuoteMessages
+	windows         *fakeChangeWindows
 	representations *fakeQuoteDeliverRepresentations
 	token           string
 	now             time.Time
@@ -427,6 +438,7 @@ func newQuoteActionHarness() *quoteActionHarness {
 		prices:          &fakeBranchPrices{},
 		clientActions:   &fakePublicQuoteClientActions{},
 		messages:        &fakeQuoteMessages{},
+		windows:         &fakeChangeWindows{},
 		representations: &fakeQuoteDeliverRepresentations{},
 		token:           "public-token-quote-action",
 		now:             fixedNow,
@@ -435,7 +447,7 @@ func newQuoteActionHarness() *quoteActionHarness {
 		unusedDeliveryDeps{}, h.prices, unusedDeliveryDeps{},
 		unusedDeliveryDeps{}, nil, "https://app.coti.ar", func() time.Time { return h.now }, nil).
 		WithClientActions(h.clientActions, nil).WithRepresentationService(h.representations).
-		WithMessages(h.messages)
+		WithMessages(h.messages, h.windows)
 	return h
 }
 
@@ -589,65 +601,36 @@ func TestQuoteDeliveryService_RespondPublic_CreatesAReviewableChangeRequest(t *t
 	}
 }
 
-func TestQuoteDeliveryService_RespondPublic_AppliesTheHandlerProposalToTheDraft(t *testing.T) {
+// The webapp request answers at once and leaves the model to the queue: its message lands in a
+// batch closed in the same transaction, which the conversation handler picks up.
+func TestQuoteDeliveryService_RespondPublic_QueuesTheRequestInAClosedBatch(t *testing.T) {
 	h := newQuoteActionHarness()
 	h.seedActiveSend(testVersionID)
-	h.quotes.quote = &domain.Quote{ID: testQuoteID, BranchID: testBranchID,
-		CurrentVersionID: &testVersionID, CurrentStatus: domain.QuoteStatusSent}
 	h.quotes.version = &domain.QuoteVersion{ID: testVersionID, QuoteID: testQuoteID,
 		VersionNumber: 1, Currency: "ARS", IsImmutable: true}
-	oldItemID := uuid.New()
-	oldProductID := uuid.New()
-	h.quotes.items = []domain.QuoteItem{{ID: oldItemID, ProductID: &oldProductID,
-		RequestedDescription: "bolsas de cemento", Quantity: decimal.NewFromInt(10),
-		MatchStatus: domain.ItemMatchStatusMatched}}
-	h.prices.prices = map[uuid.UUID]domain.BranchPrice{
-		oldProductID: {ProductID: oldProductID, Price: decimal.NewFromInt(9256), Currency: "ARS"},
-	}
-	calProductID := uuid.New()
-	quantity := decimal.NewFromInt(5)
-	description := "bolsas de cal hidratada 25 kg"
-	unit := "bolsa"
-	proposal := &fakeChangeRequestHandler{proposal: &domain.ChangeRequestProposal{
-		Interpretation: "El cliente pidió sumar cinco bolsas de cal hidratada.",
-		Operations: []domain.ChangeRequestOperation{{Type: domain.ChangeRequestOperationAddItem,
-			RequestedDescription: &description, Quantity: &quantity, Unit: &unit}},
-	}}
-	matcher := &fakeChangeRequestMatcher{matches: []domain.LineMatch{{ProductID: &calProductID,
-		MatchStatus: domain.ItemMatchStatusMatched, Confidence: decimal.RequireFromString("0.93")}}}
-	decisions := &fakeHandlerDecisions{}
-	h.service.WithChangeRequestHandler(proposal, matcher, decisions, 10, time.Second)
-	message := "Agregar 5 bolsas de Cal hidratada 25 kg"
+	message := "Agregar 5 bolsas de cal hidratada 25 kg"
 
 	result, err := h.service.RespondPublic(context.Background(), h.token,
 		domain.ClientActionInput{Type: domain.ClientActionRequestChange, Message: &message})
 	if err != nil {
 		t.Fatalf("RespondPublic returned %v", err)
 	}
-	if result.QuoteStatus != domain.QuoteStatusChangeRequested {
-		t.Errorf("status = %q, want CHANGE_REQUESTED", result.QuoteStatus)
+	if result.QuoteStatus != domain.QuoteStatusChangeRequested ||
+		result.CustomerStatus != domain.ClientActionRequestChange {
+		t.Errorf("result = %+v, want the request acknowledged as CHANGE_REQUESTED", result)
 	}
-	if len(proposal.inputs) != 1 || proposal.inputs[0].Message != message ||
-		len(proposal.inputs[0].Items) != 1 || proposal.inputs[0].Items[0].ID != oldItemID {
-		t.Errorf("handler input = %+v, want the message and sent item", proposal.inputs)
+	if len(h.windows.opened) != 1 || h.windows.opened[0] != 0 ||
+		len(h.windows.closed) != 1 || h.windows.closed[0] != testQuoteID {
+		t.Errorf("windows = %+v, want one window opened with no wait and closed", h.windows)
 	}
-	if len(matcher.texts) != 1 || len(matcher.texts[0]) != 1 || matcher.texts[0][0] != description {
-		t.Errorf("matcher inputs = %v, want the added material", matcher.texts)
+	for _, at := range h.windows.at {
+		if !at.Equal(fixedNow.UTC()) {
+			t.Errorf("window written at %s, want the service clock %s", at, fixedNow.UTC())
+		}
 	}
-	if len(h.quotes.itemBatches) != 2 {
-		t.Fatalf("item batches = %d, want cloned items plus handler additions", len(h.quotes.itemBatches))
-	}
-	added := h.quotes.itemBatches[1]
-	if len(added) != 1 || added[0].RequestedDescription != description ||
-		!added[0].Quantity.Equal(quantity) || added[0].Unit == nil || *added[0].Unit != unit ||
-		added[0].ProductID == nil || *added[0].ProductID != calProductID ||
-		added[0].MatchStatus != domain.ItemMatchStatusMatched {
-		t.Errorf("added items = %+v, want matched cal in the mutable draft", added)
-	}
-	if len(decisions.created) != 1 || decisions.created[0].QuoteVersionID != h.quotes.newVersion.ID ||
-		decisions.created[0].ClientInput != message ||
-		decisions.created[0].StateAtDecision != domain.QuoteStatusSent {
-		t.Errorf("handler decisions = %+v, want the unreviewed proposal", decisions.created)
+	if len(h.quotes.itemBatches) != 1 {
+		t.Errorf("item batches = %d, want only the cloned lines: the model runs from the queue",
+			len(h.quotes.itemBatches))
 	}
 }
 

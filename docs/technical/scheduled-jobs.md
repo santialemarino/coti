@@ -211,10 +211,10 @@ activity.
 ### `conversation-batches`
 
 Closes the due client message windows and processes their batches, one per quote at a time in
-`closed_at` order, once a batch handler is configured; until then it only closes windows. The API
-already runs the same sweep on its own ticker every `CONVERSATION_TICKER_SECONDS`; this job is what
-keeps windows closing while the API is down or redeploying, and 15 minutes is the platform's
-shortest interval. The two can run at once: the
+`closed_at` order, through the same batch change handler the API binds. The API already runs the
+same sweep on its own ticker every `CONVERSATION_TICKER_SECONDS`; this job is what keeps windows
+closing while the API is down or redeploying, and 15 minutes is the platform's shortest interval.
+The two can run at once: the
 closer skips locked rows, and a claim is a single statement guarded by `FOR UPDATE SKIP LOCKED`
 and `uq_message_batch_processing`. Its run records count closed, reclaimed and claimed batches as
 scanned. The full mechanics are in

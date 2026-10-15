@@ -27,7 +27,12 @@ func NewChangeRequestHandler(generator domain.StructuredGenerator) *ChangeReques
 // Propose returns typed changes without mutating a quote or calculating any monetary value.
 func (h *ChangeRequestHandler) Propose(ctx context.Context,
 	in domain.ChangeRequestInput) (*domain.ChangeRequestProposal, error) {
-	payload, err := json.Marshal(changeRequestPayload{Message: in.Message, Items: in.Items})
+	history := in.Context
+	if history == nil {
+		history = []domain.ConversationLine{}
+	}
+	payload, err := json.Marshal(changeRequestPayload{Context: history, Message: in.Message,
+		Items: in.Items})
 	if err != nil {
 		return nil, err
 	}
@@ -60,12 +65,14 @@ func (h *ChangeRequestHandler) Propose(ctx context.Context,
 
 const changeRequestInstructions = `You interpret a customer request to revise a building-materials quote for an Argentine supplier. The current quote lines are supplied with opaque IDs. Return only the atomic changes that are explicit in the customer's message.
 
+customer_message holds the customer's new messages, oldest first, one per line. conversation_context holds earlier messages of the same conversation, from the customer (CLIENT), the seller (SELLER) or the system (SYSTEM); it is context only: never turn a context message into a change, and never repeat a change it shows was already requested.
+
 Choose one of these operations:
 - ADD_ITEM: add a material that is not already a line. It needs requested_description and quantity. target_item_id must be null.
 - REMOVE_ITEM: remove one supplied line. It needs target_item_id and every material field must be null.
 - REPLACE_ITEM: replace one supplied line with a different material. It needs target_item_id, requested_description and quantity.
 - UPDATE_QUANTITY: change the quantity of one supplied line. It needs target_item_id and quantity. requested_description and unit must be null.
-- REQUIRES_SELLER: the request is ambiguous, unsupported, asks about something other than materials, or cannot be tied to the supplied lines. Every other field must be null.
+- REQUIRES_SELLER: the request is ambiguous, unsupported, asks about something other than materials, or cannot be tied to the supplied lines. Every other field must be null. Acceptance, rejection, thanks, payment, delivery or stock questions are always REQUIRES_SELLER: never treat "dale", "acepto", "lo compro" or "no me interesa" as a change.
 
 Use an item ID only when it appears in the supplied quote lines. Do not infer a product, brand, measure, quantity, price, discount, stock, delivery promise, or material that the customer did not state. Do not turn an unclear request into a change. One operation must not target the same item as another operation. A request that needs a seller may contain exactly one REQUIRES_SELLER operation and no other operation.
 
@@ -74,6 +81,7 @@ For ADD_ITEM and REPLACE_ITEM, requested_description is the material only: retai
 The interpretation is one short sentence in Argentine Spanish for the seller. The proposal is only a draft for seller review: never calculate money and never address the customer.`
 
 type changeRequestPayload struct {
+	Context []domain.ConversationLine  `json:"conversation_context"`
 	Message string                     `json:"customer_message"`
 	Items   []domain.ChangeRequestItem `json:"quote_items"`
 }

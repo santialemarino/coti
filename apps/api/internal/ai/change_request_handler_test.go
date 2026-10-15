@@ -2,9 +2,11 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -72,5 +74,45 @@ func TestChangeRequestSchema_UsesTheClosedOperationCatalog(t *testing.T) {
 	}
 	if !slices.Contains(got, string(domain.ChangeRequestOperationRequiresSeller)) {
 		t.Error("the schema has no safe escape for a seller-only request")
+	}
+}
+
+// The instructions are the cached prefix: every request sends the same text, and the batch, its
+// context and the draft's lines ride only in the input.
+func TestChangeRequestHandler_Propose_KeepsTheVariablePartOutOfTheInstructions(t *testing.T) {
+	answer := `{"interpretation":"Pide el visto bueno.","operations":[
+		{"type":"REQUIRES_SELLER","target_item_id":null,"requested_description":null,"quantity":null,"unit":null}
+	]}`
+	first, second := &fakeGenerator{answer: answer}, &fakeGenerator{answer: answer}
+	itemID := uuid.New()
+	if _, err := NewChangeRequestHandler(first).Propose(context.Background(), domain.ChangeRequestInput{
+		Message: "dale, acepto",
+		Context: []domain.ConversationLine{{Author: domain.MessageAuthorSeller, Body: "¿Te sirve así?"}},
+		Items:   []domain.ChangeRequestItem{{ID: itemID, RequestedDescription: "cemento", Quantity: decimal.NewFromInt(2)}},
+	}); err != nil {
+		t.Fatalf("Propose returned %v", err)
+	}
+	if _, err := NewChangeRequestHandler(second).Propose(context.Background(), domain.ChangeRequestInput{
+		Message: "sacá la arena"}); err != nil {
+		t.Fatalf("Propose returned %v", err)
+	}
+	if first.req.Instructions != second.req.Instructions {
+		t.Error("the instructions differ between requests, so their prefix cannot cache")
+	}
+	for _, variable := range []string{"dale, acepto", "¿Te sirve así?", itemID.String()} {
+		if strings.Contains(first.req.Instructions, variable) {
+			t.Errorf("instructions carry %q, want it only in the input", variable)
+		}
+	}
+	if len(first.req.Input) != 1 {
+		t.Fatalf("input = %d parts, want one", len(first.req.Input))
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(first.req.Input[0].Text), &payload); err != nil {
+		t.Fatalf("input is not JSON: %v", err)
+	}
+	history, _ := payload["conversation_context"].([]any)
+	if payload["customer_message"] != "dale, acepto" || len(history) != 1 {
+		t.Errorf("payload = %v, want the batch and one context message", payload)
 	}
 }

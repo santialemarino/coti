@@ -193,15 +193,25 @@ func run() error {
 		WithPromotions(promotionRepo).
 		WithClientActions(clientActionRepo).
 		WithInboundMessages(inboundChannelMessageRepo).
+		WithHandlerDecisions(handlerDecisionRepo).
+		WithClientMessages(quoteMessageRepo).
 		WithWebAppURL(cfg.Web.WebAppURL).
 		WithFileIntake(rfqAttachmentService, providers.Transcriber, cfg.Storage.MaxFileSize)
 	inboundRoutingService := services.NewInboundRoutingService(db, channelRepo)
 	messageBatchRepo := repository.NewMessageBatchRepository()
 	conversationService := services.NewConversationService(quoteRepo, quoteSendRepo,
 		quoteMessageRepo, messageBatchRepo, cfg.Conversation)
+	var changeProposer domain.ChangeRequestHandler
+	if providers.LanguageModelBound() {
+		changeProposer = ai.NewChangeRequestHandler(providers.Generator)
+	}
+	batchChangeHandler := services.NewBatchChangeHandler(db, quoteRepo, quoteMessageRepo,
+		messageBatchRepo, handlerDecisionRepo, productPriceRepo, quoteDiscountRepo, promotionRepo,
+		changeProposer, catalogMatchService, services.BatchChangeHandlerConfig{
+			ContextMessages: cfg.Conversation.ContextMessages, MaxOperations: cfg.RFQ.MaxItems}, log)
 	conversationTicker := services.NewConversationBatchTicker(
 		services.NewConversationBatchService(db, messageBatchRepo,
-			nil, cfg.Conversation, nil, log),
+			batchChangeHandler, cfg.Conversation, nil, log),
 		cfg.Conversation.TickerInterval, log)
 	whatsAppInboundService := services.NewWhatsAppInboundService(db, inboundRoutingService,
 		inboundChannelMessageRepo, channelRepo, rfqService, channelSealer, log).
@@ -222,9 +232,7 @@ func run() error {
 		quoteQualityService, cfg.Web.WebAppURL, nil, log).
 		WithRepresentationService(quoteRepresentationService).
 		WithClientActions(clientActionRepo, userRepo).
-		WithMessages(quoteMessageRepo).
-		WithChangeRequestHandler(ai.NewChangeRequestHandler(providers.Generator), catalogMatchService,
-			handlerDecisionRepo, cfg.RFQ.MaxItems, cfg.RFQ.InlinePipelineTimeout).
+		WithMessages(quoteMessageRepo, messageBatchRepo).
 		WithWhatsAppCredentials(channelSealer)
 	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
 		quoteSendRepo)

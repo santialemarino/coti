@@ -901,11 +901,27 @@ func toClientActionResponse(action domain.ClientAction) dto.ClientActionResponse
 }
 
 func toChangeRequestDiffResponse(diff domain.ChangeRequestDiff) dto.ChangeRequestDiffResponse {
-	return dto.ChangeRequestDiffResponse{
-		Reason:    diff.Reason,
-		Original:  toChangeRequestSideResponse(diff.Original),
-		Requested: toChangeRequestSideResponse(diff.Requested),
+	resp := dto.ChangeRequestDiffResponse{
+		Reason:         diff.Reason,
+		Original:       toChangeRequestSideResponse(diff.Original),
+		Requested:      toChangeRequestSideResponse(diff.Requested),
+		ClientMessages: make([]dto.ClientMessageResponse, 0, len(diff.ClientMessages)),
 	}
+	for _, message := range diff.ClientMessages {
+		resp.ClientMessages = append(resp.ClientMessages,
+			dto.ClientMessageResponse{Body: message.Body, ReceivedAt: message.ReceivedAt})
+	}
+	if note := diff.Handler; note != nil {
+		var reason *string
+		if note.NoMatchReason != nil {
+			value := string(*note.NoMatchReason)
+			reason = &value
+		}
+		resp.Handler = &dto.HandlerDecisionResponse{ClientInput: note.ClientInput,
+			Interpretation: note.Interpretation, Outcome: string(note.Outcome),
+			NoMatchReason: reason, CreatedAt: note.CreatedAt}
+	}
+	return resp
 }
 
 func toChangeRequestSideResponse(side domain.ChangeRequestSide) dto.ChangeRequestSideResponse {

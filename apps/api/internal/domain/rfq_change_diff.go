@@ -19,6 +19,10 @@ type ChangeRequestDiff struct {
 	Reason    *string
 	Original  ChangeRequestSide
 	Requested ChangeRequestSide
+	// Handler is the latest conversation handler decision on the draft, when one ran.
+	Handler *HandlerDecisionNote
+	// ClientMessages is every message the customer sent since the version they answered went out.
+	ClientMessages []QuoteMessage
 }
 
 // ChangeRequestSide is one column (original or requested) of the rendered diff.

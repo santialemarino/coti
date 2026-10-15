@@ -212,6 +212,25 @@ type ChangeRequestDiffResponse struct {
 	Reason    *string                   `json:"reason"`
 	Original  ChangeRequestSideResponse `json:"original"`
 	Requested ChangeRequestSideResponse `json:"requested"`
+	Handler   *HandlerDecisionResponse  `json:"handler,omitempty"`
+	// ClientMessages is every message the customer sent since the version they answered went out.
+	ClientMessages []ClientMessageResponse `json:"client_messages"`
+}
+
+// ClientMessageResponse is one message the customer wrote, as received.
+type ClientMessageResponse struct {
+	Body       string    `json:"body"`
+	ReceivedAt time.Time `json:"received_at"`
+}
+
+// HandlerDecisionResponse is the latest conversation handler decision on the draft: what the
+// customer wrote, how the AI read it, and why it was left to the seller when it was.
+type HandlerDecisionResponse struct {
+	ClientInput    string    `json:"client_input"`
+	Interpretation string    `json:"interpretation"`
+	Outcome        string    `json:"outcome" enums:"APPLIED,NO_MATCH"`
+	NoMatchReason  *string   `json:"no_match_reason" enums:"REQUIRES_SELLER,AI_DISABLED,PROPOSAL_REFUSED"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // ChangeRequestSideResponse is one column (original or requested) of the diff.

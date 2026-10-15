@@ -2,11 +2,9 @@ package services
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
@@ -28,66 +26,6 @@ type resolvedChangeRequest struct {
 type resolvedChangeOperation struct {
 	Operation domain.ChangeRequestOperation
 	Match     domain.LineMatch
-}
-
-// WithChangeRequestHandler wires the AI proposal surface used by public change requests.
-func (s *QuoteDeliveryService) WithChangeRequestHandler(handler domain.ChangeRequestHandler,
-	matcher catalogMatcher, decisions handlerDecisionRecorder, maxItems int, timeout time.Duration,
-) *QuoteDeliveryService {
-	s.changeHandler = handler
-	s.matcher = matcher
-	s.handlerDecisions = decisions
-	s.changeMaxItems = maxItems
-	s.changeTimeout = timeout
-	return s
-}
-
-func (s *QuoteDeliveryService) prepareChangeRequest(ctx context.Context, accountID uuid.UUID,
-	token, message string,
-) *resolvedChangeRequest {
-	if s.changeHandler == nil || s.changeMaxItems < 1 || s.changeTimeout <= 0 {
-		return nil
-	}
-
-	var quote *domain.Quote
-	var source []domain.QuoteItem
-	err := s.db.InTenantTx(ctx, domain.Tenant{AccountID: accountID}, func(q repository.Querier) error {
-		send, err := s.sends.GetPublicByToken(ctx, q, accountID, token)
-		if err != nil {
-			return err
-		}
-		quote, err = s.quotes.GetByVersionID(ctx, q, accountID, send.VersionID)
-		if err != nil {
-			return err
-		}
-		source, err = s.quotes.ListItems(ctx, q, accountID, send.VersionID)
-		return err
-	})
-	if err != nil {
-		s.log.WarnContext(ctx, "change request proposal preparation failed", slog.Any("error", err))
-		return nil
-	}
-
-	tenant := domain.Tenant{AccountID: accountID, BranchID: quote.BranchID}
-	pipelineCtx, cancel := context.WithTimeout(domain.WithAIAccount(ctx, tenant), s.changeTimeout)
-	defer cancel()
-	proposal, err := s.changeHandler.Propose(pipelineCtx, domain.ChangeRequestInput{
-		Message: message, Items: changeRequestItems(source),
-	})
-	if err != nil {
-		s.log.WarnContext(ctx, "change request handler did not produce a proposal",
-			slog.String("quote_id", quote.ID.String()), slog.Any("error", err))
-		return nil
-	}
-	validated, err := validateChangeRequestProposal(proposal, source, s.changeMaxItems)
-	if err != nil {
-		s.log.WarnContext(ctx, "change request handler proposal was refused",
-			slog.String("quote_id", quote.ID.String()), slog.Any("error", err))
-		return nil
-	}
-
-	resolveChangeRequestMatches(pipelineCtx, tenant, s.matcher, &validated, s.log)
-	return &validated
 }
 
 func changeRequestItems(items []domain.QuoteItem) []domain.ChangeRequestItem {
@@ -261,14 +199,28 @@ func resolveChangeRequestMatches(ctx context.Context, tenant domain.Tenant, matc
 	}
 }
 
-func (s *QuoteDeliveryService) applyChangeRequestProposal(ctx context.Context, q repository.Querier,
-	accountID uuid.UUID, clone *quoteVersionClone, proposal *resolvedChangeRequest,
-) error {
-	if proposal == nil || len(proposal.Operations) == 0 ||
-		proposal.Operations[0].Operation.Type == domain.ChangeRequestOperationRequiresSeller {
-		return nil
-	}
+// changeOperationWriter is the line persistence that materializes a validated proposal.
+type changeOperationWriter interface {
+	CreateItems(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
+		items []domain.NewQuoteItem) ([]domain.QuoteItem, error)
+	CreateAlternatives(ctx context.Context, q repository.Querier, accountID uuid.UUID,
+		alternatives []domain.NewQuoteItemAlternative) error
+	DeleteAlternativesByItemIDs(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
+		itemIDs []uuid.UUID) error
+	DeleteItems(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
+		itemIDs []uuid.UUID) error
+	UpdateItemQuantities(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
+		updates []domain.QuoteItemQuantityUpdate) error
+	ReplaceItems(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
+		replacements []domain.QuoteItemReplacement) error
+}
 
+// applyChangeOperations writes a validated proposal onto the draft whose own lines it targets. It
+// sets no price: a requantified line keeps its unit price, and a new or replaced one waits for the
+// seller to accept materials.
+func applyChangeOperations(ctx context.Context, q repository.Querier, lines changeOperationWriter,
+	accountID, draftID uuid.UUID, proposal resolvedChangeRequest,
+) error {
 	removeIDs := make([]uuid.UUID, 0)
 	quantityUpdates := make([]domain.QuoteItemQuantityUpdate, 0)
 	replacements := make([]domain.QuoteItemReplacement, 0)
@@ -285,25 +237,14 @@ func (s *QuoteDeliveryService) applyChangeRequestProposal(ctx context.Context, q
 			addedItems = append(addedItems, item)
 			addedAlternatives = append(addedAlternatives, alternativesFromMatch(item.ID, resolved.Match)...)
 		case domain.ChangeRequestOperationRemoveItem:
-			target, err := clonedTargetID(clone, *operation.TargetItemID)
-			if err != nil {
-				return err
-			}
-			removeIDs = append(removeIDs, target)
-			staleAlternativeIDs = append(staleAlternativeIDs, target)
+			removeIDs = append(removeIDs, *operation.TargetItemID)
+			staleAlternativeIDs = append(staleAlternativeIDs, *operation.TargetItemID)
 		case domain.ChangeRequestOperationUpdateQuantity:
-			target, err := clonedTargetID(clone, *operation.TargetItemID)
-			if err != nil {
-				return err
-			}
 			quantityUpdates = append(quantityUpdates, domain.QuoteItemQuantityUpdate{
-				ItemID: target, Quantity: *operation.Quantity,
+				ItemID: *operation.TargetItemID, Quantity: *operation.Quantity,
 			})
 		case domain.ChangeRequestOperationReplaceItem:
-			target, err := clonedTargetID(clone, *operation.TargetItemID)
-			if err != nil {
-				return err
-			}
+			target := *operation.TargetItemID
 			replacements = append(replacements, domain.QuoteItemReplacement{ItemID: target,
 				ProductID: resolved.Match.ProductID, RequestedDescription: *operation.RequestedDescription,
 				Quantity: *operation.Quantity, Unit: operation.Unit,
@@ -314,25 +255,25 @@ func (s *QuoteDeliveryService) applyChangeRequestProposal(ctx context.Context, q
 			staleAlternativeIDs = append(staleAlternativeIDs, target)
 		}
 	}
-	if err := s.quotes.DeleteAlternativesByItemIDs(ctx, q, accountID, clone.Draft.ID,
+	if err := lines.DeleteAlternativesByItemIDs(ctx, q, accountID, draftID,
 		staleAlternativeIDs); err != nil {
 		return err
 	}
-	if err := s.quotes.DeleteItems(ctx, q, accountID, clone.Draft.ID, removeIDs); err != nil {
+	if err := lines.DeleteItems(ctx, q, accountID, draftID, removeIDs); err != nil {
 		return err
 	}
-	if err := s.quotes.UpdateItemQuantities(ctx, q, accountID, clone.Draft.ID, quantityUpdates); err != nil {
+	if err := lines.UpdateItemQuantities(ctx, q, accountID, draftID, quantityUpdates); err != nil {
 		return err
 	}
-	if err := s.quotes.ReplaceItems(ctx, q, accountID, clone.Draft.ID, replacements); err != nil {
+	if err := lines.ReplaceItems(ctx, q, accountID, draftID, replacements); err != nil {
 		return err
 	}
 	if len(addedItems) > 0 {
-		if _, err := s.quotes.CreateItems(ctx, q, accountID, clone.Draft.ID, addedItems); err != nil {
+		if _, err := lines.CreateItems(ctx, q, accountID, draftID, addedItems); err != nil {
 			return err
 		}
 	}
-	return s.quotes.CreateAlternatives(ctx, q, accountID,
+	return lines.CreateAlternatives(ctx, q, accountID,
 		append(replacementAlternatives, addedAlternatives...))
 }
 
@@ -343,29 +284,4 @@ func newChangeRequestItem(operation domain.ChangeRequestOperation,
 		RequestedDescription: *operation.RequestedDescription, Quantity: *operation.Quantity,
 		Unit: operation.Unit, ConfidenceScore: decimal.NewNullDecimal(match.Confidence),
 		MatchStatus: match.MatchStatus}
-}
-
-func clonedTargetID(clone *quoteVersionClone, sourceID uuid.UUID) (uuid.UUID, error) {
-	target, ok := clone.SourceItemIDs[sourceID]
-	if !ok {
-		return uuid.Nil, fmt.Errorf("%w: change request target did not exist in the sent version",
-			domain.ErrInvalidInput)
-	}
-	return target, nil
-}
-
-func (s *QuoteDeliveryService) recordChangeRequestProposal(ctx context.Context, q repository.Querier,
-	accountID uuid.UUID, draftID uuid.UUID, message string, proposal *resolvedChangeRequest,
-) error {
-	if proposal == nil || s.handlerDecisions == nil {
-		return nil
-	}
-	payload, err := json.Marshal(proposal.Proposal)
-	if err != nil {
-		return err
-	}
-	return s.handlerDecisions.Create(ctx, q, accountID, domain.NewHandlerDecision{
-		QuoteVersionID: draftID, ClientInput: message, AIInterpretation: proposal.Proposal.Interpretation,
-		AIProposal: string(payload), StateAtDecision: domain.QuoteStatusSent,
-	})
 }

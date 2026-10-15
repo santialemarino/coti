@@ -469,28 +469,58 @@ treated as a successful client delivery.
 
 An active send can receive one public answer. `REQUEST_CHANGE` requires a message of at most
 512 characters. Under one tenant transaction, the service locks the quote, records the
-`client_action`, links a `quote_message` to it, copies the frozen version's items and alternatives
-into a mutable v2, values the copied lines and alternatives at the quote branch's current catalog
-prices, and moves `SENT` to `CHANGE_REQUESTED`. Products with no current branch price remain
-unpriced for seller review. The old send and public link remain pinned to v1. A stale send for
+`client_action`, links a `CLIENT` `quote_message` to it, copies the frozen version's items and
+alternatives into a mutable v2, values the copied lines and alternatives at the quote branch's
+current catalog prices, and moves `SENT` to `CHANGE_REQUESTED`. Products with no current branch price
+remain unpriced for seller review. The old send and public link remain pinned to v1. A stale send for
 another version cannot change the quote.
 
-Before that transaction, the change handler receives only the customer message and the frozen
-version's opaque item IDs, descriptions, quantities, and units. Its forced schema may propose
-`ADD_ITEM`, `REMOVE_ITEM`, `REPLACE_ITEM`, or `UPDATE_QUANTITY`. The service validates every
-operation against those source IDs and the configured item limit, matches only added and replaced
-materials against the branch catalog, and applies the validated batch to v2 in the same transaction.
-It records the unreviewed input, interpretation, and proposal in `handler_decision`. The handler
-never calculates money, sends a reply, or changes the client-visible quote; the seller still reviews
-the draft and accepts materials before a new delivery.
+No model runs on that request. The same transaction opens the quote's message window with no wait
+and closes it, so the message, and any WhatsApp reply still in an open window, lands in a `CLOSED`
+batch that the conversation queue picks up on its next pass. The customer sees their request
+acknowledged at once; what the model proposes reaches only the seller's draft.
 
-Ambiguous, unsupported, malformed, unavailable, or timed-out handler output leaves the request
-and its unchanged v2 intact for manual seller handling. That fallback is intentional: a customer
-request must not fail merely because a proposal could not be made, and no uncertain operation is
-materialized. Replacing a product clears that line's previous price; accepting materials
-recalculates current prices and moves to `QUOTED`, then sending moves to `SENT`. The second send
-has its own token. Public links resolve through `quote_send.public_token`, scoped to the delivery
-and channel.
+### Conversation batch handler
+
+`BatchChangeHandler` is the `ConversationBatchHandler` the queue runs for every claimed batch, from
+the API's ticker or the `conversation-batches` job
+([whatsapp-cloud-api.md](whatsapp-cloud-api.md#closing-and-processing-batches)). It works in three
+steps, each tenant transaction taking the quote's row lock before the batch's:
+
+1. **Prepare.** It confirms the claim still holds (`status = PROCESSING` at the claim's
+   `processing_started_at`) and runs the state×intention matrix (`domain.ValidateHandlerRun`): only
+   an unarchived `SENT` or `CHANGE_REQUESTED` quote is handled. A `SENT` quote moves to
+   `CHANGE_REQUESTED` with no user on the `quote_status_change` row, and the frozen version is cloned
+   into the single draft when none is open; a `CHANGE_REQUESTED` quote keeps the draft it has. It
+   reads the batch's `CLIENT` messages in order and the `CONVERSATION_CONTEXT_MESSAGES` newest
+   messages of any author outside the batch, then commits, so the move holds whatever the model does.
+2. **Propose.** Outside any transaction the forced-schema change handler receives the batch's
+   messages, the context, and the **draft's** lines with their opaque IDs. Its instructions are a
+   fixed text sent first, so the provider caches that prefix; everything variable rides in the
+   input. Every operation is validated against the draft's own lines and the item limit, then
+   against the matrix (`domain.ValidateHandlerIntent`), and added or replaced materials are matched
+   against the branch catalog.
+3. **Apply.** Under the lock again the claim, the matrix and the draft are re-checked: a quote
+   archived or closed meanwhile fails the batch at once (`domain.ErrBatchUnprocessable`), and a draft
+   the seller sent, or a targeted line the seller removed, returns it to the queue for a fresh
+   proposal. The operations are written in place, the discount sweep re-settles the draft's
+   discounts and total, and `handler_decision` records the batch (`message_batch_id`), the input,
+   the interpretation, the proposal and the state the quote was in at the claim. A later batch edits
+   the same draft.
+
+The model never sets money: a requantified line keeps its unit price, a new or replaced line waits
+unpriced for the seller to accept materials, and every discount comes from the sweep. It never
+answers the customer and never infers an acceptance or a rejection: "dale, acepto" is its
+`REQUIRES_SELLER` escape. That escape, a proposal the backend refuses, and a deployment with no
+language model bound (`AI_LLM_PROVIDER=disabled`; the model is never called) all record a `NO_MATCH`
+decision with its reason (`REQUIRES_SELLER`, `PROPOSAL_REFUSED`, `AI_DISABLED`) and finish the batch
+`PROCESSED`, so nothing loops. `handler_decision.ai_proposal` stores
+`{outcome, no_match_origin, no_match_reason, interpretation, operations}`. A provider failure is
+retried like any other error, up to `CONVERSATION_MAX_ATTEMPTS`.
+
+The RFQ detail's `changes_requested.handler` carries the latest decision on the draft, and
+`changes_requested.client_messages` every message the customer sent since the version they answered
+was frozen; the backoffice shows both beside the customer's request.
 
 ### Closing and reactivating a quote
 
