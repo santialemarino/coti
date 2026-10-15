@@ -98,7 +98,8 @@ on that line.
 
 A suppressed application stays on the version (`suppressed_by_seller = true`) and the sweep does not
 re-apply it: a line application is identified by promotion and line, a set or total one by
-promotion. While the quote still earns it, what it covered stays without a promotion: no other rule
+promotion. While restoring it would succeed — the quote, every other suppression kept, earns it
+again — what it covered stays without a promotion: no other rule
 takes its place on those lines (a set covering one of them included), and no other `ON_TOTAL` rule
 applies once a total one is suppressed. Once the quote stops earning it, it holds nothing and the
 next rule may apply. Restoring re-applies it, and restoring an application the quote no longer

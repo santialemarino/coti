@@ -489,6 +489,25 @@ func TestEvaluateDiscounts_ASuppressionThatNoLongerQualifiesBlocksNothing(t *tes
 	assertApplied(t, got, map[string]string{"a1000000": "39.60", "a3000000/0a": "20.00"})
 }
 
+func TestEvaluateDiscounts_AnotherSuppressionNeverUnmasksALine(t *testing.T) {
+	t.Parallel()
+	lines := []engineLine{testLine(lineA, cement, "10", "1000.00", "10000.00", nil)}
+	total := promo{id: promoR, condition: domain.PromotionConditionOnTotal, exclusive: true,
+		action: domain.PromotionActionPercentage, value: "20", priority: 9}
+	high := promo{id: promoP, condition: domain.PromotionConditionPerItem,
+		action: domain.PromotionActionPercentage, value: "10", priority: 5, targets: []uuid.UUID{cement}}
+	low := promo{id: promoQ, condition: domain.PromotionConditionPerItem,
+		action: domain.PromotionActionPercentage, value: "3", targets: []uuid.UUID{cement}}
+	got := evaluateSuppressed(lines, []engineSuppression{
+		{PromotionID: uuid.MustParse(promoR), Scope: domain.DiscountScopeTotal},
+		{PromotionID: uuid.MustParse(promoP), Scope: domain.DiscountScopeItem,
+			ItemIDs: []uuid.UUID{uuid.MustParse(lineA)}},
+	}, total, high, low)
+	// The seller took off the exclusive total R, then P on line A. Restoring P alone would earn it
+	// again, so line A stays without a promotion — Q's 300 never steps in.
+	assertApplied(t, got, map[string]string{})
+}
+
 func TestEvaluateDiscounts_OnlyRulesInForce(t *testing.T) {
 	t.Parallel()
 	lines := []engineLine{testLine(lineA, cement, "10", "1000.00", "10000.00", nil)}

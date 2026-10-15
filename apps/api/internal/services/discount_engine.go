@@ -66,11 +66,21 @@ func evaluateDiscounts(in engineInput) []domain.DiscountApplication {
 	if len(in.Suppressed) == 0 {
 		return evaluateWith(in, func(discountCandidate) bool { return false })
 	}
-	// A suppression blocks what it covered only while its promotion would still be earned there —
-	// exactly when restoring it would succeed — so one that stopped qualifying never strands a line.
-	unsuppressed := in
-	unsuppressed.Suppressed = nil
-	return evaluateWith(in, suppressedBy(in.Suppressed, evaluateDiscounts(unsuppressed)))
+	// A suppression holds what it covered only while restoring it would succeed: lifted alone, with
+	// every other suppressed application still off, the quote earns it again. One that stopped
+	// qualifying never strands a line.
+	holding := make([]engineSuppression, 0, len(in.Suppressed))
+	for i, suppression := range in.Suppressed {
+		others := slices.Delete(slices.Clone(in.Suppressed), i, i+1)
+		restored := evaluateWith(in, suppressedBy(others, nil))
+		key := suppression.key()
+		if slices.ContainsFunc(restored, func(app domain.DiscountApplication) bool {
+			return suppressionKey(app.PromotionID, app.Scope, app.ItemIDs) == key
+		}) {
+			holding = append(holding, suppression)
+		}
+	}
+	return evaluateWith(in, suppressedBy(in.Suppressed, holding))
 }
 
 func evaluateWith(in engineInput, skip func(discountCandidate) bool) []domain.DiscountApplication {
@@ -88,25 +98,16 @@ func evaluateWith(in engineInput, skip func(discountCandidate) bool) []domain.Di
 	return resolveCandidates(candidates, lines, in.Held)
 }
 
-// suppressedBy reports whether a candidate falls on something a seller suppressed: the suppressed
-// application itself, or — while that application is still earned — a line it covered, or the
-// total once an ON_TOTAL one is off.
-func suppressedBy(
-	suppressions []engineSuppression, earned []domain.DiscountApplication,
-) func(discountCandidate) bool {
-	stillEarned := map[string]bool{}
-	for _, app := range earned {
-		stillEarned[suppressionKey(app.PromotionID, app.Scope, app.ItemIDs)] = true
-	}
+// suppressedBy reports whether a candidate is a suppressed application, or falls on what a holding
+// suppression covered: its lines, or the total once an ON_TOTAL one is off.
+func suppressedBy(suppressed, holding []engineSuppression) func(discountCandidate) bool {
 	keys := map[string]bool{}
+	for _, s := range suppressed {
+		keys[s.key()] = true
+	}
 	lines := map[uuid.UUID]bool{}
 	total := false
-	for _, s := range suppressions {
-		key := suppressionKey(s.PromotionID, s.Scope, s.ItemIDs)
-		keys[key] = true
-		if !stillEarned[key] {
-			continue
-		}
+	for _, s := range holding {
 		if s.Scope == domain.DiscountScopeTotal {
 			total = true
 		}
@@ -124,6 +125,8 @@ func suppressedBy(
 		return slices.ContainsFunc(c.lineIDs, func(id uuid.UUID) bool { return lines[id] })
 	}
 }
+
+func (s engineSuppression) key() string { return suppressionKey(s.PromotionID, s.Scope, s.ItemIDs) }
 
 // suppressionKey identifies an application across sweeps: a line application by its promotion and
 // line, a set or total one by its promotion alone, since the lines it covers can change.
