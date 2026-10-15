@@ -856,7 +856,12 @@ CREATE TABLE promotion (
   description    VARCHAR(512),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  name           VARCHAR(128) NOT NULL
+  name           VARCHAR(128) NOT NULL,
+  -- The net an ON_TOTAL promotion needs before it applies; null = no threshold.
+  min_total      NUMERIC(14,2),
+  CONSTRAINT ck_promotion_min_total CHECK (
+    min_total IS NULL OR (condition_type = 'ON_TOTAL'::promotion_condition_type AND min_total > 0)
+  )
 );
 
 CREATE TABLE promotion_condition_item (

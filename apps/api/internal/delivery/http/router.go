@@ -51,6 +51,7 @@ type Handlers struct {
 	WhatsApp      *handler.WhatsAppWebhookHandler
 	ARCASetup     *handler.ARCASetupHandler
 	Invoice       *handler.InvoiceHandler
+	Promotion     *handler.PromotionHandler
 	// File is nil unless the local storage adapter is bound.
 	File *handler.FileHandler
 }
@@ -257,6 +258,10 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	admin.POST("/products/import/preview", h.CatalogImport.Preview)
 	admin.POST("/products/import/confirm", h.CatalogImport.Confirm)
 	admin.GET("/product-taxonomy", h.CatalogImport.Taxonomy)
+	admin.GET("/promotions", h.Promotion.List)
+	admin.GET("/promotions/:promotionId", h.Promotion.Get)
+	admin.POST("/promotions", h.Promotion.Create)
+	admin.PUT("/promotions/:promotionId", h.Promotion.Replace)
 	if h.Invoice != nil {
 		admin.GET("/invoicing/settings", h.Invoice.GetSettings)
 		admin.PUT("/invoicing/settings", h.Invoice.UpdateSettings)

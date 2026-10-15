@@ -300,8 +300,9 @@ two decimals.
 **A null floor means no floor, never a floor of zero.** `product_price.min_price` is nullable and
 most accounts never set one. Read as zero, a later discount could take the line to nothing.
 
-**`quote_version.total` is Σ subtotals − Σ discounts.** The promotion sweep that produces the
-second term is US-38, so today it is zero — part of the formula rather than missing from it.
+**`quote_version.total` is Σ subtotals − Σ discounts.** Accepting the materials also runs the
+discount sweep, which earns the promotions the priced lines qualify for; see
+[discount-engine.md](discount-engine.md).
 
 ### The two lines that stay unvalued
 

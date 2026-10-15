@@ -374,6 +374,7 @@
     "QUOTE_ARCHIVED": "La cotización está archivada y no se puede modificar.",
     "QUOTE_NOT_DRAFT": "La cotización ya no está en un estado que permita esa acción.",
     "QUOTE_NOT_REACTIVATABLE": "La cotización ya no está cerrada o su versión cambió. Actualizá la pantalla.",
+    "DISCOUNT_NOT_APPLICABLE": "Esa promoción ya no aplica a esta cotización, así que no se puede restaurar.",
     "QUOTE_NOT_SENDABLE": "La cotización cambió y esta versión ya no es la aprobada.",
     "DELIVERY_CHANNEL": "Esta sucursal no tiene los canales de envío necesarios configurados.",
     "CHANNEL_IDENTIFIER": "Revisá la dirección: no es un correo válido.",
@@ -1485,6 +1486,10 @@
             "ITEM": "Por ítem",
             "ITEM_SET": "Por combo"
           },
+          "origin": {
+            "AUTOMATIC": "Promoción",
+            "AI_ADAPTATION": "Sugerido por IA"
+          },
           "toast": {
             "added": "Agregamos el descuento «{name}».",
             "updated": "Actualizamos el descuento «{name}».",
@@ -1505,6 +1510,7 @@
           "INVALID_INPUT": "Revisá el dato ingresado: la cantidad debe ser mayor a cero y los precios pueden tener hasta dos decimales.",
           "QUOTE_ARCHIVED": "Esta cotización está archivada. Desarchivala antes de modificarla.",
           "QUOTE_NOT_DRAFT": "Esta cotización ya cambió de estado. Actualizá la pantalla antes de volver a editarla.",
+          "DISCOUNT_NOT_APPLICABLE": "Esa promoción ya no aplica con los materiales actuales, así que no se puede restaurar.",
           "FORBIDDEN": "No tenés permiso para modificar esta cotización.",
           "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
           "INTERNAL": "No pudimos guardar el cambio. Intentá de nuevo."
