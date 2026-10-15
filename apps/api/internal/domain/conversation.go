@@ -68,6 +68,22 @@ type MessageBatch struct {
 	ClosedAt    *time.Time
 	ProcessedAt *time.Time
 	CreatedAt   time.Time
+	// Attempts counts the processing attempts that failed or timed out.
+	Attempts  int
+	LastError *string
+	// ProcessingStartedAt dates the latest claim; a write that finishes the claim must match it.
+	ProcessingStartedAt *time.Time
+}
+
+// ConversationSweep is what one pass over the conversation queue did. Reclaimed claims are
+// counted apart from the outcomes of the claims this pass made.
+type ConversationSweep struct {
+	Closed    int
+	Reclaimed int
+	Claimed   int
+	Processed int
+	Retried   int
+	Failed    int
 }
 
 // ConversationCandidate is a quote whose latest live send went to an inbound sender's address.
