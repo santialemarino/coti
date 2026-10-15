@@ -40,6 +40,8 @@ const HANDLER_NO_MATCH_KEYS = {
   REQUIRES_SELLER: 'detail.callouts.changeRequested.handler.requiresSeller',
   AI_DISABLED: 'detail.callouts.changeRequested.handler.aiDisabled',
   PROPOSAL_REFUSED: 'detail.callouts.changeRequested.handler.proposalRefused',
+  PIPELINE_EXHAUSTED: 'detail.callouts.changeRequested.handler.pipelineExhausted',
+  PROMOTION_NOT_EARNED: 'detail.callouts.changeRequested.handler.promotionNotEarned',
 } as const satisfies Record<HandlerNoMatchReason, string>;
 
 interface RfqDetailViewProps {

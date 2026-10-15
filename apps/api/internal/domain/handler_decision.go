@@ -44,15 +44,32 @@ const (
 	HandlerNoMatchAIDisabled HandlerNoMatchReason = "AI_DISABLED"
 	// HandlerNoMatchProposalRefused means the backend refused the model's proposal.
 	HandlerNoMatchProposalRefused HandlerNoMatchReason = "PROPOSAL_REFUSED"
+	// HandlerNoMatchRecipesExhausted means every recipe for the customer's goal came up empty.
+	HandlerNoMatchRecipesExhausted HandlerNoMatchReason = "PIPELINE_EXHAUSTED"
+	// HandlerNoMatchPromotionNotEarned means the promotion the customer asked for does not apply.
+	HandlerNoMatchPromotionNotEarned HandlerNoMatchReason = "PROMOTION_NOT_EARNED"
+)
+
+// HandlerStrategy is one recipe the backend ran for a complex intent.
+type HandlerStrategy string
+
+const (
+	// HandlerStrategyFindCheaperAlternatives swaps lines for their cheapest cheaper ECONOMY alternative.
+	HandlerStrategyFindCheaperAlternatives HandlerStrategy = "FIND_CHEAPER_ALTERNATIVES"
+	// HandlerStrategyImproveQuality swaps lines for their cheapest PREMIUM alternative.
+	HandlerStrategyImproveQuality HandlerStrategy = "IMPROVE_QUALITY"
 )
 
 // HandlerProposalRecord is what handler_decision.ai_proposal stores for one batch.
 type HandlerProposalRecord struct {
-	Outcome        HandlerOutcome           `json:"outcome"`
-	NoMatchOrigin  *HandlerNoMatchOrigin    `json:"no_match_origin,omitempty"`
-	NoMatchReason  *HandlerNoMatchReason    `json:"no_match_reason,omitempty"`
-	Interpretation string                   `json:"interpretation"`
-	Operations     []ChangeRequestOperation `json:"operations"`
+	Outcome        HandlerOutcome        `json:"outcome"`
+	NoMatchOrigin  *HandlerNoMatchOrigin `json:"no_match_origin,omitempty"`
+	NoMatchReason  *HandlerNoMatchReason `json:"no_match_reason,omitempty"`
+	Interpretation string                `json:"interpretation"`
+	Intent         *ChangeRequestIntent  `json:"intent,omitempty"`
+	// StrategiesTried lists the recipes run for a complex intent; empty for a direct request.
+	StrategiesTried []HandlerStrategy        `json:"strategies_tried,omitempty"`
+	Operations      []ChangeRequestOperation `json:"operations"`
 }
 
 // NewHandlerDecision is one unreviewed AI proposal recorded for pilot quality metrics.

@@ -208,13 +208,26 @@ type conversationReader struct {
 	reviews  conversationReviewLister
 }
 
-// load groups a quote's messages by batch with the handler's run on each; nil when it has none.
+// load groups a quote's messages by batch with the handler's run on each, and sets the seller's
+// sends beside them; nil until the customer has written.
 func (r *conversationReader) load(ctx context.Context, q repository.Querier, accountID uuid.UUID,
 	quote domain.Quote, version *domain.QuoteVersion,
 ) (*domain.Conversation, error) {
-	messages, err := r.messages.ListByQuote(ctx, q, accountID, quote.ID)
-	if err != nil || len(messages) == 0 {
+	all, err := r.messages.ListByQuote(ctx, q, accountID, quote.ID)
+	if err != nil {
 		return nil, err
+	}
+	messages := make([]domain.QuoteMessage, 0, len(all))
+	sellerMessages := make([]domain.QuoteMessage, 0)
+	for _, message := range all {
+		if message.AuthorType == domain.MessageAuthorSeller {
+			sellerMessages = append(sellerMessages, message)
+		} else {
+			messages = append(messages, message)
+		}
+	}
+	if len(messages) == 0 {
+		return nil, nil
 	}
 	batches, err := r.batches.ListByQuote(ctx, q, accountID, quote.ID)
 	if err != nil {
@@ -227,7 +240,7 @@ func (r *conversationReader) load(ctx context.Context, q repository.Querier, acc
 
 	byBatch := make(map[uuid.UUID][]domain.QuoteMessage, len(batches))
 	conversation := &domain.Conversation{Batches: make([]domain.ConversationBatch, 0, len(batches)),
-		Pending: make([]domain.QuoteMessage, 0)}
+		Pending: make([]domain.QuoteMessage, 0), SellerMessages: sellerMessages}
 	for _, message := range messages {
 		if message.BatchID == nil {
 			conversation.Pending = append(conversation.Pending, message)

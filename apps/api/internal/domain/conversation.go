@@ -153,6 +153,8 @@ type Conversation struct {
 	Batches []ConversationBatch
 	// Pending are the messages of a window still open, not yet handed to the handler.
 	Pending []QuoteMessage
+	// SellerMessages are the quote's sends, as the seller's side of the timeline.
+	SellerMessages []QuoteMessage
 	// CanDiscardAIChanges is a change-requested draft carrying AI changes the seller has not
 	// decided on.
 	CanDiscardAIChanges bool

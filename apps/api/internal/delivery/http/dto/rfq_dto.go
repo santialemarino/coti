@@ -222,7 +222,9 @@ type ChangeRequestDiffResponse struct {
 type ConversationResponse struct {
 	Batches []ConversationBatchResponse `json:"batches"`
 	// Pending are the messages of a window still open, not yet handed to the handler.
-	Pending             []ConversationMessageResponse `json:"pending"`
+	Pending []ConversationMessageResponse `json:"pending"`
+	// SellerMessages are the quote's sends; the public link reads as a placeholder.
+	SellerMessages      []ConversationMessageResponse `json:"seller_messages"`
 	CanDiscardAIChanges bool                          `json:"can_discard_ai_changes"`
 }
 
@@ -248,7 +250,7 @@ type ConversationMessageResponse struct {
 type ConversationDecisionResponse struct {
 	Interpretation string     `json:"interpretation"`
 	Outcome        string     `json:"outcome" enums:"APPLIED,NO_MATCH"`
-	NoMatchReason  *string    `json:"no_match_reason" enums:"REQUIRES_SELLER,AI_DISABLED,PROPOSAL_REFUSED"`
+	NoMatchReason  *string    `json:"no_match_reason" enums:"REQUIRES_SELLER,AI_DISABLED,PROPOSAL_REFUSED,PIPELINE_EXHAUSTED,PROMOTION_NOT_EARNED"`
 	SellerDecision *string    `json:"seller_decision" enums:"APPROVED_AS_IS,EDITED,REJECTED,MANUAL_OVERRIDE"`
 	DecidedAt      *time.Time `json:"decided_at"`
 	CreatedAt      time.Time  `json:"created_at"`
@@ -266,7 +268,7 @@ type HandlerDecisionResponse struct {
 	ClientInput    string    `json:"client_input"`
 	Interpretation string    `json:"interpretation"`
 	Outcome        string    `json:"outcome" enums:"APPLIED,NO_MATCH"`
-	NoMatchReason  *string   `json:"no_match_reason" enums:"REQUIRES_SELLER,AI_DISABLED,PROPOSAL_REFUSED"`
+	NoMatchReason  *string   `json:"no_match_reason" enums:"REQUIRES_SELLER,AI_DISABLED,PROPOSAL_REFUSED,PIPELINE_EXHAUSTED,PROMOTION_NOT_EARNED"`
 	SellerDecision *string   `json:"seller_decision" enums:"APPROVED_AS_IS,EDITED,REJECTED,MANUAL_OVERRIDE"`
 	CreatedAt      time.Time `json:"created_at"`
 }

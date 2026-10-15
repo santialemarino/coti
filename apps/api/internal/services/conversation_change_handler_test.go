@@ -33,7 +33,7 @@ func TestBatchChangeHandler_Propose_SendsTheBatchAndMatchesNewMaterials(t *testi
 	prepared, lineID := preparedWithLine()
 	description, quantity := "cal hidratada", decimal.NewFromInt(5)
 	proposer := &fakeChangeRequestHandler{proposal: &domain.ChangeRequestProposal{
-		Interpretation: "Suma cal y quita el cemento.",
+		Level: domain.ChangeRequestLevelAtomic, Interpretation: "Suma cal y quita el cemento.",
 		Operations: []domain.ChangeRequestOperation{
 			{Type: domain.ChangeRequestOperationAddItem, RequestedDescription: &description,
 				Quantity: &quantity},
@@ -72,11 +72,11 @@ func TestBatchChangeHandler_Propose_LeavesWhatItCannotApplyToTheSeller(t *testin
 	}{
 		{"no model", nil, domain.HandlerNoMatchAIDisabled},
 		{"escape", &fakeChangeRequestHandler{proposal: &domain.ChangeRequestProposal{
-			Interpretation: "Acepta la cotización.",
-			Operations:     []domain.ChangeRequestOperation{{Type: domain.ChangeRequestOperationRequiresSeller}},
+			Level: domain.ChangeRequestLevelNoMatch, Interpretation: "Acepta la cotización.",
+			Operations: []domain.ChangeRequestOperation{{Type: domain.ChangeRequestOperationRequiresSeller}},
 		}}, domain.HandlerNoMatchRequiresSeller},
 		{"a line of another draft", &fakeChangeRequestHandler{proposal: &domain.ChangeRequestProposal{
-			Interpretation: "Cambia una cantidad.",
+			Level: domain.ChangeRequestLevelAtomic, Interpretation: "Cambia una cantidad.",
 			Operations: []domain.ChangeRequestOperation{{Type: domain.ChangeRequestOperationUpdateQuantity,
 				TargetItemID: &stranger, Quantity: &quantity}},
 		}}, domain.HandlerNoMatchProposalRefused},

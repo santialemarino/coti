@@ -21,6 +21,8 @@ func HandlerIntentOf(operation ChangeRequestOperationType) (HandlerIntent, bool)
 	case ChangeRequestOperationAddItem, ChangeRequestOperationRemoveItem,
 		ChangeRequestOperationReplaceItem, ChangeRequestOperationUpdateQuantity:
 		return HandlerIntentAtomic, true
+	case ChangeRequestOperationAddDiscount:
+		return HandlerIntentAddDiscount, true
 	default:
 		return "", false
 	}

@@ -16,8 +16,8 @@ import (
 )
 
 func TestChangeRequestHandler_Propose_MapsAnAddItem(t *testing.T) {
-	generator := &fakeGenerator{answer: `{"interpretation":"El cliente pidió sumar cal.","operations":[
-		{"type":"ADD_ITEM","target_item_id":null,"requested_description":"cal hidratada 25 kg","quantity":"5","unit":"bolsa"}
+	generator := &fakeGenerator{answer: `{"level":"ATOMIC","interpretation":"El cliente pidió sumar cal.","intent":null,"intent_item_ids":[],"operations":[
+		{"type":"ADD_ITEM","target_item_id":null,"requested_description":"cal hidratada 25 kg","quantity":"5","unit":"bolsa","promotion_id":null}
 	]}`}
 	handler := NewChangeRequestHandler(generator)
 
@@ -28,7 +28,8 @@ func TestChangeRequestHandler_Propose_MapsAnAddItem(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Propose returned %v", err)
 	}
-	if proposal.Interpretation != "El cliente pidió sumar cal." || len(proposal.Operations) != 1 {
+	if proposal.Level != domain.ChangeRequestLevelAtomic ||
+		proposal.Interpretation != "El cliente pidió sumar cal." || len(proposal.Operations) != 1 {
 		t.Fatalf("proposal = %+v, want one interpreted operation", proposal)
 	}
 	operation := proposal.Operations[0]
@@ -44,8 +45,8 @@ func TestChangeRequestHandler_Propose_MapsAnAddItem(t *testing.T) {
 }
 
 func TestChangeRequestHandler_Propose_RefusesAnInvalidTargetID(t *testing.T) {
-	generator := &fakeGenerator{answer: `{"interpretation":"Quiere quitar una línea.","operations":[
-		{"type":"REMOVE_ITEM","target_item_id":"not-an-id","requested_description":null,"quantity":null,"unit":null}
+	generator := &fakeGenerator{answer: `{"level":"ATOMIC","interpretation":"Quiere quitar una línea.","intent":null,"intent_item_ids":[],"operations":[
+		{"type":"REMOVE_ITEM","target_item_id":"not-an-id","requested_description":null,"quantity":null,"unit":null,"promotion_id":null}
 	]}`}
 
 	_, err := NewChangeRequestHandler(generator).Propose(context.Background(), domain.ChangeRequestInput{
@@ -56,39 +57,110 @@ func TestChangeRequestHandler_Propose_RefusesAnInvalidTargetID(t *testing.T) {
 	}
 }
 
-func TestChangeRequestSchema_UsesTheClosedOperationCatalog(t *testing.T) {
-	schema := changeRequestSchema()
-	properties := schema["properties"].(map[string]any)
+func TestChangeRequestHandler_Propose_MapsLevelsIntentsAndDiscounts(t *testing.T) {
+	lineID, promotionID := uuid.New(), uuid.New()
+	cases := []struct {
+		name   string
+		answer string
+		check  func(t *testing.T, proposal *domain.ChangeRequestProposal)
+	}{
+		{"no match becomes the seller escape",
+			`{"level":"NO_MATCH","interpretation":"Acepta.","intent":null,"intent_item_ids":[],"operations":[]}`,
+			func(t *testing.T, proposal *domain.ChangeRequestProposal) {
+				if proposal.Level != domain.ChangeRequestLevelNoMatch || len(proposal.Operations) != 1 ||
+					proposal.Operations[0].Type != domain.ChangeRequestOperationRequiresSeller {
+					t.Errorf("proposal = %+v, want one REQUIRES_SELLER under NO_MATCH", proposal)
+				}
+			}},
+		{"complex carries its intent and lines",
+			`{"level":"COMPLEX","interpretation":"Lo ve caro.","intent":"LOWER_TOTAL_PRICE","intent_item_ids":["` +
+				lineID.String() + `"],"operations":[]}`,
+			func(t *testing.T, proposal *domain.ChangeRequestProposal) {
+				if proposal.Intent == nil || *proposal.Intent != domain.ChangeRequestIntentLowerTotalPrice ||
+					len(proposal.IntentItemIDs) != 1 || proposal.IntentItemIDs[0] != lineID ||
+					len(proposal.Operations) != 0 {
+					t.Errorf("proposal = %+v, want the intent on the named line and no operations", proposal)
+				}
+			}},
+		{"a discount names its promotion",
+			`{"level":"ATOMIC","interpretation":"Pide la promo.","intent":null,"intent_item_ids":[],"operations":[
+				{"type":"ADD_DISCOUNT","target_item_id":null,"requested_description":null,"quantity":null,"unit":null,"promotion_id":"` +
+				promotionID.String() + `"}]}`,
+			func(t *testing.T, proposal *domain.ChangeRequestProposal) {
+				if len(proposal.Operations) != 1 || proposal.Operations[0].PromotionID == nil ||
+					*proposal.Operations[0].PromotionID != promotionID {
+					t.Errorf("proposal = %+v, want the promotion id", proposal)
+				}
+			}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			proposal, err := NewChangeRequestHandler(&fakeGenerator{answer: tc.answer}).Propose(
+				context.Background(), domain.ChangeRequestInput{Message: "x"})
+			if err != nil {
+				t.Fatalf("Propose returned %v", err)
+			}
+			tc.check(t, proposal)
+		})
+	}
+}
+
+func TestChangeRequestHandler_Propose_RefusesMalformedIDs(t *testing.T) {
+	for name, answer := range map[string]string{
+		"promotion": `{"level":"ATOMIC","interpretation":"x","intent":null,"intent_item_ids":[],"operations":[
+			{"type":"ADD_DISCOUNT","target_item_id":null,"requested_description":null,"quantity":null,"unit":null,"promotion_id":"10%"}]}`,
+		"intent line": `{"level":"COMPLEX","interpretation":"x","intent":"IMPROVE_QUALITY","intent_item_ids":["cemento"],"operations":[]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := NewChangeRequestHandler(&fakeGenerator{answer: answer}).Propose(context.Background(),
+				domain.ChangeRequestInput{Message: "x"})
+			if !errors.Is(err, domain.ErrInvalidInput) {
+				t.Fatalf("Propose returned %v, want ErrInvalidInput", err)
+			}
+		})
+	}
+}
+
+func TestChangeRequestSchema_UsesTheClosedCatalogs(t *testing.T) {
+	properties := changeRequestSchema()["properties"].(map[string]any)
+	levels := properties["level"].(map[string]any)["enum"].([]string)
+	if want := []string{"ATOMIC", "COMPLEX", "NO_MATCH"}; !reflect.DeepEqual(levels, want) {
+		t.Errorf("level enum = %v, want %v with the safe escape", levels, want)
+	}
+	intent := properties["intent"].(map[string]any)["anyOf"].([]any)
+	intents := intent[0].(map[string]any)["enum"].([]string)
+	if want := []string{"LOWER_TOTAL_PRICE", "IMPROVE_QUALITY"}; !reflect.DeepEqual(intents, want) ||
+		intent[1].(map[string]any)["type"] != "null" {
+		t.Errorf("intent = %v, want %v or null", intent, want)
+	}
 	operation := properties["operations"].(map[string]any)["items"].(map[string]any)
-	typeSchema := operation["properties"].(map[string]any)["type"].(map[string]any)
-	got := typeSchema["enum"].([]string)
+	got := operation["properties"].(map[string]any)["type"].(map[string]any)["enum"].([]string)
 	want := []string{
 		string(domain.ChangeRequestOperationAddItem),
 		string(domain.ChangeRequestOperationRemoveItem),
 		string(domain.ChangeRequestOperationReplaceItem),
 		string(domain.ChangeRequestOperationUpdateQuantity),
-		string(domain.ChangeRequestOperationRequiresSeller),
+		string(domain.ChangeRequestOperationAddDiscount),
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("operation enum = %v, want %v", got, want)
 	}
-	if !slices.Contains(got, string(domain.ChangeRequestOperationRequiresSeller)) {
-		t.Error("the schema has no safe escape for a seller-only request")
+	if slices.Contains(got, string(domain.ChangeRequestOperationRequiresSeller)) {
+		t.Error("the escape is the NO_MATCH level, not an operation the model can mix with changes")
 	}
 }
 
 // The instructions are the cached prefix: every request sends the same text, and the batch, its
 // context and the draft's lines ride only in the input.
 func TestChangeRequestHandler_Propose_KeepsTheVariablePartOutOfTheInstructions(t *testing.T) {
-	answer := `{"interpretation":"Pide el visto bueno.","operations":[
-		{"type":"REQUIRES_SELLER","target_item_id":null,"requested_description":null,"quantity":null,"unit":null}
-	]}`
+	answer := `{"level":"NO_MATCH","interpretation":"Pide el visto bueno.","intent":null,"intent_item_ids":[],"operations":[]}`
 	first, second := &fakeGenerator{answer: answer}, &fakeGenerator{answer: answer}
-	itemID := uuid.New()
+	itemID, promotionID := uuid.New(), uuid.New()
 	if _, err := NewChangeRequestHandler(first).Propose(context.Background(), domain.ChangeRequestInput{
-		Message: "dale, acepto",
-		Context: []domain.ConversationLine{{Author: domain.MessageAuthorSeller, Body: "¿Te sirve así?"}},
-		Items:   []domain.ChangeRequestItem{{ID: itemID, RequestedDescription: "cemento", Quantity: decimal.NewFromInt(2)}},
+		Message:    "dale, acepto",
+		Context:    []domain.ConversationLine{{Author: domain.MessageAuthorSeller, Body: "¿Te sirve así?"}},
+		Items:      []domain.ChangeRequestItem{{ID: itemID, RequestedDescription: "cemento", Quantity: decimal.NewFromInt(2)}},
+		Promotions: []domain.ChangeRequestPromotion{{ID: promotionID, Name: "Cemento 10%"}},
 	}); err != nil {
 		t.Fatalf("Propose returned %v", err)
 	}
@@ -99,7 +171,7 @@ func TestChangeRequestHandler_Propose_KeepsTheVariablePartOutOfTheInstructions(t
 	if first.req.Instructions != second.req.Instructions {
 		t.Error("the instructions differ between requests, so their prefix cannot cache")
 	}
-	for _, variable := range []string{"dale, acepto", "¿Te sirve así?", itemID.String()} {
+	for _, variable := range []string{"dale, acepto", "¿Te sirve así?", itemID.String(), promotionID.String()} {
 		if strings.Contains(first.req.Instructions, variable) {
 			t.Errorf("instructions carry %q, want it only in the input", variable)
 		}
@@ -112,7 +184,8 @@ func TestChangeRequestHandler_Propose_KeepsTheVariablePartOutOfTheInstructions(t
 		t.Fatalf("input is not JSON: %v", err)
 	}
 	history, _ := payload["conversation_context"].([]any)
-	if payload["customer_message"] != "dale, acepto" || len(history) != 1 {
-		t.Errorf("payload = %v, want the batch and one context message", payload)
+	promotions, _ := payload["promotions"].([]any)
+	if payload["customer_message"] != "dale, acepto" || len(history) != 1 || len(promotions) != 1 {
+		t.Errorf("payload = %v, want the batch, one context message and the promotion in force", payload)
 	}
 }

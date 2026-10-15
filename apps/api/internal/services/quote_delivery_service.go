@@ -28,6 +28,9 @@ const (
 
 var e164PhonePattern = regexp.MustCompile(`^\+[1-9][0-9]{7,14}$`)
 
+// sellerSendBody is the message a send carries when no representation supplies one.
+const sellerSendBody = "Tu cotización está lista. Podés verla en " + domain.QuotePublicURLPlaceholder
+
 type quoteDeliveryRepository interface {
 	ListByOperation(ctx context.Context, q repository.Querier, accountID, branchID, quoteID,
 		key uuid.UUID) ([]domain.QuoteSend, error)
@@ -272,7 +275,8 @@ func (s *QuoteDeliveryService) sendLocked(ctx context.Context, tenant domain.Ten
 		} else if current.CurrentStatus != domain.QuoteStatusSent {
 			return domain.WithCode(domain.CodeQuoteNotSendable, domain.ErrConflict)
 		}
-		return nil
+		return s.recordSellerSends(commitCtx, q, tenant, quote.ID, prepared, outcomes, bundle,
+			completedAt)
 	})
 	if err != nil {
 		return nil, err
@@ -287,6 +291,39 @@ func (s *QuoteDeliveryService) sendLocked(ctx context.Context, tenant domain.Ten
 		CurrentStatus: quote.CurrentStatus, ExpiresAt: &expiresAt, Deliveries: prepared}
 	s.evaluateAfterCommit(ctx, tenant, quote.ID, version.ID)
 	return result, nil
+}
+
+// recordSellerSends writes each successful send into the quote's conversation as the seller's
+// message. The body keeps the public-link placeholder: the token is a credential and never stored
+// twice.
+func (s *QuoteDeliveryService) recordSellerSends(ctx context.Context, q repository.Querier,
+	tenant domain.Tenant, quoteID uuid.UUID, sends []domain.QuoteSend,
+	outcomes []domain.QuoteSendOutcome, bundle *domain.QuoteRepresentationResult, at time.Time,
+) error {
+	if s.messages == nil {
+		return nil
+	}
+	body := sellerSendBody
+	if bundle != nil {
+		body = bundle.Representation.Message
+	}
+	channels := make(map[uuid.UUID]uuid.UUID, len(sends))
+	for _, send := range sends {
+		channels[send.ID] = send.ChannelID
+	}
+	for _, outcome := range outcomes {
+		if outcome.Status != domain.SendTrackingStatusSent {
+			continue
+		}
+		channelID := channels[outcome.ID]
+		if _, err := s.messages.Create(ctx, q, tenant.AccountID, tenant.BranchID,
+			domain.NewQuoteMessage{ID: uuid.New(), QuoteID: quoteID, ChannelID: &channelID,
+				AuthorType: domain.MessageAuthorSeller, AuthorUserID: &tenant.UserID, Body: body,
+				ReceivedAt: at}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *QuoteDeliveryService) prepare(ctx context.Context, tenant domain.Tenant,
@@ -451,7 +488,8 @@ func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenan
 			defer wg.Done()
 			send := sends[index]
 			publicURL := s.publicURL(send.PublicToken)
-			messageBody := "Tu cotización está lista. Podés verla en " + publicURL
+			messageBody := strings.ReplaceAll(sellerSendBody, domain.QuotePublicURLPlaceholder,
+				publicURL)
 			if bundle != nil {
 				messageBody = strings.ReplaceAll(bundle.Representation.Message,
 					domain.QuotePublicURLPlaceholder, publicURL)

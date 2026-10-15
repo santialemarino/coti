@@ -11,6 +11,8 @@ import (
 )
 
 type quoteMessageWriter interface {
+	Create(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID,
+		in domain.NewQuoteMessage) (*domain.QuoteMessage, error)
 	CreateClientRequest(ctx context.Context, q repository.Querier,
 		accountID, branchID, quoteID, channelID, actionID uuid.UUID, body string) error
 }
@@ -23,7 +25,8 @@ type changeRequestQueue interface {
 		quoteID uuid.UUID) (*domain.MessageBatch, error)
 }
 
-// WithMessages wires the customer conversation a change request is written into and queued from.
+// WithMessages wires the conversation a seller's send is recorded in and a change request is
+// written into and queued from.
 func (s *QuoteDeliveryService) WithMessages(messages quoteMessageWriter,
 	windows changeRequestQueue) *QuoteDeliveryService {
 	s.messages = messages

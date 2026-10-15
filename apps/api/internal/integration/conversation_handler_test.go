@@ -62,15 +62,17 @@ func requantify(quantity int64) func(domain.ChangeRequestInput) (*domain.ChangeR
 	return func(in domain.ChangeRequestInput) (*domain.ChangeRequestProposal, error) {
 		target := in.Items[0].ID
 		value := decimal.NewFromInt(quantity)
-		return &domain.ChangeRequestProposal{Interpretation: "Pide cambiar la cantidad de cemento.",
+		return &domain.ChangeRequestProposal{Level: domain.ChangeRequestLevelAtomic,
+			Interpretation: "Pide cambiar la cantidad de cemento.",
 			Operations: []domain.ChangeRequestOperation{{
 				Type: domain.ChangeRequestOperationUpdateQuantity, TargetItemID: &target, Quantity: &value}}}, nil
 	}
 }
 
 func requiresSeller(domain.ChangeRequestInput) (*domain.ChangeRequestProposal, error) {
-	return &domain.ChangeRequestProposal{Interpretation: "El cliente parece aceptar la cotización.",
-		Operations: []domain.ChangeRequestOperation{{Type: domain.ChangeRequestOperationRequiresSeller}}}, nil
+	return &domain.ChangeRequestProposal{Level: domain.ChangeRequestLevelNoMatch,
+		Interpretation: "El cliente parece aceptar la cotización.",
+		Operations:     []domain.ChangeRequestOperation{{Type: domain.ChangeRequestOperationRequiresSeller}}}, nil
 }
 
 func (e *env) batchChangeHandler(proposer domain.ChangeRequestHandler,
@@ -81,7 +83,8 @@ func (e *env) batchChangeHandler(proposer domain.ChangeRequestHandler,
 	return services.NewBatchChangeHandler(e.db, repository.NewQuoteRepository(),
 		repository.NewQuoteMessageRepository(), repository.NewMessageBatchRepository(),
 		repository.NewHandlerDecisionRepository(), repository.NewProductPriceRepository(),
-		repository.NewQuoteDiscountRepository(), repository.NewPromotionRepository(), proposer, matcher,
+		repository.NewQuoteDiscountRepository(), repository.NewPromotionRepository(),
+		repository.NewProductAlternativeRepository(), proposer, matcher,
 		services.BatchChangeHandlerConfig{ContextMessages: 10, MaxOperations: 10},
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
@@ -283,7 +286,8 @@ func TestConversationHandler_BatchesAccumulateOnTheSingleDraft(t *testing.T) {
 	quantity := decimal.NewFromInt(3)
 	description := "arena gruesa"
 	proposer.answer = func(domain.ChangeRequestInput) (*domain.ChangeRequestProposal, error) {
-		return &domain.ChangeRequestProposal{Interpretation: "Suma arena.",
+		return &domain.ChangeRequestProposal{Level: domain.ChangeRequestLevelAtomic,
+			Interpretation: "Suma arena.",
 			Operations: []domain.ChangeRequestOperation{{Type: domain.ChangeRequestOperationAddItem,
 				RequestedDescription: &description, Quantity: &quantity}}}, nil
 	}

@@ -119,7 +119,7 @@ func run() error {
 		repository.NewQuoteMessageRepository(), messageBatchRepo,
 		repository.NewHandlerDecisionRepository(), repository.NewProductPriceRepository(),
 		repository.NewQuoteDiscountRepository(), repository.NewPromotionRepository(),
-		changeProposer, catalogMatch, services.BatchChangeHandlerConfig{
+		repository.NewProductAlternativeRepository(), changeProposer, catalogMatch, services.BatchChangeHandlerConfig{
 			ContextMessages: cfg.Conversation.ContextMessages, MaxOperations: cfg.RFQ.MaxItems}, log)
 	jobs, err := services.NewJobService(db, repository.NewJobRunRepository(), log,
 		services.NewQuoteCorrectionJob(corrections, providers.Embedder, cfg.QuoteCorrection),

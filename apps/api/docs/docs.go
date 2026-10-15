@@ -7997,7 +7997,9 @@ const docTemplate = `{
                     "enum": [
                         "REQUIRES_SELLER",
                         "AI_DISABLED",
-                        "PROPOSAL_REFUSED"
+                        "PROPOSAL_REFUSED",
+                        "PIPELINE_EXHAUSTED",
+                        "PROMOTION_NOT_EARNED"
                     ]
                 },
                 "outcome": {
@@ -8051,6 +8053,13 @@ const docTemplate = `{
                 },
                 "pending": {
                     "description": "Pending are the messages of a window still open, not yet handed to the handler.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ConversationMessageResponse"
+                    }
+                },
+                "seller_messages": {
+                    "description": "SellerMessages are the quote's sends; the public link reads as a placeholder.",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/dto.ConversationMessageResponse"
@@ -8465,7 +8474,9 @@ const docTemplate = `{
                     "enum": [
                         "REQUIRES_SELLER",
                         "AI_DISABLED",
-                        "PROPOSAL_REFUSED"
+                        "PROPOSAL_REFUSED",
+                        "PIPELINE_EXHAUSTED",
+                        "PROMOTION_NOT_EARNED"
                     ]
                 },
                 "outcome": {

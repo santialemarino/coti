@@ -342,7 +342,12 @@ export interface DiffDiscountLine {
 }
 
 // Why the conversation handler left a batch to the seller instead of changing the draft.
-export type HandlerNoMatchReason = 'REQUIRES_SELLER' | 'AI_DISABLED' | 'PROPOSAL_REFUSED';
+export type HandlerNoMatchReason =
+  | 'REQUIRES_SELLER'
+  | 'AI_DISABLED'
+  | 'PROPOSAL_REFUSED'
+  | 'PIPELINE_EXHAUSTED'
+  | 'PROMOTION_NOT_EARNED';
 
 // The latest conversation handler decision on the draft: what the customer wrote and how the AI
 // read it.
@@ -362,6 +367,9 @@ export type ConversationBatchStatus = 'CLOSED' | 'PROCESSING' | 'PROCESSED' | 'F
 
 // Why a batch failed; only one that ran out of attempts can be retried.
 export type ConversationFailureReason = 'UNPROCESSABLE' | 'ATTEMPTS_EXHAUSTED';
+
+// Where a seller message carried the quote's public link, which is never stored.
+export const QUOTE_LINK_PLACEHOLDER = '{{public_url}}';
 
 export interface ConversationMessage {
   author: 'CLIENT' | 'SELLER' | 'SYSTEM';
@@ -393,6 +401,8 @@ export interface ConversationResponse {
   batches: ConversationBatch[];
   // Messages of a window still open, not yet handed to the AI.
   pending: ConversationMessage[];
+  // The quote's sends; the public link arrives as QUOTE_LINK_PLACEHOLDER.
+  seller_messages: ConversationMessage[];
   can_discard_ai_changes: boolean;
 }
 

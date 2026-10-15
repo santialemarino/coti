@@ -204,8 +204,9 @@ the second: `ai.NewCatalogMatchReviewer` settles the lines catalog matching flag
 among the candidates it was shown. It is off by default, behind a global switch — see
 [catalog.md](catalog.md#the-review-trade-knowledge-the-catalog-text-does-not-carry) and
 [feature-switches.md](feature-switches.md). `domain.ChangeRequestHandler` is the public quote
-revision port: `ai.NewChangeRequestHandler` turns one client message into atomic, seller-reviewable
-draft operations. It is attributed as `CHANGE_REQUEST_HANDLING`; it has an account and branch but
+revision port: `ai.NewChangeRequestHandler` turns a batch of client messages into a level (`ATOMIC`,
+`COMPLEX` or `NO_MATCH`) with seller-reviewable draft operations, or a goal the backend reaches
+through a recipe. It is attributed as `CHANGE_REQUEST_HANDLING`; it has an account and branch but
 no RFQ ID because the spend serves the delivered quote rather than RFQ ingestion.
 
 One thing to know before writing a schema for one: **structured outputs do not enforce
