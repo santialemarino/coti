@@ -556,6 +556,14 @@ type ConversationConfig struct {
 	WindowMax time.Duration
 	// ContextMessages is how many earlier messages travel with a batch as context.
 	ContextMessages int
+	// TickerInterval is how often the API process closes due windows and works the queue.
+	TickerInterval time.Duration
+	// MaxAttempts is how many failed attempts leave a batch FAILED.
+	MaxAttempts int
+	// ProcessingTimeout bounds one handler attempt; a claim older than it is reclaimed.
+	ProcessingTimeout time.Duration
+	// SweepBatchSize bounds each close and reclaim statement, and the claims one pass makes.
+	SweepBatchSize int
 }
 
 // AttachmentConfig bounds the sweep that reads the files an order arrived with. The reclaim
@@ -889,6 +897,11 @@ func Load() (*Config, error) {
 			WindowReset:     getDuration("CONVERSATION_WINDOW_RESET_SECONDS", 120*time.Second, &problems),
 			WindowMax:       getDuration("CONVERSATION_WINDOW_MAX_SECONDS", 600*time.Second, &problems),
 			ContextMessages: getInt("CONVERSATION_CONTEXT_MESSAGES", 10, &problems),
+			TickerInterval:  getDuration("CONVERSATION_TICKER_SECONDS", 30*time.Second, &problems),
+			MaxAttempts:     getInt("CONVERSATION_MAX_ATTEMPTS", 3, &problems),
+			ProcessingTimeout: getDuration("CONVERSATION_PROCESSING_TIMEOUT_SECONDS", 600*time.Second,
+				&problems),
+			SweepBatchSize: getInt("CONVERSATION_SWEEP_BATCH_SIZE", 100, &problems),
 		},
 		Attachment: AttachmentConfig{
 			ExtractionRFQBatchSize: getInt("ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE", 5, &problems),
@@ -1132,6 +1145,18 @@ func Load() (*Config, error) {
 	}
 	if cfg.Conversation.ContextMessages < 0 {
 		problems = append(problems, "CONVERSATION_CONTEXT_MESSAGES must be zero or more")
+	}
+	if cfg.Conversation.TickerInterval <= 0 {
+		problems = append(problems, "CONVERSATION_TICKER_SECONDS must be greater than zero")
+	}
+	if cfg.Conversation.MaxAttempts < 1 {
+		problems = append(problems, "CONVERSATION_MAX_ATTEMPTS must be greater than zero")
+	}
+	if cfg.Conversation.ProcessingTimeout <= 0 {
+		problems = append(problems, "CONVERSATION_PROCESSING_TIMEOUT_SECONDS must be greater than zero")
+	}
+	if cfg.Conversation.SweepBatchSize < 1 {
+		problems = append(problems, "CONVERSATION_SWEEP_BATCH_SIZE must be greater than zero")
 	}
 	if cfg.Attachment.ExtractionRFQBatchSize < 1 {
 		problems = append(problems, "ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE must be greater than zero")
