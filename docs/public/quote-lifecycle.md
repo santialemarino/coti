@@ -4,6 +4,12 @@ Coti keeps the full commercial outcome on the same quote. A customer can accept,
 changes from the public quote link. A seller can also record an acceptance or rejection received by
 phone, WhatsApp, or another channel from the order detail screen.
 
+A change request, from the link or as a WhatsApp reply to a sent quote, moves the quote to "Change
+requested" and opens one editable draft. Coti's AI reads the customer's messages and proposes the
+changes on that draft; prices and discounts are always computed by Coti's own rules, and the seller
+reviews the draft before anything is sent back. When a message is not a clear change — "ok, I'll
+take it", a question about delivery — the AI changes nothing and tells the seller it needs them.
+
 Accepted and rejected quotes remain auditable and cannot be edited directly. A seller can reactivate
 one in either of two ways:
 

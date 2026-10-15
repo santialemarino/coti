@@ -124,7 +124,7 @@ closes_at = min(now + CONVERSATION_WINDOW_RESET_SECONDS, opened_at + CONVERSATIO
 
 `SELLER` and `SYSTEM` messages are context and never open or extend a window. Defaults are 120 s
 and 600 s; startup refuses a cap that does not exceed the reset. `CONVERSATION_CONTEXT_MESSAGES`
-(10) is how many earlier messages travel with a batch once batches are processed. Routing never
+(10) is how many earlier messages of any author travel with a batch as context. Routing never
 changes `quote.current_status`.
 
 ### Closing and processing batches
@@ -149,9 +149,11 @@ A sweep closes the due windows and works the queue, across every account on the 
 
 Every write that settles a claim matches its `processing_started_at`, so a worker that was reclaimed
 and comes back late changes nothing. The handler owns every quote write a batch causes, the
-`SENT` → `CHANGE_REQUESTED` move included. **No handler is bound yet, so steps 2 and 3 are off:**
-windows still close and stamp their messages, closed batches wait `CLOSED`, and both binaries log
-at startup that processing is off until a handler is configured.
+`SENT` → `CHANGE_REQUESTED` move included; both binaries bind the batch change handler
+([rfq-pipeline.md](rfq-pipeline.md#conversation-batch-handler)). A handler error wrapping
+`domain.ErrBatchUnprocessable` — the quote was archived or closed after its window closed — spends
+the batch's last attempt at once and leaves it `FAILED` with the reason in `last_error`. The
+webapp's «Pedir cambios» enters the same queue as a batch closed in its own transaction.
 
 The API runs the sweep on an in-process ticker every `CONVERSATION_TICKER_SECONDS` (30), one pass at
 a time, stopped and awaited on shutdown before the pools close. The `conversation-batches`
