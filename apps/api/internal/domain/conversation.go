@@ -1,12 +1,17 @@
 package domain
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+// ErrBatchUnprocessable marks a handler failure no retry can fix, such as a quote archived or
+// closed since its batch closed; the batch fails at once.
+var ErrBatchUnprocessable = errors.New("conversation batch cannot be processed")
 
 // MessageAuthorType says who wrote a conversation message; only CLIENT messages drive a window.
 type MessageAuthorType string

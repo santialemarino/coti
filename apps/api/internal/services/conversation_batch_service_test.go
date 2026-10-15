@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"slices"
@@ -38,6 +39,7 @@ type fakeBatchQueue struct {
 	released []uuid.UUID
 	failures []string
 	failTo   domain.MessageBatchStatus
+	limits   []int
 }
 
 func (f *fakeBatchQueue) LockDueQuotesCrossAccount(context.Context, repository.Querier, time.Time,
@@ -77,11 +79,12 @@ func (f *fakeBatchQueue) MarkProcessedCrossAccount(context.Context, repository.Q
 }
 
 func (f *fakeBatchQueue) RecordFailureCrossAccount(_ context.Context, _ repository.Querier,
-	batch domain.MessageBatch, _ int, failure string,
+	batch domain.MessageBatch, maxAttempts int, failure string,
 ) (*domain.MessageBatch, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.failures = append(f.failures, failure)
+	f.limits = append(f.limits, maxAttempts)
 	batch.Status = f.failTo
 	batch.Attempts++
 	return &batch, nil
@@ -149,6 +152,25 @@ func TestConversationBatchService_LastAttemptCountsAsFailed(t *testing.T) {
 	report, err := service.Sweep(context.Background())
 	if err != nil || report.Failed != 1 || report.Retried != 0 {
 		t.Errorf("Sweep() = %+v, %v; want one FAILED batch", report, err)
+	}
+}
+
+// A refusal no retry can fix spends the batch's last attempt at once.
+func TestConversationBatchService_UnprocessableBatchFailsAtOnce(t *testing.T) {
+	queue := &fakeBatchQueue{pending: pendingBatches(2), failTo: domain.MessageBatchStatusClosed}
+	service := newTestBatchService(queue, handlerFunc(func(_ context.Context, batch domain.MessageBatch) error {
+		if batch.ID == queue.pending[0].ID {
+			return fmt.Errorf("%w: archived", domain.ErrBatchUnprocessable)
+		}
+		return errors.New("model unavailable")
+	}), time.Minute)
+
+	if _, err := service.Sweep(context.Background()); err != nil {
+		t.Fatalf("Sweep() = %v", err)
+	}
+	if !slices.Equal(queue.limits, []int{1, 3}) {
+		t.Errorf("attempt limits = %v, want 1 for the unprocessable batch and 3 for the retryable one",
+			queue.limits)
 	}
 }
 

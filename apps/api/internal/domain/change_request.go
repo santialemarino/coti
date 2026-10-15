@@ -31,9 +31,16 @@ type ChangeRequestItem struct {
 	Unit                 *string         `json:"unit"`
 }
 
-// ChangeRequestInput is the bounded state and message the handler needs to propose a change.
+// ConversationLine is one earlier message the handler reads as context, never as a request.
+type ConversationLine struct {
+	Author MessageAuthorType `json:"author"`
+	Body   string            `json:"text"`
+}
+
+// ChangeRequestInput is the bounded state and messages the handler needs to propose a change.
 type ChangeRequestInput struct {
 	Message string
+	Context []ConversationLine
 	Items   []ChangeRequestItem
 }
 

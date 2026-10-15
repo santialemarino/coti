@@ -118,28 +118,24 @@ type quotePublicDB interface {
 
 // QuoteDeliveryService freezes and delivers a seller-approved quote, then labels it post-commit.
 type QuoteDeliveryService struct {
-	db               quotePublicDB
-	sends            quoteDeliveryRepository
-	quotes           quoteDeliveryQuoteRepository
-	messages         quoteMessageWriter
-	channels         quoteDeliveryChannelRepository
-	branches         quoteDeliveryBranchRepository
-	prices           branchPriceReader
-	whatsapp         domain.QuoteWhatsAppSender
-	email            quoteEmailSender
-	evaluator        QuoteQualityEvaluator
-	representations  quoteRepresentationEnsurer
-	actions          clientActionRecorder
-	sellers          quoteSellerReader
-	changeHandler    domain.ChangeRequestHandler
-	matcher          catalogMatcher
-	handlerDecisions handlerDecisionRecorder
-	changeMaxItems   int
-	changeTimeout    time.Duration
-	webappURL        string
-	channelOpener    channelConfigOpener
-	now              func() time.Time
-	log              *slog.Logger
+	db              quotePublicDB
+	sends           quoteDeliveryRepository
+	quotes          quoteDeliveryQuoteRepository
+	messages        quoteMessageWriter
+	channels        quoteDeliveryChannelRepository
+	branches        quoteDeliveryBranchRepository
+	prices          branchPriceReader
+	whatsapp        domain.QuoteWhatsAppSender
+	email           quoteEmailSender
+	evaluator       QuoteQualityEvaluator
+	representations quoteRepresentationEnsurer
+	actions         clientActionRecorder
+	sellers         quoteSellerReader
+	windows         changeRequestQueue
+	webappURL       string
+	channelOpener   channelConfigOpener
+	now             func() time.Time
+	log             *slog.Logger
 }
 
 // WithWhatsAppCredentials makes encrypted channel credentials available only for delivery calls.
@@ -657,22 +653,18 @@ func (s *QuoteDeliveryService) RespondPublic(ctx context.Context, token string,
 	if err != nil {
 		return nil, err
 	}
-	var proposal *resolvedChangeRequest
-	if in.Type == domain.ClientActionRequestChange {
-		proposal = s.prepareChangeRequest(ctx, accountID, token, *in.Message)
-	}
 	var result *domain.PublicQuoteActionResult
 	err = s.db.WithAdvisoryLock(ctx, strings.Join([]string{"quote-action",
 		accountID.String(), token}, ":"), func() error {
 		var respondErr error
-		result, respondErr = s.respondLocked(ctx, accountID, token, in, proposal)
+		result, respondErr = s.respondLocked(ctx, accountID, token, in)
 		return respondErr
 	})
 	return result, err
 }
 
 func (s *QuoteDeliveryService) respondLocked(ctx context.Context, accountID uuid.UUID, token string,
-	in domain.ClientActionInput, proposal *resolvedChangeRequest,
+	in domain.ClientActionInput,
 ) (*domain.PublicQuoteActionResult, error) {
 	var result *domain.PublicQuoteActionResult
 	var moved *domain.ClientQuoteOutcome
@@ -724,7 +716,7 @@ func (s *QuoteDeliveryService) respondLocked(ctx context.Context, accountID uuid
 			}
 			if in.Type == domain.ClientActionRequestChange {
 				if err := s.createChangeRequest(ctx, q, accountID, *quote, *send, *created,
-					*in.Message, proposal); err != nil {
+					*in.Message); err != nil {
 					return err
 				}
 			}

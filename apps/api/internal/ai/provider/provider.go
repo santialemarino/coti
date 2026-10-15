@@ -70,3 +70,10 @@ func (s Set) Describe(log *slog.Logger) {
 		slog.String("embeddings", fmt.Sprintf("%T", s.Embedder)),
 		slog.String("transcription", fmt.Sprintf("%T", s.Transcriber)))
 }
+
+// LanguageModelBound reports whether a real language model answers the Generator port, so a
+// caller can leave the work to a seller instead of calling a stand-in that always refuses.
+func (s Set) LanguageModelBound() bool {
+	_, disabled := s.Generator.(ai.DisabledGenerator)
+	return !disabled
+}

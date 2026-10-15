@@ -93,6 +93,18 @@ func (r *QuoteRepository) GetByIDForUpdate(
 		 FOR UPDATE`, accountID, branchID, id))
 }
 
+// GetByIDForUpdateInAccount locks a quote found by id within the account alone, for background
+// work that starts from a row already scoped to the account rather than from a request.
+func (r *QuoteRepository) GetByIDForUpdateInAccount(
+	ctx context.Context, q Querier, accountID, id uuid.UUID,
+) (*domain.Quote, error) {
+	return scanQuote(q.QueryRow(ctx,
+		`SELECT `+quoteColumns+`
+		 FROM quote
+		 WHERE account_id = $1 AND id = $2
+		 FOR UPDATE`, accountID, id))
+}
+
 // GetByVersionID loads the quote a version belongs to, scoped to the account. It is what a public
 // token resolves through: the token names a send, the send names a version, and the customer's
 // answer has to reach the quote. Branch is not filtered because it is not known yet — the quote is
