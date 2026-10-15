@@ -611,6 +611,8 @@ definitions:
         - REQUIRES_SELLER
         - AI_DISABLED
         - PROPOSAL_REFUSED
+        - PIPELINE_EXHAUSTED
+        - PROMOTION_NOT_EARNED
         type: string
       outcome:
         enum:
@@ -649,6 +651,12 @@ definitions:
       pending:
         description: Pending are the messages of a window still open, not yet handed
           to the handler.
+        items:
+          $ref: '#/definitions/dto.ConversationMessageResponse'
+        type: array
+      seller_messages:
+        description: SellerMessages are the quote's sends; the public link reads as
+          a placeholder.
         items:
           $ref: '#/definitions/dto.ConversationMessageResponse'
         type: array
@@ -941,6 +949,8 @@ definitions:
         - REQUIRES_SELLER
         - AI_DISABLED
         - PROPOSAL_REFUSED
+        - PIPELINE_EXHAUSTED
+        - PROMOTION_NOT_EARNED
         type: string
       outcome:
         enum:

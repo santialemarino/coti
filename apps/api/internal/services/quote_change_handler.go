@@ -37,8 +37,11 @@ func changeRequestItems(items []domain.QuoteItem) []domain.ChangeRequestItem {
 	return result
 }
 
+// validateChangeRequestProposal checks a proposal against the draft's own lines and the
+// promotions in force: the level agrees with what it carries, every id is one the model was given,
+// and each operation carries exactly its fields.
 func validateChangeRequestProposal(proposal *domain.ChangeRequestProposal, source []domain.QuoteItem,
-	maxItems int,
+	promotions []domain.Promotion, maxItems int,
 ) (resolvedChangeRequest, error) {
 	if proposal == nil {
 		return resolvedChangeRequest{}, fmt.Errorf("%w: change request handler returned no proposal",
@@ -49,28 +52,86 @@ func validateChangeRequestProposal(proposal *domain.ChangeRequestProposal, sourc
 		return resolvedChangeRequest{}, fmt.Errorf("%w: change request interpretation is invalid",
 			domain.ErrInvalidInput)
 	}
-	if len(proposal.Operations) == 0 || len(proposal.Operations) > maxItems {
-		return resolvedChangeRequest{}, fmt.Errorf("%w: change request has an invalid operation count",
-			domain.ErrInvalidInput)
-	}
-
 	knownItems := make(map[uuid.UUID]struct{}, len(source))
 	for _, item := range source {
 		knownItems[item.ID] = struct{}{}
 	}
 	resolved := resolvedChangeRequest{Proposal: domain.ChangeRequestProposal{
-		Interpretation: interpretation,
-		Operations:     make([]domain.ChangeRequestOperation, 0, len(proposal.Operations)),
+		Level: proposal.Level, Interpretation: interpretation,
+		Operations: make([]domain.ChangeRequestOperation, 0, len(proposal.Operations)),
 	}, Operations: make([]resolvedChangeOperation, 0, len(proposal.Operations))}
+
+	switch proposal.Level {
+	case domain.ChangeRequestLevelComplex:
+		if len(proposal.Operations) != 0 {
+			return resolvedChangeRequest{}, fmt.Errorf("%w: a complex request carries operations",
+				domain.ErrInvalidInput)
+		}
+		if proposal.Intent == nil || (*proposal.Intent != domain.ChangeRequestIntentLowerTotalPrice &&
+			*proposal.Intent != domain.ChangeRequestIntentImproveQuality) {
+			return resolvedChangeRequest{}, fmt.Errorf("%w: a complex request needs a known intent",
+				domain.ErrInvalidInput)
+		}
+		seen := make(map[uuid.UUID]struct{}, len(proposal.IntentItemIDs))
+		for index, id := range proposal.IntentItemIDs {
+			if _, ok := knownItems[id]; !ok {
+				return resolvedChangeRequest{}, fmt.Errorf("%w: intent_item_ids[%d] is not a draft line",
+					domain.ErrInvalidInput, index)
+			}
+			if _, duplicate := seen[id]; duplicate {
+				return resolvedChangeRequest{}, fmt.Errorf("%w: intent_item_ids[%d] repeats a line",
+					domain.ErrInvalidInput, index)
+			}
+			seen[id] = struct{}{}
+		}
+		intent := *proposal.Intent
+		resolved.Proposal.Intent = &intent
+		resolved.Proposal.IntentItemIDs = append([]uuid.UUID(nil), proposal.IntentItemIDs...)
+		return resolved, nil
+	case domain.ChangeRequestLevelAtomic, domain.ChangeRequestLevelNoMatch:
+	default:
+		return resolvedChangeRequest{}, fmt.Errorf("%w: change request has an unknown level",
+			domain.ErrInvalidInput)
+	}
+	if proposal.Intent != nil || len(proposal.IntentItemIDs) > 0 {
+		return resolvedChangeRequest{}, fmt.Errorf("%w: only a complex request carries an intent",
+			domain.ErrInvalidInput)
+	}
+	if len(proposal.Operations) == 0 || len(proposal.Operations) > maxItems {
+		return resolvedChangeRequest{}, fmt.Errorf("%w: change request has an invalid operation count",
+			domain.ErrInvalidInput)
+	}
+
+	inForce := make(map[uuid.UUID]struct{}, len(promotions))
+	for _, promotion := range promotions {
+		inForce[promotion.ID] = struct{}{}
+	}
 	targeted := make(map[uuid.UUID]struct{}, len(proposal.Operations))
+	named := make(map[uuid.UUID]struct{})
 	for index, raw := range proposal.Operations {
 		operation, err := validateChangeRequestOperation(raw, knownItems, targeted, index)
 		if err != nil {
 			return resolvedChangeRequest{}, err
 		}
-		if operation.Type == domain.ChangeRequestOperationRequiresSeller && len(proposal.Operations) != 1 {
+		escape := operation.Type == domain.ChangeRequestOperationRequiresSeller
+		if escape != (proposal.Level == domain.ChangeRequestLevelNoMatch) {
+			return resolvedChangeRequest{}, fmt.Errorf("%w: operations[%d] does not match the level",
+				domain.ErrInvalidInput, index)
+		}
+		if escape && len(proposal.Operations) != 1 {
 			return resolvedChangeRequest{}, fmt.Errorf("%w: requires-seller cannot accompany a draft mutation",
 				domain.ErrInvalidInput)
+		}
+		if operation.Type == domain.ChangeRequestOperationAddDiscount {
+			if _, ok := inForce[*operation.PromotionID]; !ok {
+				return resolvedChangeRequest{}, fmt.Errorf("%w: operations[%d] names a promotion not in force",
+					domain.ErrInvalidInput, index)
+			}
+			if _, duplicate := named[*operation.PromotionID]; duplicate {
+				return resolvedChangeRequest{}, fmt.Errorf("%w: operations[%d] names a promotion twice",
+					domain.ErrInvalidInput, index)
+			}
+			named[*operation.PromotionID] = struct{}{}
 		}
 		resolved.Proposal.Operations = append(resolved.Proposal.Operations, operation)
 		resolved.Operations = append(resolved.Operations, resolvedChangeOperation{Operation: operation,
@@ -94,18 +155,34 @@ func validateChangeRequestOperation(operation domain.ChangeRequestOperation,
 	switch operation.Type {
 	case domain.ChangeRequestOperationAddItem, domain.ChangeRequestOperationRemoveItem,
 		domain.ChangeRequestOperationReplaceItem, domain.ChangeRequestOperationUpdateQuantity,
-		domain.ChangeRequestOperationRequiresSeller:
+		domain.ChangeRequestOperationAddDiscount, domain.ChangeRequestOperationRequiresSeller:
 	default:
 		return domain.ChangeRequestOperation{}, fmt.Errorf("%w: operations[%d] has an unknown type",
 			domain.ErrInvalidInput, index)
 	}
-	if operation.Type == domain.ChangeRequestOperationRequiresSeller {
+	switch operation.Type {
+	case domain.ChangeRequestOperationRequiresSeller:
 		if operation.TargetItemID != nil || operation.RequestedDescription != nil ||
-			operation.Quantity != nil || operation.Unit != nil {
+			operation.Quantity != nil || operation.Unit != nil || operation.PromotionID != nil {
 			return domain.ChangeRequestOperation{}, fmt.Errorf("%w: requires-seller carries a mutation",
 				domain.ErrInvalidInput)
 		}
 		return operation, nil
+	case domain.ChangeRequestOperationAddDiscount:
+		if operation.PromotionID == nil {
+			return domain.ChangeRequestOperation{}, fmt.Errorf("%w: operations[%d] needs a promotion",
+				domain.ErrInvalidInput, index)
+		}
+		if operation.TargetItemID != nil || operation.RequestedDescription != nil ||
+			operation.Quantity != nil || operation.Unit != nil {
+			return domain.ChangeRequestOperation{}, fmt.Errorf("%w: operations[%d] carries more than a promotion",
+				domain.ErrInvalidInput, index)
+		}
+		return operation, nil
+	}
+	if operation.PromotionID != nil {
+		return domain.ChangeRequestOperation{}, fmt.Errorf("%w: operations[%d] carries an unexpected promotion",
+			domain.ErrInvalidInput, index)
 	}
 	if requiresTarget {
 		if operation.TargetItemID == nil {

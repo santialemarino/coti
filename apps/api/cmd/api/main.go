@@ -208,7 +208,7 @@ func run() error {
 	}
 	batchChangeHandler := services.NewBatchChangeHandler(db, quoteRepo, quoteMessageRepo,
 		messageBatchRepo, handlerDecisionRepo, productPriceRepo, quoteDiscountRepo, promotionRepo,
-		changeProposer, catalogMatchService, services.BatchChangeHandlerConfig{
+		productAlternativeRepo, changeProposer, catalogMatchService, services.BatchChangeHandlerConfig{
 			ContextMessages: cfg.Conversation.ContextMessages, MaxOperations: cfg.RFQ.MaxItems}, log)
 	conversationTicker := services.NewConversationBatchTicker(
 		services.NewConversationBatchService(db, messageBatchRepo,

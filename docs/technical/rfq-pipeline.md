@@ -495,11 +495,21 @@ steps, each tenant transaction taking the quote's row lock before the batch's:
    reads the batch's `CLIENT` messages in order and the `CONVERSATION_CONTEXT_MESSAGES` newest
    messages of any author outside the batch, then commits, so the move holds whatever the model does.
 2. **Propose.** Outside any transaction the forced-schema change handler receives the batch's
-   messages, the context, and the **draft's** lines with their opaque IDs. Its instructions are a
-   fixed text sent first, so the provider caches that prefix; everything variable rides in the
-   input. Every operation is validated against the draft's own lines and the item limit, then
-   against the matrix (`domain.ValidateHandlerIntent`), and added or replaced materials are matched
-   against the branch catalog.
+   messages, the context, the **draft's** lines with their opaque IDs, and the promotions in force at
+   the quote's branch. Its instructions are a fixed text sent first, so the provider caches that
+   prefix; everything variable rides in the input. It answers with a `level`:
+   - `ATOMIC` — concrete operations: `ADD_ITEM`, `REMOVE_ITEM`, `REPLACE_ITEM`, `UPDATE_QUANTITY`,
+     or `ADD_DISCOUNT` naming one of the promotions it was given (never an amount).
+   - `COMPLEX` — a goal from a closed set, with no operations: `LOWER_TOTAL_PRICE` or
+     `IMPROVE_QUALITY`, plus `intent_item_ids`, the lines the customer tied it to (empty means the
+     whole quote).
+   - `NO_MATCH` — the escape, which the adapter turns into one `REQUIRES_SELLER` operation.
+
+   The backend checks that the level agrees with what the answer carries, that every line and
+   promotion id is one it sent, and the item limit, then runs the matrix
+   (`domain.ValidateHandlerIntent`: `ATOMIC`, `ADD_DISCOUNT` or `COMPLEX`), and matches added or
+   replaced materials against the branch catalog.
+
 3. **Apply.** Under the lock again the claim, the matrix and the draft are re-checked: a quote
    archived or closed meanwhile fails the batch at once (`domain.ErrBatchUnprocessable`), and a draft
    the seller sent, or a targeted line the seller removed, returns it to the queue for a fresh
@@ -508,18 +518,37 @@ steps, each tenant transaction taking the quote's row lock before the batch's:
    the interpretation, the proposal and the state the quote was in at the claim. A later batch edits
    the same draft.
 
+A `COMPLEX` goal runs a fixed recipe in the apply transaction, over the named lines or every line
+with a product, with quantities untouched:
+
+| Intent              | Strategy recorded           | Each line becomes                                                             |
+| ------------------- | --------------------------- | ----------------------------------------------------------------------------- |
+| `LOWER_TOTAL_PRICE` | `FIND_CHEAPER_ALTERNATIVES` | its cheapest `ECONOMY` alternative the branch prices below its own unit price |
+| `IMPROVE_QUALITY`   | `IMPROVE_QUALITY`           | its cheapest `PREMIUM` alternative the branch prices                          |
+
+Ties go to the alternative's name: `product_alternative` has no rank. The swaps are written as
+`REPLACE_ITEM` operations and priced at once at the branch price the recipe chose them by. A
+`LOWER_TOTAL_PRICE` result stands only if the engine's total after the sweep ends below the draft's
+own swept total; `IMPROVE_QUALITY` has no cap. An `ADD_DISCOUNT` needs nothing when the promotion is
+already applied, restores it when the seller suppressed it, and is refused when the quote does not
+earn it.
+
 The model never sets money: a requantified line keeps its unit price, a new or replaced line waits
-unpriced for the seller to accept materials, and every discount comes from the sweep. It never
-answers the customer and never infers an acceptance or a rejection: "dale, acepto" is its
-`REQUIRES_SELLER` escape. That escape, a proposal the backend refuses, and a deployment with no
-language model bound (`AI_LLM_PROVIDER=disabled`; the model is never called) all record a `NO_MATCH`
-decision with its reason (`REQUIRES_SELLER`, `PROPOSAL_REFUSED`, `AI_DISABLED`) and finish the batch
-`PROCESSED`, so nothing loops. `handler_decision.ai_proposal` stores
-`{outcome, no_match_origin, no_match_reason, interpretation, operations}`, and `draft_before` /
-`draft_after` the draft's lines and seller-controlled discounts (typed or suppressed) around the
-change, without prices. A provider failure is retried like any other error, up to
-`CONVERSATION_MAX_ATTEMPTS`; a batch that fails records `failure_reason`: `UNPROCESSABLE` for a
-refusal no retry can fix, `ATTEMPTS_EXHAUSTED` for one that ran out of attempts.
+unpriced for the seller to accept materials (a recipe's swap is the exception, priced by the
+backend), and every discount comes from the sweep. It never answers the customer and never infers
+an acceptance or a rejection: "dale, acepto" is its `NO_MATCH` escape. That escape, a proposal the
+backend refuses, and a deployment with no language model bound (`AI_LLM_PROVIDER=disabled`; the
+model is never called) record a `NO_MATCH` decision with origin `DIRECT_INPUT` and its reason
+(`REQUIRES_SELLER`, `PROPOSAL_REFUSED`, `AI_DISABLED`). A recipe with no result, or a promotion the
+quote does not earn, rolls the whole write back — atomic operations riding beside it included — and
+records a `NO_MATCH` with origin `PIPELINE_EXHAUSTED` and reason `PIPELINE_EXHAUSTED` or
+`PROMOTION_NOT_EARNED`. Every no-match finishes the batch `PROCESSED`, so nothing loops.
+`handler_decision.ai_proposal` stores
+`{outcome, no_match_origin, no_match_reason, interpretation, intent, strategies_tried, operations}`,
+and `draft_before` / `draft_after` the draft's lines and seller-controlled discounts (typed or
+suppressed) around the change, without prices. A provider failure is retried like any other error,
+up to `CONVERSATION_MAX_ATTEMPTS`; a batch that fails records `failure_reason`: `UNPROCESSABLE` for
+a refusal no retry can fix, `ATTEMPTS_EXHAUSTED` for one that ran out of attempts.
 
 #### The seller's decision
 
@@ -543,7 +572,13 @@ The RFQ detail's `changes_requested.handler` carries the latest decision on the 
 `changes_requested.client_messages` every message the customer sent since the version they answered
 was frozen; the backoffice shows both beside the customer's request. `conversation` carries the whole
 thread: each batch with its messages, status, `failure_reason`, `retryable`, and the handler's run
-with the seller's decision; `pending` for a window still open; and `can_discard_ai_changes`.
+with the seller's decision; `pending` for a window still open; `seller_messages`, the quote's sends;
+and `can_discard_ai_changes`. It is absent until the customer has written.
+
+Each successful send is recorded as a `SELLER` `quote_message` on the send's channel, authored by
+the sender, in the transaction that commits the send. Its body is the representation's message with
+the public link left as the `{{public_url}}` placeholder, so the token lives only on `quote_send`. A
+seller message never opens or extends a window; the handler reads it as context.
 
 ### Closing and reactivating a quote
 

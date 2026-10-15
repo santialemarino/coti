@@ -77,6 +77,45 @@ func (r *ProductAlternativeRepository) List(
 	return views, rows.Err()
 }
 
+// ListByBaseProductIDs returns each base product's alternatives of one type, keyed by the base,
+// with the active alternative product joined in.
+func (r *ProductAlternativeRepository) ListByBaseProductIDs(
+	ctx context.Context, q Querier, accountID uuid.UUID, baseProductIDs []uuid.UUID,
+	kind domain.ProductAlternativeType,
+) (map[uuid.UUID][]domain.ProductAlternativeView, error) {
+	views := make(map[uuid.UUID][]domain.ProductAlternativeView, len(baseProductIDs))
+	if len(baseProductIDs) == 0 {
+		return views, nil
+	}
+	rows, err := q.Query(ctx,
+		`SELECT pa.id, pa.account_id, pa.base_product_id,
+			pa.alternative_product_id, pa.type, pa.created_at,
+			p.id, p.account_id, p.code, p.canonical_name, p.description, p.unit, p.family_id, p.subgroup_id,
+			p.is_active, p.created_at, p.updated_at
+		 FROM product_alternative pa
+		 JOIN product p ON p.id = pa.alternative_product_id AND p.account_id = pa.account_id
+		 WHERE pa.account_id = $1 AND pa.base_product_id = ANY($2) AND pa.type = $3
+		   AND p.is_active = TRUE
+		 ORDER BY pa.base_product_id, p.canonical_name, p.id`,
+		accountID, baseProductIDs, kind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var v domain.ProductAlternativeView
+		if err := rows.Scan(&v.Link.ID, &v.Link.AccountID, &v.Link.BaseProductID,
+			&v.Link.AlternativeProductID, &v.Link.Type, &v.Link.CreatedAt,
+			&v.Product.ID, &v.Product.AccountID, &v.Product.Code, &v.Product.CanonicalName,
+			&v.Product.Description, &v.Product.Unit, &v.Product.FamilyID, &v.Product.SubgroupID, &v.Product.IsActive,
+			&v.Product.CreatedAt, &v.Product.UpdatedAt); err != nil {
+			return nil, err
+		}
+		views[v.Link.BaseProductID] = append(views[v.Link.BaseProductID], v)
+	}
+	return views, rows.Err()
+}
+
 // Create links a base product to an alternative. Returns domain.ErrConflict when the
 // ordered pair is already linked.
 func (r *ProductAlternativeRepository) Create(

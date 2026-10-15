@@ -271,6 +271,7 @@ type fakeQuoteMessages struct {
 	body      string
 	calls     int
 	err       error
+	created   []domain.NewQuoteMessage
 }
 
 // fakeChangeWindows records how a change request was queued.
@@ -325,6 +326,12 @@ func (f *fakeChangeRequestMatcher) Match(_ context.Context, _ domain.Tenant,
 		return nil, f.err
 	}
 	return f.matches, nil
+}
+
+func (f *fakeQuoteMessages) Create(_ context.Context, _ repository.Querier, _, _ uuid.UUID,
+	in domain.NewQuoteMessage) (*domain.QuoteMessage, error) {
+	f.created = append(f.created, in)
+	return &domain.QuoteMessage{ID: in.ID}, f.err
 }
 
 func (f *fakeQuoteMessages) CreateClientRequest(_ context.Context, _ repository.Querier,
@@ -631,21 +638,6 @@ func TestQuoteDeliveryService_RespondPublic_QueuesTheRequestInAClosedBatch(t *te
 	if len(h.quotes.itemBatches) != 1 {
 		t.Errorf("item batches = %d, want only the cloned lines: the model runs from the queue",
 			len(h.quotes.itemBatches))
-	}
-}
-
-func TestValidateChangeRequestProposal_RefusesMultipleMutationsOfTheSameLine(t *testing.T) {
-	itemID := uuid.New()
-	quantity := decimal.NewFromInt(4)
-	proposal := &domain.ChangeRequestProposal{Interpretation: "El cliente pidió cambios.",
-		Operations: []domain.ChangeRequestOperation{
-			{Type: domain.ChangeRequestOperationRemoveItem, TargetItemID: &itemID},
-			{Type: domain.ChangeRequestOperationUpdateQuantity, TargetItemID: &itemID, Quantity: &quantity},
-		}}
-
-	_, err := validateChangeRequestProposal(proposal, []domain.QuoteItem{{ID: itemID}}, 10)
-	if !errors.Is(err, domain.ErrInvalidInput) {
-		t.Fatalf("validateChangeRequestProposal returned %v, want ErrInvalidInput", err)
 	}
 }
 

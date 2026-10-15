@@ -903,6 +903,7 @@ func toConversationResponse(conversation domain.Conversation) dto.ConversationRe
 	resp := dto.ConversationResponse{
 		Batches:             make([]dto.ConversationBatchResponse, 0, len(conversation.Batches)),
 		Pending:             toConversationMessageResponses(conversation.Pending),
+		SellerMessages:      toConversationMessageResponses(conversation.SellerMessages),
 		CanDiscardAIChanges: conversation.CanDiscardAIChanges,
 	}
 	for _, entry := range conversation.Batches {
