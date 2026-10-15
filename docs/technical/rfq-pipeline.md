@@ -526,7 +526,8 @@ with a product, with quantities untouched:
 | `LOWER_TOTAL_PRICE` | `FIND_CHEAPER_ALTERNATIVES` | its cheapest `ECONOMY` alternative the branch prices below its own unit price |
 | `IMPROVE_QUALITY`   | `IMPROVE_QUALITY`           | its cheapest `PREMIUM` alternative the branch prices                          |
 
-Ties go to the alternative's name: `product_alternative` has no rank. The swaps are written as
+Only an active alternative sold in the base product's unit counts, and ties go to its name:
+`product_alternative` has no rank. The swaps are written as
 `REPLACE_ITEM` operations and priced at once at the branch price the recipe chose them by. A
 `LOWER_TOTAL_PRICE` result stands only if the engine's total after the sweep ends below the draft's
 own swept total; `IMPROVE_QUALITY` has no cap. An `ADD_DISCOUNT` needs nothing when the promotion is

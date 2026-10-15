@@ -5,7 +5,9 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -170,6 +172,96 @@ func TestConversationIntents_LowerTotalPriceIsDroppedUnlessTheEngineEndsLower(t 
 		len(run.StrategiesTried) != 1 || run.StrategiesTried[0] != "FIND_CHEAPER_ALTERNATIVES" ||
 		run.Intent == nil || len(run.Operations) != 0 {
 		t.Errorf("run = %+v, want a pipeline-exhausted no-match naming the strategy", run)
+	}
+}
+
+// Only an active alternative sold in the line's own unit is a substitute: a cheaper one in another
+// pack, or one no longer sold, is never swapped in.
+func TestConversationIntents_RecipesSkipInactiveAndOtherUnitAlternatives(t *testing.T) {
+	e := newEnv(t)
+	quote := e.sentHandlerQuote(t, "Intent substitutes")
+	inactive := e.alternativeOf(t, quote, quote.cementID, "Cemento discontinuado", "20",
+		domain.ProductAlternativeEconomy)
+	otherUnit := e.alternativeOf(t, quote, quote.cementID, "Cemento 25 kg", "25",
+		domain.ProductAlternativeEconomy)
+	valid := e.alternativeOf(t, quote, quote.cementID, "Cemento económico", "40",
+		domain.ProductAlternativeEconomy)
+	for _, stmt := range []struct {
+		sql string
+		id  uuid.UUID
+	}{
+		{`UPDATE product SET is_active = FALSE WHERE id = $1`, inactive},
+		{`UPDATE product SET unit = 'bolsa 25 kg' WHERE id = $1`, otherUnit},
+	} {
+		if _, err := e.db.CrossAccount().Exec(context.Background(), stmt.sql, stmt.id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	e.runBatch(t, quote, intent(domain.ChangeRequestIntentLowerTotalPrice), "más barato")
+
+	if products := e.draftProducts(t, e.quoteState(t, quote.quoteID).currentID); len(products) != 1 ||
+		products[0] != valid {
+		t.Errorf("draft products = %v, want the active same-unit alternative %s", products, valid)
+	}
+}
+
+// A goal tied to one line swaps that line only.
+func TestConversationIntents_RecipesActOnTheNamedLinesOnly(t *testing.T) {
+	e := newEnv(t)
+	quote := e.sentHandlerQuote(t, "Intent named lines")
+	accountID, branchID := quote.seed.tenant.AccountID, quote.seed.tenant.BranchID
+	sand := e.seedPricedProduct(t, accountID, branchID, "Arena gruesa", "30", nil)
+	e.alternativeOf(t, quote, sand, "Arena de río", "20", domain.ProductAlternativeEconomy)
+	cheaperCement := e.alternativeOf(t, quote, quote.cementID, "Cemento económico", "40",
+		domain.ProductAlternativeEconomy)
+	t.Cleanup(func() { e.mustCleanup(t, `DELETE FROM quote_item WHERE product_id = $1`, sand) })
+	e.runBatch(t, quote, requiresSeller, "hola")
+	draft := e.quoteState(t, quote.quoteID).currentID
+	var cementLine uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT id FROM quote_item WHERE version_id = $1`, draft).Scan(&cementLine); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO quote_item (account_id, version_id, product_id, requested_description, quantity,
+		                         unit_price_snapshot, subtotal)
+		 VALUES ($1, $2, $3, 'arena', 3, 30, 90)`, accountID, draft, sand); err != nil {
+		t.Fatal(err)
+	}
+
+	e.runBatch(t, quote, intent(domain.ChangeRequestIntentLowerTotalPrice, cementLine), "el cemento está caro")
+
+	products := e.draftProducts(t, draft)
+	if len(products) != 2 || !slices.Contains(products, cheaperCement) || !slices.Contains(products, sand) {
+		t.Errorf("draft products = %v, want the cement swapped and the sand untouched", products)
+	}
+}
+
+// A complex goal is checked against the matrix again under the lock: a quote archived while the
+// model answered takes no recipe.
+func TestConversationIntents_ComplexIsRecheckedAgainstTheMatrix(t *testing.T) {
+	e := newEnv(t)
+	quote := e.sentHandlerQuote(t, "Intent matrix recheck")
+	e.alternativeOf(t, quote, quote.cementID, "Cemento económico", "30", domain.ProductAlternativeEconomy)
+	batch := e.claimedBatch(t, quote.seed.tenant.AccountID, quote.quoteID, "está caro")
+	proposer := &scriptedProposer{answer: func(in domain.ChangeRequestInput) (*domain.ChangeRequestProposal, error) {
+		if _, err := e.db.CrossAccount().Exec(context.Background(),
+			`UPDATE quote SET archived_at = now() WHERE id = $1`, quote.quoteID); err != nil {
+			return nil, err
+		}
+		return intent(domain.ChangeRequestIntentLowerTotalPrice)(in)
+	}}
+
+	err := e.batchChangeHandler(proposer, nil).Handle(context.Background(), batch)
+
+	if !errors.Is(err, domain.ErrBatchUnprocessable) {
+		t.Fatalf("Handle() = %v, want ErrBatchUnprocessable", err)
+	}
+	state := e.quoteState(t, quote.quoteID)
+	if products := e.draftProducts(t, state.currentID); len(products) != 1 || products[0] != quote.cementID ||
+		len(e.decisionsOf(t, quote.quoteID)) != 0 {
+		t.Errorf("draft products = %v, want the archived quote's draft untouched and no decision", products)
 	}
 }
 

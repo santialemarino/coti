@@ -78,7 +78,7 @@ func (r *ProductAlternativeRepository) List(
 }
 
 // ListByBaseProductIDs returns each base product's alternatives of one type, keyed by the base,
-// with the active alternative product joined in.
+// with the alternative product joined in: only active ones sold in the base product's unit.
 func (r *ProductAlternativeRepository) ListByBaseProductIDs(
 	ctx context.Context, q Querier, accountID uuid.UUID, baseProductIDs []uuid.UUID,
 	kind domain.ProductAlternativeType,
@@ -94,8 +94,9 @@ func (r *ProductAlternativeRepository) ListByBaseProductIDs(
 			p.is_active, p.created_at, p.updated_at
 		 FROM product_alternative pa
 		 JOIN product p ON p.id = pa.alternative_product_id AND p.account_id = pa.account_id
+		 JOIN product b ON b.id = pa.base_product_id AND b.account_id = pa.account_id
 		 WHERE pa.account_id = $1 AND pa.base_product_id = ANY($2) AND pa.type = $3
-		   AND p.is_active = TRUE
+		   AND p.is_active = TRUE AND lower(p.unit) IS NOT DISTINCT FROM lower(b.unit)
 		 ORDER BY pa.base_product_id, p.canonical_name, p.id`,
 		accountID, baseProductIDs, kind)
 	if err != nil {
