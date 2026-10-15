@@ -96,13 +96,16 @@ No request has any reason to read an audit trail, let alone rewrite one.
 
 ## Configuration
 
-| Variable                                | Default | What for                                  |
-| --------------------------------------- | ------- | ----------------------------------------- |
-| `JOB_TIMEOUT_MINUTES`                   | 30      | Bound on a single run                     |
-| `ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE`  | 5       | Orders read per firing of the sweep       |
-| `ATTACHMENT_EXTRACTION_RECLAIM_MINUTES` | 15      | How long one run's claim on a file stands |
-| `QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS`      | 30      | Days without movement before archiving    |
-| `QUOTE_AUTO_ARCHIVE_BATCH_SIZE`         | 100     | Quotes archived per statement             |
+| Variable                                  | Default | What for                                  |
+| ----------------------------------------- | ------- | ----------------------------------------- |
+| `JOB_TIMEOUT_MINUTES`                     | 30      | Bound on a single run                     |
+| `ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE`    | 5       | Orders read per firing of the sweep       |
+| `ATTACHMENT_EXTRACTION_RECLAIM_MINUTES`   | 15      | How long one run's claim on a file stands |
+| `QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS`        | 30      | Days without movement before archiving    |
+| `QUOTE_AUTO_ARCHIVE_BATCH_SIZE`           | 100     | Quotes archived per statement             |
+| `CONVERSATION_MAX_ATTEMPTS`               | 3       | Failed attempts before a batch is FAILED  |
+| `CONVERSATION_PROCESSING_TIMEOUT_SECONDS` | 600     | One attempt's bound; older claims reclaim |
+| `CONVERSATION_SWEEP_BATCH_SIZE`           | 100     | Windows closed per page, claims per pass  |
 
 ## Registered schedules
 
@@ -113,6 +116,7 @@ No request has any reason to read an audit trail, let alone rewrite one.
 | `attachment-extraction`     | Every 15 minutes      | Read the files an order arrived with and extract |
 | `catalog-embedding`         | Every 15 minutes      | Embed products created or edited since last run  |
 | `quote-auto-archive`        | Daily at 03:30 (AR)   | Archive quotes nobody has moved in a month       |
+| `conversation-batches`      | Every 15 minutes      | Backstop for the API's conversation ticker       |
 
 App Platform's scheduled jobs accept a cron expression and a timezone, with a **minimum interval of
 every 15 minutes** — a tighter cron is not honoured, and `doctl apps spec validate --schema-only`
@@ -203,3 +207,14 @@ firing and each batch commits on its own. `FOR UPDATE SKIP LOCKED` leaves a quot
 at that moment for the next run. A second run finds nothing new — an archived quote is never matched
 again — and every archived quote is logged with its account, branch, number, status and last
 activity.
+
+### `conversation-batches`
+
+Closes the due client message windows and processes their batches, one per quote at a time in
+`closed_at` order. The API already runs the same sweep on its own ticker every
+`CONVERSATION_TICKER_SECONDS`; this job is what keeps windows closing while the API is down or
+redeploying, and 15 minutes is the platform's shortest interval. The two can run at once: the
+closer skips locked rows, and a claim is a single statement guarded by `FOR UPDATE SKIP LOCKED`
+and `uq_message_batch_processing`. Its run records count closed, reclaimed and claimed batches as
+scanned. The full mechanics are in
+[whatsapp-cloud-api.md](whatsapp-cloud-api.md#closing-and-processing-batches).

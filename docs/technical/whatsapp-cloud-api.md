@@ -124,8 +124,37 @@ closes_at = min(now + CONVERSATION_WINDOW_RESET_SECONDS, opened_at + CONVERSATIO
 
 `SELLER` and `SYSTEM` messages are context and never open or extend a window. Defaults are 120 s
 and 600 s; startup refuses a cap that does not exceed the reset. `CONVERSATION_CONTEXT_MESSAGES`
-(10) is how many earlier messages travel with a batch once batches are processed. Closing windows
-and processing batches are not wired yet, and routing never changes `quote.current_status`.
+(10) is how many earlier messages travel with a batch once batches are processed. Routing never
+changes `quote.current_status`.
+
+### Closing and processing batches
+
+A sweep closes the due windows and works the queue, across every account on the owner pool:
+
+1. **Close.** Each page locks up to `CONVERSATION_SWEEP_BATCH_SIZE` quotes with a window due
+   (`closes_at <= now`), skipping a quote another transaction holds, then in the same transaction
+   moves their windows to `CLOSED` (`closed_at`) and stamps every unbatched `CLIENT` message of the
+   quote with the batch. The quote is locked before its window, the order routing follows too, so a
+   message either lands before the close and joins the batch or after it and opens the next window.
+2. **Reclaim.** A `PROCESSING` batch whose `processing_started_at` is older than
+   `CONVERSATION_PROCESSING_TIMEOUT_SECONDS` lost its worker: it counts the attempt and returns to
+   `CLOSED`, or `FAILED` once `attempts` reaches `CONVERSATION_MAX_ATTEMPTS`.
+3. **Process.** One statement claims the oldest `CLOSED` batch that heads its quote's queue by
+   `(closed_at, id)` on a quote with no `PROCESSING` batch (`FOR UPDATE SKIP LOCKED`), and
+   `uq_message_batch_processing` refuses a second claim on one quote should two workers race. The
+   claimed batch goes to the `ConversationBatchHandler` port with one attempt's timeout, then
+   `PROCESSED`; an error counts an attempt and returns it to `CLOSED` (`last_error`), or `FAILED` at
+   the limit, and the quote's next batch waits behind it until then. Each batch gets one attempt
+   per pass, so retries are spaced by the cadence. A shutdown hands the claim back uncounted.
+
+Every write that settles a claim matches its `processing_started_at`, so a worker that was reclaimed
+and comes back late changes nothing. The only handler bound today is a no-op that succeeds; the
+real one owns every quote write a batch causes, the `SENT` → `CHANGE_REQUESTED` move included.
+
+The API runs the sweep on an in-process ticker every `CONVERSATION_TICKER_SECONDS` (30), one pass at
+a time, stopped and awaited on shutdown before the pools close. The `conversation-batches`
+scheduled job runs the same sweep every 15 minutes as a backstop
+([scheduled-jobs.md](scheduled-jobs.md)); the two may overlap safely.
 
 When a seller opens the send dialog for an RFQ that entered through WhatsApp, Coti reads that
 retained sender and pre-fills it as the editable WhatsApp recipient. Meta supplies it as a
