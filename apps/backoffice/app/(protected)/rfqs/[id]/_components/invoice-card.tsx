@@ -217,6 +217,8 @@ export function InvoiceCard({ quoteId, branchId, clientId }: InvoiceCardProps) {
               branchId={branchId}
               rejection={creditNoteRejection}
               onRecovered={() => void reload()}
+              // A credit note goes to the invoice's environment, which only a server set to it reaches.
+              creditable={issued.environment === preview.environment}
               onCreditNote={() => setConfirmingCreditNote(true)}
               creditNoting={creditNoting}
               creditNoteButtonRef={creditNoteButtonRef}
@@ -349,6 +351,7 @@ function IssuedInvoice({
   branchId,
   rejection,
   onRecovered,
+  creditable,
   onCreditNote,
   creditNoting,
   creditNoteButtonRef,
@@ -358,6 +361,7 @@ function IssuedInvoice({
   /* ARCA's reasons for refusing the credit note just asked for. */
   rejection: string[];
   onRecovered: () => void;
+  creditable: boolean;
   onCreditNote: () => void;
   creditNoting: boolean;
   creditNoteButtonRef: React.RefObject<HTMLButtonElement | null>;
@@ -391,7 +395,7 @@ function IssuedInvoice({
         <Button asChild variant="outline">
           <a href={ROUTES.invoicePDF(invoice.id, branchId)}>{t('download')}</a>
         </Button>
-        {note?.status !== 'PENDING' ? (
+        {creditable && note?.status !== 'PENDING' ? (
           <PendingButton
             ref={creditNoteButtonRef}
             variant="outline"

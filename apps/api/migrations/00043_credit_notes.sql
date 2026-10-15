@@ -60,6 +60,7 @@ CREATE TRIGGER trg_invoice_links BEFORE INSERT OR UPDATE OF kind, credited_invoi
   FOR EACH ROW EXECUTE FUNCTION check_invoice_links();
 
 -- +goose Down
+-- Cannot run once credit notes exist: their rows would turn into duplicate invoices.
 DROP TRIGGER trg_invoice_links ON invoice;
 DROP FUNCTION check_invoice_links();
 DROP INDEX uq_invoice_pending_series;

@@ -13,6 +13,7 @@ import (
 
 // IssueCreditNote asks ARCA for the credit note that cancels an issued invoice in full, in its environment;
 // a pending one holds the invoice, so a second press never authorizes a second note.
+// An archived sale is still credited: a fiscal correction outlives the quote's place in the queue.
 func (s *InvoiceService) IssueCreditNote(ctx context.Context, tenant domain.Tenant, invoiceID uuid.UUID) (*domain.Invoice, error) {
 	if err := requireBranch(tenant, "a credit note"); err != nil {
 		return nil, err

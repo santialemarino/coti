@@ -213,3 +213,18 @@ func TestCreditNoteFor_NeverPredatesTheInvoice(t *testing.T) {
 		}
 	}
 }
+
+// Auto-archive can put an invoiced sale away; cancelling its invoice is still a fiscal correction to make.
+func TestInvoiceService_CreditNoteOnAnArchivedQuote(t *testing.T) {
+	t.Parallel()
+	f := newInvoiceFixture(t)
+	invoice := issuedInvoice(t, f)
+	archived := invoiceNow.Add(-time.Hour)
+	f.quotes.quote.ArchivedAt = &archived
+
+	note, err := f.service.IssueCreditNote(context.Background(), f.tenant, invoice.ID)
+
+	if err != nil || note.Status != domain.InvoiceStatusIssued || len(f.issuer.requests) != 2 {
+		t.Fatalf("note = %+v, err = %v, want the credit note issued on the archived sale", note, err)
+	}
+}

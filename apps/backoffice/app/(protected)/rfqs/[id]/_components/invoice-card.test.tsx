@@ -445,4 +445,22 @@ describe('InvoiceCard', () => {
     );
     expect(getInvoicePreview).toHaveBeenCalledTimes(2);
   });
+
+  // A real invoice seen from a test server could only be answered "not ready", so nothing is offered.
+  it('offers a credit note only from a server in the invoice’s environment', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({
+      ...READY,
+      environment: 'HOMOLOGATION',
+      invoice: ISSUED,
+    });
+    const view = renderCard();
+
+    expect(await view.findByText('Factura A 0003-00000023')).toBeTruthy();
+    expect(view.queryByRole('button', { name: card.creditNote.issue })).toBeNull();
+    view.unmount();
+
+    vi.mocked(getInvoicePreview).mockResolvedValue({ ...READY, invoice: ISSUED });
+    const same = renderCard();
+    expect(await same.findByRole('button', { name: card.creditNote.issue })).toBeTruthy();
+  });
 });
