@@ -172,10 +172,9 @@ func (r *QuoteRepository) UpdateStatus(
 	return quote, err
 }
 
-// Archive flags a quote as archived. Archived is an orthogonal flag, not a transition: it sets
-// the timestamp without touching current_status. It refuses (no row matched) when the quote is
-// absent, already archived, or closed as accepted or rejected — an archived or closed quote has
-// no reason to be boxed away again.
+// Archive flags a quote as archived in whatever status it is. Archived is an orthogonal flag, not
+// a transition: it sets the timestamp without touching current_status. It refuses (no row
+// matched) when the quote is absent or already archived.
 func (r *QuoteRepository) Archive(
 	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID,
 ) (*domain.Quote, error) {
@@ -184,7 +183,6 @@ func (r *QuoteRepository) Archive(
 		 SET archived_at = now()
 		 WHERE account_id = $1 AND branch_id = $2 AND id = $3
 		   AND archived_at IS NULL
-		   AND current_status NOT IN ('ACCEPTED', 'REJECTED')
 		 RETURNING `+quoteColumns,
 		accountID, branchID, quoteID))
 	if errors.Is(err, domain.ErrNotFound) {
@@ -207,6 +205,68 @@ func (r *QuoteRepository) Unarchive(
 		return nil, domain.ErrConflict
 	}
 	return quote, err
+}
+
+// ClaimForEdit locks a quote for an edit and records the edit as activity, in one statement: the
+// row lock keeps the inactivity sweep from archiving it between the guard and the write, and the
+// touched updated_at is what the sweep measures. A refused edit rolls both back with its transaction.
+func (r *QuoteRepository) ClaimForEdit(
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID,
+) (*domain.Quote, error) {
+	return scanQuote(q.QueryRow(ctx,
+		`UPDATE quote
+		 SET updated_at = now()
+		 WHERE account_id = $1 AND branch_id = $2 AND id = $3
+		 RETURNING `+quoteColumns,
+		accountID, branchID, quoteID))
+}
+
+// ArchiveInactiveCrossAccount archives up to limit quotes, across every account, that sit in one of
+// statuses and whose row has not changed since before; a SENT one also needs its offer to have
+// lapsed by now, so a live link is never withdrawn. Inactivity is quote.updated_at, which every
+// transition, send, assignment, line edit and unarchive moves. It runs on a scheduled job's owner
+// connection.
+func (r *QuoteRepository) ArchiveInactiveCrossAccount(
+	ctx context.Context, q Querier, statuses []domain.QuoteStatus, before, now time.Time, limit int,
+) ([]domain.ArchivedQuote, error) {
+	names := make([]string, len(statuses))
+	for i, status := range statuses {
+		names[i] = string(status)
+	}
+	// SKIP LOCKED leaves a quote a seller is writing right now for the next firing.
+	rows, err := q.Query(ctx,
+		`WITH stale AS (
+		   SELECT id, updated_at FROM quote
+		   WHERE archived_at IS NULL
+		     AND current_status = ANY($1::quote_status[])
+		     AND updated_at < $2
+		     AND (current_status <> 'SENT' OR expires_at < $4)
+		   ORDER BY updated_at, id
+		   LIMIT $3
+		   FOR UPDATE SKIP LOCKED
+		 )
+		 UPDATE quote
+		 SET archived_at = now()
+		 FROM stale
+		 WHERE quote.id = stale.id
+		 RETURNING quote.account_id, quote.branch_id, quote.id, quote.number,
+		           quote.current_status, stale.updated_at`,
+		names, before, limit, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	archived := make([]domain.ArchivedQuote, 0)
+	for rows.Next() {
+		var quote domain.ArchivedQuote
+		if err := rows.Scan(&quote.AccountID, &quote.BranchID, &quote.QuoteID, &quote.Number,
+			&quote.Status, &quote.LastActivityAt); err != nil {
+			return nil, err
+		}
+		archived = append(archived, quote)
+	}
+	return archived, rows.Err()
 }
 
 // SetClient attaches the same account-scoped client used by the quote's RFQ.

@@ -142,9 +142,10 @@ type QuoteDeliveryResponse struct {
 	SentAt         *time.Time `json:"sent_at"`
 }
 
-// PublicQuoteSendResponse exposes immutable content only while the delivery token is active.
+// PublicQuoteSendResponse exposes immutable content only while the delivery token is active and
+// the quote is not archived.
 type PublicQuoteSendResponse struct {
-	Status    string                              `json:"status"`
+	Status    string                              `json:"status" enums:"ACTIVE,EXPIRED,UNAVAILABLE"`
 	ExpiresAt time.Time                           `json:"expires_at"`
 	Quote     *QuoteRepresentationPayloadResponse `json:"quote,omitempty"`
 	Message   *string                             `json:"message,omitempty"`

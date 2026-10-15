@@ -4694,7 +4694,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "QUOTE_ALREADY_INVOICED, INVOICE_IN_PROGRESS, INVOICE_STALE",
+                        "description": "QUOTE_ALREADY_INVOICED, INVOICE_IN_PROGRESS, INVOICE_STALE, QUOTE_ARCHIVED",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -8553,7 +8553,12 @@ const docTemplate = `{
                     "$ref": "#/definitions/dto.QuoteRepresentationPayloadResponse"
                 },
                 "status": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                        "ACTIVE",
+                        "EXPIRED",
+                        "UNAVAILABLE"
+                    ]
                 }
             }
         },

@@ -204,7 +204,7 @@ func (h *QuoteHandler) Send(c *gin.Context) {
 	c.JSON(status, toQuoteSendResponse(*result))
 }
 
-// ResolvePublic reports whether a completed delivery token is active or expired.
+// ResolvePublic reports whether a completed delivery token is active, expired or withdrawn.
 //
 //	@Summary	Resolve a public quote delivery token
 //	@Tags		public quote sends
