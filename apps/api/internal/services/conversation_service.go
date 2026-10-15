@@ -53,7 +53,8 @@ func NewConversationService(quotes conversationQuoteLocker, sends conversationSe
 }
 
 // Route finds the conversation an inbound sender continues on the channel it wrote to, and locks
-// that quote for the rest of the transaction. Returns nil when no live quote was sent to the sender.
+// that quote for the rest of the transaction. Returns nil when no live quote was sent to the sender,
+// including a sender no quote can have been sent to.
 func (s *ConversationService) Route(ctx context.Context, q repository.Querier,
 	route domain.InboundChannelRoute, senderID string,
 ) (*domain.ConversationRoute, error) {
@@ -61,6 +62,9 @@ func (s *ConversationService) Route(ctx context.Context, q repository.Querier,
 		return nil, err
 	}
 	destinations, err := domain.InboundSenderDestinations(route.ChannelType, senderID)
+	if errors.Is(err, domain.ErrInvalidInput) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}

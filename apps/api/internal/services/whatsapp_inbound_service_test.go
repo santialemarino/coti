@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,8 @@ import (
 type fakeWhatsAppInboundDB struct {
 	scopes []domain.Tenant
 	locks  []string
+	// results holds what each transaction returned, so a test can see a rollback.
+	results []error
 }
 
 func (f *fakeWhatsAppInboundDB) CrossAccount() repository.Querier { return nil }
@@ -23,7 +26,9 @@ func (f *fakeWhatsAppInboundDB) InTenantTx(
 	_ context.Context, tenant domain.Tenant, fn func(repository.Querier) error,
 ) error {
 	f.scopes = append(f.scopes, tenant)
-	return fn(nil)
+	err := fn(nil)
+	f.results = append(f.results, err)
+	return err
 }
 
 func (f *fakeWhatsAppInboundDB) WithAdvisoryLock(
@@ -195,15 +200,17 @@ func TestWhatsAppInboundService_VerifyAcceptsConfiguredChannelToken(t *testing.T
 }
 
 func inboundTestService(conversations *fakeWhatsAppInboundConversations,
-) (*WhatsAppInboundService, *fakeWhatsAppInboundMessages, *fakeWhatsAppInboundRFQs) {
+) (*WhatsAppInboundService, *fakeWhatsAppInboundMessages, *fakeWhatsAppInboundRFQs,
+	*fakeWhatsAppInboundDB) {
 	route := domain.InboundChannelRoute{AccountID: uuid.New(), BranchID: uuid.New(),
 		ChannelID: uuid.New(), ChannelType: domain.ChannelTypeWhatsApp}
 	messages := &fakeWhatsAppInboundMessages{}
 	rfqs := &fakeWhatsAppInboundRFQs{}
-	service := NewWhatsAppInboundService(&fakeWhatsAppInboundDB{}, &fakeWhatsAppInboundRouter{
+	db := &fakeWhatsAppInboundDB{}
+	service := NewWhatsAppInboundService(db, &fakeWhatsAppInboundRouter{
 		routes: map[string]domain.InboundChannelRoute{"phone-id": route},
 	}, messages, nil, rfqs, nil, nil).WithConversations(conversations)
-	return service, messages, rfqs
+	return service, messages, rfqs, db
 }
 
 func inboundTestMessage() []domain.InboundTextMessage {
@@ -217,7 +224,7 @@ func TestWhatsAppInboundService_IngestJoinsALiveConversationWithoutAnRFQ(t *test
 	quoteID := uuid.New()
 	conversations := &fakeWhatsAppInboundConversations{
 		match: &domain.ConversationRoute{QuoteID: quoteID, OtherLiveQuotes: 1}}
-	service, messages, rfqs := inboundTestService(conversations)
+	service, messages, rfqs, _ := inboundTestService(conversations)
 
 	if err := service.Ingest(context.Background(), inboundTestMessage()); err != nil {
 		t.Fatalf("Ingest() = %v, want no error", err)
@@ -241,7 +248,7 @@ func TestWhatsAppInboundService_IngestJoinsALiveConversationWithoutAnRFQ(t *test
 func TestWhatsAppInboundService_IngestRetryKeepsTheFirstOutcome(t *testing.T) {
 	t.Parallel()
 	conversations := &fakeWhatsAppInboundConversations{}
-	service, _, rfqs := inboundTestService(conversations)
+	service, _, rfqs, _ := inboundTestService(conversations)
 	if err := service.Ingest(context.Background(), inboundTestMessage()); err != nil {
 		t.Fatalf("first Ingest() = %v", err)
 	}
@@ -254,11 +261,14 @@ func TestWhatsAppInboundService_IngestRetryKeepsTheFirstOutcome(t *testing.T) {
 	}
 
 	joined := &fakeWhatsAppInboundConversations{match: &domain.ConversationRoute{QuoteID: uuid.New()}}
-	service, _, rfqs = inboundTestService(joined)
+	service, _, rfqs, db := inboundTestService(joined)
 	for range 2 {
 		if err := service.Ingest(context.Background(), inboundTestMessage()); err != nil {
 			t.Fatalf("Ingest() = %v", err)
 		}
+	}
+	if len(db.results) != 2 || db.results[0] != nil || !errors.Is(db.results[1], errInboundAlreadyReserved) {
+		t.Errorf("transactions = %v, want the retry's join rolled back", db.results)
 	}
 	joined.match = nil
 	if err := service.Ingest(context.Background(), inboundTestMessage()); err != nil {

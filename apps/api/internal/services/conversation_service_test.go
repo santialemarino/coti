@@ -135,3 +135,19 @@ func TestConversationService_AppendMessageMovesTheWindowOnlyForTheClient(t *test
 		})
 	}
 }
+
+// A sender that cannot be a send destination starts an order, as every message did before routing.
+func TestConversationService_RouteTreatsAnUnroutableSenderAsNoMatch(t *testing.T) {
+	t.Parallel()
+	sends := &fakeConversationSends{candidates: []domain.ConversationCandidate{{QuoteID: uuid.New()}}}
+	service := NewConversationService(&fakeConversationQuotes{}, sends, nil, nil,
+		config.ConversationConfig{})
+
+	match, err := service.Route(context.Background(), nil, conversationRoute(), "54911-abc")
+	if err != nil || match != nil {
+		t.Errorf("Route() = %+v, %v; want no conversation and no error", match, err)
+	}
+	if sends.destinations != nil {
+		t.Errorf("destinations = %v, want no candidate read", sends.destinations)
+	}
+}
