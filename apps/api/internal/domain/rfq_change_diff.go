@@ -1,6 +1,9 @@
 package domain
 
-import "github.com/shopspring/decimal"
+import (
+	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
+)
 
 // ChangeRequestSnapshot is one side of the change-request comparison: the frozen
 // version the client saw, or the draft the seller is rebuilding. Both come from the
@@ -11,142 +14,155 @@ type ChangeRequestSnapshot struct {
 	Total     decimal.Decimal
 }
 
-// ChangeRequestDiff compares the frozen version a client saw against the draft the
-// seller is rebuilding. Populated only when a CHANGE_REQUESTED quote has a frozen
-// predecessor. Original is the client-facing snapshot; Requested carries the flags
-// the diff screen paints.
+// ChangeRequestDiff compares the frozen version a client saw against the draft the seller is
+// rebuilding. Populated only when a CHANGE_REQUESTED quote has a frozen predecessor.
 type ChangeRequestDiff struct {
-	Reason    *string
-	Original  ChangeRequestSide
-	Requested ChangeRequestSide
+	Reason *string
+	// Lines pairs each sent line with the draft line copied from it, then the lines the draft added.
+	Lines          []DiffLine
+	Discounts      []DiffDiscount
+	OriginalTotal  decimal.Decimal
+	RequestedTotal decimal.Decimal
 	// Handler is the latest conversation handler decision on the draft, when one ran.
 	Handler *HandlerDecisionNote
 	// ClientMessages is every message the customer sent since the version they answered went out.
 	ClientMessages []QuoteMessage
 }
 
-// ChangeRequestSide is one column (original or requested) of the rendered diff.
-type ChangeRequestSide struct {
-	Items     []DiffLineItem
-	Discounts []DiffDiscountLine
-	Total     decimal.Decimal
+// DiffChange says how a draft row differs from what the customer received.
+type DiffChange string
+
+const (
+	DiffUnchanged DiffChange = "UNCHANGED"
+	DiffModified  DiffChange = "MODIFIED"
+	DiffAdded     DiffChange = "ADDED"
+	DiffRemoved   DiffChange = "REMOVED"
+)
+
+// DiffLine is one line of the comparison: the sent line, the draft line, or both.
+type DiffLine struct {
+	Change    DiffChange
+	Original  *DiffLineItem
+	Requested *DiffLineItem
 }
 
-// DiffLineItem is one aligned line of the comparison. Quantity and UnitPrice are
-// decimal strings; ChangeType separates added, removed and modified lines.
+// DiffLineItem is one side of a compared line. Quantity and UnitPrice are decimal strings.
 type DiffLineItem struct {
 	Description string
+	ProductName *string
 	Quantity    string
 	Unit        *string
 	UnitPrice   *string
-	Changed     bool
-	ChangeType  string
 }
 
-// DiffDiscountLine is one aligned discount row of the comparison.
-type DiffDiscountLine struct {
-	Name    string
-	Amount  string
-	Changed bool
+// DiffDiscount is one discount of the comparison, paired by name.
+type DiffDiscount struct {
+	Change    DiffChange
+	Name      string
+	Original  *DiffDiscountSide
+	Requested *DiffDiscountSide
 }
 
-// BuildChangeRequestDiff aligns the frozen and draft item lists by line position —
-// the same walk the diff screen performs — and flags lines and discounts that
-// differ. Lines past the end of the frozen list are added; frozen lines past the end
-// of the draft list are emitted as removed placeholders.
+// DiffDiscountSide is a discount's money and suppression on one side of the comparison.
+type DiffDiscountSide struct {
+	Amount     string
+	Suppressed bool
+}
+
+// BuildChangeRequestDiff pairs each frozen line with the draft line copied from it, by the draft
+// line's source, so a reordered or swapped line is compared with its own predecessor. Frozen lines
+// no draft line came from are removed; draft lines with no frozen source are added.
 func BuildChangeRequestDiff(reason *string, frozen, draft ChangeRequestSnapshot) ChangeRequestDiff {
-	return ChangeRequestDiff{
-		Reason:    reason,
-		Original:  side(frozen),
-		Requested: requestedSide(draft, frozen),
-	}
-}
+	diff := ChangeRequestDiff{Reason: reason, Lines: make([]DiffLine, 0, len(draft.Items)),
+		Discounts: make([]DiffDiscount, 0), OriginalTotal: frozen.Total, RequestedTotal: draft.Total}
 
-func side(snapshot ChangeRequestSnapshot) ChangeRequestSide {
-	side := ChangeRequestSide{
-		Items:     make([]DiffLineItem, 0, len(snapshot.Items)),
-		Discounts: make([]DiffDiscountLine, 0, len(snapshot.Discounts)),
-		Total:     snapshot.Total,
-	}
-	for _, item := range snapshot.Items {
-		side.Items = append(side.Items, DiffLineItem{
-			Description: item.RequestedDescription,
-			Quantity:    item.Quantity.StringFixed(MoneyScale),
-			Unit:        item.Unit,
-			UnitPrice:   priceString(item.UnitPriceSnapshot),
-		})
-	}
-	for _, discount := range snapshot.Discounts {
-		side.Discounts = append(side.Discounts, DiffDiscountLine{
-			Name:   discountName(discount),
-			Amount: discount.Amount.StringFixed(MoneyScale),
-		})
-	}
-	return side
-}
-
-// requestedSide paints the draft's changes against the frozen list: modified for
-// position-aligned lines that differ, added past the end of the frozen list, removed
-// for the frozen lines the draft dropped. Discounts are matched by name; a changed
-// amount or suppression flags the draft row.
-func requestedSide(draft, frozen ChangeRequestSnapshot) ChangeRequestSide {
-	side := ChangeRequestSide{
-		Items:     make([]DiffLineItem, 0, len(draft.Items)),
-		Discounts: make([]DiffDiscountLine, 0, len(draft.Discounts)),
-		Total:     draft.Total,
-	}
-	for i, item := range draft.Items {
-		changed, changeType := true, "added"
-		if i < len(frozen.Items) {
-			if sameItem(frozen.Items[i], item) {
-				changed, changeType = false, ""
-			} else {
-				changeType = "modified"
+	used := make(map[int]bool, len(draft.Items))
+	for _, sent := range frozen.Items {
+		paired := -1
+		for i, line := range draft.Items {
+			if !used[i] && line.SourceItemID != nil && *line.SourceItemID == sent.ID {
+				paired = i
+				break
 			}
 		}
-		side.Items = append(side.Items, DiffLineItem{
-			Description: item.RequestedDescription,
-			Quantity:    item.Quantity.StringFixed(MoneyScale),
-			Unit:        item.Unit,
-			UnitPrice:   priceString(item.UnitPriceSnapshot),
-			Changed:     changed,
-			ChangeType:  changeType,
-		})
+		original := diffLineItem(sent)
+		if paired < 0 {
+			diff.Lines = append(diff.Lines, DiffLine{Change: DiffRemoved, Original: &original})
+			continue
+		}
+		used[paired] = true
+		requested := diffLineItem(draft.Items[paired])
+		change := DiffModified
+		if sameItem(sent, draft.Items[paired]) {
+			change = DiffUnchanged
+		}
+		diff.Lines = append(diff.Lines, DiffLine{Change: change, Original: &original,
+			Requested: &requested})
 	}
-	if len(draft.Items) < len(frozen.Items) {
-		for _, removed := range frozen.Items[len(draft.Items):] {
-			side.Items = append(side.Items, DiffLineItem{
-				Description: removed.RequestedDescription,
-				Changed:     true,
-				ChangeType:  "removed",
-			})
+	for i, line := range draft.Items {
+		if !used[i] {
+			requested := diffLineItem(line)
+			diff.Lines = append(diff.Lines, DiffLine{Change: DiffAdded, Requested: &requested})
 		}
 	}
 
-	byName := make(map[string]QuoteDiscount, len(frozen.Discounts))
+	sent := make(map[string]QuoteDiscount, len(frozen.Discounts))
 	for _, discount := range frozen.Discounts {
-		byName[discountName(discount)] = discount
+		sent[discountName(discount)] = discount
 	}
+	seen := make(map[string]bool, len(draft.Discounts))
 	for _, discount := range draft.Discounts {
 		name := discountName(discount)
-		previous, matched := byName[name]
-		changed := !matched ||
-			!discount.Amount.Equal(previous.Amount) ||
-			discount.SuppressedBySeller != previous.SuppressedBySeller
-		side.Discounts = append(side.Discounts, DiffDiscountLine{
-			Name:    name,
-			Amount:  discount.Amount.StringFixed(MoneyScale),
-			Changed: changed,
-		})
+		seen[name] = true
+		requested := discountSide(discount)
+		previous, ok := sent[name]
+		if !ok {
+			diff.Discounts = append(diff.Discounts, DiffDiscount{Change: DiffAdded, Name: name,
+				Requested: &requested})
+			continue
+		}
+		original := discountSide(previous)
+		change := DiffUnchanged
+		if original != requested {
+			change = DiffModified
+		}
+		diff.Discounts = append(diff.Discounts, DiffDiscount{Change: change, Name: name,
+			Original: &original, Requested: &requested})
 	}
-	return side
+	for _, discount := range frozen.Discounts {
+		if name := discountName(discount); !seen[name] {
+			original := discountSide(discount)
+			diff.Discounts = append(diff.Discounts, DiffDiscount{Change: DiffRemoved, Name: name,
+				Original: &original})
+		}
+	}
+	return diff
+}
+
+func diffLineItem(item QuoteItem) DiffLineItem {
+	return DiffLineItem{Description: item.RequestedDescription, ProductName: item.ProductName,
+		Quantity: item.Quantity.StringFixed(MoneyScale), Unit: item.Unit,
+		UnitPrice: priceString(item.UnitPriceSnapshot)}
+}
+
+func discountSide(discount QuoteDiscount) DiffDiscountSide {
+	return DiffDiscountSide{Amount: discount.Amount.StringFixed(MoneyScale),
+		Suppressed: discount.SuppressedBySeller}
 }
 
 func sameItem(frozen, draft QuoteItem) bool {
 	return frozen.RequestedDescription == draft.RequestedDescription &&
+		equalUUIDPtr(frozen.ProductID, draft.ProductID) &&
 		frozen.Quantity.Equal(draft.Quantity) &&
 		equalStringPtr(frozen.Unit, draft.Unit) &&
 		equalPrice(frozen.UnitPriceSnapshot, draft.UnitPriceSnapshot)
+}
+
+func equalUUIDPtr(a, b *uuid.UUID) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 func equalStringPtr(a, b *string) bool {

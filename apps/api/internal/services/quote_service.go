@@ -49,12 +49,18 @@ type QuoteService struct {
 	log    *slog.Logger
 	// sweep settles the version's discounts once its lines are priced; nil prices without them.
 	sweep *discountSweep
+	// carry starts a reactivated draft from the discounts the customer saw; nil without the engine.
+	carry *draftCarry
 }
 
 // WithDiscountEngine wires the discount sweep, so accepting the materials also earns the promotions
 // the priced lines qualify for.
-func (s *QuoteService) WithDiscountEngine(discounts versionDiscountStore, promotions promotionReader) *QuoteService {
+func (s *QuoteService) WithDiscountEngine(discounts interface {
+	versionDiscountStore
+	draftDiscountCopier
+}, promotions promotionReader, totals draftTotalWriter) *QuoteService {
 	s.sweep = &discountSweep{discounts: discounts, promotions: promotions, now: time.Now}
+	s.carry = &draftCarry{discounts: discounts, sweep: s.sweep, totals: totals}
 	return s
 }
 
@@ -310,7 +316,8 @@ func (s *QuoteService) Reactivate(
 		if mode == domain.QuoteReactivationEdit {
 			authorID := tenant.UserID
 			if _, err := cloneQuoteVersionForEditing(ctx, q, s.quotes, s.prices,
-				tenant.AccountID, quote.BranchID, quote.ID, *version, &authorID, nil); err != nil {
+				tenant.AccountID, quote.BranchID, quote.ID, *version, &authorID, nil,
+				s.carry); err != nil {
 				return err
 			}
 			target = domain.QuoteStatusChangeRequested

@@ -207,13 +207,14 @@ func newEnvWithRFQProviders(
 		services.NewCatalogMatchService(catalogSearchService, cfg.Catalog), quiet, cfg.RFQ).
 		WithDiscounts(quoteDiscountRepo).
 		WithPromotions(promotionRepo).
+		WithPrices(repository.NewProductPriceRepository()).
 		WithHandlerDecisions(repository.NewHandlerDecisionRepository()).
 		WithConversation(repository.NewMessageBatchRepository(), repository.NewQuoteMessageRepository(),
 			repository.NewHandlerDecisionRepository()).
 		WithClientMessages(repository.NewQuoteMessageRepository())
 	quoteService := services.NewQuoteService(db, quoteRepo,
 		repository.NewProductPriceRepository(), domain.ARCAEnvironmentHomologation, quiet).
-		WithDiscountEngine(quoteDiscountRepo, promotionRepo)
+		WithDiscountEngine(quoteDiscountRepo, promotionRepo, quoteRepo)
 	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
 		quoteSendRepo)
 	channelSealer, err := secrets.NewAESGCM(cfg.Channel.EncryptionKey)

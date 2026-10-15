@@ -150,6 +150,7 @@ type RFQService struct {
 	quotes      quoteDraftRepository
 	discounts   quoteDiscountRepository
 	promotions  promotionReader
+	prices      branchPriceReader
 	sends       quoteSendTracker
 	generations quoteAIGenerationRepository
 	channels    rfqChannelReader
@@ -202,6 +203,12 @@ func (s *RFQService) WithCorrectionMemory(memories interpretationMemoryFinder) *
 // version total depend on.
 func (s *RFQService) WithDiscounts(discounts quoteDiscountRepository) *RFQService {
 	s.discounts = discounts
+	return s
+}
+
+// WithPrices lets a line on a priced quote take the branch price of the product chosen for it.
+func (s *RFQService) WithPrices(prices branchPriceReader) *RFQService {
+	s.prices = prices
 	return s
 }
 
@@ -614,13 +621,35 @@ func (s *RFQService) UpdateItem(
 		if version.IsImmutable {
 			return domain.ErrImmutable
 		}
+		if in.ConfirmMatch && in.ProductID == nil {
+			current, getErr := s.quotes.GetItem(ctx, q, tenant.AccountID, version.ID, itemID)
+			if getErr != nil {
+				return getErr
+			}
+			if current.ProductID == nil {
+				return fmt.Errorf("%w: a line with no product cannot be confirmed", domain.ErrInvalidInput)
+			}
+		}
+		// A priced quote prices the product chosen for a line at the branch, as accepting did.
+		if quote.CurrentStatus == domain.QuoteStatusQuoted && in.ProductID != nil &&
+			in.UnitPriceSnapshot == nil && s.prices != nil {
+			prices, priceErr := s.prices.GetCurrentByProductIDs(ctx, q, tenant.AccountID,
+				quote.BranchID, []uuid.UUID{*in.ProductID})
+			if priceErr != nil {
+				return priceErr
+			}
+			if price, ok := prices[*in.ProductID]; ok {
+				in.UnitPriceSnapshot = &price.Price
+			}
+		}
 		item, updateErr = s.quotes.UpdateItem(ctx, q, tenant.AccountID, version.ID, itemID, in)
 		if updateErr != nil {
 			return updateErr
 		}
 
 		// A product change invalidates its previous price until materials are accepted again.
-		if in.ProductID != nil || in.UnitPriceSnapshot != nil || in.Quantity != nil {
+		if in.ProductID != nil || in.UnitPriceSnapshot != nil || in.Quantity != nil ||
+			in.ConfirmMatch {
 			if recalcErr := s.recalculateVersionTotal(ctx, q, tenant, version.ID); recalcErr != nil {
 				return recalcErr
 			}

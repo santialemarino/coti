@@ -171,6 +171,41 @@ func (r *QuoteDiscountRepository) CreateApplications(
 	return nil
 }
 
+// CopySellerDecisions copies a version's seller-typed discounts and the promotions the seller
+// suppressed into a draft cloned from it, each covering the draft lines copied from its own.
+func (r *QuoteDiscountRepository) CopySellerDecisions(
+	ctx context.Context, q Querier, accountID, sourceVersionID, draftVersionID uuid.UUID,
+) error {
+	_, err := q.Exec(ctx,
+		`WITH source AS (
+		   SELECT qd.*, gen_random_uuid() AS copy_id
+		   FROM quote_discount qd
+		   WHERE qd.account_id = $1 AND qd.quote_version_id = $2
+		     AND (qd.origin <> 'AUTOMATIC'::discount_origin OR qd.suppressed_by_seller)
+		 ), copied AS (
+		   INSERT INTO quote_discount (id, account_id, quote_version_id, promotion_id,
+		          condition_type, scope, origin, amount, action_type, action_value, description,
+		          suppressed_by_seller)
+		   SELECT source.copy_id, $1, draft.id, source.promotion_id, source.condition_type,
+		          source.scope, source.origin, source.amount, source.action_type,
+		          source.action_value, source.description, source.suppressed_by_seller
+		   FROM source
+		   JOIN quote_version draft ON draft.account_id = $1 AND draft.id = $3
+		     AND draft.is_immutable = FALSE
+		   RETURNING id
+		 )
+		 INSERT INTO quote_discount_item (account_id, quote_discount_id, quote_item_id)
+		 SELECT $1, copied.id, line.id
+		 FROM copied
+		 JOIN source ON source.copy_id = copied.id
+		 JOIN quote_discount_item covered ON covered.account_id = $1
+		   AND covered.quote_discount_id = source.id
+		 JOIN quote_item line ON line.account_id = $1 AND line.version_id = $3
+		   AND line.source_item_id = covered.quote_item_id`,
+		accountID, sourceVersionID, draftVersionID)
+	return err
+}
+
 // CreateItemLinks ties a discount to the quote lines it covers. Each item must belong to the
 // discount's own version, so a link can never point at another version's row.
 func (r *QuoteDiscountRepository) CreateItemLinks(

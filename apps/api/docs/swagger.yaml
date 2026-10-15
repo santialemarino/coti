@@ -329,26 +329,24 @@ definitions:
         items:
           $ref: '#/definitions/dto.ClientMessageResponse'
         type: array
-      handler:
-        $ref: '#/definitions/dto.HandlerDecisionResponse'
-      original:
-        $ref: '#/definitions/dto.ChangeRequestSideResponse'
-      reason:
-        type: string
-      requested:
-        $ref: '#/definitions/dto.ChangeRequestSideResponse'
-    type: object
-  dto.ChangeRequestSideResponse:
-    properties:
       discounts:
         items:
-          $ref: '#/definitions/dto.DiffDiscountLineResponse'
+          $ref: '#/definitions/dto.DiffDiscountResponse'
         type: array
-      items:
+      handler:
+        $ref: '#/definitions/dto.HandlerDecisionResponse'
+      lines:
+        description: Lines pairs each sent line with the draft line copied from it,
+          then the lines the draft added.
         items:
-          $ref: '#/definitions/dto.DiffLineItemResponse'
+          $ref: '#/definitions/dto.DiffLineResponse'
         type: array
-      total:
+      original_total:
+        description: decimal string, never float.
+        type: string
+      reason:
+        type: string
+      requested_total:
         description: decimal string, never float.
         type: string
     type: object
@@ -888,22 +886,34 @@ definitions:
     - from
     - text
     type: object
-  dto.DiffDiscountLineResponse:
+  dto.DiffDiscountResponse:
+    properties:
+      change:
+        enum:
+        - UNCHANGED
+        - MODIFIED
+        - ADDED
+        - REMOVED
+        type: string
+      name:
+        type: string
+      original:
+        $ref: '#/definitions/dto.DiffDiscountSideResponse'
+      requested:
+        $ref: '#/definitions/dto.DiffDiscountSideResponse'
+    type: object
+  dto.DiffDiscountSideResponse:
     properties:
       amount:
         type: string
-      changed:
+      suppressed:
         type: boolean
-      name:
-        type: string
     type: object
   dto.DiffLineItemResponse:
     properties:
-      change_type:
-        type: string
-      changed:
-        type: boolean
       description:
+        type: string
+      product_name:
         type: string
       quantity:
         type: string
@@ -911,6 +921,20 @@ definitions:
         type: string
       unit_price:
         type: string
+    type: object
+  dto.DiffLineResponse:
+    properties:
+      change:
+        enum:
+        - UNCHANGED
+        - MODIFIED
+        - ADDED
+        - REMOVED
+        type: string
+      original:
+        $ref: '#/definitions/dto.DiffLineItemResponse'
+      requested:
+        $ref: '#/definitions/dto.DiffLineItemResponse'
     type: object
   dto.ErrorResponse:
     properties:
@@ -2562,6 +2586,10 @@ definitions:
     type: object
   dto.UpdateQuoteItemRequest:
     properties:
+      confirm_match:
+        description: ConfirmMatch settles a flagged line on the product it already
+          carries.
+        type: boolean
       product_id:
         type: string
       quantity:

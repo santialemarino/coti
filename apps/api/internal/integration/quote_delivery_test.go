@@ -509,7 +509,9 @@ func (e *env) clientAnswerService(t *testing.T, whatsapp domain.QuoteWhatsAppSen
 	return e.quoteDeliveryService(t, whatsapp, email,
 		e.realQualityEvaluator(axisEmbedder{axes: map[string]int{}})).
 		WithClientActions(repository.NewClientActionRepository(), repository.NewUserRepository()).
-		WithMessages(repository.NewQuoteMessageRepository(), repository.NewMessageBatchRepository())
+		WithMessages(repository.NewQuoteMessageRepository(), repository.NewMessageBatchRepository()).
+		WithDraftDiscounts(repository.NewQuoteDiscountRepository(), repository.NewPromotionRepository(),
+			repository.NewQuoteRepository())
 }
 
 // sentQuoteToken sends the seeded quote and hands back the token its delivery published.

@@ -31,6 +31,7 @@ type conversationReviewQuotes interface {
 
 type conversationReviewDiscounts interface {
 	versionDiscountStore
+	draftDiscountCopier
 	DeleteByVersion(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID) error
 }
 
@@ -132,6 +133,10 @@ func (s *ConversationReviewService) DiscardAIChanges(ctx context.Context, tenant
 		}
 		if _, err := insertVersionCopy(ctx, q, s.quotes, tenant.AccountID, version.ID,
 			content); err != nil {
+			return err
+		}
+		if err := s.discounts.CopySellerDecisions(ctx, q, tenant.AccountID, sent.ID,
+			version.ID); err != nil {
 			return err
 		}
 		items, err := s.quotes.ListItems(ctx, q, tenant.AccountID, version.ID)

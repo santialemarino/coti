@@ -47,6 +47,7 @@ type batchHandlerQuotes interface {
 // batchHandlerDiscounts is the discount persistence the sweep needs, plus restoring a suppression.
 type batchHandlerDiscounts interface {
 	versionDiscountStore
+	draftDiscountCopier
 	UpdateByID(ctx context.Context, q repository.Querier, accountID, versionID, discountID uuid.UUID,
 		in domain.QuoteDiscountUpdate) (*domain.QuoteDiscount, error)
 }
@@ -201,7 +202,8 @@ func (h *BatchChangeHandler) prepare(ctx context.Context, batch domain.MessageBa
 					comment = &text
 				}
 				clone, err := cloneQuoteVersionForEditing(ctx, q, h.quotes, h.prices, quote.AccountID,
-					quote.BranchID, quote.ID, *draft, nil, comment)
+					quote.BranchID, quote.ID, *draft, nil, comment,
+					&draftCarry{discounts: h.discounts, sweep: h.sweep, totals: h.quotes})
 				if err != nil {
 					return err
 				}
@@ -254,7 +256,8 @@ func (h *BatchChangeHandler) propose(ctx context.Context, prepared preparedBatch
 	resolveChangeRequestMatches(ctx, prepared.tenant, h.matcher, &validated, h.log)
 	return batchProposal{resolved: &validated, record: domain.HandlerProposalRecord{
 		Outcome: domain.HandlerOutcomeApplied, Interpretation: validated.Proposal.Interpretation,
-		Intent: validated.Proposal.Intent, Operations: validated.Proposal.Operations}}, nil
+		Intent: validated.Proposal.Intent, IntentItemIDs: validated.Proposal.IntentItemIDs,
+		Operations: validated.Proposal.Operations}}, nil
 }
 
 // apply re-checks the claim, the matrix and the draft under the quote's lock, then writes the
@@ -587,8 +590,9 @@ func (e *recipeNoMatch) proposal(understood domain.HandlerProposalRecord) batchP
 	reason := e.reason
 	return batchProposal{record: domain.HandlerProposalRecord{Outcome: domain.HandlerOutcomeNoMatch,
 		NoMatchOrigin: &origin, NoMatchReason: &reason, Interpretation: understood.Interpretation,
-		Intent: understood.Intent, StrategiesTried: e.strategies,
-		Operations: []domain.ChangeRequestOperation{}}}
+		Intent: understood.Intent, IntentItemIDs: understood.IntentItemIDs,
+		StrategiesTried: e.strategies,
+		Operations:      []domain.ChangeRequestOperation{}}}
 }
 
 // pickAlternative returns the cheapest alternative the branch prices, ties broken by name. A

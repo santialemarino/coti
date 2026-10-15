@@ -192,6 +192,7 @@ func run() error {
 		WithCorrectionMemory(quoteCorrectionService).
 		WithDiscounts(quoteDiscountRepo).
 		WithPromotions(promotionRepo).
+		WithPrices(productPriceRepo).
 		WithClientActions(clientActionRepo).
 		WithInboundMessages(inboundChannelMessageRepo).
 		WithHandlerDecisions(handlerDecisionRepo).
@@ -218,7 +219,7 @@ func run() error {
 		inboundChannelMessageRepo, channelRepo, rfqService, channelSealer, log).
 		WithConversations(conversationService)
 	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, arcaEnvironment, log).
-		WithDiscountEngine(quoteDiscountRepo, promotionRepo)
+		WithDiscountEngine(quoteDiscountRepo, promotionRepo, quoteRepo)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
 		WithCorrectionLearning(quoteCorrectionService)
 	quoteRepresentationService := services.NewQuoteRepresentationService(db,
@@ -238,6 +239,7 @@ func run() error {
 		WithRepresentationService(quoteRepresentationService).
 		WithClientActions(clientActionRepo, userRepo).
 		WithMessages(quoteMessageRepo, messageBatchRepo).
+		WithDraftDiscounts(quoteDiscountRepo, promotionRepo, quoteRepo).
 		WithWhatsAppCredentials(channelSealer)
 	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
 		quoteSendRepo)

@@ -207,13 +207,16 @@ type QuoteSendTrackingResponse struct {
 	CreatedAt      time.Time  `json:"created_at"`
 }
 
-// ChangeRequestDiffResponse is the frozen-vs-draft comparison the detail screen
-// renders for a CHANGE_REQUESTED quote with a frozen predecessor.
+// ChangeRequestDiffResponse is the frozen-vs-draft comparison the detail screen renders for a
+// CHANGE_REQUESTED quote with a frozen predecessor.
 type ChangeRequestDiffResponse struct {
-	Reason    *string                   `json:"reason"`
-	Original  ChangeRequestSideResponse `json:"original"`
-	Requested ChangeRequestSideResponse `json:"requested"`
-	Handler   *HandlerDecisionResponse  `json:"handler,omitempty"`
+	Reason *string `json:"reason"`
+	// Lines pairs each sent line with the draft line copied from it, then the lines the draft added.
+	Lines          []DiffLineResponse       `json:"lines"`
+	Discounts      []DiffDiscountResponse   `json:"discounts"`
+	OriginalTotal  string                   `json:"original_total"`  // decimal string, never float.
+	RequestedTotal string                   `json:"requested_total"` // decimal string, never float.
+	Handler        *HandlerDecisionResponse `json:"handler,omitempty"`
 	// ClientMessages is every message the customer sent since the version they answered went out.
 	ClientMessages []ClientMessageResponse `json:"client_messages"`
 }
@@ -273,29 +276,34 @@ type HandlerDecisionResponse struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
-// ChangeRequestSideResponse is one column (original or requested) of the diff.
-type ChangeRequestSideResponse struct {
-	Items     []DiffLineItemResponse     `json:"items"`
-	Discounts []DiffDiscountLineResponse `json:"discounts"`
-	Total     string                     `json:"total"` // decimal string, never float.
+// DiffLineResponse is one compared line: the sent side, the draft side, or both.
+type DiffLineResponse struct {
+	Change    string                `json:"change" enums:"UNCHANGED,MODIFIED,ADDED,REMOVED"`
+	Original  *DiffLineItemResponse `json:"original"`
+	Requested *DiffLineItemResponse `json:"requested"`
 }
 
-// DiffLineItemResponse is one aligned line of the diff. Quantity and UnitPrice are
-// decimal strings; ChangeType is set only on the flagged (requested) side.
+// DiffLineItemResponse is one side of a compared line. Quantity and UnitPrice are decimal strings.
 type DiffLineItemResponse struct {
 	Description string  `json:"description"`
+	ProductName *string `json:"product_name"`
 	Quantity    string  `json:"quantity"`
 	Unit        *string `json:"unit"`
 	UnitPrice   *string `json:"unit_price"`
-	Changed     bool    `json:"changed"`
-	ChangeType  *string `json:"change_type,omitempty"`
 }
 
-// DiffDiscountLineResponse is one aligned discount row of the diff.
-type DiffDiscountLineResponse struct {
-	Name    string `json:"name"`
-	Amount  string `json:"amount"`
-	Changed bool   `json:"changed"`
+// DiffDiscountResponse is one discount of the comparison, paired by name.
+type DiffDiscountResponse struct {
+	Change    string                    `json:"change" enums:"UNCHANGED,MODIFIED,ADDED,REMOVED"`
+	Name      string                    `json:"name"`
+	Original  *DiffDiscountSideResponse `json:"original"`
+	Requested *DiffDiscountSideResponse `json:"requested"`
+}
+
+// DiffDiscountSideResponse is a discount's money and suppression on one side of the comparison.
+type DiffDiscountSideResponse struct {
+	Amount     string `json:"amount"`
+	Suppressed bool   `json:"suppressed"`
 }
 
 // QuoteDiscountResponse is one discount application on the quote's current version.
@@ -350,6 +358,8 @@ type UpdateQuoteItemRequest struct {
 	Quantity             *string    `json:"quantity" binding:"omitempty,numeric"`
 	Unit                 *string    `json:"unit" binding:"omitempty,max=64"`
 	UnitPriceSnapshot    *string    `json:"unit_price_snapshot" binding:"omitempty,numeric"`
+	// ConfirmMatch settles a flagged line on the product it already carries.
+	ConfirmMatch bool `json:"confirm_match"`
 }
 
 // AddQuoteItemRequest is the body for POST /v1/quotes/{quoteId}/items.

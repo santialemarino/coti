@@ -2814,7 +2814,7 @@ func TestRFQService_GetDetail_CarriesTheVersionDiscounts(t *testing.T) {
 func TestRFQService_GetDetail_PopulatesChangeRequestDiffFromFrozenPredecessor(t *testing.T) {
 	h, _, _, _, _ := getDetailHarness()
 
-	frozenID := uuid.New()
+	frozenID, frozenLine := uuid.New(), uuid.New()
 	h.quotes.currentVersionData = &domain.QuoteVersion{
 		ID: testVersionID, QuoteID: testQuoteID, VersionNumber: 2, Total: decimal.NewFromFloat(17000),
 		IsImmutable: false, Comment: strPtr("necesito entrega el viernes"),
@@ -2825,7 +2825,7 @@ func TestRFQService_GetDetail_PopulatesChangeRequestDiffFromFrozenPredecessor(t 
 	}
 	h.quotes.itemsByVersionID = []domain.QuoteItem{
 		{
-			ID: uuid.New(), VersionID: testVersionID,
+			ID: uuid.New(), VersionID: testVersionID, SourceItemID: &frozenLine,
 			RequestedDescription: "10 bolsas de cemento",
 			Quantity:             decimal.RequireFromString("12"),
 			MatchStatus:          domain.ItemMatchStatusMatched,
@@ -2833,7 +2833,7 @@ func TestRFQService_GetDetail_PopulatesChangeRequestDiffFromFrozenPredecessor(t 
 	}
 	h.quotes.frozenItems = []domain.QuoteItem{
 		{
-			ID: uuid.New(), VersionID: frozenID,
+			ID: frozenLine, VersionID: frozenID,
 			RequestedDescription: "10 bolsas de cemento",
 			Quantity:             decimal.RequireFromString("10"),
 			MatchStatus:          domain.ItemMatchStatusMatched,
@@ -2861,24 +2861,17 @@ func TestRFQService_GetDetail_PopulatesChangeRequestDiffFromFrozenPredecessor(t 
 	if detail.ChangesRequested.Reason == nil || *detail.ChangesRequested.Reason != "necesito entrega el viernes" {
 		t.Errorf("reason = %v, want the client's request", detail.ChangesRequested.Reason)
 	}
-	if len(detail.ChangesRequested.Original.Items) != 1 || len(detail.ChangesRequested.Requested.Items) != 1 {
-		t.Fatalf("items = original %d requested %d, want 1 and 1",
-			len(detail.ChangesRequested.Original.Items), len(detail.ChangesRequested.Requested.Items))
+	diff := detail.ChangesRequested
+	if len(diff.Lines) != 1 || diff.Lines[0].Change != domain.DiffModified ||
+		diff.Lines[0].Original.Quantity != "10.00" || diff.Lines[0].Requested.Quantity != "12.00" {
+		t.Errorf("lines = %+v, want the requantified line paired with its sent line", diff.Lines)
 	}
-	if !detail.ChangesRequested.Requested.Items[0].Changed {
-		t.Error("quantity change not flagged")
+	if len(diff.Discounts) != 1 || diff.Discounts[0].Change != domain.DiffModified {
+		t.Errorf("discounts = %+v, want the amount change flagged", diff.Discounts)
 	}
-	if detail.ChangesRequested.Requested.Items[0].ChangeType != "modified" {
-		t.Errorf("change type = %q, want modified", detail.ChangesRequested.Requested.Items[0].ChangeType)
-	}
-	if len(detail.ChangesRequested.Requested.Discounts) != 1 || !detail.ChangesRequested.Requested.Discounts[0].Changed {
-		t.Error("discount amount change not flagged on the requested side")
-	}
-	if !detail.ChangesRequested.Original.Total.Equal(decimal.NewFromFloat(16000)) {
-		t.Errorf("original total = %v, want 16000", detail.ChangesRequested.Original.Total)
-	}
-	if !detail.ChangesRequested.Requested.Total.Equal(decimal.NewFromFloat(17000)) {
-		t.Errorf("requested total = %v, want 17000", detail.ChangesRequested.Requested.Total)
+	if !diff.OriginalTotal.Equal(decimal.NewFromInt(16000)) ||
+		!diff.RequestedTotal.Equal(decimal.NewFromInt(17000)) {
+		t.Errorf("totals = %s → %s, want 16000 → 17000", diff.OriginalTotal, diff.RequestedTotal)
 	}
 }
 

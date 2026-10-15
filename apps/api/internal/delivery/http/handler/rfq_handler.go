@@ -286,6 +286,7 @@ func (h *RfqHandler) UpdateItem(c *gin.Context) {
 		ProductID:            req.ProductID,
 		RequestedDescription: req.RequestedDescription,
 		Unit:                 req.Unit,
+		ConfirmMatch:         req.ConfirmMatch,
 	}
 	if req.Quantity != nil {
 		qty, qtyErr := decimalFromString(*req.Quantity)
@@ -957,9 +958,22 @@ func toClientActionResponse(action domain.ClientAction) dto.ClientActionResponse
 func toChangeRequestDiffResponse(diff domain.ChangeRequestDiff) dto.ChangeRequestDiffResponse {
 	resp := dto.ChangeRequestDiffResponse{
 		Reason:         diff.Reason,
-		Original:       toChangeRequestSideResponse(diff.Original),
-		Requested:      toChangeRequestSideResponse(diff.Requested),
+		Lines:          make([]dto.DiffLineResponse, 0, len(diff.Lines)),
+		Discounts:      make([]dto.DiffDiscountResponse, 0, len(diff.Discounts)),
+		OriginalTotal:  diff.OriginalTotal.StringFixed(domain.MoneyScale),
+		RequestedTotal: diff.RequestedTotal.StringFixed(domain.MoneyScale),
 		ClientMessages: make([]dto.ClientMessageResponse, 0, len(diff.ClientMessages)),
+	}
+	for _, line := range diff.Lines {
+		resp.Lines = append(resp.Lines, dto.DiffLineResponse{Change: string(line.Change),
+			Original:  toDiffLineItemResponse(line.Original),
+			Requested: toDiffLineItemResponse(line.Requested)})
+	}
+	for _, discount := range diff.Discounts {
+		resp.Discounts = append(resp.Discounts, dto.DiffDiscountResponse{
+			Change: string(discount.Change), Name: discount.Name,
+			Original:  toDiffDiscountSideResponse(discount.Original),
+			Requested: toDiffDiscountSideResponse(discount.Requested)})
 	}
 	for _, message := range diff.ClientMessages {
 		resp.ClientMessages = append(resp.ClientMessages,
@@ -983,38 +997,19 @@ func toChangeRequestDiffResponse(diff domain.ChangeRequestDiff) dto.ChangeReques
 	return resp
 }
 
-func toChangeRequestSideResponse(side domain.ChangeRequestSide) dto.ChangeRequestSideResponse {
-	lineItems := make([]dto.DiffLineItemResponse, 0, len(side.Items))
-	for _, item := range side.Items {
-		lineItems = append(lineItems, dto.DiffLineItemResponse{
-			Description: item.Description,
-			Quantity:    item.Quantity,
-			Unit:        item.Unit,
-			UnitPrice:   item.UnitPrice,
-			Changed:     item.Changed,
-			ChangeType:  changeTypePtr(item.ChangeType),
-		})
-	}
-	discountLines := make([]dto.DiffDiscountLineResponse, 0, len(side.Discounts))
-	for _, discount := range side.Discounts {
-		discountLines = append(discountLines, dto.DiffDiscountLineResponse{
-			Name:    discount.Name,
-			Amount:  discount.Amount,
-			Changed: discount.Changed,
-		})
-	}
-	return dto.ChangeRequestSideResponse{
-		Items:     lineItems,
-		Discounts: discountLines,
-		Total:     side.Total.StringFixed(domain.MoneyScale),
-	}
-}
-
-func changeTypePtr(changeType string) *string {
-	if changeType == "" {
+func toDiffLineItemResponse(item *domain.DiffLineItem) *dto.DiffLineItemResponse {
+	if item == nil {
 		return nil
 	}
-	return &changeType
+	return &dto.DiffLineItemResponse{Description: item.Description, ProductName: item.ProductName,
+		Quantity: item.Quantity, Unit: item.Unit, UnitPrice: item.UnitPrice}
+}
+
+func toDiffDiscountSideResponse(side *domain.DiffDiscountSide) *dto.DiffDiscountSideResponse {
+	if side == nil {
+		return nil
+	}
+	return &dto.DiffDiscountSideResponse{Amount: side.Amount, Suppressed: side.Suppressed}
 }
 
 func toQuoteDiscountResponse(discount domain.QuoteDiscount) dto.QuoteDiscountResponse {
