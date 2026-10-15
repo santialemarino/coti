@@ -201,7 +201,7 @@ func run() error {
 		quoteMessageRepo, messageBatchRepo, cfg.Conversation)
 	conversationTicker := services.NewConversationBatchTicker(
 		services.NewConversationBatchService(db, messageBatchRepo,
-			services.NoopConversationBatchHandler{}, cfg.Conversation, nil, log),
+			nil, cfg.Conversation, nil, log),
 		cfg.Conversation.TickerInterval, log)
 	whatsAppInboundService := services.NewWhatsAppInboundService(db, inboundRoutingService,
 		inboundChannelMessageRepo, channelRepo, rfqService, channelSealer, log).

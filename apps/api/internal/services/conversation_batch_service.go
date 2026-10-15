@@ -23,14 +23,6 @@ type ConversationBatchHandler interface {
 	Handle(ctx context.Context, batch domain.MessageBatch) error
 }
 
-// NoopConversationBatchHandler accepts every batch and changes nothing.
-type NoopConversationBatchHandler struct{}
-
-// Handle succeeds without reading or writing anything.
-func (NoopConversationBatchHandler) Handle(context.Context, domain.MessageBatch) error {
-	return nil
-}
-
 type conversationQueueDB interface {
 	AdminTx(ctx context.Context) (pgx.Tx, error)
 	CrossAccount() repository.Querier
@@ -64,7 +56,8 @@ type ConversationBatchService struct {
 	log     *slog.Logger
 }
 
-// NewConversationBatchService builds a ConversationBatchService. A nil now uses time.Now.
+// NewConversationBatchService builds a ConversationBatchService. A nil handler leaves processing
+// off: windows still close, and closed batches wait for one. A nil now uses time.Now.
 func NewConversationBatchService(db conversationQueueDB, queue conversationBatchQueue,
 	handler ConversationBatchHandler, cfg config.ConversationConfig, now func() time.Time,
 	log *slog.Logger,
@@ -72,15 +65,23 @@ func NewConversationBatchService(db conversationQueueDB, queue conversationBatch
 	if now == nil {
 		now = time.Now
 	}
+	if handler == nil {
+		log.Warn("conversation batch processing is off until a handler is configured; " +
+			"closed batches wait")
+	}
 	return &ConversationBatchService{db: db, queue: queue, handler: handler, cfg: cfg, now: now,
 		log: log}
 }
 
-// Sweep closes every due window, reclaims stuck claims, then processes up to the sweep batch size.
+// Sweep closes every due window, then, when a handler is configured, reclaims stuck claims and
+// processes up to the sweep batch size.
 func (s *ConversationBatchService) Sweep(ctx context.Context) (domain.ConversationSweep, error) {
 	var report domain.ConversationSweep
 	if err := s.closeDue(ctx, &report); err != nil {
 		return report, err
+	}
+	if s.handler == nil {
+		return report, nil
 	}
 	if err := s.reclaimStuck(ctx, &report); err != nil {
 		return report, err

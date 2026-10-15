@@ -117,7 +117,7 @@ func run() error {
 			cfg.AI.EmbeddingsProvider != config.AIProviderDisabled),
 		services.NewQuoteAutoArchiveJob(quoteRepo, cfg.QuoteArchive, log),
 		services.NewConversationBatchJob(services.NewConversationBatchService(db,
-			repository.NewMessageBatchRepository(), services.NoopConversationBatchHandler{},
+			repository.NewMessageBatchRepository(), nil,
 			cfg.Conversation, nil, log)))
 	if err != nil {
 		return err

@@ -42,6 +42,11 @@ type recordingBatchHandler struct {
 	block    bool
 }
 
+// noopBatchHandler accepts every batch and changes nothing.
+type noopBatchHandler struct{}
+
+func (noopBatchHandler) Handle(context.Context, domain.MessageBatch) error { return nil }
+
 func newRecordingBatchHandler() *recordingBatchHandler {
 	return &recordingBatchHandler{handled: map[uuid.UUID]int{}, inFlight: map[uuid.UUID]int{}}
 }
@@ -174,7 +179,7 @@ func TestConversationBatches_CloseStampsClientMessagesOnce(t *testing.T) {
 	seller := e.seedConversationMessage(t, accountID, quoteID, domain.MessageAuthorSeller)
 	laterQuote := e.batchQuote(t, accountID, branchID)
 	notDue := e.seedBatch(t, accountID, laterQuote, domain.MessageBatchStatusOpen, batchClock.Add(time.Minute))
-	sweeper := e.batchSweeper(services.NoopConversationBatchHandler{})
+	sweeper := e.batchSweeper(noopBatchHandler{})
 
 	report := sweepOnce(t, sweeper)
 	if report.Closed != 1 || report.Processed != 1 {
@@ -206,13 +211,41 @@ func TestConversationBatches_CloseStampsClientMessagesOnce(t *testing.T) {
 	}
 }
 
+// With no handler configured, windows still close and stamp their messages, and closed batches
+// wait rather than being marked PROCESSED with nothing done.
+func TestConversationBatches_WithoutAHandlerClosedBatchesWait(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "Corralon Sin Handler")
+	quoteID := e.batchQuote(t, accountID, branchID)
+	queued := e.seedBatch(t, accountID, quoteID, domain.MessageBatchStatusClosed, batchClock.Add(-time.Hour))
+	otherQuote := e.batchQuote(t, accountID, branchID)
+	due := e.seedBatch(t, accountID, otherQuote, domain.MessageBatchStatusOpen, batchClock.Add(-time.Second))
+	message := e.seedConversationMessage(t, accountID, otherQuote, domain.MessageAuthorClient)
+	sweeper := e.batchSweeper(nil)
+
+	for pass := 1; pass <= 2; pass++ {
+		report := sweepOnce(t, sweeper)
+		if report.Claimed != 0 || report.Processed != 0 {
+			t.Errorf("pass %d = %+v, want nothing claimed", pass, report)
+		}
+	}
+	for _, id := range []uuid.UUID{queued, due} {
+		if got := e.readBatch(t, id); got.Status != domain.MessageBatchStatusClosed || got.Attempts != 0 {
+			t.Errorf("batch %s = %+v, want CLOSED and untouched", id, got)
+		}
+	}
+	if got := e.batchOfMessage(t, message); got == nil || *got != due {
+		t.Errorf("message batch = %v, want %s", got, due)
+	}
+}
+
 // The closer takes the quote's lock before the window's, and skips a quote another writer holds.
 func TestConversationBatches_CloseSkipsALockedQuote(t *testing.T) {
 	e := newEnv(t)
 	accountID, branchID := e.seedAccount(t, "Corralon Bloqueo")
 	quoteID := e.batchQuote(t, accountID, branchID)
 	dueID := e.seedBatch(t, accountID, quoteID, domain.MessageBatchStatusOpen, batchClock.Add(-time.Second))
-	sweeper := e.batchSweeper(services.NoopConversationBatchHandler{})
+	sweeper := e.batchSweeper(noopBatchHandler{})
 
 	tx, err := e.db.AdminTx(context.Background())
 	if err != nil {
@@ -386,7 +419,7 @@ func TestConversationBatches_ReclaimsAStuckClaimAndFencesItsOwner(t *testing.T) 
 	retried := stuck(0)
 	exhausted := stuck(batchConfig.MaxAttempts - 1)
 
-	report := sweepOnce(t, e.batchSweeper(services.NoopConversationBatchHandler{}))
+	report := sweepOnce(t, e.batchSweeper(noopBatchHandler{}))
 	if report.Reclaimed != 2 {
 		t.Errorf("sweep = %+v, want two claims reclaimed", report)
 	}

@@ -148,8 +148,10 @@ A sweep closes the due windows and works the queue, across every account on the 
    per pass, so retries are spaced by the cadence. A shutdown hands the claim back uncounted.
 
 Every write that settles a claim matches its `processing_started_at`, so a worker that was reclaimed
-and comes back late changes nothing. The only handler bound today is a no-op that succeeds; the
-real one owns every quote write a batch causes, the `SENT` → `CHANGE_REQUESTED` move included.
+and comes back late changes nothing. The handler owns every quote write a batch causes, the
+`SENT` → `CHANGE_REQUESTED` move included. **No handler is bound yet, so steps 2 and 3 are off:**
+windows still close and stamp their messages, closed batches wait `CLOSED`, and both binaries log
+at startup that processing is off until a handler is configured.
 
 The API runs the sweep on an in-process ticker every `CONVERSATION_TICKER_SECONDS` (30), one pass at
 a time, stopped and awaited on shutdown before the pools close. The `conversation-batches`
