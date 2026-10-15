@@ -29,10 +29,32 @@ import {
   formatRfqReference,
   type QuoteDeliveryResponse,
   type QuoteSendResponse,
+  type QuoteSendTrackingResponse,
   type RfqDetailResponse,
 } from '@/lib/api/rfqs';
 import { sendQuote } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
+
+interface Destinations {
+  phone: string;
+  email: string | null;
+}
+
+/*
+ * Where the previous send went, so a resend starts from it: the WhatsApp number and, when that send
+ * also mailed a copy, the address. The phone falls back to the number the order arrived from.
+ */
+export function previousDestinations(
+  deliveries: QuoteSendTrackingResponse[],
+  inboundPhone: string | null,
+): Destinations {
+  const latest = [...deliveries].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  if (!latest) return { phone: inboundPhone ?? '', email: null };
+  const sameSend = deliveries.filter((delivery) => delivery.version_id === latest.version_id);
+  const whatsapp = sameSend.find((delivery) => delivery.channel === 'WHATSAPP');
+  const email = sameSend.find((delivery) => delivery.channel === 'EMAIL');
+  return { phone: whatsapp?.destination ?? inboundPhone ?? '', email: email?.destination ?? null };
+}
 
 interface SendQuoteDialogProps {
   detail: RfqDetailResponse;
@@ -66,7 +88,7 @@ export function SendQuoteDialog({
   const message = useApiErrorMessage('rfqs.detail.send');
   const { isAdmin } = useRfqList();
   const [open, setOpen] = useState(false);
-  const [phone, setPhone] = useState(detail.inbound_whatsapp_phone ?? '');
+  const [phone, setPhone] = useState('');
   const [alsoEmail, setAlsoEmail] = useState(false);
   const [email, setEmail] = useState('');
   const [sending, setSending] = useState(false);
@@ -87,8 +109,11 @@ export function SendQuoteDialog({
   function handleOpenChange(next: boolean) {
     if (sending) return;
     if (next) {
+      const previous = previousDestinations(detail.deliveries, detail.inbound_whatsapp_phone);
       setResult(null);
-      setPhone(detail.inbound_whatsapp_phone ?? '');
+      setPhone(previous.phone);
+      setAlsoEmail(previous.email !== null);
+      setEmail(previous.email ?? '');
     }
     setOpen(next);
   }

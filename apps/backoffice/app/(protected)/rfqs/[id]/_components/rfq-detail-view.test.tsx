@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RfqListProvider, useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import type { QuoteItemResponse, RfqDetailResponse, RfqRecord } from '@/lib/api/rfqs';
 import messages from '@/translations/es.json';
-import { RfqChangeDiff } from './rfq-change-diff';
 import { RfqDetailView } from './rfq-detail-view';
 import { SendQuoteDialog } from './send-quote-dialog';
 
@@ -27,8 +26,8 @@ vi.mock('@/lib/api/rfqs-client', () => ({
   retryConversationBatch: vi.fn(),
   setQuoteArchived: vi.fn(),
 }));
-// The send button's presence per status is what these tests exercise; the edit surface, diff and
-// header are stubbed out, with the send dialog and the diff left as spies.
+// The send button's presence per status is what these tests exercise; the edit surface and header
+// are stubbed out, with the send dialog left as a spy.
 vi.mock('./rfq-items-table', () => ({ RfqItemsTable: vi.fn(() => null) }));
 vi.mock('./rfq-detail-header', () => ({ RfqDetailHeader: () => null }));
 vi.mock('./invoice-card', () => ({
@@ -40,7 +39,6 @@ vi.mock('./client-association-card', () => ({
   ClientAssociationCard: () => <div data-testid="client-association-card" />,
 }));
 vi.mock('./send-quote-dialog', () => ({ SendQuoteDialog: vi.fn(() => null) }));
-vi.mock('./rfq-change-diff', () => ({ RfqChangeDiff: vi.fn(() => null) }));
 
 const { toast } = await import('sonner');
 const { discardAIChanges, fetchRfqDetail, generateQuote, setQuoteArchived } =
@@ -112,34 +110,28 @@ function makeDetail(quoteStatus: string, rfqStatus: string = quoteStatus): RfqDe
     quoteStatus === 'CHANGE_REQUESTED'
       ? {
           reason: 'Precio alto',
-          original: {
-            items: [
-              {
+          lines: [
+            {
+              change: 'MODIFIED' as const,
+              original: {
                 description: 'Ladrillo hueco 12x18x33',
+                product_name: null,
                 quantity: '500.00',
                 unit: 'unidad',
                 unit_price: '780.00',
-                changed: true,
-                change_type: 'modified' as const,
               },
-            ],
-            discounts: [],
-            total: '390000.00',
-          },
-          requested: {
-            items: [
-              {
+              requested: {
                 description: 'Ladrillo hueco 12x18x33',
+                product_name: null,
                 quantity: '500.00',
                 unit: 'unidad',
                 unit_price: '760.00',
-                changed: true,
-                change_type: 'modified' as const,
               },
-            ],
-            discounts: [],
-            total: '380000.00',
-          },
+            },
+          ],
+          discounts: [],
+          original_total: '390000.00',
+          requested_total: '380000.00',
         }
       : undefined;
 
@@ -305,7 +297,7 @@ describe('RfqDetailView tracking', () => {
 
 describe('RfqDetailView send flow', () => {
   const SendDialog = vi.mocked(SendQuoteDialog);
-  const ChangeDiff = vi.mocked(RfqChangeDiff);
+  const card = copy.detail.changeRequest;
 
   it('mounts the shared send dialog on a QUOTED quote', () => {
     renderView(makeDetail('QUOTED'));
@@ -318,11 +310,8 @@ describe('RfqDetailView send flow', () => {
 
     expect(sendOffered()).toBe(false);
     expect(view.getByRole('button', { name: copy.detail.items.generate })).toBeTruthy();
-    expect(view.getByText(copy.detail.callouts.sellerRevision.title)).toBeTruthy();
-    expect(ChangeDiff).toHaveBeenCalledWith(
-      expect.objectContaining({ variant: 'seller-revision' }),
-      undefined,
-    );
+    expect(view.getByText(card.revisionTitle)).toBeTruthy();
+    expect(view.queryByText(card.title)).toBeNull();
   });
 
   it('keeps a customer change request distinct from a seller reactivation', () => {
@@ -341,15 +330,8 @@ describe('RfqDetailView send flow', () => {
 
     const view = renderView(detail);
 
-    expect(
-      view.getByText(
-        copy.detail.callouts.changeRequested.withReason.replace('{reason}', 'Precio alto'),
-      ),
-    ).toBeTruthy();
-    expect(ChangeDiff).toHaveBeenCalledWith(
-      expect.objectContaining({ variant: 'customer-request' }),
-      undefined,
-    );
+    expect(view.getByText(card.title)).toBeTruthy();
+    expect(view.getByText('Precio alto')).toBeTruthy();
   });
 
   it("reads a conversation batch as the customer's request and says how the AI took it", () => {
@@ -357,6 +339,8 @@ describe('RfqDetailView send flow', () => {
     detail.version = { ...detail.version!, version_number: 2, comment: 'que sean 4' };
     detail.changes_requested = {
       ...detail.changes_requested!,
+      // The API reads the reason off the draft's comment, so the two always agree.
+      reason: 'que sean 4',
       handler: {
         client_input: 'que sean 4',
         interpretation: 'Pide cuatro bolsas',
@@ -368,23 +352,10 @@ describe('RfqDetailView send flow', () => {
 
     const view = renderView(detail);
 
-    expect(
-      view.getByText(
-        copy.detail.callouts.changeRequested.withReason.replace('{reason}', 'que sean 4'),
-      ),
-    ).toBeTruthy();
-    expect(
-      view.getByText(
-        copy.detail.callouts.changeRequested.handler.applied.replace(
-          '{interpretation}',
-          'Pide cuatro bolsas',
-        ),
-      ),
-    ).toBeTruthy();
-    expect(ChangeDiff).toHaveBeenCalledWith(
-      expect.objectContaining({ variant: 'customer-request' }),
-      undefined,
-    );
+    expect(view.getByText('que sean 4')).toBeTruthy();
+    expect(view.getByText('Pide cuatro bolsas')).toBeTruthy();
+    expect(view.getByText(card.outcome.applied)).toBeTruthy();
+    expect(view.getByText(card.title)).toBeTruthy();
   });
 
   it('lists every message the customer sent, not only the first batch', () => {
@@ -407,17 +378,10 @@ describe('RfqDetailView send flow', () => {
 
     const view = renderView(detail);
 
-    expect(view.getByText(copy.detail.callouts.changeRequested.clientMessages)).toBeTruthy();
-    expect(view.getByText('que sean 4')).toBeTruthy();
-    expect(view.getByText('y sumá arena')).toBeTruthy();
-    expect(
-      view.getByText(
-        copy.detail.callouts.changeRequested.handler.applied.replace(
-          '{interpretation}',
-          'Suma arena',
-        ),
-      ),
-    ).toBeTruthy();
+    const quoted = view.container.querySelector('blockquote');
+    expect(quoted?.textContent).toContain('que sean 4');
+    expect(quoted?.textContent).toContain('y sumá arena');
+    expect(view.getByText('Suma arena.')).toBeTruthy();
   });
 
   it('discards the AI changes only after the seller confirms', async () => {
@@ -433,7 +397,7 @@ describe('RfqDetailView send flow', () => {
     const discard = copy.detail.callouts.changeRequested.discard;
 
     const view = renderView(detail);
-    fireEvent.click(view.getByRole('button', { name: discard.action }));
+    fireEvent.click(view.getByRole('button', { name: card.discard }));
     expect(discardAIChanges).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -461,15 +425,8 @@ describe('RfqDetailView send flow', () => {
 
     const view = renderView(detail);
 
-    expect(view.getByText(copy.detail.callouts.changeRequested.handler.discarded)).toBeTruthy();
-    expect(
-      view.queryByText(
-        copy.detail.callouts.changeRequested.handler.applied.replace(
-          '{interpretation}',
-          'Pide cuatro bolsas',
-        ),
-      ),
-    ).toBeNull();
+    expect(view.getByText(card.outcome.discarded)).toBeTruthy();
+    expect(view.queryByText(card.outcome.applied)).toBeNull();
   });
 
   it('offers no discard when the draft carries no pending AI change', () => {
@@ -483,9 +440,7 @@ describe('RfqDetailView send flow', () => {
 
     const view = renderView(detail);
 
-    expect(
-      view.queryByRole('button', { name: copy.detail.callouts.changeRequested.discard.action }),
-    ).toBeNull();
+    expect(view.queryByRole('button', { name: card.discard })).toBeNull();
   });
 
   it('tells the seller why the AI left the request to them', () => {
@@ -503,7 +458,7 @@ describe('RfqDetailView send flow', () => {
 
     const view = renderView(detail);
 
-    expect(view.getByText(copy.detail.callouts.changeRequested.handler.aiDisabled)).toBeTruthy();
+    expect(view.getByText(card.outcome.noMatch.AI_DISABLED)).toBeTruthy();
   });
 
   it('keeps the send button hidden until a quote is review-ready', () => {

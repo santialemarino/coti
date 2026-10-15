@@ -326,19 +326,34 @@ export interface UpdateDiscountBody {
   suppressed_by_seller?: boolean;
 }
 
+export type DiffChange = 'UNCHANGED' | 'MODIFIED' | 'ADDED' | 'REMOVED';
+
+// One side of a compared line: what the customer received, or what the draft holds now.
 export interface DiffLineItem {
   description: string;
+  product_name: string | null;
   quantity: string;
   unit: string | null;
   unit_price: string | null;
-  changed: boolean;
-  change_type?: 'modified' | 'added' | 'removed';
 }
 
-export interface DiffDiscountLine {
-  name: string;
+// A sent line paired with the draft line copied from it; one side is null when added or removed.
+export interface DiffLine {
+  change: DiffChange;
+  original: DiffLineItem | null;
+  requested: DiffLineItem | null;
+}
+
+export interface DiffDiscountSide {
   amount: string;
-  changed: boolean;
+  suppressed: boolean;
+}
+
+export interface DiffDiscount {
+  change: DiffChange;
+  name: string;
+  original: DiffDiscountSide | null;
+  requested: DiffDiscountSide | null;
 }
 
 // Why the conversation handler left a batch to the seller instead of changing the draft.
@@ -417,14 +432,8 @@ export interface ChangeRequestDiff {
   handler?: HandlerDecisionNote;
   // Every message the customer sent since the version they answered went out, oldest first.
   client_messages?: ClientMessage[];
-  original: {
-    items: DiffLineItem[];
-    discounts: DiffDiscountLine[];
-    total: string;
-  };
-  requested: {
-    items: DiffLineItem[];
-    discounts: DiffDiscountLine[];
-    total: string;
-  };
+  lines: DiffLine[];
+  discounts: DiffDiscount[];
+  original_total: string;
+  requested_total: string;
 }

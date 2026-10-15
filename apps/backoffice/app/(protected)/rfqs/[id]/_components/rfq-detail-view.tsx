@@ -7,17 +7,12 @@ import { useReducedMotion } from 'motion/react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
-import { Button, Callout, ConfirmDialog, PendingButton } from '@repo/ui/components';
+import { Callout, ConfirmDialog, PendingButton } from '@repo/ui/components';
 import { followupDue } from '@/app/(protected)/rfqs/_components/followup-badge';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { errorCodeOf } from '@/lib/api/errors';
-import type {
-  HandlerNoMatchReason,
-  QuoteDiscountResponse,
-  QuoteItemResponse,
-  RfqDetailResponse,
-} from '@/lib/api/rfqs';
+import type { QuoteDiscountResponse, QuoteItemResponse, RfqDetailResponse } from '@/lib/api/rfqs';
 import { formatRfqReference, normalizeRfqStatus } from '@/lib/api/rfqs';
 import {
   discardAIChanges,
@@ -29,20 +24,11 @@ import { useFormatters } from '@/lib/i18n/formatters';
 import { ClientAssociationCard } from './client-association-card';
 import { InvoiceCard } from './invoice-card';
 import { QuoteDeliveryCard } from './quote-delivery-card';
-import { RfqChangeDiff } from './rfq-change-diff';
+import { RfqChangeRequestCard } from './rfq-change-request-card';
 import { RfqConversation } from './rfq-conversation';
 import { RfqDetailHeader } from './rfq-detail-header';
 import { RfqItemsTable } from './rfq-items-table';
 import { RfqStatusTimeline } from './rfq-status-timeline';
-
-// What the seller reads when the conversation handler left a customer's messages to them.
-const HANDLER_NO_MATCH_KEYS = {
-  REQUIRES_SELLER: 'detail.callouts.changeRequested.handler.requiresSeller',
-  AI_DISABLED: 'detail.callouts.changeRequested.handler.aiDisabled',
-  PROPOSAL_REFUSED: 'detail.callouts.changeRequested.handler.proposalRefused',
-  PIPELINE_EXHAUSTED: 'detail.callouts.changeRequested.handler.pipelineExhausted',
-  PROMOTION_NOT_EARNED: 'detail.callouts.changeRequested.handler.promotionNotEarned',
-} as const satisfies Record<HandlerNoMatchReason, string>;
 
 interface RfqDetailViewProps {
   detail: RfqDetailResponse;
@@ -98,22 +84,12 @@ export function RfqDetailView({
   const latestClientAction = detail.client_actions?.at(-1);
   // A customer's messages reach the draft through the conversation handler, which leaves a note.
   const handlerNote = detail.changes_requested?.handler;
-  const clientMessages = detail.changes_requested?.client_messages ?? [];
   const isCustomerChangeRequest =
     quoteStatus === 'CHANGE_REQUESTED' &&
     detail.version !== null &&
     (handlerNote != null ||
       (latestClientAction?.type === 'REQUEST_CHANGE' &&
         latestClientAction.version_number === detail.version.version_number - 1));
-  const handlerNoteText = !handlerNote
-    ? null
-    : handlerNote.seller_decision === 'REJECTED'
-      ? t('detail.callouts.changeRequested.handler.discarded')
-      : handlerNote.outcome === 'APPLIED'
-        ? t('detail.callouts.changeRequested.handler.applied', {
-            interpretation: handlerNote.interpretation.replace(/\.\s*$/, ''),
-          })
-        : t(HANDLER_NO_MATCH_KEYS[handlerNote.no_match_reason ?? 'REQUIRES_SELLER']);
   const canDiscardAIChanges = !archived && detail.conversation?.can_discard_ai_changes === true;
   const followupOrigin = rfqStatus === 'SENT' ? 'customer' : 'seller';
   const showFollowup = followupDue(
@@ -310,65 +286,43 @@ export function RfqDetailView({
         </Callout>
       )}
 
-      {rfqStatus === 'CHANGE_REQUESTED' && (
-        <Callout
-          tone="warning"
-          title={t(
-            isCustomerChangeRequest
-              ? 'detail.callouts.changeRequested.title'
-              : 'detail.callouts.sellerRevision.title',
-          )}
-          action={
-            canDiscardAIChanges ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setDiscardOpen(true)}
-              >
-                {t('detail.callouts.changeRequested.discard.action')}
-              </Button>
-            ) : undefined
-          }
-        >
-          {isCustomerChangeRequest ? (
-            <div className="flex flex-col gap-y-1">
-              {clientMessages.length > 0 ? (
-                <>
-                  <p>{t('detail.callouts.changeRequested.clientMessages')}</p>
-                  <ul className="flex flex-col gap-y-1 pl-3">
-                    {clientMessages.map((message, index) => (
-                      <li key={`${message.received_at}-${index}`} className="whitespace-pre-line">
-                        {message.body}
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              ) : (
-                <p>
-                  {detail.version?.comment
-                    ? t('detail.callouts.changeRequested.withReason', {
-                        reason: detail.version.comment,
-                      })
-                    : t('detail.callouts.changeRequested.description')}
-                </p>
-              )}
-              {handlerNoteText ? <p>{handlerNoteText}</p> : null}
-            </div>
-          ) : (
-            t('detail.callouts.sellerRevision.description')
-          )}
-        </Callout>
-      )}
-
-      {quoteId && detail.conversation ? (
-        <RfqConversation
+      {rfqStatus === 'CHANGE_REQUESTED' && quoteId && detail.changes_requested ? (
+        <RfqChangeRequestCard
+          diff={detail.changes_requested}
+          variant={isCustomerChangeRequest ? 'customer-request' : 'seller-revision'}
           conversation={detail.conversation}
           quoteId={quoteId}
           branchId={branchId}
+          canDiscard={canDiscardAIChanges}
+          onDiscard={() => setDiscardOpen(true)}
           onChanged={refreshDetail}
         />
-      ) : null}
+      ) : (
+        <>
+          {rfqStatus === 'CHANGE_REQUESTED' && (
+            <Callout
+              tone="warning"
+              title={t(
+                isCustomerChangeRequest
+                  ? 'detail.callouts.changeRequested.title'
+                  : 'detail.callouts.sellerRevision.title',
+              )}
+            >
+              {isCustomerChangeRequest
+                ? t('detail.callouts.changeRequested.description')
+                : t('detail.callouts.sellerRevision.description')}
+            </Callout>
+          )}
+          {quoteId && detail.conversation ? (
+            <RfqConversation
+              conversation={detail.conversation}
+              quoteId={quoteId}
+              branchId={branchId}
+              onChanged={refreshDetail}
+            />
+          ) : null}
+        </>
+      )}
 
       {rfqStatus === 'SENT' && detail.quote?.expires_at && (
         <Callout tone="info" title={t('detail.callouts.sent.title')}>
@@ -378,37 +332,17 @@ export function RfqDetailView({
         </Callout>
       )}
 
-      {rfqStatus === 'CHANGE_REQUESTED' && detail.changes_requested ? (
-        <>
-          <RfqChangeDiff
-            diff={detail.changes_requested}
-            variant={isCustomerChangeRequest ? 'customer-request' : 'seller-revision'}
-          />
-          <RfqItemsTable
-            quoteId={quoteId}
-            quoteStatus={quoteStatus}
-            branchId={branchId}
-            items={items}
-            discounts={discounts}
-            onItemsChange={handleItemsChange}
-            onDiscountsChange={setDiscounts}
-            onRefresh={refreshDetail}
-            readOnly={archived}
-          />
-        </>
-      ) : (
-        <RfqItemsTable
-          quoteId={quoteId}
-          quoteStatus={quoteStatus}
-          branchId={branchId}
-          items={items}
-          discounts={discounts}
-          onItemsChange={handleItemsChange}
-          onDiscountsChange={setDiscounts}
-          onRefresh={refreshDetail}
-          readOnly={archived}
-        />
-      )}
+      <RfqItemsTable
+        quoteId={quoteId}
+        quoteStatus={quoteStatus}
+        branchId={branchId}
+        items={items}
+        discounts={discounts}
+        onItemsChange={handleItemsChange}
+        onDiscountsChange={setDiscounts}
+        onRefresh={refreshDetail}
+        readOnly={archived}
+      />
 
       <ConfirmDialog
         open={discardOpen}

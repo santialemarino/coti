@@ -1,7 +1,16 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { MinusIcon, PackageOpenIcon, PencilIcon, PlusIcon, TrashIcon } from 'lucide-react';
+import {
+  BanIcon,
+  CheckIcon,
+  PackageOpenIcon,
+  PencilIcon,
+  PlusIcon,
+  RotateCcwIcon,
+  TagIcon,
+  TrashIcon,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
@@ -11,16 +20,19 @@ import {
   Card,
   CardHeader,
   CardTitle,
+  ClampedText,
   ConfirmDialog,
   EmptyState,
   RowActionButton,
   Table,
+  TABLE_COLUMNS,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
 } from '@repo/ui/components';
+import { cn } from '@repo/ui/lib';
 import { AmountInput } from '@/components/amount-input';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { CatalogProduct } from '@/lib/api/catalog';
@@ -40,6 +52,7 @@ import {
   updateQuoteItem,
 } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
+import { shortUnit } from '@/lib/utils/units';
 import { DiscountDialog } from './discount-dialog';
 import { ProductSearchDialog } from './product-search-dialog';
 
@@ -67,6 +80,8 @@ const ACCOUNT_CURRENCY = 'ARS';
 const PRODUCT_TRIGGER =
   'group/product flex items-center gap-x-1 rounded-sm outline-none transition-colors duration-200 ease-out-soft hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:underline text-paragraph-xs text-foreground-muted underline-offset-2';
 const PRODUCT_TRIGGER_ICON = 'size-3 group-focus-visible/product:animate-focus-bump-soft';
+// What a quantity field reserves beside its digits and unit: its own padding and the gap.
+const QUANTITY_FIELD_PADDING = '3.5rem';
 
 interface RfqItemsTableProps {
   quoteId: string | null;
@@ -182,6 +197,8 @@ export function RfqItemsTable({
   // Confidence belongs to the pre-quote review: visible before pricing is set, hidden once a
   // quote exists and the seller reasons about products and money.
   const showConfidence = !showPricing;
+  // A priced quote keeps its lines, but one the catalog left unsure can still be settled.
+  const canResolve = canEditProducts || canEditPrices;
   const quantityKind = canEditProducts ? 'quantityInput' : 'quantity';
   const priceKind = canEditPrices ? 'moneyInput' : 'money';
   const hasDiscounts = discounts.length > 0;
@@ -198,6 +215,21 @@ export function RfqItemsTable({
     [discounts],
   );
   const grandTotal = itemsSubtotal - discountsTotal;
+  // The quantity column widens to its longest figure, so neither a number nor its unit is cut.
+  const quantityMinWidth = useMemo(() => {
+    const longest = Math.max(
+      0,
+      ...items.map((item) => {
+        const unit = item.unit ?? item.product_unit;
+        return fmt.value(Number(item.quantity)).length + (unit ? shortUnit(unit).length + 1 : 0);
+      }),
+    );
+    return `calc(${longest}ch + ${QUANTITY_FIELD_PADDING})`;
+  }, [items, fmt]);
+
+  function canChooseProduct(item: QuoteItemResponse): boolean {
+    return canEditProducts || (canResolve && item.match_status !== 'MATCHED');
+  }
 
   async function handleDiscountSave(body: CreateDiscountBody) {
     if (!quoteId) return;
@@ -260,6 +292,24 @@ export function RfqItemsTable({
       onDiscountsChange?.(discounts.filter((d) => d.id !== discount.id));
       await onRefresh?.();
       toast.success(t('detail.items.discounts.toast.removed', { name: discountName(discount) }));
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
+    }
+  }
+
+  async function handleConfirmMatch(item: QuoteItemResponse) {
+    if (!quoteId) return;
+    try {
+      const updated = await updateQuoteItem(quoteId, item.id, branchId, { confirm_match: true });
+      const kept =
+        updated.alternatives.length > 0 ? updated : { ...updated, alternatives: item.alternatives };
+      onItemsChange(items.map((line) => (line.id === item.id ? kept : line)));
+      await onRefresh?.();
+      toast.success(
+        t('detail.items.toast.confirmed', {
+          name: item.product_name ?? item.requested_description,
+        }),
+      );
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
     }
@@ -448,14 +498,16 @@ export function RfqItemsTable({
                 <TableHead kind="status">{t('detail.items.columns.confidence')}</TableHead>
               )}
               {/* Quantity and unit are one figure, so the unit never opens a gap beside the number. */}
-              <TableHead kind={quantityKind}>{t('detail.items.columns.quantity')}</TableHead>
+              <TableHead kind={quantityKind} style={{ minWidth: quantityMinWidth }}>
+                {t('detail.items.columns.quantity')}
+              </TableHead>
               {showPricing && (
                 <TableHead kind={priceKind}>{t('detail.items.columns.unitPrice')}</TableHead>
               )}
               {showPricing && (
                 <TableHead kind="money">{t('detail.items.columns.subtotal')}</TableHead>
               )}
-              {(canEditProducts || canEditPrices) && (
+              {canResolve && (
                 <TableHead kind="actions">{t('detail.items.columns.actions')}</TableHead>
               )}
             </TableRow>
@@ -468,6 +520,12 @@ export function RfqItemsTable({
                 !showConfidence && item.match_status === 'NO_MATCH' && !item.product_name;
               const confidence = confidenceBadge(item);
               const unit = item.unit ?? item.product_unit;
+              // The trade abbreviation on screen, the original as its title.
+              const unitLabel = unit ? (
+                <abbr title={unit} className="no-underline">
+                  {shortUnit(unit)}
+                </abbr>
+              ) : null;
 
               return (
                 <TableRow key={item.id}>
@@ -475,31 +533,43 @@ export function RfqItemsTable({
                     {index + 1}
                   </TableCell>
                   <TableCell>
-                    <span className="text-paragraph-sm-medium text-foreground">
+                    <ClampedText className="text-paragraph-sm-medium text-foreground">
                       {item.requested_description}
-                    </span>
+                    </ClampedText>
                   </TableCell>
                   <TableCell>
                     {item.product_name ? (
                       <div className="flex flex-col items-start gap-y-0.5">
-                        {canEditProducts ? (
+                        {canChooseProduct(item) ? (
                           <button
                             type="button"
                             onClick={() => openProductSearch(item.id)}
-                            className="group/product flex items-center gap-x-1 rounded-sm outline-none transition-colors duration-200 ease-out-soft hover:underline focus-visible:underline text-paragraph-sm text-foreground underline-offset-2"
+                            className="group/product flex items-start gap-x-1 rounded-sm outline-none transition-colors duration-200 ease-out-soft hover:underline focus-visible:underline text-left text-paragraph-sm text-foreground underline-offset-2"
                           >
-                            {item.product_name}
-                            <PencilIcon className="size-3 text-foreground-muted transition-colors duration-200 ease-out-soft group-hover/product:text-foreground group-focus-visible/product:text-foreground group-focus-visible/product:animate-focus-bump-soft" />
+                            <ClampedText focusable={false}>{item.product_name}</ClampedText>
+                            <PencilIcon className="mt-1 size-3 shrink-0 text-foreground-muted transition-colors duration-200 ease-out-soft group-hover/product:text-foreground group-focus-visible/product:text-foreground group-focus-visible/product:animate-focus-bump-soft" />
                           </button>
                         ) : (
-                          <span className="text-paragraph-sm text-foreground">
+                          <ClampedText className="text-paragraph-sm text-foreground">
                             {item.product_name}
-                          </span>
+                          </ClampedText>
                         )}
                         {item.product_code && (
                           <span className="text-paragraph-xs text-foreground-muted">
                             {item.product_code}
                           </span>
+                        )}
+                        {canResolve && item.match_status === 'AMBIGUOUS' && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="xs"
+                            className="mt-1"
+                            onClick={() => void handleConfirmMatch(item)}
+                          >
+                            <CheckIcon aria-hidden="true" className="size-3" />
+                            {t('detail.items.confirmMatch')}
+                          </Button>
                         )}
                       </div>
                     ) : noMatch ? (
@@ -507,7 +577,7 @@ export function RfqItemsTable({
                         <Badge tone="danger" size="sm">
                           {t('detail.items.matchStatus.NO_MATCH')}
                         </Badge>
-                        {canEditProducts && (
+                        {canChooseProduct(item) && (
                           <button
                             type="button"
                             onClick={() => openProductSearch(item.id)}
@@ -568,13 +638,15 @@ export function RfqItemsTable({
                             (event.target as HTMLInputElement).blur();
                           }
                         }}
-                        suffix={unit}
+                        suffix={unitLabel}
                         className="text-right tabular-nums"
                       />
                     ) : (
                       <span className="text-paragraph-sm">
                         {fmt.value(Number(item.quantity))}
-                        {unit ? <span className="text-foreground-muted"> {unit}</span> : null}
+                        {unitLabel ? (
+                          <span className="text-foreground-muted"> {unitLabel}</span>
+                        ) : null}
                       </span>
                     )}
                   </TableCell>
@@ -614,7 +686,7 @@ export function RfqItemsTable({
                       )}
                     </TableCell>
                   )}
-                  {(canEditProducts || canEditPrices) && (
+                  {canResolve && (
                     <TableCell kind="actions">
                       <div className="flex justify-center">
                         {/* Danger tone, like every other destructive row action — and unlike
@@ -652,88 +724,99 @@ export function RfqItemsTable({
                     {t('detail.items.discounts.title')}
                   </span>
                   <div className="flex flex-col gap-y-1">
-                    {discounts.map((discount) => (
-                      <div
-                        key={discount.id}
-                        className="flex items-center justify-between gap-x-2 text-paragraph-xs"
-                      >
-                        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
-                          <MinusIcon className="size-3 shrink-0 text-foreground-muted" />
-                          <span
-                            className={
-                              discount.suppressed_by_seller
-                                ? 'text-foreground-muted line-through'
-                                : 'text-foreground'
-                            }
-                          >
-                            {discount.promotion_name ?? t('detail.items.discounts.adHoc')}
-                          </span>
-                          <Badge
-                            tone={discount.suppressed_by_seller ? 'neutral' : 'success'}
-                            size="sm"
-                          >
-                            {t(`detail.items.discounts.scope.${discount.scope}`)}
-                          </Badge>
-                          {discount.origin !== 'MANUAL_SELLER' && (
-                            <Badge tone="neutral" size="sm">
-                              {t(`detail.items.discounts.origin.${discount.origin}`)}
+                    {discounts.map((discount) => {
+                      const suppressed = discount.suppressed_by_seller;
+                      return (
+                        <div
+                          key={discount.id}
+                          className="flex items-center justify-between gap-x-2 text-paragraph-xs"
+                        >
+                          <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+                            <TagIcon
+                              aria-hidden="true"
+                              className={cn(
+                                'size-3.5 shrink-0',
+                                suppressed ? 'text-foreground-subtle' : 'text-foreground-muted',
+                              )}
+                            />
+                            <span
+                              className={
+                                suppressed
+                                  ? 'text-foreground-muted line-through'
+                                  : 'text-foreground'
+                              }
+                            >
+                              {discount.promotion_name ?? t('detail.items.discounts.adHoc')}
+                            </span>
+                            {suppressed ? (
+                              <Badge tone="neutral" size="sm">
+                                {t('detail.items.discounts.suppressed')}
+                              </Badge>
+                            ) : null}
+                            <Badge tone={suppressed ? 'neutral' : 'success'} size="sm">
+                              {t(`detail.items.discounts.scope.${discount.scope}`)}
                             </Badge>
-                          )}
-                          {discountRuleLabel(discount, fmt) && (
-                            <Badge tone="neutral" size="sm">
-                              {discountRuleLabel(discount, fmt)}
-                            </Badge>
-                          )}
+                            {discount.origin !== 'MANUAL_SELLER' && (
+                              <Badge tone="neutral" size="sm">
+                                {t(`detail.items.discounts.origin.${discount.origin}`)}
+                              </Badge>
+                            )}
+                            {discountRuleLabel(discount, fmt) && (
+                              <Badge tone="neutral" size="sm">
+                                {discountRuleLabel(discount, fmt)}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex shrink-0 items-center gap-x-2">
+                            <span
+                              className={cn(
+                                'tabular-nums',
+                                suppressed
+                                  ? 'text-foreground-subtle line-through'
+                                  : 'text-foreground-muted',
+                              )}
+                            >
+                              −{fmt.currency(discount.amount)}
+                            </span>
+                            {/* The items' actions column, so every row action sits in one place. */}
+                            {canEditDiscounts && (
+                              <div
+                                className={cn(
+                                  'flex items-center justify-center gap-x-1',
+                                  TABLE_COLUMNS.actions.width,
+                                )}
+                              >
+                                {discount.origin === 'MANUAL_SELLER' ? (
+                                  <>
+                                    <RowActionButton
+                                      icon={PencilIcon}
+                                      label={t('detail.items.discounts.edit')}
+                                      onClick={() => openEditDiscount(discount)}
+                                    />
+                                    <RowActionButton
+                                      icon={TrashIcon}
+                                      tone="danger"
+                                      label={t('detail.items.discounts.remove')}
+                                      onClick={() => void handleDeleteDiscount(discount)}
+                                    />
+                                  </>
+                                ) : (
+                                  <RowActionButton
+                                    icon={suppressed ? RotateCcwIcon : BanIcon}
+                                    label={
+                                      suppressed
+                                        ? t('detail.items.discounts.restore')
+                                        : t('detail.items.discounts.suppress')
+                                    }
+                                    onClick={() => void handleToggleDiscount(discount)}
+                                  />
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex shrink-0 items-center gap-x-2">
-                          <span className="tabular-nums text-foreground-muted">
-                            −{fmt.currency(discount.amount)}
-                          </span>
-                          {canEditDiscounts && (
-                            <>
-                              {discount.origin === 'MANUAL_SELLER' && (
-                                <button
-                                  type="button"
-                                  className="text-foreground-muted transition-colors hover:text-foreground"
-                                  onClick={() => openEditDiscount(discount)}
-                                  aria-label={t('detail.items.discounts.edit')}
-                                >
-                                  <PencilIcon className="size-3" />
-                                </button>
-                              )}
-                              {discount.origin !== 'MANUAL_SELLER' && (
-                                <button
-                                  type="button"
-                                  className="text-foreground-muted transition-colors hover:text-foreground"
-                                  onClick={() => handleToggleDiscount(discount)}
-                                  aria-label={
-                                    discount.suppressed_by_seller
-                                      ? t('detail.items.discounts.restore')
-                                      : t('detail.items.discounts.suppress')
-                                  }
-                                >
-                                  {discount.suppressed_by_seller ? (
-                                    <PlusIcon className="size-3" />
-                                  ) : (
-                                    <MinusIcon className="size-3" />
-                                  )}
-                                </button>
-                              )}
-                              {discount.origin === 'MANUAL_SELLER' && (
-                                <button
-                                  type="button"
-                                  className="text-foreground-muted transition-colors hover:text-danger"
-                                  onClick={() => handleDeleteDiscount(discount)}
-                                  aria-label={t('detail.items.discounts.remove')}
-                                >
-                                  <TrashIcon className="size-3" />
-                                </button>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </>
               )}
