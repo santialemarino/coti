@@ -465,6 +465,30 @@ func TestEvaluateDiscounts_SuppressedTotalLeavesTheTotalWithoutAPromotion(t *tes
 	assertApplied(t, got, map[string]string{"a2000000/0a": "100.00"})
 }
 
+func TestEvaluateDiscounts_ASuppressionThatNoLongerQualifiesBlocksNothing(t *testing.T) {
+	t.Parallel()
+	lines := []engineLine{testLine(lineA, cement, "2", "1000.00", "2000.00", nil)}
+	large := promo{id: promoP, condition: domain.PromotionConditionOnTotal,
+		action: domain.PromotionActionPercentage, value: "5", minTotal: decPtr("10000")}
+	small := promo{id: promoQ, condition: domain.PromotionConditionOnTotal,
+		action: domain.PromotionActionPercentage, value: "2", minTotal: decPtr("1000")}
+	tiered := promo{id: promoR, condition: domain.PromotionConditionQuantityTier,
+		action: domain.PromotionActionPercentage, value: "0", priority: 5, targets: []uuid.UUID{cement},
+		tiers: []domain.PromotionTier{{FromQuantity: dec("10"), Value: dec("10")}}}
+	perItem := promo{id: "a3000000-0000-4000-8000-000000000001",
+		condition: domain.PromotionConditionPerItem, action: domain.PromotionActionPercentage,
+		value: "1", targets: []uuid.UUID{cement}}
+	got := evaluateSuppressed(lines, []engineSuppression{
+		{PromotionID: uuid.MustParse(promoP), Scope: domain.DiscountScopeTotal},
+		{PromotionID: uuid.MustParse(promoR), Scope: domain.DiscountScopeItem,
+			ItemIDs: []uuid.UUID{uuid.MustParse(lineA)}},
+	}, large, small, tiered, perItem)
+	// The net fell under P's 10000 and the quantity under R's first tier, so neither suppression
+	// holds anything: the 1% line rule takes line A (2000 × 1% = 20) and Q the total
+	// ((2000 − 20) × 2% = 39.60).
+	assertApplied(t, got, map[string]string{"a1000000": "39.60", "a3000000/0a": "20.00"})
+}
+
 func TestEvaluateDiscounts_OnlyRulesInForce(t *testing.T) {
 	t.Parallel()
 	lines := []engineLine{testLine(lineA, cement, "10", "1000.00", "10000.00", nil)}

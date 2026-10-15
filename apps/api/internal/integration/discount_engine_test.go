@@ -144,6 +144,10 @@ func TestDiscountEngine_SweepFollowsTheSeller(t *testing.T) {
 		"action_value": "3", "conditions": []map[string]any{{"product_id": cement}},
 	})
 	e.createPromotion(t, adminToken, map[string]any{
+		"name": "Compra mediana", "condition_type": "ON_TOTAL", "action_type": "PERCENTAGE",
+		"action_value": "2", "min_total": "1000",
+	})
+	e.createPromotion(t, adminToken, map[string]any{
 		"name": "Compra grande", "condition_type": "ON_TOTAL", "action_type": "PERCENTAGE",
 		"action_value": "5", "min_total": "10000",
 	})
@@ -224,7 +228,9 @@ func TestDiscountEngine_SweepFollowsTheSeller(t *testing.T) {
 		token: sellerToken, branch: branch}); rec.Code != http.StatusOK {
 		t.Fatalf("delete the cement line: status = %d: %s", rec.Code, rec.Body)
 	}
-	requireTotal(t, e, seeded.versionID, "1600.00") // 2000 − 400
+	// The 2000 net is under Compra grande's threshold, so its suppression holds nothing any more and
+	// Compra mediana applies: 2000 × 2% = 40, and 2000 − 400 − 40 = 1560.
+	requireTotal(t, e, seeded.versionID, "1560.00")
 	after := e.storedDiscounts(t, seeded.versionID)
 	if _, ok := after["Cemento 10%"]; ok {
 		t.Errorf("the line application outlived its line: %+v", after)
@@ -242,7 +248,7 @@ func TestDiscountEngine_SweepFollowsTheSeller(t *testing.T) {
 		t.Fatalf("restore an unearned application: status = %d, want 409 DISCOUNT_NOT_APPLICABLE: %s",
 			rec.Code, rec.Body)
 	}
-	requireTotal(t, e, seeded.versionID, "1600.00")
+	requireTotal(t, e, seeded.versionID, "1560.00")
 	if got := e.storedDiscounts(t, seeded.versionID)["Compra grande"]; !got.suppressed {
 		t.Errorf("after the refused restore = %+v, want it still suppressed", got)
 	}

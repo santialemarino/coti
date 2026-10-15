@@ -63,6 +63,17 @@ type discountCandidate struct {
 // evaluateDiscounts returns the AUTOMATIC applications a version earns, conflicts resolved as
 // docs/technical/discount-engine.md lays out.
 func evaluateDiscounts(in engineInput) []domain.DiscountApplication {
+	if len(in.Suppressed) == 0 {
+		return evaluateWith(in, func(discountCandidate) bool { return false })
+	}
+	// A suppression blocks what it covered only while its promotion would still be earned there —
+	// exactly when restoring it would succeed — so one that stopped qualifying never strands a line.
+	unsuppressed := in
+	unsuppressed.Suppressed = nil
+	return evaluateWith(in, suppressedBy(in.Suppressed, evaluateDiscounts(unsuppressed)))
+}
+
+func evaluateWith(in engineInput, skip func(discountCandidate) bool) []domain.DiscountApplication {
 	lines := pricedLines(in.Lines)
 	candidates := make([]discountCandidate, 0)
 	for i := range in.Promotions {
@@ -72,19 +83,30 @@ func evaluateDiscounts(in engineInput) []domain.DiscountApplication {
 		}
 		candidates = append(candidates, promotionCandidates(promotion, lines, in.Held)...)
 	}
-	candidates = slices.DeleteFunc(candidates, suppressedBy(in.Suppressed))
+	candidates = slices.DeleteFunc(candidates, skip)
 	slices.SortStableFunc(candidates, compareCandidates)
 	return resolveCandidates(candidates, lines, in.Held)
 }
 
 // suppressedBy reports whether a candidate falls on something a seller suppressed: the suppressed
-// application itself, a line one covered, or the total once an ON_TOTAL one is off.
-func suppressedBy(suppressions []engineSuppression) func(discountCandidate) bool {
+// application itself, or — while that application is still earned — a line it covered, or the
+// total once an ON_TOTAL one is off.
+func suppressedBy(
+	suppressions []engineSuppression, earned []domain.DiscountApplication,
+) func(discountCandidate) bool {
+	stillEarned := map[string]bool{}
+	for _, app := range earned {
+		stillEarned[suppressionKey(app.PromotionID, app.Scope, app.ItemIDs)] = true
+	}
 	keys := map[string]bool{}
 	lines := map[uuid.UUID]bool{}
 	total := false
 	for _, s := range suppressions {
-		keys[suppressionKey(s.PromotionID, s.Scope, s.ItemIDs)] = true
+		key := suppressionKey(s.PromotionID, s.Scope, s.ItemIDs)
+		keys[key] = true
+		if !stillEarned[key] {
+			continue
+		}
 		if s.Scope == domain.DiscountScopeTotal {
 			total = true
 		}
