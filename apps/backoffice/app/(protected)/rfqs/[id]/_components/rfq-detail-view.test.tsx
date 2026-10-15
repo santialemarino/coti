@@ -21,8 +21,10 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 vi.mock('@/lib/api/rfqs-client', () => ({
+  discardAIChanges: vi.fn(),
   fetchRfqDetail: vi.fn(),
   generateQuote: vi.fn(),
+  retryConversationBatch: vi.fn(),
   setQuoteArchived: vi.fn(),
 }));
 // The send button's presence per status is what these tests exercise; the edit surface, diff and
@@ -41,7 +43,8 @@ vi.mock('./send-quote-dialog', () => ({ SendQuoteDialog: vi.fn(() => null) }));
 vi.mock('./rfq-change-diff', () => ({ RfqChangeDiff: vi.fn(() => null) }));
 
 const { toast } = await import('sonner');
-const { generateQuote, setQuoteArchived } = await import('@/lib/api/rfqs-client');
+const { discardAIChanges, fetchRfqDetail, generateQuote, setQuoteArchived } =
+  await import('@/lib/api/rfqs-client');
 
 const copy = messages.rfqs;
 
@@ -415,6 +418,64 @@ describe('RfqDetailView send flow', () => {
         ),
       ),
     ).toBeTruthy();
+  });
+
+  it('discards the AI changes only after the seller confirms', async () => {
+    const detail = makeDetail('CHANGE_REQUESTED');
+    detail.conversation = { batches: [], pending: [], can_discard_ai_changes: true };
+    vi.mocked(discardAIChanges).mockResolvedValue(detail.version!);
+    vi.mocked(fetchRfqDetail).mockResolvedValue(detail);
+    const discard = copy.detail.callouts.changeRequested.discard;
+
+    const view = renderView(detail);
+    fireEvent.click(view.getByRole('button', { name: discard.action }));
+    expect(discardAIChanges).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(await view.findByRole('button', { name: discard.confirm }));
+    });
+
+    expect(discardAIChanges).toHaveBeenCalledWith(QUOTE_ID, BRANCH_ID);
+    expect(toast.success).toHaveBeenCalledWith(discard.success.replace('{reference}', '#01'));
+    expect(fetchRfqDetail).toHaveBeenCalledWith(RFQ_ID);
+  });
+
+  it('says the AI changes were discarded once the seller rejected them', () => {
+    const detail = makeDetail('CHANGE_REQUESTED');
+    detail.changes_requested = {
+      ...detail.changes_requested!,
+      handler: {
+        client_input: 'que sean 4',
+        interpretation: 'Pide cuatro bolsas',
+        outcome: 'APPLIED',
+        no_match_reason: null,
+        seller_decision: 'REJECTED',
+        created_at: BASE_TIME,
+      },
+    };
+
+    const view = renderView(detail);
+
+    expect(view.getByText(copy.detail.callouts.changeRequested.handler.discarded)).toBeTruthy();
+    expect(
+      view.queryByText(
+        copy.detail.callouts.changeRequested.handler.applied.replace(
+          '{interpretation}',
+          'Pide cuatro bolsas',
+        ),
+      ),
+    ).toBeNull();
+  });
+
+  it('offers no discard when the draft carries no pending AI change', () => {
+    const detail = makeDetail('CHANGE_REQUESTED');
+    detail.conversation = { batches: [], pending: [], can_discard_ai_changes: false };
+
+    const view = renderView(detail);
+
+    expect(
+      view.queryByRole('button', { name: copy.detail.callouts.changeRequested.discard.action }),
+    ).toBeNull();
   });
 
   it('tells the seller why the AI left the request to them', () => {

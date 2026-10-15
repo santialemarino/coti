@@ -9,6 +9,9 @@ requested" and opens one editable draft. Coti's AI reads the customer's messages
 changes on that draft; prices and discounts are always computed by Coti's own rules, and the seller
 reviews the draft before anything is sent back. When a message is not a clear change — "ok, I'll
 take it", a question about delivery — the AI changes nothing and tells the seller it needs them.
+The order detail shows the whole conversation: what the customer wrote, how the AI read each message
+and what the seller did with it. A seller who disagrees with the AI's changes can discard them and
+start again from the version the customer received.
 
 Accepted and rejected quotes remain auditable and cannot be edited directly. A seller can reactivate
 one in either of two ways:

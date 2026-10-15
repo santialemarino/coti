@@ -7,7 +7,7 @@ import { useReducedMotion } from 'motion/react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
-import { Callout, PendingButton } from '@repo/ui/components';
+import { Button, Callout, ConfirmDialog, PendingButton } from '@repo/ui/components';
 import { followupDue } from '@/app/(protected)/rfqs/_components/followup-badge';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
@@ -19,12 +19,18 @@ import type {
   RfqDetailResponse,
 } from '@/lib/api/rfqs';
 import { formatRfqReference, normalizeRfqStatus } from '@/lib/api/rfqs';
-import { fetchRfqDetail, generateQuote, setQuoteArchived } from '@/lib/api/rfqs-client';
+import {
+  discardAIChanges,
+  fetchRfqDetail,
+  generateQuote,
+  setQuoteArchived,
+} from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
 import { ClientAssociationCard } from './client-association-card';
 import { InvoiceCard } from './invoice-card';
 import { QuoteDeliveryCard } from './quote-delivery-card';
 import { RfqChangeDiff } from './rfq-change-diff';
+import { RfqConversation } from './rfq-conversation';
 import { RfqDetailHeader } from './rfq-detail-header';
 import { RfqItemsTable } from './rfq-items-table';
 import { RfqStatusTimeline } from './rfq-status-timeline';
@@ -57,6 +63,7 @@ export function RfqDetailView({
   const router = useRouter();
   const fmt = useFormatters();
   const t = useTranslations('rfqs');
+  const tCommon = useTranslations('common');
   const message = useApiErrorMessage('rfqs.detail.items');
   const { updateRecord } = useRfqList();
   const reduced = useReducedMotion();
@@ -68,6 +75,8 @@ export function RfqDetailView({
   const [shownInitial, setShownInitial] = useState(initialDetail);
   const [generating, startGenerate] = useTransition();
   const [unarchiving, startUnarchive] = useTransition();
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
   // The sale's client: the quote's own, then whatever the association card changes it to.
   const [clientId, setClientId] = useState<string | null | undefined>(
     initialDetail.quote?.client_id,
@@ -96,11 +105,14 @@ export function RfqDetailView({
         latestClientAction.version_number === detail.version.version_number - 1));
   const handlerNoteText = !handlerNote
     ? null
-    : handlerNote.outcome === 'APPLIED'
-      ? t('detail.callouts.changeRequested.handler.applied', {
-          interpretation: handlerNote.interpretation.replace(/\.\s*$/, ''),
-        })
-      : t(HANDLER_NO_MATCH_KEYS[handlerNote.no_match_reason ?? 'REQUIRES_SELLER']);
+    : handlerNote.seller_decision === 'REJECTED'
+      ? t('detail.callouts.changeRequested.handler.discarded')
+      : handlerNote.outcome === 'APPLIED'
+        ? t('detail.callouts.changeRequested.handler.applied', {
+            interpretation: handlerNote.interpretation.replace(/\.\s*$/, ''),
+          })
+        : t(HANDLER_NO_MATCH_KEYS[handlerNote.no_match_reason ?? 'REQUIRES_SELLER']);
+  const canDiscardAIChanges = !archived && detail.conversation?.can_discard_ai_changes === true;
   const followupOrigin = rfqStatus === 'SENT' ? 'customer' : 'seller';
   const showFollowup = followupDue(
     detail.rfq.needs_followup,
@@ -173,6 +185,22 @@ export function RfqDetailView({
         toast.error(message(errorCodeOf(error)));
       }
     });
+  }
+
+  async function handleDiscard() {
+    if (!quoteId) return;
+    const reference = formatRfqReference(detail.rfq.quote_number) ?? t('list.numberPending');
+    setDiscarding(true);
+    try {
+      await discardAIChanges(quoteId, branchId);
+      toast.success(t('detail.callouts.changeRequested.discard.success', { reference }));
+      setDiscardOpen(false);
+      await refreshDetail();
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
+    } finally {
+      setDiscarding(false);
+    }
   }
 
   function handleGenerate() {
@@ -288,6 +316,18 @@ export function RfqDetailView({
               ? 'detail.callouts.changeRequested.title'
               : 'detail.callouts.sellerRevision.title',
           )}
+          action={
+            canDiscardAIChanges ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setDiscardOpen(true)}
+              >
+                {t('detail.callouts.changeRequested.discard.action')}
+              </Button>
+            ) : undefined
+          }
         >
           {isCustomerChangeRequest ? (
             <div className="flex flex-col gap-y-1">
@@ -318,6 +358,15 @@ export function RfqDetailView({
           )}
         </Callout>
       )}
+
+      {quoteId && detail.conversation ? (
+        <RfqConversation
+          conversation={detail.conversation}
+          quoteId={quoteId}
+          branchId={branchId}
+          onChanged={refreshDetail}
+        />
+      ) : null}
 
       {rfqStatus === 'SENT' && detail.quote?.expires_at && (
         <Callout tone="info" title={t('detail.callouts.sent.title')}>
@@ -358,6 +407,22 @@ export function RfqDetailView({
           readOnly={archived}
         />
       )}
+
+      <ConfirmDialog
+        open={discardOpen}
+        onOpenChange={setDiscardOpen}
+        entity={canDiscardAIChanges ? quoteId : null}
+        title={t('detail.callouts.changeRequested.discard.title')}
+        description={() => t('detail.callouts.changeRequested.discard.description')}
+        onConfirm={handleDiscard}
+        pending={discarding}
+        tone="danger"
+        labels={{
+          confirm: t('detail.callouts.changeRequested.discard.confirm'),
+          pending: t('detail.callouts.changeRequested.discard.pending'),
+          cancel: tCommon('actions.cancel'),
+        }}
+      />
 
       {isDraft && quoteId && (
         <div className="flex justify-end">
