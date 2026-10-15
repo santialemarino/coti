@@ -84,6 +84,7 @@ type Config struct {
 	QuoteCorrection QuoteCorrectionConfig
 	QuoteQuality    QuoteQualityConfig
 	QuoteArchive    QuoteArchiveConfig
+	Conversation    ConversationConfig
 	Attachment      AttachmentConfig
 	QuoteLogo       QuoteLogoConfig
 	RateLimit       RateLimitConfig
@@ -547,6 +548,16 @@ type QuoteArchiveConfig struct {
 	BatchSize     int
 }
 
+// ConversationConfig calibrates the windows that group a client's messages after a quote is sent.
+type ConversationConfig struct {
+	// WindowReset is how long a window stays open after the client's latest message.
+	WindowReset time.Duration
+	// WindowMax caps a window from its first message, however long the client keeps writing.
+	WindowMax time.Duration
+	// ContextMessages is how many earlier messages travel with a batch as context.
+	ContextMessages int
+}
+
 // AttachmentConfig bounds the sweep that reads the files an order arrived with. The reclaim
 // window is how long a claim stands: past it the row is taken again, so a run killed mid-work
 // releases its attachments instead of parking them at PROCESSING forever.
@@ -874,6 +885,11 @@ func Load() (*Config, error) {
 				&problems),
 			BatchSize: getInt("QUOTE_AUTO_ARCHIVE_BATCH_SIZE", 100, &problems),
 		},
+		Conversation: ConversationConfig{
+			WindowReset:     getDuration("CONVERSATION_WINDOW_RESET_SECONDS", 120*time.Second, &problems),
+			WindowMax:       getDuration("CONVERSATION_WINDOW_MAX_SECONDS", 600*time.Second, &problems),
+			ContextMessages: getInt("CONVERSATION_CONTEXT_MESSAGES", 10, &problems),
+		},
 		Attachment: AttachmentConfig{
 			ExtractionRFQBatchSize: getInt("ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE", 5, &problems),
 			ExtractionReclaimAfter: getDuration("ATTACHMENT_EXTRACTION_RECLAIM_MINUTES",
@@ -1106,6 +1122,16 @@ func Load() (*Config, error) {
 	}
 	if cfg.QuoteArchive.BatchSize < 1 {
 		problems = append(problems, "QUOTE_AUTO_ARCHIVE_BATCH_SIZE must be greater than zero")
+	}
+	if cfg.Conversation.WindowReset <= 0 {
+		problems = append(problems, "CONVERSATION_WINDOW_RESET_SECONDS must be greater than zero")
+	}
+	if cfg.Conversation.WindowMax <= cfg.Conversation.WindowReset {
+		problems = append(problems,
+			"CONVERSATION_WINDOW_MAX_SECONDS must be greater than CONVERSATION_WINDOW_RESET_SECONDS")
+	}
+	if cfg.Conversation.ContextMessages < 0 {
+		problems = append(problems, "CONVERSATION_CONTEXT_MESSAGES must be zero or more")
 	}
 	if cfg.Attachment.ExtractionRFQBatchSize < 1 {
 		problems = append(problems, "ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE must be greater than zero")
