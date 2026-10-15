@@ -731,41 +731,43 @@ export function RfqItemsTable({
                           key={discount.id}
                           className="flex items-center justify-between gap-x-2 text-paragraph-xs"
                         >
-                          <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+                          <div className="flex min-w-0 items-start gap-x-1.5">
                             <TagIcon
                               aria-hidden="true"
                               className={cn(
-                                'size-3.5 shrink-0',
+                                'mt-0.5 size-3.5 shrink-0',
                                 suppressed ? 'text-foreground-subtle' : 'text-foreground-muted',
                               )}
                             />
-                            <span
-                              className={
-                                suppressed
-                                  ? 'text-foreground-muted line-through'
-                                  : 'text-foreground'
-                              }
-                            >
-                              {discount.promotion_name ?? t('detail.items.discounts.adHoc')}
-                            </span>
-                            {suppressed ? (
-                              <Badge tone="neutral" size="sm">
-                                {t('detail.items.discounts.suppressed')}
+                            <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+                              <span
+                                className={
+                                  suppressed
+                                    ? 'text-foreground-muted line-through'
+                                    : 'text-foreground'
+                                }
+                              >
+                                {discount.promotion_name ?? t('detail.items.discounts.adHoc')}
+                              </span>
+                              {suppressed ? (
+                                <Badge tone="neutral" size="sm">
+                                  {t('detail.items.discounts.suppressed')}
+                                </Badge>
+                              ) : null}
+                              <Badge tone={suppressed ? 'neutral' : 'success'} size="sm">
+                                {t(`detail.items.discounts.scope.${discount.scope}`)}
                               </Badge>
-                            ) : null}
-                            <Badge tone={suppressed ? 'neutral' : 'success'} size="sm">
-                              {t(`detail.items.discounts.scope.${discount.scope}`)}
-                            </Badge>
-                            {discount.origin !== 'MANUAL_SELLER' && (
-                              <Badge tone="neutral" size="sm">
-                                {t(`detail.items.discounts.origin.${discount.origin}`)}
-                              </Badge>
-                            )}
-                            {discountRuleLabel(discount, fmt) && (
-                              <Badge tone="neutral" size="sm">
-                                {discountRuleLabel(discount, fmt)}
-                              </Badge>
-                            )}
+                              {discount.origin !== 'MANUAL_SELLER' && (
+                                <Badge tone="neutral" size="sm">
+                                  {t(`detail.items.discounts.origin.${discount.origin}`)}
+                                </Badge>
+                              )}
+                              {discountRuleLabel(discount, fmt) && (
+                                <Badge tone="neutral" size="sm">
+                                  {discountRuleLabel(discount, fmt)}
+                                </Badge>
+                              )}
+                            </div>
                           </div>
                           <div className="flex shrink-0 items-center gap-x-2">
                             <span
@@ -778,11 +780,12 @@ export function RfqItemsTable({
                             >
                               −{fmt.currency(discount.amount)}
                             </span>
-                            {/* The items' actions column, so every row action sits in one place. */}
+                            {/* The items' actions column, so every row action sits in one place; the
+                                negative margin cancels the summary's padding, as the column has none. */}
                             {canEditDiscounts && (
                               <div
                                 className={cn(
-                                  'flex items-center justify-center gap-x-1',
+                                  'flex items-center justify-center -mr-4 gap-x-1',
                                   TABLE_COLUMNS.actions.width,
                                 )}
                               >

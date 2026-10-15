@@ -51,7 +51,7 @@ function ClampedText({ children, lines = 2, focusable = true, className }: Clamp
           tabIndex={clamped && focusable ? 0 : undefined}
           className={cn(
             LINE_CLAMP[lines],
-            'rounded-sm outline-none decoration-dotted underline-offset-2 wrap-anywhere',
+            'rounded-sm outline-none decoration-dotted underline-offset-2 wrap-break-word',
             clamped && 'focus-visible:underline',
             className,
           )}
