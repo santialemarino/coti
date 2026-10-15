@@ -227,4 +227,8 @@ func TestInvoiceService_CreditNoteOnAnArchivedQuote(t *testing.T) {
 	if err != nil || note.Status != domain.InvoiceStatusIssued || len(f.issuer.requests) != 2 {
 		t.Fatalf("note = %+v, err = %v, want the credit note issued on the archived sale", note, err)
 	}
+	// Invoicing it again is an edit of the sale, which waits for it to be unarchived.
+	if _, err := f.issue(context.Background()); domain.CodeOf(err) != domain.CodeQuoteArchived || len(f.issuer.requests) != 2 {
+		t.Fatalf("re-invoice err = %v after %d requests, want QUOTE_ARCHIVED without asking ARCA", err, len(f.issuer.requests))
+	}
 }
