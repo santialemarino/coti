@@ -205,6 +205,8 @@ func TestConversationRouting_InboundRepliesJoinTheLiveQuote(t *testing.T) {
 			}},
 		{name: "accepted quote", sender: conversationSender,
 			seed: func(*testing.T) sentQuote { return live("+5491155550101", domain.QuoteStatusAccepted) }},
+		{name: "a sender no quote can have reached", sender: "54911-abc",
+			seed: func(*testing.T) sentQuote { return live("+5491155550101", domain.QuoteStatusSent) }},
 		{name: "another sender", sender: "5491155559999",
 			seed: func(*testing.T) sentQuote { return live("+5491155550101", domain.QuoteStatusSent) }},
 		{name: "sent from another channel of the branch", sender: conversationSender,
@@ -423,5 +425,38 @@ func TestConversationRouting_NeverCrossesAccounts(t *testing.T) {
 		tx, accountID, strangerBranch, strangerChannel.id, []string{"+5491155550101"}, time.Now())
 	if err != nil || len(candidates) != 0 {
 		t.Errorf("ListLiveConversations(other account) = %v, %v; want none", candidates, err)
+	}
+}
+
+// A send on this branch's channel for a quote another branch owns is not a conversation here. The
+// quote lock is also branch-scoped, so the candidate read is asserted directly as well.
+func TestConversationRouting_KeepsToTheChannelsBranch(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "Corralon Dos Sucursales")
+	channel := e.seedWhatsAppInbox(t, accountID, branchID)
+	otherBranch := e.seedBranch(t, accountID, "Sucursal Sur")
+	quoteID := e.seedSentQuote(t, sentQuote{accountID: accountID, branchID: otherBranch,
+		channel: channel, destination: "+5491155550101", status: domain.QuoteStatusSent,
+		sentAgo: time.Hour, expiresIn: 24 * time.Hour})
+	rfqs := &recordingInboundRFQs{}
+
+	if err := e.inboundService(t, rfqs).Ingest(context.Background(), []domain.InboundTextMessage{
+		whatsAppReply(channel, "wamid.branch", conversationSender, "hola")}); err != nil {
+		t.Fatalf("Ingest() = %v, want no error", err)
+	}
+	if messages, _ := e.conversationOf(t, quoteID); messages != 0 || rfqs.count() != 1 {
+		t.Errorf("messages/rfqs = %d/%d, want a new order instead", messages, rfqs.count())
+	}
+
+	tenant := domain.Tenant{AccountID: accountID, BranchID: branchID}
+	var candidates []domain.ConversationCandidate
+	if err := e.db.InTenantTx(context.Background(), tenant, func(q repository.Querier) error {
+		var err error
+		candidates, err = repository.NewQuoteSendRepository().ListLiveConversations(
+			context.Background(), q, accountID, branchID, channel.id, []string{"+5491155550101"},
+			time.Now())
+		return err
+	}); err != nil || len(candidates) != 0 {
+		t.Errorf("ListLiveConversations(channel's branch) = %v, %v; want none", candidates, err)
 	}
 }
