@@ -213,6 +213,14 @@ type ChangeRequestDiffResponse struct {
 	Original  ChangeRequestSideResponse `json:"original"`
 	Requested ChangeRequestSideResponse `json:"requested"`
 	Handler   *HandlerDecisionResponse  `json:"handler,omitempty"`
+	// ClientMessages is every message the customer sent since the version they answered went out.
+	ClientMessages []ClientMessageResponse `json:"client_messages"`
+}
+
+// ClientMessageResponse is one message the customer wrote, as received.
+type ClientMessageResponse struct {
+	Body       string    `json:"body"`
+	ReceivedAt time.Time `json:"received_at"`
 }
 
 // HandlerDecisionResponse is the latest conversation handler decision on the draft: what the

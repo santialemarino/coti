@@ -132,6 +132,11 @@ type sellerReach interface {
 		branchIDs []uuid.UUID, userID uuid.UUID) (bool, error)
 }
 
+type clientMessageReader interface {
+	ListClientSince(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID,
+		since time.Time) ([]domain.QuoteMessage, error)
+}
+
 type handlerDecisionReader interface {
 	GetLatestByVersionID(ctx context.Context, q repository.Querier, accountID,
 		versionID uuid.UUID) (*domain.HandlerDecisionNote, error)
@@ -160,6 +165,8 @@ type RFQService struct {
 	inboundMessages rfqInboundMessageReader
 	// handlerDecisions explains the latest conversation handler run beside a change request.
 	handlerDecisions handlerDecisionReader
+	// clientMessages lists what the customer wrote beside a change request.
+	clientMessages clientMessageReader
 	// webappURL is the customer-facing app origin; the detail rebuilds each delivery's public_url
 	// from its token only when the surface is wired.
 	webappURL string
@@ -217,6 +224,12 @@ func (s *RFQService) WithInboundMessages(messages rfqInboundMessageReader) *RFQS
 // WithHandlerDecisions wires the latest handler decision into the change-request comparison.
 func (s *RFQService) WithHandlerDecisions(decisions handlerDecisionReader) *RFQService {
 	s.handlerDecisions = decisions
+	return s
+}
+
+// WithClientMessages configures where the detail reads the customer's messages from.
+func (s *RFQService) WithClientMessages(messages clientMessageReader) *RFQService {
+	s.clientMessages = messages
 	return s
 }
 
@@ -497,7 +510,7 @@ func (s *RFQService) buildChangeRequestDiff(
 	discounts []domain.QuoteDiscount, detail *domain.RfqDetail,
 ) error {
 	previous, prevErr := s.quotes.GetPreviousVersion(ctx, q, tenant.AccountID,
-		tenant.BranchID, quote.ID, version.VersionNumber)
+		quote.BranchID, quote.ID, version.VersionNumber)
 	if prevErr != nil {
 		if errors.Is(prevErr, domain.ErrNotFound) {
 			return nil
@@ -524,6 +537,14 @@ func (s *RFQService) buildChangeRequestDiff(
 			return noteErr
 		}
 		diff.Handler = note
+	}
+	if s.clientMessages != nil && previous.FrozenAt != nil {
+		messages, messagesErr := s.clientMessages.ListClientSince(ctx, q, tenant.AccountID,
+			quote.ID, *previous.FrozenAt)
+		if messagesErr != nil {
+			return messagesErr
+		}
+		diff.ClientMessages = messages
 	}
 	detail.ChangesRequested = &diff
 	return nil

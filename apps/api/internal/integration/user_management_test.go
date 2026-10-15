@@ -206,7 +206,9 @@ func newEnvWithRFQProviders(
 		extractor,
 		services.NewCatalogMatchService(catalogSearchService, cfg.Catalog), quiet, cfg.RFQ).
 		WithDiscounts(quoteDiscountRepo).
-		WithPromotions(promotionRepo)
+		WithPromotions(promotionRepo).
+		WithHandlerDecisions(repository.NewHandlerDecisionRepository()).
+		WithClientMessages(repository.NewQuoteMessageRepository())
 	quoteService := services.NewQuoteService(db, quoteRepo,
 		repository.NewProductPriceRepository(), domain.ARCAEnvironmentHomologation, quiet).
 		WithDiscountEngine(quoteDiscountRepo, promotionRepo)

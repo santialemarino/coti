@@ -87,6 +87,7 @@ export function RfqDetailView({
   const latestClientAction = detail.client_actions?.at(-1);
   // A customer's messages reach the draft through the conversation handler, which leaves a note.
   const handlerNote = detail.changes_requested?.handler;
+  const clientMessages = detail.changes_requested?.client_messages ?? [];
   const isCustomerChangeRequest =
     quoteStatus === 'CHANGE_REQUESTED' &&
     detail.version !== null &&
@@ -97,7 +98,7 @@ export function RfqDetailView({
     ? null
     : handlerNote.outcome === 'APPLIED'
       ? t('detail.callouts.changeRequested.handler.applied', {
-          interpretation: handlerNote.interpretation,
+          interpretation: handlerNote.interpretation.replace(/\.\s*$/, ''),
         })
       : t(HANDLER_NO_MATCH_KEYS[handlerNote.no_match_reason ?? 'REQUIRES_SELLER']);
   const followupOrigin = rfqStatus === 'SENT' ? 'customer' : 'seller';
@@ -290,13 +291,26 @@ export function RfqDetailView({
         >
           {isCustomerChangeRequest ? (
             <div className="flex flex-col gap-y-1">
-              <p>
-                {detail.version?.comment
-                  ? t('detail.callouts.changeRequested.withReason', {
-                      reason: detail.version.comment,
-                    })
-                  : t('detail.callouts.changeRequested.description')}
-              </p>
+              {clientMessages.length > 0 ? (
+                <>
+                  <p>{t('detail.callouts.changeRequested.clientMessages')}</p>
+                  <ul className="flex flex-col gap-y-1 pl-3">
+                    {clientMessages.map((message, index) => (
+                      <li key={`${message.received_at}-${index}`} className="whitespace-pre-line">
+                        {message.body}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <p>
+                  {detail.version?.comment
+                    ? t('detail.callouts.changeRequested.withReason', {
+                        reason: detail.version.comment,
+                      })
+                    : t('detail.callouts.changeRequested.description')}
+                </p>
+              )}
               {handlerNoteText ? <p>{handlerNoteText}</p> : null}
             </div>
           ) : (

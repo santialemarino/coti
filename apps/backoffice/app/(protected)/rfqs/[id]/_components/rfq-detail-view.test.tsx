@@ -384,6 +384,39 @@ describe('RfqDetailView send flow', () => {
     );
   });
 
+  it('lists every message the customer sent, not only the first batch', () => {
+    const detail = makeDetail('CHANGE_REQUESTED');
+    detail.version = { ...detail.version!, version_number: 2, comment: 'que sean 4' };
+    detail.changes_requested = {
+      ...detail.changes_requested!,
+      handler: {
+        client_input: 'y sumá arena',
+        interpretation: 'Suma arena.',
+        outcome: 'APPLIED',
+        no_match_reason: null,
+        created_at: BASE_TIME,
+      },
+      client_messages: [
+        { body: 'que sean 4', received_at: BASE_TIME },
+        { body: 'y sumá arena', received_at: BASE_TIME },
+      ],
+    };
+
+    const view = renderView(detail);
+
+    expect(view.getByText(copy.detail.callouts.changeRequested.clientMessages)).toBeTruthy();
+    expect(view.getByText('que sean 4')).toBeTruthy();
+    expect(view.getByText('y sumá arena')).toBeTruthy();
+    expect(
+      view.getByText(
+        copy.detail.callouts.changeRequested.handler.applied.replace(
+          '{interpretation}',
+          'Suma arena',
+        ),
+      ),
+    ).toBeTruthy();
+  });
+
   it('tells the seller why the AI left the request to them', () => {
     const detail = makeDetail('CHANGE_REQUESTED');
     detail.changes_requested = {

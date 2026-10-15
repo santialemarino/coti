@@ -1397,6 +1397,7 @@
           "title": "Cambio solicitado",
           "description": "El cliente solicitó cambios en esta cotización. Revisá los ítems y actualizá la propuesta.",
           "withReason": "El cliente solicitó cambios: {reason}",
+          "clientMessages": "El cliente escribió:",
           "handler": {
             "applied": "La IA lo interpretó así y ya actualizó el borrador: {interpretation}. Revisalo antes de enviar.",
             "requiresSeller": "La IA no aplicó cambios porque el pedido necesita tu revisión. Leé el mensaje del cliente y actualizá la cotización.",

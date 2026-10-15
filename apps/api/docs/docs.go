@@ -7425,6 +7425,13 @@ const docTemplate = `{
         "dto.ChangeRequestDiffResponse": {
             "type": "object",
             "properties": {
+                "client_messages": {
+                    "description": "ClientMessages is every message the customer sent since the version they answered went out.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ClientMessageResponse"
+                    }
+                },
                 "handler": {
                     "$ref": "#/definitions/dto.HandlerDecisionResponse"
                 },
@@ -7579,6 +7586,17 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dto.ClientTagResponse"
                     }
+                }
+            }
+        },
+        "dto.ClientMessageResponse": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "type": "string"
+                },
+                "received_at": {
+                    "type": "string"
                 }
             }
         },

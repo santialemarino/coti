@@ -902,9 +902,14 @@ func toClientActionResponse(action domain.ClientAction) dto.ClientActionResponse
 
 func toChangeRequestDiffResponse(diff domain.ChangeRequestDiff) dto.ChangeRequestDiffResponse {
 	resp := dto.ChangeRequestDiffResponse{
-		Reason:    diff.Reason,
-		Original:  toChangeRequestSideResponse(diff.Original),
-		Requested: toChangeRequestSideResponse(diff.Requested),
+		Reason:         diff.Reason,
+		Original:       toChangeRequestSideResponse(diff.Original),
+		Requested:      toChangeRequestSideResponse(diff.Requested),
+		ClientMessages: make([]dto.ClientMessageResponse, 0, len(diff.ClientMessages)),
+	}
+	for _, message := range diff.ClientMessages {
+		resp.ClientMessages = append(resp.ClientMessages,
+			dto.ClientMessageResponse{Body: message.Body, ReceivedAt: message.ReceivedAt})
 	}
 	if note := diff.Handler; note != nil {
 		var reason *string

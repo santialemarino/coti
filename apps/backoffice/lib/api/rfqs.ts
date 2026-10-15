@@ -353,9 +353,17 @@ export interface HandlerDecisionNote {
   created_at: string;
 }
 
+// One message the customer wrote, as received.
+export interface ClientMessage {
+  body: string;
+  received_at: string;
+}
+
 export interface ChangeRequestDiff {
   reason: string | null;
   handler?: HandlerDecisionNote;
+  // Every message the customer sent since the version they answered went out, oldest first.
+  client_messages?: ClientMessage[];
   original: {
     items: DiffLineItem[];
     discounts: DiffDiscountLine[];

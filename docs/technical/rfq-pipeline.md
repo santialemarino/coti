@@ -518,8 +518,9 @@ decision with its reason (`REQUIRES_SELLER`, `PROPOSAL_REFUSED`, `AI_DISABLED`) 
 `{outcome, no_match_origin, no_match_reason, interpretation, operations}`. A provider failure is
 retried like any other error, up to `CONVERSATION_MAX_ATTEMPTS`.
 
-The RFQ detail's `changes_requested.handler` carries the latest decision on the draft, which the
-backoffice shows beside the customer's request.
+The RFQ detail's `changes_requested.handler` carries the latest decision on the draft, and
+`changes_requested.client_messages` every message the customer sent since the version they answered
+was frozen; the backoffice shows both beside the customer's request.
 
 ### Closing and reactivating a quote
 

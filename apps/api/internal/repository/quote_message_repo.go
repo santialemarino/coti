@@ -31,6 +31,17 @@ func (r *QuoteMessageRepository) ListByBatch(ctx context.Context, q Querier, acc
 		accountID, quoteID, batchID)
 }
 
+// ListClientSince returns the customer's messages received at or after since, oldest first.
+func (r *QuoteMessageRepository) ListClientSince(ctx context.Context, q Querier, accountID,
+	quoteID uuid.UUID, since time.Time,
+) ([]domain.QuoteMessage, error) {
+	return queryQuoteMessages(ctx, q, `SELECT `+quoteMessageColumns+`
+		FROM quote_message
+		WHERE account_id = $1 AND quote_id = $2 AND author_type = 'CLIENT' AND received_at >= $3
+		ORDER BY received_at, created_at, id`,
+		accountID, quoteID, since)
+}
+
 // ListContext returns the limit newest messages of any author received up to before outside a
 // batch, oldest first.
 func (r *QuoteMessageRepository) ListContext(ctx context.Context, q Querier, accountID, quoteID,

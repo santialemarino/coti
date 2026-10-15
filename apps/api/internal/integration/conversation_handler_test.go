@@ -4,9 +4,12 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -223,6 +226,12 @@ func (e *env) cementPromotion(t *testing.T, quote handlerQuote) {
 func TestConversationHandler_BatchesAccumulateOnTheSingleDraft(t *testing.T) {
 	e := newEnv(t)
 	quote := e.sentHandlerQuote(t, "Handler accumulates")
+	// The customer answers after the send; the seeded batches backdate their messages.
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`UPDATE quote_version SET frozen_at = now() - interval '10 minutes' WHERE id = $1`,
+		quote.sentID); err != nil {
+		t.Fatal(err)
+	}
 	e.cementPromotion(t, quote)
 	proposer := &scriptedProposer{answer: requantify(4)}
 	sand := e.seedPricedProduct(t, quote.seed.tenant.AccountID, quote.seed.tenant.BranchID,
@@ -306,6 +315,37 @@ func TestConversationHandler_BatchesAccumulateOnTheSingleDraft(t *testing.T) {
 	if len(decisions) != 2 || decisions[1].state != domain.QuoteStatusChangeRequested ||
 		*decisions[1].batchID != second.ID {
 		t.Errorf("decisions = %+v, want the second taken on CHANGE_REQUESTED", decisions)
+	}
+
+	// The seller reads every message the customer sent, from one branch or from all of them.
+	admin := e.tokenFor(t, e.seedUser(t, quote.seed.tenant.AccountID, domain.UserRoleAdmin))
+	for _, branch := range []string{quote.seed.tenant.BranchID.String(), ""} {
+		rec := e.do(t, request{method: http.MethodGet,
+			path: "/v1/rfqs/" + quote.seed.draft.RFQ.ID.String(), token: admin, branch: branch})
+		var detail struct {
+			ChangesRequested *struct {
+				Handler *struct {
+					ClientInput string `json:"client_input"`
+				} `json:"handler"`
+				ClientMessages []struct {
+					Body string `json:"body"`
+				} `json:"client_messages"`
+			} `json:"changes_requested"`
+		}
+		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &detail) != nil ||
+			detail.ChangesRequested == nil || detail.ChangesRequested.Handler == nil {
+			t.Fatalf("detail (branch %q): status = %d, want a change request with its handler note: %s",
+				branch, rec.Code, rec.Body)
+		}
+		bodies := make([]string, 0)
+		for _, message := range detail.ChangesRequested.ClientMessages {
+			bodies = append(bodies, message.Body)
+		}
+		// Every seeded batch backdates to the same instant, so only the set is meaningful here.
+		slices.Sort(bodies)
+		if want := []string{"de cemento", "mejor que sean 4 bolsas", "y 3 de arena"}; !slices.Equal(bodies, want) {
+			t.Errorf("client messages (branch %q) = %q, want %q", branch, bodies, want)
+		}
 	}
 }
 
