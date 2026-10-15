@@ -78,9 +78,18 @@ interface InvoiceAmountsRaw {
   by_rate: VatAmountRaw[] | null;
 }
 
+interface VoucherReferenceRaw {
+  id: string;
+  type: string;
+  point_of_sale: number;
+  number: number | null;
+  issued_on: string;
+}
+
 export interface InvoiceRaw {
   id: string;
   branch_id: string;
+  kind: string;
   environment: string;
   status: string;
   type: string;
@@ -96,6 +105,8 @@ export interface InvoiceRaw {
   issues: string[] | null;
   qr_url: string;
   created_at: string;
+  credit_note?: InvoiceRaw | null;
+  credited_invoice?: VoucherReferenceRaw | null;
 }
 
 export interface InvoicePreviewRaw {
@@ -111,6 +122,7 @@ export interface InvoicePreviewRaw {
   issues: string[] | null;
   invoice: InvoiceRaw | null;
   other_environment_invoice?: InvoiceRaw | null;
+  credited_invoice?: InvoiceRaw | null;
 }
 
 export interface ClientFiscalRaw {
@@ -162,9 +174,22 @@ export interface InvoiceAmounts {
   byRate: VatAmount[];
 }
 
+// An invoice bills a sale; a credit note cancels one invoice in full.
+export type VoucherKind = 'INVOICE' | 'CREDIT_NOTE';
+
+// An authorized voucher as another one names it.
+export interface VoucherReference {
+  id: string;
+  type: string;
+  pointOfSale: number;
+  number: number | null;
+  issuedOn: string;
+}
+
 export interface Invoice {
   id: string;
   branchId: string;
+  kind: VoucherKind;
   environment: ARCAEnvironment;
   status: 'PENDING' | 'ISSUED' | 'REJECTED';
   type: string;
@@ -181,6 +206,10 @@ export interface Invoice {
   issues: string[];
   qrUrl: string;
   createdAt: string;
+  // An invoice's newest credit note: an ISSUED one cancels the invoice.
+  creditNote: Invoice | null;
+  // The invoice a credit note cancels.
+  creditedInvoice: VoucherReference | null;
 }
 
 export interface InvoicePreview {
@@ -198,6 +227,8 @@ export interface InvoicePreview {
   invoice: Invoice | null;
   // The newest invoice issued for the sale in the other ARCA environment: history, never a hold.
   otherEnvironmentInvoice: Invoice | null;
+  // The newest invoice of the sale a credit note cancelled here, with that note: history.
+  creditedInvoice: Invoice | null;
 }
 
 export interface ClientFiscal {
@@ -265,6 +296,7 @@ export function mapInvoice(raw: InvoiceRaw): Invoice {
   return {
     id: raw.id,
     branchId: raw.branch_id,
+    kind: raw.kind === 'CREDIT_NOTE' ? 'CREDIT_NOTE' : 'INVOICE',
     environment: arcaEnvironmentOf(raw.environment),
     status: raw.status as Invoice['status'],
     type: raw.type,
@@ -280,7 +312,22 @@ export function mapInvoice(raw: InvoiceRaw): Invoice {
     issues: raw.issues ?? [],
     qrUrl: raw.qr_url,
     createdAt: raw.created_at,
+    creditNote: raw.credit_note ? mapInvoice(raw.credit_note) : null,
+    creditedInvoice: raw.credited_invoice
+      ? {
+          id: raw.credited_invoice.id,
+          type: raw.credited_invoice.type,
+          pointOfSale: raw.credited_invoice.point_of_sale,
+          number: raw.credited_invoice.number,
+          issuedOn: raw.credited_invoice.issued_on,
+        }
+      : null,
   };
+}
+
+// Whether an issued credit note cancels the invoice.
+export function isCredited(invoice: Invoice): boolean {
+  return invoice.creditNote?.status === 'ISSUED';
 }
 
 export function mapInvoicePreview(raw: InvoicePreviewRaw): InvoicePreview {
@@ -299,6 +346,7 @@ export function mapInvoicePreview(raw: InvoicePreviewRaw): InvoicePreview {
     otherEnvironmentInvoice: raw.other_environment_invoice
       ? mapInvoice(raw.other_environment_invoice)
       : null,
+    creditedInvoice: raw.credited_invoice ? mapInvoice(raw.credited_invoice) : null,
   };
 }
 

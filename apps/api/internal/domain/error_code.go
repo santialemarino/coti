@@ -81,6 +81,10 @@ const (
 	// The connection was made for the other ARCA environment, so it can neither take a certificate nor
 	// reach an invoice made in this one.
 	CodeARCAEnvironmentMismatch ErrorCode = "ARCA_ENVIRONMENT_MISMATCH"
+	// Credit notes: only an issued invoice is credited, once; a pending credit note holds it.
+	CodeInvoiceNotCreditable   ErrorCode = "INVOICE_NOT_CREDITABLE"
+	CodeInvoiceAlreadyCredited ErrorCode = "INVOICE_ALREADY_CREDITED"
+	CodeCreditNoteInProgress   ErrorCode = "CREDIT_NOTE_IN_PROGRESS"
 )
 
 // The two an upload is refused with. The delivery layer raises both on its own, before any

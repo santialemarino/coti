@@ -4,6 +4,7 @@ CREATE TYPE invoice_type AS ENUM ('A', 'B', 'C');
 CREATE TYPE invoice_status AS ENUM ('PENDING', 'ISSUED', 'REJECTED');
 CREATE TYPE receiver_doc_type AS ENUM ('CUIT', 'DNI', 'NONE');
 CREATE TYPE arca_environment AS ENUM ('HOMOLOGATION', 'PRODUCTION');
+CREATE TYPE voucher_kind AS ENUM ('INVOICE', 'CREDIT_NOTE');
 -- Coti — consolidated reference schema.
 --
 -- This file is READ, never applied: the executable source is the goose chain in
@@ -1413,6 +1414,11 @@ CREATE TABLE invoice (
   quote_version_id       UUID NOT NULL,
   -- The ARCA deployment that authorizes it; HOMOLOGATION invoices have no fiscal validity.
   environment            arca_environment NOT NULL,
+  kind                   voucher_kind NOT NULL,
+  -- On a credit note: the invoice it cancels.
+  credited_invoice_id    UUID,
+  -- On an invoice issued after a credit note: the credited invoice it bills the sale again after.
+  replaces_invoice_id    UUID,
   status                 invoice_status NOT NULL DEFAULT 'PENDING',
   invoice_type           invoice_type NOT NULL,
   point_of_sale          INTEGER NOT NULL,
@@ -1450,13 +1456,27 @@ CREATE TABLE invoice (
   CONSTRAINT chk_invoice_identifiers CHECK (point_of_sale BETWEEN 1 AND 99999 AND issuer_cuit ~ '^[0-9]{11}$' AND (number IS NULL OR number > 0) AND (claimed_number IS NULL OR claimed_number > 0) AND (cae IS NULL OR cae ~ '^[0-9]{14}$')),
   CONSTRAINT chk_invoice_issued CHECK (
     status <> 'ISSUED' OR (number IS NOT NULL AND cae IS NOT NULL AND cae_expires_on IS NOT NULL)
+  ),
+  CONSTRAINT uq_invoice_link_tenant UNIQUE (account_id, quote_id, environment, id),
+  CONSTRAINT fk_invoice_credited FOREIGN KEY (account_id, quote_id, environment, credited_invoice_id)
+    REFERENCES invoice(account_id, quote_id, environment, id),
+  CONSTRAINT fk_invoice_replaces FOREIGN KEY (account_id, quote_id, environment, replaces_invoice_id)
+    REFERENCES invoice(account_id, quote_id, environment, id),
+  CONSTRAINT chk_invoice_links CHECK (
+    (kind = 'CREDIT_NOTE' AND credited_invoice_id IS NOT NULL AND replaces_invoice_id IS NULL)
+    OR (kind = 'INVOICE' AND credited_invoice_id IS NULL)
   )
 );
 
-CREATE UNIQUE INDEX uq_invoice_active_quote ON invoice(quote_id, environment) WHERE status <> 'REJECTED';
-CREATE UNIQUE INDEX uq_invoice_number ON invoice(account_id, environment, issuer_cuit, point_of_sale, invoice_type, number)
+-- One live invoice per sale and environment: each new one names the credited invoice it follows.
+CREATE UNIQUE INDEX uq_invoice_active_quote ON invoice(quote_id, environment, replaces_invoice_id) NULLS NOT DISTINCT
+  WHERE kind = 'INVOICE' AND status <> 'REJECTED';
+-- One credit note per invoice: a pending one holds it, an issued one cancels it for good.
+CREATE UNIQUE INDEX uq_invoice_credit_note ON invoice(credited_invoice_id, environment)
+  WHERE kind = 'CREDIT_NOTE' AND status <> 'REJECTED';
+CREATE UNIQUE INDEX uq_invoice_number ON invoice(account_id, environment, issuer_cuit, point_of_sale, kind, invoice_type, number)
   WHERE number IS NOT NULL;
-CREATE UNIQUE INDEX uq_invoice_pending_series ON invoice(account_id, environment, issuer_cuit, point_of_sale, invoice_type)
+CREATE UNIQUE INDEX uq_invoice_pending_series ON invoice(account_id, environment, issuer_cuit, point_of_sale, kind, invoice_type)
   WHERE status = 'PENDING';
 ALTER TABLE invoice FORCE ROW LEVEL SECURITY;
 CREATE INDEX idx_invoice_account_quote ON invoice(account_id, quote_id);
@@ -1481,3 +1501,21 @@ BEGIN
 END;
 $$;
 CREATE TRIGGER trg_invoice_immutable BEFORE UPDATE ON invoice FOR EACH ROW EXECUTE FUNCTION protect_issued_invoice();
+
+CREATE FUNCTION check_invoice_links() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.credited_invoice_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM invoice WHERE id = NEW.credited_invoice_id AND kind = 'INVOICE' AND status = 'ISSUED'
+  ) THEN
+    RAISE EXCEPTION 'A credit note cancels an issued invoice';
+  END IF;
+  IF NEW.replaces_invoice_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM invoice WHERE credited_invoice_id = NEW.replaces_invoice_id AND kind = 'CREDIT_NOTE' AND status = 'ISSUED'
+  ) THEN
+    RAISE EXCEPTION 'An invoice replaces only an invoice an issued credit note cancelled';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_invoice_links BEFORE INSERT OR UPDATE OF kind, credited_invoice_id, replaces_invoice_id ON invoice
+  FOR EACH ROW EXECUTE FUNCTION check_invoice_links();

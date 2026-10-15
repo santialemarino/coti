@@ -149,6 +149,9 @@ func (f *fakeInvoicingStore) all() []*domain.Invoice {
 func (f *fakeInvoicingStore) GetLatestByQuote(_ context.Context, _ repository.Querier, _, _, _ uuid.UUID, env domain.ARCAEnvironment) (*domain.Invoice, error) {
 	invoices := f.all()
 	for i := len(invoices) - 1; i >= 0; i-- {
+		if isCreditNote(*invoices[i]) || f.credited(invoices[i].ID) {
+			continue
+		}
 		if invoices[i].Environment == env || invoices[i].Status == domain.InvoiceStatusPending {
 			return invoices[i], nil
 		}
@@ -159,20 +162,72 @@ func (f *fakeInvoicingStore) GetLatestByQuote(_ context.Context, _ repository.Qu
 func (f *fakeInvoicingStore) GetLatestIssuedOutside(_ context.Context, _ repository.Querier, _, _, _ uuid.UUID, env domain.ARCAEnvironment) (*domain.Invoice, error) {
 	invoices := f.all()
 	for i := len(invoices) - 1; i >= 0; i-- {
-		if invoices[i].Environment != env && invoices[i].Status == domain.InvoiceStatusIssued {
+		if !isCreditNote(*invoices[i]) && invoices[i].Environment != env && invoices[i].Status == domain.InvoiceStatusIssued {
 			return invoices[i], nil
 		}
 	}
 	return nil, nil
 }
 
+func (f *fakeInvoicingStore) GetLatestCreditedByQuote(_ context.Context, _ repository.Querier, _, _, _ uuid.UUID, env domain.ARCAEnvironment) (*domain.Invoice, error) {
+	invoices := f.all()
+	for i := len(invoices) - 1; i >= 0; i-- {
+		if !isCreditNote(*invoices[i]) && invoices[i].Environment == env && f.credited(invoices[i].ID) {
+			return invoices[i], nil
+		}
+	}
+	return nil, nil
+}
+
+func (f *fakeInvoicingStore) GetByIDs(_ context.Context, _ repository.Querier, _ uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]domain.Invoice, error) {
+	found := map[uuid.UUID]domain.Invoice{}
+	for _, inv := range f.all() {
+		if slices.Contains(ids, inv.ID) {
+			found[inv.ID] = *inv
+		}
+	}
+	return found, nil
+}
+
+func (f *fakeInvoicingStore) GetCreditNotesByInvoiceIDs(_ context.Context, _ repository.Querier, _ uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]domain.Invoice, error) {
+	notes := map[uuid.UUID]domain.Invoice{}
+	for _, inv := range f.all() {
+		if isCreditNote(*inv) && slices.Contains(ids, *inv.CreditedInvoiceID) {
+			notes[*inv.CreditedInvoiceID] = *inv
+		}
+	}
+	return notes, nil
+}
+
+// credited reports whether an issued credit note cancels the invoice id.
+func (f *fakeInvoicingStore) credited(id uuid.UUID) bool {
+	for _, inv := range f.all() {
+		if isCreditNote(*inv) && *inv.CreditedInvoiceID == id && inv.Status == domain.InvoiceStatusIssued {
+			return true
+		}
+	}
+	return false
+}
+
+func isCreditNote(inv domain.Invoice) bool { return inv.Kind == domain.VoucherKindCreditNote }
+
+func sameID(a, b *uuid.UUID) bool {
+	return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
+}
+
 func (f *fakeInvoicingStore) CreatePending(_ context.Context, _ repository.Querier, in domain.Invoice) (*domain.Invoice, error) {
 	if !f.accountLocked {
 		f.heldUnlocked = true
 	}
-	// Mirrors uq_invoice_active_quote, unless a test turns the index off.
+	// Mirrors uq_invoice_active_quote and uq_invoice_credit_note, unless a test turns the indexes off.
 	for _, inv := range f.all() {
-		if !f.noUniqueIndex && inv.Status != domain.InvoiceStatusRejected && inv.Environment == in.Environment {
+		if f.noUniqueIndex || inv.Status == domain.InvoiceStatusRejected || isCreditNote(*inv) != isCreditNote(in) {
+			continue
+		}
+		if isCreditNote(in) && *inv.CreditedInvoiceID == *in.CreditedInvoiceID {
+			return nil, domain.ErrConflict
+		}
+		if !isCreditNote(in) && inv.Environment == in.Environment && sameID(inv.ReplacesInvoiceID, in.ReplacesInvoiceID) {
 			return nil, domain.ErrConflict
 		}
 	}
@@ -259,6 +314,8 @@ type fakeInvoiceIssuer struct {
 	ctxErr    error // the context's state when Issue was called.
 	creds     domain.ARCACredentials
 	readWith  []domain.ARCAEnvironment // the credentials' environment on each read-back.
+	// consultedTypes is the series of each read-back.
+	consultedTypes []domain.VoucherType
 }
 
 func (f *fakeInvoiceIssuer) Issue(ctx context.Context, creds domain.ARCACredentials, req domain.InvoiceRequest) (*domain.InvoiceAuthorization, error) {
@@ -270,8 +327,9 @@ func (f *fakeInvoiceIssuer) Issue(ctx context.Context, creds domain.ARCACredenti
 	return f.auth, f.err
 }
 
-func (f *fakeInvoiceIssuer) Authorized(_ context.Context, creds domain.ARCACredentials, _ string, _ domain.InvoiceType, _ int, number int64) (*domain.AuthorizedInvoice, error) {
+func (f *fakeInvoiceIssuer) Authorized(_ context.Context, creds domain.ARCACredentials, _ string, voucher domain.VoucherType, _ int, number int64) (*domain.AuthorizedInvoice, error) {
 	f.consulted = append(f.consulted, number)
+	f.consultedTypes = append(f.consultedTypes, voucher)
 	f.readWith = append(f.readWith, creds.Environment)
 	return f.found, nil
 }

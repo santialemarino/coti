@@ -28,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from '@repo/ui/components';
+import { useHeldWhileClosed } from '@repo/ui/hooks';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { InvoiceRecoveryButton } from '@/components/invoice-recovery-button';
 import { SetupNotice } from '@/components/setup-notice';
@@ -38,12 +39,13 @@ import {
   formatCuit,
   formatDni,
   formatInvoiceNumber,
+  isCredited,
   type Invoice,
   type InvoiceAmounts,
   type InvoicePreview,
   type InvoiceReceiver,
 } from '@/lib/api/invoicing';
-import { getInvoicePreview, issueInvoice } from '@/lib/api/invoicing-client';
+import { getInvoicePreview, issueCreditNote, issueInvoice } from '@/lib/api/invoicing-client';
 import { useFormatters } from '@/lib/i18n/formatters';
 import { isSetupIssue } from '@/lib/utils/setup-issues';
 
@@ -69,13 +71,15 @@ interface InvoiceCardProps {
 
 /*
  * The invoice of an accepted sale: the one ARCA authorized, or what would be issued now and every
- * gap that stops it. Issuing is always a person's confirmed decision — it cannot be undone.
+ * gap that stops it. Issuing is always a person's confirmed decision — it cannot be undone, only
+ * cancelled by a credit note, after which the sale can be invoiced again.
  */
 export function InvoiceCard({ quoteId, branchId, clientId, readOnly = false }: InvoiceCardProps) {
   const fmt = useFormatters();
   const t = useTranslations('invoicing.card');
   const tInvoicing = useTranslations('invoicing');
   const message = useApiErrorMessage('invoicing.card');
+  const creditNoteMessage = useApiErrorMessage('invoicing.card.creditNote');
   const { isAdmin } = useRfqList();
   const [preview, setPreview] = useState<InvoicePreview | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -83,11 +87,17 @@ export function InvoiceCard({ quoteId, branchId, clientId, readOnly = false }: I
   const [rejection, setRejection] = useState<string[]>([]);
   const [confirming, setConfirming] = useState(false);
   const [issuing, startIssue] = useTransition();
+  // ARCA's reasons for refusing the credit note just asked for, until a reload carries them.
+  const [creditNoteRejection, setCreditNoteRejection] = useState<string[]>([]);
+  const [confirmingCreditNote, setConfirmingCreditNote] = useState(false);
+  const [creditNoting, startCreditNote] = useTransition();
 
   // Only the newest read may land: a slower, older one would put back a receiver or a button
   // the seller has already moved past.
   const latestRead = useRef(0);
   const headingRef = useRef<HTMLDivElement>(null);
+  const issueButtonRef = useRef<HTMLButtonElement>(null);
+  const creditNoteButtonRef = useRef<HTMLButtonElement>(null);
 
   // A refresh that fails keeps the preview on screen; only the first read has nothing to show.
   const load = useCallback(
@@ -134,7 +144,43 @@ export function InvoiceCard({ quoteId, branchId, clientId, readOnly = false }: I
     });
   }
 
+  function creditNote(invoice: Invoice) {
+    setCreditNoteRejection([]);
+    startCreditNote(async () => {
+      try {
+        const note = await issueCreditNote(invoice.id, branchId);
+        setConfirmingCreditNote(false);
+        toast.success(
+          t('creditNote.issued', {
+            type: note.type,
+            number: invoiceNumberOf(note),
+            invoice: invoiceNumberOf(invoice),
+          }),
+        );
+        await reload();
+        // The issued invoice gave way to a new draft; focus lands on the card that replaced it.
+        requestAnimationFrame(() => headingRef.current?.focus());
+      } catch (cause) {
+        setConfirmingCreditNote(false);
+        const code = errorCodeOf(cause);
+        if (code === 'INVOICE_REJECTED' && cause instanceof ApiError) {
+          setCreditNoteRejection(cause.issues);
+        }
+        toast.error(creditNoteMessage(code));
+        await reload();
+      }
+    });
+  }
+
+  // A closed dialog hands focus back to the button that opened it, or to the card once that is gone.
+  function returnFocus(event: Event, opener: React.RefObject<HTMLButtonElement | null>) {
+    event.preventDefault();
+    (opener.current?.isConnected ? opener.current : headingRef.current)?.focus();
+  }
+
   const issued = preview?.invoice?.status === 'ISSUED' ? preview.invoice : null;
+  // The dialog outlives the invoice it cancels, so its exit still plays once the card reloads.
+  const creditNoteTarget = useHeldWhileClosed(issued, confirmingCreditNote);
   // An invoice keeps the environment it was made in; a draft follows the server's.
   const testInvoice = (issued ?? preview?.invoice ?? preview)?.environment === 'HOMOLOGATION';
 
@@ -164,9 +210,27 @@ export function InvoiceCard({ quoteId, branchId, clientId, readOnly = false }: I
             {t('loading')}
           </div>
         ) : issued ? (
-          <IssuedInvoice invoice={issued} branchId={branchId} />
+          <div className="flex flex-col gap-y-4">
+            {preview.creditedInvoice ? (
+              <CreditedInvoice invoice={preview.creditedInvoice} branchId={branchId} />
+            ) : null}
+            <IssuedInvoice
+              invoice={issued}
+              branchId={branchId}
+              rejection={creditNoteRejection}
+              onRecovered={() => void reload()}
+              // A credit note goes to the invoice's environment, which only a server set to it reaches.
+              creditable={issued.environment === preview.environment}
+              onCreditNote={() => setConfirmingCreditNote(true)}
+              creditNoting={creditNoting}
+              creditNoteButtonRef={creditNoteButtonRef}
+            />
+          </div>
         ) : (
           <div className="flex flex-col gap-y-4">
+            {preview.creditedInvoice ? (
+              <CreditedInvoice invoice={preview.creditedInvoice} branchId={branchId} />
+            ) : null}
             {preview.otherEnvironmentInvoice ? (
               <OtherEnvironmentInvoice
                 invoice={preview.otherEnvironmentInvoice}
@@ -218,6 +282,7 @@ export function InvoiceCard({ quoteId, branchId, clientId, readOnly = false }: I
             {!readOnly && preview.issues.length === 0 && preview.invoice?.status !== 'PENDING' ? (
               <div className="flex justify-end">
                 <PendingButton
+                  ref={issueButtonRef}
                   pending={issuing}
                   pendingLabel={t('issuing')}
                   onClick={() => setConfirming(true)}
@@ -241,6 +306,7 @@ export function InvoiceCard({ quoteId, branchId, clientId, readOnly = false }: I
                 })
               }
               onConfirm={() => issue(preview)}
+              onCloseAutoFocus={(event) => returnFocus(event, issueButtonRef)}
               pending={issuing}
               labels={{
                 confirm: t('confirm.confirm'),
@@ -250,6 +316,31 @@ export function InvoiceCard({ quoteId, branchId, clientId, readOnly = false }: I
             />
           </div>
         )}
+        {creditNoteTarget ? (
+          <ConfirmDialog
+            open={confirmingCreditNote}
+            onOpenChange={(open) => !creditNoting && setConfirmingCreditNote(open)}
+            entity={creditNoteTarget}
+            tone="danger"
+            title={t('creditNote.confirm.title', { type: creditNoteTarget.type })}
+            description={(shown) =>
+              t('creditNote.confirm.description', {
+                type: shown.type,
+                number: invoiceNumberOf(shown),
+                receiver: shown.receiver.name || t('finalConsumer'),
+                total: fmt.currency(shown.amounts.total, shown.currency),
+              })
+            }
+            onConfirm={() => creditNote(creditNoteTarget)}
+            onCloseAutoFocus={(event) => returnFocus(event, creditNoteButtonRef)}
+            pending={creditNoting}
+            labels={{
+              confirm: t('creditNote.confirm.confirm'),
+              pending: t('creditNote.confirm.confirming'),
+              cancel: t('creditNote.confirm.cancel'),
+            }}
+          />
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -259,36 +350,67 @@ function invoiceNumberOf(invoice: Invoice): string {
   return formatInvoiceNumber(invoice.pointOfSale, invoice.number ?? 0);
 }
 
-function IssuedInvoice({ invoice, branchId }: { invoice: Invoice; branchId: string }) {
-  const fmt = useFormatters();
+function IssuedInvoice({
+  invoice,
+  branchId,
+  rejection,
+  onRecovered,
+  creditable,
+  onCreditNote,
+  creditNoting,
+  creditNoteButtonRef,
+}: {
+  invoice: Invoice;
+  branchId: string;
+  /* ARCA's reasons for refusing the credit note just asked for. */
+  rejection: string[];
+  onRecovered: () => void;
+  creditable: boolean;
+  onCreditNote: () => void;
+  creditNoting: boolean;
+  creditNoteButtonRef: React.RefObject<HTMLButtonElement | null>;
+}) {
   const t = useTranslations('invoicing.card');
+  const note = invoice.creditNote;
 
   return (
     <div className="flex flex-col gap-y-4">
-      <dl className="grid grid-cols-1 gap-x-8 gap-y-3 text-paragraph-sm sm:grid-cols-3">
-        <Fact label={t('issuedOn')}>{fmt.date(invoice.issuedOn)}</Fact>
-        <Fact label={t('cae')}>
-          <span className="flex items-center gap-x-2">
-            <span className="tabular-nums">{invoice.cae}</span>
-            {invoice.cae ? (
-              <CopyButton
-                value={invoice.cae}
-                labels={{ copy: t('caeCopy'), copied: t('caeCopied') }}
-                onCopyError={() => toast.error(t('caeCopyFailed'))}
-              />
-            ) : null}
-          </span>
-        </Fact>
-        <Fact label={t('caeExpires')}>
-          {invoice.caeExpiresOn ? fmt.date(invoice.caeExpiresOn) : null}
-        </Fact>
-      </dl>
+      {note?.status === 'PENDING' ? (
+        <Callout tone="info" title={t('creditNote.pending.title')}>
+          {t('creditNote.pending.body')}
+          <div className="mt-3">
+            <InvoiceRecoveryButton
+              invoiceId={note.id}
+              branchId={branchId}
+              onRecovered={onRecovered}
+            />
+          </div>
+        </Callout>
+      ) : null}
+      <RejectionNotice
+        reasons={note?.status === 'REJECTED' ? note.issues : rejection}
+        namespace="invoicing.card.creditNote.rejected"
+      />
+      <AuthorizationFacts voucher={invoice} />
       <IssuerFacts cuit={invoice.issuerCuit} pointOfSale={invoice.pointOfSale} />
       <ReceiverFacts receiver={invoice.receiver} />
       <AmountsTable amounts={invoice.amounts} currency={invoice.currency} />
-      <Button asChild variant="outline" className="self-start">
-        <a href={ROUTES.invoicePDF(invoice.id, branchId)}>{t('download')}</a>
-      </Button>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <Button asChild variant="outline">
+          <a href={ROUTES.invoicePDF(invoice.id, branchId)}>{t('download')}</a>
+        </Button>
+        {creditable && note?.status !== 'PENDING' ? (
+          <PendingButton
+            ref={creditNoteButtonRef}
+            variant="outline"
+            pending={creditNoting}
+            pendingLabel={t('creditNote.issuing')}
+            onClick={onCreditNote}
+          >
+            {t('creditNote.issue')}
+          </PendingButton>
+        ) : null}
+      </div>
       {invoice.qrUrl ? (
         <InlineLink href={invoice.qrUrl} target="_blank" rel="noopener noreferrer">
           {t('verify')}
@@ -296,6 +418,75 @@ function IssuedInvoice({ invoice, branchId }: { invoice: Invoice; branchId: stri
         </InlineLink>
       ) : null}
     </div>
+  );
+}
+
+// The date and ARCA's authorization of an issued voucher.
+function AuthorizationFacts({ voucher }: { voucher: Invoice }) {
+  const fmt = useFormatters();
+  const t = useTranslations('invoicing.card');
+
+  return (
+    <dl className="grid grid-cols-1 gap-x-8 gap-y-3 text-paragraph-sm sm:grid-cols-3">
+      <Fact label={t('issuedOn')}>{fmt.date(voucher.issuedOn)}</Fact>
+      <Fact label={t('cae')}>
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="whitespace-nowrap tabular-nums">{voucher.cae}</span>
+          {voucher.cae ? (
+            <CopyButton
+              value={voucher.cae}
+              labels={{ copy: t('caeCopy'), copied: t('caeCopied') }}
+              onCopyError={() => toast.error(t('caeCopyFailed'))}
+            />
+          ) : null}
+        </span>
+      </Fact>
+      <Fact label={t('caeExpires')}>
+        {voucher.caeExpiresOn ? fmt.date(voucher.caeExpiresOn) : null}
+      </Fact>
+    </dl>
+  );
+}
+
+// An invoice an issued credit note cancelled: history, with the note that cancelled it.
+function CreditedInvoice({ invoice, branchId }: { invoice: Invoice; branchId: string }) {
+  const t = useTranslations('invoicing.card.credited');
+  const tInvoicing = useTranslations('invoicing');
+  const note = invoice.creditNote;
+  if (!note || !isCredited(invoice)) return null;
+
+  return (
+    <Callout
+      tone="info"
+      title={t('title', {
+        type: invoice.type,
+        number: invoiceNumberOf(invoice),
+        noteType: note.type,
+        noteNumber: invoiceNumberOf(note),
+      })}
+    >
+      <div className="flex flex-col items-start gap-y-3">
+        {note.environment === 'HOMOLOGATION' ? (
+          <Badge tone="outline">{tInvoicing('testBadge')}</Badge>
+        ) : null}
+        <p>{t('body')}</p>
+        <AuthorizationFacts voucher={note} />
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <Button asChild variant="outline" size="sm">
+            <a href={ROUTES.invoicePDF(note.id, branchId)}>{t('downloadNote')}</a>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <a href={ROUTES.invoicePDF(invoice.id, branchId)}>{t('downloadInvoice')}</a>
+          </Button>
+        </div>
+        {note.qrUrl ? (
+          <InlineLink href={note.qrUrl} target="_blank" rel="noopener noreferrer">
+            {t('verify')}
+            <ExternalLinkIcon aria-hidden="true" />
+          </InlineLink>
+        ) : null}
+      </div>
+    </Callout>
   );
 }
 
@@ -325,8 +516,14 @@ function OtherEnvironmentInvoice({ invoice, branchId }: { invoice: Invoice; bran
   );
 }
 
-function RejectionNotice({ reasons }: { reasons: string[] }) {
-  const t = useTranslations('invoicing.card.rejected');
+function RejectionNotice({
+  reasons,
+  namespace = 'invoicing.card.rejected',
+}: {
+  reasons: string[];
+  namespace?: 'invoicing.card.rejected' | 'invoicing.card.creditNote.rejected';
+}) {
+  const t = useTranslations(namespace);
   if (reasons.length === 0) return null;
 
   return (

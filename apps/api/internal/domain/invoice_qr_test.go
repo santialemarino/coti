@@ -56,3 +56,29 @@ func TestInvoiceQRURL_OmitsAnUnidentifiedReceiver(t *testing.T) {
 		t.Fatalf("payload = %s, want no receiver document", body)
 	}
 }
+
+// A credit note's QR names its own voucher type, which ARCA verifies it under.
+func TestInvoiceQRURL_NamesTheCreditNoteType(t *testing.T) {
+	t.Parallel()
+	number, cae := int64(4), "74123456789012"
+	inv := Invoice{Status: InvoiceStatusIssued, Kind: VoucherKindCreditNote, Type: InvoiceTypeB, Number: &number, CAE: &cae,
+		IssuerCUIT: "30712345678", Receiver: InvoiceReceiver{DocType: ReceiverDocNone},
+		Amounts: InvoiceAmounts{Total: decimal.RequireFromString("100")}}
+
+	encoded, _ := strings.CutPrefix(InvoiceQRURL(inv), "https://www.arca.gob.ar/fe/qr/?p=")
+	body, _ := base64.StdEncoding.DecodeString(encoded)
+	if !strings.Contains(string(body), `"tipoCmp":8,`) {
+		t.Fatalf("payload = %s, want tipoCmp 8 for a credit note B", body)
+	}
+}
+
+func TestVoucherType_ARCACode(t *testing.T) {
+	t.Parallel()
+	for letter, want := range map[InvoiceType][2]int{InvoiceTypeA: {1, 3}, InvoiceTypeB: {6, 8}, InvoiceTypeC: {11, 13}} {
+		invoice := VoucherType{Kind: VoucherKindInvoice, Letter: letter}.ARCACode()
+		note := VoucherType{Kind: VoucherKindCreditNote, Letter: letter}.ARCACode()
+		if invoice != want[0] || note != want[1] {
+			t.Errorf("%s: invoice %d, credit note %d, want %v", letter, invoice, note, want)
+		}
+	}
+}

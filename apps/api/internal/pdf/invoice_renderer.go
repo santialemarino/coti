@@ -24,9 +24,14 @@ type InvoiceRenderer struct{}
 // NewInvoiceRenderer builds a fiscal document renderer.
 func NewInvoiceRenderer() *InvoiceRenderer { return &InvoiceRenderer{} }
 
-// Render returns a paginated A4 invoice with its stored identity, amounts and authorization.
+// Render returns a paginated A4 invoice or credit note with its stored identity, amounts and
+// authorization; a credit note also names the invoice it cancels.
 func (r *InvoiceRenderer) Render(inv domain.Invoice, logo *domain.BrandLogo) ([]byte, error) {
 	if inv.Status != domain.InvoiceStatusIssued || inv.Number == nil || inv.CAE == nil || inv.CAEExpiresOn == nil {
+		return nil, domain.ErrInvalidInput
+	}
+	associated, ok := associatedReference(inv)
+	if !ok {
 		return nil, domain.ErrInvalidInput
 	}
 	verification := domain.InvoiceQRURL(inv)
@@ -43,7 +48,10 @@ func (r *InvoiceRenderer) Render(inv domain.Invoice, logo *domain.BrandLogo) ([]
 	doc.SetAutoPageBreak(false, 15)
 	doc.AddUTF8FontFromBytes("Go", "", goregular.TTF)
 	doc.AddUTF8FontFromBytes("Go", "B", gobold.TTF)
-	doc.SetTitle("Factura "+string(inv.Type)+" "+ref, true)
+	doc.SetTitle(voucherName(inv.Kind)+" "+string(inv.Type)+" "+ref, true)
+	if associated != "" {
+		doc.SetKeywords(associated, true)
+	}
 	doc.SetAuthor(inv.Snapshot.Supplier.Name, true)
 	if isTestInvoice(inv) {
 		doc.SetSubject(TestInvoiceMark, true)
@@ -54,7 +62,7 @@ func (r *InvoiceRenderer) Render(inv domain.Invoice, logo *domain.BrandLogo) ([]
 	doc.AliasNbPages("")
 	red, green, blue := parseHexColor(inv.Snapshot.Supplier.BrandColor)
 	doc.RegisterImageOptionsReader("arca-qr", gofpdf.ImageOptions{ImageType: "PNG"}, bytes.NewReader(qr))
-	doc.SetHeaderFunc(func() { r.drawInvoiceHeader(doc, inv, logo, ref, red, green, blue) })
+	doc.SetHeaderFunc(func() { r.drawInvoiceHeader(doc, inv, logo, ref, associated, red, green, blue) })
 	doc.SetFooterFunc(func() { r.drawInvoiceFooter(doc, inv, ref, verification) })
 	doc.AddPage()
 	r.drawInvoiceTableHeader(doc, red, green, blue)
@@ -77,7 +85,7 @@ func (r *InvoiceRenderer) Render(inv domain.Invoice, logo *domain.BrandLogo) ([]
 	return output.Bytes(), doc.Error()
 }
 
-func (r *InvoiceRenderer) drawInvoiceHeader(doc *gofpdf.Fpdf, inv domain.Invoice, logo *domain.BrandLogo, ref string, red, green, blue int) {
+func (r *InvoiceRenderer) drawInvoiceHeader(doc *gofpdf.Fpdf, inv domain.Invoice, logo *domain.BrandLogo, ref, associated string, red, green, blue int) {
 	if isTestInvoice(inv) {
 		drawTestInvoiceBand(doc)
 	}
@@ -124,12 +132,16 @@ func (r *InvoiceRenderer) drawInvoiceHeader(doc *gofpdf.Fpdf, inv domain.Invoice
 	leftBottom := doc.GetY() + 5
 	doc.SetXY(118, 23)
 	doc.SetFont("Go", "B", 18)
-	doc.CellFormat(72, 8, "FACTURA", "", 1, "L", false, 0, "")
+	doc.CellFormat(72, 8, strings.ToUpper(voucherName(inv.Kind)), "", 1, "L", false, 0, "")
 	doc.SetX(118)
 	doc.SetFont("Go", "B", 11)
 	doc.CellFormat(72, 7, ref, "", 1, "L", false, 0, "")
 	doc.SetFont("Go", "", 8)
-	for _, line := range []string{"Fecha de emisión: " + inv.IssuedOn.Format("02/01/2006"), "CUIT: " + inv.IssuerCUIT, "Ingresos Brutos: " + invoiceGrossIncome(inv.IssuerProfile.GrossIncomeRegistration), "Inicio de actividades: " + invoiceActivityDate(inv.IssuerProfile.ActivityStartedOn), "Moneda: " + inv.Currency} {
+	lines := []string{"Fecha de emisión: " + inv.IssuedOn.Format("02/01/2006"), "CUIT: " + inv.IssuerCUIT, "Ingresos Brutos: " + invoiceGrossIncome(inv.IssuerProfile.GrossIncomeRegistration), "Inicio de actividades: " + invoiceActivityDate(inv.IssuerProfile.ActivityStartedOn), "Moneda: " + inv.Currency}
+	if associated != "" {
+		lines = append(lines, associated)
+	}
+	for _, line := range lines {
 		doc.SetX(118)
 		doc.MultiCell(72, 4.5, line, "", "L", false)
 	}
@@ -142,7 +154,7 @@ func (r *InvoiceRenderer) drawInvoiceHeader(doc *gofpdf.Fpdf, inv domain.Invoice
 	doc.CellFormat(14, 9, string(inv.Type), "", 1, "C", false, 0, "")
 	doc.SetX(98)
 	doc.SetFont("Go", "", 6)
-	doc.CellFormat(14, 4, fmt.Sprintf("Cód. %03d", inv.Type.ARCACode()), "", 0, "C", false, 0, "")
+	doc.CellFormat(14, 4, fmt.Sprintf("Cód. %03d", inv.VoucherType().ARCACode()), "", 0, "C", false, 0, "")
 	doc.SetXY(118, 17)
 	doc.SetFont("Go", "", 7)
 	doc.CellFormat(72, 4, "ORIGINAL", "", 0, "R", false, 0, "")
@@ -266,7 +278,29 @@ func (r *InvoiceRenderer) drawInvoiceFooter(doc *gofpdf.Fpdf, inv domain.Invoice
 	doc.CellFormat(137, 5, "Consultá el comprobante en ARCA mediante el QR.", "", 1, "L", false, 0, "")
 	doc.SetXY(leftMargin, 281)
 	doc.SetFont("Go", "", 7)
-	doc.CellFormat(pageWidth, 4, fmt.Sprintf("Factura %s %s · Página %d de {nb}", inv.Type, ref, doc.PageNo()), "", 0, "R", false, 0, "")
+	doc.CellFormat(pageWidth, 4, fmt.Sprintf("%s %s %s · Página %d de {nb}", voucherName(inv.Kind), inv.Type, ref, doc.PageNo()), "", 0, "R", false, 0, "")
+}
+
+// voucherName is how the document titles itself.
+func voucherName(kind domain.VoucherKind) string {
+	if kind == domain.VoucherKindCreditNote {
+		return "Nota de crédito"
+	}
+	return "Factura"
+}
+
+// associatedReference is the line a credit note prints for the invoice it cancels, empty for an
+// invoice; ok is false for a credit note whose invoice was not loaded.
+func associatedReference(inv domain.Invoice) (string, bool) {
+	if inv.Kind != domain.VoucherKindCreditNote {
+		return "", true
+	}
+	credited := inv.CreditedInvoice
+	if credited == nil || credited.Number == nil {
+		return "", false
+	}
+	return fmt.Sprintf("Comprobante asociado: Factura %s %05d-%08d del %s", credited.Type, credited.PointOfSale,
+		*credited.Number, credited.IssuedOn.Format("02/01/2006")), true
 }
 
 // isTestInvoice reports whether ARCA authorized inv anywhere but production, where nothing is fiscal.

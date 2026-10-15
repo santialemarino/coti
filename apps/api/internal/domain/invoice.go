@@ -94,20 +94,38 @@ const (
 	InvoiceTypeC InvoiceType = "C"
 )
 
-// ARCACode is the CbteTipo WSFEv1 takes for an invoice of this letter.
-func (t InvoiceType) ARCACode() int {
-	switch t {
-	case InvoiceTypeA:
-		return 1
-	case InvoiceTypeB:
-		return 6
-	default:
-		return 11
-	}
-}
-
 // DiscriminatesVAT reports whether the invoice breaks IVA out; a C invoice never does.
 func (t InvoiceType) DiscriminatesVAT() bool { return t != InvoiceTypeC }
+
+// VoucherKind is what an ARCA voucher does: bill a sale, or cancel an invoice in full.
+type VoucherKind string
+
+const (
+	VoucherKindInvoice    VoucherKind = "INVOICE"
+	VoucherKindCreditNote VoucherKind = "CREDIT_NOTE"
+)
+
+// VoucherType is a voucher's kind and letter, which together name its ARCA series.
+type VoucherType struct {
+	Kind   VoucherKind
+	Letter InvoiceType
+}
+
+// ARCACode is the CbteTipo WSFEv1 takes: 1, 6, 11 for invoices A, B, C and 3, 8, 13 for their
+// credit notes.
+func (v VoucherType) ARCACode() int {
+	invoice, creditNote := 11, 13
+	switch v.Letter {
+	case InvoiceTypeA:
+		invoice, creditNote = 1, 3
+	case InvoiceTypeB:
+		invoice, creditNote = 6, 8
+	}
+	if v.Kind == VoucherKindCreditNote {
+		return creditNote
+	}
+	return invoice
+}
 
 // ReceiverDocType is how an invoice identifies its buyer to ARCA.
 type ReceiverDocType string
@@ -166,10 +184,21 @@ type InvoiceReceiver struct {
 	IVACondition IVACondition
 }
 
-// InvoiceRequest is everything ARCA is asked to authorize for one invoice.
+// AssociatedVoucher is the authorized voucher a credit note cancels, as CbtesAsoc names it.
+type AssociatedVoucher struct {
+	Type        VoucherType
+	PointOfSale int
+	Number      int64
+	IssuerCUIT  string
+	Date        time.Time
+}
+
+// InvoiceRequest is everything ARCA is asked to authorize for one invoice or credit note.
 type InvoiceRequest struct {
 	IssuerCUIT  string // digits only; the represented CUIT.
+	Kind        VoucherKind
 	Type        InvoiceType
+	Associated  *AssociatedVoucher // set on a credit note only.
 	PointOfSale int
 	Date        time.Time // the calendar day, at midnight UTC.
 	Receiver    InvoiceReceiver
@@ -177,6 +206,11 @@ type InvoiceRequest struct {
 	// Claim records the number about to be requested, before ARCA can authorize it; an error
 	// stops the request.
 	Claim func(ctx context.Context, number int64) error
+}
+
+// VoucherType is the series the request is numbered in.
+func (r InvoiceRequest) VoucherType() VoucherType {
+	return VoucherType{Kind: r.Kind, Letter: r.Type}
 }
 
 // InvoiceExpectation is the invoice the seller confirmed; issuing refuses if the sale moved since.
@@ -231,9 +265,9 @@ type ARCACredentials struct {
 // for the last authorized number and claims the next one in the same exchange.
 type InvoiceIssuer interface {
 	Issue(ctx context.Context, creds ARCACredentials, req InvoiceRequest) (*InvoiceAuthorization, error)
-	// Authorized returns the invoice ARCA holds under number, nil when it holds none; it is how a
-	// pending invoice of unknown outcome is reconciled.
-	Authorized(ctx context.Context, creds ARCACredentials, issuerCUIT string, invoiceType InvoiceType,
+	// Authorized returns the voucher ARCA holds under number, nil when it holds none; it is how a
+	// pending one of unknown outcome is reconciled.
+	Authorized(ctx context.Context, creds ARCACredentials, issuerCUIT string, voucher VoucherType,
 		pointOfSale int, number int64) (*AuthorizedInvoice, error)
 }
 
@@ -280,32 +314,48 @@ func (e *InvoiceRejectedError) Unwrap() error {
 	return WithCode(CodeInvoiceRejected, ErrInvalidInput)
 }
 
-// Invoice is an electronic invoice issued for an accepted quote.
+// Invoice is an electronic voucher for an accepted quote: an invoice, or the credit note that
+// cancels one in full.
 type Invoice struct {
-	ID              uuid.UUID
-	AccountID       uuid.UUID
-	BranchID        uuid.UUID
-	QuoteID         uuid.UUID
-	QuoteVersionID  uuid.UUID
-	Environment     ARCAEnvironment // where it is authorized; never changes, so recovery asks the same one.
-	Status          InvoiceStatus
-	Type            InvoiceType
-	PointOfSale     int
-	Number          *int64
-	ClaimedNumber   *int64 // the number last requested from ARCA, set before the request goes out.
-	IssuedOn        time.Time
-	CAE             *string
-	CAEExpiresOn    *time.Time
-	IssuerCUIT      string
-	Receiver        InvoiceReceiver
-	Amounts         InvoiceAmounts
-	Currency        string
-	Snapshot        QuoteRepresentationPayload
-	IssuerCondition IVACondition
-	IssuerProfile   InvoiceIssuerProfile
-	Issues          []string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID                uuid.UUID
+	AccountID         uuid.UUID
+	BranchID          uuid.UUID
+	QuoteID           uuid.UUID
+	QuoteVersionID    uuid.UUID
+	Environment       ARCAEnvironment // where it is authorized; never changes, so recovery asks the same one.
+	Kind              VoucherKind
+	CreditedInvoiceID *uuid.UUID // on a credit note: the invoice it cancels.
+	ReplacesInvoiceID *uuid.UUID // on an invoice issued after a credit note: the credited invoice it follows.
+	Status            InvoiceStatus
+	Type              InvoiceType
+	PointOfSale       int
+	Number            *int64
+	ClaimedNumber     *int64 // the number last requested from ARCA, set before the request goes out.
+	IssuedOn          time.Time
+	CAE               *string
+	CAEExpiresOn      *time.Time
+	IssuerCUIT        string
+	Receiver          InvoiceReceiver
+	Amounts           InvoiceAmounts
+	Currency          string
+	Snapshot          QuoteRepresentationPayload
+	IssuerCondition   IVACondition
+	IssuerProfile     InvoiceIssuerProfile
+	Issues            []string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	CreditNote        *Invoice // on an invoice: its newest credit note, when it has one.
+	CreditedInvoice   *Invoice // on a credit note: the invoice it cancels, when loaded.
+}
+
+// VoucherType is the series the voucher is numbered in.
+func (inv Invoice) VoucherType() VoucherType {
+	return VoucherType{Kind: inv.Kind, Letter: inv.Type}
+}
+
+// Credited reports whether an issued credit note cancels the invoice.
+func (inv Invoice) Credited() bool {
+	return inv.CreditNote != nil && inv.CreditNote.Status == InvoiceStatusIssued
 }
 
 // ARCACredentialStatus describes the certificate an account uploaded, never the key.
@@ -394,7 +444,10 @@ type InvoicePreview struct {
 	Amounts     InvoiceAmounts
 	Currency    string
 	Issues      []string
-	Invoice     *Invoice // the invoice already issued or in flight, if any.
+	Invoice     *Invoice // the invoice already issued or in flight, if any; never a credited one.
+	// CreditedInvoice is the newest invoice of the sale an issued credit note cancelled in this
+	// environment: history to show, and the one a new invoice follows.
+	CreditedInvoice *Invoice
 	// OtherEnvironmentInvoice is the newest invoice issued for the sale in the other ARCA environment:
 	// history to show, never a hold on this one.
 	OtherEnvironmentInvoice *Invoice

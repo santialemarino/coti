@@ -35,6 +35,9 @@ type invoicingStore interface {
 	GetSealedCredential(ctx context.Context, q repository.Querier, accountID uuid.UUID) (string, string, domain.ARCAEnvironment, error)
 	GetLatestByQuote(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID, env domain.ARCAEnvironment) (*domain.Invoice, error)
 	GetLatestIssuedOutside(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID, env domain.ARCAEnvironment) (*domain.Invoice, error)
+	GetLatestCreditedByQuote(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID, env domain.ARCAEnvironment) (*domain.Invoice, error)
+	GetByIDs(ctx context.Context, q repository.Querier, accountID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]domain.Invoice, error)
+	GetCreditNotesByInvoiceIDs(ctx context.Context, q repository.Querier, accountID uuid.UUID, invoiceIDs []uuid.UUID) (map[uuid.UUID]domain.Invoice, error)
 	CreatePending(ctx context.Context, q repository.Querier, in domain.Invoice) (*domain.Invoice, error)
 	MarkIssued(ctx context.Context, q repository.Querier, accountID, branchID, id uuid.UUID, auth domain.InvoiceAuthorization) (*domain.Invoice, error)
 	MarkRejected(ctx context.Context, q repository.Querier, accountID, branchID, id uuid.UUID, rejection domain.InvoiceRejectedError) error
@@ -416,6 +419,13 @@ func (s *InvoiceService) draft(
 	if err != nil {
 		return nil, err
 	}
+	credited, err := s.store.GetLatestCreditedByQuote(ctx, q, tenant.AccountID, tenant.BranchID, quoteID, s.settings.Environment)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.attachCreditNotes(ctx, q, tenant.AccountID, existing, elsewhere, credited); err != nil {
+		return nil, err
+	}
 
 	issuerCondition := domain.IVAConditionRegistered
 	if account.IVACondition != nil {
@@ -457,6 +467,7 @@ func (s *InvoiceService) draft(
 	digest := sha256.Sum256(fingerprint)
 	draft.preview.Fingerprint = hex.EncodeToString(digest[:])
 	draft.preview.OtherEnvironmentInvoice = elsewhere
+	draft.preview.CreditedInvoice = credited
 	return draft, nil
 }
 
@@ -524,7 +535,13 @@ func (s *InvoiceService) hold(ctx context.Context, tenant domain.Tenant, draft i
 		snapshot.Supplier.Name = draft.issuerName
 		snapshot.Supplier.LegalName = &draft.issuerName
 		snapshot.Supplier.TaxID = &draft.issuerCUIT
+		// A sale invoiced again names the credited invoice it follows, which is what lets its row in.
+		var replaces *uuid.UUID
+		if current.preview.CreditedInvoice != nil {
+			replaces = &current.preview.CreditedInvoice.ID
+		}
 		pending, err = s.store.CreatePending(ctx, q, domain.Invoice{
+			Kind: domain.VoucherKindInvoice, ReplacesInvoiceID: replaces,
 			Environment: s.settings.Environment, Snapshot: snapshot, IssuerCondition: draft.issuerCondition, IssuerProfile: draft.profile, AccountID: tenant.AccountID, BranchID: draft.quote.BranchID, QuoteID: draft.quote.ID,
 			QuoteVersionID: draft.version.ID, Type: draft.preview.Type, PointOfSale: *draft.preview.PointOfSale,
 			IssuedOn: domain.InvoiceDay(s.now()), IssuerCUIT: draft.issuerCUIT, Receiver: draft.preview.Receiver,
@@ -580,7 +597,7 @@ func (s *InvoiceService) settle(
 		}
 		return nil, issueErr
 	case errors.Is(issueErr, domain.ErrInvoiceOutcomeUnknown):
-		return nil, domain.WithCode(domain.CodeInvoiceInProgress, fmt.Errorf("%w: %w", domain.ErrConflict, issueErr))
+		return nil, domain.WithCode(inProgressCode(pending), fmt.Errorf("%w: %w", domain.ErrConflict, issueErr))
 	default:
 		if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 			return s.store.ReleasePending(ctx, q, tenant.AccountID, tenant.BranchID, pending.ID, releasedIssue)
@@ -599,7 +616,7 @@ func (s *InvoiceService) reconcile(
 	var found *domain.AuthorizedInvoice
 	if pending.ClaimedNumber != nil {
 		var err error
-		found, err = s.issuer.Authorized(ctx, creds, pending.IssuerCUIT, pending.Type, pending.PointOfSale,
+		found, err = s.issuer.Authorized(ctx, creds, pending.IssuerCUIT, pending.VoucherType(), pending.PointOfSale,
 			*pending.ClaimedNumber)
 		if err != nil {
 			return nil, err
@@ -617,11 +634,19 @@ func (s *InvoiceService) reconcile(
 		return issued, err
 	}
 	if found != nil {
-		return nil, domain.WithCode(domain.CodeInvoiceInProgress, domain.ErrConflict)
+		return nil, domain.WithCode(inProgressCode(pending), domain.ErrConflict)
 	}
 	return nil, s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		return s.store.ReleasePending(ctx, q, tenant.AccountID, tenant.BranchID, pending.ID, releasedIssue)
 	})
+}
+
+// inProgressCode is the refusal for a voucher ARCA still owes the answer for.
+func inProgressCode(pending domain.Invoice) domain.ErrorCode {
+	if pending.Kind == domain.VoucherKindCreditNote {
+		return domain.CodeCreditNoteInProgress
+	}
+	return domain.CodeInvoiceInProgress
 }
 
 // matchesPending tells whether ARCA's invoice under the claimed number is the pending one.

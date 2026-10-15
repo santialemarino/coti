@@ -52,3 +52,14 @@ export async function recoverInvoice(invoiceId: string, branchId: string): Promi
   if (!response.ok) await throwApiError(response);
   return mapInvoice((await response.json()) as InvoiceRaw);
 }
+
+// Issues the credit note that cancels an issued invoice in full; once issued, the sale is not invoiced.
+export async function issueCreditNote(invoiceId: string, branchId: string): Promise<Invoice> {
+  const response = await fetch(`/api/invoices/${encodeURIComponent(invoiceId)}/credit-note`, {
+    method: 'POST',
+    headers: { 'X-Branch-Id': branchId },
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwApiError(response);
+  return mapInvoice((await response.json()) as InvoiceRaw);
+}
