@@ -209,6 +209,8 @@ type QuoteItemUpdate struct {
 	Quantity             *decimal.Decimal
 	Unit                 *string
 	UnitPriceSnapshot    *decimal.Decimal
+	// MinPriceSnapshot is the floor that comes with a branch price; nil leaves the line without one.
+	MinPriceSnapshot *decimal.Decimal
 	// ConfirmMatch settles a flagged line on the product it already carries, keeping its price.
 	ConfirmMatch bool
 }

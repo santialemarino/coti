@@ -1168,7 +1168,13 @@ func (r *QuoteRepository) UpdateItem(
 		// A person choosing the product settles the line, and the matcher's score described
 		// whatever it had proposed instead.
 		setClauses = append(setClauses, "match_status = 'MATCHED'", "confidence_score = NULL")
-		setClauses = append(setClauses, "min_price_snapshot = NULL")
+		if in.MinPriceSnapshot != nil {
+			setClauses = append(setClauses, fmt.Sprintf("min_price_snapshot = $%d", argIdx))
+			args = append(args, *in.MinPriceSnapshot)
+			argIdx++
+		} else {
+			setClauses = append(setClauses, "min_price_snapshot = NULL")
+		}
 		if in.UnitPriceSnapshot == nil {
 			setClauses = append(setClauses, "unit_price_snapshot = NULL", "subtotal = NULL")
 		}

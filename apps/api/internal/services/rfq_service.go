@@ -640,6 +640,9 @@ func (s *RFQService) UpdateItem(
 			}
 			if price, ok := prices[*in.ProductID]; ok {
 				in.UnitPriceSnapshot = &price.Price
+				if price.MinPrice.Valid {
+					in.MinPriceSnapshot = &price.MinPrice.Decimal
+				}
 			}
 		}
 		item, updateErr = s.quotes.UpdateItem(ctx, q, tenant.AccountID, version.ID, itemID, in)

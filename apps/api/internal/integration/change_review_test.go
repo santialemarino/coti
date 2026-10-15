@@ -305,7 +305,8 @@ func TestChangeReview_AProductChosenOnAPricedQuoteTakesTheBranchPrice(t *testing
 	seed := e.seedSendableQuote(t, "Priced choice", false)
 	version := *seed.draft.Quote.CurrentVersionID
 	line, _, _ := e.firstLine(t, version)
-	lime := e.seedPricedProduct(t, seed.tenant.AccountID, seed.tenant.BranchID, "Cal hidratada", "70", nil)
+	floor := "60"
+	lime := e.seedPricedProduct(t, seed.tenant.AccountID, seed.tenant.BranchID, "Cal hidratada", "70", &floor)
 	t.Cleanup(func() { e.mustCleanup(t, `DELETE FROM quote_item WHERE product_id = $1`, lime) })
 	admin := e.tokenFor(t, e.seedUser(t, seed.tenant.AccountID, domain.UserRoleAdmin))
 	patch := func(body map[string]any) int {
@@ -320,6 +321,7 @@ func TestChangeReview_AProductChosenOnAPricedQuoteTakesTheBranchPrice(t *testing
 	lines := e.storedLines(t, version)
 	assertStored(t, "unit price", lines[0].unitPrice, "70.00")
 	assertStored(t, "subtotal", lines[0].subtotal, "140.00")
+	assertStored(t, "price floor", lines[0].minPrice, "60.00")
 
 	if _, err := e.db.CrossAccount().Exec(context.Background(),
 		`UPDATE quote_item SET product_id = NULL, match_status = 'NO_MATCH' WHERE id = $1`, line); err != nil {
