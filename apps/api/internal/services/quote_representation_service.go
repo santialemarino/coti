@@ -276,6 +276,17 @@ func (s *QuoteRepresentationService) loadLogo(
 }
 
 func validateRepresentationSource(source domain.QuoteRepresentationSource) error {
+	unresolved := 0
+	for _, item := range source.Items {
+		if item.MatchStatus != domain.ItemMatchStatusMatched || item.ProductID == nil ||
+			!item.UnitPriceSnapshot.Valid {
+			unresolved++
+		}
+	}
+	if unresolved > 0 {
+		return domain.WithCode(domain.CodeQuoteItemsUnresolved, fmt.Errorf(
+			"%w: %d lines need a confirmed, priced product", domain.ErrInvalidInput, unresolved))
+	}
 	var issues []string
 	if len(source.Items) == 0 {
 		issues = append(issues, "quote has no items")

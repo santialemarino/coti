@@ -223,6 +223,15 @@ report auditable, and it is also the metric: how many lines arrived unmatched in
 how many had to be fixed by hand. `uq_quote_version_draft` allows one unfrozen version per quote,
 so a second version means the first was frozen.
 
+## Settling a flagged line
+
+Accepting the materials keeps a line the catalog left `AMBIGUOUS` or `NO_MATCH` — it is flagged,
+never dropped — but a quote is only sent with every line on a confirmed product with a price; the
+send otherwise answers `422 QUOTE_ITEMS_UNRESOLVED`. The seller settles a line on any editable quote,
+priced ones included: `PATCH /v1/quotes/:quoteId/items/:itemId` with `confirm_match: true` marks the
+product the line carries `MATCHED` and keeps its price, and choosing another product on a `QUOTED`
+quote prices it at the branch's current price.
+
 ## The original AI proposal is preserved separately
 
 The first commercial version stays editable because it is the seller's working draft. That makes
@@ -353,12 +362,11 @@ guards only the account boundary.
 `CreateItems` carries a `position` in its JSON payload and orders by it: `jsonb_to_recordset`
 promises no order of its own, and `WITH ORDINALITY` is rejected alongside a column definition list.
 
-Reading them back leans on the same thing. `ListItems` orders by `created_at`, and one batch shares
-a single value of it, so that clause separates lines added later from the original ones and leaves
-the batch itself to the order it was written in. Valorization updates every line, which rewrites
-those rows — measured at 200 lines, the order survives it, but nothing in Postgres promises that.
-An ordinal column is the fix if the order ever has to be guaranteed rather than observed, and
-editing lines will want one anyway.
+Reading them back leans on the same thing. `CreateItems` steps `created_at` one microsecond per
+position, so every line of a batch carries its own instant, and `ListItems` orders by `created_at`
+and then `id`. An update rewrites a row and moves it physically, so an order that rested on how
+Postgres happens to return ties would not survive a price change or a swapped product; this one
+does. Lines written before the step share an instant and fall back to `id`.
 The alignment that matters for correctness — which decision belongs to which line — is done in
 memory before the insert, so this is about what the seller reads, not about matching.
 
@@ -471,7 +479,11 @@ An active send can receive one public answer. `REQUEST_CHANGE` requires a messag
 512 characters. Under one tenant transaction, the service locks the quote, records the
 `client_action`, links a `CLIENT` `quote_message` to it, copies the frozen version's items and
 alternatives into a mutable v2, values the copied lines and alternatives at the quote branch's
-current catalog prices, and moves `SENT` to `CHANGE_REQUESTED`. Products with no current branch price
+current catalog prices, and moves `SENT` to `CHANGE_REQUESTED`. Every copy of a sent version —
+this one, the handler's, a reactivation's and a discard's — records on each line the line it was
+copied from (`quote_item.source_item_id`), carries over the seller's discount decisions (typed
+discounts, and promotions the seller suppressed, each on the copied lines) and runs the sweep, so
+the draft starts from exactly the money the customer saw. Products with no current branch price
 remain unpriced for seller review. The old send and public link remain pinned to v1. A stale send for
 another version cannot change the quote.
 
@@ -561,7 +573,8 @@ Each `handler_decision` row is completed when the seller decides, which happens 
   and `EDITED` otherwise; repricing is not an edit, since prices are not in the snapshot. A `NO_MATCH`
   run is `MANUAL_OVERRIDE`. `user_id` and `decided_at` name the sender.
 - **`POST /v1/quotes/:quoteId/discard-ai-changes`** resets the draft in place to a copy of the
-  version the customer last received, repriced and swept like a fresh draft, and records every
+  version the customer last received, with its discount decisions, repriced and swept like a fresh
+  draft, and records every
   pending applied run `REJECTED`. The quote stays `CHANGE_REQUESTED`; a draft with no pending applied
   run answers `409 NO_AI_CHANGES`. Pending no-match runs stay for the send to settle.
 
@@ -569,9 +582,13 @@ Each `handler_decision` row is completed when the seller decides, which happens 
 `CLOSED` with a fresh count, keeping its place by `closed_at`, while the handler may still act on the
 quote; anything else answers `409 BATCH_NOT_RETRYABLE`.
 
-The RFQ detail's `changes_requested.handler` carries the latest decision on the draft, and
-`changes_requested.client_messages` every message the customer sent since the version they answered
-was frozen; the backoffice shows both beside the customer's request. `conversation` carries the whole
+The RFQ detail's `changes_requested` compares the draft with the version the customer received:
+`lines` pairs each sent line with the draft line copied from it (by `source_item_id`, never by
+position) as `UNCHANGED`, `MODIFIED` or `REMOVED`, then the lines the draft added as `ADDED`;
+`discounts` pairs discounts by name the same way; `original_total` and `requested_total` close it.
+`handler` carries the latest decision on the draft, and `client_messages` every message the customer
+sent since the version they answered was frozen. The backoffice shows them as one card: the
+customer's words, the reading and its outcome, and only the changed rows. `conversation` carries the whole
 thread: each batch with its messages, status, `failure_reason`, `retryable`, and the handler's run
 with the seller's decision; `pending` for a window still open; `seller_messages`, the quote's sends;
 and `can_discard_ai_changes`. It is absent until the customer has written.

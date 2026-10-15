@@ -59,6 +59,7 @@ type recordedRun struct {
 	NoMatchOrigin   *string                         `json:"no_match_origin"`
 	NoMatchReason   *string                         `json:"no_match_reason"`
 	Intent          *string                         `json:"intent"`
+	IntentItemIDs   []uuid.UUID                     `json:"intent_item_ids"`
 	StrategiesTried []string                        `json:"strategies_tried"`
 	Operations      []domain.ChangeRequestOperation `json:"operations"`
 }
@@ -235,6 +236,9 @@ func TestConversationIntents_RecipesActOnTheNamedLinesOnly(t *testing.T) {
 	products := e.draftProducts(t, draft)
 	if len(products) != 2 || !slices.Contains(products, cheaperCement) || !slices.Contains(products, sand) {
 		t.Errorf("draft products = %v, want the cement swapped and the sand untouched", products)
+	}
+	if run := e.lastRun(t, quote.quoteID); len(run.IntentItemIDs) != 1 || run.IntentItemIDs[0] != cementLine {
+		t.Errorf("recorded lines = %v, want the cement line the goal was tied to", run.IntentItemIDs)
 	}
 }
 

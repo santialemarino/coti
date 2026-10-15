@@ -11,6 +11,10 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+  DropdownChevron,
   MetaList,
   PendingButton,
   Separator,
@@ -153,6 +157,8 @@ interface RfqConversationProps {
   quoteId: string;
   branchId: string;
   onChanged: () => Promise<void>;
+  // Inside another card: the thread alone, with no card or header of its own.
+  embedded?: boolean;
 }
 
 /*
@@ -165,6 +171,7 @@ export function RfqConversation({
   quoteId,
   branchId,
   onChanged,
+  embedded = false,
 }: RfqConversationProps) {
   const t = useTranslations('rfqs.detail.conversation');
   const errorMessage = useApiErrorMessage('rfqs.detail.conversation.errors');
@@ -185,44 +192,53 @@ export function RfqConversation({
     }
   }
 
+  const thread = (
+    <ol className="flex flex-col gap-y-4">
+      {timeline.map((entry, index) =>
+        entry.kind === 'send' ? (
+          <li key={`send-${entry.message.received_at}-${index}`} className="flex flex-col gap-y-3">
+            {index > 0 ? <Separator /> : null}
+            <MessageList messages={[entry.message]} />
+          </li>
+        ) : (
+          <li key={entry.batch.id} className="flex flex-col gap-y-3">
+            {index > 0 ? <Separator /> : null}
+            <MessageList messages={entry.batch.messages} />
+            <BatchOutcome
+              batch={entry.batch}
+              retrying={retryingId === entry.batch.id}
+              onRetry={() => void handleRetry(entry.batch.id)}
+            />
+          </li>
+        ),
+      )}
+      {conversation.pending.length > 0 ? (
+        <li className="flex flex-col gap-y-3">
+          {timeline.length > 0 ? <Separator /> : null}
+          <MessageList messages={conversation.pending} />
+          <p className="text-paragraph-sm text-foreground-muted">{t('pending')}</p>
+        </li>
+      ) : null}
+    </ol>
+  );
+
+  if (embedded) return thread;
+
+  /* Collapsed by default: the history is reference, and the page's job is the quote below it. */
   return (
     <Card>
-      <CardHeader className="flex-row items-center gap-x-2">
-        <MessagesSquareIcon aria-hidden="true" className="size-4 text-foreground-muted" />
-        <CardTitle>{t('title')}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <ol className="flex flex-col gap-y-4">
-          {timeline.map((entry, index) =>
-            entry.kind === 'send' ? (
-              <li
-                key={`send-${entry.message.received_at}-${index}`}
-                className="flex flex-col gap-y-3"
-              >
-                {index > 0 ? <Separator /> : null}
-                <MessageList messages={[entry.message]} />
-              </li>
-            ) : (
-              <li key={entry.batch.id} className="flex flex-col gap-y-3">
-                {index > 0 ? <Separator /> : null}
-                <MessageList messages={entry.batch.messages} />
-                <BatchOutcome
-                  batch={entry.batch}
-                  retrying={retryingId === entry.batch.id}
-                  onRetry={() => void handleRetry(entry.batch.id)}
-                />
-              </li>
-            ),
-          )}
-          {conversation.pending.length > 0 ? (
-            <li className="flex flex-col gap-y-3">
-              {timeline.length > 0 ? <Separator /> : null}
-              <MessageList messages={conversation.pending} />
-              <p className="text-paragraph-sm text-foreground-muted">{t('pending')}</p>
-            </li>
-          ) : null}
-        </ol>
-      </CardContent>
+      <Collapsible>
+        <CardHeader>
+          <CollapsibleTrigger className="group/panel flex w-full items-center gap-x-2 rounded-md outline-none transition-colors duration-200 ease-out-soft hover:text-primary focus-visible:text-primary">
+            <MessagesSquareIcon aria-hidden="true" className="size-4 text-foreground-muted" />
+            <CardTitle>{t('title')}</CardTitle>
+            <DropdownChevron className="ml-auto group-data-[state=open]/panel:rotate-180" />
+          </CollapsibleTrigger>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent className="pt-4">{thread}</CardContent>
+        </CollapsibleContent>
+      </Collapsible>
     </Card>
   );
 }

@@ -3,6 +3,7 @@ package domain
 import (
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
 
@@ -12,6 +13,7 @@ func nullPrice(value string) decimal.NullDecimal {
 
 func diffItem(description, quantity string, unit *string, price decimal.NullDecimal) QuoteItem {
 	return QuoteItem{
+		ID:                   uuid.New(),
 		RequestedDescription: description,
 		Quantity:             decimal.RequireFromString(quantity),
 		Unit:                 unit,
@@ -19,146 +21,147 @@ func diffItem(description, quantity string, unit *string, price decimal.NullDeci
 	}
 }
 
+// copied is the draft line cloned from sent, which is what a fresh draft holds.
+func copied(sent QuoteItem) QuoteItem {
+	line := sent
+	line.ID = uuid.New()
+	source := sent.ID
+	line.SourceItemID = &source
+	return line
+}
+
+func changes(diff ChangeRequestDiff) []DiffChange {
+	result := make([]DiffChange, 0, len(diff.Lines))
+	for _, line := range diff.Lines {
+		result = append(result, line.Change)
+	}
+	return result
+}
+
 func TestBuildChangeRequestDiff_IdenticalSnapshotsStayNeutral(t *testing.T) {
 	unit := "bolsa"
-	frozen := ChangeRequestSnapshot{
-		Items: []QuoteItem{
-			diffItem("cemento", "10", &unit, nullPrice("8500.00")),
-			diffItem("membrana", "2", nil, decimal.NullDecimal{}),
-		},
-		Discounts: []QuoteDiscount{{PromotionName: strPtr("Descuento obra"), Amount: decimal.NewFromFloat(500)}},
-		Total:     decimal.NewFromFloat(16000),
-	}
+	cement := diffItem("cemento", "10", &unit, nullPrice("8500.00"))
+	membrane := diffItem("membrana", "2", nil, decimal.NullDecimal{})
+	discount := QuoteDiscount{PromotionName: strPtr("Descuento obra"), Amount: decimal.NewFromInt(500)}
+	frozen := ChangeRequestSnapshot{Items: []QuoteItem{cement, membrane},
+		Discounts: []QuoteDiscount{discount}, Total: decimal.NewFromInt(16000)}
+	draft := ChangeRequestSnapshot{Items: []QuoteItem{copied(cement), copied(membrane)},
+		Discounts: []QuoteDiscount{discount}, Total: decimal.NewFromInt(16000)}
 
-	diff := BuildChangeRequestDiff(nil, frozen, frozen)
+	diff := BuildChangeRequestDiff(nil, frozen, draft)
 
-	if len(diff.Original.Items) != 2 || len(diff.Requested.Items) != 2 {
-		t.Fatalf("items = original %d requested %d, want 2 and 2",
-			len(diff.Original.Items), len(diff.Requested.Items))
+	if got := changes(diff); len(got) != 2 || got[0] != DiffUnchanged || got[1] != DiffUnchanged {
+		t.Errorf("line changes = %v, want two UNCHANGED", got)
 	}
-	for i := range diff.Requested.Items {
-		if diff.Requested.Items[i].Changed {
-			t.Errorf("requested item %d marked changed on identical snapshots", i)
-		}
-		if diff.Requested.Items[i].ChangeType != "" {
-			t.Errorf("requested item %d change type = %q, want empty", i, diff.Requested.Items[i].ChangeType)
-		}
+	if len(diff.Discounts) != 1 || diff.Discounts[0].Change != DiffUnchanged {
+		t.Errorf("discounts = %+v, want one UNCHANGED", diff.Discounts)
 	}
-	if diff.Requested.Discounts[0].Changed {
-		t.Error("discount marked changed on identical snapshots")
+	if !diff.OriginalTotal.Equal(decimal.NewFromInt(16000)) ||
+		!diff.RequestedTotal.Equal(decimal.NewFromInt(16000)) {
+		t.Errorf("totals = %s → %s, want 16000 both", diff.OriginalTotal, diff.RequestedTotal)
 	}
-	if !diff.Original.Total.Equal(decimal.NewFromFloat(16000)) {
-		t.Errorf("original total = %v, want 16000", diff.Original.Total)
+}
+
+/*
+ * A swapped line comes back from the database out of order. Each sent line is still compared with
+ * the line copied from it, so the swap reads as one modification and the untouched line as none.
+ */
+func TestBuildChangeRequestDiff_PairsLinesBySourceNotPosition(t *testing.T) {
+	cement := diffItem("Cemento Loma Negra 50 kg", "20", nil, nullPrice("9500.00"))
+	sand := diffItem("Arena gruesa", "3", nil, nullPrice("32000.00"))
+	swapped := copied(cement)
+	swapped.RequestedDescription = "Cemento Pampa 50 kg"
+	swapped.UnitPriceSnapshot = nullPrice("8400.00")
+	frozen := ChangeRequestSnapshot{Items: []QuoteItem{cement, sand}}
+	draft := ChangeRequestSnapshot{Items: []QuoteItem{copied(sand), swapped}}
+
+	diff := BuildChangeRequestDiff(nil, frozen, draft)
+
+	if len(diff.Lines) != 2 {
+		t.Fatalf("lines = %+v, want 2", diff.Lines)
 	}
-	if !diff.Requested.Total.Equal(decimal.NewFromFloat(16000)) {
-		t.Errorf("requested total = %v, want 16000", diff.Requested.Total)
+	first, second := diff.Lines[0], diff.Lines[1]
+	if first.Change != DiffModified || first.Original.Description != "Cemento Loma Negra 50 kg" ||
+		first.Requested.Description != "Cemento Pampa 50 kg" || *first.Requested.UnitPrice != "8400.00" {
+		t.Errorf("first = %+v, want the cement paired with its swap", first)
+	}
+	if second.Change != DiffUnchanged || second.Original.Description != "Arena gruesa" ||
+		second.Requested.Description != "Arena gruesa" {
+		t.Errorf("second = %+v, want the sand unchanged", second)
 	}
 }
 
 func TestBuildChangeRequestDiff_FlagsModifiedAddedAndRemovedLines(t *testing.T) {
 	unit := "bolsa"
-	frozen := ChangeRequestSnapshot{
-		Items: []QuoteItem{
-			diffItem("cemento", "10", &unit, nullPrice("8500.00")),
-			diffItem("membrana", "2", nil, decimal.NullDecimal{}),
-		},
-		Discounts: []QuoteDiscount{{PromotionName: strPtr("Descuento obra"), Amount: decimal.NewFromFloat(500)}},
-		Total:     decimal.NewFromFloat(16000),
-	}
-	draft := ChangeRequestSnapshot{
-		Items: []QuoteItem{
-			diffItem("cemento", "12", &unit, nullPrice("8500.00")),
-			diffItem("membrana", "2", nil, decimal.NullDecimal{}),
-			diffItem("cal", "4", nil, decimal.NullDecimal{}),
-		},
-		Total: decimal.NewFromFloat(17000),
-	}
+	cement := diffItem("cemento", "10", &unit, nullPrice("8500.00"))
+	sand := diffItem("arena", "3", nil, nullPrice("32000.00"))
+	requantified := copied(cement)
+	requantified.Quantity = decimal.NewFromInt(12)
+	lime := diffItem("cal", "5", nil, decimal.NullDecimal{})
+	frozen := ChangeRequestSnapshot{Items: []QuoteItem{cement, sand}}
+	draft := ChangeRequestSnapshot{Items: []QuoteItem{lime, requantified}}
 
 	diff := BuildChangeRequestDiff(nil, frozen, draft)
 
-	if len(diff.Requested.Items) != 3 {
-		t.Fatalf("requested items = %d, want 3", len(diff.Requested.Items))
+	want := []DiffChange{DiffModified, DiffRemoved, DiffAdded}
+	got := changes(diff)
+	if len(got) != len(want) {
+		t.Fatalf("line changes = %v, want %v", got, want)
 	}
-	if !diff.Requested.Items[0].Changed || diff.Requested.Items[0].ChangeType != "modified" {
-		t.Errorf("item 0 = changed %v type %q, want true modified",
-			diff.Requested.Items[0].Changed, diff.Requested.Items[0].ChangeType)
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("line changes = %v, want %v", got, want)
+		}
 	}
-	if diff.Requested.Items[1].Changed {
-		t.Error("item 1 (unchanged) marked changed")
+	if removed := diff.Lines[1]; removed.Original.Description != "arena" || removed.Requested != nil {
+		t.Errorf("removed = %+v, want the sand with no draft side", removed)
 	}
-	if !diff.Requested.Items[2].Changed || diff.Requested.Items[2].ChangeType != "added" {
-		t.Errorf("item 2 = changed %v type %q, want true added",
-			diff.Requested.Items[2].Changed, diff.Requested.Items[2].ChangeType)
+	if added := diff.Lines[2]; added.Original != nil || added.Requested.Description != "cal" {
+		t.Errorf("added = %+v, want the lime with no sent side", added)
 	}
 }
 
-func TestBuildChangeRequestDiff_FlagsDroppedLinesAsRemovedPlaceholders(t *testing.T) {
-	frozen := ChangeRequestSnapshot{
-		Items: []QuoteItem{
-			diffItem("cemento", "10", nil, decimal.NullDecimal{}),
-			diffItem("membrana", "2", nil, decimal.NullDecimal{}),
-		},
-		Total: decimal.NewFromFloat(100),
+// A product swap that keeps the customer's wording is still a change.
+func TestBuildChangeRequestDiff_AProductSwapIsAChange(t *testing.T) {
+	first, second := uuid.New(), uuid.New()
+	sent := diffItem("cemento", "10", nil, nullPrice("9500.00"))
+	sent.ProductID = &first
+	swapped := copied(sent)
+	swapped.ProductID = &second
+
+	diff := BuildChangeRequestDiff(nil, ChangeRequestSnapshot{Items: []QuoteItem{sent}},
+		ChangeRequestSnapshot{Items: []QuoteItem{swapped}})
+
+	if got := changes(diff); len(got) != 1 || got[0] != DiffModified {
+		t.Errorf("line changes = %v, want MODIFIED", got)
 	}
-	draft := ChangeRequestSnapshot{
-		Items: []QuoteItem{diffItem("cemento", "10", nil, decimal.NullDecimal{})},
-		Total: decimal.NewFromFloat(90),
+}
+
+func TestBuildChangeRequestDiff_PairsDiscountsByName(t *testing.T) {
+	named := func(name, amount string, suppressed bool) QuoteDiscount {
+		return QuoteDiscount{PromotionName: strPtr(name), Amount: decimal.RequireFromString(amount),
+			SuppressedBySeller: suppressed}
 	}
+	frozen := ChangeRequestSnapshot{Discounts: []QuoteDiscount{
+		named("Cemento 10%", "19000", false), named("Compra grande", "80700", false),
+		named("Cliente frecuente", "1000", false)}}
+	draft := ChangeRequestSnapshot{Discounts: []QuoteDiscount{
+		named("Compra grande", "80700", true), named("Cemento 10%", "16800", false),
+		named("Hierro 8%", "2000", false)}}
 
 	diff := BuildChangeRequestDiff(nil, frozen, draft)
 
-	if len(diff.Requested.Items) != 2 {
-		t.Fatalf("requested items = %d, want 2 (kept + removed placeholder)", len(diff.Requested.Items))
+	want := map[string]DiffChange{"Compra grande": DiffModified, "Cemento 10%": DiffModified,
+		"Hierro 8%": DiffAdded, "Cliente frecuente": DiffRemoved}
+	if len(diff.Discounts) != len(want) {
+		t.Fatalf("discounts = %+v, want %d", diff.Discounts, len(want))
 	}
-	if diff.Requested.Items[0].Changed {
-		t.Error("kept line marked changed")
+	for _, discount := range diff.Discounts {
+		if discount.Change != want[discount.Name] {
+			t.Errorf("%s = %s, want %s", discount.Name, discount.Change, want[discount.Name])
+		}
 	}
-	removed := diff.Requested.Items[1]
-	if !removed.Changed || removed.ChangeType != "removed" {
-		t.Errorf("removed placeholder = changed %v type %q, want true removed",
-			removed.Changed, removed.ChangeType)
-	}
-	if removed.Description != "membrana" {
-		t.Errorf("removed placeholder description = %q, want membrana", removed.Description)
-	}
-}
-
-func TestBuildChangeRequestDiff_FlagsDiscountAmountAndMayAddOne(t *testing.T) {
-	frozen := ChangeRequestSnapshot{
-		Discounts: []QuoteDiscount{
-			{PromotionName: strPtr("Descuento obra"), Amount: decimal.NewFromFloat(500)},
-		},
-		Total: decimal.NewFromFloat(16000),
-	}
-	draft := ChangeRequestSnapshot{
-		Discounts: []QuoteDiscount{
-			{PromotionName: strPtr("Descuento obra"), Amount: decimal.NewFromFloat(800)},
-			{PromotionName: strPtr("Promo cal"), Amount: decimal.NewFromFloat(200)},
-		},
-		Total: decimal.NewFromFloat(15500),
-	}
-
-	diff := BuildChangeRequestDiff(nil, frozen, draft)
-
-	if len(diff.Requested.Discounts) != 2 {
-		t.Fatalf("requested discounts = %d, want 2", len(diff.Requested.Discounts))
-	}
-	if !diff.Requested.Discounts[0].Changed {
-		t.Error("discount with changed amount not flagged")
-	}
-	if !diff.Requested.Discounts[1].Changed {
-		t.Error("newly added discount not flagged")
-	}
-	if diff.Original.Discounts[0].Amount != "500.00" {
-		t.Errorf("original discount amount = %q, want 500.00", diff.Original.Discounts[0].Amount)
-	}
-}
-
-func TestBuildChangeRequestDiff_CarriesTheReason(t *testing.T) {
-	reason := "necesito entrega el viernes"
-	diff := BuildChangeRequestDiff(&reason, ChangeRequestSnapshot{}, ChangeRequestSnapshot{})
-
-	if diff.Reason == nil || *diff.Reason != reason {
-		t.Errorf("reason = %v, want %q", diff.Reason, reason)
+	if suppressed := diff.Discounts[0]; !suppressed.Requested.Suppressed || suppressed.Original.Suppressed {
+		t.Errorf("Compra grande = %+v, want suppressed only on the draft", suppressed)
 	}
 }

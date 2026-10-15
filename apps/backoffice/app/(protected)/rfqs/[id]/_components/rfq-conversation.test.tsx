@@ -30,7 +30,11 @@ function batch(id: string, overrides: Partial<ConversationBatch>): ConversationB
   };
 }
 
-function renderConversation(conversation: ConversationResponse, onChanged = vi.fn()) {
+function renderConversation(
+  conversation: ConversationResponse,
+  onChanged = vi.fn(),
+  embedded = true,
+) {
   return render(
     <NextIntlClientProvider
       locale="es"
@@ -42,6 +46,7 @@ function renderConversation(conversation: ConversationResponse, onChanged = vi.f
         quoteId={QUOTE_ID}
         branchId={BRANCH_ID}
         onChanged={onChanged}
+        embedded={embedded}
       />
     </NextIntlClientProvider>,
   );
@@ -184,4 +189,24 @@ describe('RfqConversation', () => {
       expect(view.getByText(copy.decision.noMatch[reason])).toBeTruthy();
     },
   );
+
+  // On its own card the history starts folded: it is reference, and the quote is the work.
+  it('starts folded on its own card and opens on its title', async () => {
+    const view = renderConversation(
+      {
+        batches: [batch('a', {})],
+        pending: [],
+        seller_messages: [],
+        can_discard_ai_changes: false,
+      },
+      vi.fn(),
+      false,
+    );
+
+    expect(view.queryByText('mensaje a')).toBeNull();
+    await act(async () => {
+      fireEvent.click(view.getByRole('button', { name: copy.title }));
+    });
+    expect(view.getByText('mensaje a')).toBeTruthy();
+  });
 });

@@ -7569,36 +7569,30 @@ const docTemplate = `{
                         "$ref": "#/definitions/dto.ClientMessageResponse"
                     }
                 },
+                "discounts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.DiffDiscountResponse"
+                    }
+                },
                 "handler": {
                     "$ref": "#/definitions/dto.HandlerDecisionResponse"
                 },
-                "original": {
-                    "$ref": "#/definitions/dto.ChangeRequestSideResponse"
+                "lines": {
+                    "description": "Lines pairs each sent line with the draft line copied from it, then the lines the draft added.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.DiffLineResponse"
+                    }
+                },
+                "original_total": {
+                    "description": "decimal string, never float.",
+                    "type": "string"
                 },
                 "reason": {
                     "type": "string"
                 },
-                "requested": {
-                    "$ref": "#/definitions/dto.ChangeRequestSideResponse"
-                }
-            }
-        },
-        "dto.ChangeRequestSideResponse": {
-            "type": "object",
-            "properties": {
-                "discounts": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.DiffDiscountLineResponse"
-                    }
-                },
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.DiffLineItemResponse"
-                    }
-                },
-                "total": {
+                "requested_total": {
                     "description": "decimal string, never float.",
                     "type": "string"
                 }
@@ -8386,30 +8380,47 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.DiffDiscountLineResponse": {
+        "dto.DiffDiscountResponse": {
+            "type": "object",
+            "properties": {
+                "change": {
+                    "type": "string",
+                    "enum": [
+                        "UNCHANGED",
+                        "MODIFIED",
+                        "ADDED",
+                        "REMOVED"
+                    ]
+                },
+                "name": {
+                    "type": "string"
+                },
+                "original": {
+                    "$ref": "#/definitions/dto.DiffDiscountSideResponse"
+                },
+                "requested": {
+                    "$ref": "#/definitions/dto.DiffDiscountSideResponse"
+                }
+            }
+        },
+        "dto.DiffDiscountSideResponse": {
             "type": "object",
             "properties": {
                 "amount": {
                     "type": "string"
                 },
-                "changed": {
+                "suppressed": {
                     "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
                 }
             }
         },
         "dto.DiffLineItemResponse": {
             "type": "object",
             "properties": {
-                "change_type": {
+                "description": {
                     "type": "string"
                 },
-                "changed": {
-                    "type": "boolean"
-                },
-                "description": {
+                "product_name": {
                     "type": "string"
                 },
                 "quantity": {
@@ -8420,6 +8431,26 @@ const docTemplate = `{
                 },
                 "unit_price": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.DiffLineResponse": {
+            "type": "object",
+            "properties": {
+                "change": {
+                    "type": "string",
+                    "enum": [
+                        "UNCHANGED",
+                        "MODIFIED",
+                        "ADDED",
+                        "REMOVED"
+                    ]
+                },
+                "original": {
+                    "$ref": "#/definitions/dto.DiffLineItemResponse"
+                },
+                "requested": {
+                    "$ref": "#/definitions/dto.DiffLineItemResponse"
                 }
             }
         },
@@ -10842,6 +10873,10 @@ const docTemplate = `{
         "dto.UpdateQuoteItemRequest": {
             "type": "object",
             "properties": {
+                "confirm_match": {
+                    "description": "ConfirmMatch settles a flagged line on the product it already carries.",
+                    "type": "boolean"
+                },
                 "product_id": {
                     "type": "string"
                 },

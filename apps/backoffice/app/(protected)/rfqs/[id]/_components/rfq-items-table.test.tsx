@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RfqListProvider } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { RfqItemsTable } from '@/app/(protected)/rfqs/[id]/_components/rfq-items-table';
 import { ApiError } from '@/lib/api/errors';
-import type { QuoteItemResponse } from '@/lib/api/rfqs';
+import type { QuoteDiscountResponse, QuoteItemResponse } from '@/lib/api/rfqs';
 import messages from '@/translations/es.json';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -13,13 +13,16 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/lib/api/catalog', () => ({ searchCatalog: vi.fn().mockResolvedValue([]) }));
 
 vi.mock('@/lib/api/rfqs-client', () => ({
+  addDiscount: vi.fn(),
   addQuoteItem: vi.fn(),
+  deleteDiscount: vi.fn(),
   deleteQuoteItem: vi.fn(),
+  updateDiscount: vi.fn(),
   updateQuoteItem: vi.fn(),
 }));
 
 const { toast } = await import('sonner');
-const { deleteQuoteItem, updateQuoteItem } = await import('@/lib/api/rfqs-client');
+const { deleteQuoteItem, updateDiscount, updateQuoteItem } = await import('@/lib/api/rfqs-client');
 
 const copy = messages.rfqs;
 
@@ -55,6 +58,7 @@ function renderItems(
   items: QuoteItemResponse[] = [PRICED_ITEM],
   onItemsChange: (items: QuoteItemResponse[]) => void = vi.fn(),
   readOnly = false,
+  discounts: QuoteDiscountResponse[] = [],
 ) {
   return render(
     <NextIntlClientProvider
@@ -75,7 +79,7 @@ function renderItems(
           quoteStatus={quoteStatus}
           branchId={BRANCH_ID}
           items={items}
-          discounts={[]}
+          discounts={discounts}
           onItemsChange={onItemsChange}
           readOnly={readOnly}
         />
@@ -356,15 +360,27 @@ describe('RfqItemsTable quantity', () => {
     const view = renderItems(BRANCH_ID, 'SENT');
 
     const quantity = view.getAllByRole('cell').find((cell) => cell.textContent?.startsWith('500'));
-    expect(quantity?.textContent).toBe('500 unidad');
+    expect(quantity?.textContent).toBe('500 u.');
+    expect(quantity?.querySelector('abbr')?.title).toBe('unidad');
     expect(view.queryByRole('columnheader', { name: 'Unidad' })).toBeNull();
   });
 
-  it('carries the unit on the input while the quantity is editable', () => {
+  it('carries the abbreviated unit on the input, with the original as its title', () => {
     const view = renderItems(BRANCH_ID, 'DRAFT');
 
     const input = view.getByRole('textbox', { name: copy.detail.items.columns.quantity });
-    expect(input.closest('[data-slot=input-container], div')?.textContent).toContain('unidad');
+    const container = input.closest('[data-slot=input-container], div');
+    expect(container?.textContent).toContain('u.');
+    expect(container?.querySelector('abbr')?.title).toBe('unidad');
+  });
+
+  // The column widens to its longest figure, so neither the number nor the unit is ever cut.
+  it('sizes the quantity column to its longest figure', () => {
+    const view = renderItems(BRANCH_ID, 'DRAFT');
+
+    const heading = view.getByRole('columnheader', { name: copy.detail.items.columns.quantity });
+    // "500" and "u." with the space between: six characters.
+    expect(heading.style.minWidth).toBe('calc(6ch + 3.5rem)');
   });
 });
 
@@ -374,5 +390,89 @@ describe('RfqItemsTable layout', () => {
     const view = renderItems();
 
     expect(view.getByRole('table').dataset.figures).toBe('end');
+  });
+});
+
+describe('RfqItemsTable unresolved lines on a priced quote', () => {
+  const ambiguous: QuoteItemResponse = {
+    ...PRICED_ITEM,
+    match_status: 'AMBIGUOUS',
+    confidence_level: 'MEDIUM',
+  };
+
+  it('confirms the product the line carries, without searching for it', async () => {
+    vi.mocked(updateQuoteItem).mockResolvedValue({ ...ambiguous, match_status: 'MATCHED' });
+    const view = renderItems(BRANCH_ID, 'QUOTED', [ambiguous]);
+
+    fireEvent.click(view.getByRole('button', { name: copy.detail.items.confirmMatch }));
+
+    await vi.waitFor(() =>
+      expect(updateQuoteItem).toHaveBeenCalledWith(QUOTE_ID, ITEM_ID, BRANCH_ID, {
+        confirm_match: true,
+      }),
+    );
+  });
+
+  it('offers no confirm on a line already settled', () => {
+    const view = renderItems(BRANCH_ID, 'QUOTED');
+
+    expect(view.queryByRole('button', { name: copy.detail.items.confirmMatch })).toBeNull();
+  });
+
+  it('lets an unmatched line of a priced quote choose its product', () => {
+    const unmatched: QuoteItemResponse = {
+      ...PRICED_ITEM,
+      product_id: null,
+      product_code: null,
+      product_name: null,
+      match_status: 'NO_MATCH',
+      unit_price_snapshot: null,
+      subtotal: null,
+    };
+    const view = renderItems(BRANCH_ID, 'QUOTED', [unmatched]);
+
+    expect(view.getByRole('button', { name: copy.detail.items.chooseProduct })).toBeTruthy();
+  });
+});
+
+describe('RfqItemsTable discount actions', () => {
+  const promotion: QuoteDiscountResponse = {
+    id: 'd0000000-0000-4000-8000-000000000001',
+    quote_version_id: PRICED_ITEM.version_id,
+    promotion_id: 'e0000000-0000-4000-8000-000000000001',
+    promotion_name: 'Compra grande',
+    condition_type: 'ON_TOTAL',
+    scope: 'TOTAL',
+    origin: 'AUTOMATIC',
+    amount: '19500.00',
+    action_type: 'PERCENTAGE',
+    action_value: '5.00',
+    description: null,
+    suppressed_by_seller: false,
+    item_ids: [],
+    created_at: '2026-09-07T20:45:00.000Z',
+  };
+
+  // A labelled row action, in the same place as a line's own, never a bare dash beside the amount.
+  it('offers a named suppress action and sends the toggle', async () => {
+    vi.mocked(updateDiscount).mockResolvedValue({ ...promotion, suppressed_by_seller: true });
+    const view = renderItems(BRANCH_ID, 'QUOTED', [PRICED_ITEM], vi.fn(), false, [promotion]);
+
+    fireEvent.click(view.getByRole('button', { name: copy.detail.items.discounts.suppress }));
+
+    await vi.waitFor(() =>
+      expect(updateDiscount).toHaveBeenCalledWith(QUOTE_ID, promotion.id, BRANCH_ID, {
+        suppressed_by_seller: true,
+      }),
+    );
+  });
+
+  it('marks a suppressed promotion and offers to restore it', () => {
+    const view = renderItems(BRANCH_ID, 'QUOTED', [PRICED_ITEM], vi.fn(), false, [
+      { ...promotion, suppressed_by_seller: true },
+    ]);
+
+    expect(view.getByText(copy.detail.items.discounts.suppressed)).toBeTruthy();
+    expect(view.getByRole('button', { name: copy.detail.items.discounts.restore })).toBeTruthy();
   });
 });

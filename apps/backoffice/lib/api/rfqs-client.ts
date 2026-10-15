@@ -219,6 +219,8 @@ export async function updateQuoteItem(
     quantity?: string;
     unit?: string | null;
     unit_price_snapshot?: string;
+    // Settles a flagged line on the product it already carries.
+    confirm_match?: boolean;
   },
 ): Promise<QuoteItemResponse> {
   const response = await fetch(`/api/quotes/${quoteId}/items/${itemId}`, {

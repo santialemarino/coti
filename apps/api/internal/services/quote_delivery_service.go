@@ -135,6 +135,7 @@ type QuoteDeliveryService struct {
 	actions         clientActionRecorder
 	sellers         quoteSellerReader
 	windows         changeRequestQueue
+	draftCarry      *draftCarry
 	webappURL       string
 	channelOpener   channelConfigOpener
 	now             func() time.Time

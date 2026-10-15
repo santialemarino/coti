@@ -4,6 +4,7 @@ export * from './button';
 export * from './callout';
 export * from './card';
 export * from './checkbox';
+export * from './clamped-text';
 export * from './collapsible';
 export * from './color-picker';
 export * from './combobox';

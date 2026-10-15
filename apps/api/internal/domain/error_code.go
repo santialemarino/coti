@@ -66,6 +66,9 @@ const (
 	CodeDeliveryChannel            ErrorCode = "DELIVERY_CHANNEL"
 	CodeIdempotencyMismatch        ErrorCode = "IDEMPOTENCY_MISMATCH"
 	CodeQuoteRepresentationInvalid ErrorCode = "QUOTE_REPRESENTATION_INVALID"
+	// CodeQuoteItemsUnresolved refuses sending a quote with a line that has no confirmed,
+	// priced product.
+	CodeQuoteItemsUnresolved ErrorCode = "QUOTE_ITEMS_UNRESOLVED"
 	// Invoicing. INVOICE_NOT_READY carries the missing fiscal data as issues; INVOICE_REJECTED
 	// carries ARCA's own reasons.
 	CodeInvoiceNotReady      ErrorCode = "INVOICE_NOT_READY"

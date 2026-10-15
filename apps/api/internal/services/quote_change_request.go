@@ -34,6 +34,17 @@ func (s *QuoteDeliveryService) WithMessages(messages quoteMessageWriter,
 	return s
 }
 
+// WithDraftDiscounts makes the draft a change request opens start from the discounts the customer
+// saw, settled by the promotion engine.
+func (s *QuoteDeliveryService) WithDraftDiscounts(discounts interface {
+	versionDiscountStore
+	draftDiscountCopier
+}, promotions promotionReader, totals draftTotalWriter) *QuoteDeliveryService {
+	s.draftCarry = &draftCarry{discounts: discounts, totals: totals,
+		sweep: &discountSweep{discounts: discounts, promotions: promotions, now: time.Now}}
+	return s
+}
+
 // createChangeRequest opens the customer's draft and queues their message in a batch that closes at
 // once, joining any window still open; the conversation handler reads it from the queue.
 func (s *QuoteDeliveryService) createChangeRequest(ctx context.Context, q repository.Querier,
@@ -51,7 +62,7 @@ func (s *QuoteDeliveryService) createChangeRequest(ctx context.Context, q reposi
 		return domain.WithCode(domain.CodeQuoteNotSent, domain.ErrConflict)
 	}
 	if _, err := cloneQuoteVersionForEditing(ctx, q, s.quotes, s.prices, accountID,
-		quote.BranchID, quote.ID, *version, nil, &message); err != nil {
+		quote.BranchID, quote.ID, *version, nil, &message, s.draftCarry); err != nil {
 		return err
 	}
 	if err := s.messages.CreateClientRequest(ctx, q, accountID, quote.BranchID, quote.ID,

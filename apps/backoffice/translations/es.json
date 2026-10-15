@@ -378,6 +378,7 @@
     "BATCH_NOT_RETRYABLE": "Estos mensajes ya no se pueden reintentar: la cotización cambió de estado o ya están en la cola.",
     "DISCOUNT_NOT_APPLICABLE": "Esa promoción ya no aplica a esta cotización, así que no se puede restaurar.",
     "QUOTE_NOT_SENDABLE": "La cotización cambió y esta versión ya no es la aprobada.",
+    "QUOTE_ITEMS_UNRESOLVED": "Hay ítems sin producto confirmado o sin precio. Confirmalos o elegí el producto antes de enviar.",
     "DELIVERY_CHANNEL": "Esta sucursal no tiene los canales de envío necesarios configurados.",
     "CHANNEL_IDENTIFIER": "Revisá la dirección: no es un correo válido.",
     "DELIVERY_UNAVAILABLE": "No se pudo entregar por ningún canal. Revisá la configuración de envío o intentá más tarde.",
@@ -1398,19 +1399,7 @@
         "changeRequested": {
           "title": "Cambio solicitado",
           "description": "El cliente solicitó cambios en esta cotización. Revisá los ítems y actualizá la propuesta.",
-          "withReason": "El cliente solicitó cambios: {reason}",
-          "clientMessages": "El cliente escribió:",
-          "handler": {
-            "applied": "La IA lo interpretó así y ya actualizó el borrador: {interpretation}. Revisalo antes de enviar.",
-            "requiresSeller": "La IA no aplicó cambios porque el pedido necesita tu revisión. Leé el mensaje del cliente y actualizá la cotización.",
-            "aiDisabled": "La IA no está activa, así que no se aplicó ningún cambio. Leé el mensaje del cliente y actualizá la cotización.",
-            "proposalRefused": "La IA no pudo proponer un cambio válido. Leé el mensaje del cliente y actualizá la cotización.",
-            "pipelineExhausted": "La IA entendió el pedido, pero no encontró alternativas del catálogo que lo cumplan. Leé el mensaje del cliente y actualizá la cotización.",
-            "promotionNotEarned": "El cliente pidió una promoción que esta cotización no alcanza, así que la IA no cambió nada. Leé el mensaje del cliente y actualizá la cotización.",
-            "discarded": "Descartaste los cambios de la IA: el borrador volvió a la versión que recibió el cliente. Actualizá la cotización a mano."
-          },
           "discard": {
-            "action": "Descartar cambios de la IA",
             "title": "¿Descartar los cambios de la IA?",
             "description": "El borrador vuelve a quedar igual a la última versión que recibió el cliente, con los precios y promociones de hoy. Se pierde lo que hayas editado a mano en este borrador, incluidos los descuentos que cargaste.",
             "confirm": "Descartar cambios",
@@ -1449,6 +1438,7 @@
         "generate": "Generar cotización",
         "generating": "Generando cotización…",
         "chooseProduct": "Elegir producto",
+        "confirmMatch": "Confirmar producto",
         "select": "Seleccionar",
         "suggested": "Sugerido",
         "searchProduct": "Buscar producto",
@@ -1522,6 +1512,7 @@
           "updated": "Actualizamos «{name}».",
           "deleted": "Quitamos «{name}» de la cotización.",
           "added": "Agregamos «{name}» a la cotización.",
+          "confirmed": "Confirmamos «{name}» como el producto del ítem.",
           "generated": "La cotización quedó generada y lista para revisar.",
           "error": "No pudimos guardar el cambio. Intentá de nuevo."
         },
@@ -1593,6 +1584,35 @@
         "copyFailed": "No pudimos copiar el enlace. Seleccionalo y copialo a mano.",
         "unavailable": "La cotización todavía no fue enviada: el enlace va a estar disponible cuando la envíes."
       },
+      "changeRequest": {
+        "title": "Pedido de cambio",
+        "revisionTitle": "Revisión de la cotización",
+        "discard": "Descartar cambios de la IA",
+        "interpretation": "Interpretación:",
+        "outcome": {
+          "applied": "El borrador ya tiene estos cambios. Revisalos antes de enviar.",
+          "discarded": "Descartaste los cambios automáticos: el borrador volvió a lo que recibió el cliente.",
+          "noMatch": {
+            "REQUIRES_SELLER": "No se aplicaron cambios: el pedido necesita tu revisión.",
+            "AI_DISABLED": "No se aplicaron cambios: la interpretación automática no está activa.",
+            "PROPOSAL_REFUSED": "No se aplicaron cambios: no se pudo armar una propuesta válida.",
+            "PIPELINE_EXHAUSTED": "No se aplicaron cambios: no hay alternativas del catálogo que lo cumplan.",
+            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción."
+          }
+        },
+        "changesTitle": "Cambios respecto de lo que recibió el cliente",
+        "noChanges": "El borrador todavía es igual a lo que recibió el cliente.",
+        "unchanged": "{count, plural, one {# ítem sin cambios} other {# ítems sin cambios}}",
+        "total": "Total",
+        "suppressed": "Suprimido",
+        "change": {
+          "MODIFIED": "Modificado",
+          "ADDED": "Agregado",
+          "REMOVED": "Quitado"
+        },
+        "conversation": "Conversación con el cliente",
+        "rounds": "{count, plural, one {# ronda} other {# rondas}}"
+      },
       "conversation": {
         "title": "Conversación con el cliente",
         "customer": "Cliente",
@@ -1606,13 +1626,13 @@
           "FAILED": "No se pudo procesar"
         },
         "decision": {
-          "applied": "La IA lo interpretó así y actualizó el borrador: {interpretation}",
+          "applied": "Interpretación: {interpretation}",
           "noMatch": {
-            "REQUIRES_SELLER": "La IA lo dejó para vos: el pedido necesita tu revisión.",
-            "AI_DISABLED": "La IA no estaba activa, así que no cambió nada.",
-            "PROPOSAL_REFUSED": "La IA no pudo proponer un cambio válido.",
-            "PIPELINE_EXHAUSTED": "La IA entendió el pedido, pero no encontró alternativas del catálogo que lo cumplan.",
-            "PROMOTION_NOT_EARNED": "La IA entendió el pedido, pero la cotización no alcanza esa promoción."
+            "REQUIRES_SELLER": "No se aplicaron cambios: el pedido necesita tu revisión.",
+            "AI_DISABLED": "No se aplicaron cambios: la interpretación automática no está activa.",
+            "PROPOSAL_REFUSED": "No se aplicaron cambios: no se pudo armar una propuesta válida.",
+            "PIPELINE_EXHAUSTED": "No se aplicaron cambios: no hay alternativas del catálogo que lo cumplan.",
+            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción."
           }
         },
         "sellerDecision": {
@@ -1671,25 +1691,6 @@
           "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
           "INTERNAL": "No pudimos actualizar la cotización. Intentá de nuevo.",
           "QUOTE_ALREADY_INVOICED": "Esta venta está facturada y no se puede reactivar. Para cambiarla, anulá la factura con una nota de crédito desde la tarjeta de la factura."
-        }
-      },
-      "diff": {
-        "title": "Cambios solicitados",
-        "originalTitle": "Cotización original",
-        "requestedTitle": "Cotización con cambios solicitados",
-        "previousTitle": "Versión cerrada",
-        "revisionTitle": "Nueva versión editable",
-        "discountsTitle": "Descuentos aplicados",
-        "downloadOriginal": "Descargar pedido original",
-        "columns": {
-          "product": "Producto",
-          "quantity": "Cantidad",
-          "price": "Precio en el catálogo"
-        },
-        "changeTypes": {
-          "added": "agregado",
-          "removed": "eliminado",
-          "modified": "modificado"
         }
       }
     }

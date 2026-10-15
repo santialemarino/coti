@@ -65,7 +65,7 @@ catalogue:
 | Group    | Components                                                                                                                                                                                                 |
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Controls | `Button` `PendingButton` `CopyButton` `Badge` `Input` `SearchInput` `Textarea` `Label` `Checkbox` `RadioGroup` `Switch` `ToggleGroup` `Combobox` `MultiCombobox` `Pagination` `RowActionButton` `Dropzone` |
-| Surfaces | `Card` `Separator` `Table` `ScrollArea` `Skeleton` `Spinner` `Progress` `Avatar` `Hint` `Callout`                                                                                                          |
+| Surfaces | `Card` `Separator` `Table` `ScrollArea` `Skeleton` `Spinner` `Progress` `Avatar` `Hint` `Callout` `ClampedText`                                                                                            |
 | Overlays | `Dialog` `Sheet` `Popover` `DropdownMenu` `Tooltip` `Collapsible` `Command` `ConfirmDialog`                                                                                                                |
 | Patterns | `StatusScreen` `Stepper` `StepList` `StepGuide` `EmptyState` `TableEmptyRow` `SortableTableHead` `MetaList` `InlineLink` `DropdownChevron`                                                                 |
 | Forms    | `Form` `FormField` `FormItem` `FormLabel` `FormControl` `FormDescription` `FormMessage` `FormRootMessage`                                                                                                  |
@@ -363,9 +363,14 @@ A table is the densest thing in the product, so every column has to earn its wid
   is centred**, under a centred heading, whatever else the table holds. Every table uses the
   component's own cell padding; a table that wants taller rows changes only the vertical padding.
 
-- **A quantity and its unit are one figure, in one cell** (`500 bolsas`, or the unit as the
+- **A quantity and its unit are one figure, in one cell** (`500 u.`, or the unit as the
   `AmountInput` suffix when it is editable). A right-aligned number beside a left-aligned unit leaves
-  a gap that changes width with every row.
+  a gap that changes width with every row. **Neither is ever cut**: a known unit shows its trade
+  abbreviation (`shortUnit`, in `lib/utils/units.ts`) inside an `<abbr>` titled with the original,
+  an unknown one shows as written, and the column widens to its longest figure instead of clipping.
+- **Long text in a cell stops at two lines with `ClampedText`**, which shows the full text in a
+  tooltip only when something was cut, and takes focus only then. Never a bare `truncate` that
+  loses the rest.
 - **Only a row that acts on click hovers.** `TableRow interactive` carries the pointer, the hover
   and the press; every other row has none, because a hover on a row that does nothing promises an
   action that is not there. A tinted row (an import error, a diff) just sets its `bg-*`; there is no

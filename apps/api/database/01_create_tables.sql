@@ -610,7 +610,9 @@ CREATE TABLE quote_item (
   confidence_score      NUMERIC(5,4),
   match_status          item_match_status NOT NULL DEFAULT 'MATCHED',
   quantity_rationale    VARCHAR(512),
-  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- The sent line a draft line was copied from; null for a line added to the draft.
+  source_item_id        UUID
 );
 
 -- The client never chooses among alternatives the seller did not approve.
@@ -1115,6 +1117,7 @@ ALTER TABLE quote_representation ADD CONSTRAINT fk_quote_representation_version 
 ALTER TABLE quote_item ADD CONSTRAINT fk_quote_item_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE quote_item ADD CONSTRAINT fk_quote_item_version FOREIGN KEY (version_id) REFERENCES quote_version(id);
 ALTER TABLE quote_item ADD CONSTRAINT fk_quote_item_product FOREIGN KEY (product_id) REFERENCES product(id);
+ALTER TABLE quote_item ADD CONSTRAINT fk_quote_item_source FOREIGN KEY (source_item_id) REFERENCES quote_item(id) ON DELETE SET NULL;
 ALTER TABLE quote_item_alternative ADD CONSTRAINT fk_qia_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE quote_item_alternative ADD CONSTRAINT fk_qia_item FOREIGN KEY (quote_item_id) REFERENCES quote_item(id);
 ALTER TABLE quote_item_alternative ADD CONSTRAINT fk_qia_product FOREIGN KEY (product_id) REFERENCES product(id);

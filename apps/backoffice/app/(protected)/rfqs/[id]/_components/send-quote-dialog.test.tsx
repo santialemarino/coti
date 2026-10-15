@@ -4,10 +4,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RfqListProvider } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { ApiError } from '@/lib/api/errors';
-import type { QuoteDeliveryResponse, QuoteSendResponse, RfqDetailResponse } from '@/lib/api/rfqs';
+import type {
+  QuoteDeliveryResponse,
+  QuoteSendResponse,
+  QuoteSendTrackingResponse,
+  RfqDetailResponse,
+} from '@/lib/api/rfqs';
 import { sendQuote } from '@/lib/api/rfqs-client';
 import messages from '@/translations/es.json';
-import { SendQuoteDialog } from './send-quote-dialog';
+import { previousDestinations, SendQuoteDialog } from './send-quote-dialog';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 vi.mock('@/lib/api/rfqs-client', () => ({ sendQuote: vi.fn() }));
@@ -337,5 +342,61 @@ describe('SendQuoteDialog without a branch mailbox', () => {
     fireEvent.click(view.emailCopy);
 
     expect(view.queryByText(NOTICE)).toBeNull();
+  });
+});
+
+describe('previousDestinations', () => {
+  function sent(
+    version: string,
+    channel: string,
+    destination: string,
+    createdAt: string,
+    status = 'SENT',
+  ): QuoteSendTrackingResponse {
+    return {
+      id: `${version}-${channel}`,
+      version_id: version,
+      channel,
+      destination,
+      format: 'WEBAPP_LINK',
+      tracking_status: status,
+      public_url: '',
+      sent_at: null,
+      expires_at: null,
+      created_at: createdAt,
+    };
+  }
+
+  it('starts a resend from where the last send went, the email copy included', () => {
+    const deliveries = [
+      sent('v1', 'WHATSAPP', '+5491100000000', '2026-10-15T10:00:00Z'),
+      sent('v2', 'WHATSAPP', '+5491155559001', '2026-10-15T12:00:00Z', 'FAILED'),
+      sent('v2', 'EMAIL', 'laura@obra.test', '2026-10-15T12:00:00Z'),
+    ];
+
+    expect(previousDestinations(deliveries, '+5491199999999')).toEqual({
+      phone: '+5491155559001',
+      email: 'laura@obra.test',
+    });
+  });
+
+  it('leaves the email off when the last send carried no copy', () => {
+    const deliveries = [
+      sent('v1', 'EMAIL', 'vieja@obra.test', '2026-10-15T10:00:00Z'),
+      sent('v1', 'WHATSAPP', '+5491100000000', '2026-10-15T10:00:00Z'),
+      sent('v2', 'WHATSAPP', '+5491155559001', '2026-10-15T12:00:00Z'),
+    ];
+
+    expect(previousDestinations(deliveries, null)).toEqual({
+      phone: '+5491155559001',
+      email: null,
+    });
+  });
+
+  it('falls back to the number the order came from on a first send', () => {
+    expect(previousDestinations([], '+5491199999999')).toEqual({
+      phone: '+5491199999999',
+      email: null,
+    });
   });
 });

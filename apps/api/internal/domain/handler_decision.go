@@ -67,6 +67,8 @@ type HandlerProposalRecord struct {
 	NoMatchReason  *HandlerNoMatchReason `json:"no_match_reason,omitempty"`
 	Interpretation string                `json:"interpretation"`
 	Intent         *ChangeRequestIntent  `json:"intent,omitempty"`
+	// IntentItemIDs are the draft lines a complex intent was tied to; empty for the whole quote.
+	IntentItemIDs []uuid.UUID `json:"intent_item_ids,omitempty"`
 	// StrategiesTried lists the recipes run for a complex intent; empty for a direct request.
 	StrategiesTried []HandlerStrategy        `json:"strategies_tried,omitempty"`
 	Operations      []ChangeRequestOperation `json:"operations"`

@@ -125,6 +125,8 @@ type QuoteItem struct {
 	ProductName          *string
 	ProductUnit          *string
 	CreatedAt            time.Time
+	// SourceItemID is the sent line a draft line was copied from; nil for one added to the draft.
+	SourceItemID *uuid.UUID
 }
 
 // NewQuoteItem is the input for creating a quote item.
@@ -141,6 +143,7 @@ type NewQuoteItem struct {
 	ConfidenceScore      decimal.NullDecimal
 	MatchStatus          ItemMatchStatus
 	QuantityRationale    *string
+	SourceItemID         *uuid.UUID
 }
 
 // QuoteItemAlternativeType is what an alternative offers in place of a line's product.
@@ -206,6 +209,10 @@ type QuoteItemUpdate struct {
 	Quantity             *decimal.Decimal
 	Unit                 *string
 	UnitPriceSnapshot    *decimal.Decimal
+	// MinPriceSnapshot is the floor that comes with a branch price; nil leaves the line without one.
+	MinPriceSnapshot *decimal.Decimal
+	// ConfirmMatch settles a flagged line on the product it already carries, keeping its price.
+	ConfirmMatch bool
 }
 
 // IsEditableStatus returns true when the quote status allows item mutations.

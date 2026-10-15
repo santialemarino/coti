@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
@@ -24,6 +25,44 @@ type quoteVersionCloneRepository interface {
 		alternatives []domain.NewQuoteItemAlternative) error
 }
 
+// draftDiscountCopier copies the seller's discount decisions from a version into a draft cloned
+// from it.
+type draftDiscountCopier interface {
+	CopySellerDecisions(ctx context.Context, q repository.Querier, accountID, sourceVersionID,
+		draftVersionID uuid.UUID) error
+}
+
+type draftTotalWriter interface {
+	UpdateVersionTotal(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
+		total decimal.Decimal) (*domain.QuoteVersion, error)
+}
+
+// draftCarry settles a fresh draft as the customer saw its source: the seller's typed and
+// suppressed discounts come along, and the sweep re-earns the promotions and sets the total.
+type draftCarry struct {
+	discounts draftDiscountCopier
+	sweep     *discountSweep
+	totals    draftTotalWriter
+}
+
+// apply copies the decisions from sourceID into draftID and settles the draft.
+func (c *draftCarry) apply(ctx context.Context, q repository.Querier,
+	quotes quoteVersionCloneRepository, accountID, branchID, sourceID, draftID uuid.UUID,
+) (*domain.QuoteVersion, error) {
+	if err := c.discounts.CopySellerDecisions(ctx, q, accountID, sourceID, draftID); err != nil {
+		return nil, err
+	}
+	items, err := quotes.ListItems(ctx, q, accountID, draftID)
+	if err != nil {
+		return nil, err
+	}
+	total, err := c.sweep.settle(ctx, q, accountID, branchID, draftID, items)
+	if err != nil {
+		return nil, err
+	}
+	return c.totals.UpdateVersionTotal(ctx, q, accountID, draftID, total)
+}
+
 type quoteVersionClone struct {
 	Draft         *domain.QuoteVersion
 	SourceItemIDs map[uuid.UUID]uuid.UUID
@@ -32,7 +71,7 @@ type quoteVersionClone struct {
 func cloneQuoteVersionForEditing(
 	ctx context.Context, q repository.Querier, quotes quoteVersionCloneRepository,
 	prices branchPriceReader, accountID, branchID, quoteID uuid.UUID, source domain.QuoteVersion,
-	authorID *uuid.UUID, comment *string,
+	authorID *uuid.UUID, comment *string, carry *draftCarry,
 ) (*quoteVersionClone, error) {
 	content, err := prepareVersionCopy(ctx, q, quotes, prices, accountID, branchID, source.ID)
 	if err != nil {
@@ -51,6 +90,12 @@ func cloneQuoteVersionForEditing(
 	}
 	if _, err := quotes.UpdateCurrentVersion(ctx, q, accountID, quoteID, draft.ID); err != nil {
 		return nil, err
+	}
+	if carry != nil {
+		if draft, err = carry.apply(ctx, q, quotes, accountID, branchID, source.ID,
+			draft.ID); err != nil {
+			return nil, err
+		}
 	}
 	return &quoteVersionClone{Draft: draft, SourceItemIDs: sourceItemIDs}, nil
 }
@@ -113,8 +158,9 @@ func insertVersionCopy(
 	for _, item := range content.valuation.items {
 		newID := uuid.New()
 		sourceItemIDs[item.ID] = newID
+		sourceID := item.ID
 		clonedItems = append(clonedItems, domain.NewQuoteItem{
-			ID: newID, ProductID: item.ProductID, RequestedDescription: item.RequestedDescription,
+			ID: newID, SourceItemID: &sourceID, ProductID: item.ProductID, RequestedDescription: item.RequestedDescription,
 			Quantity: item.Quantity, Unit: item.Unit, ConfidenceScore: item.ConfidenceScore,
 			MatchStatus: item.MatchStatus, QuantityRationale: item.QuantityRationale,
 			UnitPriceSnapshot: item.UnitPriceSnapshot, MinPriceSnapshot: item.MinPriceSnapshot,

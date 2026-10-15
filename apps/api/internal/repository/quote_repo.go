@@ -23,14 +23,14 @@ const quoteVersionColumns = `id, account_id, quote_id, author_id, version_number
 
 const quoteItemColumns = `id, account_id, version_id, product_id, requested_description,
 	quantity, unit, unit_price_snapshot, min_price_snapshot, subtotal, confidence_score,
-	match_status, quantity_rationale, created_at`
+	match_status, quantity_rationale, created_at, source_item_id`
 
 // ListItemsWithProduct joins product, whose id and unit columns would collide with the
 // unqualified ones, so this projection carries its table prefix.
 const quoteItemColumnsPrefixed = `qi.id, qi.account_id, qi.version_id, qi.product_id,
 	qi.requested_description, qi.quantity, qi.unit, qi.unit_price_snapshot,
 	qi.min_price_snapshot, qi.subtotal, qi.confidence_score, qi.match_status,
-	qi.quantity_rationale, qi.created_at`
+	qi.quantity_rationale, qi.created_at, qi.source_item_id`
 
 const quoteStatusChangeColumns = `id, account_id, quote_id, previous_status, new_status,
 	user_id, changed_at, created_at`
@@ -409,8 +409,8 @@ func (r *QuoteRepository) UpdateVersionValuation(
 		accountID, versionID, total, currency))
 }
 
-// ListItems loads a version's lines. quote_item carries no ordinal column and one batch shares a
-// single created_at, so this separates batches and leaves each one in the order it was written.
+// ListItems loads a version's lines in the order they were written: each batch steps created_at
+// per line, and the id settles lines that predate that.
 func (r *QuoteRepository) ListItems(
 	ctx context.Context, q Querier, accountID, versionID uuid.UUID,
 ) ([]domain.QuoteItem, error) {
@@ -418,7 +418,7 @@ func (r *QuoteRepository) ListItems(
 		`SELECT `+quoteItemColumns+`
 		 FROM quote_item
 		 WHERE account_id = $1 AND version_id = $2
-		 ORDER BY created_at`,
+		 ORDER BY created_at, id`,
 		accountID, versionID)
 	if err != nil {
 		return nil, err
@@ -468,18 +468,22 @@ func (r *QuoteRepository) CreateItems(
 		     confidence_score numeric,
 		     match_status text,
 		     quantity_rationale text,
+		     source_item_id uuid,
 		     position int
 		   )
 		 )
 		 INSERT INTO quote_item (
 		   id, account_id, version_id, product_id, requested_description, quantity, unit,
 		   unit_price_snapshot, min_price_snapshot, subtotal, confidence_score,
-		   match_status, quantity_rationale
+		   match_status, quantity_rationale, source_item_id, created_at
 		 )
 		 SELECT incoming.id, $1, version.id, incoming.product_id, incoming.requested_description,
 		        incoming.quantity, incoming.unit, incoming.unit_price_snapshot,
 		        incoming.min_price_snapshot, incoming.subtotal, incoming.confidence_score,
-		        incoming.match_status::item_match_status, incoming.quantity_rationale
+		        incoming.match_status::item_match_status, incoming.quantity_rationale,
+		        incoming.source_item_id,
+		        -- One instant per line, so the lines keep the caller's order however they are rewritten.
+		        now() + incoming.position * interval '1 microsecond'
 		 FROM incoming
 		 JOIN quote_version version ON version.account_id = $1 AND version.id = $2
 		 ORDER BY incoming.position
@@ -897,6 +901,7 @@ type quoteItemPayload struct {
 	ConfidenceScore      *string    `json:"confidence_score"`
 	MatchStatus          string     `json:"match_status"`
 	QuantityRationale    *string    `json:"quantity_rationale"`
+	SourceItemID         *uuid.UUID `json:"source_item_id"`
 }
 
 type quoteItemPricingPayload struct {
@@ -948,6 +953,7 @@ func quoteItemPayloads(items []domain.NewQuoteItem) []quoteItemPayload {
 			ConfidenceScore:      nullDecimalString(item.ConfidenceScore),
 			MatchStatus:          string(item.MatchStatus),
 			QuantityRationale:    item.QuantityRationale,
+			SourceItemID:         item.SourceItemID,
 		})
 	}
 	return payloads
@@ -1096,7 +1102,7 @@ func scanQuoteItemRow(row pgx.Row) (*domain.QuoteItem, error) {
 	err := row.Scan(&item.ID, &item.AccountID, &item.VersionID, &item.ProductID,
 		&item.RequestedDescription, &item.Quantity, &item.Unit, &item.UnitPriceSnapshot,
 		&item.MinPriceSnapshot, &item.Subtotal, &item.ConfidenceScore, &item.MatchStatus,
-		&item.QuantityRationale, &item.CreatedAt)
+		&item.QuantityRationale, &item.CreatedAt, &item.SourceItemID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -1116,7 +1122,7 @@ func (r *QuoteRepository) ListItemsWithProduct(
 		 FROM quote_item qi
 		 LEFT JOIN product p ON p.account_id = qi.account_id AND p.id = qi.product_id
 		 WHERE qi.account_id = $1 AND qi.version_id = $2
-		 ORDER BY qi.created_at`,
+		 ORDER BY qi.created_at, qi.id`,
 		accountID, versionID)
 	if err != nil {
 		return nil, err
@@ -1162,10 +1168,19 @@ func (r *QuoteRepository) UpdateItem(
 		// A person choosing the product settles the line, and the matcher's score described
 		// whatever it had proposed instead.
 		setClauses = append(setClauses, "match_status = 'MATCHED'", "confidence_score = NULL")
-		setClauses = append(setClauses, "min_price_snapshot = NULL")
+		if in.MinPriceSnapshot != nil {
+			setClauses = append(setClauses, fmt.Sprintf("min_price_snapshot = $%d", argIdx))
+			args = append(args, *in.MinPriceSnapshot)
+			argIdx++
+		} else {
+			setClauses = append(setClauses, "min_price_snapshot = NULL")
+		}
 		if in.UnitPriceSnapshot == nil {
 			setClauses = append(setClauses, "unit_price_snapshot = NULL", "subtotal = NULL")
 		}
+	}
+	if in.ConfirmMatch && in.ProductID == nil {
+		setClauses = append(setClauses, "match_status = 'MATCHED'", "confidence_score = NULL")
 	}
 	if in.RequestedDescription != nil {
 		setClauses = append(setClauses, fmt.Sprintf("requested_description = $%d", argIdx))
@@ -1279,7 +1294,7 @@ func scanQuoteItemWithProductRow(row pgx.Row) (*domain.QuoteItem, error) {
 	err := row.Scan(&item.ID, &item.AccountID, &item.VersionID, &item.ProductID,
 		&item.RequestedDescription, &item.Quantity, &item.Unit, &item.UnitPriceSnapshot,
 		&item.MinPriceSnapshot, &item.Subtotal, &item.ConfidenceScore, &item.MatchStatus,
-		&item.QuantityRationale, &item.CreatedAt,
+		&item.QuantityRationale, &item.CreatedAt, &item.SourceItemID,
 		&item.ProductCode, &item.ProductName, &item.ProductUnit)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
