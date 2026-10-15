@@ -178,6 +178,34 @@ func TestConversationReview_ASellerEditMarksTheRunEdited(t *testing.T) {
 	}
 }
 
+// Taking a promotion off is the seller's own change too, even though no line moved.
+func TestConversationReview_SuppressingAPromotionIsAnEdit(t *testing.T) {
+	e := newEnv(t)
+	quote := e.sentHandlerQuote(t, "Review suppresses")
+	e.cementPromotion(t, quote)
+	admin := e.tokenFor(t, e.seedUser(t, quote.seed.tenant.AccountID, domain.UserRoleAdmin))
+	batch := e.claimedBatch(t, quote.seed.tenant.AccountID, quote.quoteID, "que sean 4")
+	if err := e.batchChangeHandler(&scriptedProposer{answer: requantify(4)}, nil).
+		Handle(context.Background(), batch); err != nil {
+		t.Fatalf("Handle() = %v", err)
+	}
+	var promotion uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT id FROM quote_discount WHERE quote_version_id = $1 AND origin = 'AUTOMATIC'`,
+		e.quoteState(t, quote.quoteID).currentID).Scan(&promotion); err != nil {
+		t.Fatalf("read the earned promotion: %v", err)
+	}
+	e.patchDiscount(t, quote.quoteID, promotion, admin, quote.seed.tenant.BranchID.String(),
+		map[string]any{"suppressed_by_seller": true}, http.StatusOK)
+
+	e.resendDraft(t, quote, admin)
+
+	if got := e.settledDecisionsOf(t, quote.quoteID); len(got) != 1 || got[0].decision == nil ||
+		*got[0].decision != "EDITED" {
+		t.Fatalf("decisions = %+v, want EDITED", got)
+	}
+}
+
 /*
  * Discarding resets the draft to what the customer last received and rejects the AI's pending
  * changes; the quote stays in CHANGE_REQUESTED, and a second discard has nothing to undo.
@@ -188,6 +216,12 @@ func TestConversationReview_DiscardResetsTheDraftAndRejectsTheRun(t *testing.T) 
 	e.cementPromotion(t, quote)
 	admin := e.tokenFor(t, e.seedUser(t, quote.seed.tenant.AccountID, domain.UserRoleAdmin))
 	branch := quote.seed.tenant.BranchID.String()
+	question := e.claimedBatch(t, quote.seed.tenant.AccountID, quote.quoteID, "¿y el flete?")
+	if err := e.batchChangeHandler(&scriptedProposer{answer: requiresSeller}, nil).
+		Handle(context.Background(), question); err != nil {
+		t.Fatalf("Handle(question) = %v", err)
+	}
+	e.finishBatch(t, question.ID)
 	batch := e.claimedBatch(t, quote.seed.tenant.AccountID, quote.quoteID, "que sean 4")
 	if err := e.batchChangeHandler(&scriptedProposer{answer: requantify(4)}, nil).
 		Handle(context.Background(), batch); err != nil {
@@ -195,9 +229,9 @@ func TestConversationReview_DiscardResetsTheDraftAndRejectsTheRun(t *testing.T) 
 	}
 	draft := e.quoteState(t, quote.quoteID).currentID
 	before := e.reviewConversation(t, quote, admin)
-	if !before.CanDiscardAIChanges || len(before.Batches) != 1 || before.Batches[0].Decision == nil ||
-		before.Batches[0].Decision.Outcome != "APPLIED" || before.Batches[0].Decision.SellerDecision != nil {
-		t.Fatalf("conversation = %+v, want one pending APPLIED run the seller can discard", before)
+	if !before.CanDiscardAIChanges || len(before.Batches) != 2 || before.Batches[1].Decision == nil ||
+		before.Batches[1].Decision.Outcome != "APPLIED" || before.Batches[1].Decision.SellerDecision != nil {
+		t.Fatalf("conversation = %+v, want a pending APPLIED run the seller can discard", before)
 	}
 
 	discard := request{method: http.MethodPost,
@@ -220,10 +254,12 @@ func TestConversationReview_DiscardResetsTheDraftAndRejectsTheRun(t *testing.T) 
 	if got := e.storedVersionTotal(t, draft); !got.Equal(decimal.NewFromInt(90)) {
 		t.Errorf("draft total = %s, want 90 from the sweep", got)
 	}
+	// Only the AI's change is rejected; the no-match waits for the send to be settled by hand.
 	decisions := e.settledDecisionsOf(t, quote.quoteID)
-	if len(decisions) != 1 || decisions[0].decision == nil || *decisions[0].decision != "REJECTED" ||
-		decisions[0].userID == nil || decisions[0].decidedAt == nil {
-		t.Fatalf("decisions = %+v, want one REJECTED by the seller", decisions)
+	if len(decisions) != 2 || decisions[0].decision != nil || decisions[1].decision == nil ||
+		*decisions[1].decision != "REJECTED" || decisions[1].userID == nil || decisions[1].decidedAt == nil {
+		t.Fatalf("decisions = %+v, want the no-match pending and the AI change REJECTED by the seller",
+			decisions)
 	}
 	if after := e.reviewConversation(t, quote, admin); after.CanDiscardAIChanges {
 		t.Errorf("conversation = %+v, want nothing left to discard", after)
@@ -248,8 +284,9 @@ func TestConversationReview_DiscardResetsTheDraftAndRejectsTheRun(t *testing.T) 
 	}
 
 	e.resendDraft(t, quote, admin)
-	if got := e.settledDecisionsOf(t, quote.quoteID); len(got) != 1 || *got[0].decision != "REJECTED" {
-		t.Errorf("after the send = %+v, want the rejection kept", got)
+	if got := e.settledDecisionsOf(t, quote.quoteID); len(got) != 2 || got[0].decision == nil ||
+		*got[0].decision != "MANUAL_OVERRIDE" || got[1].decision == nil || *got[1].decision != "REJECTED" {
+		t.Errorf("after the send = %+v, want MANUAL_OVERRIDE then the rejection kept", got)
 	}
 }
 

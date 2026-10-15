@@ -1410,7 +1410,7 @@
           "discard": {
             "action": "Descartar cambios de la IA",
             "title": "¿Descartar los cambios de la IA?",
-            "description": "El borrador vuelve a quedar igual a la última versión que recibió el cliente, con los precios de hoy. También se pierde lo que hayas editado a mano en este borrador.",
+            "description": "El borrador vuelve a quedar igual a la última versión que recibió el cliente, con los precios y promociones de hoy. Se pierde lo que hayas editado a mano en este borrador, incluidos los descuentos que cargaste.",
             "confirm": "Descartar cambios",
             "pending": "Descartando…",
             "success": "Descartamos los cambios de la IA en la cotización {reference}."

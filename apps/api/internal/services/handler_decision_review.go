@@ -153,7 +153,8 @@ func snapshotItemKey(item domain.DraftSnapshotItem) string {
 	if item.Unit != nil {
 		unit = *item.Unit
 	}
-	return strings.Join([]string{product, item.RequestedDescription, item.Quantity, unit}, "\x00")
+	return strings.Join([]string{product, item.RequestedDescription, item.Quantity, unit,
+		fmt.Sprint(item.ApprovedAlternatives)}, "\x00")
 }
 
 func compareSnapshotDiscounts(a, b domain.DraftSnapshotDiscount) int {
