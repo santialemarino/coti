@@ -40,9 +40,16 @@ type engineInput struct {
 	Promotions []domain.Promotion
 	BranchID   uuid.UUID
 	At         time.Time
-	// Suppressed holds the suppressionKey of every application a seller suppressed on this version.
-	Suppressed map[string]struct{}
+	Suppressed []engineSuppression
 	Held       []engineHeldDiscount
+}
+
+// engineSuppression is an application a seller took off a version. What it covered stays without a
+// promotion: neither it nor any other rule applies there until the seller restores it.
+type engineSuppression struct {
+	PromotionID uuid.UUID
+	Scope       domain.DiscountScope
+	ItemIDs     []uuid.UUID
 }
 
 // discountCandidate is one way a promotion could apply, before conflicts are resolved.
@@ -65,13 +72,35 @@ func evaluateDiscounts(in engineInput) []domain.DiscountApplication {
 		}
 		candidates = append(candidates, promotionCandidates(promotion, lines, in.Held)...)
 	}
-	candidates = slices.DeleteFunc(candidates, func(c discountCandidate) bool {
-		_, suppressed := in.Suppressed[suppressionKey(c.promotion.ID,
-			domain.ScopeOf(c.promotion.ConditionType), c.lineIDs)]
-		return suppressed
-	})
+	candidates = slices.DeleteFunc(candidates, suppressedBy(in.Suppressed))
 	slices.SortStableFunc(candidates, compareCandidates)
 	return resolveCandidates(candidates, lines, in.Held)
+}
+
+// suppressedBy reports whether a candidate falls on something a seller suppressed: the suppressed
+// application itself, a line one covered, or the total once an ON_TOTAL one is off.
+func suppressedBy(suppressions []engineSuppression) func(discountCandidate) bool {
+	keys := map[string]bool{}
+	lines := map[uuid.UUID]bool{}
+	total := false
+	for _, s := range suppressions {
+		keys[suppressionKey(s.PromotionID, s.Scope, s.ItemIDs)] = true
+		if s.Scope == domain.DiscountScopeTotal {
+			total = true
+		}
+		for _, id := range s.ItemIDs {
+			lines[id] = true
+		}
+	}
+	return func(c discountCandidate) bool {
+		if keys[suppressionKey(c.promotion.ID, domain.ScopeOf(c.promotion.ConditionType), c.lineIDs)] {
+			return true
+		}
+		if c.promotion.ConditionType == domain.PromotionConditionOnTotal {
+			return total
+		}
+		return slices.ContainsFunc(c.lineIDs, func(id uuid.UUID) bool { return lines[id] })
+	}
 }
 
 // suppressionKey identifies an application across sweeps: a line application by its promotion and

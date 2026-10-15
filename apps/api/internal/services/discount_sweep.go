@@ -57,14 +57,15 @@ func (s *discountSweep) settle(
 
 	live := decimal.Zero
 	held := make([]engineHeldDiscount, 0)
-	suppressed := map[string]struct{}{}
+	suppressed := make([]engineSuppression, 0)
 	automatic := make([]domain.QuoteDiscount, 0)
 	for _, discount := range discounts {
 		covered := links[discount.ID]
 		if discount.Origin == domain.DiscountOriginAutomatic {
 			if discount.SuppressedBySeller {
 				if discount.PromotionID != nil {
-					suppressed[suppressionKey(*discount.PromotionID, discount.Scope, covered)] = struct{}{}
+					suppressed = append(suppressed, engineSuppression{PromotionID: *discount.PromotionID,
+						Scope: discount.Scope, ItemIDs: covered})
 				}
 			} else {
 				automatic = append(automatic, discount)
@@ -138,7 +139,7 @@ func (s *discountSweep) followLines(
 // earn runs the engine over the version's lines, or earns nothing when no rules are wired.
 func (s *discountSweep) earn(
 	ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID,
-	items []domain.QuoteItem, suppressed map[string]struct{}, held []engineHeldDiscount,
+	items []domain.QuoteItem, suppressed []engineSuppression, held []engineHeldDiscount,
 ) ([]domain.DiscountApplication, error) {
 	if s.promotions == nil {
 		return nil, nil

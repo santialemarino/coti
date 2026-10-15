@@ -73,12 +73,16 @@ func (p promo) build() domain.Promotion {
 }
 
 func evaluate(lines []engineLine, promos ...promo) []domain.DiscountApplication {
+	return evaluateSuppressed(lines, nil, promos...)
+}
+
+func evaluateSuppressed(lines []engineLine, suppressed []engineSuppression, promos ...promo) []domain.DiscountApplication {
 	built := make([]domain.Promotion, 0, len(promos))
 	for _, p := range promos {
 		built = append(built, p.build())
 	}
 	return evaluateDiscounts(engineInput{Lines: lines, Promotions: built, BranchID: engineBranch,
-		At: engineAt})
+		At: engineAt, Suppressed: suppressed})
 }
 
 // applied summarises the applications as promotion → amount, so a test states what it expects.
@@ -411,22 +415,54 @@ func TestEvaluateDiscounts_IsDeterministic(t *testing.T) {
 	assertApplied(t, evaluateDiscounts(in), applied(first))
 }
 
-func TestEvaluateDiscounts_SuppressedApplicationStaysOff(t *testing.T) {
+func TestEvaluateDiscounts_SuppressedLineStaysWithoutAPromotion(t *testing.T) {
 	t.Parallel()
-	lines := []engineLine{testLine(lineA, cement, "10", "1000.00", "10000.00", nil)}
+	lines := []engineLine{
+		testLine(lineA, cement, "10", "1000.00", "10000.00", nil),
+		testLine(lineB, sand, "4", "1000.00", "4000.00", nil),
+	}
 	high := promo{id: promoP, condition: domain.PromotionConditionPerItem,
 		action: domain.PromotionActionPercentage, value: "10", priority: 5, targets: []uuid.UUID{cement}}
 	low := promo{id: promoQ, condition: domain.PromotionConditionPerItem,
-		action: domain.PromotionActionPercentage, value: "3", targets: []uuid.UUID{cement}}
-	suppressed := map[string]struct{}{
-		suppressionKey(uuid.MustParse(promoP), domain.DiscountScopeItem,
-			[]uuid.UUID{uuid.MustParse(lineA)}): {},
+		action: domain.PromotionActionPercentage, value: "3", targets: []uuid.UUID{cement, sand}}
+	got := evaluateSuppressed(lines, []engineSuppression{{PromotionID: uuid.MustParse(promoP),
+		Scope: domain.DiscountScopeItem, ItemIDs: []uuid.UUID{uuid.MustParse(lineA)}}}, high, low)
+	// The seller took P off line A, so line A carries nothing — not Q's 300. Line B keeps Q: 4000 × 3% = 120.
+	assertApplied(t, got, map[string]string{"a1000000/0b": "120.00"})
+}
+
+func TestEvaluateDiscounts_SuppressedSetFreesNoLineForAnotherRule(t *testing.T) {
+	t.Parallel()
+	lines := []engineLine{
+		testLine(lineA, cement, "10", "1000.00", "10000.00", nil),
+		testLine(lineB, sand, "4", "1000.00", "4000.00", nil),
+		testLine(lineC, brick, "100", "10.00", "1000.00", nil),
 	}
-	got := evaluateDiscounts(engineInput{Lines: lines,
-		Promotions: []domain.Promotion{high.build(), low.build()}, BranchID: engineBranch,
-		At: engineAt, Suppressed: suppressed})
-	// The seller took P off line A; the next rule in line takes its place.
-	assertApplied(t, got, map[string]string{"a1000000/0a": "300.00"})
+	set := promo{id: promoP, condition: domain.PromotionConditionItemSet,
+		action: domain.PromotionActionPercentage, value: "20", priority: 5,
+		targets: []uuid.UUID{cement, sand}}
+	line := promo{id: promoQ, condition: domain.PromotionConditionPerItem,
+		action: domain.PromotionActionPercentage, value: "5", targets: []uuid.UUID{sand, brick}}
+	got := evaluateSuppressed(lines, []engineSuppression{{PromotionID: uuid.MustParse(promoP),
+		Scope:   domain.DiscountScopeItemSet,
+		ItemIDs: []uuid.UUID{uuid.MustParse(lineA), uuid.MustParse(lineB)}}}, set, line)
+	// Lines A and B were the suppressed set's; only line C earns Q: 1000 × 5% = 50.
+	assertApplied(t, got, map[string]string{"a1000000/0c": "50.00"})
+}
+
+func TestEvaluateDiscounts_SuppressedTotalLeavesTheTotalWithoutAPromotion(t *testing.T) {
+	t.Parallel()
+	lines := []engineLine{testLine(lineA, cement, "10", "1000.00", "10000.00", nil)}
+	high := promo{id: promoP, condition: domain.PromotionConditionOnTotal,
+		action: domain.PromotionActionPercentage, value: "5", priority: 5}
+	low := promo{id: promoQ, condition: domain.PromotionConditionOnTotal,
+		action: domain.PromotionActionPercentage, value: "2"}
+	onLine := promo{id: promoR, condition: domain.PromotionConditionPerItem,
+		action: domain.PromotionActionPercentage, value: "1", targets: []uuid.UUID{cement}}
+	got := evaluateSuppressed(lines, []engineSuppression{{PromotionID: uuid.MustParse(promoP),
+		Scope: domain.DiscountScopeTotal}}, high, low, onLine)
+	// No total rule takes P's place (Q's 2% would be 198); the line rule is untouched: 10000 × 1% = 100.
+	assertApplied(t, got, map[string]string{"a2000000/0a": "100.00"})
 }
 
 func TestEvaluateDiscounts_OnlyRulesInForce(t *testing.T) {
