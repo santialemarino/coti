@@ -1,7 +1,8 @@
 # WhatsApp Cloud API
 
-Coti connects each branch's `WHATSAPP` channel to Meta's Cloud API. An inbound text message creates
-an unassigned, reviewable RFQ draft; sending a seller-approved quote delivers its public webapp
+Coti connects each branch's `WHATSAPP` channel to Meta's Cloud API. An inbound text message either
+continues the conversation of a live quote sent to that sender or creates an unassigned, reviewable
+RFQ draft; sending a seller-approved quote delivers its public webapp
 link through the same branch channel. The AI never sends a message or approves a quote.
 
 For how a teammate receives least-privilege Meta access, registers a personal test phone, and
@@ -81,9 +82,50 @@ owner pool, then opens the tenant transaction for the exact account, branch, and
 unconfigured destination is acknowledged without creating tenant data.
 
 Only inbound text messages are materialized in this release. Their Meta message ID is retained in
-`inbound_channel_message` with a unique `(channel_id, external_message_id)` constraint, a reserved
-RFQ ID, the original provider payload, and sender metadata. A retry resumes that RFQ; it cannot
-create a second one. Media and delivery-status events are acknowledged but do not create RFQs.
+`inbound_channel_message` with a unique `(channel_id, external_message_id)` constraint, the original
+provider payload, sender metadata, and exactly one target: a reserved RFQ ID or the
+`quote_message` the text became (see [Conversation routing](#conversation-routing)). A retry keeps
+the first delivery's target — it resumes that RFQ, or does nothing for a message already joined —
+so it can create neither a second order nor a second message. Media and delivery-status events are
+acknowledged but do not create RFQs.
+
+## Conversation routing
+
+Before a message becomes an order, `ConversationService.Route` checks whether its sender is
+answering a quote. Within the branch the channel resolves to, a candidate is a quote whose latest
+successful `quote_send` on **the same channel** went to the sender, where that send has not expired
+and the quote is `SENT` or `CHANGE_REQUESTED` and not archived. `client.phone` plays no part: the
+send's destination is the address the quote actually reached.
+
+- **The sender's forms.** Meta's `wa_id` is digits only, and an Argentine mobile is written both
+  with and without the 9 after `54`; `domain.InboundSenderDestinations` returns `+<wa_id>` plus the
+  other Argentine form, and either matches a destination.
+- **The newest send wins.** Several live quotes for one sender route to the one sent last; the
+  stored `quote_message.other_live_quotes` counts the rest, so the seller can be told the message
+  may belong to another quote.
+- **Locks.** The candidate read is unlocked, so each candidate is locked (`SELECT … FOR UPDATE`, the
+  same row lock the edit paths take first) and re-checked in recency order; one a seller accepted or
+  archived meanwhile is skipped.
+- **No match** creates the RFQ exactly as before.
+
+A joined message is written in one tenant transaction with its reservation: the `CLIENT`
+`quote_message`, its window, and the `inbound_channel_message` pointing at it. The router takes a
+resolved route and a sender, not a WhatsApp payload, so an email inbox can reuse it once
+`InboundSenderDestinations` learns that channel.
+
+### Message windows
+
+A `CLIENT` message opens the quote's `OPEN` `message_batch` or extends it, in one
+`INSERT … ON CONFLICT` on `uq_message_batch_open`, so concurrent replies share one window:
+
+```text
+closes_at = min(now + CONVERSATION_WINDOW_RESET_SECONDS, opened_at + CONVERSATION_WINDOW_MAX_SECONDS)
+```
+
+`SELLER` and `SYSTEM` messages are context and never open or extend a window. Defaults are 120 s
+and 600 s; startup refuses a cap that does not exceed the reset. `CONVERSATION_CONTEXT_MESSAGES`
+(10) is how many earlier messages travel with a batch once batches are processed. Closing windows
+and processing batches are not wired yet, and routing never changes `quote.current_status`.
 
 When a seller opens the send dialog for an RFQ that entered through WhatsApp, Coti reads that
 retained sender and pre-fills it as the editable WhatsApp recipient. Meta supplies it as a
