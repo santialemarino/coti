@@ -398,3 +398,102 @@ func TestDiscountEngine_ReplaceDeactivatesAndReactivates(t *testing.T) {
 	}
 	requireTotal(t, e, seeded.versionID, "51000.00") // 60000 − 60000 × 15%
 }
+
+// A seller's line discount goes with the last line it covered; one still covering lines shrinks to
+// what they carry, so the version total and the invoice's split of it agree.
+func TestDiscountEngine_DeletingALineSettlesItsDiscounts(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "Discount engine line delete")
+	seller := e.seedUser(t, accountID, domain.UserRoleSeller)
+	e.assignBranch(t, accountID, seller, branchID)
+	cement := e.seedPricedProduct(t, accountID, branchID, "Cemento", "1000.00", nil)
+	sand := e.seedPricedProduct(t, accountID, branchID, "Arena", "500.00", nil)
+	seeded := e.seedDraftQuote(t, accountID, branchID, seller, []draftLine{
+		{description: "cemento", quantity: "10", productID: &cement},
+		{description: "arena", quantity: "4", productID: &sand},
+	})
+	e.dropDiscounts(t, accountID)
+	token, branch := e.tokenFor(t, seller), branchID.String()
+	e.acceptMaterials(t, seeded.quoteID, token, branch) // 10000 + 2000
+	cementLine, sandLine := e.lineID(t, seeded.versionID, "cemento"), e.lineID(t, seeded.versionID, "arena")
+
+	addDiscount := func(name, value, scope string, items ...uuid.UUID) {
+		t.Helper()
+		ids := make([]string, 0, len(items))
+		for _, id := range items {
+			ids = append(ids, id.String())
+		}
+		rec := e.do(t, request{method: http.MethodPost,
+			path:  "/v1/quotes/" + seeded.quoteID.String() + "/discounts",
+			token: token, branch: branch,
+			body: map[string]any{"description": name, "action_type": "FIXED_AMOUNT", "value": value,
+				"scope": scope, "item_ids": ids}})
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("add %s: status = %d: %s", name, rec.Code, rec.Body)
+		}
+	}
+	deleteLine := func(id uuid.UUID) {
+		t.Helper()
+		if rec := e.do(t, request{method: http.MethodDelete,
+			path:  "/v1/quotes/" + seeded.quoteID.String() + "/items/" + id.String(),
+			token: token, branch: branch}); rec.Code != http.StatusOK {
+			t.Fatalf("delete line: status = %d: %s", rec.Code, rec.Body)
+		}
+	}
+
+	addDiscount("Sobre el cemento", "1500", "ITEM", cementLine)
+	addDiscount("Por el combo", "2400", "ITEM_SET", cementLine, sandLine)
+	requireTotal(t, e, seeded.versionID, "8100.00") // 12000 − 1500 − 2400
+
+	deleteLine(cementLine)
+	// Only the sand line (2000) is left. The cement-only discount went with its line; the combo
+	// discount stays on the sand line but cannot take more than its 2000: 2000 − 2000 = 0.
+	requireTotal(t, e, seeded.versionID, "0.00")
+	left := e.storedDiscounts(t, seeded.versionID)
+	if _, ok := left["Sobre el cemento"]; ok {
+		t.Errorf("a discount outlived the only line it covered: %+v", left)
+	}
+	combo, ok := left["Por el combo"]
+	if !ok || combo.lines != 1 || !combo.amount.Equal(decimal.RequireFromString("2000.00")) {
+		t.Fatalf("combo discount = %+v, want it on the sand line at 2000.00", combo)
+	}
+
+	deleteLine(sandLine)
+	requireTotal(t, e, seeded.versionID, "0.00")
+	if rest := e.storedDiscounts(t, seeded.versionID); len(rest) != 0 {
+		t.Errorf("discounts left on a version with no lines: %+v", rest)
+	}
+}
+
+// The exact report: a seller's 1500 off the cement, the cement deleted, the sand alone must total 2000.
+func TestDiscountEngine_ASellersLineDiscountGoesWithItsLine(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "Discount engine orphan")
+	seller := e.seedUser(t, accountID, domain.UserRoleSeller)
+	e.assignBranch(t, accountID, seller, branchID)
+	cement := e.seedPricedProduct(t, accountID, branchID, "Cemento", "1000.00", nil)
+	sand := e.seedPricedProduct(t, accountID, branchID, "Arena", "500.00", nil)
+	seeded := e.seedDraftQuote(t, accountID, branchID, seller, []draftLine{
+		{description: "cemento", quantity: "10", productID: &cement},
+		{description: "arena", quantity: "4", productID: &sand},
+	})
+	e.dropDiscounts(t, accountID)
+	token, branch := e.tokenFor(t, seller), branchID.String()
+	e.acceptMaterials(t, seeded.quoteID, token, branch)
+	cementLine := e.lineID(t, seeded.versionID, "cemento")
+	if rec := e.do(t, request{method: http.MethodPost,
+		path: "/v1/quotes/" + seeded.quoteID.String() + "/discounts", token: token, branch: branch,
+		body: map[string]any{"description": "Sobre el cemento", "action_type": "FIXED_AMOUNT",
+			"value": "1500", "scope": "ITEM", "item_ids": []string{cementLine.String()}}}); rec.Code != http.StatusCreated {
+		t.Fatalf("add discount: status = %d: %s", rec.Code, rec.Body)
+	}
+	if rec := e.do(t, request{method: http.MethodDelete,
+		path:  "/v1/quotes/" + seeded.quoteID.String() + "/items/" + cementLine.String(),
+		token: token, branch: branch}); rec.Code != http.StatusOK {
+		t.Fatalf("delete line: status = %d: %s", rec.Code, rec.Body)
+	}
+	requireTotal(t, e, seeded.versionID, "2000.00")
+	if rest := e.storedDiscounts(t, seeded.versionID); len(rest) != 0 {
+		t.Errorf("orphan discount rows: %+v", rest)
+	}
+}

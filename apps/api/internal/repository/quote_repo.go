@@ -1004,17 +1004,41 @@ func quoteItemAlternativePayloads(
 }
 
 // deleteItemDiscountLinks unties lines of a mutable version from the discounts that cover them, so
-// the lines can go; the sweep that follows rebuilds what the engine owns.
+// the lines can go. A line discount left covering nothing goes with them: it was put on those lines.
 func deleteItemDiscountLinks(
 	ctx context.Context, q Querier, accountID, versionID uuid.UUID, itemIDs []uuid.UUID,
 ) error {
-	_, err := q.Exec(ctx,
+	rows, err := q.Query(ctx,
 		`DELETE FROM quote_discount_item qdi
 		 USING quote_item qi, quote_version qv
 		 WHERE qv.account_id = $1 AND qv.id = $2 AND qv.is_immutable = FALSE
 		   AND qi.account_id = $1 AND qi.version_id = qv.id AND qi.id = ANY($3)
-		   AND qdi.account_id = $1 AND qdi.quote_item_id = qi.id`,
+		   AND qdi.account_id = $1 AND qdi.quote_item_id = qi.id
+		 RETURNING qdi.quote_discount_id`,
 		accountID, versionID, itemIDs)
+	if err != nil {
+		return err
+	}
+	var touched []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		touched = append(touched, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil || len(touched) == 0 {
+		return err
+	}
+	_, err = q.Exec(ctx,
+		`DELETE FROM quote_discount qd
+		 WHERE qd.account_id = $1 AND qd.quote_version_id = $2 AND qd.id = ANY($3)
+		   AND qd.scope <> 'TOTAL'::discount_scope
+		   AND NOT EXISTS (SELECT 1 FROM quote_discount_item qdi
+		                   WHERE qdi.account_id = $1 AND qdi.quote_discount_id = qd.id)`,
+		accountID, versionID, touched)
 	return err
 }
 
