@@ -208,6 +208,8 @@ func newEnvWithRFQProviders(
 		WithDiscounts(quoteDiscountRepo).
 		WithPromotions(promotionRepo).
 		WithHandlerDecisions(repository.NewHandlerDecisionRepository()).
+		WithConversation(repository.NewMessageBatchRepository(), repository.NewQuoteMessageRepository(),
+			repository.NewHandlerDecisionRepository()).
 		WithClientMessages(repository.NewQuoteMessageRepository())
 	quoteService := services.NewQuoteService(db, quoteRepo,
 		repository.NewProductPriceRepository(), domain.ARCAEnvironmentHomologation, quiet).
@@ -257,7 +259,10 @@ func newEnvWithRFQProviders(
 			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
 			File:          handler.NewFileHandler(objectStorage.Local),
 			Quote:         handler.NewQuoteHandler(quoteService, nil, nil, highConfidence),
-			Client:        handler.NewClientHandler(clientService),
+			Conversation: handler.NewConversationHandler(services.NewConversationReviewService(db,
+				quoteRepo, repository.NewProductPriceRepository(), quoteDiscountRepo, promotionRepo,
+				repository.NewHandlerDecisionRepository(), repository.NewMessageBatchRepository())),
+			Client: handler.NewClientHandler(clientService),
 			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
 				repository.NewARCASetupRepository(), repository.NewInvoicingRepository(), branchRepo, channelRepo, userRepo, onboardingRepo, authService, verificationService, quiet,
 				cfg.Auth, cfg.Branch).WithDefaultTags(tagRepo)),

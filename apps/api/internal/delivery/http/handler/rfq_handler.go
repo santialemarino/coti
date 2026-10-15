@@ -891,6 +891,59 @@ func toRfqDetailResponse(
 		resp.ClientActions = append(resp.ClientActions, toClientActionResponse(action))
 	}
 
+	if detail.Conversation != nil {
+		conversation := toConversationResponse(*detail.Conversation)
+		resp.Conversation = &conversation
+	}
+
+	return resp
+}
+
+func toConversationResponse(conversation domain.Conversation) dto.ConversationResponse {
+	resp := dto.ConversationResponse{
+		Batches:             make([]dto.ConversationBatchResponse, 0, len(conversation.Batches)),
+		Pending:             toConversationMessageResponses(conversation.Pending),
+		CanDiscardAIChanges: conversation.CanDiscardAIChanges,
+	}
+	for _, entry := range conversation.Batches {
+		batch := toConversationBatchResponse(entry.Batch)
+		batch.Retryable = entry.Retryable
+		batch.Messages = toConversationMessageResponses(entry.Messages)
+		if review := entry.Decision; review != nil {
+			decision := dto.ConversationDecisionResponse{Interpretation: review.Interpretation,
+				Outcome: string(review.Outcome), DecidedAt: review.DecidedAt,
+				CreatedAt: review.CreatedAt}
+			if review.NoMatchReason != nil {
+				reason := string(*review.NoMatchReason)
+				decision.NoMatchReason = &reason
+			}
+			if review.SellerDecision != nil {
+				seller := string(*review.SellerDecision)
+				decision.SellerDecision = &seller
+			}
+			batch.Decision = &decision
+		}
+		resp.Batches = append(resp.Batches, batch)
+	}
+	return resp
+}
+
+func toConversationBatchResponse(batch domain.MessageBatch) dto.ConversationBatchResponse {
+	resp := dto.ConversationBatchResponse{ID: batch.ID, Status: string(batch.Status),
+		ClosedAt: batch.ClosedAt, Messages: []dto.ConversationMessageResponse{}}
+	if batch.FailureReason != nil {
+		reason := string(*batch.FailureReason)
+		resp.FailureReason = &reason
+	}
+	return resp
+}
+
+func toConversationMessageResponses(messages []domain.QuoteMessage) []dto.ConversationMessageResponse {
+	resp := make([]dto.ConversationMessageResponse, 0, len(messages))
+	for _, message := range messages {
+		resp = append(resp, dto.ConversationMessageResponse{Author: string(message.AuthorType),
+			Body: message.Body, ReceivedAt: message.ReceivedAt})
+	}
 	return resp
 }
 
@@ -917,9 +970,14 @@ func toChangeRequestDiffResponse(diff domain.ChangeRequestDiff) dto.ChangeReques
 			value := string(*note.NoMatchReason)
 			reason = &value
 		}
+		var seller *string
+		if note.SellerDecision != nil {
+			value := string(*note.SellerDecision)
+			seller = &value
+		}
 		resp.Handler = &dto.HandlerDecisionResponse{ClientInput: note.ClientInput,
 			Interpretation: note.Interpretation, Outcome: string(note.Outcome),
-			NoMatchReason: reason, CreatedAt: note.CreatedAt}
+			NoMatchReason: reason, SellerDecision: seller, CreatedAt: note.CreatedAt}
 	}
 	return resp
 }

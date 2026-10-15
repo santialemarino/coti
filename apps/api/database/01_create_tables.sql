@@ -93,6 +93,7 @@ CREATE TYPE auth_token_type AS ENUM ('PASSWORD_RESET', 'EMAIL_VERIFICATION', 'IN
 -- Conversational engine. The seller and the system are context, not a trigger.
 CREATE TYPE message_author_type AS ENUM ('CLIENT', 'SELLER', 'SYSTEM');
 CREATE TYPE message_batch_status AS ENUM ('OPEN', 'CLOSED', 'PROCESSING', 'PROCESSED', 'FAILED');
+CREATE TYPE message_batch_failure_reason AS ENUM ('UNPROCESSABLE', 'ATTEMPTS_EXHAUSTED');
 
 -- What an AI provider call was paid for. One value per call site that spends, so a cost report
 -- groups by the work, not by the provider method.
@@ -823,7 +824,10 @@ CREATE TABLE message_batch (
   attempts              INTEGER NOT NULL DEFAULT 0,
   last_error            TEXT,
   processing_started_at TIMESTAMPTZ,
-  CONSTRAINT ck_message_batch_attempts CHECK (attempts >= 0)
+  -- Why a FAILED batch failed: only one that ran out of attempts can be retried.
+  failure_reason        message_batch_failure_reason,
+  CONSTRAINT ck_message_batch_attempts CHECK (attempts >= 0),
+  CONSTRAINT ck_message_batch_failure_reason CHECK ((status = 'FAILED') = (failure_reason IS NOT NULL))
 );
 
 -- One message in a quote's conversation. author_type separates the trigger (CLIENT) from
@@ -964,7 +968,11 @@ CREATE TABLE handler_decision (
   seller_decision   handler_seller_decision,
   state_at_decision quote_status,
   decided_at        TIMESTAMPTZ,
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- The draft's lines and seller-controlled discounts around the AI's change; what tells the
+  -- seller's own edits apart when the decision is settled.
+  draft_before      JSONB,
+  draft_after       JSONB
 );
 
 CREATE TABLE notification (

@@ -56,6 +56,12 @@ type QuoteRepresentationService struct {
 	signedURLExpiry time.Duration
 	now             func() time.Time
 	log             *slog.Logger
+	// settler records the seller's decision on the handler runs a frozen draft carries.
+	settler handlerDecisionSettler
+}
+
+type handlerDecisionSettler interface {
+	Settle(ctx context.Context, q repository.Querier, tenant domain.Tenant, versionID uuid.UUID) error
 }
 
 // NewQuoteRepresentationService builds the representation orchestrator.
@@ -74,6 +80,13 @@ func NewQuoteRepresentationService(
 	return &QuoteRepresentationService{db: db, representations: representations, quotes: quotes,
 		storage: storage, logos: logos, renderer: renderer, signedURLExpiry: signedURLExpiry,
 		now: now, log: log}
+}
+
+// WithHandlerDecisions settles the conversation handler's runs on a draft when it is frozen.
+func (s *QuoteRepresentationService) WithHandlerDecisions(settler handlerDecisionSettler,
+) *QuoteRepresentationService {
+	s.settler = settler
+	return s
 }
 
 // Ensure returns the existing representation or creates it after freezing the current version.
@@ -181,13 +194,16 @@ func (s *QuoteRepresentationService) ensureLocked(
 			domain.QuotePublicURLPlaceholder) != 1 {
 			return invalidRepresentation("commercial text contains a reserved URL marker")
 		}
-		frozen, freezeErr := s.quotes.FreezeVersion(ctx, q, tenant.AccountID, tenant.BranchID,
+		frozen, err := s.quotes.FreezeVersion(ctx, q, tenant.AccountID, tenant.BranchID,
 			quoteID, version.ID)
-		if freezeErr == nil {
-			source.Version = *frozen
+		if err != nil {
+			return err
 		}
-		err = freezeErr
-		return err
+		source.Version = *frozen
+		if s.settler == nil {
+			return nil
+		}
+		return s.settler.Settle(ctx, q, tenant, frozen.ID)
 	})
 	if err != nil {
 		return nil, err

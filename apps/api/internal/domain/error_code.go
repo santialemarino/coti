@@ -41,6 +41,11 @@ const (
 	CodeQuoteArchived         ErrorCode = "QUOTE_ARCHIVED"
 	CodeQuoteNotDraft         ErrorCode = "QUOTE_NOT_DRAFT"
 	CodeQuoteNotReactivatable ErrorCode = "QUOTE_NOT_REACTIVATABLE"
+	// CodeNoAIChanges refuses discarding the AI's changes on a draft that has none pending.
+	CodeNoAIChanges ErrorCode = "NO_AI_CHANGES"
+	// CodeBatchNotRetryable refuses retrying a batch that did not run out of attempts, or whose
+	// quote the handler may no longer act on.
+	CodeBatchNotRetryable ErrorCode = "BATCH_NOT_RETRYABLE"
 	// CodeDiscountNotApplicable refuses restoring a promotion the quote no longer earns.
 	CodeDiscountNotApplicable ErrorCode = "DISCOUNT_NOT_APPLICABLE"
 	CodeLinkExpired           ErrorCode = "LINK_EXPIRED"

@@ -94,6 +94,7 @@ func run() error {
 	clientActionRepo := repository.NewClientActionRepository()
 	quoteMessageRepo := repository.NewQuoteMessageRepository()
 	handlerDecisionRepo := repository.NewHandlerDecisionRepository()
+	messageBatchRepo := repository.NewMessageBatchRepository()
 	quoteRepresentationRepo := repository.NewQuoteRepresentationRepository()
 	clientRepo := repository.NewClientRepository()
 	tagRepo := repository.NewTagRepository()
@@ -194,11 +195,11 @@ func run() error {
 		WithClientActions(clientActionRepo).
 		WithInboundMessages(inboundChannelMessageRepo).
 		WithHandlerDecisions(handlerDecisionRepo).
+		WithConversation(messageBatchRepo, quoteMessageRepo, handlerDecisionRepo).
 		WithClientMessages(quoteMessageRepo).
 		WithWebAppURL(cfg.Web.WebAppURL).
 		WithFileIntake(rfqAttachmentService, providers.Transcriber, cfg.Storage.MaxFileSize)
 	inboundRoutingService := services.NewInboundRoutingService(db, channelRepo)
-	messageBatchRepo := repository.NewMessageBatchRepository()
 	conversationService := services.NewConversationService(quoteRepo, quoteSendRepo,
 		quoteMessageRepo, messageBatchRepo, cfg.Conversation)
 	var changeProposer domain.ChangeRequestHandler
@@ -223,7 +224,11 @@ func run() error {
 	quoteRepresentationService := services.NewQuoteRepresentationService(db,
 		quoteRepresentationRepo, quoteRepo, objectStorage.Storage,
 		branding.NewLogoLoader(cfg.QuoteLogo), quotePDF.NewQuoteRenderer(),
-		cfg.Storage.SignedURLExpiry, nil, log)
+		cfg.Storage.SignedURLExpiry, nil, log).
+		WithHandlerDecisions(services.NewHandlerDecisionSettler(handlerDecisionRepo, quoteRepo,
+			quoteDiscountRepo))
+	conversationReviewService := services.NewConversationReviewService(db, quoteRepo,
+		productPriceRepo, quoteDiscountRepo, promotionRepo, handlerDecisionRepo, messageBatchRepo)
 	quoteDeliveryService := services.NewQuoteDeliveryService(db, quoteSendRepo, quoteRepo,
 		channelRepo, branchRepo, productPriceRepo,
 		whatsapp.NewMetaSender(&http.Client{Timeout: cfg.WhatsApp.RequestTimeout},
@@ -259,6 +264,7 @@ func run() error {
 			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
 			Quote: handler.NewQuoteHandler(quoteService, quoteDeliveryService,
 				quoteRepresentationService, highConfidence),
+			Conversation:  handler.NewConversationHandler(conversationReviewService),
 			Client:        handler.NewClientHandler(clientService),
 			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
 			CatalogImport: handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),

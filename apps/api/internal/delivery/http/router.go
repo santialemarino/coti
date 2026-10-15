@@ -42,6 +42,7 @@ type Handlers struct {
 	RFQ           *handler.RFQHandler
 	RFQAttachment *handler.RFQAttachmentHandler
 	Quote         *handler.QuoteHandler
+	Conversation  *handler.ConversationHandler
 	Client        *handler.ClientHandler
 	Account       *handler.AccountHandler
 	AccountLogo   *handler.BrandLogoHandler
@@ -179,6 +180,8 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	quotes.POST("/:quoteId/transition", h.Quote.Transition)
 	quotes.POST("/:quoteId/reactivate", h.Quote.Reactivate)
 	quotes.POST("/:quoteId/archive", h.Quote.Archive)
+	quotes.POST("/:quoteId/discard-ai-changes", h.Conversation.DiscardAIChanges)
+	quotes.POST("/:quoteId/message-batches/:batchId/retry", h.Conversation.RetryBatch)
 	quotes.POST("/:quoteId/unarchive", h.Quote.Unarchive)
 	quotes.GET("/:quoteId/client-association", h.Client.GetQuoteAssociation)
 	quotes.PUT("/:quoteId/client-association", h.Client.AssociateQuote)

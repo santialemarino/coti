@@ -33,6 +33,16 @@ const (
 	MessageBatchStatusFailed     MessageBatchStatus = "FAILED"
 )
 
+// MessageBatchFailureReason says why a batch FAILED; only an exhausted one can be retried.
+type MessageBatchFailureReason string
+
+const (
+	// MessageBatchFailureUnprocessable is a batch no retry can fix, such as one for a closed quote.
+	MessageBatchFailureUnprocessable MessageBatchFailureReason = "UNPROCESSABLE"
+	// MessageBatchFailureAttemptsExhausted is a batch that kept failing until its attempts ran out.
+	MessageBatchFailureAttemptsExhausted MessageBatchFailureReason = "ATTEMPTS_EXHAUSTED"
+)
+
 // QuoteMessage is one message in a quote's conversation.
 type QuoteMessage struct {
 	ID              uuid.UUID
@@ -78,6 +88,7 @@ type MessageBatch struct {
 	LastError *string
 	// ProcessingStartedAt dates the latest claim; a write that finishes the claim must match it.
 	ProcessingStartedAt *time.Time
+	FailureReason       *MessageBatchFailureReason
 }
 
 // ConversationSweep is what one pass over the conversation queue did. Reclaimed claims are
@@ -125,4 +136,24 @@ func InboundSenderDestinations(channelType ChannelType, senderID string) ([]stri
 		forms = append(forms, "+549"+national)
 	}
 	return forms, nil
+}
+
+// ConversationBatch is one closed window of a quote's conversation as the seller reviews it.
+type ConversationBatch struct {
+	Batch    MessageBatch
+	Messages []QuoteMessage
+	// Decision is the handler's run on the batch, absent until one is recorded.
+	Decision *HandlerDecisionReview
+	// Retryable is a FAILED batch that ran out of attempts on a quote the handler may still act on.
+	Retryable bool
+}
+
+// Conversation is a quote's customer messages grouped by the batch that carried them.
+type Conversation struct {
+	Batches []ConversationBatch
+	// Pending are the messages of a window still open, not yet handed to the handler.
+	Pending []QuoteMessage
+	// CanDiscardAIChanges is a change-requested draft carrying AI changes the seller has not
+	// decided on.
+	CanDiscardAIChanges bool
 }

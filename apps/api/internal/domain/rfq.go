@@ -240,4 +240,7 @@ type RfqDetail struct {
 	// ClientActions are the customer responses recorded against the quote's versions,
 	// oldest first; empty when none were recorded or the surface is not wired.
 	ClientActions []ClientAction
+	// Conversation is the customer's messages after a send and what the handler did with them;
+	// nil when there are none.
+	Conversation *Conversation
 }

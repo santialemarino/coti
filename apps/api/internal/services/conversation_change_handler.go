@@ -227,7 +227,8 @@ func (h *BatchChangeHandler) propose(ctx context.Context, prepared preparedBatch
 }
 
 // apply re-checks the claim, the matrix and the draft under the quote's lock, then writes the
-// proposal, prices the draft through the discount sweep and records the decision.
+// proposal, prices the draft through the discount sweep and records the decision with the draft
+// as it was before and after.
 func (h *BatchChangeHandler) apply(ctx context.Context, batch domain.MessageBatch,
 	prepared preparedBatch, proposal batchProposal,
 ) error {
@@ -247,6 +248,11 @@ func (h *BatchChangeHandler) apply(ctx context.Context, batch domain.MessageBatc
 		if draft.ID != prepared.draft.ID || draft.IsImmutable {
 			return errDraftMoved
 		}
+		before, err := draftSnapshot(ctx, q, h.quotes, h.sweep.discounts, quote.AccountID, draft.ID)
+		if err != nil {
+			return err
+		}
+		after := before
 		if proposal.resolved != nil {
 			if err := validateProposalIntents(quote.CurrentStatus, quote.ArchivedAt != nil,
 				*proposal.resolved); err != nil {
@@ -255,12 +261,17 @@ func (h *BatchChangeHandler) apply(ctx context.Context, batch domain.MessageBatc
 			if err := h.write(ctx, q, *quote, draft.ID, *proposal.resolved); err != nil {
 				return err
 			}
+			if after, err = draftSnapshot(ctx, q, h.quotes, h.sweep.discounts, quote.AccountID,
+				draft.ID); err != nil {
+				return err
+			}
 		}
 		return h.decisions.Create(ctx, q, quote.AccountID, domain.NewHandlerDecision{
 			QuoteVersionID: draft.ID, MessageBatchID: &batch.ID,
 			ClientInput:      clientInput(prepared.messages),
 			AIInterpretation: proposal.record.Interpretation,
 			AIProposal:       string(payload), StateAtDecision: prepared.stateAtClaim,
+			DraftBefore: before, DraftAfter: after,
 		})
 	})
 }
