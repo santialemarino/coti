@@ -340,8 +340,22 @@ export interface DiffDiscountLine {
   changed: boolean;
 }
 
+// Why the conversation handler left a batch to the seller instead of changing the draft.
+export type HandlerNoMatchReason = 'REQUIRES_SELLER' | 'AI_DISABLED' | 'PROPOSAL_REFUSED';
+
+// The latest conversation handler decision on the draft: what the customer wrote and how the AI
+// read it.
+export interface HandlerDecisionNote {
+  client_input: string;
+  interpretation: string;
+  outcome: 'APPLIED' | 'NO_MATCH';
+  no_match_reason: HandlerNoMatchReason | null;
+  created_at: string;
+}
+
 export interface ChangeRequestDiff {
   reason: string | null;
+  handler?: HandlerDecisionNote;
   original: {
     items: DiffLineItem[];
     discounts: DiffDiscountLine[];

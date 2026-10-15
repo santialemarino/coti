@@ -349,6 +349,59 @@ describe('RfqDetailView send flow', () => {
     );
   });
 
+  it("reads a conversation batch as the customer's request and says how the AI took it", () => {
+    const detail = makeDetail('CHANGE_REQUESTED');
+    detail.version = { ...detail.version!, version_number: 2, comment: 'que sean 4' };
+    detail.changes_requested = {
+      ...detail.changes_requested!,
+      handler: {
+        client_input: 'que sean 4',
+        interpretation: 'Pide cuatro bolsas',
+        outcome: 'APPLIED',
+        no_match_reason: null,
+        created_at: BASE_TIME,
+      },
+    };
+
+    const view = renderView(detail);
+
+    expect(
+      view.getByText(
+        copy.detail.callouts.changeRequested.withReason.replace('{reason}', 'que sean 4'),
+      ),
+    ).toBeTruthy();
+    expect(
+      view.getByText(
+        copy.detail.callouts.changeRequested.handler.applied.replace(
+          '{interpretation}',
+          'Pide cuatro bolsas',
+        ),
+      ),
+    ).toBeTruthy();
+    expect(ChangeDiff).toHaveBeenCalledWith(
+      expect.objectContaining({ variant: 'customer-request' }),
+      undefined,
+    );
+  });
+
+  it('tells the seller why the AI left the request to them', () => {
+    const detail = makeDetail('CHANGE_REQUESTED');
+    detail.changes_requested = {
+      ...detail.changes_requested!,
+      handler: {
+        client_input: 'dale, acepto',
+        interpretation: '',
+        outcome: 'NO_MATCH',
+        no_match_reason: 'AI_DISABLED',
+        created_at: BASE_TIME,
+      },
+    };
+
+    const view = renderView(detail);
+
+    expect(view.getByText(copy.detail.callouts.changeRequested.handler.aiDisabled)).toBeTruthy();
+  });
+
   it('keeps the send button hidden until a quote is review-ready', () => {
     for (const status of ['SENT', 'ACCEPTED', 'REJECTED', 'GENERATED']) {
       vi.clearAllMocks();
