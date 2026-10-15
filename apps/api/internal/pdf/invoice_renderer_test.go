@@ -99,3 +99,30 @@ func pdfTextString(s string) []byte {
 	}
 	return out
 }
+
+// A credit note titles itself as one and names the invoice it cancels; it renders nothing without it.
+func TestInvoiceRenderer_CreditNoteNamesTheInvoice(t *testing.T) {
+	credited := authorizedInvoiceFixture()
+	invoiceNumber := int64(42)
+	credited.Number = &invoiceNumber
+	note := authorizedInvoiceFixture()
+	note.Kind = domain.VoucherKindCreditNote
+	note.Environment = domain.ARCAEnvironmentHomologation
+
+	if _, err := NewInvoiceRenderer().Render(note, nil); err == nil {
+		t.Fatal("a credit note rendered without its invoice")
+	}
+	note.CreditedInvoice = &credited
+	content, err := NewInvoiceRenderer().Render(note, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Nota de crédito A 00001-00000001", "Comprobante asociado: Factura A 00001-00000042 del 10/10/2026", TestInvoiceMark} {
+		if !bytes.Contains(content, pdfTextString(want)) {
+			t.Errorf("credit note PDF lacks %q", want)
+		}
+	}
+	if !bytes.Contains(content, []byte(domain.InvoiceQRURL(note))) {
+		t.Fatal("credit note PDF lacks its QR")
+	}
+}

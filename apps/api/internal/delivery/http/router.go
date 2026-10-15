@@ -192,6 +192,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 		verified.GET("/invoices", h.Invoice.List)
 		verified.GET("/invoices/:invoiceId/pdf", h.Invoice.DownloadPDF)
 		verified.POST("/invoices/:invoiceId/recover", h.Invoice.Recover)
+		verified.POST("/invoices/:invoiceId/credit-note", h.Invoice.IssueCreditNote)
 		quotes.GET("/:quoteId/invoice", h.Invoice.Preview)
 		quotes.POST("/:quoteId/invoice", h.Invoice.Issue)
 	}

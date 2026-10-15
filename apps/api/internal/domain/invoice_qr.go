@@ -42,7 +42,7 @@ func InvoiceQRURL(inv Invoice) string {
 	}
 	payload := invoiceQRPayload{
 		Ver: 1, Fecha: inv.IssuedOn.Format("2006-01-02"), CUIT: cuit, PtoVta: inv.PointOfSale,
-		TipoCmp: inv.Type.ARCACode(), NroCmp: *inv.Number, Importe: json.Number(inv.Amounts.Total.StringFixed(2)),
+		TipoCmp: inv.VoucherType().ARCACode(), NroCmp: *inv.Number, Importe: json.Number(inv.Amounts.Total.StringFixed(2)),
 		Moneda: "PES", Ctz: json.Number("1"), TipoCodAut: "E", CodAut: cae,
 	}
 	if inv.Receiver.DocType != ReceiverDocNone {

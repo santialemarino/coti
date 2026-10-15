@@ -108,10 +108,11 @@ type InvoiceAmountsResponse struct {
 	ByRate []VATAmountResponse `json:"by_rate"`
 }
 
-// InvoiceResponse is an invoice issued, pending or refused for a quote.
+// InvoiceResponse is an invoice or credit note issued, pending or refused for a quote.
 type InvoiceResponse struct {
 	ID       uuid.UUID `json:"id"`
 	BranchID uuid.UUID `json:"branch_id"`
+	Kind     string    `json:"kind" enums:"INVOICE,CREDIT_NOTE"`
 	// Environment is where ARCA authorizes it; a HOMOLOGATION invoice has no fiscal validity.
 	Environment  string                  `json:"environment" enums:"HOMOLOGATION,PRODUCTION"`
 	Status       string                  `json:"status"`
@@ -129,6 +130,19 @@ type InvoiceResponse struct {
 	// QRURL is ARCA's verification link for an issued invoice (RG 4892), empty otherwise.
 	QRURL     string    `json:"qr_url"`
 	CreatedAt time.Time `json:"created_at"`
+	// CreditNote is an invoice's newest credit note; an ISSUED one cancels the invoice.
+	CreditNote *InvoiceResponse `json:"credit_note,omitempty"`
+	// CreditedInvoice is the invoice a credit note cancels.
+	CreditedInvoice *VoucherReferenceResponse `json:"credited_invoice,omitempty"`
+}
+
+// VoucherReferenceResponse names an authorized voucher.
+type VoucherReferenceResponse struct {
+	ID          uuid.UUID `json:"id"`
+	Type        string    `json:"type"`
+	PointOfSale int       `json:"point_of_sale"`
+	Number      *int64    `json:"number"`
+	IssuedOn    string    `json:"issued_on"`
 }
 
 // InvoicePreviewResponse is returned by GET /v1/quotes/:quoteId/invoice: what would be issued now,
@@ -149,6 +163,9 @@ type InvoicePreviewResponse struct {
 	// OtherEnvironmentInvoice is the newest invoice issued for the sale in the other ARCA environment,
 	// shown as history; it does not stop an invoice in this one.
 	OtherEnvironmentInvoice *InvoiceResponse `json:"other_environment_invoice"`
+	// CreditedInvoice is the newest invoice of the sale an issued credit note cancelled in this
+	// environment, with that credit note: history, and what a new invoice follows.
+	CreditedInvoice *InvoiceResponse `json:"credited_invoice"`
 }
 
 // InvoiceListResponse is a bounded page of branch-scoped fiscal records.

@@ -68,15 +68,16 @@ func (r *QuoteRepository) GetByID(
 		accountID, branchID, id))
 }
 
-// HasLiveInvoice reports whether the quote has an invoice in flight with ARCA, or one issued in env or
-// in production.
+// HasLiveInvoice reports whether the quote has an invoice or credit note in flight with ARCA, or an
+// invoice issued in env or in production that no issued credit note cancelled.
 func (r *QuoteRepository) HasLiveInvoice(
 	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID, env domain.ARCAEnvironment,
 ) (bool, error) {
 	var live bool
 	err := q.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM invoice WHERE account_id = $1 AND quote_id = $2 AND branch_id = $3
-		   AND (status = 'PENDING' OR (status = 'ISSUED' AND (environment = $4 OR environment = 'PRODUCTION'))))`,
+		`SELECT EXISTS (SELECT 1 FROM invoice i WHERE account_id = $1 AND quote_id = $2 AND branch_id = $3
+		   AND (status = 'PENDING' OR (status = 'ISSUED' AND kind = 'INVOICE'
+		     AND (environment = $4 OR environment = 'PRODUCTION') AND NOT `+invoiceCredited+`)))`,
 		accountID, quoteID, branchID, env).Scan(&live)
 	return live, err
 }

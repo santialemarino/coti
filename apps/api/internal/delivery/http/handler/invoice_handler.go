@@ -24,6 +24,7 @@ type InvoiceService interface {
 	UpdateClientFiscal(ctx context.Context, tenant domain.Tenant, clientID uuid.UUID, in domain.ClientFiscalUpdate) (*domain.ClientFiscal, error)
 	Preview(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.InvoicePreview, error)
 	Issue(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID, expected domain.InvoiceExpectation) (*domain.Invoice, error)
+	IssueCreditNote(ctx context.Context, tenant domain.Tenant, invoiceID uuid.UUID) (*domain.Invoice, error)
 }
 
 // InvoiceHandler serves ARCA invoicing: the account's setup, buyers' fiscal data and the invoices.
@@ -295,6 +296,40 @@ func (h *InvoiceHandler) Issue(c *gin.Context) {
 	c.JSON(http.StatusCreated, toInvoiceResponse(*invoice))
 }
 
+// IssueCreditNote asks ARCA to authorize the credit note that cancels an issued invoice in full.
+//
+//	@Summary		Issue a credit note for an invoice
+//	@Description	Asks ARCA to authorize a credit note of the invoice's letter, lines, amounts and buyer, associated with it. Irreversible: once issued, the sale is no longer invoiced.
+//	@Tags			invoicing
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header		string	true	"The invoice's branch"
+//	@Param			invoiceId	path		string	true	"Invoice id"
+//	@Success		201			{object}	dto.InvoiceResponse
+//	@Failure		400			{object}	dto.ErrorResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse
+//	@Failure		409			{object}	dto.ErrorResponse	"INVOICE_NOT_CREDITABLE, INVOICE_ALREADY_CREDITED, CREDIT_NOTE_IN_PROGRESS, ARCA_ENVIRONMENT_MISMATCH"
+//	@Failure		422			{object}	dto.ErrorResponse	"INVOICE_NOT_READY, INVOICE_REJECTED"
+//	@Failure		503			{object}	dto.ErrorResponse	"INVOICING_UNAVAILABLE"
+//	@Router			/v1/invoices/{invoiceId}/credit-note [post]
+func (h *InvoiceHandler) IssueCreditNote(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	invoiceID, ok := pathUUID(c, "invoiceId")
+	if !ok {
+		return
+	}
+	note, err := h.invoices.IssueCreditNote(c.Request.Context(), tenant, invoiceID)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, toInvoiceResponse(*note))
+}
+
 func toInvoicingSettingsResponse(s domain.InvoicingSettings) dto.InvoicingSettingsResponse {
 	response := dto.InvoicingSettingsResponse{
 		Profile: dto.InvoiceIssuerProfileRequest{Address: s.Account.Profile.Address, GrossIncomeRegistration: s.Account.Profile.GrossIncomeRegistration, ActivityStartedOn: s.Account.Profile.ActivityStartedOn}, Enabled: s.Enabled, Environment: string(s.Environment), LegalName: s.Account.LegalName,
@@ -335,12 +370,16 @@ func toInvoicePreviewResponse(p domain.InvoicePreview) dto.InvoicePreviewRespons
 		other := toInvoiceResponse(*p.OtherEnvironmentInvoice)
 		response.OtherEnvironmentInvoice = &other
 	}
+	if p.CreditedInvoice != nil {
+		credited := toInvoiceResponse(*p.CreditedInvoice)
+		response.CreditedInvoice = &credited
+	}
 	return response
 }
 
 func toInvoiceResponse(inv domain.Invoice) dto.InvoiceResponse {
 	response := dto.InvoiceResponse{
-		ID: inv.ID, BranchID: inv.BranchID, Environment: string(inv.Environment), Status: string(inv.Status), Type: string(inv.Type), PointOfSale: inv.PointOfSale,
+		ID: inv.ID, BranchID: inv.BranchID, Kind: string(inv.Kind), Environment: string(inv.Environment), Status: string(inv.Status), Type: string(inv.Type), PointOfSale: inv.PointOfSale,
 		Number: inv.Number, IssuedOn: inv.IssuedOn.Format("2006-01-02"), CAE: inv.CAE,
 		IssuerCUIT: inv.IssuerCUIT, Receiver: toInvoiceReceiverResponse(inv.Receiver),
 		Amounts: toInvoiceAmountsResponse(inv.Amounts), Currency: inv.Currency, Issues: inv.Issues,
@@ -352,6 +391,14 @@ func toInvoiceResponse(inv domain.Invoice) dto.InvoiceResponse {
 	if inv.CAEExpiresOn != nil {
 		expires := inv.CAEExpiresOn.Format("2006-01-02")
 		response.CAEExpiresOn = &expires
+	}
+	if inv.CreditNote != nil {
+		note := toInvoiceResponse(*inv.CreditNote)
+		response.CreditNote = &note
+	}
+	if c := inv.CreditedInvoice; c != nil {
+		response.CreditedInvoice = &dto.VoucherReferenceResponse{ID: c.ID, Type: string(c.Type), PointOfSale: c.PointOfSale,
+			Number: c.Number, IssuedOn: c.IssuedOn.Format("2006-01-02")}
 	}
 	return response
 }

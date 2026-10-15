@@ -35,8 +35,10 @@ func (s *InvoiceService) List(ctx context.Context, tenant domain.Tenant, page in
 	var total int
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		var err error
-		invoices, total, err = store.List(ctx, q, tenant.AccountID, tenant.BranchFilter(), 25, (page-1)*25)
-		return err
+		if invoices, total, err = store.List(ctx, q, tenant.AccountID, tenant.BranchFilter(), 25, (page-1)*25); err != nil {
+			return err
+		}
+		return s.linkVouchers(ctx, q, tenant.AccountID, invoices)
 	})
 	return invoices, total, err
 }
@@ -53,10 +55,48 @@ func (s *InvoiceService) GetByID(ctx context.Context, tenant domain.Tenant, id u
 	var invoice *domain.Invoice
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		var err error
-		invoice, err = store.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, id)
-		return err
+		if invoice, err = store.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, id); err != nil {
+			return err
+		}
+		linked := []domain.Invoice{*invoice}
+		if err := s.linkVouchers(ctx, q, tenant.AccountID, linked); err != nil {
+			return err
+		}
+		invoice = &linked[0]
+		return nil
 	})
 	return invoice, err
+}
+
+// linkVouchers sets each invoice's newest credit note and each credit note's invoice, in two reads.
+func (s *InvoiceService) linkVouchers(ctx context.Context, q repository.Querier, accountID uuid.UUID, vouchers []domain.Invoice) error {
+	invoices := make([]*domain.Invoice, 0, len(vouchers))
+	creditedIDs := make([]uuid.UUID, 0)
+	for i := range vouchers {
+		if vouchers[i].CreditedInvoiceID != nil {
+			creditedIDs = append(creditedIDs, *vouchers[i].CreditedInvoiceID)
+		} else {
+			invoices = append(invoices, &vouchers[i])
+		}
+	}
+	if err := s.attachCreditNotes(ctx, q, accountID, invoices...); err != nil {
+		return err
+	}
+	if len(creditedIDs) == 0 {
+		return nil
+	}
+	credited, err := s.store.GetByIDs(ctx, q, accountID, uniqueUUIDs(creditedIDs))
+	if err != nil {
+		return err
+	}
+	for i := range vouchers {
+		if id := vouchers[i].CreditedInvoiceID; id != nil {
+			if inv, ok := credited[*id]; ok {
+				vouchers[i].CreditedInvoice = &inv
+			}
+		}
+	}
+	return nil
 }
 
 // DownloadPDF renders an authorized record exclusively from its persisted snapshot.
@@ -98,7 +138,7 @@ func (s *InvoiceService) Recover(ctx context.Context, tenant domain.Tenant, id u
 		return nil, err
 	}
 	if !claimed {
-		return nil, domain.WithCode(domain.CodeInvoiceInProgress, domain.ErrConflict)
+		return nil, domain.WithCode(inProgressCode(*invoice), domain.ErrConflict)
 	}
 	if _, err := s.reconcile(ctx, tenant, creds, *invoice); err != nil {
 		return nil, err

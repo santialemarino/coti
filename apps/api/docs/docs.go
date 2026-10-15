@@ -1509,6 +1509,83 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/invoices/{invoiceId}/credit-note": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Asks ARCA to authorize a credit note of the invoice's letter, lines, amounts and buyer, associated with it. Irreversible: once issued, the sale is no longer invoiced.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "Issue a credit note for an invoice",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "The invoice's branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Invoice id",
+                        "name": "invoiceId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.InvoiceResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "INVOICE_NOT_CREDITABLE, INVOICE_ALREADY_CREDITED, CREDIT_NOTE_IN_PROGRESS, ARCA_ENVIRONMENT_MISMATCH",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "INVOICE_NOT_READY, INVOICE_REJECTED",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "INVOICING_UNAVAILABLE",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/invoices/{invoiceId}/pdf": {
             "get": {
                 "security": [
@@ -7947,6 +8024,14 @@ const docTemplate = `{
                 "amounts": {
                     "$ref": "#/definitions/dto.InvoiceAmountsResponse"
                 },
+                "credited_invoice": {
+                    "description": "CreditedInvoice is the newest invoice of the sale an issued credit note cancelled in this\nenvironment, with that credit note: history, and what a new invoice follows.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.InvoiceResponse"
+                        }
+                    ]
+                },
                 "currency": {
                     "type": "string"
                 },
@@ -8034,6 +8119,22 @@ const docTemplate = `{
                 "created_at": {
                     "type": "string"
                 },
+                "credit_note": {
+                    "description": "CreditNote is an invoice's newest credit note; an ISSUED one cancels the invoice.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.InvoiceResponse"
+                        }
+                    ]
+                },
+                "credited_invoice": {
+                    "description": "CreditedInvoice is the invoice a credit note cancels.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.VoucherReferenceResponse"
+                        }
+                    ]
+                },
                 "currency": {
                     "type": "string"
                 },
@@ -8059,6 +8160,13 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "INVOICE",
+                        "CREDIT_NOTE"
+                    ]
                 },
                 "number": {
                     "type": "integer"
@@ -10109,6 +10217,26 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "rate": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.VoucherReferenceResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "issued_on": {
+                    "type": "string"
+                },
+                "number": {
+                    "type": "integer"
+                },
+                "point_of_sale": {
+                    "type": "integer"
+                },
+                "type": {
                     "type": "string"
                 }
             }

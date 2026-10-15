@@ -5,6 +5,7 @@ import {
   formatCuit,
   formatDni,
   formatInvoiceNumber,
+  isCredited,
   mapClientFiscal,
   mapInvoicePreview,
   mapInvoicingSettings,
@@ -74,6 +75,7 @@ describe('invoicing API mapping', () => {
         invoice: {
           id: 'inv-1',
           branch_id: 'b1',
+          kind: 'INVOICE',
           environment: 'HOMOLOGATION',
           status: 'ISSUED',
           type: 'A',
@@ -114,9 +116,11 @@ describe('invoicing API mapping', () => {
       currency: 'ARS',
       issues: [],
       otherEnvironmentInvoice: null,
+      creditedInvoice: null,
       invoice: {
         id: 'inv-1',
         branchId: 'b1',
+        kind: 'INVOICE',
         environment: 'HOMOLOGATION',
         status: 'ISSUED',
         type: 'A',
@@ -137,7 +141,72 @@ describe('invoicing API mapping', () => {
         issues: [],
         qrUrl: 'https://www.afip.gob.ar/fe/qr/?p=abc',
         createdAt: '2026-10-05T15:00:00Z',
+        creditNote: null,
+        creditedInvoice: null,
       },
+    });
+  });
+
+  it('maps a credited invoice with its credit note, and the invoice the note names', () => {
+    const raw = {
+      id: 'inv-1',
+      branch_id: 'b1',
+      kind: 'INVOICE',
+      environment: 'PRODUCTION',
+      status: 'ISSUED',
+      type: 'B',
+      point_of_sale: 3,
+      number: 23,
+      issued_on: '2026-10-05',
+      cae: '76543210987654',
+      cae_expires_on: '2026-10-15',
+      issuer_cuit: '30711111112',
+      receiver: RECEIVER,
+      amounts: AMOUNTS,
+      currency: 'ARS',
+      issues: null,
+      qr_url: '',
+      created_at: '2026-10-05T15:00:00Z',
+    };
+    const credited = mapInvoicePreview({
+      environment: 'PRODUCTION',
+      issuer_cuit: '30711111112',
+      fingerprint: 'a'.repeat(64),
+      version_id: 'v-1',
+      type: 'B',
+      point_of_sale: 3,
+      receiver: RECEIVER,
+      amounts: AMOUNTS,
+      currency: 'ARS',
+      issues: [],
+      invoice: null,
+      credited_invoice: {
+        ...raw,
+        credit_note: {
+          ...raw,
+          id: 'nc-1',
+          kind: 'CREDIT_NOTE',
+          number: 4,
+          credited_invoice: {
+            id: 'inv-1',
+            type: 'B',
+            point_of_sale: 3,
+            number: 23,
+            issued_on: '2026-10-05',
+          },
+        },
+      },
+    }).creditedInvoice;
+
+    expect(credited?.kind).toBe('INVOICE');
+    expect(credited && isCredited(credited)).toBe(true);
+    expect(credited?.creditNote?.kind).toBe('CREDIT_NOTE');
+    expect(credited?.creditNote?.creditedInvoice).toEqual({
+      id: 'inv-1',
+      type: 'B',
+      pointOfSale: 3,
+      number: 23,
+      issuedOn: '2026-10-05',
     });
   });
 
@@ -157,6 +226,7 @@ describe('invoicing API mapping', () => {
       other_environment_invoice: {
         id: 'inv-0',
         branch_id: 'b1',
+        kind: 'INVOICE',
         environment: 'HOMOLOGATION',
         status: 'ISSUED',
         type: 'A',
