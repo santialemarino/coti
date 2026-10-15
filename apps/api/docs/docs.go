@@ -7425,6 +7425,9 @@ const docTemplate = `{
         "dto.ChangeRequestDiffResponse": {
             "type": "object",
             "properties": {
+                "handler": {
+                    "$ref": "#/definitions/dto.HandlerDecisionResponse"
+                },
                 "original": {
                     "$ref": "#/definitions/dto.ChangeRequestSideResponse"
                 },
@@ -8170,6 +8173,35 @@ const docTemplate = `{
                 "email": {
                     "type": "string",
                     "maxLength": 255
+                }
+            }
+        },
+        "dto.HandlerDecisionResponse": {
+            "type": "object",
+            "properties": {
+                "client_input": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "interpretation": {
+                    "type": "string"
+                },
+                "no_match_reason": {
+                    "type": "string",
+                    "enum": [
+                        "REQUIRES_SELLER",
+                        "AI_DISABLED",
+                        "PROPOSAL_REFUSED"
+                    ]
+                },
+                "outcome": {
+                    "type": "string",
+                    "enum": [
+                        "APPLIED",
+                        "NO_MATCH"
+                    ]
                 }
             }
         },

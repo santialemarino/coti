@@ -132,6 +132,11 @@ type sellerReach interface {
 		branchIDs []uuid.UUID, userID uuid.UUID) (bool, error)
 }
 
+type handlerDecisionReader interface {
+	GetLatestByVersionID(ctx context.Context, q repository.Querier, accountID,
+		versionID uuid.UUID) (*domain.HandlerDecisionNote, error)
+}
+
 // RFQService owns the text RFQ pipeline up to a seller-reviewable quote draft, and the manual
 // entry flow.
 type RFQService struct {
@@ -153,6 +158,8 @@ type RFQService struct {
 	// inboundMessages decorates WhatsApp RFQs with their sender without turning that sender into
 	// a client record.
 	inboundMessages rfqInboundMessageReader
+	// handlerDecisions explains the latest conversation handler run beside a change request.
+	handlerDecisions handlerDecisionReader
 	// webappURL is the customer-facing app origin; the detail rebuilds each delivery's public_url
 	// from its token only when the surface is wired.
 	webappURL string
@@ -204,6 +211,12 @@ func (s *RFQService) WithClientActions(clientActions rfqClientActionRepository) 
 // WithInboundMessages wires the retained inbound sender into the RFQ detail projection.
 func (s *RFQService) WithInboundMessages(messages rfqInboundMessageReader) *RFQService {
 	s.inboundMessages = messages
+	return s
+}
+
+// WithHandlerDecisions wires the latest handler decision into the change-request comparison.
+func (s *RFQService) WithHandlerDecisions(decisions handlerDecisionReader) *RFQService {
+	s.handlerDecisions = decisions
 	return s
 }
 
@@ -505,6 +518,13 @@ func (s *RFQService) buildChangeRequestDiff(
 	}, domain.ChangeRequestSnapshot{
 		Items: items, Discounts: discounts, Total: version.Total,
 	})
+	if s.handlerDecisions != nil {
+		note, noteErr := s.handlerDecisions.GetLatestByVersionID(ctx, q, tenant.AccountID, version.ID)
+		if noteErr != nil && !errors.Is(noteErr, domain.ErrNotFound) {
+			return noteErr
+		}
+		diff.Handler = note
+	}
 	detail.ChangesRequested = &diff
 	return nil
 }

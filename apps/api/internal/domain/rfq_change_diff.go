@@ -19,6 +19,8 @@ type ChangeRequestDiff struct {
 	Reason    *string
 	Original  ChangeRequestSide
 	Requested ChangeRequestSide
+	// Handler is the latest conversation handler decision on the draft, when one ran.
+	Handler *HandlerDecisionNote
 }
 
 // ChangeRequestSide is one column (original or requested) of the rendered diff.
