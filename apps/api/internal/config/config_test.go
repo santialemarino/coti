@@ -1548,3 +1548,43 @@ func TestMailConfig_DeliversOnlyOverSMTP(t *testing.T) {
 		}
 	}
 }
+
+func TestLoad_ConversationDefaults(t *testing.T) {
+	setEnv(t, minimalEnv())
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.Conversation.WindowReset != 120*time.Second || cfg.Conversation.WindowMax != 600*time.Second ||
+		cfg.Conversation.ContextMessages != 10 {
+		t.Errorf("Conversation = %+v, want 2m/10m/10", cfg.Conversation)
+	}
+}
+
+func TestLoad_ConversationKeysLandOnTheirOwnFields(t *testing.T) {
+	env := minimalEnv()
+	env["CONVERSATION_WINDOW_RESET_SECONDS"] = "45"
+	env["CONVERSATION_WINDOW_MAX_SECONDS"] = "300"
+	env["CONVERSATION_CONTEXT_MESSAGES"] = "7"
+	setEnv(t, env)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.Conversation.WindowReset != 45*time.Second || cfg.Conversation.WindowMax != 300*time.Second ||
+		cfg.Conversation.ContextMessages != 7 {
+		t.Errorf("Conversation = %+v, want 45s/5m/7", cfg.Conversation)
+	}
+}
+
+// A cap at or below the reset would close a window before a second message could extend it.
+func TestLoad_ConversationMaxMustExceedReset(t *testing.T) {
+	env := minimalEnv()
+	env["CONVERSATION_WINDOW_RESET_SECONDS"] = "300"
+	env["CONVERSATION_WINDOW_MAX_SECONDS"] = "300"
+	setEnv(t, env)
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "CONVERSATION_WINDOW_MAX_SECONDS must be greater") {
+		t.Fatalf("Load() = %v, want the cap refused at the reset", err)
+	}
+}

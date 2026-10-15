@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"crypto/subtle"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -38,21 +39,33 @@ type whatsAppInboundConfigReader interface {
 		q repository.Querier) ([]domain.ChannelConfiguration, error)
 }
 
+type whatsAppInboundConversations interface {
+	Route(ctx context.Context, q repository.Querier, route domain.InboundChannelRoute,
+		senderID string) (*domain.ConversationRoute, error)
+	AppendMessage(ctx context.Context, q repository.Querier, tenant domain.Tenant,
+		in domain.NewQuoteMessage) (*domain.QuoteMessage, error)
+}
+
+// errInboundAlreadyReserved rolls back a retried delivery's writes; its first outcome stands.
+var errInboundAlreadyReserved = errors.New("inbound message already reserved")
+
 type whatsAppInboundRFQCreator interface {
 	CreateInboundTextDraftForMessage(ctx context.Context, route domain.InboundChannelRoute,
 		in domain.InboundTextRFQDraftInput, rfqID uuid.UUID) (*domain.TextRFQDraft, error)
 }
 
-// WhatsAppInboundService turns verified WhatsApp messages into idempotent inbound RFQ drafts.
+// WhatsAppInboundService turns verified WhatsApp messages into idempotent inbound RFQ drafts, or
+// into client messages on the live quote conversation their sender continues.
 type WhatsAppInboundService struct {
-	db       whatsAppInboundDB
-	routes   whatsAppInboundRouter
-	messages whatsAppInboundMessageStore
-	configs  whatsAppInboundConfigReader
-	rfqs     whatsAppInboundRFQCreator
-	opener   channelConfigOpener
-	now      func() time.Time
-	log      *slog.Logger
+	db            whatsAppInboundDB
+	routes        whatsAppInboundRouter
+	messages      whatsAppInboundMessageStore
+	configs       whatsAppInboundConfigReader
+	rfqs          whatsAppInboundRFQCreator
+	conversations whatsAppInboundConversations
+	opener        channelConfigOpener
+	now           func() time.Time
+	log           *slog.Logger
 }
 
 // NewWhatsAppInboundService builds a WhatsAppInboundService.
@@ -65,6 +78,14 @@ func NewWhatsAppInboundService(db whatsAppInboundDB, routes whatsAppInboundRoute
 	}
 	return &WhatsAppInboundService{db: db, routes: routes, messages: messages, configs: configs,
 		rfqs: rfqs, opener: opener, now: time.Now, log: log}
+}
+
+// WithConversations routes messages from a sender with a live sent quote into its conversation.
+func (s *WhatsAppInboundService) WithConversations(
+	conversations whatsAppInboundConversations,
+) *WhatsAppInboundService {
+	s.conversations = conversations
+	return s
 }
 
 // Verify reports whether a configured active WhatsApp channel accepts Meta's callback token.
@@ -103,7 +124,7 @@ func (s *WhatsAppInboundService) Verify(ctx context.Context, verifyToken string)
 	return false, nil
 }
 
-// Ingest stores and processes every verified WhatsApp text message in a provider delivery.
+// Ingest stores and routes every verified WhatsApp text message in a provider delivery.
 func (s *WhatsAppInboundService) Ingest(ctx context.Context, messages []domain.InboundTextMessage) error {
 	if s.db == nil || s.routes == nil || s.messages == nil || s.rfqs == nil {
 		return fmt.Errorf("%w: WhatsApp inbound intake is not fully wired", domain.ErrNotConfigured)
@@ -147,27 +168,65 @@ func (s *WhatsAppInboundService) ingestOne(
 	return s.db.WithAdvisoryLock(ctx, lockKey, func() error {
 		var reserved *domain.InboundChannelMessage
 		err := s.db.InTenantTx(ctx, route.Tenant(), func(q repository.Querier) error {
-			var reserveErr error
-			reserved, reserveErr = s.messages.Reserve(ctx, q, route.AccountID, route.BranchID,
-				route.ChannelID, domain.NewInboundChannelMessage{
-					ID:                 uuid.New(),
-					RFQID:              uuid.New(),
-					ExternalMessageID:  message.ExternalMessageID,
-					SenderID:           message.SenderID,
-					SenderLabel:        message.SenderLabel,
-					Body:               message.Body,
-					Payload:            message.Payload,
-					ProviderReceivedAt: message.ProviderReceivedAt,
-				})
-			return reserveErr
+			in := domain.NewInboundChannelMessage{
+				ID:                 uuid.New(),
+				ExternalMessageID:  message.ExternalMessageID,
+				SenderID:           message.SenderID,
+				SenderLabel:        message.SenderLabel,
+				Body:               message.Body,
+				Payload:            message.Payload,
+				ProviderReceivedAt: message.ProviderReceivedAt,
+			}
+			joined, err := s.joinConversation(ctx, q, route, message)
+			if err != nil {
+				return err
+			}
+			if joined != nil {
+				in.QuoteMessageID = &joined.ID
+			} else {
+				rfqID := uuid.New()
+				in.RFQID = &rfqID
+			}
+			reserved, err = s.messages.Reserve(ctx, q, route.AccountID, route.BranchID,
+				route.ChannelID, in)
+			if err != nil {
+				return err
+			}
+			// A retry keeps whatever the first delivery became; rolling back discards this attempt's join.
+			if reserved.ID != in.ID {
+				return errInboundAlreadyReserved
+			}
+			return nil
 		})
-		if err != nil {
+		if err != nil && !errors.Is(err, errInboundAlreadyReserved) {
 			return err
+		}
+		if reserved.RFQID == nil {
+			return nil
 		}
 		_, err = s.rfqs.CreateInboundTextDraftForMessage(ctx, route,
 			domain.InboundTextRFQDraftInput{ClientLabel: message.SenderLabel, RawText: message.Body},
-			reserved.RFQID)
+			*reserved.RFQID)
 		return err
+	})
+}
+
+// joinConversation appends the message to the live quote conversation its sender continues, or
+// returns nil when the message starts a new order.
+func (s *WhatsAppInboundService) joinConversation(ctx context.Context, q repository.Querier,
+	route domain.InboundChannelRoute, message domain.InboundTextMessage,
+) (*domain.QuoteMessage, error) {
+	if s.conversations == nil {
+		return nil, nil
+	}
+	match, err := s.conversations.Route(ctx, q, route, message.SenderID)
+	if err != nil || match == nil {
+		return nil, err
+	}
+	return s.conversations.AppendMessage(ctx, q, route.Tenant(), domain.NewQuoteMessage{
+		ID: uuid.New(), QuoteID: match.QuoteID, ChannelID: &route.ChannelID,
+		AuthorType: domain.MessageAuthorClient, Body: message.Body,
+		ReceivedAt: message.ProviderReceivedAt, OtherLiveQuotes: match.OtherLiveQuotes,
 	})
 }
 

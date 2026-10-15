@@ -212,6 +212,8 @@ Whatever can be expressed in the schema is expressed in the schema:
 | `uq_quote_version_draft`                 | one in-progress draft per quote                    |
 | `uq_message_batch_open`                  | one open message window per quote                  |
 | `uq_message_batch_processing`            | one processing batch (FIFO queue)                  |
+| `uq_quote_message_client_action`         | a webapp client action becomes one message         |
+| `ck_inbound_channel_message_target`      | an inbound event is an order or a message          |
 | `uq_quote_send_public_token`             | the magic-link token is unique                     |
 | `uq_product_account_code`                | a product code is unique within the account        |
 | `uq_product_synonym_term`                | one term per product, case-insensitively           |

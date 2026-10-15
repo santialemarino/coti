@@ -302,6 +302,7 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 		// link into quote_version, so it is lifted before the versions go.
 		for _, stmt := range []string{
 			`DELETE FROM ai_usage WHERE account_id = $1`,
+			`DELETE FROM inbound_channel_message WHERE account_id = $1`,
 			`DELETE FROM quote_correction_memory_source WHERE account_id = $1`,
 			`DELETE FROM quote_correction_memory WHERE account_id = $1`,
 			`DELETE FROM quote_quality_difference WHERE account_id = $1`,
