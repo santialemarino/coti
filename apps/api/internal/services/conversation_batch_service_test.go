@@ -38,6 +38,9 @@ type fakeBatchQueue struct {
 	released []uuid.UUID
 	failures []string
 	failTo   domain.MessageBatchStatus
+	races    int
+	// reclaimBefore is the cutoff the last reclaim was asked for.
+	reclaimBefore time.Time
 }
 
 func (f *fakeBatchQueue) LockDueQuotesCrossAccount(context.Context, repository.Querier, time.Time,
@@ -50,8 +53,12 @@ func (f *fakeBatchQueue) CloseDueCrossAccount(context.Context, repository.Querie
 	return nil, nil
 }
 
-func (f *fakeBatchQueue) ReclaimStuckCrossAccount(context.Context, repository.Querier, time.Time,
-	int, int, string) ([]domain.MessageBatch, error) {
+func (f *fakeBatchQueue) ReclaimStuckCrossAccount(_ context.Context, _ repository.Querier,
+	startedBefore time.Time, _ int, _ int, _ string,
+) ([]domain.MessageBatch, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.reclaimBefore = startedBefore
 	return nil, nil
 }
 
@@ -61,6 +68,10 @@ func (f *fakeBatchQueue) ClaimNextCrossAccount(_ context.Context, _ repository.Q
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.skips = append(f.skips, slices.Clone(skip))
+	if f.races > 0 {
+		f.races--
+		return nil, domain.ErrConflict
+	}
 	for _, batch := range f.pending {
 		if !slices.Contains(skip, batch.ID) {
 			batch.Status = domain.MessageBatchStatusProcessing
@@ -237,5 +248,36 @@ func TestConversationBatchTicker_StopsOnCancelAndNeverOverlaps(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 	if passes.Load() != stopped {
 		t.Errorf("passes after Run returned = %d, want %d", passes.Load(), stopped)
+	}
+}
+
+// A claim lost to another worker on the same quote moves on to the next batch.
+func TestConversationBatchService_LostClaimRaceKeepsThePassGoing(t *testing.T) {
+	queue := &fakeBatchQueue{pending: pendingBatches(1), races: 1}
+	service := newTestBatchService(queue, handlerFunc(func(context.Context, domain.MessageBatch) error {
+		return nil
+	}), time.Minute)
+
+	report, err := service.Sweep(context.Background())
+	if err != nil || report.Processed != 1 {
+		t.Errorf("Sweep() = %+v, %v; want the batch processed after the lost race", report, err)
+	}
+}
+
+// A handler finishing right at its deadline is never reclaimed: the cutoff leaves a tick of margin.
+func TestConversationBatchService_ReclaimWaitsATickPastTheHandlerDeadline(t *testing.T) {
+	queue := &fakeBatchQueue{}
+	now := time.Date(2026, time.October, 14, 12, 0, 0, 0, time.UTC)
+	service := NewConversationBatchService(stubQueueDB{}, queue, handlerFunc(
+		func(context.Context, domain.MessageBatch) error { return nil }),
+		config.ConversationConfig{MaxAttempts: 3, ProcessingTimeout: 10 * time.Minute,
+			TickerInterval: 30 * time.Second, SweepBatchSize: 10},
+		func() time.Time { return now }, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	if _, err := service.Sweep(context.Background()); err != nil {
+		t.Fatalf("Sweep() = %v, want no error", err)
+	}
+	if want := time.Date(2026, time.October, 14, 11, 49, 30, 0, time.UTC); !queue.reclaimBefore.Equal(want) {
+		t.Errorf("reclaim cutoff = %s, want %s", queue.reclaimBefore, want)
 	}
 }

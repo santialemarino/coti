@@ -187,8 +187,8 @@ func TestConversationBatches_CloseStampsClientMessagesOnce(t *testing.T) {
 	}
 	due := e.readBatch(t, dueID)
 	if due.Status != domain.MessageBatchStatusProcessed || due.ClosedAt == nil ||
-		!due.ClosedAt.Equal(batchClock) || due.ProcessedAt == nil {
-		t.Errorf("due batch = %+v, want PROCESSED, closed at the sweep's clock", due)
+		time.Since(*due.ClosedAt).Abs() > time.Minute || due.ProcessedAt == nil {
+		t.Errorf("due batch = %+v, want PROCESSED, closed at the database's clock", due)
 	}
 	for _, id := range []uuid.UUID{first, second} {
 		if got := e.batchOfMessage(t, id); got == nil || *got != dueID {
@@ -236,6 +236,84 @@ func TestConversationBatches_WithoutAHandlerClosedBatchesWait(t *testing.T) {
 	}
 	if got := e.batchOfMessage(t, message); got == nil || *got != due {
 		t.Errorf("message batch = %v, want %s", got, due)
+	}
+}
+
+// With no handler, a claim past its timeout is left alone: nothing could have taken it.
+func TestConversationBatches_WithoutAHandlerNothingIsReclaimed(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "Corralon Sin Reclamo")
+	quoteID := e.batchQuote(t, accountID, branchID)
+	batchID := e.seedBatch(t, accountID, quoteID, domain.MessageBatchStatusClosed, batchClock.Add(-time.Hour))
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`UPDATE message_batch SET status = 'PROCESSING', processing_started_at = $2, attempts = $3
+		 WHERE id = $1`, batchID, batchClock.Add(-time.Hour), batchConfig.MaxAttempts-1); err != nil {
+		t.Fatalf("mark stuck: %v", err)
+	}
+
+	report := sweepOnce(t, e.batchSweeper(nil))
+	if report.Reclaimed != 0 {
+		t.Errorf("sweep = %+v, want nothing reclaimed", report)
+	}
+	if got := e.readBatch(t, batchID); got.Status != domain.MessageBatchStatusProcessing ||
+		got.Attempts != batchConfig.MaxAttempts-1 {
+		t.Errorf("batch = %+v, want it left PROCESSING", got)
+	}
+}
+
+// A handler's own transaction holds the claim's lock: a stale claim is refused, and a held one
+// cannot be reclaimed until that transaction ends.
+func TestConversationBatches_HandlerTransactionLocksItsClaim(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "Corralon Cerrojo")
+	quoteID := e.batchQuote(t, accountID, branchID)
+	e.seedBatch(t, accountID, quoteID, domain.MessageBatchStatusClosed, batchClock.Add(-time.Hour))
+	repo := repository.NewMessageBatchRepository()
+	ctx := context.Background()
+	startedAt := batchClock.Add(-time.Hour)
+	claim, err := repo.ClaimNextCrossAccount(ctx, e.db.CrossAccount(), startedAt, nil)
+	if err != nil || claim == nil {
+		t.Fatalf("ClaimNext() = %+v, %v; want a claim", claim, err)
+	}
+	tenant := domain.Tenant{AccountID: accountID, BranchID: branchID}
+
+	stale := *claim
+	stale.ProcessingStartedAt = &batchClock
+	if err := e.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		return repo.LockClaim(ctx, q, stale)
+	}); !errors.Is(err, domain.ErrConflict) {
+		t.Errorf("LockClaim(stale) = %v, want ErrConflict", err)
+	}
+
+	held := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- e.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+			if err := repo.LockClaim(ctx, q, *claim); err != nil {
+				return err
+			}
+			close(held)
+			<-release
+			return nil
+		})
+	}()
+	select {
+	case <-held:
+	case err := <-done:
+		t.Fatalf("LockClaim(current) = %v, want the claim locked", err)
+	}
+	reclaimed, err := repo.ReclaimStuckCrossAccount(ctx, e.db.CrossAccount(), batchClock, 3, 10,
+		"processing timed out")
+	close(release)
+	if err != nil || len(reclaimed) != 0 {
+		t.Errorf("ReclaimStuck(while held) = %+v, %v; want nothing reclaimed", reclaimed, err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("handler transaction = %v, want no error", err)
+	}
+	if kept, err := repo.MarkProcessedCrossAccount(ctx, e.db.CrossAccount(), *claim, batchClock); err != nil || !kept {
+		t.Errorf("MarkProcessed() = %v, %v; want the held claim settled", kept, err)
 	}
 }
 
