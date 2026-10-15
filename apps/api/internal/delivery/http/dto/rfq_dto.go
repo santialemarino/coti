@@ -157,6 +157,7 @@ type RfqDetailResponse struct {
 	Discounts            []QuoteDiscountResponse                   `json:"discounts"`
 	ChangesRequested     *ChangeRequestDiffResponse                `json:"changes_requested,omitempty"`
 	ClientActions        []ClientActionResponse                    `json:"client_actions"`
+	Conversation         *ConversationResponse                     `json:"conversation,omitempty"`
 }
 
 // ClientActionResponse is one customer response the quote's versions received. version_number
@@ -217,6 +218,42 @@ type ChangeRequestDiffResponse struct {
 	ClientMessages []ClientMessageResponse `json:"client_messages"`
 }
 
+// ConversationResponse is a quote's messages after a send, grouped by the batch that carried them.
+type ConversationResponse struct {
+	Batches []ConversationBatchResponse `json:"batches"`
+	// Pending are the messages of a window still open, not yet handed to the handler.
+	Pending             []ConversationMessageResponse `json:"pending"`
+	CanDiscardAIChanges bool                          `json:"can_discard_ai_changes"`
+}
+
+// ConversationBatchResponse is one closed window and what the handler did with it.
+type ConversationBatchResponse struct {
+	ID            uuid.UUID                     `json:"id"`
+	Status        string                        `json:"status" enums:"CLOSED,PROCESSING,PROCESSED,FAILED"`
+	ClosedAt      *time.Time                    `json:"closed_at"`
+	FailureReason *string                       `json:"failure_reason" enums:"UNPROCESSABLE,ATTEMPTS_EXHAUSTED"`
+	Retryable     bool                          `json:"retryable"`
+	Messages      []ConversationMessageResponse `json:"messages"`
+	Decision      *ConversationDecisionResponse `json:"decision"`
+}
+
+// ConversationMessageResponse is one message of a quote's conversation, as received.
+type ConversationMessageResponse struct {
+	Author     string    `json:"author" enums:"CLIENT,SELLER,SYSTEM"`
+	Body       string    `json:"body"`
+	ReceivedAt time.Time `json:"received_at"`
+}
+
+// ConversationDecisionResponse is the handler's run on a batch and the seller's decision on it.
+type ConversationDecisionResponse struct {
+	Interpretation string     `json:"interpretation"`
+	Outcome        string     `json:"outcome" enums:"APPLIED,NO_MATCH"`
+	NoMatchReason  *string    `json:"no_match_reason" enums:"REQUIRES_SELLER,AI_DISABLED,PROPOSAL_REFUSED"`
+	SellerDecision *string    `json:"seller_decision" enums:"APPROVED_AS_IS,EDITED,REJECTED,MANUAL_OVERRIDE"`
+	DecidedAt      *time.Time `json:"decided_at"`
+	CreatedAt      time.Time  `json:"created_at"`
+}
+
 // ClientMessageResponse is one message the customer wrote, as received.
 type ClientMessageResponse struct {
 	Body       string    `json:"body"`
@@ -230,6 +267,7 @@ type HandlerDecisionResponse struct {
 	Interpretation string    `json:"interpretation"`
 	Outcome        string    `json:"outcome" enums:"APPLIED,NO_MATCH"`
 	NoMatchReason  *string   `json:"no_match_reason" enums:"REQUIRES_SELLER,AI_DISABLED,PROPOSAL_REFUSED"`
+	SellerDecision *string   `json:"seller_decision" enums:"APPROVED_AS_IS,EDITED,REJECTED,MANUAL_OVERRIDE"`
 	CreatedAt      time.Time `json:"created_at"`
 }
 

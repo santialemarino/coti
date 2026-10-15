@@ -34,23 +34,56 @@ func cloneQuoteVersionForEditing(
 	prices branchPriceReader, accountID, branchID, quoteID uuid.UUID, source domain.QuoteVersion,
 	authorID *uuid.UUID, comment *string,
 ) (*quoteVersionClone, error) {
-	items, err := quotes.ListItems(ctx, q, accountID, source.ID)
+	content, err := prepareVersionCopy(ctx, q, quotes, prices, accountID, branchID, source.ID)
 	if err != nil {
 		return nil, err
+	}
+	draft, err := quotes.CreateVersion(ctx, q, accountID, domain.NewQuoteVersion{
+		QuoteID: quoteID, AuthorID: authorID, VersionNumber: source.VersionNumber + 1,
+		Currency: content.valuation.currency, Total: content.valuation.total, Comment: comment,
+	})
+	if err != nil {
+		return nil, err
+	}
+	sourceItemIDs, err := insertVersionCopy(ctx, q, quotes, accountID, draft.ID, content)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := quotes.UpdateCurrentVersion(ctx, q, accountID, quoteID, draft.ID); err != nil {
+		return nil, err
+	}
+	return &quoteVersionClone{Draft: draft, SourceItemIDs: sourceItemIDs}, nil
+}
+
+// versionCopy is a version's lines and candidates revalued at today's prices, ready to write.
+type versionCopy struct {
+	valuation    quoteValuation
+	alternatives map[uuid.UUID][]domain.QuoteItemAlternative
+}
+
+// prepareVersionCopy reads a version's lines and candidates and values them at the branch's
+// current prices; candidates lose the seller's approval, which belongs to the version they were on.
+func prepareVersionCopy(
+	ctx context.Context, q repository.Querier, quotes quoteVersionCloneRepository,
+	prices branchPriceReader, accountID, branchID, sourceID uuid.UUID,
+) (versionCopy, error) {
+	items, err := quotes.ListItems(ctx, q, accountID, sourceID)
+	if err != nil {
+		return versionCopy{}, err
 	}
 	alternatives, err := quotes.ListAlternativesByItemIDs(ctx, q, accountID,
 		quoteItemIDs(items))
 	if err != nil {
-		return nil, err
+		return versionCopy{}, err
 	}
 	currentPrices, err := prices.GetCurrentByProductIDs(ctx, q, accountID, branchID,
 		quoteProductIDs(items, alternatives))
 	if err != nil {
-		return nil, err
+		return versionCopy{}, err
 	}
 	valuation, err := valueQuoteItems(items, currentPrices)
 	if err != nil {
-		return nil, err
+		return versionCopy{}, err
 	}
 
 	for itemID, offered := range alternatives {
@@ -62,22 +95,22 @@ func cloneQuoteVersionForEditing(
 	alternativePricings, err := valueQuoteAlternatives(alternatives, currentPrices,
 		valuation.currency)
 	if err != nil {
-		return nil, err
+		return versionCopy{}, err
 	}
 	applyAlternativePricing(alternatives, alternativePricings)
+	return versionCopy{valuation: valuation, alternatives: alternatives}, nil
+}
 
-	draft, err := quotes.CreateVersion(ctx, q, accountID, domain.NewQuoteVersion{
-		QuoteID: quoteID, AuthorID: authorID, VersionNumber: source.VersionNumber + 1,
-		Currency: valuation.currency, Total: valuation.total, Comment: comment,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	clonedItems := make([]domain.NewQuoteItem, 0, len(items))
+// insertVersionCopy writes a prepared copy into a mutable version and returns which new line
+// each source line became.
+func insertVersionCopy(
+	ctx context.Context, q repository.Querier, quotes quoteVersionCloneRepository,
+	accountID, versionID uuid.UUID, content versionCopy,
+) (map[uuid.UUID]uuid.UUID, error) {
+	clonedItems := make([]domain.NewQuoteItem, 0, len(content.valuation.items))
 	clonedAlternatives := make([]domain.NewQuoteItemAlternative, 0)
-	sourceItemIDs := make(map[uuid.UUID]uuid.UUID, len(valuation.items))
-	for _, item := range valuation.items {
+	sourceItemIDs := make(map[uuid.UUID]uuid.UUID, len(content.valuation.items))
+	for _, item := range content.valuation.items {
 		newID := uuid.New()
 		sourceItemIDs[item.ID] = newID
 		clonedItems = append(clonedItems, domain.NewQuoteItem{
@@ -87,7 +120,7 @@ func cloneQuoteVersionForEditing(
 			UnitPriceSnapshot: item.UnitPriceSnapshot, MinPriceSnapshot: item.MinPriceSnapshot,
 			Subtotal: item.Subtotal,
 		})
-		for _, alternative := range alternatives[item.ID] {
+		for _, alternative := range content.alternatives[item.ID] {
 			clonedAlternatives = append(clonedAlternatives, domain.NewQuoteItemAlternative{
 				QuoteItemID: newID, ProductID: alternative.ProductID,
 				ComboID: alternative.ComboID, Type: alternative.Type, Origin: alternative.Origin,
@@ -96,14 +129,11 @@ func cloneQuoteVersionForEditing(
 			})
 		}
 	}
-	if _, err := quotes.CreateItems(ctx, q, accountID, draft.ID, clonedItems); err != nil {
+	if _, err := quotes.CreateItems(ctx, q, accountID, versionID, clonedItems); err != nil {
 		return nil, err
 	}
 	if err := quotes.CreateAlternatives(ctx, q, accountID, clonedAlternatives); err != nil {
 		return nil, err
 	}
-	if _, err := quotes.UpdateCurrentVersion(ctx, q, accountID, quoteID, draft.ID); err != nil {
-		return nil, err
-	}
-	return &quoteVersionClone{Draft: draft, SourceItemIDs: sourceItemIDs}, nil
+	return sourceItemIDs, nil
 }

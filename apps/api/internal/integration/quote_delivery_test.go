@@ -155,7 +155,9 @@ func (e *env) quoteDeliveryService(t *testing.T, whatsapp domain.QuoteWhatsAppSe
 	}
 	representations := services.NewQuoteRepresentationService(e.db,
 		repository.NewQuoteRepresentationRepository(), repository.NewQuoteRepository(),
-		objects, nil, pdf.NewQuoteRenderer(), 15*time.Minute, nil, nil)
+		objects, nil, pdf.NewQuoteRenderer(), 15*time.Minute, nil, nil).
+		WithHandlerDecisions(services.NewHandlerDecisionSettler(repository.NewHandlerDecisionRepository(),
+			repository.NewQuoteRepository(), repository.NewQuoteDiscountRepository()))
 	return services.NewQuoteDeliveryService(e.db, repository.NewQuoteSendRepository(),
 		repository.NewQuoteRepository(), repository.NewChannelRepository(),
 		repository.NewBranchRepository(), repository.NewProductPriceRepository(), whatsapp, email, evaluator,

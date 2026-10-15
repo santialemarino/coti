@@ -374,6 +374,8 @@
     "QUOTE_ARCHIVED": "La cotización está archivada y no se puede modificar.",
     "QUOTE_NOT_DRAFT": "La cotización ya no está en un estado que permita esa acción.",
     "QUOTE_NOT_REACTIVATABLE": "La cotización ya no está cerrada o su versión cambió. Actualizá la pantalla.",
+    "NO_AI_CHANGES": "Este borrador ya no tiene cambios de la IA para descartar. Actualizá la pantalla.",
+    "BATCH_NOT_RETRYABLE": "Estos mensajes ya no se pueden reintentar: la cotización cambió de estado o ya están en la cola.",
     "DISCOUNT_NOT_APPLICABLE": "Esa promoción ya no aplica a esta cotización, así que no se puede restaurar.",
     "QUOTE_NOT_SENDABLE": "La cotización cambió y esta versión ya no es la aprobada.",
     "DELIVERY_CHANNEL": "Esta sucursal no tiene los canales de envío necesarios configurados.",
@@ -1402,7 +1404,16 @@
             "applied": "La IA lo interpretó así y ya actualizó el borrador: {interpretation}. Revisalo antes de enviar.",
             "requiresSeller": "La IA no aplicó cambios porque el pedido necesita tu revisión. Leé el mensaje del cliente y actualizá la cotización.",
             "aiDisabled": "La IA no está activa, así que no se aplicó ningún cambio. Leé el mensaje del cliente y actualizá la cotización.",
-            "proposalRefused": "La IA no pudo proponer un cambio válido. Leé el mensaje del cliente y actualizá la cotización."
+            "proposalRefused": "La IA no pudo proponer un cambio válido. Leé el mensaje del cliente y actualizá la cotización.",
+            "discarded": "Descartaste los cambios de la IA: el borrador volvió a la versión que recibió el cliente. Actualizá la cotización a mano."
+          },
+          "discard": {
+            "action": "Descartar cambios de la IA",
+            "title": "¿Descartar los cambios de la IA?",
+            "description": "El borrador vuelve a quedar igual a la última versión que recibió el cliente, con los precios y promociones de hoy. Se pierde lo que hayas editado a mano en este borrador, incluidos los descuentos que cargaste.",
+            "confirm": "Descartar cambios",
+            "pending": "Descartando…",
+            "success": "Descartamos los cambios de la IA en la cotización {reference}."
           }
         },
         "sellerRevision": {
@@ -1579,6 +1590,39 @@
         "copiedLink": "Enlace copiado",
         "copyFailed": "No pudimos copiar el enlace. Seleccionalo y copialo a mano.",
         "unavailable": "La cotización todavía no fue enviada: el enlace va a estar disponible cuando la envíes."
+      },
+      "conversation": {
+        "title": "Conversación con el cliente",
+        "customer": "Cliente",
+        "pending": "El cliente sigue escribiendo; la IA va a leer estos mensajes en unos minutos.",
+        "status": {
+          "CLOSED": "En cola para la IA",
+          "PROCESSING": "La IA lo está leyendo",
+          "PROCESSED": "Procesado",
+          "FAILED": "No se pudo procesar"
+        },
+        "decision": {
+          "applied": "La IA lo interpretó así y actualizó el borrador: {interpretation}",
+          "noMatch": {
+            "REQUIRES_SELLER": "La IA lo dejó para vos: el pedido necesita tu revisión.",
+            "AI_DISABLED": "La IA no estaba activa, así que no cambió nada.",
+            "PROPOSAL_REFUSED": "La IA no pudo proponer un cambio válido."
+          }
+        },
+        "sellerDecision": {
+          "pending": "Sin revisar",
+          "APPROVED_AS_IS": "Enviado sin cambios",
+          "EDITED": "Editado antes de enviar",
+          "REJECTED": "Descartado",
+          "MANUAL_OVERRIDE": "Resuelto a mano"
+        },
+        "failure": {
+          "UNPROCESSABLE": "La cotización ya estaba cerrada o archivada cuando llegaron estos mensajes, así que la IA no los procesó.",
+          "ATTEMPTS_EXHAUSTED": "La IA no pudo procesar estos mensajes después de varios intentos."
+        },
+        "retry": "Reintentar",
+        "retrying": "Reintentando…",
+        "retried": "Volvimos a poner los mensajes en la cola de la IA."
       },
       "lifecycle": {
         "accept": {

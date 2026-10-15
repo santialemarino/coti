@@ -123,6 +123,7 @@ export interface RfqDetailResponse {
   discounts?: QuoteDiscountResponse[];
   changes_requested?: ChangeRequestDiff;
   client_actions?: ClientActionResponse[];
+  conversation?: ConversationResponse;
 }
 
 export interface QuoteResponse {
@@ -350,7 +351,49 @@ export interface HandlerDecisionNote {
   interpretation: string;
   outcome: 'APPLIED' | 'NO_MATCH';
   no_match_reason: HandlerNoMatchReason | null;
+  seller_decision?: HandlerSellerDecision | null;
   created_at: string;
+}
+
+// What the seller did with a handler run, once they sent or discarded the draft.
+export type HandlerSellerDecision = 'APPROVED_AS_IS' | 'EDITED' | 'REJECTED' | 'MANUAL_OVERRIDE';
+
+export type ConversationBatchStatus = 'CLOSED' | 'PROCESSING' | 'PROCESSED' | 'FAILED';
+
+// Why a batch failed; only one that ran out of attempts can be retried.
+export type ConversationFailureReason = 'UNPROCESSABLE' | 'ATTEMPTS_EXHAUSTED';
+
+export interface ConversationMessage {
+  author: 'CLIENT' | 'SELLER' | 'SYSTEM';
+  body: string;
+  received_at: string;
+}
+
+export interface ConversationDecision {
+  interpretation: string;
+  outcome: 'APPLIED' | 'NO_MATCH';
+  no_match_reason: HandlerNoMatchReason | null;
+  seller_decision: HandlerSellerDecision | null;
+  decided_at: string | null;
+  created_at: string;
+}
+
+export interface ConversationBatch {
+  id: string;
+  status: ConversationBatchStatus;
+  closed_at: string | null;
+  failure_reason: ConversationFailureReason | null;
+  retryable: boolean;
+  messages: ConversationMessage[];
+  decision: ConversationDecision | null;
+}
+
+// A quote's messages after a send, grouped by the batch that carried them.
+export interface ConversationResponse {
+  batches: ConversationBatch[];
+  // Messages of a window still open, not yet handed to the AI.
+  pending: ConversationMessage[];
+  can_discard_ai_changes: boolean;
 }
 
 // One message the customer wrote, as received.

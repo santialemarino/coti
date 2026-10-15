@@ -571,6 +571,88 @@ definitions:
       imported_rows:
         type: integer
     type: object
+  dto.ConversationBatchResponse:
+    properties:
+      closed_at:
+        type: string
+      decision:
+        $ref: '#/definitions/dto.ConversationDecisionResponse'
+      failure_reason:
+        enum:
+        - UNPROCESSABLE
+        - ATTEMPTS_EXHAUSTED
+        type: string
+      id:
+        type: string
+      messages:
+        items:
+          $ref: '#/definitions/dto.ConversationMessageResponse'
+        type: array
+      retryable:
+        type: boolean
+      status:
+        enum:
+        - CLOSED
+        - PROCESSING
+        - PROCESSED
+        - FAILED
+        type: string
+    type: object
+  dto.ConversationDecisionResponse:
+    properties:
+      created_at:
+        type: string
+      decided_at:
+        type: string
+      interpretation:
+        type: string
+      no_match_reason:
+        enum:
+        - REQUIRES_SELLER
+        - AI_DISABLED
+        - PROPOSAL_REFUSED
+        type: string
+      outcome:
+        enum:
+        - APPLIED
+        - NO_MATCH
+        type: string
+      seller_decision:
+        enum:
+        - APPROVED_AS_IS
+        - EDITED
+        - REJECTED
+        - MANUAL_OVERRIDE
+        type: string
+    type: object
+  dto.ConversationMessageResponse:
+    properties:
+      author:
+        enum:
+        - CLIENT
+        - SELLER
+        - SYSTEM
+        type: string
+      body:
+        type: string
+      received_at:
+        type: string
+    type: object
+  dto.ConversationResponse:
+    properties:
+      batches:
+        items:
+          $ref: '#/definitions/dto.ConversationBatchResponse'
+        type: array
+      can_discard_ai_changes:
+        type: boolean
+      pending:
+        description: Pending are the messages of a window still open, not yet handed
+          to the handler.
+        items:
+          $ref: '#/definitions/dto.ConversationMessageResponse'
+        type: array
+    type: object
   dto.CreateBranchRequest:
     properties:
       address:
@@ -864,6 +946,13 @@ definitions:
         enum:
         - APPLIED
         - NO_MATCH
+        type: string
+      seller_decision:
+        enum:
+        - APPROVED_AS_IS
+        - EDITED
+        - REJECTED
+        - MANUAL_OVERRIDE
         type: string
     type: object
   dto.HealthResponse:
@@ -2030,6 +2119,8 @@ definitions:
         items:
           $ref: '#/definitions/dto.ClientActionResponse'
         type: array
+      conversation:
+        $ref: '#/definitions/dto.ConversationResponse'
       deliveries:
         items:
           $ref: '#/definitions/dto.QuoteSendTrackingResponse'
@@ -5634,6 +5725,49 @@ paths:
       summary: Associate an accepted sale with a client
       tags:
       - clients
+  /v1/quotes/{quoteId}/discard-ai-changes:
+    post:
+      description: Resets the draft to the version the customer last received and
+        records the pending AI changes as rejected.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteVersionResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_ARCHIVED or NO_AI_CHANGES
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Discard the AI's changes to a draft
+      tags:
+      - quotes
   /v1/quotes/{quoteId}/discounts:
     post:
       consumes:
@@ -6110,6 +6244,54 @@ paths:
       security:
       - BearerAuth: []
       summary: Approve or withdraw a quote alternative
+      tags:
+      - quotes
+  /v1/quotes/{quoteId}/message-batches/{batchId}/retry:
+    post:
+      description: Requeues a batch that ran out of attempts while the handler may
+        still act on its quote.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Batch id
+        in: path
+        name: batchId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ConversationBatchResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote or batch in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: BATCH_NOT_RETRYABLE
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Retry a failed conversation batch
       tags:
       - quotes
   /v1/quotes/{quoteId}/reactivate:

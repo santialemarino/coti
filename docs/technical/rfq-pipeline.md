@@ -515,12 +515,35 @@ answers the customer and never infers an acceptance or a rejection: "dale, acept
 language model bound (`AI_LLM_PROVIDER=disabled`; the model is never called) all record a `NO_MATCH`
 decision with its reason (`REQUIRES_SELLER`, `PROPOSAL_REFUSED`, `AI_DISABLED`) and finish the batch
 `PROCESSED`, so nothing loops. `handler_decision.ai_proposal` stores
-`{outcome, no_match_origin, no_match_reason, interpretation, operations}`. A provider failure is
-retried like any other error, up to `CONVERSATION_MAX_ATTEMPTS`.
+`{outcome, no_match_origin, no_match_reason, interpretation, operations}`, and `draft_before` /
+`draft_after` the draft's lines and seller-controlled discounts (typed or suppressed) around the
+change, without prices. A provider failure is retried like any other error, up to
+`CONVERSATION_MAX_ATTEMPTS`; a batch that fails records `failure_reason`: `UNPROCESSABLE` for a
+refusal no retry can fix, `ATTEMPTS_EXHAUSTED` for one that ran out of attempts.
+
+#### The seller's decision
+
+Each `handler_decision` row is completed when the seller decides, which happens in one of two ways:
+
+- **Sending the draft** settles every undecided row in the transaction that freezes it. An applied
+  run is `APPROVED_AS_IS` when nothing the seller controls changed after it — no gap between its
+  `draft_after` and the next run's `draft_before`, nor between the last run and the draft as frozen —
+  and `EDITED` otherwise; repricing is not an edit, since prices are not in the snapshot. A `NO_MATCH`
+  run is `MANUAL_OVERRIDE`. `user_id` and `decided_at` name the sender.
+- **`POST /v1/quotes/:quoteId/discard-ai-changes`** resets the draft in place to a copy of the
+  version the customer last received, repriced and swept like a fresh draft, and records every
+  pending applied run `REJECTED`. The quote stays `CHANGE_REQUESTED`; a draft with no pending applied
+  run answers `409 NO_AI_CHANGES`. Pending no-match runs stay for the send to settle.
+
+`POST /v1/quotes/:quoteId/message-batches/:batchId/retry` returns an `ATTEMPTS_EXHAUSTED` batch to
+`CLOSED` with a fresh count, keeping its place by `closed_at`, while the handler may still act on the
+quote; anything else answers `409 BATCH_NOT_RETRYABLE`.
 
 The RFQ detail's `changes_requested.handler` carries the latest decision on the draft, and
 `changes_requested.client_messages` every message the customer sent since the version they answered
-was frozen; the backoffice shows both beside the customer's request.
+was frozen; the backoffice shows both beside the customer's request. `conversation` carries the whole
+thread: each batch with its messages, status, `failure_reason`, `retryable`, and the handler's run
+with the seller's decision; `pending` for a window still open; and `can_discard_ai_changes`.
 
 ### Closing and reactivating a quote
 

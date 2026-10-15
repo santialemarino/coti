@@ -14,7 +14,7 @@ import (
 )
 
 const messageBatchColumns = `id, account_id, quote_id, status, opened_at, closes_at, closed_at,
-	processed_at, created_at, attempts, last_error, processing_started_at`
+	processed_at, created_at, attempts, last_error, processing_started_at, failure_reason`
 
 // messageBatchProcessingIndex keeps one PROCESSING batch per quote.
 const messageBatchProcessingIndex = "uq_message_batch_processing"
@@ -24,6 +24,32 @@ type MessageBatchRepository struct{}
 
 // NewMessageBatchRepository builds a MessageBatchRepository.
 func NewMessageBatchRepository() *MessageBatchRepository { return &MessageBatchRepository{} }
+
+// ListByQuote returns every batch of a quote's conversation, oldest first.
+func (r *MessageBatchRepository) ListByQuote(ctx context.Context, q Querier, accountID,
+	quoteID uuid.UUID,
+) ([]domain.MessageBatch, error) {
+	return queryMessageBatches(ctx, q, `SELECT `+messageBatchColumns+`
+		FROM message_batch
+		WHERE account_id = $1 AND quote_id = $2
+		ORDER BY opened_at, id`,
+		accountID, quoteID)
+}
+
+// GetByQuote returns one batch of a quote's conversation. Returns domain.ErrNotFound when the
+// quote has no such batch.
+func (r *MessageBatchRepository) GetByQuote(ctx context.Context, q Querier, accountID, quoteID,
+	batchID uuid.UUID,
+) (*domain.MessageBatch, error) {
+	batch, err := scanMessageBatch(q.QueryRow(ctx, `SELECT `+messageBatchColumns+`
+		FROM message_batch
+		WHERE account_id = $1 AND quote_id = $2 AND id = $3`,
+		accountID, quoteID, batchID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	return batch, err
+}
 
 // OpenOrExtend opens the quote's window at now, or pushes its close to now+reset without passing
 // opened_at+limit. uq_message_batch_open makes concurrent callers share one OPEN window. Returns
@@ -128,7 +154,9 @@ func (r *MessageBatchRepository) ReclaimStuckCrossAccount(ctx context.Context, q
 		UPDATE message_batch
 		SET attempts = message_batch.attempts + 1, last_error = $4,
 		    status = CASE WHEN message_batch.attempts + 1 >= $2 THEN 'FAILED'::message_batch_status
-		                  ELSE 'CLOSED'::message_batch_status END
+		                  ELSE 'CLOSED'::message_batch_status END,
+		    failure_reason = CASE WHEN message_batch.attempts + 1 >= $2
+		                          THEN 'ATTEMPTS_EXHAUSTED'::message_batch_failure_reason END
 		FROM stuck WHERE message_batch.id = stuck.id
 		RETURNING `+qualifiedMessageBatchColumns("message_batch"),
 		startedBefore, maxAttempts, limit, failure)
@@ -201,21 +229,41 @@ func (r *MessageBatchRepository) MarkProcessedCrossAccount(ctx context.Context, 
 }
 
 // RecordFailureCrossAccount counts a failed attempt on a claim and returns the batch to CLOSED, or
-// to FAILED once attempts reaches maxAttempts. Returns nil when the claim was lost.
+// to FAILED for reason once attempts reaches maxAttempts. Returns nil when the claim was lost.
 func (r *MessageBatchRepository) RecordFailureCrossAccount(ctx context.Context, q Querier,
 	batch domain.MessageBatch, maxAttempts int, failure string,
+	reason domain.MessageBatchFailureReason,
 ) (*domain.MessageBatch, error) {
 	updated, err := scanMessageBatch(q.QueryRow(ctx, `UPDATE message_batch
 		SET attempts = attempts + 1, last_error = $5,
 		    status = CASE WHEN attempts + 1 >= $4 THEN 'FAILED'::message_batch_status
-		                  ELSE 'CLOSED'::message_batch_status END
+		                  ELSE 'CLOSED'::message_batch_status END,
+		    failure_reason = CASE WHEN attempts + 1 >= $4 THEN $6::message_batch_failure_reason END
 		WHERE id = $1 AND account_id = $2 AND status = 'PROCESSING' AND processing_started_at = $3
 		RETURNING `+messageBatchColumns,
-		batch.ID, batch.AccountID, batch.ProcessingStartedAt, maxAttempts, failure))
+		batch.ID, batch.AccountID, batch.ProcessingStartedAt, maxAttempts, failure, string(reason)))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	return updated, err
+}
+
+// Requeue returns a batch that ran out of attempts to the queue with a fresh count, keeping its
+// place by closed_at. Returns domain.ErrConflict when the batch is not such a failure.
+func (r *MessageBatchRepository) Requeue(ctx context.Context, q Querier, accountID, quoteID,
+	batchID uuid.UUID,
+) (*domain.MessageBatch, error) {
+	batch, err := scanMessageBatch(q.QueryRow(ctx, `UPDATE message_batch
+		SET status = 'CLOSED', attempts = 0, last_error = NULL, failure_reason = NULL,
+		    processing_started_at = NULL
+		WHERE account_id = $1 AND quote_id = $2 AND id = $3
+		  AND status = 'FAILED' AND failure_reason = 'ATTEMPTS_EXHAUSTED'
+		RETURNING `+messageBatchColumns,
+		accountID, quoteID, batchID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrConflict
+	}
+	return batch, err
 }
 
 // ReleaseCrossAccount returns a claim to CLOSED without counting an attempt, for work interrupted
@@ -262,7 +310,7 @@ func scanMessageBatch(row pgx.Row) (*domain.MessageBatch, error) {
 	var batch domain.MessageBatch
 	err := row.Scan(&batch.ID, &batch.AccountID, &batch.QuoteID, &batch.Status, &batch.OpenedAt,
 		&batch.ClosesAt, &batch.ClosedAt, &batch.ProcessedAt, &batch.CreatedAt, &batch.Attempts,
-		&batch.LastError, &batch.ProcessingStartedAt)
+		&batch.LastError, &batch.ProcessingStartedAt, &batch.FailureReason)
 	if err != nil {
 		return nil, err
 	}

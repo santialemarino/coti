@@ -405,6 +405,40 @@ export async function transitionQuote(
   return response.json() as Promise<QuoteResponse>;
 }
 
+// Reset a change-requested draft to the version the customer last received.
+export async function discardAIChanges(
+  quoteId: string,
+  branchId: string,
+): Promise<QuoteVersionResponse> {
+  const response = await fetch(`/api/quotes/${quoteId}/discard-ai-changes`, {
+    method: 'POST',
+    headers: branchHeaders(branchId),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    await throwApiError(response);
+  }
+  return response.json() as Promise<QuoteVersionResponse>;
+}
+
+// Send a batch of customer messages that ran out of attempts back to the AI's queue.
+export async function retryConversationBatch(
+  quoteId: string,
+  batchId: string,
+  branchId: string,
+): Promise<void> {
+  const response = await fetch(`/api/quotes/${quoteId}/message-batches/${batchId}/retry`, {
+    method: 'POST',
+    headers: branchHeaders(branchId),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    await throwApiError(response);
+  }
+}
+
 // Reopen a closed quote with its frozen version or a newly editable one.
 export async function reactivateQuote(
   quoteId: string,

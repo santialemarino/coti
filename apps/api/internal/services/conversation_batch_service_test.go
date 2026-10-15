@@ -40,6 +40,7 @@ type fakeBatchQueue struct {
 	failures []string
 	failTo   domain.MessageBatchStatus
 	limits   []int
+	reasons  []domain.MessageBatchFailureReason
 	races    int
 	// reclaimBefore is the cutoff the last reclaim was asked for.
 	reclaimBefore time.Time
@@ -91,11 +92,13 @@ func (f *fakeBatchQueue) MarkProcessedCrossAccount(context.Context, repository.Q
 
 func (f *fakeBatchQueue) RecordFailureCrossAccount(_ context.Context, _ repository.Querier,
 	batch domain.MessageBatch, maxAttempts int, failure string,
+	reason domain.MessageBatchFailureReason,
 ) (*domain.MessageBatch, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.failures = append(f.failures, failure)
 	f.limits = append(f.limits, maxAttempts)
+	f.reasons = append(f.reasons, reason)
 	batch.Status = f.failTo
 	batch.Attempts++
 	return &batch, nil
@@ -182,6 +185,10 @@ func TestConversationBatchService_UnprocessableBatchFailsAtOnce(t *testing.T) {
 	if !slices.Equal(queue.limits, []int{1, 3}) {
 		t.Errorf("attempt limits = %v, want 1 for the unprocessable batch and 3 for the retryable one",
 			queue.limits)
+	}
+	if want := []domain.MessageBatchFailureReason{domain.MessageBatchFailureUnprocessable,
+		domain.MessageBatchFailureAttemptsExhausted}; !slices.Equal(queue.reasons, want) {
+		t.Errorf("failure reasons = %v, want %v", queue.reasons, want)
 	}
 }
 

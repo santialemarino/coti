@@ -46,7 +46,8 @@ type conversationBatchQueue interface {
 	MarkProcessedCrossAccount(ctx context.Context, q repository.Querier, batch domain.MessageBatch,
 		now time.Time) (bool, error)
 	RecordFailureCrossAccount(ctx context.Context, q repository.Querier, batch domain.MessageBatch,
-		maxAttempts int, failure string) (*domain.MessageBatch, error)
+		maxAttempts int, failure string,
+		reason domain.MessageBatchFailureReason) (*domain.MessageBatch, error)
 	ReleaseCrossAccount(ctx context.Context, q repository.Querier,
 		batch domain.MessageBatch) (bool, error)
 }
@@ -222,12 +223,12 @@ func (s *ConversationBatchService) process(ctx context.Context, batch domain.Mes
 		}
 		return ctx.Err()
 	}
-	maxAttempts := s.cfg.MaxAttempts
+	maxAttempts, reason := s.cfg.MaxAttempts, domain.MessageBatchFailureAttemptsExhausted
 	if errors.Is(handleErr, domain.ErrBatchUnprocessable) {
-		maxAttempts = 1
+		maxAttempts, reason = 1, domain.MessageBatchFailureUnprocessable
 	}
 	settled, err := s.queue.RecordFailureCrossAccount(settle, q, batch, maxAttempts,
-		handleErr.Error())
+		handleErr.Error(), reason)
 	if err != nil {
 		return err
 	}

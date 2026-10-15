@@ -141,10 +141,11 @@ func (e *env) readBatch(t *testing.T, id uuid.UUID) domain.MessageBatch {
 	var batch domain.MessageBatch
 	if err := e.db.CrossAccount().QueryRow(context.Background(),
 		`SELECT id, account_id, quote_id, status, closed_at, processed_at, attempts, last_error,
-		        processing_started_at
+		        processing_started_at, failure_reason
 		 FROM message_batch WHERE id = $1`, id,
 	).Scan(&batch.ID, &batch.AccountID, &batch.QuoteID, &batch.Status, &batch.ClosedAt,
-		&batch.ProcessedAt, &batch.Attempts, &batch.LastError, &batch.ProcessingStartedAt); err != nil {
+		&batch.ProcessedAt, &batch.Attempts, &batch.LastError, &batch.ProcessingStartedAt,
+		&batch.FailureReason); err != nil {
 		t.Fatalf("read batch %s: %v", id, err)
 	}
 	return batch
@@ -469,8 +470,9 @@ func TestConversationBatches_RetriesThenFailsAndTheQueueMovesOn(t *testing.T) {
 		}
 	}
 	report := sweepOnce(t, sweeper)
-	if got := e.readBatch(t, failing); got.Status != domain.MessageBatchStatusFailed || got.Attempts != 3 {
-		t.Errorf("after the last attempt failing batch = %+v, want FAILED with 3 attempts", got)
+	if got := e.readBatch(t, failing); got.Status != domain.MessageBatchStatusFailed || got.Attempts != 3 ||
+		got.FailureReason == nil || *got.FailureReason != domain.MessageBatchFailureAttemptsExhausted {
+		t.Errorf("after the last attempt failing batch = %+v, want FAILED with 3 attempts, exhausted", got)
 	}
 	if got := e.readBatch(t, next); got.Status != domain.MessageBatchStatusProcessed {
 		t.Errorf("next batch = %s, want PROCESSED once the head failed", got.Status)
@@ -507,8 +509,9 @@ func TestConversationBatches_ReclaimsAStuckClaimAndFencesItsOwner(t *testing.T) 
 		t.Errorf("reclaimed batch = %+v, want reprocessed with the lost attempt counted", got)
 	}
 	if got := e.readBatch(t, exhausted); got.Status != domain.MessageBatchStatusFailed ||
-		got.Attempts != batchConfig.MaxAttempts {
-		t.Errorf("exhausted batch = %+v, want FAILED", got)
+		got.Attempts != batchConfig.MaxAttempts || got.FailureReason == nil ||
+		*got.FailureReason != domain.MessageBatchFailureAttemptsExhausted {
+		t.Errorf("exhausted batch = %+v, want FAILED, exhausted", got)
 	}
 
 	// Reclaimed and claimed again by a second worker: the first worker's late writes miss it.
@@ -527,7 +530,8 @@ func TestConversationBatches_ReclaimsAStuckClaimAndFencesItsOwner(t *testing.T) 
 	if kept, err := repo.MarkProcessedCrossAccount(ctx, e.db.CrossAccount(), original, batchClock); err != nil || kept {
 		t.Errorf("late MarkProcessed = %v, %v; want the lost claim refused", kept, err)
 	}
-	if settled, err := repo.RecordFailureCrossAccount(ctx, e.db.CrossAccount(), original, 3, "late"); err != nil || settled != nil {
+	if settled, err := repo.RecordFailureCrossAccount(ctx, e.db.CrossAccount(), original, 3, "late",
+		domain.MessageBatchFailureAttemptsExhausted); err != nil || settled != nil {
 		t.Errorf("late RecordFailure = %+v, %v; want the lost claim refused", settled, err)
 	}
 	if kept, err := repo.MarkProcessedCrossAccount(ctx, e.db.CrossAccount(), *reclaimed, batchClock); err != nil || !kept {
@@ -572,7 +576,8 @@ func TestConversationBatches_NeverCrossAccounts(t *testing.T) {
 	if kept, err := repo.MarkProcessedCrossAccount(ctx, e.db.CrossAccount(), foreign, batchClock); err != nil || kept {
 		t.Errorf("MarkProcessed(other account) = %v, %v; want refused", kept, err)
 	}
-	if settled, err := repo.RecordFailureCrossAccount(ctx, e.db.CrossAccount(), foreign, 3, "x"); err != nil || settled != nil {
+	if settled, err := repo.RecordFailureCrossAccount(ctx, e.db.CrossAccount(), foreign, 3, "x",
+		domain.MessageBatchFailureAttemptsExhausted); err != nil || settled != nil {
 		t.Errorf("RecordFailure(other account) = %+v, %v; want refused", settled, err)
 	}
 	if released, err := repo.ReleaseCrossAccount(ctx, e.db.CrossAccount(), foreign); err != nil || released {

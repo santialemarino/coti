@@ -4644,6 +4644,71 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/quotes/{quoteId}/discard-ai-changes": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Resets the draft to the version the customer last received and records the pending AI changes as rejected.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Discard the AI's changes to a draft",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteVersionResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_ARCHIVED or NO_AI_CHANGES",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/quotes/{quoteId}/discounts": {
             "post": {
                 "security": [
@@ -5356,6 +5421,78 @@ const docTemplate = `{
                     },
                     "422": {
                         "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/{quoteId}/message-batches/{batchId}/retry": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Requeues a batch that ran out of attempts while the handler may still act on its quote.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Retry a failed conversation batch",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Batch id",
+                        "name": "batchId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ConversationBatchResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote or batch in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "BATCH_NOT_RETRYABLE",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -7804,6 +7941,123 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ConversationBatchResponse": {
+            "type": "object",
+            "properties": {
+                "closed_at": {
+                    "type": "string"
+                },
+                "decision": {
+                    "$ref": "#/definitions/dto.ConversationDecisionResponse"
+                },
+                "failure_reason": {
+                    "type": "string",
+                    "enum": [
+                        "UNPROCESSABLE",
+                        "ATTEMPTS_EXHAUSTED"
+                    ]
+                },
+                "id": {
+                    "type": "string"
+                },
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ConversationMessageResponse"
+                    }
+                },
+                "retryable": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "CLOSED",
+                        "PROCESSING",
+                        "PROCESSED",
+                        "FAILED"
+                    ]
+                }
+            }
+        },
+        "dto.ConversationDecisionResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "decided_at": {
+                    "type": "string"
+                },
+                "interpretation": {
+                    "type": "string"
+                },
+                "no_match_reason": {
+                    "type": "string",
+                    "enum": [
+                        "REQUIRES_SELLER",
+                        "AI_DISABLED",
+                        "PROPOSAL_REFUSED"
+                    ]
+                },
+                "outcome": {
+                    "type": "string",
+                    "enum": [
+                        "APPLIED",
+                        "NO_MATCH"
+                    ]
+                },
+                "seller_decision": {
+                    "type": "string",
+                    "enum": [
+                        "APPROVED_AS_IS",
+                        "EDITED",
+                        "REJECTED",
+                        "MANUAL_OVERRIDE"
+                    ]
+                }
+            }
+        },
+        "dto.ConversationMessageResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string",
+                    "enum": [
+                        "CLIENT",
+                        "SELLER",
+                        "SYSTEM"
+                    ]
+                },
+                "body": {
+                    "type": "string"
+                },
+                "received_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.ConversationResponse": {
+            "type": "object",
+            "properties": {
+                "batches": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ConversationBatchResponse"
+                    }
+                },
+                "can_discard_ai_changes": {
+                    "type": "boolean"
+                },
+                "pending": {
+                    "description": "Pending are the messages of a window still open, not yet handed to the handler.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ConversationMessageResponse"
+                    }
+                }
+            }
+        },
         "dto.CreateBranchRequest": {
             "type": "object",
             "required": [
@@ -8219,6 +8473,15 @@ const docTemplate = `{
                     "enum": [
                         "APPLIED",
                         "NO_MATCH"
+                    ]
+                },
+                "seller_decision": {
+                    "type": "string",
+                    "enum": [
+                        "APPROVED_AS_IS",
+                        "EDITED",
+                        "REJECTED",
+                        "MANUAL_OVERRIDE"
                     ]
                 }
             }
@@ -9952,6 +10215,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dto.ClientActionResponse"
                     }
+                },
+                "conversation": {
+                    "$ref": "#/definitions/dto.ConversationResponse"
                 },
                 "deliveries": {
                     "type": "array",

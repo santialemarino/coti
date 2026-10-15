@@ -352,6 +352,28 @@ func (r *QuoteDiscountRepository) DeleteByID(
 		accountID, versionID, discountID)
 }
 
+// DeleteByVersion removes every discount on a mutable version, whatever its origin, with its links.
+func (r *QuoteDiscountRepository) DeleteByVersion(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID,
+) error {
+	if _, err := q.Exec(ctx,
+		`DELETE FROM quote_discount_item qdi
+		 USING quote_discount qd, quote_version qv
+		 WHERE qv.account_id = $1 AND qv.id = $2 AND qv.is_immutable = FALSE
+		   AND qd.account_id = $1 AND qd.quote_version_id = qv.id
+		   AND qdi.account_id = $1 AND qdi.quote_discount_id = qd.id`,
+		accountID, versionID); err != nil {
+		return err
+	}
+	_, err := q.Exec(ctx,
+		`DELETE FROM quote_discount qd
+		 USING quote_version qv
+		 WHERE qv.account_id = $1 AND qv.id = $2 AND qv.is_immutable = FALSE
+		   AND qd.account_id = $1 AND qd.quote_version_id = qv.id`,
+		accountID, versionID)
+	return err
+}
+
 // DeleteApplications removes AUTOMATIC applications a sweep no longer earns, with their line links.
 func (r *QuoteDiscountRepository) DeleteApplications(
 	ctx context.Context, q Querier, accountID, versionID uuid.UUID, discountIDs []uuid.UUID,

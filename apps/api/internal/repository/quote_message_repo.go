@@ -20,6 +20,17 @@ func NewQuoteMessageRepository() *QuoteMessageRepository { return &QuoteMessageR
 const quoteMessageColumns = `id, account_id, quote_id, channel_id, batch_id, client_action_id,
 	author_type, author_user_id, body, received_at, other_live_quotes, created_at`
 
+// ListByQuote returns every message of a quote's conversation in the order it was received.
+func (r *QuoteMessageRepository) ListByQuote(ctx context.Context, q Querier, accountID,
+	quoteID uuid.UUID,
+) ([]domain.QuoteMessage, error) {
+	return queryQuoteMessages(ctx, q, `SELECT `+quoteMessageColumns+`
+		FROM quote_message
+		WHERE account_id = $1 AND quote_id = $2
+		ORDER BY received_at, created_at, id`,
+		accountID, quoteID)
+}
+
 // ListByBatch returns a batch's messages in the order they were received.
 func (r *QuoteMessageRepository) ListByBatch(ctx context.Context, q Querier, accountID, quoteID,
 	batchID uuid.UUID,

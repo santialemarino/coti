@@ -165,6 +165,8 @@ type RFQService struct {
 	inboundMessages rfqInboundMessageReader
 	// handlerDecisions explains the latest conversation handler run beside a change request.
 	handlerDecisions handlerDecisionReader
+	// conversation lists the customer's messages after a send and the handler's work on them.
+	conversation *conversationReader
 	// clientMessages lists what the customer wrote beside a change request.
 	clientMessages clientMessageReader
 	// webappURL is the customer-facing app origin; the detail rebuilds each delivery's public_url
@@ -224,6 +226,14 @@ func (s *RFQService) WithInboundMessages(messages rfqInboundMessageReader) *RFQS
 // WithHandlerDecisions wires the latest handler decision into the change-request comparison.
 func (s *RFQService) WithHandlerDecisions(decisions handlerDecisionReader) *RFQService {
 	s.handlerDecisions = decisions
+	return s
+}
+
+// WithConversation configures where the detail reads a quote's conversation from.
+func (s *RFQService) WithConversation(batches conversationBatchLister,
+	messages conversationMessageLister, reviews conversationReviewLister,
+) *RFQService {
+	s.conversation = &conversationReader{batches: batches, messages: messages, reviews: reviews}
 	return s
 }
 
@@ -389,6 +399,14 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 			}
 		}
 
+		if s.conversation != nil {
+			conversation, conversationErr := s.conversation.load(ctx, q, tenant.AccountID, *quote,
+				detail.Version)
+			if conversationErr != nil {
+				return conversationErr
+			}
+			detail.Conversation = conversation
+		}
 		return nil
 	}); err != nil {
 		return nil, err
