@@ -1555,9 +1555,11 @@ func TestLoad_ConversationDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() = %v, want no error", err)
 	}
-	if cfg.Conversation.WindowReset != 120*time.Second || cfg.Conversation.WindowMax != 600*time.Second ||
-		cfg.Conversation.ContextMessages != 10 {
-		t.Errorf("Conversation = %+v, want 2m/10m/10", cfg.Conversation)
+	want := ConversationConfig{WindowReset: 120 * time.Second, WindowMax: 600 * time.Second,
+		ContextMessages: 10, TickerInterval: 30 * time.Second, MaxAttempts: 3,
+		ProcessingTimeout: 600 * time.Second, SweepBatchSize: 100}
+	if cfg.Conversation != want {
+		t.Errorf("Conversation = %+v, want %+v", cfg.Conversation, want)
 	}
 }
 
@@ -1566,14 +1568,20 @@ func TestLoad_ConversationKeysLandOnTheirOwnFields(t *testing.T) {
 	env["CONVERSATION_WINDOW_RESET_SECONDS"] = "45"
 	env["CONVERSATION_WINDOW_MAX_SECONDS"] = "300"
 	env["CONVERSATION_CONTEXT_MESSAGES"] = "7"
+	env["CONVERSATION_TICKER_SECONDS"] = "11"
+	env["CONVERSATION_MAX_ATTEMPTS"] = "5"
+	env["CONVERSATION_PROCESSING_TIMEOUT_SECONDS"] = "13"
+	env["CONVERSATION_SWEEP_BATCH_SIZE"] = "17"
 	setEnv(t, env)
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() = %v, want no error", err)
 	}
-	if cfg.Conversation.WindowReset != 45*time.Second || cfg.Conversation.WindowMax != 300*time.Second ||
-		cfg.Conversation.ContextMessages != 7 {
-		t.Errorf("Conversation = %+v, want 45s/5m/7", cfg.Conversation)
+	want := ConversationConfig{WindowReset: 45 * time.Second, WindowMax: 300 * time.Second,
+		ContextMessages: 7, TickerInterval: 11 * time.Second, MaxAttempts: 5,
+		ProcessingTimeout: 13 * time.Second, SweepBatchSize: 17}
+	if cfg.Conversation != want {
+		t.Errorf("Conversation = %+v, want %+v", cfg.Conversation, want)
 	}
 }
 
@@ -1586,5 +1594,47 @@ func TestLoad_ConversationMaxMustExceedReset(t *testing.T) {
 	_, err := Load()
 	if err == nil || !strings.Contains(err.Error(), "CONVERSATION_WINDOW_MAX_SECONDS must be greater") {
 		t.Fatalf("Load() = %v, want the cap refused at the reset", err)
+	}
+}
+
+// Every queue setting is refused at zero, and all of them in one pass.
+func TestLoad_ConversationQueueSettingsMustBePositive(t *testing.T) {
+	env := minimalEnv()
+	for _, key := range []string{"CONVERSATION_TICKER_SECONDS", "CONVERSATION_MAX_ATTEMPTS",
+		"CONVERSATION_PROCESSING_TIMEOUT_SECONDS", "CONVERSATION_SWEEP_BATCH_SIZE"} {
+		env[key] = "0"
+	}
+	setEnv(t, env)
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() = nil, want the zero queue settings refused")
+	}
+	for _, key := range []string{"CONVERSATION_TICKER_SECONDS", "CONVERSATION_MAX_ATTEMPTS",
+		"CONVERSATION_PROCESSING_TIMEOUT_SECONDS", "CONVERSATION_SWEEP_BATCH_SIZE"} {
+		if !strings.Contains(err.Error(), key+" must be greater than zero") {
+			t.Errorf("Load() = %v, want %s refused", err, key)
+		}
+	}
+}
+
+func TestLoad_ConversationProcessingTimeoutBounds(t *testing.T) {
+	for name, test := range map[string]struct {
+		key, value, want string
+	}{
+		"at the ticker": {"CONVERSATION_TICKER_SECONDS", "600",
+			"CONVERSATION_PROCESSING_TIMEOUT_SECONDS must be greater than CONVERSATION_TICKER_SECONDS"},
+		"at the job timeout": {"JOB_TIMEOUT_MINUTES", "10",
+			"CONVERSATION_PROCESSING_TIMEOUT_SECONDS must be below JOB_TIMEOUT_MINUTES"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			env := minimalEnv()
+			env["CONVERSATION_PROCESSING_TIMEOUT_SECONDS"] = "600"
+			env[test.key] = test.value
+			setEnv(t, env)
+			_, err := Load()
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("Load() = %v, want %q", err, test.want)
+			}
+		})
 	}
 }

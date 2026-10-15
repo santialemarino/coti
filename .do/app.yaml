@@ -415,3 +415,36 @@ jobs:
       - key: STORAGE_LOCAL_SIGNING_SECRET
         scope: RUN_TIME
         type: SECRET
+
+  # Backstop for the API's conversation ticker (CONVERSATION_TICKER_SECONDS): closes due client
+  # message windows and works their queue if the ticker is down. Running beside it is safe; the
+  # database keeps them from sharing a batch. 15 minutes is the platform's shortest interval.
+  - name: conversation-batches
+    kind: SCHEDULED
+    schedule:
+      cron: '*/15 * * * *'
+      time_zone: America/Argentina/Buenos_Aires
+    dockerfile_path: docker/api.Dockerfile
+    source_dir: /
+    github:
+      repo: santialemarino/coti
+      branch: main
+      deploy_on_push: true
+    instance_size_slug: apps-s-1vcpu-1gb
+    run_command: /api/bin/scheduled-job --job conversation-batches
+    envs:
+      - key: ENV
+        scope: RUN_TIME
+        value: production
+      - key: DATABASE_ADMIN_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: AUTH_JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_LOCAL_SIGNING_SECRET
+        scope: RUN_TIME
+        type: SECRET

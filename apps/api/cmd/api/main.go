@@ -196,8 +196,13 @@ func run() error {
 		WithWebAppURL(cfg.Web.WebAppURL).
 		WithFileIntake(rfqAttachmentService, providers.Transcriber, cfg.Storage.MaxFileSize)
 	inboundRoutingService := services.NewInboundRoutingService(db, channelRepo)
+	messageBatchRepo := repository.NewMessageBatchRepository()
 	conversationService := services.NewConversationService(quoteRepo, quoteSendRepo,
-		quoteMessageRepo, repository.NewMessageBatchRepository(), cfg.Conversation)
+		quoteMessageRepo, messageBatchRepo, cfg.Conversation)
+	conversationTicker := services.NewConversationBatchTicker(
+		services.NewConversationBatchService(db, messageBatchRepo,
+			nil, cfg.Conversation, nil, log),
+		cfg.Conversation.TickerInterval, log)
 	whatsAppInboundService := services.NewWhatsAppInboundService(db, inboundRoutingService,
 		inboundChannelMessageRepo, channelRepo, rfqService, channelSealer, log).
 		WithConversations(conversationService)
@@ -269,6 +274,18 @@ func run() error {
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 	}
+
+	// Stopped and awaited before the pools close, whichever way run returns.
+	tickerCtx, stopTicker := context.WithCancel(ctx)
+	tickerDone := make(chan struct{})
+	go func() {
+		defer close(tickerDone)
+		conversationTicker.Run(tickerCtx)
+	}()
+	defer func() {
+		stopTicker()
+		<-tickerDone
+	}()
 
 	serverErr := make(chan error, 1)
 	go func() {

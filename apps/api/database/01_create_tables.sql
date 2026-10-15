@@ -808,17 +808,22 @@ CREATE TABLE client_action (
 -- The window and the queue. closes_at is recomputed on each new message as
 -- min(now + reset, opened_at + cap); a job closes the expired ones. The partial unique
 -- indexes guarantee one open window and one processing batch per quote; CLOSED ones wait
--- FIFO by closed_at.
+-- FIFO by closed_at. A failed attempt returns the batch to CLOSED until attempts reaches the
+-- limit, then FAILED; processing_started_at fences a claim and dates it for reclaiming.
 CREATE TABLE message_batch (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  account_id   UUID NOT NULL,
-  quote_id     UUID NOT NULL,
-  status       message_batch_status NOT NULL DEFAULT 'OPEN',
-  opened_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  closes_at    TIMESTAMPTZ NOT NULL,
-  closed_at    TIMESTAMPTZ,
-  processed_at TIMESTAMPTZ,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id            UUID NOT NULL,
+  quote_id              UUID NOT NULL,
+  status                message_batch_status NOT NULL DEFAULT 'OPEN',
+  opened_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  closes_at             TIMESTAMPTZ NOT NULL,
+  closed_at             TIMESTAMPTZ,
+  processed_at          TIMESTAMPTZ,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  attempts              INTEGER NOT NULL DEFAULT 0,
+  last_error            TEXT,
+  processing_started_at TIMESTAMPTZ,
+  CONSTRAINT ck_message_batch_attempts CHECK (attempts >= 0)
 );
 
 -- One message in a quote's conversation. author_type separates the trigger (CLIENT) from
@@ -1250,6 +1255,7 @@ CREATE UNIQUE INDEX uq_quote_message_client_action ON quote_message(client_actio
 CREATE INDEX idx_quote_send_channel_destination ON quote_send(channel_id, destination);
 CREATE INDEX idx_message_batch_due ON message_batch(closes_at) WHERE status = 'OPEN';
 CREATE INDEX idx_message_batch_queue ON message_batch(quote_id, closed_at) WHERE status = 'CLOSED';
+CREATE INDEX idx_message_batch_processing_started ON message_batch(processing_started_at) WHERE status = 'PROCESSING';
 
 -- Business invariants expressed in the database, not left to the good will of the code.
 -- uq_channel_branch_type_identifier does not compare NULLs, so without this index a branch
