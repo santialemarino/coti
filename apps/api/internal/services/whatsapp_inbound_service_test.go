@@ -49,21 +49,39 @@ func (f *fakeWhatsAppInboundRouter) ResolveChannels(_ context.Context, _ domain.
 	return resolved, nil
 }
 
+// fakeWhatsAppInboundMessages keeps the first reservation, as the unique provider key does.
 type fakeWhatsAppInboundMessages struct {
 	reserved []domain.NewInboundChannelMessage
-	rfqID    uuid.UUID
+	first    *domain.InboundChannelMessage
 }
 
 func (f *fakeWhatsAppInboundMessages) Reserve(_ context.Context, _ repository.Querier, accountID,
 	branchID, channelID uuid.UUID, in domain.NewInboundChannelMessage,
 ) (*domain.InboundChannelMessage, error) {
 	f.reserved = append(f.reserved, in)
-	if f.rfqID == uuid.Nil {
-		f.rfqID = in.RFQID
+	if f.first == nil {
+		f.first = &domain.InboundChannelMessage{ID: in.ID, AccountID: accountID, BranchID: branchID,
+			ChannelID: channelID, RFQID: in.RFQID, QuoteMessageID: in.QuoteMessageID}
 	}
-	return &domain.InboundChannelMessage{
-		AccountID: accountID, BranchID: branchID, ChannelID: channelID, RFQID: f.rfqID,
-	}, nil
+	return f.first, nil
+}
+
+type fakeWhatsAppInboundConversations struct {
+	match    *domain.ConversationRoute
+	appended []domain.NewQuoteMessage
+}
+
+func (f *fakeWhatsAppInboundConversations) Route(context.Context, repository.Querier,
+	domain.InboundChannelRoute, string,
+) (*domain.ConversationRoute, error) {
+	return f.match, nil
+}
+
+func (f *fakeWhatsAppInboundConversations) AppendMessage(_ context.Context, _ repository.Querier,
+	_ domain.Tenant, in domain.NewQuoteMessage,
+) (*domain.QuoteMessage, error) {
+	f.appended = append(f.appended, in)
+	return &domain.QuoteMessage{ID: in.ID, QuoteID: in.QuoteID}, nil
 }
 
 type fakeWhatsAppInboundRFQs struct {
@@ -128,8 +146,8 @@ func TestWhatsAppInboundService_IngestReservesRouteBeforeDrafting(t *testing.T) 
 		rfqs.inputs[0].ClientLabel == nil || *rfqs.inputs[0].ClientLabel != label {
 		t.Errorf("RFQ input = %#v, want normalized inbound text and label", rfqs.inputs)
 	}
-	if len(rfqs.rfqIDs) != 1 || rfqs.rfqIDs[0] != messages.rfqID {
-		t.Errorf("RFQ IDs = %v, want the durable reservation %s", rfqs.rfqIDs, messages.rfqID)
+	if len(rfqs.rfqIDs) != 1 || messages.first.RFQID == nil || rfqs.rfqIDs[0] != *messages.first.RFQID {
+		t.Errorf("RFQ IDs = %v, want the durable reservation %v", rfqs.rfqIDs, messages.first.RFQID)
 	}
 	if len(db.scopes) != 1 || db.scopes[0].AccountID != route.AccountID ||
 		db.scopes[0].BranchID != route.BranchID || len(db.locks) != 1 {
@@ -173,5 +191,80 @@ func TestWhatsAppInboundService_VerifyAcceptsConfiguredChannelToken(t *testing.T
 	rejected, err := service.Verify(context.Background(), "other-token")
 	if err != nil || rejected {
 		t.Errorf("Verify() = %t, %v; want false, nil", rejected, err)
+	}
+}
+
+func inboundTestService(conversations *fakeWhatsAppInboundConversations,
+) (*WhatsAppInboundService, *fakeWhatsAppInboundMessages, *fakeWhatsAppInboundRFQs) {
+	route := domain.InboundChannelRoute{AccountID: uuid.New(), BranchID: uuid.New(),
+		ChannelID: uuid.New(), ChannelType: domain.ChannelTypeWhatsApp}
+	messages := &fakeWhatsAppInboundMessages{}
+	rfqs := &fakeWhatsAppInboundRFQs{}
+	service := NewWhatsAppInboundService(&fakeWhatsAppInboundDB{}, &fakeWhatsAppInboundRouter{
+		routes: map[string]domain.InboundChannelRoute{"phone-id": route},
+	}, messages, nil, rfqs, nil, nil).WithConversations(conversations)
+	return service, messages, rfqs
+}
+
+func inboundTestMessage() []domain.InboundTextMessage {
+	return []domain.InboundTextMessage{{ExternalMessageID: "wamid.reply",
+		DestinationIdentifier: "phone-id", SenderID: "5491112345678", Body: "sumale 5 bolsas",
+		Payload: []byte(`{"message":"wamid.reply"}`)}}
+}
+
+func TestWhatsAppInboundService_IngestJoinsALiveConversationWithoutAnRFQ(t *testing.T) {
+	t.Parallel()
+	quoteID := uuid.New()
+	conversations := &fakeWhatsAppInboundConversations{
+		match: &domain.ConversationRoute{QuoteID: quoteID, OtherLiveQuotes: 1}}
+	service, messages, rfqs := inboundTestService(conversations)
+
+	if err := service.Ingest(context.Background(), inboundTestMessage()); err != nil {
+		t.Fatalf("Ingest() = %v, want no error", err)
+	}
+	if len(conversations.appended) != 1 || conversations.appended[0].QuoteID != quoteID ||
+		conversations.appended[0].AuthorType != domain.MessageAuthorClient ||
+		conversations.appended[0].OtherLiveQuotes != 1 {
+		t.Fatalf("appended = %#v, want one CLIENT message on the quote carrying the hint", conversations.appended)
+	}
+	reserved := messages.reserved[0]
+	if reserved.RFQID != nil || reserved.QuoteMessageID == nil ||
+		*reserved.QuoteMessageID != conversations.appended[0].ID {
+		t.Errorf("reservation = %#v, want the conversation message and no RFQ", reserved)
+	}
+	if len(rfqs.inputs) != 0 {
+		t.Errorf("RFQ drafts = %d, want none", len(rfqs.inputs))
+	}
+}
+
+// A retry keeps the first outcome: an order reserved before a quote went live stays an order.
+func TestWhatsAppInboundService_IngestRetryKeepsTheFirstOutcome(t *testing.T) {
+	t.Parallel()
+	conversations := &fakeWhatsAppInboundConversations{}
+	service, _, rfqs := inboundTestService(conversations)
+	if err := service.Ingest(context.Background(), inboundTestMessage()); err != nil {
+		t.Fatalf("first Ingest() = %v", err)
+	}
+	conversations.match = &domain.ConversationRoute{QuoteID: uuid.New()}
+	if err := service.Ingest(context.Background(), inboundTestMessage()); err != nil {
+		t.Fatalf("retried Ingest() = %v", err)
+	}
+	if len(rfqs.rfqIDs) != 2 || rfqs.rfqIDs[0] != rfqs.rfqIDs[1] {
+		t.Errorf("RFQ IDs = %v, want the first reservation resumed", rfqs.rfqIDs)
+	}
+
+	joined := &fakeWhatsAppInboundConversations{match: &domain.ConversationRoute{QuoteID: uuid.New()}}
+	service, _, rfqs = inboundTestService(joined)
+	for range 2 {
+		if err := service.Ingest(context.Background(), inboundTestMessage()); err != nil {
+			t.Fatalf("Ingest() = %v", err)
+		}
+	}
+	joined.match = nil
+	if err := service.Ingest(context.Background(), inboundTestMessage()); err != nil {
+		t.Fatalf("Ingest() = %v", err)
+	}
+	if len(rfqs.inputs) != 0 {
+		t.Errorf("RFQ drafts = %d, want none for a message that joined a conversation", len(rfqs.inputs))
 	}
 }

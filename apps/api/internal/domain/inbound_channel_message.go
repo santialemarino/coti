@@ -17,13 +17,15 @@ type InboundTextMessage struct {
 	Payload               []byte
 }
 
-// InboundChannelMessage retains the provider event that materialized an RFQ.
+// InboundChannelMessage retains a provider event and the RFQ or conversation message it became.
+// Exactly one of RFQID and QuoteMessageID is set.
 type InboundChannelMessage struct {
 	ID                 uuid.UUID
 	AccountID          uuid.UUID
 	BranchID           uuid.UUID
 	ChannelID          uuid.UUID
-	RFQID              uuid.UUID
+	RFQID              *uuid.UUID
+	QuoteMessageID     *uuid.UUID
 	ExternalMessageID  string
 	SenderID           string
 	SenderLabel        *string
@@ -33,10 +35,12 @@ type InboundChannelMessage struct {
 	CreatedAt          time.Time
 }
 
-// NewInboundChannelMessage is the provider event retained before an RFQ pipeline runs.
+// NewInboundChannelMessage is the provider event retained before its RFQ or conversation work
+// runs. Exactly one of RFQID and QuoteMessageID is set.
 type NewInboundChannelMessage struct {
 	ID                 uuid.UUID
-	RFQID              uuid.UUID
+	RFQID              *uuid.UUID
+	QuoteMessageID     *uuid.UUID
 	ExternalMessageID  string
 	SenderID           string
 	SenderLabel        *string

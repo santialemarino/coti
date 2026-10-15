@@ -4,10 +4,12 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
@@ -31,7 +33,7 @@ func TestInboundChannelMessageRepository_ReserveReturnsOriginalRFQOnRetry(t *tes
 			message, reserveErr = repo.Reserve(ctx, q, accountID, branchID, channelID,
 				domain.NewInboundChannelMessage{
 					ID:                 uuid.New(),
-					RFQID:              rfqID,
+					RFQID:              &rfqID,
 					ExternalMessageID:  "wamid.retry-safe",
 					SenderID:           "5491112345678",
 					Body:               "Necesito cemento",
@@ -52,8 +54,8 @@ func TestInboundChannelMessageRepository_ReserveReturnsOriginalRFQOnRetry(t *tes
 	})
 	second := reserve(uuid.New())
 
-	if first.RFQID != rfq.ID || second.RFQID != rfq.ID {
-		t.Errorf("reserved RFQ IDs = %s, %s; want %s", first.RFQID, second.RFQID, rfq.ID)
+	if first.RFQID == nil || *first.RFQID != rfq.ID || second.RFQID == nil || *second.RFQID != rfq.ID {
+		t.Errorf("reserved RFQ IDs = %v, %v; want %s", first.RFQID, second.RFQID, rfq.ID)
 	}
 	if first.ID != second.ID {
 		t.Errorf("reserved event IDs = %s, %s; want the original event", first.ID, second.ID)
@@ -84,4 +86,36 @@ func TestInboundChannelMessageRepository_ReserveReturnsOriginalRFQOnRetry(t *tes
 	if missing != nil {
 		t.Errorf("missing sender ID = %q, want nil", *missing)
 	}
+}
+
+// An event becomes an order or a conversation message, never both and never neither.
+func TestInboundChannelMessageRepository_ReserveNeedsExactlyOneTarget(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "inbound target account")
+	branchID := branchOf(t, db, accountID)
+	channelID := seedChannel(t, db, accountID, branchID, domain.ChannelTypeWhatsApp, true)
+	rfqID, messageID := uuid.New(), uuid.New()
+
+	for name, in := range map[string]domain.NewInboundChannelMessage{
+		"neither": {},
+		"both":    {RFQID: &rfqID, QuoteMessageID: &messageID},
+	} {
+		in.ID, in.ExternalMessageID, in.SenderID = uuid.New(), "wamid."+name, "5491112345678"
+		in.Body, in.Payload, in.ProviderReceivedAt = "cemento", []byte(`{}`), time.Now()
+		err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID, BranchID: branchID},
+			func(q Querier) error {
+				_, err := NewInboundChannelMessageRepository().Reserve(ctx, q, accountID, branchID,
+					channelID, in)
+				return err
+			})
+		if !isCheckViolation(err, "ck_inbound_channel_message_target") {
+			t.Errorf("%s: Reserve() = %v, want ck_inbound_channel_message_target", name, err)
+		}
+	}
+}
+
+func isCheckViolation(err error, name string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23514" && pgErr.ConstraintName == name
 }

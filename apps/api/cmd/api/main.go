@@ -196,8 +196,11 @@ func run() error {
 		WithWebAppURL(cfg.Web.WebAppURL).
 		WithFileIntake(rfqAttachmentService, providers.Transcriber, cfg.Storage.MaxFileSize)
 	inboundRoutingService := services.NewInboundRoutingService(db, channelRepo)
+	conversationService := services.NewConversationService(quoteRepo, quoteSendRepo,
+		quoteMessageRepo, repository.NewMessageBatchRepository(), cfg.Conversation)
 	whatsAppInboundService := services.NewWhatsAppInboundService(db, inboundRoutingService,
-		inboundChannelMessageRepo, channelRepo, rfqService, channelSealer, log)
+		inboundChannelMessageRepo, channelRepo, rfqService, channelSealer, log).
+		WithConversations(conversationService)
 	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, arcaEnvironment, log).
 		WithDiscountEngine(quoteDiscountRepo, promotionRepo)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
