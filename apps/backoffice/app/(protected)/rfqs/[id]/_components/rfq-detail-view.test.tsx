@@ -422,7 +422,12 @@ describe('RfqDetailView send flow', () => {
 
   it('discards the AI changes only after the seller confirms', async () => {
     const detail = makeDetail('CHANGE_REQUESTED');
-    detail.conversation = { batches: [], pending: [], can_discard_ai_changes: true };
+    detail.conversation = {
+      batches: [],
+      pending: [],
+      seller_messages: [],
+      can_discard_ai_changes: true,
+    };
     vi.mocked(discardAIChanges).mockResolvedValue(detail.version!);
     vi.mocked(fetchRfqDetail).mockResolvedValue(detail);
     const discard = copy.detail.callouts.changeRequested.discard;
@@ -469,7 +474,12 @@ describe('RfqDetailView send flow', () => {
 
   it('offers no discard when the draft carries no pending AI change', () => {
     const detail = makeDetail('CHANGE_REQUESTED');
-    detail.conversation = { batches: [], pending: [], can_discard_ai_changes: false };
+    detail.conversation = {
+      batches: [],
+      pending: [],
+      seller_messages: [],
+      can_discard_ai_changes: false,
+    };
 
     const view = renderView(detail);
 

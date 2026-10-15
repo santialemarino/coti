@@ -78,6 +78,7 @@ describe('RfqConversation', () => {
         batch('c', { status: 'CLOSED' }),
       ],
       pending: [{ author: 'CLIENT', body: 'y una carretilla', received_at: BASE_TIME }],
+      seller_messages: [],
       can_discard_ai_changes: true,
     });
 
@@ -107,6 +108,7 @@ describe('RfqConversation', () => {
           }),
         ],
         pending: [],
+        seller_messages: [],
         can_discard_ai_changes: false,
       },
       onChanged,
@@ -125,4 +127,61 @@ describe('RfqConversation', () => {
     expect(toast.success).toHaveBeenCalledWith(copy.retried);
     expect(onChanged).toHaveBeenCalled();
   });
+
+  it('sets each send between the rounds it split, with the link read as a placeholder', () => {
+    const at = (minutes: number) =>
+      new Date(Date.parse(BASE_TIME) + minutes * 60_000).toISOString();
+    const send = (minutes: number, text: string) => ({
+      author: 'SELLER' as const,
+      body: `${text} {{public_url}}`,
+      received_at: at(minutes),
+    });
+    const view = renderConversation({
+      batches: [
+        batch('second', {
+          messages: [{ author: 'CLIENT', body: 'segunda ronda', received_at: at(30) }],
+        }),
+        batch('first', {
+          messages: [{ author: 'CLIENT', body: 'primera ronda', received_at: at(10) }],
+        }),
+      ],
+      pending: [],
+      seller_messages: [send(20, 'Te mando la v2:'), send(0, 'Te mando la v1:')],
+      can_discard_ai_changes: false,
+    });
+
+    const order = ['Te mando la v1:', 'primera ronda', 'Te mando la v2:', 'segunda ronda'].map(
+      (text) => view.container.textContent!.indexOf(text),
+    );
+    expect(order.every((position) => position >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(view.getAllByText(copy.seller)).toHaveLength(2);
+    expect(view.getByText(`Te mando la v1: ${copy.quoteLink}`)).toBeTruthy();
+    expect(view.container.textContent).not.toContain('{{public_url}}');
+  });
+
+  it.each(['PIPELINE_EXHAUSTED', 'PROMOTION_NOT_EARNED'] as const)(
+    'words the %s no-match',
+    (reason) => {
+      const view = renderConversation({
+        batches: [
+          batch('a', {
+            decision: {
+              interpretation: 'Lo ve caro',
+              outcome: 'NO_MATCH',
+              no_match_reason: reason,
+              seller_decision: null,
+              decided_at: null,
+              created_at: BASE_TIME,
+            },
+          }),
+        ],
+        pending: [],
+        seller_messages: [],
+        can_discard_ai_changes: false,
+      });
+
+      expect(view.getByText(copy.decision.noMatch[reason])).toBeTruthy();
+    },
+  );
 });
