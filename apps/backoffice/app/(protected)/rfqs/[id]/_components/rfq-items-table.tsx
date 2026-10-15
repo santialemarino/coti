@@ -657,7 +657,7 @@ export function RfqItemsTable({
                         key={discount.id}
                         className="flex items-center justify-between gap-x-2 text-paragraph-xs"
                       >
-                        <div className="flex min-w-0 items-center gap-x-1.5">
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
                           <MinusIcon className="size-3 shrink-0 text-foreground-muted" />
                           <span
                             className={
