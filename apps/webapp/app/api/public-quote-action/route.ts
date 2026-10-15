@@ -41,13 +41,16 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (error instanceof PublicQuoteActionError) {
       if (error.status === 404 || error.status === 409) {
-        return NextResponse.json(
-          { error: error.status === 404 ? 'NOT_FOUND' : 'CONFLICT' },
-          { status: error.status },
-        );
+        return NextResponse.json({ error: conflictCode(error) }, { status: error.status });
       }
       return NextResponse.json({ error: 'UNREACHABLE' }, { status: 502 });
     }
     return NextResponse.json({ error: 'UNREACHABLE' }, { status: 502 });
   }
+}
+
+// The one refusal the page words on its own: the corralón archived the quote, so the offer is gone.
+function conflictCode(error: PublicQuoteActionError): string {
+  if (error.status === 404) return 'NOT_FOUND';
+  return error.code === 'QUOTE_ARCHIVED' ? 'QUOTE_ARCHIVED' : 'CONFLICT';
 }

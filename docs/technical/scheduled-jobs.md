@@ -101,6 +101,8 @@ No request has any reason to read an audit trail, let alone rewrite one.
 | `JOB_TIMEOUT_MINUTES`                   | 30      | Bound on a single run                     |
 | `ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE`  | 5       | Orders read per firing of the sweep       |
 | `ATTACHMENT_EXTRACTION_RECLAIM_MINUTES` | 15      | How long one run's claim on a file stands |
+| `QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS`      | 30      | Days without movement before archiving    |
+| `QUOTE_AUTO_ARCHIVE_BATCH_SIZE`         | 100     | Quotes archived per statement             |
 
 ## Registered schedules
 
@@ -110,6 +112,7 @@ No request has any reason to read an audit trail, let alone rewrite one.
 | `quote-quality-evaluation`  | Every 15 minutes      | Retry evaluations missing after a committed send |
 | `attachment-extraction`     | Every 15 minutes      | Read the files an order arrived with and extract |
 | `catalog-embedding`         | Every 15 minutes      | Embed products created or edited since last run  |
+| `quote-auto-archive`        | Daily at 03:30 (AR)   | Archive quotes nobody has moved in a month       |
 
 App Platform's scheduled jobs accept a cron expression and a timezone, with a **minimum interval of
 every 15 minutes** — a tighter cron is not honoured, and `doctl apps spec validate --schema-only`
@@ -163,3 +166,40 @@ costs a model call, so a full batch can run for `ATTACHMENT_EXTRACTION_RFQ_BATCH
 claims expire while it still holds them and the next firing extracts the same orders again — paying
 twice and writing two drafts. Startup refuses the combination rather than leaving it to be noticed
 in a bill.
+
+### `quote-auto-archive`
+
+**What it archives.** A quote not yet archived, in `DRAFT`, `QUOTED` or `SENT`, whose row has not
+changed in `QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS` — and, for a `SENT` one, whose offer has lapsed
+(`quote.expires_at` in the past). Those are the two stalls follow-up chases: the seller has not
+finished or sent it, or the client has not answered. Everything else is left alone:
+
+| Status             | Archived automatically | Why                                                          |
+| ------------------ | ---------------------- | ------------------------------------------------------------ |
+| `DRAFT`, `QUOTED`  | Yes                    | Waiting on the seller                                        |
+| `SENT`, lapsed     | Yes                    | The client never answered and the offer is over              |
+| `SENT`, link live  | No                     | The client may still accept; archiving would lose the sale   |
+| `SENT`, no expiry  | No                     | Nothing proves the offer is over; the seller decides         |
+| `CHANGE_REQUESTED` | No                     | The client asked for something; burying it loses the request |
+| `ACCEPTED`         | No                     | A sale may still be invoiced or delivered                    |
+| `REJECTED`         | No                     | A closed outcome; the seller archives it when they choose    |
+
+Invoices only exist on an accepted quote, so the status rule alone keeps a pending or issued
+invoice out of the sweep.
+
+**What counts as activity is `quote.updated_at`.** Every write to the quote row moves it: a
+transition, a send, assigning the seller, associating the client, and unarchiving — so a quote the
+seller brings back starts a fresh window instead of being put away again on the next run. A line,
+discount or alternative edit claims the quote row first (`ClaimForEdit`), which touches it and
+holds its lock until the edit commits, so a quote being worked on is never idle and the sweep can
+never archive it between the edit's archive check and its write. US-41's
+follow-up flag is meant to read the same measure on a shorter threshold, so a quote is flagged
+before it is archived; because setting the flag writes the quote row too, that job has to compare
+against the time before its own write.
+
+**How it runs.** One statement archives up to `QUOTE_AUTO_ARCHIVE_BATCH_SIZE` quotes across every
+account and returns them; the run repeats until a batch comes back short, so a backlog clears in one
+firing and each batch commits on its own. `FOR UPDATE SKIP LOCKED` leaves a quote a seller is writing
+at that moment for the next run. A second run finds nothing new — an archived quote is never matched
+again — and every archived quote is logged with its account, branch, number, status and last
+activity.

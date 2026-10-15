@@ -54,6 +54,7 @@ function renderItems(
   quoteStatus = 'QUOTED',
   items: QuoteItemResponse[] = [PRICED_ITEM],
   onItemsChange: (items: QuoteItemResponse[]) => void = vi.fn(),
+  readOnly = false,
 ) {
   return render(
     <NextIntlClientProvider
@@ -76,6 +77,7 @@ function renderItems(
           items={items}
           discounts={[]}
           onItemsChange={onItemsChange}
+          readOnly={readOnly}
         />
       </RfqListProvider>
     </NextIntlClientProvider>,
@@ -115,6 +117,24 @@ describe('RfqItemsTable action errors', () => {
         unit_price_snapshot: '900',
       }),
     );
+  });
+});
+
+describe('RfqItemsTable read-only', () => {
+  // An archived quote keeps its figures on screen and offers none of the edits its status would.
+  it('shows the prices of an archived QUOTED quote without an input, a delete or a discount', () => {
+    const view = renderItems(BRANCH_ID, 'QUOTED', [PRICED_ITEM], vi.fn(), true);
+
+    expect(view.container.textContent).toContain('390.000,00');
+    expect(view.queryByDisplayValue('780,00')).toBeNull();
+    expect(view.queryAllByRole('textbox')).toHaveLength(0);
+  });
+
+  it('offers no product edit on an archived draft', () => {
+    const view = renderItems(BRANCH_ID, 'DRAFT', [PRICED_ITEM], vi.fn(), true);
+
+    expect(view.queryAllByRole('textbox')).toHaveLength(0);
+    expect(view.queryAllByRole('button')).toHaveLength(0);
   });
 });
 

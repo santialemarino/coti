@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { ArchiveIcon } from 'lucide-react';
 import { useReducedMotion } from 'motion/react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -12,8 +13,8 @@ import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context'
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { errorCodeOf } from '@/lib/api/errors';
 import type { QuoteDiscountResponse, QuoteItemResponse, RfqDetailResponse } from '@/lib/api/rfqs';
-import { normalizeRfqStatus } from '@/lib/api/rfqs';
-import { fetchRfqDetail, generateQuote } from '@/lib/api/rfqs-client';
+import { formatRfqReference, normalizeRfqStatus } from '@/lib/api/rfqs';
+import { fetchRfqDetail, generateQuote, setQuoteArchived } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
 import { ClientAssociationCard } from './client-association-card';
 import { InvoiceCard } from './invoice-card';
@@ -54,6 +55,7 @@ export function RfqDetailView({
   );
   const [shownInitial, setShownInitial] = useState(initialDetail);
   const [generating, startGenerate] = useTransition();
+  const [unarchiving, startUnarchive] = useTransition();
   // The sale's client: the quote's own, then whatever the association card changes it to.
   const [clientId, setClientId] = useState<string | null | undefined>(
     initialDetail.quote?.client_id,
@@ -67,7 +69,9 @@ export function RfqDetailView({
   // Business status the seller sees: DRAFT (an internal quote_state) reads as GENERATED here.
   // A requested revision remains a mutable draft until the seller accepts its materials.
   const rfqStatus = normalizeRfqStatus(detail.rfq.status);
-  const isDraft = quoteStatus === 'DRAFT' || quoteStatus === 'CHANGE_REQUESTED';
+  // Every edit on an archived quote is refused until it is unarchived, so the screen offers none.
+  const archived = detail.quote?.archived_at != null;
+  const isDraft = !archived && (quoteStatus === 'DRAFT' || quoteStatus === 'CHANGE_REQUESTED');
   const latestClientAction = detail.client_actions?.at(-1);
   const isCustomerChangeRequest =
     quoteStatus === 'CHANGE_REQUESTED' &&
@@ -128,6 +132,26 @@ export function RfqDetailView({
     [detail.rfq.id, updateRecord],
   );
 
+  function handleUnarchive() {
+    if (!quoteId) return;
+    const reference = formatRfqReference(detail.rfq.quote_number) ?? t('list.numberPending');
+    startUnarchive(async () => {
+      try {
+        await setQuoteArchived(quoteId, false, branchId);
+        setDetail((prev) => ({
+          ...prev,
+          rfq: { ...prev.rfq, archived_at: null },
+          quote: prev.quote ? { ...prev.quote, archived_at: null } : prev.quote,
+        }));
+        updateRecord(detail.rfq.id, { archived: false });
+        toast.success(t('list.toast.unarchived', { id: reference }));
+        router.refresh();
+      } catch (error) {
+        toast.error(message(errorCodeOf(error)));
+      }
+    });
+  }
+
   function handleGenerate() {
     if (!quoteId) return;
     startGenerate(async () => {
@@ -168,6 +192,28 @@ export function RfqDetailView({
         branchMissesEmail={branchMissesEmail}
       />
 
+      {archived ? (
+        <Callout
+          tone="info"
+          icon={ArchiveIcon}
+          title={t('detail.callouts.archived.title')}
+          action={
+            <PendingButton
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleUnarchive}
+              pending={unarchiving}
+              pendingLabel={t('detail.callouts.archived.unarchiving')}
+            >
+              {t('detail.callouts.archived.unarchive')}
+            </PendingButton>
+          }
+        >
+          {t('detail.callouts.archived.description')}
+        </Callout>
+      ) : null}
+
       <RfqStatusTimeline detail={detail} />
 
       {showFollowup ? (
@@ -185,7 +231,7 @@ export function RfqDetailView({
           <Callout tone="success" title={t('detail.callouts.accepted.title')}>
             {t('detail.callouts.accepted.description')}
           </Callout>
-          {quoteId && detail.quote?.archived_at === null ? (
+          {quoteId && !archived ? (
             <ClientAssociationCard
               quoteId={quoteId}
               branchId={branchId}
@@ -193,7 +239,12 @@ export function RfqDetailView({
             />
           ) : null}
           {quoteId ? (
-            <InvoiceCard quoteId={quoteId} branchId={branchId} clientId={clientId} />
+            <InvoiceCard
+              quoteId={quoteId}
+              branchId={branchId}
+              clientId={clientId}
+              readOnly={archived}
+            />
           ) : null}
         </>
       )}
@@ -246,6 +297,7 @@ export function RfqDetailView({
             onItemsChange={handleItemsChange}
             onDiscountsChange={setDiscounts}
             onRefresh={refreshDetail}
+            readOnly={archived}
           />
         </>
       ) : (
@@ -258,6 +310,7 @@ export function RfqDetailView({
           onItemsChange={handleItemsChange}
           onDiscountsChange={setDiscounts}
           onRefresh={refreshDetail}
+          readOnly={archived}
         />
       )}
 

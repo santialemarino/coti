@@ -657,6 +657,7 @@ type quoteStatusChangeCall struct {
 }
 
 type fakeQuoteDrafts struct {
+	claims                 int
 	created                []domain.NewQuote
 	currentVersion         []uuid.UUID
 	versions               []domain.NewQuoteVersion

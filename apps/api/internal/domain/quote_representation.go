@@ -162,6 +162,10 @@ type QuoteRepresentationResult struct {
 	Replay         bool
 }
 
+// PublicQuoteStatusUnavailable answers a live link to a quote the seller archived: the offer is
+// withdrawn, so nothing of it is shown and no answer is taken.
+const PublicQuoteStatusUnavailable = "UNAVAILABLE"
+
 // PublicQuoteRepresentation is the active token response assembled without live commercial data.
 type PublicQuoteRepresentation struct {
 	Status    string

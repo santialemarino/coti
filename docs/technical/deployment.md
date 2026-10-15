@@ -25,7 +25,7 @@ of its own that downloads every file it reads — never sees. The spec still shi
 switch both to `spaces` together once the bucket's five keys are in. The Spaces adapter has never
 run against a real bucket. See [file-storage.md](file-storage.md).
 
-## Nine components, one app
+## Ten components, one app
 
 | Component                   | Type                    | Dockerfile                     | Port |
 | --------------------------- | ----------------------- | ------------------------------ | ---- |
@@ -37,6 +37,7 @@ run against a real bucket. See [file-storage.md](file-storage.md).
 | `quote-quality-evaluation`  | Job, `kind: SCHEDULED`  | `docker/api.Dockerfile`        | —    |
 | `attachment-extraction`     | Job, `kind: SCHEDULED`  | `docker/api.Dockerfile`        | —    |
 | `catalog-embedding`         | Job, `kind: SCHEDULED`  | `docker/api.Dockerfile`        | —    |
+| `quote-auto-archive`        | Job, `kind: SCHEDULED`  | `docker/api.Dockerfile`        | —    |
 | the database                | Managed Postgres        | —                              | —    |
 
 **Every component takes `source_dir: /`.** All three Dockerfiles build with the repository root as
@@ -46,7 +47,7 @@ is the most likely first failure and it is the cheapest one to avoid.
 
 The api image carries **four** binaries and the migration chain: `/api/bin/api`,
 `/api/bin/scheduled-job`, `/api/bin/catalog-embed`, `/api/bin/goose`, and `/api/migrations`. That is
-why one Dockerfile serves six components.
+why one Dockerfile serves seven components.
 
 **Instance sizing.** The spec uses `apps-s-1vcpu-1gb` (1 shared vCPU, 1 GiB, $12/month). Nothing has
 been load-tested; it is the smallest size worth starting a Next.js server on, and the number the

@@ -1,4 +1,4 @@
-import { ClockAlertIcon } from 'lucide-react';
+import { ArchiveXIcon, ClockAlertIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 import { Card, StatusScreen } from '@repo/ui/components';
@@ -27,16 +27,21 @@ export async function PublicQuoteView({ send, token }: PublicQuoteViewProps) {
   const tCommon = await getTranslations('common');
 
   if (send.status !== 'ACTIVE' || !send.quote) {
+    const unavailable = send.status === 'UNAVAILABLE';
     return (
       <main className="flex flex-col min-h-screen items-center justify-center px-4 py-10">
         <div className="flex flex-col w-full max-w-auth-card items-center gap-y-8 animate-rise-in">
           <Brand variant="lockup" size="xl" label={tCommon('appName')} />
           <Card>
             <StatusScreen
-              icon={ClockAlertIcon}
+              icon={unavailable ? ArchiveXIcon : ClockAlertIcon}
               tone="warning"
-              title={t('expiredTitle')}
-              description={t('expiredDescription', { date: fmt.date(send.expiresAt) })}
+              title={t(unavailable ? 'unavailableTitle' : 'expiredTitle')}
+              description={
+                unavailable
+                  ? t('unavailableDescription')
+                  : t('expiredDescription', { date: fmt.date(send.expiresAt) })
+              }
             />
           </Card>
         </div>

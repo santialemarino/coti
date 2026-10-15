@@ -14,4 +14,11 @@ Every status change appears in the order tracking history. Reactivation always k
 RFQ and quote relationship; it never creates a duplicate quote for the same request.
 
 Archiving only removes a quote from the active queue. It does not change whether the quote was
-accepted, rejected, or in progress, and restoring it keeps the same lifecycle state.
+accepted, rejected, or in progress, and restoring it keeps the same lifecycle state. An archived
+quote can be read but not changed, sent, or invoiced until it is restored.
+
+Coti also archives on its own a quote that has gone quiet: one still being prepared or ready to
+send, or one sent whose validity has already run out, with no movement for a configurable number of
+days (30 by default). A sent quote the customer can still accept is never archived automatically. If
+a seller archives one by hand, the customer's link says the quote is no longer available. Quotes with a change request pending or already accepted or rejected are never archived
+automatically. Archived quotes stay available under the "Archivado" status filter of the order list.

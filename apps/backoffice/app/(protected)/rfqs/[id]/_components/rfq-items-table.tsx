@@ -79,6 +79,8 @@ interface RfqItemsTableProps {
   onItemsChange: (items: QuoteItemResponse[]) => void;
   onDiscountsChange?: (discounts: QuoteDiscountResponse[]) => void;
   onRefresh?: () => Promise<void>;
+  // An archived quote shows its lines and prices but takes no edit until it is unarchived.
+  readOnly?: boolean;
 }
 
 function toQuantity(value: string): string {
@@ -156,6 +158,7 @@ export function RfqItemsTable({
   onItemsChange,
   onDiscountsChange,
   onRefresh,
+  readOnly = false,
 }: RfqItemsTableProps) {
   const fmt = useFormatters();
   const t = useTranslations('rfqs');
@@ -173,8 +176,8 @@ export function RfqItemsTable({
 
   const hasQuote = !!quoteId;
   const showPricing = hasQuote && PRICED_STATUSES.has(quoteStatus ?? '');
-  const canEditProducts = hasQuote && PRODUCT_EDIT_STATUSES.has(quoteStatus ?? '');
-  const canEditPrices = hasQuote && PRICE_EDIT_STATUSES.has(quoteStatus ?? '');
+  const canEditProducts = hasQuote && !readOnly && PRODUCT_EDIT_STATUSES.has(quoteStatus ?? '');
+  const canEditPrices = hasQuote && !readOnly && PRICE_EDIT_STATUSES.has(quoteStatus ?? '');
   const canEditDiscounts = canEditPrices;
   // Confidence belongs to the pre-quote review: visible before pricing is set, hidden once a
   // quote exists and the seller reasons about products and money.

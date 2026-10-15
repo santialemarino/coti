@@ -187,3 +187,22 @@ func applyAlternativePricing(
 		alternatives[itemID] = offered
 	}
 }
+
+// requireUnarchived refuses any edit on an archived quote: it has to be unarchived first.
+func requireUnarchived(quote domain.Quote) error {
+	if quote.ArchivedAt != nil {
+		return domain.WithCode(domain.CodeQuoteArchived, domain.ErrConflict)
+	}
+	return nil
+}
+
+// requireEditableLines gates every write on a quote's lines and discounts.
+func requireEditableLines(quote domain.Quote) error {
+	if err := requireUnarchived(quote); err != nil {
+		return err
+	}
+	if !domain.IsEditableStatus(quote.CurrentStatus) {
+		return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+	}
+	return nil
+}

@@ -83,6 +83,7 @@ type Config struct {
 	RFQ             RFQConfig
 	QuoteCorrection QuoteCorrectionConfig
 	QuoteQuality    QuoteQualityConfig
+	QuoteArchive    QuoteArchiveConfig
 	Attachment      AttachmentConfig
 	QuoteLogo       QuoteLogoConfig
 	RateLimit       RateLimitConfig
@@ -538,6 +539,14 @@ type QuoteQualityConfig struct {
 	ProcessingBatchSize int
 }
 
+// QuoteArchiveConfig drives the sweep that archives quotes nobody has moved.
+type QuoteArchiveConfig struct {
+	// InactiveAfter is how long a quote may go without a change before it is archived. Follow-up
+	// (US-41) flags on the same measure, so this belongs above its threshold.
+	InactiveAfter time.Duration
+	BatchSize     int
+}
+
 // AttachmentConfig bounds the sweep that reads the files an order arrived with. The reclaim
 // window is how long a claim stands: past it the row is taken again, so a run killed mid-work
 // releases its attachments instead of parking them at PROCESSING forever.
@@ -860,6 +869,11 @@ func Load() (*Config, error) {
 		QuoteQuality: QuoteQualityConfig{
 			ProcessingBatchSize: getInt("QUOTE_QUALITY_PROCESSING_BATCH_SIZE", 100, &problems),
 		},
+		QuoteArchive: QuoteArchiveConfig{
+			InactiveAfter: getDuration("QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS", 30*24*time.Hour,
+				&problems),
+			BatchSize: getInt("QUOTE_AUTO_ARCHIVE_BATCH_SIZE", 100, &problems),
+		},
 		Attachment: AttachmentConfig{
 			ExtractionRFQBatchSize: getInt("ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE", 5, &problems),
 			ExtractionReclaimAfter: getDuration("ATTACHMENT_EXTRACTION_RECLAIM_MINUTES",
@@ -1086,6 +1100,12 @@ func Load() (*Config, error) {
 	}
 	if cfg.QuoteQuality.ProcessingBatchSize < 1 {
 		problems = append(problems, "QUOTE_QUALITY_PROCESSING_BATCH_SIZE must be greater than zero")
+	}
+	if cfg.QuoteArchive.InactiveAfter <= 0 {
+		problems = append(problems, "QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS must be greater than zero")
+	}
+	if cfg.QuoteArchive.BatchSize < 1 {
+		problems = append(problems, "QUOTE_AUTO_ARCHIVE_BATCH_SIZE must be greater than zero")
 	}
 	if cfg.Attachment.ExtractionRFQBatchSize < 1 {
 		problems = append(problems, "ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE must be greater than zero")
