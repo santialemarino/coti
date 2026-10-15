@@ -192,12 +192,12 @@ WHERE pp.branch_id = 'b0000000-0000-4000-8000-000000000001'
     WHERE x.product_id = pp.product_id AND x.branch_id = 'b0000000-0000-4000-8000-000000000002');
 
 -- Promotions: one quantity-tiered, one on the total.
-INSERT INTO promotion (id, account_id, branch_id, name, condition_type, action_type, action_value, priority, description) VALUES
+INSERT INTO promotion (id, account_id, branch_id, name, condition_type, action_type, action_value, min_total, priority, description) VALUES
   ('e0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', NULL,
-   'Cemento por cantidad', 'QUANTITY_TIERED', 'PERCENTAGE', 0, 10,
+   'Cemento por cantidad', 'QUANTITY_TIERED', 'PERCENTAGE', 0, NULL, 10,
    'Descuento escalonado sobre el cemento según la cantidad de bolsas'),
   ('e0000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001', NULL,
-   'Compra grande', 'ON_TOTAL', 'PERCENTAGE', 5, 1, '5% en compras sobre $500.000')
+   'Compra grande', 'ON_TOTAL', 'PERCENTAGE', 5, 500000, 1, '5% en compras sobre $500.000')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO promotion_condition_item (account_id, promotion_id, product_id, min_quantity) VALUES

@@ -1284,6 +1284,150 @@ definitions:
           $ref: '#/definitions/dto.ProductFamilyResponse'
         type: array
     type: object
+  dto.PromotionConditionRequest:
+    properties:
+      family_id:
+        type: string
+      min_quantity:
+        type: string
+      product_id:
+        type: string
+      subgroup_id:
+        type: string
+    type: object
+  dto.PromotionConditionResponse:
+    properties:
+      family_id:
+        type: string
+      min_quantity:
+        type: string
+      product_id:
+        type: string
+      subgroup_id:
+        type: string
+    type: object
+  dto.PromotionListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.PromotionResponse'
+        type: array
+    type: object
+  dto.PromotionRequest:
+    properties:
+      action_type:
+        enum:
+        - PERCENTAGE
+        - FIXED_AMOUNT
+        - SPECIAL_PRICE
+        type: string
+      action_value:
+        description: ignored for QUANTITY_TIERED.
+        type: string
+      branch_id:
+        type: string
+      condition_type:
+        enum:
+        - PER_ITEM
+        - QUANTITY_TIERED
+        - ITEM_SET
+        - ON_TOTAL
+        type: string
+      conditions:
+        items:
+          $ref: '#/definitions/dto.PromotionConditionRequest'
+        type: array
+      description:
+        maxLength: 512
+        type: string
+      is_active:
+        description: defaults to true.
+        type: boolean
+      is_exclusive:
+        type: boolean
+      min_total:
+        type: string
+      name:
+        maxLength: 128
+        minLength: 1
+        type: string
+      priority:
+        type: integer
+      tiers:
+        items:
+          $ref: '#/definitions/dto.PromotionTierRequest'
+        type: array
+      valid_from:
+        type: string
+      valid_to:
+        type: string
+    required:
+    - action_type
+    - condition_type
+    - name
+    type: object
+  dto.PromotionResponse:
+    properties:
+      action_type:
+        type: string
+      action_value:
+        type: string
+      branch_id:
+        type: string
+      condition_type:
+        type: string
+      conditions:
+        items:
+          $ref: '#/definitions/dto.PromotionConditionResponse'
+        type: array
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      is_exclusive:
+        type: boolean
+      min_total:
+        type: string
+      name:
+        type: string
+      priority:
+        type: integer
+      tiers:
+        items:
+          $ref: '#/definitions/dto.PromotionTierResponse'
+        type: array
+      updated_at:
+        type: string
+      valid_from:
+        type: string
+      valid_to:
+        type: string
+    type: object
+  dto.PromotionTierRequest:
+    properties:
+      from_quantity:
+        type: string
+      to_quantity:
+        type: string
+      value:
+        type: string
+    required:
+    - from_quantity
+    - value
+    type: object
+  dto.PromotionTierResponse:
+    properties:
+      from_quantity:
+        type: string
+      to_quantity:
+        type: string
+      value:
+        type: string
+    type: object
   dto.PublicQuoteActionRequest:
     properties:
       message:
@@ -4746,6 +4890,156 @@ paths:
       summary: Preview bulk catalog changes
       tags:
       - catalog
+  /v1/promotions:
+    get:
+      description: Returns every promotion rule of the account, inactive ones included,
+        highest priority first.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.PromotionListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List promotions
+      tags:
+      - promotions
+    post:
+      consumes:
+      - application/json
+      description: Adds a typed promotion rule. The engine applies it to every quote
+        whose lines match, on its next discount sweep.
+      parameters:
+      - description: Promotion
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.PromotionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.PromotionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a promotion
+      tags:
+      - promotions
+  /v1/promotions/{promotionId}:
+    get:
+      description: Returns one promotion rule with its conditions and tiers.
+      parameters:
+      - description: Promotion id
+        in: path
+        name: promotionId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.PromotionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a promotion
+      tags:
+      - promotions
+    put:
+      consumes:
+      - application/json
+      description: Rewrites the whole rule, conditions and tiers included. Deactivating
+        or reactivating a promotion is is_active or its validity window changing here.
+      parameters:
+      - description: Promotion id
+        in: path
+        name: promotionId
+        required: true
+        type: string
+      - description: Promotion
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.PromotionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.PromotionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Replace a promotion
+      tags:
+      - promotions
   /v1/public/account-logos/{accountId}/{logoId}:
     get:
       description: Serves one account logo by its public, unguessable identifier.

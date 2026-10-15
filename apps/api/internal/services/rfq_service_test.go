@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -837,6 +838,47 @@ func (f *fakeQuoteDiscounts) ListItemIDsByDiscountIDs(
 		}
 	}
 	return linked, nil
+}
+
+func (f *fakeQuoteDiscounts) CreateApplications(
+	_ context.Context, _ repository.Querier, accountID, versionID uuid.UUID,
+	apps []domain.DiscountApplication,
+) error {
+	for _, app := range apps {
+		promotionID := app.PromotionID
+		value := app.ActionValue
+		f.stored = append(f.stored, domain.QuoteDiscount{ID: app.ID, AccountID: accountID,
+			QuoteVersionID: versionID, PromotionID: &promotionID, ConditionType: app.ConditionType,
+			Scope: app.Scope, Origin: domain.DiscountOriginAutomatic, Amount: app.Amount,
+			ActionType: app.ActionType, ActionValue: &value})
+		if f.links == nil {
+			f.links = map[uuid.UUID][]uuid.UUID{}
+		}
+		f.links[app.ID] = app.ItemIDs
+	}
+	return nil
+}
+
+func (f *fakeQuoteDiscounts) UpdateApplication(
+	_ context.Context, _ repository.Querier, accountID, versionID, discountID uuid.UUID,
+	actionValue, amount decimal.Decimal,
+) error {
+	d, err := f.GetByID(context.Background(), nil, accountID, versionID, discountID)
+	if err != nil {
+		return err
+	}
+	d.ActionValue = &actionValue
+	d.Amount = amount
+	return nil
+}
+
+func (f *fakeQuoteDiscounts) DeleteApplications(
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID, discountIDs []uuid.UUID,
+) error {
+	f.stored = slices.DeleteFunc(f.stored, func(d domain.QuoteDiscount) bool {
+		return d.Origin == domain.DiscountOriginAutomatic && slices.Contains(discountIDs, d.ID)
+	})
+	return nil
 }
 
 func (f *fakeQuoteAIGenerations) Create(

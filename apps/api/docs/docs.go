@@ -3591,6 +3591,236 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/promotions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every promotion rule of the account, inactive ones included, highest priority first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "promotions"
+                ],
+                "summary": "List promotions",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.PromotionListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Adds a typed promotion rule. The engine applies it to every quote whose lines match, on its next discount sweep.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "promotions"
+                ],
+                "summary": "Create a promotion",
+                "parameters": [
+                    {
+                        "description": "Promotion",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.PromotionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.PromotionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/promotions/{promotionId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns one promotion rule with its conditions and tiers.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "promotions"
+                ],
+                "summary": "Get a promotion",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Promotion id",
+                        "name": "promotionId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.PromotionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Rewrites the whole rule, conditions and tiers included. Deactivating or reactivating a promotion is is_active or its validity window changing here.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "promotions"
+                ],
+                "summary": "Replace a promotion",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Promotion id",
+                        "name": "promotionId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Promotion",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.PromotionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.PromotionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/public/account-logos/{accountId}/{logoId}": {
             "get": {
                 "description": "Serves one account logo by its public, unguessable identifier.",
@@ -8610,6 +8840,219 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dto.ProductFamilyResponse"
                     }
+                }
+            }
+        },
+        "dto.PromotionConditionRequest": {
+            "type": "object",
+            "properties": {
+                "family_id": {
+                    "type": "string"
+                },
+                "min_quantity": {
+                    "type": "string"
+                },
+                "product_id": {
+                    "type": "string"
+                },
+                "subgroup_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.PromotionConditionResponse": {
+            "type": "object",
+            "properties": {
+                "family_id": {
+                    "type": "string"
+                },
+                "min_quantity": {
+                    "type": "string"
+                },
+                "product_id": {
+                    "type": "string"
+                },
+                "subgroup_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.PromotionListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.PromotionResponse"
+                    }
+                }
+            }
+        },
+        "dto.PromotionRequest": {
+            "type": "object",
+            "required": [
+                "action_type",
+                "condition_type",
+                "name"
+            ],
+            "properties": {
+                "action_type": {
+                    "type": "string",
+                    "enum": [
+                        "PERCENTAGE",
+                        "FIXED_AMOUNT",
+                        "SPECIAL_PRICE"
+                    ]
+                },
+                "action_value": {
+                    "description": "ignored for QUANTITY_TIERED.",
+                    "type": "string"
+                },
+                "branch_id": {
+                    "type": "string"
+                },
+                "condition_type": {
+                    "type": "string",
+                    "enum": [
+                        "PER_ITEM",
+                        "QUANTITY_TIERED",
+                        "ITEM_SET",
+                        "ON_TOTAL"
+                    ]
+                },
+                "conditions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.PromotionConditionRequest"
+                    }
+                },
+                "description": {
+                    "type": "string",
+                    "maxLength": 512
+                },
+                "is_active": {
+                    "description": "defaults to true.",
+                    "type": "boolean"
+                },
+                "is_exclusive": {
+                    "type": "boolean"
+                },
+                "min_total": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "minLength": 1
+                },
+                "priority": {
+                    "type": "integer"
+                },
+                "tiers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.PromotionTierRequest"
+                    }
+                },
+                "valid_from": {
+                    "type": "string"
+                },
+                "valid_to": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.PromotionResponse": {
+            "type": "object",
+            "properties": {
+                "action_type": {
+                    "type": "string"
+                },
+                "action_value": {
+                    "type": "string"
+                },
+                "branch_id": {
+                    "type": "string"
+                },
+                "condition_type": {
+                    "type": "string"
+                },
+                "conditions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.PromotionConditionResponse"
+                    }
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "is_exclusive": {
+                    "type": "boolean"
+                },
+                "min_total": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "priority": {
+                    "type": "integer"
+                },
+                "tiers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.PromotionTierResponse"
+                    }
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "valid_from": {
+                    "type": "string"
+                },
+                "valid_to": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.PromotionTierRequest": {
+            "type": "object",
+            "required": [
+                "from_quantity",
+                "value"
+            ],
+            "properties": {
+                "from_quantity": {
+                    "type": "string"
+                },
+                "to_quantity": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.PromotionTierResponse": {
+            "type": "object",
+            "properties": {
+                "from_quantity": {
+                    "type": "string"
+                },
+                "to_quantity": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
                 }
             }
         },

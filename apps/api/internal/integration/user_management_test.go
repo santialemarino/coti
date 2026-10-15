@@ -190,6 +190,8 @@ func newEnvWithRFQProviders(
 	}
 	catalogSearchService := services.NewCatalogSearchService(db, productRepo, embedder, cfg.Catalog)
 	quoteRepo := repository.NewQuoteRepository()
+	quoteDiscountRepo := repository.NewQuoteDiscountRepository()
+	promotionRepo := repository.NewPromotionRepository()
 	rfqRepo := repository.NewRFQRepository()
 	quoteSendRepo := repository.NewQuoteSendRepository()
 	clientRepo := repository.NewClientRepository()
@@ -202,9 +204,12 @@ func newEnvWithRFQProviders(
 		quoteSendRepo, repository.NewQuoteAIGenerationRepository(),
 		channelRepo, repository.NewUserRepository(),
 		extractor,
-		services.NewCatalogMatchService(catalogSearchService, cfg.Catalog), quiet, cfg.RFQ)
+		services.NewCatalogMatchService(catalogSearchService, cfg.Catalog), quiet, cfg.RFQ).
+		WithDiscounts(quoteDiscountRepo).
+		WithPromotions(promotionRepo)
 	quoteService := services.NewQuoteService(db, quoteRepo,
-		repository.NewProductPriceRepository(), domain.ARCAEnvironmentHomologation, quiet)
+		repository.NewProductPriceRepository(), domain.ARCAEnvironmentHomologation, quiet).
+		WithDiscountEngine(quoteDiscountRepo, promotionRepo)
 	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
 		quoteSendRepo)
 	channelSealer, err := secrets.NewAESGCM(cfg.Channel.EncryptionKey)
@@ -255,6 +260,7 @@ func newEnvWithRFQProviders(
 				repository.NewARCASetupRepository(), repository.NewInvoicingRepository(), branchRepo, channelRepo, userRepo, onboardingRepo, authService, verificationService, quiet,
 				cfg.Auth, cfg.Branch).WithDefaultTags(tagRepo)),
 			Onboarding: handler.NewOnboardingHandler(onboardingService),
+			Promotion:  handler.NewPromotionHandler(services.NewPromotionService(db, promotionRepo)),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
 		rateLimit)
