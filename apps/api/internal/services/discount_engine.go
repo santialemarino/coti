@@ -40,9 +40,16 @@ type engineInput struct {
 	Promotions []domain.Promotion
 	BranchID   uuid.UUID
 	At         time.Time
-	// Suppressed holds the suppressionKey of every application a seller suppressed on this version.
-	Suppressed map[string]struct{}
+	Suppressed []engineSuppression
 	Held       []engineHeldDiscount
+}
+
+// engineSuppression is an application a seller took off a version. What it covered stays without a
+// promotion: neither it nor any other rule applies there until the seller restores it.
+type engineSuppression struct {
+	PromotionID uuid.UUID
+	Scope       domain.DiscountScope
+	ItemIDs     []uuid.UUID
 }
 
 // discountCandidate is one way a promotion could apply, before conflicts are resolved.
@@ -56,6 +63,27 @@ type discountCandidate struct {
 // evaluateDiscounts returns the AUTOMATIC applications a version earns, conflicts resolved as
 // docs/technical/discount-engine.md lays out.
 func evaluateDiscounts(in engineInput) []domain.DiscountApplication {
+	if len(in.Suppressed) == 0 {
+		return evaluateWith(in, func(discountCandidate) bool { return false })
+	}
+	// A suppression holds what it covered only while restoring it would succeed: lifted alone, with
+	// every other suppressed application still off, the quote earns it again. One that stopped
+	// qualifying never strands a line.
+	holding := make([]engineSuppression, 0, len(in.Suppressed))
+	for i, suppression := range in.Suppressed {
+		others := slices.Delete(slices.Clone(in.Suppressed), i, i+1)
+		restored := evaluateWith(in, suppressedBy(others, nil))
+		key := suppression.key()
+		if slices.ContainsFunc(restored, func(app domain.DiscountApplication) bool {
+			return suppressionKey(app.PromotionID, app.Scope, app.ItemIDs) == key
+		}) {
+			holding = append(holding, suppression)
+		}
+	}
+	return evaluateWith(in, suppressedBy(in.Suppressed, holding))
+}
+
+func evaluateWith(in engineInput, skip func(discountCandidate) bool) []domain.DiscountApplication {
 	lines := pricedLines(in.Lines)
 	candidates := make([]discountCandidate, 0)
 	for i := range in.Promotions {
@@ -65,14 +93,40 @@ func evaluateDiscounts(in engineInput) []domain.DiscountApplication {
 		}
 		candidates = append(candidates, promotionCandidates(promotion, lines, in.Held)...)
 	}
-	candidates = slices.DeleteFunc(candidates, func(c discountCandidate) bool {
-		_, suppressed := in.Suppressed[suppressionKey(c.promotion.ID,
-			domain.ScopeOf(c.promotion.ConditionType), c.lineIDs)]
-		return suppressed
-	})
+	candidates = slices.DeleteFunc(candidates, skip)
 	slices.SortStableFunc(candidates, compareCandidates)
 	return resolveCandidates(candidates, lines, in.Held)
 }
+
+// suppressedBy reports whether a candidate is a suppressed application, or falls on what a holding
+// suppression covered: its lines, or the total once an ON_TOTAL one is off.
+func suppressedBy(suppressed, holding []engineSuppression) func(discountCandidate) bool {
+	keys := map[string]bool{}
+	for _, s := range suppressed {
+		keys[s.key()] = true
+	}
+	lines := map[uuid.UUID]bool{}
+	total := false
+	for _, s := range holding {
+		if s.Scope == domain.DiscountScopeTotal {
+			total = true
+		}
+		for _, id := range s.ItemIDs {
+			lines[id] = true
+		}
+	}
+	return func(c discountCandidate) bool {
+		if keys[suppressionKey(c.promotion.ID, domain.ScopeOf(c.promotion.ConditionType), c.lineIDs)] {
+			return true
+		}
+		if c.promotion.ConditionType == domain.PromotionConditionOnTotal {
+			return total
+		}
+		return slices.ContainsFunc(c.lineIDs, func(id uuid.UUID) bool { return lines[id] })
+	}
+}
+
+func (s engineSuppression) key() string { return suppressionKey(s.PromotionID, s.Scope, s.ItemIDs) }
 
 // suppressionKey identifies an application across sweeps: a line application by its promotion and
 // line, a set or total one by its promotion alone, since the lines it covers can change.
