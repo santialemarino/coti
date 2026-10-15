@@ -26,8 +26,9 @@ type engineLine struct {
 	Subtotal  decimal.NullDecimal
 }
 
-// engineHeldDiscount is a live line-scope discount the engine does not own (a seller's or the AI's).
-// It is never recomputed here, only taken off the net an ON_TOTAL rule is measured on.
+// engineHeldDiscount is a live discount the engine does not own (a seller's or the AI's). It is
+// never recomputed here: it uses up the headroom of the lines it names, and a line one also comes
+// off the net an ON_TOTAL rule is measured on. No ItemIDs means it covers the whole quote.
 type engineHeldDiscount struct {
 	Amount  decimal.Decimal
 	ItemIDs []uuid.UUID
@@ -62,7 +63,7 @@ func evaluateDiscounts(in engineInput) []domain.DiscountApplication {
 		if !promotionInForce(*promotion, in.BranchID, in.At) {
 			continue
 		}
-		candidates = append(candidates, promotionCandidates(promotion, lines)...)
+		candidates = append(candidates, promotionCandidates(promotion, lines, in.Held)...)
 	}
 	candidates = slices.DeleteFunc(candidates, func(c discountCandidate) bool {
 		_, suppressed := in.Suppressed[suppressionKey(c.promotion.ID,
@@ -106,12 +107,14 @@ func pricedLines(all []engineLine) []engineLine {
 	return priced
 }
 
-func promotionCandidates(p *domain.Promotion, lines []engineLine) []discountCandidate {
+func promotionCandidates(
+	p *domain.Promotion, lines []engineLine, held []engineHeldDiscount,
+) []discountCandidate {
 	switch p.ConditionType {
 	case domain.PromotionConditionPerItem, domain.PromotionConditionQuantityTier:
-		return lineCandidates(p, lines)
+		return lineCandidates(p, lines, held)
 	case domain.PromotionConditionItemSet:
-		if c, ok := setCandidate(p, lines); ok {
+		if c, ok := setCandidate(p, lines, held); ok {
 			return []discountCandidate{c}
 		}
 	case domain.PromotionConditionOnTotal:
@@ -127,7 +130,7 @@ func promotionCandidates(p *domain.Promotion, lines []engineLine) []discountCand
 }
 
 // lineCandidates is one candidate per line a PER_ITEM or QUANTITY_TIERED rule covers.
-func lineCandidates(p *domain.Promotion, lines []engineLine) []discountCandidate {
+func lineCandidates(p *domain.Promotion, lines []engineLine, held []engineHeldDiscount) []discountCandidate {
 	var out []discountCandidate
 	for _, line := range lines {
 		if !matchesAnyCondition(p.Conditions, line) {
@@ -137,7 +140,8 @@ func lineCandidates(p *domain.Promotion, lines []engineLine) []discountCandidate
 		if !ok {
 			continue
 		}
-		amount := decimal.Min(lineAmount(p.ActionType, value, line), lineHeadroom(line))
+		amount := decimal.Min(lineAmount(p.ActionType, value, line),
+			remainingHeadroom([]engineLine{line}, held))
 		if !amount.IsPositive() {
 			continue
 		}
@@ -148,7 +152,7 @@ func lineCandidates(p *domain.Promotion, lines []engineLine) []discountCandidate
 }
 
 // setCandidate applies an ITEM_SET rule once, when every condition is met by some line.
-func setCandidate(p *domain.Promotion, lines []engineLine) (discountCandidate, bool) {
+func setCandidate(p *domain.Promotion, lines []engineLine, held []engineHeldDiscount) (discountCandidate, bool) {
 	if len(p.Conditions) == 0 || p.ActionType == domain.PromotionActionSpecialPrice {
 		return discountCandidate{}, false
 	}
@@ -171,7 +175,7 @@ func setCandidate(p *domain.Promotion, lines []engineLine) (discountCandidate, b
 	}
 	base := sumLines(setLines, func(l engineLine) decimal.Decimal { return l.Subtotal.Decimal })
 	amount := decimal.Min(baseAmount(p.ActionType, p.ActionValue, base),
-		sumLines(setLines, lineHeadroom))
+		remainingHeadroom(setLines, held))
 	if !amount.IsPositive() {
 		return discountCandidate{}, false
 	}
@@ -273,7 +277,10 @@ func totalBase(
 		if slices.ContainsFunc(h.ItemIDs, func(id uuid.UUID) bool { return locked[id] }) {
 			continue
 		}
-		base = base.Sub(h.Amount)
+		// A quote-wide one is not a line discount, so it leaves the net alone but still uses headroom.
+		if len(h.ItemIDs) > 0 {
+			base = base.Sub(h.Amount)
+		}
 		headroom = headroom.Sub(h.Amount)
 	}
 	return decimal.Max(base, decimal.Zero), decimal.Max(headroom, decimal.Zero)
@@ -297,23 +304,26 @@ func viableTotal(totals []discountCandidate, base, headroom decimal.Decimal) boo
 }
 
 // lineFigure is the figure a line rule applies at a quantity: the rule's own, or the tier the
-// quantity falls in. Both tier bounds are inclusive; overlapping tiers resolve to the higher start.
+// quantity falls in — the one with the highest start at or below it. A quantity between one tier's
+// end and the next one's start stays in the lower tier; past the last tier's end it earns nothing.
 func lineFigure(p domain.Promotion, quantity decimal.Decimal) (decimal.Decimal, bool) {
 	if p.ConditionType != domain.PromotionConditionQuantityTier {
 		return p.ActionValue, true
 	}
 	var figure *domain.PromotionTier
+	higherStart := false
 	for i := range p.Tiers {
 		tier := &p.Tiers[i]
-		if quantity.LessThan(tier.FromQuantity) ||
-			(tier.ToQuantity != nil && quantity.GreaterThan(*tier.ToQuantity)) {
+		if quantity.LessThan(tier.FromQuantity) {
+			higherStart = true
 			continue
 		}
 		if figure == nil || tier.FromQuantity.GreaterThan(figure.FromQuantity) {
 			figure = tier
 		}
 	}
-	if figure == nil {
+	if figure == nil ||
+		(figure.ToQuantity != nil && quantity.GreaterThan(*figure.ToQuantity) && !higherStart) {
 		return decimal.Zero, false
 	}
 	return figure.Value, true
@@ -352,6 +362,19 @@ func lineHeadroom(line engineLine) decimal.Decimal {
 		floor = roundMoney(line.MinPrice.Decimal.Mul(line.Quantity))
 	}
 	return decimal.Max(line.Subtotal.Decimal.Sub(floor), decimal.Zero)
+}
+
+// remainingHeadroom is how far some lines can still come down: their headroom less every held
+// discount naming any of them. A held discount spanning more lines counts whole, so the floor
+// still binds however it is spread.
+func remainingHeadroom(lines []engineLine, held []engineHeldDiscount) decimal.Decimal {
+	headroom := sumLines(lines, lineHeadroom)
+	for _, h := range held {
+		if slices.ContainsFunc(lines, func(l engineLine) bool { return slices.Contains(h.ItemIDs, l.ID) }) {
+			headroom = headroom.Sub(h.Amount)
+		}
+	}
+	return decimal.Max(headroom, decimal.Zero)
 }
 
 func matchesAnyCondition(conditions []domain.PromotionCondition, line engineLine) bool {

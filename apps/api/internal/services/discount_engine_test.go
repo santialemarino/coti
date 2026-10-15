@@ -473,3 +473,74 @@ func TestEvaluateDiscounts_UnpricedLinesEarnNothing(t *testing.T) {
 		value: "10", targets: []uuid.UUID{cement}})
 	assertApplied(t, got, map[string]string{})
 }
+
+func TestEvaluateDiscounts_TheFloorCountsTheSellersDiscounts(t *testing.T) {
+	t.Parallel()
+	floor := "950.00"
+	lines := []engineLine{
+		testLine(lineA, cement, "10", "1000.00", "10000.00", &floor),
+		testLine(lineB, sand, "4", "1000.00", "4000.00", nil),
+	}
+	sellerOnA := []engineHeldDiscount{{Amount: dec("400.00"), ItemIDs: []uuid.UUID{uuid.MustParse(lineA)}}}
+	run := func(p promo, held []engineHeldDiscount) []domain.DiscountApplication {
+		return evaluateDiscounts(engineInput{Lines: lines, Promotions: []domain.Promotion{p.build()},
+			BranchID: engineBranch, At: engineAt, Held: held})
+	}
+
+	// Line A: 10000 down to its floor 9500 leaves 500; the seller already took 400, so 100 is left
+	// for the 20% rule (2000), and the line ends exactly at 9500.
+	line := promo{id: promoP, condition: domain.PromotionConditionPerItem,
+		action: domain.PromotionActionPercentage, value: "20", targets: []uuid.UUID{cement}}
+	assertApplied(t, run(line, sellerOnA), map[string]string{"a0000000/0a": "100.00"})
+
+	// The set over A and B: headroom 500 (A) + 4000 (B, no floor) − 400 = 4100, under the 20% (2800)
+	// it asks; with a seller discount of 3000 on B as well, 4500 − 3400 = 1100 is all it gets.
+	set := promo{id: promoQ, condition: domain.PromotionConditionItemSet,
+		action: domain.PromotionActionPercentage, value: "20", targets: []uuid.UUID{cement, sand}}
+	assertApplied(t, run(set, sellerOnA), map[string]string{"a1000000": "2800.00"})
+	both := append(slices.Clone(sellerOnA),
+		engineHeldDiscount{Amount: dec("3000.00"), ItemIDs: []uuid.UUID{uuid.MustParse(lineB)}})
+	assertApplied(t, run(set, both), map[string]string{"a1000000": "1100.00"})
+
+	// A seller discount at or past the floor leaves the line nothing.
+	past := []engineHeldDiscount{{Amount: dec("600.00"), ItemIDs: []uuid.UUID{uuid.MustParse(lineA)}}}
+	assertApplied(t, run(line, past), map[string]string{})
+
+	// A quote-wide seller discount leaves the net alone but uses the headroom: 4500 − 4000 = 500
+	// left for a 50% total rule that would take 7000 off the 14000 net.
+	total := promo{id: promoR, condition: domain.PromotionConditionOnTotal,
+		action: domain.PromotionActionPercentage, value: "50"}
+	assertApplied(t, run(total, []engineHeldDiscount{{Amount: dec("4000.00")}}),
+		map[string]string{"a2000000": "500.00"})
+}
+
+func TestEvaluateDiscounts_FractionalQuantitiesFindTheirTier(t *testing.T) {
+	t.Parallel()
+	tiers := []domain.PromotionTier{
+		{FromQuantity: dec("10"), ToQuantity: decPtr("49"), Value: dec("10")},
+		{FromQuantity: dec("50"), ToQuantity: decPtr("99"), Value: dec("15")},
+	}
+	cases := []struct {
+		quantity, subtotal, want string
+	}{
+		{"10.5", "1050.00", "105.00"}, // first tier: 1050 × 10%
+		{"49.5", "4950.00", "495.00"}, // between 49 and 50: stays in the lower tier
+		{"99.5", "9950.00", ""},       // past the last tier's end
+		{"9.99", "999.00", ""},        // below the first tier
+		{"99", "9900.00", "1485.00"},  // last tier's end is inclusive: 9900 × 15%
+	}
+	for _, tc := range cases {
+		t.Run(tc.quantity, func(t *testing.T) {
+			t.Parallel()
+			lines := []engineLine{testLine(lineA, cement, tc.quantity, "100.00", tc.subtotal, nil)}
+			got := evaluate(lines, promo{id: promoP, condition: domain.PromotionConditionQuantityTier,
+				action: domain.PromotionActionPercentage, value: "0", tiers: tiers,
+				targets: []uuid.UUID{cement}})
+			want := map[string]string{}
+			if tc.want != "" {
+				want["a0000000/0a"] = tc.want
+			}
+			assertApplied(t, got, want)
+		})
+	}
+}

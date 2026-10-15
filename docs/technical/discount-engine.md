@@ -19,8 +19,13 @@ applies while `is_active` and `valid_from <= now <= valid_to` (either bound may 
 | `ON_TOTAL`        | none; optional `min_total` on the net | `action_value`                  | `TOTAL`                  |
 
 A condition names exactly one of a product, a family or a subgroup, with an optional
-`min_quantity` the line must reach. Tiers are inclusive on both bounds and may not overlap; the last
-may be open-ended.
+`min_quantity` the line must reach. A family or subgroup condition reads the product's taxonomy as
+it is at sweep time, not as it was when the line was built.
+
+Tiers are inclusive on both bounds and may not overlap; the last may be open-ended. A quantity
+takes the tier with the highest start at or below it, so a fractional quantity between one tier's end
+and the next one's start (49.5 between 10–49 and 50+) stays in the lower tier; past the end of the
+last bounded tier it earns nothing.
 
 How an action turns into money:
 
@@ -38,8 +43,9 @@ on every run.
 
 - A line takes at most one line or set promotion; the first ranked candidate claims it.
 - An **exclusive** line or set promotion also keeps its lines out of any `ON_TOTAL` base.
-- An **exclusive** `ON_TOTAL` applies alone, on the gross, and only when nothing ranked above it
-  claimed a line or would itself apply to the total.
+- An **exclusive** `ON_TOTAL` applies alone among the promotions, on the subtotals less the
+  seller's line discounts, and only when nothing ranked above it claimed a line or would itself
+  apply to the total.
 - At most one `ON_TOTAL` applies, the first ranked whose threshold the net reaches.
 - `ON_TOTAL` is computed on the **net**: the subtotals of the lines no exclusive rule holds, less
   every line discount on them — the engine's own and the seller's.
@@ -49,8 +55,10 @@ on every run.
 The evaluator reads only what the line froze when it was valued (`unit_price_snapshot`,
 `min_price_snapshot`, `subtotal`), never `product_price`. A line may come down to
 `round(min_price_snapshot × quantity)` and no further; a null floor means no floor, never a floor of
-zero. No application is negative, the total rule stops at the remaining headroom, and the version
-total bottoms out at zero.
+zero. The seller's discounts use that room first: a line rule gets what is left of its line's
+headroom after every seller discount naming the line (one spanning several lines counts whole), a set
+rule what is left across its lines, and a total rule what is left across the quote after every line
+and quote-wide discount. No application is negative, and the version total bottoms out at zero.
 
 The floor binds the engine, not people: a seller can still price a line below it by hand.
 
@@ -73,6 +81,10 @@ It recomputes seller percentage discounts against their lines, runs the evaluato
 the `AUTOMATIC` rows: an application still earned keeps its row (amount and links updated in place),
 one no longer earned is deleted, a new one is inserted. Re-pricing is never a side effect: only
 accepting the materials again freezes new prices.
+
+A seller's fixed-amount line discount never takes more than the lines it still covers carry, and
+deleting a line deletes every line discount left covering nothing, whatever its origin: it was put
+on that line.
 
 ## Origin and suppression
 

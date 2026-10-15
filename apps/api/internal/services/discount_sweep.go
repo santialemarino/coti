@@ -79,9 +79,11 @@ func (s *discountSweep) settle(
 			return decimal.Zero, err
 		}
 		live = live.Add(amount)
-		if discount.Scope != domain.DiscountScopeTotal {
-			held = append(held, engineHeldDiscount{Amount: amount, ItemIDs: covered})
+		heldOn := covered
+		if discount.Scope == domain.DiscountScopeTotal {
+			heldOn = nil
 		}
+		held = append(held, engineHeldDiscount{Amount: amount, ItemIDs: heldOn})
 	}
 
 	earned, err := s.earn(ctx, q, accountID, branchID, items, suppressed, held)
@@ -104,14 +106,13 @@ func (s *discountSweep) settle(
 	return roundMoney(total), nil
 }
 
-// followLines returns a seller or AI discount's money, rewriting it when it is a percentage whose
-// lines moved underneath it.
+// followLines returns a seller or AI discount's money, rewriting a seller's when its lines moved
+// underneath it: a percentage follows them, a fixed amount is capped at what they still carry.
 func (s *discountSweep) followLines(
 	ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
 	discount domain.QuoteDiscount, items []domain.QuoteItem, covered []uuid.UUID,
 ) (decimal.Decimal, error) {
-	if discount.Origin != domain.DiscountOriginManualSeller ||
-		discount.ActionType != domain.PromotionActionPercentage || discount.ActionValue == nil {
+	if discount.Origin != domain.DiscountOriginManualSeller || discount.ActionValue == nil {
 		return discount.Amount, nil
 	}
 	base, err := scopeBaseForItems(items, discount.Scope, covered)
@@ -119,6 +120,11 @@ func (s *discountSweep) followLines(
 		return decimal.Zero, err
 	}
 	computed := ruleAmount(base, discount.ActionType, *discount.ActionValue)
+	// A fixed amount never outgrows the lines it still covers, as when it was typed.
+	if discount.ActionType == domain.PromotionActionFixedAmount &&
+		discount.Scope != domain.DiscountScopeTotal {
+		computed = decimal.Min(computed, base)
+	}
 	if computed.Equal(discount.Amount) {
 		return computed, nil
 	}
