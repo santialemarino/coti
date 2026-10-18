@@ -3,15 +3,86 @@
 package integration
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
+	"net/textproto"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/shopspring/decimal"
 )
+
+func TestPublicRFQFileRouteQueuesOneStoredAttachmentOnRetry(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "public file intake")
+	channelID := uuid.New()
+	if _, err := e.db.CrossAccount().Exec(context.Background(), `INSERT INTO channel
+		(id, account_id, branch_id, type) VALUES ($1, $2, $3, 'WEBAPP')`, channelID, accountID, branchID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { e.mustCleanup(t, `DELETE FROM inbound_channel_message WHERE account_id = $1`, accountID) })
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	for key, value := range map[string]string{"request_id": uuid.NewString(), "tax_id": "20123456786", "name": "Public file customer", "email": "customer@example.com"} {
+		if err := writer.WriteField(key, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	part, err := writer.CreatePart(textproto.MIMEHeader{
+		"Content-Disposition": {`form-data; name="file"; filename="pedido.txt"`},
+		"Content-Type":        {"text/plain"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte("10 bolsas de cemento")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		req := httptest.NewRequest(http.MethodPost, "/v1/public/rfq-channels/"+channelID.String()+"/requests", bytes.NewReader(body.Bytes()))
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		response := httptest.NewRecorder()
+		e.router.ServeHTTP(response, req)
+		if response.Code != http.StatusCreated || response.Body.String() != `{"received":true}` {
+			t.Fatalf("file receipt: %d %s", response.Code, response.Body.String())
+		}
+	}
+	var rfqID uuid.UUID
+	var attachments, quotes int
+	var status string
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT r.id, a.processing_status,
+		(SELECT count(*) FROM rfq_attachment WHERE account_id = $1),
+		(SELECT count(*) FROM quote WHERE account_id = $1)
+		FROM rfq r JOIN rfq_attachment a ON a.rfq_id = r.id AND a.account_id = r.account_id
+		WHERE r.account_id = $1 AND r.branch_id = $2 AND r.channel_id = $3`, accountID, branchID, channelID).
+		Scan(&rfqID, &status, &attachments, &quotes); err != nil {
+		t.Fatal(err)
+	}
+	if attachments != 1 || quotes != 0 || status != "PENDING" {
+		t.Fatalf("files=%d quotes=%d status=%s", attachments, quotes, status)
+	}
+	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	detail := e.do(t, request{method: http.MethodGet, path: "/v1/rfqs/" + rfqID.String(), token: e.tokenFor(t, admin), branch: branchID.String()})
+	var payload struct {
+		Attachments []struct {
+			URL string `json:"url"`
+		} `json:"public_attachments"`
+	}
+	if err := json.Unmarshal(detail.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if detail.Code != http.StatusOK || len(payload.Attachments) != 1 || payload.Attachments[0].URL == "" {
+		t.Fatalf("seller file source: %d %s", detail.Code, detail.Body.String())
+	}
+}
 
 func TestPublicRFQRoutePreservesScopeAndIdempotencyWithoutClientAssociation(t *testing.T) {
 	e := newEnvWithRFQProviders(t, rfqTestProviders{extractor: stagedExtractor{lines: []domain.ExtractedRFQLine{{
