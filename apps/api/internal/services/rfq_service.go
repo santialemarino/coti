@@ -94,6 +94,14 @@ type rfqInboundMessageReader interface {
 		rfqID uuid.UUID) (*string, error)
 }
 
+type rfqPublicContactReader interface {
+	FindPublicContactByRFQID(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) (*domain.PublicRFQContact, error)
+}
+
+type rfqPublicAttachmentLinks interface {
+	List(context.Context, domain.Tenant, uuid.UUID) ([]domain.AttachmentLink, error)
+}
+
 // rfqChannelReader is the channel validation surface the RFQ flow needs.
 type rfqChannelReader interface {
 	ListActiveByType(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, channelType domain.ChannelType) ([]domain.Channel, error)
@@ -163,7 +171,9 @@ type RFQService struct {
 	clientActions rfqClientActionRepository
 	// inboundMessages decorates WhatsApp RFQs with their sender without turning that sender into
 	// a client record.
-	inboundMessages rfqInboundMessageReader
+	inboundMessages   rfqInboundMessageReader
+	publicContacts    rfqPublicContactReader
+	publicAttachments rfqPublicAttachmentLinks
 	// handlerDecisions explains the latest conversation handler run beside a change request.
 	handlerDecisions handlerDecisionReader
 	// conversation lists the customer's messages after a send and the handler's work on them.
@@ -227,6 +237,13 @@ func (s *RFQService) WithClientActions(clientActions rfqClientActionRepository) 
 // WithInboundMessages wires the retained inbound sender into the RFQ detail projection.
 func (s *RFQService) WithInboundMessages(messages rfqInboundMessageReader) *RFQService {
 	s.inboundMessages = messages
+	return s
+}
+
+// WithPublicContacts adds customer declarations to the authorized seller's RFQ detail.
+func (s *RFQService) WithPublicContacts(contacts rfqPublicContactReader, attachments rfqPublicAttachmentLinks) *RFQService {
+	s.publicContacts = contacts
+	s.publicAttachments = attachments
 	return s
 }
 
@@ -309,6 +326,20 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 
 		detail = &domain.RfqDetail{
 			Rfq: *rfq,
+		}
+		if s.publicContacts != nil && rfq.Channel == strings.ToLower(string(domain.ChannelTypeWebApp)) {
+			contact, err := s.publicContacts.FindPublicContactByRFQID(ctx, q, tenant.AccountID, rfq.BranchID, rfqID)
+			if err != nil {
+				return err
+			}
+			detail.PublicContact = contact
+			if contact != nil {
+				source, err := s.rfqs.GetByID(ctx, q, tenant.AccountID, rfq.BranchID, rfqID)
+				if err != nil {
+					return err
+				}
+				detail.PublicOriginalText = source.RawText
+			}
 		}
 		if s.inboundMessages != nil && rfq.Channel == strings.ToLower(string(domain.ChannelTypeWhatsApp)) {
 			senderID, senderErr := s.inboundMessages.FindSenderIDByRFQID(ctx, q, tenant.AccountID,
@@ -417,6 +448,15 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 		return nil
 	}); err != nil {
 		return nil, err
+	}
+	if detail.PublicContact != nil && s.publicAttachments != nil {
+		scope := tenant
+		scope.BranchID = detail.Rfq.BranchID
+		files, err := s.publicAttachments.List(ctx, scope, rfqID)
+		if err != nil {
+			return nil, err
+		}
+		detail.PublicAttachments = files
 	}
 	return detail, nil
 }

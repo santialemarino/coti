@@ -29,8 +29,8 @@ its own transaction so the caller gets a precise `409` instead of a bare constra
 
 ## Every branch opens with its channels
 
-Both paths that create a branch — registration and `POST /v1/branches` — open three channels in the
-same transaction as the branch: MANUAL_ENTRY, WHATSAPP and EMAIL. **The manual-entry one is not
+Both paths that create a branch — registration and `POST /v1/branches` — open four channels in the
+same transaction as the branch: MANUAL_ENTRY, WHATSAPP, EMAIL and WEBAPP. **The manual-entry one is not
 optional**: `rfq.channel_id` is `NOT NULL`, and a counter, phone or unintegrated-messaging order has
 no other channel to point at. The other two are what a quote is delivered through, so a new branch
 can send one without first configuring anything.
@@ -193,6 +193,10 @@ Two partial global indexes make active external destinations unambiguous. They d
 existing cardinality: a branch may still configure multiple WhatsApp numbers or mailboxes, provided
 each has a distinct external destination. `WEBAPP` uses its opaque delivery token and is resolved by
 the public delivery flow, not this inbox resolver.
+
+Public request intake resolves an active `WEBAPP` channel by its channel ID, checks its account
+and branch are active, then enters a tenant transaction. Customer declarations stay on the request;
+they never resolve or overwrite a client profile. See [Public RFQ intake](public-rfq-intake.md).
 
 #### Connector integration contract
 

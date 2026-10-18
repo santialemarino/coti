@@ -242,6 +242,9 @@ development-only route simulates an inbound WhatsApp message through the same pi
 
 See [docs/technical/rfq-pipeline.md](docs/technical/rfq-pipeline.md).
 
+The stateless public request API and its retry contract are documented in
+[Public RFQ intake](docs/technical/public-rfq-intake.md).
+
 ## File storage
 
 One port in `apps/api/internal/domain` — upload, download, signed link — with adapters under

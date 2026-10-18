@@ -4337,6 +4337,118 @@
                 }
             }
         },
+        "/v1/public/rfq-channels/{channelId}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "public-rfqs"
+                ],
+                "summary": "Get a public RFQ destination",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "WEBAPP channel ID",
+                        "name": "channelId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.PublicRFQDestinationResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/public/rfq-channels/{channelId}/requests": {
+            "post": {
+                "description": "Accepts JSON text or multipart contact fields and one file; request_id is a UUID v4 reused only for retries of the same submission.",
+                "consumes": [
+                    "application/json",
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "public-rfqs"
+                ],
+                "summary": "Submit a public RFQ",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "WEBAPP channel ID",
+                        "name": "channelId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Text request; multipart uses the same fields and a file part",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreatePublicRFQRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.PublicRFQReceiptResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/quotes/{quoteId}/accept-materials": {
             "post": {
                 "security": [
@@ -8223,6 +8335,39 @@
                 }
             }
         },
+        "dto.CreatePublicRFQRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "name",
+                "request_id",
+                "tax_id"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "phone": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "request_id": {
+                    "type": "string"
+                },
+                "tax_id": {
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.CreateRfqItemRequest": {
             "type": "object",
             "required": [
@@ -9461,6 +9606,57 @@
                 }
             }
         },
+        "dto.PublicRFQContactResponse": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "tax_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.PublicRFQDestinationResponse": {
+            "type": "object",
+            "properties": {
+                "accepted_content_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "branch_name": {
+                    "type": "string"
+                },
+                "logo_url": {
+                    "type": "string"
+                },
+                "max_file_size": {
+                    "type": "integer"
+                },
+                "max_text_characters": {
+                    "type": "integer"
+                },
+                "supplier_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.PublicRFQReceiptResponse": {
+            "type": "object",
+            "properties": {
+                "received": {
+                    "type": "boolean"
+                }
+            }
+        },
         "dto.QuoteAlternativeApprovalRequest": {
             "type": "object",
             "required": [
@@ -10274,6 +10470,18 @@
                     "items": {
                         "$ref": "#/definitions/dto.QuoteItemResponse"
                     }
+                },
+                "public_attachments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.RFQAttachmentResponse"
+                    }
+                },
+                "public_contact": {
+                    "$ref": "#/definitions/dto.PublicRFQContactResponse"
+                },
+                "public_original_text": {
+                    "type": "string"
                 },
                 "quote": {
                     "$ref": "#/definitions/dto.QuoteResponse"

@@ -145,6 +145,9 @@ type RFQAttachmentListResponse struct {
 // list item projection plus the full quote, version, items, alternatives, discounts,
 // the change-request diff when one applies, and the customer responses the versions received.
 type RfqDetailResponse struct {
+	PublicContact        *PublicRFQContactResponse                 `json:"public_contact,omitempty"`
+	PublicOriginalText   *string                                   `json:"public_original_text,omitempty"`
+	PublicAttachments    []RFQAttachmentResponse                   `json:"public_attachments,omitempty"`
 	Rfq                  RfqListItemResponse                       `json:"rfq"`
 	InboundWhatsAppPhone *string                                   `json:"inbound_whatsapp_phone"`
 	Quote                *QuoteResponse                            `json:"quote"`

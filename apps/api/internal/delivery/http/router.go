@@ -41,6 +41,7 @@ type Handlers struct {
 	BranchCatalog *handler.BranchCatalogHandler
 	RFQ           *handler.RFQHandler
 	RFQAttachment *handler.RFQAttachmentHandler
+	PublicRFQ     *handler.PublicRFQHandler
 	Quote         *handler.QuoteHandler
 	Conversation  *handler.ConversationHandler
 	Client        *handler.ClientHandler
@@ -102,6 +103,10 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	}
 
 	public := v1.Group("/public")
+	if h.PublicRFQ != nil {
+		public.GET("/rfq-channels/:channelId", h.PublicRFQ.GetDestination)
+		public.POST("/rfq-channels/:channelId/requests", limit("public-rfq", cfg.RateLimit.AI), h.PublicRFQ.Create)
+	}
 	mail := limit(mailScope, cfg.RateLimit.Mail)
 
 	public.POST("/auth/login", limit("login", cfg.RateLimit.Credentials), h.Auth.Login)

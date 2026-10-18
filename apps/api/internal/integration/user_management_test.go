@@ -229,6 +229,11 @@ func newEnvWithRFQProviders(
 	}
 	rfqAttachmentService := services.NewRFQAttachmentService(db,
 		repository.NewRFQAttachmentRepository(), objectStorage.Storage, cfg.Storage, nil)
+	publicRFQRepo := repository.NewPublicRFQRepository()
+	rfqService.WithPublicContacts(publicRFQRepo, rfqAttachmentService)
+	publicRFQService := services.NewPublicRFQService(db, publicRFQRepo,
+		repository.NewInboundChannelMessageRepository(), rfqRepo, rfqAttachmentService,
+		repository.NewRFQAttachmentRepository(), rfqService, cfg.RFQ, cfg.Storage.MaxFileSize)
 
 	limiter := ratelimit.NewMemory(nil)
 	mailTargetLimiter := handler.NewMailTargetLimiter(limiter, handler.MailTargetLimitOptions{
@@ -258,6 +263,7 @@ func newEnvWithRFQProviders(
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			RFQ:           handler.NewRFQHandler(rfqService, cfg.Storage.MaxFileSize, highConfidence),
 			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
+			PublicRFQ:     handler.NewPublicRFQHandler(publicRFQService, cfg.Storage.MaxFileSize),
 			File:          handler.NewFileHandler(objectStorage.Local),
 			Quote:         handler.NewQuoteHandler(quoteService, nil, nil, highConfidence),
 			Conversation: handler.NewConversationHandler(services.NewConversationReviewService(db,

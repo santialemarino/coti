@@ -146,6 +146,19 @@ func (s *RFQAttachmentService) StoreForRFQ(
 	ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID, file domain.AttachmentUpload,
 	data []byte, extractedText string,
 ) (uuid.UUID, error) {
+	return s.storeForRFQ(ctx, tenant, rfqID, file, data, extractedText, false)
+}
+
+// StorePendingForRFQ durably queues a validated public upload for the attachment sweep.
+func (s *RFQAttachmentService) StorePendingForRFQ(ctx context.Context, tenant domain.Tenant,
+	rfqID uuid.UUID, file domain.AttachmentUpload, data []byte,
+) (uuid.UUID, error) {
+	return s.storeForRFQ(ctx, tenant, rfqID, file, data, "", true)
+}
+
+func (s *RFQAttachmentService) storeForRFQ(ctx context.Context, tenant domain.Tenant,
+	rfqID uuid.UUID, file domain.AttachmentUpload, data []byte, extractedText string, pending bool,
+) (uuid.UUID, error) {
 	format, ok := domain.AttachmentFormatFor(normalizeContentType(file.ContentType))
 	if !ok {
 		return uuid.Nil, domain.WithCode(domain.CodeUnsupportedFileType, fmt.Errorf(
@@ -171,6 +184,9 @@ func (s *RFQAttachmentService) StoreForRFQ(
 				StorageKey: key,
 			}); err != nil {
 			return err
+		}
+		if pending {
+			return nil
 		}
 		return s.attachments.MarkProcessed(ctx, q, tenant.AccountID, attachmentID, text,
 			domain.AttachmentProcessingDone, s.now())

@@ -13,7 +13,11 @@
     },
     "form": {
       "togglePassword": "Mostrar u ocultar la contraseña",
-      "clearSearch": "Limpiar la búsqueda"
+      "clearSearch": "Limpiar la búsqueda",
+      "errors": {
+        "tooLong": "Máximo {max} caracteres.",
+        "invalidEmail": "Ingresá un email válido."
+      }
     }
   },
   "home": {
@@ -22,12 +26,96 @@
   },
   "rfq": {
     "title": "Solicitá tu presupuesto",
-    "intro": "Contanos qué materiales necesitás y te preparamos una cotización.",
-    "itemsLabel": "Materiales",
-    "submit": "Enviar solicitud",
+    "contact": {
+      "title": "Tus datos",
+      "continue": "Continuar"
+    },
+    "order": {
+      "title": "Tu pedido",
+      "mode": "Cómo cargar el pedido",
+      "textMode": "Escribir pedido",
+      "fileMode": "Subir archivo",
+      "editContact": "Editar mis datos"
+    },
+    "submit": "Enviar pedido",
     "submitting": "Enviando…",
-    "itemCount": "{count, plural, =0 {Sin ítems} one {# ítem} other {# ítems}}",
-    "success": "Recibimos tu solicitud. Te contactaremos con la cotización."
+    "received": {
+      "title": "Pedido recibido",
+      "description": "El corralón recibió tu pedido y lo va a revisar.",
+      "another": "Hacer otro pedido"
+    },
+    "fields": {
+      "taxId": {
+        "label": "CUIT",
+        "placeholder": "Ingresá tu CUIT"
+      },
+      "name": {
+        "label": "Nombre o razón social",
+        "placeholder": "Ingresá tu nombre o razón social"
+      },
+      "email": {
+        "label": "Email",
+        "placeholder": "Ingresá tu email"
+      },
+      "phone": {
+        "label": "Teléfono (opcional)",
+        "placeholder": "Ingresá tu teléfono",
+        "country": "País",
+        "search": "Buscá un país",
+        "empty": "No encontramos ese país.",
+        "landline": "El número ingresado corresponde a una línea fija.",
+        "mobile": "Usar {number} como celular"
+      },
+      "text": {
+        "label": "Pedido",
+        "placeholder": "Ingresá los materiales y las cantidades que necesitás"
+      },
+      "file": {
+        "label": "Archivo del pedido",
+        "drop": "Arrastrá el archivo del pedido",
+        "choose": "Elegir archivo",
+        "replace": "Cambiar archivo",
+        "release": "Soltá el archivo",
+        "formats": "Imagen, PDF, Excel, CSV, audio o texto. Hasta {size} MB."
+      }
+    },
+    "validation": {
+      "taxId": {
+        "required": "Ingresá tu CUIT.",
+        "invalid": "Revisá el CUIT: debe tener 11 dígitos y ser válido."
+      },
+      "name": {
+        "required": "Ingresá tu nombre o razón social."
+      },
+      "email": {
+        "required": "Ingresá tu email."
+      },
+      "phone": {
+        "invalid": "Ingresá un teléfono válido."
+      },
+      "text": {
+        "required": "Ingresá tu pedido."
+      },
+      "file": {
+        "required": "Elegí un archivo para tu pedido.",
+        "size": "El archivo está vacío o supera el tamaño permitido.",
+        "type": "Elegí una imagen, PDF, Excel, CSV, audio o archivo de texto compatible."
+      }
+    },
+    "errors": {
+      "BAD_REQUEST": "Revisá los datos del pedido e intentá de nuevo.",
+      "INVALID_INPUT": "Revisá los datos y el archivo del pedido.",
+      "NOT_FOUND": "Este link ya no está disponible. Pedile un nuevo link al corralón.",
+      "CONFLICT": "Este envío ya fue registrado con otros datos. Volvé a intentarlo como un pedido nuevo.",
+      "RATE_LIMITED": "Hubo demasiados intentos. Esperá un momento y volvé a enviar el pedido.",
+      "FILE_TOO_LARGE": "El archivo supera el tamaño permitido.",
+      "UNSUPPORTED_FILE_TYPE": "El formato del archivo no es compatible.",
+      "LEGACY_EXCEL_FILE": "Guardá el archivo de Excel como .xlsx y volvé a subirlo.",
+      "UNREACHABLE": "No pudimos confirmar la recepción. Revisá tu conexión y volvé a enviar el mismo pedido.",
+      "INTERNAL": "No pudimos confirmar la recepción. Volvé a intentar en un momento.",
+      "INVALID_BODY": "Revisá los datos del pedido e intentá de nuevo.",
+      "NOT_CONFIGURED": "El corralón no puede recibir este pedido por el momento. Intentá más tarde."
+    }
   },
   "quote": {
     "title": "Tu cotización",

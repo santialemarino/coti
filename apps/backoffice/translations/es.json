@@ -1692,6 +1692,15 @@
           "INTERNAL": "No pudimos actualizar la cotización. Intentá de nuevo.",
           "QUOTE_ALREADY_INVOICED": "Esta venta está facturada y no se puede reactivar. Para cambiarla, anulá la factura con una nota de crédito desde la tarjeta de la factura."
         }
+      },
+      "publicRequest": {
+        "title": "Datos del solicitante",
+        "taxId": "CUIT",
+        "name": "Nombre o razón social",
+        "email": "Email",
+        "phone": "Teléfono",
+        "original": "Pedido original",
+        "file": "Ver archivo del pedido"
       }
     }
   },
