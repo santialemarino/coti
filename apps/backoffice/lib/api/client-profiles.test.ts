@@ -71,31 +71,54 @@ describe('client profile API mapping', () => {
     });
   });
 
-  it('maps profile sale identifiers and decimal totals without coercion', () => {
-    expect(
-      mapClientProfile({
-        client: CLIENT,
-        tags: [TAG],
-        sales: [
-          {
-            quote_id: 'quote-1',
-            rfq_id: 'rfq-1',
-            quote_number: 42,
-            branch_id: 'branch-1',
-            branch_name: 'Morón',
-            total: '145184.00',
-            accepted_at: '2026-09-22T12:00:00Z',
-          },
-        ],
-      }).sales[0],
-    ).toEqual({
+  it('maps profile quote history and summary from snake_case', () => {
+    const profile = mapClientProfile({
+      client: CLIENT,
+      tags: [TAG],
+      summary: {
+        total_quotes: 3,
+        accepted_quotes: 1,
+        rejected_quotes: 1,
+        pending_quotes: 1,
+        last_interaction_at: '2026-09-22T12:00:00Z',
+      },
+      quotes: [
+        {
+          quote_id: 'quote-1',
+          rfq_id: 'rfq-1',
+          quote_number: 42,
+          branch_id: 'branch-1',
+          branch_name: 'Morón',
+          status: 'DRAFT',
+          archived: false,
+          total: null,
+          seller_name: null,
+          created_at: '2026-09-21T12:00:00Z',
+          updated_at: '2026-09-22T12:00:00Z',
+        },
+      ],
+    });
+
+    expect(profile.summary).toEqual({
+      totalQuotes: 3,
+      acceptedQuotes: 1,
+      rejectedQuotes: 1,
+      pendingQuotes: 1,
+      lastInteractionAt: '2026-09-22T12:00:00Z',
+    });
+    // DRAFT collapses to GENERATED at the display boundary, and a missing total stays null.
+    expect(profile.quotes[0]).toEqual({
       quoteId: 'quote-1',
       rfqId: 'rfq-1',
       quoteNumber: 42,
       branchId: 'branch-1',
       branchName: 'Morón',
-      total: '145184.00',
-      acceptedAt: '2026-09-22T12:00:00Z',
+      status: 'GENERATED',
+      archived: false,
+      total: null,
+      sellerName: null,
+      createdAt: '2026-09-21T12:00:00Z',
+      updatedAt: '2026-09-22T12:00:00Z',
     });
   });
 

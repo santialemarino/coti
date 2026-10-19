@@ -3,12 +3,10 @@ import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, it } from 'vitest';
 
 import {
-  hasQuoteTotal,
   RfqStatusBadge,
-  STATUS_COLOUR,
-  STATUS_ORDER,
   type RfqStatusBadgeProps,
 } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
+import { hasQuoteTotal, STATUS_COLOUR, STATUS_ORDER } from '@/lib/constants/rfq-status';
 import messages from '@/translations/es.json';
 
 const copy = messages.rfqs;

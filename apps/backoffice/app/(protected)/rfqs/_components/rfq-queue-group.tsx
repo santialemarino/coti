@@ -8,7 +8,7 @@ import { DropdownChevron } from '@repo/ui/components';
 import { cn, MOTION, SPRING, STAGGER } from '@repo/ui/lib';
 import { RfqQueueCard } from '@/app/(protected)/rfqs/_components/rfq-queue-card';
 import type { QueueStatusGroup } from '@/app/(protected)/rfqs/_components/rfq-queue-groups';
-import { STATUS_DOT } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
+import { STATUS_DOT } from '@/lib/constants/rfq-status';
 
 // Cards that show behind the top of a folded stack, and how far each one shows below the last.
 const PEEK_COUNT = 2;

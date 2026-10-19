@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
@@ -100,46 +99,43 @@ func (r *ClientRepository) FindByContacts(
 	return clients, rows.Err()
 }
 
-// ListAcceptedSales returns a client's accepted quotes inside the caller's branch and seller reach.
-func (r *ClientRepository) ListAcceptedSales(
+// ListQuoteHistory returns a client's quotes at every status inside the caller's branch and
+// seller reach, most recently touched first.
+func (r *ClientRepository) ListQuoteHistory(
 	ctx context.Context, q Querier, tenant domain.Tenant, clientID uuid.UUID,
-) ([]domain.ClientSale, error) {
+) ([]domain.ClientQuote, error) {
 	rows, err := q.Query(ctx, `SELECT quote.id, quote.rfq_id, quote.number, quote.branch_id,
-		branch.name, version.total,
-		COALESCE(accepted.accepted_at, quote.updated_at)
+		branch.name, quote.current_status, quote.archived_at IS NOT NULL, version.total,
+		seller.name, quote.created_at, quote.updated_at
 		FROM quote
 		JOIN branch ON branch.account_id = quote.account_id AND branch.id = quote.branch_id
-		JOIN quote_version version ON version.account_id = quote.account_id
+		LEFT JOIN quote_version version ON version.account_id = quote.account_id
 		  AND version.id = quote.current_version_id
-		LEFT JOIN LATERAL (
-		  SELECT max(change.changed_at) AS accepted_at
-		  FROM quote_status_change change
-		  WHERE change.account_id = quote.account_id AND change.quote_id = quote.id
-		    AND change.new_status = 'ACCEPTED'
-		) accepted ON TRUE
+		LEFT JOIN app_user seller ON seller.account_id = quote.account_id
+		  AND seller.id = quote.seller_id
 		WHERE quote.account_id = $1 AND quote.client_id = $2
-		  AND quote.current_status = 'ACCEPTED'
 		  AND ($3::uuid[] IS NULL OR quote.branch_id = ANY($3::uuid[]))
 		  AND ($4::uuid IS NULL OR quote.seller_id = $4 OR quote.seller_id IS NULL)
-		ORDER BY COALESCE(accepted.accepted_at, quote.updated_at) DESC, quote.id`,
+		ORDER BY quote.updated_at DESC, quote.id`,
 		tenant.AccountID, clientID, tenant.BranchFilter(), sellerParam(tenant))
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	sales := make([]domain.ClientSale, 0)
+	quotes := make([]domain.ClientQuote, 0)
 	for rows.Next() {
-		var sale domain.ClientSale
-		var total decimal.Decimal
-		if err := rows.Scan(&sale.QuoteID, &sale.RFQID, &sale.Number, &sale.BranchID,
-			&sale.BranchName, &total, &sale.AcceptedAt); err != nil {
+		var quote domain.ClientQuote
+		var status string
+		if err := rows.Scan(&quote.QuoteID, &quote.RFQID, &quote.Number, &quote.BranchID,
+			&quote.BranchName, &status, &quote.Archived, &quote.Total, &quote.SellerName,
+			&quote.CreatedAt, &quote.UpdatedAt); err != nil {
 			return nil, err
 		}
-		sale.Total = total
-		sales = append(sales, sale)
+		quote.Status = domain.QuoteStatus(status)
+		quotes = append(quotes, quote)
 	}
-	return sales, rows.Err()
+	return quotes, rows.Err()
 }
 
 // Create adds a client only after a seller confirms the profile association.

@@ -988,7 +988,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Returns one account-level profile and its currently accepted quotes inside the caller's branch and seller reach.",
+                "description": "Returns one account-level profile, its tags, a derived activity summary, and its quote history at every status, limited to the caller's branch and seller reach.",
                 "produces": [
                     "application/json"
                 ],
@@ -6466,6 +6466,26 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ClientActivitySummaryResponse": {
+            "type": "object",
+            "properties": {
+                "accepted_quotes": {
+                    "type": "integer"
+                },
+                "last_interaction_at": {
+                    "type": "string"
+                },
+                "pending_quotes": {
+                    "type": "integer"
+                },
+                "rejected_quotes": {
+                    "type": "integer"
+                },
+                "total_quotes": {
+                    "type": "integer"
+                }
+            }
+        },
         "dto.ClientContactHintsResponse": {
             "type": "object",
             "properties": {
@@ -6508,17 +6528,60 @@ const docTemplate = `{
                 "client": {
                     "$ref": "#/definitions/dto.ClientResponse"
                 },
-                "sales": {
+                "quotes": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/dto.ClientSaleResponse"
+                        "$ref": "#/definitions/dto.ClientQuoteResponse"
                     }
+                },
+                "summary": {
+                    "$ref": "#/definitions/dto.ClientActivitySummaryResponse"
                 },
                 "tags": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/dto.ClientTagResponse"
                     }
+                }
+            }
+        },
+        "dto.ClientQuoteResponse": {
+            "type": "object",
+            "properties": {
+                "archived": {
+                    "type": "boolean"
+                },
+                "branch_id": {
+                    "type": "string"
+                },
+                "branch_name": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "quote_id": {
+                    "type": "string"
+                },
+                "quote_number": {
+                    "type": "integer"
+                },
+                "rfq_id": {
+                    "type": "string"
+                },
+                "seller_name": {
+                    "description": "SellerName is null on a quote nobody has claimed.",
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "total": {
+                    "description": "Total is a decimal string, or null while no version carries a price.",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
                 }
             }
         },
@@ -6547,32 +6610,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "updated_at": {
-                    "type": "string"
-                }
-            }
-        },
-        "dto.ClientSaleResponse": {
-            "type": "object",
-            "properties": {
-                "accepted_at": {
-                    "type": "string"
-                },
-                "branch_id": {
-                    "type": "string"
-                },
-                "branch_name": {
-                    "type": "string"
-                },
-                "quote_id": {
-                    "type": "string"
-                },
-                "quote_number": {
-                    "type": "integer"
-                },
-                "rfq_id": {
-                    "type": "string"
-                },
-                "total": {
                     "type": "string"
                 }
             }

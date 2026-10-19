@@ -38,22 +38,38 @@ type ClientListResponse struct {
 	Items []ClientSummaryResponse `json:"items"`
 }
 
-// ClientSaleResponse represents one accepted sale visible from a client profile.
-type ClientSaleResponse struct {
+// ClientQuoteResponse represents one quote in a client's history, at any status.
+type ClientQuoteResponse struct {
 	QuoteID    uuid.UUID `json:"quote_id"`
 	RFQID      uuid.UUID `json:"rfq_id"`
 	Number     int64     `json:"quote_number"`
 	BranchID   uuid.UUID `json:"branch_id"`
 	BranchName string    `json:"branch_name"`
-	Total      string    `json:"total"`
-	AcceptedAt time.Time `json:"accepted_at"`
+	Status     string    `json:"status"`
+	Archived   bool      `json:"archived"`
+	// Total is a decimal string, or null while no version carries a price.
+	Total *string `json:"total"`
+	// SellerName is null on a quote nobody has claimed.
+	SellerName *string   `json:"seller_name"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// ClientActivitySummaryResponse is the derived roll-up of a client's visible quote history.
+type ClientActivitySummaryResponse struct {
+	TotalQuotes       int        `json:"total_quotes"`
+	AcceptedQuotes    int        `json:"accepted_quotes"`
+	RejectedQuotes    int        `json:"rejected_quotes"`
+	PendingQuotes     int        `json:"pending_quotes"`
+	LastInteractionAt *time.Time `json:"last_interaction_at"`
 }
 
 // ClientProfileResponse is returned by GET /v1/clients/:clientId.
 type ClientProfileResponse struct {
-	Client ClientResponse       `json:"client"`
-	Tags   []ClientTagResponse  `json:"tags"`
-	Sales  []ClientSaleResponse `json:"sales"`
+	Client  ClientResponse                `json:"client"`
+	Tags    []ClientTagResponse           `json:"tags"`
+	Summary ClientActivitySummaryResponse `json:"summary"`
+	Quotes  []ClientQuoteResponse         `json:"quotes"`
 }
 
 // ClientTagListResponse is returned by tag list and replacement endpoints.

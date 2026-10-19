@@ -56,22 +56,39 @@ type ClientSummary struct {
 	LastAcceptedAt     *time.Time
 }
 
-// ClientSale is one currently accepted quote associated with a client.
-type ClientSale struct {
+// ClientQuote is one quote in a client's history, at any lifecycle status.
+type ClientQuote struct {
 	QuoteID    uuid.UUID
 	RFQID      uuid.UUID
 	Number     int64
 	BranchID   uuid.UUID
 	BranchName string
-	Total      decimal.Decimal
-	AcceptedAt time.Time
+	Status     QuoteStatus
+	// Archived is the orthogonal flag, not a status: an archived quote keeps its own status.
+	Archived bool
+	// Total is the current version's amount. Nil while no version carries a price.
+	Total *decimal.Decimal
+	// SellerName is the assigned seller, nil on a quote nobody has claimed.
+	SellerName *string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
-// ClientProfile joins a client, their tags, and accepted sales visible to the caller.
+// ClientActivitySummary is the derived roll-up of one client's visible quote history.
+type ClientActivitySummary struct {
+	TotalQuotes       int
+	AcceptedQuotes    int
+	RejectedQuotes    int
+	PendingQuotes     int
+	LastInteractionAt *time.Time
+}
+
+// ClientProfile joins a client, their tags, their activity summary, and quote history.
 type ClientProfile struct {
-	Client Client
-	Tags   []ClientTag
-	Sales  []ClientSale
+	Client  Client
+	Tags    []ClientTag
+	Summary ClientActivitySummary
+	Quotes  []ClientQuote
 }
 
 // ClientContactHints are the latest destinations used to deliver a quote.

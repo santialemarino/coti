@@ -1,10 +1,9 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { MailIcon, PhoneIcon, UserRoundIcon } from 'lucide-react';
+import { CalendarDaysIcon, MailIcon, PhoneIcon, UserRoundIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 import {
-  Badge,
   Card,
   CardContent,
   CardHeader,
@@ -19,19 +18,54 @@ import {
   TableHeader,
   TableRow,
 } from '@repo/ui/components';
+import { cn } from '@repo/ui/lib';
 import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { PageShell } from '@/app/(protected)/_components/page-shell';
 import { ClientTagEditor } from '@/app/(protected)/clients/[id]/_components/client-tag-editor';
+import { RfqStatusBadge } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
 import { BackLink } from '@/components/back-link';
 import { ROUTES } from '@/config/routes';
 import { clientDisplayName, type ClientProfile, type ClientTag } from '@/lib/api/client-profiles';
 import { getClient, getClientTags } from '@/lib/api/clients';
 import { ApiError, errorCodeOf } from '@/lib/api/errors';
 import { formatRfqReference } from '@/lib/api/rfqs';
+import { hasQuoteTotal } from '@/lib/constants/rfq-status';
 import { getFormatters } from '@/lib/i18n/formatters-server';
 import { generatePageMetadata } from '@/lib/utils/page';
 
 export const generateMetadata = () => generatePageMetadata('clients');
+
+/*
+ * One headline number of the profile's activity roll-up. The counts come straight from the summary
+ * the backend derives from the history below, so a tile can never disagree with the table.
+ */
+function SummaryStat({
+  label,
+  value,
+  tone = 'default',
+}: {
+  label: string;
+  value: number;
+  tone?: 'default' | 'success' | 'warning' | 'danger';
+}) {
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-y-1">
+        <span className="text-paragraph-xs text-foreground-muted">{label}</span>
+        <span
+          className={cn(
+            'text-heading-3',
+            tone === 'success' && 'text-success-foreground',
+            tone === 'warning' && 'text-warning-foreground',
+            tone === 'danger' && 'text-danger-foreground',
+          )}
+        >
+          {value}
+        </span>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default async function ClientProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -51,10 +85,25 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
     <PageShell>
       <div className="flex flex-col gap-y-2">
         <BackLink href={ROUTES.clients} label={t('backToList')} />
-        <PageHeader
-          title={name}
-          description={t('profile.description')}
-          actions={<Badge tone="success">{t('salesCount', { total: profile.sales.length })}</Badge>}
+        <PageHeader title={name} description={t('profile.description')} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <SummaryStat label={t('profile.summary.total')} value={profile.summary.totalQuotes} />
+        <SummaryStat
+          label={t('profile.summary.accepted')}
+          value={profile.summary.acceptedQuotes}
+          tone="success"
+        />
+        <SummaryStat
+          label={t('profile.summary.pending')}
+          value={profile.summary.pendingQuotes}
+          tone="warning"
+        />
+        <SummaryStat
+          label={t('profile.summary.rejected')}
+          value={profile.summary.rejectedQuotes}
+          tone="danger"
         />
       </div>
 
@@ -87,6 +136,20 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
                 </span>
               </div>
             </div>
+            <div className="flex items-start gap-x-3">
+              <CalendarDaysIcon
+                aria-hidden="true"
+                className="mt-0.5 size-4 text-foreground-subtle"
+              />
+              <div className="flex flex-col gap-y-0.5">
+                <span className="text-paragraph-xs text-foreground-muted">
+                  {t('profile.since')}
+                </span>
+                <span className="text-paragraph-sm text-foreground">
+                  {fmt.dateNumeric(profile.client.createdAt)}
+                </span>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -99,40 +162,50 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
 
       <Card className="gap-y-0 overflow-hidden py-0">
         <CardHeader className="py-6">
-          <CardTitle className="text-heading-3">{t('profile.salesTitle')}</CardTitle>
+          <CardTitle className="text-heading-3">{t('profile.historyTitle')}</CardTitle>
         </CardHeader>
         <Table>
-          <TableCaption className="sr-only">{t('profile.salesCaption')}</TableCaption>
+          <TableCaption className="sr-only">{t('profile.historyCaption')}</TableCaption>
           <TableHeader>
             <TableRow>
               <TableHead kind="short">{t('profile.table.quote')}</TableHead>
               <TableHead kind="text">{t('profile.table.branch')}</TableHead>
+              <TableHead kind="status">{t('profile.table.status')}</TableHead>
               <TableHead kind="date">{t('profile.table.date')}</TableHead>
               <TableHead kind="money">{t('profile.table.total')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {profile.sales.length === 0 ? (
+            {profile.quotes.length === 0 ? (
               <TableEmptyRow
-                colSpan={4}
+                colSpan={5}
                 icon={UserRoundIcon}
-                title={t('profile.emptySales.title')}
-                description={t('profile.emptySales.description')}
+                title={t('profile.emptyHistory.title')}
+                description={t('profile.emptyHistory.description')}
               />
             ) : (
-              profile.sales.map((sale) => (
-                <TableRow key={sale.quoteId}>
+              profile.quotes.map((quote) => (
+                <TableRow key={quote.quoteId}>
                   <TableCell kind="short">
                     <InlineLink asChild>
-                      <Link href={ROUTES.rfqsDetail(sale.rfqId)}>
-                        {formatRfqReference(sale.quoteNumber) ?? t('profile.numberPending')}
+                      <Link href={ROUTES.rfqsDetail(quote.rfqId)}>
+                        {formatRfqReference(quote.quoteNumber) ?? t('profile.numberPending')}
                       </Link>
                     </InlineLink>
                   </TableCell>
-                  <TableCell>{sale.branchName}</TableCell>
-                  <TableCell kind="date">{fmt.dateNumeric(sale.acceptedAt)}</TableCell>
+                  <TableCell>{quote.branchName}</TableCell>
+                  <TableCell kind="status">
+                    <RfqStatusBadge status={quote.status} archived={quote.archived} size="sm" />
+                  </TableCell>
+                  <TableCell kind="date">{fmt.dateNumeric(quote.updatedAt)}</TableCell>
                   <TableCell kind="money" className="text-paragraph-sm-medium">
-                    {fmt.currency(sale.total)}
+                    {hasQuoteTotal(quote.status) && quote.total != null ? (
+                      fmt.currency(quote.total)
+                    ) : (
+                      <span className="text-foreground-subtle" aria-hidden="true">
+                        —
+                      </span>
+                    )}
                   </TableCell>
                 </TableRow>
               ))

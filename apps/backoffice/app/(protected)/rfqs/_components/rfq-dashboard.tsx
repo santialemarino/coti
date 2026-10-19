@@ -57,11 +57,7 @@ import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { CreateRfqDialog } from '@/app/(protected)/rfqs/_components/create-rfq-dialog';
 import { FollowupBadge, followupDue } from '@/app/(protected)/rfqs/_components/followup-badge';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
-import {
-  hasQuoteTotal,
-  RfqStatusBadge,
-  STATUS_ORDER,
-} from '@/app/(protected)/rfqs/_components/rfq-status-badge';
+import { RfqStatusBadge } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
 import { RfqViewLink } from '@/app/(protected)/rfqs/_components/rfq-view-link';
 import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
@@ -74,6 +70,7 @@ import {
 } from '@/lib/api/rfqs';
 import { assignRfqSeller, setQuoteArchived, setRfqSeller } from '@/lib/api/rfqs-client';
 import { listSellers, type Seller } from '@/lib/api/sellers';
+import { hasQuoteTotal, STATUS_ORDER } from '@/lib/constants/rfq-status';
 import { useFormatters } from '@/lib/i18n/formatters';
 
 const PAGE_SIZE = 10;

@@ -993,15 +993,21 @@
   },
   "clients": {
     "title": "Clientes",
-    "description": "Perfiles asociados a ventas aceptadas y su historial comercial.",
+    "description": "Perfiles de clientes con su contacto, tags e historial comercial.",
     "total": "{total, plural, one {# cliente} other {# clientes}}",
     "search": "Buscar por cliente, contacto o tag",
     "unnamed": "Cliente sin nombre",
     "noPhone": "Sin teléfono",
     "noSales": "Sin ventas",
     "salesCount": "{total, plural, one {# venta} other {# ventas}}",
+    "results": "Mostrando {from}–{to} de {total} clientes",
     "viewProfile": "Ver ficha",
     "backToList": "Volver a clientes",
+    "filters": {
+      "tags": "Tags",
+      "tagCount": "{count} tags",
+      "clearTags": "Limpiar tags"
+    },
     "table": {
       "caption": "Clientes del corralón",
       "client": "Cliente",
@@ -1021,22 +1027,31 @@
       "description": "Probá con otro nombre, contacto o tag."
     },
     "profile": {
-      "description": "Contacto, tags e historial de ventas aceptadas.",
+      "description": "Contacto, tags e historial de cotizaciones del cliente.",
       "contactTitle": "Datos de contacto",
       "phone": "Teléfono",
       "email": "Correo electrónico",
+      "since": "Cliente desde",
       "notRegistered": "Sin registrar",
-      "salesTitle": "Ventas aceptadas",
-      "salesCaption": "Ventas aceptadas asociadas al cliente",
+      "summary": {
+        "total": "Cotizaciones",
+        "accepted": "Aceptadas",
+        "pending": "Pendientes",
+        "rejected": "Rechazadas",
+        "lastInteraction": "Última actividad"
+      },
+      "historyTitle": "Historial de cotizaciones",
+      "historyCaption": "Cotizaciones asociadas al cliente, en todos sus estados",
       "table": {
         "quote": "Cotización",
         "branch": "Sucursal",
-        "date": "Aceptada",
+        "status": "Estado",
+        "date": "Última actividad",
         "total": "Total"
       },
-      "emptySales": {
-        "title": "No hay ventas visibles",
-        "description": "No hay cotizaciones aceptadas dentro de las sucursales que podés consultar."
+      "emptyHistory": {
+        "title": "Todavía no hay cotizaciones",
+        "description": "Las cotizaciones que se asocien a este cliente van a aparecer acá."
       },
       "numberPending": "Sin número"
     },

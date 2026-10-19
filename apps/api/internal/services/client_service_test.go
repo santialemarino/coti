@@ -13,13 +13,13 @@ import (
 )
 
 type fakeClientProfiles struct {
-	clients       map[uuid.UUID]domain.Client
-	matches       []domain.Client
-	created       *domain.NewClient
-	findPhone     *string
-	findEmail     *string
-	summaries     []domain.ClientSummary
-	acceptedSales []domain.ClientSale
+	clients   map[uuid.UUID]domain.Client
+	matches   []domain.Client
+	created   *domain.NewClient
+	findPhone *string
+	findEmail *string
+	summaries []domain.ClientSummary
+	history   []domain.ClientQuote
 }
 
 func (f *fakeClientProfiles) ListSummaries(
@@ -43,10 +43,10 @@ func (f *fakeClientProfiles) FindByContacts(_ context.Context, _ repository.Quer
 	return f.matches, nil
 }
 
-func (f *fakeClientProfiles) ListAcceptedSales(
+func (f *fakeClientProfiles) ListQuoteHistory(
 	context.Context, repository.Querier, domain.Tenant, uuid.UUID,
-) ([]domain.ClientSale, error) {
-	return f.acceptedSales, nil
+) ([]domain.ClientQuote, error) {
+	return f.history, nil
 }
 
 func (f *fakeClientProfiles) Create(_ context.Context, _ repository.Querier, accountID uuid.UUID,
@@ -170,6 +170,53 @@ func newClientServiceHarness() *clientServiceHarness {
 	}
 	h.service = NewClientService(&fakeDB{}, h.clients, h.tags, h.quotes, h.rfqs, h.sends)
 	return h
+}
+
+func TestClientService_GetClient_SummarizesHistoryByStatus(t *testing.T) {
+	h := newClientServiceHarness()
+	clientID := uuid.New()
+	h.clients.clients[clientID] = domain.Client{ID: clientID, AccountID: testAccountID}
+	latest := time.Date(2026, 7, 20, 10, 0, 0, 0, time.UTC)
+	h.clients.history = []domain.ClientQuote{
+		{QuoteID: uuid.New(), Status: domain.QuoteStatusAccepted, UpdatedAt: latest},
+		{QuoteID: uuid.New(), Status: domain.QuoteStatusRejected,
+			UpdatedAt: latest.Add(-time.Hour)},
+		{QuoteID: uuid.New(), Status: domain.QuoteStatusQuoted, UpdatedAt: latest.Add(-2 * time.Hour)},
+		{QuoteID: uuid.New(), Status: domain.QuoteStatusDraft, UpdatedAt: latest.Add(-3 * time.Hour)},
+	}
+
+	profile, err := h.service.GetClient(context.Background(), branchTenant(), clientID)
+	if err != nil {
+		t.Fatalf("GetClient() = %v, want no error", err)
+	}
+	summary := profile.Summary
+	if summary.TotalQuotes != 4 || summary.AcceptedQuotes != 1 || summary.RejectedQuotes != 1 ||
+		summary.PendingQuotes != 2 {
+		t.Fatalf("summary = %#v, want 4 total / 1 accepted / 1 rejected / 2 pending", summary)
+	}
+	if summary.LastInteractionAt == nil || !summary.LastInteractionAt.Equal(latest) {
+		t.Errorf("last interaction = %v, want %v", summary.LastInteractionAt, latest)
+	}
+	if len(profile.Quotes) != 4 {
+		t.Errorf("quotes = %d, want the full history", len(profile.Quotes))
+	}
+}
+
+func TestClientService_GetClient_EmptyHistorySummarizesToZero(t *testing.T) {
+	h := newClientServiceHarness()
+	clientID := uuid.New()
+	h.clients.clients[clientID] = domain.Client{ID: clientID, AccountID: testAccountID}
+
+	profile, err := h.service.GetClient(context.Background(), branchTenant(), clientID)
+	if err != nil {
+		t.Fatalf("GetClient() = %v, want no error", err)
+	}
+	if profile.Summary.TotalQuotes != 0 || profile.Summary.LastInteractionAt != nil {
+		t.Fatalf("summary = %#v, want zeroed", profile.Summary)
+	}
+	if len(profile.Quotes) != 0 {
+		t.Errorf("quotes = %d, want none", len(profile.Quotes))
+	}
 }
 
 func TestClientService_GetQuoteAssociation_SuggestsWithoutWriting(t *testing.T) {

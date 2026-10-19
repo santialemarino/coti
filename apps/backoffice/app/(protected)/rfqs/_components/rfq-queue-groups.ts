@@ -1,5 +1,5 @@
-import { STATUS_ORDER } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
 import type { RfqRecord, RfqStatus } from '@/lib/api/rfqs';
+import { STATUS_ORDER } from '@/lib/constants/rfq-status';
 
 export interface QueueStatusGroup {
   status: RfqStatus;

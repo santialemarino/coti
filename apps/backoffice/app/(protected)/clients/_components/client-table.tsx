@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpRightIcon, SearchXIcon, UsersIcon } from 'lucide-react';
+import { ArrowUpRightIcon, SearchXIcon, TagIcon, UsersIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import {
@@ -11,6 +11,8 @@ import {
   CardHeader,
   CardTitle,
   InlineLink,
+  MultiCombobox,
+  Pagination,
   SearchInput,
   Table,
   TableBody,
@@ -27,6 +29,8 @@ import { clientDisplayName, type ClientSummary } from '@/lib/api/client-profiles
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { useFormatters } from '@/lib/i18n/formatters';
 
+const PAGE_SIZE = 20;
+
 interface ClientTableProps {
   clients: ClientSummary[];
 }
@@ -36,15 +40,41 @@ export function ClientTable({ clients }: ClientTableProps) {
   const tCommon = useTranslations('common');
   const fmt = useFormatters();
   const [search, setSearch] = useState('');
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
+
+  // Any criterion change starts over at the first page, or a stale page number would point nowhere.
+  useEffect(() => {
+    setPage(1);
+  }, [search, selectedTagIds]);
+
+  // The tag filter offers only tags actually in use, so every option can still lead to a row.
+  const tagOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    clients.forEach((client) => client.tags.forEach((tag) => byId.set(tag.id, tag.name)));
+    return [...byId.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'es-AR'));
+  }, [clients]);
+
   const filtered = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('es-AR');
-    if (!query) return clients;
-    return clients.filter((client) =>
-      [client.name, client.phone, client.email, ...client.tags.map((tag) => tag.name)]
+    return clients.filter((client) => {
+      // A tag filter is an OR: a client matches when it carries any of the selected tags.
+      const matchesTags =
+        selectedTagIds.length === 0 || client.tags.some((tag) => selectedTagIds.includes(tag.id));
+      if (!matchesTags) return false;
+      if (!query) return true;
+      return [client.name, client.phone, client.email, ...client.tags.map((tag) => tag.name)]
         .filter(Boolean)
-        .some((value) => value?.toLocaleLowerCase('es-AR').includes(query)),
-    );
-  }, [clients, search]);
+        .some((value) => value?.toLocaleLowerCase('es-AR').includes(query));
+    });
+  }, [clients, search, selectedTagIds]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount);
+  const pageItems = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const hasFilters = search.trim() !== '' || selectedTagIds.length > 0;
 
   return (
     <Card className="gap-y-0 overflow-hidden py-0">
@@ -55,7 +85,7 @@ export function ClientTable({ clients }: ClientTableProps) {
         </div>
       </CardHeader>
 
-      <div className="border-y border-border px-6 py-5">
+      <div className="flex flex-col gap-3 border-y border-border px-6 py-5 sm:flex-row sm:items-center">
         <SearchInput
           value={search}
           onChange={(event) => setSearch(event.target.value)}
@@ -64,6 +94,17 @@ export function ClientTable({ clients }: ClientTableProps) {
           placeholder={t('search')}
           maxLength={TEXT_FIELD_MAX_LENGTH}
           containerClassName="w-full"
+        />
+        <MultiCombobox
+          options={tagOptions}
+          values={selectedTagIds}
+          onValuesChange={setSelectedTagIds}
+          placeholder={t('filters.tags')}
+          summaryLabel={(count) => t('filters.tagCount', { count })}
+          clearLabel={t('filters.clearTags')}
+          icon={<TagIcon aria-hidden="true" className="size-4" />}
+          aria-label={t('filters.tags')}
+          className="w-full sm:w-56"
         />
       </div>
 
@@ -80,15 +121,15 @@ export function ClientTable({ clients }: ClientTableProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {filtered.length === 0 ? (
+          {pageItems.length === 0 ? (
             <TableEmptyRow
               colSpan={6}
-              icon={search ? SearchXIcon : UsersIcon}
-              title={t(search ? 'noResults.title' : 'empty.title')}
-              description={t(search ? 'noResults.description' : 'empty.description')}
+              icon={hasFilters ? SearchXIcon : UsersIcon}
+              title={t(hasFilters ? 'noResults.title' : 'empty.title')}
+              description={t(hasFilters ? 'noResults.description' : 'empty.description')}
             />
           ) : (
-            filtered.map((client) => (
+            pageItems.map((client) => (
               <TableRow key={client.id}>
                 <TableCell>
                   <div className="flex flex-col gap-y-0.5">
@@ -144,6 +185,28 @@ export function ClientTable({ clients }: ClientTableProps) {
           )}
         </TableBody>
       </Table>
+
+      {filtered.length > 0 ? (
+        <div className="flex flex-col items-center justify-between gap-y-3 border-t border-border px-6 py-4 sm:flex-row">
+          <p className="text-paragraph-xs text-foreground-muted">
+            {t('results', {
+              from: (safePage - 1) * PAGE_SIZE + 1,
+              to: Math.min(safePage * PAGE_SIZE, filtered.length),
+              total: filtered.length,
+            })}
+          </p>
+          <Pagination
+            page={safePage}
+            pageCount={pageCount}
+            onPageChange={setPage}
+            labels={{
+              previous: tCommon('pagination.previous'),
+              next: tCommon('pagination.next'),
+              page: tCommon('pagination.label'),
+            }}
+          />
+        </div>
+      ) : null}
     </Card>
   );
 }

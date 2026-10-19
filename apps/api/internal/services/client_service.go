@@ -25,8 +25,8 @@ type clientProfileRepository interface {
 		clientID uuid.UUID) (*domain.Client, error)
 	FindByContacts(ctx context.Context, q repository.Querier, accountID uuid.UUID,
 		phone, email *string) ([]domain.Client, error)
-	ListAcceptedSales(ctx context.Context, q repository.Querier, tenant domain.Tenant,
-		clientID uuid.UUID) ([]domain.ClientSale, error)
+	ListQuoteHistory(ctx context.Context, q repository.Querier, tenant domain.Tenant,
+		clientID uuid.UUID) ([]domain.ClientQuote, error)
 	Create(ctx context.Context, q repository.Querier, accountID uuid.UUID,
 		in domain.NewClient) (*domain.Client, error)
 }
@@ -109,7 +109,7 @@ func (s *ClientService) ListClients(
 	return summaries, err
 }
 
-// GetClient returns one profile and the accepted sales visible to the caller.
+// GetClient returns one profile, its derived activity summary, and its quote history.
 func (s *ClientService) GetClient(
 	ctx context.Context, tenant domain.Tenant, clientID uuid.UUID,
 ) (*domain.ClientProfile, error) {
@@ -123,12 +123,12 @@ func (s *ClientService) GetClient(
 		if err != nil {
 			return err
 		}
-		sales, err := s.clients.ListAcceptedSales(ctx, q, tenant, clientID)
+		quotes, err := s.clients.ListQuoteHistory(ctx, q, tenant, clientID)
 		if err != nil {
 			return err
 		}
 		profile = &domain.ClientProfile{Client: *client, Tags: nonNilTags(byClient[clientID]),
-			Sales: sales}
+			Summary: summarizeQuotes(quotes), Quotes: quotes}
 		return nil
 	})
 	return profile, err
@@ -434,4 +434,25 @@ func nonNilTags(tags []domain.ClientTag) []domain.ClientTag {
 		return []domain.ClientTag{}
 	}
 	return tags
+}
+
+// summarizeQuotes derives the activity roll-up from the history itself, so the counts can never
+// disagree with the rows the profile renders. Pending is anything neither accepted nor rejected.
+func summarizeQuotes(quotes []domain.ClientQuote) domain.ClientActivitySummary {
+	summary := domain.ClientActivitySummary{TotalQuotes: len(quotes)}
+	for i := range quotes {
+		switch quotes[i].Status {
+		case domain.QuoteStatusAccepted:
+			summary.AcceptedQuotes++
+		case domain.QuoteStatusRejected:
+			summary.RejectedQuotes++
+		default:
+			summary.PendingQuotes++
+		}
+		if summary.LastInteractionAt == nil || quotes[i].UpdatedAt.After(*summary.LastInteractionAt) {
+			updatedAt := quotes[i].UpdatedAt
+			summary.LastInteractionAt = &updatedAt
+		}
+	}
+	return summary
 }

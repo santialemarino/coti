@@ -149,17 +149,30 @@ func TestClientProfile_ConfirmsAcceptedSaleWithoutAutoCreatingOnSend(t *testing.
 		Tags []struct {
 			ID uuid.UUID `json:"id"`
 		} `json:"tags"`
-		Sales []struct {
+		Summary struct {
+			TotalQuotes    int `json:"total_quotes"`
+			AcceptedQuotes int `json:"accepted_quotes"`
+			RejectedQuotes int `json:"rejected_quotes"`
+			PendingQuotes  int `json:"pending_quotes"`
+		} `json:"summary"`
+		Quotes []struct {
 			QuoteID uuid.UUID `json:"quote_id"`
-			Total   string    `json:"total"`
-		} `json:"sales"`
+			Status  string    `json:"status"`
+			Total   *string   `json:"total"`
+		} `json:"quotes"`
 	}
 	if err := json.Unmarshal(profileResponse.Body.Bytes(), &profile); err != nil {
 		t.Fatalf("decode profile response: %v", err)
 	}
-	if len(profile.Tags) != 1 || profile.Tags[0].ID != tag.ID || len(profile.Sales) != 1 ||
-		profile.Sales[0].QuoteID != seed.draft.Quote.ID || profile.Sales[0].Total != "100.00" {
-		t.Fatalf("profile = %#v, want one tag and the accepted sale", profile)
+	if len(profile.Tags) != 1 || profile.Tags[0].ID != tag.ID || len(profile.Quotes) != 1 ||
+		profile.Quotes[0].QuoteID != seed.draft.Quote.ID ||
+		profile.Quotes[0].Status != "ACCEPTED" || profile.Quotes[0].Total == nil ||
+		*profile.Quotes[0].Total != "100.00" {
+		t.Fatalf("profile = %#v, want one tag and the accepted quote in history", profile)
+	}
+	if profile.Summary.TotalQuotes != 1 || profile.Summary.AcceptedQuotes != 1 ||
+		profile.Summary.RejectedQuotes != 0 || profile.Summary.PendingQuotes != 0 {
+		t.Fatalf("summary = %#v, want 1 total and 1 accepted", profile.Summary)
 	}
 	if len(result.Deliveries) != 1 {
 		t.Fatalf("deliveries = %d, want one", len(result.Deliveries))

@@ -65,10 +65,10 @@ func (h *ClientHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.ClientListResponse{Items: items})
 }
 
-// Get returns one account client and accepted sales visible to the caller.
+// Get returns one account client with its derived activity summary and quote history.
 //
 //	@Summary		Get a client profile
-//	@Description	Returns one account-level profile and its currently accepted quotes inside the caller's branch and seller reach.
+//	@Description	Returns one account-level profile, its tags, a derived activity summary, and its quote history at every status, limited to the caller's branch and seller reach.
 //	@Tags			clients
 //	@Produce		json
 //	@Security		BearerAuth
@@ -286,15 +286,30 @@ func toClientSummaryResponse(client domain.ClientSummary) dto.ClientSummaryRespo
 }
 
 func toClientProfileResponse(profile domain.ClientProfile) dto.ClientProfileResponse {
-	sales := make([]dto.ClientSaleResponse, 0, len(profile.Sales))
-	for i := range profile.Sales {
-		sale := profile.Sales[i]
-		sales = append(sales, dto.ClientSaleResponse{QuoteID: sale.QuoteID, RFQID: sale.RFQID,
-			Number: sale.Number, BranchID: sale.BranchID, BranchName: sale.BranchName,
-			Total: sale.Total.StringFixed(2), AcceptedAt: sale.AcceptedAt})
+	quotes := make([]dto.ClientQuoteResponse, 0, len(profile.Quotes))
+	for i := range profile.Quotes {
+		quote := profile.Quotes[i]
+		var total *string
+		if quote.Total != nil {
+			value := quote.Total.StringFixed(2)
+			total = &value
+		}
+		quotes = append(quotes, dto.ClientQuoteResponse{QuoteID: quote.QuoteID,
+			RFQID: quote.RFQID, Number: quote.Number, BranchID: quote.BranchID,
+			BranchName: quote.BranchName, Status: string(quote.Status), Archived: quote.Archived,
+			Total: total, SellerName: quote.SellerName, CreatedAt: quote.CreatedAt,
+			UpdatedAt: quote.UpdatedAt})
 	}
 	return dto.ClientProfileResponse{Client: toClientResponse(profile.Client),
-		Tags: toClientTagResponses(profile.Tags), Sales: sales}
+		Tags: toClientTagResponses(profile.Tags),
+		Summary: dto.ClientActivitySummaryResponse{
+			TotalQuotes:       profile.Summary.TotalQuotes,
+			AcceptedQuotes:    profile.Summary.AcceptedQuotes,
+			RejectedQuotes:    profile.Summary.RejectedQuotes,
+			PendingQuotes:     profile.Summary.PendingQuotes,
+			LastInteractionAt: profile.Summary.LastInteractionAt,
+		},
+		Quotes: quotes}
 }
 
 func toClientTagResponses(tags []domain.ClientTag) []dto.ClientTagResponse {

@@ -1,3 +1,5 @@
+import { normalizeRfqStatus, type RfqStatus } from '@/lib/api/rfqs';
+
 export interface ClientTagRaw {
   id: string;
   name: string;
@@ -29,20 +31,33 @@ export interface ClientTagListRaw {
   items: ClientTagRaw[];
 }
 
-export interface ClientSaleRaw {
+export interface ClientQuoteRaw {
   quote_id: string;
   rfq_id: string;
   quote_number: number;
   branch_id: string;
   branch_name: string;
-  total: string;
-  accepted_at: string;
+  status: string;
+  archived: boolean;
+  total: string | null;
+  seller_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClientActivitySummaryRaw {
+  total_quotes: number;
+  accepted_quotes: number;
+  rejected_quotes: number;
+  pending_quotes: number;
+  last_interaction_at: string | null;
 }
 
 export interface ClientProfileRaw {
   client: ClientRaw;
   tags: ClientTagRaw[];
-  sales: ClientSaleRaw[];
+  summary: ClientActivitySummaryRaw;
+  quotes: ClientQuoteRaw[];
 }
 
 export interface ClientMatchRaw {
@@ -80,20 +95,33 @@ export interface ClientSummary extends Client {
   lastAcceptedAt: string | null;
 }
 
-export interface ClientSale {
+export interface ClientQuote {
   quoteId: string;
   rfqId: string;
   quoteNumber: number;
   branchId: string;
   branchName: string;
-  total: string;
-  acceptedAt: string;
+  status: RfqStatus;
+  archived: boolean;
+  total: string | null;
+  sellerName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ClientActivitySummary {
+  totalQuotes: number;
+  acceptedQuotes: number;
+  rejectedQuotes: number;
+  pendingQuotes: number;
+  lastInteractionAt: string | null;
 }
 
 export interface ClientProfile {
   client: Client;
   tags: ClientTag[];
-  sales: ClientSale[];
+  summary: ClientActivitySummary;
+  quotes: ClientQuote[];
 }
 
 export interface ClientMatch {
@@ -154,15 +182,30 @@ export function mapClientProfile(raw: ClientProfileRaw): ClientProfile {
   return {
     client: mapClient(raw.client),
     tags: raw.tags.map(mapClientTag),
-    sales: raw.sales.map((sale) => ({
-      quoteId: sale.quote_id,
-      rfqId: sale.rfq_id,
-      quoteNumber: sale.quote_number,
-      branchId: sale.branch_id,
-      branchName: sale.branch_name,
-      total: sale.total,
-      acceptedAt: sale.accepted_at,
-    })),
+    summary: {
+      totalQuotes: raw.summary.total_quotes,
+      acceptedQuotes: raw.summary.accepted_quotes,
+      rejectedQuotes: raw.summary.rejected_quotes,
+      pendingQuotes: raw.summary.pending_quotes,
+      lastInteractionAt: raw.summary.last_interaction_at,
+    },
+    quotes: raw.quotes.map(mapClientQuote),
+  };
+}
+
+export function mapClientQuote(raw: ClientQuoteRaw): ClientQuote {
+  return {
+    quoteId: raw.quote_id,
+    rfqId: raw.rfq_id,
+    quoteNumber: raw.quote_number,
+    branchId: raw.branch_id,
+    branchName: raw.branch_name,
+    status: normalizeRfqStatus(raw.status),
+    archived: raw.archived,
+    total: raw.total,
+    sellerName: raw.seller_name,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
   };
 }
 
