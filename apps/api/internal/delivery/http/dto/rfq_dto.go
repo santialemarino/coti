@@ -134,6 +134,7 @@ type RFQAttachmentResponse struct {
 	URL              string    `json:"url"`
 	ExpiresAt        time.Time `json:"expires_at"`
 	CreatedAt        time.Time `json:"created_at"`
+	OriginalFilename *string   `json:"original_filename"`
 }
 
 // RFQAttachmentListResponse is returned by GET /v1/rfqs/{rfqId}/attachments.

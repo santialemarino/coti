@@ -1140,6 +1140,14 @@
     "createdAt": "Creada el {date}"
   },
   "rfqs": {
+    "emailAttachments": {
+      "title": "Correo y archivos recibidos",
+      "download": "Descargar",
+      "unnamed": "Archivo adjunto",
+      "manualReview": "Revisar manualmente",
+      "refresh": "Actualizar enlaces",
+      "error": "No pudimos cargar los archivos. Intentá de nuevo."
+    },
     "title": "Pedidos",
     "greeting": "¡Hola, {name}!",
     "status": {
@@ -1893,6 +1901,12 @@
     },
     "reopen": {
       "action": "Reabrir"
+    },
+    "gmail": {
+      "connect": "Conectar Gmail de la sucursal",
+      "connected": "Conectamos la casilla de Google con la sucursal.",
+      "failed": "No pudimos conectar la casilla. Verificá que elegiste el correo de la sucursal e intentá de nuevo.",
+      "startFailed": "No pudimos iniciar la conexión con Google. Revisá la configuración de la sucursal e intentá de nuevo."
     },
     "empty": {
       "title": "Todavía no hay sucursales",

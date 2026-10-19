@@ -27,6 +27,7 @@ import { QuoteDeliveryCard } from './quote-delivery-card';
 import { RfqChangeRequestCard } from './rfq-change-request-card';
 import { RfqConversation } from './rfq-conversation';
 import { RfqDetailHeader } from './rfq-detail-header';
+import { RfqEmailAttachments } from './rfq-email-attachments';
 import { RfqItemsTable } from './rfq-items-table';
 import { RfqStatusTimeline } from './rfq-status-timeline';
 
@@ -214,6 +215,10 @@ export function RfqDetailView({
   return (
     <div ref={rootRef} className="flex flex-col gap-y-4 scroll-mt-20">
       <RfqDetailHeader detail={detail} />
+
+      {detail.rfq.channel.toLowerCase() === 'email' ? (
+        <RfqEmailAttachments rfqId={detail.rfq.id} branchId={branchId} />
+      ) : null}
 
       <QuoteDeliveryCard
         detail={detail}

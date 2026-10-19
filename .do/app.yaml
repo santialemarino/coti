@@ -73,6 +73,15 @@ services:
       - key: CHANNEL_CONFIG_ENCRYPTION_KEY
         scope: RUN_TIME
         type: SECRET
+      - key: GMAIL_OAUTH_CLIENT_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: GMAIL_OAUTH_CLIENT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: GMAIL_OAUTH_REDIRECT_URL
+        scope: RUN_TIME
+        type: SECRET
       - key: WHATSAPP_APP_SECRET
         scope: RUN_TIME
         type: SECRET

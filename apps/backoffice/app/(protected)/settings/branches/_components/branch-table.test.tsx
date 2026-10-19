@@ -112,6 +112,23 @@ describe('BranchTable listing', () => {
     expect(within(rowOf(view, CLOSED.name)).queryByText(copy.table.noEmail)).toBeNull();
   });
 
+  it('offers Google connection only for an active branch with an email address', () => {
+    const view = renderTable([
+      { ...CENTRAL, email: 'centro@corralon.test' },
+      MORON,
+      { ...CLOSED, email: 'closed@corralon.test' },
+    ]);
+    expect(
+      within(rowOf(view, CENTRAL.name)).getByRole('button', { name: copy.gmail.connect }),
+    ).toBeTruthy();
+    expect(
+      within(rowOf(view, MORON.name)).queryByRole('button', { name: copy.gmail.connect }),
+    ).toBeNull();
+    expect(
+      within(rowOf(view, CLOSED.name)).queryByRole('button', { name: copy.gmail.connect }),
+    ).toBeNull();
+  });
+
   // A branch with no address must read as one, not as an empty cell that looks like a render bug.
   it('names the absence of an address', () => {
     const view = renderTable();

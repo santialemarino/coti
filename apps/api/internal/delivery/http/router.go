@@ -50,6 +50,7 @@ type Handlers struct {
 	CatalogImport *handler.CatalogImportHandler
 	Onboarding    *handler.OnboardingHandler
 	WhatsApp      *handler.WhatsAppWebhookHandler
+	Gmail         *handler.GmailHandler
 	ARCASetup     *handler.ARCASetupHandler
 	Invoice       *handler.InvoiceHandler
 	Promotion     *handler.PromotionHandler
@@ -118,6 +119,9 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	if h.AccountLogo != nil {
 		public.GET("/account-logos/:accountId/:logoId", h.AccountLogo.Get)
 	}
+	if h.Gmail != nil {
+		public.GET("/gmail/callback", limit("gmail-oauth", cfg.RateLimit.Credentials), h.Gmail.Callback)
+	}
 	public.GET("/quote-sends/:token", h.Quote.ResolvePublic)
 	// A public response is heavy on idempotency and race control, so it gets its own limit lane
 	// rather than sharing the generic public one.
@@ -168,6 +172,9 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	channelAdmin.POST("", h.Channel.Create)
 	channelAdmin.PUT("/:channelId", h.Channel.Update)
 	channelAdmin.DELETE("/:channelId", h.Channel.Delete)
+	if h.Gmail != nil {
+		channelAdmin.POST("/:channelId/gmail/authorization", limit("gmail-oauth", cfg.RateLimit.Credentials), h.Gmail.Start)
+	}
 
 	// Accepting the materials is what prices the quote, so the route names the seller's action
 	// rather than the calculation behind it. It reaches no provider, so it needs no allowance of

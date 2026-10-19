@@ -176,6 +176,34 @@ func (r *ChannelRepository) GetActiveByID(
 		accountID, branchID, channelID)
 }
 
+// GetActiveByIDForShare keeps the route stable until the caller's transaction commits.
+func (r *ChannelRepository) GetActiveByIDForShare(
+	ctx context.Context, q Querier, accountID, branchID, channelID uuid.UUID,
+) (*domain.Channel, error) {
+	var active bool
+	if err := q.QueryRow(ctx, `SELECT is_active FROM account WHERE id = $1 AND is_active FOR SHARE`,
+		accountID).Scan(&active); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	if err := q.QueryRow(ctx,
+		`SELECT is_active FROM branch WHERE account_id = $1 AND id = $2 AND is_active FOR SHARE`,
+		accountID, branchID).Scan(&active); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	return r.getByID(ctx, q,
+		`SELECT `+channelColumns+`
+		 FROM channel
+		 WHERE account_id = $1 AND branch_id = $2 AND id = $3 AND is_active = TRUE
+		 FOR SHARE`,
+		accountID, branchID, channelID)
+}
+
 // GetByID returns one channel of the branch whatever its state, which administering it needs.
 func (r *ChannelRepository) GetByID(
 	ctx context.Context, q Querier, accountID, branchID, channelID uuid.UUID,

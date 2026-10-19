@@ -1,7 +1,14 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { BuildingIcon, PencilIcon, PlusIcon, RotateCcwIcon, XCircleIcon } from 'lucide-react';
+import {
+  BuildingIcon,
+  MailIcon,
+  PencilIcon,
+  PlusIcon,
+  RotateCcwIcon,
+  XCircleIcon,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
@@ -30,15 +37,17 @@ import {
 import type { BranchValues } from '@/app/(protected)/settings/branches/form-schema';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Branch } from '@/lib/api/branches';
+import { startGmailAuthorization } from '@/lib/api/gmail';
 import { missesBranchEmail } from '@/lib/utils/setup-issues';
 
 const COLUMN_COUNT = 6;
 
 interface BranchTableProps {
   branches: Branch[];
+  gmailStatus?: 'connected' | 'failed';
 }
 
-export function BranchTable({ branches }: BranchTableProps) {
+export function BranchTable({ branches, gmailStatus }: BranchTableProps) {
   const t = useTranslations('branches');
   const message = useApiErrorMessage('branches');
   const [form, setForm] = useState<{ mode: 'create' | 'edit'; branch: Branch | null } | null>(null);
@@ -51,7 +60,22 @@ export function BranchTable({ branches }: BranchTableProps) {
   const [saving, startSave] = useTransition();
   const [removing, startRemove] = useTransition();
   const [reopening, startReopen] = useTransition();
-  const busy = saving || removing || reopening;
+  const [connecting, startConnect] = useTransition();
+  const busy = saving || removing || reopening || connecting;
+
+  function onConnectGmail(branch: Branch) {
+    const address = branch.email;
+    if (!address) return;
+    setError(null);
+    startConnect(async () => {
+      try {
+        const url = await startGmailAuthorization(branch.id, address);
+        window.location.assign(url);
+      } catch {
+        setError(t('gmail.startFailed'));
+      }
+    });
+  }
 
   function onSubmit(values: BranchValues) {
     const target = form;
@@ -106,6 +130,11 @@ export function BranchTable({ branches }: BranchTableProps) {
   return (
     <div className="flex flex-col gap-y-6">
       {error ? <Callout tone="danger">{error}</Callout> : null}
+      {gmailStatus ? (
+        <Callout tone={gmailStatus === 'connected' ? 'success' : 'danger'}>
+          {t(gmailStatus === 'connected' ? 'gmail.connected' : 'gmail.failed')}
+        </Callout>
+      ) : null}
 
       <div className="flex sm:justify-end">
         <Button disabled={busy} onClick={() => setForm({ mode: 'create', branch: null })}>
@@ -162,6 +191,14 @@ export function BranchTable({ branches }: BranchTableProps) {
                 </TableCell>
                 <TableCell kind="actionsWide">
                   <div className="flex justify-center gap-x-1">
+                    {branch.isActive && branch.email ? (
+                      <RowActionButton
+                        icon={MailIcon}
+                        label={t('gmail.connect')}
+                        disabled={busy}
+                        onClick={() => onConnectGmail(branch)}
+                      />
+                    ) : null}
                     <RowActionButton
                       icon={PencilIcon}
                       label={t('edit.action')}

@@ -107,6 +107,9 @@ send dialog. WhatsApp requires a configured Cloud API channel and app secret; se
 guide](docs/technical/meta-app-development-testing.md). A console mailer does not count as delivery,
 and Mailpit captures messages locally without contacting the recipient.
 
+Branch mailboxes can also ingest new requests through Gmail or Google Workspace. Connecting one
+requires Google OAuth credentials and an encryption key; see [Gmail intake](docs/technical/gmail-intake.md).
+
 ## Common scripts
 
 | Command                           | What it does                                  |

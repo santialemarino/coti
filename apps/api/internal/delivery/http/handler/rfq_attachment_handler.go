@@ -122,5 +122,6 @@ func toAttachmentResponse(link domain.AttachmentLink) dto.RFQAttachmentResponse 
 		URL:              link.URL,
 		ExpiresAt:        link.ExpiresAt,
 		CreatedAt:        link.Attachment.CreatedAt,
+		OriginalFilename: link.Attachment.OriginalFilename,
 	}
 }

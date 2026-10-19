@@ -21,6 +21,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/shopspring/decimal"
@@ -34,6 +35,7 @@ import (
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
+	"github.com/santialemarino/coti/apps/api/internal/gmail"
 	"github.com/santialemarino/coti/apps/api/internal/mail"
 	quotePDF "github.com/santialemarino/coti/apps/api/internal/pdf"
 	"github.com/santialemarino/coti/apps/api/internal/ratelimit"
@@ -218,6 +220,40 @@ func run() error {
 	whatsAppInboundService := services.NewWhatsAppInboundService(db, inboundRoutingService,
 		inboundChannelMessageRepo, channelRepo, rfqService, channelSealer, log).
 		WithConversations(conversationService)
+	var gmailHandler *handler.GmailHandler
+	var gmailWorker *services.GmailSyncWorker
+	var attachmentJobs *services.JobService
+	attachmentWake := make(chan struct{}, 1)
+	if cfg.Gmail.Enabled() {
+		oauth, err := gmail.NewOAuth(cfg.Gmail.ClientID, cfg.Gmail.ClientSecret, cfg.Gmail.RedirectURL,
+			cfg.Gmail.RequestTimeout, cfg.Gmail.MaxJSONBytes)
+		if err != nil {
+			return err
+		}
+		mailboxes := repository.NewGmailMailboxRepository()
+		gmailHandler = handler.NewGmailHandler(services.NewGmailAuthorizationService(db, mailboxes,
+			channelRepo, userRepo, oauth, channelSealer, cfg.Gmail.StateTTL,
+			cfg.Auth.RequireVerifiedEmail), cfg.Web.BackofficeURL)
+		intake := services.NewEmailInboundService(db, inboundChannelMessageRepo, rfqRepo,
+			rfqAttachmentRepo, channelRepo, objectStorage.Storage, cfg.Storage.MaxFileSize).
+			WithRecordedCallback(func() {
+				select {
+				case attachmentWake <- struct{}{}:
+				default:
+				}
+			})
+		gmailWorker = services.NewGmailSyncWorker(db, mailboxes, channelSealer,
+			gmail.NewFactory(cfg.Gmail), services.NewEmailSyncService(intake), cfg.Gmail.PollInterval, log)
+		if providers.LanguageModelBound() {
+			reader := rfqAttachmentService.WithStoredReading(providers.Transcriber,
+				cfg.RFQ.MaxTextCharacters, cfg.RFQ.MaxSpreadsheetRows)
+			attachmentJobs, err = services.NewJobService(db, repository.NewJobRunRepository(), log,
+				services.NewAttachmentExtractionJob(rfqAttachmentRepo, reader, rfqService, cfg.Attachment, log))
+			if err != nil {
+				return err
+			}
+		}
+	}
 	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, arcaEnvironment, log).
 		WithDiscountEngine(quoteDiscountRepo, promotionRepo, quoteRepo)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
@@ -275,6 +311,7 @@ func run() error {
 			Onboarding:    handler.NewOnboardingHandler(onboardingService),
 			WhatsApp: handler.NewWhatsAppWebhookHandler(cfg.WhatsApp.AppSecret,
 				cfg.WhatsApp.WebhookMaxBytes, whatsAppInboundService),
+			Gmail:     gmailHandler,
 			File:      fileHandler(objectStorage),
 			ARCASetup: handler.NewARCASetupHandler(arcaSetupService),
 			Invoice:   handler.NewInvoiceHandler(invoiceService, cfg.Storage.MaxFileSize),
@@ -298,9 +335,28 @@ func run() error {
 		defer close(tickerDone)
 		conversationTicker.Run(tickerCtx)
 	}()
+	var gmailDone chan struct{}
+	if gmailWorker != nil {
+		gmailDone = make(chan struct{})
+		go func() { defer close(gmailDone); gmailWorker.Run(tickerCtx) }()
+	}
+	var attachmentDone chan struct{}
+	if attachmentJobs != nil {
+		attachmentDone = make(chan struct{})
+		go func() {
+			defer close(attachmentDone)
+			runAttachmentWake(tickerCtx, attachmentWake, attachmentJobs, cfg.Gmail.PollInterval, cfg.Job.Timeout, log)
+		}()
+	}
 	defer func() {
 		stopTicker()
 		<-tickerDone
+		if gmailDone != nil {
+			<-gmailDone
+		}
+		if attachmentDone != nil {
+			<-attachmentDone
+		}
 	}()
 
 	serverErr := make(chan error, 1)
@@ -322,6 +378,34 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
 	return server.Shutdown(shutdownCtx)
+}
+
+func runAttachmentWake(ctx context.Context, wake chan struct{}, jobs *services.JobService,
+	interval, timeout time.Duration, log *slog.Logger) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-wake:
+		}
+		runCtx, cancel := context.WithTimeout(ctx, timeout)
+		run, err := jobs.Run(runCtx, "attachment-extraction")
+		cancel()
+		if err != nil && ctx.Err() == nil {
+			log.ErrorContext(ctx, "immediate attachment extraction failed", slog.Any("error", err))
+		}
+		if err == nil && (run == nil || run.Scanned > 0) {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(interval):
+				select {
+				case wake <- struct{}{}:
+				default:
+				}
+			}
+		}
+	}
 }
 
 func identifyForRateLimit(tokens *services.TokenService) func(string) (string, bool) {
