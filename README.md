@@ -26,7 +26,7 @@ autopilot.
 ```
 apps/
   backoffice   Next.js — vendor & admin web app (authenticated)
-  webapp       Next.js — customer-facing public web app (no auth)
+  webapp       Next.js — customer portal with supplier-scoped login and request history
   api          Go + Gin — REST API, business logic, persistence, AI orchestration
 packages/
   ui                 Shared design system (@repo/ui) — tokens, type scale, motion,
@@ -242,7 +242,7 @@ development-only route simulates an inbound WhatsApp message through the same pi
 
 See [docs/technical/rfq-pipeline.md](docs/technical/rfq-pipeline.md).
 
-The stateless public request API and its retry contract are documented in
+Customer login, Google sign-in, history, supplier hostname setup and the request retry contract are documented in
 [Public RFQ intake](docs/technical/public-rfq-intake.md).
 
 ## File storage

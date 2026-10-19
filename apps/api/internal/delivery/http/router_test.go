@@ -3,6 +3,8 @@ package http
 import (
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
@@ -11,6 +13,22 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
 	"github.com/santialemarino/coti/apps/api/internal/storage"
 )
+
+func TestLegacyQuoteRoutesRequireCustomerAuthentication(t *testing.T) {
+	t.Parallel()
+	router := NewRouter(&config.Config{}, slog.New(slog.NewTextHandler(io.Discard, nil)), Handlers{}, Auth{}, RateLimit{})
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		path := "/v1/public/quote-sends/old-token"
+		if method == http.MethodPost {
+			path += "/action"
+		}
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest(method, path, nil))
+		if response.Code != http.StatusUnauthorized {
+			t.Errorf("%s %s returned %d", method, path, response.Code)
+		}
+	}
+}
 
 // The route is mounted by trimming apiPrefix off the link path, which silently yields
 // /v1/v1/files if the two ever stop agreeing.

@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/santialemarino/coti/apps/api/internal/delivery/http/middleware"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
@@ -28,7 +29,7 @@ func TestPublicRFQHandlerReceiptContainsNoCustomerOrInternalIdentity(t *testing.
 	fake := &publicRFQHandlerFake{}
 	h := NewPublicRFQHandler(fake, 1024)
 	router := gin.New()
-	router.POST("/:channelId", h.Create)
+	router.POST("/:channelId", middleware.RequireCustomer(publicCustomerVerifier{}), h.Create)
 	request := httptest.NewRequest(http.MethodPost, "/"+uuid.NewString(), strings.NewReader(
 		`{"request_id":"`+uuid.NewString()+`","tax_id":"20123456786","name":"Obra Norte","email":"contacto@example.com","text":"cemento"}`))
 	request.Header.Set("Content-Type", "application/json")
@@ -59,5 +60,31 @@ func TestPublicRFQHandlerDestinationDoesNotExposeRouting(t *testing.T) {
 		if strings.Contains(response.Body.String(), key) {
 			t.Fatalf("public identity exposed %s", key)
 		}
+	}
+}
+
+func (f *publicRFQHandlerFake) GetSite(context.Context, string) (*domain.PublicRFQSite, error) {
+	return nil, domain.ErrNotFound
+}
+
+func (f *publicRFQHandlerFake) CreateForCustomer(ctx context.Context, _ domain.CustomerPrincipal, id uuid.UUID, in domain.PublicRFQInput) error {
+	return f.Create(ctx, id, in)
+}
+
+type publicCustomerVerifier struct{}
+
+func (publicCustomerVerifier) Authenticate(context.Context, string, string) (*domain.CustomerPrincipal, error) {
+	return &domain.CustomerPrincipal{CustomerID: uuid.New(), AccountID: uuid.New(), TaxID: "20123456786"}, nil
+}
+
+func TestPublicRFQHandlerRejectsMissingCustomerSession(t *testing.T) {
+	fake := &publicRFQHandlerFake{}
+	h := NewPublicRFQHandler(fake, 1024)
+	router := gin.New()
+	router.POST("/:channelId", h.Create)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/"+uuid.NewString(), strings.NewReader(`{}`)))
+	if rec.Code != http.StatusUnauthorized || fake.input != nil {
+		t.Fatalf("unauthenticated intake: %d", rec.Code)
 	}
 }

@@ -34,13 +34,15 @@ func (r *ClientActionRepository) Create(ctx context.Context, q Querier, accountI
 		in.ID, accountID, in.VersionID, in.QuoteSendID, in.Type, in.Comment))
 }
 
-// GetBySend loads the one customer response recorded for a public delivery, if any. Rows whose
-// quote_send_id is NULL never match, which is the point: only a link-carried answer is a response.
+// GetBySend reads the customer decision shared by every delivery of the same frozen version.
 func (r *ClientActionRepository) GetBySend(ctx context.Context, q Querier, accountID uuid.UUID,
 	sendID uuid.UUID) (*domain.ClientAction, error) {
 	return scanClientAction(q.QueryRow(ctx, `SELECT `+clientActionColumns+`
 		FROM client_action action
-		WHERE action.account_id = $1 AND action.quote_send_id = $2`,
+ JOIN quote_send target ON target.account_id=action.account_id AND target.version_id=action.version_id
+ WHERE action.account_id=$1 AND target.id=$2 AND action.quote_send_id IS NOT NULL
+ AND action.type IN ('ACCEPT','REJECT','REQUEST_CHANGE')
+ ORDER BY action.created_at,action.id LIMIT 1`,
 		accountID, sendID))
 }
 

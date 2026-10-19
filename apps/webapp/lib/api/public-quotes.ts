@@ -1,17 +1,9 @@
 import 'server-only';
 
+import { customerFetch } from '@/lib/api/customer-orders';
 import { API_URL } from '@/lib/config';
 
-/*
- * The public quote read. There is no session here: the unguessable token in the URL is the whole
- * access control, so this module never sends a credential and never takes one.
- *
- * The API declares no CORS and the webapp answers on its own subdomain, so this runs server-side
- * only — a browser fetch would be refused. The logo is the exception and is meant to be: an <img>
- * is not CORS-restricted, so the URL below is handed to the browser to load directly.
- */
-
-const PUBLIC_QUOTE_PATH = '/v1/public/quote-sends';
+const PUBLIC_QUOTE_PATH = '/quote-sends';
 
 // --- Raw types (API JSON shape, snake_case) ---
 
@@ -236,7 +228,7 @@ function absoluteLogoUrl(stored: string | undefined): string | undefined {
 
 // Returns null for a token the API does not know, which the page renders as its 404.
 export async function getPublicQuoteByToken(token: string): Promise<PublicQuoteSend | null> {
-  const response = await fetch(`${API_URL}${PUBLIC_QUOTE_PATH}/${encodeURIComponent(token)}`, {
+  const response = await customerFetch(`${PUBLIC_QUOTE_PATH}/${encodeURIComponent(token)}`, {
     method: 'GET',
     headers: { Accept: 'application/json' },
     cache: 'no-store',
@@ -269,15 +261,12 @@ export async function submitPublicQuoteAction(
   token: string,
   action: PublicQuoteAction,
 ): Promise<PublicQuoteActionResult> {
-  const response = await fetch(
-    `${API_URL}${PUBLIC_QUOTE_PATH}/${encodeURIComponent(token)}/action`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ type: action.type, message: action.message }),
-      cache: 'no-store',
-    },
-  );
+  const response = await customerFetch(`${PUBLIC_QUOTE_PATH}/${encodeURIComponent(token)}/action`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ type: action.type, message: action.message }),
+    cache: 'no-store',
+  });
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { code?: unknown } | null;
     throw new PublicQuoteActionError(

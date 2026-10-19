@@ -46,3 +46,26 @@ export const getPublicRfqDestination = cache(
     return mapDestination((await response.json()) as PublicRfqDestinationRaw);
   },
 );
+
+export interface PublicRfqSite {
+  supplierName: string;
+  branches: { channelId: string; destination: PublicRfqDestination }[];
+}
+
+export async function getPublicRfqSite(hostname: string): Promise<PublicRfqSite | null> {
+  const response = await fetch(`${API_URL}/v1/public/rfq-sites/${encodeURIComponent(hostname)}`, {
+    cache: 'no-store',
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error('Failed to resolve public RFQ site');
+  const raw = (await response.json()) as Omit<PublicRfqDestinationRaw, 'branch_name'> & {
+    branches: { channel_id: string; name: string }[];
+  };
+  return {
+    supplierName: raw.supplier_name,
+    branches: raw.branches.map((branch) => ({
+      channelId: branch.channel_id,
+      destination: mapDestination({ ...raw, branch_name: branch.name }),
+    })),
+  };
+}

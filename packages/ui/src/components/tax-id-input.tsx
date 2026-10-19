@@ -30,6 +30,8 @@ interface TaxIdInputProps {
   name?: string;
   placeholder?: string;
   disabled?: boolean;
+  readOnly?: boolean;
+  autoComplete?: string;
   autoFocus?: boolean;
   className?: string;
   containerClassName?: string;
@@ -42,7 +44,7 @@ interface TaxIdInputProps {
 // A CUIT, a DNI or either, formatted as typed; whatever cannot belong to the number is dropped, and
 // form state only ever holds the digits.
 const TaxIdInput = forwardRef<HTMLInputElement, TaxIdInputProps>(
-  ({ kind, value = '', onChange, ...rest }, ref) => {
+  ({ kind, value = '', onChange, readOnly = false, autoComplete = 'off', ...rest }, ref) => {
     const placeCaret = useCaretPlacement();
     // What the field shows while it is more than the formatted digits: a separator typed at the end.
     const [shown, setShown] = useState<string | null>(null);
@@ -80,9 +82,11 @@ const TaxIdInput = forwardRef<HTMLInputElement, TaxIdInputProps>(
         ref={history.inputRef}
         type="text"
         inputMode="numeric"
-        autoComplete="off"
+        autoComplete={autoComplete}
+        readOnly={readOnly}
         value={display}
         onChange={(event) => {
+          if (readOnly) return;
           if (history.replay(event)) return;
           const input = event.currentTarget;
           const caret = input.selectionStart ?? input.value.length;
@@ -90,6 +94,7 @@ const TaxIdInput = forwardRef<HTMLInputElement, TaxIdInputProps>(
           apply(input, editKind(event.nativeEvent), edit, history.before());
         }}
         onKeyDown={(event) => {
+          if (readOnly) return;
           if (history.onKeyDown(event)) return;
           const input = event.currentTarget;
           // A modified Backspace deletes a word or a line, which the browser does as usual.
@@ -101,6 +106,7 @@ const TaxIdInput = forwardRef<HTMLInputElement, TaxIdInputProps>(
           apply(input, 'delete', edit, history.snapshot(input));
         }}
         onPaste={(event) => {
+          if (readOnly) return;
           event.preventDefault();
           const input = event.currentTarget;
           const from = history.snapshot(input);

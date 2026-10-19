@@ -31,7 +31,7 @@ func (c PublicRFQContact) Normalize() (PublicRFQContact, error) {
 		return c, fmt.Errorf("%w: invalid contact fields", ErrInvalidInput)
 	}
 	address, err := mail.ParseAddress(c.Email)
-	if err != nil || address.Address != c.Email {
+	if c.Email != "" && (err != nil || address.Address != c.Email) {
 		return c, fmt.Errorf("%w: invalid email", ErrInvalidInput)
 	}
 	for _, value := range []string{c.Name, c.Email, c.Phone} {
@@ -78,7 +78,7 @@ type PublicRFQDestination struct {
 	LogoURL              *string
 }
 
-// PublicRFQInput carries a single stateless submission and its retry identifier.
+// PublicRFQInput carries a single request payload and its retry identifier.
 type PublicRFQInput struct {
 	RequestID uuid.UUID
 	Contact   PublicRFQContact

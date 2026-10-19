@@ -3,10 +3,15 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { POST } from '@/app/api/public-rfqs/[channelId]/route';
 
+vi.mock('@/lib/auth/customer-session', () => ({
+  getCustomerToken: async () => 'customer-session',
+  customerApiPath: async (path: string) => 'http://api.test/v1/customer/sites/supplier.test' + path,
+}));
+
 const params = Promise.resolve({ channelId: '12345678-1234-4234-8234-123456789012' });
 
 describe('public RFQ forwarding boundary', () => {
-  it('forwards the body without session credentials and returns a minimal receipt', async () => {
+  it('forwards only the customer session and returns a minimal receipt', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(
@@ -18,6 +23,7 @@ describe('public RFQ forwarding boundary', () => {
       body: JSON.stringify({ name: 'Obra Norte' }),
       headers: {
         'Content-Type': 'application/json',
+        origin: 'http://localhost',
         Cookie: 'session=private',
         Authorization: 'Bearer private',
       },
@@ -27,7 +33,7 @@ describe('public RFQ forwarding boundary', () => {
     expect(response.headers.get('set-cookie')).toBeNull();
     expect(response.headers.get('cache-control')).toBe('no-store');
     const forwarded = new Headers(fetchMock.mock.calls[0]![1].headers);
-    expect(forwarded.get('authorization')).toBeNull();
+    expect(forwarded.get('authorization')).toBe('Bearer customer-session');
     expect(forwarded.get('cookie')).toBeNull();
   });
 
@@ -43,6 +49,7 @@ describe('public RFQ forwarding boundary', () => {
     const request = new NextRequest('http://localhost/api/public-rfqs/channel', {
       method: 'POST',
       body: '{}',
+      headers: { origin: 'http://localhost' },
     });
     const response = await POST(request, { params });
     expect(response.status).toBe(429);

@@ -42,12 +42,13 @@ import { useFormatters } from '@/lib/i18n/formatters';
 interface PublicRfqFormProps {
   channelId: string;
   destination: PublicRfqDestination;
+  taxId?: string;
 }
 type Step = 'contact' | 'order' | 'received';
 const CONTACT_FIELDS = ['taxId', 'name', 'email', 'phone'] as const;
 const FILE_ERRORS = new Set(['FILE_TOO_LARGE', 'UNSUPPORTED_FILE_TYPE', 'LEGACY_EXCEL_FILE']);
 
-export function PublicRfqForm({ channelId, destination }: PublicRfqFormProps) {
+export function PublicRfqForm({ channelId, destination, taxId }: PublicRfqFormProps) {
   const t = useTranslations('rfq');
   const shared = useTranslations('common.form.errors');
   const fmt = useFormatters();
@@ -85,7 +86,7 @@ export function PublicRfqForm({ channelId, destination }: PublicRfqFormProps) {
   };
   const form = useForm<PublicRfqValues>({
     ...FORM_VALIDATION,
-    defaultValues: EMPTY_PUBLIC_RFQ,
+    defaultValues: { ...EMPTY_PUBLIC_RFQ, taxId: taxId ?? '' },
     resolver,
   });
   const mode = form.watch('mode');
@@ -153,7 +154,7 @@ export function PublicRfqForm({ channelId, destination }: PublicRfqFormProps) {
         });
         return;
       }
-      form.reset(EMPTY_PUBLIC_RFQ);
+      form.reset({ ...EMPTY_PUBLIC_RFQ, taxId: taxId ?? '' });
       lastSubmission.current = null;
       goTo('received');
     } catch {
@@ -253,6 +254,7 @@ export function PublicRfqForm({ channelId, destination }: PublicRfqFormProps) {
                               <FormLabel>{t('fields.taxId.label')}</FormLabel>
                               <FormControl>
                                 <TaxIdInput
+                                  readOnly={Boolean(taxId)}
                                   {...field}
                                   kind="cuit"
                                   placeholder={t('fields.taxId.placeholder')}

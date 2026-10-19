@@ -1,0 +1,89 @@
+import { fireEvent, render, waitFor } from '@testing-library/react';
+import { NextIntlClientProvider } from 'next-intl';
+import { beforeEach, expect, it, vi } from 'vitest';
+
+import { recoverCustomerPassword, signUpCustomer } from '@/app/login/actions';
+import type { CustomerAuthMode } from '@/components/customer-auth-schema';
+import { CustomerAuthScreen } from '@/components/customer-auth-screen';
+import messages from '@/translations/es.json';
+
+vi.mock('@/app/login/actions', () => ({
+  signInCustomer: vi.fn(),
+  signUpCustomer: vi.fn(),
+  completeCustomerGoogle: vi.fn(),
+  recoverCustomerPassword: vi.fn(),
+  resetCustomerPassword: vi.fn(),
+  verifyCustomerEmail: vi.fn(),
+}));
+
+function screen(mode: CustomerAuthMode) {
+  return render(
+    <NextIntlClientProvider
+      locale="es"
+      messages={messages}
+      timeZone="America/Argentina/Buenos_Aires"
+    >
+      <CustomerAuthScreen
+        mode={mode}
+        supplierName="Corralón Norte"
+        next="/orders"
+        minimum={12}
+        googleEnabled
+      />
+    </NextIntlClientProvider>,
+  );
+}
+beforeEach(() => vi.clearAllMocks());
+
+it('offers Google first with explicit local login and registration alternatives', () => {
+  const view = screen('welcome');
+  expect(view.getByRole('link', { name: 'Continuar con Google' }).getAttribute('href')).toContain(
+    '/api/customer/google/start',
+  );
+  expect(view.getByRole('link', { name: 'Ingresar con CUIT/CUIL' })).toBeTruthy();
+  expect(view.getByRole('link', { name: 'Crear cuenta' })).toBeTruthy();
+  expect(view.queryByLabelText('Contraseña', { exact: false })).toBeNull();
+});
+
+it('creates password credentials without requiring a recovery email', async () => {
+  vi.mocked(signUpCustomer).mockResolvedValue({ error: 'unavailable' });
+  const view = screen('signup');
+  fireEvent.change(view.getByLabelText('CUIT/CUIL', { exact: false }), {
+    target: { value: '20123456786' },
+  });
+  fireEvent.change(view.getByLabelText(/^Contraseña/), { target: { value: 'Customer-pass123!' } });
+  fireEvent.change(view.getByLabelText(/^Repetí la contraseña/), {
+    target: { value: 'Customer-pass123!' },
+  });
+  fireEvent.click(view.getByRole('button', { name: 'Crear cuenta' }));
+  await waitFor(() =>
+    expect(signUpCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({ taxId: '20123456786', email: '', password: 'Customer-pass123!' }),
+    ),
+  );
+});
+
+it('asks for both CUIT/CUIL and email when requesting password recovery', async () => {
+  vi.mocked(recoverCustomerPassword).mockResolvedValue({ received: true });
+  const view = screen('forgot');
+  fireEvent.change(view.getByLabelText('CUIT/CUIL', { exact: false }), {
+    target: { value: '20123456786' },
+  });
+  fireEvent.change(view.getByLabelText('Email', { exact: false }), {
+    target: { value: 'recovery@example.test' },
+  });
+  fireEvent.click(view.getByRole('button', { name: 'Enviar enlace' }));
+  await waitFor(() =>
+    expect(recoverCustomerPassword).toHaveBeenCalledWith(
+      expect.objectContaining({ taxId: '20123456786', email: 'recovery@example.test' }),
+    ),
+  );
+  expect(await view.findByText('Revisá tu email')).toBeTruthy();
+});
+
+it('asks only for CUIT/CUIL after Google has authenticated the user', () => {
+  const view = screen('google');
+  expect(view.getByLabelText('CUIT/CUIL', { exact: false })).toBeTruthy();
+  expect(view.queryByLabelText('Email', { exact: false })).toBeNull();
+  expect(view.queryByLabelText('Contraseña', { exact: false })).toBeNull();
+});

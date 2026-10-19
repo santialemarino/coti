@@ -31,6 +31,7 @@ import (
 	arcainvoice "github.com/santialemarino/coti/apps/api/internal/arca/invoicing"
 	"github.com/santialemarino/coti/apps/api/internal/branding"
 	"github.com/santialemarino/coti/apps/api/internal/config"
+	"github.com/santialemarino/coti/apps/api/internal/customeridentity"
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
@@ -139,6 +140,7 @@ func run() error {
 	}
 
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
+	customerAuthService := services.NewCustomerAuthService(db, repository.NewCustomerAuthRepository(), cfg.CustomerAuth, nil)
 	authService := services.NewAuthService(db, userRepo, branchRepo, refreshTokenRepo, tokenService, cfg.Auth, nil)
 	mailService := services.NewMailService(db, mailer, notificationRepo, accountRepo, nil)
 	quoteMailService := mailService
@@ -146,6 +148,7 @@ func run() error {
 		quoteMailService = services.NewMailService(db, mail.DisabledMailer{}, notificationRepo,
 			accountRepo, nil)
 	}
+	customerAuthService.WithIdentityProviders(repository.NewCustomerAuthRepository(), customeridentity.NewGoogle(cfg.CustomerAuth.GoogleClientID, cfg.CustomerAuth.GoogleClientSecret, cfg.CustomerAuth.GoogleTimeout), mailService)
 	passwordService := services.NewPasswordService(db, userRepo, authTokenRepo, refreshTokenRepo,
 		mailService, authService, log, cfg.Auth, cfg.Web, nil)
 	verificationService := services.NewVerificationService(db, userRepo, authTokenRepo,
@@ -244,7 +247,8 @@ func run() error {
 		WithClientActions(clientActionRepo, userRepo).
 		WithMessages(quoteMessageRepo, messageBatchRepo).
 		WithDraftDiscounts(quoteDiscountRepo, promotionRepo, quoteRepo).
-		WithWhatsAppCredentials(channelSealer)
+		WithWhatsAppCredentials(channelSealer).
+		WithCustomerHostnames(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.GoogleLocalOrigin)
 	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
 		quoteSendRepo)
 	// What a MATCHED line clears to read as HIGH, on the 0..1 scale the item carries its score on.
@@ -253,10 +257,12 @@ func run() error {
 	rateLimit := deliveryhttp.RateLimit{Limiter: limiter, Identify: identifyForRateLimit(tokenService)}
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
-			Health:       handler.NewHealthHandler(db),
-			Auth:         handler.NewAuthHandler(authService),
-			Password:     handler.NewPasswordHandler(passwordService, mailTargetLimiter),
-			Verification: handler.NewVerificationHandler(verificationService, mailTargetLimiter),
+			Health:         handler.NewHealthHandler(db),
+			Auth:           handler.NewAuthHandler(authService),
+			CustomerAuth:   handler.NewCustomerAuthHandler(customerAuthService),
+			CustomerOrders: handler.NewCustomerOrderHandler(services.NewCustomerOrderService(db, repository.NewCustomerOrderRepository(), cfg.CustomerAuth.OrderPageSize)),
+			Password:       handler.NewPasswordHandler(passwordService, mailTargetLimiter),
+			Verification:   handler.NewVerificationHandler(verificationService, mailTargetLimiter),
 			User: handler.NewUserHandler(userService, handler.SessionPolicy{
 				RequireVerifiedEmail: cfg.Auth.RequireVerifiedEmail,
 				MailDelivers:         cfg.Mail.Delivers(),
@@ -285,7 +291,7 @@ func run() error {
 			Invoice:   handler.NewInvoiceHandler(invoiceService, cfg.Storage.MaxFileSize),
 			Promotion: handler.NewPromotionHandler(services.NewPromotionService(db, promotionRepo)),
 		},
-		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
+		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService, Customer: customerAuthService},
 		rateLimit,
 	)
 

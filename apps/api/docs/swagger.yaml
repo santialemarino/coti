@@ -800,7 +800,6 @@ definitions:
       text:
         type: string
     required:
-    - email
     - name
     - request_id
     - tax_id
@@ -909,6 +908,136 @@ definitions:
     required:
     - from
     - text
+    type: object
+  dto.CustomerCredentialsRequest:
+    properties:
+      password:
+        maxLength: 72
+        type: string
+      recovery_email:
+        maxLength: 255
+        type: string
+      tax_id:
+        maxLength: 20
+        type: string
+    required:
+    - password
+    - tax_id
+    type: object
+  dto.CustomerDeliverySiteResponse:
+    properties:
+      hostname:
+        type: string
+    type: object
+  dto.CustomerGoogleCompleteRequest:
+    properties:
+      tax_id:
+        maxLength: 20
+        type: string
+      token:
+        type: string
+    required:
+    - tax_id
+    - token
+    type: object
+  dto.CustomerGoogleExchangeRequest:
+    properties:
+      code:
+        maxLength: 4096
+        type: string
+      nonce:
+        type: string
+      verifier:
+        maxLength: 128
+        minLength: 43
+        type: string
+    required:
+    - code
+    - nonce
+    - verifier
+    type: object
+  dto.CustomerGoogleExchangeResponse:
+    properties:
+      session:
+        $ref: '#/definitions/dto.CustomerSessionResponse'
+      signup_token:
+        type: string
+    type: object
+  dto.CustomerGoogleOptionsResponse:
+    properties:
+      client_id:
+        type: string
+      logo_url:
+        type: string
+      password_min_length:
+        type: integer
+      redirect_uri:
+        type: string
+      supplier_name:
+        type: string
+    type: object
+  dto.CustomerIdentityResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      session_expires_at:
+        type: string
+      tax_id:
+        type: string
+    type: object
+  dto.CustomerOrderResponse:
+    properties:
+      branch_name:
+        type: string
+      delivery_token:
+        type: string
+      id:
+        type: string
+      original_text:
+        type: string
+      received_at:
+        type: string
+      status:
+        type: string
+    type: object
+  dto.CustomerPasswordResetRequest:
+    properties:
+      password:
+        maxLength: 72
+        type: string
+      token:
+        type: string
+    required:
+    - password
+    - token
+    type: object
+  dto.CustomerRecoveryRequest:
+    properties:
+      email:
+        maxLength: 255
+        type: string
+      tax_id:
+        maxLength: 20
+        type: string
+    required:
+    - email
+    - tax_id
+    type: object
+  dto.CustomerSessionResponse:
+    properties:
+      customer:
+        $ref: '#/definitions/dto.CustomerIdentityResponse'
+      session_token:
+        type: string
+    type: object
+  dto.CustomerTokenRequest:
+    properties:
+      token:
+        type: string
+    required:
+    - token
     type: object
   dto.DiffDiscountResponse:
     properties:
@@ -1682,6 +1811,32 @@ definitions:
     properties:
       received:
         type: boolean
+    type: object
+  dto.PublicRFQSiteBranchResponse:
+    properties:
+      channel_id:
+        type: string
+      name:
+        type: string
+    type: object
+  dto.PublicRFQSiteResponse:
+    properties:
+      accepted_content_types:
+        items:
+          type: string
+        type: array
+      branches:
+        items:
+          $ref: '#/definitions/dto.PublicRFQSiteBranchResponse'
+        type: array
+      logo_url:
+        type: string
+      max_file_size:
+        type: integer
+      max_text_characters:
+        type: integer
+      supplier_name:
+        type: string
     type: object
   dto.QuoteAlternativeApprovalRequest:
     properties:
@@ -3646,6 +3801,517 @@ paths:
       summary: Replace a client's tags
       tags:
       - clients
+  /v1/customer/sites/{hostname}/auth/forgot-password:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: CUIT/CUIL and recovery email
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerRecoveryRequest'
+      responses:
+        "204":
+          description: Recovery request received
+      summary: Request customer password recovery
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/google/complete:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Verified Google signup token and CUIT/CUIL
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerGoogleCompleteRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.CustomerSessionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Complete Google customer registration
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/google/exchange:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Authorization code and PKCE verifier
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerGoogleExchangeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerGoogleExchangeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Exchange a Google authorization code
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/google/link:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Verified Google signup token and CUIT/CUIL
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerGoogleCompleteRequest'
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.CustomerSessionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Link Google to an authenticated customer
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/google/options:
+    get:
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerGoogleOptionsResponse'
+      summary: Get customer Google sign-in configuration
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/login:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: CUIT/CUIL and password
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerCredentialsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerSessionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Log in as a customer
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/logout:
+    post:
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      responses:
+        "204":
+          description: Logged out
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Log out as a customer
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/register:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: CUIT/CUIL and password
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerCredentialsRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.CustomerSessionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Register a customer
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/reset-password:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Recovery token and new password
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerPasswordResetRequest'
+      responses:
+        "204":
+          description: Password reset
+      summary: Reset a customer password
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/verify-email:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Verification token
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerTokenRequest'
+      responses:
+        "204":
+          description: Email verified
+      summary: Verify a customer recovery email
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/me:
+    get:
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerIdentityResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get the authenticated customer
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/orders:
+    get:
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Page number starting at one
+        in: query
+        name: page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.CustomerOrderResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List customer requests
+      tags:
+      - customer-orders
+  /v1/customer/sites/{hostname}/orders/{rfqId}:
+    get:
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Request ID
+        in: path
+        name: rfqId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerOrderResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a customer request
+      tags:
+      - customer-orders
+  /v1/customer/sites/{hostname}/quote-sends/{token}:
+    get:
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Public delivery token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.PublicQuoteSendResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Resolve a public quote delivery token
+      tags:
+      - public quote sends
+  /v1/customer/sites/{hostname}/quote-sends/{token}/order:
+    get:
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Delivery token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerOrderResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Resolve a customer delivery to its request
+      tags:
+      - customer-orders
+  /v1/customer/sites/{hostname}/rfq-channels/{channelId}/requests:
+    post:
+      consumes:
+      - application/json
+      - multipart/form-data
+      description: Accepts JSON text or multipart contact fields and one file; request_id
+        is a UUID v4 reused only for retries of the same submission.
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: WEBAPP channel ID
+        in: path
+        name: channelId
+        required: true
+        type: string
+      - description: Text request; multipart uses the same fields and a file part
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreatePublicRFQRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.PublicRFQReceiptResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Submit a public RFQ
+      tags:
+      - public-rfqs
   /v1/dev/whatsapp/messages:
     post:
       consumes:
@@ -5563,33 +6229,16 @@ paths:
       summary: Get a product image
       tags:
       - catalog
-  /v1/public/quote-sends/{token}:
-    get:
-      parameters:
-      - description: Public delivery token
-        in: path
-        name: token
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.PublicQuoteSendResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/dto.ErrorResponse'
-      summary: Resolve a public quote delivery token
-      tags:
-      - public quote sends
   /v1/public/quote-sends/{token}/action:
     post:
       consumes:
       - application/json
       parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
       - description: Public delivery token
         in: path
         name: token
@@ -5620,9 +6269,33 @@ paths:
           description: Conflict
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Record a customer response on a public quote
       tags:
       - public quote sends
+  /v1/public/quote-sends/{token}/site:
+    get:
+      parameters:
+      - description: Delivery token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerDeliverySiteResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Get supplier routing for a legacy delivery
+      tags:
+      - customer-auth
   /v1/public/rfq-channels/{channelId}:
     get:
       parameters:
@@ -5645,57 +6318,26 @@ paths:
       summary: Get a public RFQ destination
       tags:
       - public-rfqs
-  /v1/public/rfq-channels/{channelId}/requests:
-    post:
-      consumes:
-      - application/json
-      - multipart/form-data
-      description: Accepts JSON text or multipart contact fields and one file; request_id
-        is a UUID v4 reused only for retries of the same submission.
+  /v1/public/rfq-sites/{hostname}:
+    get:
       parameters:
-      - description: WEBAPP channel ID
+      - description: Registered supplier hostname
         in: path
-        name: channelId
+        name: hostname
         required: true
         type: string
-      - description: Text request; multipart uses the same fields and a file part
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.CreatePublicRFQRequest'
       produces:
       - application/json
       responses:
-        "201":
-          description: Created
+        "200":
+          description: OK
           schema:
-            $ref: '#/definitions/dto.PublicRFQReceiptResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/dto.ErrorResponse'
+            $ref: '#/definitions/dto.PublicRFQSiteResponse'
         "404":
           description: Not Found
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/dto.ErrorResponse'
-        "413":
-          description: Request Entity Too Large
-          schema:
-            $ref: '#/definitions/dto.ErrorResponse'
-        "422":
-          description: Unprocessable Entity
-          schema:
-            $ref: '#/definitions/dto.ErrorResponse'
-        "429":
-          description: Too Many Requests
-          schema:
-            $ref: '#/definitions/dto.ErrorResponse'
-      summary: Submit a public RFQ
+      summary: Get a public RFQ site
       tags:
       - public-rfqs
   /v1/quotes/{quoteId}/accept-materials:

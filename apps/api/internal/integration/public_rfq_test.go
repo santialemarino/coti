@@ -46,8 +46,10 @@ func TestPublicRFQFileRouteQueuesOneStoredAttachmentOnRetry(t *testing.T) {
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
+	hostname, token := e.registerCustomer(t, accountID, "20123456786", "")
 	for range 2 {
-		req := httptest.NewRequest(http.MethodPost, "/v1/public/rfq-channels/"+channelID.String()+"/requests", bytes.NewReader(body.Bytes()))
+		req := httptest.NewRequest(http.MethodPost, "/v1/customer/sites/"+hostname+"/rfq-channels/"+channelID.String()+"/requests", bytes.NewReader(body.Bytes()))
+		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		response := httptest.NewRecorder()
 		e.router.ServeHTTP(response, req)
@@ -102,10 +104,11 @@ func TestPublicRFQRoutePreservesScopeAndIdempotencyWithoutClientAssociation(t *t
 	if contextResponse.Code != http.StatusOK {
 		t.Fatalf("public destination: %d %s", contextResponse.Code, contextResponse.Body.String())
 	}
+	hostname, token := e.registerCustomer(t, accountID, "20123456786", "")
 	body := map[string]any{"request_id": uuid.NewString(), "tax_id": "20123456786", "name": "Public customer", "email": "customer@example.com", "text": "10 bolsas de cemento",
 		"account_id": otherAccountID, "branch_id": otherBranchID, "client_id": uuid.New()}
 	for range 2 {
-		response := e.do(t, request{method: http.MethodPost, path: path + "/requests", body: body})
+		response := e.do(t, request{method: http.MethodPost, path: "/v1/customer/sites/" + hostname + "/rfq-channels/" + channelID.String() + "/requests", token: token, body: body})
 		if response.Code != http.StatusCreated || response.Body.String() != `{"received":true}` {
 			t.Fatalf("receipt: %d %s", response.Code, response.Body.String())
 		}

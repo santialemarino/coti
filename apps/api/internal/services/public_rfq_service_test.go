@@ -154,3 +154,7 @@ func TestPublicRFQRejectsUnknownDestinationAndAmbiguousModes(t *testing.T) {
 		t.Fatal("refused input persisted a source")
 	}
 }
+
+func (f *publicIntakeFake) GetSiteCrossAccount(context.Context, repository.Querier, string) (*domain.PublicRFQSite, error) {
+	return nil, domain.ErrNotFound
+}

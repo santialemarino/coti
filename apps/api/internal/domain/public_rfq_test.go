@@ -15,8 +15,9 @@ func TestPublicRFQContactNormalize(t *testing.T) {
 		t.Fatalf("unexpected normalized contact: %#v", normalized)
 	}
 	contact.Phone = ""
+	contact.Email = ""
 	if _, err := contact.Normalize(); err != nil {
-		t.Fatalf("phone must be optional: %v", err)
+		t.Fatalf("contact channels must be optional: %v", err)
 	}
 }
 
@@ -24,7 +25,6 @@ func TestPublicRFQContactRejectsInvalidDeclarations(t *testing.T) {
 	valid := PublicRFQContact{TaxID: "20123456786", Name: "Obra Norte", Email: "contacto@example.com"}
 	tests := map[string]func(*PublicRFQContact){
 		"missing name":       func(c *PublicRFQContact) { c.Name = " " },
-		"missing email":      func(c *PublicRFQContact) { c.Email = "" },
 		"display name email": func(c *PublicRFQContact) { c.Email = "Other <contacto@example.com>" },
 		"invalid checksum":   func(c *PublicRFQContact) { c.TaxID = "20123456780" },
 		"zero CUIT":          func(c *PublicRFQContact) { c.TaxID = "00000000000" },

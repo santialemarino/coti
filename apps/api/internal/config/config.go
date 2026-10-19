@@ -76,6 +76,7 @@ type Config struct {
 	Server          ServerConfig
 	Database        DatabaseConfig
 	Auth            AuthConfig
+	CustomerAuth    CustomerAuthConfig
 	Mail            MailConfig
 	AI              AIConfig
 	Web             WebConfig
@@ -760,6 +761,7 @@ func Load() (*Config, error) {
 			MaxConnIdleTime: getDuration("DB_MAX_CONN_IDLE_MINUTES", 30*time.Minute, &problems),
 			ConnectTimeout:  getDuration("DB_CONNECT_TIMEOUT_SECONDS", 10*time.Second, &problems),
 		},
+		CustomerAuth: loadCustomerAuth(&problems),
 		Auth: AuthConfig{
 			JWTSecret:            os.Getenv("AUTH_JWT_SECRET"),
 			AccessTTL:            getDuration("AUTH_ACCESS_TTL_MINUTES", 15*time.Minute, &problems),

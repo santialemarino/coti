@@ -23,6 +23,7 @@ type publicRFQDB interface {
 }
 
 type publicRFQDestinations interface {
+	GetSiteCrossAccount(context.Context, repository.Querier, string) (*domain.PublicRFQSite, error)
 	GetDestinationCrossAccount(context.Context, repository.Querier, uuid.UUID) (*domain.PublicRFQDestination, error)
 }
 
@@ -48,7 +49,7 @@ type publicRFQEnvelope struct {
 	Fingerprint string                  `json:"fingerprint"`
 }
 
-// PublicRFQService accepts stateless customer requests through an active branch WEBAPP channel.
+// PublicRFQService retains customer requests through an active branch WEBAPP channel.
 type PublicRFQService struct {
 	db           publicRFQDB
 	destinations publicRFQDestinations
@@ -230,4 +231,20 @@ func publicFileContentType(file *domain.AttachmentUpload) string {
 		return ""
 	}
 	return file.ContentType
+}
+
+// CreateForCustomer binds the declared CUIT/CUIL and branch to the authenticated supplier.
+func (s *PublicRFQService) CreateForCustomer(ctx context.Context, p domain.CustomerPrincipal, channelID uuid.UUID, in domain.PublicRFQInput) error {
+	destination, err := s.GetDestination(ctx, channelID)
+	if err != nil {
+		return err
+	}
+	if destination.Route.AccountID != p.AccountID {
+		return domain.ErrNotFound
+	}
+	if domain.NormalizeTaxID(in.Contact.TaxID) != p.TaxID {
+		return domain.ErrForbidden
+	}
+	in.Contact.TaxID = p.TaxID
+	return s.Create(ctx, channelID, in)
 }

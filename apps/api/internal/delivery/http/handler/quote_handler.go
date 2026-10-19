@@ -206,13 +206,16 @@ func (h *QuoteHandler) Send(c *gin.Context) {
 
 // ResolvePublic reports whether a completed delivery token is active, expired or withdrawn.
 //
+// @Security BearerAuth
+// @Param hostname path string true "Registered supplier hostname"
+//
 //	@Summary	Resolve a public quote delivery token
 //	@Tags		public quote sends
 //	@Produce	json
 //	@Param		token	path		string	true	"Public delivery token"
 //	@Success	200		{object}	dto.PublicQuoteSendResponse
 //	@Failure	404		{object}	dto.ErrorResponse
-//	@Router		/v1/public/quote-sends/{token} [get]
+//	@Router		/v1/customer/sites/{hostname}/quote-sends/{token} [get]
 func (h *QuoteHandler) ResolvePublic(c *gin.Context) {
 	if h.delivery == nil {
 		Respond(c, domain.ErrNotFound)
@@ -240,6 +243,9 @@ func (h *QuoteHandler) ResolvePublic(c *gin.Context) {
 
 // RespondPublic records the customer's answer to a frozen quote and moves the quote when the
 // answer addresses the version it still shows.
+//
+// @Security BearerAuth
+// @Param hostname path string true "Registered supplier hostname"
 //
 //	@Summary	Record a customer response on a public quote
 //	@Tags		public quote sends

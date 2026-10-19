@@ -7,6 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.43.6
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.36
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.107.2
+	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
@@ -17,12 +18,14 @@ require (
 	github.com/pgvector/pgvector-go/pgx v0.4.1
 	github.com/phpdave11/gofpdf v1.4.3
 	github.com/shopspring/decimal v1.4.0
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/smallstep/pkcs7 v0.2.3
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.1
 	github.com/swaggo/swag v1.16.6
 	golang.org/x/crypto v0.54.0
 	golang.org/x/image v0.34.0
+	golang.org/x/oauth2 v0.34.0
 )
 
 require (
@@ -57,6 +60,7 @@ require (
 	github.com/gin-contrib/sse v1.1.0 // indirect
 	github.com/go-faster/city v1.0.1 // indirect
 	github.com/go-faster/errors v0.7.1 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-openapi/jsonpointer v0.19.6 // indirect
 	github.com/go-openapi/jsonreference v0.20.2 // indirect
 	github.com/go-openapi/spec v0.20.9 // indirect
@@ -100,7 +104,6 @@ require (
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/sethvargo/go-retry v0.3.0 // indirect
-	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect

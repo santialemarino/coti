@@ -17,7 +17,7 @@ export function contactSchema(t: SchemaText = rawText) {
       t.field('taxId.invalid'),
     ),
     name: requiredText(t, 'name.required'),
-    email: emailAddress(t, 'email.required'),
+    email: z.union([z.literal(''), emailAddress(t, 'email.required')]),
     phone: optionalText(t, 64).refine(
       (value) => value === '' || isValidPhoneNumber(value),
       t.field('phone.invalid'),
