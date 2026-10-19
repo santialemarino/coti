@@ -311,18 +311,21 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 		detail = &domain.RfqDetail{
 			Rfq: *rfq,
 		}
-		if s.inboundMessages != nil && (rfq.Channel == strings.ToLower(string(domain.ChannelTypeWhatsApp)) ||
-			rfq.Channel == strings.ToLower(string(domain.ChannelTypeEmail))) {
+		if s.inboundMessages != nil && rfq.Channel == strings.ToLower(string(domain.ChannelTypeWhatsApp)) {
 			senderID, senderErr := s.inboundMessages.FindSenderIDByRFQID(ctx, q, tenant.AccountID,
 				rfq.BranchID, rfqID)
 			if senderErr != nil {
 				return senderErr
 			}
-			if rfq.Channel == strings.ToLower(string(domain.ChannelTypeWhatsApp)) {
-				detail.InboundWhatsAppPhone = inboundWhatsAppPhone(senderID)
-			} else {
-				detail.InboundEmail = inboundEmailAddress(senderID)
+			detail.InboundWhatsAppPhone = inboundWhatsAppPhone(senderID)
+		}
+		if s.inboundMessages != nil && rfq.Channel == strings.ToLower(string(domain.ChannelTypeEmail)) {
+			senderID, senderErr := s.inboundMessages.FindSenderIDByRFQID(ctx, q, tenant.AccountID,
+				rfq.BranchID, rfqID)
+			if senderErr != nil {
+				return senderErr
 			}
+			detail.InboundEmail = inboundEmailAddress(senderID)
 		}
 
 		rfqChanges, rfqChangesErr := s.rfqs.ListStatusChanges(ctx, q, tenant.AccountID,
