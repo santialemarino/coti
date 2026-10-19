@@ -51,6 +51,7 @@ type stagedQuoteEmailSender struct {
 	mu      sync.Mutex
 	sends   int
 	replyTo []string
+	to      []string
 	names   []string
 	err     error
 }
@@ -66,6 +67,7 @@ func (s *stagedQuoteEmailSender) Send(_ context.Context, mail services.OutboundM
 	defer s.mu.Unlock()
 	s.sends++
 	s.replyTo = append(s.replyTo, mail.ReplyTo)
+	s.to = append(s.to, mail.To)
 	s.names = append(s.names, mail.ReplyToName)
 	return s.err
 }
@@ -241,6 +243,51 @@ func TestQuoteDelivery_SuccessFreezesSendsAndEvaluatesUnchangedQuote(t *testing.
 	if _, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID,
 		domain.QuoteDeliveryInput{IdempotencyKey: key, Phone: "+5491155550199"}); domain.CodeOf(err) != domain.CodeIdempotencyMismatch {
 		t.Errorf("mismatched replay = %v, want %s", err, domain.CodeIdempotencyMismatch)
+	}
+}
+
+func TestQuoteDelivery_EmailOnlyReplaysWithoutContactingWhatsApp(t *testing.T) {
+	e := newEnv(t)
+	seed := e.seedSendableQuote(t, "Email-only delivery", false)
+	if _, err := e.db.CrossAccount().Exec(context.Background(), `INSERT INTO channel
+	  (id, account_id, branch_id, type, identifier, is_active)
+	  VALUES ($1, $2, $3, 'EMAIL', 'branch@test.local', TRUE)`, uuid.New(),
+		seed.tenant.AccountID, seed.tenant.BranchID); err != nil {
+		t.Fatalf("seed email channel: %v", err)
+	}
+	if _, err := e.db.CrossAccount().Exec(context.Background(), `UPDATE channel SET is_active = FALSE
+	  WHERE account_id = $1 AND branch_id = $2 AND type = 'WHATSAPP'`,
+		seed.tenant.AccountID, seed.tenant.BranchID); err != nil {
+		t.Fatalf("disable WhatsApp channel: %v", err)
+	}
+	whatsapp := &captureWhatsAppSender{}
+	email := &stagedQuoteEmailSender{}
+	service := e.quoteDeliveryService(t, whatsapp, email, nil)
+	address := "client@test.local"
+	input := domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Email: &address}
+	result, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, input)
+	if err != nil {
+		t.Fatalf("email-only Send() = %v", err)
+	}
+	if result.CurrentStatus != domain.QuoteStatusSent || len(result.Deliveries) != 1 ||
+		result.Deliveries[0].ChannelType != domain.ChannelTypeEmail ||
+		result.Deliveries[0].Destination != address ||
+		result.Deliveries[0].TrackingStatus != domain.SendTrackingStatusSent {
+		t.Fatalf("result = %+v, want one successful email delivery", result)
+	}
+	if whatsapp.count() != 0 || email.count() != 1 || email.replyTo[0] != "branch@test.local" ||
+		email.to[0] != address {
+		t.Fatalf("whatsapp/email/reply-to/to = %d/%d/%v/%v, want 0/1/branch mailbox/client",
+			whatsapp.count(), email.count(), email.replyTo, email.to)
+	}
+	replay, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, input)
+	if err != nil || !replay.Replay || email.count() != 1 ||
+		replay.Deliveries[0].ID != result.Deliveries[0].ID {
+		t.Fatalf("replay = %+v, %v; email sends = %d", replay, err, email.count())
+	}
+	input.Phone = "+5491155550101"
+	if _, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, input); domain.CodeOf(err) != domain.CodeIdempotencyMismatch {
+		t.Errorf("replay with added channel = %v, want idempotency mismatch", err)
 	}
 }
 

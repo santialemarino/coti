@@ -848,6 +848,36 @@ func TestQuoteDeliveryService_ResolvePublic_ExpiredLinkIsExpired(t *testing.T) {
 	}
 }
 
+func TestNormalizeQuoteDeliveryInput_SelectsValidDestinations(t *testing.T) {
+	email := " client@example.com "
+	badEmail := "not-an-email"
+	key := uuid.New()
+	tests := []struct {
+		name    string
+		input   domain.QuoteDeliveryInput
+		wantErr bool
+	}{
+		{name: "email only", input: domain.QuoteDeliveryInput{IdempotencyKey: key, Email: &email}},
+		{name: "whatsapp only", input: domain.QuoteDeliveryInput{IdempotencyKey: key, Phone: "+5491155550101"}},
+		{name: "both", input: domain.QuoteDeliveryInput{IdempotencyKey: key, Phone: "+5491155550101", Email: &email}},
+		{name: "no destination", input: domain.QuoteDeliveryInput{IdempotencyKey: key}, wantErr: true},
+		{name: "invalid phone with email", input: domain.QuoteDeliveryInput{IdempotencyKey: key, Phone: "123", Email: &email}, wantErr: true},
+		{name: "invalid email", input: domain.QuoteDeliveryInput{IdempotencyKey: key, Email: &badEmail}, wantErr: true},
+		{name: "missing key", input: domain.QuoteDeliveryInput{Email: &email}, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := normalizeQuoteDeliveryInput(tt.input)
+			if tt.wantErr != (err != nil) {
+				t.Fatalf("normalizeQuoteDeliveryInput() = %+v, %v; want error %v", got, err, tt.wantErr)
+			}
+			if !tt.wantErr && tt.input.Email != nil && *got.Email != "client@example.com" {
+				t.Errorf("email = %q, want trimmed address", *got.Email)
+			}
+		})
+	}
+}
+
 func TestNormalizeClientAction(t *testing.T) {
 	longComment := strings.Repeat("x", maxClientActionComment)
 	tooLongComment := strings.Repeat("x", maxClientActionComment+1)

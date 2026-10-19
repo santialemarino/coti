@@ -158,6 +158,7 @@ function makeDetail(quoteStatus: string, rfqStatus: string = quoteStatus): RfqDe
       archived_at: null,
     },
     inbound_whatsapp_phone: null,
+    inbound_email: null,
     quote: {
       id: QUOTE_ID,
       branch_id: BRANCH_ID,

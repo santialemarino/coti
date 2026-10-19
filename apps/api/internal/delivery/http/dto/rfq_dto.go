@@ -147,6 +147,7 @@ type RFQAttachmentListResponse struct {
 type RfqDetailResponse struct {
 	Rfq                  RfqListItemResponse                       `json:"rfq"`
 	InboundWhatsAppPhone *string                                   `json:"inbound_whatsapp_phone"`
+	InboundEmail         *string                                   `json:"inbound_email"`
 	Quote                *QuoteResponse                            `json:"quote"`
 	Version              *QuoteVersionResponse                     `json:"version"`
 	Items                []QuoteItemResponse                       `json:"items"`
@@ -197,6 +198,7 @@ type QuoteStatusChangeResponse struct {
 type QuoteSendTrackingResponse struct {
 	ID             uuid.UUID  `json:"id"`
 	VersionID      uuid.UUID  `json:"version_id"`
+	OperationID    uuid.UUID  `json:"operation_id"`
 	Channel        string     `json:"channel"`
 	Destination    string     `json:"destination"`
 	Format         string     `json:"format"`

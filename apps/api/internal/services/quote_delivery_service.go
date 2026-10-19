@@ -405,7 +405,10 @@ func (s *QuoteDeliveryService) selectedChannels(ctx context.Context, q repositor
 	if err != nil {
 		return nil, err
 	}
-	types := []domain.ChannelType{domain.ChannelTypeWhatsApp}
+	types := make([]domain.ChannelType, 0, 2)
+	if in.Phone != "" {
+		types = append(types, domain.ChannelTypeWhatsApp)
+	}
 	if in.Email != nil {
 		types = append(types, domain.ChannelTypeEmail)
 	}
@@ -827,9 +830,11 @@ func (s *QuoteDeliveryService) evaluateAfterCommit(ctx context.Context, tenant d
 
 func normalizeQuoteDeliveryInput(in domain.QuoteDeliveryInput) (domain.QuoteDeliveryInput, error) {
 	in.Phone = strings.TrimSpace(in.Phone)
-	if in.IdempotencyKey == uuid.Nil || !e164PhonePattern.MatchString(in.Phone) {
-		return in, fmt.Errorf("%w: idempotency key and E.164 recipient phone are required",
-			domain.ErrInvalidInput)
+	if in.IdempotencyKey == uuid.Nil || (in.Phone == "" && in.Email == nil) {
+		return in, fmt.Errorf("%w: idempotency key and a delivery destination are required", domain.ErrInvalidInput)
+	}
+	if in.Phone != "" && !e164PhonePattern.MatchString(in.Phone) {
+		return in, fmt.Errorf("%w: recipient phone must be E.164", domain.ErrInvalidInput)
 	}
 	if in.Email != nil {
 		trimmed := strings.TrimSpace(*in.Email)
@@ -900,7 +905,10 @@ func statusForClientAction(action domain.ClientActionType) (domain.QuoteStatus, 
 
 func validateReplay(sends []domain.QuoteSend, versionID uuid.UUID,
 	in domain.QuoteDeliveryInput, validityDays int) error {
-	want := map[domain.ChannelType]string{domain.ChannelTypeWhatsApp: in.Phone}
+	want := make(map[domain.ChannelType]string, 2)
+	if in.Phone != "" {
+		want[domain.ChannelTypeWhatsApp] = in.Phone
+	}
 	if in.Email != nil {
 		want[domain.ChannelTypeEmail] = *in.Email
 	}

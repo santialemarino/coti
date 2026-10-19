@@ -113,6 +113,7 @@ export interface RfqDetailResponse {
   rfq: RfqListItem;
   // The E.164 sender of the inbound WhatsApp message, used only as the editable send default.
   inbound_whatsapp_phone: string | null;
+  inbound_email: string | null;
   quote: QuoteResponse | null;
   version: QuoteVersionResponse | null;
   items: QuoteItemResponse[];
@@ -219,6 +220,7 @@ export interface QuoteStatusChangeResponse {
 export interface QuoteSendTrackingResponse {
   id: string;
   version_id: string;
+  operation_id: string;
   channel: string;
   destination: string;
   format: string;
@@ -256,10 +258,9 @@ export interface FileRfqDraftResponse {
   items: QuoteItemResponse[];
 }
 
-// Body of POST /v1/quotes/:quoteId/sends. WhatsApp and the public link always go; the email
-// copy is the optional one, so an absent email_delivery means "WhatsApp only".
+// Body of POST /v1/quotes/:quoteId/sends; at least one destination is required.
 export interface QuoteSendBody {
-  recipient_phone: string;
+  recipient_phone?: string;
   email_delivery?: { address: string } | null;
   expiry_days?: number | null;
 }
