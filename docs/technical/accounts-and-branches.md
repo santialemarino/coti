@@ -182,30 +182,32 @@ branch's numbers from another, so a form editing a channel sends the identifier 
 
 ### Inbound routing
 
-An external connector arrives without a tenant session. `InboundRoutingService` resolves normalized
-identifiers on the owner pool in one batch and returns the concrete channel together with its account
-and branch. WhatsApp resolves Meta's `phone_number_id` from its readable channel configuration;
-email identifiers are resolved from the lower-cased mailbox in `channel.identifier`. Gmail instead
-uses the branch route captured when an administrator authorized that mailbox.
+An external connector arrives without a tenant session, so it resolves its destination on the owner
+pool before opening a tenant transaction. `InboundRoutingService` accepts normalized identifiers in
+one batch and returns the concrete channel together with its account and branch; the connector then
+uses that route for RFQ persistence and catalog matching. WhatsApp resolves Meta's
+`phone_number_id` from its readable channel configuration, while email resolves the lower-cased
+mailbox in `channel.identifier`.
 
 Two partial global indexes make active external destinations unambiguous. They do not reduce the
 existing cardinality: a branch may still configure multiple WhatsApp numbers or mailboxes, provided
 each has a distinct external destination. `WEBAPP` uses its opaque delivery token and is resolved by
 the public delivery flow, not this inbox resolver.
 
-#### WhatsApp connector integration contract
+#### Connector integration contract
 
-The WhatsApp connector owns provider authentication, payload parsing, acknowledgement and durable
+The connector owns provider authentication, payload parsing, acknowledgement and durable
 idempotency. Routing owns tenant discovery. The connector is a thin adapter over these two service
 calls:
 
 1. Extract the **destination** from the verified provider payload and call
-   `InboundRoutingService.ResolveChannels` with `WHATSAPP`. Supply Meta's
+   `InboundRoutingService.ResolveChannels` with `WHATSAPP` or `EMAIL`. WhatsApp supplies Meta's
    `metadata.phone_number_id`, never the sender's `from` value or the human-facing phone number in
-   `channel.identifier`.
-2. Use `domain.NormalizeInboundChannelIdentifier` when retrieving the returned route: WhatsApp
-   provider identifiers are trimmed but otherwise unchanged. A missing route means no tenant work
-   must be created.
+   `channel.identifier`. Email supplies an envelope or final-delivery recipient, never `From` or
+   `Reply-To`.
+2. Use `domain.NormalizeInboundChannelIdentifier` when retrieving the returned route: email keys
+   are trimmed and lower-cased; WhatsApp provider identifiers are trimmed but otherwise unchanged.
+   A missing route means no tenant work must be created.
 3. Pass the returned `InboundChannelRoute` unchanged to
    `RFQService.CreateInboundTextDraft` with an `InboundTextRFQDraftInput`. The input deliberately
    has no channel, branch or account field: an adapter must not accept, infer or construct any of
@@ -226,9 +228,6 @@ response.
 The WhatsApp Cloud API connector is documented in [WhatsApp Cloud API](whatsapp-cloud-api.md). It
 uses `metadata.phone_number_id` for this routing contract, validates Meta's app-level HMAC before
 routing, and reserves an RFQ against Meta's message ID before the text pipeline starts.
-
-Gmail intake uses the authenticated identity of a connected mailbox and its stored channel instead
-of a provider callback. See [Gmail intake](gmail-intake.md) for the OAuth and synchronization flow.
 
 ### Credentials are encrypted at rest, and never come back out
 
@@ -282,3 +281,7 @@ stays valid. `config.Load()` refuses a value of zero or less.
 `CHANNEL_CONFIG_ENCRYPTION_KEY` (no default) is 32 bytes of base64 — `openssl rand -base64 32` — and
 seals the credential fields of `channel.config`. Unset, storing a credential is refused; malformed,
 `config.Load()` refuses to start.
+
+Gmail intake binds an administrator-authorized mailbox to its branch channel instead of resolving a
+provider callback destination. It uses the same encryption key for mailbox credentials. See
+[Gmail intake](gmail-intake.md) for the authorization and synchronization flow.
